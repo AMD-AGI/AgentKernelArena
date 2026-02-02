@@ -1,8 +1,12 @@
 # AgentKernelArena: Competitive Arena for GPU Kernel Optimization Agents
 
-AgentKernelArena is a standardized evaluation arena built by AMD's AI Group (AIG) to measure how well AI coding agents perform on real GPU kernel optimization tasks. It provides an end-to-end, siloed benchmarking environment where LLM-powered agents (Cursor Agent, Claude Code, Codex, SWE-agent, GEAK, and custom agents) are evaluated side-by-side on the same kernel tasks using objective and reproducible metrics.
+As AI coding agents, like Claude Code and OpenAI Codex, rapidly improve, we need more than cherry-picked demos. Especially in specialized domains like GPU programming. 
+
+AgentKernelArena is a standardized evaluation arena built by AMD to measure how well AI coding agents perform on real GPU kernel optimization tasks. 
 
 ## Overview & Features
+
+AgentKernelArena provides an end-to-end, siloed benchmarking environment where LLM-powered agents (Cursor Agent, Claude Code, Codex, SWE-agent, GEAK, and custom agents) are evaluated side-by-side on the same kernel tasks using objective and reproducible metrics.
 
 AgentKernelArena enables systematic evaluation of AI agents on GPU kernel optimization tasks by combining:
 - **Multi-Agent Arena**: Cursor, Claude Code, SWE-agent, OpenEvolve (GEAK), single LLM calls (Codex/others), and custom agents
@@ -14,7 +18,20 @@ AgentKernelArena enables systematic evaluation of AI agents on GPU kernel optimi
 - **Comprehensive Logging**: Detailed logs with timestamps, prompts, outputs, and results for every task execution
 - **Flexible Configuration**: YAML-based configuration for tasks, agents, and LLM parameters
 
-AgentKernelArena is actively under development. Upcoming releases will publish detailed evaluation results comparing agent performance across multiple task categories, using standardized correctness and performance scores. As AI coding agents rapidly improve, we need more than cherry-picked demos -- especially in specialized domains like GPU programming. AgentKernelArena is built to answer a simple, critical question: which agents actually deliver real performance gains on real kernels?
+
+## **Leaderboard Coming: Stay Tuned!**
+
+AgentKernelArena is actively under development. Upcoming releases will publish detailed evaluation results comparing agent performance across multiple task categories, using standardized correctness and performance scores. 
+
+
+| Model         | Compiled | Correctness | Performance | Score |
+|---------------|----------|-------------|-------------|-------|
+| Cursor Agent  | xx       | xx          | xx          | xx    |
+| Claude Code   | xx       | xx          | xx          | xx    |
+| OpenAI Codex  | xx       | xx          | xx          | xx    |
+| SWE-agent     | xx       | xx          | xx          | xx    |
+| GEAK          | xx       | xx          | xx          | xx    |
+
 
 ## Architecture
 
