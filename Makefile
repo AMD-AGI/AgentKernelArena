@@ -6,9 +6,21 @@ PYTHON_VERSION := 3.12
 VENV_DIR := .venv
 REQUIREMENTS := requirements.txt
 
-# Detect ROCm version
-ROCM_VERSION := $(shell if [ -d /opt/rocm-7.0.0 ]; then echo "7.0"; elif [ -d /opt/rocm-6.4.1 ]; then echo "6.4"; else echo "unknown"; fi)
-ROCM_PATH_DETECTED := $(shell if [ -d /opt/rocm-7.0.0 ]; then echo "/opt/rocm-7.0.0"; elif [ -d /opt/rocm-6.4.1 ]; then echo "/opt/rocm-6.4.1"; else echo "/opt/rocm"; fi)
+# Detect ROCm version (supports 7.1, 7.0, 6.4)
+ROCM_VERSION := $(shell \
+	if [ -d /opt/rocm-7.1.0 ] || [ -d /opt/rocm-7.1 ]; then echo "7.1"; \
+	elif [ -d /opt/rocm-7.0.0 ] || [ -d /opt/rocm-7.0 ]; then echo "7.0"; \
+	elif [ -d /opt/rocm-6.4.1 ] || [ -d /opt/rocm-6.4.0 ] || [ -d /opt/rocm-6.4 ]; then echo "6.4"; \
+	else echo "unknown"; fi)
+ROCM_PATH_DETECTED := $(shell \
+	if [ -d /opt/rocm-7.1.0 ]; then echo "/opt/rocm-7.1.0"; \
+	elif [ -d /opt/rocm-7.1 ]; then echo "/opt/rocm-7.1"; \
+	elif [ -d /opt/rocm-7.0.0 ]; then echo "/opt/rocm-7.0.0"; \
+	elif [ -d /opt/rocm-7.0 ]; then echo "/opt/rocm-7.0"; \
+	elif [ -d /opt/rocm-6.4.1 ]; then echo "/opt/rocm-6.4.1"; \
+	elif [ -d /opt/rocm-6.4.0 ]; then echo "/opt/rocm-6.4.0"; \
+	elif [ -d /opt/rocm-6.4 ]; then echo "/opt/rocm-6.4"; \
+	else echo "/opt/rocm"; fi)
 
 # ROCm environment variables
 export ROCM_PATH := $(ROCM_PATH_DETECTED)
@@ -43,7 +55,9 @@ setup-venv:
 		uv pip install --upgrade pip setuptools wheel && \
 		uv pip install setuptools==75.8.0 && \
 		uv pip install setuptools_scm packaging && \
-		if [ "$(ROCM_VERSION)" = "7.0" ]; then \
+		if [ "$(ROCM_VERSION)" = "7.1" ]; then \
+			uv pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/rocm7.1; \
+		elif [ "$(ROCM_VERSION)" = "7.0" ]; then \
 			uv pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/rocm7.0; \
 		else \
 			uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.4; \

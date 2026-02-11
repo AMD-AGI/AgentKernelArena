@@ -1,4 +1,0 @@
-hip_llvm_ir_to_executable
-*.bc
-*.o
-*.hipfb
