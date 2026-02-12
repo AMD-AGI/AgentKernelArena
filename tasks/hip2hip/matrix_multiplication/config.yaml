@@ -1,0 +1,16 @@
+source_file_path:
+- main.hip
+target_kernel_functions:
+- matrix_multiplication
+compile_command:
+- make
+correctness_command:
+- ./hip_matrix_multiplication
+performance_command:
+- ./hip_matrix_multiplication
+task_type: hip2hip
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: null
+  cheatsheet: null
