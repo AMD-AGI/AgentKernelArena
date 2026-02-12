@@ -1,0 +1,21 @@
+source_file_path:
+- source/kda.py
+- source/chunk_scaled_dot_kkt.py
+- source/layernorm_guard.py
+- source/l2norm.py
+target_kernel_functions:
+- chunk_scaled_dot_kkt_fwd_kernel
+- layer_norm_fwd_kernel
+- l2norm_fwd_kernel
+compile_command:
+- python3 scripts/task_runner.py --mode compile
+correctness_command:
+- python3 scripts/task_runner.py --mode correctness
+performance_command:
+- python3 scripts/task_runner.py --mode performance
+task_type: triton2triton
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: null
+  cheatsheet: null

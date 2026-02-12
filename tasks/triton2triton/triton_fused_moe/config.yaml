@@ -1,0 +1,17 @@
+source_file_path:
+- source/fused_moe.py
+target_kernel_functions:
+- fused_moe_kernel
+- fused_moe_kernel_gptq_awq
+compile_command:
+- python3 scripts/task_runner.py --mode compile
+correctness_command:
+- python3 scripts/task_runner.py --mode correctness
+performance_command:
+- python3 scripts/task_runner.py --mode performance
+task_type: triton2triton
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: null
+  cheatsheet: null

@@ -1,0 +1,16 @@
+source_file_path:
+- source/mamba_ssm.py
+target_kernel_functions:
+- _selective_scan_update_kernel
+compile_command:
+- python3 scripts/task_runner.py --mode compile
+correctness_command:
+- python3 scripts/task_runner.py --mode correctness
+performance_command:
+- python3 scripts/task_runner.py --mode performance
+task_type: triton2triton
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: null
+  cheatsheet: null

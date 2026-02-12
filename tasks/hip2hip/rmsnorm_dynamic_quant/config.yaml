@@ -1,0 +1,16 @@
+source_file_path:
+- source/fused_layernorm_dynamic_per_token_quant.cu
+target_kernel_functions:
+- rms_norm_dynamic_per_token_quant_kernel
+compile_command:
+- python3 scripts/task_runner.py --mode compile
+correctness_command:
+- python3 scripts/task_runner.py --mode correctness
+performance_command:
+- python3 scripts/task_runner.py --mode performance
+task_type: hip2hip
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: null
+  cheatsheet: null

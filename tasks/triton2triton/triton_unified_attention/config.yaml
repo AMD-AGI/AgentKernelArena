@@ -1,0 +1,18 @@
+source_file_path:
+- source/triton_unified_attention.py
+target_kernel_functions:
+- kernel_unified_attention_2d
+- kernel_unified_attention_3d
+- reduce_segments
+compile_command:
+- python3 scripts/task_runner.py --mode compile
+correctness_command:
+- python3 scripts/task_runner.py --mode correctness
+performance_command:
+- python3 scripts/task_runner.py --mode performance
+task_type: triton2triton
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: null
+  cheatsheet: null

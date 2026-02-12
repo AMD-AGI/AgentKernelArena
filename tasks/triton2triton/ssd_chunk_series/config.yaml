@@ -1,0 +1,20 @@
+source_file_path:
+- source/ssd_chunk_state.py
+- source/ssd_chunk_scan.py
+- source/ssd_bmm.py
+target_kernel_functions:
+- _chunk_state_fwd_kernel
+- _chunk_scan_fwd_kernel
+- _bmm_chunk_fwd_kernel
+compile_command:
+- python3 scripts/task_runner.py --mode compile
+correctness_command:
+- python3 scripts/task_runner.py --mode correctness
+performance_command:
+- python3 scripts/task_runner.py --mode performance
+task_type: triton2triton
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: null
+  cheatsheet: null

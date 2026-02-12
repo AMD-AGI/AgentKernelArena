@@ -1,0 +1,17 @@
+source_file_path:
+- source/machete_pytorch.cu
+target_kernel_functions:
+- machete_mm
+- prepack_B
+compile_command:
+- python3 scripts/task_runner.py --mode compile
+correctness_command:
+- python3 scripts/task_runner.py --mode correctness
+performance_command:
+- python3 scripts/task_runner.py --mode performance
+task_type: cuda2hip
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: null
+  cheatsheet: null

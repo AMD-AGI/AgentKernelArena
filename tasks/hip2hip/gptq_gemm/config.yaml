@@ -1,0 +1,17 @@
+source_file_path:
+- source/q_gemm.cu
+target_kernel_functions:
+- gemm_half_q_half_gptq_4bit_kernel
+- reconstruct_gptq_kernel
+compile_command:
+- python3 scripts/task_runner.py --mode compile
+correctness_command:
+- python3 scripts/task_runner.py --mode correctness
+performance_command:
+- python3 scripts/task_runner.py --mode performance
+task_type: hip2hip
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: null
+  cheatsheet: null
