@@ -1,13 +1,14 @@
 source_file_path:
 - src/three_interpolate_cuda.hip
 target_kernel_functions:
-- three_interpolate
+- three_interpolate_kernel
+- three_interpolate_grad_kernel
 compile_command:
-- python3 test_three_interpolate.py
+- python3 scripts/task_runner.py compile
 correctness_command:
-- python3 test_three_interpolate.py
+- python3 scripts/task_runner.py correctness
 performance_command:
-- python3 test_three_interpolate.py
+- python3 scripts/task_runner.py performance
 task_type: hip2hip
 task_result_template: null
 prompt:

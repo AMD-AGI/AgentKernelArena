@@ -2,7 +2,6 @@
 from torch.utils.cpp_extension import load
 
 points_in_boxes_ext = load(name="points_in_boxes",
-                           extra_include_paths=["src/include"],
                            sources=["src/points_in_boxes_cuda.hip", "src/points_in_boxes.cpp"],
                            verbose=True)
 

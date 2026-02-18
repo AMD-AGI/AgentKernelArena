@@ -1,10 +1,15 @@
-source_file_path: pytorch_code_module/py_8325_MaskedLanguageModel.py
-target_kernel_functions: forward
-compile_command: python3 eval_tools/compile.py --hip_file hip/hip_8325_MaskedLanguageModel.hip
-correctness_command: python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_8325_MaskedLanguageModel.py
+source_file_path:
+- pytorch_code_module/py_8325_MaskedLanguageModel.py
+target_kernel_functions:
+- forward
+compile_command:
+- python3 eval_tools/compile.py --hip_file hip/hip_8325_MaskedLanguageModel.hip
+correctness_command:
+- python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_8325_MaskedLanguageModel.py
   --py_func_file pytorch_code_functional/py_8325_MaskedLanguageModel_func.py --hip_file
   hip/hip_8325_MaskedLanguageModel.hip
-performance_command: python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_8325_MaskedLanguageModel.py
+performance_command:
+- python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_8325_MaskedLanguageModel.py
   --py_func_file pytorch_code_functional/py_8325_MaskedLanguageModel_func.py --hip_file
   hip/hip_8325_MaskedLanguageModel.hip
 prompt:
@@ -16,3 +21,5 @@ prompt:
   task_type: null
   cheatsheet: null
 target_file_path: hip/hip_8325_MaskedLanguageModel.hip
+task_type: torch2hip
+task_result_template: null

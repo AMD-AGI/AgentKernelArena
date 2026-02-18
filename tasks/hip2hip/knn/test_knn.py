@@ -80,8 +80,9 @@ def test_knn(device):
     
     try:
         assert torch.all(idx == expected_idx)
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
@@ -100,8 +101,9 @@ def test_knn(device):
 
     try:
         assert torch.all(idx == expected_idx)
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
@@ -123,8 +125,9 @@ def test_knn(device):
 
     try:
         assert torch.all(idx == expected_idx)
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
 if __name__ == "__main__":
 

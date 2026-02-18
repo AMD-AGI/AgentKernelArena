@@ -48,8 +48,9 @@ def test_points_in_boxes_part(device):
     try:
         assert point_indices.shape == torch.Size([2, 8])
         assert (point_indices == expected_point_indices).all()
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
     boxes = torch.tensor([[[0.0, 0.0, 0.0, 1.0, 20.0, 1.0, 0.523598]]],
                          dtype=torch.float32).to(device)  # 30 degrees
@@ -77,8 +78,9 @@ def test_points_in_boxes_part(device):
     
     try:
         assert (point_indices == expected_point_indices).all()
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
 
 
@@ -116,8 +118,9 @@ def test_points_in_boxes_all():
     try:
         assert point_indices.shape == torch.Size([1, 15, 2])
         assert (point_indices == expected_point_indices).all()
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
     if torch.cuda.device_count() >= 1:
         pts = pts.to('cuda')
@@ -139,8 +142,9 @@ def test_points_in_boxes_all():
         try:
             assert point_indices.shape == torch.Size([1, 15, 2])
             assert (point_indices == expected_point_indices).all()
-        except:
+        except Exception:
             print("Validation failed")
+            sys.exit(1)
 
 
 if __name__ == "__main__":

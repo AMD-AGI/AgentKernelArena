@@ -1,13 +1,15 @@
 source_file_path:
 - src/roipoint_pool3d_kernel.hip
 target_kernel_functions:
-- roipoint_pool3d
+- assign_pts_to_box3d
+- get_pooled_idx
+- roipool3d_forward
 compile_command:
-- python3 test_roipoint_pool3d.py
+- python3 scripts/task_runner.py compile
 correctness_command:
-- python3 test_roipoint_pool3d.py
+- python3 scripts/task_runner.py correctness
 performance_command:
-- python3 test_roipoint_pool3d.py
+- python3 scripts/task_runner.py performance
 task_type: hip2hip
 task_result_template: null
 prompt:

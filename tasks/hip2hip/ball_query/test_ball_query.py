@@ -113,8 +113,9 @@ def test_ball_query(device):
 
     try:
         assert torch.all(idx.cpu() == expected_idx)
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
     # test dilated ball query
     start = torch.cuda.Event(enable_timing=True)
@@ -143,8 +144,9 @@ def test_ball_query(device):
 
     try:
         assert torch.all(idx.cpu() == expected_idx)
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

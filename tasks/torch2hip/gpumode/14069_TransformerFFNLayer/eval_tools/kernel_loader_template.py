@@ -4,10 +4,8 @@ kernel_loader_template = """
 from torch.utils.cpp_extension import load
 
 hip_{kernel_name}_ext = load(name="{kernel_name}",
-                             extra_include_paths=["{code_dir}/include"],
                              sources=["{code_dir}/{code_file}"],
                              verbose=True)
 hip_fn = hip_{kernel_name}_ext.forward
 
 """
-

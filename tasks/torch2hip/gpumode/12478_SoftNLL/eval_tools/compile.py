@@ -2,6 +2,7 @@
 import os
 import argparse
 import subprocess
+import sys
 import torch
 import shutil
 from typing import Optional
@@ -93,7 +94,7 @@ def compile_hip(
     # Compile
     try:
         print(f"[INFO] Compiling HIP kernel {kernel_name}...")
-        proc = subprocess.run(["python", hip_comp_file], capture_output=True, text=True)
+        proc = subprocess.run([sys.executable, hip_comp_file], capture_output=True, text=True)
    
         if proc.returncode != 0:
             print(f"[ERROR] Compilation failed:\n{proc.stderr}")

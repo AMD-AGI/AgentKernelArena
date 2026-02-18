@@ -39,8 +39,9 @@ def test_fps(device):
 
     try:
         assert torch.all(idx == expected_idx)
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
 
 def test_fps_with_dist(device):
@@ -82,8 +83,9 @@ def test_fps_with_dist(device):
     
     try:
         assert torch.all(idx == expected_idx)
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

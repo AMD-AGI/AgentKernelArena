@@ -102,8 +102,9 @@ def test_roipoint(device, dtype):
     try:
         assert torch.allclose(roi_feat.detach().cpu(), expected_roi_feat)
         assert torch.allclose(empty_flag.detach().cpu(), expected_empty_flag)
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
 if __name__ == "__main__":
 

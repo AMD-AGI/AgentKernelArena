@@ -1,9 +1,14 @@
-source_file_path: pytorch_code_module/py_14539_GELU.py
-target_kernel_functions: forward
-compile_command: python3 eval_tools/compile.py --hip_file hip/hip_14539_GELU.hip
-correctness_command: python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_14539_GELU.py
+source_file_path:
+- pytorch_code_module/py_14539_GELU.py
+target_kernel_functions:
+- forward
+compile_command:
+- python3 eval_tools/compile.py --hip_file hip/hip_14539_GELU.hip
+correctness_command:
+- python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_14539_GELU.py
   --py_func_file pytorch_code_functional/py_14539_GELU_func.py --hip_file hip/hip_14539_GELU.hip
-performance_command: python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_14539_GELU.py
+performance_command:
+- python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_14539_GELU.py
   --py_func_file pytorch_code_functional/py_14539_GELU_func.py --hip_file hip/hip_14539_GELU.hip
 prompt:
   source_code: null
@@ -14,3 +19,5 @@ prompt:
   task_type: null
   cheatsheet: null
 target_file_path: hip/hip_14539_GELU.hip
+task_type: torch2hip
+task_result_template: null

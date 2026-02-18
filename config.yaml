@@ -4,28 +4,28 @@
 
 # Agent Template Selection
 # Choose ONE agent template that defines how the LLM interacts with the system
+# Available options:
+# - cursor
+# - geak_optimagentv2
+# - single_llm_call
+# - SWE-agent
+# - claude_code
+# - geak_hip
+# - openevolve
+# - ourllm_kernel2kernel
+# - task_validator 
 agent:
-  # Available options:
-  # - cursor
-  # - geak_optimagentv2
-  # - single_llm_call
-  # - SWE-agent
-  # - claude_code
-  # - geak_hip
-  # - openevolve
-  # - ourllm_kernel2kernel
-  template: cursor #SWE-agent
+  template: task_validator 
 
 # Task Selection
 # Specify task names to execute (use full path from tasks/ directory)
 # Examples:
-#   - customer_hip                                    # All tasks under customer_hip
-#   - rocm-examples/Applications                      # All tasks under rocm-examples/Applications
-#   - tasks/rocm-examples/Applications/bitonic_sort   # Single task
-#   - all                                             # Run ALL available tasks
+#   - hip2hip                           # All tasks under hip2hip
+#   - hip2hip/silu                      # single task under hip2hip
+#   - all                               # Run ALL available tasks
 
 tasks:
-  - customer_hip/silu 
+  - hip2hip/assign_score_withk
 
 target_gpu_model: MI300
 log_directory: logs

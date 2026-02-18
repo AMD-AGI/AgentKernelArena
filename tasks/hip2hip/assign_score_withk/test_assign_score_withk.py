@@ -203,8 +203,9 @@ def test_paconv_assign_scores(device):
 
     try:
         assert torch.allclose(output.detach().cpu(), expected_output, atol=1e-6)
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
     # test backward
     if device == 'cuda' or device == 'musa':
@@ -307,8 +308,9 @@ def test_paconv_assign_scores(device):
                 points.grad.detach().cpu(), expected_points_grad, atol=1e-6)
             assert torch.allclose(
                 centers.grad.detach().cpu(), expected_centers_grad, atol=1e-6)
-        except:
+        except Exception:
             print("Validation failed")
+            sys.exit(1)
 
 if __name__ == "__main__":
 

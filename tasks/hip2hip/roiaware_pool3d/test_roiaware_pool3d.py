@@ -96,8 +96,9 @@ def test_RoIAwarePool3d(device, dtype):
         assert pooled_features_max.shape == pooled_features_max_gt.shape
         assert torch.allclose(pooled_features_max.sum(),
                             pooled_features_max_gt.sum().to(device), 1e-3)
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
@@ -119,8 +120,9 @@ def test_RoIAwarePool3d(device, dtype):
         assert pooled_features_avg.shape == pooled_features_avg_gt.shape
         assert torch.allclose(pooled_features_avg.sum(),
                           pooled_features_avg_gt.sum().to(device), 1e-3)
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
 if __name__ == "__main__":
 

@@ -1,9 +1,14 @@
-source_file_path: pytorch_code_module/py_16636_SiLU.py
-target_kernel_functions: forward
-compile_command: python3 eval_tools/compile.py --hip_file hip/hip_16636_SiLU.hip
-correctness_command: python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_16636_SiLU.py
+source_file_path:
+- pytorch_code_module/py_16636_SiLU.py
+target_kernel_functions:
+- forward
+compile_command:
+- python3 eval_tools/compile.py --hip_file hip/hip_16636_SiLU.hip
+correctness_command:
+- python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_16636_SiLU.py
   --py_func_file pytorch_code_functional/py_16636_SiLU_func.py --hip_file hip/hip_16636_SiLU.hip
-performance_command: python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_16636_SiLU.py
+performance_command:
+- python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_16636_SiLU.py
   --py_func_file pytorch_code_functional/py_16636_SiLU_func.py --hip_file hip/hip_16636_SiLU.hip
 prompt:
   source_code: null
@@ -14,3 +19,5 @@ prompt:
   task_type: null
   cheatsheet: null
 target_file_path: hip/hip_16636_SiLU.hip
+task_type: torch2hip
+task_result_template: null

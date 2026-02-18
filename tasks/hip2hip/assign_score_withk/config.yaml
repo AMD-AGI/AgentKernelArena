@@ -1,13 +1,15 @@
 source_file_path:
 - src/assign_score_withk_cuda.hip
 target_kernel_functions:
-- assign_score_withk
+- assign_score_withk_forward_kernel
+- assign_score_withk_backward_points_kernel
+- assign_score_withk_backward_scores_kernel
 compile_command:
-- python3 test_assign_score_withk.py
+- python3 scripts/task_runner.py compile
 correctness_command:
-- python3 test_assign_score_withk.py
+- python3 scripts/task_runner.py correctness
 performance_command:
-- python3 test_assign_score_withk.py
+- python3 scripts/task_runner.py performance
 task_type: hip2hip
 task_result_template: task_result_template_double_output.yaml
 prompt:

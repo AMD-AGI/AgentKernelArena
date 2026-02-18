@@ -114,8 +114,9 @@ def test_three_nn(device):
     try:
         assert torch.allclose(dist_t.detach().cpu(), expected_dist_t, atol=1e-4, rtol=1e-5)
         assert torch.all(idx_t.detach().cpu() == expected_idx_t)
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
 if __name__ == "__main__":
 

@@ -144,8 +144,9 @@ def test_three_interpolate(dtype, device):
 
     try:
         assert torch.allclose(output.detach().cpu(), expected_output, 1e-3, 1e-4)
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
 if __name__ == "__main__":
 

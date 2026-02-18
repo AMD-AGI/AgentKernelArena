@@ -1,0 +1,3 @@
+backend: claude_code          # claude_code | codex | cursor
+timeout_seconds: 600
+python_path: /root/AgentKernelArena/.venv/bin/python3

@@ -56,7 +56,6 @@ def load_hip_kernel(
     hip_fn: Optional[Callable[..., Any]] = None
     try:
         hip_kernel_ext = load(name=f"{kernel_name}",
-                              extra_include_paths=[f"{code_dir}/include"],
                               sources=[f"{code_dir}/{hip_src}"],
                               verbose=True)
         hip_fn = hip_kernel_ext.forward

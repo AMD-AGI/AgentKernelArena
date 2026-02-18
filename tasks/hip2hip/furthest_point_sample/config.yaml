@@ -1,13 +1,14 @@
 source_file_path:
 - src/furthest_point_sample_cuda.hip
 target_kernel_functions:
-- furthest_point_sample
+- furthest_point_sampling_kernel
+- furthest_point_sampling_with_dist_kernel
 compile_command:
-- python3 test_furthest_point_sample.py
+- python3 scripts/task_runner.py compile
 correctness_command:
-- python3 test_furthest_point_sample.py
+- python3 scripts/task_runner.py correctness
 performance_command:
-- python3 test_furthest_point_sample.py
+- python3 scripts/task_runner.py performance
 task_type: hip2hip
 task_result_template: task_result_template_double_output_perf.yaml
 prompt:

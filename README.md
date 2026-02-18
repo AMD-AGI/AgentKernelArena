@@ -252,29 +252,38 @@ if agent_type in [..., AgentType.YOUR_AGENT]:
 
 ### Adding a New Task
 
-1. **Create task directory**: `tasks/category/task_name/`
+1. **Create task directory**: `tasks/<task_type>/<task_name>/`
 
-2. **Add source files**: `main.hip`, `Makefile`, etc.
+2. **Add source files and scripts** following this structure:
 
-3. **Create config.yaml**:
+```
+tasks/<task_type>/<task_name>/
+├── config.yaml                  # Task configuration (required)
+├── scripts/
+│   └── task_runner.py           # Compile/correctness/performance runner (recommended)
+└── src/
+    └── <kernel files>           # .cu, .hip, .py, etc.
+```
+
+3. **Create `config.yaml`** with all required fields as **lists** (not scalar strings):
 
 ```yaml
 source_file_path:
-  - main.hip
+  - src/my_kernel.hip
 
 target_kernel_functions:
-  - your_kernel_function
+  - my_kernel_function
 
 compile_command:
-  - make
+  - python3 scripts/task_runner.py --mode compile
 
 correctness_command:
-  - ./your_executable --test
+  - python3 scripts/task_runner.py --mode correctness
 
 performance_command:
-  - rocprof-compute profile ... -- ./your_executable
-  - rocprof-compute analyze ...
-task_type: triton2triton
+  - python3 scripts/task_runner.py --mode performance
+
+task_type: hip2hip   # one of: hip2hip, cuda2hip, triton2triton, torch2hip
 
 prompt:
   source_code: null
@@ -283,6 +292,26 @@ prompt:
 ```
 
 4. **Add baseline performance** (optional): Create `baseline.txt` with expected performance metrics
+
+5. **Run the Task Validator Agent** (required):
+
+All new tasks **must** pass the task validator agent before being merged. The validator runs 10 automated checks covering config schema, source file existence, kernel symbol resolution, compilation, correctness, performance, self-containedness, GPU hang detection, correctness implementation review, and result template compatibility.
+
+```bash
+# Configure the validator to target your new task
+# In config.yaml at repo root:
+agent:
+  template: task_validator
+tasks:
+  - <task_type>/<task_name>
+
+# Run validation
+python3 main.py
+```
+
+Review the generated `validation_report.yaml` in the workspace directory. The task must achieve **PASS** overall status (all checks pass). A **WARN** status (no failures but warnings) is acceptable with justification. A **FAIL** status means the task must be fixed before merging.
+
+See [agents/task_validator/README.md](agents/task_validator/README.md) for the full list of validation checks and requirements.
 
 
 ## Next Steps

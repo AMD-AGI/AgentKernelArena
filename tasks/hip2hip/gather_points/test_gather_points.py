@@ -95,8 +95,9 @@ def test_gather_points_all_close(device):
 
     try:
         assert torch.allclose(output.detach().cpu(), expected_output)
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
     start = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
@@ -115,8 +116,9 @@ def test_gather_points_all_close(device):
     
     try:
         assert torch.allclose(output_half.detach().cpu(), expected_output.half())
-    except:
+    except Exception:
         print("Validation failed")
+        sys.exit(1)
 
 if __name__ == "__main__":
 

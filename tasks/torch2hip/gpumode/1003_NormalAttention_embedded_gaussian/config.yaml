@@ -1,10 +1,15 @@
-source_file_path: pytorch_code_module/py_1003_NormalAttention_embedded_gaussian.py
-target_kernel_functions: forward
-compile_command: python3 eval_tools/compile.py --hip_file hip/hip_1003_NormalAttention_embedded_gaussian.hip
-correctness_command: python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_1003_NormalAttention_embedded_gaussian.py
+source_file_path:
+- pytorch_code_module/py_1003_NormalAttention_embedded_gaussian.py
+target_kernel_functions:
+- forward
+compile_command:
+- python3 eval_tools/compile.py --hip_file hip/hip_1003_NormalAttention_embedded_gaussian.hip
+correctness_command:
+- python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_1003_NormalAttention_embedded_gaussian.py
   --py_func_file pytorch_code_functional/py_1003_NormalAttention_embedded_gaussian_func.py
   --hip_file hip/hip_1003_NormalAttention_embedded_gaussian.hip
-performance_command: python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_1003_NormalAttention_embedded_gaussian.py
+performance_command:
+- python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_1003_NormalAttention_embedded_gaussian.py
   --py_func_file pytorch_code_functional/py_1003_NormalAttention_embedded_gaussian_func.py
   --hip_file hip/hip_1003_NormalAttention_embedded_gaussian.hip
 prompt:
@@ -16,3 +21,5 @@ prompt:
   task_type: null
   cheatsheet: null
 target_file_path: hip/hip_1003_NormalAttention_embedded_gaussian.hip
+task_type: torch2hip
+task_result_template: null
