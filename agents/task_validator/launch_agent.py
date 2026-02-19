@@ -4,6 +4,7 @@ import shutil
 import logging
 import threading
 import shlex
+import json
 from pathlib import Path
 from typing import Any
 import yaml
@@ -115,6 +116,124 @@ def _launch_claude_code(prompt: str, workspace: str, timeout_seconds: int, logge
     return output
 
 
+def _launch_codex(prompt: str, workspace: str, timeout_seconds: int, logger: logging.Logger) -> str:
+    """Launch Codex CLI in non-interactive mode for task validation."""
+    AGENT = "codex"
+
+    if not shutil.which(AGENT):
+        raise RuntimeError(
+            f"Command '{AGENT}' not found. Please ensure Codex CLI is installed and in your PATH."
+        )
+
+    # Highest privilege mode: bypass sandbox and approval prompts.
+    cmd = [
+        AGENT,
+        "exec",
+        "--json",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--skip-git-repo-check",
+        "--cd",
+        workspace,
+        prompt,
+    ]
+    logger.info(f"Running command: {' '.join(shlex.quote(p) for p in cmd[:8])} ...")
+
+    process = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=workspace,
+        bufsize=1,
+    )
+    if process.stdin:
+        process.stdin.close()
+
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+
+    def _format_codex_event(raw_line: str) -> str:
+        try:
+            data = json.loads(raw_line)
+        except json.JSONDecodeError:
+            return raw_line
+
+        if not isinstance(data, dict):
+            return raw_line
+
+        ev_type = data.get("type", "")
+        if ev_type in {"assistant_message", "assistant"}:
+            msg = data.get("message", {})
+            if isinstance(msg, dict):
+                content = msg.get("content")
+                if isinstance(content, str) and content.strip():
+                    return f"assistant: {content.strip()}"
+            text = data.get("text")
+            if isinstance(text, str) and text.strip():
+                return f"assistant: {text.strip()}"
+        if ev_type in {"tool_call", "tool_result"}:
+            return raw_line
+        if ev_type in {"error", "warning"}:
+            return raw_line
+        if "text" in data and isinstance(data["text"], str) and data["text"].strip():
+            return data["text"].strip()
+        return raw_line
+
+    def read_stream(stream, output_list, prefix, log_func):
+        try:
+            for line in iter(stream.readline, ""):
+                if not line:
+                    break
+                raw_line = line.rstrip()
+                if raw_line.strip():
+                    formatted = _format_codex_event(raw_line)
+                    output_list.append(formatted)
+                    log_func(f"{prefix} {formatted[:240]}")
+        finally:
+            stream.close()
+
+    stdout_thread = threading.Thread(
+        target=read_stream,
+        args=(process.stdout, stdout_lines, "[VALIDATOR]", logger.info),
+        daemon=True,
+    )
+    stderr_thread = threading.Thread(
+        target=read_stream,
+        args=(process.stderr, stderr_lines, "[VALIDATOR STDERR]", logger.warning),
+        daemon=True,
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+
+    # timeout_seconds <= 0 means "wait until completion".
+    try:
+        if timeout_seconds > 0:
+            process.wait(timeout=timeout_seconds)
+        else:
+            process.wait()
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Validator timed out after {timeout_seconds}s; terminating process")
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            logger.warning("Force killing validator process")
+            process.kill()
+
+    stdout_thread.join(timeout=5)
+    stderr_thread.join(timeout=5)
+
+    if stderr_lines:
+        logger.warning(f"Validator STDERR captured {len(stderr_lines)} lines")
+    logger.info(f"Validator completed with exit code: {process.returncode}")
+
+    output = "\n".join(stdout_lines)
+    if stderr_lines:
+        output += "\n=== STDERR ===\n" + "\n".join(stderr_lines)
+    return output
+
+
 @register_agent("task_validator")
 def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: str) -> str:
     """
@@ -176,8 +295,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     if backend == "claude_code":
         output = _launch_claude_code(prompt, workspace, timeout_seconds, logger)
     elif backend == "codex":
-        # Placeholder for Codex backend
-        raise NotImplementedError("Codex backend not yet implemented for task_validator")
+        output = _launch_codex(prompt, workspace, timeout_seconds, logger)
     elif backend == "cursor":
         # Placeholder for Cursor backend
         raise NotImplementedError("Cursor backend not yet implemented for task_validator")

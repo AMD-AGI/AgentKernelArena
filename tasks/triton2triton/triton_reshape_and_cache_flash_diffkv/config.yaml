@@ -1,0 +1,38 @@
+source_file_path:
+  - source/triton_reshape_and_cache_flash_diffkv.py
+
+target_kernel_functions:
+  - reshape_and_cache_kernel_flash_diffkv
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `reshape_and_cache_kernel_flash_diffkv` for maximum
+    GPU throughput while maintaining numerical correctness.
+
+    This kernel is similar to reshape_and_cache_kernel_flash but handles the case
+    where K and V have different head dimensions. K and V are interleaved per-head
+    in the cache: [K_head_i | V_head_i] for each head.
+
+    Key optimization opportunities:
+    - Tile size tuning for the target GPU
+    - Memory access coalescing for scattered writes
+    - Warp scheduling and occupancy tuning
+
+    Constraints:
+    - Must maintain the same function signature for `reshape_and_cache_flash_diffkv`
+    - Output must match reference (exact copy for auto dtype)
+  cheatsheet: null

@@ -1,0 +1,35 @@
+source_file_path:
+  - source/triton_count_expert_tokens.py
+
+target_kernel_functions:
+  - _count_expert_num_tokens
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `_count_expert_num_tokens` kernel for maximum GPU throughput.
+    This kernel counts tokens assigned to each expert from a topk_ids tensor,
+    equivalent to torch.bincount per expert.
+
+    Key optimization opportunities:
+    - Block size tuning
+    - Efficient reduction
+    - Memory access pattern optimization
+
+    Constraints:
+    - Must maintain the same function signature for `count_expert_num_tokens`
+    - Output must exactly match reference counts
+  cheatsheet: null

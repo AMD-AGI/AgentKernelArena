@@ -1,0 +1,40 @@
+source_file_path:
+  - source/triton_lora_shrink.py
+
+target_kernel_functions:
+  - _lora_shrink_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `_lora_shrink_kernel` for maximum GPU throughput.
+    This is the LoRA A (shrink) kernel that projects input tokens from
+    hidden_size down to lora_rank using per-adapter LoRA A weight matrices.
+
+    The kernel computes output[slice, token] = scaling * input[token] @ lora_a[lora_id].T
+    for each token assigned to a LoRA adapter, with split-K reduction for
+    large hidden dimensions and support for multiple slices.
+
+    Key optimization opportunities:
+    - Block size tuning (BLOCK_M, BLOCK_N, BLOCK_K)
+    - SPLIT_K factor for K-dimension parallelism
+    - GROUP_SIZE_M for L2 cache reuse
+    - Memory access patterns for gather-based token indexing
+
+    Constraints:
+    - Must maintain the same function signature for `lora_shrink`
+    - Output must match reference within atol=5e-2, rtol=5e-2 for float16
+  cheatsheet: null

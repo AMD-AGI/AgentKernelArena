@@ -1,0 +1,39 @@
+source_file_path:
+  - source/triton_fused_moe.py
+
+target_kernel_functions:
+  - fused_moe_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `fused_moe_kernel` for maximum GPU throughput.
+    This is the main MoE GEMM kernel that multiplies each token by its assigned
+    expert weight matrix using sorted token IDs and expert IDs.
+
+    The kernel computes C[token] = A[token // topk] @ B[expert].T with grouped
+    block scheduling for L2 cache reuse, and optional routing weight multiplication.
+
+    Key optimization opportunities:
+    - Block size tuning (BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K)
+    - GROUP_SIZE_M for L2 cache reuse
+    - Memory access patterns and prefetching
+    - Compute type selection
+
+    Constraints:
+    - Must maintain the same function signature for `fused_moe`
+    - Output must match reference within atol=5e-2, rtol=5e-2 for float16
+  cheatsheet: null

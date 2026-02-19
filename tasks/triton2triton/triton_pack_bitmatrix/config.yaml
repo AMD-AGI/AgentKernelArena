@@ -1,0 +1,36 @@
+source_file_path:
+  - source/triton_pack_bitmatrix.py
+
+target_kernel_functions:
+  - pack_bitmatrix
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `pack_bitmatrix` kernel for maximum GPU throughput.
+    This kernel packs topk expert IDs into a bitmatrix format where each bit
+    indicates whether a token is assigned to that expert. Used for OAI Triton
+    kernels MoE routing.
+
+    Key optimization opportunities:
+    - Block size tuning (BLOCK_SIZE_M, BLOCK_SIZE_K)
+    - Efficient bit manipulation
+    - Reduction optimization
+
+    Constraints:
+    - Must maintain the same function signature for `pack_topk_to_bitmatrix`
+    - Output must exactly match the reference bitmatrix
+  cheatsheet: null

@@ -1,0 +1,12 @@
+{
+  "execution_time_ms": 0.042973900213837624,
+  "shape": {
+    "num_seqs": 4,
+    "seq_len_q": 1,
+    "seq_len_k": 256,
+    "num_query_heads": 32,
+    "num_kv_heads": 8,
+    "head_size": 128,
+    "block_size": 16
+  }
+}

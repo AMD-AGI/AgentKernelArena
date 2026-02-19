@@ -1,0 +1,29 @@
+source_file_path:
+  - source/triton_ssd_chunk_state.py
+
+target_kernel_functions:
+  - _chunk_state_fwd_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `_chunk_state_fwd_kernel` for maximum GPU throughput.
+    Computes SSM chunk state: x.T @ B weighted by exp(dA) * dt.
+    Used in Mamba/SSD for computing the hidden state at each chunk boundary.
+    Constraints:
+    - Must maintain the same function signature for `chunk_state_fwd`
+    - Output must match reference within atol=5e-1, rtol=1e-1
+  cheatsheet: null

@@ -1,0 +1,29 @@
+source_file_path:
+  - source/triton_layernorm_gated.py
+
+target_kernel_functions:
+  - _layer_norm_fwd_1pass_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `_layer_norm_fwd_1pass_kernel` for maximum GPU throughput.
+    Supports LayerNorm and RMSNorm with optional SiLU gating (z * sigmoid(z)).
+    Gate can be applied before or after normalization (NORM_BEFORE_GATE flag).
+    Constraints:
+    - Must maintain the same function signature for `layer_norm_fwd`
+    - Output must match reference within atol=1e-2, rtol=1e-2
+  cheatsheet: null

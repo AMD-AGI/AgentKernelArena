@@ -1,0 +1,39 @@
+source_file_path:
+  - source/triton_correct_attn_cp_out.py
+
+target_kernel_functions:
+  - _correct_attn_cp_out_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `_correct_attn_cp_out_kernel` for maximum GPU
+    throughput while maintaining numerical correctness.
+
+    The kernel performs logsumexp-based correction of attention outputs from
+    context parallelism. Given N partial log-sum-exp values and one rank's
+    attention output, it computes the global LSE and rescales the output by
+    exp(local_lse - global_lse).
+
+    Key optimization opportunities:
+    - Vectorized loads/stores for the head dimension
+    - Reduction optimization for computing max and sum over N
+    - Memory access coalescing
+
+    Constraints:
+    - Must maintain the same function signature for `correct_attn_cp_out`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float16/float32
+  cheatsheet: null

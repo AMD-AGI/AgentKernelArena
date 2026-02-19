@@ -1,0 +1,36 @@
+source_file_path:
+  - source/triton_scaled_mm.py
+
+target_kernel_functions:
+  - scaled_mm_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton scaled matrix multiplication kernel `scaled_mm_kernel` for
+    maximum GPU throughput while maintaining numerical correctness.
+
+    The kernel performs A @ B with per-token/per-channel scaling and optional bias.
+
+    Key optimization opportunities:
+    - Tile size tuning for the target GPU
+    - Memory access pattern optimization
+    - Scale application strategy
+
+    Constraints:
+    - Must maintain the same function signature for `triton_scaled_mm`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+  cheatsheet: null

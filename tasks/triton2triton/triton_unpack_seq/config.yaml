@@ -1,0 +1,38 @@
+source_file_path:
+  - source/triton_unpack_seq.py
+
+target_kernel_functions:
+  - _unpack_seq_triton_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `_unpack_seq_triton_kernel` for maximum GPU
+    throughput while maintaining numerical correctness.
+
+    The kernel unpacks a batched [B, Lmax, D] tensor back to contiguous
+    variable-length sequences in a flat [N, D] tensor, effectively removing
+    padding.
+
+    Key optimization opportunities:
+    - Block size tuning (BLOCK_T, BLOCK_D) for the target GPU
+    - Memory access coalescing
+    - Warp scheduling and occupancy tuning
+
+    Constraints:
+    - Must maintain the same function signature for `unpack_seq`
+    - Output must match reference exactly
+  cheatsheet: null

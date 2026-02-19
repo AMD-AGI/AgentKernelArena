@@ -1,0 +1,32 @@
+source_file_path:
+  - source/triton_per_token_group_quant_fp8_colmajor.py
+
+target_kernel_functions:
+  - _per_token_group_quant_fp8_colmajor
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton per-token-group FP8 quantization kernel with column-major
+    scale output `_per_token_group_quant_fp8_colmajor` for maximum GPU throughput.
+
+    The kernel computes per-group max, scales, and quantizes to FP8 format,
+    storing scales in column-major layout.
+
+    Constraints:
+    - Must maintain the same function signature for `per_token_group_quant_fp8_colmajor`
+    - Quantized output must match reference within appropriate FP8 tolerance
+  cheatsheet: null

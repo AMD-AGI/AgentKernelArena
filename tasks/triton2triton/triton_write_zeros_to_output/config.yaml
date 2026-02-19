@@ -1,0 +1,33 @@
+source_file_path:
+  - source/triton_write_zeros_to_output.py
+
+target_kernel_functions:
+  - write_zeros_to_output
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `write_zeros_to_output` kernel for maximum GPU throughput.
+    This kernel zeros out a 2D tensor in tiled blocks.
+
+    Key optimization opportunities:
+    - Block size tuning for the target GPU
+    - Memory access pattern optimization (coalesced writes)
+
+    Constraints:
+    - Must maintain the same function signature for `write_zeros`
+    - Output must be all zeros after the call
+  cheatsheet: null

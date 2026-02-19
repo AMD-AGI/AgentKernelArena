@@ -1,0 +1,37 @@
+source_file_path:
+  - source/triton_bmm.py
+
+target_kernel_functions:
+  - bmm_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton batched matrix multiplication kernel `bmm_kernel` for maximum
+    GPU throughput while maintaining numerical correctness.
+
+    The kernel implements batched GEMM: (B, M, K) x (B, K, N) -> (B, M, N) with support
+    for large tensors and contiguous memory hints.
+
+    Key optimization opportunities:
+    - Tile size tuning (BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K)
+    - Memory access pattern optimization
+    - Warp scheduling and occupancy tuning
+
+    Constraints:
+    - Must maintain the same function signature for `bmm_triton`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+  cheatsheet: null

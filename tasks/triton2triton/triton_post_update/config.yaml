@@ -1,0 +1,44 @@
+source_file_path:
+  - source/triton_post_update.py
+
+target_kernel_functions:
+  - _post_update_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `_post_update_kernel` for maximum GPU throughput
+    while maintaining correctness.
+
+    The kernel performs post-sampling updates for speculative decoding: updates
+    last_sampled_tokens, total_len, output_bin_counts (histogram), all_token_ids,
+    and num_computed_tokens for each request. Uses num_warps=1 for sequential
+    per-request execution due to data dependencies within each request.
+
+    IMPORTANT: This kernel must use num_warps=1 because it has sequential
+    dependencies within each program (loop over sampled tokens with read-modify-write
+    on output_bin_counts).
+
+    Key optimization opportunities:
+    - Memory access pattern optimization
+    - Reducing redundant loads
+    - Register reuse
+
+    Constraints:
+    - Must maintain the same function signature for `post_update`
+    - Must preserve num_warps=1
+    - Output must match reference exactly (integer values)
+  cheatsheet: null

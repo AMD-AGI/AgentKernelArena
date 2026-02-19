@@ -1,0 +1,37 @@
+source_file_path:
+  - source/triton_swiglustep_and_mul.py
+
+target_kernel_functions:
+  - _swiglustep_and_mul_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton SwiGLU-step-and-mul activation kernel `_swiglustep_and_mul_kernel`
+    for maximum GPU throughput while maintaining numerical correctness.
+
+    The kernel computes: silu(x[:,:d]).clamp(max=limit) * x[:,d:].clamp(-limit, limit)
+    where d = input_dim // 2.
+
+    Key optimization opportunities:
+    - Block size tuning
+    - Memory access pattern optimization
+    - Fused computation optimizations
+
+    Constraints:
+    - Must maintain the same function signature for `swiglustep_and_mul`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+  cheatsheet: null

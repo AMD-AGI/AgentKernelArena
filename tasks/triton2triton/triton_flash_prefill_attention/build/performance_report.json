@@ -1,0 +1,10 @@
+{
+  "execution_time_ms": 0.06342060025781393,
+  "shape": {
+    "batch_size": 2,
+    "seq_len": 512,
+    "num_heads": 32,
+    "num_kv_heads": 8,
+    "head_dim": 128
+  }
+}

@@ -1,0 +1,37 @@
+source_file_path:
+  - source/triton_mean.py
+
+target_kernel_functions:
+  - mean_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton mean reduction kernel `mean_kernel` for maximum
+    GPU throughput while maintaining numerical correctness.
+
+    The kernel computes the mean along a single dimension by viewing the input as (M, N, K)
+    where N is the reduction dimension, with each program computing one output element.
+
+    Key optimization opportunities:
+    - Block size tuning for different reduction sizes
+    - Parallel reduction strategies
+    - Memory access coalescing
+
+    Constraints:
+    - Must maintain the same function signature for `mean_dim`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+  cheatsheet: null

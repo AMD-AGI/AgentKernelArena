@@ -1,0 +1,29 @@
+source_file_path:
+  - source/triton_ssd_chunk_cumsum.py
+
+target_kernel_functions:
+  - _chunk_cumsum_fwd_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `_chunk_cumsum_fwd_kernel` for maximum GPU throughput.
+    Computes cumulative sum of dt (with optional softplus and bias), then dA_cumsum = cumsum(dt * A).
+    Used in Mamba/SSD for computing the discretized state transition cumulative sums.
+    Constraints:
+    - Must maintain the same function signature for `chunk_cumsum_fwd`
+    - Output must match reference within atol=1e-3, rtol=1e-3
+  cheatsheet: null

@@ -1,0 +1,39 @@
+source_file_path:
+  - source/triton_combine_sampled_and_draft_tokens.py
+
+target_kernel_functions:
+  - _combine_sampled_and_draft_tokens_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `_combine_sampled_and_draft_tokens_kernel` for maximum
+    GPU throughput while maintaining correctness.
+
+    The kernel combines last sampled tokens and draft tokens into the input_ids buffer
+    for speculative decoding. It also computes logits_indices mapping. For each decode
+    request, it writes the last sampled token followed by draft tokens into the
+    appropriate positions in input_ids.
+
+    Key optimization opportunities:
+    - Block size tuning
+    - Vectorized loads/stores for draft tokens
+    - Reducing conditional branches
+
+    Constraints:
+    - Must maintain the same function signature for `combine_sampled_and_draft_tokens`
+    - Output must match reference exactly (integer token IDs and indices)
+  cheatsheet: null

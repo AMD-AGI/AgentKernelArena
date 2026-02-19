@@ -1,0 +1,32 @@
+source_file_path:
+  - source/triton_scale_swizzle.py
+
+target_kernel_functions:
+  - triton_scale_swizzle
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton scale swizzle kernel `triton_scale_swizzle` for maximum
+    GPU throughput while maintaining numerical correctness.
+
+    The kernel rearranges tensor data from row-major to block-scaled swizzle format,
+    suitable for NVIDIA TMEM block scaling.
+
+    Constraints:
+    - Must maintain the same function signature for `triton_mx_block_rearrange`
+    - Output must match reference exactly (bit-exact for uint8 data)
+  cheatsheet: null

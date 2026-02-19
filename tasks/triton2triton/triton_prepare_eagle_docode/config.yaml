@@ -1,0 +1,38 @@
+source_file_path:
+  - source/triton_prepare_eagle_docode.py
+
+target_kernel_functions:
+  - _prepare_eagle_docode_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `_prepare_eagle_docode_kernel` for maximum GPU throughput.
+    This kernel prepares decode-step inputs for EAGLE speculative decoding: copies
+    draft tokens to input IDs, copies hidden states from output to input buffers,
+    computes positions and seq_lens, and initializes query_start_loc for CUDA graphs.
+    Note: "docode" preserves the original vLLM spelling.
+
+    Key optimization opportunities:
+    - Block size tuning for hidden state copy
+    - Vectorized memory access for hidden states
+    - Efficient padding loop for query_start_loc
+
+    Constraints:
+    - Must maintain the same function signature for `prepare_eagle_decode`
+    - Output must match reference within atol=1e-5, rtol=1e-5 for hidden states
+    - Integer outputs must match exactly
+  cheatsheet: null

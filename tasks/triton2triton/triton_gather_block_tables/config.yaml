@@ -1,0 +1,39 @@
+source_file_path:
+  - source/triton_gather_block_tables.py
+
+target_kernel_functions:
+  - _gather_block_tables_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `_gather_block_tables_kernel` for maximum GPU throughput
+    while maintaining correctness.
+
+    The kernel gathers block table rows from a source table to a destination table based
+    on an index mapping. For each batch index, it copies num_blocks[req_idx] entries from
+    src_block_table[req_idx] to dst_block_table[batch_idx]. This is simplified from the
+    original vLLM version to use contiguous block tables instead of pointer-of-pointers.
+
+    Key optimization opportunities:
+    - Block size tuning for memory bandwidth
+    - Vectorized loads/stores
+    - Memory coalescing
+
+    Constraints:
+    - Must maintain the same function signature for `gather_block_tables`
+    - Output must match reference exactly (integer block IDs)
+  cheatsheet: null

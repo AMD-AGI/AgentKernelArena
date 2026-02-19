@@ -1,0 +1,38 @@
+source_file_path:
+  - source/triton_matmul_persistent.py
+
+target_kernel_functions:
+  - matmul_kernel_persistent
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton persistent matmul kernel `matmul_kernel_persistent` for maximum
+    GPU throughput while maintaining numerical correctness.
+
+    The kernel implements a persistent tiling strategy for matrix multiplication (C = A @ B + bias)
+    with support for large tensors (>2^31 elements), optional bias, and grouped tile scheduling.
+
+    Key optimization opportunities:
+    - Tile size tuning (BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K)
+    - Memory access pattern optimization
+    - Warp scheduling and occupancy tuning (num_warps, num_stages)
+    - Persistent kernel loop optimization
+
+    Constraints:
+    - Must maintain the same function signature for `matmul_persistent`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+  cheatsheet: null

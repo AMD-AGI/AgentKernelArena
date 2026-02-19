@@ -1,0 +1,34 @@
+source_file_path:
+  - source/triton_expert_kernel.py
+
+target_kernel_functions:
+  - expert_triton_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `expert_triton_kernel` for maximum GPU throughput.
+    This is a per-expert GEMM kernel that computes C = A @ B for one expert's tokens.
+
+    Key optimization opportunities:
+    - Block size tuning (BLOCK_M, BLOCK_N, BLOCK_K)
+    - K-loop pipelining
+    - Memory access patterns
+
+    Constraints:
+    - Must maintain the same function signature for `expert_gemm`
+    - Output must match reference within atol=5e-2, rtol=5e-2 for float16
+  cheatsheet: null

@@ -1,0 +1,40 @@
+source_file_path:
+  - source/triton_lora_expand.py
+
+target_kernel_functions:
+  - _lora_expand_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `_lora_expand_kernel` for maximum GPU throughput.
+    This is the LoRA B (expand) kernel that multiplies the low-rank intermediate
+    activations by LoRA B weight matrices and accumulates into the output tensor.
+
+    The kernel computes output[token] += input[token] @ lora_b[lora_id].T for
+    each token assigned to a LoRA adapter, with support for multiple slices
+    (e.g., QKV projections) and optional input addition.
+
+    Key optimization opportunities:
+    - Block size tuning (BLOCK_M, BLOCK_N, BLOCK_K)
+    - Memory access patterns for the gather-based token indexing
+    - Efficient handling of the SAME_STRIDE vs per-slice stride path
+    - Compute type selection and casting
+
+    Constraints:
+    - Must maintain the same function signature for `lora_expand`
+    - Output must match reference within atol=5e-2, rtol=5e-2 for float16
+  cheatsheet: null

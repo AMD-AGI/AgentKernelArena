@@ -1,0 +1,41 @@
+source_file_path:
+  - source/triton_lightning_attn_none_diag.py
+
+target_kernel_functions:
+  - _fwd_none_diag_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton Lightning Attention non-diagonal block kernel
+    `_fwd_none_diag_kernel` for maximum GPU throughput while maintaining
+    numerical correctness.
+
+    The kernel applies accumulated KV state to queries for cross-block attention.
+    For each block, it computes O += Q @ KV_accumulated with proper exponential
+    decay. It reads the diagonal attention output and adds the cross-block
+    contribution.
+
+    Key parameters:
+    - BLOCK: main block size (default 256)
+    - CBLOCK: sub-block size (default 64)
+    - E_FBLOCK: output feature block dimension
+
+    Constraints:
+    - Must maintain the same function signature for `lightning_attn_none_diag_forward`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+    - The kernel must handle arbitrary sequence lengths
+  cheatsheet: null

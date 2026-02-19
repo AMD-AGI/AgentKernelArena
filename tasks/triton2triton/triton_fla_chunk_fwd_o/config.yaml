@@ -1,0 +1,31 @@
+source_file_path:
+  - source/triton_fla_chunk_fwd_o.py
+
+target_kernel_functions:
+  - chunk_fwd_kernel_o
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `chunk_fwd_kernel_o` for maximum GPU throughput
+    while maintaining numerical correctness.
+
+    Chunk forward output with optional scalar gating for delta rule.
+
+    Constraints:
+    - Must maintain the same function signature for `chunk_fwd_o`
+    - Output must match reference within atol=5e-2, rtol=5e-2
+  cheatsheet: null

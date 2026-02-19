@@ -1,0 +1,29 @@
+source_file_path:
+  - source/triton_ssd_state_passing.py
+
+target_kernel_functions:
+  - _state_passing_fwd_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `_state_passing_fwd_kernel` for maximum GPU throughput.
+    Forward-passes SSM state from chunk i to chunk i+1 with exponential decay.
+    Handles sequence boundaries via seq_idx (resets state at new sequence).
+    Constraints:
+    - Must maintain the same function signature for `state_passing_fwd`
+    - Output must match reference within atol=1e-2, rtol=1e-2
+  cheatsheet: null

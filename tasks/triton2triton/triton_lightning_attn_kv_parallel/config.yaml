@@ -1,0 +1,39 @@
+source_file_path:
+  - source/triton_lightning_attn_kv_parallel.py
+
+target_kernel_functions:
+  - _fwd_kv_parallel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton Lightning Attention parallel KV outer product kernel
+    `_fwd_kv_parallel` for maximum GPU throughput while maintaining numerical correctness.
+
+    The kernel computes key-value outer products K.T @ V with decay weighting for each
+    block position in parallel. The output is an accumulated KV state tensor of shape
+    [B, H, NUM_BLOCK, D, E].
+
+    Key parameters:
+    - BLOCK: main block size (default 256)
+    - CBLOCK: sub-block size (default 64)
+    - D_FBLOCK, E_FBLOCK: feature block dimensions
+
+    Constraints:
+    - Must maintain the same function signature for `lightning_attn_kv_parallel_forward`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float32
+    - The kernel must handle arbitrary sequence lengths
+  cheatsheet: null

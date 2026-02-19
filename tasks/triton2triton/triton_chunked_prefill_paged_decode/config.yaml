@@ -1,0 +1,41 @@
+source_file_path:
+  - source/triton_chunked_prefill_paged_decode.py
+
+target_kernel_functions:
+  - kernel_paged_attention_2d
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `kernel_paged_attention_2d` for maximum GPU throughput
+    while maintaining numerical correctness.
+
+    This kernel implements paged attention for the decode path of chunked prefill.
+    It reads from a 5D K cache [num_blocks, num_kv_heads, head_size//x, block_size, x]
+    and 4D V cache [num_blocks, num_kv_heads, head_size, block_size], supporting
+    non-standard physical block sizes and GQA.
+
+    Key features:
+    - 5D K cache addressing with x-factor interleaving
+    - 4D V cache with slot-innermost layout
+    - GQA support with padded query-per-kv groups
+    - Optional sliding window and ALiBi slopes
+    - Decode-only filtering via query_start_len_ptr
+
+    Constraints:
+    - Must maintain the same function signature for `chunked_prefill_paged_decode`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+  cheatsheet: null

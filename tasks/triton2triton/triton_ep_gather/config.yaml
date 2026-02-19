@@ -1,0 +1,35 @@
+source_file_path:
+  - source/triton_ep_gather.py
+
+target_kernel_functions:
+  - _fwd_kernel_ep_gather
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `_fwd_kernel_ep_gather` kernel for maximum GPU throughput.
+    This kernel gathers expert computation results back to original token order
+    with weighted accumulation across topk experts.
+
+    Key optimization opportunities:
+    - Block size tuning (BLOCK_D)
+    - Token-level parallelism
+    - Memory access patterns
+
+    Constraints:
+    - Must maintain the same function signature for `ep_gather`
+    - Output must match reference within atol=5e-2, rtol=5e-2
+  cheatsheet: null

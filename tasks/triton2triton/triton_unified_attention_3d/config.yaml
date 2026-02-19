@@ -1,0 +1,41 @@
+source_file_path:
+  - source/triton_unified_attention_3d.py
+
+target_kernel_functions:
+  - kernel_unified_attention_3d
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `kernel_unified_attention_3d` for maximum GPU throughput
+    while maintaining numerical correctness.
+
+    This kernel implements paged attention with parallel softmax segments for long
+    sequences. Each segment processes a slice of the K/V sequence independently,
+    producing partial (unnormalized) attention outputs along with per-segment max
+    and expsum values for later logsumexp-based reduction.
+
+    Key features:
+    - Segmented parallel softmax over K/V sequence
+    - Paged KV cache with configurable block size
+    - Causal masking with optional sliding window
+    - GQA support (num_queries_per_kv grouping)
+    - Variable-length sequence packing via cu_seqlens_q
+
+    Constraints:
+    - Must maintain the same function signature for `unified_attention_3d`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+  cheatsheet: null
