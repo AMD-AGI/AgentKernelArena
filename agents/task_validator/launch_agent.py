@@ -262,9 +262,13 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     timeout_seconds = int(agent_config.get("timeout_seconds", 600))
     python_path = agent_config.get("python_path")
 
-    # Inject python_path into eval_config for the prompt builder
+    # Inject agent_config values into eval_config for the prompt builder
+    agent_section = eval_config.setdefault("agent", {})
     if python_path:
-        eval_config.setdefault("agent", {})["python_path"] = python_path
+        agent_section["python_path"] = python_path
+    agent_section["compile_timeout"] = int(agent_config.get("compile_timeout", 300))
+    agent_section["correctness_timeout"] = int(agent_config.get("correctness_timeout", 300))
+    agent_section["performance_timeout"] = int(agent_config.get("performance_timeout", 300))
 
     # GPU availability check — validation tasks require a GPU to run compile/correctness/performance
     try:
