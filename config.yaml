@@ -25,7 +25,7 @@ agent:
 #   - all                               # Run ALL available tasks
 
 tasks:
-  - hip2hip/assign_score_withk
+  - torch2hip
 
 target_gpu_model: MI300
 log_directory: logs

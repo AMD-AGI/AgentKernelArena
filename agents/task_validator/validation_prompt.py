@@ -105,6 +105,9 @@ def build_validation_prompt(task_config_dir: str, workspace: str, eval_config: d
     correctness_cmds = task_config.get('correctness_command', [])
     performance_cmds = task_config.get('performance_command', [])
     python_path = eval_config.get('agent', {}).get('python_path', '/root/AgentKernelArena/.venv/bin/python3')
+    compile_timeout = eval_config.get('agent', {}).get('compile_timeout', 300)
+    correctness_timeout = eval_config.get('agent', {}).get('correctness_timeout', 300)
+    performance_timeout = eval_config.get('agent', {}).get('performance_timeout', 300)
 
     prompt = f"""# Task Validation Agent
 
@@ -127,13 +130,26 @@ Perform the following 10 validation checks IN ORDER. For each check, record the 
 
 Use this Python interpreter when needed: `{python_path}`
 
+## CRITICAL: Pre-Validation Cleanup
+
+Before running ANY validation checks, clean up stale JIT compilation caches that may contain leftover lock files from previously killed processes. Stale lock files will cause compilation to hang indefinitely.
+
+Run the following cleanup command FIRST:
+```bash
+find ~/.cache/torch_extensions/ -name "lock" -delete 2>/dev/null; echo "JIT cache lock files cleaned"
+```
+
+## CRITICAL: No-Retry Policy
+
+**Do NOT retry any command that fails or times out.** Run each compile/correctness/performance command EXACTLY ONCE. If it fails (non-zero exit code) or times out (exit code 124), immediately record the result and move on to the next check. Do not attempt alternative approaches, do not re-run with different parameters, and do not try to debug or fix the issue. Your job is to REPORT, not to FIX.
+
 ### Check 1: Config Schema Validation
 Verify that config.yaml contains all required fields:
 - `source_file_path` (list of strings)
 - `target_kernel_functions` (list of strings)
 - `compile_command` (list of strings)
 - `correctness_command` (list of strings)
-- `task_type` (string, one of: hip2hip, cuda2hip, triton2triton, pytorch2hip, instruction2triton, rocprim)
+- `task_type` (string, one of: hip2hip, cuda2hip, triton2triton, torch2hip, instruction2triton, rocprim)
 Also check that optional fields (`performance_command`, `prompt`) are well-formed if present.
 Status: PASS if all required fields exist and have correct types, FAIL otherwise.
 
@@ -157,29 +173,29 @@ Run the compile command(s) from the workspace directory:
 ```
 {chr(10).join(compile_cmds) if compile_cmds else 'No compile command specified'}
 ```
-Use a timeout of 120 seconds per command.
+Use a timeout of {compile_timeout} seconds per command. Run the command EXACTLY ONCE — do NOT retry on failure or timeout.
 Capture stdout, stderr, and exit code.
 Also check if `build/compile_report.json` is generated and contains a valid status.
-Status: PASS if exit code is 0, FAIL if non-zero, TIMEOUT if exceeded 120s.
+Status: PASS if exit code is 0, FAIL if non-zero, TIMEOUT if exceeded {compile_timeout}s.
 
 ### Check 5: Correctness
 Run the correctness command(s) from the workspace directory:
 ```
 {chr(10).join(correctness_cmds) if correctness_cmds else 'No correctness command specified'}
 ```
-Use a timeout of 180 seconds per command.
+Use a timeout of {correctness_timeout} seconds per command. Run the command EXACTLY ONCE — do NOT retry on failure or timeout.
 Capture stdout, stderr, and exit code.
 Check if `build/correctness_report.json` is generated.
-Status: PASS if exit code is 0, FAIL if non-zero, TIMEOUT if exceeded 180s, SKIP if compilation failed.
+Status: PASS if exit code is 0, FAIL if non-zero, TIMEOUT if exceeded {correctness_timeout}s, SKIP if compilation failed.
 
 ### Check 6: Performance
 Run the performance command(s) from the workspace directory (if any):
 ```
 {chr(10).join(performance_cmds) if performance_cmds else 'No performance command specified'}
 ```
-Use a timeout of 180 seconds per command.
+Use a timeout of {performance_timeout} seconds per command. Run the command EXACTLY ONCE — do NOT retry on failure or timeout.
 Capture stdout, stderr, and exit code.
-Status: PASS if exit code is 0, FAIL if non-zero, TIMEOUT if exceeded 180s, SKIP if correctness failed or no performance command.
+Status: PASS if exit code is 0, FAIL if non-zero, TIMEOUT if exceeded {performance_timeout}s, SKIP if correctness failed or no performance command.
 
 ### Check 7: Correctness Implementation Review
 Read the correctness implementation code (usually in `scripts/task_runner.py` or a test file).

@@ -172,13 +172,17 @@ def correctness_check(
     os.makedirs(build_dir, exist_ok=True)
     os.makedirs(hip_dir, exist_ok=True)
     shutil.copy(hip_kernel_path, hip_dir)
-                                                                                             
-    if not compile_hip(hip_kernel_path, auto_cleanup=False):
+
+    # Load HIP kernel via JIT (single in-process compilation, no subprocess)
+    hip_file_name = os.path.basename(hip_kernel_path)
+    kernel_name = hip_file_name.split('.hip')[0].split('_', 2)[-1]
+    hip_fn = load_hip_kernel(kernel_name, hip_dir, hip_file_name)
+    if hip_fn is None:
         print(f"[INFO] the hip kernel {hip_kernel_path} fail to compile.")
         if auto_cleanup:
             clear_workdir(build_dir)
         return False
-       
+
     # get inputs for py_modu and py_func
     input_func_from_modu = load_function_from_path(py_modu_path, 'get_inputs')
     inputs_modu = input_func_from_modu()
@@ -189,8 +193,6 @@ def correctness_check(
         inputs_func[idx] = copy.deepcopy(inputs_modu[idx])
 
     # get objs for py_modu and py_func
-    hip_file_name = os.path.basename(hip_kernel_path)
-    kernel_name = hip_file_name.split('.hip')[0].split('_', 2)[-1] # 'Model' for ai_cuda_engineer and hip_file_name.split('.hip')[0].split('_', 2)[-1] for gpumode
     kernel_modu = load_modu_obj(py_modu_path, kernel_name, 'get_init_inputs').to('cuda')
     kernel_func = load_func_obj(py_func_path, kernel_name, 'get_init_inputs').to('cuda')
                         
@@ -201,7 +203,6 @@ def correctness_check(
     assert _compare_results(inputs_modu[0], inputs_func[0], rtol=rtol, atol=atol), '[Error] Inputs for pytorch and hip kernel differ.'
   
     try:
-        hip_fn = load_hip_kernel(kernel_name, hip_dir, hip_file_name)
         modu_result = kernel_modu(*inputs_modu)
         func_result = kernel_func(*inputs_func, fn=hip_fn)
         # compare the difference
