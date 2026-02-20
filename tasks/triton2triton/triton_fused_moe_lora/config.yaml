@@ -1,0 +1,46 @@
+source_file_path:
+  - source/triton_fused_moe_lora.py
+
+target_kernel_functions:
+  - fused_moe_lora_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `fused_moe_lora_kernel` for maximum GPU throughput.
+    This kernel fuses MoE expert routing with LoRA adapter computation,
+    performing both shrink (A) and expand (B) LoRA operations within the
+    MoE expert computation pipeline.
+
+    The kernel supports both naive block assignment (flat expert_ids) and
+    sorted token assignment, per-expert LoRA weights, optional routing
+    weight multiplication, split-K reduction, and L2 cache hints for
+    weight loading.
+
+    Note: The distributed communication paths (all_gather/all_reduce for
+    fully_sharded mode) are excluded; only the local compute path is tested.
+
+    Key optimization opportunities:
+    - Block size tuning (BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K)
+    - GROUP_SIZE_M for L2 cache reuse
+    - SPLIT_K factor for K-dimension parallelism
+    - USE_B_L2_CACHE for weight caching strategy
+    - Memory access patterns for grouped GEMM with pointer indirection
+
+    Constraints:
+    - Must maintain the same function signature for `fused_moe_lora`
+    - Output must match reference within atol=5e-2, rtol=5e-2 for float16
+  cheatsheet: null

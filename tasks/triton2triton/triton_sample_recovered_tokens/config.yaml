@@ -1,0 +1,28 @@
+source_file_path:
+  - source/triton_sample_recovered_tokens.py
+
+target_kernel_functions:
+  - sample_recovered_tokens_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel that samples recovered tokens for speculative decoding rejection sampling using the Gumbel-max trick on adjusted probability distributions.
+
+    Constraints:
+    - Must maintain the same function signature for `sample_recovered_tokens`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float outputs or exactly for integer outputs
+  cheatsheet: null

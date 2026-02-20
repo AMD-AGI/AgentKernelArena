@@ -1,0 +1,46 @@
+source_file_path:
+  - source/_fwd_kernel_stage1.py
+
+target_kernel_functions:
+  - _fwd_kernel_stage1
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton decode attention stage1 kernel `_fwd_kernel_stage1` for
+    maximum GPU throughput while maintaining numerical correctness.
+
+    The kernel implements the first stage of split-KV decode attention. Each program
+    instance handles one (batch, head, kv_split) and computes partial attention
+    over a contiguous range of KV tokens from a paged KV cache:
+    - Loads Q vector for current (batch, head)
+    - Iterates over KV tokens in the assigned split, loading K/V via paged
+      Req_to_tokens mapping
+    - Computes Q @ K^T scaled dot-product with online softmax
+    - Outputs partial attention output and logsumexp for later reduction
+
+    Key optimization opportunities:
+    - BLOCK_N tuning for the target GPU
+    - Memory access coalescing for paged KV cache reads
+    - Warp scheduling and occupancy tuning (num_warps, num_stages)
+    - Reducing masking overhead
+    - Loop unrolling
+
+    Constraints:
+    - Must maintain the same function signature for `decode_att_m_fwd`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+    - Must handle arbitrary sequence lengths, head dimensions, and page sizes
+  cheatsheet: null

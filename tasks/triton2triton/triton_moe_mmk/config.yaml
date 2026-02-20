@@ -1,0 +1,35 @@
+source_file_path:
+  - source/triton_moe_mmk.py
+
+target_kernel_functions:
+  - moe_mmk
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `moe_mmk` kernel for maximum GPU throughput.
+    This is the inner matrix multiply helper for MoE, computing one
+    [BLOCK_M, BLOCK_N] tile of C = A @ B by iterating over K in BLOCK_K steps.
+
+    Key optimization opportunities:
+    - Block size tuning
+    - K-loop unrolling and pipelining
+    - Memory access optimization
+
+    Constraints:
+    - Must maintain the same function signature for `moe_matmul`
+    - Output must match reference within atol=5e-2, rtol=5e-2 for float16
+  cheatsheet: null

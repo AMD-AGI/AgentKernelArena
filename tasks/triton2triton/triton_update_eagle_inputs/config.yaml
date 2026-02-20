@@ -1,0 +1,37 @@
+source_file_path:
+  - source/triton_update_eagle_inputs.py
+
+target_kernel_functions:
+  - _update_eagle_inputs_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `_update_eagle_inputs_kernel` for maximum GPU throughput.
+    This kernel updates input IDs from draft tokens, copies hidden states from
+    output to input buffers, and increments positions and seq_lens (clamped to
+    max_model_len) between EAGLE speculative decoding steps.
+
+    Key optimization opportunities:
+    - Block size tuning for hidden state copy
+    - Vectorized memory access
+    - Fusing scalar operations
+
+    Constraints:
+    - Must maintain the same function signature for `update_eagle_inputs`
+    - Hidden state output must match within atol=1e-5, rtol=1e-5
+    - Integer outputs must match exactly
+  cheatsheet: null

@@ -1,0 +1,42 @@
+source_file_path:
+  - source/triton_compute_slot_mappings.py
+
+target_kernel_functions:
+  - _compute_slot_mappings_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `_compute_slot_mappings_kernel` for maximum GPU throughput
+    while maintaining correctness.
+
+    The kernel computes slot mappings for paged KV cache. For each token position, it
+    computes: block_index = position // block_size, block_offset = position % block_size,
+    then looks up block_number from the block table and computes
+    slot_id = block_number * block_size + block_offset. The last program pads remaining
+    slots with PAD_ID (-1) for CUDA graph compatibility.
+
+    This is a simplified version with no context parallelism (TOTAL_CP_WORLD_SIZE=1).
+
+    Key optimization opportunities:
+    - Block size tuning
+    - Vectorized loads/stores
+    - Memory coalescing for block table lookups
+
+    Constraints:
+    - Must maintain the same function signature for `compute_slot_mappings`
+    - Output must match reference exactly (integer slot IDs)
+  cheatsheet: null

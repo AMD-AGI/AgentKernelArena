@@ -1,0 +1,35 @@
+source_file_path:
+  - source/triton_ep_scatter_2.py
+
+target_kernel_functions:
+  - _fwd_kernel_ep_scatter_2
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `_fwd_kernel_ep_scatter_2` kernel for maximum GPU throughput.
+    This kernel scatters tokens to expert-ordered layout using atomic adds for slot
+    allocation. Each token is copied to its assigned expert's memory region.
+
+    Key optimization opportunities:
+    - Grid sizing for token parallelism
+    - Memory coalescing for hidden state copies
+    - Atomic contention reduction
+
+    Constraints:
+    - Must maintain the same function signature for `ep_scatter_2`
+    - Each token must be correctly scattered to the right expert slot
+  cheatsheet: null

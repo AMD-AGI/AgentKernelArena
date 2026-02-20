@@ -1,0 +1,36 @@
+source_file_path:
+  - source/triton_copy_and_expand_eagle_inputs.py
+
+target_kernel_functions:
+  - copy_and_expand_eagle_inputs_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `copy_and_expand_eagle_inputs_kernel` for maximum GPU throughput.
+    This kernel copies and expands inputs from the target model to drafting buffers for
+    EAGLE speculative decoding, handling padding slots, parallel drafting tokens, and
+    rejected token regions.
+
+    Key optimization opportunities:
+    - Vectorized memory access
+    - Minimizing branch divergence across regions
+    - Block size tuning for token dimension
+
+    Constraints:
+    - Must maintain the same function signature for `copy_and_expand_eagle_inputs`
+    - Output must match reference exactly (integer computation)
+  cheatsheet: null

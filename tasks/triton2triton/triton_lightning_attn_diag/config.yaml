@@ -1,0 +1,40 @@
+source_file_path:
+  - source/triton_lightning_attn_diag.py
+
+target_kernel_functions:
+  - _fwd_diag_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton Lightning Attention diagonal block kernel `_fwd_diag_kernel`
+    for maximum GPU throughput while maintaining numerical correctness.
+
+    The kernel computes diagonal (local) block attention for the Lightning Attention
+    algorithm. For each block, it computes Q @ K.T with a causal mask and exponential
+    decay factor, then accumulates O = attn @ V. The slope parameter S controls the
+    per-head exponential decay rate.
+
+    Key parameters:
+    - BLOCK: main block size (default 256)
+    - CBLOCK: sub-block size (default 32)
+    - Each program instance handles one sub-block within one block
+
+    Constraints:
+    - Must maintain the same function signature for `lightning_attn_diag_forward`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+    - The kernel must handle arbitrary sequence lengths
+  cheatsheet: null

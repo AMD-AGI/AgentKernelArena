@@ -1,0 +1,39 @@
+source_file_path:
+  - source/triton_pack_seq.py
+
+target_kernel_functions:
+  - _pack_seq_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `_pack_seq_kernel` for maximum GPU throughput
+    while maintaining numerical correctness.
+
+    The kernel packs variable-length sequences from a flat [N, D] tensor into a
+    batched [B, Lmax, D] tensor, filling unused positions with a pad value.
+
+    Key optimization opportunities:
+    - Block size tuning (BLOCK_T, BLOCK_D) for the target GPU
+    - Memory access coalescing
+    - Reducing redundant stores (pad then overwrite pattern)
+    - Warp scheduling and occupancy tuning
+
+    Constraints:
+    - Must maintain the same function signature for `pack_seq`
+    - Output must match reference exactly for valid positions
+    - Padding positions must contain the specified pad value
+  cheatsheet: null

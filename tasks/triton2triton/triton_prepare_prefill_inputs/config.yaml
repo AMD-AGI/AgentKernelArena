@@ -1,0 +1,39 @@
+source_file_path:
+  - source/triton_prepare_prefill_inputs.py
+
+target_kernel_functions:
+  - _prepare_prefill_inputs_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `_prepare_prefill_inputs_kernel` for maximum GPU throughput
+    while maintaining correctness.
+
+    The kernel copies token IDs from a 2D all_token_ids buffer into a flat input_ids tensor
+    for each prefilling request. It uses idx_mapping to map batch indices to request state
+    indices and query_start_loc for per-request output offsets. It also stores the next
+    prefill token if the prefill is not yet complete.
+
+    Key optimization opportunities:
+    - Block size tuning for memory coalescing
+    - Vectorized loads/stores
+    - Memory access pattern optimization
+
+    Constraints:
+    - Must maintain the same function signature for `prepare_prefill_inputs`
+    - Output must match reference exactly (integer token IDs)
+  cheatsheet: null

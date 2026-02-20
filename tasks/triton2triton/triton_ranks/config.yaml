@@ -1,0 +1,28 @@
+source_file_path:
+  - source/triton_ranks.py
+
+target_kernel_functions:
+  - _ranks_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton ranks kernel that counts how many vocabulary logits are >= the logit of a given token, computing the rank of each sampled token.
+
+    Constraints:
+    - Must maintain the same function signature for `compute_ranks`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float outputs or exactly for integer outputs
+  cheatsheet: null

@@ -1,0 +1,12 @@
+{
+  "execution_time_ms": 0.06260644998401403,
+  "shape": {
+    "batch_size": 1,
+    "ctx_len": 256,
+    "query_len": 128,
+    "num_heads": 32,
+    "num_kv_heads": 8,
+    "head_dim": 128,
+    "block_size": 32
+  }
+}

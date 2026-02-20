@@ -1,0 +1,55 @@
+source_file_path:
+  - source/triton_paged_prefix_prefill_alibi.py
+
+target_kernel_functions:
+  - _fwd_kernel_alibi
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton paged prefix prefill attention kernel `_fwd_kernel_alibi`
+    for maximum GPU throughput while maintaining numerical correctness.
+
+    The kernel implements paged attention for prefix prefill with ALiBi (Attention
+    with Linear Biases) positional encoding. It uses per-head slopes to add
+    position-dependent linear biases to attention scores instead of learned or
+    sinusoidal positional embeddings.
+
+    Two-phase attention with ALiBi:
+    1. Query-vs-Context: queries attend to cached context tokens with ALiBi bias
+    2. Query-vs-Query: queries attend to new query tokens (causal) with ALiBi bias
+
+    ALiBi bias formula: slope * (key_position - query_position)
+    Only non-positive biases are kept (causal direction).
+
+    Key data structures:
+    - K cache: [num_blocks, num_kv_heads, head_dim/x, block_size, x] (5D vectorized)
+    - V cache: [num_blocks, num_kv_heads, head_dim, block_size] (4D)
+    - Block table (B_Loc): maps logical block indices to physical block IDs
+    - ALiBi slopes: [num_heads] per-head slopes
+
+    Key optimization opportunities:
+    - Tile size tuning for the target GPU
+    - Memory access coalescing for the 5D K cache layout
+    - ALiBi bias computation optimization (precompute or fuse)
+    - Loop unrolling and pipeline stages
+    - Warp scheduling optimization
+
+    Constraints:
+    - Must maintain the same function signature for `context_attention_fwd_alibi`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+    - Must correctly apply ALiBi bias for both context and query phases
+  cheatsheet: null

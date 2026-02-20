@@ -1,0 +1,10 @@
+{
+  "execution_time_ms": 0.03712065014988184,
+  "shape": {
+    "batch": 1,
+    "heads": 4,
+    "seq": 256,
+    "d_model": 128,
+    "e_model": 128
+  }
+}

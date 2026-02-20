@@ -1,0 +1,42 @@
+source_file_path:
+  - source/triton_prepare_mrope_positions.py
+
+target_kernel_functions:
+  - _prepare_mrope_positions_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `_prepare_mrope_positions_kernel` for maximum GPU throughput
+    while maintaining correctness.
+
+    The kernel prepares Multi-dimensional Rotary Position Embedding (M-RoPE) positions
+    for each request. For prefill requests (num_computed < prefill_len), it reads
+    pre-computed 3D positions from a lookup table. For decode requests, it computes
+    positions as orig_pos + mrope_delta. The output is a [3, num_tokens] tensor with
+    positions for each of the 3 M-RoPE dimensions.
+
+    Key optimization opportunities:
+    - Block size tuning
+    - Vectorized loads/stores across the 3 dimensions
+    - Memory coalescing
+    - Branch optimization for prefill vs decode paths
+
+    Constraints:
+    - Must maintain the same function signature for `prepare_mrope_positions`
+    - Output must match reference exactly (integer positions)
+    - Must handle both prefill and decode paths correctly
+  cheatsheet: null

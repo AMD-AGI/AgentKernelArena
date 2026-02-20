@@ -1,0 +1,35 @@
+source_file_path:
+  - source/triton_batch_memcpy.py
+
+target_kernel_functions:
+  - batch_memcpy_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `batch_memcpy_kernel` for maximum GPU throughput.
+    This kernel performs batched memory copies: each program instance copies
+    one (src, dst, size) triple using byte-level pointer access.
+
+    Key optimization opportunities:
+    - Block size tuning
+    - Wider data types for aligned copies
+    - Memory coalescing patterns
+
+    Constraints:
+    - Must maintain the same function signature for `batch_memcpy`
+    - Output must match reference exactly (byte-level copy)
+  cheatsheet: null

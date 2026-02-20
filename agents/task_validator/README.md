@@ -41,8 +41,8 @@ Each task workspace will contain a `validation_report.yaml` with per-check resul
 Edit `agents/task_validator/agent_config.yaml`:
 
 ```yaml
-backend: claude_code          # claude_code | codex | cursor (codex/cursor not yet implemented)
-timeout_seconds: 600          # max time per task validation
+backend: claude_code          # claude_code | codex | cursor
+timeout_seconds: 600          # max time per task validation (set 0 to disable timeout)
 python_path: /root/AgentKernelArena/.venv/bin/python3
 ```
 

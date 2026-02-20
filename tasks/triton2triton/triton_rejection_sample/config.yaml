@@ -1,0 +1,37 @@
+source_file_path:
+  - source/triton_rejection_sample.py
+
+target_kernel_functions:
+  - _rejection_sample_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton `_rejection_sample_kernel` for maximum GPU throughput.
+    This kernel performs sequential rejection sampling for speculative decoding:
+    compares target-sampled tokens against draft tokens, accepting until the first
+    mismatch. Uses num_warps=1 due to the sequential nature.
+
+    Key optimization opportunities:
+    - Memory access patterns
+    - Early termination efficiency
+    - Note: sequential nature limits parallelism within each request
+
+    Constraints:
+    - Must maintain the same function signature for `rejection_sample`
+    - Must preserve num_warps=1
+    - Output must match reference exactly (integer computation)
+  cheatsheet: null

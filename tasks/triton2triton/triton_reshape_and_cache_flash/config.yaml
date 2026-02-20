@@ -1,0 +1,38 @@
+source_file_path:
+  - source/triton_reshape_and_cache_flash.py
+
+target_kernel_functions:
+  - reshape_and_cache_kernel_flash
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `reshape_and_cache_kernel_flash` for maximum GPU
+    throughput while maintaining numerical correctness.
+
+    The kernel scatters K/V tokens into paged KV-cache slots. Each token's key and
+    value vectors are written to the appropriate block and slot in the paged cache
+    based on a slot_mapping tensor.
+
+    Key optimization opportunities:
+    - Tile size tuning for the target GPU
+    - Memory access coalescing for scattered writes
+    - Warp scheduling and occupancy tuning
+
+    Constraints:
+    - Must maintain the same function signature for `reshape_and_cache_flash`
+    - Output must match reference (exact copy for auto dtype)
+  cheatsheet: null

@@ -1,0 +1,38 @@
+source_file_path:
+  - source/triton_rms_norm.py
+
+target_kernel_functions:
+  - _rms_norm_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton RMS normalization kernel `_rms_norm_kernel` for maximum
+    GPU throughput while maintaining numerical correctness.
+
+    The kernel computes RMS Norm: y = x / sqrt(mean(x^2) + eps) * weight along the last
+    dimension, using float32 accumulation for numerical stability.
+
+    Key optimization opportunities:
+    - Block size tuning
+    - Fused computation (reduce passes over data)
+    - Memory access pattern optimization
+    - Vectorized loads/stores
+
+    Constraints:
+    - Must maintain the same function signature for `rms_norm`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+  cheatsheet: null

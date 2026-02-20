@@ -1,0 +1,51 @@
+source_file_path:
+  - source/triton_paged_prefix_prefill.py
+
+target_kernel_functions:
+  - _fwd_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton paged prefix prefill attention kernel `_fwd_kernel` for
+    maximum GPU throughput while maintaining numerical correctness.
+
+    The kernel implements paged attention for the prefix prefill stage of LLM
+    inference. It reads context tokens from a paged KV cache (5D K / 4D V layout)
+    and new query tokens from dense tensors.
+
+    Two-phase attention:
+    1. Query-vs-Context: queries attend to all cached context tokens (no causal mask)
+    2. Query-vs-Query: queries attend to new query tokens (with causal mask)
+
+    Key data structures:
+    - K cache: [num_blocks, num_kv_heads, head_dim/x, block_size, x] (5D vectorized)
+    - V cache: [num_blocks, num_kv_heads, head_dim, block_size] (4D)
+    - Block table (B_Loc): maps logical block indices to physical block IDs
+
+    Key optimization opportunities:
+    - Tile size tuning (BLOCK_M, BLOCK_N, BLOCK_SIZE) for the target GPU
+    - Memory access coalescing for the 5D K cache layout
+    - Loop unrolling factors for cache vs request loops
+    - Warp scheduling and pipeline stages
+    - Reducing masking overhead at block boundaries
+    - Prefetching block table entries
+
+    Constraints:
+    - Must maintain the same function signature for `context_attention_fwd`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+    - Must handle arbitrary context lengths, query lengths, and head dimensions
+  cheatsheet: null

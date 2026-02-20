@@ -1,0 +1,41 @@
+source_file_path:
+  - source/triton_unified_attention_2d.py
+
+target_kernel_functions:
+  - kernel_unified_attention_2d
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `kernel_unified_attention_2d` for maximum GPU throughput
+    while maintaining numerical correctness.
+
+    This kernel implements paged attention with a 2D block table layout. It performs
+    scaled dot-product attention with causal masking over variable-length packed
+    sequences, reading K/V from a paged cache indexed by a 2D block table
+    [num_seqs, max_blocks_per_seq].
+
+    Key features:
+    - Paged KV cache with configurable block size
+    - Causal masking with optional sliding window
+    - Optional softcap (tanh-based logit capping)
+    - GQA support (num_queries_per_kv grouping)
+    - Variable-length sequence packing via cu_seqlens_q
+
+    Constraints:
+    - Must maintain the same function signature for `unified_attention_2d`
+    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+  cheatsheet: null

@@ -1,0 +1,29 @@
+source_file_path:
+  - source/triton_ssd_chunk_scan.py
+
+target_kernel_functions:
+  - _chunk_scan_fwd_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Triton kernel `_chunk_scan_fwd_kernel` for maximum GPU throughput.
+    For each chunk, applies causal attention: iterates over chunk positions,
+    accumulates state with decay, produces output. Core SSD scan operation.
+    Constraints:
+    - Must maintain the same function signature for `chunk_scan_fwd`
+    - Output must not contain NaN values
+  cheatsheet: null
