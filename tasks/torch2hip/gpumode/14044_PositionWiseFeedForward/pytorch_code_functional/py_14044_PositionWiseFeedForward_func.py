@@ -13,6 +13,7 @@ def module_fn(
     layer_norm_weight: torch.Tensor,
     layer_norm_bias: torch.Tensor,
     dropout_p: float,
+    training: bool = True,
 ) -> torch.Tensor:
     """
     Functional implementation of Position-Wise Feed-Forward Network.
@@ -36,7 +37,7 @@ def module_fn(
     # Second linear layer
     out = F.linear(out, W_2_weight, W_2_bias)
     # Dropout
-    out = F.dropout(out, p=dropout_p, training=True)
+    out = F.dropout(out, p=dropout_p, training=training)
     # Residual connection
     out = out + x
     # LayerNorm
@@ -57,6 +58,19 @@ class PositionWiseFeedForward(nn.Module):
         self.dropout_p = dropout
 
     def forward(self, x: torch.Tensor, fn=module_fn):
+        if fn is module_fn:
+            return fn(
+                x,
+                self.W_1.weight,
+                self.W_1.bias,
+                self.W_2.weight,
+                self.W_2.bias,
+                self.layer_norm.weight,
+                self.layer_norm.bias,
+                self.dropout_p,
+                self.training,
+            )
+        effective_dropout = self.dropout_p if self.training else 0.0
         return fn(
             x,
             self.W_1.weight,
@@ -65,7 +79,7 @@ class PositionWiseFeedForward(nn.Module):
             self.W_2.bias,
             self.layer_norm.weight,
             self.layer_norm.bias,
-            self.dropout_p,
+            effective_dropout,
         )
 
 def get_inputs():

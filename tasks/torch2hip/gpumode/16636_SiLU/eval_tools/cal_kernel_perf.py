@@ -242,12 +242,17 @@ def cal_kernel_perf(
     inputs_func = input_func_from_func()
     # inputs_func = copy.deepcopy(inputs_modu)
     for idx in range(len(inputs_modu)):
-        inputs_func[idx] = inputs_modu[idx]
+        inputs_func[idx] = copy.deepcopy(inputs_modu[idx])
    
     # get objs for py_modu and py_func
+    torch.manual_seed(0)
+    torch.cuda.manual_seed_all(0)
     kernel_modu = load_modu_obj(py_modu_path, kernel_name, 'get_init_inputs').to('cuda')
     kernel_func = load_func_obj(py_func_path, kernel_name, 'get_init_inputs').to('cuda')
-                        
+    kernel_func.load_state_dict(kernel_modu.state_dict(), strict=False)
+    kernel_modu.eval()
+    kernel_func.eval()
+
     # move inputs to cuda
     inputs_modu = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
     inputs_func = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_func]
@@ -286,5 +291,6 @@ if __name__ == "__main__":
     ret_perf = cal_kernel_perf(args.py_modu_file, args.py_func_file, args.hip_file)
     ret_dict = {'speedup': ret_perf[0], 'ori_time': ret_perf[1], 'opt_time': ret_perf[2]}
     save_eval_result(ret_dict)
+    sys.exit(0 if ret_perf[0] is not None else 1)
 
 

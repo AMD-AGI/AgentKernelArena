@@ -102,12 +102,12 @@ def module_fn(
         from_logits=from_logits
     )
 
-class Model(nn.Module):
+class CrossEntropyLossLabelSmoothing(nn.Module):
     """
     CrossEntropyLoss - with ability to receive distribution as targets, and optional label smoothing
     """
     def __init__(self, weight=None, ignore_index=-100, reduction='mean', smooth_eps=None, smooth_dist=None, from_logits=True):
-        super(Model, self).__init__()
+        super(CrossEntropyLossLabelSmoothing, self).__init__()
         self.weight = weight
         self.ignore_index = ignore_index
         self.reduction = reduction

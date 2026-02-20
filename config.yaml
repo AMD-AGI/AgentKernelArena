@@ -25,7 +25,18 @@ agent:
 #   - all                               # Run ALL available tasks
 
 tasks:
-  - torch2hip
+  - torch2hip/gpumode/1001_NormalAttention_dot
+  - torch2hip/gpumode/10024_Feedforward
+  - torch2hip/gpumode/1003_NormalAttention_embedded_gaussian
+  - torch2hip/gpumode/102_ItemQueryAttention
+  - torch2hip/gpumode/10456_MultiHeadAttention
+  - torch2hip/gpumode/11122_PositionEmbedder
+  - torch2hip/gpumode/1178_MLP_model
+  - torch2hip/gpumode/12501_CrossEntropyLossLabelSmoothing
+  - torch2hip/gpumode/14044_PositionWiseFeedForward
+  - torch2hip/gpumode/14069_TransformerFFNLayer
+  - torch2hip/gpumode/5334_GateGRUSelectionLayer
+  - torch2hip/gpumode/8325_MaskedLanguageModel
 
 target_gpu_model: MI300
 log_directory: logs

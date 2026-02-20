@@ -193,9 +193,14 @@ def correctness_check(
         inputs_func[idx] = copy.deepcopy(inputs_modu[idx])
 
     # get objs for py_modu and py_func
+    torch.manual_seed(0)
+    torch.cuda.manual_seed_all(0)
     kernel_modu = load_modu_obj(py_modu_path, kernel_name, 'get_init_inputs').to('cuda')
     kernel_func = load_func_obj(py_func_path, kernel_name, 'get_init_inputs').to('cuda')
-                        
+    kernel_func.load_state_dict(kernel_modu.state_dict(), strict=False)
+    kernel_modu.eval()
+    kernel_func.eval()
+
     # get outputs from py_modu and py_func
     inputs_modu = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
     inputs_func = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_func]
@@ -227,3 +232,4 @@ if __name__ == "__main__":
     ret_correctness = correctness_check(args.py_modu_file, args.py_func_file, args.hip_file)
     ret_dict = {'correctness': ret_correctness}
     save_eval_result(ret_dict)
+    sys.exit(0 if ret_correctness else 1)

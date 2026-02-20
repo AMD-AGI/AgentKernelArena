@@ -70,9 +70,9 @@ torch::Tensor normal_attention_dot_forward(
     auto options = input.options();
 
     // 1x1 convolutions with bias (exact semantics of PyTorch conv2d)
-    auto proj_query = at::conv2d(input, query_weight, std::optional<at::Tensor>(query_bias), {1, 1}, {0, 0}, {1, 1}, 1).contiguous(); // (B, Ck, H, W)
-    auto proj_key   = at::conv2d(input, key_weight,   std::optional<at::Tensor>(key_bias),   {1, 1}, {0, 0}, {1, 1}, 1).contiguous(); // (B, Ck, H, W)
-    auto proj_value = at::conv2d(input, value_weight, std::optional<at::Tensor>(value_bias), {1, 1}, {0, 0}, {1, 1}, 1).contiguous(); // (B, C,  H, W)
+    auto proj_query = at::conv2d(input, query_weight, std::optional<at::Tensor>(query_bias), at::IntArrayRef({1, 1}), at::IntArrayRef({0, 0}), at::IntArrayRef({1, 1}), 1).contiguous(); // (B, Ck, H, W)
+    auto proj_key   = at::conv2d(input, key_weight,   std::optional<at::Tensor>(key_bias),   at::IntArrayRef({1, 1}), at::IntArrayRef({0, 0}), at::IntArrayRef({1, 1}), 1).contiguous(); // (B, Ck, H, W)
+    auto proj_value = at::conv2d(input, value_weight, std::optional<at::Tensor>(value_bias), at::IntArrayRef({1, 1}), at::IntArrayRef({0, 0}), at::IntArrayRef({1, 1}), 1).contiguous(); // (B, C,  H, W)
 
     // Reshape for batched GEMM
     auto Aq = proj_query.view({B, Ck, HW}).permute({0, 2, 1}).contiguous(); // (B, M=HW, K=Ck)
@@ -178,7 +178,7 @@ torch::Tensor normal_attention_dot_forward(
     auto out = out2d.view({B, C, H, W});
 
     // Final 1x1 conv: gamma
-    auto out_gamma = at::conv2d(out, gamma_weight, std::optional<at::Tensor>(gamma_bias), {1, 1}, {0, 0}, {1, 1}, 1);
+    auto out_gamma = at::conv2d(out, gamma_weight, std::optional<at::Tensor>(gamma_bias), at::IntArrayRef({1, 1}), at::IntArrayRef({0, 0}), at::IntArrayRef({1, 1}), 1);
 
     return out_gamma;
 }
@@ -186,4 +186,3 @@ torch::Tensor normal_attention_dot_forward(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &normal_attention_dot_forward, "NormalAttention_dot forward (HIP/ROCm, hipBLAS optimized)");
 }
-
