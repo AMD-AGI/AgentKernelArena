@@ -15,7 +15,7 @@
 # - ourllm_kernel2kernel
 # - task_validator 
 agent:
-  template: task_validator 
+  template: claude_code 
 
 # Task Selection
 # Specify task names to execute (use full path from tasks/ directory)
@@ -27,8 +27,32 @@ agent:
 #   - all                               # Run ALL available tasks
 
 tasks:
-  - torch2hip/gpumode/12478_SoftNLL
-  - torch2hip/gpumode/14007_KDLoss
+  - triton2triton/triton_temperature
+  - triton2triton/triton_log_softmax
+  - triton2triton/triton_penalties
+  - triton2triton/triton_apply_grammar_bitmask
+  - triton2triton/triton_logit_bias
+  - triton2triton/triton_topk_log_softmax
+  - triton2triton/triton_silu_mul_fp8_quant_dg
+  - triton2triton/triton_compute_slot_mappings
+  - triton2triton/triton_gather_block_tables
+  - triton2triton/triton_reshape_and_cache_flash_diffkv
+  - triton2triton/triton_decode_attn_stage1
+  - triton2triton/triton_decode_attn_stage2
+  - triton2triton/triton_flash_prefill_attention
+  - triton2triton/triton_unified_attention_3d
+  - triton2triton/triton_prepare_eagle_inputs
+  - triton2triton/triton_prepare_eagle_docode
+  - triton2triton/triton_eagle_prepare_inputs_padded
+  - triton2triton/triton_update_eagle_inputs
+  - triton2triton/triton_copy_and_expand_eagle_inputs
+  - triton2triton/triton_rejection_sample
+  - triton2triton/triton_count_expert_tokens
+  - triton2triton/triton_ep_scatter_1
+  - triton2triton/triton_ep_scatter_2
+  - triton2triton/triton_ep_gather
+  - triton2triton/triton_fused_moe
+
 
 target_gpu_model: MI300
 log_directory: logs
