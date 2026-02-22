@@ -12,7 +12,7 @@ import triton.language as tl
 # Triton Kernels for randint
 #####################################
 
-BLOCK: tl.constexpr = 1024
+BLOCK = tl.constexpr(1024)
 
 @triton.jit
 def randint_kernel_runtime_seed(X, N, seed_val): # Kernel for runtime seed
@@ -46,7 +46,7 @@ from performance_utils_pytest import (
 from typing import Dict
 
 result_gold = {}
-BLOCK: tl.constexpr = 1024
+BLOCK = tl.constexpr(1024)
 ######################################## HELPERS for Eval ######################################## 
 def set_seed(seed: int = 42) -> None:
     """
@@ -189,8 +189,8 @@ def test_randint(size, seed, dtype, const_seed, request, device='cuda'):
     set_seed()
 
     torch_dtype = getattr(torch, dtype)
-    numpy_dtype = getattr(np, f"u{dtype}") # Philox generates unsigned integers
-    config = {'int32': PHILOX_32, 'int64': PHILOX_64}[dtype]
+    numpy_dtype = np.uint32  # tl.randint always uses 32-bit Philox regardless of output dtype
+    config = PHILOX_32
 
     # triton result
     x = torch.empty(size, dtype=torch_dtype, device=device)
@@ -210,7 +210,7 @@ def test_randint(size, seed, dtype, const_seed, request, device='cuda'):
     result_gold[sanitized_key_name] = x.clone().detach().cpu()
     ################################################################### 
 
-    out_tri = x.cpu().numpy().astype(numpy_dtype).flatten().tolist()
+    out_tri = x.cpu().to(torch.int32).numpy().astype(numpy_dtype).flatten().tolist()
     
     # reference result
     if N > 0:

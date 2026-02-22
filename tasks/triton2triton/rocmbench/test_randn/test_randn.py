@@ -37,7 +37,6 @@ import os
 import pytest
 from numpy.random import RandomState
 import triton
-import scipy.stats
 import triton.language as tl
 
 result_gold = {}
@@ -203,7 +202,10 @@ def test_rand(size, seed, dtype, const_seed,  request, device='cuda'):
     ################################################################### 
 
     assert all((x >= 0) & (x <= 1))
-    assert scipy.stats.kstest(x.tolist(), 'uniform', args=(0, 1)).statistic < 0.01
+    x_np = np.sort(x.cpu().numpy())
+    n = len(x_np)
+    ks_stat = max(np.max(np.arange(1, n + 1) / n - x_np), np.max(x_np - np.arange(0, n) / n))
+    assert ks_stat < 0.01
 
 
 

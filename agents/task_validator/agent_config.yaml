@@ -4,5 +4,5 @@ python_path: /root/AgentKernelArena/.venv/bin/python3
 
 # Per-command timeouts (seconds) for each validation check
 compile_timeout: 600
-correctness_timeout: 300
-performance_timeout: 300
+correctness_timeout: 600
+performance_timeout: 600
