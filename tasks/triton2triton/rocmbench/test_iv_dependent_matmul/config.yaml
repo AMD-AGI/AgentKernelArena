@@ -1,0 +1,70 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_iv_dependent_matmul.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_iv_dependent_matmul.py -k "not test_performance and
+  not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_iv_dependent_matmul.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `iv_dependent_matmul`. Your task is to complete\
+    \ the kernel code. Only optimize the kernel code in the function definition, DONT\
+    \ remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list.\n\
+    \nThis kernel, `iv_dependent_matmul`,  is designed to perform  tiled matrix multiplication\
+    \ (C = A @ B).\n\n**Your objective is to optimize the body of `iv_dependent_matmul`.**\n\
+    \nYou must ensure that:\n1.  All arguments received by `iv_dependent_matmul` are\
+    \ kept intact and not modified.\n2. Provide you final code in ```python code block.\
+    \ \nExample:\n```python\n<YOUR-CODE-HERE>\n```\nThe full definition for `iv_dependent_matmul`\
+    \ and relevant helper utilities are provided in the context below. You only need\
+    \ to optimize the code for `iv_dependent_matmul` whilst keeping other things intact.\
+    \ DONT remove Imports and HELPER utils.\n\n########################################\
+    \ Imports ######################################## \nimport numpy as np\nimport\
+    \ pytest\nimport torch\nfrom numpy.random import RandomState\n\nimport triton\n\
+    import triton.language as tl\n######################################## Imports\
+    \ ######################################## \n\n@triton.jit\ndef iv_dependent_matmul(a_ptr,\
+    \ b_ptr, c_ptr,\n                        M, N, K,\n                        stride_am,\
+    \ stride_ak,\n                        stride_bk, stride_bn,\n                \
+    \        stride_cm, stride_cn,\n                        BLOCK_SIZE_M: tl.constexpr,\
+    \ BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr,\n                  \
+    \      type: tl.constexpr):\n    \"\"\"\n    Performs a tiled matrix multiplication\
+    \ (C = A @ B) with various strategies\n    for managing and advancing pointers\
+    \ to input matrices A and B within the\n    inner K-loop. The specific strategy\
+    \ for pointer updates is determined by\n    the `type` parameter. This kernel\
+    \ is designed to explore different\n    instruction scheduling and memory access\
+    \ patterns related to pointer\n    arithmetic within the loop.\n\n    Parameters:\n\
+    \    -----------\n    a_ptr : tl.pointer_type\n        Pointer to the first input\
+    \ matrix A.\n    b_ptr : tl.pointer_type\n        Pointer to the second input\
+    \ matrix B.\n    c_ptr : tl.pointer_type\n        Pointer to the output matrix\
+    \ C.\n    M : int\n        Number of rows in matrix A and C.\n    N : int\n  \
+    \      Number of columns in matrix B and C.\n    K : int\n        Number of columns\
+    \ in matrix A and rows in matrix B (the dimension being reduced).\n    stride_am\
+    \ : int\n        Stride for the M dimension (rows) of matrix A.\n    stride_ak\
+    \ : int\n        Stride for the K dimension (columns) of matrix A.\n    stride_bk\
+    \ : int\n        Stride for the K dimension (rows) of matrix B.\n    stride_bn\
+    \ : int\n        Stride for the N dimension (columns) of matrix B.\n    stride_cm\
+    \ : int\n        Stride for the M dimension (rows) of matrix C.\n    stride_cn\
+    \ : int\n        Stride for the N dimension (columns) of matrix C.\n    BLOCK_SIZE_M\
+    \ : tl.constexpr\n        The size of the block used for tiling along the M dimension.\n\
+    \    BLOCK_SIZE_N : tl.constexpr\n        The size of the block used for tiling\
+    \ along the N dimension.\n    BLOCK_SIZE_K : tl.constexpr\n        The size of\
+    \ the block used for tiling along the K dimension (inner loop).\n    type : tl.constexpr\
+    \ (str)\n        A string literal controlling the pointer update strategy for\
+    \ `a_ptr` and `b_ptr`\n        within the K-loop. Affects how `a_ptrs` and `b_ptrs`\
+    \ are calculated in each\n        iteration of the K-loop.\n        Possible values:\n\
+    \        - \"pre_load\": Pointers are calculated at the beginning of each K-loop\
+    \ iteration.\n        - \"post_load\": Pointers are calculated at the end of each\
+    \ K-loop iteration for the next iteration.\n        - \"post_pre_mixed\": `a_ptrs`\
+    \ is calculated at the beginning, `b_ptrs` at the end for the next iteration.\n\
+    \        - \"post_load_two_iters\": Pointers are advanced to prefetch/prepare\
+    \ for two iterations ahead.\n        - \"post_load_three_iters\": Pointers are\
+    \ advanced to prefetch/prepare for three iterations ahead.\n    \"\"\"\n    #\
+    \ Your code here\n\n"
+  source_code: null
+source_file_path:
+- test_iv_dependent_matmul.py
+target_kernel_functions:
+- iv_dependent_matmul

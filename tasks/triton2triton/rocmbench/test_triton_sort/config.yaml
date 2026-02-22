@@ -1,0 +1,48 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_triton_sort.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_triton_sort.py -k "not test_performance and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_triton_sort.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `sort_kernel`. Your task is to complete the\
+    \ kernel code. Only optimize the kernel code in the function definition, DONT\
+    \ remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list.\n\
+    \nThis kernel, `sort_kernel`,  Sorts each row of a 2D input tensor independently.\n\
+    \n**Your objective is to optimize the body of `sort_kernel`.**\n\nYou must ensure\
+    \ that:\n1.  All arguments received by `sort_kernel` are kept intact and not modified.\n\
+    2. Provide you final code in ```python code block. \nExample:\n```python\n<YOUR-CODE-HERE>\n\
+    ```\nThe full definition for `sort_kernel` and relevant helper utilities are provided\
+    \ in the context below. You only need to optimize the code for `sort_kernel` whilst\
+    \ keeping other things intact. DONT remove Imports and HELPER utils.\n\n########################################\
+    \ Imports ########################################\nimport pytest\nimport torch\n\
+    import triton\nimport triton.language as tl\nimport numpy as np\n########################################\
+    \ Imports ########################################\n\n@triton.jit\ndef sort_kernel(X,\
+    \ Z, N: tl.constexpr, M: tl.constexpr, descending: tl.constexpr):\n    \"\"\"\n\
+    \    Sorts each row of a 2D input tensor independently.\n\n    This kernel loads\
+    \ a 2D block of data of shape (N, M) from the input tensor X.\n    It then sorts\
+    \ each of the N rows (each of length M) independently.\n    The sorted rows are\
+    \ stored in the output tensor Z.\n    The sorting order (ascending or descending)\
+    \ is determined by the `descending` flag.\n\n    Parameters\n    ----------\n\
+    \    X : tl.pointer_type\n        Pointer to the input tensor. The kernel expects\
+    \ to read a 2D block of data\n        logically arranged as N rows and M columns.\n\
+    \    Z : tl.pointer_type\n        Pointer to the output tensor. The sorted 2D\
+    \ block of data (N rows, M columns)\n        will be stored here.\n    N : tl.constexpr\n\
+    \        A compile-time constant representing the number of rows in the 2D block\
+    \ to be processed.\n        Each of these N rows will be sorted independently.\n\
+    \    M : tl.constexpr\n        A compile-time constant representing the number\
+    \ of columns (elements per row)\n        in the 2D block. Sorting is performed\
+    \ along this dimension for each row.\n    descending : tl.constexpr\n        A\
+    \ compile-time constant boolean. If True, each row is sorted in descending order.\n\
+    \        If False, each row is sorted in ascending order.\n    \"\"\"\n\n    #\
+    \ Your code here\n\n"
+  source_code: null
+source_file_path:
+- test_triton_sort.py
+target_kernel_functions:
+- sort_kernel

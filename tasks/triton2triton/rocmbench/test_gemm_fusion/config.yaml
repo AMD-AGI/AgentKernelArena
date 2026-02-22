@@ -1,0 +1,73 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_gemm_fusion.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_gemm_fusion.py -k "not test_performance and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_gemm_fusion.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `gemm_fusion_kernel`. Your task is to complete\
+    \ the kernel code. Only optimize the kernel code in the function definition, DONT\
+    \ remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list.\n\
+    \nThis kernel, `gemm_fusion_kernel`,  is designed to perform a fused matrix multiplication\
+    \ operation.\n\n**Your objective is to optimize the body of `gemm_fusion_kernel`.**\n\
+    \nYou must ensure that:\n1.  All arguments received by `gemm_fusion_kernel` are\
+    \ kept intact and not modified.\n2. Provide you final code in ```python code block.\
+    \ \nExample:\n```python\n<YOUR-CODE-HERE>\n```\nThe full definition for `gemm_fusion_kernel`\
+    \ and relevant helper utilities are provided in the context below. You only need\
+    \ to optimize the code for `gemm_fusion_kernel` whilst keeping other things intact.\n\
+    \n\n######################################## Imports #######################################\n\
+    import pytest\nimport torch\n\nimport triton\nimport triton.language as tl\n\n\
+    ######################################## Imports #######################################\n\
+    \n\n\n@triton.jit\ndef gemm_fusion_kernel(A, B, C, E,  #\n                   \
+    \    M, N, K,  #\n                       stride_am, stride_ak, stride_bn, stride_bk,\
+    \ stride_cn, stride_ck, stride_em, stride_ek,  #\n                       BLOCK_M:\
+    \ tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr):\n    \"\"\"\n \
+    \   This Triton kernel is designed to perform a fused matrix multiplication operation.\n\
+    \    It computes E = (A @ B^T) @ C, where A, B, C, and E are matrices.\n    The\
+    \ computation is performed in a tiled manner to optimize for memory access patterns\n\
+    \    and leverage the parallelism of GPU architectures.\n\n    Each program instance\
+    \ (kernel launch) processes a tile of the output matrix E,\n    corresponding\
+    \ to a `BLOCK_M` strip of rows from matrix A. It iterates over\n    tiles of B\
+    \ and C along their N dimension to compute the intermediate product\n    (A_tile\
+    \ @ B_tile^T) and then accumulates the result with C_tile into E_tile.\n\n   \
+    \ Args:\n        A: Pointer to the input matrix A. Expected shape (M, K_common).\n\
+    \        B: Pointer to the input matrix B. Expected shape (N, K_common).\n   \
+    \     C: Pointer to the input matrix C. Expected shape (N, K_out).\n        E:\
+    \ Pointer to the output matrix E, where the result E = (A @ B^T) @ C is stored.\
+    \ Expected shape (M, K_out).\n        M: The number of rows in matrix A and matrix\
+    \ E.\n        N: The number of rows in matrix B and matrix C. This is also the\
+    \ dimension\n           over which the product (A @ B^T) and C are contracted.\n\
+    \        K: This parameter represents two potentially different dimensions depending\
+    \ on context,\n           but given the block shapes, it is used as K_common for\
+    \ A and B, and K_out for C and E.\n           Specifically:\n           - For\
+    \ A and B, it's the common dimension (K_common) for A @ B^T.\n           - For\
+    \ C and E, it's the output column dimension (K_out).\n           The kernel structure\
+    \ (BLOCK_K used for all) implies K_common == K_out.\n        stride_am: The stride\
+    \ (in number of elements) for matrix A along the M dimension (row stride).\n \
+    \       stride_ak: The stride (in number of elements) for matrix A along the K\
+    \ dimension (column stride).\n        stride_bn: The stride (in number of elements)\
+    \ for matrix B along the N dimension (row stride).\n        stride_bk: The stride\
+    \ (in number of elements) for matrix B along the K dimension (column stride).\n\
+    \        stride_cn: The stride (in number of elements) for matrix C along the\
+    \ N dimension (row stride).\n        stride_ck: The stride (in number of elements)\
+    \ for matrix C along the K dimension (column stride).\n        stride_em: The\
+    \ stride (in number of elements) for matrix E along the M dimension (row stride).\n\
+    \        stride_ek: The stride (in number of elements) for matrix E along the\
+    \ K dimension (column stride).\n        BLOCK_M: tl.constexpr, the tile size for\
+    \ the M dimension. Each kernel instance\n                   processes a block\
+    \ of `BLOCK_M` rows from A and E.\n        BLOCK_N: tl.constexpr, the tile size\
+    \ for the N dimension. The kernel iterates\n                   over B and C in\
+    \ blocks of `BLOCK_N` along their N dimension.\n        BLOCK_K: tl.constexpr,\
+    \ the tile size for the K dimension. This is the block size\n                \
+    \   for the common dimension in A@B^T and the output column dimension\n      \
+    \             for C and E.\n    \"\"\"\n    # Your code here\n\n\n"
+  source_code: null
+source_file_path:
+- test_gemm_fusion.py
+target_kernel_functions:
+- gemm_fusion_kernel

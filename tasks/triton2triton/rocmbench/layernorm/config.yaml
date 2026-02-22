@@ -1,0 +1,78 @@
+compile_command:
+- python -c "import ast; ast.parse(open('layernorm.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 layernorm.py -k "not test_performance and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 layernorm.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `layernorm_kernel`. Your task is to complete\
+    \ the kernel code. Only optimize the kernel code in the function definition, DONT\
+    \ remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list\
+    \ ,\n\nThis kernel, `layernorm_kernel`,  is designed to perform layer normalization\
+    \ on the input tensor.\n\n**Your objective is to optimize the body of `layernorm_kernel`.**\n\
+    \nYou must ensure that:\n1.  All arguments received by `layernorm_kernel` are\
+    \ kept intact and not modified.\n2. Provide you final code in ```python code block.\
+    \ \nExample:\n```python\n<YOUR-CODE-HERE>\n```\n\n\nThe full definition for `layernorm_kernel`\
+    \ and relevant helper utilities are provided in the context below. You only need\
+    \ to optimize the code for `layernorm_kernel` whilst keeping other things intact.\n\
+    \n\nimport argparse  \nimport sys  \nimport pytest  \n\nimport torch  \nimport\
+    \ triton  \nimport triton.language as tl  \nimport os  \nimport json  \nimport\
+    \ math  \nfrom itertools import product  \n\n########################################\
+    \ HELPERS utils ######################################## \ndef is_cuda():  \n\
+    \    return triton.runtime.driver.active.get_current_target().backend == \"cuda\"\
+    \  \n\n\ndef is_hip():  \n    return triton.runtime.driver.active.get_current_target().backend\
+    \ == \"hip\"  \n\n\ndef get_cuda_autotune_config():  \n    return [  \n      \
+    \  triton.Config({}, num_warps=4, num_stages=1),  \n        triton.Config({},\
+    \ num_warps=8, num_stages=1),  \n        triton.Config({}, num_warps=16, num_stages=1),\
+    \  \n    ]  \n\n\ndef get_hip_autotune_config():  \n    return [  \n        triton.Config({'waves_per_eu':\
+    \ we}, num_warps=wa, num_stages=1) for we, wa in product([1, 2, 4], [4, 8, 16])\
+    \  \n    ]  \n\n\ndef get_autotune_config():  \n    if is_cuda():  \n        return\
+    \ get_cuda_autotune_config()  \n    else:  \n        return get_hip_autotune_config()\
+    \  \n\n######################################## HELPERS utils ########################################\
+    \ \n@triton.autotune(configs=get_autotune_config(), key=['n_rows', 'n_cols'],\
+    \ use_cuda_graph=True)  \n@triton.jit  \ndef layernorm_kernel(x_ptr, y_ptr, w_ptr,\
+    \ b_ptr, mean_ptr, rstd_ptr, x_row_stride, y_row_stride, n_rows, n_cols, eps,\
+    \  \n                     BLOCK_SIZE: tl.constexpr):  \n  \"\"\"  \n  Performs\
+    \ Layer Normalization on an input tensor.  \n\n  This kernel normalizes each row\
+    \ of the input tensor `x` independently.  \n  For each row, it calculates the\
+    \ mean and variance across its columns (features).  \n  It then normalizes the\
+    \ row using these statistics, applies a learnable affine  \n  transformation (scale\
+    \ `w` and bias `b`), and stores the result in `y`.  \n  The per-row mean and reciprocal\
+    \ standard deviation (rstd) are also stored.  \n\n  Args:  \n      x_ptr (triton.language.tensor):\
+    \ Pointer to the input tensor of shape (n_rows, n_cols).  \n      y_ptr (triton.language.tensor):\
+    \ Pointer to the output tensor of shape (n_rows, n_cols),  \n                \
+    \                      where the normalized and transformed data will be stored.\
+    \  \n      w_ptr (triton.language.tensor): Pointer to the weight tensor (gamma)\
+    \ of shape (n_cols).  \n                                      Used for scaling\
+    \ the normalized input.  \n      b_ptr (triton.language.tensor): Pointer to the\
+    \ bias tensor (beta) of shape (n_cols).  \n                                  \
+    \    Used for shifting the normalized input.  \n      mean_ptr (triton.language.tensor):\
+    \ Pointer to a tensor of shape (n_rows) where the  \n                        \
+    \                 calculated mean for each row will be stored.  \n      rstd_ptr\
+    \ (triton.language.tensor): Pointer to a tensor of shape (n_rows) where the  \n\
+    \                                         calculated reciprocal standard deviation\
+    \  \n                                         (1/sqrt(variance + eps)) for each\
+    \ row will be stored.  \n      x_row_stride (int): The stride (number of elements)\
+    \ to move from one row  \n                          to the next in the `x_ptr`\
+    \ tensor.  \n      y_row_stride (int): The stride (number of elements) to move\
+    \ from one row  \n                          to the next in the `y_ptr` tensor.\
+    \  \n      n_rows (int): The number of rows in the input tensor `x`. Each row\
+    \ is  \n                    processed independently by a separate program instance.\
+    \  \n      n_cols (int): The number of columns (features) in the input tensor\
+    \ `x`.  \n                    Normalization is performed across these columns\
+    \ for each row.  \n      eps (float): A small constant added to the variance for\
+    \ numerical stability  \n                   before calculating the reciprocal\
+    \ square root.  \n      BLOCK_SIZE (tl.constexpr): A compile-time constant defining\
+    \ the size of blocks  \n                                 used to process columns.\
+    \ This influences how data is  \n                                 loaded and processed\
+    \ in parallel within a row.  \n  \"\"\"  \n    # Your code here.\n\n\n"
+  source_code: null
+source_file_path:
+- layernorm.py
+target_kernel_functions:
+- layernorm_kernel

@@ -1,0 +1,82 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_tma_store_gemm.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_tma_store_gemm.py -k "not test_performance and not
+  test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_tma_store_gemm.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `matmul_tma_load_store`. Your task is to complete\
+    \ the kernel code. Only optimize the kernel code in the function definition, DONT\
+    \ remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list.\n\
+    \nThis kernel, `matmul_tma_load_store`,  performs a single block matrix multiplication\
+    \ (C = A @ B) using Triton's block pointers using TMA (Tensor Memory Accelerator).\n\
+    \n**Your objective is to optimize the body of `matmul_tma_load_store`.**\n\n\
+    You must ensure that:\n1.  All arguments received by `matmul_tma_load_store` are\
+    \ kept intact and not modified.\n2. Provide you final code in ```python code block.\
+    \ \nExample:\n```python\n<YOUR-CODE-HERE>\n```\nThe full definition for `matmul_tma_load_store`\
+    \ and relevant helper utilities are provided in the context below. You only need\
+    \ to optimize the code for `matmul_tma_load_store` whilst keeping other things\
+    \ intact. DONT remove Imports and HELPER utils.\n\n########################################\
+    \ Imports ########################################\n\nimport pytest\nimport torch\n\
+    from torch.testing import assert_close\n\nimport triton\nimport triton.language\
+    \ as tl\n######################################## Imports ########################################\n\
+    \n\n@triton.jit\ndef matmul_tma_load_store(\n    a_ptr, b_ptr, c_ptr,\n    M,\
+    \ N, K,\n    stride_am, stride_ak,\n    stride_bk, stride_bn,\n    stride_cm,\
+    \ stride_cn,\n    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,\n\
+    \    OUTPUT_F16: tl.constexpr\n):\n    \"\"\"\n    Performs a single block matrix\
+    \ multiplication (C = A @ B) using Triton's\n    block pointers, potentially leveraging\
+    \ TMA (Tensor Memory Accelerator)\n    for efficient loads and stores on compatible\
+    \ hardware.\n\n    This kernel is designed to compute one `BLOCK_M x BLOCK_N`\
+    \ tile of the output matrix C.\n    Specifically, it loads a `BLOCK_M x BLOCK_K`\
+    \ tile from matrix A (starting from `a_ptr`\n    at offset (0,0)) and a `BLOCK_K\
+    \ x BLOCK_N` tile from matrix B (starting from `b_ptr`\n    at offset (0,0)).\
+    \ It then computes their dot product and stores the resulting\n    `BLOCK_M x\
+    \ BLOCK_N` tile into matrix C (starting at `c_ptr` at offset (0,0)).\n\n    The\
+    \ kernel uses `tl.load` and `tl.store` with block pointers configured as follows:\n\
+    \    - Matrix A's tile is loaded assuming a row-major layout within the block\
+    \ (`order=(1,0)`).\n    - Matrix B's tile is loaded assuming a column-major layout\
+    \ within the block (`order=(0,1)`),\n      which is often beneficial for dot product\
+    \ operations.\n    - Matrix C's tile is stored assuming a row-major layout within\
+    \ the block (`order=(1,0)`).\n\n    Input matrices A and B are expected to have\
+    \ data types suitable for `tl.dot`\n    (e.g., tl.float16, tl.bfloat16, tl.float32).\
+    \ The accumulation for the dot\n    product is typically performed in tl.float32.\n\
+    \n    Args:\n        a_ptr: Pointer to the base of the input matrix A in global\
+    \ memory.\n        b_ptr: Pointer to the base of the input matrix B in global\
+    \ memory.\n        c_ptr: Pointer to the base of the output matrix C in global\
+    \ memory.\n        M (int): The total number of rows in the full matrix A and\
+    \ matrix C. Used for boundary checks.\n        N (int): The total number of columns\
+    \ in the full matrix B and matrix C. Used for boundary checks.\n        K (int):\
+    \ The total number of columns in the full matrix A and rows in matrix B\n    \
+    \             (the common dimension for matrix multiplication). Used for boundary\
+    \ checks.\n        stride_am (int): Stride in number of elements to move from\
+    \ one row to the next in matrix A.\n        stride_ak (int): Stride in number\
+    \ of elements to move from one column to the next in matrix A.\n        stride_bk\
+    \ (int): Stride in number of elements to move from one row to the next in matrix\
+    \ B.\n        stride_bn (int): Stride in number of elements to move from one column\
+    \ to the next in matrix B.\n        stride_cm (int): Stride in number of elements\
+    \ to move from one row to the next in matrix C.\n        stride_cn (int): Stride\
+    \ in number of elements to move from one column to the next in matrix C.\n   \
+    \     BLOCK_M (tl.constexpr): The height (number of rows) of the tile to be processed\
+    \ from matrix A\n                                and written to matrix C. This\
+    \ defines the M-dimension of the block.\n        BLOCK_N (tl.constexpr): The width\
+    \ (number of columns) of the tile to be processed from matrix B\n            \
+    \                    and written to matrix C. This defines the N-dimension of\
+    \ the block.\n        BLOCK_K (tl.constexpr): The width (number of columns) of\
+    \ the tile from matrix A, and height\n                                (number\
+    \ of rows) of the tile from matrix B. This defines the\n                     \
+    \           K-dimension of the blocks used in the dot product.\n        OUTPUT_F16\
+    \ (tl.constexpr): A boolean flag. If True, the resulting C tile is cast to\n \
+    \                                  `tl.float16` before being stored. Otherwise,\
+    \ it is stored\n                                   in the accumulation data type\
+    \ (typically `tl.float32`).\n    \"\"\"\n    # Your code here\n\n"
+  source_code: null
+source_file_path:
+- test_tma_store_gemm.py
+target_kernel_functions:
+- matmul_tma_load_store

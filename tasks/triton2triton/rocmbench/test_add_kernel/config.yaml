@@ -1,0 +1,49 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_add_kernel.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_add_kernel.py -k "not test_performance and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_add_kernel.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `add_kernel` kernels. Your task is to complete\
+    \ the kernel code. Only optimize the kernel code in the function definition, DONT\
+    \ remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list.\n\
+    \nThese kernels, `add_kernel`,  performs element-wise addition of two 1D tensors.\n\
+    \n**Your objective is to optimize the body of both the kernels `add_kernel`.**\n\
+    \nYou must ensure that:\n1.  All arguments received by `matmul_kernel and mxfp_to_bf16_kernel`\
+    \ are kept intact and not modified.\n2. Provide you final code in ```python code\
+    \ block. \nExample:\n```python\n<YOUR-CODE-HERE>\n```\nThe full definitions for\
+    \ `add_kernel` and relevant helper utilities are provided in the context below.\
+    \ You only need to optimize the code for `add_kernel` whilst keeping other things\
+    \ intact. DONT remove Imports and HELPER utils.\n\n########################################\
+    \ Imports ########################################\nimport pytest\nimport torch\n\
+    from torch.testing import assert_close\n\nimport triton\nimport triton.language\
+    \ as tl\n\ndtype_mapping = {\n    'float16': torch.float16,\n    'float32': torch.float32,\n\
+    }\n######################################## Imports ########################################\n\
+    \n\n@triton.jit\ndef add_kernel(\n    x_ptr,\n    y_ptr,\n    output_ptr,\n  \
+    \  n_elements,\n    BLOCK_SIZE: tl.constexpr,\n):\n    \"\"\"\n    Performs element-wise\
+    \ addition of two 1D tensors, `x` and `y`,\n    and stores the result in `output`.\
+    \ Boundary checks are handled using a mask to ensure that\n    operations are\
+    \ only performed on valid elements within the tensor's\n    `n_elements` bounds.\n\
+    \n    Parameters\n    ----------\n    x_ptr\n        Pointer to the first input\
+    \ tensor (x).\n        The elements from this tensor will be added.\n    y_ptr\n\
+    \        Pointer to the second input tensor (y).\n        The elements from this\
+    \ tensor will be added.\n    output_ptr\n        Pointer to the output tensor\
+    \ where the result of x + y is stored.\n    n_elements\n        The total number\
+    \ of elements in the input and output tensors.\n        This is used to ensure\
+    \ that memory accesses are within bounds.\n    BLOCK_SIZE : tl.constexpr\n   \
+    \     The size of the block that each program instance will process.\n       \
+    \ This is a compile-time constant and dictates how many elements\n        are\
+    \ loaded, processed, and stored together by a single program\n        instance\
+    \ in the Triton kernel. It should typically be a power of two.\n    \"\"\"\n \
+    \   # Your code here\n\n"
+  source_code: null
+source_file_path:
+- test_add_kernel.py
+target_kernel_functions:
+- add_kernel

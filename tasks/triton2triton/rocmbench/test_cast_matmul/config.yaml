@@ -1,0 +1,65 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_cast_matmul.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_cast_matmul.py -k "not test_performance and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_cast_matmul.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `matmul_kernel`. Your task is to complete the\
+    \ kernel code. Only optimize the kernel code in the function definition, DONT\
+    \ remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list.\n\
+    \nThis kernel, `matmul_kernel`,  is designed to perform a matrix multiplication\
+    \ (C = A @ B) using a tiled approach.\n\n**Your objective is to optimize the\
+    \ body of `matmul_kernel`.**\n\nYou must ensure that:\n1.  All arguments received\
+    \ by `matmul_kernel` are kept intact and not modified.\n2. Provide you final code\
+    \ in ```python code block. \nExample:\n```python\n<YOUR-CODE-HERE>\n```\nThe full\
+    \ definition for `matmul_kernel` and relevant helper utilities are provided in\
+    \ the context below. You only need to optimize the code for `matmul_kernel` whilst\
+    \ keeping other things intact.\n\n######################################## Imports#######################################\n\
+    import pytest\nimport torch\n\nimport triton\nimport triton.language as tl\n########################################\
+    \ Imports#######################################\n\n########################################\
+    \ HELPERS utils ########################################\ninput_dtypes = [\"float16\"\
+    , \"float32\", \"float64\"]\nout_dtypes = [\"float16\", \"float32\"]\n########################################\
+    \ HELPERS utils ########################################\n\n\n@triton.jit\ndef\
+    \ matmul_kernel(\n    A,  # Pointer to the first input matrix (M x K).\n    B,\
+    \  # Pointer to the second input matrix (K x N).\n    C,  # Pointer to the output\
+    \ matrix (M x N). The element type of C also dictates the type to which input\
+    \ tiles `a` and `b` are cast before `tl.dot`.\n    M,  # Number of rows in matrix\
+    \ A and C.\n    N,  # Number of columns in matrix B and C.\n    K,  # Number of\
+    \ columns in matrix A and rows in matrix B (the shared dimension).\n    stride_am,\
+    \  # Stride for matrix A along the M dimension (row stride).\n    stride_ak, \
+    \ # Stride for matrix A along the K dimension (column stride).\n    stride_bk,\
+    \  # Stride for matrix B along the K dimension (row stride).\n    stride_bn, \
+    \ # Stride for matrix B along the N dimension (column stride).\n    stride_cm,\
+    \  # Stride for matrix C along the M dimension (row stride).\n    stride_cn, \
+    \ # Stride for matrix C along the N dimension (column stride).\n    dot_out_dtype:\
+    \ tl.constexpr,  # The data type used for the accumulator in the `tl.dot` operation.\
+    \ This is a compile-time constant.\n    BLOCK_M: tl.constexpr,  # Tile size for\
+    \ the M dimension (rows per block). This is a compile-time constant.\n    BLOCK_N:\
+    \ tl.constexpr,  # Tile size for the N dimension (columns per block). This is\
+    \ a compile-time constant.\n    BLOCK_K: tl.constexpr,  # Tile size for the K\
+    \ dimension (inner dimension per block). This is a compile-time constant.\n  \
+    \  GROUP_M: tl.constexpr,  # Grouping factor for the M dimension to improve L2\
+    \ cache performance. This is a compile-time constant.\n):\n    \"\"\"\n    Performs\
+    \ a matrix multiplication (C = A @ B) using a tiled approach.\n\n    This kernel\
+    \ is designed to test mixed precision capabilities, specifically focusing\n  \
+    \  on how `tl.dot` interacts with `tl.to` (cast) operations.\n    Input tiles\
+    \ from matrices A and B are loaded, then explicitly cast to the\n    element type\
+    \ of the output matrix C before the `tl.dot` operation.\n    The accumulation\
+    \ within `tl.dot` is performed using the specified `dot_out_dtype`.\n    Finally,\
+    \ the accumulated tile is cast to the element type of matrix C before\n    being\
+    \ stored.\n\n    The tiling strategy involves dividing the M and N dimensions\
+    \ into blocks of\n    size `BLOCK_M` and `BLOCK_N` respectively. The K dimension\
+    \ is processed in\n    chunks of `BLOCK_K`. Program IDs are re-ordered using `GROUP_M`\
+    \ to\n    potentially improve L2 cache locality.\n    \"\"\"\n    # Your code\
+    \ here\n"
+  source_code: null
+source_file_path:
+- test_cast_matmul.py
+target_kernel_functions:
+- matmul_kernel

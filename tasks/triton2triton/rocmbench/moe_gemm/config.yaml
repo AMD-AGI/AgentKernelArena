@@ -1,0 +1,50 @@
+compile_command:
+- python -c "import ast; ast.parse(open('moe_gemm.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 moe_gemm.py -k "not test_performance and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 moe_gemm.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ a instruction/function definition of the required kernel : moe-gemm, your task\
+    \ is to optimize the kernel code for the corresponding operator/function definition\
+    \ using triton programming language. Only optimize the kernel code in the function definition, DONT remove any python imports in the instruction provided, DONT\
+    \ change/interfere with the provided function definition and parameter list ,only\
+    \ add if required. :\n\nimport triton  \nimport triton.language as tl  \n\n\n\
+    @triton.jit  \ndef moe_gemm_kernel(  \n    A,  \n    B,  \n    Out,  \n    A_scale,\
+    \  \n    B_scale,  \n    stride_am,  \n    stride_ak,  \n    stride_be,  \n  \
+    \  stride_bn,  \n    stride_bk,  \n    stride_cm,  \n    stride_cn,  \n    stride_bse,\
+    \  \n    stride_bsn,  \n    top_k: tl.constexpr,  \n    topk_weights_ptr,  \n\
+    \    sorted_token_ids_ptr,  \n    expert_ids_ptr,  \n    EM: tl.constexpr,  \n\
+    \    N: tl.constexpr,  \n    K: tl.constexpr,  \n    EVEN_K: tl.constexpr,  \n\
+    \    MUL_ROUTED_WEIGHT: tl.constexpr,  \n    use_fp8_w8a8: tl.constexpr,  \n \
+    \   use_int8_w8a16: tl.constexpr,  \n    use_int8_w8a8: tl.constexpr,  \n    BLOCK_SIZE_M:\
+    \ tl.constexpr,  \n    BLOCK_SIZE_N: tl.constexpr,  \n    BLOCK_SIZE_K: tl.constexpr,\
+    \  \n    GROUP_SIZE_M: tl.constexpr,  \n):  \n    \"\"\"  \n    Implements the\
+    \ fused computation for a Mixture of Experts (MOE) using  \n    token and expert\
+    \ matrices.  \n\n    Key Parameters:  \n    - A: The input tensor representing\
+    \ tokens with shape (*, K), where '*' can  \n        be any shape representing\
+    \ batches and K is the feature dimension of  \n        each token.  \n    - B:\
+    \ The stacked MOE weight tensor with shape (E, N, K), where E is  \n        the\
+    \ number of experts, K is the input feature dimension, and N is  \n        the\
+    \ output feature dimension.  \n    - C: The output cache tensor with shape (M,\
+    \ topk, N), where M is the  \n        total number of tokens post padding, topk\
+    \ is the number of times  \n        each token is repeated, and N is the output\
+    \ feature dimension.  \n    - sorted_token_ids: A tensor containing the sorted\
+    \ indices of tokens,  \n        repeated topk times and arranged by the expert\
+    \ index they are  \n        assigned to.  \n    - expert_ids: A tensor containing\
+    \ the indices of the expert for each  \n        block. It determines which expert\
+    \ matrix from B should be used for  \n        each block in A.  \n    This kernel\
+    \ performs the multiplication of a token by its corresponding  \n    expert matrix\
+    \ as determined by `expert_ids`. The sorting of  \n    `sorted_token_ids` by expert\
+    \ index and padding ensures divisibility by  \n    BLOCK_SIZE_M, which is necessary\
+    \ to maintain consistency in block matrix  \n    multiplication across different\
+    \ blocks processed by the same expert.  \n    \"\"\"  \n"
+  source_code: null
+source_file_path:
+- moe_gemm.py
+target_kernel_functions:
+- moe_gemm_kernel

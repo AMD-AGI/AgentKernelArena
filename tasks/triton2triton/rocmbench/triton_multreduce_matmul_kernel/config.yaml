@@ -1,0 +1,79 @@
+compile_command:
+- python -c "import ast; ast.parse(open('triton_multreduce_matmul_kernel.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 triton_multreduce_matmul_kernel.py -k "not test_performance
+  and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 triton_multreduce_matmul_kernel.py -k "test_performance
+  or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `triton_multreduce_matmul_kernel`. Your task\
+    \ is to optimize the kernel code for better performance while preserving correctness. Only optimize the kernel code in the function definition, DONT remove any python imports or helper utils in the instruction/code\
+    \ provided, DONT change/interfere with the provided function definition and parameter\
+    \ list ,\n\nThis kernel, `triton_multreduce_matmul_kernel`,  is designed to perform\
+    \ matrix multiplication by explicitly using element-wise multiplication followed\
+    \ by a reduction (summation), instead of relying on Triton's `tl.dot` intrinsic.\n\
+    \n**Your objective is to optimize the body of `triton_multreduce_matmul_kernel`.**\n\
+    \nYou must ensure that:\n1.  All arguments received by `triton_multreduce_matmul_kernel`\
+    \ (i.e., `a_ptr`, `b_ptr`, `c_ptr`, `bias_ptr`, `M`, `N`, `K`, all stride arguments,\
+    \ `BLOCK_SIZE_M`, `BLOCK_SIZE_N`, `BLOCK_SIZE_K`, `USE_BIAS`, and `EVEN_K`) are\
+    \ kept intact and not modified.\n2. Provide you final code in ```python code block.\
+    \ \nExample:\n```python\n<YOUR-CODE-HERE>\n```\n\n\nThe full definition for `triton_multreduce_matmul_kernel`\
+    \ and relevant helper utilities are provided in the context below. You only need\
+    \ to optimize the code for `triton_multreduce_matmul_kernel` whilst keeping other\
+    \ things.\n\n\n# Imports:\n# --------\n\nimport argparse\nimport itertools\nimport\
+    \ os\nimport sys\nfrom typing import Any, Callable, Optional\n\nimport pytest\n\
+    import torch\nfrom torch import Tensor\n\nimport triton\nimport triton.language\
+    \ as tl\n\n\n# Triton GEMM:\n# ------------\n\n######################## HELPER\
+    \ UTILS #####################\n# Autotune configurations for Triton GEMM implemented\
+    \ with explicit dot product.\ndef get_triton_multreduce_autotune_configs() ->\
+    \ list[triton.Config]:\n    block_size_k_range: list[int] = [128, 256, 512]\n\
+    \    kpack_range: list[int] = [1, 2]\n    return [\n        triton.Config(\n \
+    \           {\"BLOCK_SIZE_M\": 1, \"BLOCK_SIZE_N\": 64, \"BLOCK_SIZE_K\": block_size_k,\
+    \ \"waves_per_eu\": 0, \"kpack\": kpack},\n            num_warps=8, num_stages=2)\
+    \ for block_size_k, kpack in itertools.product(block_size_k_range, kpack_range)\n\
+    \    ]\n\n\ndef get_triton_autotune_key() -> list[str]:\n    return [\"M\", \"\
+    N\", \"K\"]\n\n\ndef get_triton_heuristics() -> dict[str, Callable[[dict[str,\
+    \ Any]], Any]]:\n    return {\"EVEN_K\": lambda args: args[\"K\"] % args[\"BLOCK_SIZE_K\"\
+    ] == 0}\n\n######################## HELPER UTILS #####################\n\n\n#\
+    \ Triton GEMM kernel implemented with explicit dot product.\n@triton.autotune(configs=get_triton_multreduce_autotune_configs(),\
+    \ key=get_triton_autotune_key())\n@triton.heuristics(get_triton_heuristics())\n\
+    @triton.jit\ndef triton_multreduce_matmul_kernel(a_ptr, b_ptr, c_ptr, bias_ptr,\
+    \  #\n                                    M: int, N: int, K: int,  #\n       \
+    \                             stride_am: int, stride_ak: int,  #\n           \
+    \                         stride_bk: int, stride_bn: int,  #\n               \
+    \                     stride_cm: int, stride_cn: int,  #\n                   \
+    \                 stride_bias: int,  #\n                                    BLOCK_SIZE_M:\
+    \ tl.constexpr, BLOCK_SIZE_N: tl.constexpr,\n                                \
+    \    BLOCK_SIZE_K: tl.constexpr,  #\n                                    USE_BIAS:\
+    \ tl.constexpr, EVEN_K: tl.constexpr  #\n                                    ):\n\
+    \    \"\"\"  \n    Performs matrix multiplication (C = A @ B + bias) using an\
+    \ explicit  \n    element-wise multiplication followed by a reduction (summation)\
+    \ strategy,  \n    instead of `tl.dot()`.  \n\n    This kernel is a wrapper around\
+    \ `triton_matmul_kernel`, configured  \n    to use the non-`tl.dot` path by setting\
+    \ `USE_DOT=False`.  \n\n    Args:  \n        a_ptr: Pointer to the first input\
+    \ matrix A.  \n        b_ptr: Pointer to the second input matrix B.  \n      \
+    \  c_ptr: Pointer to the output matrix C.  \n        bias_ptr: Pointer to the\
+    \ bias vector/matrix.  \n        M: Number of rows in matrix A and C.  \n    \
+    \    N: Number of columns in matrix B and C.  \n        K: Number of columns in\
+    \ matrix A and rows in matrix B.  \n        stride_am: Stride for the M dimension\
+    \ of matrix A.  \n        stride_ak: Stride for the K dimension of matrix A. \
+    \ \n        stride_bk: Stride for the K dimension of matrix B.  \n        stride_bn:\
+    \ Stride for the N dimension of matrix B.  \n        stride_cm: Stride for the\
+    \ M dimension of matrix C.  \n        stride_cn: Stride for the N dimension of\
+    \ matrix C.  \n        stride_bias: Stride for the bias.  \n        BLOCK_SIZE_M\
+    \ (tl.constexpr): Tile size for the M dimension.  \n        BLOCK_SIZE_N (tl.constexpr):\
+    \ Tile size for the N dimension.  \n        BLOCK_SIZE_K (tl.constexpr): Tile\
+    \ size for the K dimension.  \n        USE_BIAS (tl.constexpr): If True, add bias\
+    \ to the result.  \n        EVEN_K (tl.constexpr): If True, K is evenly divisible\
+    \ by BLOCK_SIZE_K,  \n                               allowing for unmasked loads\
+    \ in the K loop.  \n    \"\"\"\n    # Your code here.\n\n\n"
+  source_code: null
+source_file_path:
+- triton_multreduce_matmul_kernel.py
+target_kernel_functions:
+- triton_multreduce_matmul_kernel

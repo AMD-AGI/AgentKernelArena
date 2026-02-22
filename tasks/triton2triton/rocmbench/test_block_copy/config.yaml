@@ -1,0 +1,55 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_block_copy.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_block_copy.py -k "not test_performance and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_block_copy.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `block_copy_kernel`. Your task is to complete\
+    \ the kernel code. Only optimize the kernel code in the function definition, DONT\
+    \ remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list.\n\
+    \nThis kernel, `block_copy_kernel`,  is designed to copy data using block pointers\
+    \ and, crucially, how out-of-bounds accesses are handled with different padding_options.\n\
+    \n**Your objective is to optimize the body of `block_copy_kernel`.**\n\nYou must\
+    \ ensure that:\n1.  All arguments received by `block_copy_kernel` are kept intact\
+    \ and not modified.\n2. Provide you final code in ```python code block. \nExample:\n\
+    ```python\n<YOUR-CODE-HERE>\n```\nThe full definition for `block_copy_kernel`\
+    \ and relevant helper utilities are provided in the context below. You only need\
+    \ to optimize the code for `block_copy_kernel` whilst keeping other things intact.\
+    \ DONT remove Imports and HELPER utils.\n\n########################################\
+    \ Imports ########################################\nimport pytest\nimport torch\n\
+    \nimport triton\nimport triton.language as tl\nimport os\n########################################\
+    \ Imports ########################################\n\n@triton.jit\ndef block_copy_kernel(a_ptr,\
+    \ b_ptr, N, BLOCK_SIZE: tl.constexpr, padding_option: tl.constexpr):\n    \"\"\
+    \"\n    Performs a block-wise copy from an input tensor 'a' to an output tensor\
+    \ 'b',\n    with a focus on testing padding behavior during out-of-bounds loads\
+    \ from 'a'.\n\n    This kernel is designed such that the input tensor 'a' is logically\
+    \ half the size\n    of the output tensor 'b' (i.e., 'a' has N // 2 elements,\
+    \ 'b' has N elements).\n    When loading data from 'a', if a block read extends\
+    \ beyond its N // 2 elements,\n    the 'padding_option' determines the values\
+    \ used for the out-of-bounds elements.\n    The loaded (and potentially padded)\
+    \ data is then stored into 'b'.\n\n    Args:\n        a_ptr (tl.tensor): Pointer\
+    \ to the input tensor 'a'. Data will be loaded from here.\n        b_ptr (tl.tensor):\
+    \ Pointer to the output tensor 'b'. Data will be stored here.\n        N (int):\
+    \ The logical size of the output tensor 'b'. The input tensor 'a' is\n       \
+    \          assumed to be of logical size N // 2.\n        BLOCK_SIZE (tl.constexpr):\
+    \ The size of the data block to be processed (loaded and stored)\n           \
+    \                        by each program instance. This must be a compile-time\
+    \ constant.\n        padding_option (tl.constexpr): Specifies the padding behavior\
+    \ for out-of-bounds reads\n                                       from 'a_ptr'.\
+    \ Can be 'zero', 'nan', or other options\n                                   \
+    \    supported by tl.load. If None, default boundary behavior is used.\n     \
+    \                                  This must be a compile-time constant.\n   \
+    \ \"\"\"\n    # Kernel implementation to be filled.\n    # The goal is to load\
+    \ a block from a_ptr (with potential padding)\n    # and store it to b_ptr.\n\n\
+    \    # Your code here\n\n"
+  source_code: null
+source_file_path:
+- test_block_copy.py
+target_kernel_functions:
+- block_copy_kernel

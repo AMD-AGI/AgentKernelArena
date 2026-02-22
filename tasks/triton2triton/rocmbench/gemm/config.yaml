@@ -1,0 +1,122 @@
+compile_command:
+- python -c "import ast; ast.parse(open('gemm.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 gemm.py -k "not test_performance and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 gemm.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `matmul_kernel`. Your task is to complete the\
+    \ kernel code. Only optimize the kernel code in the function definition, DONT\
+    \ remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list\
+    \ ,\n\nThis kernel, `matmul_kernel`,  is designed to perform matrix multiplication\
+    \ C = A x B using a tiled approach.\n\n**Your objective is to optimize the body\
+    \ of `matmul_kernel`.**\n\nYou must ensure that:\n1.  All arguments received by\
+    \ `matmul_kernel` are kept intact and not modified.\n2. Provide you final code\
+    \ in ```python code block. \nExample:\n```python\n<YOUR-CODE-HERE>\n```\n\n\n\
+    The full definition for `matmul_kernel` and relevant helper utilities are provided\
+    \ in the context below. You only need to optimize the code for `matmul_kernel`\
+    \ whilst keeping other things intact.\n\n\nimport torch\nimport triton\nimport\
+    \ triton.language as tl\nimport sys\nimport argparse\nimport pytest\nimport re\n\
+    \n# This is a Triton kernel for matrix multiplication (GEMM) with support for\
+    \ various data types and scaling modes.\n\n#################### Helper utils functions\
+    \ ####################\n# Activation function.  \n@triton.jit  \ndef leaky_relu(x):\
+    \  \n    x = x + 1  \n    return tl.where(x >= 0, x, 0.01 * x)  \n####################\
+    \ Helper utils functions ####################\n\n\n\n@triton.autotune(  \n   \
+    \ configs=[  \n        triton.Config(  \n            {  \n                'BLOCK_SIZE_M':\
+    \ 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 4, 'waves_per_eu':\
+    \ 2,  \n                'kpack': 2, 'matrix_instr_nonkdim': 16  \n           \
+    \ }, num_warps=4, num_stages=2),  \n        triton.Config(  \n            {  \n\
+    \                'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64,\
+    \ 'GROUP_SIZE_M': 4, 'waves_per_eu': 2,  \n                'kpack': 2, 'matrix_instr_nonkdim':\
+    \ 16  \n            }, num_warps=8, num_stages=2),  \n        triton.Config( \
+    \ \n            {'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 128,\
+    \ 'GROUP_SIZE_M': 4, 'waves_per_eu': 0},  \n            num_warps=8, num_stages=2),\
+    \  \n        triton.Config(  \n            {  \n                'BLOCK_SIZE_M':\
+    \ 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 4, 'waves_per_eu':\
+    \ 2,  \n                'kpack': 1, 'matrix_instr_nonkdim': 16  \n           \
+    \ }, num_warps=8, num_stages=2),  \n        triton.Config(  \n            {  \n\
+    \                'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64,\
+    \ 'GROUP_SIZE_M': 1, 'waves_per_eu': 0,  \n                'kpack': 1  \n    \
+    \        }, num_warps=8, num_stages=2),  \n        triton.Config(  \n        \
+    \    {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M':\
+    \ 4, 'waves_per_eu': 0},  \n            num_warps=8, num_stages=2),  \n      \
+    \  triton.Config(  \n            {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K':\
+    \ 32, 'GROUP_SIZE_M': 1, 'waves_per_eu': 2},  \n            num_warps=8, num_stages=2),\
+    \  \n    ],  \n    key=['M', 'N', 'K'],  \n    use_cuda_graph=True,  \n)  \n@triton.heuristics({\
+    \  \n    'EVEN_K':  \n    lambda args: args['K'] % args['BLOCK_SIZE_K'] == 0,\
+    \ 'GRID_MN':  \n    lambda args: triton.cdiv(args['M'], args['BLOCK_SIZE_M'])\
+    \ * triton.cdiv(args['N'], args['BLOCK_SIZE_N'])  \n})  \n@triton.jit  \ndef matmul_kernel(\n\
+    \    a_ptr,\n    b_ptr,\n    c_ptr,\n    M,\n    N,\n    K,\n    stride_am,\n\
+    \    stride_ak,\n    stride_bk,\n    stride_bn,\n    stride_cm,\n    stride_cn,\n\
+    \    a_scale_ptr,\n    b_scale_ptr,\n    stride_ascale_m,\n    stride_ascale_k,\n\
+    \    stride_bscale_k,\n    stride_bscale_n,\n    # Meta-parameters\n    GROUP_K:\
+    \ tl.constexpr,\n    GROUP_N: tl.constexpr,\n    BLOCK_SIZE_M: tl.constexpr,\n\
+    \    BLOCK_SIZE_N: tl.constexpr,\n    BLOCK_SIZE_K: tl.constexpr,\n    EVEN_K:\
+    \ tl.constexpr,\n    GROUP_SIZE_M: tl.constexpr,\n    APPLY_SCALE: tl.constexpr,\n\
+    \    ACTIVATION: tl.constexpr,\n    GRID_MN: tl.constexpr,\n):\n    \"\"\"\n \
+    \   Computes the matrix multiplication C = A x B using a tiled approach.\n\n \
+    \   This kernel is designed for efficient matrix multiplication on GPUs,\n   \
+    \ incorporating features like block-wise computation, optional per-tensor or\n\
+    \    per-block scaling, optional activation functions, and program ID (PID)\n\
+    \    remapping for improved L2 cache utilization, particularly on multi-XCD\n\
+    \    (Cross-Chip Die) hardware.\n\n    Parameters:\n        a_ptr: Pointer to\
+    \ the input matrix A.\n        b_ptr: Pointer to the input matrix B.\n       \
+    \ c_ptr: Pointer to the output matrix C.\n        M: The number of rows in matrix\
+    \ A and matrix C.\n        N: The number of columns in matrix B and matrix C.\n\
+    \        K: The number of columns in matrix A and rows in matrix B (the reduction\
+    \ dimension).\n        stride_am: Stride for matrix A along the M dimension (row\
+    \ stride).\n        stride_ak: Stride for matrix A along the K dimension (column\
+    \ stride).\n        stride_bk: Stride for matrix B along the K dimension (row\
+    \ stride).\n        stride_bn: Stride for matrix B along the N dimension (column\
+    \ stride).\n        stride_cm: Stride for matrix C along the M dimension (row\
+    \ stride).\n        stride_cn: Stride for matrix C along the N dimension (column\
+    \ stride).\n        a_scale_ptr: Pointer to scale factors for matrix A. Used if\
+    \ `APPLY_SCALE` is 'tensor' or 'block'.\n                     If `APPLY_SCALE`\
+    \ is 'tensor', this points to a single scalar.\n                     If `APPLY_SCALE`\
+    \ is 'block', this points to a tensor of scales.\n        b_scale_ptr: Pointer\
+    \ to scale factors for matrix B. Used if `APPLY_SCALE` is 'tensor' or 'block'.\n\
+    \                     If `APPLY_SCALE` is 'tensor', this points to a single scalar.\n\
+    \                     If `APPLY_SCALE` is 'block', this points to a tensor of\
+    \ scales.\n        stride_ascale_m: Stride for A's scale tensor along its M-dimension\
+    \ (if `APPLY_SCALE` is 'block' and A scales are per-row-block).\n        stride_ascale_k:\
+    \ Stride for A's scale tensor along its K-dimension (if `APPLY_SCALE` is 'block'\
+    \ and A scales are per-K-group).\n        stride_bscale_k: Stride for B's scale\
+    \ tensor along its K-dimension (if `APPLY_SCALE` is 'block' and B scales are per-K-group).\n\
+    \        stride_bscale_n: Stride for B's scale tensor along its N-dimension (if\
+    \ `APPLY_SCALE` is 'block' and B scales are per-N-group).\n        GROUP_K (tl.constexpr):\
+    \ Grouping factor for the K dimension when `APPLY_SCALE` is 'block'.\n       \
+    \                         Scales for A and B are loaded based on K-groups of this\
+    \ size.\n        GROUP_N (tl.constexpr): Grouping factor for the N dimension when\
+    \ `APPLY_SCALE` is 'block' for matrix B.\n                                Scales\
+    \ for B are loaded based on N-groups of this size.\n        BLOCK_SIZE_M (tl.constexpr):\
+    \ The tile size for the M dimension processed by each kernel instance.\n     \
+    \   BLOCK_SIZE_N (tl.constexpr): The tile size for the N dimension processed by\
+    \ each kernel instance.\n        BLOCK_SIZE_K (tl.constexpr): The tile size for\
+    \ the K dimension (reduction dimension) processed in each inner loop.\n      \
+    \  EVEN_K (tl.constexpr): Boolean flag. If True, K is assumed to be perfectly\
+    \ divisible by `BLOCK_SIZE_K`.\n                               If False, boundary\
+    \ checks (masking) are applied when loading data along the K dimension.\n    \
+    \    GROUP_SIZE_M (tl.constexpr): Number of M-dimension blocks to group together\
+    \ for program ID mapping.\n                                     This influences\
+    \ L2 data reuse.\n        APPLY_SCALE (tl.constexpr): Specifies how scaling is\
+    \ applied.\n                                    - `None`: No scaling.\n      \
+    \                              - `'tensor'`: A single scale factor is applied\
+    \ to matrix A and another to matrix B.\n                                    -\
+    \ `'block'`: Scale factors are loaded and applied per block of A and/or B.\n \
+    \       ACTIVATION (tl.constexpr): Specifies the activation function to apply\
+    \ after the accumulation and scaling.\n                                   Example:\
+    \ \"leaky_relu\". If `None`, no activation is applied.\n        GRID_MN (tl.constexpr):\
+    \ The total number of program instances (PIDs) launched for the M and N dimensions.\n\
+    \                                This is typically `tl.cdiv(M, BLOCK_SIZE_M) *\
+    \ tl.cdiv(N, BLOCK_SIZE_N)`.\n                                Used for PID remapping\
+    \ across XCDs.\n    \"\"\"\n    # Your code here.\n\n\n"
+  source_code: null
+source_file_path:
+- gemm.py
+target_kernel_functions:
+- matmul_kernel

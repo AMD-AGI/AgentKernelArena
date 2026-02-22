@@ -1,0 +1,43 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_kernel_sub.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_kernel_sub.py -k "not test_performance and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_kernel_sub.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `kernel_sub`. Your task is to complete the kernel\
+    \ code. Only optimize the kernel code in the function definition, DONT remove\
+    \ any python imports or helper utils in the instruction/code provided, DONT change/interfere\
+    \ with the provided function definition and parameter list.\n\nThis kernel, `kernel_sub`,\
+    \  performs  element-wise operation: output[i] = a[i] - (b[i] * 777)\n\n**Your\
+    \ objective is to optimize the body of `kernel_sub`.**\n\nYou must ensure that:\n\
+    1.  All arguments received by `kernel_sub` are kept intact and not modified.\n\
+    2. Provide you final code in ```python code block. \nExample:\n```python\n<YOUR-CODE-HERE>\n\
+    ```\nThe full definition for `kernel_sub` and relevant helper utilities are provided\
+    \ in the context below. You only need to optimize the code for `kernel_sub` whilst\
+    \ keeping other things intact. DONT remove Imports and HELPER utils.\n\n########################################\
+    \ Imports ########################################\nimport multiprocessing\nimport\
+    \ shutil\nimport tempfile\nimport os\nimport pytest\n\nimport triton\nimport triton.language\
+    \ as tl\nfrom triton.backends.compiler import AttrsDescriptor\nfrom triton.compiler\
+    \ import ASTSource\n######################################## Imports ########################################\n\
+    \nimport triton\nimport triton.language as tl\n\n@triton.jit\ndef kernel_sub(a,\
+    \ b, o, N: tl.constexpr):\n    \"\"\"\n    Performs an element-wise operation:\
+    \ output[i] = a[i] - (b[i] * 777)\n    for N elements.\n\n    Parameters\n   \
+    \ ----------\n    a\n        Pointer to the first input tensor (minuend).\n  \
+    \      Its elements are loaded and used in the subtraction.\n    b\n        Pointer\
+    \ to the second input tensor (subtrahend).\n        Its elements are loaded, multiplied\
+    \ by 777, and then subtracted from 'a'.\n    o\n        Pointer to the output\
+    \ tensor.\n        The results of a[i] - (b[i] * 777) are stored here.\n    N\
+    \ : tl.constexpr\n        A compile-time constant specifying the number of elements\n\
+    \        to process in tensors a, b, and o. This typically corresponds\n     \
+    \   to the block size or a dimension of the tensors.\n    \"\"\"\n    # Your code\
+    \ here\n\n"
+  source_code: null
+source_file_path:
+- test_kernel_sub.py
+target_kernel_functions:
+- kernel_sub

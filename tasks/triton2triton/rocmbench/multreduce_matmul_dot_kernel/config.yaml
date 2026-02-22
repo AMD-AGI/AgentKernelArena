@@ -1,0 +1,71 @@
+compile_command:
+- python -c "import ast; ast.parse(open('multreduce_matmul_dot_kernel.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 multreduce_matmul_dot_kernel.py -k "not test_performance
+  and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 multreduce_matmul_dot_kernel.py -k "test_performance or
+  test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ a instruction/function definition of the required kernel : `triton_dot_matmul_kernel`,\
+    \ your task is to optimize the kernel code for the corresponding operator/function\
+    \ definition using triton programming language while preserving correctness. This kernel should implement a\
+    \ General Matrix Multiplication (GEMM) specifically using the tl.dot operation\
+    \ in triton and add necessary logic to use it. Only optimize the kernel code in\
+    \ the function definition, DONT remove any python imports or helper utils in the\
+    \ instruction/code provided, DONT change/interfere with the provided function\
+    \ definition and parameter list ,only add if required. :\nProvide you final code\
+    \ in ```python code block. \nExample:\n```python\n<YOUR-CODE-HERE>\n```\n\nThe\
+    \ full definition for `triton_dot_matmul_kernel` and relevant helper utilities\
+    \ are provided in the context below. You only need to optimize the code for `triton_dot_matmul_kernel`\
+    \ whilst keeping other things.\n\n\nimport argparse\nimport itertools\nimport\
+    \ os\nimport sys\nfrom typing import Any, Callable, Optional\n\nimport pytest\n\
+    import torch\nfrom torch import Tensor\n\nimport triton\nimport triton.language\
+    \ as tl\n\n######################## HELPER UTILS #####################\n\nAutotune\
+    \ configurations for Triton GEMM implemented with tl.dot.\n\ndef get_triton_dot_autotune_configs()\
+    \ -> list[triton.Config]:\nblock_size_n_range: list[int] = [16, 32]\nblock_size_k_range:\
+    \ list[int] = [128, 256, 512]\nkpack_range: list[int] = [1, 2]\nnum_warps_range:\
+    \ list[int] = [1, 2]\nreturn [\ntriton.Config(\n{\n\"BLOCK_SIZE_M\": 16, \"BLOCK_SIZE_N\"\
+    : block_size_n, \"BLOCK_SIZE_K\": block_size_k, \"waves_per_eu\": 0,\n\"matrix_instr_nonkdim\"\
+    : 16, \"kpack\": kpack\n}, num_warps=num_warps, num_stages=2) for block_size_n,\
+    \ block_size_k, kpack, num_warps in itertools.product(\nblock_size_n_range, block_size_k_range,\
+    \ kpack_range, num_warps_range)\n]\n\ndef get_triton_autotune_key() -> list[str]:\n\
+    return [\"M\", \"N\", \"K\"]\n\ndef get_triton_heuristics() -> dict[str, Callable[[dict[str,\
+    \ Any]], Any]]:\nreturn {\"EVEN_K\": lambda args: args[\"K\"] % args[\"BLOCK_SIZE_K\"\
+    ] == 0}\n\n###############################################################\n\n\
+    @triton.autotune(configs=get_triton_dot_autotune_configs(), key=get_triton_autotune_key())\n\
+    @triton.heuristics(get_triton_heuristics())\n@triton.jit\ndef triton_dot_matmul_kernel(a_ptr,\
+    \ b_ptr, c_ptr, bias_ptr,  #\nM: int, N: int, K: int,  #\nstride_am: int, stride_ak:\
+    \ int,  #\nstride_bk: int, stride_bn: int,  #\nstride_cm: int, stride_cn: int,\
+    \  #\nstride_bias: int,  #\nBLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr,\
+    \ BLOCK_SIZE_K: tl.constexpr,  #\nUSE_BIAS: tl.constexpr, EVEN_K: tl.constexpr\
+    \  #\n):\n\"\"\"\nPerforms a General Matrix Multiplication (GEMM) of the form\
+    \ C = A @ B + bias.\nThis kernel is specifically designed to use the tl.dot operation\
+    \ for the\ncore matrix multiplication.\n\nParameters:\n- a_ptr: Pointer to the\
+    \ A matrix (input).\n- b_ptr: Pointer to the B matrix (input).\n- c_ptr: Pointer\
+    \ to the C matrix (output).\n- bias_ptr: Pointer to the bias vector/matrix. Used\
+    \ only if USE_BIAS is True.\n- M: Number of rows in matrix A and C.\n- N: Number\
+    \ of columns in matrix B and C.\n- K: Number of columns in matrix A and rows in\
+    \ matrix B (common dimension).\n- stride_am: Stride for matrix A along the M dimension\
+    \ (row stride).\n- stride_ak: Stride for matrix A along the K dimension (column\
+    \ stride).\n- stride_bk: Stride for matrix B along the K dimension (row stride).\n\
+    - stride_bn: Stride for matrix B along the N dimension (column stride).\n- stride_cm:\
+    \ Stride for matrix C along the M dimension (row stride).\n- stride_cn: Stride\
+    \ for matrix C along the N dimension (column stride).\n- stride_bias: Stride for\
+    \ the bias. Interpretation depends on bias dimensions.\n- BLOCK_SIZE_M: tl.constexpr,\
+    \ tile size for the M dimension during computation.\n- BLOCK_SIZE_N: tl.constexpr,\
+    \ tile size for the N dimension during computation.\n- BLOCK_SIZE_K: tl.constexpr,\
+    \ tile size for the K dimension during computation.\n- USE_BIAS: tl.constexpr,\
+    \ boolean flag indicating whether to add the bias term.\n- EVEN_K: tl.constexpr,\
+    \ boolean flag indicating if K is perfectly divisible by BLOCK_SIZE_K,\n     \
+    \       allowing for potentially more efficient, unmasked loads along the K dimension.\n\
+    \"\"\"\n# Your code here.\n\n"
+  source_code: null
+source_file_path:
+- multreduce_matmul_dot_kernel.py
+target_kernel_functions:
+- triton_dot_matmul_kernel

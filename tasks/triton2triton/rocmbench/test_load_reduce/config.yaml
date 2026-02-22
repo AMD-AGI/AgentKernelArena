@@ -1,0 +1,59 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_load_reduce.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_load_reduce.py -k "not test_performance and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_load_reduce.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `load_reduce_kernel` kernels. Your task is to\
+    \ optimize the kernel code for better performance while preserving correctness. Only optimize the kernel code in the function definition,\
+    \ DONT remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list.\n\
+    \nThese kernels, `load_reduce_kernel`,  performs a block-wise load followed by\
+    \ a row-wise maximum reduction.\n\n**Your objective is to optimize the body of\
+    \ both the kernels `load_reduce_kernel`.**\n\nYou must ensure that:\n1.  All arguments\
+    \ received by `matmul_kernel and mxfp_to_bf16_kernel` are kept intact and not\
+    \ modified.\n2. Provide you final code in ```python code block. \nExample:\n```python\n\
+    <YOUR-CODE-HERE>\n```\nThe full definitions for `load_reduce_kernel` and relevant\
+    \ helper utilities are provided in the context below. You only need to optimize\
+    \ the code for `load_reduce_kernel` whilst keeping other things intact. DONT remove\
+    \ Imports and HELPER utils.\n\n######################################## Imports\
+    \ ########################################\n\nimport pytest\nimport torch\nfrom\
+    \ torch.testing import assert_close\n\nimport triton\nimport triton.language as\
+    \ tl\n######################################## Imports ########################################\n\
+    \ndtype_mapping = {\n    'float16': torch.float16,\n    'float32': torch.float32,\n\
+    }\n\n\n@triton.jit\ndef load_reduce_kernel(\n    x_ptr,\n    y_ptr,\n    stride_xm,\n\
+    \    stride_xn,\n    stride_y,\n    BLOCK_M: tl.constexpr,\n    BLOCK_N: tl.constexpr,\n\
+    ):\n    \"\"\"\n    This Triton kernel loads a 2D block of data from an input\
+    \ tensor `x_ptr`\n    and performs a reduction operation (maximum) along one of\
+    \ its dimensions.\n\n    Parameters\n    ----------\n    x_ptr\n        Pointer\
+    \ to the input tensor X from which data will be loaded.\n        This tensor is\
+    \ expected to be at least 2D.\n    y_ptr\n        Pointer to the output tensor\
+    \ Y where the reduced results will be stored.\n        This tensor is expected\
+    \ to be 1D (or have a shape compatible with storing BLOCK_M elements).\n    stride_xm\n\
+    \        Stride of the input tensor X along the M dimension (typically rows).\n\
+    \        It indicates the number of elements to skip in memory to move from one\n\
+    \        element to the next in the M dimension (e.g., from X[i, j] to X[i+1,\
+    \ j]).\n    stride_xn\n        Stride of the input tensor X along the N dimension\
+    \ (typically columns).\n        It indicates the number of elements to skip in\
+    \ memory to move from one\n        element to the next in the N dimension (e.g.,\
+    \ from X[i, j] to X[i, j+1]).\n    stride_y\n        Stride of the output tensor\
+    \ Y.\n        It indicates the number of elements to skip in memory to move from\
+    \ one\n        element to the next in the output tensor Y (e.g., from Y[i] to\
+    \ Y[i+1]).\n    BLOCK_M: tl.constexpr\n        The size of the tile (or block)\
+    \ in the M dimension. This defines how many\n        \"rows\" of the input data\
+    \ are processed by this kernel instance and consequently\n        the number of\
+    \ output elements produced.\n    BLOCK_N: tl.constexpr\n        The size of the\
+    \ tile (or block) in the N dimension. This defines how many\n        \"columns\"\
+    \ of the input data are processed for each \"row\" in the M dimension,\n     \
+    \   and it's the dimension over which the reduction (max) is performed.\n    \"\
+    \"\"\n    # Your code here\n\n"
+  source_code: null
+source_file_path:
+- test_load_reduce.py
+target_kernel_functions:
+- load_reduce_kernel

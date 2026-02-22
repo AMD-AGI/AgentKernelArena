@@ -1,0 +1,79 @@
+compile_command:
+- python -c "import ast; ast.parse(open('softmax.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 softmax.py -k "not test_performance and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 softmax.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `softmax_kernel_online`. Your task is to complete\
+    \ the kernel code. Only optimize the kernel code in the function definition, DONT\
+    \ remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list.\n\
+    \nThis kernel, `softmax_kernel_online`,  is designed to perform softmax function\
+    \ on the input tensor in an online, numerically stable manner.\n\n**Your objective\
+    \ is to optimize the body of `softmax_kernel_online`.**\n\nYou must ensure that:\n\
+    1.  All arguments received by `softmax_kernel_online` are kept intact and not\
+    \ modified.\n2. Provide you final code in ```python code block. \nExample:\n```python\n\
+    <YOUR-CODE-HERE>\n```\n\n\nThe full definition for `softmax_kernel_online` and\
+    \ relevant helper utilities are provided in the context below. You only need to\
+    \ optimize the code for `softmax_kernel_online` whilst keeping other things intact.\n\
+    \n\n#Imports \nimport argparse\nimport torch\nimport sys\nimport pytest\n\nimport\
+    \ triton\nimport triton.language as tl\n\n########################################\
+    \ HELPERS utils ######################################## \ndef is_cuda():\n  \
+    \  return triton.runtime.driver.active.get_current_target().backend == \"cuda\"\
+    \n\n\ndef is_hip():\n    return triton.runtime.driver.active.get_current_target().backend\
+    \ == \"hip\"\n\n\ndef is_cdna():\n    return is_hip() and triton.runtime.driver.active.get_current_target().arch\
+    \ in ('gfx940', 'gfx941', 'gfx942',\n                                        \
+    \                                           'gfx90a', 'gfx908')\n\n\ndef get_cuda_autotune_config():\n\
+    \    return [\n        triton.Config({}, num_warps=4, num_stages=1),\n       \
+    \ triton.Config({}, num_warps=8, num_stages=1),\n        triton.Config({}, num_warps=16,\
+    \ num_stages=1),\n    ]\n\n\ndef get_hip_autotune_config():\n    return [\n  \
+    \      triton.Config({'waves_per_eu': 1}, num_warps=4, num_stages=1),\n      \
+    \  triton.Config({'waves_per_eu': 1}, num_warps=8, num_stages=1),\n        triton.Config({'waves_per_eu':\
+    \ 1}, num_warps=16, num_stages=1),\n        triton.Config({'waves_per_eu': 2},\
+    \ num_warps=4, num_stages=1),\n        triton.Config({'waves_per_eu': 2}, num_warps=8,\
+    \ num_stages=1),\n        triton.Config({'waves_per_eu': 2}, num_warps=16, num_stages=1),\n\
+    \        triton.Config({'waves_per_eu': 4}, num_warps=4, num_stages=1),\n    \
+    \    triton.Config({'waves_per_eu': 4}, num_warps=8, num_stages=1),\n        triton.Config({'waves_per_eu':\
+    \ 4}, num_warps=16, num_stages=1),\n    ]\n\n\ndef get_autotune_config():\n  \
+    \  if is_cuda():\n        return get_cuda_autotune_config()\n    else:\n     \
+    \   return get_hip_autotune_config()\n\n########################################\
+    \ HELPERS utils ######################################## \n\n\n@triton.autotune(configs=get_autotune_config(),\
+    \ key=['n_rows', 'n_cols'], use_cuda_graph=True)\n@triton.jit\ndef softmax_kernel_online(output_ptr,\
+    \ input_ptr, input_row_stride, output_row_stride, n_rows, n_cols,\n          \
+    \                BLOCK_SIZE: tl.constexpr):\n    \"\"\"\n    Computes the softmax\
+    \ function for each row of the input tensor in an online, numerically stable manner.\n\
+    \n    This Triton kernel processes each row of the input tensor independently.\
+    \ For each row,\n    it iterates through the columns in blocks. In the first pass\
+    \ over the blocks,\n    it computes the row-wise maximum value and the sum of\
+    \ exponentials (scaled by the\n    running maximum) in an online fashion. This\
+    \ online update of the sum involves\n    rescaling previous sums if a new, larger\
+    \ maximum is found.\n    In the second pass, it subtracts the final row-wise maximum,\
+    \ exponentiates,\n    divides by the final sum of exponentials, and stores the\
+    \ result.\n    This approach is numerically stable, especially for inputs with\
+    \ large variations in magnitude.\n    Each program instance (kernel launch) is\
+    \ responsible for processing a single row.\n\n    Parameters:\n    -----------\n\
+    \    output_ptr : tl.pointer_type\n        Pointer to the output tensor where\
+    \ the softmax results will be stored.\n        Expected to be of a floating-point\
+    \ type (e.g., float32).\n    input_ptr : tl.pointer_type\n        Pointer to the\
+    \ input tensor.\n        Expected to be of a floating-point type (e.g., float32).\n\
+    \    input_row_stride : int\n        The stride (in number of elements) to move\
+    \ from one row to the next in the input tensor.\n    output_row_stride : int\n\
+    \        The stride (in number of elements) to move from one row to the next in\
+    \ the output tensor.\n    n_rows : int\n        The total number of rows in the\
+    \ input (and output) tensor. The kernel is typically\n        launched with `n_rows`\
+    \ program instances in the first dimension.\n    n_cols : int\n        The total\
+    \ number of columns (features) in each row of the input tensor.\n    BLOCK_SIZE\
+    \ : tl.constexpr\n        The size of the blocks into which each row is divided\
+    \ for processing during the\n        online computation. This is a compile-time\
+    \ constant and should ideally be a\n        power of 2 for efficiency (e.g., 1024,\
+    \ 2048).\n    \"\"\"\n    # Your code here.\n\n\n"
+  source_code: null
+source_file_path:
+- softmax.py
+target_kernel_functions:
+- softmax_kernel_online

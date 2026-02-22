@@ -1,0 +1,80 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_chained_matmul.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_chained_matmul.py -k "not test_performance and not
+  test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_chained_matmul.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `chained_matmul_kernel`. Your task is to complete\
+    \ the kernel code. Only optimize the kernel code in the function definition, DONT\
+    \ remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list.\n\
+    \nThis kernel, `chained_matmul_kernel`,  is designed to perform chained matrix\
+    \ multiplication of the form `(A @ B.T) @ C` on a GPU.\n\n**Your objective is\
+    \ to optimize the body of `chained_matmul_kernel`.**\n\nYou must ensure that:\n\
+    1.  All arguments received by `chained_matmul_kernel` are kept intact and not\
+    \ modified.\n2. Provide you final code in ```python code block. \nExample:\n```python\n\
+    <YOUR-CODE-HERE>\n```\nThe full definition for `chained_matmul_kernel` and relevant\
+    \ helper utilities are provided in the context below. You only need to complete\
+    \ the code for `chained_matmul_kernel` whilst keeping other things intact.\n\n\
+    ######################################## Imports ########################################\n\
+    import numpy as np\nimport pytest\nimport torch\nfrom numpy.random import RandomState\n\
+    \nimport triton\nimport triton.language as tl\n\n########################################\
+    \ Imports ########################################\n\n\n\n@triton.jit\ndef chained_matmul_kernel(A,\
+    \  # Pointer to the first input tensor `A`. Expected shape: (m, k). This tensor\
+    \ provides the first operand in the (A @ B.T) operation.\n                   \
+    \         B,  # Pointer to the second input tensor `B`. Expected shape: (n, k).\
+    \ The transpose of this tensor (B.T, shape (k, n)) is used as the second operand\
+    \ in the (A @ B.T) operation.\n                            C,  # Pointer to the\
+    \ third input tensor `C`. Expected shape: (n, k). This tensor is the second operand\
+    \ in the ((A @ B.T) @ C) operation.\n                            out,  # Pointer\
+    \ to the output tensor `out`. Expected shape: (m, k). This tensor will store the\
+    \ result of the chained matrix multiplication (A @ B.T) @ C.\n               \
+    \             m,    # Integer representing the 'm' dimension. This is the number\
+    \ of rows in matrix `A` and the output matrix `out`.\n                       \
+    \     n,    # Integer representing the 'n' dimension. This is the number of rows\
+    \ in matrices `B` and `C`. It also becomes the shared inner dimension after the\
+    \ A @ B.T operation (i.e., A @ B.T results in an m x n matrix). The kernel iterates\
+    \ over this dimension in `block_n` sized chunks.\n                           \
+    \ k: tl.constexpr,  # Compile-time constant integer for the 'k' dimension. This\
+    \ is the number of columns in matrices `A`, `B`, `C`, and `out`. It's also the\
+    \ shared inner dimension for B.T @ C if C were (k,p) and for A @ B.T if B.T were\
+    \ (k,n). In this kernel, it's the common feature dimension.\n                \
+    \            block_m: tl.constexpr,  # Compile-time constant integer defining\
+    \ the tile size for the 'm' dimension. Each kernel instance (program) will process\
+    \ `block_m` rows of matrix `A` (and write `block_m` rows to `out`) at a time.\n\
+    \                            block_n: tl.constexpr,  # Compile-time constant integer\
+    \ defining the tile size for the 'n' dimension. The kernel will iterate through\
+    \ the 'n' dimension in steps of `block_n` when processing matrices `B` and `C`.\n\
+    \                            block_k: tl.constexpr  # Compile-time constant integer\
+    \ defining the tile size for the 'k' dimension. For this specific kernel, there's\
+    \ a constraint `block_k == k`, meaning the entire 'k' dimension is processed at\
+    \ once within the dot products, rather than being tiled itself for reduction.\n\
+    \                           ):\n    \"\"\"\n    Brief description of the kernel:\n\
+    \    This Triton JIT-compiled kernel, `chained_matmul_kernel`, is designed to\
+    \ efficiently compute\n    a chained matrix multiplication of the form `(A @ B.T)\
+    \ @ C` on a GPU.\n    It takes three input matrices: `A` of shape `(m, k)`, `B`\
+    \ of shape `(n, k)`, and `C` of shape `(n, k)`.\n    The transpose of `B` is used\
+    \ in the first multiplication, resulting in an intermediate\n    matrix of shape\
+    \ `(m, n)`. This intermediate result is then multiplied by `C` (after `C` is\n\
+    \    effectively processed column-wise due to the dot product with the intermediate,\
+    \ or rather,\n    the accumulation logic results in an `(m,k)` output from `(m,n)\
+    \ @ (n,k)` where the second `(n,k)`\n    is `C`). The final output matrix `out`\
+    \ has the shape `(m, k)`.\n    The kernel utilizes a tiled approach for parallel\
+    \ processing. \n\n\n    The user should implement the logic for (A @ B.T) @ C\
+    \ using Triton programming constructs.\n    This typically involves:\n    - Calculating\
+    \ program IDs and offsets for the current block.\n    - Loading tiles of A, B,\
+    \ and C.\n    - Performing the dot products and accumulations in a loop over the\
+    \ 'n' dimension.\n    - Handling boundary conditions carefully with masks.\n \
+    \   - Storing the resulting tile to the output tensor `out`\n\n    \"\"\"\n  \
+    \  # Your code here\n\n"
+  source_code: null
+source_file_path:
+- test_chained_matmul.py
+target_kernel_functions:
+- chained_matmul_kernel

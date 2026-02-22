@@ -1,0 +1,82 @@
+compile_command:
+- python -c "import ast; ast.parse(open('rmsnorm_fwd.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 rmsnorm_fwd.py -k "not test_performance and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 rmsnorm_fwd.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `rms_kernel`. Your task is to complete the kernel\
+    \ code. Only optimize the kernel code in the function definition, DONT remove\
+    \ any python imports or helper utils in the instruction/code provided, DONT change/interfere\
+    \ with the provided function definition and parameter list.\n\nThis kernel, `rms_kernel`,\
+    \  is designed to perform Root Mean Square (RMS) Normalization.\n\n**Your objective\
+    \ is to optimize the body of `rms_kernel`.**\n\nYou must ensure that:\n1.  All\
+    \ arguments received by `rms_kernel` are kept intact and not modified.\n2. Provide\
+    \ you final code in ```python code block. \nExample:\n```python\n<YOUR-CODE-HERE>\n\
+    ```\nThe full definition for `rms_kernel` and relevant helper utilities are provided\
+    \ in the context below. You only need to optimize the code for `rms_kernel` whilst\
+    \ keeping other things intact. DONT remove Imports and HELPER utils.\n\n#######################\
+    \ Imports #####################\nimport argparse\nimport torch\nimport sys\nimport\
+    \ pytest\nfrom itertools import product\n\nimport triton\nimport triton.language\
+    \ as tl\n####################### Imports #####################\n\n############################\
+    \ HELPER utils ############################\n\n\ndef is_cuda():\n    return triton.runtime.driver.active.get_current_target().backend\
+    \ == \"cuda\"\n\n\ndef is_hip():\n    return triton.runtime.driver.active.get_current_target().backend\
+    \ == \"hip\"\n\n\ndef get_num_sms():\n    current_device_index = torch.cuda.current_device()\n\
+    \    current_device = torch.cuda.get_device_properties(current_device_index)\n\
+    \    num_sms = current_device.multi_processor_count\n    return num_sms\n\n\n\
+    def get_cuda_autotune_config():\n    return [\n        triton.Config({}, num_warps=4,\
+    \ num_stages=1),\n        triton.Config({}, num_warps=8, num_stages=1),\n    \
+    \    triton.Config({}, num_warps=16, num_stages=1),\n    ]\n\n\ndef get_hip_autotune_config():\n\
+    \    return [triton.Config({'waves_per_eu': we}, num_warps=nw) for (we, nw) in\
+    \ product([0, 1, 2, 4], [4, 8, 16])]\n\n\ndef get_autotune_config():\n    if is_cuda():\n\
+    \        return get_cuda_autotune_config()\n    else:\n        return get_hip_autotune_config()\n\
+    ############################ HELPER utils ############################\n\n\n@triton.autotune(configs=get_autotune_config(),\
+    \ key=['n_rows', 'n_cols'], use_cuda_graph=True)\n@triton.jit\ndef rms_kernel(output_ptr,\
+    \ input_ptr, g_ptr, rsigma_ptr, input_row_stride, output_row_stride, n_rows, n_cols,\
+    \ epsilon,\n               ZERO_CENTERED_GAMMA: tl.constexpr, BLOCK_SIZE: tl.constexpr,\
+    \ USE_BLOCKED: tl.constexpr,\n               NUM_PRGMS: tl.constexpr):\n    \"\
+    \"\"\n    Triton kernel for performing Root Mean Square (RMS) Normalization.\n\
+    \n    This kernel normalizes each row of the input tensor by its RMS value,\n\
+    \    applies a learnable scaling factor (gamma), and stores the result.\n    It\
+    \ also stores the reciprocal of the standard deviation (rsigma) for each row.\n\
+    \    The kernel supports two modes of operation: a simple row-wise processing\n\
+    \    and a blocked processing for potentially better performance on wider rows.\n\
+    \    It is designed as a persistent kernel where each program instance can handle\n\
+    \    multiple rows.\n\n    Parameters:\n    output_ptr: Pointer to the output\
+    \ tensor where the normalized values will be stored.\n                Shape: (n_rows,\
+    \ n_cols)\n    input_ptr: Pointer to the input tensor.\n               Shape:\
+    \ (n_rows, n_cols)\n    g_ptr: Pointer to the gamma (scale) tensor. This is a\
+    \ 1D tensor.\n           Shape: (n_cols,)\n    rsigma_ptr: Pointer to store the\
+    \ reciprocal of the standard deviation (or equivalent normalization factor)\n\
+    \                for each row. This is a 1D tensor.\n                Shape: (n_rows,)\n\
+    \    input_row_stride: Stride in number of elements to move from one row to the\
+    \ next in the input_ptr.\n    output_row_stride: Stride in number of elements\
+    \ to move from one row to the next in the output_ptr.\n    n_rows: The number\
+    \ of rows in the input and output tensors.\n    n_cols: The number of columns\
+    \ in the input and output tensors.\n    epsilon: A small float value added to\
+    \ the variance to prevent division by zero during normalization.\n    ZERO_CENTERED_GAMMA:\
+    \ tl.constexpr\n                         A compile-time boolean constant. If True,\
+    \ 1.0 is added to the gamma values\n                         before applying them,\
+    \ effectively making the provided gamma values adjustments\n                 \
+    \        around a mean of 1.0.\n    BLOCK_SIZE: tl.constexpr\n               \
+    \ A compile-time integer constant representing the size of blocks used for processing\n\
+    \                columns. This is relevant for both the blocked and non-blocked\
+    \ execution paths\n                (e.g., for `tl.arange`).\n    USE_BLOCKED:\
+    \ tl.constexpr\n                 A compile-time boolean constant. If True, the\
+    \ kernel uses a blocked algorithm\n                 to iterate over columns, potentially\
+    \ improving cache utilization and performance\n                 for rows with\
+    \ many columns. If False, a simpler, direct row-wise computation is performed.\n\
+    \    NUM_PRGMS: tl.constexpr\n               A compile-time integer constant.\
+    \ This represents the number of program instances\n               (effectively,\
+    \ persistent thread blocks) launched. Rows are distributed among these\n     \
+    \          program instances. For example, program `pid` handles rows `pid, pid\
+    \ + NUM_PRGMS, ...`.\n    \"\"\"\n    # Your code here\n\n"
+  source_code: null
+source_file_path:
+- rmsnorm_fwd.py
+target_kernel_functions:
+- rms_kernel

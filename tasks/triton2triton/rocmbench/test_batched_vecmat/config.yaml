@@ -1,0 +1,53 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_batched_vecmat.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_batched_vecmat.py -k "not test_performance and not
+  test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_batched_vecmat.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `batched_vecmat`. Your task is to complete the\
+    \ kernel code. Only optimize the kernel code in the function definition, DONT\
+    \ remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list.\n\
+    \nThis kernel, `batched_vecmat`,  is designed to perform batched element-wise\
+    \ multiplication and sum operation.\n\n**Your objective is to optimize the body\
+    \ of `batched_vecmat`.**\n\nYou must ensure that:\n1.  All arguments received\
+    \ by `batched_vecmat` are kept intact and not modified.\n2. Provide you final\
+    \ code in ```python code block. \nExample:\n```python\n<YOUR-CODE-HERE>\n```\n\
+    The full definition for `batched_vecmat` and relevant helper utilities are provided\
+    \ in the context below. You only need to optimize the code for `batched_vecmat`\
+    \ whilst keeping other things intact. DONT remove Imports and HELPER utils.\n\n\
+    ######################################## Imports ########################################\n\
+    import numpy as np\nimport pytest\nimport torch\nfrom numpy.random import RandomState\n\
+    \nimport triton\nimport triton.language as tl\n\n########################################\
+    \ Imports ########################################\n\n@triton.jit\ndef batched_vecmat(\n\
+    \    A,\n    B,\n    dim_m, dim_n, dim_k,\n    output,\n    block_m: tl.constexpr,\
+    \ block_n: tl.constexpr, block_k: tl.constexpr\n):\n    \"\"\"\n    Performs a\
+    \ batched element-wise multiplication and sum operation.\n    Effectively, for\
+    \ each m in dim_m, it computes the element-wise product of\n    A[m, :] with each\
+    \ row of B[m, :, :], and sums the results.\n    This can be expressed as: output[m,\
+    \ n] = sum_k (A[m, k] * B[m, n, k]).\n    This is equivalent to `torch.sum(A.unsqueeze(1)\
+    \ * B, dim=2)`.\n\n    Parameters\n    ----------\n    A\n        Input tensor\
+    \ of shape [dim_m, dim_k].\n        Interpreted as a batch of `dim_m` vectors,\
+    \ each of size `dim_k`.\n    B\n        Input tensor of shape [dim_m, dim_n, dim_k].\n\
+    \        Interpreted as a batch of `dim_m` groups of vectors. Each group `B[i,\
+    \ :, :]`\n        contains `dim_n` vectors, each of size `dim_k`.\n    dim_m\n\
+    \        The size of the first dimension of A and B (batch dimension).\n    dim_n\n\
+    \        The size of the second dimension of B and the output tensor.\n      \
+    \  Represents the number of vectors in each batch entry of B.\n    dim_k\n   \
+    \     The size of the last dimension of A and B (the dimension over which the\
+    \ sum is performed).\n    output\n        Output tensor of shape [dim_m, dim_n]\
+    \ where the results are stored.\n    block_m\n        tl.constexpr: Tiling size\
+    \ for the m dimension.\n    block_n\n        tl.constexpr: Tiling size for the\
+    \ n dimension.\n    block_k\n        tl.constexpr: Tiling size for the k dimension\
+    \ (reduction dimension).\n    \"\"\"\n    # Your code here\n\n"
+  source_code: null
+source_file_path:
+- test_batched_vecmat.py
+target_kernel_functions:
+- batched_vecmat

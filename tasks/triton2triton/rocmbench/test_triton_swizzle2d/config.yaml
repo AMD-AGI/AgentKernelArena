@@ -1,0 +1,47 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_triton_swizzle2d.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_triton_swizzle2d.py -k "not test_performance and
+  not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_triton_swizzle2d.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `swizzle2d_kernel`. Your task is to complete\
+    \ the kernel code. Only optimize the kernel code in the function definition, DONT\
+    \ remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list.\n\
+    \nThis kernel, `swizzle2d_kernel`,  perform 2D swizzling operation.\n\n**Your\
+    \ objective is to optimize the body of `swizzle2d_kernel`.**\n\nYou must ensure\
+    \ that:\n1.  All arguments received by `swizzle2d_kernel` are kept intact and\
+    \ not modified.\n2. Provide you final code in ```python code block. \nExample:\n\
+    ```python\n<YOUR-CODE-HERE>\n```\nThe full definition for `swizzle2d_kernel` and\
+    \ relevant helper utilities are provided in the context below. You only need to\
+    \ optimize the code for `swizzle2d_kernel` whilst keeping other things intact.\
+    \ DONT remove Imports and HELPER utils.\n\n########################################\
+    \ Imports ########################################\nimport pytest\nimport torch\n\
+    import triton\nimport triton.language as tl\nimport numpy as np\n########################################\
+    \ Imports ########################################\n@triton.jit\ndef swizzle2d_kernel(output,\
+    \ size_i, size_j, size_g):\n    \"\"\"\n    Performs a 2D swizzling operation\
+    \ and stores the original linear index\n    at the new swizzled memory location.\
+    \ You can use tl.swizzle2d\n\n    Args:\n        output (tl.pointer_type): Pointer\
+    \ to the output tensor where the results\n            will be stored. This tensor\
+    \ should be large enough to hold\n            `size_i * size_j` elements. The\
+    \ elements stored will be the\n            original linear indices.\n        size_i\
+    \ (int): The size of the first dimension of the 2D grid to be\n            swizzled.\
+    \ This is equivalent to the number of rows in the conceptual\n            input\
+    \ matrix.\n        size_j (int): The size of the second dimension of the 2D grid\
+    \ to be\n            swizzled. This is equivalent to the number of columns in\
+    \ the\n            conceptual input matrix.\n        size_g (int): The group size\
+    \ used for the swizzling operation. This\n            parameter controls the granularity\
+    \ of the permutation.\n            Elements within a group of this size along\
+    \ one dimension are\n            interleaved with elements from other groups.\
+    \ Typically a power of 2.\n    \"\"\"\n    pass\n\n    # Your code here\n\n"
+  source_code: null
+source_file_path:
+- test_triton_swizzle2d.py
+target_kernel_functions:
+- swizzle2d_kernel

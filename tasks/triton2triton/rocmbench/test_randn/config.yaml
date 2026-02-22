@@ -1,0 +1,53 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_randn.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_randn.py -k "not test_performance and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_randn.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `randn_kernel_runtime_seed,randn_kernel_const_seed`\
+    \ kernels. Your task is to optimize the kernel code for better performance while preserving correctness. Only complete the kernel\
+    \ code in the function definition, DONT remove any python imports or helper utils\
+    \ in the instruction/code provided, DONT change/interfere with the provided function\
+    \ definition and parameter list.\n\nThese kernels, `randn_kernel_runtime_seed,randn_kernel_const_seed`,\
+    \  tests both ways Triton can handle arguments: Ensuring that tl.randn works correctly\
+    \ whether the seed is provided as a runtime variable or a compile-time constant\n\
+    \n**Your objective is to optimize the body of both the kernels `randn_kernel_runtime_seed,randn_kernel_const_seed`.**\n\
+    \nYou must ensure that:\n1.  All arguments received by `randn_kernel_runtime_seed\
+    \ and randn_kernel_const_seed` are kept intact and not modified.\n2. Provide you\
+    \ final code in ```python code block. \nExample:\n```python\n<YOUR-CODE-HERE>\n\
+    ```\nThe full definitions for `randn_kernel_runtime_seed,randn_kernel_const_seed`\
+    \ and relevant helper utilities are provided in the context below. You only need\
+    \ to optimize the code for `randn_kernel_runtime_seed,randn_kernel_const_seed`\
+    \ whilst keeping other things intact. DONT remove Imports and HELPER utils.\n\n\
+    ######################################## Imports ########################################\
+    \ \nimport numpy as np\nimport pytest\nimport torch\n\nimport triton\nimport triton.language\
+    \ as tl\n######################################## Imports ########################################\
+    \ \n\n#####################################\n# Triton Kernels for randn\n#####################################\n\
+    \nBLOCK: tl.constexpr = 1024\n\n@triton.jit\ndef randn_kernel_runtime_seed(X:\
+    \ tl.pointer_type, N: tl.int32, seed: tl.int66, dtype: tl.constexpr):\n    \"\"\
+    \"\n    Generates random numbers and stores them into an output tensor.\n    The\
+    \ seed for the random number generator is passed at runtime.\n\n    :param X:\
+    \ Pointer to the output tensor where random numbers will be stored (e.g., *tl.float32).\n\
+    \    :param N: Total number of elements to generate.\n    :param seed: Seed for\
+    \ the random number generator (runtime value, typically int64 or int66).\n   \
+    \ :param dtype: Data type used for kernel indexing/calculations (compile-time\
+    \ constant, e.g., tl.int32).\n    \"\"\"\n    # Your code here\n\n\n@triton.jit\n\
+    def randn_kernel_const_seed(X: tl.pointer_type, N: tl.int32, seed: tl.constexpr,\
+    \ dtype: tl.constexpr):\n    \"\"\"\n    Generates random numbers and stores them\
+    \ into an output tensor.\n    The seed for the random number generator must be\
+    \ a compile-time constant.\n\n    :param X: Pointer to the output tensor where\
+    \ random numbers will be stored (e.g., *tl.float32).\n    :param N: Total number\
+    \ of elements to generate.\n    :param seed: Seed for the random number generator\
+    \ (must be a compile-time constant).\n    :param dtype: Data type used for kernel\
+    \ indexing/calculations (compile-time constant, e.g., tl.int32).\n    \"\"\"\n\
+    \    # Your code here\n\n"
+  source_code: null
+source_file_path:
+- test_randn.py
+target_kernel_functions:
+- randn_kernel_runtime_seed,randn_kernel_const_seed

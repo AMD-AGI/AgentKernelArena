@@ -1,0 +1,92 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_matmul_MXFP.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_matmul_MXFP.py -k "not test_performance and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_matmul_MXFP.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `matmul_kernel,mxfp_to_bf16_kernel` kernels.\
+    \ Your task is to optimize the kernel code for better performance while preserving correctness. Only optimize the kernel code in the\
+    \ function definition, DONT remove any python imports or helper utils in the instruction/code\
+    \ provided, DONT change/interfere with the provided function definition and parameter\
+    \ list.\n\nThese kernels, `matmul_kernel,mxfp_to_bf16_kernel`,   performs matrix\
+    \ multiplication (C = A @ B) with optional support for scaled MXFP (Microscaling\
+    \ Format) inputs.\n\n**Your objective is to optimize the body of both the kernels\
+    \ `matmul_kernel,mxfp_to_bf16_kernel`.**\n\nYou must ensure that:\n1.  All arguments\
+    \ received by `matmul_kernel and mxfp_to_bf16_kernel` are kept intact and not\
+    \ modified.\n2. Provide you final code in ```python code block. \nExample:\n```python\n\
+    <YOUR-CODE-HERE>\n```\nThe full definitions for `matmul_kernel,mxfp_to_bf16_kernel`\
+    \ and relevant helper utilities are provided in the context below. You only need\
+    \ to optimize the code for `matmul_kernel,mxfp_to_bf16_kernel` whilst keeping\
+    \ other things intact. DONT remove Imports and HELPER utils.\n\nimport triton\n\
+    import triton.language as tl\n\n@triton.jit\ndef matmul_kernel(\n    a_ptr, scale_ptr,\
+    \ b_ptr, output_ptr,\n    M, N, K_MXFP,\n    stride_am, stride_ak,\n    stride_sm,\
+    \ stride_sk,\n    stride_bk, stride_bn,\n    stride_cm, stride_cn,\n    BLOCK_M:\
+    \ tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,\n    NUM_STAGES:\
+    \ tl.constexpr, a_type: tl.constexpr, b_type: tl.constexpr\n):\n    \"\"\"\n \
+    \   Performs a matrix multiplication (C = A @ B) with optional support for scaled\
+    \ MXFP (Microscaling Format) inputs.\n    If `a_type` and `b_type` are provided,\
+    \ it performs a scaled dot product where matrix A is scaled\n    by `scale_ptr`.\
+    \ Otherwise, it performs a standard matrix multiplication.\n    The computation\
+    \ is tiled and can be pipelined for efficiency.\n\n    Parameters:\n    ----------\n\
+    \    a_ptr: tl.pointer_type\n        Pointer to the first input matrix (A).\n\
+    \    scale_ptr: tl.pointer_type\n        Pointer to the scale tensor for matrix\
+    \ A. Used only if `a_type` and `b_type` are not None.\n    b_ptr: tl.pointer_type\n\
+    \        Pointer to the second input matrix (B).\n    output_ptr: tl.pointer_type\n\
+    \        Pointer to the output matrix (C).\n    M: int\n        Number of rows\
+    \ in matrix A and output matrix C.\n    N: int\n        Number of columns in matrix\
+    \ B and output matrix C.\n    K_MXFP: int\n        The inner dimension. If performing\
+    \ scaled MXFP matmul, this represents the number of MXFP vectors\n        (groups\
+    \ of elements, e.g., 32 for FP8, or 16 for FP4 if DIV_FACTOR is 2 due to packing)\n\
+    \        along the K dimension of matrix A. Otherwise, it's the standard K dimension.\n\
+    \    stride_am: int\n        Stride of matrix A along the M dimension (row stride).\n\
+    \    stride_ak: int\n        Stride of matrix A along the K dimension (column/inner\
+    \ dimension stride).\n    stride_sm: int\n        Stride of the scale tensor along\
+    \ its M dimension (row stride for scales).\n    stride_sk: int\n        Stride\
+    \ of the scale tensor along its K dimension (stride between scale values).\n \
+    \   stride_bk: int\n        Stride of matrix B along the K dimension (row stride).\n\
+    \    stride_bn: int\n        Stride of matrix B along the N dimension (column/inner\
+    \ dimension stride).\n    stride_cm: int\n        Stride of the output matrix\
+    \ C along the M dimension (row stride).\n    stride_cn: int\n        Stride of\
+    \ the output matrix C along the N dimension (column/inner dimension stride).\n\
+    \    BLOCK_M: tl.constexpr\n        Tile size for the M dimension.\n    BLOCK_N:\
+    \ tl.constexpr\n        Tile size for the N dimension.\n    BLOCK_K: tl.constexpr\n\
+    \        Tile size for the K dimension (primarily for loading B and influencing\
+    \ A loads,\n        also relates to how many elements are processed in the inner\
+    \ loop iteration).\n    NUM_STAGES: tl.constexpr\n        Number of stages for\
+    \ software pipelining.\n    a_type: tl.constexpr (str or None)\n        String\
+    \ specifying the MXFP type for matrix A (e.g., \"e2m1\", \"e4m3\", \"e5m2\").\n\
+    \        If None, standard matrix multiplication is assumed for A.\n    b_type:\
+    \ tl.constexpr (str or None)\n        String specifying the MXFP type for matrix\
+    \ B (e.g., \"e4m3\", \"e5m2\").\n        If None, standard matrix multiplication\
+    \ is assumed for B.\n    \"\"\"\n    # Your code here\n\n\n@triton.jit\ndef mxfp_to_bf16_kernel(\n\
+    \    x_ptr,\n    scale_ptr,\n    mxfp_ptr,\n    N,\n    e_bits: tl.constexpr,\n\
+    \    m_bits: tl.constexpr,\n    BLOCK_SIZE: tl.constexpr,\n):\n    \"\"\"\n  \
+    \  Converts input data `x_ptr` (assumed to be in a packed MXFP format stored as\
+    \ uint8)\n    to bfloat16 format, by applying scaling factors from `scale_ptr`.\n\
+    \    The kernel handles different MXFP types (e.g., FP8, FP4 variants) based on\n\
+    \    `e_bits` and `m_bits`. The output is stored in `mxfp_ptr`.\n\n    Parameters:\n\
+    \    ----------\n    x_ptr: tl.pointer_type\n        Pointer to the input MXFP\
+    \ data, stored as uint8.\n        Expected shape for processing: (N, 32) for FP8\
+    \ or (N, 16) for FP4 (where 16 means 32 FP4 numbers packed).\n    scale_ptr: tl.pointer_type\n\
+    \        Pointer to the scale values, stored as uint8. Expected shape: (N,).\n\
+    \    mxfp_ptr: tl.pointer_type\n        Pointer to the output tensor where the\
+    \ bfloat16 results will be stored.\n        Expected shape after processing: (N,\
+    \ 32).\n    N: int\n        The number of scale values, which typically corresponds\
+    \ to the number of rows or groups\n        in the `x_ptr` data that are independently\
+    \ scaled.\n    e_bits: tl.constexpr\n        Number of exponent bits in the input\
+    \ MXFP format.\n    m_bits: tl.constexpr\n        Number of mantissa bits in the\
+    \ input MXFP format.\n    BLOCK_SIZE: tl.constexpr\n        The total number of\
+    \ bfloat16 elements in the output `mxfp_ptr` that a single\n        program instance\
+    \ (or a block of threads launched by `tl.program_id(0)`) will compute and store.\n\
+    \        This is used to tile the processing of the output tensor.\n    \"\"\"\
+    \n    # Your code here\n\n"
+  source_code: null
+source_file_path:
+- test_matmul_MXFP.py
+target_kernel_functions:
+- matmul_kernel,mxfp_to_bf16_kernel

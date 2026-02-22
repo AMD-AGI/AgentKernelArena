@@ -1,0 +1,65 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_block_pointer_matmul.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_block_pointer_matmul.py -k "not test_performance
+  and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_block_pointer_matmul.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `matmul_no_scf_with_advance_kernel`. Your task\
+    \ is to optimize the kernel code for better performance while preserving correctness. Only optimize the kernel code in the function definition, DONT remove any python imports or helper utils in the instruction/code\
+    \ provided, DONT change/interfere with the provided function definition and parameter\
+    \ list.\n\nThis kernel, `matmul_no_scf_with_advance_kernel`,  is designed to use\
+    \ block pointers for a basic matrix multiplication(without explicit loops for\
+    \ the K dimension, hence \"no_scf\" - no structured control flow)\n\n**Your objective\
+    \ is to optimize the body of `matmul_no_scf_with_advance_kernel`.**\n\nYou must\
+    \ ensure that:\n1.  All arguments received by `matmul_no_scf_with_advance_kernel`\
+    \ are kept intact and not modified.\n2. Provide you final code in ```python code\
+    \ block. \nExample:\n```python\n<YOUR-CODE-HERE>\n```\nThe full definition for\
+    \ `matmul_no_scf_with_advance_kernel` and relevant helper utilities are provided\
+    \ in the context below. You only need to optimize the code for `matmul_no_scf_with_advance_kernel`\
+    \ whilst keeping other things intact. DONT remove Imports and HELPER utils.\n\n\
+    ######################################## Imports ########################################\
+    \ \nimport pytest\nimport torch\n\nimport triton\nimport triton.language as tl\n\
+    import os\n\n######################################## Imports ########################################\
+    \ \n\n\n@triton.jit\ndef matmul_no_scf_with_advance_kernel(\n    a_ptr, b_ptr,\
+    \ c_ptr,\n    M, N, K,\n    stride_am, stride_ak,\n    stride_bk, stride_bn,\n\
+    \    stride_cm, stride_cn,\n    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,\
+    \ BLOCK_K: tl.constexpr\n):\n    \"\"\"\n    Computes a block of the matrix multiplication\
+    \ C = A @ B.\n\n    This kernel is designed to calculate a single (BLOCK_M, BLOCK_N)\
+    \ tile of the output matrix C.\n    It loads a (BLOCK_M, BLOCK_K) tile from matrix\
+    \ A and a (BLOCK_K, BLOCK_N) tile from matrix B.\n    The kernel utilizes `tl.make_block_ptr`\
+    \ for creating pointers to blocks of A and B,\n    and demonstrates the use of\
+    \ `tl.advance` for adjusting these block pointers.\n    The core computation is\
+    \ performed using `tl.dot`. The resulting tile is then stored\n    back to the\
+    \ C matrix. This version does not use Triton's Structured Control Flow (SCF)\n\
+    \    for iterating over the K dimension; it assumes BLOCK_K covers the necessary\n\
+    \    portion of the K dimension for a single dot product accumulation or that\
+    \ accumulation\n    over K-blocks is handled externally.\n\n    Parameters:\n\
+    \    -----------\n    a_ptr : tl.pointer_type\n        Pointer to the input matrix\
+    \ A.\n    b_ptr : tl.pointer_type\n        Pointer to the input matrix B.\n  \
+    \  c_ptr : tl.pointer_type\n        Pointer to the output matrix C.\n    M : int\n\
+    \        The number of rows in matrix A and matrix C.\n    N : int\n        The\
+    \ number of columns in matrix B and matrix C.\n    K : int\n        The number\
+    \ of columns in matrix A and rows in matrix B.\n    stride_am : int\n        The\
+    \ stride (in elements) for moving from one row to the next in matrix A.\n    stride_ak\
+    \ : int\n        The stride (in elements) for moving from one column to the next\
+    \ in matrix A.\n    stride_bk : int\n        The stride (in elements) for moving\
+    \ from one row to the next in matrix B.\n    stride_bn : int\n        The stride\
+    \ (in elements) for moving from one column to the next in matrix B.\n    stride_cm\
+    \ : int\n        The stride (in elements) for moving from one row to the next\
+    \ in matrix C.\n    stride_cn : int\n        The stride (in elements) for moving\
+    \ from one column to the next in matrix C.\n    BLOCK_M : tl.constexpr\n     \
+    \   The height of the tiles processed from matrix A and C.\n    BLOCK_N : tl.constexpr\n\
+    \        The width of the tiles processed from matrix B and C.\n    BLOCK_K :\
+    \ tl.constexpr\n        The depth of the tiles (common dimension K) processed\
+    \ from A and B for the dot product.\n    \"\"\"\n    # Your code here\n\n"
+  source_code: null
+source_file_path:
+- test_block_pointer_matmul.py
+target_kernel_functions:
+- matmul_no_scf_with_advance_kernel

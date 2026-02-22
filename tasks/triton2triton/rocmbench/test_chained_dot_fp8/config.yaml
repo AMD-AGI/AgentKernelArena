@@ -1,0 +1,86 @@
+compile_command:
+- python -c "import ast; ast.parse(open('test_chained_dot_fp8.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 test_chained_dot_fp8.py -k "not test_performance and not
+  test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 test_chained_dot_fp8.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `_chained_dot`. Your task is to complete the\
+    \ kernel code. Only optimize the kernel code in the function definition, DONT\
+    \ remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list.\n\
+    \nThis kernel, `_chained_dot`,  is designed to perform \"chained dot product\"\
+    \ operation.\n\n**Your objective is to optimize the body of `_chained_dot`.**\n\
+    \nYou must ensure that:\n1.  All arguments received by `_chained_dot` are kept\
+    \ intact and not modified.\n2. Provide you final code in ```python code block.\
+    \ \nExample:\n```python\n<YOUR-CODE-HERE>\n```\n\n\nThe full definition for `_chained_dot`\
+    \ and relevant helper utilities are provided in the context below. You only need\
+    \ to optimize the code for `_chained_dot` whilst keeping other things intact.\n\
+    \n\"\"\"\nTesting the (FP8) case of a dot op that consumes the output (MFMA) of\n\
+    another dot op as an input.\n\n\"\"\"\n#Imports\n\nimport math\nimport pytest\n\
+    import torch\n\nimport triton\nimport triton.language as tl\n\n##########################\
+    \ HELPER utils ##########################\nTORCH_HAS_FP8E4 = hasattr(torch, 'float8_e4m3fnuz')\n\
+    float8: tl.constexpr = None if not TORCH_HAS_FP8E4 else torch.float8_e4m3fnuz\n\
+    ########################## HELPER utils ##########################\n\n@triton.jit\n\
+    def _chained_dot(\n    Q,\n    K,\n    V,\n    Out,\n    q_desc,\n    k_desc,\n\
+    \    v_desc,\n    s_sc,\n    s_desc,\n    o_sc,\n    stride_qz,\n    stride_qm,\n\
+    \    stride_qd,\n    stride_kz,\n    stride_kn,\n    stride_kd,\n    stride_vz,\n\
+    \    stride_vd,\n    stride_vn,\n    stride_oz,\n    stride_om,\n    stride_od,\n\
+    \    Z,\n    M,\n    N,\n    BLOCK_D: tl.constexpr,\n    BLOCK_M: tl.constexpr,\n\
+    \    BLOCK_N: tl.constexpr,\n    USE_FP8: tl.constexpr,\n):\n    \"\"\"\n    This\
+    \ Triton kernel computes a \"chained dot product\" operation,\n    effectively\
+    \ performing (Q @ K.T) @ V in a tiled manner.\n    This is a core component of\
+    \ attention mechanisms.\n    The kernel is parallelized across the M dimension\
+    \ of Q (target sequence length)\n    and the Z dimension (batch size * number\
+    \ of heads).\n    It iteratively loads blocks of K and V to compute partial results\
+    \ for the output.\n    FP8 support allows for reduced precision computation with\
+    \ scaling factors.\n\n    Parameters:\n    -----------\n    Q : tl.tensor\n  \
+    \      Pointer to the Q (query) tensor. Expected shape (Z, M, D).\n    K : tl.tensor\n\
+    \        Pointer to the K (key) tensor. Expected shape (Z, N, D).\n    V : tl.tensor\n\
+    \        Pointer to the V (value) tensor. Expected shape (Z, N, D).\n    Out :\
+    \ tl.tensor\n        Pointer to the O (output) tensor. Expected shape (Z, M, D).\n\
+    \    q_desc : float\n        Dequantization scale for the Q tensor (used if USE_FP8\
+    \ is True).\n    k_desc : float\n        Dequantization scale for the K tensor\
+    \ (used if USE_FP8 is True).\n    v_desc : float\n        Dequantization scale\
+    \ for the V tensor (used if USE_FP8 is True).\n    s_sc : float\n        Scaling\
+    \ factor applied to the intermediate S (QK^T) tensor before dot product with V\
+    \ (used if USE_FP8 is True).\n        This can be thought of as a quantization\
+    \ scale if S were to be stored in FP8.\n    s_desc : float\n        Dequantization\
+    \ scale for the intermediate S (QK^T) tensor when it's used in S@V (used if USE_FP8\
+    \ is True).\n    o_sc : float\n        Quantization scale for the O (output) tensor\
+    \ (used if USE_FP8 is True).\n    stride_qz : int\n        Stride of the Q tensor\
+    \ along the Z (batch/head) dimension.\n    stride_qm : int\n        Stride of\
+    \ the Q tensor along the M (sequence length of Q / rows) dimension.\n    stride_qd\
+    \ : int\n        Stride of the Q tensor along the D (feature/embedding) dimension.\n\
+    \    stride_kz : int\n        Stride of the K tensor along the Z (batch/head)\
+    \ dimension.\n    stride_kn : int\n        Stride of the K tensor along the N\
+    \ (sequence length of K / rows) dimension.\n    stride_kd : int\n        Stride\
+    \ of the K tensor along the D (feature/embedding) dimension.\n    stride_vz :\
+    \ int\n        Stride of the V tensor along the Z (batch/head) dimension.\n  \
+    \  stride_vd : int\n        Stride of the V tensor along the D (feature/embedding)\
+    \ dimension.\n    stride_vn : int\n        Stride of the V tensor along the N\
+    \ (sequence length of V / rows) dimension.\n    stride_oz : int\n        Stride\
+    \ of the Out tensor along the Z (batch/head) dimension.\n    stride_om : int\n\
+    \        Stride of the Out tensor along the M (sequence length of Out / rows)\
+    \ dimension.\n    stride_od : int\n        Stride of the Out tensor along the\
+    \ D (feature/embedding) dimension.\n    Z : int\n        Size of the Z dimension\
+    \ (e.g., batch_size * num_heads).\n    M : int\n        Size of the M dimension\
+    \ (e.g., sequence length of Q, number of rows in Q).\n    N : int\n        Size\
+    \ of the N dimension (e.g., sequence length of K and V, number of columns in K.T\
+    \ / rows in V).\n    BLOCK_D : tl.constexpr\n        Tile size for the D dimension\
+    \ (feature/embedding dimension). Compile-time constant.\n    BLOCK_M : tl.constexpr\n\
+    \        Tile size for the M dimension (rows of Q). Compile-time constant.\n \
+    \   BLOCK_N : tl.constexpr\n        Tile size for the N dimension (columns of\
+    \ K.T / rows of V). Compile-time constant.\n    USE_FP8 : tl.constexpr\n     \
+    \   Boolean flag indicating whether to use FP8 E4M3 precision and apply scaling.\
+    \ Compile-time constant.\n    \"\"\"\n    # Your code here\n\n\n"
+  source_code: null
+source_file_path:
+- test_chained_dot_fp8.py
+target_kernel_functions:
+- _chained_dot

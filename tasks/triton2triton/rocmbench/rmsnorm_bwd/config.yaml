@@ -1,0 +1,88 @@
+compile_command:
+- python -c "import ast; ast.parse(open('rmsnorm_bwd.py').read())"
+correctness_command:
+- pytest -vv -x --maxfail=1 rmsnorm_bwd.py -k "not test_performance and not test_save_performance_results"
+performance_command:
+- pytest -vv -x --maxfail=1 rmsnorm_bwd.py -k "test_performance or test_save_performance_results"
+task_type: triton2triton
+task_result_template: null
+prompt:
+  cheatsheet: null
+  instructions: "\nYou are an expert in triton programming language. You will be given\
+    \ the function definition for the `rms_bwd_kernel`. Your task is to complete the\
+    \ kernel code. Only optimize the kernel code in the function definition, DONT\
+    \ remove any python imports or helper utils in the instruction/code provided,\
+    \ DONT change/interfere with the provided function definition and parameter list.\n\
+    \nThis kernel, `rms_bwd_kernel`,  is designed to calculate the backward pass for\
+    \ RMS Normalization\n\n**Your objective is to optimize the body of `rms_bwd_kernel`.**\n\
+    \nYou must ensure that:\n1.  All arguments received by `rms_bwd_kernel` are kept\
+    \ intact and not modified.\n2. Provide you final code in ```python code block.\
+    \ \nExample:\n```python\n<YOUR-CODE-HERE>\n```\nThe full definition for `rms_bwd_kernel`\
+    \ and relevant helper utilities are provided in the context below. You only need\
+    \ to optimize the code for `rms_bwd_kernel` whilst keeping other things intact.\
+    \ DONT remove Imports and HELPER utils.\n\nOkay, here's the setup for implementing\
+    \ rms_bwd_kernel, along with descriptions of the related kernels.\n\nProvided\
+    \ Kernels (Assumed to be already implemented):\n\nrms_fwd_kernel:\n\nPurpose:\
+    \ This kernel performs the forward pass of RMS Normalization.\n\nGiven an input\
+    \ tensor x and a learnable scaling vector g, it computes the normalized output\
+    \ y and the reciprocal of the root mean square rsigma for each row.\n\nThe formula\
+    \ is roughly y_i = (x_i / sqrt(mean(x^2) + epsilon)) * effective_g_i, where effective_g_i\
+    \ is g_i or g_i + 1 depending on ZERO_CENTERED_GAMMA. rsigma is 1.0 / sqrt(mean(x^2)\
+    \ + epsilon).\n\n_rmsnorm_bwd_dg_reduce:\n\nPurpose: This kernel performs a reduction\
+    \ operation specifically for the gradient of the scaling parameter g.\n\nIt takes\
+    \ an intermediate gradient dg_tmp (which has dimensions n_rows x n_cols and is\
+    \ computed by rms_bwd_kernel) and sums it along the row dimension.\n\nThe result\
+    \ is the final gradient dg (with dimensions n_cols) for the learnable scaling\
+    \ parameter g.\n\nKernel to Implement: rms_bwd_kernel (function definition below)\n\
+    \n####################### Imports #####################\nimport argparse\nimport\
+    \ torch\nimport sys\nimport pytest\nfrom itertools import product\n\nimport triton\n\
+    import triton.language as tl\n####################### Imports #####################\n\
+    \n@triton.jit\ndef rms_bwd_kernel(\n    grad_output_ptr,    # Pointer to the gradient\
+    \ of the loss w.r.t. the output of RMSNorm (dL/dy).\n                        #\
+    \ Shape: (n_rows, n_cols)\n    input_ptr,          # Pointer to the input tensor\
+    \ 'x' from the forward pass.\n                        # Shape: (n_rows, n_cols)\n\
+    \    g_ptr,              # Pointer to the learnable scaling parameter 'g'.\n \
+    \                       # Shape: (n_cols,)\n    rsigma_ptr,         # Pointer\
+    \ to the reciprocal of the root mean square (1 / sqrt(mean(x^2) + eps))\n    \
+    \                    # computed in the forward pass. Shape: (n_rows,)\n    dx_ptr,\
+    \             # Pointer to store the computed gradient of the loss w.r.t. the\
+    \ input 'x' (dL/dx).\n                        # Shape: (n_rows, n_cols)\n    dg_ptr,\
+    \             # Pointer to store the computed intermediate gradient of the loss\
+    \ w.r.t. the\n                        # scaling parameter 'g' (dL/dg_tmp). This\
+    \ is before reduction across rows.\n                        # Shape: (n_rows,\
+    \ n_cols)\n    input_row_stride,   # Stride of the 'input_ptr' and 'dx_ptr' tensors\
+    \ along the row dimension.\n    output_row_stride,  # Stride of the 'grad_output_ptr'\
+    \ tensor along the row dimension.\n                        # Note: 'dg_ptr' also\
+    \ uses 'input_row_stride' if it has the same layout as 'x'.\n    n_rows,     \
+    \        # Total number of rows to process (e.g., batch_size * sequence_length).\n\
+    \    n_cols,             # Total number of columns (features) per row (e.g., hidden_dimension).\n\
+    \    ZERO_CENTERED_GAMMA: tl.constexpr, # Compile-time boolean. If True, effective\
+    \ gamma is (g + 1), otherwise it's 'g'.\n    BLOCK_SIZE: tl.constexpr,       \
+    \   # Compile-time constant. Defines the size of blocks used for processing columns.\n\
+    \                                       # This is typically a power of 2, e.g.,\
+    \ 1024.\n    USE_BLOCKED: tl.constexpr,         # Compile-time boolean. If True,\
+    \ indicates a specialized blocked algorithm\n                                \
+    \       # should be used for computing sums over columns, potentially involving\n\
+    \                                       # multiple passes. This is often beneficial\
+    \ for large 'n_cols'.\n    NUM_PRGMS: tl.constexpr            # Compile-time constant.\
+    \ The number of program instances launched by Triton.\n                      \
+    \                 # Used for distributing row processing across different programs.\n\
+    ):\n    \"\"\"\n    Computes the backward pass for RMS Normalization, calculating\
+    \ the gradients\n    with respect to the input 'x' (dL/dx) and an intermediate\
+    \ gradient\n    with respect to the scaling parameter 'g' (dL/dg_tmp).\n\n   \
+    \ The core computations for dL/dx_i (grad_input) and dL/dg_i (dg) are:\n    Let\
+    \ norm_factor = rsigma\n    Let effective_g = g (or g + 1 if ZERO_CENTERED_GAMMA)\n\
+    \n    1. grad_sum_per_row = sum_cols(grad_output * input * effective_g)\n    2.\
+    \ dL/dx = grad_output * norm_factor * effective_g - (norm_factor^3 * input / n_cols)\
+    \ * grad_sum_per_row\n    3. dL/dg_intermediate = grad_output * input * norm_factor\n\
+    \n    This kernel handles parallelization over rows and, depending on USE_BLOCKED,\n\
+    \    may use a blocked approach for iterating over columns to manage memory and\n\
+    \    computation efficiently, especially for the `grad_sum_per_row` calculation.\n\
+    \n    The `dg_ptr` output of this kernel (dL/dg_intermediate) will typically be\n\
+    \    further processed by `_rmsnorm_bwd_dg_reduce` to sum contributions across\n\
+    \    all rows to get the final dL/dg.\n    \"\"\"\n    # Your code here\n\n"
+  source_code: null
+source_file_path:
+- rmsnorm_bwd.py
+target_kernel_functions:
+- rms_bwd_kernel
