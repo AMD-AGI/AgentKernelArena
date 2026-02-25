@@ -3,25 +3,70 @@
 OpenEvolve agent launcher for AgentKernelArena
 """
 import asyncio
+import importlib
 import logging
 import os
+import subprocess
 import sys
 import yaml
 from pathlib import Path
 from typing import Dict, Any
 
 # Add openevolve to path
-sys.path.insert(0, "/home/sapmajum/geak-openevolve")
+_openevolve_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'geak-openevolve')
+sys.path.insert(0, _openevolve_dir)
 
 from agents import register_agent
 
 logger = logging.getLogger(__name__)
 
 
+def ensure_openevolve_setup() -> None:
+    """Run OpenEvolve setup script when local GEAK sources are missing."""
+    agent_dir = Path(__file__).parent
+    local_repo_dir = agent_dir / "geak-openevolve"
+    local_pkg_dir = local_repo_dir / "openevolve"
+    geak_eval_dir = local_repo_dir / "GEAK-eval-OE"
+
+    # Ensure local repo path is first so imports resolve to this checkout.
+    local_repo_str = str(local_repo_dir)
+    if local_repo_str not in sys.path:
+        sys.path.insert(0, local_repo_str)
+
+    # Source of truth is local package directory + eval repo.
+    if local_pkg_dir.exists() and geak_eval_dir.exists():
+        return
+
+    setup_script = agent_dir / "agent_setup.sh"
+    if not setup_script.exists():
+        raise FileNotFoundError(f"Missing setup script: {setup_script}")
+
+    logger.info("Running OpenEvolve setup via agent_setup.sh")
+    proc = subprocess.run(
+        ["bash", str(setup_script)],
+        cwd=str(Path(__file__).parent),
+        env={**os.environ, "PYTHON_BIN": sys.executable},
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "OpenEvolve setup failed.\n"
+            f"STDOUT:\n{proc.stdout}\n"
+            f"STDERR:\n{proc.stderr}"
+        )
+
+    if not local_pkg_dir.exists():
+        raise RuntimeError(
+            f"OpenEvolve package directory not found after setup: {local_pkg_dir}"
+        )
+
+
 def create_evaluator(workspace: str, task_config: Dict) -> str:
     """Create evaluator that runs AgentKernelArena commands"""
     compile_cmds = task_config.get('compile_command', ['make'])
     correctness_cmds = task_config.get('correctness_command', ['./app'])
+    performance_cmds = task_config.get('performance_command', [])
     source_files = task_config.get('source_file_path', [])
     
     # For instruction2triton tasks, extract filename from compile command
@@ -39,21 +84,52 @@ def create_evaluator(workspace: str, task_config: Dict) -> str:
         target_file = source_files[0]
     
     evaluator_code = f'''
-import subprocess
+import json
 import os
 import re
+import subprocess
+
+BASELINE_TIME = None
 
 def parse_time(output):
     patterns = [r'([0-9.]+)\\s*ms', r'([0-9.]+)\\s*s']
     for p in patterns:
         m = re.search(p, output, re.I)
         if m:
-            return float(m.group(1))
-    return 1.0
+            value = float(m.group(1))
+            if p.endswith(r'\\s*s'):
+                return value * 1000.0
+            return value
+    return None
+
+def parse_perf_json(perf_dir):
+    if not os.path.isdir(perf_dir):
+        return None
+    ms_values = []
+    for root, _, files in os.walk(perf_dir):
+        for name in files:
+            if not name.endswith(".json"):
+                continue
+            file_path = os.path.join(root, name)
+            try:
+                with open(file_path, "r") as f:
+                    data = json.load(f)
+                if isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, dict):
+                            ms_value = item.get("ms")
+                            if isinstance(ms_value, (int, float)) and ms_value > 0:
+                                ms_values.append(float(ms_value))
+            except Exception:
+                continue
+    if not ms_values:
+        return None
+    return min(ms_values)
 
 def evaluate(test_suite_path, program_text, ref_wrapper_path=None, wrapper_fn_name=None,
              unit_tests_path=None, n_warmup=5, n_iters=10, atol=1e-3, rtol=1e-3, 
              verbose=False, gpu_id=0, timeout=300):
+    global BASELINE_TIME
     # Determine workspace directory
     program_dir = os.path.dirname(os.path.abspath(program_text))
     
@@ -66,6 +142,12 @@ def evaluate(test_suite_path, program_text, ref_wrapper_path=None, wrapper_fn_na
         workspace = program_dir
     
     os.chdir(workspace)
+    run_env = dict(os.environ)
+    existing_pythonpath = run_env.get("PYTHONPATH")
+    pythonpath_entries = [workspace, program_dir]
+    if existing_pythonpath:
+        pythonpath_entries.append(existing_pythonpath)
+    run_env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
     
     if verbose:
         print(f"[EVAL] Workspace: {{workspace}}")
@@ -79,7 +161,14 @@ def evaluate(test_suite_path, program_text, ref_wrapper_path=None, wrapper_fn_na
     if verbose:
         print(f"[EVAL] Test file (relative): {{test_file_path}}")
     
-    result = {{'success': 0.0, 'correctness_score': 0.0, 'combined_score': 0.0}}
+    result = {{
+        'success': 0.0,
+        'correctness_score': 0.0,
+        'combined_score': 0.0,
+        'base_execution_time': 0.0,
+        'best_optimized_execution_time': 0.0,
+        'speedup': 0.0
+    }}
     
     try:
         # Compile - replace target filename with actual test file path
@@ -90,7 +179,14 @@ def evaluate(test_suite_path, program_text, ref_wrapper_path=None, wrapper_fn_na
             if verbose:
                 print(f"\\n[COMPILE] Running: {{cmd}}")
                 print(f"[COMPILE] Timeout: {{compile_timeout}} seconds")
-            proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=compile_timeout)
+            proc = subprocess.run(
+                cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=compile_timeout,
+                env=run_env
+            )
             if proc.returncode != 0:
                 error_msg = f"Compile failed (exit {{proc.returncode}})\\nSTDOUT:\\n{{proc.stdout}}\\nSTDERR:\\n{{proc.stderr}}"
                 if verbose:
@@ -112,9 +208,22 @@ def evaluate(test_suite_path, program_text, ref_wrapper_path=None, wrapper_fn_na
                 print(f"[CORRECTNESS] Timeout: {{timeout}} seconds")
                 print(f"[CORRECTNESS] Real-time output:")
                 # Run without capture to see real-time output
-                proc = subprocess.run(cmd, shell=True, text=True, timeout=timeout)
+                proc = subprocess.run(
+                    cmd,
+                    shell=True,
+                    text=True,
+                    timeout=timeout,
+                    env=run_env
+                )
             else:
-                proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+                proc = subprocess.run(
+                    cmd,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    env=run_env
+                )
             if proc.returncode != 0:
                 error_msg = f"Correctness failed (exit {{proc.returncode}})\\nSTDOUT:\\n{{proc.stdout}}\\nSTDERR:\\n{{proc.stderr}}"
                 if verbose:
@@ -127,6 +236,48 @@ def evaluate(test_suite_path, program_text, ref_wrapper_path=None, wrapper_fn_na
         result['correctness_score'] = 1.0
         result['success'] = 1.0
         result['combined_score'] = 1.2
+
+        # Performance - replace target filename with actual evolved test file
+        performance_outputs = []
+        for cmd_template in {repr(performance_cmds)}:
+            cmd = cmd_template.replace({repr(target_file if target_file else 'test.py')}, test_file_path)
+            if verbose:
+                print(f"\\n[PERFORMANCE] Running: {{cmd}}")
+                print(f"[PERFORMANCE] Timeout: {{timeout}} seconds")
+            proc = subprocess.run(
+                cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=run_env
+            )
+            performance_outputs.append((proc.stdout or "") + "\\n" + (proc.stderr or ""))
+            if proc.returncode != 0:
+                # Keep compile/correctness pass if performance command fails.
+                perf_error = f"Performance failed (exit {{proc.returncode}})\\nSTDOUT:\\n{{proc.stdout}}\\nSTDERR:\\n{{proc.stderr}}"
+                if verbose:
+                    print(f"[PERFORMANCE ERROR] {{perf_error}}")
+                result['performance_error'] = perf_error
+                return result
+
+        perf_time_ms = parse_perf_json(os.path.join(program_dir, "perf"))
+        if perf_time_ms is None:
+            perf_time_ms = parse_perf_json(os.path.join(workspace, "perf"))
+        if perf_time_ms is None:
+            for output in performance_outputs:
+                parsed = parse_time(output)
+                if parsed is not None:
+                    if perf_time_ms is None or parsed < perf_time_ms:
+                        perf_time_ms = parsed
+
+        if perf_time_ms is not None and perf_time_ms > 0:
+            if BASELINE_TIME is None:
+                BASELINE_TIME = perf_time_ms
+            result['base_execution_time'] = float(BASELINE_TIME)
+            result['best_optimized_execution_time'] = float(perf_time_ms)
+            result['speedup'] = float(BASELINE_TIME / perf_time_ms)
+            result['combined_score'] = 1.2 + result['speedup']
         
     except Exception as e:
         result['error'] = str(e)
@@ -155,7 +306,7 @@ def test():
     pass
 '''
     
-    full_program = f"{{kernel_code}}\\n\\n{{separator}}\\n\\n{{test_code}}"
+    full_program = f"{kernel_code}\n\n{separator}\n\n{test_code}"
     formatted_path = kernel_path.replace('.hip', '_oe.hip')
     with open(formatted_path, 'w') as f:
         f.write(full_program)
@@ -166,8 +317,10 @@ def test():
 @register_agent("openevolve")
 def launch_agent(eval_config: Dict, task_config_dir: str, workspace: str) -> str:
     """Launch OpenEvolve agent"""
-    from openevolve import OpenEvolve
-    from openevolve.config import Config
+    ensure_openevolve_setup()
+
+    OpenEvolve = importlib.import_module("openevolve").OpenEvolve
+    Config = importlib.import_module("openevolve.config").Config
     
     logger.info("=" * 80)
     logger.info("Starting OpenEvolve Agent")
@@ -177,7 +330,7 @@ def launch_agent(eval_config: Dict, task_config_dir: str, workspace: str) -> str
     with open(task_config_dir, 'r') as f:
         task_config = yaml.safe_load(f)
     
-    agent_config_path = Path(__file__).parent / 'agent_config.yaml'
+    agent_config_path = Path(__file__).parent / 'agent_config_amd_claude.yaml'
     with open(agent_config_path, 'r') as f:
         agent_config = yaml.safe_load(f)
     
@@ -241,6 +394,7 @@ def launch_agent(eval_config: Dict, task_config_dir: str, workspace: str) -> str
     oe_config = Config()
     oe_config.max_iterations = agent_config.get('max_iterations', 10)
     oe_config.checkpoint_interval = agent_config.get('checkpoint_interval', 5)
+    oe_config.max_code_length = agent_config.get('max_code_length', oe_config.max_code_length)
     
     # Fix sampling parameter (OpenEvolve requires it)
     oe_config.llm.sampling = {'fn': 'random'}
@@ -312,6 +466,8 @@ def launch_agent(eval_config: Dict, task_config_dir: str, workspace: str) -> str
     if 'evaluator' in agent_config:
         oe_config.evaluator.timeout = agent_config['evaluator'].get('timeout', 120)
         oe_config.evaluator.verbose = agent_config['evaluator'].get('verbose', False)
+        oe_config.evaluator.parallel_evaluations = agent_config['evaluator'].get('parallel_evaluations', oe_config.evaluator.parallel_evaluations)
+        oe_config.evaluator.cascade_evaluation = agent_config['evaluator'].get('cascade_evaluation', oe_config.evaluator.cascade_evaluation)
         if oe_config.evaluator.verbose:
             logger.info("Verbose evaluation mode enabled - will print detailed stdout/stderr")
     
@@ -337,28 +493,47 @@ def launch_agent(eval_config: Dict, task_config_dir: str, workspace: str) -> str
             output_dir=output_dir
         )
         
-        logger.info(f"Running evolution for {{agent_config.get('max_iterations', 10)}} iterations...")
+        logger.info(f"Running evolution for {agent_config.get('max_iterations', 10)} iterations...")
         best_program = asyncio.run(openevolve.run())
         
         if best_program is None:
             raise RuntimeError("No valid program produced")
         
-        logger.info(f"Best program metrics: {{best_program.metrics}}")
+        logger.info(f"Best program metrics: {best_program.metrics}")
         
         # Extract kernel code
-        separator = "#" * 146
-        best_kernel_code = best_program.code.split(separator)[0].strip() if separator in best_program.code else best_program.code
+        #separator = "#" * 146
+        #best_kernel_code = best_program.code.split(separator)[0].strip() if separator in best_program.code else best_program.code
+        best_kernel_code = best_program.code
         
         # Write back to source
         with open(source_file, 'w') as f:
             f.write(best_kernel_code)
         
-        # Write task_result.yaml
+        best_metrics = best_program.metrics or {}
+        pass_compilation = best_metrics.get('success', 0) >= 0.2
+        pass_correctness = best_metrics.get('correctness_score', 0) >= 1.0
+        base_execution_time = float(best_metrics.get('base_execution_time', 0.0) or 0.0)
+        best_optimized_execution_time = float(best_metrics.get('best_optimized_execution_time', 0.0) or 0.0)
+        if base_execution_time > 0 and best_optimized_execution_time > 0:
+            speedup_ratio = base_execution_time / best_optimized_execution_time
+        else:
+            speedup_ratio = float(best_metrics.get('speedup', 0.0) or 0.0)
+
+        metrics_error = best_metrics.get('error')
+
+        # Write task_result.yaml with standard framework fields.
         task_result = {
             'task_name': Path(workspace).name,
-            'pass_compilation': best_program.metrics.get('success', 0) >= 0.2,
-            'pass_correctness': best_program.metrics.get('correctness_score', 0) >= 1.0,
-            'speedup_ratio': best_program.metrics.get('speedup', 0),
+            'best_optimized_source_file_path': [os.path.basename(source_file)],
+            'best_optimized_kernel_functions': task_config.get('target_kernel_functions', []),
+            'pass_compilation': pass_compilation,
+            'compilation_error_message': None if pass_compilation else metrics_error,
+            'pass_correctness': pass_correctness,
+            'correctness_error_message': None if pass_correctness else metrics_error,
+            'base_execution_time': base_execution_time,
+            'best_optimized_execution_time': best_optimized_execution_time,
+            'speedup_ratio': speedup_ratio,
             'optimization_summary': 'OpenEvolve optimization complete'
         }
         
@@ -368,13 +543,19 @@ def launch_agent(eval_config: Dict, task_config_dir: str, workspace: str) -> str
         return best_kernel_code
         
     except Exception as e:
-        logger.error(f"OpenEvolve failed: {{e}}", exc_info=True)
+        logger.error(f"OpenEvolve failed: {e}", exc_info=True)
         
         # Write failed result
         task_result = {
             'task_name': Path(workspace).name,
+            'best_optimized_source_file_path': [os.path.basename(source_file)] if 'source_file' in locals() else [],
+            'best_optimized_kernel_functions': task_config.get('target_kernel_functions', []) if 'task_config' in locals() else [],
             'pass_compilation': False,
+            'compilation_error_message': str(e),
             'pass_correctness': False,
+            'correctness_error_message': str(e),
+            'base_execution_time': 0.0,
+            'best_optimized_execution_time': 0.0,
             'speedup_ratio': 0.0,
             'optimization_summary': f'Failed: {str(e)}'
         }
