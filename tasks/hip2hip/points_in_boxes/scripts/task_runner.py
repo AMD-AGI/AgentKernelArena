@@ -197,13 +197,53 @@ def main():
 
     elif args.mode == "performance":
         ms_part_std, ms_part_rot, ms_all_std, ms_all_rot = run_performance()
-        report = {
-            "shape": list(TEST_SHAPES[PERF_SHAPE_IDX]),
-            "perf1_part_standard_ms": ms_part_std,
-            "perf2_part_rotated_ms": ms_part_rot,
-            "perf3_all_standard_ms": ms_all_std,
-            "perf4_all_rotated_ms": ms_all_rot,
-        }
+        B, T, M = TEST_SHAPES[PERF_SHAPE_IDX]
+        report = [
+            {
+                "test_case_id": "perf1_part_standard",
+                "execution_time_ms": ms_part_std,
+                "params": {
+                    "B": B,
+                    "T": T,
+                    "M": M,
+                    "output_mode": "part",
+                    "box_type": "standard"
+                }
+            },
+            {
+                "test_case_id": "perf2_part_rotated",
+                "execution_time_ms": ms_part_rot,
+                "params": {
+                    "B": B,
+                    "T": T,
+                    "M": M,
+                    "output_mode": "part",
+                    "box_type": "rotated"
+                }
+            },
+            {
+                "test_case_id": "perf3_all_standard",
+                "execution_time_ms": ms_all_std,
+                "params": {
+                    "B": B,
+                    "T": T,
+                    "M": M,
+                    "output_mode": "all",
+                    "box_type": "standard"
+                }
+            },
+            {
+                "test_case_id": "perf4_all_rotated",
+                "execution_time_ms": ms_all_rot,
+                "params": {
+                    "B": B,
+                    "T": T,
+                    "M": M,
+                    "output_mode": "all",
+                    "box_type": "rotated"
+                }
+            }
+        ]
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Perf: {ms_part_std:.4f} ms")

@@ -219,11 +219,31 @@ def main():
 
     elif args.mode == "performance":
         ms_max, ms_avg = run_performance()
-        report = {
-            "shape": list(TEST_SHAPES[PERF_SHAPE_IDX]),
-            "perf1_maxpool_ms": ms_max,
-            "perf2_avgpool_ms": ms_avg,
-        }
+        num_rois, num_pts, C, out_size = TEST_SHAPES[PERF_SHAPE_IDX]
+        report = [
+            {
+                "test_case_id": "perf1_maxpool",
+                "execution_time_ms": ms_max,
+                "params": {
+                    "num_rois": num_rois,
+                    "num_pts": num_pts,
+                    "C": C,
+                    "out_size": out_size,
+                    "pool_mode": "max"
+                }
+            },
+            {
+                "test_case_id": "perf2_avgpool",
+                "execution_time_ms": ms_avg,
+                "params": {
+                    "num_rois": num_rois,
+                    "num_pts": num_pts,
+                    "C": C,
+                    "out_size": out_size,
+                    "pool_mode": "avg"
+                }
+            }
+        ]
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Perf: {ms_max:.4f} ms")

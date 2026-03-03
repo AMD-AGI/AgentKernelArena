@@ -120,7 +120,19 @@ def main():
 
     elif args.mode == "performance":
         elapsed_ms = run_performance()
-        report = {"execution_time_ms": elapsed_ms, "shape": list(TEST_SHAPES[PERF_SHAPE_IDX])}
+        B, C, M, N = TEST_SHAPES[PERF_SHAPE_IDX]
+        report = [
+            {
+                "test_case_id": "test_case_0",
+                "execution_time_ms": elapsed_ms,
+                "params": {
+                    "B": B,
+                    "C": C,
+                    "M_source": M,
+                    "N_query": N
+                }
+            }
+        ]
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Performance: {elapsed_ms:.4f} ms")

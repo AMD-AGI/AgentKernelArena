@@ -129,12 +129,42 @@ def main():
 
     elif args.mode == "performance":
         ms_standard, ms_transposed, ms_self = run_performance()
-        report = {
-            "shape": list(TEST_SHAPES[PERF_SHAPE_IDX]),
-            "perf1_standard_ms": ms_standard,
-            "perf2_transposed_ms": ms_transposed,
-            "perf3_self_query_ms": ms_self,
-        }
+        B, N, M, k = TEST_SHAPES[PERF_SHAPE_IDX]
+        report = [
+            {
+                "test_case_id": "perf1_standard",
+                "execution_time_ms": ms_standard,
+                "params": {
+                    "B": B,
+                    "N": N,
+                    "M": M,
+                    "k": k,
+                    "layout": "standard"
+                }
+            },
+            {
+                "test_case_id": "perf2_transposed",
+                "execution_time_ms": ms_transposed,
+                "params": {
+                    "B": B,
+                    "N": N,
+                    "M": M,
+                    "k": k,
+                    "layout": "transposed"
+                }
+            },
+            {
+                "test_case_id": "perf3_self_query",
+                "execution_time_ms": ms_self,
+                "params": {
+                    "B": B,
+                    "N": N,
+                    "M": M,
+                    "k": k,
+                    "layout": "self_query"
+                }
+            }
+        ]
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Perf: {ms_standard:.4f} ms")
