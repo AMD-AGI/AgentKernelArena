@@ -6,13 +6,13 @@ import sys
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
 try:
-    from src.score import task_result_scoring
+    from src.score import resolve_speedup_ratio, task_result_scoring
 except ModuleNotFoundError:
     # Allow direct execution: `python src/postprocessing.py`
     repo_root = Path(__file__).resolve().parents[1]
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
-    from src.score import task_result_scoring
+    from src.score import resolve_speedup_ratio, task_result_scoring
 
 
 def _build_general_report_lines(aggregate_result: Dict[str, Any]) -> List[str]:
@@ -186,11 +186,11 @@ def general_post_processing(
 
             base_execution_time = result_data.get('base_execution_time', 0.0)
             best_optimized_execution_time = result_data.get('best_optimized_execution_time', 0.0)
-            if base_execution_time > 0 and best_optimized_execution_time > 0:
-                # TODO: remove speedup_ratio field from task_result.yaml in future versions
-                task_info['speedup_ratio'] = base_execution_time / best_optimized_execution_time
-            else:
-                task_info['speedup_ratio'] = result_data.get('speedup_ratio', 0.0)
+            task_info['speedup_ratio'] = resolve_speedup_ratio(
+                speedup_ratio=result_data.get('speedup_ratio', 0.0),
+                base_execution_time=base_execution_time,
+                best_optimized_execution_time=best_optimized_execution_time,
+            )
 
             # Update counters
             total_score += calculated_score

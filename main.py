@@ -7,6 +7,7 @@ from datetime import datetime
 from src.tasks import get_task_config
 from src.preprocessing import setup_workspace, setup_rocm_env
 from src.module_registration import AgentType, load_agent_launcher, load_post_processing_handler
+from src.evaluator import measure_baseline, evaluate_kernel, write_task_result
 
 
 parser = argparse.ArgumentParser(description="arguments for AgentKernelArena")
@@ -102,7 +103,24 @@ def main() -> None:
             # Setup workspace
             workspace_path = setup_workspace(task_config_dir, workspace_directory, timestamp, logger)
             
-            # Launch agent
+            # Load task config for evaluation
+            with open(task_config_dir, 'r') as f:
+                task_config = yaml.safe_load(f)
+            
+            # Compile original kernel before measuring baseline (required for hip2hip, etc.)
+            from src.evaluator import evaluate_compilation
+            logger.info("Compiling original kernel for baseline measurement...")
+            pass_compilation, comp_error = evaluate_compilation(workspace_path, task_config, logger)
+            if not pass_compilation:
+                logger.warning(f"Baseline compilation failed: {comp_error}")
+                logger.warning("Baseline measurement will be skipped")
+                baseline_cases = []
+            else:
+                # Measure baseline performance (before agent modifies kernel)
+                logger.info("Measuring baseline performance...")
+                baseline_cases = measure_baseline(workspace_path, task_config, logger)
+            
+            # Launch agent (agent should only generate optimized kernel)
             logger.info(f"Launching agent: {agent.value}")
 
             # For agentic approaches (cursor, claude_code, etc.)
@@ -113,6 +131,26 @@ def main() -> None:
             )
 
             logger.info(f"Agent execution completed")
+            
+            # Centralized evaluation of optimized kernel
+            logger.info("Running centralized evaluation...")
+            evaluation_results = evaluate_kernel(
+                workspace_path,
+                task_config,
+                baseline_cases,
+                logger
+            )
+            
+            # Write standardized task_result.yaml
+            write_task_result(
+                workspace_path,
+                evaluation_results,
+                baseline_cases,
+                task_name,
+                agent.value,
+                logger
+            )
+            
             logger.info(f"Task {task_name} completed successfully")
 
             # Add workspace path to list for post-processing

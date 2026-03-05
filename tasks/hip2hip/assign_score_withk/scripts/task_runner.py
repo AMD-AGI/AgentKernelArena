@@ -198,11 +198,35 @@ def main():
 
     elif args.mode == "performance":
         ms_fwd, ms_fwd_bwd = run_performance()
-        report = {
-            "shape": list(TEST_SHAPES[PERF_SHAPE_IDX]),
-            "perf1_forward_ms": ms_fwd,
-            "perf2_forward_backward_ms": ms_fwd_bwd,
-        }
+        B, N0, N1, M, K, O = TEST_SHAPES[PERF_SHAPE_IDX]
+        report = [
+            {
+                "test_case_id": "perf1_forward",
+                "execution_time_ms": ms_fwd,
+                "params": {
+                    "B": B,
+                    "N0": N0,
+                    "N1": N1,
+                    "M": M,
+                    "K": K,
+                    "O": O,
+                    "mode": "forward"
+                }
+            },
+            {
+                "test_case_id": "perf2_forward_backward",
+                "execution_time_ms": ms_fwd_bwd,
+                "params": {
+                    "B": B,
+                    "N0": N0,
+                    "N1": N1,
+                    "M": M,
+                    "K": K,
+                    "O": O,
+                    "mode": "forward_backward"
+                }
+            }
+        ]
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Perf: {ms_fwd:.4f} ms")

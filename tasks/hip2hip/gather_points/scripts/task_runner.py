@@ -135,11 +135,31 @@ def main():
 
     elif args.mode == "performance":
         ms_fp32, ms_fp16 = run_performance()
-        report = {
-            "shape": list(TEST_SHAPES[PERF_SHAPE_IDX]),
-            "perf1_fp32_ms": ms_fp32,
-            "perf2_fp16_ms": ms_fp16,
-        }
+        B, C, N, M = TEST_SHAPES[PERF_SHAPE_IDX]
+        report = [
+            {
+                "test_case_id": "perf1_fp32",
+                "execution_time_ms": ms_fp32,
+                "params": {
+                    "B": B,
+                    "C": C,
+                    "N": N,
+                    "M": M,
+                    "dtype": "fp32"
+                }
+            },
+            {
+                "test_case_id": "perf2_fp16",
+                "execution_time_ms": ms_fp16,
+                "params": {
+                    "B": B,
+                    "C": C,
+                    "N": N,
+                    "M": M,
+                    "dtype": "fp16"
+                }
+            }
+        ]
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Perf: {ms_fp32:.4f} ms")

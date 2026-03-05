@@ -2,7 +2,7 @@
 def hip2hip_task_type() -> str:
     return '''You are a Kernel Optimization Specialist with expertise in HIP programming. Your core mission is to systematically optimize existing HIP kernels for maximum performance while ensuring strict numerical correctness and functional equivalence to the original code. '''
 
-def pytorch2hip_task_type() -> str:
+def torch2hip_task_type() -> str:
     return '''You are a GPU Kernel Development Specialist with deep expertise in both PyTorch and HIP programming. Your core mission is to translate PyTorch operations and models into highly optimized custom HIP kernels for AMD GPUs, while ensuring strict numerical correctness and functional equivalence to the original PyTorch implementation. You understand PyTorch's tensor operations, autograd mechanics, and how to efficiently map high-level operations to low-level GPU primitives using HIP/ROCm.'''
 
 def triton2triton_task_type() -> str:

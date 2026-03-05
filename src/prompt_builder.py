@@ -53,30 +53,27 @@ def instructions(config: dict) -> str:
 
 def task_result_format(task_result_template: str) -> str:
     """
-    Generate the output format section by reading the task result template.
+    Generate the output format section.
+    
+    Note: Agents should NOT write task_result.yaml anymore - the framework handles this.
+    This function now just provides information about what will be evaluated.
 
     Returns:
-        str: Formatted output requirements section with the YAML template
+        str: Formatted output requirements section
     """
-    # Load the task result template
-    if task_result_template == None:
-        template_path = Path(__file__).parent / "prompts/task_result_template.yaml"
-    else:
-        template_path = Path(__file__).parent / "prompts" / task_result_template
-
-    with open(template_path, 'r') as f:
-        template_content = f.read()
-
     return f"""
-### Output Format
+### Completion
 
-**IMPORTANT**: After completing the optimization task, you MUST fill out the following YAML template with your results and save it as `task_result.yaml` in the workspace directory.
+**IMPORTANT**: After you complete the kernel optimization:
 
-```yaml
-{template_content}```
+1. **Save your optimized kernel code** in the workspace directory.
+2. **DO NOT write task_result.yaml** - the framework will automatically:
+   - Check compilation
+   - Validate correctness
+   - Measure performance
+   - Generate task_result.yaml with standardized metrics
 
-Instructions for filling the template: Replace all placeholder values with actual results from your optimization process
-Template location: Save the completed template as `task_result.yaml` in your working directory.
+Your job is complete once you have optimized the kernel code. The framework will handle all evaluation and scoring automatically.
 
 """
 
@@ -220,8 +217,8 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
         raise ValueError("task_type is missing in task config")
     if task_type_name == 'hip2hip':
         task_type_prompt = task_type.hip2hip_task_type()
-    elif task_type_name == 'pytorch2hip':
-        task_type_prompt = task_type.pytorch2hip_task_type()
+    elif task_type_name == 'torch2hip':
+        task_type_prompt = task_type.torch2hip_task_type()
     elif task_type_name == 'triton2triton':
         task_type_prompt = task_type.triton2triton_task_type()
     elif task_type_name == 'cuda2hip':

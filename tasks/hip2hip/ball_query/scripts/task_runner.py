@@ -149,11 +149,33 @@ def main():
 
     elif args.mode == "performance":
         ms_fixed, ms_dilated = run_performance()
-        report = {
-            "shape": list(TEST_SHAPES[PERF_SHAPE_IDX][:3]),
-            "perf1_fixed_radius_ms": ms_fixed,
-            "perf2_dilated_radius_ms": ms_dilated,
-        }
+        B, N, M, max_r, nsample = TEST_SHAPES[PERF_SHAPE_IDX]
+        report = [
+            {
+                "test_case_id": "perf1_fixed_radius",
+                "execution_time_ms": ms_fixed,
+                "params": {
+                    "B": B,
+                    "N": N,
+                    "M": M,
+                    "max_radius": max_r,
+                    "nsample": nsample,
+                    "query_type": "fixed_radius"
+                }
+            },
+            {
+                "test_case_id": "perf2_dilated_radius",
+                "execution_time_ms": ms_dilated,
+                "params": {
+                    "B": B,
+                    "N": N,
+                    "M": M,
+                    "max_radius": max_r,
+                    "nsample": nsample,
+                    "query_type": "dilated_radius"
+                }
+            }
+        ]
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Perf: {ms_fixed:.4f} ms")

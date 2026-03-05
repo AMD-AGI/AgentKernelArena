@@ -151,11 +151,29 @@ def main():
 
     elif args.mode == "performance":
         ms_coords, ms_dist = run_performance()
-        report = {
-            "shape": list(TEST_SHAPES[PERF_SHAPE_IDX]),
-            "perf1_fps_coords_ms": ms_coords,
-            "perf2_fps_dist_ms": ms_dist,
-        }
+        B, N, npoints = TEST_SHAPES[PERF_SHAPE_IDX]
+        report = [
+            {
+                "test_case_id": "perf1_fps_coords",
+                "execution_time_ms": ms_coords,
+                "params": {
+                    "B": B,
+                    "N": N,
+                    "npoints": npoints,
+                    "input_type": "coords"
+                }
+            },
+            {
+                "test_case_id": "perf2_fps_dist",
+                "execution_time_ms": ms_dist,
+                "params": {
+                    "B": B,
+                    "N": N,
+                    "npoints": npoints,
+                    "input_type": "distance_matrix"
+                }
+            }
+        ]
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Perf: {ms_coords:.4f} ms")
