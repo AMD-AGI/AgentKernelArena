@@ -32,9 +32,8 @@ TEST_SHAPES = [
     (32, 6, 512),
     (64, 8, 1024),
 ]
-PERF_SHAPE_IDX = 3
-
-
+WARMUP_ITERATIONS = 10
+BENCHMARK_ITERATIONS = 100
 def reference_sample_recovered_tokens(
     cu_num_draft_tokens, draft_token_ids, draft_probs, target_probs, q, vocab_size
 ):
@@ -91,31 +90,55 @@ def run_correctness():
 def run_performance():
     import torch
     try: mod = load_module()
-    except Exception: return -1.0
+    except Exception: return []
     device = "cuda"
-    batch_size, max_draft, vocab_size = TEST_SHAPES[PERF_SHAPE_IDX]
-    torch.manual_seed(0)
-    num_per_req = [max_draft] * batch_size
-    cu = torch.cumsum(torch.tensor(num_per_req, dtype=torch.int32), dim=0).to(device)
-    total = sum(num_per_req)
-    draft_ids = torch.randint(0, vocab_size, (total,), dtype=torch.int32, device=device)
-    draft_probs = torch.rand(total, vocab_size, device=device)
-    draft_probs = draft_probs / draft_probs.sum(-1, keepdim=True)
-    target_probs = torch.rand(total, vocab_size, device=device)
-    target_probs = target_probs / target_probs.sum(-1, keepdim=True)
-    q = torch.empty(batch_size, vocab_size, device=device).exponential_()
-    for _ in range(10): mod.sample_recovered_tokens(cu, draft_ids, draft_probs, target_probs, q, max_draft, vocab_size)
-    torch.cuda.synchronize()
-    n_iter = 100
-    start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    for j in range(n_iter):
-        start_events[j].record()
-        mod.sample_recovered_tokens(cu, draft_ids, draft_probs, target_probs, q, max_draft, vocab_size)
-        end_events[j].record()
-    torch.cuda.synchronize()
-    times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-    return sum(times) / len(times)
+    test_cases = []
+
+    for test_idx, (batch_size, max_draft, vocab_size) in enumerate(TEST_SHAPES):
+        try:
+            torch.manual_seed(42 + test_idx)
+            num_per_req = [max_draft] * batch_size
+            cu = torch.cumsum(torch.tensor(num_per_req, dtype=torch.int32), dim=0).to(device)
+            total = sum(num_per_req)
+            draft_ids = torch.randint(0, vocab_size, (total,), dtype=torch.int32, device=device)
+            draft_probs = torch.rand(total, vocab_size, device=device)
+            draft_probs = draft_probs / draft_probs.sum(-1, keepdim=True)
+            target_probs = torch.rand(total, vocab_size, device=device)
+            target_probs = target_probs / target_probs.sum(-1, keepdim=True)
+            q = torch.empty(batch_size, vocab_size, device=device).exponential_()
+            for _ in range(WARMUP_ITERATIONS): mod.sample_recovered_tokens(cu, draft_ids, draft_probs, target_probs, q, max_draft, vocab_size)
+            torch.cuda.synchronize()
+            n_iter = BENCHMARK_ITERATIONS
+            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            for j in range(n_iter):
+                start_events[j].record()
+                mod.sample_recovered_tokens(cu, draft_ids, draft_probs, target_probs, q, max_draft, vocab_size)
+                end_events[j].record()
+            torch.cuda.synchronize()
+            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
+            elapsed_ms = sum(times) / len(times)
+
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": elapsed_ms,
+                "params": {
+                    "batch": batch_size,
+                    "max_draft": max_draft,
+                    "vocab": vocab_size
+                }
+            })
+        except Exception:
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": -1.0,
+                "params": {
+                    "batch": batch_size,
+                    "max_draft": max_draft,
+                    "vocab": vocab_size
+                }
+            })
+    return test_cases
 
 
 def main():
@@ -139,10 +162,13 @@ def main():
         if err: print(f"Error: {err}")
         sys.exit(0 if ok else 1)
     elif args.mode == "performance":
-        elapsed_ms = run_performance()
-        report = {"execution_time_ms": elapsed_ms}
-        with open(os.path.join(build_dir, "performance_report.json"), "w") as f: json.dump(report, f, indent=2)
-        print(f"Performance: {elapsed_ms:.4f} ms")
+        test_cases = run_performance()
+        with open(os.path.join(build_dir, "performance_report.json"), "w") as f: json.dump(test_cases, f, indent=2)
+        if test_cases:
+            total_time = sum(case["execution_time_ms"] for case in test_cases if case["execution_time_ms"] > 0)
+            print(f"Performance: measured {len(test_cases)} test case(s), total time: {total_time:.4f} ms")
+        else:
+            print("Performance: FAILED - no test cases measured")
         sys.exit(0)
 
 if __name__ == "__main__": main()

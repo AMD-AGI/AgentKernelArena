@@ -15,9 +15,8 @@ TEST_SHAPES = [
     (128, 512, 16, 2),
     (256, 512, 8, 2),
 ]
-PERF_SHAPE_IDX = 4
-
-
+WARMUP_ITERATIONS = 10
+BENCHMARK_ITERATIONS = 100
 def load_module():
     spec = importlib.util.spec_from_file_location("triton_kernel", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
@@ -97,45 +96,72 @@ def run_performance():
     try:
         mod = load_module()
     except Exception:
-        return -1.0
+        return []
 
     device = "cuda"
-    num_tokens, hidden_size, num_experts, topk = TEST_SHAPES[PERF_SHAPE_IDX]
-    torch.manual_seed(0)
-    recv_x = torch.randn(num_tokens, hidden_size, device=device, dtype=torch.float16)
-    recv_topk = torch.randint(0, num_experts, (num_tokens, topk), device=device, dtype=torch.int32)
+    test_cases = []
 
-    counts = torch.zeros(num_experts, dtype=torch.int32)
-    for e in range(num_experts):
-        counts[e] = (recv_topk.cpu() == e).sum().item()
-    aligned = [round_up_128(c.item()) for c in counts]
-    total = sum(aligned)
-    starts = []
-    s = 0
-    for a in aligned:
-        starts.append(s)
-        s += a
+    for test_idx, (num_tokens, hidden_size, num_experts, topk) in enumerate(TEST_SHAPES):
+        try:
+            torch.manual_seed(0)
+            recv_x = torch.randn(num_tokens, hidden_size, device=device, dtype=torch.float16)
+            recv_topk = torch.randint(0, num_experts, (num_tokens, topk), device=device, dtype=torch.int32)
 
-    for _ in range(10):
-        expert_start_loc = torch.tensor(starts, device=device, dtype=torch.int32)
-        output_tensor = torch.zeros(total, hidden_size, device=device, dtype=torch.float16)
-        output_index = torch.full((num_tokens, topk), -1, device=device, dtype=torch.int32)
-        mod.ep_scatter_2(recv_x, recv_topk, expert_start_loc, output_tensor, output_index)
-    torch.cuda.synchronize()
+            counts = torch.zeros(num_experts, dtype=torch.int32)
+            for e in range(num_experts):
+                counts[e] = (recv_topk.cpu() == e).sum().item()
+            aligned = [round_up_128(c.item()) for c in counts]
+            total = sum(aligned)
+            starts = []
+            s = 0
+            for a in aligned:
+                starts.append(s)
+                s += a
 
-    n_iter = 100
-    start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    for j in range(n_iter):
-        expert_start_loc_j = torch.tensor(starts, device=device, dtype=torch.int32)
-        output_tensor_j = torch.zeros(total, hidden_size, device=device, dtype=torch.float16)
-        output_index_j = torch.full((num_tokens, topk), -1, device=device, dtype=torch.int32)
-        start_events[j].record()
-        mod.ep_scatter_2(recv_x, recv_topk, expert_start_loc_j, output_tensor_j, output_index_j)
-        end_events[j].record()
-    torch.cuda.synchronize()
-    times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-    return sum(times) / len(times)
+            for _ in range(WARMUP_ITERATIONS):
+                expert_start_loc = torch.tensor(starts, device=device, dtype=torch.int32)
+                output_tensor = torch.zeros(total, hidden_size, device=device, dtype=torch.float16)
+                output_index = torch.full((num_tokens, topk), -1, device=device, dtype=torch.int32)
+                mod.ep_scatter_2(recv_x, recv_topk, expert_start_loc, output_tensor, output_index)
+            torch.cuda.synchronize()
+
+            n_iter = BENCHMARK_ITERATIONS
+            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            for j in range(n_iter):
+                expert_start_loc_j = torch.tensor(starts, device=device, dtype=torch.int32)
+                output_tensor_j = torch.zeros(total, hidden_size, device=device, dtype=torch.float16)
+                output_index_j = torch.full((num_tokens, topk), -1, device=device, dtype=torch.int32)
+                start_events[j].record()
+                mod.ep_scatter_2(recv_x, recv_topk, expert_start_loc_j, output_tensor_j, output_index_j)
+                end_events[j].record()
+            torch.cuda.synchronize()
+            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
+            elapsed_ms = sum(times) / len(times)
+
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": elapsed_ms,
+                "params": {
+                    "num_tokens": num_tokens,
+                    "hidden_size": hidden_size,
+                    "num_experts": num_experts,
+                    "topk": topk
+                }
+            })
+        except Exception:
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": -1.0,
+                "params": {
+                    "num_tokens": num_tokens,
+                    "hidden_size": hidden_size,
+                    "num_experts": num_experts,
+                    "topk": topk
+                }
+            })
+
+    return test_cases
 
 
 def main():
@@ -161,11 +187,14 @@ def main():
         if err: print(f"Error: {err}")
         sys.exit(0 if ok else 1)
     elif args.mode == "performance":
-        elapsed_ms = run_performance()
-        report = {"execution_time_ms": elapsed_ms}
+        test_cases = run_performance()
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
-            json.dump(report, f, indent=2)
-        print(f"Performance: {elapsed_ms:.4f} ms")
+            json.dump(test_cases, f, indent=2)
+        if test_cases:
+            total_time = sum(case["execution_time_ms"] for case in test_cases if case["execution_time_ms"] > 0)
+            print(f"Performance: measured {len(test_cases)} test case(s), total time: {total_time:.4f} ms")
+        else:
+            print("Performance: FAILED - no test cases measured")
         sys.exit(0)
 
 

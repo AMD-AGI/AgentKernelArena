@@ -32,8 +32,8 @@ TEST_SHAPES = [
     (32, 8192),
     (64, 32768),
 ]
-PERF_SHAPE_IDX = 3
-
+WARMUP_ITERATIONS = 10
+BENCHMARK_ITERATIONS = 100
 def run_correctness():
     import torch, math
     try: mod = load_module()
@@ -62,26 +62,48 @@ def run_correctness():
 def run_performance():
     import torch
     try: mod = load_module()
-    except Exception: return -1.0
+    except Exception: return []
     device = "cuda"
-    batch, vocab = TEST_SHAPES[PERF_SHAPE_IDX]
-    torch.manual_seed(0)
-    logits = torch.randn(batch, vocab, device=device, dtype=torch.float32)
-    idx_mapping = torch.arange(batch, dtype=torch.int32, device=device)
-    min_p = torch.full((batch,), 0.1, device=device, dtype=torch.float32)
-    for _ in range(10): mod.apply_min_p(logits.clone(), idx_mapping, min_p)
-    torch.cuda.synchronize()
-    n_iter = 100
-    start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    for j in range(n_iter):
-        l = logits.clone()
-        start_events[j].record()
-        mod.apply_min_p(l, idx_mapping, min_p)
-        end_events[j].record()
-    torch.cuda.synchronize()
-    times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-    return sum(times) / len(times)
+    test_cases = []
+
+    for test_idx, (batch, vocab) in enumerate(TEST_SHAPES):
+        try:
+            torch.manual_seed(42 + test_idx)
+            logits = torch.randn(batch, vocab, device=device, dtype=torch.float32)
+            idx_mapping = torch.arange(batch, dtype=torch.int32, device=device)
+            min_p = torch.full((batch,), 0.1, device=device, dtype=torch.float32)
+            for _ in range(WARMUP_ITERATIONS): mod.apply_min_p(logits.clone(), idx_mapping, min_p)
+            torch.cuda.synchronize()
+            n_iter = BENCHMARK_ITERATIONS
+            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            for j in range(n_iter):
+                l = logits.clone()
+                start_events[j].record()
+                mod.apply_min_p(l, idx_mapping, min_p)
+                end_events[j].record()
+            torch.cuda.synchronize()
+            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
+            elapsed_ms = sum(times) / len(times)
+
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": elapsed_ms,
+                "params": {
+                    "batch": batch,
+                    "vocab": vocab
+                }
+            })
+        except Exception:
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": -1.0,
+                "params": {
+                    "batch": batch,
+                    "vocab": vocab
+                }
+            })
+    return test_cases
 
 
 def main():
@@ -105,10 +127,13 @@ def main():
         if err: print(f"Error: {err}")
         sys.exit(0 if ok else 1)
     elif args.mode == "performance":
-        elapsed_ms = run_performance()
-        report = {"execution_time_ms": elapsed_ms}
-        with open(os.path.join(build_dir, "performance_report.json"), "w") as f: json.dump(report, f, indent=2)
-        print(f"Performance: {elapsed_ms:.4f} ms")
+        test_cases = run_performance()
+        with open(os.path.join(build_dir, "performance_report.json"), "w") as f: json.dump(test_cases, f, indent=2)
+        if test_cases:
+            total_time = sum(case["execution_time_ms"] for case in test_cases if case["execution_time_ms"] > 0)
+            print(f"Performance: measured {len(test_cases)} test case(s), total time: {total_time:.4f} ms")
+        else:
+            print("Performance: FAILED - no test cases measured")
         sys.exit(0)
 
 if __name__ == "__main__": main()
