@@ -339,7 +339,7 @@ def cal_kernel_perf(
             print(f"[Error] {kernel_name} case {case_idx} raises an exception: {e}")
             case_entry["error"] = f"exception: {e}"
             all_correct = False
-                report["test_cases"].append(case_entry)
+            report["test_cases"].append(case_entry)
             continue
 
         # Performance comparison: reference HIP vs optimized HIP
@@ -361,7 +361,7 @@ def cal_kernel_perf(
             case_entry["error"] = f"perf_exception: {e}"
             all_correct = False
 
-                report["test_cases"].append(case_entry)
+        report["test_cases"].append(case_entry)
 
     if not all_correct:
         report["message"] = "Some test cases failed correctness or performance checks"
