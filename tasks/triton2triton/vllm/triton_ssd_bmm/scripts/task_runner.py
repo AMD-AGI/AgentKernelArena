@@ -14,9 +14,8 @@ TEST_SHAPES = [
     (256, 8, 16, 64, True),
     (384, 4, 64, 128, False),
 ]
-PERF_IDX = 2
-
-
+WARMUP_ITERATIONS = 10
+BENCHMARK_ITERATIONS = 100
 def load_module():
     spec = importlib.util.spec_from_file_location("kernel", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
@@ -85,27 +84,55 @@ def run_performance():
     try:
         mod = load_module()
     except Exception:
-        return -1.0
+        return []
     device = "cuda"
-    seqlen, ngroups, k, chunk_size, causal = TEST_SHAPES[PERF_IDX]
-    nchunks = seqlen // chunk_size
-    torch.manual_seed(0)
-    a = torch.randn(seqlen, ngroups, k, device=device, dtype=torch.float16)
-    b = torch.randn(seqlen, ngroups, k, device=device, dtype=torch.float16)
-    cu = torch.arange(0, nchunks + 1, device=device, dtype=torch.int32) * chunk_size
-    for _ in range(10):
-        mod.bmm_chunk_fwd(a, b, chunk_size, cu, causal=causal)
-    torch.cuda.synchronize()
-    n_iter = 100
-    starts = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    ends = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    for j in range(n_iter):
-        starts[j].record()
-        mod.bmm_chunk_fwd(a, b, chunk_size, cu, causal=causal)
-        ends[j].record()
-    torch.cuda.synchronize()
-    times = [s.elapsed_time(e) for s, e in zip(starts, ends)]
-    return sum(times) / len(times)
+    test_cases = []
+
+    for test_idx, (seqlen, ngroups, k, chunk_size, causal) in enumerate(TEST_SHAPES):
+        try:
+            nchunks = seqlen // chunk_size
+            torch.manual_seed(42 + test_idx)
+            a = torch.randn(seqlen, ngroups, k, device=device, dtype=torch.float16)
+            b = torch.randn(seqlen, ngroups, k, device=device, dtype=torch.float16)
+            cu = torch.arange(0, nchunks + 1, device=device, dtype=torch.int32) * chunk_size
+            for _ in range(WARMUP_ITERATIONS):
+                mod.bmm_chunk_fwd(a, b, chunk_size, cu, causal=causal)
+            torch.cuda.synchronize()
+            n_iter = BENCHMARK_ITERATIONS
+            starts = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            ends = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            for j in range(n_iter):
+                starts[j].record()
+                mod.bmm_chunk_fwd(a, b, chunk_size, cu, causal=causal)
+                ends[j].record()
+            torch.cuda.synchronize()
+            times = [s.elapsed_time(e) for s, e in zip(starts, ends)]
+            elapsed_ms = sum(times) / len(times)
+
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": elapsed_ms,
+                "params": {
+                    "seqlen": seqlen,
+                    "ngroups": ngroups,
+                    "k": k,
+                    "chunk_size": chunk_size,
+                    "causal": causal
+                }
+            })
+        except Exception:
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": -1.0,
+                "params": {
+                    "seqlen": seqlen,
+                    "ngroups": ngroups,
+                    "k": k,
+                    "chunk_size": chunk_size,
+                    "causal": causal
+                }
+            })
+    return test_cases
 
 
 def main():
@@ -131,11 +158,14 @@ def main():
         if err: print(f"Error: {err}")
         sys.exit(0 if ok else 1)
     elif args.mode == "performance":
-        ms = run_performance()
-        report = {"execution_time_ms": ms}
+        test_cases = run_performance()
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
-            json.dump(report, f, indent=2)
-        print(f"Performance: {ms:.4f} ms")
+            json.dump(test_cases, f, indent=2)
+        if test_cases:
+            total_time = sum(case["execution_time_ms"] for case in test_cases if case["execution_time_ms"] > 0)
+            print(f"Performance: measured {len(test_cases)} test case(s), total time: {total_time:.4f} ms")
+        else:
+            print("Performance: FAILED - no test cases measured")
         sys.exit(0)
 
 

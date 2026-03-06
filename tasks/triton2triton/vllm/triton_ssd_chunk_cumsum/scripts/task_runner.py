@@ -15,9 +15,8 @@ TEST_SHAPES = [
     (256, 32, 64, True, True),
     (384, 16, 64, False, False),
 ]
-PERF_IDX = 2
-
-
+WARMUP_ITERATIONS = 10
+BENCHMARK_ITERATIONS = 100
 def load_module():
     spec = importlib.util.spec_from_file_location("kernel", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
@@ -103,28 +102,56 @@ def run_performance():
     try:
         mod = load_module()
     except Exception:
-        return -1.0
+        return []
     device = "cuda"
-    seqlen, nheads, chunk_size, has_bias, softplus = TEST_SHAPES[PERF_IDX]
-    nchunks = seqlen // chunk_size
-    torch.manual_seed(0)
-    dt = torch.randn(seqlen, nheads, device=device, dtype=torch.float32) * 0.1
-    A = -torch.rand(nheads, device=device, dtype=torch.float32) * 0.5
-    dt_bias = torch.randn(nheads, device=device, dtype=torch.float32) * 0.01 if has_bias else None
-    cu = torch.arange(0, nchunks + 1, device=device, dtype=torch.int32) * chunk_size
-    for _ in range(10):
-        mod.chunk_cumsum_fwd(dt, A, chunk_size, cu, dt_bias=dt_bias, dt_softplus=softplus)
-    torch.cuda.synchronize()
-    n_iter = 100
-    starts = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    ends = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    for j in range(n_iter):
-        starts[j].record()
-        mod.chunk_cumsum_fwd(dt, A, chunk_size, cu, dt_bias=dt_bias, dt_softplus=softplus)
-        ends[j].record()
-    torch.cuda.synchronize()
-    times = [s.elapsed_time(e) for s, e in zip(starts, ends)]
-    return sum(times) / len(times)
+    test_cases = []
+
+    for test_idx, (seqlen, nheads, chunk_size, has_bias, softplus) in enumerate(TEST_SHAPES):
+        try:
+            nchunks = seqlen // chunk_size
+            torch.manual_seed(42 + test_idx)
+            dt = torch.randn(seqlen, nheads, device=device, dtype=torch.float32) * 0.1
+            A = -torch.rand(nheads, device=device, dtype=torch.float32) * 0.5
+            dt_bias = torch.randn(nheads, device=device, dtype=torch.float32) * 0.01 if has_bias else None
+            cu = torch.arange(0, nchunks + 1, device=device, dtype=torch.int32) * chunk_size
+            for _ in range(WARMUP_ITERATIONS):
+                mod.chunk_cumsum_fwd(dt, A, chunk_size, cu, dt_bias=dt_bias, dt_softplus=softplus)
+            torch.cuda.synchronize()
+            n_iter = BENCHMARK_ITERATIONS
+            starts = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            ends = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            for j in range(n_iter):
+                starts[j].record()
+                mod.chunk_cumsum_fwd(dt, A, chunk_size, cu, dt_bias=dt_bias, dt_softplus=softplus)
+                ends[j].record()
+            torch.cuda.synchronize()
+            times = [s.elapsed_time(e) for s, e in zip(starts, ends)]
+            elapsed_ms = sum(times) / len(times)
+
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": elapsed_ms,
+                "params": {
+                    "seqlen": seqlen,
+                    "nheads": nheads,
+                    "chunk_size": chunk_size,
+                    "has_bias": has_bias,
+                    "softplus": softplus
+                }
+            })
+        except Exception:
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": -1.0,
+                "params": {
+                    "seqlen": seqlen,
+                    "nheads": nheads,
+                    "chunk_size": chunk_size,
+                    "has_bias": has_bias,
+                    "softplus": softplus
+                }
+            })
+    return test_cases
 
 
 def main():
@@ -150,11 +177,14 @@ def main():
         if err: print(f"Error: {err}")
         sys.exit(0 if ok else 1)
     elif args.mode == "performance":
-        ms = run_performance()
-        report = {"execution_time_ms": ms}
+        test_cases = run_performance()
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
-            json.dump(report, f, indent=2)
-        print(f"Performance: {ms:.4f} ms")
+            json.dump(test_cases, f, indent=2)
+        if test_cases:
+            total_time = sum(case["execution_time_ms"] for case in test_cases if case["execution_time_ms"] > 0)
+            print(f"Performance: measured {len(test_cases)} test case(s), total time: {total_time:.4f} ms")
+        else:
+            print("Performance: FAILED - no test cases measured")
         sys.exit(0)
 
 

@@ -20,9 +20,8 @@ TEST_SHAPES = [
     (256, 16, 16, 64, 64, [16, 8, 8]),
     (16, 8, 2, 128, 64, [16, 8, 8]),
 ]
-PERF_SHAPE_IDX = 2
-
-
+WARMUP_ITERATIONS = 10
+BENCHMARK_ITERATIONS = 100
 def load_module():
     spec = importlib.util.spec_from_file_location("triton_kernel", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
@@ -158,38 +157,65 @@ def run_performance():
     try:
         mod = load_module()
     except Exception:
-        return -1.0
+        return []
 
     device = "cuda"
     dtype = torch.float16
-    num_tokens, n_qh, n_kh, head_size, rotary_dim, mrope_section = TEST_SHAPES[PERF_SHAPE_IDX]
+    test_cases = []
 
-    torch.manual_seed(0)
-    q = torch.randn(num_tokens, n_qh * head_size, device=device, dtype=dtype)
-    k = torch.randn(num_tokens, n_kh * head_size, device=device, dtype=dtype)
-    cos = torch.randn(3, num_tokens, rotary_dim // 2, device=device, dtype=dtype)
-    sin = torch.randn(3, num_tokens, rotary_dim // 2, device=device, dtype=dtype)
+    for test_idx, (num_tokens, n_qh, n_kh, head_size, rotary_dim, mrope_section) in enumerate(TEST_SHAPES):
+        try:
+            torch.manual_seed(42 + test_idx)
+            q = torch.randn(num_tokens, n_qh * head_size, device=device, dtype=dtype)
+            k = torch.randn(num_tokens, n_kh * head_size, device=device, dtype=dtype)
+            cos = torch.randn(3, num_tokens, rotary_dim // 2, device=device, dtype=dtype)
+            sin = torch.randn(3, num_tokens, rotary_dim // 2, device=device, dtype=dtype)
 
-    for _ in range(10):
-        q_tmp = q.clone()
-        k_tmp = k.clone()
-        mod.triton_mrope(q_tmp, k_tmp, cos, sin, mrope_section, head_size, rotary_dim, False)
-    torch.cuda.synchronize()
+            for _ in range(WARMUP_ITERATIONS):
+                q_tmp = q.clone()
+                k_tmp = k.clone()
+                mod.triton_mrope(q_tmp, k_tmp, cos, sin, mrope_section, head_size, rotary_dim, False)
+            torch.cuda.synchronize()
 
-    n_iter = 100
-    start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            n_iter = BENCHMARK_ITERATIONS
+            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
 
-    for j in range(n_iter):
-        q_tmp = q.clone()
-        k_tmp = k.clone()
-        start_events[j].record()
-        mod.triton_mrope(q_tmp, k_tmp, cos, sin, mrope_section, head_size, rotary_dim, False)
-        end_events[j].record()
+            for j in range(n_iter):
+                q_tmp = q.clone()
+                k_tmp = k.clone()
+                start_events[j].record()
+                mod.triton_mrope(q_tmp, k_tmp, cos, sin, mrope_section, head_size, rotary_dim, False)
+                end_events[j].record()
 
-    torch.cuda.synchronize()
-    times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-    return sum(times) / len(times)
+            torch.cuda.synchronize()
+            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
+            elapsed_ms = sum(times) / len(times)
+
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": elapsed_ms,
+                "params": {
+                    "num_tokens": num_tokens,
+                    "num_q_heads": n_qh,
+                    "num_kv_heads": n_kh,
+                    "head_size": head_size,
+                    "rotary_dim": rotary_dim
+                }
+            })
+        except Exception:
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": -1.0,
+                "params": {
+                    "num_tokens": num_tokens,
+                    "num_q_heads": n_qh,
+                    "num_kv_heads": n_kh,
+                    "head_size": head_size,
+                    "rotary_dim": rotary_dim
+                }
+            })
+    return test_cases
 
 
 def main():
@@ -221,20 +247,14 @@ def main():
         sys.exit(0 if ok else 1)
 
     elif args.mode == "performance":
-        elapsed_ms = run_performance()
-        num_tokens, n_qh, n_kh, head_size, rotary_dim, mrope_section = TEST_SHAPES[PERF_SHAPE_IDX]
-        report = {
-            "execution_time_ms": elapsed_ms,
-            "shape": {
-                "num_tokens": num_tokens,
-                "num_q_heads": n_qh,
-                "num_kv_heads": n_kh,
-                "head_size": head_size,
-            },
-        }
+        test_cases = run_performance()
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
-            json.dump(report, f, indent=2)
-        print(f"Performance: {elapsed_ms:.4f} ms")
+            json.dump(test_cases, f, indent=2)
+        if test_cases:
+            total_time = sum(case["execution_time_ms"] for case in test_cases if case["execution_time_ms"] > 0)
+            print(f"Performance: measured {len(test_cases)} test case(s), total time: {total_time:.4f} ms")
+        else:
+            print("Performance: FAILED - no test cases measured")
         sys.exit(0)
 
 

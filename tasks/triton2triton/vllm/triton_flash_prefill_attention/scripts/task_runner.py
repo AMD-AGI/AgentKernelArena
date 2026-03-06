@@ -21,9 +21,8 @@ TEST_SHAPES = [
     (1, 1024, 16, 16, 64),  # long seq, MHA
     (8, 64, 8, 1, 64),      # batched, MQA
 ]
-PERF_SHAPE_IDX = 2
-
-
+WARMUP_ITERATIONS = 10
+BENCHMARK_ITERATIONS = 100
 def load_module():
     """Dynamically load the source module."""
     spec = importlib.util.spec_from_file_location("triton_kernel", SOURCE_FILE)
@@ -148,48 +147,75 @@ def run_performance():
     try:
         mod = load_module()
     except Exception:
-        return -1.0
+        return []
 
     device = "cuda"
     dtype = torch.float16
-    bs, seq_len, nh, nkv, hd = TEST_SHAPES[PERF_SHAPE_IDX]
-    total_tokens = bs * seq_len
+    test_cases = []
 
-    torch.manual_seed(0)
-    q = torch.randn(total_tokens, nh, hd, device=device, dtype=dtype)
-    k = torch.randn(total_tokens, nkv, hd, device=device, dtype=dtype)
-    v = torch.randn(total_tokens, nkv, hd, device=device, dtype=dtype)
-    o = torch.zeros_like(q)
+    for test_idx, (bs, seq_len, nh, nkv, hd) in enumerate(TEST_SHAPES):
+        try:
+            total_tokens = bs * seq_len
+            torch.manual_seed(42 + test_idx)
+            q = torch.randn(total_tokens, nh, hd, device=device, dtype=dtype)
+            k = torch.randn(total_tokens, nkv, hd, device=device, dtype=dtype)
+            v = torch.randn(total_tokens, nkv, hd, device=device, dtype=dtype)
+            o = torch.zeros_like(q)
 
-    b_seq_len = torch.full((bs,), seq_len, device=device, dtype=torch.int32)
-    b_start_loc = torch.zeros(bs, device=device, dtype=torch.int32)
-    for j in range(bs):
-        b_start_loc[j] = j * seq_len
+            b_seq_len = torch.full((bs,), seq_len, device=device, dtype=torch.int32)
+            b_start_loc = torch.zeros(bs, device=device, dtype=torch.int32)
+            for j in range(bs):
+                b_start_loc[j] = j * seq_len
 
-    # Warmup
-    for _ in range(10):
-        mod.context_attention_fwd(
-            q, k, v, o, b_start_loc, b_seq_len,
-            max_input_len=seq_len, is_causal=True,
-        )
-    torch.cuda.synchronize()
+            # Warmup
+            for _ in range(WARMUP_ITERATIONS):
+                mod.context_attention_fwd(
+                    q, k, v, o, b_start_loc, b_seq_len,
+                    max_input_len=seq_len, is_causal=True,
+                )
+            torch.cuda.synchronize()
 
-    # Benchmark
-    n_iter = 100
-    start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            # Benchmark
+            n_iter = BENCHMARK_ITERATIONS
+            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
 
-    for j in range(n_iter):
-        start_events[j].record()
-        mod.context_attention_fwd(
-            q, k, v, o, b_start_loc, b_seq_len,
-            max_input_len=seq_len, is_causal=True,
-        )
-        end_events[j].record()
+            for j in range(n_iter):
+                start_events[j].record()
+                mod.context_attention_fwd(
+                    q, k, v, o, b_start_loc, b_seq_len,
+                    max_input_len=seq_len, is_causal=True,
+                )
+                end_events[j].record()
 
-    torch.cuda.synchronize()
-    times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-    return sum(times) / len(times)
+            torch.cuda.synchronize()
+            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
+            elapsed_ms = sum(times) / len(times)
+
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": elapsed_ms,
+                "params": {
+                    "batch_size": bs,
+                    "seq_len": seq_len,
+                    "num_heads": nh,
+                    "num_kv_heads": nkv,
+                    "head_dim": hd
+                }
+            })
+        except Exception:
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": -1.0,
+                "params": {
+                    "batch_size": bs,
+                    "seq_len": seq_len,
+                    "num_heads": nh,
+                    "num_kv_heads": nkv,
+                    "head_dim": hd
+                }
+            })
+    return test_cases
 
 
 def main():
@@ -225,21 +251,14 @@ def main():
         sys.exit(0 if ok else 1)
 
     elif args.mode == "performance":
-        elapsed_ms = run_performance()
-        bs, seq_len, nh, nkv, hd = TEST_SHAPES[PERF_SHAPE_IDX]
-        report = {
-            "execution_time_ms": elapsed_ms,
-            "shape": {
-                "batch_size": bs,
-                "seq_len": seq_len,
-                "num_heads": nh,
-                "num_kv_heads": nkv,
-                "head_dim": hd,
-            },
-        }
+        test_cases = run_performance()
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
-            json.dump(report, f, indent=2)
-        print(f"Performance: {elapsed_ms:.4f} ms")
+            json.dump(test_cases, f, indent=2)
+        if test_cases:
+            total_time = sum(case["execution_time_ms"] for case in test_cases if case["execution_time_ms"] > 0)
+            print(f"Performance: measured {len(test_cases)} test case(s), total time: {total_time:.4f} ms")
+        else:
+            print("Performance: FAILED - no test cases measured")
         sys.exit(0)
 
 

@@ -15,9 +15,8 @@ TEST_SHAPES = [
     (256, 64, 4),
     (512, 64, 2),
 ]
-PERF_SHAPE_IDX = 4
-
-
+WARMUP_ITERATIONS = 10
+BENCHMARK_ITERATIONS = 100
 def load_module():
     spec = importlib.util.spec_from_file_location("triton_kernel", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
@@ -101,27 +100,51 @@ def run_performance():
     try:
         mod = load_module()
     except Exception:
-        return -1.0
+        return []
 
     device = "cuda"
-    n_rows, num_experts, topk = TEST_SHAPES[PERF_SHAPE_IDX]
-    torch.manual_seed(0)
-    topk_ids = torch.randint(0, num_experts, (n_rows, topk), device=device, dtype=torch.int16)
+    test_cases = []
 
-    for _ in range(10):
-        mod.pack_topk_to_bitmatrix(topk_ids, num_experts)
-    torch.cuda.synchronize()
+    for test_idx, (n_rows, num_experts, topk) in enumerate(TEST_SHAPES):
+        try:
+            torch.manual_seed(0)
+            topk_ids = torch.randint(0, num_experts, (n_rows, topk), device=device, dtype=torch.int16)
 
-    n_iter = 100
-    start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    for j in range(n_iter):
-        start_events[j].record()
-        mod.pack_topk_to_bitmatrix(topk_ids, num_experts)
-        end_events[j].record()
-    torch.cuda.synchronize()
-    times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-    return sum(times) / len(times)
+            for _ in range(WARMUP_ITERATIONS):
+                mod.pack_topk_to_bitmatrix(topk_ids, num_experts)
+            torch.cuda.synchronize()
+
+            n_iter = BENCHMARK_ITERATIONS
+            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            for j in range(n_iter):
+                start_events[j].record()
+                mod.pack_topk_to_bitmatrix(topk_ids, num_experts)
+                end_events[j].record()
+            torch.cuda.synchronize()
+            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
+            elapsed_ms = sum(times) / len(times)
+
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": elapsed_ms,
+                "params": {
+                    "n_rows": n_rows,
+                    "num_experts": num_experts,
+                    "topk": topk
+                }
+            })
+        except Exception:
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": -1.0,
+                "params": {
+                    "n_rows": n_rows,
+                    "num_experts": num_experts,
+                    "topk": topk
+                }
+            })
+    return test_cases
 
 
 def main():
@@ -147,11 +170,14 @@ def main():
         if err: print(f"Error: {err}")
         sys.exit(0 if ok else 1)
     elif args.mode == "performance":
-        elapsed_ms = run_performance()
-        report = {"execution_time_ms": elapsed_ms}
+        test_cases = run_performance()
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
-            json.dump(report, f, indent=2)
-        print(f"Performance: {elapsed_ms:.4f} ms")
+            json.dump(test_cases, f, indent=2)
+        if test_cases:
+            total_time = sum(case["execution_time_ms"] for case in test_cases if case["execution_time_ms"] > 0)
+            print(f"Performance: measured {len(test_cases)} test case(s), total time: {total_time:.4f} ms")
+        else:
+            print("Performance: FAILED - no test cases measured")
         sys.exit(0)
 
 

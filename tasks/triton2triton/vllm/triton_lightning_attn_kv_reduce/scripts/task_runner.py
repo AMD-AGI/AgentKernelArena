@@ -20,9 +20,8 @@ TEST_SHAPES = [
     (2, 4, 128, 64, 32),
     (4, 2, 64, 32, 32),
 ]
-PERF_SHAPE_IDX = 2
-
-
+WARMUP_ITERATIONS = 10
+BENCHMARK_ITERATIONS = 100
 def load_module():
     """Dynamically load the source module."""
     spec = importlib.util.spec_from_file_location("triton_kernel", SOURCE_FILE)
@@ -130,40 +129,69 @@ def run_performance():
     try:
         mod = load_module()
     except Exception:
-        return -1.0
+        return []
 
     device = "cuda"
-    B, H, N, D, E = TEST_SHAPES[PERF_SHAPE_IDX]
-    BLOCK = 256
-    NUM_BLOCK = (N + BLOCK - 1) // BLOCK
+    test_cases = []
 
-    torch.manual_seed(0)
-    s = torch.rand(H, device=device, dtype=torch.float32) * 0.1 + 0.01
-    kv = torch.randn(B, H, NUM_BLOCK, D, E, device=device, dtype=torch.float32)
-    kv_history = torch.zeros(B, H, D, E, device=device, dtype=torch.float32)
+    for test_idx, (B, H, N, D, E) in enumerate(TEST_SHAPES):
+        try:
+            BLOCK = 256
+            NUM_BLOCK = (N + BLOCK - 1) // BLOCK
 
-    # Warmup
-    for _ in range(10):
-        kv_c = kv.clone()
-        h_c = kv_history.clone()
-        mod.lightning_attn_kv_reduce_forward(s, kv_c, h_c, N, BLOCK)
-    torch.cuda.synchronize()
+            torch.manual_seed(0)
+            s = torch.rand(H, device=device, dtype=torch.float32) * 0.1 + 0.01
+            kv = torch.randn(B, H, NUM_BLOCK, D, E, device=device, dtype=torch.float32)
+            kv_history = torch.zeros(B, H, D, E, device=device, dtype=torch.float32)
 
-    # Benchmark
-    n_iter = 100
-    start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            # Warmup
+            for _ in range(WARMUP_ITERATIONS):
+                kv_c = kv.clone()
+                h_c = kv_history.clone()
+                mod.lightning_attn_kv_reduce_forward(s, kv_c, h_c, N, BLOCK)
+            torch.cuda.synchronize()
 
-    for j in range(n_iter):
-        kv_c = kv.clone()
-        h_c = kv_history.clone()
-        start_events[j].record()
-        mod.lightning_attn_kv_reduce_forward(s, kv_c, h_c, N, BLOCK)
-        end_events[j].record()
+            # Benchmark
+            n_iter = BENCHMARK_ITERATIONS
+            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
 
-    torch.cuda.synchronize()
-    times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-    return sum(times) / len(times)
+            for j in range(n_iter):
+                kv_c = kv.clone()
+                h_c = kv_history.clone()
+                start_events[j].record()
+                mod.lightning_attn_kv_reduce_forward(s, kv_c, h_c, N, BLOCK)
+                end_events[j].record()
+
+            torch.cuda.synchronize()
+            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
+            elapsed_ms = sum(times) / len(times)
+
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": elapsed_ms,
+                "params": {
+                    "batch": B,
+                    "heads": H,
+                    "seq": N,
+                    "d_model": D,
+                    "e_model": E
+                }
+            })
+        except Exception:
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": -1.0,
+                "params": {
+                    "batch": B,
+                    "heads": H,
+                    "seq": N,
+                    "d_model": D,
+                    "e_model": E
+                }
+            })
+
+    return test_cases
 
 
 def main():
@@ -199,15 +227,14 @@ def main():
         sys.exit(0 if ok else 1)
 
     elif args.mode == "performance":
-        elapsed_ms = run_performance()
-        B, H, N, D, E = TEST_SHAPES[PERF_SHAPE_IDX]
-        report = {
-            "execution_time_ms": elapsed_ms,
-            "shape": {"batch": B, "heads": H, "seq": N, "d_model": D, "e_model": E},
-        }
+        test_cases = run_performance()
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
-            json.dump(report, f, indent=2)
-        print(f"Performance: {elapsed_ms:.4f} ms")
+            json.dump(test_cases, f, indent=2)
+        if test_cases:
+            total_time = sum(case["execution_time_ms"] for case in test_cases if case["execution_time_ms"] > 0)
+            print(f"Performance: measured {len(test_cases)} test case(s), total time: {total_time:.4f} ms")
+        else:
+            print("Performance: FAILED - no test cases measured")
         sys.exit(0)
 
 

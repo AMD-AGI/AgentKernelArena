@@ -14,9 +14,8 @@ TEST_SHAPES = [
     (256, 4, 64, 2, 16, 64),
     (384, 8, 32, 4, 32, 128),
 ]
-PERF_IDX = 1
-
-
+WARMUP_ITERATIONS = 10
+BENCHMARK_ITERATIONS = 100
 def load_module():
     spec = importlib.util.spec_from_file_location("kernel", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
@@ -111,33 +110,61 @@ def run_performance():
     try:
         mod = load_module()
     except Exception:
-        return -1.0
+        return []
     device = "cuda"
-    seqlen, nheads, headdim, ngroups, dstate, chunk_size = TEST_SHAPES[PERF_IDX]
-    nchunks = seqlen // chunk_size
-    torch.manual_seed(0)
-    cb = torch.randn(nchunks, ngroups, chunk_size, chunk_size, device=device, dtype=torch.float16) * 0.01
-    x = torch.randn(seqlen, nheads, headdim, device=device, dtype=torch.float16)
-    C = torch.randn(seqlen, ngroups, dstate, device=device, dtype=torch.float16)
-    dt = torch.rand(nheads, nchunks, chunk_size, device=device, dtype=torch.float32) * 0.1
-    dA_cumsum = torch.cumsum(dt * (-0.1), dim=-1)
-    states = torch.randn(nchunks, nheads, headdim, dstate, device=device, dtype=torch.float32) * 0.01
-    seq_idx = torch.zeros(nchunks, device=device, dtype=torch.int32)
-    cu = torch.arange(0, nchunks + 1, device=device, dtype=torch.int32) * chunk_size
-    out = torch.zeros(seqlen, nheads, headdim, device=device, dtype=torch.float32)
-    for _ in range(10):
-        mod.chunk_scan_fwd(cb, x, dt, dA_cumsum, C, states, cu, out, seq_idx)
-    torch.cuda.synchronize()
-    n_iter = 100
-    starts = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    ends = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    for j in range(n_iter):
-        starts[j].record()
-        mod.chunk_scan_fwd(cb, x, dt, dA_cumsum, C, states, cu, out, seq_idx)
-        ends[j].record()
-    torch.cuda.synchronize()
-    times = [s.elapsed_time(e) for s, e in zip(starts, ends)]
-    return sum(times) / len(times)
+    test_cases = []
+    for test_idx, (seqlen, nheads, headdim, ngroups, dstate, chunk_size) in enumerate(TEST_SHAPES):
+        try:
+            nchunks = seqlen // chunk_size
+            torch.manual_seed(0)
+            cb = torch.randn(nchunks, ngroups, chunk_size, chunk_size, device=device, dtype=torch.float16) * 0.01
+            x = torch.randn(seqlen, nheads, headdim, device=device, dtype=torch.float16)
+            C = torch.randn(seqlen, ngroups, dstate, device=device, dtype=torch.float16)
+            dt = torch.rand(nheads, nchunks, chunk_size, device=device, dtype=torch.float32) * 0.1
+            dA_cumsum = torch.cumsum(dt * (-0.1), dim=-1)
+            states = torch.randn(nchunks, nheads, headdim, dstate, device=device, dtype=torch.float32) * 0.01
+            seq_idx = torch.zeros(nchunks, device=device, dtype=torch.int32)
+            cu = torch.arange(0, nchunks + 1, device=device, dtype=torch.int32) * chunk_size
+            out = torch.zeros(seqlen, nheads, headdim, device=device, dtype=torch.float32)
+            for _ in range(WARMUP_ITERATIONS):
+                mod.chunk_scan_fwd(cb, x, dt, dA_cumsum, C, states, cu, out, seq_idx)
+            torch.cuda.synchronize()
+            n_iter = BENCHMARK_ITERATIONS
+            starts = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            ends = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            for j in range(n_iter):
+                starts[j].record()
+                mod.chunk_scan_fwd(cb, x, dt, dA_cumsum, C, states, cu, out, seq_idx)
+                ends[j].record()
+            torch.cuda.synchronize()
+            times = [s.elapsed_time(e) for s, e in zip(starts, ends)]
+            elapsed_ms = sum(times) / len(times)
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": elapsed_ms,
+                "params": {
+                    "seqlen": seqlen,
+                    "nheads": nheads,
+                    "headdim": headdim,
+                    "ngroups": ngroups,
+                    "dstate": dstate,
+                    "chunk_size": chunk_size
+                }
+            })
+        except Exception:
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": -1.0,
+                "params": {
+                    "seqlen": seqlen,
+                    "nheads": nheads,
+                    "headdim": headdim,
+                    "ngroups": ngroups,
+                    "dstate": dstate,
+                    "chunk_size": chunk_size
+                }
+            })
+    return test_cases
 
 
 def main():
@@ -163,11 +190,14 @@ def main():
         if err: print(f"Error: {err}")
         sys.exit(0 if ok else 1)
     elif args.mode == "performance":
-        ms = run_performance()
-        report = {"execution_time_ms": ms}
+        test_cases = run_performance()
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
-            json.dump(report, f, indent=2)
-        print(f"Performance: {ms:.4f} ms")
+            json.dump(test_cases, f, indent=2)
+        if test_cases:
+            total_time = sum(case["execution_time_ms"] for case in test_cases if case["execution_time_ms"] > 0)
+            print(f"Performance: measured {len(test_cases)} test case(s), total time: {total_time:.4f} ms")
+        else:
+            print("Performance: FAILED - no test cases measured")
         sys.exit(0)
 
 
