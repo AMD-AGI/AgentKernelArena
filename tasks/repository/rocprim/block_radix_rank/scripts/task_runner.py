@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 """
-Task runner for repository/rocprim/block_histogram.
+Task runner for repository/rocprim/block_radix_rank.
 
 This script provides a stable interface for AgentKernelArena's evaluator:
   - `compile`      : configure & build rocPRIM benchmark/test targets
-  - `correctness`  : run `test_block_histogram`
-  - `performance`  : run `benchmark_block_histogram` and emit `build/performance_report.json`
+  - `correctness`  : run `test_block_radix_rank`
+  - `performance`  : run `benchmark_block_radix_rank` and emit `build/performance_report.json`
 
 All reports are written under `<workspace>/build/` so the centralized evaluator can parse them.
 """
@@ -24,9 +24,9 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 
-TASK_NAME = "repository/rocprim/block_histogram"
-BENCH_TARGET = "benchmark_block_histogram"
-TEST_TARGET = "test_block_histogram"
+TASK_NAME = "repository/rocprim/block_radix_rank"
+BENCH_TARGET = "benchmark_block_radix_rank"
+TEST_TARGET = "test_block_radix_rank"
 REPO_SUBDIR = "rocPRIM"  # Cloned repo lives under workspace/rocPRIM/
 
 
@@ -41,18 +41,17 @@ def _source_root(workspace: Path) -> Path:
 
 
 def _cmake_build_root(workspace: Path) -> Path:
-    """CMake build root inside the cloned repo (workspace/rocPRIM/build/)."""
-    return _source_root(workspace) / "build"
+    """CMake build root (workspace/rocPRIM/)."""
+    return workspace / REPO_SUBDIR
 
 
 def _cmake_build_dir(workspace: Path) -> Path:
-    """CMake build directory (workspace/rocPRIM/build/Release/)."""
-    return _cmake_build_root(workspace) / "Release"
+    return _cmake_build_root(workspace) / "build"
 
 
 def _report_root(workspace: Path) -> Path:
-    """Report directory for evaluator (workspace/build/). Separate from CMake build."""
-    return workspace / "build"
+    """Report directory for evaluator (workspace/build_reports/)."""
+    return workspace / "build_reports"
 
 
 def _detect_arch() -> Optional[str]:
@@ -103,6 +102,7 @@ def _ensure_configured(source_dir: Path, build_dir: Path) -> Tuple[bool, Optiona
         "-B",
         str(build_dir),
         "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
         "-DBUILD_BENCHMARK=ON",
         "-DBUILD_TEST=ON",
     ]
@@ -168,25 +168,34 @@ def _bench_binary_path(build_dir: Path) -> Path:
 
 
 
-def _parse_time_ms(output: str) -> Optional[float]:
-    # Try to find a reasonable "average/mean" latency number in common units.
-    patterns = [
-        r"avg(?:erage)?(?:\s+time)?\s*[:=]\s*([\d.]+)\s*(ns|us|ms|s)\b",
-        r"mean(?:\s+time)?\s*[:=]\s*([\d.]+)\s*(ns|us|ms|s)\b",
-        r"median(?:\s+time)?\s*[:=]\s*([\d.]+)\s*(ns|us|ms|s)\b",
-        r"Perf(?:ormance)?\s*[:=]\s*([\d.]+)\s*(ns|us|ms|s)\b",
-        r"([\d.]+)\s*(ns|us|ms|s)\s*/\s*(?:trial|iter(?:ation)?|launch)\b",
-    ]
-    unit_mul = {"ns": 1e-6, "us": 1e-3, "ms": 1.0, "s": 1000.0}
-    for pat in patterns:
-        m = re.search(pat, output, re.IGNORECASE)
-        if not m:
-            continue
-        val = float(m.group(1))
-        unit = m.group(2).lower()
-        if unit in unit_mul:
-            return val * unit_mul[unit]
-    return None
+def _parse_benchmark_results(output: str) -> list[dict]:
+    """
+    Parse rocPRIM benchmark output for all test cases.
+    Returns list of dicts with test_case_id and bytes_per_second_gs for each test case.
+    """
+    pattern = re.compile(
+        r"^(?P<name>.+?)/manual_time\s+"
+        r"(?P<time>[\d\.]+)\s*(?P<time_unit>ns|us|ms|s)\s+"
+        r"(?P<cpu>[\d\.]+)\s*(?P<cpu_unit>ns|us|ms|s)\s+"
+        r"(?P<iterations>\d+)\s+"
+        r"bytes_per_second=(?P<bps>[\d\.]+)(?P<bps_unit>[GT])/s",
+        re.MULTILINE,
+    )
+
+    results = []
+    for m in pattern.finditer(output):
+        name = m.group("name").strip()
+        bps = float(m.group("bps"))
+        bps_unit = m.group("bps_unit")
+        # Convert T/s to G/s
+        if bps_unit == "T":
+            bps *= 1024.0
+        results.append({
+            "test_case_id": name,
+            "bytes_per_second_gs": bps,
+        })
+
+    return results
 
 
 def run_compile(workspace: Path) -> Tuple[bool, Optional[str]]:
@@ -237,34 +246,41 @@ def run_correctness(workspace: Path) -> Tuple[bool, Optional[str]]:
     return True, None
 
 
-def run_performance(workspace: Path, trials: int) -> Tuple[float, str]:
+def run_performance(workspace: Path, trials: int) -> Tuple[list[dict], str]:
+    """
+    Run benchmark and return (list_of_test_results, error_message).
+    Each test result contains test_case_id and bytes_per_second_gs.
+    Returns empty list on failure.
+    """
     build_dir = _cmake_build_dir(workspace)
     source_dir = _source_root(workspace)
+    report_root = _report_root(workspace)
+    report_root.mkdir(parents=True, exist_ok=True)
 
     bench_bin = _bench_binary_path(build_dir)
     ok, err = _maybe_build_target(source_dir, build_dir, BENCH_TARGET, bench_bin)
     if not ok:
-        return -1.0, err or "build failed"
+        return [], err or "build failed"
     if not bench_bin.is_file():
-        return -1.0, f"Benchmark binary not found after build attempt: {bench_bin}"
+        return [], f"Benchmark binary not found after build attempt: {bench_bin}"
 
     env = os.environ.copy()
     cmd = [str(bench_bin), "--trials", str(trials)]
-    t0 = time.perf_counter()
     ok, out = _run(cmd, cwd=workspace, timeout_s=3600, env=env)
-    elapsed_ms_total = (time.perf_counter() - t0) * 1000.0
+
+    # Save benchmark log
+    log_path = report_root / f"{BENCH_TARGET}.log"
+    log_path.write_text(out, encoding="utf-8")
+    print(f"Benchmark log saved to: {log_path}")
 
     if not ok:
-        return -1.0, f"Benchmark failed.\nCommand: {' '.join(cmd)}\nOutput:\n{out}"
+        return [], f"Benchmark failed.\nCommand: {' '.join(cmd)}\nOutput:\n{out}"
 
-    parsed_ms = _parse_time_ms(out)
-    if parsed_ms is not None and parsed_ms > 0:
-        return float(parsed_ms), ""
+    results = _parse_benchmark_results(out)
+    if results:
+        return results, ""
 
-    # Fallback: approximate average per trial from wall-clock runtime.
-    if trials > 0:
-        return float(elapsed_ms_total / trials), ""
-    return float(elapsed_ms_total), ""
+    return [], f"Failed to parse benchmark results from output.\nOutput:\n{out}"
 
 
 def main() -> None:
@@ -306,20 +322,20 @@ def main() -> None:
         sys.exit(0 if ok else 1)
 
     if args.mode == "performance":
-        exec_ms, err = run_performance(workspace, trials=args.trials)
-        report = [
-            {
-                "test_case_id": "test_case_0",
-                "execution_time_ms": exec_ms,
-                "params": {"trials": args.trials},
-            }
-        ]
+        results, err = run_performance(workspace, trials=args.trials)
+        report = results if results else []
         (report_root / "performance_report.json").write_text(json.dumps(report, indent=2))
-        # Also print a recognizable line for stdout parsing fallback.
-        print(f"Performance: {exec_ms:.4f} ms")
+
+        if results:
+            avg_bps = sum(r["bytes_per_second_gs"] for r in results) / len(results)
+            print(f"Performance: {len(results)} test cases, avg {avg_bps:.4f} G/s")
+            for r in results:
+                print(f"  {r['test_case_id']}: {r['bytes_per_second_gs']:.4f} G/s")
+        else:
+            print("Performance: FAILED")
         if err:
             print(err)
-        sys.exit(0 if exec_ms != -1.0 else 1)
+        sys.exit(0 if results else 1)
 
 
 if __name__ == "__main__":

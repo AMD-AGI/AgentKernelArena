@@ -7,4 +7,4 @@ performance_command:
   - python3 scripts/task_runner.py performance
 prompt:
   cheatsheet: null
-  instructions: "Optimize block_histogram"
+  instructions: "Optimize block_radix_rank"

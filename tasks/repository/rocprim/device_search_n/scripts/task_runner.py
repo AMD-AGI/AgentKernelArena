@@ -41,18 +41,17 @@ def _source_root(workspace: Path) -> Path:
 
 
 def _cmake_build_root(workspace: Path) -> Path:
-    """CMake build root inside the cloned repo (workspace/rocPRIM/build/)."""
-    return _source_root(workspace) / "build"
+    """CMake build root (workspace/rocPRIM/)."""
+    return workspace / REPO_SUBDIR
 
 
 def _cmake_build_dir(workspace: Path) -> Path:
-    """CMake build directory (workspace/rocPRIM/build/Release/)."""
-    return _cmake_build_root(workspace) / "Release"
+    return _cmake_build_root(workspace) / "build"
 
 
 def _report_root(workspace: Path) -> Path:
-    """Report directory for evaluator (workspace/build/). Separate from CMake build."""
-    return workspace / "build"
+    """Report directory for evaluator (workspace/build_reports/)."""
+    return workspace / "build_reports"
 
 
 def _detect_arch() -> Optional[str]:
@@ -103,6 +102,7 @@ def _ensure_configured(source_dir: Path, build_dir: Path) -> Tuple[bool, Optiona
         "-B",
         str(build_dir),
         "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
         "-DBUILD_BENCHMARK=ON",
         "-DBUILD_TEST=ON",
     ]
