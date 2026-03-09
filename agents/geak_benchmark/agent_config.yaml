@@ -1,0 +1,11 @@
+version: 0
+
+# Agent timeout settings
+timeout_seconds: 36000
+python_path: python3
+
+run:
+  # Output folder is relative to AIG-Eval root unless absolute.
+  # cmd can be mini or geak
+  cmd: mini
+  configs: '-c geak.yaml --num-parallel=2 --gpu-ids=2,3 --yolo'
