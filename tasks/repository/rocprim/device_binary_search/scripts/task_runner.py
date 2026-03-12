@@ -7,8 +7,6 @@ This script provides a stable interface for AgentKernelArena's evaluator:
   - `compile`      : configure & build rocPRIM benchmark/test targets
   - `correctness`  : run `test_device_binary_search`
   - `performance`  : run `benchmark_device_binary_search` and emit `build/performance_report.json`
-
-All reports are written under `<workspace>/build/` so the centralized evaluator can parse them.
 """
 
 from __future__ import annotations
@@ -17,276 +15,252 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Optional, Tuple
 
-
 TASK_NAME = "repository/rocprim/device_binary_search"
 BENCH_TARGET = "benchmark_device_binary_search"
 TEST_TARGET = "test_device_binary_search"
-REPO_SUBDIR = "rocPRIM"  # Cloned repo lives under workspace/rocPRIM/
+REPO_SUBDIR = "rocPRIM"
 
-
+# Path helpers
 def _workspace_root() -> Path:
-    # scripts/task_runner.py -> scripts/ -> workspace root
     return Path(__file__).resolve().parents[1]
 
+def _source_root(ws: Path) -> Path:
+    return ws / REPO_SUBDIR
 
-def _source_root(workspace: Path) -> Path:
-    """CMake source directory (cloned rocPRIM repo)."""
-    return workspace / REPO_SUBDIR
+def _build_dir(ws: Path) -> Path:
+    return ws / REPO_SUBDIR / "build"
 
+def _report_root(ws: Path) -> Path:
+    return ws / "build"
 
-def _cmake_build_root(workspace: Path) -> Path:
-    """CMake build root (workspace/rocPRIM/)."""
-    return workspace / REPO_SUBDIR
+def _test_bin(ws: Path) -> Path:
+    return _build_dir(ws) / "test" / "rocprim" / TEST_TARGET
 
+def _bench_bin(ws: Path) -> Path:
+    return _build_dir(ws) / "benchmark" / BENCH_TARGET
 
-def _cmake_build_dir(workspace: Path) -> Path:
-    return _cmake_build_root(workspace) / "build"
-
-
-def _report_root(workspace: Path) -> Path:
-    """Report directory for evaluator (workspace/build_reports/)."""
-    return workspace / "build_reports"
-
+def _get_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env.setdefault("ROCM_PATH", "/opt/rocm")
+    env.setdefault("CXX", "hipcc")
+    return env
 
 def _detect_arch() -> Optional[str]:
-    # Main framework sets PYTORCH_ROCM_ARCH from target_gpu_model; reuse it for rocPRIM CMake.
     arch = os.environ.get("AMDGPU_TARGETS") or os.environ.get("PYTORCH_ROCM_ARCH")
-    if not arch:
-        return None
-    return arch.strip() or None
+    return arch.strip() if arch else None
+
+def _print_phase(name: str, end: bool = False, status: str = ""):
+    if end:
+        print("=" * 60)
+        if status:
+            print(f"{name}: {status}")
+    else:
+        print("\n" + "=" * 60)
+        print(name)
+        print("=" * 60)
 
 
-def _run(cmd: list[str], cwd: Path, timeout_s: int, env: dict[str, str]) -> Tuple[bool, str]:
+def _run(cmd: list[str], cwd: Path, timeout_s: int) -> Tuple[bool, str]:
+    """Run command with real-time output streaming."""
+    print(f"[RUN] {' '.join(cmd)}")
+    print(f"[CWD] {cwd}")
+    sys.stdout.flush()
+
     try:
-        proc = subprocess.run(
-            cmd,
-            cwd=str(cwd),
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
+        proc = subprocess.Popen(
+            cmd, cwd=str(cwd), env=_get_env(),
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1,
         )
-        out = (proc.stdout or "") + (proc.stderr or "")
-        return proc.returncode == 0, out
-    except subprocess.TimeoutExpired as e:
-        out = (getattr(e, "stdout", "") or "") + (getattr(e, "stderr", "") or "")
-        return False, f"TIMEOUT after {timeout_s}s\n{out}"
+        output_lines = []
+        start_time = time.time()
+        
+        try:
+            while True:
+                if proc.poll() is not None:
+                    remaining = proc.stdout.read()
+                    if remaining:
+                        print(remaining, end="", flush=True)
+                        output_lines.append(remaining)
+                    break
+                
+                if time.time() - start_time > timeout_s:
+                    proc.kill()
+                    proc.wait()
+                    return False, f"TIMEOUT after {timeout_s}s\n{''.join(output_lines)}"
+                
+                line = proc.stdout.readline()
+                if line:
+                    print(line, end="", flush=True)
+                    output_lines.append(line)
+        finally:
+            proc.stdout.close()
+        
+        return proc.returncode == 0, "".join(output_lines)
     except Exception as e:
         return False, str(e)
 
 
-def _ensure_configured(source_dir: Path, build_dir: Path) -> Tuple[bool, Optional[str]]:
-    """
-    Run CMake configure.
+def _clean_stale_cmake_cache(source_dir: Path, build_dir: Path) -> None:
+    """Remove stale CMake caches if generated for a different source directory."""
+    
+    def _check_cache_file(cache_file: Path) -> bool:
+        """Check if cache file is stale. Returns True if stale."""
+        if not cache_file.is_file():
+            return False
+        try:
+            for line in cache_file.read_text(errors="ignore").splitlines():
+                if line.startswith("CMAKE_HOME_DIRECTORY:"):
+                    cached = line.split("=", 1)[1].strip() if "=" in line else ""
+                    if cached and Path(cached).resolve() != source_dir.resolve():
+                        return True
+                    break
+        except Exception:
+            pass
+        return False
+    
+    try:
+        is_stale = False
+        
+        # Check top-level cache
+        if _check_cache_file(build_dir / "CMakeCache.txt"):
+            is_stale = True
+        
+        # Also check _deps subdirectories for stale caches (e.g., googletest-subbuild)
+        deps_dir = build_dir / "_deps"
+        if deps_dir.is_dir():
+            for subdir in deps_dir.iterdir():
+                if subdir.is_dir() and _check_cache_file(subdir / "CMakeCache.txt"):
+                    is_stale = True
+                    break
+        
+        if is_stale:
+            print(f"Stale CMake cache detected, cleaning build directory...")
+            for item in ["CMakeCache.txt", "CMakeFiles", "_deps"]:
+                path = build_dir / item
+                if path.is_file():
+                    path.unlink()
+                elif path.is_dir():
+                    shutil.rmtree(path, ignore_errors=True)
+            print(f"Cleaned: CMakeCache.txt, CMakeFiles, _deps")
+    except Exception as e:
+        print(f"Warning: Failed to check CMake cache: {e}")
 
-    Args:
-        source_dir: CMake source directory (cloned repo, e.g. workspace/rocPRIM/)
-        build_dir: CMake build directory (e.g. workspace/build/Release/)
-    """
+
+def _cmake_configure(source_dir: Path, build_dir: Path) -> Tuple[bool, Optional[str]]:
+    _print_phase("CMAKE CONFIGURE")
     build_dir.mkdir(parents=True, exist_ok=True)
-
-    env = os.environ.copy()
-    env.setdefault("ROCM_PATH", "/opt/rocm")
-    env.setdefault("CXX", "hipcc")
+    _clean_stale_cmake_cache(source_dir, build_dir)
 
     cmake_args = [
-        "cmake",
-        "-S",
-        str(source_dir),
-        "-B",
-        str(build_dir),
-        "-DCMAKE_BUILD_TYPE=Release",
-        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
-        "-DBUILD_BENCHMARK=ON",
-        "-DBUILD_TEST=ON",
+        "cmake", "-S", str(source_dir), "-B", str(build_dir),
+        "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
+        "-DBUILD_BENCHMARK=ON", "-DBUILD_TEST=ON",
     ]
-
-    arch = _detect_arch()
-    if arch:
+    if arch := _detect_arch():
         cmake_args.append(f"-DAMDGPU_TARGETS={arch}")
 
-    ok, out = _run(cmake_args, cwd=source_dir, timeout_s=600, env=env)
-    if not ok:
-        return False, f"CMake configure failed.\nCommand: {' '.join(cmake_args)}\nOutput:\n{out}"
-    return True, None
+    ok, out = _run(cmake_args, cwd=source_dir, timeout_s=3600)
+    _print_phase("CMAKE CONFIGURE", end=True, status="SUCCESS" if ok else "FAILED")
+    return (True, None) if ok else (False, f"CMake configure failed.\n{out}")
 
 
 def _cmake_build(source_dir: Path, build_dir: Path, target: str) -> Tuple[bool, Optional[str]]:
-    """
-    Run CMake build.
-
-    Args:
-        source_dir: CMake source directory (for cwd)
-        build_dir: CMake build directory
-        target: Build target name
-    """
-    env = os.environ.copy()
-    env.setdefault("ROCM_PATH", "/opt/rocm")
-    env.setdefault("CXX", "hipcc")
-
+    _print_phase(f"CMAKE BUILD: {target}")
     cmd = ["cmake", "--build", str(build_dir), "--target", target, "-j"]
-    ok, out = _run(cmd, cwd=source_dir, timeout_s=1800, env=env)
-    if not ok:
-        return False, f"Build failed for target '{target}'.\nCommand: {' '.join(cmd)}\nOutput:\n{out}"
-    return True, None
-
-
-def _maybe_build_target(
-    source_dir: Path,
-    build_dir: Path,
-    target: str,
-    binary_path: Path,
-) -> Tuple[bool, Optional[str]]:
-    """
-    Avoid redundant builds when the binary already exists.
-
-    Arena runs compile -> correctness -> performance sequentially, so correctness/perf
-    should not rebuild unless the required binary is missing.
-    """
-    if binary_path.is_file():
-        return True, None
-
-    ok, err = _ensure_configured(source_dir, build_dir)
-    if not ok:
-        return False, err
-    return _cmake_build(source_dir, build_dir, target)
-
-
-def _test_binary_path(build_dir: Path) -> Path:
-    return build_dir / "test" / "rocprim" / TEST_TARGET
-
-
-def _bench_binary_path(build_dir: Path) -> Path:
-    return build_dir / "benchmark" / BENCH_TARGET
-
-
+    ok, out = _run(cmd, cwd=source_dir, timeout_s=3600)
+    _print_phase(f"CMAKE BUILD {target}", end=True, status="SUCCESS" if ok else "FAILED")
+    return (True, None) if ok else (False, f"Build failed for '{target}'.\n{out}")
 
 
 def _parse_benchmark_results(output: str) -> list[dict]:
-    """
-    Parse rocPRIM benchmark output for all test cases.
-    Returns list of dicts with test_case_id and bytes_per_second_gs for each test case.
-    """
     pattern = re.compile(
-        r"^(?P<name>.+?)/manual_time\s+"
-        r"(?P<time>[\d\.]+)\s*(?P<time_unit>ns|us|ms|s)\s+"
-        r"(?P<cpu>[\d\.]+)\s*(?P<cpu_unit>ns|us|ms|s)\s+"
-        r"(?P<iterations>\d+)\s+"
-        r"bytes_per_second=(?P<bps>[\d\.]+)(?P<bps_unit>[GT])/s",
+        r"^(?P<name>.+?)/manual_time\s+[\d\.]+\s*(?:ns|us|ms|s)\s+"
+        r"[\d\.]+\s*(?:ns|us|ms|s)\s+\d+\s+"
+        r"bytes_per_second=(?P<bps>[\d\.]+)(?P<unit>[GT])/s",
         re.MULTILINE,
     )
-
     results = []
     for m in pattern.finditer(output):
-        name = m.group("name").strip()
         bps = float(m.group("bps"))
-        bps_unit = m.group("bps_unit")
-        # Convert T/s to G/s
-        if bps_unit == "T":
+        if m.group("unit") == "T":
             bps *= 1024.0
-        results.append({
-            "test_case_id": name,
-            "bytes_per_second_gs": bps,
-        })
-
+        results.append({"test_case_id": m.group("name").strip(), "bytes_per_second_gs": bps})
     return results
 
 
-def run_compile(workspace: Path) -> Tuple[bool, Optional[str]]:
-    build_dir = _cmake_build_dir(workspace)
-    source_dir = _source_root(workspace)
-
+def run_compile(ws: Path) -> Tuple[bool, Optional[str]]:
+    source_dir, build_dir = _source_root(ws), _build_dir(ws)
     if not source_dir.is_dir():
-        return False, f"Source directory not found: {source_dir}. Repo may not have been cloned."
+        return False, f"Source directory not found: {source_dir}"
 
-    ok, err = _ensure_configured(source_dir, build_dir)
+    ok, err = _cmake_configure(source_dir, build_dir)
     if not ok:
         return False, err
 
-    # Build both correctness and benchmark targets during compile phase.
-    ok, err = _cmake_build(source_dir, build_dir, TEST_TARGET)
-    if not ok:
-        return False, err
-    ok, err = _cmake_build(source_dir, build_dir, BENCH_TARGET)
-    if not ok:
-        return False, err
+    for target in [TEST_TARGET, BENCH_TARGET]:
+        ok, err = _cmake_build(source_dir, build_dir, target)
+        if not ok:
+            return False, err
 
-    # Sanity-check binaries exist.
-    test_bin = _test_binary_path(build_dir)
-    bench_bin = _bench_binary_path(build_dir)
+    for name, path in [("Test", _test_bin(ws)), ("Benchmark", _bench_bin(ws))]:
+        if not path.is_file():
+            return False, f"{name} binary not found: {path}"
+    return True, None
+
+
+def run_correctness(ws: Path) -> Tuple[bool, Optional[str]]:
+    test_bin = _test_bin(ws)
     if not test_bin.is_file():
-        return False, f"Test binary not found: {test_bin}"
+        ok, err = _cmake_configure(_source_root(ws), _build_dir(ws))
+        if not ok:
+            return False, err
+        ok, err = _cmake_build(_source_root(ws), _build_dir(ws), TEST_TARGET)
+        if not ok:
+            return False, err
+
+    _print_phase("CORRECTNESS TEST")
+    ok, out = _run([str(test_bin)], cwd=ws, timeout_s=3600)
+    _print_phase("CORRECTNESS TEST", end=True, status="PASSED" if ok else "FAILED")
+    return (True, None) if ok else (False, f"Correctness test failed.\n{out}")
+
+
+def run_performance(ws: Path, trials: int) -> Tuple[list[dict], str]:
+    bench_bin = _bench_bin(ws)
     if not bench_bin.is_file():
-        return False, f"Benchmark binary not found: {bench_bin}"
+        ok, err = _cmake_configure(_source_root(ws), _build_dir(ws))
+        if not ok:
+            return [], err
+        ok, err = _cmake_build(_source_root(ws), _build_dir(ws), BENCH_TARGET)
+        if not ok:
+            return [], err
 
-    return True, None
+    _print_phase(f"PERFORMANCE BENCHMARK (trials={trials})")
+    ok, out = _run([str(bench_bin), "--trials", str(trials)], cwd=ws, timeout_s=3600)
+    _print_phase("PERFORMANCE BENCHMARK", end=True, status="SUCCESS" if ok else "FAILED")
 
-
-def run_correctness(workspace: Path) -> Tuple[bool, Optional[str]]:
-    build_dir = _cmake_build_dir(workspace)
-    source_dir = _source_root(workspace)
-
-    test_bin = _test_binary_path(build_dir)
-    ok, err = _maybe_build_target(source_dir, build_dir, TEST_TARGET, test_bin)
-    if not ok:
-        return False, err
-    if not test_bin.is_file():
-        return False, f"Test binary not found after build attempt: {test_bin}"
-
-    env = os.environ.copy()
-    ok, out = _run([str(test_bin)], cwd=workspace, timeout_s=1800, env=env)
-    if not ok:
-        return False, f"Correctness test failed.\nCommand: {test_bin}\nOutput:\n{out}"
-    return True, None
-
-
-def run_performance(workspace: Path, trials: int) -> Tuple[list[dict], str]:
-    """
-    Run benchmark and return (list_of_test_results, error_message).
-    Each test result contains test_case_id and bytes_per_second_gs.
-    Returns empty list on failure.
-    """
-    build_dir = _cmake_build_dir(workspace)
-    source_dir = _source_root(workspace)
-    report_root = _report_root(workspace)
+    report_root = _report_root(ws)
     report_root.mkdir(parents=True, exist_ok=True)
-
-    bench_bin = _bench_binary_path(build_dir)
-    ok, err = _maybe_build_target(source_dir, build_dir, BENCH_TARGET, bench_bin)
-    if not ok:
-        return [], err or "build failed"
-    if not bench_bin.is_file():
-        return [], f"Benchmark binary not found after build attempt: {bench_bin}"
-
-    env = os.environ.copy()
-    cmd = [str(bench_bin), "--trials", str(trials)]
-    ok, out = _run(cmd, cwd=workspace, timeout_s=3600, env=env)
-
-    # Save benchmark log
-    log_path = report_root / f"{BENCH_TARGET}.log"
-    log_path.write_text(out, encoding="utf-8")
-    print(f"Benchmark log saved to: {log_path}")
+    (report_root / f"{BENCH_TARGET}.log").write_text(out)
 
     if not ok:
-        return [], f"Benchmark failed.\nCommand: {' '.join(cmd)}\nOutput:\n{out}"
-
+        return [], f"Benchmark failed.\n{out}"
+    
     results = _parse_benchmark_results(out)
-    if results:
-        return results, ""
-
-    return [], f"Failed to parse benchmark results from output.\nOutput:\n{out}"
+    return (results, "") if results else ([], f"Failed to parse results.\n{out}")
 
 
 def main() -> None:
-    workspace = _workspace_root()
-    os.chdir(workspace)
-    report_root = _report_root(workspace)
+    ws = _workspace_root()
+    os.chdir(ws)
+    report_root = _report_root(ws)
     report_root.mkdir(parents=True, exist_ok=True)
 
     parser = argparse.ArgumentParser(description=f"Task runner for {TASK_NAME}")
@@ -295,46 +269,37 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.mode == "compile":
-        ok, err = run_compile(workspace)
-        report = {
-            "status": "ok" if ok else "fail",
-            "error": err,
-            "arch": _detect_arch(),
-            "source_dir": str(_source_root(workspace)),
-            "build_dir": str(_cmake_build_dir(workspace)),
-        }
+        ok, err = run_compile(ws)
+        report = {"status": "ok" if ok else "fail", "error": err,
+                  "arch": _detect_arch(), "source_dir": str(_source_root(ws)),
+                  "build_dir": str(_build_dir(ws))}
         (report_root / "compile_report.json").write_text(json.dumps(report, indent=2))
         print(f"Compilation: {'PASS' if ok else 'FAIL'}")
         if err:
             print(err)
         sys.exit(0 if ok else 1)
 
-    if args.mode == "correctness":
-        ok, err = run_correctness(workspace)
-        report = {
-            "status": "ok" if ok else "fail",
-            "error": err,
-        }
+    elif args.mode == "correctness":
+        ok, err = run_correctness(ws)
+        report = {"status": "ok" if ok else "fail", "error": err}
         (report_root / "correctness_report.json").write_text(json.dumps(report, indent=2))
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
         if err:
             print(err)
         sys.exit(0 if ok else 1)
 
-    if args.mode == "performance":
-        results, err = run_performance(workspace, trials=args.trials)
-        report = results if results else []
-        (report_root / "performance_report.json").write_text(json.dumps(report, indent=2))
-
+    elif args.mode == "performance":
+        results, err = run_performance(ws, trials=args.trials)
+        (report_root / "performance_report.json").write_text(json.dumps(results or [], indent=2))
         if results:
-            avg_bps = sum(r["bytes_per_second_gs"] for r in results) / len(results)
-            print(f"Performance: {len(results)} test cases, avg {avg_bps:.4f} G/s")
+            avg = sum(r["bytes_per_second_gs"] for r in results) / len(results)
+            print(f"Performance: {len(results)} test cases, avg {avg:.4f} G/s")
             for r in results:
                 print(f"  {r['test_case_id']}: {r['bytes_per_second_gs']:.4f} G/s")
         else:
             print("Performance: FAILED")
-        if err:
-            print(err)
+            if err:
+                print(err)
         sys.exit(0 if results else 1)
 
 
