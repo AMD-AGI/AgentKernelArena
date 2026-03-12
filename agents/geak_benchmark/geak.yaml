@@ -26,6 +26,6 @@ model:
   #     verbosity: low
 
 tools:
-  profiling: true
+  profiling: false
   profiling_type: profiling
   strategy_manager: true

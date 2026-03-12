@@ -9,6 +9,8 @@ import re
 from pathlib import Path
 from datetime import datetime
 from typing import Any
+import json
+import socket
 import yaml
 from agents import register_agent
 from src.preprocessing import setup_repo_from_config
@@ -17,6 +19,51 @@ from agents.geak_benchmark.geak_pre_process import (
     integrate_agent_config,
     copy_python_bindings,
 )
+
+def _append_jsonl_record(path: Path, record: dict[str, Any], logger: logging.Logger) -> None:
+    """
+    Append one JSON object per line (JSONL).
+
+    Uses a file lock (fcntl) on Linux to avoid interleaved writes across processes.
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(record, ensure_ascii=False, sort_keys=True)
+        try:
+            import fcntl  # type: ignore
+        except Exception:
+            fcntl = None  # type: ignore
+
+        with open(path, "a", encoding="utf-8") as f:
+            if fcntl is not None:
+                try:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                except Exception:
+                    pass
+            f.write(line + "\n")
+            if fcntl is not None:
+                try:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.warning(f"Failed to write agent invocation record to {path}: {e}")
+
+
+def _get_invocation_log_path() -> Path:
+    """
+    Unified file path to store invocation records.
+
+    Priority:
+      1) AKA_AGENT_CMD_LOG env var (per-run path set by main/run_parallel)
+      2) <project_root>/logs/agent_invocations.jsonl
+    """
+    env_path = os.environ.get("AKA_AGENT_CMD_LOG")
+    if env_path:
+        return Path(env_path).expanduser().resolve()
+
+    project_root = Path(__file__).resolve().parent.parent.parent
+    return (project_root / "logs" / "agent_invocations.jsonl").resolve()
 
 
 def write_debug_script(workspace: str, cmd: str, agent: str) -> None:
@@ -51,8 +98,12 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     Returns:
         str: Combined agent output (stdout plus stderr summary if present)
     """
-    # Load agent config
-    config_path = Path(__file__).with_name("agent_config.yaml")
+    # Load agent config (support override via env var for parallel runs)
+    config_path_env = os.environ.get("GEAK_AGENT_CONFIG")
+    if config_path_env:
+        config_path = Path(config_path_env)
+    else:
+        config_path = Path(__file__).with_name("agent_config.yaml")
     with config_path.open("r") as f:
         agent_config = yaml.safe_load(f) or {}
     logger = logging.getLogger(__name__)
@@ -63,8 +114,13 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     # Get command (mini or geak)
     AGENT = run_config.get("cmd", "mini")
     
-    # Get configs string directly (e.g., '-c geak.yaml --num-parallel=2 --gpu-ids=2,3 --yolo')
+    # Get configs string (e.g., '-c geak.yaml --yolo')
     OPTIONS = run_config.get("configs", "")
+    
+    # Get num_parallel from dedicated field (or fallback to parsing from configs)
+    num_parallel = run_config.get("num_parallel")
+    if num_parallel is not None and '--num-parallel' not in OPTIONS:
+        OPTIONS += f" --num-parallel={num_parallel}"
     
     # Replace relative config file path with absolute path (e.g., '-c geak.yaml' -> '-c /abs/path/geak.yaml')
     agent_dir = Path(__file__).parent
@@ -93,8 +149,10 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     repo_path = setup_repo_from_config(task_config_dir, Path(workspace), logger)
     if repo_path:
         logger.info(f"Repository cloned to: {repo_path}")
-        # Add --repo argument for parallel mode support
-        OPTIONS += f" --repo={shlex.quote(str(repo_path))}"
+        # Note: We use workspace (not repo_path) as --repo because test_command
+        # (e.g., 'python3 scripts/task_runner.py') is relative to workspace root,
+        # not the cloned repo subdirectory.
+        OPTIONS += f" --repo={shlex.quote(workspace)}"
 
     # Copy python_bindings to workspace
     copy_python_bindings(task_config_dir, workspace, logger)
@@ -115,6 +173,34 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = f"{AGENT} {OPTIONS} -t {shlex.quote(str(prompt_file))} --output {workspace}/output.traj.json --patch-output {shlex.quote(str(logs_dir))}"
+
+    # Persist the exact invocation for debugging (unified JSONL file)
+    _append_jsonl_record(
+        _get_invocation_log_path(),
+        {
+            "ts": datetime.now().isoformat(timespec="seconds"),
+            "host": socket.gethostname(),
+            "pid": os.getpid(),
+            "cwd": os.getcwd(),
+            "task_name": os.environ.get("AKA_TASK_NAME"),
+            "agent_launcher": "agents/geak_benchmark/launch_agent.py",
+            "run_cmd": AGENT,
+            "run_configs": run_config.get("configs", ""),
+            "run_num_parallel": run_config.get("num_parallel"),
+            "options_final": OPTIONS,
+            "cmd_final": cmd,
+            "agent_config_path": str(config_path.resolve()),
+            "task_config_dir": task_config_dir,
+            "workspace": workspace,
+            "prompt_file": str(prompt_file),
+            "output_traj": f"{workspace}/output.traj.json",
+            "patch_output_dir": str(logs_dir),
+            "hip_visible_devices": os.environ.get("HIP_VISIBLE_DEVICES"),
+            "rocr_visible_devices": os.environ.get("ROCR_VISIBLE_DEVICES"),
+            "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+        },
+        logger,
+    )
 
     # Enable to save the command to a shell script for manual replay/debugging.
     if False:
