@@ -67,7 +67,7 @@ mkdir -p logs
 # Launch each config with assigned GPUs
 GPU_INDEX=0
 for i in $(seq 0 $((NUM_CONFIGS - 1))); do
-    CONFIG_FILE="${CONFIG_DIR}/config_${i}.yaml"
+    CONFIG_FILE="${CONFIG_DIR}/task_config_${i}.yaml"
     
     if [ ! -f "$CONFIG_FILE" ]; then
         echo "[WARN] Config file not found: $CONFIG_FILE, skipping..."
