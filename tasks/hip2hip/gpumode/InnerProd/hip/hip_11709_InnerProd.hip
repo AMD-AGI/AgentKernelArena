@@ -6,6 +6,15 @@
 #include <c10/core/DeviceGuard.h>
 #include <string>
 
+// Compatibility fallback for environments where C10_HIP_CHECK is not provided.
+#ifndef C10_HIP_CHECK
+#define C10_HIP_CHECK(EXPR)                                                     \
+  do {                                                                          \
+    hipError_t __err = (EXPR);                                                  \
+    TORCH_CHECK(__err == hipSuccess, "HIP error: ", hipGetErrorString(__err)); \
+  } while (0)
+#endif
+
 // -----------------------------
 // Utilities
 // -----------------------------
@@ -382,4 +391,3 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward_nosum", &forward_nosum, "InnerProd forward_nosum (HIP)");
     m.def("forward_pixelwise", &forward_pixelwise, "InnerProd forward_pixelwise (HIP)");
 }
-

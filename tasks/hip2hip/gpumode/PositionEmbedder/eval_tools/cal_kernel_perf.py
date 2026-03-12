@@ -364,6 +364,11 @@ def cal_kernel_perf(
     if not all_correct:
         report["message"] = "Some test cases failed correctness or performance checks"
         report["status"] = "partial"
+        _write_perf_report(report)
+        if auto_cleanup:
+            clear_workdir(ref_hip_dir)
+            clear_workdir(opt_hip_dir)
+        return failed_ret
     elif len(ref_times) == 0:
         report["message"] = "No valid test cases processed"
         _write_perf_report(report)

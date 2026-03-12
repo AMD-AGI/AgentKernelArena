@@ -178,7 +178,10 @@ torch::Tensor softmax_forward(torch::Tensor input, int64_t axis) {
     int threads = choose_block_size(softmax_size);
     int max_grid = 65535; // HIP grid x-dim practical limit
     int blocks = static_cast<int>(std::min<int64_t>(outer_size, max_grid));
-    size_t num_warps = (threads + warpSize - 1) / warpSize; // warpSize from HIP
+    // On ROCm, warpSize is a device symbol and cannot be referenced in host code.
+    // Use the architectural warp width for AMD GPUs.
+    constexpr int kWarpSize = 64;
+    size_t num_warps = (threads + kWarpSize - 1) / kWarpSize;
 
     AT_DISPATCH_FLOATING_TYPES(in2d.scalar_type(), "softmax_rowwise_shuffle_kernel", [&] {
         size_t shmem_bytes = num_warps * sizeof(scalar_t);
@@ -209,4 +212,3 @@ torch::Tensor softmax_forward(torch::Tensor input, int64_t axis) {
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &softmax_forward, "Softmax forward (HIP, ROCm)");
 }
-
