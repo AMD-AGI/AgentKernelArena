@@ -2,8 +2,9 @@
 # OpenEvolve Agent Configuration for AgentKernelArena - AMD Claude API
 # ============================================================================
 
-max_iterations: 10
+max_iterations: 5
 checkpoint_interval: 5
+max_code_length: 50000
 timeout_seconds: 600
 
 # ============================================================================
@@ -23,7 +24,7 @@ llm:
 # Database Configuration
 # ============================================================================
 database:
-  population_size: 50
+  population_size: 30
   num_islands: 2
   log_prompts: false
 
@@ -31,7 +32,7 @@ database:
 # Evaluator Configuration
 # ============================================================================
 evaluator:
-  timeout: 120
+  timeout: 600
   parallel_evaluations: 1
   cascade_evaluation: false
 
