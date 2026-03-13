@@ -7,7 +7,5 @@ python_path: python3
 run:
   # cmd can be mini or geak
   cmd: mini
-  # Number of GPUs each task needs (used by both mini agent and run_parallel.py)
-  num_parallel: 2
   # Additional options for the agent
-  configs: '-c geak.yaml --yolo'
+  configs: '-c geak.yaml --yolo --num-parallel=2 --gpu-ids=0,1'

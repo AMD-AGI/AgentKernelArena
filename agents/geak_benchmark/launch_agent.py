@@ -55,7 +55,7 @@ def _get_invocation_log_path() -> Path:
     Unified file path to store invocation records.
 
     Priority:
-      1) AKA_AGENT_CMD_LOG env var (per-run path set by main/run_parallel)
+      1) AKA_AGENT_CMD_LOG env var (per-run path)
       2) <project_root>/logs/agent_invocations.jsonl
     """
     env_path = os.environ.get("AKA_AGENT_CMD_LOG")
@@ -98,7 +98,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     Returns:
         str: Combined agent output (stdout plus stderr summary if present)
     """
-    # Load agent config (support override via env var for parallel runs)
+    # Load agent config (support override via env var)
     config_path_env = os.environ.get("GEAK_AGENT_CONFIG")
     if config_path_env:
         config_path = Path(config_path_env)
@@ -114,13 +114,8 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     # Get command (mini or geak)
     AGENT = run_config.get("cmd", "mini")
     
-    # Get configs string (e.g., '-c geak.yaml --yolo')
+    # Get configs string (e.g., '-c geak.yaml --yolo --num-parallel=2 --gpu-ids=0,1')
     OPTIONS = run_config.get("configs", "")
-    
-    # Get num_parallel from dedicated field (or fallback to parsing from configs)
-    num_parallel = run_config.get("num_parallel")
-    if num_parallel is not None and '--num-parallel' not in OPTIONS:
-        OPTIONS += f" --num-parallel={num_parallel}"
     
     # Replace relative config file path with absolute path (e.g., '-c geak.yaml' -> '-c /abs/path/geak.yaml')
     agent_dir = Path(__file__).parent
@@ -186,7 +181,6 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             "agent_launcher": "agents/geak_benchmark/launch_agent.py",
             "run_cmd": AGENT,
             "run_configs": run_config.get("configs", ""),
-            "run_num_parallel": run_config.get("num_parallel"),
             "options_final": OPTIONS,
             "cmd_final": cmd,
             "agent_config_path": str(config_path.resolve()),
@@ -401,14 +395,8 @@ def _apply_best_patch_to_workspace(workspace: str, logs_dir: Path, logger: loggi
     # Find best_results.json
     best_results_file = logs_dir / "best_results.json"
     if not best_results_file.exists():
-        # Check parallel subdirs
-        candidates = list(logs_dir.glob("parallel_*/best_results.json"))
-        if candidates:
-            candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-            best_results_file = candidates[0]
-        else:
-            logger.warning("No best_results.json found, skipping patch application")
-            return False
+        logger.warning("No best_results.json found, skipping patch application")
+        return False
     
     try:
         with open(best_results_file, 'r') as f:
