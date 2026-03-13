@@ -17,7 +17,7 @@ pip install -e .
 export AMD_LLM_API_KEY="your-key-here"
 ```
 
-### 3) Configure the GEAK runner for AgentKernelArena
+### 3) Configure the GEAK runner in geak_benchmark
 
 Edit `agents/geak_benchmark/agent_config.yaml`.
 
