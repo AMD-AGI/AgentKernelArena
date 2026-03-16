@@ -95,6 +95,9 @@ def compare_overall(run1_data: Dict[str, Any], run2_data: Dict[str, Any]) -> lis
         ('Average Speedup', 'average_speedup', False),
         ('Median Speedup', 'median_speedup', False),
         ('Std Dev Speedup', 'std_dev_speedup', False),
+        ('P25 Speedup', 'p25_speedup', False),
+        ('P75 Speedup', 'p75_speedup', False),
+        ('P90 Speedup', 'p90_speedup', False),
     ]
     
     for label, key, is_percentage in metrics:
@@ -118,7 +121,8 @@ def compare_overall(run1_data: Dict[str, Any], run2_data: Dict[str, Any]) -> lis
         
         # Determine if improvement (green) or regression (red) - for display purposes
         if key in ['average_score', 'compilation_pass_rate', 'correctness_pass_rate', 
-                   'speedup_gt_1_rate', 'average_speedup', 'median_speedup']:
+                   'speedup_gt_1_rate', 'average_speedup', 'median_speedup', 
+                   'p25_speedup', 'p75_speedup', 'p90_speedup']:
             if val2 > val1:
                 indicator = "↑"
             elif val2 < val1:
@@ -185,6 +189,9 @@ def compare_task_types(run1_data: Dict[str, Any], run2_data: Dict[str, Any]) -> 
             ('Average Speedup', 'average_speedup', False),
             ('Median Speedup', 'median_speedup', False),
             ('Std Dev Speedup', 'std_dev_speedup', False),
+            ('P25 Speedup', 'p25_speedup', False),
+            ('P75 Speedup', 'p75_speedup', False),
+            ('P90 Speedup', 'p90_speedup', False),
             ('Compilation Pass Rate', 'compilation_pass_rate', True),
             ('Correctness Pass Rate', 'correctness_pass_rate', True),
             ('Speedup > 1.0 Rate', 'speedup_gt_1_rate', True),
@@ -220,6 +227,14 @@ def compare_task_types(run1_data: Dict[str, Any], run2_data: Dict[str, Any]) -> 
                     if val2 < val1:
                         indicator = "↑ (improved)"
                     elif val2 > val1:
+                        indicator = "↓ (regressed)"
+                    else:
+                        indicator = "= (same)"
+                # For percentiles and other speedup metrics, higher is better
+                elif key in ['p25_speedup', 'p75_speedup', 'p90_speedup', 'average_speedup', 'median_speedup']:
+                    if val2 > val1:
+                        indicator = "↑ (improved)"
+                    elif val2 < val1:
                         indicator = "↓ (regressed)"
                     else:
                         indicator = "= (same)"

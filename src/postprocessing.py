@@ -54,6 +54,7 @@ def _build_general_report_lines(
         f"  Average Speedup:       {aggregate_result['average_speedup']:.2f}x",
         f"  Median Speedup:       {aggregate_result.get('median_speedup', 0.0):.2f}x",
         f"  Std Dev Speedup:       {aggregate_result.get('std_dev_speedup', 0.0):.2f}x",
+        f"  P25/P75/P90 Speedup:   {aggregate_result.get('p25_speedup', 0.0):.2f}x / {aggregate_result.get('p75_speedup', 0.0):.2f}x / {aggregate_result.get('p90_speedup', 0.0):.2f}x",
         f"  Valid Speedup Count:   {aggregate_result['valid_speedup_count']}",
     ])
     
@@ -71,6 +72,7 @@ def _build_general_report_lines(
             lines.append(f"    Average Speedup:     {stats['average_speedup']:.2f}x")
             lines.append(f"    Median Speedup:      {stats.get('median_speedup', 0.0):.2f}x")
             lines.append(f"    Std Dev Speedup:     {stats.get('std_dev_speedup', 0.0):.2f}x")
+            lines.append(f"    P25/P75/P90 Speedup: {stats.get('p25_speedup', 0.0):.2f}x / {stats.get('p75_speedup', 0.0):.2f}x / {stats.get('p90_speedup', 0.0):.2f}x")
             lines.append(f"    Compilation Pass:     {stats['compilation_pass_count']}/{stats['count']}")
             lines.append(f"    Compilation Pass Rate: {stats['compilation_pass_rate']:.1f}%")
             lines.append(f"    Correctness Pass:     {stats['correctness_pass_count']}/{stats['count']}")
@@ -245,6 +247,34 @@ def _aggregate_by_task_type(task_details: List[Dict[str, Any]]) -> Dict[str, Dic
         except statistics.StatisticsError:
             std_dev_speedup = 0.0
         
+        # Calculate percentiles (P25, P75, P90)
+        try:
+            if speedup_values and len(speedup_values) > 0:
+                sorted_speedups = sorted(speedup_values)
+                n = len(sorted_speedups)
+                if n == 1:
+                    p25_speedup = sorted_speedups[0]
+                    p75_speedup = sorted_speedups[0]
+                    p90_speedup = sorted_speedups[0]
+                else:
+                    # P25 (25th percentile)
+                    p25_idx = int(0.25 * (n - 1))
+                    p25_speedup = sorted_speedups[p25_idx] if p25_idx < n else sorted_speedups[-1]
+                    # P75 (75th percentile)
+                    p75_idx = int(0.75 * (n - 1))
+                    p75_speedup = sorted_speedups[p75_idx] if p75_idx < n else sorted_speedups[-1]
+                    # P90 (90th percentile)
+                    p90_idx = int(0.90 * (n - 1))
+                    p90_speedup = sorted_speedups[p90_idx] if p90_idx < n else sorted_speedups[-1]
+            else:
+                p25_speedup = 0.0
+                p75_speedup = 0.0
+                p90_speedup = 0.0
+        except (statistics.StatisticsError, IndexError, ValueError):
+            p25_speedup = 0.0
+            p75_speedup = 0.0
+            p90_speedup = 0.0
+        
         result[task_type] = {
             'count': count,
             'total_score': stats['total_score'],
@@ -258,6 +288,9 @@ def _aggregate_by_task_type(task_details: List[Dict[str, Any]]) -> Dict[str, Dic
             'average_speedup': average_speedup,
             'median_speedup': median_speedup,
             'std_dev_speedup': std_dev_speedup,
+            'p25_speedup': p25_speedup,
+            'p75_speedup': p75_speedup,
+            'p90_speedup': p90_speedup,
             'valid_speedup_count': len(speedup_values)
         }
     
@@ -467,6 +500,34 @@ def general_post_processing(
         std_dev_speedup = statistics.stdev(speedup_values) if len(speedup_values) > 1 else 0.0
     except statistics.StatisticsError:
         std_dev_speedup = 0.0
+    
+    # Calculate percentiles (P25, P75, P90)
+    try:
+        if speedup_values and len(speedup_values) > 0:
+            sorted_speedups = sorted(speedup_values)
+            n = len(sorted_speedups)
+            if n == 1:
+                p25_speedup = sorted_speedups[0]
+                p75_speedup = sorted_speedups[0]
+                p90_speedup = sorted_speedups[0]
+            else:
+                # P25 (25th percentile)
+                p25_idx = int(0.25 * (n - 1))
+                p25_speedup = sorted_speedups[p25_idx] if p25_idx < n else sorted_speedups[-1]
+                # P75 (75th percentile)
+                p75_idx = int(0.75 * (n - 1))
+                p75_speedup = sorted_speedups[p75_idx] if p75_idx < n else sorted_speedups[-1]
+                # P90 (90th percentile)
+                p90_idx = int(0.90 * (n - 1))
+                p90_speedup = sorted_speedups[p90_idx] if p90_idx < n else sorted_speedups[-1]
+        else:
+            p25_speedup = 0.0
+            p75_speedup = 0.0
+            p90_speedup = 0.0
+    except (statistics.StatisticsError, IndexError, ValueError):
+        p25_speedup = 0.0
+        p75_speedup = 0.0
+        p90_speedup = 0.0
 
     # Generate aggregate_result
     aggregate_result = {
@@ -486,6 +547,9 @@ def general_post_processing(
         'average_speedup': average_speedup,
         'median_speedup': median_speedup,
         'std_dev_speedup': std_dev_speedup,
+        'p25_speedup': p25_speedup,
+        'p75_speedup': p75_speedup,
+        'p90_speedup': p90_speedup,
         'valid_speedup_count': len(speedup_values),
 
         'task_details': task_details
@@ -528,6 +592,9 @@ def general_post_processing(
                 'average_speedup': aggregate_result['average_speedup'],
                 'median_speedup': aggregate_result.get('median_speedup', 0.0),
                 'std_dev_speedup': aggregate_result.get('std_dev_speedup', 0.0),
+                'p25_speedup': aggregate_result.get('p25_speedup', 0.0),
+                'p75_speedup': aggregate_result.get('p75_speedup', 0.0),
+                'p90_speedup': aggregate_result.get('p90_speedup', 0.0),
                 'valid_speedup_count': aggregate_result['valid_speedup_count']
             },
             'task_types': task_type_breakdown
