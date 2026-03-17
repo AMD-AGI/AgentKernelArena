@@ -63,7 +63,6 @@ tasks:
   - repository/rocprim/device_binary_search
   - repository/rocprim/device_search_n
   - repository/rocprim/device_merge_sort
-  # - all
 ```
 
 ### 5) Run
