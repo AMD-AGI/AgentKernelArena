@@ -1,6 +1,6 @@
-## `geak_benchmark` (AgentKernelArena) — Benchmarking GEAK
+## `GEAK-V3`
 
-This agent template integrates **GEAK / mini-SWE-agent** into AgentKernelArena so you can run AgentKernelArena tasks using GEAK as the optimizing agent.
+This agent template integrates **GEAK v3** into AgentKernelArena so you can run AgentKernelArena tasks using GEAK-v3 as the optimizing agent.
 
 ### 1) Install GEAK (so `mini` / `geak` exists in `PATH`)
 
