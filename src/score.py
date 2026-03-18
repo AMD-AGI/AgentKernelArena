@@ -2,7 +2,35 @@
 import yaml
 from pathlib import Path
 
-def score(pass_compilation: bool, pass_correctness: bool, base_execution_time: float, best_optimized_execution_time: float) -> float:
+def resolve_speedup_ratio(
+    speedup_ratio: float | int | None = None,
+    base_execution_time: float = 0.0,
+    best_optimized_execution_time: float = 0.0,
+) -> float:
+    """
+    Resolve the speedup ratio to use for scoring/reporting.
+
+    Prefer an explicit speedup_ratio written by the evaluator. This preserves the
+    intended aggregation logic for multi-testcase tasks where each testcase should
+    contribute equally. Fall back to the ratio of average times for older result
+    files that do not store speedup_ratio.
+    """
+    if isinstance(speedup_ratio, (int, float)) and speedup_ratio > 0:
+        return float(speedup_ratio)
+
+    if base_execution_time > 0 and best_optimized_execution_time > 0:
+        return base_execution_time / best_optimized_execution_time
+
+    return 0.0
+
+
+def score(
+    pass_compilation: bool,
+    pass_correctness: bool,
+    base_execution_time: float,
+    best_optimized_execution_time: float,
+    speedup_ratio: float = 0.0,
+) -> float:
     """
     Calculate the optimization task score based on compilation, correctness, and performance.
 
@@ -16,6 +44,8 @@ def score(pass_compilation: bool, pass_correctness: bool, base_execution_time: f
         pass_correctness: Whether correctness tests passed
         base_execution_time: Baseline execution time (must be > 0)
         best_optimized_execution_time: Optimized execution time (must be > 0)
+        speedup_ratio: Explicit speedup ratio from evaluator output. Preferred for
+            multi-testcase tasks where each testcase should have equal weight.
 
     Returns:
         float: Total score
@@ -38,9 +68,13 @@ def score(pass_compilation: bool, pass_correctness: bool, base_execution_time: f
     total_score += 100.0
 
     # 3. Performance speedup: speedup_ratio * 100 (only if both compilation and correctness passed)
-    if base_execution_time > 0 and best_optimized_execution_time > 0:
-        speedup_ratio = base_execution_time / best_optimized_execution_time
-        total_score += speedup_ratio * 100.0
+    effective_speedup = resolve_speedup_ratio(
+        speedup_ratio=speedup_ratio,
+        base_execution_time=base_execution_time,
+        best_optimized_execution_time=best_optimized_execution_time,
+    )
+    if effective_speedup > 0:
+        total_score += effective_speedup * 100.0
 
     return total_score
 
@@ -75,13 +109,15 @@ def task_result_scoring(workspace_path: str) -> float:
     pass_correctness = result_data.get('pass_correctness', False)
     base_execution_time = result_data.get('base_execution_time', 0.0)
     best_optimized_execution_time = result_data.get('best_optimized_execution_time', 0.0)
+    speedup_ratio = result_data.get('speedup_ratio', 0.0)
 
     # Calculate score
     calculated_score = score(
         pass_compilation=pass_compilation,
         pass_correctness=pass_correctness,
         base_execution_time=base_execution_time,
-        best_optimized_execution_time=best_optimized_execution_time
+        best_optimized_execution_time=best_optimized_execution_time,
+        speedup_ratio=speedup_ratio,
     )
 
     # Add score to the data

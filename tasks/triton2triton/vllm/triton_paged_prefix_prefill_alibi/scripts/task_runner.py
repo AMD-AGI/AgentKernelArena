@@ -25,9 +25,8 @@ TEST_SHAPES = [
     (2, 512, 64, 16, 16, 64, 32),    # long ctx, MHA
     (4, 64, 32, 8, 1, 64, 16),       # batched, MQA
 ]
-PERF_SHAPE_IDX = 2
-
-
+WARMUP_ITERATIONS = 10
+BENCHMARK_ITERATIONS = 100
 def load_module():
     spec = importlib.util.spec_from_file_location("triton_kernel", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
@@ -256,60 +255,92 @@ def run_performance():
     try:
         mod = load_module()
     except Exception:
-        return -1.0
+        return []
 
     device = "cuda"
     dtype = torch.float16
-    bs, ctx_len, q_len, nh, nkv, hd, blk_sz = TEST_SHAPES[PERF_SHAPE_IDX]
-    total_tokens = bs * q_len
+    test_cases = []
 
-    torch.manual_seed(0)
-    q = torch.randn(total_tokens, nh, hd, device=device, dtype=dtype)
-    k_new = torch.randn(total_tokens, nkv, hd, device=device, dtype=dtype)
-    v_new = torch.randn(total_tokens, nkv, hd, device=device, dtype=dtype)
-    o = torch.zeros_like(q)
+    for test_idx, (bs, ctx_len, q_len, nh, nkv, hd, blk_sz) in enumerate(TEST_SHAPES):
+        try:
+            total_tokens = bs * q_len
 
-    k_cache, v_cache, b_loc, _, _ = setup_paged_kv_cache(
-        bs, ctx_len, nkv, hd, blk_sz, device, dtype
-    )
+            torch.manual_seed(0)
+            q = torch.randn(total_tokens, nh, hd, device=device, dtype=dtype)
+            k_new = torch.randn(total_tokens, nkv, hd, device=device, dtype=dtype)
+            v_new = torch.randn(total_tokens, nkv, hd, device=device, dtype=dtype)
+            o = torch.zeros_like(q)
 
-    b_start_loc = torch.zeros(bs + 1, device=device, dtype=torch.int32)
-    for j in range(bs):
-        b_start_loc[j] = j * q_len
-    b_start_loc[bs] = bs * q_len
-    b_seq_len = torch.full((bs,), ctx_len + q_len, device=device, dtype=torch.int32)
+            k_cache, v_cache, b_loc, _, _ = setup_paged_kv_cache(
+                bs, ctx_len, nkv, hd, blk_sz, device, dtype
+            )
 
-    slopes = get_alibi_slopes(nh)
-    alibi_slopes = torch.tensor(slopes, device=device, dtype=torch.float32)
+            b_start_loc = torch.zeros(bs + 1, device=device, dtype=torch.int32)
+            for j in range(bs):
+                b_start_loc[j] = j * q_len
+            b_start_loc[bs] = bs * q_len
+            b_seq_len = torch.full((bs,), ctx_len + q_len, device=device, dtype=torch.int32)
 
-    for _ in range(10):
-        mod.context_attention_fwd_alibi(
-            q, k_new, v_new, o,
-            k_cache, v_cache, b_loc,
-            b_start_loc, b_seq_len,
-            max_input_len=q_len,
-            alibi_slopes=alibi_slopes,
-        )
-    torch.cuda.synchronize()
+            slopes = get_alibi_slopes(nh)
+            alibi_slopes = torch.tensor(slopes, device=device, dtype=torch.float32)
 
-    n_iter = 100
-    start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            for _ in range(WARMUP_ITERATIONS):
+                mod.context_attention_fwd_alibi(
+                    q, k_new, v_new, o,
+                    k_cache, v_cache, b_loc,
+                    b_start_loc, b_seq_len,
+                    max_input_len=q_len,
+                    alibi_slopes=alibi_slopes,
+                )
+            torch.cuda.synchronize()
 
-    for j in range(n_iter):
-        start_events[j].record()
-        mod.context_attention_fwd_alibi(
-            q, k_new, v_new, o,
-            k_cache, v_cache, b_loc,
-            b_start_loc, b_seq_len,
-            max_input_len=q_len,
-            alibi_slopes=alibi_slopes,
-        )
-        end_events[j].record()
+            n_iter = BENCHMARK_ITERATIONS
+            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
 
-    torch.cuda.synchronize()
-    times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-    return sum(times) / len(times)
+            for j in range(n_iter):
+                start_events[j].record()
+                mod.context_attention_fwd_alibi(
+                    q, k_new, v_new, o,
+                    k_cache, v_cache, b_loc,
+                    b_start_loc, b_seq_len,
+                    max_input_len=q_len,
+                    alibi_slopes=alibi_slopes,
+                )
+                end_events[j].record()
+
+            torch.cuda.synchronize()
+            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
+            elapsed_ms = sum(times) / len(times)
+
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": elapsed_ms,
+                "params": {
+                    "batch_size": bs,
+                    "ctx_len": ctx_len,
+                    "query_len": q_len,
+                    "num_heads": nh,
+                    "num_kv_heads": nkv,
+                    "head_dim": hd,
+                    "block_size": blk_sz
+                }
+            })
+        except Exception:
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": -1.0,
+                "params": {
+                    "batch_size": bs,
+                    "ctx_len": ctx_len,
+                    "query_len": q_len,
+                    "num_heads": nh,
+                    "num_kv_heads": nkv,
+                    "head_dim": hd,
+                    "block_size": blk_sz
+                }
+            })
+    return test_cases
 
 
 def main():
@@ -345,23 +376,14 @@ def main():
         sys.exit(0 if ok else 1)
 
     elif args.mode == "performance":
-        elapsed_ms = run_performance()
-        bs, ctx_len, q_len, nh, nkv, hd, blk_sz = TEST_SHAPES[PERF_SHAPE_IDX]
-        report = {
-            "execution_time_ms": elapsed_ms,
-            "shape": {
-                "batch_size": bs,
-                "ctx_len": ctx_len,
-                "query_len": q_len,
-                "num_heads": nh,
-                "num_kv_heads": nkv,
-                "head_dim": hd,
-                "block_size": blk_sz,
-            },
-        }
+        test_cases = run_performance()
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
-            json.dump(report, f, indent=2)
-        print(f"Performance: {elapsed_ms:.4f} ms")
+            json.dump(test_cases, f, indent=2)
+        if test_cases:
+            total_time = sum(case["execution_time_ms"] for case in test_cases if case["execution_time_ms"] > 0)
+            print(f"Performance: measured {len(test_cases)} test case(s), total time: {total_time:.4f} ms")
+        else:
+            print("Performance: FAILED - no test cases measured")
         sys.exit(0)
 
 

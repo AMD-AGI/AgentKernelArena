@@ -20,9 +20,8 @@ TEST_SHAPES = [
     (32, 256, 1024, True),
     (64, 16, 2048, False),
 ]
-PERF_SHAPE_IDX = 3
-
-
+WARMUP_ITERATIONS = 10
+BENCHMARK_ITERATIONS = 100
 def load_module():
     spec = importlib.util.spec_from_file_location("triton_kernel", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
@@ -143,50 +142,77 @@ def run_performance():
     try:
         mod = load_module()
     except Exception:
-        return -1.0
+        return []
 
     device = "cuda"
-    num_reqs, query_len, max_model_len, is_prefill = TEST_SHAPES[PERF_SHAPE_IDX]
-    max_num_reqs = num_reqs + 8
+    test_cases = []
 
-    torch.manual_seed(0)
-    idx_mapping = torch.arange(num_reqs, dtype=torch.int32, device=device)
-    query_start_loc = torch.zeros(num_reqs + 1, dtype=torch.int32, device=device)
-    for r in range(num_reqs):
-        query_start_loc[r + 1] = query_start_loc[r] + query_len
-    total_tokens = int(query_start_loc[-1].item())
+    for test_idx, (num_reqs, query_len, max_model_len, is_prefill) in enumerate(TEST_SHAPES):
+        try:
+            max_num_reqs = num_reqs + 8
 
-    prefill_lens = torch.full((max_num_reqs,), max_model_len, dtype=torch.int32, device=device)
-    num_computed_tokens = torch.zeros(max_num_reqs, dtype=torch.int32, device=device)
-    prefill_mrope_positions = torch.randint(
-        0, max_model_len, (max_num_reqs * 3, max_model_len),
-        dtype=torch.int32, device=device
-    )
-    prefill_mrope_delta = torch.randint(-10, 10, (max_num_reqs,), dtype=torch.int32, device=device)
-    mrope_positions = torch.zeros(3, total_tokens + 1, dtype=torch.int64, device=device)
+            torch.manual_seed(0)
+            idx_mapping = torch.arange(num_reqs, dtype=torch.int32, device=device)
+            query_start_loc = torch.zeros(num_reqs + 1, dtype=torch.int32, device=device)
+            for r in range(num_reqs):
+                query_start_loc[r + 1] = query_start_loc[r] + query_len
+            total_tokens = int(query_start_loc[-1].item())
 
-    for _ in range(10):
-        mod.prepare_mrope_positions(
-            mrope_positions, prefill_mrope_positions, max_model_len,
-            prefill_mrope_delta, idx_mapping, query_start_loc,
-            prefill_lens, num_computed_tokens,
-        )
-    torch.cuda.synchronize()
+            prefill_lens = torch.full((max_num_reqs,), max_model_len, dtype=torch.int32, device=device)
+            num_computed_tokens = torch.zeros(max_num_reqs, dtype=torch.int32, device=device)
+            prefill_mrope_positions = torch.randint(
+                0, max_model_len, (max_num_reqs * 3, max_model_len),
+                dtype=torch.int32, device=device
+            )
+            prefill_mrope_delta = torch.randint(-10, 10, (max_num_reqs,), dtype=torch.int32, device=device)
+            mrope_positions = torch.zeros(3, total_tokens + 1, dtype=torch.int64, device=device)
 
-    n_iter = 100
-    start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    for j in range(n_iter):
-        start_events[j].record()
-        mod.prepare_mrope_positions(
-            mrope_positions, prefill_mrope_positions, max_model_len,
-            prefill_mrope_delta, idx_mapping, query_start_loc,
-            prefill_lens, num_computed_tokens,
-        )
-        end_events[j].record()
-    torch.cuda.synchronize()
-    times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-    return sum(times) / len(times)
+            for _ in range(WARMUP_ITERATIONS):
+                mod.prepare_mrope_positions(
+                    mrope_positions, prefill_mrope_positions, max_model_len,
+                    prefill_mrope_delta, idx_mapping, query_start_loc,
+                    prefill_lens, num_computed_tokens,
+                )
+            torch.cuda.synchronize()
+
+            n_iter = BENCHMARK_ITERATIONS
+            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            for j in range(n_iter):
+                start_events[j].record()
+                mod.prepare_mrope_positions(
+                    mrope_positions, prefill_mrope_positions, max_model_len,
+                    prefill_mrope_delta, idx_mapping, query_start_loc,
+                    prefill_lens, num_computed_tokens,
+                )
+                end_events[j].record()
+            torch.cuda.synchronize()
+            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
+            elapsed_ms = sum(times) / len(times)
+
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": elapsed_ms,
+                "params": {
+                    "num_reqs": num_reqs,
+                    "query_len": query_len,
+                    "max_model_len": max_model_len,
+                    "is_prefill": is_prefill
+                }
+            })
+        except Exception:
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": -1.0,
+                "params": {
+                    "num_reqs": num_reqs,
+                    "query_len": query_len,
+                    "max_model_len": max_model_len,
+                    "is_prefill": is_prefill
+                }
+            })
+
+    return test_cases
 
 
 def main():
@@ -216,11 +242,14 @@ def main():
             print(f"Error: {err}")
         sys.exit(0 if ok else 1)
     elif args.mode == "performance":
-        elapsed_ms = run_performance()
-        report = {"execution_time_ms": elapsed_ms}
+        test_cases = run_performance()
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
-            json.dump(report, f, indent=2)
-        print(f"Performance: {elapsed_ms:.4f} ms")
+            json.dump(test_cases, f, indent=2)
+        if test_cases:
+            total_time = sum(case["execution_time_ms"] for case in test_cases if case["execution_time_ms"] > 0)
+            print(f"Performance: measured {len(test_cases)} test case(s), total time: {total_time:.4f} ms")
+        else:
+            print("Performance: FAILED - no test cases measured")
         sys.exit(0)
 
 

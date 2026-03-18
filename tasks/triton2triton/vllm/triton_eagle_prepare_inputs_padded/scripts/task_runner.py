@@ -15,9 +15,8 @@ TEST_SHAPES = [
     (32, 4, 20),
     (64, 6, 24),
 ]
-PERF_SHAPE_IDX = 4
-
-
+WARMUP_ITERATIONS = 10
+BENCHMARK_ITERATIONS = 100
 def load_module():
     spec = importlib.util.spec_from_file_location("triton_kernel", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
@@ -125,26 +124,50 @@ def run_performance():
     try:
         mod = load_module()
     except Exception:
-        return -1.0
+        return []
 
     device = "cuda"
-    nr, md, mq = TEST_SHAPES[PERF_SHAPE_IDX]
-    cu, vs, qsl, _ = make_inputs(nr, md, mq, device)
+    test_cases = []
 
-    for _ in range(10):
-        mod.eagle_prepare_inputs_padded(cu, vs, qsl)
-    torch.cuda.synchronize()
+    for test_idx, (nr, md, mq) in enumerate(TEST_SHAPES):
+        try:
+            cu, vs, qsl, _ = make_inputs(nr, md, mq, device)
 
-    n_iter = 100
-    start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-    for j in range(n_iter):
-        start_events[j].record()
-        mod.eagle_prepare_inputs_padded(cu, vs, qsl)
-        end_events[j].record()
-    torch.cuda.synchronize()
-    times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-    return sum(times) / len(times)
+            for _ in range(WARMUP_ITERATIONS):
+                mod.eagle_prepare_inputs_padded(cu, vs, qsl)
+            torch.cuda.synchronize()
+
+            n_iter = BENCHMARK_ITERATIONS
+            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            for j in range(n_iter):
+                start_events[j].record()
+                mod.eagle_prepare_inputs_padded(cu, vs, qsl)
+                end_events[j].record()
+            torch.cuda.synchronize()
+            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
+            elapsed_ms = sum(times) / len(times)
+
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": elapsed_ms,
+                "params": {
+                    "num_reqs": nr,
+                    "max_draft_per_req": md,
+                    "max_query_len_per_req": mq
+                }
+            })
+        except Exception:
+            test_cases.append({
+                "test_case_id": f"perf{test_idx + 1}",
+                "execution_time_ms": -1.0,
+                "params": {
+                    "num_reqs": nr,
+                    "max_draft_per_req": md,
+                    "max_query_len_per_req": mq
+                }
+            })
+    return test_cases
 
 
 def main():
@@ -171,11 +194,14 @@ def main():
         if err: print(f"Error: {err}")
         sys.exit(0 if ok else 1)
     elif args.mode == "performance":
-        elapsed_ms = run_performance()
-        report = {"execution_time_ms": elapsed_ms}
+        test_cases = run_performance()
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
-            json.dump(report, f, indent=2)
-        print(f"Performance: {elapsed_ms:.4f} ms")
+            json.dump(test_cases, f, indent=2)
+        if test_cases:
+            total_time = sum(case["execution_time_ms"] for case in test_cases if case["execution_time_ms"] > 0)
+            print(f"Performance: measured {len(test_cases)} test case(s), total time: {total_time:.4f} ms")
+        else:
+            print("Performance: FAILED - no test cases measured")
         sys.exit(0)
 
 

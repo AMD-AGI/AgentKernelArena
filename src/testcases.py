@@ -20,6 +20,16 @@ class TestCaseResult:
     metadata: Optional[Dict[str, Any]] = None  # Additional info (dtype, etc.)
 
 
+def _safe_float(value: Any) -> Optional[float]:
+    """Safely convert input to float; return None for invalid values."""
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _extract_time_from_dict(
     data: Dict[str, Any],
     is_baseline: bool = False,
@@ -34,15 +44,21 @@ def _extract_time_from_dict(
     # Special handling for torch2hip tasks
     if task_type == 'torch2hip':
         if is_baseline and 'ori_time' in data:
-            return float(data['ori_time']), 'ori_time'  # Convert seconds to ms
+            time_val = _safe_float(data.get('ori_time'))
+            if time_val is not None:
+                return time_val, 'ori_time'  # Task runners already write milliseconds
         elif not is_baseline and 'opt_time' in data:
-            return float(data['opt_time']), 'opt_time'  # Convert seconds to ms
+            time_val = _safe_float(data.get('opt_time'))
+            if time_val is not None:
+                return time_val, 'opt_time'  # Task runners already write milliseconds
     
     # Standard time keys (in order of preference)
     time_keys = ['execution_time_ms', 'execution_time', 'time_ms', 'time']
     for key in time_keys:
         if key in data:
-            time_val = float(data[key])
+            time_val = _safe_float(data.get(key))
+            if time_val is None:
+                continue
             if key.endswith('_ms') or key == 'time_ms':
                 return time_val, key
             elif time_val < 1000.0:  # Likely already in ms
@@ -56,11 +72,17 @@ def _extract_time_from_dict(
         if isinstance(timing, dict):
             # Prefer mean, fallback to median, then min
             if 'mean' in timing:
-                return float(timing['mean']), 'timing_ms.mean'
+                time_val = _safe_float(timing.get('mean'))
+                if time_val is not None:
+                    return time_val, 'timing_ms.mean'
             elif 'median' in timing:
-                return float(timing['median']), 'timing_ms.median'
+                time_val = _safe_float(timing.get('median'))
+                if time_val is not None:
+                    return time_val, 'timing_ms.median'
             elif 'min' in timing:
-                return float(timing['min']), 'timing_ms.min'
+                time_val = _safe_float(timing.get('min'))
+                if time_val is not None:
+                    return time_val, 'timing_ms.min'
     
     return 0.0, None
 
@@ -153,20 +175,32 @@ def parse_test_cases_from_json(
         # Format 1: Array of test cases (hip2hip, pytest benchmark)
         if isinstance(report, list):
             for idx, case in enumerate(report):
-                test_case = _parse_single_case_from_dict(
-                    case, f"test_case_{idx}", is_baseline, task_type
-                )
-                if test_case:
-                    test_cases.append(test_case)
+                try:
+                    if not isinstance(case, dict):
+                        log.warning(f"Skipping non-dict test case at index {idx} in {report_file}")
+                        continue
+                    test_case = _parse_single_case_from_dict(
+                        case, f"test_case_{idx}", is_baseline, task_type
+                    )
+                    if test_case:
+                        test_cases.append(test_case)
+                except Exception as e:
+                    log.warning(f"Skipping invalid test case at index {idx} in {report_file}: {e}")
         
         # Format 2: Object with 'test_cases' key
         elif 'test_cases' in report:
             for idx, case in enumerate(report['test_cases']):
-                test_case = _parse_single_case_from_dict(
-                    case, f"test_case_{idx}", is_baseline, task_type
-                )
-                if test_case:
-                    test_cases.append(test_case)
+                try:
+                    if not isinstance(case, dict):
+                        log.warning(f"Skipping non-dict test case at index {idx} in {report_file}")
+                        continue
+                    test_case = _parse_single_case_from_dict(
+                        case, f"test_case_{idx}", is_baseline, task_type
+                    )
+                    if test_case:
+                        test_cases.append(test_case)
+                except Exception as e:
+                    log.warning(f"Skipping invalid test case at index {idx} in {report_file}: {e}")
         
         # Format 3: Single object
         else:
@@ -182,7 +216,10 @@ def parse_test_cases_from_json(
                 ms_keys = [k for k in report.keys() if k.endswith('_ms')]
                 if ms_keys:
                     for idx, ms_key in enumerate(sorted(ms_keys)):
-                        time_val = float(report[ms_key])
+                        time_val = _safe_float(report.get(ms_key))
+                        if time_val is None:
+                            log.warning(f"Skipping invalid timing value {ms_key}={report.get(ms_key)!r} in {report_file}")
+                            continue
                         # Build metadata excluding timing
                         exclude_keys = ['shape', 'shapes'] + [k for k in report.keys() if k.endswith('_ms')]
                         metadata = _build_metadata_from_case(report, exclude_keys)

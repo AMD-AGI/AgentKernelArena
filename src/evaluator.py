@@ -18,6 +18,15 @@ from .performance import measure_performance, measure_baseline
 from .testcases import TestCaseResult, save_performance_results, calculate_average_speedup
 
 
+def _valid_perf_cases(cases: List[TestCaseResult]) -> List[TestCaseResult]:
+    """Return only test cases with valid positive execution time."""
+    valid_cases: List[TestCaseResult] = []
+    for case in cases:
+        if case.execution_time_ms is not None and case.execution_time_ms > 0:
+            valid_cases.append(case)
+    return valid_cases
+
+
 def evaluate_compilation(
     workspace: Path,
     task_config: Dict[str, Any],
@@ -124,6 +133,8 @@ def evaluate_kernel(
         'pass_correctness': False,
         'best_optimized_execution_time': 0.0,
         'average_speedup': 0.0,
+        'valid_baseline_cases': 0,
+        'valid_optimized_cases': 0,
         'compilation_error_message': None,
         'correctness_error_message': None,
     }
@@ -155,25 +166,43 @@ def evaluate_kernel(
     if optimized_cases:
         # Save optimized results
         save_performance_results(optimized_cases, workspace, "optimized_perf.yaml", logger)
-        
-        # Calculate average speedup across all test cases
-        if baseline_cases:
-            avg_speedup = calculate_average_speedup(baseline_cases, optimized_cases, logger)
-            results['average_speedup'] = avg_speedup
-            
-            # Calculate average optimized execution time
-            avg_optimized_time = sum(c.execution_time_ms for c in optimized_cases) / len(optimized_cases)
-            results['best_optimized_execution_time'] = avg_optimized_time
-            
-            avg_baseline_time = sum(c.execution_time_ms for c in baseline_cases) / len(baseline_cases)
-            log.info(f"Performance: {len(optimized_cases)} test case(s), average time: {avg_optimized_time:.4f} ms")
-            log.info(f"Baseline: {len(baseline_cases)} test case(s), average time: {avg_baseline_time:.4f} ms")
-            log.info(f"Average speedup: {avg_speedup:.2f}x")
+        valid_optimized_cases = _valid_perf_cases(optimized_cases)
+        valid_baseline_cases = _valid_perf_cases(baseline_cases)
+        results['valid_optimized_cases'] = len(valid_optimized_cases)
+        results['valid_baseline_cases'] = len(valid_baseline_cases)
+
+        if not valid_optimized_cases:
+            results['best_optimized_execution_time'] = 0.0
+            log.warning(
+                "No valid performance samples found (execution_time_ms <= 0 or invalid). "
+                "best_optimized_execution_time is set to 0.0"
+            )
         else:
-            avg_optimized_time = sum(c.execution_time_ms for c in optimized_cases) / len(optimized_cases)
+            avg_optimized_time = sum(c.execution_time_ms for c in valid_optimized_cases) / len(valid_optimized_cases)
             results['best_optimized_execution_time'] = avg_optimized_time
-            log.info(f"Performance: {len(optimized_cases)} test case(s), average time: {avg_optimized_time:.4f} ms")
-            log.warning("Baseline not available, cannot calculate speedup")
+            log.info(
+                f"Performance: {len(valid_optimized_cases)}/{len(optimized_cases)} valid test case(s), "
+                f"average time: {avg_optimized_time:.4f} ms"
+            )
+
+            # Calculate average speedup across valid test cases only
+            if valid_baseline_cases:
+                avg_speedup = calculate_average_speedup(valid_baseline_cases, valid_optimized_cases, logger)
+                results['average_speedup'] = avg_speedup
+                avg_baseline_time = sum(c.execution_time_ms for c in valid_baseline_cases) / len(valid_baseline_cases)
+                log.info(
+                    f"Baseline: {len(valid_baseline_cases)}/{len(baseline_cases)} valid test case(s), "
+                    f"average time: {avg_baseline_time:.4f} ms"
+                )
+                log.info(f"Average speedup: {avg_speedup:.2f}x")
+            else:
+                if baseline_cases:
+                    log.warning(
+                        "Baseline data exists but has no valid performance samples "
+                        "(execution_time_ms <= 0 or invalid). Cannot calculate speedup."
+                    )
+                else:
+                    log.warning("Baseline not available, cannot calculate speedup")
     else:
         log.warning("Failed to measure optimized execution time")
     
@@ -209,8 +238,14 @@ def write_task_result(
     
     # Get average baseline time
     avg_baseline_time = 0.0
-    if baseline_cases:
-        avg_baseline_time = sum(c.execution_time_ms for c in baseline_cases) / len(baseline_cases)
+    valid_baseline_cases = _valid_perf_cases(baseline_cases)
+    if valid_baseline_cases:
+        avg_baseline_time = sum(c.execution_time_ms for c in valid_baseline_cases) / len(valid_baseline_cases)
+    elif baseline_cases:
+        log.warning(
+            "No valid baseline performance samples found (execution_time_ms <= 0 or invalid). "
+            "base_execution_time is set to 0.0"
+        )
     
     # Get results
     optimized_time = evaluation_results.get('best_optimized_execution_time', 0.0)
@@ -229,6 +264,8 @@ def write_task_result(
         'base_execution_time': avg_baseline_time,  # Average baseline time
         'best_optimized_execution_time': optimized_time,  # Average optimized time
         'speedup_ratio': avg_speedup,  # Average speedup across test cases
+        'valid_baseline_cases': len(valid_baseline_cases),
+        'valid_optimized_cases': evaluation_results.get('valid_optimized_cases', 0),
         'optimization_summary': f'Optimized by {agent_name} using centralized evaluator'
     }
     
