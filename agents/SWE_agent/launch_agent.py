@@ -97,10 +97,21 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         # copy the script python_bindings/tritonbench.py into the workspace
         shutil.copy(tritonbench_script_path, os.path.join(workspace, "python_bindings", "tritonbench.py"))
     if any("rocprim" in task for task in eval_config["tasks"]):
-        subprocess.run(
-            ["git", "clone", "https://github.com/ROCm/rocPRIM.git", os.path.join(workspace, "rocPRIM")],
-            check=True
-        )
+        for task in eval_config["tasks"]:
+            if "rocprim" not in task:
+                continue
+            repo_dir = Path(workspace) / "tasks" / task / "rocPRIM"
+            if (repo_dir / ".git").exists():
+                logger.info(f"Repository already exists at {repo_dir}, skipping clone")
+                continue
+            if repo_dir.exists():
+                logger.info(f"Repository directory already exists at {repo_dir}, skipping clone")
+                continue
+            repo_dir.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(
+                ["git", "clone", "https://github.com/ROCm/rocPRIM.git", str(repo_dir)],
+                check=True,
+            )
         test_correctness_benchmark_path = Path(task_config_dir).parent / "python_bindings" / "test_correctness_benchmark.py"
         # make a dir for the target path
         os.makedirs(os.path.join(workspace, "python_bindings"), exist_ok=True)
