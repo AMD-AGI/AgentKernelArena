@@ -14,7 +14,7 @@ import socket
 import yaml
 from agents import register_agent
 from src.preprocessing import setup_repo_from_config
-from agents.geak_benchmark.geak_pre_process import (
+from agents.geak_v3.geak_pre_process import (
     simple_prompt_builder,
     integrate_agent_config,
     copy_python_bindings,
@@ -85,10 +85,10 @@ def write_debug_script(workspace: str, cmd: str, agent: str) -> None:
     os.chmod(script_file, 0o755)
 
 
-@register_agent("geak_benchmark")
+@register_agent("geak_v3")
 def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: str) -> str:
     """
-    Launch geak_benchmark agent using mini-SWE-agent with real-time output streaming.
+    Launch geak_v3 agent using mini-SWE-agent with real-time output streaming.
 
     Args:
         eval_config: Evaluator settings passed from main (includes task metadata like task_type)
@@ -178,7 +178,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             "pid": os.getpid(),
             "cwd": os.getcwd(),
             "task_name": os.environ.get("AKA_TASK_NAME"),
-            "agent_launcher": "agents/geak_benchmark/launch_agent.py",
+            "agent_launcher": "agents/geak_v3/launch_agent.py",
             "run_cmd": AGENT,
             "run_configs": run_config.get("configs", ""),
             "options_final": OPTIONS,

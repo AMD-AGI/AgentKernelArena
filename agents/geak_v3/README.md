@@ -17,9 +17,9 @@ pip install -e .
 export AMD_LLM_API_KEY="your-key-here"
 ```
 
-### 3) Configure the GEAK runner in geak_benchmark
+### 3) Configure the GEAK runner in geak_v3
 
-Edit `agents/geak_benchmark/agent_config.yaml`.
+Edit `agents/geak_v3/agent_config.yaml`.
 
 Key fields:
 - **`run.cmd`**: which executable to run (`mini` or `geak`)
@@ -34,7 +34,7 @@ run:
 ```
 
 Notes:
-- `-c geak.yaml` points to `agents/geak_benchmark/geak.yaml` (the launcher automatically resolves it to an absolute path).
+- `-c geak.yaml` points to `agents/geak_v3/geak.yaml` (the launcher automatically resolves it to an absolute path).
 - `--num-parallel` / `--gpu-ids` controls **parallel sub-agents inside a single task** (multi-GPU). This does *not* change how AgentKernelArena schedules tasks (see the “Tasks run serially” note below).
 - If you want to use a different `agent_config.yaml` without editing the repo, set:
 
@@ -50,7 +50,7 @@ Edit `AgentKernelArena/config.yaml`:
 
 ```yaml
 agent:
-  template: geak_benchmark
+  template: geak_v3
 ```
 
 2) Select tasks to run (task names are relative to `tasks/`):
@@ -78,7 +78,7 @@ python3 main.py
 Quick checklist:
 
 - **AgentKernelArena Run log**: `logs/*.log` (path controlled by `log_directory` in `AgentKernelArena/config.yaml`)
-- **Workspace root**: `workspace_<GPU>_geak_benchmark/` (you can rename it by changing `workspace_directory_prefix` in `AgentKernelArena/config.yaml`)
+- **Workspace root**: `workspace_<GPU>_geak_v3/` (you can rename it by changing `workspace_directory_prefix` in `AgentKernelArena/config.yaml`)
 - **Per-task results**: `workspace_.../<task>_<timestamp>/task_result.yaml` (also `baseline_perf.yaml`, `optimized_perf.yaml`, `build/performance_report.json`)
 - **GEAK logs**: `workspace_.../<task>_<timestamp>_logs/` (see `best_results.json`, `parallel_*/`)
 - **Aggregate summary**: `workspace_.../task_results_summary.csv` (and sometimes `task_results_report.txt`)

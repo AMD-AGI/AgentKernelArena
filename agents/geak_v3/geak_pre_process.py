@@ -16,7 +16,7 @@ import yaml
 
 def simple_prompt_builder(task_config_dir: str, workspace: str, logger: logging.Logger) -> str:
     """
-    Build a simple prompt for geak_benchmark agent.
+    Build a simple prompt for geak_v3 agent.
     Only includes essential information from task config.
 
     Args:
