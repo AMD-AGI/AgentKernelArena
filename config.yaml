@@ -16,7 +16,7 @@
 # - geak_ourllm_kernel2kernel
 # - task_validator 
 agent:
-  template: codex 
+  template: cursor 
 
 # Task Selection
 # Specify task names to execute (use full path from tasks/ directory)
@@ -28,45 +28,75 @@ agent:
 #   - all                               # Run ALL available tasks
 
 tasks:
-  - triton2triton/vllm/triton_pack_bitmatrix
-  - triton2triton/vllm/triton_pack_seq
-  - triton2triton/vllm/triton_paged_prefix_prefill
-  - triton2triton/vllm/triton_paged_prefix_prefill_alibi
-  - triton2triton/vllm/triton_per_token_group_quant_fp8
-  - triton2triton/vllm/triton_per_token_group_quant_fp8_colmajor
-  - triton2triton/vllm/triton_per_token_group_quant_int8
-  - triton2triton/vllm/triton_per_token_quant_int8
-  - triton2triton/vllm/triton_post_update
-  - triton2triton/vllm/triton_prepare_mrope_positions
-  - triton2triton/vllm/triton_prepare_pos_seq_lens
-  - triton2triton/vllm/triton_prepare_prefill_inputs
-  - triton2triton/vllm/triton_prompt_logprobs_token_ids
-  - triton2triton/vllm/triton_ranks
-  - triton2triton/vllm/triton_reduce_segments
-  - triton2triton/vllm/triton_rejection_greedy_sample
-  - triton2triton/vllm/triton_rejection_random_sample
-  - triton2triton/vllm/triton_reshape_and_cache_flash
+  # hip2hip: 20 tasks (18 from gpumode, 2 from others)
+  - hip2hip/gpumode/CrossEntropyLossLabelSmoothing
+  - hip2hip/gpumode/Feedforward
+  - hip2hip/gpumode/FusedLeakyReLU
+  - hip2hip/gpumode/GateGRUSelectionLayer
+  - hip2hip/gpumode/Gather
+  - hip2hip/gpumode/GELU
+  - hip2hip/gpumode/InnerProd
+  - hip2hip/gpumode/ItemQueryAttention
+  - hip2hip/gpumode/KDLoss
+  - hip2hip/gpumode/layer_normalization
+  - hip2hip/gpumode/MaskedLanguageModel
+  - hip2hip/gpumode/MLP_model
+  - hip2hip/gpumode/MultiHeadAttention
+  - hip2hip/gpumode/NormalAttention_dot
+  - hip2hip/gpumode/NormalAttention_embedded_gaussian
+  - hip2hip/gpumode/PositionEmbedder
+  - hip2hip/gpumode/Sigmoid
+  - hip2hip/gpumode/SiLU
+  - hip2hip/others/assign_score_withk
+  - hip2hip/others/ball_query
+  
+  # triton2triton/vllm: 10 tasks
+  - triton2triton/vllm/triton_awq_dequantize
+  - triton2triton/vllm/triton_awq_gemm
+  - triton2triton/vllm/triton_batched_moe
+  - triton2triton/vllm/triton_flash_prefill_attention
+  - triton2triton/vllm/triton_fused_moe
+  - triton2triton/vllm/triton_layernorm_gated
+  - triton2triton/vllm/triton_matmul_persistent
   - triton2triton/vllm/triton_rms_norm
-  - triton2triton/vllm/triton_sample_recovered_tokens
-  - triton2triton/vllm/triton_scale_swizzle
   - triton2triton/vllm/triton_scaled_mm
-  - triton2triton/vllm/triton_selective_scan_update
-  - triton2triton/vllm/triton_silu_mul_quant_fp8
-  - triton2triton/vllm/triton_solve_tril_16x16
-  - triton2triton/vllm/triton_ssd_bmm
-  - triton2triton/vllm/triton_ssd_chunk_cumsum
-  - triton2triton/vllm/triton_ssd_chunk_scan
-  - triton2triton/vllm/triton_ssd_chunk_state
-  - triton2triton/vllm/triton_ssd_chunk_state_varlen
-  - triton2triton/vllm/triton_ssd_state_passing
-  - triton2triton/vllm/triton_swiglustep_and_mul
-  - triton2triton/vllm/triton_topk_topp
-  - triton2triton/vllm/triton_unified_attention_2d
-  - triton2triton/vllm/triton_unpack_seq
-  - triton2triton/vllm/triton_w8a8_block_int8_matmul
-  - triton2triton/vllm/triton_w8a8_block_scaled_mm
-  - triton2triton/vllm/triton_write_zeros_to_output
-  - triton2triton/vllm/triton_wy_fast_recompute_wu
+  - triton2triton/vllm/triton_topk_log_softmax
+
+  # triton2triton/rocmbench: 10 tasks
+  - triton2triton/rocmbench/easy/test_add_kernel
+  - triton2triton/rocmbench/easy/test_batched_vecmat
+  - triton2triton/rocmbench/easy/test_block_copy
+  - triton2triton/rocmbench/easy/test_kernel_dot
+  - triton2triton/rocmbench/medium/layernorm
+  - triton2triton/rocmbench/medium/naive_softmax
+  - triton2triton/rocmbench/medium/rmsnorm_fwd
+  - triton2triton/rocmbench/medium/softmax
+  - triton2triton/rocmbench/hard/gemm
+  - triton2triton/rocmbench/hard/moe_gemm
+  
+  # torch2hip: 10 tasks
+  - torch2hip/gpumode/1001_NormalAttention_dot
+  - torch2hip/gpumode/10024_Feedforward
+  - torch2hip/gpumode/1003_NormalAttention_embedded_gaussian
+  - torch2hip/gpumode/10082_SoftmaxModule
+  - torch2hip/gpumode/10099_Gather
+  - torch2hip/gpumode/10190_FusedLeakyReLU
+  - torch2hip/gpumode/10456_MultiHeadAttention
+  - torch2hip/gpumode/11754_layer_normalization
+  - torch2hip/gpumode/14539_GELU
+  - torch2hip/gpumode/16636_SiLU
+  
+  # instruction2triton/rocmbench: 10 tasks
+  - instruction2triton/rocmbench/gemm
+  - instruction2triton/rocmbench/layernorm
+  - instruction2triton/rocmbench/moe_gemm
+  - instruction2triton/rocmbench/multreduce_matmul_dot_kernel
+  - instruction2triton/rocmbench/naive_softmax
+  - instruction2triton/rocmbench/rmsnorm_bwd
+  - instruction2triton/rocmbench/rmsnorm_fwd
+  - instruction2triton/rocmbench/softmax
+  - instruction2triton/rocmbench/test_flashattention_fwd
+  - instruction2triton/rocmbench/test_gemm_fusion
 
 
 target_gpu_model: MI300

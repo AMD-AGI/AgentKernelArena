@@ -5,7 +5,7 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 from src.tasks import get_task_config
-from src.preprocessing import setup_workspace, setup_rocm_env
+from src.preprocessing import setup_workspace, setup_rocm_env, is_task_complete
 from src.module_registration import AgentType, load_agent_launcher, load_post_processing_handler
 from src.evaluator import measure_baseline, evaluate_kernel, write_task_result
 
@@ -13,6 +13,10 @@ from src.evaluator import measure_baseline, evaluate_kernel, write_task_result
 parser = argparse.ArgumentParser(description="arguments for AgentKernelArena")
 parser.add_argument("--config_name", type=str, default="config.yaml",help="the config of AgentKernelArena, default set to config. \
                     You can set different tasks in different config yaml file in order to run multi evaluation task in one folder.")
+parser.add_argument("--resume-run", type=str, default=None,
+                    help="Resume an existing run by specifying the run directory name (e.g., run_20250115_143022)")
+parser.add_argument("--resume-latest", action="store_true",
+                    help="Resume the most recent run in the workspace")
 
 def main() -> None:
     """Main entry point for AgentKernelArena framework."""
@@ -42,8 +46,45 @@ def main() -> None:
     project_root = Path(__file__).resolve().parent
     workspace_directory = (project_root / workspace_directory_name).resolve()
 
-    # Create log file with target_gpu_model, agent, and timestamp    
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    # Handle resume functionality
+    resume_mode = False
+    if args.resume_run:
+        # Resume specific run
+        run_directory_name = args.resume_run
+        run_directory = workspace_directory / run_directory_name
+        if not run_directory.exists():
+            print(f"Error: Run directory does not exist: {run_directory}")
+            return
+        resume_mode = True
+        # Extract timestamp from run directory name: run_20250115_143022 -> 20250115_143022
+        if run_directory_name.startswith("run_"):
+            timestamp = run_directory_name[4:]  # Remove "run_" prefix
+        else:
+            print(f"Error: Invalid run directory name format: {run_directory_name}. Expected format: run_YYYYMMDD_HHMMSS")
+            return
+    elif args.resume_latest:
+        # Resume latest run
+        # Find all run directories and get the most recent one
+        run_dirs = sorted([d for d in workspace_directory.iterdir() 
+                          if d.is_dir() and d.name.startswith("run_")], 
+                         key=lambda x: x.name, reverse=True)
+        if not run_dirs:
+            print(f"Error: No run directories found in {workspace_directory}")
+            return
+        run_directory = run_dirs[0]
+        run_directory_name = run_directory.name
+        resume_mode = True
+        # Extract timestamp from run directory name
+        if run_directory_name.startswith("run_"):
+            timestamp = run_directory_name[4:]
+        else:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    else:
+        # Create new run
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        run_directory_name = f"run_{timestamp}"
+        run_directory = workspace_directory / run_directory_name
+        run_directory.mkdir(parents=True, exist_ok=True)
     log_dir = Path(log_directory)
     log_dir.mkdir(parents=True, exist_ok=True)
     log_filename = f"{target_gpu_model}_{agent.value}_{timestamp}.log"
@@ -67,6 +108,11 @@ def main() -> None:
     logger.info(f"Agent: {agent.value}")
     logger.info(f"Target Architecture: {target_gpu_model}")
     logger.info(f"Workspace Directory: {workspace_directory}")
+    logger.info(f"Run Directory: {run_directory}")
+    if resume_mode:
+        logger.info(f"RESUME MODE: Resuming existing run {run_directory_name}")
+    else:
+        logger.info(f"NEW RUN: Creating new run {run_directory_name}")
 
     # Set PYTORCH_ROCM_ARCH based on target_gpu_model before any task runs
     setup_rocm_env(target_gpu_model, logger)
@@ -87,6 +133,28 @@ def main() -> None:
         for category in tasks:
             task_config_dict.update(get_task_config(category=category))
 
+    # Filter out completed tasks if resuming
+    if resume_mode:
+        original_task_count = len(task_config_dict)
+        tasks_to_run = {}
+        skipped_tasks = []
+        
+        for task_name, task_config_dir in task_config_dict.items():
+            if is_task_complete(run_directory, task_name, timestamp):
+                skipped_tasks.append(task_name)
+                logger.info(f"Skipping completed task: {task_name}")
+            else:
+                tasks_to_run[task_name] = task_config_dir
+        
+        task_config_dict = tasks_to_run
+        
+        logger.info(f"Resume mode: {len(skipped_tasks)} tasks already completed, {len(task_config_dict)} tasks remaining")
+        if skipped_tasks:
+            logger.info(f"Skipped tasks: {skipped_tasks}")
+        if len(task_config_dict) == 0:
+            logger.info("All tasks are already completed. Nothing to run.")
+            return
+
     logger.info(f"Found {len(task_config_dict)} tasks to execute")
     logger.info(f"Tasks: {list(task_config_dict.keys())}")
 
@@ -101,7 +169,7 @@ def main() -> None:
         
         try:
             # Setup workspace
-            workspace_path = setup_workspace(task_config_dir, workspace_directory, timestamp, logger)
+            workspace_path = setup_workspace(task_config_dir, run_directory, timestamp, logger, task_name=task_name)
             
             # Load task config for evaluation
             with open(task_config_dir, 'r') as f:
