@@ -31,11 +31,8 @@ REPO_SUBDIR = "rocPRIM"
 def _workspace_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
-def _task_root(ws: Path) -> Path:
-    return ws / "tasks" / TASK_NAME
-
 def _source_root(ws: Path) -> Path:
-    return _task_root(ws) / REPO_SUBDIR
+    return ws / REPO_SUBDIR
 
 def _build_dir(ws: Path) -> Path:
     return _source_root(ws) / "build"

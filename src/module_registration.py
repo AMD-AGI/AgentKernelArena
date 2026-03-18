@@ -17,7 +17,7 @@ class AgentType(Enum):
     GEAK_HIP = "geak_hip"
     OURLLM_KERNEL2KERNEL = "geak_ourllm_kernel2kernel"
     TASK_VALIDATOR = "task_validator"
-    geak_v3 = "geak_v3"
+    GEAK_V3 = "geak_v3"
 
     @classmethod
     def from_string(cls, agent_string: str) -> 'AgentType':
