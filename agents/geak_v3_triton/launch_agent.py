@@ -246,7 +246,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     """
     Launch GEAK-v3 Triton agent via the unified ``geak`` CLI.
 
-    Calls: geak --kernel-url <kernel> --harness <harness> --gpu-ids <gpus>
+    Calls: geak --kernel-url <kernel> --eval <harness> --gpu-ids <gpus>
            --max-rounds <N> [--heterogeneous] --yolo -o <logs_dir>
 
     This is the same entrypoint used by HIP kernels (geak_v3), ensuring
@@ -325,7 +325,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     geak_cmd = (
         f"geak"
         f" --kernel-url {kernel_path}"
-        f" --harness {harness_path}"
+        f" --eval {harness_path}"
         f" --gpu-ids {gpu_ids}"
         f" --max-rounds {max_rounds}"
         f" --model {model}"

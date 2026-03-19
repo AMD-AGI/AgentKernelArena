@@ -88,15 +88,20 @@ def write_debug_script(workspace: str, cmd: str, agent: str) -> None:
 @register_agent("geak_v3")
 def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: str) -> str:
     """
-    Launch geak_v3 agent using mini-SWE-agent with real-time output streaming.
+    Launch geak_v3 agent via the unified ``geak`` CLI.
+
+    Builds the geak command from the task config:
+    - Triton (harness_path in config): geak --kernel-url <kernel> --eval <harness> ...
+    - HIP (compile/correctness/performance commands): geak --kernel-url <kernel> --eval "<cmds>" ...
+    - No eval info: geak --kernel-url <kernel> ... (full discovery + UnitTestAgent)
 
     Args:
-        eval_config: Evaluator settings passed from main (includes task metadata like task_type)
-        task_config_dir: Path to the task configuration used to build the prompt
-        workspace: Workspace directory where the agent will run and read/write files
+        eval_config: Evaluator settings passed from main
+        task_config_dir: Path to the task's config.yaml
+        workspace: Workspace directory
 
     Returns:
-        str: Combined agent output (stdout plus stderr summary if present)
+        str: Combined agent output
     """
     # Load agent config (support override via env var)
     config_path_env = os.environ.get("GEAK_AGENT_CONFIG")
@@ -108,27 +113,11 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         agent_config = yaml.safe_load(f) or {}
     logger = logging.getLogger(__name__)
 
-    # Get run configuration
-    run_config = agent_config.get("run", {})
-    
-    # Get command (geak entrypoint)
-    AGENT = run_config.get("cmd", "geak")
-    
-    # Get configs string (e.g., '-c geak.yaml --yolo --num-parallel=2 --gpu-ids=0,1')
-    OPTIONS = run_config.get("configs", "")
-    
-    # Replace relative config file path with absolute path (e.g., '-c geak.yaml' -> '-c /abs/path/geak.yaml')
-    agent_dir = Path(__file__).parent
-    def replace_config_path(match):
-        config_file = match.group(1)
-        abs_path = agent_dir / config_file
-        return f"-c {abs_path!s}"
-    OPTIONS = re.sub(r'-c\s+(\S+)', replace_config_path, OPTIONS)
-
-    # Check if the command exists
+    # Check geak exists
+    AGENT = "geak"
     if not shutil.which(AGENT):
         raise RuntimeError(
-            f"Command '{AGENT}' not found. Please ensure it is installed and in your PATH."
+            f"Command '{AGENT}' not found. Please ensure GEAK is installed and in your PATH."
         )
 
     # Load task configuration
@@ -144,30 +133,71 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     repo_path = setup_repo_from_config(task_config_dir, Path(workspace), logger)
     if repo_path:
         logger.info(f"Repository cloned to: {repo_path}")
-        # Note: We use workspace (not repo_path) as --repo because test_command
-        # (e.g., 'python3 scripts/task_runner.py') is relative to workspace root,
-        # not the cloned repo subdirectory.
-        OPTIONS += f" --repo={shlex.quote(workspace)}"
 
     # Copy python_bindings to workspace
     copy_python_bindings(task_config_dir, workspace, logger)
 
-    # Build simplified prompt (only instructions + workspace info)
+    workspace_path = Path(workspace)
+
+    # Resolve kernel path from task config
+    source_files = task_config.get("source_file_path", [])
+    kernel_file = source_files[0] if source_files else "kernel.py"
+    kernel_path = workspace_path / kernel_file
+
+    # Build --eval flag from task config
+    # Priority: harness_path (Triton) > compile/correctness/performance commands (HIP) > none (discovery)
+    eval_flag = ""
+    harness_path = task_config.get("harness_path")
+    if harness_path and (workspace_path / harness_path).is_file():
+        # Triton-style: harness file with --correctness/--benchmark/--profile modes
+        eval_flag = f"--eval {shlex.quote(str(workspace_path / harness_path))}"
+    else:
+        # HIP-style: compile + correctness + performance commands
+        compile_cmds = task_config.get("compile_command", [])
+        correctness_cmds = task_config.get("correctness_command", [])
+        performance_cmds = task_config.get("performance_command", [])
+        all_cmds = []
+        seen = set()
+        for cmd_list in [compile_cmds, correctness_cmds, performance_cmds]:
+            if isinstance(cmd_list, str):
+                cmd_list = [cmd_list]
+            for c in (cmd_list or []):
+                c = c.strip()
+                if c and c not in seen:
+                    seen.add(c)
+                    all_cmds.append(c)
+        if all_cmds:
+            eval_cmd = " && ".join(all_cmds)
+            eval_flag = f"--eval {shlex.quote(eval_cmd)}"
+
+    # Build task prompt with instructions (optional context for the agent)
     prompt = simple_prompt_builder(task_config_dir, workspace, logger)
     prompt = integrate_agent_config(prompt, agent_config)
-
-    # Write prompt to a temporary file (mini agent reads from file if path exists)
-    prompt_file = Path(workspace) / "task_prompt.md"
+    prompt_file = workspace_path / "task_prompt.md"
     prompt_file.write_text(prompt, encoding="utf-8")
-    logger.info(f"Wrote task prompt to: {prompt_file}")
 
-    # Put optimization_logs outside workspace to avoid recursive copying when creating worktrees
-    # Use a sibling directory: workspace_dir_logs/
-    workspace_path = Path(workspace)
+    # Put logs outside workspace to avoid recursive copying
     logs_dir = workspace_path.parent / f"{workspace_path.name}_logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd = f"{AGENT} {OPTIONS} -t {shlex.quote(str(prompt_file))} --output {workspace}/output.traj.json --patch-output {shlex.quote(str(logs_dir))}"
+    # GPU configuration
+    run_config = agent_config.get("run", {})
+    gpu_ids = os.environ.get("GEAK_GPU_IDS", "0,1")
+    num_parallel = len(gpu_ids.split(","))
+
+    # Build unified geak command
+    cmd = (
+        f"{AGENT}"
+        f" --kernel-url {shlex.quote(str(kernel_path))}"
+        f" {eval_flag}"
+        f" --gpu-ids {gpu_ids}"
+        f" --num-parallel {num_parallel}"
+        f" --yolo"
+        f" -t {shlex.quote(str(prompt_file))}"
+        f" -o {shlex.quote(str(logs_dir))}"
+    )
+    if repo_path:
+        cmd += f" --repo {shlex.quote(workspace)}"
 
     # Persist the exact invocation for debugging (unified JSONL file)
     _append_jsonl_record(
