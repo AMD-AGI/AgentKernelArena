@@ -244,11 +244,13 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
 @register_agent("geak_v3_triton")
 def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: str) -> str:
     """
-    Launch GEAK-v3 Triton agent using the full geak-preprocess + geak-orchestrate pipeline.
+    Launch GEAK-v3 Triton agent via the unified ``geak`` CLI.
 
-    Assumes we are already running inside the GEAK Docker container.
-    Output directories are placed as a sibling of workspace (_logs/) to prevent
-    recursive worktree bloat.
+    Calls: geak --kernel-url <kernel> --harness <harness> --gpu-ids <gpus>
+           --max-rounds <N> [--heterogeneous] --yolo -o <logs_dir>
+
+    This is the same entrypoint used by HIP kernels (geak_v3), ensuring
+    a single pipeline for both Triton and HIP.
     """
     logger = logging.getLogger(__name__)
 
@@ -272,7 +274,6 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logs_dir = workspace_path.parent / f"{workspace_path.name}_logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     preprocess_dir = logs_dir / "preprocess"
-    preprocess_dir.mkdir(parents=True, exist_ok=True)
 
     # Build environment with all GEAK_* vars
     run_env = os.environ.copy()
@@ -280,7 +281,6 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         run_env[k] = str(v)
 
     gpu_ids = os.environ.get("GEAK_GPU_IDS", eval_config.get("gpu_ids", "0,1,2,3"))
-    preprocess_gpu = gpu_ids.split(",")[0]
 
     orch_config = agent_config.get("orchestrate", {})
     max_rounds = orch_config.get("max_rounds", 3)
@@ -304,13 +304,12 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     timeout = int(agent_config.get("timeout_seconds", 36000))
 
     logger.info("=" * 60)
-    logger.info("  GEAK-v3 Triton Pipeline")
+    logger.info("  GEAK-v3 Triton Pipeline (via geak CLI)")
     logger.info("=" * 60)
     logger.info(f"  kernel:        {kernel_path}")
     logger.info(f"  harness:       {harness_path}")
     logger.info(f"  workspace:     {workspace_path}")
     logger.info(f"  logs_dir:      {logs_dir}")
-    logger.info(f"  preprocess_dir:{preprocess_dir}")
     logger.info(f"  gpu_ids:       {gpu_ids}")
     logger.info(f"  max_rounds:    {max_rounds}")
     logger.info(f"  model:         {model}")
@@ -321,56 +320,37 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             logger.info(f"  {k}: {v}")
     logger.info("=" * 60)
 
-    all_output: list[str] = []
-
-    # Step 1: geak-preprocess
-    preprocess_cmd = (
-        f"python3 -m minisweagent.run.preprocessor"
-        f" {kernel_path}"
-        f" -o {preprocess_dir}"
-        f" --gpu {preprocess_gpu}"
-        f" --harness {harness_path}"
-    )
-
-    rc, out, err = _run_pipeline_step(
-        preprocess_cmd,
-        env=run_env,
-        cwd=str(workspace_path),
-        label="preprocess",
-        logger=logger,
-        timeout=timeout // 3,
-    )
-    all_output.extend(out)
-    if rc != 0:
-        logger.error("Preprocessing failed")
-        all_output.extend(err)
-        return "\n".join(all_output)
-
-    # Step 2: geak-orchestrate
+    # Build unified geak command — same entrypoint for Triton and HIP
     hetero_flag = "--heterogeneous" if heterogeneous else ""
-    orchestrate_cmd = (
-        f"python3 -m minisweagent.run.orchestrator"
-        f" --preprocess-dir {preprocess_dir}"
+    geak_cmd = (
+        f"geak"
+        f" --kernel-url {kernel_path}"
+        f" --harness {harness_path}"
         f" --gpu-ids {gpu_ids}"
         f" --max-rounds {max_rounds}"
         f" --model {model}"
         f" {hetero_flag}"
+        f" --yolo"
+        f" -o {logs_dir}"
     )
 
     rc, out, err = _run_pipeline_step(
-        orchestrate_cmd,
+        geak_cmd,
         env=run_env,
         cwd=str(workspace_path),
-        label="orchestrate",
+        label="geak",
         logger=logger,
         timeout=timeout,
     )
+
+    all_output: list[str] = []
     all_output.extend(out)
     if rc != 0:
-        logger.warning(f"Orchestrator exited with code {rc}")
+        logger.warning(f"geak exited with code {rc}")
         all_output.extend(err)
 
-    # Step 3: Apply best patch to workspace for AKA evaluator
-    _apply_best_patch(workspace, preprocess_dir, logger)
+    # Apply best patch to workspace for AKA evaluator
+    if preprocess_dir.exists():
+        _apply_best_patch(workspace, preprocess_dir, logger)
 
     return "\n".join(all_output)
