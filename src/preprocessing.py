@@ -37,14 +37,39 @@ def _resolve_gfx_arch(target_gpu_model: str) -> str | None:
     return None
 
 
+def _detect_gfx_arch_from_rocminfo() -> str | None:
+    """Detect the actual GPU gfx arch from rocminfo (e.g. 'gfx950')."""
+    try:
+        result = subprocess.run(
+            ["rocminfo"], capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("Name:") and "gfx" in stripped:
+                    arch = stripped.split("Name:")[-1].strip()
+                    if arch.startswith("gfx"):
+                        return arch
+    except Exception:
+        pass
+    return None
+
+
 def setup_rocm_env(target_gpu_model: str, logger: logging.Logger) -> None:
     """
-    Set PYTORCH_ROCM_ARCH (and related env vars) based on config.yaml's
-    target_gpu_model so that torch.utils.cpp_extension.load() and hipcc
-    compile for the correct GPU architecture.
+    Set PYTORCH_ROCM_ARCH (and related env vars) for correct GPU compilation.
 
-    Should be called once at the start of main(), before any task is launched.
+    Priority:
+    1. Auto-detect from rocminfo (most reliable — uses actual hardware)
+    2. Fall back to cheatsheet lookup from target_gpu_model
+    3. Leave unset if neither works
     """
+    detected_arch = _detect_gfx_arch_from_rocminfo()
+    if detected_arch:
+        os.environ["PYTORCH_ROCM_ARCH"] = detected_arch
+        logger.info(f"Set PYTORCH_ROCM_ARCH={detected_arch} (auto-detected from rocminfo)")
+        return
+
     gfx_arch = _resolve_gfx_arch(target_gpu_model)
     if not gfx_arch:
         logger.warning(

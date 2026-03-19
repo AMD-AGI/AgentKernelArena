@@ -5,7 +5,7 @@ timeout_seconds: 36000
 python_path: python3
 
 run:
-  # cmd can be mini or geak
-  cmd: mini
+  # cmd: the CLI entrypoint
+  cmd: geak
   # Additional options for the agent
-  configs: '-c geak.yaml --yolo --num-parallel=2 --gpu-ids=0,1'
+  configs: '-c geak.yaml --yolo --num-parallel=2 --gpu-ids=4,5'

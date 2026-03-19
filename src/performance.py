@@ -258,7 +258,7 @@ def measure_performance(
         return []
     
     for cmd in performance_commands:
-        success, stdout, stderr = run_command(cmd, workspace, timeout=300, logger=log)
+        success, stdout, stderr = run_command(cmd, workspace, timeout=600, logger=log)
         
         # Combine stdout and stderr for parsing
         combined_output = stdout + stderr

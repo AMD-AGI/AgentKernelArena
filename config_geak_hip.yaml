@@ -1,0 +1,29 @@
+agent:
+  template: geak_v3
+
+tasks:
+  # L1 hip2hip (5 tasks)
+  - hip2hip/others/ball_query
+  - hip2hip/others/knn
+  - hip2hip/others/matrix_multiplication
+  - hip2hip/others/silu
+  - hip2hip/others/three_nn
+
+  # L2 hip2hip (7 tasks)
+  - hip2hip/others/assign_score_withk
+  - hip2hip/others/furthest_point_sample
+  - hip2hip/others/gather_points
+  - hip2hip/others/points_in_boxes
+  - hip2hip/others/roiaware_pool3d
+  - hip2hip/others/roipoint_pool3d
+  - hip2hip/others/three_interpolate
+
+  # L3 rocPRIM (4 tasks)
+  - repository/rocprim/block_radix_rank
+  - repository/rocprim/device_binary_search
+  - repository/rocprim/device_merge_sort
+  - repository/rocprim/device_search_n
+
+target_gpu_model: MI300
+log_directory: logs
+workspace_directory_prefix: workspace

@@ -111,8 +111,8 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     # Get run configuration
     run_config = agent_config.get("run", {})
     
-    # Get command (mini or geak)
-    AGENT = run_config.get("cmd", "mini")
+    # Get command (geak entrypoint)
+    AGENT = run_config.get("cmd", "geak")
     
     # Get configs string (e.g., '-c geak.yaml --yolo --num-parallel=2 --gpu-ids=0,1')
     OPTIONS = run_config.get("configs", "")
