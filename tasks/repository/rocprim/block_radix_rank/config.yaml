@@ -1,0 +1,10 @@
+repo_url: https://github.com/ROCm/rocPRIM.git
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+prompt:
+  cheatsheet: null
+  instructions: "Optimize block_radix_rank"

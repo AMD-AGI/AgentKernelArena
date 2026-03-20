@@ -18,3 +18,5 @@ tmp*
 kill.sh
 saved_results
 .mcp.json
+
+*workspace*
