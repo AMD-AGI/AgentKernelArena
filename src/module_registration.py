@@ -17,7 +17,6 @@ class AgentType(Enum):
     GEAK_HIP = "geak_hip"
     OURLLM_KERNEL2KERNEL = "geak_ourllm_kernel2kernel"
     TASK_VALIDATOR = "task_validator"
-    GEAK_V3 = "geak_v3"
 
     @classmethod
     def from_string(cls, agent_string: str) -> 'AgentType':
@@ -81,8 +80,6 @@ def load_agent_launcher(agent_type: AgentType, logger: logging.Logger) -> Callab
             from agents.geak_ourllm_kernel2kernel import launch_agent  # noqa: F401
         elif agent_type == AgentType.TASK_VALIDATOR:
             from agents.task_validator import launch_agent  # noqa: F401
-        elif agent_type == AgentType.GEAK_V3:
-            from agents.geak_v3 import launch_agent  # noqa: F401
     except ImportError as e:
         logger.error(f"Failed to import agent {agent_name}: {e}")
         raise
@@ -118,7 +115,7 @@ def load_post_processing_handler(agent_type: AgentType, logger: logging.Logger) 
         from agents.task_validator.validation_postprocessing import validation_post_processing
         logger.info(f"Using validation_post_processing for agent: {agent_name}")
         return validation_post_processing
-    elif agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.SWE_AGENT, AgentType.GEAK_V3, AgentType.GEAK_OPTIMAGENTV2, AgentType.GEAK_HIP, AgentType.OPENEVOLVE, AgentType.SINGLE_LLM_CALL, AgentType.OURLLM_KERNEL2KERNEL]:
+    elif agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.SWE_AGENT, AgentType.GEAK_OPTIMAGENTV2, AgentType.GEAK_HIP, AgentType.OPENEVOLVE, AgentType.SINGLE_LLM_CALL, AgentType.OURLLM_KERNEL2KERNEL]:
         logger.info(f"Using general_post_processing for agent: {agent_name}")
         return general_post_processing
     else:

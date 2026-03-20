@@ -16,9 +16,6 @@ architecture:
   MI300X:
     gfx_arch: gfx942
     file: src/prompts/cheatsheet/MI300X_architecture.md
-  MI308:
-    gfx_arch: gfx942
-    file: src/prompts/cheatsheet/MI300X_architecture.md
   MI355X:
     gfx_arch: gfx950
     file: src/prompts/cheatsheet/MI355X_architecture.md
