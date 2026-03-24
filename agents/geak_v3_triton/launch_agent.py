@@ -350,7 +350,12 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         all_output.extend(err)
 
     # Apply best patch to workspace for AKA evaluator
-    if preprocess_dir.exists():
-        _apply_best_patch(workspace, preprocess_dir, logger)
+    # The geak CLI writes results directly to logs_dir (not logs_dir/preprocess)
+    # Try logs_dir first, fall back to preprocess subdir for backward compat
+    patch_search_dir = logs_dir if (logs_dir / "final_report.json").exists() else preprocess_dir
+    if patch_search_dir.exists():
+        _apply_best_patch(workspace, patch_search_dir, logger)
+    else:
+        logger.warning(f"No results found in {logs_dir} or {preprocess_dir}")
 
     return "\n".join(all_output)
