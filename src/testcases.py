@@ -83,7 +83,15 @@ def _extract_time_from_dict(
                 time_val = _safe_float(timing.get('min'))
                 if time_val is not None:
                     return time_val, 'timing_ms.min'
-    
+
+    # Repository throughput (e.g. rocPRIM benchmarks): GB/s — higher is better.
+    # calculate_average_speedup uses baseline_time / optimized_time with "lower is better".
+    # Store cost = 1/throughput so speedup = (1/bps_base)/(1/bps_opt) = bps_opt/bps_base.
+    if 'bytes_per_second_gs' in data:
+        bps = _safe_float(data.get('bytes_per_second_gs'))
+        if bps is not None and bps > 0:
+            return 1.0 / bps, 'bytes_per_second_gs (inverse for speedup)'
+
     return 0.0, None
 
 
@@ -119,9 +127,9 @@ def _parse_single_case_from_dict(
         return None
     
     # Build metadata
-    exclude_keys = ['test_case_id', 'shape', 'shapes', 'execution_time_ms', 
+    exclude_keys = ['test_case_id', 'shape', 'shapes', 'execution_time_ms',
                    'execution_time', 'time_ms', 'time', 'timing_ms', 'params',
-                   'ori_time', 'opt_time']
+                   'ori_time', 'opt_time', 'bytes_per_second_gs']
     metadata = _build_metadata_from_case(case, exclude_keys)
     
     # For torch2hip, include both ori_time and opt_time in metadata for reference
@@ -132,7 +140,9 @@ def _parse_single_case_from_dict(
             metadata['opt_time'] = case['opt_time']
         if 'speedup' in case:
             metadata['speedup'] = case['speedup']
-    
+    if 'bytes_per_second_gs' in case:
+        metadata['bytes_per_second_gs'] = case['bytes_per_second_gs']
+
     return TestCaseResult(
         test_case_id=test_id,
         shape=shape,
