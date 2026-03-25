@@ -10,6 +10,9 @@ from typing import Dict, Any, Optional, List
 from .testcases import TestCaseResult, parse_test_cases_from_json, parse_test_cases_from_stdout
 from .evaluator_utils import run_command
 
+# Default for performance_command subprocess (CMake benchmarks can be slow)
+_DEFAULT_PERFORMANCE_COMMAND_TIMEOUT_S = 3600
+
 
 def find_performance_report_files(workspace: Path, task_type: Optional[str] = None) -> List[Path]:
     """
@@ -256,9 +259,13 @@ def measure_performance(
     if not performance_commands:
         log.warning("No performance_command found in task config")
         return []
-    
+
+    perf_timeout = int(
+        task_config.get("performance_timeout", _DEFAULT_PERFORMANCE_COMMAND_TIMEOUT_S)
+    )
+
     for cmd in performance_commands:
-        success, stdout, stderr = run_command(cmd, workspace, timeout=300, logger=log)
+        success, stdout, stderr = run_command(cmd, workspace, timeout=perf_timeout, logger=log)
         
         # Combine stdout and stderr for parsing
         combined_output = stdout + stderr
