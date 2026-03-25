@@ -1,10 +1,15 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 """
-GEAK-v3 Triton agent: full geak-preprocess + geak-orchestrate pipeline.
+GEAK-v3 Triton agent: geak-preprocess + geak-orchestrate pipeline.
 
-Runs inside the GEAK Docker container (invoked by run_geak_triton.sh via docker exec).
+Runs inside the GEAK Docker container (invoked via docker exec).
 Output directories are placed as a sibling of workspace (_logs/) to prevent
 recursive worktree bloat when GEAK copies repo_root for parallel agents.
+
+Uses the two-step pipeline from af/heterogeneous-postprocess branch:
+  1. geak-preprocess <kernel_path> --harness <harness> --gpu <gpu> -o <logs_dir>
+  2. geak-orchestrate --preprocess-dir <logs_dir> --gpu-ids <gpu_ids>
+     --max-rounds <N> [--heterogeneous] --model <model>
 """
 import json
 import logging
@@ -106,7 +111,11 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
             data = json.loads(eval_file.read_text())
             if data.get("status") == "patch_failed":
                 continue
-            speedup = float(data.get("benchmark_speedup", 0))
+            # Use FULL_BENCHMARK verified_speedup, not select_agent benchmark_speedup
+            fb = data.get("full_benchmark", {})
+            speedup = float(fb.get("verified_speedup", 0)) if isinstance(fb, dict) else 0.0
+            if speedup <= 0:
+                speedup = float(data.get("benchmark_speedup", 0))
             if speedup > best_speedup:
                 best_speedup = speedup
                 best_round = data.get("round")
@@ -115,14 +124,12 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
             logger.warning(f"Error reading {eval_file}: {e}")
 
     if best_round and best_task:
-        # Find the best task's patch file and reconstruct the kernel
         task_dir = logs_dir / "results" / f"round_{best_round}" / best_task
         best_results_file = task_dir / "best_results.json"
         if best_results_file.exists():
             try:
                 br_data = json.loads(best_results_file.read_text())
                 patch_id = br_data.get("best_patch_id", "")
-                # The patch test output contains the verified result
                 test_file = task_dir / f"{patch_id}_test.txt"
                 if test_file.exists():
                     test_output = test_file.read_text()
@@ -135,7 +142,6 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
                 pass
 
         # Search all worktree slots from best round for modified kernels
-        # Try to apply each and validate via correctness check
         round_dir = logs_dir / "results" / f"round_{best_round}"
         candidates = []
         original_text = ws_kernel.read_text() if ws_kernel.exists() else ""
@@ -146,11 +152,9 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
             if candidate.exists() and candidate.read_text() != original_text:
                 candidates.append(candidate)
 
-        # Try each candidate; pick one that passes correctness
         for candidate in candidates:
             logger.info(f"Trying optimized kernel from {candidate.parent.name}")
             shutil.copy2(str(candidate), str(ws_kernel))
-            # Quick correctness check
             check = subprocess.run(
                 ["python3", "test_kernel_harness.py", "--correctness"],
                 cwd=workspace, capture_output=True, text=True, timeout=120,
@@ -163,7 +167,6 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
                 return True
             logger.warning(f"{candidate.parent.name} failed correctness, trying next")
 
-        # If none passed, restore original
         if candidates:
             logger.warning("No worktree kernel passed correctness; restoring original")
             ws_kernel.write_text(original_text)
@@ -244,13 +247,12 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
 @register_agent("geak_v3_triton")
 def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: str) -> str:
     """
-    Launch GEAK-v3 Triton agent via the unified ``geak`` CLI.
+    Launch GEAK-v3 Triton agent via two-step pipeline:
+      1. geak-preprocess <kernel> --harness <harness> -o <logs_dir>
+      2. geak-orchestrate --preprocess-dir <logs_dir> --gpu-ids <gpus>
+         --max-rounds <N> [--heterogeneous] --model <model>
 
-    Calls: geak --kernel-url <kernel> --eval <harness> --gpu-ids <gpus>
-           --max-rounds <N> [--heterogeneous] --yolo -o <logs_dir>
-
-    This is the same entrypoint used by HIP kernels (geak_v3), ensuring
-    a single pipeline for both Triton and HIP.
+    GEAK_SRC env var selects which GEAK branch to use (sets PYTHONPATH).
     """
     logger = logging.getLogger(__name__)
 
@@ -273,7 +275,6 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     # Logs dir as sibling of workspace (prevents recursive copy bloat)
     logs_dir = workspace_path.parent / f"{workspace_path.name}_logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
-    preprocess_dir = logs_dir / "preprocess"
 
     # Build environment with all GEAK_* vars
     run_env = os.environ.copy()
@@ -281,10 +282,11 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         run_env[k] = str(v)
 
     gpu_ids = os.environ.get("GEAK_GPU_IDS", eval_config.get("gpu_ids", "0,1,2,3"))
+    first_gpu = gpu_ids.split(",")[0]
 
     orch_config = agent_config.get("orchestrate", {})
     max_rounds = orch_config.get("max_rounds", 3)
-    model = orch_config.get("model", "claude-opus-4.6")
+    model = orch_config.get("model", "claude-opus-4-6")
 
     active_config_name = os.environ.get("GEAK_CONFIG_NAME", "heterogeneous_memory_off")
     heterogeneous = True
@@ -295,67 +297,90 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
                 run_env[ek] = str(ev)
             break
 
-    # PYTHONPATH: prefer GEAK repo from home dir (mounted into container)
-    geak_src = os.environ.get("GEAK_SRC", "/home/sapmajum/GEAK-agent-filtering-and-cli-unification/src")
-    if not Path(geak_src).is_dir():
-        geak_src = "/workspace/src"
-    run_env["PYTHONPATH"] = f"{geak_src}:{run_env.get('PYTHONPATH', '')}"
+    # PYTHONPATH: use GEAK_SRC (stream-specific branch) for pipeline modules
+    geak_src = os.environ.get("GEAK_SRC")
+    if geak_src and Path(geak_src).is_dir():
+        run_env["PYTHONPATH"] = f"{geak_src}:{run_env.get('PYTHONPATH', '')}"
+    else:
+        run_env["PYTHONPATH"] = f"/workspace/src:{run_env.get('PYTHONPATH', '')}"
 
     timeout = int(agent_config.get("timeout_seconds", 36000))
 
     logger.info("=" * 60)
-    logger.info("  GEAK-v3 Triton Pipeline (via geak CLI)")
+    logger.info("  GEAK-v3 Triton Pipeline (two-step: preprocess + orchestrate)")
     logger.info("=" * 60)
     logger.info(f"  kernel:        {kernel_path}")
     logger.info(f"  harness:       {harness_path}")
     logger.info(f"  workspace:     {workspace_path}")
     logger.info(f"  logs_dir:      {logs_dir}")
     logger.info(f"  gpu_ids:       {gpu_ids}")
+    logger.info(f"  first_gpu:     {first_gpu}")
     logger.info(f"  max_rounds:    {max_rounds}")
     logger.info(f"  model:         {model}")
     logger.info(f"  heterogeneous: {heterogeneous}")
     logger.info(f"  config:        {active_config_name}")
+    logger.info(f"  PYTHONPATH:    {run_env.get('PYTHONPATH', '')[:120]}")
     for k, v in sorted(run_env.items()):
         if k.startswith("GEAK_"):
             logger.info(f"  {k}: {v}")
     logger.info("=" * 60)
 
-    # Build unified geak command — same entrypoint for Triton and HIP
+    all_output: list[str] = []
+
+    # -- Step 1: geak-preprocess ----------------------------------------
+    preprocess_cmd = (
+        f"python3 -m minisweagent.run.preprocess.preprocessor"
+        f" {kernel_path}"
+        f" --harness {harness_path}"
+        f" --gpu {first_gpu}"
+        f" --model {model}"
+        f" -o {logs_dir}"
+    )
+
+    rc_pre, out_pre, err_pre = _run_pipeline_step(
+        preprocess_cmd,
+        env=run_env,
+        cwd=str(workspace_path),
+        label="preprocess",
+        logger=logger,
+        timeout=3600,  # 1hr for preprocessing
+    )
+    all_output.extend(out_pre)
+
+    if rc_pre != 0:
+        logger.warning(f"geak-preprocess exited with code {rc_pre}")
+        all_output.extend(err_pre)
+        # Don't abort — orchestrator may still work with partial artifacts
+
+    # -- Step 2: geak-orchestrate ----------------------------------------
     hetero_flag = "--heterogeneous" if heterogeneous else ""
-    geak_cmd = (
-        f"geak"
-        f" --kernel-url {kernel_path}"
-        f" --eval {harness_path}"
+    orchestrate_cmd = (
+        f"python3 -m minisweagent.run.orchestrator"
+        f" --preprocess-dir {logs_dir}"
         f" --gpu-ids {gpu_ids}"
         f" --max-rounds {max_rounds}"
         f" --model {model}"
         f" {hetero_flag}"
-        f" --yolo"
-        f" -o {logs_dir}"
     )
 
-    rc, out, err = _run_pipeline_step(
-        geak_cmd,
+    rc_orch, out_orch, err_orch = _run_pipeline_step(
+        orchestrate_cmd,
         env=run_env,
         cwd=str(workspace_path),
-        label="geak",
+        label="orchestrate",
         logger=logger,
         timeout=timeout,
     )
+    all_output.extend(out_orch)
 
-    all_output: list[str] = []
-    all_output.extend(out)
-    if rc != 0:
-        logger.warning(f"geak exited with code {rc}")
-        all_output.extend(err)
+    if rc_orch != 0:
+        logger.warning(f"geak-orchestrate exited with code {rc_orch}")
+        all_output.extend(err_orch)
 
     # Apply best patch to workspace for AKA evaluator
-    # The geak CLI writes results directly to logs_dir (not logs_dir/preprocess)
-    # Try logs_dir first, fall back to preprocess subdir for backward compat
-    patch_search_dir = logs_dir if (logs_dir / "final_report.json").exists() else preprocess_dir
-    if patch_search_dir.exists():
-        _apply_best_patch(workspace, patch_search_dir, logger)
+    if logs_dir.exists():
+        _apply_best_patch(workspace, logs_dir, logger)
     else:
-        logger.warning(f"No results found in {logs_dir} or {preprocess_dir}")
+        logger.warning(f"No results found in {logs_dir}")
 
     return "\n".join(all_output)
