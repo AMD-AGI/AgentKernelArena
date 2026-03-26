@@ -2,6 +2,7 @@
 """
 Utilities for evaluator: command execution and file I/O.
 """
+import shutil
 import subprocess
 import logging
 import yaml
@@ -89,28 +90,44 @@ def checkout_aiter(
     """
     log = logger or logging.getLogger(__name__)
 
-    # Verify container is running
-    check = subprocess.run(
-        ["docker", "inspect", "-f", "{{.State.Running}}", docker_container],
-        capture_output=True, text=True,
-    )
-    if check.returncode != 0 or "true" not in check.stdout.lower():
-        log.error(f"Docker container '{docker_container}' is not running")
-        return False
+    # Detect if we're already inside the container (no docker CLI available)
+    inside_container = not shutil.which("docker")
+
+    if not inside_container:
+        # Verify container is running
+        check = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Running}}", docker_container],
+            capture_output=True, text=True,
+        )
+        if check.returncode != 0 or "true" not in check.stdout.lower():
+            log.error(f"Docker container '{docker_container}' is not running")
+            return False
 
     # Checkout the requested commit (skip fetch — container may lack network)
     checkout_cmd = f"cd {aiter_path} && git checkout --quiet {commit} 2>&1"
-    result = subprocess.run(
-        ["docker", "exec", docker_container, "bash", "-c", checkout_cmd],
-        capture_output=True, text=True, timeout=60,
-    )
+    if inside_container:
+        result = subprocess.run(
+            ["bash", "-c", checkout_cmd],
+            capture_output=True, text=True, timeout=60,
+        )
+    else:
+        result = subprocess.run(
+            ["docker", "exec", docker_container, "bash", "-c", checkout_cmd],
+            capture_output=True, text=True, timeout=60,
+        )
     if result.returncode != 0:
         log.warning(f"git checkout {commit[:12]} failed, trying hard reset")
         reset_cmd = f"cd {aiter_path} && git reset --hard && git clean -fd && git checkout {commit}"
-        result = subprocess.run(
-            ["docker", "exec", docker_container, "bash", "-c", reset_cmd],
-            capture_output=True, text=True, timeout=60,
-        )
+        if inside_container:
+            result = subprocess.run(
+                ["bash", "-c", reset_cmd],
+                capture_output=True, text=True, timeout=60,
+            )
+        else:
+            result = subprocess.run(
+                ["docker", "exec", docker_container, "bash", "-c", reset_cmd],
+                capture_output=True, text=True, timeout=60,
+            )
         if result.returncode != 0:
             log.error(f"Failed to checkout aiter {commit[:12]}: {result.stderr[:300]}")
             return False
