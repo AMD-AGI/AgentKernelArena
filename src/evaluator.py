@@ -118,10 +118,29 @@ def _read_geak_final_report(workspace: Path, log) -> Optional[Dict[str, float]]:
         candidate_ms = float(fb.get("candidate_ms", 0))
         verified = float(fb.get("verified_speedup", 0))
         if baseline_ms > 0 and candidate_ms > 0 and verified > 0:
+            re = data.get("round_evaluation") or {}
+            # Collect per-round history for reporting
+            rounds = []
+            for rf in sorted(logs_dir.glob("round_*_evaluation.json")):
+                try:
+                    rd = json.load(open(rf))
+                    rfb = (rd.get("full_benchmark") or {})
+                    rounds.append({
+                        "round": rd.get("round"),
+                        "task": rd.get("best_task"),
+                        "benchmark_speedup": rd.get("benchmark_speedup"),
+                        "verified_speedup": rfb.get("verified_speedup"),
+                    })
+                except Exception:
+                    pass
             return {
                 "baseline_ms": baseline_ms,
                 "candidate_ms": candidate_ms,
                 "verified_speedup": verified,
+                "benchmark_speedup": float(re.get("benchmark_speedup", 0)),
+                "best_round": re.get("round"),
+                "best_task": re.get("best_task"),
+                "round_history": rounds,
             }
         # Fallback: use best_speedup from top-level if full_benchmark is missing
         best = float(data.get("best_speedup", 0))
@@ -248,10 +267,16 @@ def evaluate_kernel(
             results['valid_optimized_cases'] = 1
             results['valid_baseline_cases'] = 1
             results['geak_baseline_ms'] = geak_results['baseline_ms']
+            results['geak_benchmark_speedup'] = geak_results.get('benchmark_speedup')
+            results['geak_best_task'] = geak_results.get('best_task')
+            results['geak_best_round'] = geak_results.get('best_round')
+            results['geak_round_history'] = geak_results.get('round_history', [])
             log.info(
                 f"Using GEAK verified results: {geak_results['verified_speedup']:.4f}x "
                 f"(baseline={geak_results['baseline_ms']:.4f}ms, "
-                f"candidate={geak_results['candidate_ms']:.4f}ms)"
+                f"candidate={geak_results['candidate_ms']:.4f}ms, "
+                f"benchmark={geak_results.get('benchmark_speedup', 'N/A')}x, "
+                f"task={geak_results.get('best_task', 'N/A')})"
             )
 
     log.info("=" * 80)
@@ -311,13 +336,26 @@ def write_task_result(
         'compilation_error_message': evaluation_results.get('compilation_error_message'),
         'pass_correctness': evaluation_results['pass_correctness'],
         'correctness_error_message': evaluation_results.get('correctness_error_message'),
-        'base_execution_time': avg_baseline_time,  # Average baseline time
-        'best_optimized_execution_time': optimized_time,  # Average optimized time
-        'speedup_ratio': avg_speedup,  # Average speedup across test cases
+        'base_execution_time': avg_baseline_time,
+        'best_optimized_execution_time': optimized_time,
+        'speedup_ratio': avg_speedup,
         'valid_baseline_cases': len(valid_baseline_cases),
         'valid_optimized_cases': evaluation_results.get('valid_optimized_cases', 0),
-        'optimization_summary': f'Optimized by {agent_name} using centralized evaluator'
+        'optimization_summary': f'Optimized by {agent_name} using centralized evaluator',
     }
+
+    # Add GEAK-specific detailed results if available
+    geak_details = {}
+    if evaluation_results.get('geak_benchmark_speedup'):
+        geak_details['benchmark_speedup'] = evaluation_results['geak_benchmark_speedup']
+    if evaluation_results.get('geak_best_task'):
+        geak_details['best_task'] = evaluation_results['geak_best_task']
+    if evaluation_results.get('geak_best_round'):
+        geak_details['best_round'] = evaluation_results['geak_best_round']
+    if evaluation_results.get('geak_round_history'):
+        geak_details['round_history'] = evaluation_results['geak_round_history']
+    if geak_details:
+        task_result['geak_details'] = geak_details
     
     result_file = workspace / 'task_result.yaml'
     with open(result_file, 'w') as f:
