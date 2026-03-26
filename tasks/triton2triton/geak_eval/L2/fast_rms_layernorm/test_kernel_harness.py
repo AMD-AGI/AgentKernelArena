@@ -200,7 +200,7 @@ def run_correctness(shapes, atol=1e-2, rtol=1e-2):
     all_passed = True
     for shape in shapes:
         hidden_dim = shape[-1]
-        x = torch.randn(*shape, dtype=torch.float32, device='cpu', requires_grad=True).to('cuda')
+        x = torch.randn(*shape, dtype=torch.float32, device='cuda', requires_grad=True)
         layernorm = SimpleLayerNorm(hidden_dim, eps=1e-5).to('cuda')
 
         output = fast_rms_layernorm(layernorm, x, gemma=False)
