@@ -87,6 +87,32 @@ def _run_pipeline_step(
     return proc.returncode, stdout_lines, stderr_lines
 
 
+def _try_patch_with_strip(
+    patch_file: str, workspace: str, logger: logging.Logger
+) -> bool:
+    """Try applying a patch with increasing -p strip levels (p1 through p8).
+
+    GEAK generates patches with nested paths like
+    ``a/tasks/triton2triton/geak_eval/L2/topk/kernel.py`` but the AKA
+    workspace is flat (kernel.py at root).  ``-p1`` strips only ``a/``,
+    leaving the rest unresolvable.  We try higher levels until the file
+    is found.
+    """
+    for p in range(1, 9):
+        result = subprocess.run(
+            ["patch", f"-p{p}", "--dry-run", "-i", str(patch_file)],
+            cwd=workspace, capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            logger.info(f"patch -p{p} dry-run succeeded, applying")
+            subprocess.run(
+                ["patch", f"-p{p}", "-i", str(patch_file)],
+                cwd=workspace, capture_output=True, text=True, check=True,
+            )
+            return True
+    return False
+
+
 def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) -> bool:
     """Find and apply the best optimized kernel from orchestrator output back to workspace.
 
@@ -141,19 +167,28 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
             except Exception:
                 pass
 
-        # Search all worktree slots from best round for modified kernels
+        # Search all worktree slots from best round for modified kernels.
+        # Kernel files are nested under tasks/triton2triton/geak_eval/.../kernel.py
+        # inside each slot, so we search recursively.
         round_dir = logs_dir / "results" / f"round_{best_round}"
         candidates = []
         original_text = ws_kernel.read_text() if ws_kernel.exists() else ""
         for slot_dir in sorted(round_dir.glob("worktrees/slot_*")):
             if not slot_dir.is_dir() or "_logs" in slot_dir.name:
                 continue
-            candidate = slot_dir / kernel_name
-            if candidate.exists() and candidate.read_text() != original_text:
-                candidates.append(candidate)
+            # Search recursively for kernel.py (may be nested under tasks/...)
+            for candidate in slot_dir.rglob(kernel_name):
+                if candidate.read_text() != original_text:
+                    candidates.append(candidate)
+                    break  # one per slot
 
         for candidate in candidates:
-            logger.info(f"Trying optimized kernel from {candidate.parent.name}")
+            slot_name = None
+            for p in candidate.parents:
+                if p.parent.name == "worktrees":
+                    slot_name = p.name
+                    break
+            logger.info(f"Trying optimized kernel from {slot_name or candidate.parent.name}")
             shutil.copy2(str(candidate), str(ws_kernel))
             check = subprocess.run(
                 ["python3", "test_kernel_harness.py", "--correctness"],
@@ -162,16 +197,18 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
             if check.returncode == 0 and "FAIL" not in check.stdout:
                 logger.info(
                     f"Optimized kernel from round {best_round} "
-                    f"{candidate.parent.name} passes correctness (speedup: {best_speedup:.2f}x)"
+                    f"{slot_name or candidate.parent.name} passes correctness (speedup: {best_speedup:.2f}x)"
                 )
                 return True
-            logger.warning(f"{candidate.parent.name} failed correctness, trying next")
+            logger.warning(f"{slot_name or candidate.parent.name} failed correctness, trying next")
 
         if candidates:
             logger.warning("No worktree kernel passed correctness; restoring original")
             ws_kernel.write_text(original_text)
 
     # --- Fallback: use patch from final_report.json ---
+    # Patches have nested paths (a/tasks/triton2triton/.../kernel.py), so we
+    # try multiple -p levels to find one that works.
     final_report = logs_dir / "final_report.json"
     if final_report.exists():
         try:
@@ -179,18 +216,11 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
             patch_file = data.get("best_patch")
             if patch_file and Path(patch_file).exists():
                 logger.info(f"Applying best patch from final_report.json: {patch_file}")
-                result = subprocess.run(
-                    ["patch", "-p1", "--dry-run", "-i", str(patch_file)],
-                    cwd=workspace, capture_output=True, text=True,
-                )
-                if result.returncode == 0:
-                    subprocess.run(
-                        ["patch", "-p1", "-i", str(patch_file)],
-                        cwd=workspace, capture_output=True, text=True, check=True,
-                    )
+                applied = _try_patch_with_strip(patch_file, workspace, logger)
+                if applied:
                     logger.info(f"Patch applied successfully (speedup: {data.get('best_speedup_verified', 'N/A')}x)")
                     return True
-                logger.warning(f"final_report patch dry-run failed: {result.stderr}")
+                logger.warning("final_report patch failed at all strip levels")
         except Exception as e:
             logger.warning(f"Error reading final_report.json: {e}")
 
@@ -208,33 +238,17 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
                 if not patch_file or not Path(patch_file).exists():
                     continue
                 logger.info(f"Applying best patch (fallback): {patch_file}")
-                result = subprocess.run(
-                    ["patch", "-p1", "--dry-run", "-i", str(patch_file)],
-                    cwd=workspace, capture_output=True, text=True,
-                )
-                if result.returncode == 0:
-                    subprocess.run(
-                        ["patch", "-p1", "-i", str(patch_file)],
-                        cwd=workspace, capture_output=True, text=True, check=True,
-                    )
+                if _try_patch_with_strip(patch_file, workspace, logger):
                     logger.info("Patch applied successfully (fallback)")
                     return True
-                logger.warning(f"Patch dry-run failed: {result.stderr}")
+                logger.warning(f"Patch failed at all strip levels: {patch_file}")
             except Exception as e:
                 logger.warning(f"Error applying patch from {best}: {e}")
 
     # --- Fallback: best_patch_r*.diff files ---
     for diff in sorted(logs_dir.glob("best_patch_r*.diff"), reverse=True):
         try:
-            result = subprocess.run(
-                ["patch", "-p1", "--dry-run", "-i", str(diff)],
-                cwd=workspace, capture_output=True, text=True,
-            )
-            if result.returncode == 0:
-                subprocess.run(
-                    ["patch", "-p1", "-i", str(diff)],
-                    cwd=workspace, capture_output=True, text=True, check=True,
-                )
+            if _try_patch_with_strip(str(diff), workspace, logger):
                 logger.info(f"Applied fallback patch: {diff}")
                 return True
         except Exception as e:
