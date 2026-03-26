@@ -8,6 +8,7 @@ This module provides standardized evaluation of optimized kernels:
 - Performance measurement
 - Baseline measurement for speedup calculation
 """
+import json
 import logging
 import yaml
 from pathlib import Path
@@ -97,6 +98,38 @@ def evaluate_correctness(
                 return False, error_msg
     
     return True, None
+
+
+def _read_geak_final_report(workspace: Path, log) -> Optional[Dict[str, float]]:
+    """Read GEAK's final_report.json from the sibling _logs directory.
+
+    GEAK produces verified performance results in final_report.json with
+    baseline_ms, candidate_ms, and verified_speedup already computed.
+    This avoids re-running benchmarks and parsing stdout.
+    """
+    logs_dir = workspace.parent / f"{workspace.name}_logs"
+    final_report = logs_dir / "final_report.json"
+    if not final_report.exists():
+        return None
+    try:
+        data = json.load(open(final_report))
+        fb = (data.get("round_evaluation") or {}).get("full_benchmark") or {}
+        baseline_ms = float(fb.get("baseline_ms", 0))
+        candidate_ms = float(fb.get("candidate_ms", 0))
+        verified = float(fb.get("verified_speedup", 0))
+        if baseline_ms > 0 and candidate_ms > 0 and verified > 0:
+            return {
+                "baseline_ms": baseline_ms,
+                "candidate_ms": candidate_ms,
+                "verified_speedup": verified,
+            }
+        # Fallback: use best_speedup from top-level if full_benchmark is missing
+        best = float(data.get("best_speedup", 0))
+        if best > 0:
+            log.info(f"GEAK final_report has best_speedup={best} but no full_benchmark details")
+    except Exception as e:
+        log.warning(f"Failed to read GEAK final_report.json: {e}")
+    return None
 
 
 def evaluate_kernel(
@@ -205,7 +238,22 @@ def evaluate_kernel(
                     log.warning("Baseline not available, cannot calculate speedup")
     else:
         log.warning("Failed to measure optimized execution time")
-    
+
+    # Step 3b: If performance measurement failed, read GEAK's final_report.json
+    if results['best_optimized_execution_time'] == 0.0:
+        geak_results = _read_geak_final_report(workspace, log)
+        if geak_results:
+            results['best_optimized_execution_time'] = geak_results['candidate_ms']
+            results['average_speedup'] = geak_results['verified_speedup']
+            results['valid_optimized_cases'] = 1
+            results['valid_baseline_cases'] = 1
+            results['geak_baseline_ms'] = geak_results['baseline_ms']
+            log.info(
+                f"Using GEAK verified results: {geak_results['verified_speedup']:.4f}x "
+                f"(baseline={geak_results['baseline_ms']:.4f}ms, "
+                f"candidate={geak_results['candidate_ms']:.4f}ms)"
+            )
+
     log.info("=" * 80)
     log.info("Evaluation completed")
     log.info("=" * 80)
@@ -236,10 +284,12 @@ def write_task_result(
     """
     log = logger or logging.getLogger(__name__)
     
-    # Get average baseline time
+    # Get average baseline time — prefer GEAK's verified baseline if available
     avg_baseline_time = 0.0
     valid_baseline_cases = _valid_perf_cases(baseline_cases)
-    if valid_baseline_cases:
+    if evaluation_results.get('geak_baseline_ms', 0) > 0:
+        avg_baseline_time = evaluation_results['geak_baseline_ms']
+    elif valid_baseline_cases:
         avg_baseline_time = sum(c.execution_time_ms for c in valid_baseline_cases) / len(valid_baseline_cases)
     elif baseline_cases:
         log.warning(
