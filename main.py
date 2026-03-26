@@ -1,4 +1,5 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
+import os
 import yaml
 import logging
 import argparse
@@ -191,7 +192,6 @@ def main() -> None:
 
             # Set HIP_VISIBLE_DEVICES for baseline compilation/measurement
             # Use GEAK_GPU_IDS (e.g. "4,5,6,7") or fall back to "0"
-            import os
             gpu_ids = os.environ.get("GEAK_GPU_IDS", "0")
             baseline_gpu = gpu_ids.split(",")[0]
             prev_hip = os.environ.get("HIP_VISIBLE_DEVICES")
