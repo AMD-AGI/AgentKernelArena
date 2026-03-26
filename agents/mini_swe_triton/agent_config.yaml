@@ -1,0 +1,16 @@
+version: 0
+timeout_seconds: 14400
+
+preprocess:
+  gpu: 0
+
+agent:
+  num_parallel: 4
+  model: "claude-opus-4-6"
+  step_limit: 200
+
+geak_env:
+  GEAK_MODEL: "claude-opus-4-6"
+  GEAK_MODEL_ENSEMBLE: "claude-opus-4-6"
+  GEAK_BENCHMARK_ITERATIONS: "30"
+  GEAK_AGENT_STEP_LIMIT: "200"
