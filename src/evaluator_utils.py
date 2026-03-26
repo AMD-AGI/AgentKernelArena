@@ -103,8 +103,15 @@ def checkout_aiter(
             log.error(f"Docker container '{docker_container}' is not running")
             return False
 
-    # Checkout the requested commit (skip fetch — container may lack network)
-    checkout_cmd = f"cd {aiter_path} && git checkout --quiet {commit} 2>&1"
+    # Checkout the requested commit.
+    # Always reset + clean to avoid stale files conflicting with new commit
+    # (e.g. rope.py file coexisting with rope/ directory after branch switch).
+    # Also clear __pycache__ to avoid stale bytecode.
+    checkout_cmd = (
+        f"cd {aiter_path} && git reset --hard && git clean -fd"
+        f" && git checkout --quiet {commit}"
+        f" && find . -name __pycache__ -type d -exec rm -rf {{}} + 2>/dev/null; true"
+    )
     if inside_container:
         result = subprocess.run(
             ["bash", "-c", checkout_cmd],
