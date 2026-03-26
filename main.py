@@ -8,6 +8,7 @@ from src.tasks import get_task_config
 from src.preprocessing import setup_workspace, setup_rocm_env, is_task_complete
 from src.module_registration import AgentType, load_agent_launcher, load_post_processing_handler
 from src.evaluator import measure_baseline, evaluate_kernel, write_task_result
+from src.evaluator_utils import checkout_aiter
 
 
 parser = argparse.ArgumentParser(description="arguments for AgentKernelArena")
@@ -174,7 +175,20 @@ def main() -> None:
             # Load task config for evaluation
             with open(task_config_dir, 'r') as f:
                 task_config = yaml.safe_load(f)
-            
+
+            # Determine if this task needs Docker execution (aiter dependency)
+            aiter_commit = task_config.get('aiter_commit')
+            docker_container = None
+            if aiter_commit:
+                docker_container = os.environ.get(
+                    'AKA_DOCKER_CONTAINER',
+                    f'geak-agent-{os.environ.get("USER", "default")}',
+                )
+                logger.info(f"Task requires aiter@{aiter_commit[:12]}, container: {docker_container}")
+                if not checkout_aiter(aiter_commit, docker_container, logger=logger):
+                    logger.error(f"Failed to checkout aiter {aiter_commit[:12]}, skipping {task_name}")
+                    continue
+
             # Set HIP_VISIBLE_DEVICES for baseline compilation/measurement
             # Use GEAK_GPU_IDS (e.g. "4,5,6,7") or fall back to "0"
             import os
@@ -186,7 +200,7 @@ def main() -> None:
             # Compile original kernel before measuring baseline (required for hip2hip, etc.)
             from src.evaluator import evaluate_compilation
             logger.info(f"Compiling original kernel for baseline measurement (GPU {baseline_gpu})...")
-            pass_compilation, comp_error = evaluate_compilation(workspace_path, task_config, logger)
+            pass_compilation, comp_error = evaluate_compilation(workspace_path, task_config, logger, docker_container)
             if not pass_compilation:
                 logger.warning(f"Baseline compilation failed: {comp_error}")
                 logger.warning("Baseline measurement will be skipped")
@@ -194,7 +208,7 @@ def main() -> None:
             else:
                 # Measure baseline performance (before agent modifies kernel)
                 logger.info("Measuring baseline performance...")
-                baseline_cases = measure_baseline(workspace_path, task_config, logger)
+                baseline_cases = measure_baseline(workspace_path, task_config, logger, docker_container)
 
             # Restore HIP_VISIBLE_DEVICES
             if prev_hip is not None:
@@ -220,7 +234,8 @@ def main() -> None:
                 workspace_path,
                 task_config,
                 baseline_cases,
-                logger
+                logger,
+                docker_container,
             )
             
             # Write standardized task_result.yaml

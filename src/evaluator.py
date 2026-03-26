@@ -31,7 +31,8 @@ def _valid_perf_cases(cases: List[TestCaseResult]) -> List[TestCaseResult]:
 def evaluate_compilation(
     workspace: Path,
     task_config: Dict[str, Any],
-    logger: Optional[logging.Logger] = None
+    logger: Optional[logging.Logger] = None,
+    docker_container: Optional[str] = None,
 ) -> Tuple[bool, Optional[str]]:
     """
     Evaluate kernel compilation.
@@ -52,7 +53,7 @@ def evaluate_compilation(
         return False, "No compile_command specified"
     
     for cmd in compile_commands:
-        success, stdout, stderr = run_command(cmd, workspace, timeout=120, logger=log)
+        success, stdout, stderr = run_command(cmd, workspace, timeout=120, logger=log, docker_container=docker_container)
         if not success:
             error_msg = f"Compilation failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
             return False, error_msg
@@ -63,7 +64,8 @@ def evaluate_compilation(
 def evaluate_correctness(
     workspace: Path,
     task_config: Dict[str, Any],
-    logger: Optional[logging.Logger] = None
+    logger: Optional[logging.Logger] = None,
+    docker_container: Optional[str] = None,
 ) -> Tuple[bool, Optional[str]]:
     """
     Evaluate kernel correctness.
@@ -84,7 +86,7 @@ def evaluate_correctness(
         return False, "No correctness_command specified"
     
     for cmd in correctness_commands:
-        success, stdout, stderr = run_command(cmd, workspace, timeout=300, logger=log)
+        success, stdout, stderr = run_command(cmd, workspace, timeout=300, logger=log, docker_container=docker_container)
         if not success:
             error_msg = f"Correctness test failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
             return False, error_msg
@@ -155,16 +157,18 @@ def evaluate_kernel(
     workspace: Path,
     task_config: Dict[str, Any],
     baseline_cases: List[TestCaseResult],
-    logger: Optional[logging.Logger] = None
+    logger: Optional[logging.Logger] = None,
+    docker_container: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Standardized evaluation of optimized kernel.
-    
+
     Args:
         workspace: Workspace directory containing optimized kernel
         task_config: Task configuration dict
         baseline_cases: Baseline test case results (from measure_baseline)
         logger: Optional logger
+        docker_container: If set, run commands inside this Docker container
         
     Returns:
         Dict with evaluation results:
@@ -193,27 +197,27 @@ def evaluate_kernel(
     
     # 1. Compilation check
     log.info("Step 1: Checking compilation...")
-    pass_compilation, comp_error = evaluate_compilation(workspace, task_config, logger)
+    pass_compilation, comp_error = evaluate_compilation(workspace, task_config, logger, docker_container)
     results['pass_compilation'] = pass_compilation
     results['compilation_error_message'] = comp_error
-    
+
     if not pass_compilation:
         log.warning("Compilation failed, skipping correctness and performance checks")
         return results
-    
+
     # 2. Correctness check
     log.info("Step 2: Checking correctness...")
-    pass_correctness, corr_error = evaluate_correctness(workspace, task_config, logger)
+    pass_correctness, corr_error = evaluate_correctness(workspace, task_config, logger, docker_container)
     results['pass_correctness'] = pass_correctness
     results['correctness_error_message'] = corr_error
-    
+
     if not pass_correctness:
         log.warning("Correctness failed, skipping performance measurement")
         return results
-    
+
     # 3. Performance measurement (only if both compilation and correctness passed)
     log.info("Step 3: Measuring performance...")
-    optimized_cases = measure_performance(workspace, task_config, logger)
+    optimized_cases = measure_performance(workspace, task_config, logger, docker_container=docker_container)
     
     if optimized_cases:
         # Save optimized results

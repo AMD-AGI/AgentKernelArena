@@ -104,6 +104,9 @@ def parse_execution_time_from_stdout(output: str, logger: Optional[logging.Logge
     
     # Patterns to match (in order of specificity)
     patterns = [
+        # GEAK harness canonical output (highest priority)
+        (r'GEAK_RESULT_LATENCY_MS=([0-9.]+)', 1.0),  # "GEAK_RESULT_LATENCY_MS=0.1460"
+
         # Specific patterns with "Performance:" prefix
         (r'Performance:\s*([0-9.]+)\s*ms', 1.0),  # "Performance: 123.45 ms"
         (r'Performance:\s*([0-9.]+)\s*s(?:econds?)?', 1000.0),  # "Performance: 1.23 s"
@@ -171,12 +174,12 @@ def parse_execution_time(
                 return time_val
         # Note: .pt files (PyTorch tensors) would need special handling if needed
     
-    # Strategy 2: Parse from output text
-    # time_val = parse_execution_time_from_stdout(output, logger)
-    # if time_val > 0:
-    #     log.info(f"Parsed execution time from stdout: {time_val:.4f} ms")
-    #     return time_val
-    
+    # Strategy 2: Parse from output text (handles GEAK_RESULT_LATENCY_MS etc.)
+    time_val = parse_execution_time_from_stdout(output, logger)
+    if time_val > 0:
+        log.info(f"Parsed execution time from stdout: {time_val:.4f} ms")
+        return time_val
+
     log.warning("Could not parse execution time from any source")
     return 0.0
 
@@ -235,7 +238,8 @@ def measure_performance(
     workspace: Path,
     task_config: Dict[str, Any],
     logger: Optional[logging.Logger] = None,
-    is_baseline: bool = False
+    is_baseline: bool = False,
+    docker_container: Optional[str] = None,
 ) -> List[TestCaseResult]:
     """
     Measure kernel execution time for all test cases.
@@ -258,7 +262,7 @@ def measure_performance(
         return []
     
     for cmd in performance_commands:
-        success, stdout, stderr = run_command(cmd, workspace, timeout=600, logger=log)
+        success, stdout, stderr = run_command(cmd, workspace, timeout=600, logger=log, docker_container=docker_container)
         
         # Combine stdout and stderr for parsing
         combined_output = stdout + stderr
@@ -281,7 +285,8 @@ def measure_performance(
 def measure_baseline(
     workspace: Path,
     task_config: Dict[str, Any],
-    logger: Optional[logging.Logger] = None
+    logger: Optional[logging.Logger] = None,
+    docker_container: Optional[str] = None,
 ) -> List[TestCaseResult]:
     """
     Measure baseline execution time for all test cases before optimization.
@@ -303,7 +308,7 @@ def measure_baseline(
     log = logger or logging.getLogger(__name__)
     log.info("Measuring baseline performance...")
     
-    baseline_cases = measure_performance(workspace, task_config, logger, is_baseline=True)
+    baseline_cases = measure_performance(workspace, task_config, logger, is_baseline=True, docker_container=docker_container)
     
     if baseline_cases:
         # Save baseline results
