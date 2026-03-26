@@ -42,6 +42,7 @@ def deserialize_str(s: str) -> dict:
     return json.loads(s)
 
 
+@triton.jit
 def pid_grid(pid: int, num_pid_m: int, num_pid_n: int, GROUP_SIZE_M: tl.constexpr = 1):
     """
     Maps 1D pid to 2D grid coords (pid_m, pid_n).
@@ -173,12 +174,6 @@ def _mxfp4_quant_op(
     return x_fp4, bs_e8m0.reshape(BLOCK_SIZE_M, NUM_QUANT_BLOCKS)
 
 
-@triton.heuristics(
-    {
-        "EVEN_M_N": lambda args: args["M"] % args["BLOCK_SIZE_M"] == 0
-        and args["N"] % (args["BLOCK_SIZE_N"] * args["NUM_ITER"]) == 0,
-    }
-)
 @triton.heuristics({})  # dummy heuristics to invoke kernel re-naming
 @triton.jit
 def _gemm_afp4wfp4_reduce_kernel(
