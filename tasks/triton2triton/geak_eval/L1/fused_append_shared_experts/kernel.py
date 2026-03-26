@@ -885,66 +885,93 @@ def _fused_append_shared_experts_kernel(
     topk_weights_ptr,
     out_ids_ptr,
     out_weights_ptr,
+    M,  # total number of rows
     N_BASE,  # runtime scalar
     scale_factor,  # runtime scalar
     K: tl.constexpr,
     S: tl.constexpr,
+    BLOCK_M: tl.constexpr,
 ):
-    """
-    for m in range(M):
-        for n in range(K):
-            fused_ids[m, n] = topk_ids[m, n]
-            fused_weights[m, n] = topk_weights[m, n]
-        for s in range(S):
-            fused_ids[m, K + s] = N + s
-            fused_weights[m, K + s] = scale_factor
-    """
     pid = tl.program_id(0)
+    row0 = pid * BLOCK_M
+    rows = row0 + tl.arange(0, BLOCK_M)
+    row_mask = rows < M
 
-    ids_row_ptr = pid * K
-    w_row_ptr = pid * K
-    out_ids_row_ptr = pid * (K + S)
-    out_w_row_ptr = pid * (K + S)
-
+    # Vectorized load of K columns: [BLOCK_M, K]
     offs_k = tl.arange(0, K)
-    ids = tl.load(topk_ids_ptr + ids_row_ptr + offs_k)
-    ws = tl.load(topk_weights_ptr + w_row_ptr + offs_k)
+    in_offsets = rows[:, None] * K + offs_k[None, :]
+    ids = tl.load(topk_ids_ptr + in_offsets, mask=row_mask[:, None], other=0)
+    ws = tl.load(topk_weights_ptr + in_offsets, mask=row_mask[:, None], other=0.0)
 
-    tl.store(out_ids_ptr + out_ids_row_ptr + offs_k, ids)
-    tl.store(out_weights_ptr + out_w_row_ptr + offs_k, ws)
+    out_stride = K + S
+    out_offsets = rows[:, None] * out_stride + offs_k[None, :]
+    tl.store(out_ids_ptr + out_offsets, ids, mask=row_mask[:, None])
+    tl.store(out_weights_ptr + out_offsets, ws, mask=row_mask[:, None])
 
+    # Append shared experts: [BLOCK_M, S]
     offs_s = tl.arange(0, S)
+    shared_ids = tl.cast(N_BASE + offs_s, ids.dtype)[None, :]
+    shared_ws = tl.full([1, S], scale_factor, dtype=ws.dtype)
 
-    shared_ids = tl.cast(N_BASE + offs_s, ids.dtype)
-    shared_ws = tl.full([S], scale_factor, dtype=ws.dtype)
+    out_s_offsets = rows[:, None] * out_stride + (K + offs_s[None, :])
+    tl.store(out_ids_ptr + out_s_offsets, shared_ids, mask=row_mask[:, None])
+    tl.store(out_weights_ptr + out_s_offsets, shared_ws, mask=row_mask[:, None])
 
-    tl.store(out_ids_ptr + out_ids_row_ptr + K + offs_s, shared_ids)
-    tl.store(out_weights_ptr + out_w_row_ptr + K + offs_s, shared_ws)
+
+# Pre-allocated output buffer cache - eliminates torch.cat and allocation kernels
+_out_ids_buf = None
+_out_ws_buf = None
+_cache_m = 0
+_cache_n = -1
+_cache_s = 0
+_cache_sf = None
+_cache_k = 0
+_cdiv = triton.cdiv
 
 
 def fused_append_shared_experts(
     topk_ids, topk_weights, num_fused_shared_experts, scale_factor, N=None
 ):
-    assert N is not None, "N (shared expert base id) must be provided"
+    global _out_ids_buf, _out_ws_buf, _cache_m, _cache_n, _cache_s, _cache_sf, _cache_k
     m, k = topk_ids.shape
     s = int(num_fused_shared_experts)
     if s <= 0:
         return topk_ids, topk_weights
 
-    out_ids = torch.empty((m, k + s), dtype=topk_ids.dtype, device=topk_ids.device)
-    out_weights = torch.empty(
-        (m, k + s), dtype=topk_weights.dtype, device=topk_weights.device
+    ks = k + s
+
+    # Re-allocate output buffers only when needed (over-allocate for M)
+    if (
+        _out_ids_buf is None
+        or m > _cache_m
+        or k != _cache_k
+        or s != _cache_s
+        or N != _cache_n
+        or scale_factor != _cache_sf
+    ):
+        alloc_m = max(m, 4096)
+        device = topk_ids.device
+        _out_ids_buf = torch.empty((alloc_m, ks), dtype=topk_ids.dtype, device=device)
+        _out_ws_buf = torch.empty((alloc_m, ks), dtype=topk_weights.dtype, device=device)
+        _cache_m = alloc_m
+        _cache_n = N
+        _cache_s = s
+        _cache_sf = scale_factor
+        _cache_k = k
+
+    # Use sliced views of pre-allocated buffers
+    out_ids = _out_ids_buf[:m]
+    out_ws = _out_ws_buf[:m]
+
+    # Single Triton kernel: copy K input columns + write S shared columns
+    # One kernel launch instead of two PyTorch copy launches
+    BLOCK_M = 64
+    grid = (_cdiv(m, BLOCK_M),)
+    _fused_append_shared_experts_kernel[grid](
+        topk_ids, topk_weights,
+        out_ids, out_ws,
+        m, N, scale_factor,
+        K=k, S=s, BLOCK_M=BLOCK_M,
     )
 
-    _fused_append_shared_experts_kernel[(m,)](
-        topk_ids,
-        topk_weights,
-        out_ids,
-        out_weights,
-        N_BASE=N,
-        scale_factor=scale_factor,
-        K=k,
-        S=s,
-        num_warps=1,
-    )
-    return out_ids, out_weights
+    return out_ids, out_ws

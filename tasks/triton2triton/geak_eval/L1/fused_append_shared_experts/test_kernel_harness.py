@@ -267,7 +267,7 @@ def main():
     group.add_argument("--profile", action="store_true")
     group.add_argument("--benchmark", action="store_true")
     group.add_argument("--full-benchmark", action="store_true")
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
 
     if args.correctness:
         indices = _pick(ALL_CONFIGS, 25)
