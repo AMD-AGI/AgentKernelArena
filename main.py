@@ -177,16 +177,15 @@ def main() -> None:
             with open(task_config_dir, 'r') as f:
                 task_config = yaml.safe_load(f)
 
-            # Determine if this task needs Docker execution (aiter dependency)
+            # Handle aiter dependency: checkout the right commit, then run
+            # everything locally (same as kernels without aiter_commit).
+            # docker_container stays None so compilation/baseline/evaluation
+            # all run directly — no Docker wrapping needed.
             aiter_commit = task_config.get('aiter_commit')
             docker_container = None
             if aiter_commit:
-                docker_container = os.environ.get(
-                    'AKA_DOCKER_CONTAINER',
-                    f'geak-agent-{os.environ.get("USER", "default")}',
-                )
-                logger.info(f"Task requires aiter@{aiter_commit[:12]}, container: {docker_container}")
-                if not checkout_aiter(aiter_commit, docker_container, logger=logger):
+                logger.info(f"Task requires aiter@{aiter_commit[:12]}, checking out...")
+                if not checkout_aiter(aiter_commit, "", logger=logger):
                     logger.error(f"Failed to checkout aiter {aiter_commit[:12]}, skipping {task_name}")
                     continue
 
