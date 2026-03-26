@@ -34,10 +34,10 @@ torch.manual_seed(42)
 # ---------------------------------------------------------------------------
 # Imports from the repo
 # ---------------------------------------------------------------------------
-from aiter.ops.triton.quant.fused_mxfp4_quant import (
+from aiter.ops.triton.fused_mxfp4_quant import (
     fused_dynamic_mxfp4_quant_moe_sort,
 )
-from op_tests.triton_tests.quant.test_fused_mxfp4_quant import (
+from op_tests.triton_tests.test_fused_mxfp4_quant import (
     run_fused_dynamic_mxfp4_quant_moe_sort_ref,
     run_fused_dynamic_mxfp4_quant_moe_sort_triton,
     convert_mxfp4_to_fp32,

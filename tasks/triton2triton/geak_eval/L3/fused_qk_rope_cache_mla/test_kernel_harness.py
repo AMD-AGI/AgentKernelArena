@@ -22,8 +22,8 @@ import triton
 
 # ── imports from the repo ──────────────────────────────────────────────
 from op_tests.test_rope import ref_rope_sbhd_fwd, RotateStyle
-from op_tests.triton_tests.rope.test_rope import generate_rope_inputs
-from aiter.ops.triton.fusions.fused_kv_cache import fused_qk_rope_cat_and_cache_mla
+from op_tests.triton_tests.test_rope import generate_rope_inputs
+from aiter.ops.triton.fused_kv_cache import fused_qk_rope_cat_and_cache_mla
 from aiter.ops.triton.utils._triton import arch_info
 
 # ── constants ──────────────────────────────────────────────────────────

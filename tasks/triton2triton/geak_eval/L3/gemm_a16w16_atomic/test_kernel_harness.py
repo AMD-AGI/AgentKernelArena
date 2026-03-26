@@ -25,7 +25,7 @@ _REPO_ROOT = os.environ.get(
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from aiter.ops.triton.gemm.basic.gemm_a16w16_atomic import gemm_a16w16_atomic
+from aiter.ops.triton.gemm_a16w16_atomic import gemm_a16w16_atomic
 
 # ---------------------------------------------------------------------------
 # Constants

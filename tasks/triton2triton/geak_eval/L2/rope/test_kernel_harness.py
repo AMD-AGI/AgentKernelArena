@@ -30,7 +30,7 @@ if REPO_ROOT not in sys.path:
 # ---------------------------------------------------------------------------
 # Imports from the kernel package
 # ---------------------------------------------------------------------------
-from aiter.ops.triton.rope.rope import (
+from aiter.ops.triton.rope import (
     rope_fwd,
     rope_fwd_inplace,
     RotateStyle,

@@ -30,8 +30,8 @@ import torch.nn.functional as F
 import triton
 
 # Import kernel and helpers
-from aiter.ops.triton.gemm.basic.gemm_a16w16 import gemm_a16w16
-from op_tests.triton_tests.gemm.basic.test_gemm_a16w16 import (
+from aiter.ops.triton.gemm_a16w16 import gemm_a16w16
+from op_tests.triton_tests.test_gemm_a16w16 import (
     generate_gemm_a16w16_inputs,
 )
 

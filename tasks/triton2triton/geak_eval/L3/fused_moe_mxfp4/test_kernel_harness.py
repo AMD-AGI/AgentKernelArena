@@ -21,17 +21,17 @@ if REPO_ROOT not in sys.path:
 import torch
 
 # -- Imports from the repo --
-from aiter.ops.triton.moe.moe_op_mxfp4 import fused_moe_mxfp4
+from aiter.ops.triton.moe_op_mxfp4 import fused_moe_mxfp4
 from aiter.ops.triton.utils.types import torch_to_triton_dtype
 import aiter.ops.triton.utils._triton.arch_info as arch_info
 
 # input_helper builds all tensors needed for the kernel
-from op_tests.triton_tests.moe.test_moe_mx import (
+from op_tests.triton_tests.test_moe_mx import (
     input_helper,
     torch_mxfp4_to_fp32,
 )
 # Reference implementation for correctness
-from op_tests.triton_tests.moe.test_moe import torch_moe_ref
+from op_tests.triton_tests.test_moe import torch_moe_ref
 
 # -- Fixed constants --
 WARMUP = 50
