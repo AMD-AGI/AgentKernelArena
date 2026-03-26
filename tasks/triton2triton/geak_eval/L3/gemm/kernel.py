@@ -407,3 +407,4 @@ if __name__ == "__main__":
         evaluate()
 
     print("=" * 60)
+gemm_a16w16 = gemm

@@ -732,3 +732,4 @@ if __name__ == "__main__":
         evaluate()
 
     print("=" * 75)
+fused_qk_rope_cat_and_cache_mla = fused_qk_rope_cosine_cache_llama

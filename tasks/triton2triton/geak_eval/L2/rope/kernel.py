@@ -571,3 +571,15 @@ if __name__ == "__main__":
         evaluate()
 
     print("=" * 75)
+
+
+def rope_fwd_inplace(
+    x: torch.Tensor,
+    freqs: torch.Tensor,
+    rotate_style: int,
+    reuse_freqs_front_part: bool,
+    nope_first: bool,
+) -> None:
+    """In-place version of rope_fwd: writes result back to x."""
+    out = rope_fwd(x, freqs, rotate_style, reuse_freqs_front_part, nope_first)
+    x.copy_(out)
