@@ -1,0 +1,19 @@
+task_type: triton_geak
+source_file_path:
+- kernel.py
+harness_path: test_kernel_harness.py
+compile_command:
+- python3 -c "import ast; ast.parse(open("kernel.py").read())"
+correctness_command:
+- python3 test_kernel_harness.py --correctness
+performance_command:
+- python3 test_kernel_harness.py --full-benchmark
+target_kernel_functions:
+- _dequant_a_kernel
+- _dequant_b_kernel
+- _cast_to_bf16_kernel
+prompt:
+  instructions: Optimize the FP8 block-scale GEMM kernel for AMD MI325X GPU. The kernel
+    performs block-wise dequantization of FP8 inputs with per-block scaling factors,
+    followed by matrix multiplication. Focus on fusing dequantization with the GEMM
+    and optimizing memory access patterns for the block-scale layout.

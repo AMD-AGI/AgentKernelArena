@@ -1,0 +1,16 @@
+task_type: triton_geak
+source_file_path:
+- kernel.py
+harness_path: test_kernel_harness.py
+compile_command:
+- python3 -c "import ast; ast.parse(open("kernel.py").read())"
+correctness_command:
+- python3 test_kernel_harness.py --correctness
+performance_command:
+- python3 test_kernel_harness.py --full-benchmark
+target_kernel_functions:
+- _identity_kernel
+prompt:
+  instructions: Optimize the identity copy Triton kernel for AMD MI325X GPU. The kernel
+    copies a 1-D float16 tensor to an output tensor. Focus on memory bandwidth optimization
+    and vectorized loads/stores.
