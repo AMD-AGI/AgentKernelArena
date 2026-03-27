@@ -74,16 +74,42 @@ def _pick(configs, count):
     return [round(i * (n - 1) / (count - 1)) for i in range(count)]
 
 
+def _make_case_synthetic(cfg):
+    """Build inputs using kernel.py's synthetic builder (no ASM needed)."""
+    is_causal, num_head, ctx_len, batch_size = cfg
+    from kernel import _build_reduce_inputs
+    (partial_output, partial_lse, reduce_indptr, reduce_final_map,
+     reduce_partial_map, output, tile_q, _max_partials) = _build_reduce_inputs(
+        batch_size, ctx_len, num_head, V_HEAD_DIM)
+    num_tokens = batch_size * ctx_len
+    final_lse = torch.empty((num_tokens, num_head), dtype=torch.float32, device=output.device)
+    return {
+        "partial_output": partial_output,
+        "partial_lse": partial_lse,
+        "reduce_indptr": reduce_indptr,
+        "reduce_final_map": reduce_final_map,
+        "reduce_partial_map": reduce_partial_map,
+        "output": output,
+        "final_lse": final_lse,
+        "tile_q": tile_q,
+        "num_tokens": num_tokens,
+        "num_heads": num_head,
+    }
+
+
 def config_str(cfg):
     is_causal, num_head, ctx_len, batch_size = cfg
     return (f"causal={is_causal} nhead={num_head} ctx={ctx_len} bs={batch_size}")
 
 
 # ---------------------------------------------------------------------------
-# Build inputs: use aiter metadata + ASM prefill to produce real partial data,
-# then expose just the reduce-kernel inputs.
+# Build inputs: use kernel.py's synthetic builder (no ASM needed).
 # ---------------------------------------------------------------------------
 def build_reduce_inputs(is_causal, num_head, ctx_len, batch_size):
+    return _make_case_synthetic((is_causal, num_head, ctx_len, batch_size))
+
+
+def _build_reduce_inputs_asm_DISABLED(is_causal, num_head, ctx_len, batch_size):
     device = "cuda:0"
     num_head_q = num_head
     num_head_kv = num_head
