@@ -11,6 +11,8 @@ performance_command:
 target_kernel_functions:
 - _gemm_a16wfp4_kernel
 - _gemm_afp4wfp4_reduce_kernel
+- _mxfp4_quant_op
+- pid_grid
 prompt:
   instructions: Optimize the GEMM A16WFP4 Triton kernel for AMD MI300X GPU. Mixed-precision
     matrix multiplication with FP4 weight quantization.

@@ -11,6 +11,10 @@ performance_command:
 - python3 test_kernel_harness.py --full-benchmark
 target_kernel_functions:
 - _fused_append_shared_experts_kernel
+- _moe_sum_reduce_kernel
+- fused_moe_kernel
+- fused_moe_kernel_gptq_awq
+- write_zeros_to_output
 prompt:
   instructions: Optimize the fused append shared experts Triton kernel for AMD MI300X
     GPU. The kernel appends shared expert IDs and weights to routed topk arrays in

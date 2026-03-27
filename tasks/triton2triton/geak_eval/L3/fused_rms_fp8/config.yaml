@@ -9,8 +9,20 @@ correctness_command:
 performance_command:
 - python3 test_kernel_harness.py --full-benchmark
 target_kernel_functions:
-- _fused_rms_fp8_group_quant_kernel
+- _fp8_quant_op
+- _fused_flatten_fp8_group_quant_kernel
+- _fused_reduce_act_mul_fp8_group_quant
 - _fused_reduce_rms_fp8_group_quant_kernel
+- _fused_rms_fp8_group_quant_kernel
+- _fused_rms_fp8_per_tensor_static_quant_kernel
+- _fused_silu_mul_fp8_per_tensor_static_quant_kernel
+- _gelu
+- _gelu_tanh
+- _relu
+- _rmsmorm_op
+- _silu
+- _silu_exp2
+- _tanh
 prompt:
   instructions: Optimize the fused RMSNorm + FP8 quantization Triton kernel for AMD
     MI300X GPU. The kernel fuses RMSNorm normalization with FP8 quantization.

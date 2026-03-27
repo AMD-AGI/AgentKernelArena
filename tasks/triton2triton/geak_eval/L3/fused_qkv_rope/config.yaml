@@ -10,6 +10,8 @@ performance_command:
 - python3 test_kernel_harness.py --full-benchmark
 target_kernel_functions:
 - _fused_qkv_split_qk_rope_kernel
+- _get_gptj_rotated_x
+- _get_neox_rotated_x
 prompt:
   instructions: Optimize the fused QKV split + RoPE (Rotary Position Embedding) Triton
     kernel for AMD MI300X GPU. The kernel splits QKV projections and applies rotary

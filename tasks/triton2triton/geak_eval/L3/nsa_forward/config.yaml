@@ -9,9 +9,9 @@ correctness_command:
 performance_command:
 - python3 test_kernel_harness.py --full-benchmark
 target_kernel_functions:
-- _fused_attn_fwd_kernel
 - _block_compress_fwd
 - _comp_attn_fwd_kernel
+- _fused_attn_fwd_kernel
 prompt:
   instructions: Optimize the Native Sparse Attention (NSA) forward Triton kernel for
     AMD MI300X GPU. The kernel implements block compression and fused attention for

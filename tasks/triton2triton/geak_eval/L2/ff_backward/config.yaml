@@ -9,10 +9,10 @@ correctness_command:
 performance_command:
 - python3 test_kernel_harness.py --full-benchmark
 target_kernel_functions:
-- _fused_dg_gating_kernel
-- _fused_dx_kernel
-- _fused_dw_up_kernel
 - _dw_down_kernel
+- _fused_dg_gating_kernel
+- _fused_dw_up_kernel
+- _fused_dx_kernel
 prompt:
   instructions: Optimize the gated MLP (SwiGLU) backward pass Triton kernel for AMD
     MI300X GPU. The kernel computes gradients for gated feed-forward networks used
