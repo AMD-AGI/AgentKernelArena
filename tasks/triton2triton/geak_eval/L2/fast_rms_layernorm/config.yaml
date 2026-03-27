@@ -9,9 +9,9 @@ correctness_command:
 performance_command:
 - python3 test_kernel_harness.py --full-benchmark
 target_kernel_functions:
-- _gemma_rms_layernorm_forward
-- _rms_layernorm_backward
 - _rms_layernorm_forward
+- _rms_layernorm_backward
+- _gemma_rms_layernorm_forward
 prompt:
   instructions: Optimize this Triton RMS LayerNorm kernel for AMD MI300X GPU. The
     kernel implements fast RMS layer normalization with forward, backward, and Gemma

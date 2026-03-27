@@ -11,7 +11,6 @@ performance_command:
 - python3 test_kernel_harness.py --full-benchmark
 target_kernel_functions:
 - _gemm_kernel
-- _tanh
 prompt:
   instructions: Optimize the GEMM (General Matrix Multiplication) Triton kernel for
     AMD MI300X GPU. The kernel computes Y = X @ W^T + bias with optional activation

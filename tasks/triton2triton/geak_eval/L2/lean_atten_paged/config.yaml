@@ -10,7 +10,6 @@ performance_command:
 - python3 test_kernel_harness.py --full-benchmark
 target_kernel_functions:
 - _attn_lean_tile
-- find_group
 - la_persistent_paged
 prompt:
   instructions: Optimize the Lean Attention + Paged Attention Triton decode kernel

@@ -9,10 +9,7 @@ correctness_command:
 performance_command:
 - python3 test_kernel_harness.py --full-benchmark
 target_kernel_functions:
-- _bitonic_merge
-- _compare_and_swap
 - _topk_kernel
-- argsort
 - topk_stage1_kernel
 - topk_stage2_kernel
 prompt:

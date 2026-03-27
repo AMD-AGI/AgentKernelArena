@@ -11,8 +11,6 @@ performance_command:
 - python3 test_kernel_harness.py --full-benchmark
 target_kernel_functions:
 - _gemm_a16_w16_atomic_kernel
-- pid_grid
-- remap_xcd
 prompt:
   instructions: Optimize the atomic GEMM A16W16 Triton kernel for AMD MI300X GPU.
     Uses split-K with atomic reduction for improved parallelism on large matrices.
