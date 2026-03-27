@@ -1,12 +1,16 @@
 task_type: triton_geak
-source_file_path: [kernel.py]
+source_file_path:
+- kernel.py
 harness_path: test_kernel_harness.py
-
 compile_command:
-  - python3 -c "import ast; ast.parse(open('kernel.py').read())"
-
+- python3 -c "import ast; ast.parse(open('kernel.py').read())"
 correctness_command:
-  - python3 test_kernel_harness.py --correctness
-
+- python3 test_kernel_harness.py --correctness
 performance_command:
-  - python3 test_kernel_harness.py --full-benchmark
+- python3 test_kernel_harness.py --full-benchmark
+target_kernel_functions:
+- ff_llama
+- ff_llama_opt
+prompt:
+  instructions: Optimize this Triton LLaMA feed-forward kernel for AMD MI300X GPU.
+    The kernel fuses RMSNorm, SiLU-gated linear projections, and element-wise operations.

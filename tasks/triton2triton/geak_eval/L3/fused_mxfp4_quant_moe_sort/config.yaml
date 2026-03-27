@@ -1,13 +1,16 @@
 task_type: triton_geak
-source_file_path: [kernel.py]
+source_file_path:
+- kernel.py
 harness_path: test_kernel_harness.py
-aiter_commit: "22122345c03991cb8026947b8df05e02f50d1f88"
-
+aiter_commit: 22122345c03991cb8026947b8df05e02f50d1f88
 compile_command:
-  - python3 -c "import ast; ast.parse(open('kernel.py').read())"
-
+- python3 -c "import ast; ast.parse(open('kernel.py').read())"
 correctness_command:
-  - python3 test_kernel_harness.py --correctness
-
+- python3 test_kernel_harness.py --correctness
 performance_command:
-  - python3 test_kernel_harness.py --full-benchmark
+- python3 test_kernel_harness.py --full-benchmark
+target_kernel_functions:
+- fused_dynamic_mxfp4_quant_moe_sort
+prompt:
+  instructions: Optimize the fused MXFP4 quantization + MOE sort Triton kernel for
+    AMD MI300X GPU. Fuses dynamic microscaling FP4 quantization with MOE token sorting.
