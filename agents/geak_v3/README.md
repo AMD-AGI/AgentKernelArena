@@ -58,7 +58,7 @@ agent:
 Here are tasks of hip kernels: 
 ```yaml
 tasks:
-  - hip2hip
+  - hip2hip/others/
   - repository/rocprim/block_radix_rank
   - repository/rocprim/device_binary_search
   - repository/rocprim/device_search_n
