@@ -46,6 +46,23 @@ def simple_prompt_builder(task_config_dir: str, workspace: str, logger: logging.
             return '\n'.join(f'  - {item}' for item in items)
         return f'  - {items}'
 
+    # Normalize source file paths to absolute paths in workspace context.
+    def absolutize_source_paths(items, workspace_dir: str):
+        if items is None:
+            return []
+        raw_items = items if isinstance(items, list) else [items]
+        workspace_path = Path(workspace_dir)
+        abs_items = []
+        for item in raw_items:
+            path_str = str(item).strip()
+            if not path_str:
+                continue
+            p = Path(path_str)
+            abs_items.append(str(p if p.is_absolute() else (workspace_path / p)))
+        return abs_items
+
+    source_files = absolutize_source_paths(source_files, workspace)
+
     # Build test command: compile_command && correctness_command && performance_command (dedup identical cmds)
     def build_test_command(compile_cmds, correctness_cmds, perf_cmds):
         def normalize(cmds):
@@ -75,7 +92,7 @@ def simple_prompt_builder(task_config_dir: str, workspace: str, logger: logging.
 
     task_info = f"""## Task Info
 
-**Source files:**
+**Kernel_url:**
 {format_list(source_files)}
 
 **Target kernel functions:**
