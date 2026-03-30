@@ -1,4 +1,9 @@
 repo_url: https://github.com/ROCm/rocPRIM.git
+task_type: repository
+repository_language: hip
+post_clone_install:
+  - command -v cmake >/dev/null 2>&1 || (apt-get update && apt-get install -y cmake ninja-build)
+post_clone_install_mode: every_setup
 compile_command:
   - python3 scripts/task_runner.py compile
 correctness_command:
