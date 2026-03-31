@@ -21,3 +21,7 @@ saved_results
 
 *workspace*
 ws_mem*
+do_task.sh
+traj.json
+**/baseline_metrics.json
+**/profile.json
