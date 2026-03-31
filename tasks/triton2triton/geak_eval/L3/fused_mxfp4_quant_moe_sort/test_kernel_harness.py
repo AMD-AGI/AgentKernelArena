@@ -352,8 +352,7 @@ def main():
             sys.exit(1)
 
     elif args.benchmark:
-        indices = _pick(ALL_CONFIGS, 25)
-        run_benchmark(indices)
+        run_benchmark(all_indices)  # use all configs so benchmark matches full-benchmark
 
     elif args.full_benchmark:
         run_benchmark(all_indices)

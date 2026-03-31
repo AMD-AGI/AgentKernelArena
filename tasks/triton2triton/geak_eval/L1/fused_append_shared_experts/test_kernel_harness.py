@@ -276,7 +276,7 @@ def main():
         indices = _pick(ALL_CONFIGS, 5)
         run_profile(indices)
     elif args.benchmark:
-        indices = _pick(ALL_CONFIGS, 25)
+        indices = list(range(len(ALL_CONFIGS)))  # use all configs so benchmark matches full-benchmark
         run_benchmark(indices)
     elif args.full_benchmark:
         indices = list(range(len(ALL_CONFIGS)))

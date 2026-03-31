@@ -233,7 +233,7 @@ def main():
         run_profile(indices)
 
     if args.benchmark:
-        indices = _pick(ALL_CONFIGS, 25)
+        indices = list(range(len(ALL_CONFIGS)))  # use all configs so benchmark matches full-benchmark
         run_benchmark(indices)
 
     if args.full_benchmark:

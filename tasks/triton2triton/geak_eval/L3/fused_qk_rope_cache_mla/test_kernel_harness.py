@@ -406,7 +406,8 @@ def main():
         print(f"GEAK_RESULT_LATENCY_MS={geo_mean:.4f}")
 
     if args.benchmark:
-        indices, configs = _pick(ALL_CONFIGS, 25)
+        indices = list(range(len(ALL_CONFIGS)))  # use all configs so benchmark matches full-benchmark
+        configs = ALL_CONFIGS
         print(f"Running benchmark on {len(configs)} configs...")
         latencies = []
         for i, (idx, cfg) in enumerate(zip(indices, configs)):

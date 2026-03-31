@@ -291,7 +291,7 @@ def main():
         print("All correctness checks passed")
 
     elif args.benchmark:
-        indices = _pick(ALL_CONFIGS, 25)
+        indices = list(range(len(ALL_CONFIGS)))  # use all configs so benchmark matches full-benchmark
         print("Running benchmark on {} configs...".format(len(indices)))
         latencies = do_benchmark(indices)
         print("GEAK_SHAPES_USED={}".format(indices))

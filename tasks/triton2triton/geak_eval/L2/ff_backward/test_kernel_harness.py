@@ -32,7 +32,7 @@ from kernel import (
 
 # ── Config space ────────────────────────────────────────────────────────────
 ALL_CONFIGS = EVAL_CONFIGS
-HARNESS_CONFIGS = ALL_CONFIGS[:25]
+HARNESS_CONFIGS = ALL_CONFIGS  # use all configs so benchmark matches full-benchmark
 PROFILE_CONFIGS = ALL_CONFIGS[:3]
 
 

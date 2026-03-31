@@ -365,7 +365,7 @@ def main():
         indices = _pick(ALL_CONFIGS, 25)
         mode_correctness(indices)
     elif args.benchmark:
-        indices = _pick(ALL_CONFIGS, 25)
+        indices = list(range(total))  # use all configs so benchmark matches full-benchmark
         mode_benchmark(indices)
     elif args.full_benchmark:
         indices = list(range(total))

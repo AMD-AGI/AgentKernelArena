@@ -283,11 +283,9 @@ def run_correctness():
 # Mode: --benchmark / --full-benchmark
 # ---------------------------------------------------------------------------
 def run_benchmark(full=False):
-    if full:
-        indices = list(range(len(ALL_CONFIGS)))
-        configs = ALL_CONFIGS
-    else:
-        indices, configs = _pick(ALL_CONFIGS, 25)
+    # Use all configs for both modes so benchmark matches full-benchmark
+    indices = list(range(len(ALL_CONFIGS)))
+    configs = ALL_CONFIGS
 
     print(f"Running benchmark on {len(configs)} configs (WARMUP={WARMUP}, ITERATIONS={ITERATIONS})...")
     latencies = []

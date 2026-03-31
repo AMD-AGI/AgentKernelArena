@@ -12,7 +12,7 @@ if _harness_dir not in sys.path:
 from kernel import EVAL_CONFIGS, check_correctness, benchmark_config
 
 ALL_CONFIGS = EVAL_CONFIGS
-HARNESS_CONFIGS = ALL_CONFIGS[:25]
+HARNESS_CONFIGS = ALL_CONFIGS  # use all configs so benchmark matches full-benchmark
 
 def _pick(configs, count):
     if len(configs) <= count:

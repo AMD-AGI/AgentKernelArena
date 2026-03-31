@@ -406,7 +406,7 @@ def main():
     if args.correctness:
         run_correctness(_pick(all_indices, 25))
     elif args.benchmark:
-        run_benchmark(_pick(all_indices, 25))
+        run_benchmark(all_indices)  # use all configs so benchmark matches full-benchmark
     elif args.full_benchmark:
         run_benchmark(all_indices)
     elif args.profile:
