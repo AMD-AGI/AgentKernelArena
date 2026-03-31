@@ -171,9 +171,8 @@ ALL_SHAPES = [
     (8192, 128, 5120),
 ]
 
-_n_all = len(ALL_SHAPES)
-_bench_indices = [int(i * (_n_all - 1) / 19) for i in range(20)]
-HARNESS_SHAPES = [ALL_SHAPES[i] for i in _bench_indices]
+# HARNESS_SHAPES: use ALL shapes so task-local and verified benchmarks match
+HARNESS_SHAPES = ALL_SHAPES
 
 _profile_indices = [int(i * (_n_all - 1) / 4) for i in range(5)]
 PROFILE_SHAPES = [ALL_SHAPES[i] for i in _profile_indices]
@@ -367,11 +366,10 @@ def main():
     mode.add_argument("--full-benchmark", action="store_true",
                       help="Run benchmark on ALL_SHAPES")
 
-    parser.add_argument("--warmup", type=int, default=50,
-                        help="Warmup iterations (default: 50)")
-    parser.add_argument("--iterations", type=int,
-                        default=int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "200")),
-                        help="Benchmark iterations (default: GEAK_BENCHMARK_ITERATIONS or 200)")
+    parser.add_argument("--warmup", type=int, default=None,
+                        help="Warmup iterations")
+    parser.add_argument("--iterations", type=int, default=None,
+                        help="Benchmark iterations")
     parser.add_argument("--atol", type=float, default=1e-4,
                         help="Absolute tolerance for correctness (default: 1e-4)")
     parser.add_argument("--rtol", type=float, default=1e-4,
@@ -383,13 +381,16 @@ def main():
         success = run_correctness(HARNESS_SHAPES, atol=args.atol, rtol=args.rtol)
         sys.exit(0 if success else 1)
     elif args.profile:
-        run_profile(PROFILE_SHAPES, warmup=args.warmup)
+        warmup = args.warmup if args.warmup is not None else 50
+        run_profile(PROFILE_SHAPES, warmup=warmup)
     elif args.benchmark:
-        run_benchmark(HARNESS_SHAPES, warmup=args.warmup,
-                      iterations=args.iterations)
+        warmup = args.warmup if args.warmup is not None else 10
+        iterations = args.iterations if args.iterations is not None else int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "30"))
+        run_benchmark(HARNESS_SHAPES, warmup=warmup, iterations=iterations)
     elif args.full_benchmark:
-        run_benchmark(ALL_SHAPES, warmup=args.warmup,
-                      iterations=args.iterations)
+        warmup = args.warmup if args.warmup is not None else 50
+        iterations = args.iterations if args.iterations is not None else int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "200"))
+        run_benchmark(ALL_SHAPES, warmup=warmup, iterations=iterations)
 
 
 if __name__ == "__main__":

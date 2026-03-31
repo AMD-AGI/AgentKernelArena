@@ -113,15 +113,19 @@ def _try_patch_with_strip(
     return False
 
 
-def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) -> bool:
+def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) -> tuple[bool, float]:
     """Find and apply the best optimized kernel from orchestrator output back to workspace.
 
+    Returns (applied, best_verified_speedup) — best verified speedup across all
+    rounds regardless of whether the patch was successfully applied.
+
     Strategy (in order):
-    1. Read round_N_evaluation.json files (reverse order) to find the highest
-       verified speedup, then locate the kernel file in the evaluation worktree.
-    2. Try applying the patch from final_report.json.
-    3. Fallback: try per-round best_results.json patches.
-    4. Fallback: best_patch_r*.diff files.
+    1. Read round_N_evaluation.json files to find the highest verified speedup,
+       then locate the kernel file in the evaluation worktree.
+    2. Try applying the patch from the best verified round's evaluation.json.
+    3. Try applying the patch from final_report.json.
+    4. Fallback: try per-round best_results.json patches.
+    5. Fallback: best_patch_r*.diff files.
     """
     import shutil
 
@@ -199,12 +203,28 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
                     f"Optimized kernel from round {best_round} "
                     f"{slot_name or candidate.parent.name} passes correctness (speedup: {best_speedup:.2f}x)"
                 )
-                return True
+                return True, best_speedup
             logger.warning(f"{slot_name or candidate.parent.name} failed correctness, trying next")
 
         if candidates:
             logger.warning("No worktree kernel passed correctness; restoring original")
             ws_kernel.write_text(original_text)
+
+    # --- Fallback: apply patch from best verified round's evaluation ---
+    if best_round:
+        best_eval = logs_dir / f"round_{best_round}_evaluation.json"
+        if best_eval.exists():
+            try:
+                eval_data = json.loads(best_eval.read_text())
+                patch_file = eval_data.get("best_patch")
+                if patch_file and Path(patch_file).exists():
+                    logger.info(f"Applying patch from best verified round {best_round}: {patch_file}")
+                    if _try_patch_with_strip(patch_file, workspace, logger):
+                        logger.info(f"Patch from round {best_round} applied (verified: {best_speedup:.2f}x)")
+                        return True, best_speedup
+                    logger.warning(f"Patch from best verified round {best_round} failed")
+            except Exception as e:
+                logger.warning(f"Error applying patch from round {best_round} evaluation: {e}")
 
     # --- Fallback: use patch from final_report.json ---
     # Patches have nested paths (a/tasks/triton2triton/.../kernel.py), so we
@@ -219,7 +239,7 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
                 applied = _try_patch_with_strip(patch_file, workspace, logger)
                 if applied:
                     logger.info(f"Patch applied successfully (speedup: {data.get('best_speedup_verified', 'N/A')}x)")
-                    return True
+                    return True, best_speedup
                 logger.warning("final_report patch failed at all strip levels")
         except Exception as e:
             logger.warning(f"Error reading final_report.json: {e}")
@@ -240,7 +260,7 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
                 logger.info(f"Applying best patch (fallback): {patch_file}")
                 if _try_patch_with_strip(patch_file, workspace, logger):
                     logger.info("Patch applied successfully (fallback)")
-                    return True
+                    return True, best_speedup
                 logger.warning(f"Patch failed at all strip levels: {patch_file}")
             except Exception as e:
                 logger.warning(f"Error applying patch from {best}: {e}")
@@ -250,12 +270,12 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
         try:
             if _try_patch_with_strip(str(diff), workspace, logger):
                 logger.info(f"Applied fallback patch: {diff}")
-                return True
+                return True, best_speedup
         except Exception as e:
             logger.warning(f"Fallback patch {diff} failed: {e}")
 
     logger.warning("No applicable patch found")
-    return False
+    return False, best_speedup
 
 
 @register_agent("geak_v3_triton")
@@ -341,6 +361,21 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 
     all_output: list[str] = []
 
+    # Bootstrap a git repo in the workspace so GEAK's .git walk-up stops here
+    # (prevents it from finding AgentKernelArena/.git and creating broken worktrees)
+    if not (workspace_path / ".git").exists():
+        import subprocess as _sp
+        # Create .gitignore BEFORE git init to keep patches clean (kernel.py only)
+        _gi = workspace_path / ".gitignore"
+        if not _gi.exists():
+            _gi.write_text(
+                "baseline_metrics.json\nprofile.json\n.optimization_strategies.md\n"
+                "baseline_perf.yaml\nconfig.yaml\n__pycache__/\n*.pyc\naiter/\n"
+            )
+        _sp.run(["git", "init"], cwd=str(workspace_path), capture_output=True)
+        _sp.run(["git", "add", "."], cwd=str(workspace_path), capture_output=True)
+        _sp.run(["git", "commit", "-m", "baseline"], cwd=str(workspace_path), capture_output=True)
+
     # -- Step 1: geak-preprocess ----------------------------------------
     preprocess_cmd = (
         f"python3 -m minisweagent.run.preprocess.preprocessor"
@@ -360,6 +395,16 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         timeout=3600,  # 1hr for preprocessing
     )
     all_output.extend(out_pre)
+
+    # Patch resolved.json so GEAK uses workspace dir as repo_root
+    # (prevents GEAK from walking up to AKA's .git and creating broken worktrees)
+    resolved_json = logs_dir / "resolved.json"
+    if resolved_json.exists():
+        import json as _json
+        resolved_data = _json.loads(resolved_json.read_text())
+        if not resolved_data.get("local_repo_path"):
+            resolved_data["local_repo_path"] = str(workspace_path)
+            resolved_json.write_text(_json.dumps(resolved_data, indent=2, default=str))
 
     if rc_pre != 0:
         logger.warning(f"geak-preprocess exited with code {rc_pre}")
@@ -393,7 +438,10 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 
     # Apply best patch to workspace for AKA evaluator
     if logs_dir.exists():
-        _apply_best_patch(workspace, logs_dir, logger)
+        applied, best_verified = _apply_best_patch(workspace, logs_dir, logger)
+        logger.info(f"Best verified speedup across all rounds: {best_verified:.4f}x (applied={applied})")
+        summary = {"best_verified_speedup": best_verified, "patch_applied": applied}
+        (logs_dir / "geak_summary.json").write_text(json.dumps(summary, indent=2))
     else:
         logger.warning(f"No results found in {logs_dir}")
 

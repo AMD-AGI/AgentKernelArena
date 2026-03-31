@@ -75,35 +75,8 @@ ALL_SHAPES = [
     # (9728, 8192, 65536),  # Too large, may cause OOM
 ]
 
-# HARNESS_SHAPES: 25 shapes uniformly sampled from ALL_SHAPES
-# Indices: 0, 2, 4, 6, 9, 11, 13, 16, 18, 20, 22, 25, 27, 29, 32, 34, 36, 39, 41, 43, 46, 48, 50, 52, 54
-HARNESS_SHAPES = [
-    (1, 8192, 1024),       # 0
-    (1, 7168, 2048),       # 2
-    (1, 4096, 4096),       # 4
-    (4, 2112, 7168),       # 6
-    (8, 2112, 7168),       # 9
-    (32, 8192, 1024),      # 11
-    (32, 7168, 2048),      # 13
-    (4, 12288, 12288),     # 16
-    (64, 7168, 2048),      # 18
-    (128, 8192, 1024),     # 20
-    (128, 1280, 8192),     # 22
-    (128, 7168, 2048),     # 25
-    (192, 1280, 8192),     # 27
-    (256, 8192, 1024),     # 29
-    (320, 1280, 8192),     # 32
-    (512, 1280, 8192),     # 34
-    (1024, 8192, 1024),    # 36
-    (128, 16384, 6656),    # 39
-    (2048, 1280, 8192),    # 41
-    (4096, 8192, 1024),    # 43
-    (4096, 4096, 4096),    # 46
-    (5120, 5120, 5120),    # 48
-    (4864, 4096, 8192),    # 50
-    (6144, 6144, 6144),    # 52
-    (8192, 8192, 8192),    # 54
-]
+# HARNESS_SHAPES: use ALL shapes so task-local and verified benchmarks match
+HARNESS_SHAPES = ALL_SHAPES
 
 # PROFILE_SHAPES: 5 evenly-spaced shapes for profiling
 PROFILE_SHAPES = [
@@ -292,19 +265,16 @@ def main():
     
     args = parser.parse_args()
     
-    # Get iterations from env var or default
-    iterations = args.iterations
-    if iterations is None:
-        iterations = int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "20"))
-    
     if args.correctness:
         success = run_correctness(HARNESS_SHAPES)
         sys.exit(0 if success else 1)
     elif args.profile:
         run_profile(PROFILE_SHAPES)
     elif args.benchmark:
+        iterations = args.iterations if args.iterations is not None else int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "10"))
         run_benchmark(HARNESS_SHAPES, iterations)
     elif args.full_benchmark:
+        iterations = args.iterations if args.iterations is not None else int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "20"))
         run_benchmark(ALL_SHAPES, iterations)
     else:
         parser.print_help()

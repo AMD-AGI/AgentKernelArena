@@ -234,10 +234,8 @@ ALL_SHAPES = [
     (1335, 128256, 8),
 ]
 
-# HARNESS_SHAPES: 25 uniformly sampled from ALL_SHAPES
-_n_all = len(ALL_SHAPES)
-_harness_indices = [int(round(i * (_n_all - 1) / 24)) for i in range(25)]
-HARNESS_SHAPES = [ALL_SHAPES[i] for i in _harness_indices]
+# HARNESS_SHAPES: use ALL shapes so task-local and verified benchmarks match
+HARNESS_SHAPES = ALL_SHAPES
 
 # PROFILE_SHAPES: 5 evenly-spaced from ALL_SHAPES
 _profile_indices = [int(round(i * (_n_all - 1) / 4)) for i in range(5)]
@@ -474,14 +472,14 @@ def main():
     parser.add_argument(
         "--warmup",
         type=int,
-        default=50,
-        help="Number of warmup iterations (default: 50)",
+        default=None,
+        help="Number of warmup iterations",
     )
     parser.add_argument(
         "--iterations",
         type=int,
-        default=int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "200")),
-        help="Number of benchmark iterations (default: GEAK_BENCHMARK_ITERATIONS or 200)",
+        default=None,
+        help="Number of benchmark iterations",
     )
     args = parser.parse_args()
 
@@ -494,14 +492,20 @@ def main():
         run_correctness(HARNESS_SHAPES)
     elif args.profile:
         print("\n[Profile Mode]")
-        run_profile(PROFILE_SHAPES, warmup=args.warmup, iters=args.iterations)
+        warmup = args.warmup if args.warmup is not None else 50
+        iters = args.iterations if args.iterations is not None else 200
+        run_profile(PROFILE_SHAPES, warmup=warmup, iters=iters)
     elif args.full_benchmark:
         print("\n[Full Benchmark Mode]")
-        run_benchmark(ALL_SHAPES, warmup=args.warmup, iters=args.iterations)
+        warmup = args.warmup if args.warmup is not None else 50
+        iters = args.iterations if args.iterations is not None else int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "200"))
+        run_benchmark(ALL_SHAPES, warmup=warmup, iters=iters)
     else:
-        # Default: benchmark (harness shapes)
+        # Default: benchmark (harness shapes = all shapes, reduced iters)
         print("\n[Benchmark Mode]")
-        run_benchmark(HARNESS_SHAPES, warmup=args.warmup, iters=args.iterations)
+        warmup = args.warmup if args.warmup is not None else 10
+        iters = args.iterations if args.iterations is not None else int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "30"))
+        run_benchmark(HARNESS_SHAPES, warmup=warmup, iters=iters)
 
     print("=" * 62)
 
