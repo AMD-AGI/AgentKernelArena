@@ -13,6 +13,23 @@ target_kernel_functions:
 - _decode_grouped_att_m_fwd_rope
 - _decode_softmax_reducev_fwd
 prompt:
-  instructions: Optimize the MLA decode attention Triton kernel for AMD MI300X GPU.
+  instructions: >-
+    Optimize the MLA decode attention Triton kernel for AMD MI300X GPU.
     The kernel implements grouped multi-latent attention with fused RoPE for decode-phase
     inference.
+
+
+    IMPORTANT ARCHITECTURE NOTE:
+
+    - This kernel has two stages: stage1 (HIP ASM) and stage2 (Triton).
+
+    - The stage1 kernel is hand-written HIP assembly. DO NOT attempt to modify
+    it — it is unreachable from Triton and cannot be improved through this
+    optimization.
+
+    - Focus exclusively on optimizing the stage2 Triton kernel functions
+    (_decode_grouped_att_m_fwd_rope, _decode_softmax_reducev_fwd).
+
+    - The ASM stage1 handles initial QK attention; stage2 handles softmax
+    reduction and value accumulation — optimize stage2's memory access
+    patterns, tiling, and reduction strategy.

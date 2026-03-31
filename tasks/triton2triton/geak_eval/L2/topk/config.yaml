@@ -13,5 +13,20 @@ target_kernel_functions:
 - topk_stage1_kernel
 - topk_stage2_kernel
 prompt:
-  instructions: Optimize the Top-K selection Triton kernel for AMD MI300X GPU. The
+  instructions: >-
+    Optimize the Top-K selection Triton kernel for AMD MI300X GPU. The
     kernel implements 1-stage (small M) and 2-stage (large M) selection.
+
+
+    CRITICAL CONSTRAINTS:
+
+    - Your optimized kernel MUST handle ALL test configurations in the full
+    benchmark (--full-benchmark), not only those in the quick benchmark.
+    The full benchmark tests approximately 80 configurations including very
+    large shapes.
+
+    - If you dispatch small shapes to PyTorch fallbacks, the Triton kernel must
+    still correctly handle all remaining shapes. Do not assume the quick
+    benchmark covers all cases.
+
+    - Test with --full-benchmark before finalizing to catch shape-coverage gaps.

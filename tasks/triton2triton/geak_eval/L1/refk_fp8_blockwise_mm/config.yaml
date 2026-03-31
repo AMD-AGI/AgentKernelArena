@@ -3,7 +3,7 @@ source_file_path:
 - kernel.py
 harness_path: test_kernel_harness.py
 compile_command:
-- python3 -c "import ast; ast.parse(open("kernel.py").read())"
+- python3 -c "import ast; ast.parse(open(\"kernel.py\").read())"
 correctness_command:
 - python3 test_kernel_harness.py --correctness
 performance_command:
@@ -13,7 +13,23 @@ target_kernel_functions:
 - _dequant_b_kernel
 - _cast_to_bf16_kernel
 prompt:
-  instructions: Optimize the FP8 block-scale GEMM kernel for AMD MI325X GPU. The kernel
+  instructions: >-
+    Optimize the FP8 block-scale GEMM kernel for AMD MI325X GPU. The kernel
     performs block-wise dequantization of FP8 inputs with per-block scaling factors,
     followed by matrix multiplication. Focus on fusing dequantization with the GEMM
     and optimizing memory access patterns for the block-scale layout.
+
+
+    CRITICAL CONSTRAINTS:
+
+    - DO NOT use @triton.autotune. This kernel is benchmarked across 29 shapes,
+    and autotune causes compilation explosion (N_configs * 29 compilations)
+    that exceeds the evaluation timeout.
+
+    - Instead, use heuristic config selection: pick BLOCK_M/BLOCK_N/BLOCK_K
+    based on matrix dimensions at launch time (e.g., via if/elif on M, N, K).
+
+    - For small shapes where Triton overhead dominates, consider dispatching to
+    torch.mm with BF16 casting as a fast path.
+
+    - For large shapes, tile to fit in L2 cache (4 MB per CU on MI300X).
