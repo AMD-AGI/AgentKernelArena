@@ -1,4 +1,6 @@
 repo_url: https://github.com/ROCm/rocPRIM.git
+source_file_path:
+  - rocPRIM/rocprim/include/rocprim/device/device_binary_search.hpp
 task_type: repository
 repository_language: hip
 post_clone_install:
