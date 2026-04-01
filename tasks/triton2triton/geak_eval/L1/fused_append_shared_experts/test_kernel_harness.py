@@ -267,7 +267,11 @@ def main():
     group.add_argument("--profile", action="store_true")
     group.add_argument("--benchmark", action="store_true")
     group.add_argument("--full-benchmark", action="store_true")
+    parser.add_argument("--iterations", type=int, default=None, help="Number of benchmark iterations (overrides GEAK_BENCHMARK_ITERATIONS env var)")
     args, _ = parser.parse_known_args()
+    if args.iterations is not None:
+        global ITERATIONS
+        ITERATIONS = args.iterations
 
     if args.correctness:
         indices = _pick(ALL_CONFIGS, 25)

@@ -218,7 +218,11 @@ def main():
     parser.add_argument("--benchmark", action="store_true", help="Run benchmark (up to 25 configs)")
     parser.add_argument("--full-benchmark", action="store_true", help="Run full benchmark (all configs)")
     parser.add_argument("--profile", action="store_true", help="Run profile (5 configs)")
+    parser.add_argument("--iterations", type=int, default=None, help="Number of benchmark iterations (overrides GEAK_BENCHMARK_ITERATIONS env var)")
     args = parser.parse_args()
+    if args.iterations is not None:
+        global ITERATIONS
+        ITERATIONS = args.iterations
 
     if not any([args.correctness, args.benchmark, args.full_benchmark, args.profile]):
         parser.print_help()

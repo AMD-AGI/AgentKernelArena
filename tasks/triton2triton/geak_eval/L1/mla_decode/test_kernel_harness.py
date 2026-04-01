@@ -356,7 +356,11 @@ def main():
     group.add_argument("--benchmark", action="store_true")
     group.add_argument("--full-benchmark", action="store_true")
     group.add_argument("--profile", action="store_true")
+    group.add_argument("--iterations", type=int, default=None, help="Number of benchmark iterations (overrides GEAK_BENCHMARK_ITERATIONS env var)")
     args = parser.parse_args()
+    if args.iterations is not None:
+        global ITERATIONS
+        ITERATIONS = args.iterations
 
     total = len(ALL_CONFIGS)
     print("Total configs: {}".format(total))
