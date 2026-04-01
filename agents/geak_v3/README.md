@@ -2,9 +2,9 @@
 
 This agent template integrates **GEAK v3** into AgentKernelArena so you can run AgentKernelArena tasks using GEAK-v3 as the optimizing agent.
 
-### 1) Install GEAK (so `mini` / `geak` exists in `PATH`)
+### 1) Install GEAK
 
-GEAK provides the `mini` and `geak` CLIs. Install it in your Python environment:
+GEAK provides the `geak` CLIs. Install it in your Python environment:
 
 ```bash
 cd /path/to/GEAK
@@ -22,14 +22,14 @@ export AMD_LLM_API_KEY="your-key-here"
 Edit `agents/geak_v3/agent_config.yaml`.
 
 Key fields:
-- **`run.cmd`**: which executable to run (`mini` or `geak`)
+- **`run.cmd`**: which executable to run `geak`
 - **`run.configs`**: CLI options passed to that executable
 
 Example:
 
 ```yaml
 run:
-  cmd: mini
+  cmd: geak
   configs: "-c geak.yaml --yolo --num-parallel=2 --gpu-ids=0,1"
 ```
 
