@@ -318,6 +318,85 @@ Review the generated `validation_report.yaml` in the workspace directory. The ta
 See [agents/task_validator/README.md](agents/task_validator/README.md) for the full list of validation checks and requirements.
 
 
+## GEAK Triton Kernel Optimization Runs
+
+Multi-GPU batch optimization of Triton kernels using the GEAK agent with heterogeneous memory configuration and model ensemble.
+
+All runs use: `GEAK_CONFIG_NAME=heterogeneous_memory_on`
+
+### Batch 1 Configs & Commands
+
+**Slot 1 — GPUs 0-3** (`config_geak_triton_mem_slot1_rerun.yaml`):
+- `triton2triton/geak_eval/L1/refk_fp8_blockwise_mm`
+- `triton2triton/geak_eval/L1/moe_routing_sigmoid_top1`
+- `triton2triton/geak_eval/L1/llama_ff_triton`
+- `triton2triton/geak_eval/L1/refk_identity`
+
+```bash
+GEAK_CONFIG_NAME=heterogeneous_memory_on GEAK_GPU_IDS="0,1,2,3" \
+  python3 main.py --config_name config_geak_triton_mem_slot1_rerun.yaml \
+  > /tmp/slot1_run.log 2>&1 &
+```
+
+**Slot 2 — GPUs 4-7** (`config_geak_triton_mem_slot2_rerun.yaml`):
+- `triton2triton/geak_eval/L2/topk`
+- `triton2triton/geak_eval/L2/lean_atten_paged`
+- `triton2triton/geak_eval/L2/fast_rms_layernorm`
+- `triton2triton/geak_eval/L1/mla_decode`
+
+```bash
+GEAK_CONFIG_NAME=heterogeneous_memory_on GEAK_GPU_IDS="4,5,6,7" \
+  python3 main.py --config_name config_geak_triton_mem_slot2_rerun.yaml \
+  > /tmp/slot2_run.log 2>&1 &
+```
+
+### Batch 2 Configs & Commands
+
+**Slot 1 — GPUs 0-3** (`config_geak_triton_mem_slot1_batch2.yaml`):
+- `triton2triton/geak_eval/L1/fused_append_shared_experts`
+- `triton2triton/geak_eval/L2/ff_backward`
+- `triton2triton/geak_eval/L3/gemm_a16w16_atomic`
+- `triton2triton/geak_eval/L3/fused_qkv_rope`
+- `triton2triton/geak_eval/L3/fused_mxfp4_quant_moe_sort`
+
+```bash
+GEAK_CONFIG_NAME=heterogeneous_memory_on GEAK_GPU_IDS="0,1,2,3" \
+  python3 main.py --config_name config_geak_triton_mem_slot1_batch2.yaml \
+  > /tmp/slot1_b2_run.log 2>&1 &
+```
+
+**Slot 2 — GPUs 4-7** (`config_geak_triton_mem_slot2_batch2.yaml`):
+- `triton2triton/geak_eval/L3/gemm`
+- `triton2triton/geak_eval/L3/gemm_a16wfp4`
+- `triton2triton/geak_eval/L3/fused_moe_mxfp4`
+- `triton2triton/geak_eval/L3/fused_qk_rope_cache_mla`
+- `triton2triton/geak_eval/L3/fused_rms_fp8`
+
+```bash
+GEAK_CONFIG_NAME=heterogeneous_memory_on GEAK_GPU_IDS="4,5,6,7" \
+  python3 main.py --config_name config_geak_triton_mem_slot2_batch2.yaml \
+  > /tmp/slot2_b2_run.log 2>&1 &
+```
+
+### Monitoring
+
+```bash
+# Check processes
+ps aux | grep "main.py" | grep -v grep
+
+# Tail logs (batch 1)
+tail -20 /tmp/slot1_run.log
+tail -20 /tmp/slot2_run.log
+
+# Tail logs (batch 2)
+tail -20 /tmp/slot1_b2_run.log
+tail -20 /tmp/slot2_b2_run.log
+
+# Check completed results
+find ws_mem*/ -name "geak_summary.json" -exec echo "=== {} ===" \; -exec cat {} \;
+```
+
+
 ## Next Steps
 
 - Enhance A/B Testing with Better Interactivity and User Experience

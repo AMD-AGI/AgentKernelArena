@@ -1,0 +1,14 @@
+agent:
+  template: geak_v3_triton
+
+tasks:
+  - triton2triton/geak_eval/L3/gemm
+  - triton2triton/geak_eval/L3/gemm_a16wfp4
+  - triton2triton/geak_eval/L3/fused_moe_mxfp4
+  - triton2triton/geak_eval/L3/fused_qk_rope_cache_mla
+  - triton2triton/geak_eval/L3/fused_rms_fp8
+
+target_gpu_model: MI300
+gpu_ids: "4,5,6,7"
+log_directory: logs
+workspace_directory_prefix: ws_mem2_b2

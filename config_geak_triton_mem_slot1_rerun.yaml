@@ -1,0 +1,13 @@
+agent:
+  template: geak_v3_triton
+
+tasks:
+  - triton2triton/geak_eval/L1/refk_fp8_blockwise_mm
+  - triton2triton/geak_eval/L1/moe_routing_sigmoid_top1
+  - triton2triton/geak_eval/L1/llama_ff_triton
+  - triton2triton/geak_eval/L1/refk_identity
+
+target_gpu_model: MI300
+gpu_ids: "0,1,2,3"
+log_directory: logs
+workspace_directory_prefix: ws_mem1

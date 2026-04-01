@@ -1,0 +1,14 @@
+agent:
+  template: geak_v3_triton
+
+tasks:
+  - triton2triton/geak_eval/L1/fused_append_shared_experts
+  - triton2triton/geak_eval/L2/ff_backward
+  - triton2triton/geak_eval/L3/gemm_a16w16_atomic
+  - triton2triton/geak_eval/L3/fused_qkv_rope
+  - triton2triton/geak_eval/L3/fused_mxfp4_quant_moe_sort
+
+target_gpu_model: MI300
+gpu_ids: "0,1,2,3"
+log_directory: logs
+workspace_directory_prefix: ws_mem1_b2

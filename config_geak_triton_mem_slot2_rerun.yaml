@@ -1,0 +1,13 @@
+agent:
+  template: geak_v3_triton
+
+tasks:
+  - triton2triton/geak_eval/L2/topk
+  - triton2triton/geak_eval/L2/lean_atten_paged
+  - triton2triton/geak_eval/L2/fast_rms_layernorm
+  - triton2triton/geak_eval/L1/mla_decode
+
+target_gpu_model: MI300
+gpu_ids: "4,5,6,7"
+log_directory: logs
+workspace_directory_prefix: ws_mem2
