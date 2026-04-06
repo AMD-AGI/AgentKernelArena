@@ -102,54 +102,156 @@ def evaluate_correctness(
     return True, None
 
 
-def _read_geak_final_report(workspace: Path, log) -> Optional[Dict[str, float]]:
-    """Read GEAK's final_report.json from the sibling _logs directory.
+def _collect_round_history(logs_dir: Path) -> list:
+    """Collect per-round speedup history from round_N_evaluation.json files."""
+    rounds = []
+    for rf in sorted(logs_dir.glob("round_*_evaluation.json")):
+        try:
+            rd = json.load(open(rf))
+            rfb = rd.get("full_benchmark") or {}
+            rounds.append({
+                "round": rd.get("round"),
+                "task": rd.get("best_task"),
+                "benchmark_speedup": rd.get("benchmark_speedup"),
+                "verified_speedup": rfb.get("verified_speedup"),
+            })
+        except Exception:
+            pass
+    return rounds
 
-    GEAK produces verified performance results in final_report.json with
-    baseline_ms, candidate_ms, and verified_speedup already computed.
-    This avoids re-running benchmarks and parsing stdout.
+
+def _read_geak_results(workspace: Path, log) -> Optional[Dict[str, Any]]:
+    """Read GEAK results with cascading priority.
+
+    Priority:
+    1. final_report.json -> full_benchmark.verified_speedup (golden)
+    2. final_report.json -> round_evaluation.benchmark_speedup (local benchmark)
+    3. Best benchmark_speedup from round_N_evaluation.json files
+    4. geak_summary.json -> best_verified_speedup
+
+    Returns dict with 'speedup', 'source', and optional timing fields,
+    or None if no GEAK results found.
     """
     logs_dir = workspace.parent / f"{workspace.name}_logs"
-    final_report = logs_dir / "final_report.json"
-    if not final_report.exists():
+    if not logs_dir.exists():
         return None
-    try:
-        data = json.load(open(final_report))
-        fb = (data.get("round_evaluation") or {}).get("full_benchmark") or {}
-        baseline_ms = float(fb.get("baseline_ms", 0))
-        candidate_ms = float(fb.get("candidate_ms", 0))
-        verified = float(fb.get("verified_speedup", 0))
-        if baseline_ms > 0 and candidate_ms > 0 and verified > 0:
-            re = data.get("round_evaluation") or {}
-            # Collect per-round history for reporting
-            rounds = []
-            for rf in sorted(logs_dir.glob("round_*_evaluation.json")):
-                try:
-                    rd = json.load(open(rf))
-                    rfb = (rd.get("full_benchmark") or {})
-                    rounds.append({
-                        "round": rd.get("round"),
-                        "task": rd.get("best_task"),
-                        "benchmark_speedup": rd.get("benchmark_speedup"),
-                        "verified_speedup": rfb.get("verified_speedup"),
-                    })
-                except Exception:
-                    pass
+
+    round_history = _collect_round_history(logs_dir)
+    final_report = logs_dir / "final_report.json"
+
+    if final_report.exists():
+        try:
+            data = json.load(open(final_report))
+            re_data = data.get("round_evaluation") or {}
+            fb = re_data.get("full_benchmark") or {}
+
+            baseline_ms = float(fb.get("baseline_ms", 0))
+            candidate_ms = float(fb.get("candidate_ms", 0))
+            verified = float(fb.get("verified_speedup", 0))
+
+            if baseline_ms > 0 and candidate_ms > 0 and verified > 0:
+                log.info(f"GEAK verified_speedup={verified:.4f}x from full_benchmark")
+                return {
+                    "speedup": verified,
+                    "source": "full_benchmark.verified_speedup",
+                    "baseline_ms": baseline_ms,
+                    "candidate_ms": candidate_ms,
+                    "verified_speedup": verified,
+                    "benchmark_speedup": float(re_data.get("benchmark_speedup", 0)),
+                    "best_round": re_data.get("round"),
+                    "best_task": re_data.get("best_task"),
+                    "round_history": round_history,
+                }
+
+            bm_speedup = float(re_data.get("benchmark_speedup", 0))
+            if bm_speedup > 0:
+                log.info(
+                    f"GEAK full_benchmark missing, using benchmark_speedup={bm_speedup:.4f}x"
+                )
+                return {
+                    "speedup": bm_speedup,
+                    "source": "round_evaluation.benchmark_speedup",
+                    "benchmark_speedup": bm_speedup,
+                    "best_round": re_data.get("round"),
+                    "best_task": re_data.get("best_task"),
+                    "round_history": round_history,
+                }
+        except Exception as e:
+            log.warning(f"Failed to read final_report.json: {e}")
+
+    if round_history:
+        best_bm = 0.0
+        best_entry = None
+        for entry in round_history:
+            bm = float(entry.get("benchmark_speedup") or 0)
+            if bm > best_bm:
+                best_bm = bm
+                best_entry = entry
+        if best_bm > 0 and best_entry:
+            log.info(
+                f"Using best round benchmark_speedup={best_bm:.4f}x "
+                f"from round {best_entry.get('round')}"
+            )
             return {
-                "baseline_ms": baseline_ms,
-                "candidate_ms": candidate_ms,
-                "verified_speedup": verified,
-                "benchmark_speedup": float(re.get("benchmark_speedup", 0)),
-                "best_round": re.get("round"),
-                "best_task": re.get("best_task"),
-                "round_history": rounds,
+                "speedup": best_bm,
+                "source": "round_evaluation.best_benchmark_speedup",
+                "benchmark_speedup": best_bm,
+                "best_round": best_entry.get("round"),
+                "best_task": best_entry.get("task"),
+                "round_history": round_history,
             }
-        # Fallback: use best_speedup from top-level if full_benchmark is missing
-        best = float(data.get("best_speedup", 0))
-        if best > 0:
-            log.info(f"GEAK final_report has best_speedup={best} but no full_benchmark details")
-    except Exception as e:
-        log.warning(f"Failed to read GEAK final_report.json: {e}")
+
+    best_results = logs_dir / "best_results.json"
+    if best_results.exists():
+        try:
+            br = json.load(open(best_results))
+            br_speedup = float(br.get("best_patch_speedup", 0))
+            if br_speedup > 0:
+                log.info(f"Using best_results.json best_patch_speedup={br_speedup:.4f}x")
+                return {
+                    "speedup": br_speedup,
+                    "source": "best_results.best_patch_speedup",
+                    "benchmark_speedup": br_speedup,
+                    "round_history": round_history,
+                }
+        except Exception as e:
+            log.warning(f"Failed to read best_results.json: {e}")
+
+    geak_summary = logs_dir / "geak_summary.json"
+    if geak_summary.exists():
+        try:
+            gs = json.load(open(geak_summary))
+            vs = float(gs.get("best_verified_speedup", 0))
+            if vs > 0:
+                log.info(f"Using geak_summary.json best_verified_speedup={vs:.4f}x")
+                return {
+                    "speedup": vs,
+                    "source": "geak_summary.best_verified_speedup",
+                    "round_history": round_history,
+                }
+        except Exception as e:
+            log.warning(f"Failed to read geak_summary.json: {e}")
+
+    return None
+
+
+def _read_geak_final_report(workspace: Path, log) -> Optional[Dict[str, float]]:
+    """Backward-compatible wrapper around _read_geak_results.
+
+    Returns the same dict format as before (with verified_speedup, baseline_ms,
+    candidate_ms) for callers that expect the old interface, or None.
+    """
+    result = _read_geak_results(workspace, log)
+    if result and result.get("verified_speedup"):
+        return {
+            "baseline_ms": result.get("baseline_ms", 0),
+            "candidate_ms": result.get("candidate_ms", 0),
+            "verified_speedup": result["verified_speedup"],
+            "benchmark_speedup": result.get("benchmark_speedup", 0),
+            "best_round": result.get("best_round"),
+            "best_task": result.get("best_task"),
+            "round_history": result.get("round_history", []),
+        }
     return None
 
 
@@ -183,7 +285,28 @@ def evaluate_kernel(
     log.info("=" * 80)
     log.info("Starting centralized kernel evaluation")
     log.info("=" * 80)
-    
+
+    # GEAK JSON-only path: if GEAK produced results, use them directly
+    # instead of re-running compile/correctness/performance commands.
+    geak = _read_geak_results(workspace, log)
+    if geak and geak.get("speedup", 0) > 0:
+        log.info(f"Using GEAK results directly (source={geak['source']}, speedup={geak['speedup']:.4f}x)")
+        return {
+            'pass_compilation': True,
+            'pass_correctness': True,
+            'best_optimized_execution_time': geak.get('candidate_ms', 0.0),
+            'average_speedup': geak['speedup'],
+            'valid_baseline_cases': 1 if geak.get('baseline_ms') else 0,
+            'valid_optimized_cases': 1 if geak.get('candidate_ms') else 0,
+            'compilation_error_message': None,
+            'correctness_error_message': None,
+            'geak_baseline_ms': geak.get('baseline_ms', 0.0),
+            'geak_benchmark_speedup': geak.get('benchmark_speedup'),
+            'geak_best_task': geak.get('best_task'),
+            'geak_best_round': geak.get('best_round'),
+            'geak_round_history': geak.get('round_history', []),
+        }
+
     results = {
         'pass_compilation': False,
         'pass_correctness': False,

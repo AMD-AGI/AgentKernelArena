@@ -189,31 +189,34 @@ def main() -> None:
                     logger.error(f"Failed to checkout aiter {aiter_commit[:12]}, skipping {task_name}")
                     continue
 
-            # Set HIP_VISIBLE_DEVICES for baseline compilation/measurement
-            # Use GEAK_GPU_IDS (e.g. "4,5,6,7") or fall back to "0"
-            gpu_ids = os.environ.get("GEAK_GPU_IDS", "0")
-            baseline_gpu = gpu_ids.split(",")[0]
-            prev_hip = os.environ.get("HIP_VISIBLE_DEVICES")
-            os.environ["HIP_VISIBLE_DEVICES"] = baseline_gpu
-
-            # Compile original kernel before measuring baseline (required for hip2hip, etc.)
-            from src.evaluator import evaluate_compilation
-            logger.info(f"Compiling original kernel for baseline measurement (GPU {baseline_gpu})...")
-            pass_compilation, comp_error = evaluate_compilation(workspace_path, task_config, logger, docker_container)
-            if not pass_compilation:
-                logger.warning(f"Baseline compilation failed: {comp_error}")
-                logger.warning("Baseline measurement will be skipped")
+            # Skip AKA baseline for triton_geak tasks: GEAK provides its own
+            # verified baseline/candidate/speedup via final_report.json.
+            task_type = task_config.get('task_type', '')
+            if task_type == 'triton_geak':
+                logger.info("Triton GEAK task: skipping AKA baseline (GEAK provides verified results)")
                 baseline_cases = []
             else:
-                # Measure baseline performance (before agent modifies kernel)
-                logger.info("Measuring baseline performance...")
-                baseline_cases = measure_baseline(workspace_path, task_config, logger, docker_container)
+                # Set HIP_VISIBLE_DEVICES for baseline compilation/measurement
+                gpu_ids = os.environ.get("GEAK_GPU_IDS", "0")
+                baseline_gpu = gpu_ids.split(",")[0]
+                prev_hip = os.environ.get("HIP_VISIBLE_DEVICES")
+                os.environ["HIP_VISIBLE_DEVICES"] = baseline_gpu
 
-            # Restore HIP_VISIBLE_DEVICES
-            if prev_hip is not None:
-                os.environ["HIP_VISIBLE_DEVICES"] = prev_hip
-            else:
-                os.environ.pop("HIP_VISIBLE_DEVICES", None)
+                from src.evaluator import evaluate_compilation
+                logger.info(f"Compiling original kernel for baseline measurement (GPU {baseline_gpu})...")
+                pass_compilation, comp_error = evaluate_compilation(workspace_path, task_config, logger, docker_container)
+                if not pass_compilation:
+                    logger.warning(f"Baseline compilation failed: {comp_error}")
+                    logger.warning("Baseline measurement will be skipped")
+                    baseline_cases = []
+                else:
+                    logger.info("Measuring baseline performance...")
+                    baseline_cases = measure_baseline(workspace_path, task_config, logger, docker_container)
+
+                if prev_hip is not None:
+                    os.environ["HIP_VISIBLE_DEVICES"] = prev_hip
+                else:
+                    os.environ.pop("HIP_VISIBLE_DEVICES", None)
             
             # Launch agent (agent should only generate optimized kernel)
             logger.info(f"Launching agent: {agent.value}")

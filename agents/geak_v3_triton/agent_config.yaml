@@ -9,6 +9,7 @@ orchestrate:
   model: "claude-opus-4.6"
 
 geak_env:
+  GEAK_MAX_ROUNDS: "3"
   GEAK_EXCLUDED_AGENTS: openevolve
   GEAK_EARLY_STOP_THRESHOLD: "-1"
   GEAK_AGENT_STEP_LIMIT: "200"
