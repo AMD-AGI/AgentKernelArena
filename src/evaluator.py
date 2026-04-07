@@ -313,27 +313,6 @@ def evaluate_kernel(
     log.info("Starting centralized kernel evaluation")
     log.info("=" * 80)
 
-    # GEAK JSON-only path: if GEAK produced results, use them directly
-    # instead of re-running compile/correctness/performance commands.
-    geak = _read_geak_results(workspace, log)
-    if geak and geak.get("speedup", 0) > 0:
-        log.info(f"Using GEAK results directly (source={geak['source']}, speedup={geak['speedup']:.4f}x)")
-        return {
-            'pass_compilation': True,
-            'pass_correctness': True,
-            'best_optimized_execution_time': geak.get('candidate_ms', 0.0),
-            'average_speedup': geak['speedup'],
-            'valid_baseline_cases': 1 if geak.get('baseline_ms') else 0,
-            'valid_optimized_cases': 1 if geak.get('candidate_ms') else 0,
-            'compilation_error_message': None,
-            'correctness_error_message': None,
-            'geak_baseline_ms': geak.get('baseline_ms', 0.0),
-            'geak_benchmark_speedup': geak.get('benchmark_speedup'),
-            'geak_best_task': geak.get('best_task'),
-            'geak_best_round': geak.get('best_round'),
-            'geak_round_history': geak.get('round_history', []),
-        }
-
     results = {
         'pass_compilation': False,
         'pass_correctness': False,
