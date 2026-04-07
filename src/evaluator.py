@@ -185,6 +185,24 @@ def _read_geak_results(workspace: Path, log) -> Optional[Dict[str, Any]]:
                     "best_task": bm_task,
                     "round_history": round_history,
                 }
+            # Parse total_speedup string (e.g. "2.03x") or best_speedup numeric
+            for field in ("total_speedup", "best_speedup", "best_speedup_verified"):
+                raw = data.get(field)
+                if raw is None:
+                    continue
+                try:
+                    parsed = float(str(raw).rstrip("x"))
+                except (ValueError, TypeError):
+                    continue
+                if parsed > 0 and parsed > bm_speedup:
+                    log.info(f"GEAK {field}={parsed:.4f}x from final_report.json")
+                    return {
+                        "speedup": parsed,
+                        "source": f"final_report.{field}",
+                        "best_task": data.get("best_task"),
+                        "best_round": data.get("best_round"),
+                        "round_history": round_history,
+                    }
         except Exception as e:
             log.warning(f"Failed to read final_report.json: {e}")
 
