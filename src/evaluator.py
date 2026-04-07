@@ -164,16 +164,25 @@ def _read_geak_results(workspace: Path, log) -> Optional[Dict[str, Any]]:
                 }
 
             bm_speedup = float(re_data.get("benchmark_speedup", 0))
+            bm_round = re_data.get("round")
+            bm_task = re_data.get("best_task")
+            for entry in round_history:
+                rnd_bm = float(entry.get("benchmark_speedup") or 0)
+                if rnd_bm > bm_speedup:
+                    bm_speedup = rnd_bm
+                    bm_round = entry.get("round")
+                    bm_task = entry.get("task")
             if bm_speedup > 0:
                 log.info(
-                    f"GEAK full_benchmark missing, using benchmark_speedup={bm_speedup:.4f}x"
+                    f"GEAK best benchmark_speedup={bm_speedup:.4f}x "
+                    f"(round {bm_round})"
                 )
                 return {
                     "speedup": bm_speedup,
-                    "source": "round_evaluation.benchmark_speedup",
+                    "source": "best_benchmark_speedup",
                     "benchmark_speedup": bm_speedup,
-                    "best_round": re_data.get("round"),
-                    "best_task": re_data.get("best_task"),
+                    "best_round": bm_round,
+                    "best_task": bm_task,
                     "round_history": round_history,
                 }
         except Exception as e:
