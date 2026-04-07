@@ -3,7 +3,7 @@ source_file_path:
 - kernel.py
 harness_path: test_kernel_harness.py
 compile_command:
-- python3 -c "import ast; ast.parse(open(\"kernel.py\").read())"
+- python3 -c "import ast; ast.parse(open('kernel.py').read())"
 correctness_command:
 - python3 test_kernel_harness.py --correctness
 performance_command:
