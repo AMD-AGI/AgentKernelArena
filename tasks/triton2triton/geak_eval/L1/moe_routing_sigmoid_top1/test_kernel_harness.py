@@ -174,6 +174,7 @@ ALL_SHAPES = [
 # HARNESS_SHAPES: use ALL shapes so task-local and verified benchmarks match
 HARNESS_SHAPES = ALL_SHAPES
 
+_n_all = len(ALL_SHAPES)
 _profile_indices = [int(i * (_n_all - 1) / 4) for i in range(5)]
 PROFILE_SHAPES = [ALL_SHAPES[i] for i in _profile_indices]
 

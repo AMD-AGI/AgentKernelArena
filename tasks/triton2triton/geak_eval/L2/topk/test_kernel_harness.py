@@ -238,6 +238,7 @@ ALL_SHAPES = [
 HARNESS_SHAPES = ALL_SHAPES
 
 # PROFILE_SHAPES: 5 evenly-spaced from ALL_SHAPES
+_n_all = len(ALL_SHAPES)
 _profile_indices = [int(round(i * (_n_all - 1) / 4)) for i in range(5)]
 PROFILE_SHAPES = [ALL_SHAPES[i] for i in _profile_indices]
 

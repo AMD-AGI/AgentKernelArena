@@ -226,6 +226,7 @@ for B in _B_VALUES:
 # HARNESS_CONFIGS: use ALL configs so task-local and verified benchmarks match
 HARNESS_CONFIGS = ALL_CONFIGS
 
+_n_all = len(ALL_CONFIGS)
 _profile_indices = [int(round(i * (_n_all - 1) / 4)) for i in range(5)]
 PROFILE_CONFIGS = [ALL_CONFIGS[i] for i in _profile_indices]
 
