@@ -1,32 +1,12 @@
 version: 0
-timeout_seconds: 36000
-
-preprocess:
-  gpu: 0
-
-orchestrate:
-  max_rounds: 3
-  model: "claude-opus-4.6"
+timeout_seconds: 3600
 
 geak_env:
-  GEAK_MAX_ROUNDS: "5"
+  GEAK_MAX_ROUNDS: "3"
   GEAK_EXCLUDED_AGENTS: openevolve
   GEAK_EARLY_STOP_THRESHOLD: "-1"
   GEAK_AGENT_STEP_LIMIT: "200"
   GEAK_TASKGEN_STEP_LIMIT: "200"
   GEAK_ORCHESTRATOR_STEP_LIMIT: "200"
   GEAK_MODEL: "claude-opus-4.6"
-  GEAK_MODEL_ENSEMBLE: "gpt-5.2,claude-opus-4.6"
   GEAK_BENCHMARK_ITERATIONS: "30"
-
-configs:
-  - name: heterogeneous_memory_off
-    heterogeneous: true
-    extra_env:
-      GEAK_MEMORY_DISABLE: "1"
-  - name: heterogeneous_memory_on
-    heterogeneous: true
-  - name: homogeneous_memory_off
-    heterogeneous: false
-    extra_env:
-      GEAK_MEMORY_DISABLE: "1"
