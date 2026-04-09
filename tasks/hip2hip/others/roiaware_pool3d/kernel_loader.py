@@ -2,7 +2,7 @@
 from torch.utils.cpp_extension import load
 
 roiaware_pool3d_ext = load(name="roiaware_pool3d",
-                           sources=["src/roiaware_pool3d_kernel.cu", "src/roiaware_pool3d.cpp"],
+                           sources=["src/roiaware_pool3d_kernel.hip", "src/roiaware_pool3d.cpp"],
                            verbose=True)
 
 
