@@ -197,22 +197,41 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
         except Exception as e:
             logger.warning(f"Diff patch {diff} failed: {e}")
 
-    # Last resort: scan ALL worktree kernels across all rounds for any
-    # modification, even when round evaluation and patch apply all failed.
+    # Last resort: scan worktree kernels, ranked by per-strategy speedup
+    # from best_results.json so we try the most promising kernel first.
     original_text = ws_kernel.read_text() if ws_kernel.exists() else ""
-    for wk in sorted(logs_dir.rglob("worktrees/slot_*/kernel.py"), reverse=True):
+    ranked_worktrees = []
+    for rdir in sorted(logs_dir.glob("results/round_*")):
+        for td in sorted(rdir.iterdir()):
+            if not td.is_dir() or td.name == "worktrees":
+                continue
+            br_file = td / "best_results.json"
+            sp = 0.0
+            if br_file.exists():
+                try:
+                    sp = float(json.loads(br_file.read_text()).get("best_patch_speedup", 0))
+                except Exception:
+                    pass
+            task_log = list(td.glob("task_*.log"))
+            if task_log:
+                slot_id = task_log[0].stem.split("_")[-1]
+                wt_dir = rdir / "worktrees" / f"slot_{slot_id}"
+                wk = wt_dir / "kernel.py"
+                if wk.exists() and wk.read_text() != original_text:
+                    ranked_worktrees.append((sp, wk, td.name))
+
+    for sp, wk, strat in sorted(ranked_worktrees, key=lambda x: -x[0]):
         try:
-            if wk.read_text() != original_text:
-                logger.info(f"Trying worktree kernel (last resort): {wk}")
-                shutil.copy2(str(wk), str(ws_kernel))
-                check = subprocess.run(
-                    ["python3", "test_kernel_harness.py", "--correctness"],
-                    cwd=workspace, capture_output=True, text=True, timeout=120,
-                )
-                if check.returncode == 0 and "FAIL" not in check.stdout:
-                    logger.info(f"Worktree kernel passes correctness (last resort)")
-                    return True, best_speedup
-                logger.warning(f"Worktree kernel failed correctness, trying next")
+            logger.info(f"Trying worktree kernel (last resort, {strat} {sp:.2f}x): {wk}")
+            shutil.copy2(str(wk), str(ws_kernel))
+            check = subprocess.run(
+                ["python3", "test_kernel_harness.py", "--correctness"],
+                cwd=workspace, capture_output=True, text=True, timeout=120,
+            )
+            if check.returncode == 0 and "FAIL" not in check.stdout:
+                logger.info(f"Worktree kernel from {strat} passes correctness ({sp:.2f}x)")
+                return True, max(best_speedup, sp)
+            logger.warning(f"Worktree kernel from {strat} failed correctness, trying next")
         except Exception as e:
             logger.warning(f"Error trying worktree kernel {wk}: {e}")
 
