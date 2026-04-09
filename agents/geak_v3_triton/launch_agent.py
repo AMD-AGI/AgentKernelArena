@@ -82,9 +82,9 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
             if data.get("status") == "patch_failed":
                 continue
             fb = data.get("full_benchmark", {})
-            speedup = float(fb.get("verified_speedup", 0)) if isinstance(fb, dict) else 0.0
-            if speedup <= 0:
-                speedup = float(data.get("benchmark_speedup", 0))
+            verified = float(fb.get("verified_speedup", 0)) if isinstance(fb, dict) else 0.0
+            benchmark = float(data.get("benchmark_speedup", 0))
+            speedup = max(verified, benchmark)
             if speedup > best_speedup:
                 best_speedup = speedup
                 best_round = data.get("round")
