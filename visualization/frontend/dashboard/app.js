@@ -141,6 +141,7 @@
       `Generated ${dataset.meta?.generatedAt || "unknown"}`,
       `Tasks ${dataset.meta?.taskCount || 0}`,
       `GPU ${gpuLabel}`,
+      `Workspace scan ${dataset.meta?.includeWorkspaceRuns ? "on" : "off"}`,
       `Scan root ${dataset.meta?.scanRoot || "unknown"}`,
     ].join(" • ");
   }

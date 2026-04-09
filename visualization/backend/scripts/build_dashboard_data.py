@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import re
@@ -57,37 +58,93 @@ def artifact_path(path: Path) -> str:
     return "artifacts/" + path.relative_to(PROJECT_ROOT).as_posix()
 
 
-def discover_report_directories() -> list[Path]:
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Build dashboard data for AgentKernelArena visualization."
+    )
+    parser.add_argument(
+        "--include-workspace-runs",
+        action="store_true",
+        help="Also scan workspace_*/run_*/reports outside visualization/reports.",
+    )
+    return parser.parse_args()
+
+
+def is_local_visualization_report_directory(report_dir: Path) -> bool:
+    try:
+        relative = report_dir.relative_to(PROJECT_ROOT)
+    except ValueError:
+        return False
+
+    return (
+        len(relative.parts) == 3
+        and relative.parts[0] == "visualization"
+        and relative.parts[1] == "reports"
+    )
+
+
+def is_workspace_run_report_directory(report_dir: Path) -> bool:
+    try:
+        relative = report_dir.relative_to(PROJECT_ROOT)
+    except ValueError:
+        return False
+
+    return (
+        len(relative.parts) == 3
+        and relative.parts[0].startswith("workspace_")
+        and relative.parts[1].startswith("run_")
+        and relative.parts[2] == "reports"
+    )
+
+
+def has_required_report_files(report_dir: Path) -> bool:
+    return all(
+        (report_dir / filename).exists()
+        for filename in ("overall_summary.csv", "task_type_breakdown.json", "overall_report.txt")
+    )
+
+
+def discover_report_directories(include_workspace_runs: bool = False) -> list[Path]:
     report_dirs: list[Path] = []
     seen: set[Path] = set()
 
-    for json_path in PROJECT_ROOT.rglob("task_type_breakdown.json"):
-        report_dir = json_path.parent.resolve()
-        if report_dir in seen:
-            continue
+    visualization_reports_root = VISUALIZATION_ROOT / "reports"
+    if visualization_reports_root.exists():
+        for report_dir in sorted(p for p in visualization_reports_root.iterdir() if p.is_dir()):
+            report_dir = report_dir.resolve()
+            if report_dir in seen or not is_local_visualization_report_directory(report_dir):
+                continue
+            if not has_required_report_files(report_dir):
+                continue
+            seen.add(report_dir)
+            report_dirs.append(report_dir)
 
-        try:
-            relative = report_dir.relative_to(PROJECT_ROOT)
-        except ValueError:
-            continue
-
-        if relative.parts and relative.parts[0] == "visualization":
-            continue
-
-        summary_csv = report_dir / "overall_summary.csv"
-        detail_report = report_dir / "overall_report.txt"
-        if not summary_csv.exists() or not detail_report.exists():
-            continue
-
-        seen.add(report_dir)
-        report_dirs.append(report_dir)
+    if include_workspace_runs:
+        for workspace_dir in sorted(
+            p for p in PROJECT_ROOT.iterdir() if p.is_dir() and p.name.startswith("workspace_")
+        ):
+            for run_dir in sorted(
+                p for p in workspace_dir.iterdir() if p.is_dir() and p.name.startswith("run_")
+            ):
+                report_dir = (run_dir / "reports").resolve()
+                if report_dir in seen or not report_dir.is_dir():
+                    continue
+                if not is_workspace_run_report_directory(report_dir):
+                    continue
+                if not has_required_report_files(report_dir):
+                    continue
+                seen.add(report_dir)
+                report_dirs.append(report_dir)
 
     return sorted(report_dirs, key=lambda path: path.relative_to(PROJECT_ROOT).as_posix())
 
 
 def report_identity(report_dir: Path) -> dict[str, str]:
     relative = report_dir.relative_to(PROJECT_ROOT)
-    base_path = relative.parent if relative.name == "reports" else relative
+    if is_local_visualization_report_directory(report_dir):
+        base_path = relative
+    else:
+        base_path = relative.parent if relative.name == "reports" else relative
     label = base_path.as_posix() if base_path.parts else relative.as_posix()
     return {
         "id": label.replace("/", "__"),
@@ -96,13 +153,15 @@ def report_identity(report_dir: Path) -> dict[str, str]:
     }
 
 
-def build_dataset() -> dict[str, Any]:
+def build_dataset(include_workspace_runs: bool = False) -> dict[str, Any]:
     warnings: list[str] = []
     reports: list[dict[str, Any]] = []
     task_catalog: dict[str, dict[str, Any]] = {}
     all_statuses: set[str] = set()
     all_gpus: set[str] = set()
-    discovered_report_dirs = discover_report_directories()
+    discovered_report_dirs = discover_report_directories(
+        include_workspace_runs=include_workspace_runs
+    )
 
     for report_dir in discovered_report_dirs:
         report_meta = report_identity(report_dir)
@@ -230,6 +289,7 @@ def build_dataset() -> dict[str, Any]:
             "statuses": sorted(all_statuses),
             "targetGpus": sorted(all_gpus),
             "scanRoot": PROJECT_ROOT.as_posix(),
+            "includeWorkspaceRuns": include_workspace_runs,
             "discoveredReportDirectories": [
                 path.relative_to(PROJECT_ROOT).as_posix() for path in discovered_report_dirs
             ],
@@ -243,8 +303,9 @@ def build_dataset() -> dict[str, Any]:
 
 
 def main() -> None:
+    args = parse_args()
     DASHBOARD_DIR.mkdir(parents=True, exist_ok=True)
-    dataset = build_dataset()
+    dataset = build_dataset(include_workspace_runs=args.include_workspace_runs)
     OUTPUT_JSON.write_text(json.dumps(dataset, indent=2))
     OUTPUT_JS.write_text(
         "window.ARENA_REPORT_DATA = " + json.dumps(dataset, indent=2) + ";\n"
@@ -252,7 +313,10 @@ def main() -> None:
 
     print(f"Wrote {OUTPUT_JSON.relative_to(VISUALIZATION_ROOT)}")
     print(f"Wrote {OUTPUT_JS.relative_to(VISUALIZATION_ROOT)}")
-    print(f"Discovered {len(dataset['reports'])} report directories under {PROJECT_ROOT}")
+    print(
+        f"Discovered {len(dataset['reports'])} report directories under {PROJECT_ROOT} "
+        f"(include_workspace_runs={args.include_workspace_runs})"
+    )
     warnings = dataset["meta"]["warnings"]
     if warnings:
         print(f"Warnings: {len(warnings)}")

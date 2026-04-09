@@ -15,6 +15,16 @@ In the standard AgentKernelArena layout, those files are usually located at:
 workspace_<gpu>_<agent>/run_<timestamp>/reports/
 ```
 
+It also supports local visualization-specific report bundles stored as:
+
+```text
+visualization/reports/<report_name>/
+```
+
+By default, the dashboard scans only `visualization/reports/<report_name>/`.
+
+Workspace-run scanning is available, but it is opt-in and must be enabled explicitly.
+
 ## Structure
 
 ```text
@@ -76,7 +86,25 @@ Whenever AgentKernelArena produces new run reports, rebuild the dashboard payloa
 python backend/scripts/build_dashboard_data.py
 ```
 
-The dashboard will automatically pick up newly discovered report directories on the next refresh.
+This default mode only scans:
+
+```text
+visualization/reports/<report_name>/
+```
+
+To also scan workspace runs, enable the explicit flag:
+
+```bash
+python backend/scripts/build_dashboard_data.py --include-workspace-runs
+```
+
+Or via the helper script:
+
+```bash
+bash setup.sh --include-workspace-runs
+```
+
+The dashboard will pick up newly discovered report directories on the next refresh.
 
 ## Notes
 
