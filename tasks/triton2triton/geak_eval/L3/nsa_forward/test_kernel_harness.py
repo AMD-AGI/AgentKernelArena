@@ -392,7 +392,7 @@ def main():
         ITERATIONS = args.iterations
 
     if args.correctness:
-        indices = _pick(BENCHMARK_CONFIGS, 25)
+        indices = list(range(len(BENCHMARK_CONFIGS)))
         run_correctness(indices)
     elif args.benchmark:
         indices = list(range(len(BENCHMARK_CONFIGS)))  # use all configs so benchmark matches full-benchmark

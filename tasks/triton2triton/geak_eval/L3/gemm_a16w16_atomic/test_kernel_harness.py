@@ -229,7 +229,7 @@ def main():
         sys.exit(1)
 
     if args.correctness:
-        indices = _pick(ALL_CONFIGS, 25)
+        indices = list(range(len(ALL_CONFIGS)))
         run_correctness(indices)
 
     if args.profile:

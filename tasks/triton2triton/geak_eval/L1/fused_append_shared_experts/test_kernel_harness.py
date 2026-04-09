@@ -274,7 +274,7 @@ def main():
         ITERATIONS = args.iterations
 
     if args.correctness:
-        indices = _pick(ALL_CONFIGS, 25)
+        indices = list(range(len(ALL_CONFIGS)))
         run_correctness(indices)
     elif args.profile:
         indices = _pick(ALL_CONFIGS, 5)

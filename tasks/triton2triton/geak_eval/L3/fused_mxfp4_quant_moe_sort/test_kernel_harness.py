@@ -349,7 +349,7 @@ def main():
     all_indices = list(range(len(ALL_CONFIGS)))
 
     if args.correctness:
-        indices = _pick(ALL_CONFIGS, 25)
+        indices = list(range(len(ALL_CONFIGS)))
         ok = run_correctness(indices)
         print(f"GEAK_SHAPES_USED={indices}")
         if not ok:

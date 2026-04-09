@@ -408,7 +408,7 @@ def main():
     all_indices = list(range(len(ALL_CONFIGS)))
 
     if args.correctness:
-        run_correctness(_pick(all_indices, 25))
+        run_correctness(all_indices)
     elif args.benchmark:
         run_benchmark(all_indices)  # use all configs so benchmark matches full-benchmark
     elif args.full_benchmark:

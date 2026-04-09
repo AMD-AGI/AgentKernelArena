@@ -285,7 +285,7 @@ def main():
         sys.exit(1)
 
     if args.correctness:
-        indices = _pick(ALL_CONFIGS, 25)
+        indices = list(range(len(ALL_CONFIGS)))
         print("Running correctness on {} configs...".format(len(indices)))
         failures = do_correctness(indices)
         print("GEAK_SHAPES_USED={}".format(indices))

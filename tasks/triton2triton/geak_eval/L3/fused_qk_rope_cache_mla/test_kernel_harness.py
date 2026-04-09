@@ -382,7 +382,7 @@ def main():
         sys.exit(1)
 
     if args.correctness:
-        indices, configs = _pick(ALL_CONFIGS, 25)
+        indices, configs = list(range(len(ALL_CONFIGS))), ALL_CONFIGS
         print(f"Running correctness on {len(configs)} configs...")
         for i, (idx, cfg) in enumerate(zip(indices, configs)):
             label = _config_label(cfg)

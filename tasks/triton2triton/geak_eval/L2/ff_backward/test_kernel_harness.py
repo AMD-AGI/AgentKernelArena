@@ -117,7 +117,7 @@ def main():
     args = parser.parse_args()
 
     if args.correctness:
-        indices = _pick(ALL_CONFIGS, 25)
+        indices = list(range(len(ALL_CONFIGS)))
         sys.exit(run_correctness(ALL_CONFIGS, indices))
     elif args.benchmark:
         indices = _pick(HARNESS_CONFIGS, 25)
