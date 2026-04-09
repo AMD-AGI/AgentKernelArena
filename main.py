@@ -224,8 +224,11 @@ def main() -> None:
 
             logger.info(f"Agent execution completed")
             
+            # Pin GPU for post-agent evaluation (same GPU as baseline)
+            os.environ["HIP_VISIBLE_DEVICES"] = baseline_gpu
+
             # Centralized evaluation of optimized kernel
-            logger.info("Running centralized evaluation...")
+            logger.info(f"Running centralized evaluation (GPU {baseline_gpu})...")
             evaluation_results = evaluate_kernel(
                 workspace_path,
                 task_config,
@@ -233,6 +236,12 @@ def main() -> None:
                 logger,
                 docker_container,
             )
+
+            # Restore HIP_VISIBLE_DEVICES
+            if prev_hip is not None:
+                os.environ["HIP_VISIBLE_DEVICES"] = prev_hip
+            else:
+                os.environ.pop("HIP_VISIBLE_DEVICES", None)
             
             # Write standardized task_result.yaml
             write_task_result(
