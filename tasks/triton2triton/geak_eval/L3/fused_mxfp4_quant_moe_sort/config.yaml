@@ -1,4 +1,4 @@
-task_type: triton_geak
+task_type: triton2triton
 source_file_path:
 - kernel.py
 harness_path: test_kernel_harness.py

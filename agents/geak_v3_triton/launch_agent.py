@@ -197,6 +197,28 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
         except Exception as e:
             logger.warning(f"Diff patch {diff} failed: {e}")
 
+    # Last resort: scan ALL worktree kernels across all rounds for any
+    # modification, even when round evaluation and patch apply all failed.
+    original_text = ws_kernel.read_text() if ws_kernel.exists() else ""
+    for wk in sorted(logs_dir.rglob("worktrees/slot_*/kernel.py"), reverse=True):
+        try:
+            if wk.read_text() != original_text:
+                logger.info(f"Trying worktree kernel (last resort): {wk}")
+                shutil.copy2(str(wk), str(ws_kernel))
+                check = subprocess.run(
+                    ["python3", "test_kernel_harness.py", "--correctness"],
+                    cwd=workspace, capture_output=True, text=True, timeout=120,
+                )
+                if check.returncode == 0 and "FAIL" not in check.stdout:
+                    logger.info(f"Worktree kernel passes correctness (last resort)")
+                    return True, best_speedup
+                logger.warning(f"Worktree kernel failed correctness, trying next")
+        except Exception as e:
+            logger.warning(f"Error trying worktree kernel {wk}: {e}")
+
+    if original_text and ws_kernel.exists() and ws_kernel.read_text() != original_text:
+        ws_kernel.write_text(original_text)
+
     logger.warning("No applicable patch found")
     return False, best_speedup
 
@@ -253,13 +275,34 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         task_config = yaml.safe_load(f) or {}
 
     workspace_path = Path(workspace).resolve()
-    kernel_path = workspace_path / (task_config.get("source_file_path", ["kernel.py"])[0])
-    harness_path = workspace_path / task_config.get("harness_path", "test_kernel_harness.py")
+    source_files = task_config.get("source_file_path", ["kernel.py"])
+    if isinstance(source_files, list):
+        kernel_file = source_files[0]
+    else:
+        kernel_file = source_files
+    kernel_path = workspace_path / kernel_file
 
     if not kernel_path.is_file():
         raise FileNotFoundError(f"Kernel not found: {kernel_path}")
-    if not harness_path.is_file():
-        raise FileNotFoundError(f"Harness not found: {harness_path}")
+
+    # Build test command: prefer harness_path, fall back to command chain
+    harness_file = task_config.get("harness_path")
+    if harness_file and (workspace_path / harness_file).is_file():
+        test_cmd = f"python3 {workspace_path / harness_file}"
+    else:
+        cmds = []
+        seen = set()
+        for cmd_list in [task_config.get("compile_command", []),
+                         task_config.get("correctness_command", []),
+                         task_config.get("performance_command", [])]:
+            if isinstance(cmd_list, str):
+                cmd_list = [cmd_list]
+            for c in (cmd_list or []):
+                c = c.strip()
+                if c and c not in seen:
+                    seen.add(c)
+                    cmds.append(c)
+        test_cmd = " && ".join(cmds) if cmds else None
 
     logs_dir = workspace_path.parent / f"{workspace_path.name}_logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
@@ -280,7 +323,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logger.info("  GEAK-v3 Triton Agent (unified geak CLI)")
     logger.info("=" * 60)
     logger.info(f"  kernel:       {kernel_path}")
-    logger.info(f"  harness:      {harness_path}")
+    logger.info(f"  test_cmd:     {test_cmd}")
     logger.info(f"  workspace:    {workspace_path}")
     logger.info(f"  logs_dir:     {logs_dir}")
     logger.info(f"  gpu_ids:      {gpu_ids}")
@@ -306,8 +349,8 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     cmd = (
         f"{AGENT}"
         f" --kernel-url {shlex.quote(str(kernel_path))}"
-        f" --test-command {shlex.quote(f'python3 {harness_path}')}"
-        f" --gpu-ids {gpu_ids}"
+        + (f" --test-command {shlex.quote(test_cmd)}" if test_cmd else "")
+        + f" --gpu-ids {gpu_ids}"
         f" --num-parallel {num_parallel}"
         f" --yolo"
         f" --exit-immediately"

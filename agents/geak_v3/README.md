@@ -1,86 +1,88 @@
 ## `GEAK-V3`
 
-This agent template integrates **GEAK v3** into AgentKernelArena for optimizing both **HIP** and **Triton** kernels on AMD MI300X GPUs.
+This agent template integrates **GEAK v3** into AgentKernelArena so you can run AgentKernelArena tasks using GEAK-v3 as the optimizing agent.
 
-Both agents (`geak_v3` for HIP and `geak_v3_triton` for Triton) use the same unified `geak` CLI with the `--eval` flag:
-- **Triton**: `geak --kernel-url kernel.py --eval test_kernel_harness.py` (harness file path)
-- **HIP**: `geak --kernel-url kernel.hip --eval “compile && correctness && perf”` (shell commands)
+### 1) Install GEAK
 
-The `--eval` flag auto-detects whether the input is a file path (→ harness mode) or a shell command (→ command mode).
-
-### 1) Prerequisites
-
-- **GEAK installed** (`geak` CLI in PATH):
-  ```bash
-  cd /path/to/GEAK && pip install -e .
-  ```
-- **AMD LLM API key**:
-  ```bash
-  export AMD_LLM_API_KEY=”your-key-here”
-  ```
-
-### 2) Running HIP kernels (16 kernels)
+GEAK provides the `geak` CLIs. Install it in your Python environment:
 
 ```bash
-cd AgentKernelArena/
-
-# Inside GEAK Docker container:
-docker exec -d \
-  -e GEAK_SRC=/path/to/GEAK/src \
-  -e AMD_LLM_API_KEY=$AMD_LLM_API_KEY \
-  -e GEAK_GPU_IDS=4,5 \
-  -w /path/to/AgentKernelArena \
-  geak-agent-sapmajum \
-  python3 main.py --config_name config_geak_hip.yaml
-
-# Or directly (if GEAK installed locally):
-python3 main.py --config_name config_geak_hip.yaml
+cd /path/to/GEAK
+pip install -e .
 ```
 
-### 3) Running Triton kernels (8 kernels)
+### 2) Configure AMD LLM environment variables
 
 ```bash
-cd AgentKernelArena/
-
-# Inside GEAK Docker container:
-docker exec -d \
-  -e GEAK_SRC=/path/to/GEAK/src \
-  -e AMD_LLM_API_KEY=$AMD_LLM_API_KEY \
-  -e GEAK_GPU_IDS=0,1,2,3 \
-  -w /path/to/AgentKernelArena \
-  geak-agent-sapmajum \
-  python3 main.py --config_name config_geak_triton.yaml
+export AMD_LLM_API_KEY="your-key-here"
 ```
 
-### 4) Monitoring
+### 3) Configure the GEAK runner in geak_v3
+
+Edit `agents/geak_v3/agent_config.yaml`.
+
+Key fields:
+- **`run.cmd`**: which executable to run `geak`
+- **`run.configs`**: CLI options passed to that executable
+
+Example:
+
+```yaml
+run:
+  cmd: geak
+  configs: "-c geak.yaml --yolo --num-parallel=2 --gpu-ids=0,1"
+```
+
+Notes:
+- `-c geak.yaml` points to `agents/geak_v3/geak.yaml` (the launcher automatically resolves it to an absolute path).
+- `--num-parallel` / `--gpu-ids` controls **parallel sub-agents inside a single task** (multi-GPU). This does *not* change how AgentKernelArena schedules tasks (see the “Tasks run serially” note below).
+- If you want to use a different `agent_config.yaml` without editing the repo, set:
 
 ```bash
-# Check progress
-grep -E “Task [0-9]+|Score:|Speedup:|Average speedup” logs/MI300_geak_v3*.log
-
-# GPU usage
-rocm-smi --showpidgpus
-
-# Container processes
-docker exec geak-agent-sapmajum ps aux | grep -E 'main\.py|orchestrat|geak'
+export GEAK_AGENT_CONFIG="/abs/path/to/agent_config.yaml"
 ```
 
-### 5) Where to find results
+### 4) Configure tasks in AgentKernelArena
 
-- **Run log**: `logs/MI300_geak_v3*.log`
-- **Per-task results**: `workspace_*/<task>_<timestamp>/task_result.yaml`
-- **Orchestrator reports** (Triton): `*_logs/preprocess/final_report.json`
-- **Summary CSV**: `workspace_*/run_*/reports/overall_summary.csv`
+Edit `AgentKernelArena/config.yaml`:
 
-### 6) Config files
+1) Select this agent template:
 
-| Config | Agent | Tasks |
-|--------|-------|-------|
-| `config_geak_hip.yaml` | `geak_v3` | 16 HIP kernels (12 L1/L2 + 4 L3 rocPRIM) |
-| `config_geak_triton.yaml` | `geak_v3_triton` | 8 Triton kernels (L1/L2/L3) |
+```yaml
+agent:
+  template: geak_v3
+```
 
-### Important notes
+2) Select tasks to run (task names are relative to `tasks/`):
 
-- Tasks run **sequentially** within each `main.py`. Use `GEAK_GPU_IDS` for parallelism within each task.
-- Ensure HIP and Triton runs use **non-overlapping GPUs** (e.g., HIP on 4,5 and Triton on 0-3).
-- If the container exits with code 137 (OOM), restart with `docker start geak-agent-sapmajum`.
+Here are tasks of hip kernels: 
+```yaml
+tasks:
+  - hip2hip/others/
+  - repository/rocprim/block_radix_rank
+  - repository/rocprim/device_binary_search
+  - repository/rocprim/device_search_n
+  - repository/rocprim/device_merge_sort
+```
+
+### 5) Run
+
+From the `AgentKernelArena/` directory:
+
+```bash
+python3 main.py
+```
+
+### 6) Where to find results
+
+Quick checklist:
+
+- **AgentKernelArena Run log**: `logs/*.log` (path controlled by `log_directory` in `AgentKernelArena/config.yaml`)
+- **Workspace root**: `workspace_<GPU>_geak_v3/` (you can rename it by changing `workspace_directory_prefix` in `AgentKernelArena/config.yaml`)
+- **Per-task results**: `workspace_.../<task>_<timestamp>/task_result.yaml` (also `baseline_perf.yaml`, `optimized_perf.yaml`, `build/performance_report.json`)
+- **GEAK logs**: `workspace_.../<task>_<timestamp>_logs/` (see `best_results.json`, `parallel_*/`)
+- **Aggregate summary**: `workspace_.../task_results_summary.csv` (and sometimes `task_results_report.txt`)
+
+### Important: tasks run serially
+
+In AgentKernelArena, the `tasks:` list is executed **sequentially (one task at a time)**. If you want overall throughput, add more GPUs to **GEAK parallelism inside each task** via `--num-parallel` and `--gpu-ids`.
