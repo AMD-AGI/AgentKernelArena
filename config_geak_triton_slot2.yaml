@@ -7,7 +7,6 @@ tasks:
   - triton2triton/geak_eval/L1/refk_fp8_blockwise_mm
   # L2
   - triton2triton/geak_eval/L2/lean_atten_paged
-  - triton2triton/geak_eval/L2/rope
   # L3
   - triton2triton/geak_eval/L3/fused_qkv_rope
   - triton2triton/geak_eval/L3/gemm_a16wfp4

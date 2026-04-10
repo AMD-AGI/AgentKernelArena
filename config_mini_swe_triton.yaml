@@ -9,7 +9,6 @@ tasks:
   - triton2triton/geak_eval/L3/fused_qk_rope_cache_mla
   - triton2triton/geak_eval/L3/fused_mxfp4_quant_moe_sort
   - triton2triton/geak_eval/L3/fused_moe_mxfp4
-  - triton2triton/geak_eval/L2/rope
 
 target_gpu_model: MI300
 log_directory: logs
