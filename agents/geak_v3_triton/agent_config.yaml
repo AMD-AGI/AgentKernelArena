@@ -1,5 +1,5 @@
 version: 0
-timeout_seconds: 3600
+timeout_seconds: 10800
 
 geak_env:
   GEAK_MAX_ROUNDS: "3"

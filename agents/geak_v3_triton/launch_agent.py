@@ -62,16 +62,17 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
 
     Returns (applied, best_verified_speedup).
 
-    Strategy (in order):
-    1. Read round_N_evaluation.json for highest verified speedup,
-       then locate the kernel in the evaluation worktree.
-    2. Apply patch from the best verified round's evaluation.json.
-    3. Apply patch from final_report.json.
+    Strategy (patch file first, worktree kernels as fallback):
+    1. Apply .patch file from best verified round's evaluation.json.
+    2. Apply .patch file from final_report.json.
+    3. Copy kernel from worktree slots (with change verification).
     4. Per-round best_results.json patches.
     5. best_patch_r*.diff files.
+    6. Last resort: scan all worktree kernels ranked by speedup.
     """
     kernel_name = "kernel.py"
     ws_kernel = Path(workspace) / kernel_name
+    original_text = ws_kernel.read_text() if ws_kernel.exists() else ""
 
     best_speedup = 0.0
     best_round = None
@@ -84,7 +85,7 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
             fb = data.get("full_benchmark", {})
             verified = float(fb.get("verified_speedup", 0)) if isinstance(fb, dict) else 0.0
             benchmark = float(data.get("benchmark_speedup", 0))
-            speedup = max(verified, benchmark)
+            speedup = verified if verified > 0 else benchmark
             if speedup > best_speedup:
                 best_speedup = speedup
                 best_round = data.get("round")
@@ -93,22 +94,53 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
             logger.warning(f"Error reading {eval_file}: {e}")
 
     if best_round and best_task:
-        task_dir = logs_dir / "results" / f"round_{best_round}" / best_task
-        best_results_file = task_dir / "best_results.json"
-        if best_results_file.exists():
-            try:
-                br_data = json.loads(best_results_file.read_text())
-                patch_id = br_data.get("best_patch_id", "")
-                logger.info(
-                    f"Best round {best_round}, task {best_task}, "
-                    f"patch {patch_id} (speedup: {best_speedup:.2f}x)"
-                )
-            except Exception:
-                pass
+        logger.info(
+            f"Best round {best_round}, task {best_task} "
+            f"(speedup: {best_speedup:.2f}x)"
+        )
 
+    # --- Strategy 1: Apply the .patch file from the best round's evaluation ---
+    if best_round:
+        best_eval = logs_dir / f"round_{best_round}_evaluation.json"
+        if best_eval.exists():
+            try:
+                eval_data = json.loads(best_eval.read_text())
+                patch_file = eval_data.get("best_patch")
+                if patch_file and Path(patch_file).exists():
+                    logger.info(f"Applying verified patch from round {best_round}: {patch_file}")
+                    if _try_patch_with_strip(patch_file, workspace, logger):
+                        new_text = ws_kernel.read_text() if ws_kernel.exists() else ""
+                        if new_text != original_text:
+                            logger.info(f"Verified patch applied ({best_speedup:.2f}x)")
+                            return True, best_speedup
+                        logger.warning("Patch command succeeded but kernel unchanged")
+            except Exception as e:
+                logger.warning(f"Error applying patch from round {best_round}: {e}")
+
+    # --- Strategy 2: Apply .patch from final_report.json ---
+    final_report = logs_dir / "final_report.json"
+    if final_report.exists():
+        try:
+            data = json.loads(final_report.read_text())
+            patch_file = data.get("best_patch")
+            if patch_file and Path(patch_file).exists():
+                ws_kernel.write_text(original_text)
+                logger.info(f"Applying patch from final_report.json: {patch_file}")
+                if _try_patch_with_strip(patch_file, workspace, logger):
+                    new_text = ws_kernel.read_text() if ws_kernel.exists() else ""
+                    if new_text != original_text:
+                        logger.info(f"Patch applied ({data.get('best_speedup_verified', 'N/A')}x)")
+                        return True, best_speedup
+                    logger.warning("final_report patch succeeded but kernel unchanged")
+                else:
+                    logger.warning("final_report patch failed at all strip levels")
+        except Exception as e:
+            logger.warning(f"Error reading final_report.json: {e}")
+
+    # --- Strategy 3: Copy kernel from worktree slots (with change verification) ---
+    if best_round:
         round_dir = logs_dir / "results" / f"round_{best_round}"
         candidates = []
-        original_text = ws_kernel.read_text() if ws_kernel.exists() else ""
         for slot_dir in sorted(round_dir.glob("worktrees/slot_*")):
             if not slot_dir.is_dir() or "_logs" in slot_dir.name:
                 continue
@@ -125,6 +157,9 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
                     break
             logger.info(f"Trying optimized kernel from {slot_name or candidate.parent.name}")
             shutil.copy2(str(candidate), str(ws_kernel))
+            if ws_kernel.read_text() == original_text:
+                logger.warning(f"{slot_name}: copy produced identical kernel, skipping")
+                continue
             check = subprocess.run(
                 ["python3", "test_kernel_harness.py", "--correctness"],
                 cwd=workspace, capture_output=True, text=True, timeout=120,
@@ -142,34 +177,7 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
             logger.warning("No worktree kernel passed correctness; restoring original")
             ws_kernel.write_text(original_text)
 
-    if best_round:
-        best_eval = logs_dir / f"round_{best_round}_evaluation.json"
-        if best_eval.exists():
-            try:
-                eval_data = json.loads(best_eval.read_text())
-                patch_file = eval_data.get("best_patch")
-                if patch_file and Path(patch_file).exists():
-                    logger.info(f"Applying patch from best round {best_round}: {patch_file}")
-                    if _try_patch_with_strip(patch_file, workspace, logger):
-                        logger.info(f"Patch from round {best_round} applied ({best_speedup:.2f}x)")
-                        return True, best_speedup
-            except Exception as e:
-                logger.warning(f"Error applying patch from round {best_round}: {e}")
-
-    final_report = logs_dir / "final_report.json"
-    if final_report.exists():
-        try:
-            data = json.loads(final_report.read_text())
-            patch_file = data.get("best_patch")
-            if patch_file and Path(patch_file).exists():
-                logger.info(f"Applying patch from final_report.json: {patch_file}")
-                if _try_patch_with_strip(patch_file, workspace, logger):
-                    logger.info(f"Patch applied ({data.get('best_speedup_verified', 'N/A')}x)")
-                    return True, best_speedup
-                logger.warning("final_report patch failed at all strip levels")
-        except Exception as e:
-            logger.warning(f"Error reading final_report.json: {e}")
-
+    # --- Strategy 4: Per-round best_results.json patches ---
     for rdir in sorted(logs_dir.glob("results/round_*"), reverse=True):
         for td in sorted(rdir.iterdir()):
             if not td.is_dir() or td.name == "worktrees":
@@ -197,9 +205,7 @@ def _apply_best_patch(workspace: str, logs_dir: Path, logger: logging.Logger) ->
         except Exception as e:
             logger.warning(f"Diff patch {diff} failed: {e}")
 
-    # Last resort: scan worktree kernels, ranked by per-strategy speedup
-    # from best_results.json so we try the most promising kernel first.
-    original_text = ws_kernel.read_text() if ws_kernel.exists() else ""
+    # --- Strategy 6: Last resort worktree scan ranked by speedup ---
     ranked_worktrees = []
     for rdir in sorted(logs_dir.glob("results/round_*")):
         for td in sorted(rdir.iterdir()):
