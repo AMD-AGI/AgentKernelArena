@@ -23,14 +23,15 @@ def get_inputs():
     """
     Generate multiple test cases with varying sizes
     GateGRUSelectionLayer expects 4D tensors [B0, B1, B2, D]
+    All test cases must use D=4 to match dim_model=4 in get_init_inputs()
     """
     configs = [
-        # 4D tensors: (B0, B1, B2, D)
-        ([4, 4, 4, 4],),
-        ([8, 8, 8, 8],),
-        ([16, 16, 16, 16],),
-        ([32, 32, 32, 32],),
-        ([64, 64, 64, 64],),
+        # 4D tensors: (B0, B1, B2, D) where D must be 4
+        ([4, 4, 4, 4],),  # (4, 4, 4, 4)
+        ([8, 4, 4, 4],),  # (8, 4, 4, 4) - keep D=4
+        ([16, 4, 4, 4],),  # (16, 4, 4, 4) - keep D=4
+        ([32, 4, 4, 4],),  # (32, 4, 4, 4) - keep D=4
+        ([64, 4, 4, 4],),  # (64, 4, 4, 4) - keep D=4
     ]
     
     for shape in configs:
