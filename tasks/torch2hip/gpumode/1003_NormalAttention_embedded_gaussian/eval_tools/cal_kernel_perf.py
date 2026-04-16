@@ -4,7 +4,6 @@ import json
 import argparse
 import copy
 import re
-import itertools
 import torch
 import shutil
 import sys
@@ -308,10 +307,7 @@ def cal_kernel_perf(
         return failed_ret
 
     input_func_from_modu2 = load_function_from_path(py_modu_path, 'get_inputs')
-    inputs_modu_gen2 = _normalize_get_inputs_result(input_func_from_modu2())
-
-    input_func_from_func = load_function_from_path(py_func_path, 'get_inputs')
-    inputs_func_gen = _normalize_get_inputs_result(input_func_from_func())
+    inputs_gen2 = _normalize_get_inputs_result(input_func_from_modu2())
 
     kernel_func = load_func_obj(py_func_path, kernel_name, 'get_init_inputs').to('cuda')
     align_ok, align_info = _align_state_dict(kernel_modu, kernel_func)
@@ -326,27 +322,16 @@ def cal_kernel_perf(
 
     kernel_func.eval()
 
-    sentinel = object()
     hip_times = []
     all_correct = True
 
-    for case_idx, (inputs_modu, inputs_func) in enumerate(
-        itertools.zip_longest(inputs_modu_gen2, inputs_func_gen, fillvalue=sentinel)
-    ):
-        if inputs_modu is sentinel or inputs_func is sentinel:
-            report["message"] = f"Mismatched test case count at case {case_idx}"
-            _write_perf_report(report)
-            if auto_cleanup:
-                clear_workdir(hip_dir)
-            return failed_ret
+    for case_idx, inputs in enumerate(inputs_gen2):
+        if not isinstance(inputs, (list, tuple)):
+            inputs = [inputs]
+        inputs = list(inputs)
 
-        if not isinstance(inputs_modu, (list, tuple)):
-            inputs_modu = [inputs_modu]
-        if not isinstance(inputs_func, (list, tuple)):
-            inputs_func = [inputs_func]
-
-        inputs_modu = list(inputs_modu)
-        inputs_func = list(inputs_func)
+        inputs_modu = inputs
+        inputs_func = copy.deepcopy(inputs)
 
         inputs_modu_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
         inputs_func_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_func]
