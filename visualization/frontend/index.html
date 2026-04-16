@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arena Report Dashboard</title>
+    <link rel="stylesheet" href="./dashboard/styles.css" />
+  </head>
+  <body>
+    <div class="page-glow page-glow-left"></div>
+    <div class="page-glow page-glow-right"></div>
+
+    <main class="page">
+      <header class="hero reveal">
+        <div class="eyebrow">Arena Visual Dashboard</div>
+        <div class="hero-topline">
+          <h1>Benchmark reports, compared the way you actually read them.</h1>
+          <div id="meta-pill" class="meta-pill">Waiting for data</div>
+        </div>
+        <p class="hero-copy">
+          Aggregates run reports discovered across AgentKernelArena, typically under
+          `workspace_*/run_*/reports`. Focus on total score, speedup distribution,
+          task-type performance, and per-task status deltas.
+        </p>
+        <div id="source-note" class="source-note"></div>
+      </header>
+
+      <section id="error-banner" class="error-banner hidden reveal"></section>
+
+      <section class="panel reveal">
+        <div class="panel-header">
+          <div>
+            <div class="section-kicker">Overview</div>
+            <h2>Snapshot</h2>
+          </div>
+          <p class="section-copy">
+            Snapshot cards highlight the strongest total score, the steadiest
+            metrics, and the current dataset coverage.
+          </p>
+        </div>
+        <div id="summary-cards" class="summary-grid"></div>
+      </section>
+
+      <section class="panel reveal">
+        <div class="panel-header">
+          <div>
+            <div class="section-kicker">Controls</div>
+            <h2>Filters</h2>
+          </div>
+          <p class="section-copy">
+            `Report` filters apply to every view. `Task type / status / search`
+            mainly shape the task explorer below.
+          </p>
+        </div>
+        <div class="filters-layout">
+          <div class="filter-block">
+            <label for="task-search">Task search</label>
+            <input id="task-search" type="search" placeholder="Search task name" />
+          </div>
+          <div class="filter-block">
+            <label for="heatmap-metric">Heatmap metric</label>
+            <select id="heatmap-metric">
+              <option value="average_speedup">Average speedup</option>
+              <option value="median_speedup">Median speedup</option>
+              <option value="average_score">Average score</option>
+              <option value="correctness_pass_rate">Correctness pass rate</option>
+              <option value="compilation_pass_rate">Compilation pass rate</option>
+              <option value="speedup_gt_1_rate">Speedup > 1 rate</option>
+            </select>
+          </div>
+          <div class="filter-block">
+            <label for="task-sort">Task sort</label>
+            <select id="task-sort">
+              <option value="max_speedup_desc">Best speedup</option>
+              <option value="avg_score_desc">Average score</option>
+              <option value="task_name_asc">Task name</option>
+              <option value="task_type_asc">Task type</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <div class="filter-title-row">
+            <span>Reports</span>
+            <button type="button" class="link-button" data-filter-action="toggle-reports">
+              Clear / Reset
+            </button>
+          </div>
+          <div id="report-chips" class="chip-row"></div>
+        </div>
+
+        <div class="filter-group">
+          <div class="filter-title-row">
+            <span>Task types</span>
+            <button type="button" class="link-button" data-filter-action="toggle-task-types">
+              Clear / Reset
+            </button>
+          </div>
+          <div id="task-type-chips" class="chip-row"></div>
+        </div>
+
+        <div class="filter-group">
+          <div class="filter-title-row">
+            <span>Status</span>
+            <button type="button" class="link-button" data-filter-action="toggle-statuses">
+              Clear / Reset
+            </button>
+          </div>
+          <div id="status-chips" class="chip-row"></div>
+        </div>
+      </section>
+
+      <section class="panel reveal">
+        <div class="panel-header">
+          <div>
+            <div class="section-kicker">Leaderboard</div>
+            <h2>Report Ranking</h2>
+          </div>
+          <p class="section-copy">
+            This table keeps the full report-level metrics visible so you can
+            quickly judge who is strongest, who is stable, and who fails more often.
+          </p>
+        </div>
+        <div class="table-wrap">
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th>Report</th>
+                <th>Total score</th>
+                <th>Avg speedup</th>
+                <th>Median</th>
+                <th>Compile</th>
+                <th>Correct</th>
+                <th>&gt; 1.0</th>
+                <th>Sources</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel reveal">
+        <div class="panel-header">
+          <div>
+            <div class="section-kicker">Heatmap</div>
+            <h2>Task Type Comparison</h2>
+          </div>
+          <p id="heatmap-caption" class="section-copy"></p>
+        </div>
+        <div class="heatmap-wrap">
+          <table class="heatmap-table">
+            <thead id="heatmap-head"></thead>
+            <tbody id="heatmap-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel reveal">
+        <div class="panel-header">
+          <div>
+            <div class="section-kicker">Standouts</div>
+            <h2>Task Spotlight</h2>
+          </div>
+          <p class="section-copy">
+            Based on the current filters, this highlights the most interesting
+            tasks and the reports currently leading them.
+          </p>
+        </div>
+        <div id="spotlight-grid" class="spotlight-grid"></div>
+      </section>
+
+      <section class="panel panel-wide reveal">
+        <div class="panel-header">
+          <div>
+            <div class="section-kicker">Explorer</div>
+            <h2>Task Matrix</h2>
+          </div>
+          <p id="task-table-caption" class="section-copy"></p>
+        </div>
+        <div class="table-wrap">
+          <table class="task-table">
+            <thead id="task-table-head"></thead>
+            <tbody id="task-table-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="./dashboard/data.js"></script>
+    <script src="./dashboard/app.js"></script>
+  </body>
+</html>

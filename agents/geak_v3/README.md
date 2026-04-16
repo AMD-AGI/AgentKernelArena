@@ -80,7 +80,7 @@ Quick checklist:
 - **AgentKernelArena Run log**: `logs/*.log` (path controlled by `log_directory` in `AgentKernelArena/config.yaml`)
 - **Workspace root**: `workspace_<GPU>_geak_v3/` (you can rename it by changing `workspace_directory_prefix` in `AgentKernelArena/config.yaml`)
 - **Per-task results**: `workspace_.../<task>_<timestamp>/task_result.yaml` (also `baseline_perf.yaml`, `optimized_perf.yaml`, `build/performance_report.json`)
-- **GEAK logs**: `workspace_.../<task>_<timestamp>_logs/` (see `best_results.json`, `parallel_*/`)
+- **GEAK logs**: `workspace_.../<task>_<timestamp>_logs/` (see `final_report.json` or legacy `best_results.json`, `parallel_*/`)
 - **Aggregate summary**: `workspace_.../task_results_summary.csv` (and sometimes `task_results_report.txt`)
 
 ### Important: tasks run serially
