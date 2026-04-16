@@ -376,31 +376,39 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 def _apply_best_patch_to_workspace(workspace: str, logs_dir: Path, logger: logging.Logger) -> bool:
     """
     Apply the best patch from logs_dir to the original workspace.
-    
+
     This ensures the centralized evaluator (in main.py) evaluates the optimized code,
     not the original baseline code.
-    
+
     Args:
         workspace: Original workspace directory
-        logs_dir: Logs directory containing best_results.json and patch files
+        logs_dir: Logs directory containing final_report.json and patch files
         logger: Logger instance
-        
+
     Returns:
         True if patch was applied successfully, False otherwise
     """
     import json
-    
-    # Find best_results.json
+
+    # Try final_report.json first (new GEAK format), fall back to best_results.json (legacy)
+    final_report_file = logs_dir / "final_report.json"
     best_results_file = logs_dir / "best_results.json"
-    if not best_results_file.exists():
-        logger.warning("No best_results.json found, skipping patch application")
+
+    if final_report_file.exists():
+        report_path = final_report_file
+        patch_key = "best_patch"
+    elif best_results_file.exists():
+        report_path = best_results_file
+        patch_key = "best_patch_file"
+    else:
+        logger.warning("No final_report.json or best_results.json found, skipping patch application")
         return False
-    
+
     try:
-        with open(best_results_file, 'r') as f:
-            best_results = json.load(f)
-        
-        patch_file = best_results.get('best_patch_file')
+        with open(report_path, 'r') as f:
+            report = json.load(f)
+
+        patch_file = report.get(patch_key)
         if not patch_file or not Path(patch_file).exists():
             logger.warning(f"Best patch file not found: {patch_file}")
             return False
