@@ -197,6 +197,19 @@ def _normalize_get_inputs_result(inputs_result: Any) -> Any:
     return _gen()
 
 
+def _materialize_input_cases(inputs_result: Any) -> List[List[Any]]:
+    """
+    Materialize get_inputs() so baseline PyTorch timing and HIP timing reuse
+    the exact same logical test cases even when get_inputs() is stochastic.
+    """
+    input_cases: List[List[Any]] = []
+    for inputs in _normalize_get_inputs_result(inputs_result):
+        if not isinstance(inputs, (list, tuple)):
+            inputs = [inputs]
+        input_cases.append(copy.deepcopy(list(inputs)))
+    return input_cases
+
+
 def cal_kernel_perf(
     py_modu_path: str,
     py_func_path: str,
@@ -227,19 +240,18 @@ def cal_kernel_perf(
     }
 
     input_func_from_modu = load_function_from_path(py_modu_path, 'get_inputs')
-    inputs_modu_gen = _normalize_get_inputs_result(input_func_from_modu())
 
     torch.manual_seed(0)
     torch.cuda.manual_seed_all(0)
     kernel_modu = load_modu_obj(py_modu_path, kernel_name, 'get_init_inputs').to('cuda')
     kernel_modu.eval()
 
+    input_cases = _materialize_input_cases(input_func_from_modu())
+
     if baseline_only:
         print(f"[INFO] Baseline-only mode: measuring PyTorch module latency, skipping HIP kernel.")
-        for case_idx, inputs_modu in enumerate(inputs_modu_gen):
-            if not isinstance(inputs_modu, (list, tuple)):
-                inputs_modu = [inputs_modu]
-            inputs_modu = list(inputs_modu)
+        for case_idx, case in enumerate(input_cases):
+            inputs_modu = copy.deepcopy(case)
 
             params: Dict[str, Any] = {}
             for i, inp in enumerate(inputs_modu):
@@ -280,10 +292,8 @@ def cal_kernel_perf(
     hip_fn = load_hip_kernel(kernel_name, hip_dir, hip_file_name)
 
     torch_times = []
-    for case_idx, inputs_modu in enumerate(inputs_modu_gen):
-        if not isinstance(inputs_modu, (list, tuple)):
-            inputs_modu = [inputs_modu]
-        inputs_modu = list(inputs_modu)
+    for case_idx, case in enumerate(input_cases):
+        inputs_modu = copy.deepcopy(case)
         inputs_modu_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
         try:
             torch_time = cal_modu_latency(kernel_modu, inputs_modu_cuda)
@@ -306,9 +316,6 @@ def cal_kernel_perf(
             clear_workdir(hip_dir)
         return failed_ret
 
-    input_func_from_modu2 = load_function_from_path(py_modu_path, 'get_inputs')
-    inputs_gen2 = _normalize_get_inputs_result(input_func_from_modu2())
-
     kernel_func = load_func_obj(py_func_path, kernel_name, 'get_init_inputs').to('cuda')
     align_ok, align_info = _align_state_dict(kernel_modu, kernel_func)
     report["alignment"] = align_info
@@ -325,13 +332,9 @@ def cal_kernel_perf(
     hip_times = []
     all_correct = True
 
-    for case_idx, inputs in enumerate(inputs_gen2):
-        if not isinstance(inputs, (list, tuple)):
-            inputs = [inputs]
-        inputs = list(inputs)
-
-        inputs_modu = inputs
-        inputs_func = copy.deepcopy(inputs)
+    for case_idx, case in enumerate(input_cases):
+        inputs_modu = copy.deepcopy(case)
+        inputs_func = copy.deepcopy(case)
 
         inputs_modu_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
         inputs_func_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_func]
