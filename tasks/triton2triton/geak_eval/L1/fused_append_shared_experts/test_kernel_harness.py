@@ -67,7 +67,7 @@ def _setup_sgl_kernel_mock():
     for name in [
         "gelu_and_mul", "silu_and_mul", "moe_align_block_size",
         "moe_sum_reduce", "per_token_group_quant_fp8",
-        "transfer_kv_all_layer",
+        "scaled_fp4_quant", "transfer_kv_all_layer",
     ]:
         setattr(mock_sgl, name, _noop)
     for submod_name in ["kvcacheio", "moe", "quantization", "elementwise"]:
