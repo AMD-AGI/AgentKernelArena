@@ -86,7 +86,7 @@ class CrossEntropyLossLabelSmoothing(nn.CrossEntropyLoss):
         self.smooth_dist = smooth_dist
         self.from_logits = from_logits
 
-    def forward(self, input, target, smooth_dist=None):
+    def forward(self, input, target, smooth_dist=None, fn=None):
         if smooth_dist is None:
             smooth_dist = self.smooth_dist
         return cross_entropy_label_smoothing(input, target, weight=self.
@@ -96,7 +96,33 @@ class CrossEntropyLossLabelSmoothing(nn.CrossEntropyLoss):
 
 
 def get_inputs():
-    return [torch.rand([4, 4, 4, 4]), torch.rand([4, 4, 4, 4])]
+    """
+    Generate various input configurations for CrossEntropyLoss testing.
+    Yields pairs of (input, target) tensors.
+    
+    NOTE:
+    - Input is always float32
+    - Soft targets use probability distributions
+    - Matches the reference implementation pattern with 4D tensors [N, C, H, W]
+    """
+    configs = [
+        # Standard cases - (N, C, H, W) format
+        (1, 10, 8, 8),
+        (2, 10, 16, 16),
+        (4, 20, 16, 16),
+        (4, 50, 32, 32),
+        (8, 100, 32, 32),
+    ]
+    
+    for (N, C, H, W) in configs:
+        # Input logits
+        # Shape: [N, C, H, W]
+        input = torch.randn(N, C, H, W, dtype=torch.float32)
+        target = torch.softmax(
+            torch.randn(N, C, H, W, dtype=torch.float32),
+            dim=1,  # Softmax along class dimension
+        )
+        yield [input, target]
 
 
 def get_init_inputs():

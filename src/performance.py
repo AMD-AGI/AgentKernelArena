@@ -265,6 +265,8 @@ def measure_performance(
     )
 
     for cmd in performance_commands:
+        if is_baseline and task_type == 'torch2hip':
+            cmd = cmd + " --baseline_only"
         success, stdout, stderr = run_command(cmd, workspace, timeout=perf_timeout, logger=log)
         
         # Combine stdout and stderr for parsing

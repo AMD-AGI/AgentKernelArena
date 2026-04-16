@@ -29,7 +29,25 @@ class SoftmaxModule(nn.Module):
         return fn(v, self.axis)
 
 def get_inputs():
-    return [torch.rand([4, 4, 4, 4, 4])]
+    """
+    Generate multiple test cases with varying sizes
+    """
+    configs = [
+        ([4, 4, 4],),
+        ([8, 8, 8],),
+        ([16, 16, 16],),
+        ([32, 32, 32],),
+        ([64, 64, 64],),
+    ]
+    
+    for shape in configs:
+        # Unpack tuple if shape is a tuple containing a list (e.g., ([1024],) -> [1024])
+        shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+        # Only yield one input tensor - axis is a model parameter
+        v = torch.randn(shape_list, dtype=torch.float32)
+        yield [v]
+
 
 def get_init_inputs():
-    return [[], {'axis': 4}]
+    # Use axis=2 (last dimension) for 3D tensors, or axis=-1 (same thing)
+    return [[], {'axis': 2}]

@@ -49,13 +49,14 @@ def transformer_ffn_layer_fn(
     if incremental_state is not None and module_instance is not None:
         # Get buffer
         def _get_input_buffer(module, incremental_state):
-            return get_incremental_state(module, incremental_state, 'f') or {}
+            result = get_incremental_state(module, incremental_state, 'f')
+            return result if isinstance(result, dict) else {}
 
         def _set_input_buffer(module, incremental_state, buffer):
             set_incremental_state(module, incremental_state, 'f', buffer)
 
         saved_state = _get_input_buffer(module_instance, incremental_state)
-        if 'prev_input' in saved_state:
+        if isinstance(saved_state, dict) and 'prev_input' in saved_state:
             prev_input = saved_state['prev_input']
             x = torch.cat((prev_input, x), dim=0)
         x = x[-kernel_size:]
@@ -122,7 +123,24 @@ class TransformerFFNLayer(nn.Module):
         )
 
 def get_inputs():
-    return [torch.rand([4, 4, 4])]
+    """
+    Generate multiple test cases with varying sizes
+    TransformerFFNLayer forward() expects x: (T, B, C) where C=hidden_size=4
+    """
+    configs = [
+        # (T, B, C) where C must be 4 to match hidden_size=4 initialization
+        ([4, 4, 4],),  # T=4, B=4, C=4
+        ([8, 4, 4],),  # T=8, B=4, C=4
+        ([16, 4, 4],),  # T=16, B=4, C=4
+        ([32, 4, 4],),  # T=32, B=4, C=4
+        ([64, 4, 4],),  # T=64, B=4, C=4
+    ]
+    
+    for shape in configs:
+        shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+        x = torch.randn(shape_list, dtype=torch.float32)
+        yield [x]
+
 
 def get_init_inputs():
     return [[], {'hidden_size': 4, 'filter_size': 4}]

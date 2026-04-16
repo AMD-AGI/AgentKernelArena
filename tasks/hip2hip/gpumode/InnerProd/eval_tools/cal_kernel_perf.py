@@ -4,7 +4,6 @@ import json
 import argparse
 import copy
 import re
-import itertools
 import torch
 import shutil
 import sys
@@ -245,11 +244,8 @@ def cal_kernel_perf(
         return failed_ret
 
     # Load get_inputs function and normalize to generator
-    input_func_from_modu = load_function_from_path(py_modu_path, 'get_inputs')
-    inputs_modu_gen = _normalize_get_inputs_result(input_func_from_modu())
-    
-    input_func_from_func = load_function_from_path(py_func_path, 'get_inputs')
-    inputs_func_gen = _normalize_get_inputs_result(input_func_from_func())
+    input_func = load_function_from_path(py_modu_path, 'get_inputs')
+    inputs_gen = _normalize_get_inputs_result(input_func())
 
     torch.manual_seed(0)
     torch.cuda.manual_seed_all(0)
@@ -269,33 +265,18 @@ def cal_kernel_perf(
     kernel_modu.eval()
     kernel_func.eval()
 
-    # Process each test case
-    sentinel = object()
     ref_times = []
     opt_times = []
     all_correct = True
 
-    for case_idx, (inputs_modu, inputs_func) in enumerate(
-        itertools.zip_longest(inputs_modu_gen, inputs_func_gen, fillvalue=sentinel)
-    ):
-        if inputs_modu is sentinel or inputs_func is sentinel:
-            report["message"] = f"Mismatched test case count at case {case_idx}"
-            _write_perf_report(report)
-            if auto_cleanup:
-                clear_workdir(ref_hip_dir)
-                clear_workdir(opt_hip_dir)
-            return failed_ret
+    for case_idx, inputs in enumerate(inputs_gen):
+        if not isinstance(inputs, (list, tuple)):
+            inputs = [inputs]
+        inputs = list(inputs)
 
-        # Normalize inputs to lists
-        if not isinstance(inputs_modu, (list, tuple)):
-            inputs_modu = [inputs_modu]
-        if not isinstance(inputs_func, (list, tuple)):
-            inputs_func = [inputs_func]
-        
-        inputs_modu = list(inputs_modu)
-        inputs_func = list(inputs_func)
+        inputs_modu = inputs
+        inputs_func = copy.deepcopy(inputs)
 
-        # Move to CUDA
         inputs_modu_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
         inputs_func_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_func]
 

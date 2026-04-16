@@ -54,7 +54,27 @@ class PositionEmbedder(nn.Module):
         return fn(input_embeddings, self.embedding.weight)
 
 def get_inputs():
-    return [torch.rand([4, 4, 4, 4])]
+    """
+    Generate multiple test cases with varying sizes
+    Input shape: [batch_size, seq_length, embedding_size]
+    - embedding_size must be 4 to match embedding_dim=4 in get_init_inputs()
+    - seq_length can vary but must be <= max_sequence_length=4
+    """
+    configs = [
+        ([4, 1, 4],),  # batch=4, seq=1, embed=4
+        ([8, 2, 4],),  # batch=8, seq=2, embed=4
+        ([16, 3, 4],),  # batch=16, seq=3, embed=4
+        ([32, 4, 4],),  # batch=32, seq=4, embed=4
+        ([64, 4, 4],),  # batch=64, seq=4, embed=4
+    ]
+    
+    for shape in configs:
+        # Unpack tuple if shape is a tuple containing a list (e.g., ([1024],) -> [1024])
+        shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+        # Only yield input_embeddings - embedding_weight is a model parameter
+        input_embeddings = torch.randn(shape_list, dtype=torch.float32)
+        yield [input_embeddings]
+
 
 def get_init_inputs():
     return [[], {'max_sequence_length': 4, 'embedding_dim': 4}]

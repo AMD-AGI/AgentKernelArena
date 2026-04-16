@@ -19,7 +19,22 @@ class Transpose(nn.Module):
 
 
 def get_inputs():
-    return [torch.rand([4, 4, 4, 4])]
+    """
+    Generate multiple test cases for transpose operations
+    """
+    configs = [
+        ([4, 8, 16, 32],),
+        ([8, 16, 32, 64],),
+        ([16, 32, 64, 128],),
+        ([32, 64, 128, 256],),
+        ([64, 128, 256, 512],),
+    ]
+    
+    for shape in configs:
+        # Unpack tuple if shape is a tuple containing a list (e.g., ([1024],) -> [1024])
+        shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+        x = torch.randn(shape_list, dtype=torch.float32)
+        yield [x]
 
 
 def get_init_inputs():

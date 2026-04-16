@@ -61,7 +61,34 @@ class ItemQueryAttention(nn.Module):
         return fn(qs, hs, self.W_weight, self.W_bias)
 
 def get_inputs():
-    return [torch.rand([4, 4, 4]), torch.rand([4, 4, 4])]
+    """
+    Generate multiple test cases for ItemQueryAttention covering:
+    - Different batch sizes (q_size, s_size)
+    - Different sequence lengths
+    - feature_size must match initialization (4)
+    """
+    # Test case configs: (q_size, s_size, seq_size, feature_size)
+    # feature_size must be 4 to match get_init_inputs() initialization
+    configs = [
+        # Small sizes (for testing)
+        (2, 2, 4, 4),
+        (4, 4, 8, 4),
+        # Medium sizes (common in practice)
+        (8, 8, 16, 4),
+        (16, 16, 32, 4),
+        # Large sizes (for optimization testing)
+        (32, 32, 64, 4),
+        (64, 64, 128, 4),
+        # Asymmetric cases
+        (4, 8, 16, 4),
+        (8, 16, 32, 4),
+    ]
+    
+    for q_size, s_size, seq_size, feature_size in configs:
+        qs = torch.rand([q_size, seq_size, feature_size], dtype=torch.float32)
+        hs = torch.rand([s_size, seq_size, feature_size], dtype=torch.float32)
+        yield [qs, hs]
+
 
 def get_init_inputs():
     return [[], {'feature_size': 4, 'hidden_size': 4}]
