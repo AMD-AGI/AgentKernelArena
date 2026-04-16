@@ -4,6 +4,7 @@ import logging
 import argparse
 from pathlib import Path
 from datetime import datetime
+from src.hardware_control import HardwareControlError, create_hardware_control_session
 from src.tasks import get_task_config
 from src.preprocessing import setup_workspace, setup_rocm_env, is_task_complete
 from src.module_registration import AgentType, load_agent_launcher, load_post_processing_handler
@@ -24,7 +25,7 @@ def main() -> None:
 
     # Load config.yaml
     with open(args.config_name, 'r') as f:
-        config = yaml.safe_load(f)
+        config = yaml.safe_load(f) or {}
 
     # Extract configuration
     tasks = config['tasks']  # Now directly a list
@@ -117,136 +118,154 @@ def main() -> None:
     # Set PYTORCH_ROCM_ARCH based on target_gpu_model before any task runs
     setup_rocm_env(target_gpu_model, logger)
 
-    # Load agent launcher
+    hardware_control = create_hardware_control_session(
+        config=config,
+        run_directory=run_directory,
+        target_gpu_model=target_gpu_model,
+        logger=logger,
+    )
+    hardware_control.install_exit_guards()
     try:
-        agent_launcher = load_agent_launcher(agent, logger)
-    except Exception as e:
-        logger.error(f"Failed to load agent launcher: {e}")
-        return
-
-
-    # Get task config
-    if 'all' in tasks:
-        task_config_dict = get_task_config()
-    else:
-        task_config_dict = {}
-        for category in tasks:
-            task_config_dict.update(get_task_config(category=category))
-
-    # Filter out completed tasks if resuming
-    if resume_mode:
-        original_task_count = len(task_config_dict)
-        tasks_to_run = {}
-        skipped_tasks = []
-        
-        for task_name, task_config_dir in task_config_dict.items():
-            if is_task_complete(run_directory, task_name, timestamp):
-                skipped_tasks.append(task_name)
-                logger.info(f"Skipping completed task: {task_name}")
-            else:
-                tasks_to_run[task_name] = task_config_dir
-        
-        task_config_dict = tasks_to_run
-        
-        logger.info(f"Resume mode: {len(skipped_tasks)} tasks already completed, {len(task_config_dict)} tasks remaining")
-        if skipped_tasks:
-            logger.info(f"Skipped tasks: {skipped_tasks}")
-        if len(task_config_dict) == 0:
-            logger.info("All tasks are already completed. Nothing to run.")
+        # Load agent launcher
+        try:
+            agent_launcher = load_agent_launcher(agent, logger)
+        except Exception as e:
+            logger.error(f"Failed to load agent launcher: {e}")
             return
 
-    logger.info(f"Found {len(task_config_dict)} tasks to execute")
-    logger.info(f"Tasks: {list(task_config_dict.keys())}")
 
-    # Collect workspace paths for post-processing
-    workspace_paths = []
+        # Get task config
+        if 'all' in tasks:
+            task_config_dict = get_task_config()
+        else:
+            task_config_dict = {}
+            for category in tasks:
+                task_config_dict.update(get_task_config(category=category))
 
-    # Run tasks
-    for idx, (task_name, task_config_dir) in enumerate(task_config_dict.items(), 1):
-        logger.info("=" * 80)
-        logger.info(f"Task {idx}/{len(task_config_dict)}: {task_name}")
-        logger.info("=" * 80)
-        
+        # Filter out completed tasks if resuming
+        if resume_mode:
+            original_task_count = len(task_config_dict)
+            tasks_to_run = {}
+            skipped_tasks = []
+            
+            for task_name, task_config_dir in task_config_dict.items():
+                if is_task_complete(run_directory, task_name, timestamp):
+                    skipped_tasks.append(task_name)
+                    logger.info(f"Skipping completed task: {task_name}")
+                else:
+                    tasks_to_run[task_name] = task_config_dir
+            
+            task_config_dict = tasks_to_run
+            
+            logger.info(f"Resume mode: {len(skipped_tasks)} tasks already completed, {len(task_config_dict)} tasks remaining")
+            if skipped_tasks:
+                logger.info(f"Skipped tasks: {skipped_tasks}")
+            if len(task_config_dict) == 0:
+                logger.info("All tasks are already completed. Nothing to run.")
+                return
+
+        logger.info(f"Found {len(task_config_dict)} tasks to execute")
+        logger.info(f"Tasks: {list(task_config_dict.keys())}")
+
+        # Collect workspace paths for post-processing
+        workspace_paths = []
+
         try:
-            # Setup workspace
-            workspace_path = setup_workspace(task_config_dir, run_directory, timestamp, logger, task_name=task_name)
-            
-            # Load task config for evaluation
-            with open(task_config_dir, 'r') as f:
-                task_config = yaml.safe_load(f)
-            
-            # Compile original kernel before measuring baseline (required for hip2hip, etc.)
-            from src.evaluator import evaluate_compilation
-            logger.info("Compiling original kernel for baseline measurement...")
-            pass_compilation, comp_error = evaluate_compilation(workspace_path, task_config, logger)
-            if not pass_compilation:
-                logger.warning(f"Baseline compilation failed: {comp_error}")
-                logger.warning("Baseline measurement will be skipped")
-                baseline_cases = []
-            else:
-                # Measure baseline performance (before agent modifies kernel)
-                logger.info("Measuring baseline performance...")
-                baseline_cases = measure_baseline(workspace_path, task_config, logger)
-            
-            # Launch agent (agent should only generate optimized kernel)
-            logger.info(f"Launching agent: {agent.value}")
+            hardware_control.apply()
 
-            # For agentic approaches (cursor, claude_code, etc.)
-            result = agent_launcher(
-                eval_config=config,
-                task_config_dir=task_config_dir,
-                workspace=str(workspace_path)
-            )
+            # Run tasks
+            for idx, (task_name, task_config_dir) in enumerate(task_config_dict.items(), 1):
+                logger.info("=" * 80)
+                logger.info(f"Task {idx}/{len(task_config_dict)}: {task_name}")
+                logger.info("=" * 80)
+                
+                try:
+                    # Setup workspace
+                    workspace_path = setup_workspace(task_config_dir, run_directory, timestamp, logger, task_name=task_name)
+                    
+                    # Load task config for evaluation
+                    with open(task_config_dir, 'r') as f:
+                        task_config = yaml.safe_load(f)
+                    
+                    # Compile original kernel before measuring baseline (required for hip2hip, etc.)
+                    from src.evaluator import evaluate_compilation
+                    logger.info("Compiling original kernel for baseline measurement...")
+                    pass_compilation, comp_error = evaluate_compilation(workspace_path, task_config, logger)
+                    if not pass_compilation:
+                        logger.warning(f"Baseline compilation failed: {comp_error}")
+                        logger.warning("Baseline measurement will be skipped")
+                        baseline_cases = []
+                    else:
+                        # Measure baseline performance (before agent modifies kernel)
+                        logger.info("Measuring baseline performance...")
+                        baseline_cases = measure_baseline(workspace_path, task_config, logger)
+                    
+                    # Launch agent (agent should only generate optimized kernel)
+                    logger.info(f"Launching agent: {agent.value}")
 
-            logger.info(f"Agent execution completed")
-            
-            # Centralized evaluation of optimized kernel
-            logger.info("Running centralized evaluation...")
-            evaluation_results = evaluate_kernel(
-                workspace_path,
-                task_config,
-                baseline_cases,
-                logger
-            )
-            
-            # Write standardized task_result.yaml
-            write_task_result(
-                workspace_path,
-                evaluation_results,
-                baseline_cases,
-                task_name,
-                agent.value,
-                logger
-            )
-            
-            logger.info(f"Task {task_name} completed successfully")
+                    # For agentic approaches (cursor, claude_code, etc.)
+                    result = agent_launcher(
+                        eval_config=config,
+                        task_config_dir=task_config_dir,
+                        workspace=str(workspace_path)
+                    )
 
-            # Add workspace path to list for post-processing
-            workspace_paths.append(str(workspace_path))
+                    logger.info(f"Agent execution completed")
+                    
+                    # Centralized evaluation of optimized kernel
+                    logger.info("Running centralized evaluation...")
+                    evaluation_results = evaluate_kernel(
+                        workspace_path,
+                        task_config,
+                        baseline_cases,
+                        logger
+                    )
+                    
+                    # Write standardized task_result.yaml
+                    write_task_result(
+                        workspace_path,
+                        evaluation_results,
+                        baseline_cases,
+                        task_name,
+                        agent.value,
+                        logger
+                    )
+                    
+                    logger.info(f"Task {task_name} completed successfully")
 
+                    # Add workspace path to list for post-processing
+                    workspace_paths.append(str(workspace_path))
+
+                except Exception as e:
+                    logger.error(f"Task {task_name} failed with error: {e}", exc_info=True)
+                    # Still add workspace path even if task failed (for post-processing to record failure)
+                    if 'workspace_path' in locals():
+                        workspace_paths.append(str(workspace_path))
+                    continue
+        except HardwareControlError as e:
+            logger.error(f"Failed to apply AMD hardware clock lock: {e}")
+            return
+        finally:
+            hardware_control.cleanup(reason="run_task_loop_finally")
+
+        # Run post-processing to generate report
+        logger.info("=" * 80)
+        logger.info("Running Post-Processing")
+        logger.info("=" * 80)
+
+        try:
+            post_processing_handler = load_post_processing_handler(agent, logger)
+            post_processing_handler(workspace_paths, logger)
+        except NotImplementedError as e:
+            logger.warning(f"Post-processing skipped: {e}")
         except Exception as e:
-            logger.error(f"Task {task_name} failed with error: {e}", exc_info=True)
-            # Still add workspace path even if task failed (for post-processing to record failure)
-            if 'workspace_path' in locals():
-                workspace_paths.append(str(workspace_path))
-            continue
+            logger.error(f"Post-processing failed: {e}", exc_info=True)
 
-    # Run post-processing to generate report
-    logger.info("=" * 80)
-    logger.info("Running Post-Processing")
-    logger.info("=" * 80)
-
-    try:
-        post_processing_handler = load_post_processing_handler(agent, logger)
-        post_processing_handler(workspace_paths, logger)
-    except NotImplementedError as e:
-        logger.warning(f"Post-processing skipped: {e}")
-    except Exception as e:
-        logger.error(f"Post-processing failed: {e}", exc_info=True)
-
-    logger.info("=" * 80)
-    logger.info("AgentKernelArena Framework Completed")
-    logger.info("=" * 80)
+        logger.info("=" * 80)
+        logger.info("AgentKernelArena Framework Completed")
+        logger.info("=" * 80)
+    finally:
+        hardware_control.cleanup(reason="main_finally")
 
 
 

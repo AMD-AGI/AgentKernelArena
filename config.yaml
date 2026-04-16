@@ -100,5 +100,9 @@ tasks:
 
 
 target_gpu_model: MI300
+gpu_clock_frequence_lock:
+  enabled: true
+  gpu_clock_level: 1
+  mem_clock_level: 2
 log_directory: logs
 workspace_directory_prefix: workspace
