@@ -175,18 +175,21 @@ def main() -> None:
             with open(task_config_dir, 'r') as f:
                 task_config = yaml.safe_load(f)
             
-            # Compile original kernel before measuring baseline (required for hip2hip, etc.)
-            from src.evaluator import evaluate_compilation
-            logger.info("Compiling original kernel for baseline measurement...")
-            pass_compilation, comp_error = evaluate_compilation(workspace_path, task_config, logger)
-            if not pass_compilation:
-                logger.warning(f"Baseline compilation failed: {comp_error}")
-                logger.warning("Baseline measurement will be skipped")
-                baseline_cases = []
-            else:
-                # Measure baseline performance (before agent modifies kernel)
-                logger.info("Measuring baseline performance...")
+            task_type = task_config.get('task_type', '')
+            if task_type == 'torch2hip':
+                logger.info("torch2hip task: skipping baseline compilation, measuring PyTorch baseline directly...")
                 baseline_cases = measure_baseline(workspace_path, task_config, logger)
+            else:
+                from src.evaluator import evaluate_compilation
+                logger.info("Compiling original kernel for baseline measurement...")
+                pass_compilation, comp_error = evaluate_compilation(workspace_path, task_config, logger)
+                if not pass_compilation:
+                    logger.warning(f"Baseline compilation failed: {comp_error}")
+                    logger.warning("Baseline measurement will be skipped")
+                    baseline_cases = []
+                else:
+                    logger.info("Measuring baseline performance...")
+                    baseline_cases = measure_baseline(workspace_path, task_config, logger)
             
             # Launch agent (agent should only generate optimized kernel)
             logger.info(f"Launching agent: {agent.value}")

@@ -17,7 +17,7 @@ class NormalAttention_embedded_gaussian(nn.Module):
         self.gamma = nn.Conv2d(in_channels=self.c_in, out_channels=self.
             c_in, kernel_size=1)
 
-    def forward(self, x):
+    def forward(self, x, fn=None):
         B, C, H, W = x.size()
         proj_query = self.query_conv(x).view(B, -1, H * W).permute(0, 2, 1)
         proj_key = self.key_conv(x).view(B, -1, H * W)
@@ -32,7 +32,21 @@ class NormalAttention_embedded_gaussian(nn.Module):
 
 
 def get_inputs():
-    return [torch.rand([4, 4, 4, 4])]
+    """
+    Generate multiple test cases for attention kernels
+    """
+    configs = [
+        ([4, 4, 4, 4],),  # (B, C, H, W)
+        ([8, 8, 8, 8],),
+        ([16, 16, 16, 16],),
+        ([32, 32, 32, 32],),
+        ([64, 64, 64, 64],),
+    ]
+    
+    for shape in configs:
+        shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+        x = torch.randn(shape_list, dtype=torch.float32)
+        yield [x]
 
 
 def get_init_inputs():

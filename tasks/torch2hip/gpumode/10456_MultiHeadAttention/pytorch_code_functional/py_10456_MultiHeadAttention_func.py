@@ -105,7 +105,22 @@ class MultiHeadAttention(nn.Module):
 
 
 def get_inputs():
-    return [torch.rand([4, 4, 4, 4]), torch.rand([4, 4, 4, 4]), torch.rand([4, 4, 4, 4])]
+    """
+    Generate multiple test cases for attention kernels
+    d_model must match initialization (4)
+    """
+    configs = [
+        # (batch, seq_len, d_model) - d_model must be 4 to match get_init_inputs()
+        ([8, 16, 4], [8, 16, 4], [8, 16, 4]),
+        ([16, 32, 4], [16, 32, 4], [16, 32, 4]),
+        ([32, 64, 4], [32, 64, 4], [32, 64, 4]),
+    ]
+    
+    for q_shape, k_shape, v_shape in configs:
+        q = torch.randn(q_shape, dtype=torch.float32)
+        k = torch.randn(k_shape, dtype=torch.float32)
+        v = torch.randn(v_shape, dtype=torch.float32)
+        yield [q, k, v]
 
 
 def get_init_inputs():

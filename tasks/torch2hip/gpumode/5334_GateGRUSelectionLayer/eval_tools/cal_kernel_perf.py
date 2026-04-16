@@ -4,10 +4,11 @@ import json
 import argparse
 import copy
 import re
+import itertools
 import torch
 import shutil
 import sys
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Union
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from compile import clear_workdir
@@ -19,6 +20,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--py_modu_file", type=str, required=True)
     parser.add_argument("--py_func_file", type=str, required=True)
     parser.add_argument("--hip_file", type=str, required=True)
+    parser.add_argument("--baseline_only", action="store_true",
+                        help="Only measure PyTorch module baseline latency, skip HIP kernel entirely.")
     return parser.parse_args()
 
 
@@ -155,7 +158,6 @@ def cal_hip_latency(kernel_hip: Any, inputs: List[Any], hip_fn: Any, n_iter: int
 
     elapsed = start.elapsed_time(end)
     avg_time = elapsed / n_iter
-    print("HIP perf:", avg_time, "ms")
     return avg_time
 
 
@@ -175,8 +177,25 @@ def cal_modu_latency(kernel_modu: Any, inputs: List[Any], n_iter: int = 100, n_w
 
     elapsed = start.elapsed_time(end)
     avg_time = elapsed / n_iter
-    print("PyTorch perf:", avg_time, "ms")
     return avg_time
+
+
+def _normalize_get_inputs_result(inputs_result: Any) -> Any:
+    """
+    Normalize get_inputs() result to handle both single return and generator patterns.
+    Returns a generator that yields test cases.
+    """
+    if hasattr(inputs_result, '__next__') or hasattr(inputs_result, 'send'):
+        return inputs_result
+
+    if isinstance(inputs_result, (list, tuple)):
+        def _gen():
+            yield inputs_result
+        return _gen()
+
+    def _gen():
+        yield inputs_result
+    return _gen()
 
 
 def cal_kernel_perf(
@@ -187,13 +206,13 @@ def cal_kernel_perf(
     rtol: float = 1e-4,
     atol: float = 1e-5,
     auto_cleanup: bool = True,
+    baseline_only: bool = False,
 ) -> Tuple[Any, Any, Any]:
     failed_ret: Tuple[Any, Any, Any] = (None, None, None)
 
     hip_dir = os.path.join(build_dir, "hip")
     os.makedirs(build_dir, exist_ok=True)
     os.makedirs(hip_dir, exist_ok=True)
-    shutil.copy(hip_kernel_path, hip_dir)
 
     hip_file_name = os.path.basename(hip_kernel_path)
     kernel_name = hip_file_name.split('.hip')[0].split('_', 2)[-1]
@@ -205,23 +224,95 @@ def cal_kernel_perf(
         "speedup": None,
         "ori_time": None,
         "opt_time": None,
+        "test_cases": [],
     }
 
+    input_func_from_modu = load_function_from_path(py_modu_path, 'get_inputs')
+    inputs_modu_gen = _normalize_get_inputs_result(input_func_from_modu())
+
+    torch.manual_seed(0)
+    torch.cuda.manual_seed_all(0)
+    kernel_modu = load_modu_obj(py_modu_path, kernel_name, 'get_init_inputs').to('cuda')
+    kernel_modu.eval()
+
+    if baseline_only:
+        print(f"[INFO] Baseline-only mode: measuring PyTorch module latency, skipping HIP kernel.")
+        for case_idx, inputs_modu in enumerate(inputs_modu_gen):
+            if not isinstance(inputs_modu, (list, tuple)):
+                inputs_modu = [inputs_modu]
+            inputs_modu = list(inputs_modu)
+
+            params: Dict[str, Any] = {}
+            for i, inp in enumerate(inputs_modu):
+                if isinstance(inp, torch.Tensor):
+                    params[f"input_{i}_shape"] = list(inp.shape)
+
+            inputs_modu_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
+            try:
+                torch_time = cal_modu_latency(kernel_modu, inputs_modu_cuda)
+                report["test_cases"].append({
+                    "case_idx": case_idx,
+                    "correct": True,
+                    "ori_time": round(torch_time, 5),
+                    "opt_time": None,
+                    "speedup": None,
+                    "params": params,
+                })
+                print(f"[INFO] Case {case_idx}: torch={torch_time:.5f}ms")
+            except Exception as e:
+                print(f"[Warning] {kernel_name} case {case_idx} PyTorch latency exception: {e}")
+
+        valid_times = [c["ori_time"] for c in report["test_cases"] if c["ori_time"] is not None]
+        if valid_times:
+            avg_time = sum(valid_times) / len(valid_times)
+            report["ori_time"] = round(avg_time, 5)
+            report["status"] = "baseline_ok"
+            report["message"] = f"Baseline measurement completed for {len(valid_times)} test case(s)"
+            print(f"[INFO] PyTorch baseline: {len(valid_times)} case(s), avg={avg_time:.5f}ms")
+        else:
+            report["message"] = "All PyTorch baseline measurements failed"
+
+        _write_perf_report(report)
+        if auto_cleanup:
+            clear_workdir(hip_dir)
+        return (None, report["ori_time"], None) if report["ori_time"] is not None else failed_ret
+
+    shutil.copy(hip_kernel_path, hip_dir)
     hip_fn = load_hip_kernel(kernel_name, hip_dir, hip_file_name)
+
+    torch_times = []
+    for case_idx, inputs_modu in enumerate(inputs_modu_gen):
+        if not isinstance(inputs_modu, (list, tuple)):
+            inputs_modu = [inputs_modu]
+        inputs_modu = list(inputs_modu)
+        inputs_modu_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
+        try:
+            torch_time = cal_modu_latency(kernel_modu, inputs_modu_cuda)
+            torch_times.append(torch_time)
+        except Exception as e:
+            torch_times.append(None)
+            print(f"[Warning] {kernel_name} case {case_idx} PyTorch latency exception: {e}")
+
+    valid_torch_times = [t for t in torch_times if t is not None]
+    avg_torch_time = sum(valid_torch_times) / len(valid_torch_times) if valid_torch_times else None
+    if avg_torch_time is not None:
+        report["ori_time"] = round(avg_torch_time, 5)
+        print(f"[INFO] PyTorch baseline: {len(valid_torch_times)} case(s), avg={avg_torch_time:.5f}ms")
+
     if hip_fn is None:
         report["message"] = "HIP kernel failed to compile/load"
+        report["status"] = "partial"
         _write_perf_report(report)
         if auto_cleanup:
             clear_workdir(hip_dir)
         return failed_ret
 
-    input_func_from_modu = load_function_from_path(py_modu_path, 'get_inputs')
-    inputs_modu = input_func_from_modu()
-    inputs_func = copy.deepcopy(inputs_modu)
+    input_func_from_modu2 = load_function_from_path(py_modu_path, 'get_inputs')
+    inputs_modu_gen2 = _normalize_get_inputs_result(input_func_from_modu2())
 
-    torch.manual_seed(0)
-    torch.cuda.manual_seed_all(0)
-    kernel_modu = load_modu_obj(py_modu_path, kernel_name, 'get_init_inputs').to('cuda')
+    input_func_from_func = load_function_from_path(py_func_path, 'get_inputs')
+    inputs_func_gen = _normalize_get_inputs_result(input_func_from_func())
+
     kernel_func = load_func_obj(py_func_path, kernel_name, 'get_init_inputs').to('cuda')
     align_ok, align_info = _align_state_dict(kernel_modu, kernel_func)
     report["alignment"] = align_info
@@ -233,63 +324,128 @@ def cal_kernel_perf(
             clear_workdir(hip_dir)
         return failed_ret
 
-    kernel_modu.eval()
     kernel_func.eval()
 
-    inputs_modu = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
-    inputs_func = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_func]
+    sentinel = object()
+    hip_times = []
+    all_correct = True
 
-    if not _compare_results(inputs_modu, inputs_func, rtol=rtol, atol=atol):
-        report["message"] = "Input cloning mismatch"
-        _write_perf_report(report)
-        if auto_cleanup:
-            clear_workdir(hip_dir)
-        return failed_ret
-
-    try:
-        torch.manual_seed(1337)
-        torch.cuda.manual_seed_all(1337)
-        modu_result = kernel_modu(*inputs_modu)
-
-        torch.manual_seed(1337)
-        torch.cuda.manual_seed_all(1337)
-        func_result = kernel_func(*inputs_func, fn=hip_fn)
-
-        if not _compare_results(modu_result, func_result, rtol=rtol, atol=atol):
-            print(f"[MISMATCH] {kernel_name} results differ.")
-            report["message"] = "Correctness precheck failed"
-            _write_perf_report(build_dir, report)
+    for case_idx, (inputs_modu, inputs_func) in enumerate(
+        itertools.zip_longest(inputs_modu_gen2, inputs_func_gen, fillvalue=sentinel)
+    ):
+        if inputs_modu is sentinel or inputs_func is sentinel:
+            report["message"] = f"Mismatched test case count at case {case_idx}"
+            _write_perf_report(report)
             if auto_cleanup:
                 clear_workdir(hip_dir)
             return failed_ret
-    except Exception as e:
-        print(f"[Error] {kernel_name} raises an exception due to {e}.")
-        report["message"] = f"Exception during correctness precheck: {e}"
+
+        if not isinstance(inputs_modu, (list, tuple)):
+            inputs_modu = [inputs_modu]
+        if not isinstance(inputs_func, (list, tuple)):
+            inputs_func = [inputs_func]
+
+        inputs_modu = list(inputs_modu)
+        inputs_func = list(inputs_func)
+
+        inputs_modu_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
+        inputs_func_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_func]
+
+        params: Dict[str, Any] = {}
+        for i, inp in enumerate(inputs_func):
+            if isinstance(inp, torch.Tensor):
+                params[f"input_{i}_shape"] = list(inp.shape)
+
+        case_entry: Dict[str, Any] = {
+            "case_idx": case_idx,
+            "correct": False,
+            "ori_time": round(torch_times[case_idx], 5) if case_idx < len(torch_times) else None,
+            "opt_time": None,
+            "speedup": None,
+            "params": params,
+        }
+
+        try:
+            torch.manual_seed(1337 + case_idx)
+            torch.cuda.manual_seed_all(1337 + case_idx)
+            modu_result = kernel_modu(*copy.deepcopy(inputs_modu_cuda))
+
+            torch.manual_seed(1337 + case_idx)
+            torch.cuda.manual_seed_all(1337 + case_idx)
+            func_result = kernel_func(*copy.deepcopy(inputs_func_cuda), fn=hip_fn)
+
+            if not _compare_results(modu_result, func_result, rtol=rtol, atol=atol):
+                print(f"[MISMATCH] {kernel_name} case {case_idx}: PyTorch and HIP results differ.")
+                case_entry["error"] = "output_mismatch"
+                all_correct = False
+                report["test_cases"].append(case_entry)
+                continue
+            case_entry["correct"] = True
+        except Exception as e:
+            print(f"[Error] {kernel_name} case {case_idx} raises an exception: {e}")
+            case_entry["error"] = f"exception: {e}"
+            all_correct = False
+            report["test_cases"].append(case_entry)
+            continue
+
+        try:
+            hip_time = cal_hip_latency(kernel_func, inputs_func_cuda, hip_fn)
+            case_entry["opt_time"] = round(hip_time, 5)
+            torch_time = torch_times[case_idx] if case_idx < len(torch_times) else None
+            if torch_time and hip_time > 0:
+                case_entry["speedup"] = round(torch_time / hip_time, 2)
+            hip_times.append(hip_time)
+            print(f"[INFO] Case {case_idx}: torch={torch_time:.5f}ms, hip={hip_time:.5f}ms, speedup={case_entry.get('speedup', 'N/A')}x")
+        except Exception as e:
+            print(f"[Error] {kernel_name} case {case_idx} HIP latency exception: {e}")
+            case_entry["error"] = f"hip_perf_exception: {e}"
+            all_correct = False
+
+        report["test_cases"].append(case_entry)
+
+    avg_hip_time = sum(hip_times) / len(hip_times) if hip_times else None
+    if avg_hip_time is not None:
+        report["opt_time"] = round(avg_hip_time, 5)
+
+    if not all_correct:
+        report["message"] = "Some test cases failed correctness or performance checks"
+        report["status"] = "partial"
         _write_perf_report(report)
         if auto_cleanup:
             clear_workdir(hip_dir)
         return failed_ret
+    elif len(hip_times) == 0:
+        report["message"] = "No valid test cases processed"
+        _write_perf_report(report)
+        if auto_cleanup:
+            clear_workdir(hip_dir)
+        return failed_ret
+    else:
+        avg_speedup = avg_torch_time / avg_hip_time if avg_torch_time and avg_hip_time > 0 else None
 
-    print(f"[INFO] HIP kernel {kernel_name} correctness check passed.")
-    torch_time = cal_modu_latency(kernel_modu, inputs_modu)
-    hip_time = cal_hip_latency(kernel_func, inputs_func, hip_fn)
-    speedup = float(f"{(torch_time / hip_time):.2f}")
+        print(f"[INFO] HIP kernel {kernel_name} processed {len(hip_times)} test cases.")
+        print(f"[INFO] Average: torch={avg_torch_time:.5f}ms, hip={avg_hip_time:.5f}ms, speedup={avg_speedup:.2f}x")
 
-    print(f"[INFO] HIP vs PyTorch speedup: {speedup:.2f}x")
-    report["status"] = "ok"
-    report["message"] = "Performance benchmark completed"
-    report["speedup"] = speedup
-    report["ori_time"] = round(torch_time, 5)
-    report["opt_time"] = round(hip_time, 5)
-    _write_perf_report(report)
+        report["status"] = "ok"
+        report["message"] = f"Performance benchmark completed for {len(hip_times)} test cases"
+        report["speedup"] = round(avg_speedup, 2) if avg_speedup else None
+        _write_perf_report(report)
 
-    if auto_cleanup:
-        clear_workdir(hip_dir)
-    return speedup, round(torch_time, 5), round(hip_time, 5)
+        if auto_cleanup:
+            clear_workdir(hip_dir)
+        return round(avg_speedup, 2) if avg_speedup else None, round(avg_torch_time, 5), round(avg_hip_time, 5)
 
 
 if __name__ == "__main__":
     args = parse_args()
-    ret_perf = cal_kernel_perf(args.py_modu_file, args.py_func_file, args.hip_file)
-    save_eval_result({"speedup": ret_perf[0], "ori_time": ret_perf[1], "opt_time": ret_perf[2]})
-    sys.exit(0 if ret_perf[0] is not None else 1)
+    ret_perf = cal_kernel_perf(
+        args.py_modu_file, args.py_func_file, args.hip_file,
+        baseline_only=args.baseline_only,
+    )
+    if args.baseline_only:
+        sys.exit(0 if ret_perf[1] is not None else 1)
+    elif ret_perf[0] is not None:
+        save_eval_result({"speedup": ret_perf[0], "ori_time": ret_perf[1], "opt_time": ret_perf[2]})
+        sys.exit(0)
+    else:
+        sys.exit(1)

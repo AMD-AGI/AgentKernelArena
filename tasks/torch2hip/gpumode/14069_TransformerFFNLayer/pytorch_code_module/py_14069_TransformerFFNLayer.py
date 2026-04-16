@@ -6,6 +6,9 @@ from torch.nn import Linear
 import torch.utils.data
 import torch.optim
 import torch.distributions
+import collections
+
+INCREMENTAL_STATE_INSTANCE_ID = collections.defaultdict(int)
 
 
 def _get_full_incremental_state_key(module_instance, key):
@@ -48,10 +51,10 @@ class TransformerFFNLayer(nn.Module):
                 ), 0.0), nn.Conv1d(hidden_size, filter_size, kernel_size))
         self.ffn_2 = Linear(filter_size, hidden_size)
 
-    def forward(self, x, incremental_state=None):
+    def forward(self, x, incremental_state=None, fn=None):
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)
-            if 'prev_input' in saved_state:
+            if isinstance(saved_state, dict) and 'prev_input' in saved_state:
                 prev_input = saved_state['prev_input']
                 x = torch.cat((prev_input, x), dim=0)
             x = x[-self.kernel_size:]
@@ -70,7 +73,8 @@ class TransformerFFNLayer(nn.Module):
         return x
 
     def _get_input_buffer(self, incremental_state):
-        return get_incremental_state(self, incremental_state, 'f') or {}
+        result = get_incremental_state(self, incremental_state, 'f')
+        return result if isinstance(result, dict) else {}
 
     def _set_input_buffer(self, incremental_state, buffer):
         set_incremental_state(self, incremental_state, 'f', buffer)
@@ -78,13 +82,29 @@ class TransformerFFNLayer(nn.Module):
     def clear_buffer(self, incremental_state):
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)
-            if 'prev_input' in saved_state:
+            if isinstance(saved_state, dict) and 'prev_input' in saved_state:
                 del saved_state['prev_input']
             self._set_input_buffer(incremental_state, saved_state)
 
 
 def get_inputs():
-    return [torch.rand([4, 4, 4])]
+    """
+    Generate multiple test cases with varying sizes
+    TransformerFFNLayer forward() expects x: (T, B, C) where C=hidden_size=4
+    """
+    configs = [
+        # (T, B, C) where C must be 4 to match hidden_size=4 initialization
+        ([4, 4, 4],),  # T=4, B=4, C=4
+        ([8, 4, 4],),  # T=8, B=4, C=4
+        ([16, 4, 4],),  # T=16, B=4, C=4
+        ([32, 4, 4],),  # T=32, B=4, C=4
+        ([64, 4, 4],),  # T=64, B=4, C=4
+    ]
+    
+    for shape in configs:
+        shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+        x = torch.randn(shape_list, dtype=torch.float32)
+        yield [x]
 
 
 def get_init_inputs():

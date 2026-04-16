@@ -4,6 +4,7 @@ import json
 import argparse
 import copy
 import re
+import itertools
 import torch
 import shutil
 import sys
@@ -131,66 +132,22 @@ def _compare_results(modu_result: Any, func_result: Any, rtol: float = 1e-4, ato
     return modu_result == func_result
 
 
-def _sample_like_base(base: torch.Tensor, case_idx: int) -> torch.Tensor:
-    if not base.is_floating_point():
-        return base.clone()
-
-    base_min = float(base.detach().amin().item())
-    base_max = float(base.detach().amax().item())
-    base_mean = float(base.detach().mean().item())
-    base_std = float(base.detach().std(unbiased=False).item())
-
-    # Preserve non-negative domains (e.g., probabilities/log-domain inputs).
-    if base_min >= 0.0:
-        span = max(base_max - base_min, 1e-6)
-        if case_idx == 1:
-            return torch.rand_like(base) * span + base_min
-        return torch.rand_like(base) * span * 0.75 + base_min
-
-    # Signed-domain fallback keeps rough scale/center of original inputs.
-    std = max(base_std, 1e-6)
-    if case_idx == 1:
-        return torch.randn_like(base) * std + base_mean
-    return torch.randn_like(base) * std * 0.75 + base_mean
-
-
-def _normalize_get_inputs_result(inputs_result: Any) -> List[Any]:
+def _normalize_get_inputs_result(inputs_result: Any) -> Any:
     """
     Normalize get_inputs() result to handle both single return and generator patterns.
-    Returns a list (the first test case from generator, or the single result).
+    Returns a generator that yields test cases.
     """
-    # If it's a generator (has __next__ or is a generator function result)
     if hasattr(inputs_result, '__next__') or hasattr(inputs_result, 'send'):
-        # Get the first test case from generator
-        try:
-            first_case = next(inputs_result)
-            # Normalize to list if needed
-            if not isinstance(first_case, (list, tuple)):
-                first_case = [first_case]
-            return list(first_case)
-        except StopIteration:
-            raise ValueError("get_inputs() generator returned no test cases")
-    
-    # If it's already a list/tuple, return as list
+        return inputs_result
+
     if isinstance(inputs_result, (list, tuple)):
-        return list(inputs_result)
-    
-    # Otherwise, wrap single result
-    return [inputs_result]
+        def _gen():
+            yield inputs_result
+        return _gen()
 
-
-def _make_test_input_sets(base_inputs: List[Any], n_cases: int = 3) -> List[List[Any]]:
-    cases: List[List[Any]] = [copy.deepcopy(base_inputs)]
-    for case_idx in range(1, n_cases):
-        new_case: List[Any] = []
-        for item in base_inputs:
-            if torch.is_tensor(item):
-                new_item = _sample_like_base(item, case_idx)
-                new_case.append(new_item)
-            else:
-                new_case.append(copy.deepcopy(item))
-        cases.append(new_case)
-    return cases
+    def _gen():
+        yield inputs_result
+    return _gen()
 
 
 def _write_correctness_report(report: Dict[str, Any]) -> None:
@@ -207,7 +164,7 @@ def correctness_check(
     hip_kernel_path: str,
     build_dir: str = "temp",
     rtol: float = 1e-4,
-    atol: float = 1e-4,
+    atol: float = 1e-5,
     auto_cleanup: bool = True,
 ) -> bool:
     hip_dir = os.path.join(build_dir, "hip")
@@ -235,10 +192,10 @@ def correctness_check(
         return False
 
     input_func_from_modu = load_function_from_path(py_modu_path, 'get_inputs')
-    inputs_modu_result = input_func_from_modu()
-    
-    # Normalize get_inputs() result (handle both generator and list return patterns)
-    inputs_modu_base = _normalize_get_inputs_result(inputs_modu_result)
+    inputs_modu_gen = _normalize_get_inputs_result(input_func_from_modu())
+
+    input_func_from_func = load_function_from_path(py_func_path, 'get_inputs')
+    inputs_func_gen = _normalize_get_inputs_result(input_func_from_func())
 
     torch.manual_seed(0)
     torch.cuda.manual_seed_all(0)
@@ -257,34 +214,43 @@ def correctness_check(
     kernel_modu.eval()
     kernel_func.eval()
 
-    test_cases = _make_test_input_sets(inputs_modu_base, n_cases=3)
+    sentinel = object()
 
     try:
-        for idx, case in enumerate(test_cases):
-            inputs_modu = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in copy.deepcopy(case)]
-            inputs_func = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in copy.deepcopy(case)]
-
-            if not _compare_results(inputs_modu, inputs_func, rtol=rtol, atol=atol):
-                report["failure_case"] = idx
-                report["message"] = "Input cloning mismatch between module and functional paths"
+        for case_idx, (inputs_modu, inputs_func) in enumerate(
+            itertools.zip_longest(inputs_modu_gen, inputs_func_gen, fillvalue=sentinel)
+        ):
+            if inputs_modu is sentinel or inputs_func is sentinel:
+                report["failure_case"] = case_idx
+                report["message"] = f"Mismatched test case count at case {case_idx}"
                 _write_correctness_report(report)
                 if auto_cleanup:
                     clear_workdir(hip_dir)
                 return False
 
-            # Keep dropout masks aligned for train-mode modules.
-            torch.manual_seed(1337 + idx)
-            torch.cuda.manual_seed_all(1337 + idx)
-            modu_result = kernel_modu(*inputs_modu)
+            if not isinstance(inputs_modu, (list, tuple)):
+                inputs_modu = [inputs_modu]
+            if not isinstance(inputs_func, (list, tuple)):
+                inputs_func = [inputs_func]
 
-            torch.manual_seed(1337 + idx)
-            torch.cuda.manual_seed_all(1337 + idx)
-            func_result = kernel_func(*inputs_func, fn=hip_fn)
+            inputs_modu = list(inputs_modu)
+            inputs_func = list(inputs_func)
+
+            inputs_modu_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
+            inputs_func_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_func]
+
+            torch.manual_seed(1337 + case_idx)
+            torch.cuda.manual_seed_all(1337 + case_idx)
+            modu_result = kernel_modu(*copy.deepcopy(inputs_modu_cuda))
+
+            torch.manual_seed(1337 + case_idx)
+            torch.cuda.manual_seed_all(1337 + case_idx)
+            func_result = kernel_func(*copy.deepcopy(inputs_func_cuda), fn=hip_fn)
 
             report["cases_run"] += 1
             if not _compare_results(modu_result, func_result, rtol=rtol, atol=atol):
-                print(f"[MISMATCH] {kernel_name} results differ (case {idx}).")
-                report["failure_case"] = idx
+                print(f"[MISMATCH] {kernel_name} results differ (case {case_idx}).")
+                report["failure_case"] = case_idx
                 report["message"] = "Output mismatch"
                 _write_correctness_report(report)
                 if auto_cleanup:
@@ -299,7 +265,7 @@ def correctness_check(
             clear_workdir(hip_dir)
         return False
 
-    print(f"[INFO] HIP kernel {kernel_name} correctness check passed.")
+    print(f"[INFO] HIP kernel {kernel_name} correctness check passed ({report['cases_run']} case(s)).")
     report["status"] = "ok"
     report["message"] = "All correctness cases passed"
     _write_correctness_report(report)

@@ -17,7 +17,7 @@ class MLP_model(nn.Module):
         self.linear6 = nn.Linear(64, 32)
         self.linear7 = nn.Linear(32, out_size)
 
-    def forward(self, xb):
+    def forward(self, xb, fn=None):
         xb = xb.view(xb.size(0), -1)
         out = self.linear1(xb)
         out = F.relu(out)
@@ -63,7 +63,24 @@ class MLP_model(nn.Module):
 
 
 def get_inputs():
-    return [torch.rand([4, 4])]
+    """
+    Generate multiple test cases with varying sizes
+    Model expects in_size=4, so inputs must have 4 features after flattening
+    Input can be any shape that flattens to (batch_size, 4)
+    """
+    configs = [
+        ([4, 4],),  # (batch=4, features=4) - matches in_size=4
+        ([8, 4],),  # (batch=8, features=4)
+        ([16, 4],),  # (batch=16, features=4)
+        ([32, 4],),  # (batch=32, features=4)
+        ([64, 4],),  # (batch=64, features=4)
+    ]
+    
+    for shape in configs:
+        shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+        # Only yield one input tensor - forward() takes one input
+        xb = torch.randn(shape_list, dtype=torch.float32)
+        yield [xb]
 
 
 def get_init_inputs():

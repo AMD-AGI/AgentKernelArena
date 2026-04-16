@@ -28,7 +28,7 @@ class PositionWiseFeedForward(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.relu = nn.ReLU()
 
-    def forward(self, x: 'torch.Tensor') ->torch.Tensor:
+    def forward(self, x: 'torch.Tensor', fn=None) ->torch.Tensor:
         """
         Parameters
         ----------
@@ -48,7 +48,32 @@ class PositionWiseFeedForward(nn.Module):
 
 
 def get_inputs():
-    return [torch.rand([4, 4, 4, 4])]
+    """
+    Generate multiple test cases for PositionWiseFeedForward covering:
+    - Different batch sizes and sequence lengths
+    - Input shape: (batch_size, word_pad_len, d_model)
+    """
+    configs = [
+        # Small
+        ([4, 4, 4],),
+        ([8, 8, 4],),
+        # Medium
+        ([16, 16, 4],),
+        ([32, 32, 4],),
+        # Large
+        ([64, 64, 4],),
+        ([128, 128, 4],),
+        # Different sequence lengths
+        ([4, 8, 4],),
+        ([8, 16, 4],),
+        ([16, 32, 4],),
+        ([32, 64, 4],),
+    ]
+    
+    for shape in configs:
+        shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+        x = torch.randn(shape_list, dtype=torch.float32)
+        yield [x]
 
 
 def get_init_inputs():

@@ -99,7 +99,27 @@ class InnerProd(nn.Module):
         return fn(feats_img, feat_sound, self.scale, self.bias, mode="forward_pixelwise")
 
 def get_inputs():
-    return [torch.rand([4, 1, 4]), torch.rand([4, 4, 4, 4])]
+    """
+    Generate multiple test cases with varying sizes
+    HIP kernel expects feat_img: [B, 1, C] (3D with middle dim=1) and feat_sound: [B, C, H, W]
+    All test cases must use C=4 to match fc_dim=4 in get_init_inputs()
+    """
+    configs = [
+        # (B, C, H, W) for feat_sound, feat_img will be [B, 1, C]
+        # Keep C=4 to match fc_dim=4
+        (4, 4, 4, 4),  # B=4, C=4, H=4, W=4
+        (8, 4, 8, 8),  # B=8, C=4, H=8, W=8 - keep C=4
+        (16, 4, 16, 16),  # B=16, C=4, H=16, W=16 - keep C=4
+        (32, 4, 32, 32),  # B=32, C=4, H=32, W=32 - keep C=4
+        (64, 4, 64, 64),  # B=64, C=4, H=64, W=64 - keep C=4
+    ]
+    
+    for B, C, H, W in configs:
+        # HIP kernel requires feat_img to be [B, 1, C], not [B, C]
+        feat_img = torch.randn([B, 1, C], dtype=torch.float32)
+        feat_sound = torch.randn([B, C, H, W], dtype=torch.float32)
+        yield [feat_img, feat_sound]
+
 
 def get_init_inputs():
     return [[], {'fc_dim': 4}]

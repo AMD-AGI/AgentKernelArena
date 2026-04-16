@@ -11,7 +11,7 @@ class GateGRUSelectionLayer(nn.Module):
         self.update = nn.Linear(dim_model * 2, dim_model)
         self.proposal = nn.Linear(dim_model * 2, dim_model)
 
-    def forward(self, x_1, x_2, *args):
+    def forward(self, x_1, x_2, *args, fn=None):
         reset = torch.sigmoid(self.reset(torch.cat([x_1, x_2], -1)))
         update = torch.sigmoid(self.update(torch.cat([x_1, x_2], -1)))
         proposal = torch.tanh(self.proposal(torch.cat([reset * x_1, x_2], -1)))
@@ -20,7 +20,24 @@ class GateGRUSelectionLayer(nn.Module):
 
 
 def get_inputs():
-    return [torch.rand([4, 4, 4, 4]), torch.rand([4, 4, 4, 4])]
+    """
+    Generate multiple test cases with varying sizes
+    GateGRUSelectionLayer expects 4D tensors [B0, B1, B2, D]
+    """
+    configs = [
+        # 4D tensors: (B0, B1, B2, D)
+        ([4, 4, 4, 4],),
+        ([8, 8, 8, 8],),
+        ([16, 16, 16, 16],),
+        ([32, 32, 32, 32],),
+        ([64, 64, 64, 64],),
+    ]
+    
+    for shape in configs:
+        shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+        x_1 = torch.randn(shape_list, dtype=torch.float32)
+        x_2 = torch.randn(shape_list, dtype=torch.float32)
+        yield [x_1, x_2]
 
 
 def get_init_inputs():

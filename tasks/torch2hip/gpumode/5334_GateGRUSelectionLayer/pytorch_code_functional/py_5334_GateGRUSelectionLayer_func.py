@@ -69,7 +69,26 @@ class GateGRUSelectionLayer(nn.Module):
         )
 
 def get_inputs():
-    return [torch.rand([4, 4, 4, 4]), torch.rand([4, 4, 4, 4])]
+    """
+    Generate multiple test cases with varying sizes
+    GateGRUSelectionLayer expects 4D tensors [B0, B1, B2, D]
+    All test cases must use D=4 to match dim_model=4 in get_init_inputs()
+    """
+    configs = [
+        # 4D tensors: (B0, B1, B2, D) where D must be 4
+        ([4, 4, 4, 4],),  # (4, 4, 4, 4)
+        ([8, 4, 4, 4],),  # (8, 4, 4, 4) - keep D=4
+        ([16, 4, 4, 4],),  # (16, 4, 4, 4) - keep D=4
+        ([32, 4, 4, 4],),  # (32, 4, 4, 4) - keep D=4
+        ([64, 4, 4, 4],),  # (64, 4, 4, 4) - keep D=4
+    ]
+    
+    for shape in configs:
+        shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+        x_1 = torch.randn(shape_list, dtype=torch.float32)
+        x_2 = torch.randn(shape_list, dtype=torch.float32)
+        yield [x_1, x_2]
+
 
 def get_init_inputs():
     return [[], {'dim_model': 4, 'dim_ff': 4, 'prob_dropout': 0.5}]
