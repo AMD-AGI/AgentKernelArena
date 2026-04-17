@@ -1,0 +1,17 @@
+repo_url: https://github.com/ROCm/aiter.git
+task_type: repository
+repository_language: triton
+source_file_path:
+  - aiter/ops/triton/attention/pa_decode.py
+  - aiter/ops/triton/_triton_kernels/attention/pa_decode.py
+target_kernel_functions:
+  - paged_attention_decode
+  - _paged_attn_decode_v1_wo_dot_kernel
+  - _paged_attn_decode_v2_wo_dot_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+
