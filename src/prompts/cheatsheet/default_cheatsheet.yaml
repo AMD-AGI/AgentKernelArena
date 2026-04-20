@@ -22,6 +22,12 @@ architecture:
   MI355X:
     gfx_arch: gfx950
     file: src/prompts/cheatsheet/MI355X_architecture.md
+  RDNA4:
+    gfx_arch: gfx1201
+    file: src/prompts/cheatsheet/RDNA4_architecture.md
+    knowledge_override:
+      hip:    src/prompts/cheatsheet/hip_rdna_cheatsheet.md
+      triton: src/prompts/cheatsheet/triton_rdna_cheatsheet.md
 
 knowledge:
   hip:    src/prompts/cheatsheet/hip_cheatsheet.md

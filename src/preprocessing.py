@@ -79,7 +79,12 @@ def setup_rocm_env(target_gpu_model: str, logger: logging.Logger) -> None:
         return
 
     os.environ["PYTORCH_ROCM_ARCH"] = gfx_arch
-    logger.info(f"Set PYTORCH_ROCM_ARCH={gfx_arch} (from target_gpu_model={target_gpu_model})")
+    os.environ["AMDGPU_TARGETS"] = gfx_arch
+    os.environ["GPU_TARGETS"] = gfx_arch
+    logger.info(
+        f"Set PYTORCH_ROCM_ARCH={gfx_arch}, AMDGPU_TARGETS={gfx_arch}, GPU_TARGETS={gfx_arch} "
+        f"(from target_gpu_model={target_gpu_model})"
+    )
 
 
 def check_environment() -> None:
