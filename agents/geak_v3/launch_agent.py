@@ -155,6 +155,32 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     prompt = simple_prompt_builder(task_config_dir, workspace, logger)
     prompt = integrate_agent_config(prompt, agent_config)
 
+    # Inject architecture context + language-specific cheatsheet from
+    # default_cheatsheet.yaml.  simple_prompt_builder() deliberately stays
+    # minimal, so the cheatsheet (and the arch-precheck directive) are
+    # appended here from the shared prompt_builder helpers, mirroring the
+    # section layout used by src/prompt_builder.py::prompt_builder.
+    try:
+        from src.prompt_builder import _load_cheatsheet, _gpu_arch_precheck_prompt
+        with open(task_config_dir, "r") as _f:
+            _task_config = yaml.safe_load(_f) or {}
+        _task_type_name = _task_config.get("task_type", "")
+        _target_gpu_model = eval_config.get("target_gpu_model")
+        if _task_type_name and _target_gpu_model:
+            _project_root = Path(__file__).resolve().parent.parent.parent
+            _cheatsheet_text, _gfx_arch = _load_cheatsheet(
+                _task_type_name, _target_gpu_model, _project_root, _task_config, logger,
+            )
+            _precheck = _gpu_arch_precheck_prompt(_target_gpu_model, _gfx_arch)
+            _extras = [p for p in [_precheck, _cheatsheet_text] if p]
+            if _extras:
+                prompt = prompt.rstrip() + "\n\n" + "\n\n---\n\n".join(_extras) + "\n"
+                logger.info(
+                    f"Appended cheatsheet (arch={_gfx_arch}, +{sum(len(p) for p in _extras)} chars)"
+                )
+    except Exception as _e:  # noqa: BLE001 — keep agent launch resilient
+        logger.warning(f"Cheatsheet injection skipped: {_e}")
+
     # Write prompt to a temporary file (mini agent reads from file if path exists)
     prompt_file = Path(workspace) / "task_prompt.md"
     prompt_file.write_text(prompt, encoding="utf-8")
