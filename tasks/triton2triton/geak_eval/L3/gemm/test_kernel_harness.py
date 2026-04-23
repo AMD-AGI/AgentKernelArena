@@ -5,14 +5,18 @@
 import os
 import sys
 
-# Ensure GPU is visible on HIP systems - must be set before any torch/triton imports
-# Use GEAK_GPU_DEVICE if set, otherwise default to device 0
-_gpu = os.environ.get("GEAK_GPU_DEVICE", "0")
-os.environ["HIP_VISIBLE_DEVICES"] = _gpu
-os.environ["ROCR_VISIBLE_DEVICES"] = _gpu
+# Only set GPU visibility if explicitly requested via GEAK_GPU_DEVICE.
+# Don't override HIP_VISIBLE_DEVICES if it's already set by the caller
+# (e.g., GEAK's parallel GPU scheduler).
+_gpu = os.environ.get("GEAK_GPU_DEVICE")
+if _gpu is not None:
+    os.environ["HIP_VISIBLE_DEVICES"] = _gpu
+    os.environ["ROCR_VISIBLE_DEVICES"] = _gpu
 
 import argparse
 import math
+import importlib.util
+import types
 
 # Resolve repo root
 REPO_ROOT = os.environ.get(
@@ -25,17 +29,67 @@ REPO_ROOT = os.environ.get(
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+
+# ── Dynamic kernel.py loader ─────────────────────────────────────────────
+def _resolve_geak_kernel_dir():
+    candidates = []
+    work_dir = os.environ.get("GEAK_WORK_DIR", "").strip()
+    if work_dir:
+        candidates.append(work_dir)
+    repo_root = os.environ.get("GEAK_REPO_ROOT", "").strip()
+    if repo_root:
+        candidates.append(os.path.join(repo_root, '.'))
+    original_kernel_dir = os.path.dirname(os.path.abspath(__file__))
+    if original_kernel_dir:
+        candidates.append(original_kernel_dir)
+    for candidate in candidates:
+        if candidate and os.path.isfile(os.path.join(candidate, "kernel.py")):
+            return candidate
+    return original_kernel_dir or os.getcwd()
+
+
+def _ensure_geak_package(module_name):
+    parts = module_name.split(".")
+    for idx in range(1, len(parts)):
+        prefix = ".".join(parts[:idx])
+        if prefix in sys.modules:
+            continue
+        pkg = types.ModuleType(prefix)
+        pkg.__path__ = []
+        sys.modules[prefix] = pkg
+
+
+def _register_geak_aliases(kernel_dir):
+    aliases = ['gemm_a16w16', 'aiter.ops.triton.gemm_a16w16']
+    entry_file = os.path.join(kernel_dir, "kernel.py")
+    if not os.path.isfile(entry_file):
+        return
+    for alias in aliases:
+        if alias in sys.modules:
+            continue
+        _ensure_geak_package(alias)
+        spec = importlib.util.spec_from_file_location(alias, entry_file)
+        if spec is None or spec.loader is None:
+            continue
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[alias] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            pass
+
+
+_KERNEL_DIR = _resolve_geak_kernel_dir()
+if _KERNEL_DIR and _KERNEL_DIR not in sys.path:
+    sys.path.insert(0, _KERNEL_DIR)
+_register_geak_aliases(_KERNEL_DIR)
+# ── End dynamic loader ────────────────────────────────────────────────────
+
 import torch
 import torch.nn.functional as F
 import triton
 
-# Import kernel and helpers
-
-
 from aiter.ops.triton.gemm_a16w16 import gemm_a16w16
-from op_tests.triton_tests.test_gemm_a16w16 import (
-    generate_gemm_a16w16_inputs,
-)
 
 # ---------------------------------------------------------------------------
 # Config list: from bench_gemm_a16w16.py -> benchmark_utils.get_x_vals(dims=3)
@@ -79,6 +133,16 @@ def _format_config(cfg):
 
 
 # ---------------------------------------------------------------------------
+# Input generation (inlined from aiter's test_gemm_a16w16.generate_gemm_a16w16_inputs)
+# ---------------------------------------------------------------------------
+def _generate_inputs(M, N, K, dtype):
+    x = torch.randn((M, K), dtype=dtype, device="cuda")
+    w = torch.randn((K, N), dtype=dtype, device="cuda").T
+    bias = torch.empty((N,), dtype=dtype, device="cuda")
+    return x, w, bias
+
+
+# ---------------------------------------------------------------------------
 # Correctness
 # ---------------------------------------------------------------------------
 def run_correctness(indices):
@@ -87,19 +151,16 @@ def run_correctness(indices):
     all_pass = True
     for idx in indices:
         M, N, K = ALL_CONFIGS[idx]
-        x, w, bias, out_dtype, y = generate_gemm_a16w16_inputs(
-            M, N, K, DTYPE, output=True, bias=True
-        )
+        x, w, bias = _generate_inputs(M, N, K, DTYPE)
         torch_out = F.linear(x, w, bias=bias)
-        triton_out = gemm_a16w16(x, w, bias, out_dtype, y)
+        triton_out = gemm_a16w16(x, w, bias)
         try:
             torch.testing.assert_close(triton_out, torch_out, atol=1e-1, rtol=1e-1)
             print("  [{}] {}  PASS".format(idx, _format_config(ALL_CONFIGS[idx])))
         except AssertionError as e:
             print("  [{}] {}  FAIL: {}".format(idx, _format_config(ALL_CONFIGS[idx]), e))
             all_pass = False
-        # Free memory
-        del x, w, bias, y, torch_out, triton_out
+        del x, w, bias, torch_out, triton_out
         torch.cuda.empty_cache()
 
     print("GEAK_SHAPES_USED={}".format(indices))
@@ -118,18 +179,15 @@ def run_benchmark(indices):
     latencies = []
     for idx in indices:
         M, N, K = ALL_CONFIGS[idx]
-        x, w, bias, out_dtype, y = generate_gemm_a16w16_inputs(
-            M, N, K, DTYPE, output=True, bias=True
-        )
-        # Use triton.testing.do_bench for GPU-event timing
+        x, w, bias = _generate_inputs(M, N, K, DTYPE)
         ms = triton.testing.do_bench(
-            lambda: gemm_a16w16(x, w, bias, DTYPE, y),
+            lambda: gemm_a16w16(x, w, bias),
             warmup=WARMUP,
             rep=ITERATIONS,
         )
         latencies.append(ms)
         print("  [{}] {}  {:.4f}ms".format(idx, _format_config(ALL_CONFIGS[idx]), ms))
-        del x, w, bias, y
+        del x, w, bias
         torch.cuda.empty_cache()
 
     # Geometric mean
@@ -148,14 +206,11 @@ def run_profile(indices):
     print("Running profile mode...")
     for idx in indices:
         M, N, K = ALL_CONFIGS[idx]
-        x, w, bias, out_dtype, y = generate_gemm_a16w16_inputs(
-            M, N, K, DTYPE, output=True, bias=True
-        )
-        # Just run the kernel (for external profiler to capture)
-        gemm_a16w16(x, w, bias, DTYPE, y)
+        x, w, bias = _generate_inputs(M, N, K, DTYPE)
+        gemm_a16w16(x, w, bias)
         torch.cuda.synchronize()
         print("  [{}] {}  profiled".format(idx, _format_config(ALL_CONFIGS[idx])))
-        del x, w, bias, y
+        del x, w, bias
         torch.cuda.empty_cache()
 
     print("GEAK_SHAPES_USED={}".format(indices))
