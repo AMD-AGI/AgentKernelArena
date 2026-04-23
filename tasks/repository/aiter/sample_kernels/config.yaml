@@ -1,0 +1,15 @@
+repo_url: https://github.com/ROCm/aiter.git
+task_type: repository
+repository_language: hip
+source_file_path:
+  - csrc/kernels/sample_kernels.cu
+target_kernel_functions:
+  - greedy_sample_kernel
+  - random_sample_kernel
+  - topk_topp_sampling_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance

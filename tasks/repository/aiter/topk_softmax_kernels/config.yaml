@@ -1,0 +1,15 @@
+repo_url: https://github.com/ROCm/aiter.git
+task_type: repository
+repository_language: hip
+source_file_path:
+  - csrc/kernels/topk_softmax_kernels.cu
+target_kernel_functions:
+  - moeSoftmax
+  - moeTopK
+  - topkGatingSoftmax
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance

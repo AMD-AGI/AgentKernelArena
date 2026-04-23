@@ -1,0 +1,15 @@
+repo_url: https://github.com/ROCm/aiter.git
+task_type: repository
+repository_language: hip
+source_file_path:
+  - csrc/kernels/attention_v1.cu
+  - csrc/include/attention_common.cuh
+target_kernel_functions:
+  - paged_attention_v1_kernel
+  - paged_attention_v1_reduce_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
