@@ -8,11 +8,10 @@ post_clone_install_mode: after_clone
 task_type: repository
 repository_language: hip
 source_file_path:
-  - csrc/kernels/quant_kernels.cu
+  - csrc/kernels/moe_fused_gate.cu
 target_kernel_functions:
-  - dynamic_per_token_scaled_quant_kernel
-  - static_scaled_quant_kernel
-  - dynamic_per_group_scaled_quant_kernel
+  - moe_fused_gate_kernel
+  - moe_fused_gate_kernel_dynamic
 compile_command:
   - python3 scripts/task_runner.py compile
 correctness_command:
@@ -20,4 +19,4 @@ correctness_command:
 performance_command:
   - python3 scripts/task_runner.py performance
 prompt:
-  instructions: "Optimize the FP8/FP4 quantization kernels"
+  instructions: "Optimize the MoE fused gate kernel (DeepSeek V3 style grouped expert selection)"

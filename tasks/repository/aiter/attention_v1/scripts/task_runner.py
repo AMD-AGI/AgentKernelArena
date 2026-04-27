@@ -4,13 +4,9 @@
 Adapts the aiter JIT-compiled HIP kernel workflow to the AgentKernelArena
 evaluator interface (compile / correctness / performance).
 
-Key paths (aiter pip-installed environment):
-  - Kernel source (wrapper)  : /opt/venv/lib/python3.12/site-packages/aiter_meta/csrc/kernels/attention_v1.cu
-  - Kernel source (core)     : /opt/venv/lib/python3.12/site-packages/aiter_meta/csrc/include/attention_common.cuh
-  - JIT module               : module_pa_v1
-  - JIT .so cache            : /opt/venv/lib/python3.12/site-packages/aiter/jit/module_pa_v1.so
-  - JIT build dir            : /opt/venv/lib/python3.12/site-packages/aiter/jit/build/module_pa_v1/
-  - Test file                : /workspace/aiter-src/op_tests/test_pa_v1.py
+Key paths (dynamically resolved via `import aiter`):
+  - JIT .so cache : <aiter_package>/jit/
+  - Test script   : <aiter_repo>/op_tests/test_pa_v1.py
 
 Test output format (when run as __main__):
   - The script runs with fixed params: ctx_len=2048, num_seqs=8, heads=(8,1), head_size=128
@@ -32,9 +28,12 @@ from pathlib import Path
 TASK_NAME = "repository/aiter/attention_v1"
 MODULE_NAME = "module_pa_v1"
 
-# aiter pip-installed paths
-AITER_JIT_DIR = Path("/opt/venv/lib/python3.12/site-packages/aiter/jit")
-AITER_SRC_DIR = Path("/workspace/aiter-src")
+# Dynamically resolve aiter paths
+import aiter as _aiter_pkg_ref
+_aiter_pkg_dir = Path(_aiter_pkg_ref.__file__).parent
+
+AITER_JIT_DIR = _aiter_pkg_dir / "jit"
+AITER_SRC_DIR = _aiter_pkg_dir.parent
 TEST_SCRIPT = AITER_SRC_DIR / "op_tests" / "test_pa_v1.py"
 
 
@@ -185,6 +184,7 @@ def run_performance() -> None:
         })
 
     (_report_root() / "performance_report.json").write_text(json.dumps(results, indent=2))
+    (_report_root() / "performance.log").write_text(out)
 
     if results:
         avg_us = sum(r["metadata"]["value_us"] for r in results) / len(results)

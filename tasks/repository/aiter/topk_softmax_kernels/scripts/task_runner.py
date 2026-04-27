@@ -4,12 +4,9 @@
 Adapts the aiter JIT-compiled HIP kernel workflow to the AgentKernelArena
 evaluator interface (compile / correctness / performance).
 
-Key paths (aiter pip-installed environment):
-  - Kernel source : /opt/venv/lib/python3.12/site-packages/aiter_meta/csrc/kernels/topk_softmax_kernels.cu
-  - JIT module    : module_moe_asm  (composite: 7 .cu files)
-  - JIT .so cache : /opt/venv/lib/python3.12/site-packages/aiter/jit/module_moe_asm.so
-  - JIT build dir : /opt/venv/lib/python3.12/site-packages/aiter/jit/build/module_moe_asm/
-  - Test file     : /workspace/aiter-src/op_tests/test_moeTopkSoftmax.py
+Key paths (dynamically resolved via `import aiter`):
+  - JIT .so cache : <aiter_package>/jit/
+  - Test script   : <aiter_repo>/op_tests/test_moeTopkSoftmax.py
 
 CRITICAL: NEVER run test_moeTopkSoftmax.py without explicit -e/-t/-k parameters!
 The test script runs 4 groups:
@@ -38,9 +35,12 @@ from pathlib import Path
 TASK_NAME = "repository/aiter/topk_softmax_kernels"
 MODULE_NAME = "module_moe_asm"
 
-# aiter pip-installed paths
-AITER_JIT_DIR = Path("/opt/venv/lib/python3.12/site-packages/aiter/jit")
-AITER_SRC_DIR = Path("/workspace/aiter-src")
+# Dynamically resolve aiter paths
+import aiter as _aiter_pkg_ref
+_aiter_pkg_dir = Path(_aiter_pkg_ref.__file__).parent
+
+AITER_JIT_DIR = _aiter_pkg_dir / "jit"
+AITER_SRC_DIR = _aiter_pkg_dir.parent
 TEST_SCRIPT = AITER_SRC_DIR / "op_tests" / "test_moeTopkSoftmax.py"
 
 
@@ -349,6 +349,7 @@ def run_performance() -> None:
         results.append(entry)
 
     (_report_root() / "performance_report.json").write_text(json.dumps(results, indent=2))
+    (_report_root() / "performance.log").write_text(out)
 
     if results:
         avg_us = sum(r["metadata"]["hip_us"] for r in results) / len(results)

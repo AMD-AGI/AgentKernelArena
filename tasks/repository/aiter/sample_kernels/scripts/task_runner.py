@@ -4,12 +4,9 @@
 Adapts the aiter JIT-compiled HIP kernel workflow to the AgentKernelArena
 evaluator interface (compile / correctness / performance).
 
-Key paths (aiter pip-installed environment):
-  - Kernel source : /opt/venv/lib/python3.12/site-packages/aiter_meta/csrc/kernels/sample_kernels.cu
-  - JIT module    : module_sample
-  - JIT .so cache : /opt/venv/lib/python3.12/site-packages/aiter/jit/module_sample.so
-  - JIT build dir : /opt/venv/lib/python3.12/site-packages/aiter/jit/build/module_sample/
-  - Test file     : /workspace/aiter-src/op_tests/test_sample.py
+Key paths (dynamically resolved via `import aiter`):
+  - JIT .so cache : <aiter_package>/jit/
+  - Test script   : <aiter_repo>/op_tests/test_sample.py
 
 Output format (Pandas markdown table, default run):
   Columns: M, N, dtype, eps, origin_us, exp_out_aiter_us, exp_out_aiter_err,
@@ -31,9 +28,12 @@ from pathlib import Path
 TASK_NAME = "repository/aiter/sample_kernels"
 MODULE_NAME = "module_sample"
 
-# aiter pip-installed paths
-AITER_JIT_DIR = Path("/opt/venv/lib/python3.12/site-packages/aiter/jit")
-AITER_SRC_DIR = Path("/workspace/aiter-src")
+# Dynamically resolve aiter paths
+import aiter as _aiter_pkg_ref
+_aiter_pkg_dir = Path(_aiter_pkg_ref.__file__).parent
+
+AITER_JIT_DIR = _aiter_pkg_dir / "jit"
+AITER_SRC_DIR = _aiter_pkg_dir.parent
 TEST_SCRIPT = AITER_SRC_DIR / "op_tests" / "test_sample.py"
 
 
@@ -231,6 +231,7 @@ def run_performance() -> None:
         i += 1
 
     (_report_root() / "performance_report.json").write_text(json.dumps(results, indent=2))
+    (_report_root() / "performance.log").write_text(out)
 
     if results:
         avg_us = sum(r["metadata"]["exp_in_aiter_us"] for r in results) / len(results)

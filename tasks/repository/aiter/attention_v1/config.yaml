@@ -1,4 +1,10 @@
 repo_url: https://github.com/ROCm/aiter.git
+aiter_commit: d098ae5
+post_clone_install:
+  - "git submodule update --init --depth 1"
+  - "pip install . --no-build-isolation"
+  - "pip install -e . --no-build-isolation"
+post_clone_install_mode: after_clone
 task_type: repository
 repository_language: hip
 source_file_path:
@@ -13,3 +19,5 @@ correctness_command:
   - python3 scripts/task_runner.py correctness
 performance_command:
   - python3 scripts/task_runner.py performance
+prompt:
+  instructions: "Optimize the PagedAttention V1 kernel"

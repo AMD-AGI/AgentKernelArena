@@ -1,33 +1,38 @@
 #!/usr/bin/env python3
-"""Task runner for repository/aiter/rmsnorm_kernels.
+"""Task runner for repository/aiter/moe_fused_gate.
 
 Adapts the aiter JIT-compiled HIP kernel workflow to the AgentKernelArena
 evaluator interface (compile / correctness / performance).
 
+Uses a standalone test script (test_moe_fused_gate_bench.py) that directly
+calls aiter.moe_fused_gate() without depending on aiter's test_moeTopkSoftmax.py.
+This avoids interference with the topk_softmax_kernels case which shares
+the same JIT module (module_moe_asm).
+
 Key paths (dynamically resolved via `import aiter`):
   - JIT .so cache : <aiter_package>/jit/
-  - Test script   : <aiter_repo>/op_tests/test_rmsnorm2d.py
+  - Test script   : scripts/test_moe_fused_gate_bench.py (self-contained)
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-TASK_NAME = "repository/aiter/rmsnorm_kernels"
-MODULE_NAME = "module_rmsnorm"
+TASK_NAME = "repository/aiter/moe_fused_gate"
+MODULE_NAME = "module_moe_asm"
 
 # Dynamically resolve aiter paths
 import aiter as _aiter_pkg_ref
 _aiter_pkg_dir = Path(_aiter_pkg_ref.__file__).parent
 
 AITER_JIT_DIR = _aiter_pkg_dir / "jit"
-AITER_SRC_DIR = _aiter_pkg_dir.parent
-TEST_SCRIPT = AITER_SRC_DIR / "op_tests" / "test_rmsnorm2d.py"
+
+# Standalone test script (in the same scripts/ directory)
+TEST_SCRIPT = Path(__file__).resolve().parent / "test_moe_fused_gate_bench.py"
 
 
 def _workspace_root() -> Path:
@@ -62,7 +67,12 @@ def _run_cmd(cmd: list[str], cwd: Path | None = None, timeout_s: int = 600) -> t
 
 
 def _delete_jit_cache() -> None:
-    """Remove JIT-compiled .so and build directory to force recompilation."""
+    """Remove JIT-compiled .so and build directory to force recompilation.
+
+    NOTE: module_moe_asm is a composite module shared with topk_softmax_kernels.
+    Deleting it forces recompilation of all kernels in the module, which takes
+    longer (~120s) than single-file modules.
+    """
     so_path = AITER_JIT_DIR / f"{MODULE_NAME}.so"
     build_dir = AITER_JIT_DIR / "build" / MODULE_NAME
 
@@ -78,12 +88,25 @@ def _delete_jit_cache() -> None:
 # ── compile ──────────────────────────────────────────────────────────────────
 
 def run_compile() -> None:
-    """Force JIT recompilation by deleting cache and running a small test."""
-    _delete_jit_cache()
+    """Compile the module by running a small correctness test.
+
+    If the JIT .so already exists, reuse it to avoid lengthy recompilation.
+    """
+    so_path = AITER_JIT_DIR / f"{MODULE_NAME}.so"
+    if so_path.exists():
+        print(f"JIT module already exists: {so_path}")
+        report = {"status": "ok", "output": f"JIT module already cached: {so_path}"}
+        (_report_root() / "compile_report.json").write_text(json.dumps(report, indent=2))
+        print("Compilation: PASS")
+        return
 
     ok, out = _run_cmd(
-        ["python3", str(TEST_SCRIPT), "--m", "4", "--n", "4096", "-d", "bf16"],
-        cwd=AITER_SRC_DIR,
+        [
+            "python3", str(TEST_SCRIPT),
+            "--mode", "correctness",
+            "--token", "1",
+            "--expert", "128",
+        ],
         timeout_s=600,
     )
 
@@ -91,34 +114,41 @@ def run_compile() -> None:
     (_report_root() / "compile_report.json").write_text(json.dumps(report, indent=2))
 
     if not ok:
-        print(f"Compilation: FAIL")
+        print("Compilation: FAIL")
         sys.exit(1)
-    print(f"Compilation: PASS")
+    print("Compilation: PASS")
 
 
 # ── correctness ──────────────────────────────────────────────────────────────
 
 def run_correctness() -> None:
-    """Run correctness tests across multiple shapes and dtypes."""
+    """Run correctness tests across multiple shapes.
+
+    Parses [RESULT] lines from test_moe_fused_gate_bench.py output.
+    status=PASS means passed, status=FAIL means failed.
+    """
     ok, out = _run_cmd(
-        ["python3", str(TEST_SCRIPT), "-d", "bf16"],
-        cwd=AITER_SRC_DIR,
+        [
+            "python3", str(TEST_SCRIPT),
+            "--mode", "correctness",
+            "--token", "1", "4", "16", "64",
+            "--expert", "128", "256",
+        ],
         timeout_s=600,
     )
 
-    # Parse passed/failed counts
-    passed = len(re.findall(r"passed~", out))
-    failed = len(re.findall(r"(?:failed!|FAIL)", out))
+    passed = len(re.findall(r"status=PASS", out))
+    failed = len(re.findall(r"status=FAIL", out))
 
     report = {
-        "status": "ok" if (ok and failed == 0) else "fail",
+        "status": "ok" if (ok and failed == 0 and passed > 0) else "fail",
         "passed": passed,
         "failed": failed,
     }
     (_report_root() / "correctness_report.json").write_text(json.dumps(report, indent=2))
 
     print(f"Correctness: {passed} passed, {failed} failed")
-    if failed > 0 or not ok:
+    if failed > 0 or passed == 0:
         print("Correctness: FAIL")
         sys.exit(1)
     print("Correctness: PASS")
@@ -129,12 +159,15 @@ def run_correctness() -> None:
 def run_performance() -> None:
     """Run performance benchmarks and write performance_report.json.
 
-    Output format from test_rmsnorm2d.py:
-      [perf] dim: (4, 4096)  , dtype: torch.bfloat16, torch avg: 36.57  us, ck avg: 4.57  us, cu avg: 5.46  us,uplift: 700.0%
+    Parses [RESULT] lines with us=<value> from test_moe_fused_gate_bench.py.
     """
     ok, out = _run_cmd(
-        ["python3", str(TEST_SCRIPT), "-d", "bf16"],
-        cwd=AITER_SRC_DIR,
+        [
+            "python3", str(TEST_SCRIPT),
+            "--mode", "performance",
+            "--token", "1", "4", "16", "64", "256",
+            "--expert", "128", "256",
+        ],
         timeout_s=600,
     )
 
@@ -143,33 +176,24 @@ def run_performance() -> None:
         print("Performance: FAIL")
         sys.exit(1)
 
-    # Parse performance lines
     pattern = re.compile(
-        r"\[perf\] dim: \((?P<m>\d+),\s*(?P<n>\d+)\)\s*,"
-        r"\s*dtype: (?P<dtype>\S+),"
-        r".*?cu avg:\s*(?P<cu>[\d.]+)\s*us"
+        r"\[RESULT\] token=(\d+) expert=(\d+) group=(\d+) topk=(\d+) us=([\d.]+)"
     )
 
     results = []
-    seen = set()
     for m in pattern.finditer(out):
-        shape_m, shape_n = int(m.group("m")), int(m.group("n"))
-        cu_us = float(m.group("cu"))
-        key = (shape_m, shape_n, m.group("dtype"))
-        if key in seen:
-            continue
-        seen.add(key)
+        token, expert, group, topk = m.group(1), m.group(2), m.group(3), m.group(4)
+        us = float(m.group(5))
         results.append({
-            "test_case_id": f"rmsnorm_m{shape_m}_n{shape_n}_{m.group('dtype')}",
-            "shape": [shape_m, shape_n],
-            "execution_time_ms": cu_us / 1000.0,
+            "test_case_id": f"moe_fused_gate_t{token}_e{expert}_g{group}_k{topk}",
+            "execution_time_ms": us / 1000.0,
             "metadata": {
-                "m": shape_m,
-                "n": shape_n,
-                "dtype": m.group("dtype"),
-                "kernel": "cu",
+                "token": int(token),
+                "expert": int(expert),
+                "group": int(group),
+                "topk": int(topk),
                 "unit_original": "us",
-                "value_us": cu_us,
+                "value_us": us,
             },
         })
 

@@ -4,12 +4,9 @@
 Adapts the aiter JIT-compiled HIP kernel workflow to the AgentKernelArena
 evaluator interface (compile / correctness / performance).
 
-Key paths (aiter pip-installed environment):
-  - Kernel source : /opt/venv/lib/python3.12/site-packages/aiter_meta/csrc/kernels/cache_kernels.cu
-  - JIT module    : module_cache
-  - JIT .so cache : /opt/venv/lib/python3.12/site-packages/aiter/jit/module_cache.so
-  - JIT build dir : /opt/venv/lib/python3.12/site-packages/aiter/jit/build/module_cache/
-  - Test file     : /workspace/aiter-src/op_tests/test_kvcache.py
+Key paths (dynamically resolved via `import aiter`):
+  - JIT .so cache : <aiter_package>/jit/
+  - Test script   : <aiter_repo>/op_tests/test_kvcache.py
 
 Output format (NON-STANDARD text, not a pandas markdown table):
   prefill part: ref vs aiter  16735.00us vs  2487.00us
@@ -33,9 +30,12 @@ from pathlib import Path
 TASK_NAME = "repository/aiter/cache_kernels"
 MODULE_NAME = "module_cache"
 
-# aiter pip-installed paths
-AITER_JIT_DIR = Path("/opt/venv/lib/python3.12/site-packages/aiter/jit")
-AITER_SRC_DIR = Path("/workspace/aiter-src")
+# Dynamically resolve aiter paths
+import aiter as _aiter_pkg_ref
+_aiter_pkg_dir = Path(_aiter_pkg_ref.__file__).parent
+
+AITER_JIT_DIR = _aiter_pkg_dir / "jit"
+AITER_SRC_DIR = _aiter_pkg_dir.parent
 TEST_SCRIPT = AITER_SRC_DIR / "op_tests" / "test_kvcache.py"
 
 # Minimum free VRAM (bytes) required to run the test (~2 GiB safety margin
@@ -315,6 +315,7 @@ def run_performance() -> None:
             })
 
     (_report_root() / "performance_report.json").write_text(json.dumps(results, indent=2))
+    (_report_root() / "performance.log").write_text(out)
 
     if results:
         avg_us = sum(r["metadata"]["aiter_us"] for r in results) / len(results)

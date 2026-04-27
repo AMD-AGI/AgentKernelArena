@@ -66,7 +66,10 @@ def _run_kernel(d: dict):
     return aiter.mla.mla_decode_fwd(
         d["q"], d["kv_buffer"], d["out"],
         d["qo_indptr"], d["kv_indptr"], d["kv_indices"], d["kv_last_page_lens"],
-        d["max_seqlen_q"], d["sm_scale"],
+        d["max_seqlen_q"],
+        page_size=PAGE_SIZE,
+        nhead_kv=NHEAD_KV,
+        sm_scale=d["sm_scale"],
     )
 
 
