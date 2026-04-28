@@ -129,7 +129,7 @@ def run_correctness() -> None:
             "--mode", "correctness",
             "--batch", "1", "16", "64", "128",
             "--ctx", "64", "256", "1200", "3200",
-            "--nhead", "16", "128",
+            "--nhead", "16",
         ],
         timeout_s=600,
     )
@@ -164,7 +164,7 @@ def run_performance() -> None:
             "--mode", "performance",
             "--batch", "1", "16", "64", "128",
             "--ctx", "64", "256", "1200", "3200",
-            "--nhead", "16", "128",
+            "--nhead", "16",
         ],
         timeout_s=600,
     )

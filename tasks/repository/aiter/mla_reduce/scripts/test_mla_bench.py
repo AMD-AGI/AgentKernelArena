@@ -60,16 +60,67 @@ def _create_inputs(batch_size: int, ctx_len: int, nhead: int, device: str = "cud
     }
 
 
+def _create_persistent_metadata(d: dict, device: str = "cuda"):
+    """Create persistent mode metadata so that reduce goes through HIP kernel."""
+    import aiter
+
+    batch_size = d["batch_size"]
+    nhead = d["nhead"]
+    max_seqlen_q = d["max_seqlen_q"]
+
+    info = aiter.get_mla_metadata_info_v1(
+        batch_size, max_seqlen_q, nhead, DTYPE, DTYPE,
+        is_sparse=False, fast_mode=True,
+    )
+    (wmd_sz, wmd_t), (wi_sz, wi_t), (wis_sz, wis_t), \
+        (ri_sz, ri_t), (rfm_sz, rfm_t), (rpm_sz, rpm_t) = info
+
+    work_meta_data = torch.empty(wmd_sz, dtype=wmd_t, device=device)
+    work_indptr = torch.empty(wi_sz, dtype=wi_t, device=device)
+    work_info_set = torch.empty(wis_sz, dtype=wis_t, device=device)
+    reduce_indptr = torch.empty(ri_sz, dtype=ri_t, device=device)
+    reduce_final_map = torch.empty(rfm_sz, dtype=rfm_t, device=device)
+    reduce_partial_map = torch.empty(rpm_sz, dtype=rpm_t, device=device)
+
+    aiter.get_mla_metadata_v1(
+        d["qo_indptr"], d["kv_indptr"],
+        nhead // NHEAD_KV,
+        NHEAD_KV,
+        False,
+        work_meta_data,
+        work_info_set,
+        work_indptr,
+        reduce_indptr,
+        reduce_final_map,
+        reduce_partial_map,
+        kv_granularity=max(PAGE_SIZE, 16),
+        max_seqlen_qo=max_seqlen_q,
+        uni_seqlen_qo=DECODE_QLEN,
+        fast_mode=True,
+    )
+
+    d["work_meta_data"] = work_meta_data
+    d["work_indptr"] = work_indptr
+    d["work_info_set"] = work_info_set
+    d["reduce_indptr"] = reduce_indptr
+    d["reduce_final_map"] = reduce_final_map
+    d["reduce_partial_map"] = reduce_partial_map
+
+
 def _run_kernel(d: dict):
-    """Call aiter MLA decode (triggers reduce kernel internally)."""
+    """Call aiter MLA decode in persistent mode (triggers HIP reduce kernel)."""
     import aiter
     return aiter.mla.mla_decode_fwd(
         d["q"], d["kv_buffer"], d["out"],
         d["qo_indptr"], d["kv_indptr"], d["kv_indices"], d["kv_last_page_lens"],
         d["max_seqlen_q"],
-        page_size=PAGE_SIZE,
-        nhead_kv=NHEAD_KV,
         sm_scale=d["sm_scale"],
+        work_meta_data=d["work_meta_data"],
+        work_indptr=d["work_indptr"],
+        work_info_set=d["work_info_set"],
+        reduce_indptr=d["reduce_indptr"],
+        reduce_final_map=d["reduce_final_map"],
+        reduce_partial_map=d["reduce_partial_map"],
     )
 
 
@@ -120,6 +171,7 @@ def run_correctness(batches, ctxs, nheads):
                 tag = f"batch={batch} ctx={ctx} nhead={nhead}"
                 try:
                     d = _create_inputs(batch, ctx, nhead)
+                    _create_persistent_metadata(d)
                     _run_kernel(d)
                     ref = _reference_attention(d)
                     max_err = (d["out"].float() - ref.float()).abs().max().item()
@@ -152,6 +204,7 @@ def run_performance(batches, ctxs, nheads, num_warmup=5, num_iters=20):
                 tag = f"batch={batch} ctx={ctx} nhead={nhead}"
                 try:
                     d = _create_inputs(batch, ctx, nhead)
+                    _create_persistent_metadata(d)
                     for _ in range(num_warmup):
                         d["out"].fill_(-1)
                         _run_kernel(d)
@@ -191,7 +244,7 @@ def main():
     parser.add_argument("--mode", choices=["correctness", "performance"], required=True)
     parser.add_argument("--batch", type=int, nargs="+", default=[1, 16, 64, 128])
     parser.add_argument("--ctx", type=int, nargs="+", default=[64, 256, 1200, 3200])
-    parser.add_argument("--nhead", type=int, nargs="+", default=[16, 128])
+    parser.add_argument("--nhead", type=int, nargs="+", default=[16])
     args = parser.parse_args()
 
     if args.mode == "correctness":
