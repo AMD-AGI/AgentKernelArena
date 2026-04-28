@@ -11,8 +11,8 @@ source_file_path:
   - csrc/kernels/attention_v1.cu
   - csrc/include/attention_common.cuh
 target_kernel_functions:
-  - paged_attention_v1_kernel
-  - paged_attention_v1_reduce_kernel
+  - paged_attention_ll4mi_QKV_mfma16_kernel
+  - paged_attention_ll4mi_reduce_kernel
 compile_command:
   - python3 scripts/task_runner.py compile
 correctness_command:
@@ -20,4 +20,4 @@ correctness_command:
 performance_command:
   - python3 scripts/task_runner.py performance
 prompt:
-  instructions: "Optimize the PagedAttention V1 kernel"
+  instructions: "Optimize the paged attention v1 kernel (decode-phase multi-head attention with KV cache)"
