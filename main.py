@@ -1,4 +1,5 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
+import re
 import yaml
 import logging
 import argparse
@@ -13,6 +14,8 @@ from src.evaluator import measure_baseline, evaluate_kernel, write_task_result
 parser = argparse.ArgumentParser(description="arguments for AgentKernelArena")
 parser.add_argument("--config_name", type=str, default="config.yaml",help="the config of AgentKernelArena, default set to config. \
                     You can set different tasks in different config yaml file in order to run multi evaluation task in one folder.")
+parser.add_argument("--run-suffix", type=str, default=None,
+                    help="Suffix appended to the run directory name, e.g. --run-suffix composer2_hip → run_20260416_120000_composer2_hip")
 parser.add_argument("--resume-run", type=str, default=None,
                     help="Resume an existing run by specifying the run directory name (e.g., run_20250115_143022)")
 parser.add_argument("--resume-latest", action="store_true",
@@ -56,11 +59,14 @@ def main() -> None:
             print(f"Error: Run directory does not exist: {run_directory}")
             return
         resume_mode = True
-        # Extract timestamp from run directory name: run_20250115_143022 -> 20250115_143022
-        if run_directory_name.startswith("run_"):
-            timestamp = run_directory_name[4:]  # Remove "run_" prefix
+        # Extract the YYYYMMDD_HHMMSS timestamp from run directory name.
+        # The name may include a suffix: run_20260429_194009_claude_opus_hip
+        # Task directories use only the timestamp portion, not the suffix.
+        m = re.match(r"^run_(\d{8}_\d{6})", run_directory_name)
+        if m:
+            timestamp = m.group(1)
         else:
-            print(f"Error: Invalid run directory name format: {run_directory_name}. Expected format: run_YYYYMMDD_HHMMSS")
+            print(f"Error: Invalid run directory name format: {run_directory_name}. Expected format: run_YYYYMMDD_HHMMSS[_suffix]")
             return
     elif args.resume_latest:
         # Resume latest run
@@ -74,20 +80,23 @@ def main() -> None:
         run_directory = run_dirs[0]
         run_directory_name = run_directory.name
         resume_mode = True
-        # Extract timestamp from run directory name
-        if run_directory_name.startswith("run_"):
-            timestamp = run_directory_name[4:]
+        # Extract the YYYYMMDD_HHMMSS timestamp (same regex as --resume-run)
+        m = re.match(r"^run_(\d{8}_\d{6})", run_directory_name)
+        if m:
+            timestamp = m.group(1)
         else:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     else:
         # Create new run
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        run_directory_name = f"run_{timestamp}"
+        suffix = f"_{args.run_suffix}" if args.run_suffix else ""
+        run_directory_name = f"run_{timestamp}{suffix}"
         run_directory = workspace_directory / run_directory_name
         run_directory.mkdir(parents=True, exist_ok=True)
     log_dir = Path(log_directory)
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_filename = f"{target_gpu_model}_{agent.value}_{timestamp}.log"
+    log_suffix = f"_{args.run_suffix}" if args.run_suffix else ""
+    log_filename = f"{target_gpu_model}_{agent.value}_{timestamp}{log_suffix}.log"
     log_path = log_dir / log_filename
 
     # Configure logging
