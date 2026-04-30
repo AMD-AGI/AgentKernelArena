@@ -18,3 +18,6 @@ tmp*
 kill.sh
 saved_results
 .mcp.json
+
+# Generated held-out test data (methodology is in held_out/, data is private)
+held_out_tests/
