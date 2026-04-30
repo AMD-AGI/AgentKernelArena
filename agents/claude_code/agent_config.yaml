@@ -1,6 +1,6 @@
 max_iterations: 3
-timeout_seconds: 600
+timeout_seconds: 3600
 python_path: /root/AgentKernelArena/.venv/bin/python3
 # Optional: set explicit Claude model / effort so logs record exact runtime settings.
-# model: claude-sonnet-4-6
+model: claude-opus-4-6
 # effort: medium
