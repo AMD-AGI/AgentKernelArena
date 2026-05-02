@@ -1,334 +1,251 @@
-# AgentKernelArena: Competitive Arena for GPU Kernel Optimization Agents
+# AgentKernelArena
 
-As AI coding agents, like Claude Code and OpenAI Codex, rapidly improve, we need more than cherry-picked demos. Especially in specialized domains like GPU programming. 
+**A benchmark for evaluating AI coding agents on GPU kernel optimization.**
 
-AgentKernelArena is a standardized evaluation arena built by AMD to measure how well AI coding agents perform on real GPU kernel optimization tasks. 
+AgentKernelArena measures how well autonomous AI coding agents optimize GPU kernels on AMD GPUs. It provides 196 tasks across three categories, a gated evaluation pipeline (compilation, correctness, performance), and held-out generalization testing to detect overfitting to visible test shapes.
 
-## Overview & Features
+The platform currently ships with cheatsheets for MI300X and MI355X, and is designed to be extended to other GPU architectures.
 
-AgentKernelArena provides an end-to-end, siloed benchmarking environment where LLM-powered agents (Cursor Agent, Claude Code, Codex, SWE-agent, GEAK, and custom agents) are evaluated side-by-side on the same kernel tasks using objective and reproducible metrics.
+## Key Features
 
-AgentKernelArena enables systematic evaluation of AI agents on GPU kernel optimization tasks by combining:
-- **Multi-Agent Arena**: Cursor, Claude Code, SWE-agent, OpenEvolve (GEAK), single LLM calls (Codex/others), and custom agents
-- **Multi-Model Support**: OpenAI (GPT-5), Anthropic Claude (Opus 4.5, Sonnet 4.5), and other models via OpenRouter or vLLM
-- **Task Categories**: HIP (ROCm examples, rocPRIM, customer HIP), Triton (TritonBench, ROCmBench), and Torch2HIP conversions
-- **Real Metrics**: Automated evaluation of compilation success, correctness, and real GPU performance speedups
-- **Designed for Fair Comparison**: Standardized tasks, environments, prompts, and scoring for leaderboard-style evaluation
-- **Workspace Isolation**: Each task runs in a timestamped duplicate workspace for reproducibility
-- **Comprehensive Logging**: Detailed logs with timestamps, prompts, outputs, and results for every task execution
-- **Flexible Configuration**: YAML-based configuration for tasks, agents, and LLM parameters
+- **196 tasks** in three categories:
+  - **HIP-to-HIP** (24 tasks): optimize existing HIP kernels
+  - **Triton-to-Triton** (148 tasks): optimize existing Triton kernels (118 from vLLM, 30 from ROCmBench)
+  - **PyTorch-to-HIP** (24 tasks): translate PyTorch modules into HIP kernels
+- **Gated evaluation pipeline**: compilation must pass before correctness is checked; correctness must pass before speedup is measured
+- **Multi-shape testing**: each task tests multiple input shapes and data types
+- **Held-out generalization**: evaluates agent-generated kernels on unseen shapes to detect hardcoded assumptions
+- **Agent-agnostic**: supports Cursor Agent, Claude Code, Codex CLI, and custom agents through a simple registration interface
+- **Domain-specific cheatsheets**: architecture guides (MI300X, MI355X) and language references (HIP, Triton) provided to agents as context
+- **Automated task validation**: a built-in validator agent checks new tasks for correctness and completeness before inclusion
+- **Visualization dashboard**: web-based UI for comparing run results across agents and models
 
-
-## **Leaderboard Coming: Stay Tuned!**
-
-AgentKernelArena is actively under development. Upcoming releases will publish detailed evaluation results comparing agent performance across multiple task categories, using standardized correctness and performance scores. 
-
-
-| Model         | Compiled | Correctness | Performance | Score |
-|---------------|----------|-------------|-------------|-------|
-| Cursor Agent  | xx       | xx          | xx          | xx    |
-| Claude Code   | xx       | xx          | xx          | xx    |
-| OpenAI Codex  | xx       | xx          | xx          | xx    |
-| SWE-agent     | xx       | xx          | xx          | xx    |
-| GEAK          | xx       | xx          | xx          | xx    |
-
-
-## Architecture
-
-### Core Components
+## Repository Structure
 
 ```
 AgentKernelArena/
-├── main.py                      # Main orchestration entry point
-├── config.yaml                  # Global configuration
-├── src/
-│   ├── module_registration.py  # Dynamic agent/prompt/post-processing loading
-│   ├── preprocessing.py         # Workspace setup and environment checks
-│   ├── prompt_builder.py        # Task prompt construction
-│   ├── postprocessing.py        # Result analysis and report generation
-│   ├── score.py                  # Scoring logic for evaluation metrics
-│   ├── tasks.py                 # Task discovery and registration
-│   └── utils/
-│       └── report_generation.py # Aggregate report analysis utilities
+├── main.py                  # Orchestrator: task discovery, agent dispatch, evaluation
+├── config.yaml              # Run configuration (agent, tasks, GPU target)
 ├── agents/
-│   ├── cursor/                  # Cursor agent integration
-│   ├── claude_code/             # Claude Code agent integration
-│   ├── codex/                   # Codex CLI agent integration
-│   ├── SWE_agent/               # SWE-agent integration
-│   ├── openevolve/              # OpenEvolve (GEAK) integration
-│   ├── geak_optimagentv2/        # GEAK OptimAgent v2 integration
-│   ├── geak_hip/                 # GEAK HIP integration
-│   ├── geak_ourllm_kernel2kernel/ # GEAK OurLLM kernel-to-kernel integration
-│   ├── single_llm_call/         # Single LLM call implementation
-│   └── __init__.py              # Agent registry
-└── tasks/                       # Task definitions
-    ├── rocm-examples/           # ROCm example kernels
-    ├── rocprim/                 # rocPRIM kernels
-    ├── customer_hip/            # Custom HIP kernels
-    ├── triton/                  # Triton benchmark kernels
-    └── torch2hip/               # Torch2HIP conversion tasks
+│   ├── cursor/              # Cursor Agent (CLI-based)
+│   ├── claude_code/         # Claude Code (CLI-based)
+│   ├── codex/               # OpenAI Codex CLI
+│   ├── task_validator/      # Automated task validation agent
+│   └── __init__.py          # Agent registry
+├── src/
+│   ├── prompt_builder.py    # Constructs task prompts from config + source + cheatsheet
+│   ├── evaluator.py         # Runs compile / correctness / performance checks
+│   ├── score.py             # Scoring logic (20 compile + 100 correctness + speedup×100)
+│   ├── preprocessing.py     # Workspace isolation and environment setup
+│   ├── postprocessing.py    # Result collection and report generation
+│   └── prompts/
+│       └── cheatsheet/      # MI300X/MI355X architecture docs, HIP/Triton guides
+├── tasks/
+│   ├── hip2hip/             # 24 HIP optimization tasks (from GPU Mode)
+│   ├── triton2triton/       # 148 Triton optimization tasks (vLLM + ROCmBench)
+│   └── torch2hip/           # 24 PyTorch-to-HIP translation tasks (from GPU Mode)
+├── held_out/                # Held-out generalization evaluation framework
+├── visualization/           # Web dashboard for result comparison
+├── Makefile                 # Environment setup helpers
+└── requirements.txt
 ```
 
-### Execution Flow
-
-1. **Configuration Loading**: Load `config.yaml` with agent, task, and LLM settings
-2. **Agent Registration**: Dynamically load agent launcher, prompt builder, and post-processing handler based on AgentType enum
-3. **Task Discovery**: Scan `tasks/` directory for task configurations matching specified categories
-4. **Workspace Setup**: Create isolated workspace with timestamp for each task
-5. **Prompt Building**: Construct task-specific prompts from config, source code, and instructions/cheatsheets
-6. **Agent Execution**: Launch agent in workspace with constructed prompt
-7. **Result Collection**: Save agent output, logs, and modified code
-8. **Post-Processing**: Run compilation, correctness tests, performance profiling, and scoring
-9. **Report Generation**: Generate comprehensive evaluation report with metrics
-
-## Installation
-
-### Prerequisites
+## Requirements
 
 - Python 3.12+
-- ROCm toolkit (for HIP kernels): `hipcc`, `rocprof-compute`
-- Triton (for Triton kernels)
-- Git
+- AMD GPU with ROCm 6.4+ (tested with 6.4, 7.0, 7.1)
+- PyTorch 2.6+ built for ROCm
+- Triton (included with ROCm PyTorch builds)
+- `hipcc` compiler (ships with ROCm)
+- Node.js 18+ (only needed for Codex CLI)
+- At least one agent CLI installed (Cursor, Claude Code, or Codex)
 
-### Setup
+## Setup
+
+### Option A: Docker (recommended)
+
+The easiest way to get a working environment is the official ROCm PyTorch Docker image, which includes ROCm, PyTorch, and Triton pre-installed. All experiments in the paper were run using this image:
 
 ```bash
-# Clone the repository
+# Clone the repo first, then mount it into the container
+git clone <repository-url>
+
+docker run -it --name agentkernalarena --network=host --privileged \
+    --device=/dev/kfd --device=/dev/dri \
+    --group-add=render --ipc=host \
+    -v $(pwd)/AgentKernelArena:/workspace \
+    --workdir /workspace \
+    rocm/pytorch:rocm7.1.1_ubuntu24.04_py3.12_pytorch_release_2.10.0
+```
+
+Inside the container:
+
+```bash
+pip install -r requirements.txt
+```
+
+The `-v` mount ensures your work persists outside the container. To re-enter later: `docker start -ai agentkernalarena`.
+
+### Option B: Native installation
+
+If you already have ROCm and PyTorch installed:
+
+```bash
 git clone <repository-url>
 cd AgentKernelArena
 
-# Install dependencies
+# (Optional) Create a virtual environment
+make setup-venv
+source .venv/bin/activate
+
+# Or install directly
 pip install -r requirements.txt
-
-# Set up API keys (choose one or more)
-export OPENAI_API_KEY="your_openai_key"
-export ANTHROPIC_API_KEY="your_anthropic_key"
-export OPENROUTER_API_KEY="your_openrouter_key"
-
-# Install agent CLIs (examples)
-# For Claude Code:
-npm install -g @anthropic-ai/claude-code
-
-# For Codex CLI: install per the official Codex CLI instructions,
-# then ensure `codex` is available in PATH.
-
 ```
 
-## Usage
+Verify your environment:
 
-### Basic Usage
+```bash
+python -c "import torch; print(torch.version.hip)"   # should print ROCm version
+hipcc --version                                        # should print hipcc version
+python -c "import triton; print(triton.__version__)"   # should print triton version
+```
 
-1. **Configure `config.yaml`**:
+### Install Agent CLIs
+
+Install whichever agents you plan to use:
+
+```bash
+# Cursor Agent
+curl https://cursor.com/install -fsS | bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Claude Code
+curl -fsSL https://claude.ai/install.sh | bash
+
+# Codex CLI
+npm install -g @openai/codex
+```
+
+Set API keys:
+
+```bash
+export CURSOR_API_KEY="..."
+export ANTHROPIC_API_KEY="..."
+export OPENAI_API_KEY="..."
+```
+
+## Running an Evaluation
+
+### 1. Configure
+
+Edit `config.yaml` to select an agent and tasks:
 
 ```yaml
-# Select agent type
 agent:
-  template: claude_code  # Options: cursor, claude_code, codex, swe_agent, single_llm_call, openevolve, geak_optimagentv2, geak_hip, geak_ourllm_kernel2kernel
-  max_iterations: 5
+  template: claude_code       # cursor, claude_code, codex
 
-# Specify tasks to run
 tasks:
-  - rocm-examples/bitonic_sort
-  - customer_hip/silu
-  # - all  # Run ALL tasks
+  - hip2hip                   # all HIP-to-HIP tasks
+  - triton2triton/vllm        # all vLLM Triton tasks
+  - torch2hip/gpumode/16636_SiLU  # a single task
 
 target_gpu_model: MI300
-log_directory: logs
-workspace_directory_prefix: workspace
-
 ```
 
-2. **Run evaluation**:
+### 2. Run
 
 ```bash
 python main.py
 ```
 
+Each task runs in an isolated timestamped workspace. The agent receives the source code, instructions (compile/test/benchmark commands), and an optional cheatsheet, then iterates autonomously. After the agent finishes, the framework evaluates compilation, correctness, and performance independently.
 
-### Advanced Usage
+### 3. View Results
 
-#### Running Specific Task Categories
+Results are written to `workspace_<gpu>_<agent>/run_<timestamp>/reports/`:
+- `overall_report.txt`: summary with compilation/correctness rates and speedup statistics
+- `overall_summary.csv`: per-task breakdown
+- Per-task `task_result.yaml` files in each task workspace
 
-```yaml
-tasks:
-  - rocm-examples/*           # All ROCm examples
-  - rocprim/*                 # All rocPRIM tasks
-  - customer_hip/mmcv/*       # All MMCV HIP kernels
-  - triton/tritonbench/*      # All Triton benchmarks
-  - torch2hip/*               # All Torch2HIP conversion tasks
+To use the visualization dashboard:
+
+```bash
+cd visualization
+python backend/scripts/build_dashboard_data.py
+python backend/server.py --port 8080
 ```
 
-## Task Configuration
+## Held-Out Generalization Testing
 
-Each task is defined by a `config.yaml` in its directory:
+The `held_out/` directory contains tooling to evaluate whether agent-optimized kernels generalize to unseen input shapes. See [`held_out/README.md`](held_out/README.md) for details.
 
-```yaml
-# tasks/rocm-examples/bitonic_sort/config.yaml
-source_file_path:
-  - main.hip
+```bash
+# Generate held-out shapes (uses an LLM to create diverse test inputs)
+python held_out/generate_heldout.py --tasks-dir tasks/ --output-dir held_out_tests/
 
-target_kernel_functions:
-  - bitonic_sort_kernel
-
-compile_command:
-  - make
-
-correctness_command:
-  - ./applications_bitonic_sort -l 15
-
-performance_command:
-  - rocprof-compute profile -n kernelgen --path rocprof_compute_profile --no-roof --join-type kernel -b SQ -b TCP -b TCC -- ./applications_bitonic_sort -l 15
-  - rocprof-compute analyze --path rocprof_compute_profile -b 2
-task_type: hip2hip
-prompt:
-  source_code: null      # Optional: override default source code inclusion
-  instructions: null     # Optional: custom instructions
-  cheatsheet: null       # Optional: provide cheatsheet/reference
+# Evaluate a completed run against held-out shapes
+python held_out/run_heldout_eval.py \
+    --run-dir workspace_MI300_cursor/run_20260417_142419 \
+    --heldout-dir held_out_tests/ \
+    --tasks-dir tasks/
 ```
 
+Each task is classified into a generalization quadrant: `both_pass`, `opt_regression` (optimization broke generalization), `both_fail` (shape exceeds kernel design spec), or `opt_improvement` (agent improved robustness).
 
-## Scoring System
+## Scoring
 
-AgentKernelArena uses a cumulative scoring system:
+| Gate | Points | Condition |
+|------|--------|-----------|
+| Compilation | 20 | Code compiles without errors |
+| Correctness | 100 | Output matches reference within tolerance |
+| Speedup | ratio x 100 | Wall-clock speedup over baseline kernel |
 
-| Metric | Points | Description |
-|--------|--------|-------------|
-| **Compilation** | 20 | Code compiles successfully without errors |
-| **Correctness** | 100 | Code produces correct output (passes tests) |
-| **Speedup** | ratio × 100 | Performance improvement over baseline |
+A task that compiles, passes correctness, and achieves 2.0x speedup scores 20 + 100 + 200 = 320 points. Tasks that fail compilation score 0. Tasks that compile but fail correctness score 20.
 
-**Example**: A submission that compiles (20), passes correctness (100), and achieves 1.5× speedup (150) would score 270 points.
+## Adding a New Agent
 
-Note: This is not the only way to score. Users could always define their own ways.
-
-
-## Development
-
-### Adding a New Agent
-
-1. **Create agent directory**: `agents/your_agent/`
-
-2. **Implement launch function**:
+1. Create `agents/your_agent/launch_agent.py`:
 
 ```python
-# agents/your_agent/launch_agent.py
 from agents import register_agent
 
 @register_agent("your_agent")
-def launch_agent(prompt: str, log_directory: str, workspace: str) -> str:
-    """
-    Launch your agent.
-
-    Returns:
-        str: Agent output
-    """
-    # Your agent implementation
-    return result
+def launch_agent(eval_config, task_config_dir, workspace, config_path=None):
+    # Read the prompt, call your agent, write optimized code to workspace
+    return agent_output
 ```
 
-3. **Register in module_registration.py**:
+2. Add `your_agent` to the `AgentType` enum in `src/module_registration.py`.
 
-```python
-# Add to AgentType enum
-class AgentType(Enum):
-    YOUR_AGENT = "your_agent"
+The framework handles all evaluation after your agent writes the optimized file.
 
-# Add import in load_agent_launcher
-if agent_type == AgentType.YOUR_AGENT:
-    from agents.your_agent import launch_agent
-```
+## Adding a New Task
 
-4. **Add prompt builder support** (if needed):
-
-```python
-# In load_prompt_builder
-if agent_type in [..., AgentType.YOUR_AGENT]:
-    return prompt_builder
-```
-
-5. **Add post-processing support** (if needed):
-
-```python
-# In load_post_processing_handler
-if agent_type in [..., AgentType.YOUR_AGENT]:
-    return general_post_processing
-```
-
-### Adding a New Task
-
-1. **Create task directory**: `tasks/<task_type>/<task_name>/`
-
-2. **Add source files and scripts** following this structure:
-
-```
-tasks/<task_type>/<task_name>/
-├── config.yaml                  # Task configuration (required)
-├── scripts/
-│   └── task_runner.py           # Compile/correctness/performance runner (recommended)
-└── src/
-    └── <kernel files>           # .cu, .hip, .py, etc.
-```
-
-3. **Create `config.yaml`** with all required fields as **lists** (not scalar strings):
-
-```yaml
-source_file_path:
-  - src/my_kernel.hip
-
-target_kernel_functions:
-  - my_kernel_function
-
-compile_command:
-  - python3 scripts/task_runner.py --mode compile
-
-correctness_command:
-  - python3 scripts/task_runner.py --mode correctness
-
-performance_command:
-  - python3 scripts/task_runner.py --mode performance
-
-task_type: hip2hip   # one of: hip2hip, cuda2hip, triton2triton, torch2hip
-
-prompt:
-  source_code: null
-  instructions: null
-  cheatsheet: null
-```
-
-4. **Add baseline performance** (optional): Create `baseline.txt` with expected performance metrics
-
-5. **Run the Task Validator Agent** (required):
-
-All new tasks **must** pass the task validator agent before being merged. The validator runs 10 automated checks covering config schema, source file existence, kernel symbol resolution, compilation, correctness, performance, self-containedness, GPU hang detection, correctness implementation review, and result template compatibility.
+1. Create a task directory under `tasks/<category>/<source>/<task_name>/`.
+2. Add source files, a `config.yaml`, and evaluation scripts.
+3. Validate with the built-in task validator:
 
 ```bash
-# Configure the validator to target your new task
-# In config.yaml at repo root:
+# In config.yaml
 agent:
   template: task_validator
 tasks:
-  - <task_type>/<task_name>
+  - <category>/<task_name>
 
-# Run validation
-python3 main.py
+python main.py
 ```
 
-Review the generated `validation_report.yaml` in the workspace directory. The task must achieve **PASS** overall status (all checks pass). A **WARN** status (no failures but warnings) is acceptable with justification. A **FAIL** status means the task must be fixed before merging.
+See [`agents/task_validator/README.md`](agents/task_validator/README.md) for the 10 automated checks that all tasks must pass.
 
-See [agents/task_validator/README.md](agents/task_validator/README.md) for the full list of validation checks and requirements.
+## Task Sources and Licenses
 
+| Source | Tasks | License |
+|--------|-------|---------|
+| [GPU Mode](https://github.com/GPUMODE/kernelbot-data) | HIP-to-HIP, PyTorch-to-HIP | CC-BY-4.0 |
+| [vLLM](https://github.com/vllm-project/vllm) | Triton-to-Triton | Apache-2.0 |
+| [ROCmBench](https://github.com/AMD-AGI/GEAK-eval) | Triton-to-Triton | Cited (no specified license) |
 
-## Next Steps
+## License
 
-- Enhance A/B Testing with Better Interactivity and User Experience
-- Benchmarking State-of-the-Art Agents for Technical Reporting
-- Standardize Holdout Tests with Comprehensive Shape Coverage
-- Add Holdout Test Evaluation via Independent Agent
-- New Feature: Support Multi Agents in Multi GPUs Server
-- New Feature: Resume the Evaluation From Previous Experiment
-- Agents Can Hang During Task Execution, Blocking Test Completion
-- Expand Pytorch2HIP Task Set to 100+ Tasks
-- Expand CUDA2HIP Task Set to 100+ Tasks
-- Expand Triton2Triton Task Set to 100+ Tasks
-- Expand HIP2HIP Task Set to 100+ Tasks
-- Restructure Task Directory by Take Type and Difficulty Level
+Apache License 2.0. See [LICENSE](LICENSE).

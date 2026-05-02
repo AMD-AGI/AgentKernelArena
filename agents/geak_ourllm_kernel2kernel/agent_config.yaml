@@ -1,8 +1,0 @@
-max_iterations: 15
-descendant_num: 4
-timeout_seconds: 20000
-python_path: python3
-target_gpu: MI250
-max_length: 32768
-model_name: test
-llm_provider: vllm 

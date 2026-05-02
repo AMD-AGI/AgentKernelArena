@@ -1,4 +1,4 @@
-# Makefile for KernelBench HIP Kernel Development
+# Makefile for AgentKernelArena
 # Dynamic ROCm Environment Setup
 
 SHELL := /bin/bash
@@ -32,10 +32,12 @@ export HSA_NO_SCRATCH_RECLAIM := 1
 .PHONY: help setup clean
 
 help:
-	@echo "AgentKernelArena Evaluation Framework - Makefile Commands"
-	@echo "======================================================"
-	@echo "make setup  - Complete environment setup (venv + deps)"
-	@echo "make clean  - Remove virtual environment"
+	@echo "AgentKernelArena - Makefile Commands"
+	@echo "======================================"
+	@echo "make setup-venv       - Create venv and install dependencies"
+	@echo "make cleanup-venv     - Remove virtual environment"
+	@echo "make cleanup-works    - Remove workspace directories and logs"
+	@echo "make install-cursor-agent - Install Cursor CLI"
 
 setup-venv:
 	@echo "Detected ROCm version: $(ROCM_VERSION) at $(ROCM_PATH_DETECTED)"
@@ -98,34 +100,3 @@ install-cursor-agent:
 ACTIVATE_VENV_CMD = exec bash -c "source .venv/bin/activate && exec bash"
 act:
 	$(ACTIVATE_VENV_CMD) 
-
-
-# Run vLLM server with latest ROCm 6.4.1 and vLLM 0.10.1
-vllm:
-	@if ss -ltn | grep ':30001 ' > /dev/null; then \
-		echo "vLLM server is already running on port 30001."; \
-	else \
-		docker run -d \
-			--ipc=host \
-			--network=host \
-			--privileged \
-			--cap-add=SYS_ADMIN \
-			--cap-add=SYS_PTRACE \
-			--device=/dev/kfd \
-			--device=/dev/dri \
-			--device=/dev/mem \
-			--group-add=render \
-			--security-opt=seccomp=unconfined \
-			rocm/vllm:rocm6.4.1_vllm_0.10.1_20250909 \
-			vllm serve Qwen/Qwen3-Coder-30B-A3B-Instruct \
-			--served-model-name llamas_team_local_llm \
-			--api-key dummy \
-			--host 0.0.0.0 \
-			--port 30001 \
-			--enable-auto-tool-choice \
-			--tool-call-parser hermes \
-			--trust-remote-code; \
-		echo "Don't forget to set local_llm_enabled: true in configs/config.yml"; \
-		echo "vLLM server will be running on port 30001, please wait 3 minutes for it to start..."; \
-		echo "You can use docker logs -f container_id to check the server status"; \
-	fi
