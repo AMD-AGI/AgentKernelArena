@@ -16,6 +16,7 @@ Usage:
 """
 import argparse
 import logging
+import re
 import shutil
 import sys
 import yaml
@@ -238,6 +239,11 @@ def evaluate_single_task(
     }
 
     # ── 1. Prepare opt/ and orig/ workspaces ────────────────────────────
+    if output_workspace.resolve() == original_workspace.resolve():
+        raise ValueError(
+            f"Refusing to overwrite original task workspace: {original_workspace}"
+        )
+
     if output_workspace.exists():
         shutil.rmtree(output_workspace)
     output_workspace.mkdir(parents=True)
@@ -275,17 +281,27 @@ def evaluate_single_task(
 
     # ── 4. Evaluate ORIGINAL kernel (orig/) ─────────────────────────────
     is_torch2hip = task_config.get("task_type") == "torch2hip"
+    valid_baseline: List[TestCaseResult] = []
 
     if is_torch2hip:
         # torch2hip: the "original" is pure PyTorch -- no HIP kernel to
-        # compile or correctness-check.  We treat the PyTorch module as
-        # always correct and measure its baseline latency in step 7.
-        logger.info(f"[{task_id}] torch2hip: skipping compilation/correctness for orig/ "
-                     "(PyTorch baseline)")
+        # compile.  Use baseline execution as the orig validity check so
+        # invalid held-out shapes do not get counted as orig-correct.
+        logger.info(f"[{task_id}] torch2hip: measuring PyTorch baseline validity "
+                    "(opt/ --baseline_only)...")
         orig_comp = True
-        orig_correct = True
         result["orig_heldout_pass_compilation"] = True
-        result["orig_heldout_pass_correctness"] = True
+        baseline_cases = measure_baseline(opt_ws, task_config, logger)
+        valid_baseline = _valid_perf_cases(baseline_cases)
+        orig_correct = bool(valid_baseline)
+        result["orig_heldout_pass_correctness"] = orig_correct
+        if valid_baseline:
+            result["orig_heldout_execution_time"] = (
+                sum(c.execution_time_ms for c in valid_baseline) / len(valid_baseline)
+            )
+        else:
+            result["orig_heldout_pass_correctness"] = False
+            result["error"] = "PyTorch baseline failed on held-out shapes"
     else:
         logger.info(f"[{task_id}] Compiling original kernel (orig/)...")
         orig_comp, orig_comp_err = evaluate_compilation(orig_ws, task_config, logger)
@@ -320,20 +336,11 @@ def evaluate_single_task(
     logger.info(f"[{task_id}] Generalization status: {status}")
 
     # ── 7. Performance (only when the respective kernel is correct) ─────
-    valid_baseline: List[TestCaseResult] = []
     valid_optimized: List[TestCaseResult] = []
 
-    if orig_correct:
-        if is_torch2hip:
-            # For torch2hip the baseline is the PyTorch module, measured
-            # via the performance script with --baseline_only (no HIP
-            # compilation needed).  Use opt/ workspace which still has
-            # the PyTorch source files and eval_tools intact.
-            logger.info(f"[{task_id}] Measuring PyTorch baseline performance (opt/ --baseline_only)...")
-            baseline_cases = measure_baseline(opt_ws, task_config, logger)
-        else:
-            logger.info(f"[{task_id}] Measuring baseline performance (orig/)...")
-            baseline_cases = measure_baseline(orig_ws, task_config, logger)
+    if orig_correct and not is_torch2hip:
+        logger.info(f"[{task_id}] Measuring baseline performance (orig/)...")
+        baseline_cases = measure_baseline(orig_ws, task_config, logger)
         valid_baseline = _valid_perf_cases(baseline_cases)
         if valid_baseline:
             result["orig_heldout_execution_time"] = (
@@ -523,7 +530,14 @@ def main():
     run_dir = Path(args.run_dir).resolve()
     heldout_dir = Path(args.heldout_dir).resolve()
     tasks_dir = Path(args.tasks_dir).resolve()
-    output_dir = run_dir.parent / (run_dir.name + args.output_suffix)
+    if not args.output_suffix:
+        parser.error("--output-suffix must be non-empty")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", args.output_suffix):
+        parser.error("--output-suffix may only contain letters, numbers, dot, underscore, and dash")
+
+    output_dir = (run_dir.parent / (run_dir.name + args.output_suffix)).resolve()
+    if output_dir == run_dir:
+        parser.error("held-out output directory must differ from --run-dir")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     logger = setup_logging(output_dir / "heldout_eval.log")

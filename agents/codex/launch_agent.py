@@ -12,6 +12,7 @@ import yaml
 
 from agents import register_agent
 from src.module_registration import AgentType, load_prompt_builder
+from src.runtime_env import build_subprocess_env
 
 
 def integrate_agent_config(prompt: str, agent_config: dict[str, Any]) -> str:
@@ -21,7 +22,10 @@ def integrate_agent_config(prompt: str, agent_config: dict[str, Any]) -> str:
         prompt = prompt.rstrip() + f"\n\nFor this optimization, you must iterate up to {max_iters} versions."
     python_path = agent_config.get("python_path")
     if python_path:
-        prompt = prompt.rstrip() + f"\n\nUse this Python interpreter: `{python_path}`."
+        prompt = prompt.rstrip() + (
+            f"\n\nUse this Python interpreter: `{python_path}`. "
+            f"When running pytest, use `{python_path} -m pytest` instead of bare `pytest`."
+        )
     return prompt
 
 
@@ -60,7 +64,7 @@ def _format_codex_event(raw_line: str) -> str:
     return raw_line
 
 
-def _get_codex_version(agent_cmd: str) -> str:
+def _get_codex_version(agent_cmd: str, env: dict[str, str] | None = None) -> str:
     """Best-effort Codex CLI version lookup for logging."""
     try:
         result = subprocess.run(
@@ -69,6 +73,7 @@ def _get_codex_version(agent_cmd: str) -> str:
             text=True,
             check=False,
             timeout=5,
+            env=env,
         )
     except Exception:
         return "unknown"
@@ -106,6 +111,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     prompt = prompt_builder(task_config_dir, workspace, eval_config, logger)
     prompt = integrate_agent_config(prompt, agent_config)
     configured_model = agent_config.get("model")
+    process_env = build_subprocess_env(agent_config.get("python_path"))
 
     cmd = [
         AGENT,
@@ -122,8 +128,9 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 
     logger.info("Codex Preflight")
     logger.info(f"  codex_binary: {codex_bin}")
-    logger.info(f"  codex_version: {_get_codex_version(AGENT)}")
+    logger.info(f"  codex_version: {_get_codex_version(AGENT, process_env)}")
     logger.info(f"  workspace: {workspace}")
+    logger.info(f"  python_path: {process_env.get('AGENT_KERNEL_ARENA_PYTHON', '<unset>')}")
     if configured_model:
         logger.info(f"  model: {configured_model} (explicit via agents/codex/agent_config.yaml)")
     else:
@@ -143,6 +150,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         text=True,
         cwd=workspace,
         bufsize=1,
+        env=process_env,
     )
     if process.stdin:
         process.stdin.close()
