@@ -1,6 +1,6 @@
 max_iterations: 3
-timeout_seconds: 600
+timeout_seconds: 3600
 python_path: /root/AgentKernelArena/.venv/bin/python3
 # Optional: set explicit Cursor model so logs record exact runtime settings.
-# model: sonnet-4-thinking
+model: composer-2
 # Note: Cursor Agent CLI does not expose a separate `effort` flag; "thinking" is typically encoded in the model choice.

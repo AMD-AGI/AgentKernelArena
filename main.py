@@ -1,4 +1,5 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
+import re
 import yaml
 import logging
 import argparse
@@ -8,11 +9,14 @@ from src.tasks import get_task_config
 from src.preprocessing import setup_workspace, setup_rocm_env, is_task_complete
 from src.module_registration import AgentType, load_agent_launcher, load_post_processing_handler
 from src.evaluator import measure_baseline, evaluate_kernel, write_task_result
+from src.runtime_env import apply_subprocess_python_path
 
 
 parser = argparse.ArgumentParser(description="arguments for AgentKernelArena")
 parser.add_argument("--config_name", type=str, default="config.yaml",help="the config of AgentKernelArena, default set to config. \
                     You can set different tasks in different config yaml file in order to run multi evaluation task in one folder.")
+parser.add_argument("--run-suffix", type=str, default=None,
+                    help="Suffix appended to the run directory name, e.g. --run-suffix composer2_hip → run_20260416_120000_composer2_hip")
 parser.add_argument("--resume-run", type=str, default=None,
                     help="Resume an existing run by specifying the run directory name (e.g., run_20250115_143022)")
 parser.add_argument("--resume-latest", action="store_true",
@@ -46,6 +50,10 @@ def main() -> None:
     project_root = Path(__file__).resolve().parent
     workspace_directory = (project_root / workspace_directory_name).resolve()
 
+    if args.run_suffix and not re.fullmatch(r"[A-Za-z0-9._-]+", args.run_suffix):
+        print("Error: --run-suffix may only contain letters, numbers, dot, underscore, and dash")
+        return
+
     # Handle resume functionality
     resume_mode = False
     if args.resume_run:
@@ -56,17 +64,22 @@ def main() -> None:
             print(f"Error: Run directory does not exist: {run_directory}")
             return
         resume_mode = True
-        # Extract timestamp from run directory name: run_20250115_143022 -> 20250115_143022
-        if run_directory_name.startswith("run_"):
-            timestamp = run_directory_name[4:]  # Remove "run_" prefix
+        # Extract the YYYYMMDD_HHMMSS timestamp from run directory name.
+        # The name may include a suffix: run_20260429_194009_claude_opus_hip
+        # Task directories use only the timestamp portion, not the suffix.
+        m = re.match(r"^run_(\d{8}_\d{6})", run_directory_name)
+        if m:
+            timestamp = m.group(1)
         else:
-            print(f"Error: Invalid run directory name format: {run_directory_name}. Expected format: run_YYYYMMDD_HHMMSS")
+            print(f"Error: Invalid run directory name format: {run_directory_name}. Expected format: run_YYYYMMDD_HHMMSS[_suffix]")
             return
     elif args.resume_latest:
         # Resume latest run
         # Find all run directories and get the most recent one
-        run_dirs = sorted([d for d in workspace_directory.iterdir() 
-                          if d.is_dir() and d.name.startswith("run_")], 
+        run_dirs = sorted([d for d in workspace_directory.iterdir()
+                          if d.is_dir()
+                          and d.name.startswith("run_")
+                          and not d.name.endswith("_heldout")],
                          key=lambda x: x.name, reverse=True)
         if not run_dirs:
             print(f"Error: No run directories found in {workspace_directory}")
@@ -74,20 +87,23 @@ def main() -> None:
         run_directory = run_dirs[0]
         run_directory_name = run_directory.name
         resume_mode = True
-        # Extract timestamp from run directory name
-        if run_directory_name.startswith("run_"):
-            timestamp = run_directory_name[4:]
+        # Extract the YYYYMMDD_HHMMSS timestamp (same regex as --resume-run)
+        m = re.match(r"^run_(\d{8}_\d{6})", run_directory_name)
+        if m:
+            timestamp = m.group(1)
         else:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     else:
         # Create new run
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        run_directory_name = f"run_{timestamp}"
+        suffix = f"_{args.run_suffix}" if args.run_suffix else ""
+        run_directory_name = f"run_{timestamp}{suffix}"
         run_directory = workspace_directory / run_directory_name
         run_directory.mkdir(parents=True, exist_ok=True)
     log_dir = Path(log_directory)
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_filename = f"{target_gpu_model}_{agent.value}_{timestamp}.log"
+    log_suffix = f"_{args.run_suffix}" if args.run_suffix else ""
+    log_filename = f"{target_gpu_model}_{agent.value}_{timestamp}{log_suffix}.log"
     log_path = log_dir / log_filename
 
     # Configure logging
@@ -113,6 +129,9 @@ def main() -> None:
         logger.info(f"RESUME MODE: Resuming existing run {run_directory_name}")
     else:
         logger.info(f"NEW RUN: Creating new run {run_directory_name}")
+
+    python_path = apply_subprocess_python_path()
+    logger.info(f"Subprocess Python environment: {python_path}")
 
     # Set PYTORCH_ROCM_ARCH based on target_gpu_model before any task runs
     setup_rocm_env(target_gpu_model, logger)
