@@ -153,6 +153,14 @@ tasks:
 target_gpu_model: MI300
 ```
 
+Pre-built configs are provided for running each task category separately:
+
+```bash
+cp config_hip2hip.yaml config.yaml && python main.py        # 24 HIP-to-HIP tasks
+cp config_triton2triton.yaml config.yaml && python main.py  # 148 Triton-to-Triton tasks
+cp config_torch2hip.yaml config.yaml && python main.py      # 24 PyTorch-to-HIP tasks
+```
+
 ### 2. Run
 
 ```bash
