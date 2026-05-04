@@ -17,7 +17,7 @@ from .evaluator_utils import run_command
 from .performance import measure_performance, measure_baseline
 from .testcases import TestCaseResult, save_performance_results, calculate_average_speedup
 
-# Default timeouts for run_command (seconds). Repository CMake builds can exceed a few minutes.
+# Default timeouts for run_command (seconds).
 _DEFAULT_COMPILE_TIMEOUT_S = 3600
 _DEFAULT_CORRECTNESS_TIMEOUT_S = 3600
 

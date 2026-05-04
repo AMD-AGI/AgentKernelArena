@@ -1,0 +1,12 @@
+# Config for running all Triton-to-Triton tasks (148 tasks)
+# Usage: cp config_triton2triton.yaml config.yaml && python main.py
+
+agent:
+  template: cursor    # cursor, claude_code, codex
+
+tasks:
+  - triton2triton
+
+target_gpu_model: MI300
+log_directory: logs
+workspace_directory_prefix: workspace

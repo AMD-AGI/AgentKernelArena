@@ -1,0 +1,12 @@
+# Config for running all HIP-to-HIP tasks (24 tasks)
+# Usage: cp config_hip2hip.yaml config.yaml && python main.py
+
+agent:
+  template: cursor    # cursor, claude_code, codex
+
+tasks:
+  - hip2hip
+
+target_gpu_model: MI300
+log_directory: logs
+workspace_directory_prefix: workspace

@@ -1,0 +1,12 @@
+# Config for running all PyTorch-to-HIP tasks (24 tasks)
+# Usage: cp config_torch2hip.yaml config.yaml && python main.py
+
+agent:
+  template: cursor    # cursor, claude_code, codex
+
+tasks:
+  - torch2hip
+
+target_gpu_model: MI300
+log_directory: logs
+workspace_directory_prefix: workspace

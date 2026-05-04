@@ -7,13 +7,7 @@ __pycache__
 .claude
 workspace_*
 
-# Auto-cloned agent dependencies
-agents/geak_optimagentv2/GEAK-agent/
-agents/geak_optimagentv2/GEAK-eval/
-agents/geak_optimagentv2/.geak_setup_complete
-agents/geak_ourllm_kernel2kernel/GEAK-agent
 run.sh
-config_*.yaml
 tmp*
 kill.sh
 saved_results

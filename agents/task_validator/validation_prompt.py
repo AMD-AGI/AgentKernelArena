@@ -149,7 +149,7 @@ Verify that config.yaml contains all required fields:
 - `target_kernel_functions` (list of strings)
 - `compile_command` (list of strings)
 - `correctness_command` (list of strings)
-- `task_type` (string, one of: hip2hip, cuda2hip, triton2triton, torch2hip, instruction2triton, rocprim)
+- `task_type` (string, one of: hip2hip, triton2triton, torch2hip, instruction2triton)
 Also check that optional fields (`performance_command`, `prompt`) are well-formed if present.
 Status: PASS if all required fields exist and have correct types, FAIL otherwise.
 

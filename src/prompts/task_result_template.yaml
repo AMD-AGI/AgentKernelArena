@@ -1,7 +1,7 @@
 # Task Result Template
 # Fill out this template after completing the optimization task
 
-task_name: "rocm-examples/bitonic_sort"          # Full task path from tasks/ directory
+task_name: "hip2hip/gpumode/SiLU"                 # Full task path from tasks/ directory
 
 best_optimized_source_file_path:                 # List of optimized source files
 - main.hip

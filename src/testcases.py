@@ -84,7 +84,7 @@ def _extract_time_from_dict(
                 if time_val is not None:
                     return time_val, 'timing_ms.min'
 
-    # Repository throughput (e.g. rocPRIM benchmarks): GB/s — higher is better.
+    # Throughput metrics: GB/s — higher is better.
     # calculate_average_speedup uses baseline_time / optimized_time with "lower is better".
     # Store cost = 1/throughput so speedup = (1/bps_base)/(1/bps_opt) = bps_opt/bps_base.
     if 'bytes_per_second_gs' in data:

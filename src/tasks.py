@@ -12,13 +12,13 @@ def get_task_config(tasks_root: str = "tasks", category: Optional[str] = None) -
 
     Task naming strategy:
     - Uses relative path from tasks_root as the unique task name
-    - Example: tasks/customer_hip/mmcv/ball_query/config.yaml
-      -> task_name: "customer_hip/mmcv/ball_query"
+    - Example: tasks/hip2hip/gpumode/SiLU/config.yaml
+      -> task_name: "hip2hip/gpumode/SiLU"
     - This ensures uniqueness even when folder names collide
 
     Args:
         tasks_root: Root directory for tasks (default: "tasks")
-        category: Optional category to filter tasks (e.g., "customer_hip", "rocm-examples")
+        category: Optional category to filter tasks (e.g., "hip2hip", "triton2triton")
 
     Returns:
         dict: {task_name: config_path}
@@ -37,7 +37,7 @@ def get_task_config(tasks_root: str = "tasks", category: Optional[str] = None) -
     for config_path in root.glob(pattern):
         # Get task name as relative path from tasks_root to the task folder
         # This ensures uniqueness across different categories
-        # Example: customer_hip/mmcv/ball_query
+        # Example: hip2hip/gpumode/SiLU
         task_folder = config_path.parent
         task_name = str(task_folder.relative_to(root))
 

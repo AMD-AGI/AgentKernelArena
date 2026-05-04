@@ -17,9 +17,8 @@ Use it to:
 agent:
   template: task_validator
 tasks:
-  - hip2hip/rmsnorm
-  - cuda2hip/awq_gemm
-  - triton2triton/triton_fused_moe
+  - hip2hip/gpumode/SiLU
+  - triton2triton/vllm/triton_fused_moe
   # - all                     # validate every task
 target_gpu_model: MI300
 log_directory: logs
@@ -105,8 +104,8 @@ compile_command:
 correctness_command:
   - python3 scripts/task_runner.py --mode correctness
 
-# Task type: one of hip2hip, cuda2hip, triton2triton, torch2hip, instruction2triton, rocprim
-task_type: cuda2hip
+# Task type: one of hip2hip, triton2triton, torch2hip, instruction2triton
+task_type: hip2hip
 ```
 
 ### Optional `config.yaml` Fields

@@ -3,20 +3,9 @@
 # ============================================================================
 
 # Agent Template Selection
-# Choose ONE agent template that defines how the LLM interacts with the system
-# Available options:
-# - cursor
-# - codex
-# - geak_optimagentv2
-# - single_llm_call
-# - SWE-agent
-# - claude_code
-# - geak_hip
-# - openevolve
-# - geak_ourllm_kernel2kernel
-# - task_validator 
+# Available options: cursor, claude_code, codex, task_validator
 agent:
-  template: cursor 
+  template: cursor
 
 # Task Selection
 # Specify task names to execute (use full path from tasks/ directory)
@@ -24,80 +13,11 @@ agent:
 #   - hip2hip                           # All tasks under hip2hip
 #   - triton2triton                     # All tasks under triton2triton
 #   - torch2hip                         # All tasks under torch2hip
-#   - hip2hip/silu                      # single task under hip2hip
+#   - hip2hip/gpumode/SiLU             # Single task
 #   - all                               # Run ALL available tasks
 
 tasks:
-  # hip2hip: 20 tasks (18 from gpumode, 2 from others)
-  - hip2hip/gpumode/CrossEntropyLossLabelSmoothing
-  - hip2hip/gpumode/Feedforward
-  - hip2hip/gpumode/FusedLeakyReLU
-  - hip2hip/gpumode/GateGRUSelectionLayer
-  - hip2hip/gpumode/Gather
-  - hip2hip/gpumode/GELU
-  - hip2hip/gpumode/InnerProd
-  - hip2hip/gpumode/ItemQueryAttention
-  - hip2hip/gpumode/KDLoss
-  - hip2hip/gpumode/layer_normalization
-  - hip2hip/gpumode/MaskedLanguageModel
-  - hip2hip/gpumode/MLP_model
-  - hip2hip/gpumode/MultiHeadAttention
-  - hip2hip/gpumode/NormalAttention_dot
-  - hip2hip/gpumode/NormalAttention_embedded_gaussian
-  - hip2hip/gpumode/PositionEmbedder
-  - hip2hip/gpumode/Sigmoid
-  - hip2hip/gpumode/SiLU
-  - hip2hip/others/assign_score_withk
-  - hip2hip/others/ball_query
-  
-  # triton2triton/vllm: 10 tasks
-  - triton2triton/vllm/triton_awq_dequantize
-  - triton2triton/vllm/triton_awq_gemm
-  - triton2triton/vllm/triton_batched_moe
-  - triton2triton/vllm/triton_flash_prefill_attention
-  - triton2triton/vllm/triton_fused_moe
-  - triton2triton/vllm/triton_layernorm_gated
-  - triton2triton/vllm/triton_matmul_persistent
-  - triton2triton/vllm/triton_rms_norm
-  - triton2triton/vllm/triton_scaled_mm
-  - triton2triton/vllm/triton_topk_log_softmax
-
-  # triton2triton/rocmbench: 10 tasks
-  - triton2triton/rocmbench/easy/test_add_kernel
-  - triton2triton/rocmbench/easy/test_batched_vecmat
-  - triton2triton/rocmbench/easy/test_block_copy
-  - triton2triton/rocmbench/easy/test_kernel_dot
-  - triton2triton/rocmbench/medium/layernorm
-  - triton2triton/rocmbench/medium/naive_softmax
-  - triton2triton/rocmbench/medium/rmsnorm_fwd
-  - triton2triton/rocmbench/medium/softmax
-  - triton2triton/rocmbench/hard/gemm
-  - triton2triton/rocmbench/hard/moe_gemm
-  
-  # torch2hip: 10 tasks
-  - torch2hip/gpumode/1001_NormalAttention_dot
-  - torch2hip/gpumode/10024_Feedforward
-  - torch2hip/gpumode/1003_NormalAttention_embedded_gaussian
-  - torch2hip/gpumode/10082_SoftmaxModule
-  - torch2hip/gpumode/10099_Gather
-  - torch2hip/gpumode/10190_FusedLeakyReLU
-  - torch2hip/gpumode/10456_MultiHeadAttention
-  - torch2hip/gpumode/11754_layer_normalization
-  - torch2hip/gpumode/14539_GELU
-  - torch2hip/gpumode/16636_SiLU
-  
-  # instruction2triton/rocmbench: 10 tasks
-  - instruction2triton/rocmbench/gemm
-  - instruction2triton/rocmbench/layernorm
-  - instruction2triton/rocmbench/moe_gemm
-  - instruction2triton/rocmbench/multreduce_matmul_dot_kernel
-  - instruction2triton/rocmbench/naive_softmax
-  - instruction2triton/rocmbench/rmsnorm_bwd
-  - instruction2triton/rocmbench/rmsnorm_fwd
-  - instruction2triton/rocmbench/softmax
-  - instruction2triton/rocmbench/test_flashattention_fwd
-  - instruction2triton/rocmbench/test_gemm_fusion
-
+  - all
 
 target_gpu_model: MI300
 log_directory: logs
