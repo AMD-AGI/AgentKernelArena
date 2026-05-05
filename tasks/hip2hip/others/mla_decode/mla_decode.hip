@@ -435,7 +435,7 @@ int main(int argc, char** argv) {
 
     // Performance (full or bench mode).
     if (mode == Mode::Full || mode == Mode::Bench) {
-        const float us = time_kernel_ms(launch, /*warmup=*/5, /*iters=*/50) * 1000.0f;
+        const float us = time_kernel_ms(launch, /*warmup=*/10, /*iters=*/100) * 1000.0f;
         const double bytes_kv = static_cast<double>(batch) * ctx * LK;       // kv reads
         const double bytes_q  = static_cast<double>(batch) * NHEAD * LK * 2; // bf16 q reads
         const double bytes_o  = static_cast<double>(batch) * NHEAD * LV * 2; // bf16 o writes

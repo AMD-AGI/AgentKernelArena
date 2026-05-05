@@ -81,29 +81,20 @@ def run_performance():
     test_cases = []
     for shape_idx, (batch, ctx) in enumerate(TEST_SHAPES):
         try:
-            n_warmup = 2
-            n_iter = 5
+            # The binary benchmark performs the measurement loop internally:
+            # 10 warmup launches followed by 100 measured launches, returning
+            # the average device time per launch. Keep the Python wrapper to
+            # one subprocess per shape so we do not multiply the measurement
+            # loop by another layer of subprocess iterations.
+            result = subprocess.run(
+                [BINARY, "--batch", str(batch), "--ctx", str(ctx), "--mode", "bench"],
+                capture_output=True, text=True, timeout=300,
+            )
+            output = result.stdout + result.stderr
+            m = re.search(r"Perf:\s+([\d.]+)\s+us/launch", output)
 
-            for _ in range(n_warmup):
-                subprocess.run(
-                    [BINARY, "--batch", str(batch), "--ctx", str(ctx), "--mode", "bench"],
-                    capture_output=True, text=True, timeout=300,
-                )
-
-            times_ms = []
-            for _ in range(n_iter):
-                result = subprocess.run(
-                    [BINARY, "--batch", str(batch), "--ctx", str(ctx), "--mode", "bench"],
-                    capture_output=True, text=True, timeout=300,
-                )
-                output = result.stdout + result.stderr
-                m = re.search(r"Perf:\s+([\d.]+)\s+us/launch", output)
-                if not m:
-                    continue
-                times_ms.append(float(m.group(1)) / 1000.0)
-
-            if times_ms:
-                elapsed_ms = sum(times_ms) / len(times_ms)
+            if result.returncode == 0 and m:
+                elapsed_ms = float(m.group(1)) / 1000.0
                 test_cases.append({
                     "test_case_id": f"shape_{shape_idx}",
                     "execution_time_ms": elapsed_ms,

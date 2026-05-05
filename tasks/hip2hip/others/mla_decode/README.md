@@ -38,8 +38,8 @@ Five representative shapes (`batch`, `ctx`):
 
 - **Correctness:** `max_abs <= 5e-2 OR max_rel <= 1e-1` against the in-binary
   fp32 host reference, on every shape. The baseline meets this.
-- **Performance:** mean device-time per shape across 20 measured iterations
-  (3 warmup). The baseline is naive (no MFMA, full-FP32 inner loop); the
+- **Performance:** mean device-time per shape across 100 measured iterations
+  (10 warmup). The baseline is naive (no MFMA, full-FP32 inner loop); the
   optimization headroom is huge.
 
 ## Quick test
