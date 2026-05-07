@@ -124,8 +124,9 @@ def _load_cheatsheet(task_type_name: str, target_gpu_model: str, project_root: P
 
         # --- Knowledge section ---
         target_language = (task_type_name.split('2')[-1] if '2' in task_type_name else task_type_name).lower()
+        knowledge_override = arch_entry.get('knowledge_override', {}) if arch_entry else {}
         knowledge_map = cheatsheet_config.get('knowledge', {})
-        knowledge_file = knowledge_map.get(target_language)
+        knowledge_file = knowledge_override.get(target_language) or knowledge_map.get(target_language)
         if knowledge_file:
             knowledge_path = project_root / knowledge_file
             parts.append(knowledge_path.read_text())
@@ -206,7 +207,12 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
         task_config = yaml.safe_load(f)
 
     task_type_name = task_config.get('task_type')
-    target_gpu_model = eval_config.get('target_gpu_model', 'MI300')
+    target_gpu_model = eval_config.get('target_gpu_model')
+    if not target_gpu_model:
+        raise ValueError(
+            "target_gpu_model is required in config.yaml. "
+            "Set it to your GPU model (e.g. MI300, MI355X, RDNA4)."
+        )
     logger.info(f"Building prompt from config: {task_config_path}")
 
     # Build prompt sections

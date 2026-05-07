@@ -55,31 +55,47 @@ def _detect_gfx_arch_from_rocminfo() -> str | None:
     return None
 
 
+_ROCM_ARCH_ENV_VARS = ("PYTORCH_ROCM_ARCH", "AMDGPU_TARGETS", "GPU_TARGETS")
+
+
 def setup_rocm_env(target_gpu_model: str, logger: logging.Logger) -> None:
     """
-    Set PYTORCH_ROCM_ARCH (and related env vars) for correct GPU compilation.
+    Set the ROCm GPU-arch environment for correct compilation. Exports
+    all three of:
+        - ``PYTORCH_ROCM_ARCH``  (PyTorch / torch.utils.cpp_extension)
+        - ``AMDGPU_TARGETS``     (CMake / HIP)
+        - ``GPU_TARGETS``        (CMake / HIP)
 
-    Priority:
-    1. Auto-detect from rocminfo (most reliable — uses actual hardware)
-    2. Fall back to cheatsheet lookup from target_gpu_model
-    3. Leave unset if neither works
+    All three are exported together regardless of how the arch was
+    resolved, so CMake-based HIP builds always see the same arch as
+    PyTorch — including on the common case where ``rocminfo`` succeeds.
+
+    Resolution priority:
+        1. Auto-detect from ``rocminfo`` (most reliable — uses actual
+           hardware).
+        2. Fall back to cheatsheet lookup from ``target_gpu_model``.
+        3. Leave the environment unchanged if neither works.
     """
     detected_arch = _detect_gfx_arch_from_rocminfo()
     if detected_arch:
-        os.environ["PYTORCH_ROCM_ARCH"] = detected_arch
-        logger.info(f"Set PYTORCH_ROCM_ARCH={detected_arch} (auto-detected from rocminfo)")
-        return
+        gfx_arch = detected_arch
+        source = "auto-detected from rocminfo"
+    else:
+        gfx_arch = _resolve_gfx_arch(target_gpu_model)
+        if not gfx_arch:
+            logger.warning(
+                f"Could not resolve gfx arch for GPU model '{target_gpu_model}'. "
+                f"None of {_ROCM_ARCH_ENV_VARS} will be set; PyTorch and CMake "
+                "will fall back to their built-in arch lists."
+            )
+            return
+        source = f"from target_gpu_model={target_gpu_model}"
 
-    gfx_arch = _resolve_gfx_arch(target_gpu_model)
-    if not gfx_arch:
-        logger.warning(
-            f"Could not resolve gfx arch for GPU model '{target_gpu_model}'. "
-            "PYTORCH_ROCM_ARCH will not be set; PyTorch will fall back to its built-in arch list."
-        )
-        return
-
-    os.environ["PYTORCH_ROCM_ARCH"] = gfx_arch
-    logger.info(f"Set PYTORCH_ROCM_ARCH={gfx_arch} (from target_gpu_model={target_gpu_model})")
+    for var in _ROCM_ARCH_ENV_VARS:
+        os.environ[var] = gfx_arch
+    logger.info(
+        f"Set {', '.join(f'{v}={gfx_arch}' for v in _ROCM_ARCH_ENV_VARS)} ({source})"
+    )
 
 
 def check_environment() -> None:
