@@ -220,7 +220,8 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
     Prompt section order:
         1. Task Type
         2. Source Code
-        3. GPU Arch Pre-check  ← new: fix mismatched arch before first build
+        2b. Task Contract  ← injected for task_type == 'hip2hip' only
+        3. GPU Arch Pre-check
         4. Instructions
         5. Output Format
         6. Cheatsheet  (architecture context + language knowledge, combined)
@@ -273,6 +274,15 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
             source_code_prompt = ""
 
     prompt_sections.append(source_code_prompt)
+
+    # 2b. Task Contract (hip2hip): generic per-task constraints applied
+    # uniformly to every hip2hip task. Hosted in src/prompts/task_type.py
+    # rather than duplicated in each config so the contract stays in
+    # lockstep across all hip2hip configs.
+    if task_type_name == 'hip2hip':
+        prompt_sections.append(
+            task_type.hip2hip_task_contract(task_config.get('target_kernel_functions'))
+        )
 
     # 3. Cheatsheet: architecture context + language knowledge
     project_root = Path(__file__).resolve().parent.parent

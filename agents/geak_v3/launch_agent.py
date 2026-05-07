@@ -160,8 +160,15 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     # minimal, so the cheatsheet (and the arch-precheck directive) are
     # appended here from the shared prompt_builder helpers, mirroring the
     # section layout used by src/prompt_builder.py::prompt_builder.
+    #
+    # Also inject the hip2hip task contract for hip2hip tasks so the
+    # constraints (preserve names/signatures, launch interface, build
+    # interface, shared-memory sizing) reach GEAK-v3 agents too. The
+    # contract is hosted at the framework level rather than per-task to
+    # keep all hip2hip configs uniform.
     try:
         from src.prompt_builder import _load_cheatsheet, _gpu_arch_precheck_prompt
+        from src.prompts import task_type as _task_type_module
         with open(task_config_dir, "r") as _f:
             _task_config = yaml.safe_load(_f) or {}
         _task_type_name = _task_config.get("task_type", "")
@@ -172,11 +179,19 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
                 _task_type_name, _target_gpu_model, _project_root, _task_config, logger,
             )
             _precheck = _gpu_arch_precheck_prompt(_target_gpu_model, _gfx_arch)
-            _extras = [p for p in [_precheck, _cheatsheet_text] if p]
+            _contract = (
+                _task_type_module.hip2hip_task_contract(
+                    _task_config.get("target_kernel_functions")
+                )
+                if _task_type_name == "hip2hip"
+                else ""
+            )
+            _extras = [p for p in [_precheck, _contract, _cheatsheet_text] if p]
             if _extras:
                 prompt = prompt.rstrip() + "\n\n" + "\n\n---\n\n".join(_extras) + "\n"
                 logger.info(
-                    f"Appended cheatsheet (arch={_gfx_arch}, +{sum(len(p) for p in _extras)} chars)"
+                    f"Appended cheatsheet (arch={_gfx_arch}, +{sum(len(p) for p in _extras)} chars"
+                    f"{', incl. hip2hip contract' if _contract else ''})"
                 )
     except Exception as _e:  # noqa: BLE001 — keep agent launch resilient
         logger.warning(f"Cheatsheet injection skipped: {_e}")
