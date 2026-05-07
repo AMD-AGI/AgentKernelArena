@@ -1,0 +1,20 @@
+# ============================================================================
+# GEAK FlyDSL Benchmark Configuration
+# ============================================================================
+# Usage: python main.py --config_name config_geak_flydsl.yaml
+#
+# Mirrors the GEAK team's pattern (config_geak_triton.yaml).
+# Run inside a container with FlyDSL + GEAK installed.
+
+agent:
+  template: geak_v3_flydsl
+
+tasks:
+  - flydsl2flydsl/rmsnorm_kernel
+  - flydsl2flydsl/layernorm_kernel
+  - flydsl2flydsl/softmax_kernel
+  - flydsl2flydsl/fused_rope_cache_kernel
+
+target_gpu_model: MI300
+log_directory: logs
+workspace_directory_prefix: workspace
