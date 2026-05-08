@@ -13,47 +13,15 @@ Kernels:
   _dw_down_kernel         : dw_down = g.T @ dy
 """
 
-import math
-
 import torch
 import triton
 import triton.language as tl
 
 
 # ============================================================================
-# REFERENCE HELPERS (PyTorch, for correctness checking)
+# FORWARD (PyTorch) — required by both the Triton backward call site and
+# any reference implementation; produces the cached intermediates h0/h1/a/g.
 # ============================================================================
-
-
-def silu_backward(x, grad):
-    sigmoid_x = torch.sigmoid(x)
-    return grad * (sigmoid_x + x * sigmoid_x * (1 - sigmoid_x))
-
-
-def _pytorch_backward_reference(dy, x, w_up, w_down, h0, h1, a, g, activation='silu'):
-    N_half = h0.shape[1]
-
-    dg = torch.matmul(dy, w_down.t())
-
-    if activation == 'silu':
-        da = silu_backward(h0, dg * h1)
-    else:
-        da = dg * h1
-
-    dh0 = da
-    dh1 = dg * a
-
-    w_gate = w_up[:N_half, :]
-    w_value = w_up[N_half:, :]
-    dx = torch.matmul(dh0, w_gate) + torch.matmul(dh1, w_value)
-
-    dw_gate = torch.matmul(dh0.t(), x)
-    dw_value = torch.matmul(dh1.t(), x)
-    dw_up = torch.cat([dw_gate, dw_value], dim=0)
-
-    dw_down = torch.matmul(g.t(), dy)
-
-    return dx, dw_up, dw_down
 
 
 def ff_fused_gated_forward(x, w_up, w_down, activation='silu'):
@@ -454,7 +422,7 @@ def ff_fused_gated_backward_triton(
 
 
 # ============================================================================
-# ENTRY POINTS (triton_op / torch_op for GEAK harness)
+# ENTRY POINT (callable form of the kernel for downstream profilers)
 # ============================================================================
 
 
@@ -462,12 +430,6 @@ def triton_op(M, N, K, x, w_up, w_down, dy, activation='silu'):
     """Run forward then Triton backward, return (dx, dw_up, dw_down)."""
     y, h0, h1, a, g = ff_fused_gated_forward(x, w_up, w_down, activation)
     return ff_fused_gated_backward_triton(dy, x, w_up, w_down, h0, h1, a, g, activation)
-
-
-def torch_op(M, N, K, x, w_up, w_down, dy, activation='silu'):
-    """Run forward then PyTorch reference backward."""
-    y, h0, h1, a, g = ff_fused_gated_forward(x, w_up, w_down, activation)
-    return _pytorch_backward_reference(dy, x, w_up, w_down, h0, h1, a, g, activation)
 
 
 # ============================================================================
@@ -497,7 +459,7 @@ ACTIVATION = "silu"
 
 
 # ============================================================================
-# TEST HARNESS
+# SYNTHETIC INPUT BUILDER
 # ============================================================================
 
 
@@ -511,155 +473,7 @@ def get_inputs(M, K, N, dtype=DTYPE, device="cuda"):
     return x, w_up, w_down, dy
 
 
-def check_correctness(M, K, N, activation=ACTIVATION, dtype=DTYPE) -> dict:
-    try:
-        x, w_up, w_down, dy = get_inputs(M, K, N, dtype)
-
-        dx_tri, dwup_tri, dwdown_tri = triton_op(M, N, K, x, w_up, w_down, dy, activation)
-        dx_ref, dwup_ref, dwdown_ref = torch_op(M, N, K, x, w_up, w_down, dy, activation)
-
-        def rel_diff(a, b):
-            max_diff = (a - b).abs().max().item()
-            max_val = max(a.abs().max().item(), b.abs().max().item())
-            return max_diff / max_val if max_val > 0 else max_diff
-
-        rd_dx = rel_diff(dx_tri, dx_ref)
-        rd_dwup = rel_diff(dwup_tri, dwup_ref)
-        rd_dwdown = rel_diff(dwdown_tri, dwdown_ref)
-
-        correct = rd_dx < 0.01 and rd_dwup < 0.01 and rd_dwdown < 0.01
-        return {
-            "correct": correct,
-            "rel_dx": rd_dx, "rel_dwup": rd_dwup, "rel_dwdown": rd_dwdown,
-            "error": None,
-        }
-    except Exception as e:
-        import traceback
-        return {"correct": False, "error": str(e) + "\n" + traceback.format_exc()}
-
-
-def benchmark_config(M, K, N, activation=ACTIVATION, warmup=50, iters=200) -> dict:
-    import time
-    x, w_up, w_down, dy = get_inputs(M, K, N)
-
-    y, h0, h1, a, g = ff_fused_gated_forward(x, w_up, w_down, activation)
-
-    # Torch reference
-    for _ in range(warmup):
-        _pytorch_backward_reference(dy, x, w_up, w_down, h0, h1, a, g, activation)
-    torch.cuda.synchronize()
-    start = time.perf_counter()
-    for _ in range(iters):
-        _pytorch_backward_reference(dy, x, w_up, w_down, h0, h1, a, g, activation)
-    torch.cuda.synchronize()
-    torch_ms = (time.perf_counter() - start) * 1000 / iters
-
-    # Triton
-    for _ in range(warmup):
-        ff_fused_gated_backward_triton(dy, x, w_up, w_down, h0, h1, a, g, activation)
-    torch.cuda.synchronize()
-    start = time.perf_counter()
-    for _ in range(iters):
-        ff_fused_gated_backward_triton(dy, x, w_up, w_down, h0, h1, a, g, activation)
-    torch.cuda.synchronize()
-    triton_ms = (time.perf_counter() - start) * 1000 / iters
-
-    return {
-        "torch_ms": torch_ms,
-        "triton_ms": triton_ms,
-        "speedup": torch_ms / triton_ms if triton_ms > 0 else 0.0,
-    }
-
-
-def evaluate(configs=None, warmup=50, iters=200, verbose=True) -> dict:
-    configs = configs or EVAL_CONFIGS
-    results, failures = [], []
-
-    if verbose:
-        print(f"{'Config (M,N,K)':<22} {'Correct':>8} {'Torch':>10} {'Triton':>10} {'Speedup':>10}")
-        print("-" * 62)
-
-    for M, N, K in configs:
-        corr = check_correctness(M, K, N)
-        if not corr["correct"]:
-            failures.append({"config": (M, N, K), **corr})
-            if verbose:
-                err = corr["error"] or f"dx={corr.get('rel_dx',0):.4f}"
-                print(f"({M},{N},{K}){'':<8} {'FAIL':>8}   {err[:30]}")
-            continue
-
-        bench = benchmark_config(M, K, N, warmup=warmup, iters=iters)
-        results.append({"config": (M, N, K), "correct": True, **bench})
-
-        if verbose:
-            marker = " *" if bench["speedup"] > 1.0 else ""
-            print(
-                f"({M},{N},{K}){'':<8} {'PASS':>8} "
-                f"{bench['torch_ms']:>8.3f}ms {bench['triton_ms']:>8.3f}ms "
-                f"{bench['speedup']:>8.2f}x{marker}"
-            )
-
-    speedups = [r["speedup"] for r in results]
-    geomean = math.prod(speedups) ** (1 / len(speedups)) if speedups else 0.0
-
-    if verbose:
-        print("-" * 62)
-        status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{len(configs)})"
-        print(f"{'Status:':<22} {status}")
-        if speedups:
-            print(f"{'Speedup (geomean):':<22} {geomean:.2f}x")
-
-    return {
-        "correct": len(failures) == 0,
-        "num_correct": len(results),
-        "num_failed": len(failures),
-        "failures": failures,
-        "results": results,
-        "speedup_geomean": geomean,
-    }
-
-
-def run_profile(configs=None, warmup=3, iters=1, verbose=True):
-    configs = configs or PROFILE_CONFIGS
-    if verbose:
-        print(f"Profile: {len(configs)} config(s)")
-
-    for M, N, K in configs:
-        x, w_up, w_down, dy = get_inputs(M, K, N)
-        y, h0, h1, a, g = ff_fused_gated_forward(x, w_up, w_down, ACTIVATION)
-
-        for _ in range(warmup):
-            ff_fused_gated_backward_triton(dy, x, w_up, w_down, h0, h1, a, g, ACTIVATION)
-        torch.cuda.synchronize()
-
-        for _ in range(iters):
-            ff_fused_gated_backward_triton(dy, x, w_up, w_down, h0, h1, a, g, ACTIVATION)
-        torch.cuda.synchronize()
-
-        if verbose:
-            print(f"  ({M},{N},{K}) done")
-
-
-# ============================================================================
-# MAIN
-# ============================================================================
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="FF Backward Kernel (Pure Triton)")
-    parser.add_argument("--profile", action="store_true")
-    args = parser.parse_args()
-
-    print("=" * 62)
-    print("Fused Gated MLP Backward — Pure Triton")
-    print("=" * 62)
-
-    if args.profile:
-        print("\n[Profile Mode]")
-        run_profile()
-    else:
-        print("\n[Evaluation]")
-        evaluate()
-
-    print("=" * 62)
+# Tolerance for the harness's torch.testing.assert_close. The previous
+# correctness check used max_relative_diff < 0.01 across all three
+# returned gradients; mirror that here as atol=rtol=1e-2.
+RTOL, ATOL = 1e-2, 1e-2

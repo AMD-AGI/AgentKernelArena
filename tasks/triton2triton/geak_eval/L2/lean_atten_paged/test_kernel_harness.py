@@ -1,222 +1,232 @@
 #!/usr/bin/env python3
 """
-Lean Attention + Paged Attention kernel test harness.
+Test harness for the persistent lean attention + paged attention Triton kernel.
 
-Wraps the built-in harness in kernel.py to ensure:
-- --correctness exits non-zero on failure
-- --iterations reads GEAK_BENCHMARK_ITERATIONS env var
-- --benchmark uses HARNESS_CONFIGS
-- --full-benchmark uses ALL_CONFIGS
-- --profile uses PROFILE_CONFIGS
-- GEAK_RESULT_LATENCY_MS is always the LAST line of benchmark output
+Modes: --correctness, --profile, --benchmark, --full-benchmark
 
-Modes:
-  --correctness    : validate kernel against torch reference
-  --profile        : run kernel once per PROFILE_SHAPES for profiler capture
-  --benchmark      : benchmark on HARNESS_CONFIGS, print GEAK_RESULT_LATENCY_MS
-  --full-benchmark : benchmark on ALL_CONFIGS, print GEAK_RESULT_LATENCY_MS
-  --iterations N   : override iteration count (default from GEAK_BENCHMARK_ITERATIONS or 20)
+Per-task divergence from the standard dispatch convention: --correctness
+uses CORRECTNESS_CONFIGS (a small fixed correctness-focused set), not
+HARNESS_CONFIGS. CORRECTNESS_CONFIGS and ALL_CONFIGS are different sets in
+this task and the project plan calls for preserving the kernel.py-side
+convention here.
 """
-from __future__ import annotations
-
 import argparse
+import math
 import os
 import sys
-
-# GEAK materialized harness bootstrap
-import importlib.util
-import os
-import sys
-import types
-from pathlib import Path
-
-def _find_baseline_kernel_dir():
-    """Find preprocess dir (has benchmark_baseline.txt) by walking up from GEAK_WORK_DIR."""
-    work = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if not work:
-        return None
-    d = Path(work).resolve()
-    for _ in range(10):
-        if d is None or not d.exists():
-            break
-        bb = d / "benchmark_baseline.txt"
-        if bb.is_file():
-            return str(d)
-        d = d.parent
-    return None
-
-def _load_baseline_triton(baseline_dir, module_alias, entry_name):
-    """Load kernel from baseline_dir. Returns callable or None."""
-    entry_file = Path(baseline_dir) / "kernel.py"
-    if not entry_file.is_file():
-        return None
-    if baseline_dir not in sys.path:
-        sys.path.insert(0, baseline_dir)
-    spec = importlib.util.spec_from_file_location(module_alias, entry_file)
-    if spec is None or spec.loader is None:
-        return None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_alias] = module
-    try:
-        spec.loader.exec_module(module)
-        return getattr(module, entry_name, None)
-    except Exception:
-        return None
-
-def _resolve_geak_kernel_dir():
-    candidates = []
-    work_dir = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if work_dir:
-        candidates.append(work_dir)
-    repo_root = os.environ.get("GEAK_REPO_ROOT", "").strip()
-    rel_kernel_dir = '.'
-    if repo_root and rel_kernel_dir:
-        candidates.append(os.path.join(repo_root, rel_kernel_dir))
-    original_kernel_dir = os.path.dirname(os.path.abspath(__file__))
-    if original_kernel_dir:
-        candidates.append(original_kernel_dir)
-    for candidate in candidates:
-        if candidate and os.path.isfile(os.path.join(candidate, "kernel.py")):
-            return candidate
-    return original_kernel_dir or os.getcwd()
-
-def _ensure_geak_package(module_name):
-    parts = module_name.split(".")
-    for idx in range(1, len(parts)):
-        prefix = ".".join(parts[:idx])
-        if prefix in sys.modules:
-            continue
-        pkg = types.ModuleType(prefix)
-        pkg.__path__ = []
-        sys.modules[prefix] = pkg
-
-def _ensure_geak_aiter_fp8_dtype(module):
-    fp8_value = getattr(module, "fp8_dtype", None)
-    if fp8_value is None:
-        return
-    aiter_mod = sys.modules.get("aiter")
-    if aiter_mod is None:
-        try:
-            import aiter as aiter_mod
-        except Exception:
-            _ensure_geak_package("aiter")
-            aiter_mod = sys.modules.get("aiter")
-    if aiter_mod is None:
-        return
-    dtypes_obj = getattr(aiter_mod, "dtypes", None)
-    if dtypes_obj is None:
-        dtypes_obj = types.SimpleNamespace()
-        setattr(aiter_mod, "dtypes", dtypes_obj)
-    if getattr(dtypes_obj, "fp8", None) is None:
-        setattr(dtypes_obj, "fp8", fp8_value)
-
-def _register_geak_aliases(kernel_dir):
-    aliases = ['lean_atten_paged']
-    entry_file = os.path.join(kernel_dir, "kernel.py")
-    if not os.path.isfile(entry_file):
-        return
-    for alias in aliases:
-        if alias in sys.modules:
-            continue
-        _ensure_geak_package(alias)
-        spec = importlib.util.spec_from_file_location(alias, entry_file)
-        if spec is None or spec.loader is None:
-            continue
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[alias] = module
-        spec.loader.exec_module(module)
-        _ensure_geak_aiter_fp8_dtype(module)
-
-_KERNEL_DIR = _resolve_geak_kernel_dir()
-if _KERNEL_DIR and _KERNEL_DIR not in sys.path:
-    sys.path.insert(0, _KERNEL_DIR)
-_register_geak_aliases(_KERNEL_DIR)
+import torch
 
 from kernel import (
-    run_correctness,
-    run_profile,
-    run_benchmark,
-    CORRECTNESS_CONFIGS,
-    HARNESS_CONFIGS,
-    ALL_CONFIGS,
-    PROFILE_CONFIGS,
+    persistent_lean_attention_paged,
+    _make_test_case, _config_tag,
+    CORRECTNESS_CONFIGS, ALL_CONFIGS, HARNESS_CONFIGS, PROFILE_CONFIGS,
+    RTOL, ATOL,
 )
 
 
-def _get_baseline_fn():
-    """Resolve baseline Triton kernel when in patch-eval mode."""
-    baseline_dir = _find_baseline_kernel_dir()
-    kernel_dir = _resolve_geak_kernel_dir()
-    if baseline_dir and baseline_dir != kernel_dir:
-        return _load_baseline_triton(baseline_dir, "baseline_lean_atten", "persistent_lean_attention_paged")
-    return None
+# ============================================================================
+# SHAPE SUBSETS
+# ============================================================================
+
+# kernel.py already pre-samples HARNESS_CONFIGS (25) and PROFILE_CONFIGS (5)
+# from ALL_CONFIGS, so we just re-export under the standard names here.
+ALL_SHAPES = ALL_CONFIGS
+HARNESS_SHAPES = HARNESS_CONFIGS
+PROFILE_SHAPES = PROFILE_CONFIGS
 
 
-def main():
-    default_iters = int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "200"))
+# ============================================================================
+# PYTORCH REFERENCE (moved from kernel.py; correctness-only)
+# ============================================================================
 
-    parser = argparse.ArgumentParser(
-        description="Lean Attention + Paged Attention Kernel Test Harness"
+def torch_op(q, k, v, ref_indices, n_ctx_q, sm_scale):
+    ref_out = torch.empty_like(q, dtype=v.dtype)
+    for head_idx in range(q.shape[0]):
+        start_q = 0
+        for batch_idx in range(len(ref_indices[head_idx])):
+            qb = q[head_idx, start_q : start_q + n_ctx_q, :]
+            idxs = ref_indices[head_idx][batch_idx]
+            kb = torch.index_select(k[head_idx], dim=0, index=idxs)
+            vb = torch.index_select(v[head_idx], dim=0, index=idxs)
+            p = torch.matmul(qb, kb.transpose(0, 1)) * sm_scale
+            p = torch.softmax(p.float(), dim=-1).to(q.dtype)
+            ref_out[head_idx, start_q : start_q + n_ctx_q, :] = torch.matmul(p, vb)
+            start_q += n_ctx_q
+    return ref_out
+
+
+# ============================================================================
+# Helpers
+# ============================================================================
+
+def _call_triton(case, cfg):
+    batch, h, n_ctx_q, n_ctx, d, total_programs, dtype, block_m, block_n, waves_per_eu, num_warps = cfg
+    return persistent_lean_attention_paged(
+        q=case["q"], k=case["k"], v=case["v"],
+        kv_block_tables=case["kv_block_tables"],
+        Mp=case["Mp"], Lp=case["Lp"], Op=case["Op"], locks=case["locks"],
+        batch_num_block_n=case["batch_num_block_n"],
+        total_programs=total_programs,
+        BLOCK_M=block_m, BLOCK_N=block_n,
+        batch_size=batch,
+        sm_scale=case["sm_scale"],
+        num_warps=case["num_warps"],
+        waves_per_eu=case["waves_per_eu"],
     )
+
+
+# ============================================================================
+# TEST HARNESS
+# ============================================================================
+
+def run_correctness(shapes=None, verbose=True):
+    if shapes is None:
+        shapes = CORRECTNESS_CONFIGS
+    if verbose:
+        print(f"Running correctness on {len(shapes)} shapes...")
+
+    results, failures = [], []
+
+    for cfg in shapes:
+        batch, h, n_ctx_q, n_ctx, d, total_programs, dtype, block_m, block_n, waves_per_eu, num_warps = cfg
+        tag = _config_tag(batch, h, n_ctx_q, n_ctx, d, total_programs, block_m, block_n, waves_per_eu, num_warps)
+        try:
+            case = _make_test_case(*cfg)
+            out_triton = _call_triton(case, cfg)
+            out_torch = torch_op(case["q"], case["k"], case["v"],
+                                 case["ref_indices"], n_ctx_q, case["sm_scale"])
+            torch.cuda.synchronize()
+
+            torch.testing.assert_close(out_torch, out_triton, atol=ATOL, rtol=RTOL)
+            results.append({"config": tag, "correct": True})
+            if verbose:
+                print(f"  PASS: {tag}")
+        except Exception as exc:
+            failures.append({"config": tag, "error": str(exc)})
+            if verbose:
+                print(f"  FAIL: {tag} - {str(exc)[:120]}")
+        torch.cuda.empty_cache()
+
+    if verbose:
+        print("-" * 70)
+        status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{len(shapes)})"
+        print(f"{'Status:':<22} {status}")
+
+    return {
+        "correct": len(failures) == 0,
+        "num_correct": len(results),
+        "num_failed": len(failures),
+        "failures": failures,
+        "results": results,
+    }
+
+
+def run_profile(shapes=None, warmup=50, iters=200, verbose=True):
+    if shapes is None:
+        shapes = PROFILE_SHAPES
+    if verbose:
+        print(f"Profile: {len(shapes)} config(s), {warmup} warmup, {iters} iter(s)")
+
+    for cfg in shapes:
+        case = _make_test_case(*cfg)
+        for _ in range(warmup):
+            _call_triton(case, cfg)
+        torch.cuda.synchronize()
+        for _ in range(iters):
+            _call_triton(case, cfg)
+        torch.cuda.synchronize()
+        if verbose:
+            batch, h, n_ctx_q, n_ctx, d, total_programs, dtype, block_m, block_n, waves_per_eu, num_warps = cfg
+            tag = _config_tag(batch, h, n_ctx_q, n_ctx, d, total_programs, block_m, block_n, waves_per_eu, num_warps)
+            print(f"  {tag} done")
+        torch.cuda.empty_cache()
+
+
+def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
+    if shapes is None:
+        shapes = HARNESS_SHAPES
+
+    latencies = []
+
+    print(f"Running benchmark on {len(shapes)} shapes, {warmup} warmup, {iters} iterations each...")
+    if verbose:
+        print(f"{'Config':<72} {'Triton':>10}")
+        print("-" * 84)
+
+    for cfg in shapes:
+        batch, h, n_ctx_q, n_ctx, d, total_programs, dtype, block_m, block_n, waves_per_eu, num_warps = cfg
+        tag = _config_tag(batch, h, n_ctx_q, n_ctx, d, total_programs, block_m, block_n, waves_per_eu, num_warps)
+        case = _make_test_case(*cfg)
+
+        for _ in range(warmup):
+            _call_triton(case, cfg)
+        torch.cuda.synchronize()
+
+        triton_times = []
+        for _ in range(iters):
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            start.record()
+            _call_triton(case, cfg)
+            end.record()
+            torch.cuda.synchronize()
+            triton_times.append(start.elapsed_time(end))
+
+        triton_ms = sorted(triton_times)[len(triton_times) // 2]
+        latencies.append(triton_ms)
+
+        if verbose:
+            print(f"{tag:<72} {triton_ms:>8.4f}ms", flush=True)
+
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(l) for l in latencies) / len(latencies))
+
+    print("-" * 84)
+    print(f"{'Geometric mean latency:':<72} {geomean_latency:.4f} ms")
+    print(f"GEAK_SHAPES_USED={list(range(len(shapes)))}")
+    print(f"GEAK_RESULT_LATENCY_MS={geomean_latency:.4f}", flush=True)
+
+    return {"geomean_latency_ms": geomean_latency, "latencies": latencies}
+
+
+# ============================================================================
+# MAIN
+# ============================================================================
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Lean Attention (Paged) Test Harness")
     parser.add_argument("--correctness", action="store_true",
-                        help="Run correctness tests")
+                        help="Run correctness tests on CORRECTNESS_CONFIGS")
     parser.add_argument("--profile", action="store_true",
                         help="Run minimal profiling workload")
     parser.add_argument("--benchmark", action="store_true",
-                        help="Run benchmark on HARNESS_CONFIGS")
+                        help="Run benchmark on HARNESS_SHAPES (25 uniformly sampled)")
     parser.add_argument("--full-benchmark", action="store_true",
-                        help="Run benchmark on ALL_CONFIGS")
-    parser.add_argument("--iterations", type=int, default=default_iters,
-                        help=f"Number of benchmark iterations (default: {default_iters})")
+                        help="Run benchmark on ALL_SHAPES (complete set)")
     parser.add_argument("--warmup", type=int, default=50,
                         help="Number of warmup iterations (default: 50)")
+    parser.add_argument("--iterations", type=int,
+                        default=int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "200")),
+                        help="Number of benchmark iterations (default: GEAK_BENCHMARK_ITERATIONS or 200)")
     args = parser.parse_args()
 
+    print("=" * 70)
+    print("Lean Attention (Paged) Test Harness")
+    print("=" * 70)
+
     if args.correctness:
-        print("=" * 70)
-        print("[Correctness Mode]")
-        print("=" * 70)
-        result = run_correctness(CORRECTNESS_CONFIGS, verbose=True)
-        if not result["correct"]:
-            print(f"\nFAILED: {result['num_failed']} correctness test(s) failed")
-            sys.exit(1)
-        print("\nAll correctness tests PASSED")
-        sys.exit(0)
-
+        print("\n[Correctness Mode]")
+        result = run_correctness(CORRECTNESS_CONFIGS)
+        sys.exit(0 if result["correct"] else 1)
     elif args.profile:
-        print("=" * 70)
-        print("[Profile Mode]")
-        print("=" * 70)
-        run_profile(PROFILE_CONFIGS, warmup=args.warmup, iters=args.iterations,
-                    verbose=True)
-        sys.exit(0)
-
+        print("\n[Profile Mode]")
+        run_profile(PROFILE_SHAPES, warmup=args.warmup, iters=args.iterations)
     elif args.full_benchmark:
-        print("=" * 70)
-        print("[Full Benchmark Mode]")
-        print("=" * 70)
-        baseline_fn = _get_baseline_fn()
-        result = run_benchmark(ALL_CONFIGS, warmup=args.warmup,
-                               iters=args.iterations, verbose=True, baseline_fn=baseline_fn)
-        # Ensure GEAK_RESULT_LATENCY_MS is the LAST line of output
-        print(f"GEAK_RESULT_LATENCY_MS={result['geomean_latency_ms']:.4f}")
-        sys.exit(0)
-
-    elif args.benchmark:
-        print("=" * 70)
-        print("[Benchmark Mode]")
-        print("=" * 70)
-        baseline_fn = _get_baseline_fn()
-        result = run_benchmark(HARNESS_CONFIGS, warmup=args.warmup,
-                               iters=args.iterations, verbose=True, baseline_fn=baseline_fn)
-        # Ensure GEAK_RESULT_LATENCY_MS is the LAST line of output
-        print(f"GEAK_RESULT_LATENCY_MS={result['geomean_latency_ms']:.4f}")
-        sys.exit(0)
-
+        print("\n[Full Benchmark Mode]")
+        run_benchmark(ALL_SHAPES, warmup=args.warmup, iters=args.iterations)
     else:
-        parser.print_help()
-        sys.exit(1)
+        print("\n[Benchmark Mode]")
+        run_benchmark(HARNESS_SHAPES, warmup=args.warmup, iters=args.iterations)
 
-
-if __name__ == "__main__":
-    main()
+    print("=" * 70)
