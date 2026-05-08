@@ -301,7 +301,8 @@ if __name__ == "__main__":
 
     if args.correctness:
         print("\n[Correctness Mode]")
-        run_correctness(HARNESS_SHAPES)
+        result = run_correctness(HARNESS_SHAPES)
+        sys.exit(0 if result.get("correct", False) else 1)
     elif args.profile:
         print("\n[Profile Mode]")
         run_profile(PROFILE_SHAPES, warmup=args.warmup, iters=args.iterations)

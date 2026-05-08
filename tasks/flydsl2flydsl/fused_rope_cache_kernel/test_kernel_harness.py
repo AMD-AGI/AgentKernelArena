@@ -185,6 +185,17 @@ def run_correctness(configs=None, verbose=True):
             torch.testing.assert_close(inp["Q_out"], q_ref, atol=ATOL, rtol=RTOL)
             torch.testing.assert_close(inp["K_out"], k_ref, atol=ATOL, rtol=RTOL)
 
+            expected_key_cache = torch.zeros_like(inp["key_cache"])
+            expected_value_cache = torch.zeros_like(inp["value_cache"])
+            slots = inp["slot_mapping"].to(torch.long)
+            valid = slots >= 0
+            block_ids = slots[valid] // inp["BS"]
+            block_offsets = slots[valid] % inp["BS"]
+            expected_key_cache[block_ids, block_offsets, :, :] = k_ref[valid]
+            expected_value_cache[block_ids, block_offsets, :, :] = inp["V"][valid]
+            torch.testing.assert_close(inp["key_cache"], expected_key_cache, atol=ATOL, rtol=RTOL)
+            torch.testing.assert_close(inp["value_cache"], expected_value_cache, atol=ATOL, rtol=RTOL)
+
             label = f"T={cfg['num_tokens']},QH={cfg['num_q_heads']},D={cfg['head_dim']}"
             results.append({"config": label, "correct": True})
             if verbose:
@@ -374,7 +385,8 @@ if __name__ == "__main__":
 
     if args.correctness:
         print("\n[Correctness Mode]")
-        run_correctness(HARNESS_CONFIGS)
+        result = run_correctness(HARNESS_CONFIGS)
+        sys.exit(0 if result.get("correct", False) else 1)
     elif args.profile:
         print("\n[Profile Mode]")
         run_profile(PROFILE_CONFIGS, warmup=args.warmup, iters=args.iterations)
