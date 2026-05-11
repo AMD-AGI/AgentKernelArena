@@ -10,7 +10,7 @@ import types
 from pathlib import Path
 
 # ============================================================================
-# GEAK bootstrap (mirrors team pattern)
+# GEAK bootstrap
 # ============================================================================
 
 KERNEL_FILE = "kernel.py"
