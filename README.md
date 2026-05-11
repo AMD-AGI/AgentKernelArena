@@ -287,7 +287,7 @@ correctness_command:
 performance_command:
   - python3 scripts/task_runner.py --mode performance
 
-task_type: hip2hip   # one of: hip2hip, cuda2hip, triton2triton, torch2hip
+task_type: hip2hip   # one of: hip2hip, cuda2hip, triton2triton, torch2hip, instruction2triton, repository, flydsl2flydsl
 
 prompt:
   source_code: null

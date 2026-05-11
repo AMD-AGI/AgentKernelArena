@@ -4,6 +4,16 @@
 
 These tasks require [FlyDSL](https://github.com/ROCm/FlyDSL) and a ROCm-enabled AMD GPU.
 
+Recommended setup from the repository root:
+
+```bash
+make setup-flydsl
+```
+
+This installs FlyDSL into the project virtual environment and verifies both FlyDSL import and ROCm PyTorch GPU availability.
+
+Manual install, if needed:
+
 ```bash
 pip install flydsl
 ```
