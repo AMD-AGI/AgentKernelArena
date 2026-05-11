@@ -29,13 +29,23 @@ export MAX_JOBS := 8
 export HIP_FORCE_DEV_KERNARG := 1
 export HSA_NO_SCRATCH_RECLAIM := 1
 
-.PHONY: help setup clean
+.PHONY: help setup setup-venv setup-flydsl verify-flydsl clean cleanup-venv cleanup-works install-cursor-agent act vllm
 
 help:
 	@echo "AgentKernelArena Evaluation Framework - Makefile Commands"
 	@echo "======================================================"
-	@echo "make setup  - Complete environment setup (venv + deps)"
+	@echo "make setup  - Complete environment setup (venv + deps, includes FlyDSL by default)"
+	@echo "make setup WITH_FLYDSL=0 - Setup without FlyDSL"
+	@echo "make setup-flydsl - Install and verify FlyDSL dependency for flydsl2flydsl tasks"
+	@echo "make verify-flydsl - Verify FlyDSL import and ROCm PyTorch GPU availability"
 	@echo "make clean  - Remove virtual environment"
+
+WITH_FLYDSL ?= 1
+
+setup: setup-venv
+ifeq ($(WITH_FLYDSL),1)
+setup: setup-flydsl
+endif
 
 setup-venv:
 	@echo "Detected ROCm version: $(ROCM_VERSION) at $(ROCM_PATH_DETECTED)"
@@ -77,6 +87,18 @@ setup-venv:
 	fi
 	@source $(VENV_DIR)/bin/activate && uv pip install -r $(REQUIREMENTS)
 	@echo "✓ Setup complete! Activate with: source $(VENV_DIR)/bin/activate"
+
+setup-flydsl: setup-venv
+	@echo "Installing FlyDSL..."
+	@source $(VENV_DIR)/bin/activate && \
+		uv pip install flydsl
+	@$(MAKE) verify-flydsl
+	@echo "✓ FlyDSL installed"
+
+verify-flydsl:
+	@echo "Verifying FlyDSL and ROCm PyTorch GPU availability..."
+	@source $(VENV_DIR)/bin/activate && \
+		python3 -c 'import flydsl, torch; assert torch.cuda.is_available(), "torch.cuda.is_available() is False; FlyDSL GPU tasks require ROCm PyTorch with GPU access"; print("✓ FlyDSL import OK:", getattr(flydsl, "__version__", "unknown")); print("✓ ROCm PyTorch GPU OK:", torch.cuda.get_device_name(0))'
 
 cleanup-venv:
 	@echo "Removing virtual environment and build caches..."
