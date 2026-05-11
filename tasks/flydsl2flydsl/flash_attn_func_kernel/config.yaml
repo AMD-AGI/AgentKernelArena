@@ -1,0 +1,24 @@
+task_type: flydsl2flydsl
+source_file_path:
+  - kernel.py
+harness_path: test_kernel_harness.py
+compile_command:
+  - python3 -c "from kernel import build_flash_attn_func_module; build_flash_attn_func_module(num_heads=8, head_dim=128, dtype_str='f16'); print('compile ok')"
+correctness_command:
+  - python3 test_kernel_harness.py --correctness
+performance_command:
+  - python3 test_kernel_harness.py --full-benchmark
+target_kernel_functions:
+  - build_flash_attn_func_module
+source_origin:
+  repo: https://github.com/ROCm/FlyDSL
+  path: kernels/flash_attn_func.py
+  commit: 7a8d623a97cc4bf7223d2f9c779f05e4f3071e85
+  date: 2026-04-02
+prompt:
+  instructions: |
+    Optimize the FlyDSL Flash Attention kernel for AMD MI300X GPU.
+    The kernel implements fused multi-head attention with online softmax,
+    MFMA32 register-level GEMM, XOR-swizzled LDS, and DMA-to-LDS prefetch.
+    It supports causal masking, f16/bf16 data types, and auto tile selection.
+    You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
