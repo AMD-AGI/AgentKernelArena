@@ -1,0 +1,23 @@
+task_type: flydsl2flydsl
+source_file_path:
+  - kernel.py
+harness_path: test_kernel_harness.py
+compile_command:
+  - python3 -c "from kernel import build_rmsnorm_module; build_rmsnorm_module(2, 256, 'f16'); print('compile ok')"
+correctness_command:
+  - python3 test_kernel_harness.py --correctness
+performance_command:
+  - python3 test_kernel_harness.py --full-benchmark
+target_kernel_functions:
+  - build_rmsnorm_module
+source_origin:
+  repo: https://github.com/ROCm/FlyDSL
+  path: kernels/rmsnorm_kernel.py
+  commit: 21536b06810a5fe3f6d5cf03b3668b2ed6a0498c
+  date: 2026-04-28
+prompt:
+  instructions: |
+    Optimize the FlyDSL RMSNorm kernel for AMD MI300X GPU.
+    The kernel computes RMSNorm: y = x / sqrt(mean(x^2) + eps) * gamma
+    using float32 accumulation for numerical stability.
+    You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.

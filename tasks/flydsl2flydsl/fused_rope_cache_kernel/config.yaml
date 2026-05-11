@@ -1,0 +1,23 @@
+task_type: flydsl2flydsl
+source_file_path:
+  - kernel.py
+harness_path: test_kernel_harness.py
+compile_command:
+  - python3 -c "from kernel import build_fused_rope_cache_module; build_fused_rope_cache_module(); print('compile ok')"
+correctness_command:
+  - python3 test_kernel_harness.py --correctness
+performance_command:
+  - python3 test_kernel_harness.py --full-benchmark
+target_kernel_functions:
+  - build_fused_rope_cache_module
+source_origin:
+  repo: https://github.com/ROCm/FlyDSL
+  path: kernels/fused_rope_cache_kernel.py
+  commit: 21536b06810a5fe3f6d5cf03b3668b2ed6a0498c
+  date: 2026-04-28
+prompt:
+  instructions: |
+    Optimize the FlyDSL Fused RoPE + KV Cache kernel for AMD MI300X GPU.
+    The kernel fuses Q/K RoPE rotation and KV cache writes into a single
+    launch using NeoX-style rotation and ds_bpermute for cross-lane exchange.
+    You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.

@@ -250,6 +250,8 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
         task_type_prompt = task_type.cuda2hip_task_type()
     elif task_type_name == 'instruction2triton':
         task_type_prompt = task_type.instruction2triton_task_type()
+    elif task_type_name == 'flydsl2flydsl':
+        task_type_prompt = task_type.flydsl2flydsl_task_type()
     elif task_type_name == 'repository':
         task_type_prompt = task_type.repository_task_type()
     else:
