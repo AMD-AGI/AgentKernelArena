@@ -1,0 +1,12 @@
+# Team slugs: https://github.com/orgs/AMD-AGI/teams
+# Syntax:     https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# Last matching rule wins. Prefer GitHub Teams over individuals.
+
+# Default — every file requires project-team approval
+# (any of: team OR any listed contributor satisfies the rule)
+*                            @AMD-AGI/brain-tio @irvineoy @sharareh-y @sinarafati-amd @sharonzhou 
+
+# Stricter paths — leads must approve
+.github/CODEOWNERS           @AMD-AGI/brain-tio-leads
+/.github/workflows/          @AMD-AGI/brain-tio-leads
+/src/core/                   @AMD-AGI/brain-tio-leads
