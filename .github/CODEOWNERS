@@ -1,0 +1,18 @@
+# Team slugs: https://github.com/orgs/AMD-AGI/teams
+# Syntax:     https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# Last matching rule wins. Prefer GitHub Teams over individuals.
+# NOTE: A dedicated AMD-AGI team slug for this project was not yet
+# available at authoring time. Add @AMD-AGI/<team-slug> below once the
+# team exists and has write access to this repo.
+
+# Default — every file requires owner approval
+# (any of the listed contributors satisfies the rule)
+*                            @sinarafati-amd @irvineoy @sharareh-y @chushic @sharonzhou @ppalanga @yueliu14
+
+# Stricter paths — leads must approve
+.github/CODEOWNERS           @sinarafati-amd
+/.github/workflows/          @sinarafati-amd
+/main.py                     @sinarafati-amd
+/src/score.py                @sinarafati-amd
+/src/evaluator.py            @sinarafati-amd
+/src/runtime_env.py          @sinarafati-amd
