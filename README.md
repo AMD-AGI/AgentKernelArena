@@ -4,6 +4,12 @@ As AI coding agents, like Claude Code and OpenAI Codex, rapidly improve, we need
 
 AgentKernelArena is a standardized evaluation arena built by AMD to measure how well AI coding agents perform on real GPU kernel optimization tasks. 
 
+## Demo
+
+A live illustrative demo is available at: http://165.245.130.75/
+
+This demo is provided only to illustrate the results and should not be treated as the final benchmark leaderboard.
+
 ## Overview & Features
 
 AgentKernelArena provides an end-to-end, siloed benchmarking environment where LLM-powered agents (Cursor Agent, Claude Code, Codex, SWE-agent, GEAK, and custom agents) are evaluated side-by-side on the same kernel tasks using objective and reproducible metrics.
