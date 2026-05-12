@@ -1,0 +1,26 @@
+task_type: flydsl2flydsl
+source_file_path:
+  - kernel.py
+harness_path: test_kernel_harness.py
+compile_command:
+  - python3 -c "from kernel import build_pa_decode_module; build_pa_decode_module(1, 1, 1); print('compile ok')"
+correctness_command:
+  - python3 test_kernel_harness.py --correctness
+performance_command:
+  - python3 test_kernel_harness.py --full-benchmark
+target_kernel_functions:
+  - build_pa_decode_module
+  - build_ps_reduce_kernel
+  - build_v2_reduce_kernel
+source_origin:
+  repo: https://github.com/ROCm/FlyDSL
+  path: kernels/pa_decode_fp8.py
+  commit: 4d84ee8f665fea906a0012cc98f0381e5f5d2818
+  date: 2026-03-24
+prompt:
+  instructions: |
+    Optimize the FlyDSL Paged Attention Decode FP8 kernel for AMD MI300X GPU.
+    The kernel implements paged KV-cache attention decode with FP8 quantized
+    keys/values, MFMA-based dot products, online softmax, multi-partition
+    reduce, and supports both one-shot and split-reduce modes.
+    You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.

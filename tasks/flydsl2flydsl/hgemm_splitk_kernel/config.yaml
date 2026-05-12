@@ -1,0 +1,25 @@
+task_type: flydsl2flydsl
+source_file_path:
+  - kernel.py
+harness_path: test_kernel_harness.py
+compile_command:
+  - python3 -c "from kernel import compile_hgemm_kernel; compile_hgemm_kernel('f16', 4096, 4096); print('compile ok')"
+correctness_command:
+  - python3 test_kernel_harness.py --correctness
+performance_command:
+  - python3 test_kernel_harness.py --full-benchmark
+target_kernel_functions:
+  - compile_hgemm_kernel
+  - hgemm_splitk_
+source_origin:
+  repo: https://github.com/ROCm/FlyDSL
+  path: kernels/hgemm_splitk.py
+  commit: bf6a8d074fba3a6887b69034b533dc5890b460e5
+  date: 2026-04-13
+prompt:
+  instructions: |
+    Optimize the FlyDSL HGEMM SplitK kernel for AMD MI300X GPU.
+    The kernel implements high-performance half-precision GEMM with split-K
+    parallelism, MFMA-based wave-level matrix multiply, double-buffered LDS
+    with XOR swizzle, DMA-to-LDS async copy, and pre-shuffled B matrix layout.
+    You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.

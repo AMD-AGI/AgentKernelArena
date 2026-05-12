@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test harness for FlyDSL layernorm_kernel (flydsl2flydsl)."""
+"""Test harness for FlyDSL flash_attn_func_kernel (flydsl2flydsl)."""
 import argparse
 import importlib.util
 import json
@@ -60,20 +60,20 @@ def _load_kernel(kernel_dir, alias="flydsl_kernel"):
 _KERNEL_DIR = _resolve_kernel_dir()
 
 # ============================================================================
-# Test shapes
+# Test shapes: (batch, seq_len, num_heads, head_dim, dtype_str, causal)
 # ============================================================================
 
 ALL_SHAPES = [
-    (32, 2048, "f16"),
-    (64, 2048, "f16"),
-    (32, 4096, "f16"),
-    (64, 4096, "f16"),
-    (128, 4096, "f16"),
-    (256, 4096, "f16"),
-    (32, 8192, "f16"),
-    (128, 8192, "f16"),
-    (256, 8192, "f16"),
-    (512, 8192, "f16"),
+    (1, 128, 8, 128, "f16", True),
+    (1, 256, 8, 128, "f16", True),
+    (1, 512, 8, 128, "f16", True),
+    (1, 1024, 8, 128, "f16", True),
+    (1, 2048, 8, 128, "f16", True),
+    (4, 512, 16, 128, "f16", True),
+    (8, 256, 32, 128, "f16", True),
+    (8, 512, 64, 128, "f16", True),
+    (1, 512, 8, 128, "bf16", True),
+    (1, 1024, 8, 128, "bf16", True),
 ]
 
 _n_all = len(ALL_SHAPES)
@@ -87,21 +87,21 @@ _pidx = [int(round(i * (_n_all - 1) / 4)) for i in range(5)]
 PROFILE_SHAPES = [ALL_SHAPES[i] for i in _pidx]
 
 RTOL, ATOL = 1e-2, 1e-2
-DTYPE_MAP = {"f16": "float16", "bf16": "bfloat16", "f32": "float32"}
 
 # ============================================================================
 # Reference
 # ============================================================================
 
 
-def reference_layernorm(x, gamma, beta, eps=1e-5):
+def reference_flash_attn(q_4d, k_4d, v_4d, causal=True):
     import torch
+    import torch.nn.functional as F
 
-    x_f32 = x.float()
-    mean = x_f32.mean(dim=-1, keepdim=True)
-    var = x_f32.var(dim=-1, keepdim=True, unbiased=False)
-    norm = (x_f32 - mean) / torch.sqrt(var + eps)
-    return (norm * gamma.float() + beta.float()).to(x.dtype)
+    q_t = q_4d.transpose(1, 2).float()
+    k_t = k_4d.transpose(1, 2).float()
+    v_t = v_4d.transpose(1, 2).float()
+    out = F.scaled_dot_product_attention(q_t, k_t, v_t, is_causal=causal)
+    return out.transpose(1, 2)
 
 
 # ============================================================================
@@ -122,29 +122,45 @@ def run_correctness(shapes=None, verbose=True):
         print("FAIL: cannot load kernel.py")
         return {"correct": False, "num_correct": 0, "num_failed": len(shapes), "failures": []}
 
+    dtype_map = {"f16": torch.float16, "bf16": torch.bfloat16}
     results, failures = [], []
-    for i, (M, N, dtype_str) in enumerate(shapes):
+    for i, (B, S, H, D, dtype_str, causal) in enumerate(shapes):
         try:
-            torch_dtype = getattr(torch, DTYPE_MAP[dtype_str])
+            torch_dtype = dtype_map[dtype_str]
             torch.manual_seed(42 + i)
-            x = torch.randn(M, N, device="cuda", dtype=torch_dtype)
-            gamma = torch.randn(N, device="cuda", dtype=torch_dtype)
-            beta = torch.randn(N, device="cuda", dtype=torch_dtype)
-            output = torch.empty_like(x)
 
-            launch_fn = mod.build_layernorm_module(M, N, dtype_str)
-            launch_fn(x, gamma, beta, output, M)
+            exe = mod.build_flash_attn_func_module(
+                num_heads=H, head_dim=D, causal=causal, dtype_str=dtype_str,
+            )
+
+            q_4d = torch.randn(B, S, H, D, dtype=torch_dtype, device="cuda")
+            k_4d = torch.randn(B, S, H, D, dtype=torch_dtype, device="cuda")
+            v_4d = torch.randn(B, S, H, D, dtype=torch_dtype, device="cuda")
+
+            q_flat = q_4d.contiguous().view(-1)
+            k_flat = k_4d.contiguous().view(-1)
+            v_flat = v_4d.contiguous().view(-1)
+            o_flat = torch.zeros_like(q_flat)
+
+            exe(q_flat, k_flat, v_flat, o_flat, B, S)
             torch.cuda.synchronize()
 
-            ref = reference_layernorm(x, gamma, beta)
-            torch.testing.assert_close(output, ref, atol=ATOL, rtol=RTOL)
-            results.append({"config": (M, N, dtype_str), "correct": True})
+            ref = reference_flash_attn(q_4d, k_4d, v_4d, causal=causal).to(torch_dtype)
+            ref_flat = ref.contiguous().view(-1)
+
+            max_err = (o_flat.float() - ref_flat.float()).abs().max().item()
+            passed = max_err < ATOL
+            if not passed:
+                raise AssertionError(f"max_err={max_err:.4e} > {ATOL}")
+
+            results.append({"config": (B, S, H, D, dtype_str), "correct": True})
             if verbose:
-                print(f"  PASS: (M={M}, N={N}, {dtype_str})")
+                causal_tag = "causal" if causal else "nocausal"
+                print(f"  PASS: (B={B}, S={S}, H={H}, D={D}, {dtype_str}, {causal_tag}) max_err={max_err:.4e}")
         except Exception as e:
-            failures.append({"config": (M, N, dtype_str), "error": str(e)})
+            failures.append({"config": (B, S, H, D, dtype_str), "error": str(e)})
             if verbose:
-                print(f"  FAIL: (M={M}, N={N}, {dtype_str}) - {str(e)[:80]}")
+                print(f"  FAIL: (B={B}, S={S}, H={H}, D={D}, {dtype_str}) - {str(e)[:80]}")
 
     if verbose:
         print("-" * 62)
@@ -159,7 +175,7 @@ def run_correctness(shapes=None, verbose=True):
     }
 
 
-def run_profile(shapes=None, warmup=50, iters=200, verbose=True):
+def run_profile(shapes=None, warmup=10, iters=50, verbose=True):
     import torch
 
     if shapes is None:
@@ -171,25 +187,29 @@ def run_profile(shapes=None, warmup=50, iters=200, verbose=True):
     if mod is None:
         return
 
-    for M, N, dtype_str in shapes:
-        torch_dtype = getattr(torch, DTYPE_MAP[dtype_str])
-        x = torch.randn(M, N, device="cuda", dtype=torch_dtype)
-        gamma = torch.randn(N, device="cuda", dtype=torch_dtype)
-        beta = torch.randn(N, device="cuda", dtype=torch_dtype)
-        output = torch.empty_like(x)
-        launch_fn = mod.build_layernorm_module(M, N, dtype_str)
+    dtype_map = {"f16": torch.float16, "bf16": torch.bfloat16}
+    for B, S, H, D, dtype_str, causal in shapes:
+        torch_dtype = dtype_map[dtype_str]
+        exe = mod.build_flash_attn_func_module(
+            num_heads=H, head_dim=D, causal=causal, dtype_str=dtype_str,
+        )
+        q = torch.randn(B * S * H * D, dtype=torch_dtype, device="cuda")
+        k = torch.randn_like(q)
+        v = torch.randn_like(q)
+        o = torch.zeros_like(q)
 
         for _ in range(warmup):
-            launch_fn(x, gamma, beta, output, M)
+            exe(q, k, v, o, B, S)
         torch.cuda.synchronize()
         for _ in range(iters):
-            launch_fn(x, gamma, beta, output, M)
+            exe(q, k, v, o, B, S)
         torch.cuda.synchronize()
         if verbose:
-            print(f"  (M={M}, N={N}, {dtype_str}) done")
+            causal_tag = "causal" if causal else "nocausal"
+            print(f"  (B={B}, S={S}, H={H}, D={D}, {dtype_str}, {causal_tag}) done")
 
 
-def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
+def run_benchmark(shapes=None, warmup=10, iters=50, verbose=True):
     import torch
 
     if shapes is None:
@@ -200,25 +220,31 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
         print("FAIL: cannot load kernel.py")
         return {"geomean_latency_ms": -1, "geomean_speedup": -1}
 
+    dtype_map = {"f16": torch.float16, "bf16": torch.bfloat16}
     latencies, speedups, report_cases = [], [], []
 
     print(f"Running benchmark on {len(shapes)} shapes, {warmup} warmup, {iters} iterations...")
-    print(f"  Comparing kernel vs PyTorch")
-    print(f"{'Config (M,N,dtype)':<26} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10}")
-    print("-" * 62)
+    print(f"{'Config':<42} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10}")
+    print("-" * 76)
 
-    for idx, (M, N, dtype_str) in enumerate(shapes):
-        torch_dtype = getattr(torch, DTYPE_MAP[dtype_str])
+    for idx, (B, S, H, D, dtype_str, causal) in enumerate(shapes):
+        torch_dtype = dtype_map[dtype_str]
         torch.manual_seed(42)
-        x = torch.randn(M, N, device="cuda", dtype=torch_dtype)
-        gamma = torch.randn(N, device="cuda", dtype=torch_dtype)
-        beta = torch.randn(N, device="cuda", dtype=torch_dtype)
-        output = torch.empty_like(x)
 
-        launch_fn = mod.build_layernorm_module(M, N, dtype_str)
+        exe = mod.build_flash_attn_func_module(
+            num_heads=H, head_dim=D, causal=causal, dtype_str=dtype_str,
+        )
+
+        q_4d = torch.randn(B, S, H, D, dtype=torch_dtype, device="cuda")
+        k_4d = torch.randn(B, S, H, D, dtype=torch_dtype, device="cuda")
+        v_4d = torch.randn(B, S, H, D, dtype=torch_dtype, device="cuda")
+        q_flat = q_4d.contiguous().view(-1)
+        k_flat = k_4d.contiguous().view(-1)
+        v_flat = v_4d.contiguous().view(-1)
+        o_flat = torch.zeros_like(q_flat)
 
         for _ in range(warmup):
-            launch_fn(x, gamma, beta, output, M)
+            exe(q_flat, k_flat, v_flat, o_flat, B, S)
         torch.cuda.synchronize()
 
         kernel_times = []
@@ -226,7 +252,7 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
             s = torch.cuda.Event(enable_timing=True)
             e = torch.cuda.Event(enable_timing=True)
             s.record()
-            launch_fn(x, gamma, beta, output, M)
+            exe(q_flat, k_flat, v_flat, o_flat, B, S)
             e.record()
             torch.cuda.synchronize()
             kernel_times.append(s.elapsed_time(e))
@@ -237,7 +263,7 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
             s = torch.cuda.Event(enable_timing=True)
             e = torch.cuda.Event(enable_timing=True)
             s.record()
-            _ = reference_layernorm(x, gamma, beta)
+            _ = reference_flash_attn(q_4d, k_4d, v_4d, causal=causal).to(torch_dtype)
             e.record()
             torch.cuda.synchronize()
             ref_times.append(s.elapsed_time(e))
@@ -246,22 +272,29 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
         speedup = ref_ms / kernel_ms if kernel_ms > 0 else 1.0
         latencies.append(kernel_ms)
         speedups.append(speedup)
+
+        s_eff = S / 2.0 if causal else float(S)
+        flops = 4.0 * S * s_eff * D * H * B
+        tflops = flops / (kernel_ms * 1e-3) / 1e12
+
         report_cases.append({
             "test_case_id": f"test_case_{idx}",
             "execution_time_ms": kernel_ms,
-            "shape": [M, N],
-            "params": {"M": M, "N": N, "dtype": dtype_str},
+            "shape": [B, S, H, D],
+            "params": {"B": B, "S": S, "H": H, "D": D, "dtype": dtype_str, "causal": causal},
+            "tflops": tflops,
         })
 
         marker = " *" if speedup > 1.0 else ""
+        causal_tag = "causal" if causal else "nocausal"
         if verbose:
             print(
-                f"(M={M:>4}, N={N:>5}, {dtype_str}){' ':2} "
-                f"{ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup:>8.2f}x{marker}",
+                f"(B={B:>2},S={S:>5},H={H:>3},D={D},{dtype_str},{causal_tag})"
+                f" {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup:>8.2f}x{marker}",
                 flush=True,
             )
 
-        del x, gamma, beta, output
+        del q_4d, k_4d, v_4d, q_flat, k_flat, v_flat, o_flat
         torch.cuda.empty_cache()
 
     geomean_latency = math.exp(sum(math.log(l) for l in latencies) / len(latencies))
@@ -272,7 +305,7 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
     with open(build_dir / "performance_report.json", "w") as f:
         json.dump(report_cases, f, indent=2)
 
-    print("-" * 62)
+    print("-" * 76)
     print(f"{'Geometric mean latency:':<26} {geomean_latency:.4f} ms")
     print(f"{'Geometric mean speedup:':<26} {geomean_speedup:.2f}x")
     print(f"GEAK_RESULT_LATENCY_MS={geomean_latency:.4f}", flush=True)
@@ -286,21 +319,21 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
 # ============================================================================
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="FlyDSL LayerNorm Kernel Test Harness")
+    parser = argparse.ArgumentParser(description="FlyDSL Flash Attention Kernel Test Harness")
     parser.add_argument("--correctness", action="store_true")
     parser.add_argument("--profile", action="store_true")
     parser.add_argument("--benchmark", action="store_true")
     parser.add_argument("--full-benchmark", action="store_true")
-    parser.add_argument("--warmup", type=int, default=50)
+    parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument(
         "--iterations",
         type=int,
-        default=int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "200")),
+        default=int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "50")),
     )
     args = parser.parse_args()
 
     print("=" * 62)
-    print("FlyDSL LayerNorm Kernel")
+    print("FlyDSL Flash Attention Kernel")
     print("=" * 62)
 
     if args.correctness:
