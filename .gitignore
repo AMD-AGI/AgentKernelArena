@@ -27,3 +27,6 @@ tasks/**/build/
 # tasks/repository/aiter/*/aiter/
 .specstory/
 CLAUDE.md
+
+# Removed task (kept locally, not tracked)
+tasks/repository/aiter/rmsnorm_kernels/
