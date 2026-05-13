@@ -98,13 +98,14 @@ tasks:
   - instruction2triton/rocmbench/test_flashattention_fwd
   - instruction2triton/rocmbench/test_gemm_fusion
 
-  # repository/aiter: 8 tasks
+  # repository/aiter: 9 tasks
   - repository/aiter/activation_kernels
+  - repository/aiter/attention_v1
   - repository/aiter/cache_kernels
+  - repository/aiter/mla_reduce
   - repository/aiter/moe_fused_gate
   - repository/aiter/pos_encoding_kernels
   - repository/aiter/quant_kernels
-  - repository/aiter/rmsnorm_kernels
   - repository/aiter/sample_kernels
   - repository/aiter/topk_softmax_kernels
   
