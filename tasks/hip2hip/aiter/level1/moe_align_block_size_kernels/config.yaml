@@ -1,0 +1,13 @@
+task_type: hip2hip
+source_file_path:
+  - src/moe_align_block_size_kernels.cu
+target_kernel_functions:
+  - moe_align_block_size_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+prompt:
+  instructions: "Optimize the MoE align block size HIP kernel for AMD MI300X GPU. This kernel aligns token-to-expert assignments to block boundaries for efficient MoE execution. Focus on atomic operations, shared memory usage, and thread block sizing."

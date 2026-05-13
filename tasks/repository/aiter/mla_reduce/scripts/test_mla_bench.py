@@ -84,6 +84,9 @@ def _create_persistent_metadata(d: dict, device: str = "cuda"):
 
     aiter.get_mla_metadata_v1(
         d["qo_indptr"], d["kv_indptr"],
+        # NOTE: aiter d098ae5 inserted `kv_last_page_lens` (Tensor) as the
+        # 3rd positional argument; pass-through the tensor already created above.
+        d["kv_last_page_lens"],
         nhead // NHEAD_KV,
         NHEAD_KV,
         False,

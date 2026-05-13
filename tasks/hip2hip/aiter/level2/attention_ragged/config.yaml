@@ -1,0 +1,14 @@
+task_type: hip2hip
+source_file_path:
+  - src/attention_ragged.cu
+target_kernel_functions:
+  - paged_attention_ll4mi_QKV_mfma16_kernel
+  - paged_attention_ll4mi_reduce_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+prompt:
+  instructions: "Optimize the Ragged Paged Attention HIP kernels for AMD MI300X GPU. These kernels implement paged attention with ragged (variable-length) sequence support using MFMA16 instructions. Focus on MFMA matrix operations, shared memory tiling, and warp-level parallelism."

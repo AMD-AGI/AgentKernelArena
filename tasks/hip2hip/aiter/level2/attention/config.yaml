@@ -1,0 +1,15 @@
+task_type: hip2hip
+source_file_path:
+  - src/attention.cu
+target_kernel_functions:
+  - paged_attention_ll4mi_QKV_kernel
+  - paged_attention_ll4mi_QKV_mfma16_kernel
+  - paged_attention_ll4mi_reduce_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+prompt:
+  instructions: "Optimize the Paged Attention (MHA) HIP kernels for AMD MI300X GPU. These are the core multi-head attention kernels using paged KV-cache with both standard and MFMA16 compute paths plus a reduce kernel. Focus on MFMA matrix operations, shared memory tiling, warp scheduling, and memory coalescing for paged access."

@@ -1,0 +1,13 @@
+task_type: hip2hip
+source_file_path:
+  - src/causal_conv1d_update.cu
+target_kernel_functions:
+  - causal_conv1d_update_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+prompt:
+  instructions: "Optimize the causal conv1d update HIP kernel for AMD MI300X GPU. This kernel implements the state update step for Mamba-style causal 1D convolution during inference decoding. Focus on register usage, memory coalescing for strided access patterns, and warp-level parallelism."

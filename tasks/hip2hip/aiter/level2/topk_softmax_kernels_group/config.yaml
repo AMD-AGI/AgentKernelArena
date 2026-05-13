@@ -1,0 +1,14 @@
+task_type: hip2hip
+source_file_path:
+  - src/topk_softmax_kernels_group.cu
+target_kernel_functions:
+  - grouped_topk_kernel
+  - grouped_topk_opt_sort_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+prompt:
+  instructions: "Optimize the grouped TopK Softmax HIP kernels for AMD MI300X GPU. These kernels implement grouped top-k selection with softmax for MoE routing. Focus on warp-level sorting, shared memory usage, and minimizing thread divergence."

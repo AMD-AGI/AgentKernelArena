@@ -1,0 +1,15 @@
+task_type: hip2hip
+source_file_path:
+  - src/fused_qk_norm_rope_cache_quant.cu
+target_kernel_functions:
+  - fusedQKNormRopeQuantCacheShuffleKernel
+  - fusedQKNormRopeBlockQuantCacheShuffleKernel
+  - fused_rope_rms_2way_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+prompt:
+  instructions: "Optimize the fused QK-Norm + RoPE + Cache + Quantization HIP kernels for AMD MI300X GPU. These kernels fuse four operations into single passes: RMSNorm, rotary position embedding, KV-cache write, and FP8 quantization. Focus on register allocation, shared memory reductions, and vectorized memory access."

@@ -1,0 +1,13 @@
+task_type: hip2hip
+source_file_path:
+  - src/rmsnorm_quant_kernels.cu
+target_kernel_functions:
+  - add_rmsnorm_quant_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+prompt:
+  instructions: "Optimize the fused add + RMSNorm + quantization HIP kernel for AMD MI300X GPU. This kernel fuses residual addition, RMSNorm normalization, and FP8/INT8 quantization into a single kernel pass. Focus on warp-level reductions, vectorized memory access, and shared memory optimization."

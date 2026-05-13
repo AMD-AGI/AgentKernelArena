@@ -1,0 +1,13 @@
+task_type: hip2hip
+source_file_path:
+  - src/unary_operator.cu
+target_kernel_functions:
+  - unary_operator_tile_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+prompt:
+  instructions: "Optimize the unary operator HIP kernel (unary_operator_tile_kernel) for AMD MI300X GPU. This kernel implements element-wise operations like sigmoid using tiled vectorized processing. Focus on memory coalescing, vectorized loads/stores, and occupancy optimization."

@@ -51,6 +51,9 @@ def _load_pa_v1():
             d_args["blob_gen_cmd"], d_args["extra_include"], d_args["extra_ldflags"],
             d_args["verbose"], d_args["is_python_module"], d_args["is_standalone"],
             d_args["torch_exclude"],
+            # NOTE: aiter d098ae5 added `third_party` as 12th positional arg
+            # to build_module(); pass-through with safe default for back-compat.
+            d_args.get("third_party", []),
         )
 
     mod = importlib.import_module(f"aiter.jit.{md_name}")

@@ -1,0 +1,16 @@
+task_type: hip2hip
+source_file_path:
+  - src/mhc_kernels.cu
+target_kernel_functions:
+  - mhc_pre_big_fuse_kernel
+  - mhc_pre_gemm_sqrsum_kernel
+  - mhc_post_kernel
+  - mhc_post_kernel_x2vgpr
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+prompt:
+  instructions: "Optimize the Multi-Head Cache (MHC) HIP kernels for AMD MI300X GPU. These include pre-processing (fused GEMM + square-sum) and post-processing kernels for multi-head caching. Focus on register pressure, shared memory bank conflicts, and vectorized operations."

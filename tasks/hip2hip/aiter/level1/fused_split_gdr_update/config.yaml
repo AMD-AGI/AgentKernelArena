@@ -1,0 +1,13 @@
+task_type: hip2hip
+source_file_path:
+  - src/fused_split_gdr_update.cu
+target_kernel_functions:
+  - fused_split_gdr_update_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+prompt:
+  instructions: "Optimize the fused split GDR (Gated Delta Rule) update HIP kernel for AMD MI300X GPU. This kernel fuses the state update computation for gated delta rule attention during decoding. Focus on register pressure management, shared memory bank conflicts, and warp-level reductions."

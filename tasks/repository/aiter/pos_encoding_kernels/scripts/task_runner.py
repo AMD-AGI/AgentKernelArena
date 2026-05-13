@@ -83,32 +83,57 @@ def _delete_jit_cache() -> None:
 # ── compile ──────────────────────────────────────────────────────────────────
 
 def run_compile() -> None:
-    """Compile module_pos_encoding by running a minimal test.
+    """Compile module_pos_encoding by running a minimal --compare test.
 
-    If the JIT .so already exists, reuse it (avoids lengthy recompilation
-    that requires the full JIT toolchain).  Otherwise, trigger a build via
-    a restricted test_rope.py invocation (~38s).
+    If the JIT .so already exists, verify it can be dlopen'd (lightweight probe
+    via ctypes.CDLL to catch corrupt/incomplete cache), then reuse it. Otherwise,
+    trigger a build via test_rope.py --compare which exercises the legacy
+    pos_encoding_kernels.cu path (the only path that links module_pos_encoding).
+
+    Note: test_rope.py without --compare uses the new module_rope_* path and
+    will NOT trigger module_pos_encoding compilation.
     """
     so_path = AITER_JIT_DIR / f"{MODULE_NAME}.so"
     if so_path.exists():
         print(f"JIT module already exists: {so_path}")
-        report = {"status": "ok", "output": f"JIT module already cached: {so_path}"}
-        (_report_root() / "compile_report.json").write_text(json.dumps(report, indent=2))
-        print("Compilation: PASS")
-        return
+        # Lightweight probe: dlopen the .so to verify it is a valid shared library.
+        # Catches half-baked builds or ABI-incompatible cache leftovers.
+        # Note: must `import torch` first so PyTorch's libc10.so etc. are on the
+        # dynamic loader path (the .so links against torch).
+        probe = subprocess.run(
+            ["python3", "-c", f"import torch, ctypes; ctypes.CDLL('{so_path}')"],
+            capture_output=True, text=True, timeout=60,
+        )
+        if probe.returncode == 0:
+            report = {"status": "ok", "output": f"JIT module already cached and dlopen-verified: {so_path}"}
+            (_report_root() / "compile_report.json").write_text(json.dumps(report, indent=2))
+            print("Compilation: PASS")
+            return
+        # Probe failed → cached .so is unusable; remove and fall through to rebuild.
+        print(f"Cached .so failed dlopen probe, will rebuild. stderr: {probe.stderr.strip()}")
+        so_path.unlink()
 
+    # Trigger module_pos_encoding compilation via direct API call.
+    # The @compile_ops("module_pos_encoding") decorator on rotary_embedding_fwd
+    # raises ModuleNotFoundError → triggers build_module → produces the .so.
+    # This is ~38s and precisely targets the desired module. Using test_rope.py
+    # would compile many unrelated module_rope_* and may not even reach the
+    # legacy code path that links module_pos_encoding within timeout.
+    trigger_code = (
+        "import torch, aiter\n"
+        "from aiter.ops.pos_encoding import rotary_embedding_fwd\n"
+        "n_tok, n_head, head_size = 1, 1, 128\n"
+        "q = torch.randn(n_tok, n_head * head_size, dtype=torch.float16, device='cuda')\n"
+        "k = torch.randn(n_tok, n_head * head_size, dtype=torch.float16, device='cuda')\n"
+        "positions = torch.arange(n_tok, dtype=torch.long, device='cuda')\n"
+        "cos = torch.randn(n_tok, head_size, dtype=torch.float16, device='cuda')\n"
+        "sin = torch.randn(n_tok, head_size, dtype=torch.float16, device='cuda')\n"
+        "rotary_embedding_fwd(positions, q, k, head_size, cos, sin, True, False)\n"
+        "torch.cuda.synchronize()\n"
+        "print('TRIGGER_OK')\n"
+    )
     ok, out = _run_cmd(
-        [
-            "python3", str(TEST_SCRIPT),
-            "-d", "fp16",
-            "-b", "1",
-            "-s", "1024",
-            "-hs", "64",
-            "-hd", "128",
-            "-rs", "neox",
-            "-rr", "0",
-            "-t", "f",
-        ],
+        ["python3", "-c", trigger_code],
         cwd=AITER_SRC_DIR,
         timeout_s=600,
     )

@@ -1,0 +1,14 @@
+task_type: hip2hip
+source_file_path:
+  - src/groupnorm.cu
+target_kernel_functions:
+  - groupnorm_kernel_dispatch_up
+  - groupnorm_kernel_dispatch_down
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+prompt:
+  instructions: "Optimize the GroupNorm HIP kernels for AMD MI300X GPU. There are two kernels: dispatch_up (first pass computing mean/variance) and dispatch_down (second pass applying normalization). Focus on shared memory usage, warp-level reductions, and memory coalescing."
