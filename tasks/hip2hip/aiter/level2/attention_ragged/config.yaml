@@ -12,3 +12,4 @@ performance_command:
   - python3 scripts/task_runner.py performance
 prompt:
   instructions: "Optimize the Ragged Paged Attention HIP kernels for AMD MI300X GPU. These kernels implement paged attention with ragged (variable-length) sequence support using MFMA16 instructions. Focus on MFMA matrix operations, shared memory tiling, and warp-level parallelism."
+

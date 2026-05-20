@@ -98,7 +98,7 @@ tasks:
   - instruction2triton/rocmbench/test_flashattention_fwd
   - instruction2triton/rocmbench/test_gemm_fusion
 
-  # repository/aiter: 9 tasks
+  # repository/aiter level3: 9 tasks
   - repository/aiter/activation_kernels
   - repository/aiter/attention_v1
   - repository/aiter/cache_kernels
@@ -108,7 +108,26 @@ tasks:
   - repository/aiter/quant_kernels
   - repository/aiter/sample_kernels
   - repository/aiter/topk_softmax_kernels
-  
+
+  # hip2hip/aiter level1: 8 tasks
+  - hip2hip/aiter/level1/causal_conv1d_update
+  - hip2hip/aiter/level1/fused_qk_norm
+  - hip2hip/aiter/level1/fused_qk_rmsnorm_group_quant
+  - hip2hip/aiter/level1/fused_split_gdr_update
+  - hip2hip/aiter/level1/gated_rmsnorm_quant_kernels
+  - hip2hip/aiter/level1/moe_align_block_size_kernels
+  - hip2hip/aiter/level1/rmsnorm_quant_kernels
+  - hip2hip/aiter/level1/unary_operator
+
+  # hip2hip/aiter level2: 7 tasks
+  - hip2hip/aiter/level2/attention
+  - hip2hip/aiter/level2/attention_ragged
+  - hip2hip/aiter/level2/fused_qk_norm_rope_cache_quant
+  - hip2hip/aiter/level2/groupnorm
+  - hip2hip/aiter/level2/mhc_kernels
+  - hip2hip/aiter/level2/topk_per_row_kernels
+  - hip2hip/aiter/level2/topk_softmax_kernels_group
+
 target_gpu_model: MI300
 log_directory: logs
 workspace_directory_prefix: workspace

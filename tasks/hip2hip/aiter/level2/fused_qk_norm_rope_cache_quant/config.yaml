@@ -13,3 +13,4 @@ performance_command:
   - python3 scripts/task_runner.py performance
 prompt:
   instructions: "Optimize the fused QK-Norm + RoPE + Cache + Quantization HIP kernels for AMD MI300X GPU. These kernels fuse four operations into single passes: RMSNorm, rotary position embedding, KV-cache write, and FP8 quantization. Focus on register allocation, shared memory reductions, and vectorized memory access."
+

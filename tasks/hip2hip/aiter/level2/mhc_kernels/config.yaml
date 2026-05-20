@@ -14,3 +14,4 @@ performance_command:
   - python3 scripts/task_runner.py performance
 prompt:
   instructions: "Optimize the Multi-Head Cache (MHC) HIP kernels for AMD MI300X GPU. These include pre-processing (fused GEMM + square-sum) and post-processing kernels for multi-head caching. Focus on register pressure, shared memory bank conflicts, and vectorized operations."
+

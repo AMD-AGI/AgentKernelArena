@@ -13,3 +13,4 @@ performance_command:
   - python3 scripts/task_runner.py performance
 prompt:
   instructions: "Optimize the Paged Attention (MHA) HIP kernels for AMD MI300X GPU. These are the core multi-head attention kernels using paged KV-cache with both standard and MFMA16 compute paths plus a reduce kernel. Focus on MFMA matrix operations, shared memory tiling, warp scheduling, and memory coalescing for paged access."
+

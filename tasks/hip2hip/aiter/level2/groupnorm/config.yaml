@@ -12,3 +12,4 @@ performance_command:
   - python3 scripts/task_runner.py performance
 prompt:
   instructions: "Optimize the GroupNorm HIP kernels for AMD MI300X GPU. There are two kernels: dispatch_up (first pass computing mean/variance) and dispatch_down (second pass applying normalization). Focus on shared memory usage, warp-level reductions, and memory coalescing."
+
