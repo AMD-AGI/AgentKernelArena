@@ -14,6 +14,9 @@ tasks:
   - flydsl2flydsl/layernorm_kernel
   - flydsl2flydsl/softmax_kernel
   - flydsl2flydsl/fused_rope_cache_kernel
+  - flydsl2flydsl/flash_attn_func_kernel
+  - flydsl2flydsl/hgemm_splitk_kernel
+  - flydsl2flydsl/pa_decode_fp8_kernel
 
 target_gpu_model: MI300
 log_directory: logs

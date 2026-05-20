@@ -48,6 +48,9 @@ def _load_kernel(kernel_dir, alias="flydsl_kernel"):
         return None
     if kernel_dir not in sys.path:
         sys.path.insert(0, kernel_dir)
+    _flydsl2flydsl_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    if _flydsl2flydsl_dir not in sys.path:
+        sys.path.insert(0, _flydsl2flydsl_dir)
     spec = importlib.util.spec_from_file_location(alias, entry)
     if spec is None or spec.loader is None:
         return None
@@ -58,6 +61,8 @@ def _load_kernel(kernel_dir, alias="flydsl_kernel"):
 
 
 _KERNEL_DIR = _resolve_kernel_dir()
+
+
 
 # ============================================================================
 # Test shapes
@@ -194,6 +199,11 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
 
     latencies, speedups, report_cases = [], [], []
 
+    print(f"Pre-compiling all {len(shapes)} shapes to eliminate JIT overhead...")
+    for M, N, dtype_str in shapes:
+        mod.build_softmax_module(M, N, dtype_str)
+    torch.cuda.synchronize()
+
     print(f"Running benchmark on {len(shapes)} shapes, {warmup} warmup, {iters} iterations...")
     print(f"  Comparing kernel vs PyTorch")
     print(f"{'Config (M,N,dtype)':<26} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10}")
@@ -211,15 +221,17 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
             launch_fn(x, output, M)
         torch.cuda.synchronize()
 
+        batch_n = 10
         kernel_times = []
         for _ in range(iters):
             s = torch.cuda.Event(enable_timing=True)
             e = torch.cuda.Event(enable_timing=True)
             s.record()
-            launch_fn(x, output, M)
+            for _b in range(batch_n):
+                launch_fn(x, output, M)
             e.record()
             torch.cuda.synchronize()
-            kernel_times.append(s.elapsed_time(e))
+            kernel_times.append(s.elapsed_time(e) / batch_n)
         kernel_ms = sorted(kernel_times)[len(kernel_times) // 2]
 
         ref_times = []
@@ -227,10 +239,11 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
             s = torch.cuda.Event(enable_timing=True)
             e = torch.cuda.Event(enable_timing=True)
             s.record()
-            _ = reference_softmax(x)
+            for _b in range(batch_n):
+                _ = reference_softmax(x)
             e.record()
             torch.cuda.synchronize()
-            ref_times.append(s.elapsed_time(e))
+            ref_times.append(s.elapsed_time(e) / batch_n)
         ref_ms = sorted(ref_times)[len(ref_times) // 2]
 
         speedup = ref_ms / kernel_ms if kernel_ms > 0 else 1.0

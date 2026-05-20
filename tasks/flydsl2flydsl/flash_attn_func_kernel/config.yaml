@@ -13,8 +13,8 @@ target_kernel_functions:
 source_origin:
   repo: https://github.com/ROCm/FlyDSL
   path: kernels/flash_attn_func.py
-  commit: 7a8d623a97cc4bf7223d2f9c779f05e4f3071e85
-  date: 2026-04-02
+  commit: 2812676041e92c63e09ebc81c1af82af6268d088
+  date: 2026-05-18
 prompt:
   instructions: |
     Optimize the FlyDSL Flash Attention kernel for AMD MI300X GPU.
@@ -22,3 +22,6 @@ prompt:
     MFMA32 register-level GEMM, XOR-swizzled LDS, and DMA-to-LDS prefetch.
     It supports causal masking, f16/bf16 data types, and auto tile selection.
     You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
+    You MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,
+    or any wrapper that bypasses JitFunction.__call__. Only optimize the GPU kernel
+    computation itself (e.g. tile sizes, vectorization, memory access patterns, math).

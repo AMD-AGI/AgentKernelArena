@@ -14,8 +14,8 @@ target_kernel_functions:
 source_origin:
   repo: https://github.com/ROCm/FlyDSL
   path: kernels/hgemm_splitk.py
-  commit: bf6a8d074fba3a6887b69034b533dc5890b460e5
-  date: 2026-04-13
+  commit: 2812676041e92c63e09ebc81c1af82af6268d088
+  date: 2026-05-18
 prompt:
   instructions: |
     Optimize the FlyDSL HGEMM SplitK kernel for AMD MI300X GPU.
@@ -23,3 +23,6 @@ prompt:
     parallelism, MFMA-based wave-level matrix multiply, double-buffered LDS
     with XOR swizzle, DMA-to-LDS async copy, and pre-shuffled B matrix layout.
     You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
+    You MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,
+    or any wrapper that bypasses JitFunction.__call__. Only optimize the GPU kernel
+    computation itself (e.g. tile sizes, vectorization, memory access patterns, math).

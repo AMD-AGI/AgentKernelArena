@@ -48,6 +48,9 @@ def _load_kernel(kernel_dir, alias="flydsl_kernel"):
         return None
     if kernel_dir not in sys.path:
         sys.path.insert(0, kernel_dir)
+    _flydsl2flydsl_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    if _flydsl2flydsl_dir not in sys.path:
+        sys.path.insert(0, _flydsl2flydsl_dir)
     spec = importlib.util.spec_from_file_location(alias, entry)
     if spec is None or spec.loader is None:
         return None
@@ -58,6 +61,8 @@ def _load_kernel(kernel_dir, alias="flydsl_kernel"):
 
 
 _KERNEL_DIR = _resolve_kernel_dir()
+
+
 
 # ============================================================================
 # Test shapes: (M, N, K, dtype_str)
@@ -132,8 +137,7 @@ def run_correctness(shapes=None, verbose=True):
             b = torch.randn(N, K, dtype=torch_dtype, device="cuda").uniform_(-1, 1)
             c = torch.zeros(M, N, dtype=torch_dtype, device="cuda")
 
-            b_shuffled = mod.hgemm_shuffle_b(b.clone())
-            mod.hgemm_splitk_(c, a, b_shuffled, False, {}, torch.cuda.current_stream())
+            mod.hgemm_splitk_(c, a, b, None, {}, torch.cuda.current_stream())
             torch.cuda.synchronize()
 
             ref = reference_gemm(a, b, dtype=torch.float32)
@@ -182,13 +186,11 @@ def run_profile(shapes=None, warmup=10, iters=50, verbose=True):
         a = torch.randn(M, K, dtype=torch_dtype, device="cuda")
         b = torch.randn(N, K, dtype=torch_dtype, device="cuda")
         c = torch.zeros(M, N, dtype=torch_dtype, device="cuda")
-        b_shuffled = mod.hgemm_shuffle_b(b.clone())
-
         for _ in range(warmup):
-            mod.hgemm_splitk_(c, a, b_shuffled, False, {}, torch.cuda.current_stream())
+            mod.hgemm_splitk_(c, a, b, None, {}, torch.cuda.current_stream())
         torch.cuda.synchronize()
         for _ in range(iters):
-            mod.hgemm_splitk_(c, a, b_shuffled, False, {}, torch.cuda.current_stream())
+            mod.hgemm_splitk_(c, a, b, None, {}, torch.cuda.current_stream())
         torch.cuda.synchronize()
         if verbose:
             print(f"  (M={M}, N={N}, K={K}, {dtype_str}) done")
@@ -219,24 +221,24 @@ def run_benchmark(shapes=None, warmup=10, iters=50, verbose=True):
         a = torch.randn(M, K, dtype=torch_dtype, device="cuda").uniform_(-1, 1)
         b = torch.randn(N, K, dtype=torch_dtype, device="cuda").uniform_(-1, 1)
         c = torch.zeros(M, N, dtype=torch_dtype, device="cuda")
-        b_shuffled = mod.hgemm_shuffle_b(b.clone())
-
-        mod.hgemm_splitk_(c, a, b_shuffled, False, {}, torch.cuda.current_stream())
+        mod.hgemm_splitk_(c, a, b, None, {}, torch.cuda.current_stream())
         torch.cuda.synchronize()
 
         for _ in range(warmup):
-            mod.hgemm_splitk_(c, a, b_shuffled, False, {}, torch.cuda.current_stream())
+            mod.hgemm_splitk_(c, a, b, None, {}, torch.cuda.current_stream())
         torch.cuda.synchronize()
 
+        batch_n = 10
         kernel_times = []
         for _ in range(iters):
             s = torch.cuda.Event(enable_timing=True)
             e = torch.cuda.Event(enable_timing=True)
             s.record()
-            mod.hgemm_splitk_(c, a, b_shuffled, False, {}, torch.cuda.current_stream())
+            for _b in range(batch_n):
+                mod.hgemm_splitk_(c, a, b, None, {}, torch.cuda.current_stream())
             e.record()
             torch.cuda.synchronize()
-            kernel_times.append(s.elapsed_time(e))
+            kernel_times.append(s.elapsed_time(e) / batch_n)
         kernel_ms = sorted(kernel_times)[len(kernel_times) // 2]
 
         ref_times = []
@@ -244,10 +246,11 @@ def run_benchmark(shapes=None, warmup=10, iters=50, verbose=True):
             s = torch.cuda.Event(enable_timing=True)
             e = torch.cuda.Event(enable_timing=True)
             s.record()
-            _ = torch.mm(a, b.T)
+            for _b in range(batch_n):
+                _ = torch.mm(a, b.T)
             e.record()
             torch.cuda.synchronize()
-            ref_times.append(s.elapsed_time(e))
+            ref_times.append(s.elapsed_time(e) / batch_n)
         ref_ms = sorted(ref_times)[len(ref_times) // 2]
 
         speedup = ref_ms / kernel_ms if kernel_ms > 0 else 1.0
@@ -273,7 +276,7 @@ def run_benchmark(shapes=None, warmup=10, iters=50, verbose=True):
                 flush=True,
             )
 
-        del a, b, c, b_shuffled
+        del a, b, c
         torch.cuda.empty_cache()
 
     geomean_latency = math.exp(sum(math.log(l) for l in latencies) / len(latencies))

@@ -13,11 +13,14 @@ target_kernel_functions:
 source_origin:
   repo: https://github.com/ROCm/FlyDSL
   path: kernels/rmsnorm_kernel.py
-  commit: 21536b06810a5fe3f6d5cf03b3668b2ed6a0498c
-  date: 2026-04-28
+  commit: 2812676041e92c63e09ebc81c1af82af6268d088
+  date: 2026-05-18
 prompt:
   instructions: |
     Optimize the FlyDSL RMSNorm kernel for AMD MI300X GPU.
     The kernel computes RMSNorm: y = x / sqrt(mean(x^2) + eps) * gamma
     using float32 accumulation for numerical stability.
     You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
+    You MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,
+    or any wrapper that bypasses JitFunction.__call__. Only optimize the GPU kernel
+    computation itself (e.g. tile sizes, vectorization, memory access patterns, math).

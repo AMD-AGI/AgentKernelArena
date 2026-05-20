@@ -3,20 +3,20 @@ source_file_path:
   - kernel.py
 harness_path: test_kernel_harness.py
 compile_command:
-  - python3 -c "from kernel import build_pa_decode_module; build_pa_decode_module(1, 1, 1); print('compile ok')"
+  - python3 -c "from kernel import compile_pa_decode_ps; compile_pa_decode_ps(); print('compile ok')"
 correctness_command:
   - python3 test_kernel_harness.py --correctness
 performance_command:
   - python3 test_kernel_harness.py --full-benchmark
 target_kernel_functions:
-  - build_pa_decode_module
-  - build_ps_reduce_kernel
-  - build_v2_reduce_kernel
+  - compile_pa_decode_ps
+  - get_pa_metadata
+  - pa_decode_ps_launch
 source_origin:
   repo: https://github.com/ROCm/FlyDSL
   path: kernels/pa_decode_fp8.py
-  commit: 4d84ee8f665fea906a0012cc98f0381e5f5d2818
-  date: 2026-03-24
+  commit: 2812676041e92c63e09ebc81c1af82af6268d088
+  date: 2026-05-18
 prompt:
   instructions: |
     Optimize the FlyDSL Paged Attention Decode FP8 kernel for AMD MI300X GPU.
@@ -24,3 +24,6 @@ prompt:
     keys/values, MFMA-based dot products, online softmax, multi-partition
     reduce, and supports both one-shot and split-reduce modes.
     You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
+    You MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,
+    or any wrapper that bypasses JitFunction.__call__. Only optimize the GPU kernel
+    computation itself (e.g. tile sizes, vectorization, memory access patterns, math).
