@@ -269,7 +269,6 @@ def _build_task_prompt(task_config: dict, workspace_path: Path) -> str:
     else:
         sections.append("\nOptimize the kernel in the workspace directory.")
 
-    sections.append("\nUse heterogeneous mode for diverse optimization strategies.")
     sections.append(f"\n### Workspace Directory\nYour working directory is: `{workspace_path}`\n")
     return "\n".join(sections)
 
@@ -370,8 +369,10 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         subprocess.run(["git", "add", "."], cwd=str(workspace_path), capture_output=True)
         subprocess.run(["git", "commit", "-m", "baseline"], cwd=str(workspace_path), capture_output=True)
 
+    geak_yaml = Path(__file__).with_name("geak.yaml")
     cmd = (
         f"{AGENT}"
+        f" -c {shlex.quote(str(geak_yaml))}"
         f" --kernel-url {shlex.quote(str(kernel_path))}"
         + (f" --test-command {shlex.quote(test_cmd)}" if test_cmd else "")
         + f" --gpu-ids {gpu_ids}"
