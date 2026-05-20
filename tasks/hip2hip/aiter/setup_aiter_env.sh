@@ -46,15 +46,21 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# [Step 3] 两步装 aiter (顺序不可反: 先非 editable 生成 aiter_meta, 再 editable)
+# [Step 3] 装 aiter (单步非 editable)
+#
+# 历史踩坑记录: aiter-kernel-test-env-setup.md 旧 SOP 要求"两步 install:
+# 先 pip install . 再 pip install -e ."。 实测在 rocm7.0.2 / Python 3.12.3 /
+# pip 25.2 / aiter d098ae5 组合下, 第二步 editable 安装会:
+#   1) 先 uninstall 第一步装好的 amd-aiter (含 aiter_meta/ 实体);
+#   2) 再装一个仅含 .pth 的 editable shim;
+#   3) 源码目录里 setup.py 末尾主动删掉源码树里的 aiter_meta/.
+# 结果: import aiter_meta 直接 ModuleNotFoundError, CK 软链那步立刻挂.
+# 由于 L1/L2 case 都不改 aiter 源码, editable 没有实际价值, 改为单步.
 # ---------------------------------------------------------------------------
 cd "$AITER_SRC_DIR"
 
 echo "[pip ] pip install . --no-build-isolation  (生成 aiter_meta 子包)"
 pip install . --no-build-isolation
-
-echo "[pip ] pip install -e . --no-build-isolation  (业务代码 editable)"
-pip install -e . --no-build-isolation
 
 # ---------------------------------------------------------------------------
 # [Step 4] 装 tabulate (L1 部分 case 渲染汇总表依赖)
