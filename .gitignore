@@ -21,3 +21,10 @@ saved_results
 
 # Generated held-out test data (methodology is in held_out/, data is private)
 held_out_tests/
+
+# Build artifacts and profiling output
+.rocprofv3/
+**/build/
+tasks/flydsl2flydsl/*/kernels/
+baseline_metrics.json
+profile.json
