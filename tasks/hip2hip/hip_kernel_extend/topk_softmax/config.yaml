@@ -1,0 +1,29 @@
+source_file_path:
+- src/moe/topk_softmax_kernels.cu
+target_kernel_functions:
+- moeSigmoid
+- moeSoftmax
+- moeTopK
+- topkGating
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+task_type: hip2hip
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: "Optimize the topk_softmax kernel extracted from vllm. It is registered\
+    \ into the `extracted_<op>` torch namespace via src/bindings.cpp; do not depend\
+    \ on the host engine. Tests generate inputs from test_cases.json on the fly \u2014\
+    \ no pre-saved golden tensors."
+  cheatsheet: null
+extracted_from:
+  engine: vllm
+  kernel_id: torch.ops._moe_C.topk_softmax
+  op: topk_softmax
+  local_namespace: extracted_topk_softmax
+  source: engine_csrc
+  test_cases: 4

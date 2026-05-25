@@ -1,0 +1,123 @@
+{
+  "rank": 32,
+  "backend": "hip",
+  "kernel_name": "topk_softmax",
+  "op_category": "MoE 路由",
+  "max_time_pct": 1.9,
+  "n_source_models": 3,
+  "n_instances": 12,
+  "canonical": {
+    "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+    "task_dir": "vllm_topk_softmax"
+  },
+  "instances": [
+    {
+      "model": "Qwen_Qwen3.5-35B-A3B",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+      "time_pct": 1.9,
+      "source_dir": "results/Qwen_Qwen3.5-35B-A3B__vllm_default/vllm_topk_softmax",
+      "is_canonical": true
+    },
+    {
+      "model": "Qwen_Qwen3.5-35B-A3B",
+      "engine": "sglang",
+      "mode": "default",
+      "combo": "Qwen_Qwen3.5-35B-A3B__sglang_default",
+      "time_pct": 1.74,
+      "source_dir": "results/Qwen_Qwen3.5-35B-A3B__sglang_default/sglang_topk_softmax",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-235B-A22B-FP8",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+      "time_pct": 1.65,
+      "source_dir": "results/Qwen_Qwen3-235B-A22B-FP8__vllm_default/vllm_topk_softmax",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3.5-35B-A3B",
+      "engine": "sglang",
+      "mode": "triton",
+      "combo": "Qwen_Qwen3.5-35B-A3B__sglang_triton",
+      "time_pct": 1.64,
+      "source_dir": "results/Qwen_Qwen3.5-35B-A3B__sglang_triton/sglang_topk_softmax",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+      "time_pct": 1.62,
+      "source_dir": "results/Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default/vllm_topk_softmax",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-235B-A22B-FP8",
+      "engine": "vllm",
+      "mode": "triton",
+      "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_triton",
+      "time_pct": 1.36,
+      "source_dir": "results/Qwen_Qwen3-235B-A22B-FP8__vllm_triton/vllm_topk_softmax",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3.5-35B-A3B",
+      "engine": "vllm",
+      "mode": "triton",
+      "combo": "Qwen_Qwen3.5-35B-A3B__vllm_triton",
+      "time_pct": 1.33,
+      "source_dir": "results/Qwen_Qwen3.5-35B-A3B__vllm_triton/vllm_topk_softmax",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+      "engine": "vllm",
+      "mode": "triton",
+      "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton",
+      "time_pct": 1.28,
+      "source_dir": "results/Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton/vllm_topk_softmax",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-235B-A22B-FP8",
+      "engine": "sglang",
+      "mode": "default",
+      "combo": "Qwen_Qwen3-235B-A22B-FP8__sglang_default",
+      "time_pct": 0.53,
+      "source_dir": "results/Qwen_Qwen3-235B-A22B-FP8__sglang_default/sglang_topk_softmax",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-235B-A22B-FP8",
+      "engine": "sglang",
+      "mode": "triton",
+      "combo": "Qwen_Qwen3-235B-A22B-FP8__sglang_triton",
+      "time_pct": 0.33,
+      "source_dir": "results/Qwen_Qwen3-235B-A22B-FP8__sglang_triton/sglang_topk_softmax",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-235B-A22B-FP8",
+      "engine": "sglang",
+      "mode": "hip",
+      "combo": "Qwen_Qwen3-235B-A22B-FP8__sglang_hip",
+      "time_pct": 0.16,
+      "source_dir": "results/Qwen_Qwen3-235B-A22B-FP8__sglang_hip/sglang_topk_softmax",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3.5-35B-A3B",
+      "engine": "sglang",
+      "mode": "hip",
+      "combo": "Qwen_Qwen3.5-35B-A3B__sglang_hip",
+      "time_pct": 0.03,
+      "source_dir": "results/Qwen_Qwen3.5-35B-A3B__sglang_hip/sglang_topk_softmax",
+      "is_canonical": false
+    }
+  ]
+}

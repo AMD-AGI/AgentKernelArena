@@ -1,0 +1,970 @@
+[
+  {
+    "test_case_id": "sig_dd4276c8bb53",
+    "count": 9180,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          8,
+          64
+        ],
+        "stride": [
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          8,
+          64
+        ],
+        "stride": [
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39603,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39603,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "key",
+      "value",
+      "key_cache",
+      "value_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale"
+    ],
+    "sources": [
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "openai_gpt-oss-120b__vllm_default",
+        "count": 9180
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_146883c96d46",
+    "count": 9180,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          8,
+          64
+        ],
+        "stride": [
+          5120,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          8,
+          64
+        ],
+        "stride": [
+          5120,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39603,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39603,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          32
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "key",
+      "value",
+      "key_cache",
+      "value_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale"
+    ],
+    "sources": [
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "openai_gpt-oss-120b__vllm_default",
+        "count": 9180
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_895f707a9153",
+    "count": 36,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          8,
+          64
+        ],
+        "stride": [
+          5120,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          8,
+          64
+        ],
+        "stride": [
+          5120,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39603,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39603,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1024
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "key",
+      "value",
+      "key_cache",
+      "value_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale"
+    ],
+    "sources": [
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "openai_gpt-oss-120b__vllm_default",
+        "count": 36
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_92e82ed03bac",
+    "count": 36,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          3008,
+          8,
+          64
+        ],
+        "stride": [
+          5120,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          3008,
+          8,
+          64
+        ],
+        "stride": [
+          5120,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39603,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39603,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          3008
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "key",
+      "value",
+      "key_cache",
+      "value_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale"
+    ],
+    "sources": [
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "openai_gpt-oss-120b__vllm_default",
+        "count": 36
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_a41d1128a9d2",
+    "count": 9180,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          8,
+          64
+        ],
+        "stride": [
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          8,
+          64
+        ],
+        "stride": [
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39718,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39718,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "key",
+      "value",
+      "key_cache",
+      "value_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale"
+    ],
+    "sources": [
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "openai_gpt-oss-120b__vllm_hip",
+        "count": 9180
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_50cfcc95a69e",
+    "count": 9180,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          8,
+          64
+        ],
+        "stride": [
+          5120,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          8,
+          64
+        ],
+        "stride": [
+          5120,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39718,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39718,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          32
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "key",
+      "value",
+      "key_cache",
+      "value_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale"
+    ],
+    "sources": [
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "openai_gpt-oss-120b__vllm_hip",
+        "count": 9180
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_d90302aa7f58",
+    "count": 36,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          8,
+          64
+        ],
+        "stride": [
+          5120,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          8,
+          64
+        ],
+        "stride": [
+          5120,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39718,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39718,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1024
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "key",
+      "value",
+      "key_cache",
+      "value_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale"
+    ],
+    "sources": [
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "openai_gpt-oss-120b__vllm_hip",
+        "count": 36
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_671907b43c01",
+    "count": 36,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          3008,
+          8,
+          64
+        ],
+        "stride": [
+          5120,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          3008,
+          8,
+          64
+        ],
+        "stride": [
+          5120,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39718,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          39718,
+          64,
+          8,
+          64
+        ],
+        "stride": [
+          32768,
+          512,
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          3008
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "key",
+      "value",
+      "key_cache",
+      "value_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale"
+    ],
+    "sources": [
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "openai_gpt-oss-120b__vllm_hip",
+        "count": 36
+      }
+    ]
+  }
+]

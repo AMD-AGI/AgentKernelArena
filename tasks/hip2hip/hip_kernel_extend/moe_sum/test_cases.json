@@ -1,0 +1,1178 @@
+[
+  {
+    "test_case_id": "sig_554be2adc70d",
+    "count": 191760,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          8,
+          4096
+        ],
+        "stride": [
+          32768,
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          4096
+        ],
+        "stride": [
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+        "count": 95880
+      },
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_triton",
+        "count": 95880
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_7c3c1d0a66a7",
+    "count": 191760,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          8,
+          4096
+        ],
+        "stride": [
+          32768,
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          4096
+        ],
+        "stride": [
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+        "count": 95880
+      },
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_triton",
+        "count": 95880
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_8c528b883d1a",
+    "count": 3008,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          16384,
+          8,
+          4096
+        ],
+        "stride": [
+          32768,
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          16384,
+          4096
+        ],
+        "stride": [
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+        "count": 1504
+      },
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_triton",
+        "count": 1504
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_a12c3c8244e8",
+    "count": 2256,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          8,
+          4096
+        ],
+        "stride": [
+          32768,
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          4096
+        ],
+        "stride": [
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+        "count": 1128
+      },
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_triton",
+        "count": 1128
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_2ee43d6e6bc5",
+    "count": 752,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          8,
+          4096
+        ],
+        "stride": [
+          32768,
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          4096
+        ],
+        "stride": [
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+        "count": 376
+      },
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_triton",
+        "count": 376
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_4a02bc5510ff",
+    "count": 98304,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          10,
+          2048
+        ],
+        "stride": [
+          20480,
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+        "count": 49152
+      },
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton",
+        "count": 49152
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_f22cea0b7f99",
+    "count": 97152,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          10,
+          2048
+        ],
+        "stride": [
+          20480,
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+        "count": 48576
+      },
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton",
+        "count": 48576
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_94fd73b79ad9",
+    "count": 2304,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          16384,
+          10,
+          2048
+        ],
+        "stride": [
+          20480,
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          16384,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+        "count": 1152
+      },
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton",
+        "count": 1152
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_62e8e60c9fab",
+    "count": 1152,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          10,
+          2048
+        ],
+        "stride": [
+          20480,
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+        "count": 576
+      },
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton",
+        "count": 576
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_c96135068f98",
+    "count": 384,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          47,
+          10,
+          2048
+        ],
+        "stride": [
+          20480,
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          47,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+        "count": 192
+      },
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton",
+        "count": 192
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_bcaab404fa91",
+    "count": 384,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          16,
+          10,
+          2048
+        ],
+        "stride": [
+          20480,
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          16,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+        "count": 192
+      },
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton",
+        "count": 192
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_40e9c38b8e04",
+    "count": 24480,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          8,
+          2048
+        ],
+        "stride": [
+          16384,
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+        "count": 12240
+      },
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_triton",
+        "count": 12240
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_3102eb28963d",
+    "count": 24480,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          8,
+          2048
+        ],
+        "stride": [
+          16384,
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+        "count": 12240
+      },
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_triton",
+        "count": 12240
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_95f41a7b34a9",
+    "count": 96,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          8,
+          2048
+        ],
+        "stride": [
+          16384,
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+        "count": 48
+      },
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_triton",
+        "count": 48
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_dc23411b42e6",
+    "count": 96,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          8,
+          2048
+        ],
+        "stride": [
+          16384,
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+        "count": 48
+      },
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_triton",
+        "count": 48
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_09846569acfb",
+    "count": 473280,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          8,
+          7168
+        ],
+        "stride": [
+          57344,
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_default",
+        "count": 118320
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton",
+        "count": 118320
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton_mla",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton_mla",
+        "count": 118320
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton",
+        "count": 118320
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_147aaf4daa15",
+    "count": 354960,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          8,
+          7168
+        ],
+        "stride": [
+          57344,
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_default",
+        "count": 118320
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton",
+        "count": 118320
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton",
+        "count": 118320
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_047242dfa460",
+    "count": 6496,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          16384,
+          8,
+          7168
+        ],
+        "stride": [
+          57344,
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          16384,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_default",
+        "count": 1856
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton",
+        "count": 1856
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton_mla",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton_mla",
+        "count": 928
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton",
+        "count": 1856
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_55db3e3dff7f",
+    "count": 5104,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          8,
+          7168
+        ],
+        "stride": [
+          57344,
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_default",
+        "count": 1392
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton",
+        "count": 1392
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton_mla",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton_mla",
+        "count": 928
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton",
+        "count": 1392
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_ed1b79264fe4",
+    "count": 1392,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          8,
+          7168
+        ],
+        "stride": [
+          57344,
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "input",
+      "output"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_default",
+        "count": 464
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton",
+        "count": 464
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton",
+        "count": 464
+      }
+    ]
+  }
+]

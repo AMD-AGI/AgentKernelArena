@@ -1,0 +1,51 @@
+{
+  "rank": 30,
+  "backend": "hip",
+  "kernel_name": "reshape_and_cache",
+  "op_category": "kv cache",
+  "max_time_pct": 2.07,
+  "n_source_models": 2,
+  "n_instances": 4,
+  "canonical": {
+    "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+    "task_dir": "vllm_reshape_and_cache"
+  },
+  "instances": [
+    {
+      "model": "Qwen_Qwen3.5-35B-A3B",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+      "time_pct": 2.07,
+      "source_dir": "results/Qwen_Qwen3.5-35B-A3B__vllm_default/vllm_reshape_and_cache",
+      "is_canonical": true
+    },
+    {
+      "model": "Qwen_Qwen3-235B-A22B-FP8",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+      "time_pct": 1.65,
+      "source_dir": "results/Qwen_Qwen3-235B-A22B-FP8__vllm_default/vllm_reshape_and_cache",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3.5-35B-A3B",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "Qwen_Qwen3.5-35B-A3B__vllm_hip",
+      "time_pct": 1.02,
+      "source_dir": "results/Qwen_Qwen3.5-35B-A3B__vllm_hip/vllm_reshape_and_cache",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-235B-A22B-FP8",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_hip",
+      "time_pct": 0.28,
+      "source_dir": "results/Qwen_Qwen3-235B-A22B-FP8__vllm_hip/vllm_reshape_and_cache",
+      "is_canonical": false
+    }
+  ]
+}

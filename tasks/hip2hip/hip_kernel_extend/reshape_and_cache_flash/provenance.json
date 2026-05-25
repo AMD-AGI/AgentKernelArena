@@ -1,0 +1,33 @@
+{
+  "rank": 34,
+  "backend": "hip",
+  "kernel_name": "reshape_and_cache_flash",
+  "op_category": "kv cache",
+  "max_time_pct": 1.69,
+  "n_source_models": 1,
+  "n_instances": 2,
+  "canonical": {
+    "combo": "openai_gpt-oss-120b__vllm_default",
+    "task_dir": "vllm_reshape_and_cache_flash"
+  },
+  "instances": [
+    {
+      "model": "openai_gpt-oss-120b",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "openai_gpt-oss-120b__vllm_default",
+      "time_pct": 1.69,
+      "source_dir": "results/openai_gpt-oss-120b__vllm_default/vllm_reshape_and_cache_flash",
+      "is_canonical": true
+    },
+    {
+      "model": "openai_gpt-oss-120b",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "openai_gpt-oss-120b__vllm_hip",
+      "time_pct": 1.08,
+      "source_dir": "results/openai_gpt-oss-120b__vllm_hip/vllm_reshape_and_cache_flash",
+      "is_canonical": false
+    }
+  ]
+}

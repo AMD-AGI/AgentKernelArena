@@ -1,0 +1,87 @@
+{
+  "rank": 38,
+  "backend": "hip",
+  "kernel_name": "concat_and_cache_mla",
+  "op_category": "—",
+  "max_time_pct": 1.37,
+  "n_source_models": 2,
+  "n_instances": 8,
+  "canonical": {
+    "combo": "deepseek-ai_DeepSeek-R1__vllm_triton_mla",
+    "task_dir": "vllm_concat_and_cache_mla"
+  },
+  "instances": [
+    {
+      "model": "deepseek-ai_DeepSeek-R1",
+      "engine": "vllm",
+      "mode": "triton_mla",
+      "combo": "deepseek-ai_DeepSeek-R1__vllm_triton_mla",
+      "time_pct": 1.37,
+      "source_dir": "results/deepseek-ai_DeepSeek-R1__vllm_triton_mla/vllm_concat_and_cache_mla",
+      "is_canonical": true
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-R1",
+      "engine": "vllm",
+      "mode": "triton",
+      "combo": "deepseek-ai_DeepSeek-R1__vllm_triton",
+      "time_pct": 1.04,
+      "source_dir": "results/deepseek-ai_DeepSeek-R1__vllm_triton/vllm_concat_and_cache_mla",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-R1",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "deepseek-ai_DeepSeek-R1__vllm_default",
+      "time_pct": 0.67,
+      "source_dir": "results/deepseek-ai_DeepSeek-R1__vllm_default/vllm_concat_and_cache_mla",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-V3.2",
+      "engine": "vllm",
+      "mode": "triton",
+      "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton",
+      "time_pct": 0.24,
+      "source_dir": "results/deepseek-ai_DeepSeek-V3.2__vllm_triton/vllm_concat_and_cache_mla",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-V3.2",
+      "engine": "vllm",
+      "mode": "triton_mla",
+      "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton_mla",
+      "time_pct": 0.13,
+      "source_dir": "results/deepseek-ai_DeepSeek-V3.2__vllm_triton_mla/vllm_concat_and_cache_mla",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-V3.2",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "deepseek-ai_DeepSeek-V3.2__vllm_hip",
+      "time_pct": 0.12,
+      "source_dir": "results/deepseek-ai_DeepSeek-V3.2__vllm_hip/vllm_concat_and_cache_mla",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-R1",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "deepseek-ai_DeepSeek-R1__vllm_hip",
+      "time_pct": 0.11,
+      "source_dir": "results/deepseek-ai_DeepSeek-R1__vllm_hip/vllm_concat_and_cache_mla",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-V3.2",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "deepseek-ai_DeepSeek-V3.2__vllm_default",
+      "time_pct": 0.11,
+      "source_dir": "results/deepseek-ai_DeepSeek-V3.2__vllm_default/vllm_concat_and_cache_mla",
+      "is_canonical": false
+    }
+  ]
+}

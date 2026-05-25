@@ -1,0 +1,2672 @@
+[
+  {
+    "test_case_id": "sig_f5df2940b551",
+    "count": 124440,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          512
+        ],
+        "stride": [
+          2112,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          219440,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_default",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_fd0c4827ab01",
+    "count": 124440,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          219440,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          32
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_default",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_a54ea72751af",
+    "count": 488,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          219440,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1024
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_default",
+        "count": 488
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_65eee6b28cba",
+    "count": 488,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          219440,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1520
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_default",
+        "count": 488
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_ba474bef8f2f",
+    "count": 124440,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          512
+        ],
+        "stride": [
+          2112,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          27328,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_hip",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_532149917385",
+    "count": 124440,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          27328,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          32
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_hip",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_66c9b4c38887",
+    "count": 488,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          27328,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1024
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_hip",
+        "count": 488
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_80dc4eaa6162",
+    "count": 488,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          27328,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1520
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_hip",
+        "count": 488
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_1fac15e5309c",
+    "count": 124440,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          512
+        ],
+        "stride": [
+          2112,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          226352,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_1f9cd0a04732",
+    "count": 124440,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          226960,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          32
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_35cce34d5132",
+    "count": 488,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          226352,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1024
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton",
+        "count": 488
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_dfdb5c73ea07",
+    "count": 488,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          226960,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1520
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton",
+        "count": 488
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_738522d60835",
+    "count": 124440,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          512
+        ],
+        "stride": [
+          2112,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          15641,
+          16,
+          576
+        ],
+        "stride": [
+          9216,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton_mla",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton_mla",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_8d0b102db2d7",
+    "count": 488,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          15641,
+          16,
+          576
+        ],
+        "stride": [
+          9216,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1024
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton_mla",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton_mla",
+        "count": 488
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_a1830299ebf6",
+    "count": 124440,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          512
+        ],
+        "stride": [
+          2112,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          715152,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_default",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_111fe419acb8",
+    "count": 124440,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          715152,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          32
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_default",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_7fae7e212f54",
+    "count": 488,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          715152,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1024
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_default",
+        "count": 488
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_e5f7d91c50b1",
+    "count": 488,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          715152,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1520
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_default",
+        "count": 488
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_bc7e5f941778",
+    "count": 124440,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          512
+        ],
+        "stride": [
+          2112,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          725648,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_hip",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_702625b3dfa7",
+    "count": 124440,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          725648,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          32
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_hip",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_ae648bc2ed2e",
+    "count": 488,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          725648,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1024
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_hip",
+        "count": 488
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_d71889df5bd4",
+    "count": 488,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          725648,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1520
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_hip",
+        "count": 488
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_fc1305120ea6",
+    "count": 124440,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          512
+        ],
+        "stride": [
+          2112,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          970656,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_ead2168e2acf",
+    "count": 124440,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          970656,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          32
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_9d65f849818f",
+    "count": 488,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          970656,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1024
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton",
+        "count": 488
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_d25d6b1e1ea7",
+    "count": 488,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          970656,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1520
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton",
+        "count": 488
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_fa62f05f1a52",
+    "count": 124440,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          512
+        ],
+        "stride": [
+          2112,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          246896,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton_mla",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton_mla",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_d24cbb39c474",
+    "count": 124440,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          246896,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          32
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton_mla",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton_mla",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_218f9deb9253",
+    "count": 488,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          246896,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1024
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton_mla",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton_mla",
+        "count": 488
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_b4846d38b84a",
+    "count": 488,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          64
+        ],
+        "stride": [
+          64,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          246896,
+          1,
+          576
+        ],
+        "stride": [
+          576,
+          576,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int64",
+        "shape": [
+          1520
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "kv_c",
+      "k_pe",
+      "kv_cache",
+      "slot_mapping",
+      "kv_cache_dtype",
+      "scale"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton_mla",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton_mla",
+        "count": 488
+      }
+    ]
+  }
+]

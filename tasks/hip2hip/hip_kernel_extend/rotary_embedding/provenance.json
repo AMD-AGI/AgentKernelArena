@@ -1,0 +1,87 @@
+{
+  "rank": 31,
+  "backend": "hip",
+  "kernel_name": "rotary_embedding",
+  "op_category": "RoPE",
+  "max_time_pct": 2.05,
+  "n_source_models": 4,
+  "n_instances": 8,
+  "canonical": {
+    "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+    "task_dir": "vllm_rotary_embedding"
+  },
+  "instances": [
+    {
+      "model": "Qwen_Qwen3.5-35B-A3B",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+      "time_pct": 2.05,
+      "source_dir": "results/Qwen_Qwen3.5-35B-A3B__vllm_default/vllm_rotary_embedding",
+      "is_canonical": true
+    },
+    {
+      "model": "Qwen_Qwen3-235B-A22B-FP8",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+      "time_pct": 1.71,
+      "source_dir": "results/Qwen_Qwen3-235B-A22B-FP8__vllm_default/vllm_rotary_embedding",
+      "is_canonical": false
+    },
+    {
+      "model": "openai_gpt-oss-120b",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "openai_gpt-oss-120b__vllm_default",
+      "time_pct": 1.68,
+      "source_dir": "results/openai_gpt-oss-120b__vllm_default/vllm_rotary_embedding",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3.5-35B-A3B",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "Qwen_Qwen3.5-35B-A3B__vllm_hip",
+      "time_pct": 1.21,
+      "source_dir": "results/Qwen_Qwen3.5-35B-A3B__vllm_hip/vllm_rotary_embedding",
+      "is_canonical": false
+    },
+    {
+      "model": "openai_gpt-oss-120b",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "openai_gpt-oss-120b__vllm_hip",
+      "time_pct": 0.59,
+      "source_dir": "results/openai_gpt-oss-120b__vllm_hip/vllm_rotary_embedding",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+      "time_pct": 0.36,
+      "source_dir": "results/Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default/vllm_rotary_embedding",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-235B-A22B-FP8",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_hip",
+      "time_pct": 0.32,
+      "source_dir": "results/Qwen_Qwen3-235B-A22B-FP8__vllm_hip/vllm_rotary_embedding",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_hip",
+      "time_pct": 0.05,
+      "source_dir": "results/Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_hip/vllm_rotary_embedding",
+      "is_canonical": false
+    }
+  ]
+}

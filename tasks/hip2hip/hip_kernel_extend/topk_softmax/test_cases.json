@@ -1,0 +1,1092 @@
+[
+  {
+    "test_case_id": "sig_16760111a481",
+    "count": 216240,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          8
+        ],
+        "stride": [
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1,
+          8
+        ],
+        "stride": [
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1,
+          8
+        ],
+        "stride": [
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          128
+        ],
+        "stride": [
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": true,
+        "py_type": "bool"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "topk_weights",
+      "topk_indices",
+      "token_expert_indices",
+      "gating_output",
+      "renormalize",
+      "bias"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+        "count": 95880
+      },
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_triton",
+        "count": 95880
+      },
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+        "count": 12240
+      },
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_triton",
+        "count": 12240
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_05537ab0cdee",
+    "count": 216240,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          32,
+          8
+        ],
+        "stride": [
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          32,
+          8
+        ],
+        "stride": [
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          32,
+          8
+        ],
+        "stride": [
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          128
+        ],
+        "stride": [
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": true,
+        "py_type": "bool"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "topk_weights",
+      "topk_indices",
+      "token_expert_indices",
+      "gating_output",
+      "renormalize",
+      "bias"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+        "count": 95880
+      },
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_triton",
+        "count": 95880
+      },
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+        "count": 12240
+      },
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_triton",
+        "count": 12240
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_235dd4eb67e6",
+    "count": 3008,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          16384,
+          8
+        ],
+        "stride": [
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          16384,
+          8
+        ],
+        "stride": [
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          16384,
+          8
+        ],
+        "stride": [
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          16384,
+          128
+        ],
+        "stride": [
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": true,
+        "py_type": "bool"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "topk_weights",
+      "topk_indices",
+      "token_expert_indices",
+      "gating_output",
+      "renormalize",
+      "bias"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+        "count": 1504
+      },
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_triton",
+        "count": 1504
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_52e75c077eef",
+    "count": 2352,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1024,
+          8
+        ],
+        "stride": [
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1024,
+          8
+        ],
+        "stride": [
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1024,
+          8
+        ],
+        "stride": [
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          128
+        ],
+        "stride": [
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": true,
+        "py_type": "bool"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "topk_weights",
+      "topk_indices",
+      "token_expert_indices",
+      "gating_output",
+      "renormalize",
+      "bias"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+        "count": 1128
+      },
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_triton",
+        "count": 1128
+      },
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+        "count": 48
+      },
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_triton",
+        "count": 48
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_15a494e32712",
+    "count": 848,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1520,
+          8
+        ],
+        "stride": [
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1520,
+          8
+        ],
+        "stride": [
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1520,
+          8
+        ],
+        "stride": [
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          128
+        ],
+        "stride": [
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": true,
+        "py_type": "bool"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "topk_weights",
+      "topk_indices",
+      "token_expert_indices",
+      "gating_output",
+      "renormalize",
+      "bias"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+        "count": 376
+      },
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_triton",
+        "count": 376
+      },
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+        "count": 48
+      },
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_triton",
+        "count": 48
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_8731c6835f86",
+    "count": 98304,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": true,
+        "py_type": "bool"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "topk_weights",
+      "topk_indices",
+      "token_expert_indices",
+      "gating_output",
+      "renormalize",
+      "bias"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+        "count": 49152
+      },
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton",
+        "count": 49152
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_f90532ad3d70",
+    "count": 97152,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          32,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          32,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          32,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": true,
+        "py_type": "bool"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "topk_weights",
+      "topk_indices",
+      "token_expert_indices",
+      "gating_output",
+      "renormalize",
+      "bias"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+        "count": 48576
+      },
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton",
+        "count": 48576
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_abf9e98cb390",
+    "count": 2304,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          16384,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          16384,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          16384,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          16384,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": true,
+        "py_type": "bool"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "topk_weights",
+      "topk_indices",
+      "token_expert_indices",
+      "gating_output",
+      "renormalize",
+      "bias"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+        "count": 1152
+      },
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton",
+        "count": 1152
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_016ab8b8330f",
+    "count": 1152,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1024,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1024,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1024,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": true,
+        "py_type": "bool"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "topk_weights",
+      "topk_indices",
+      "token_expert_indices",
+      "gating_output",
+      "renormalize",
+      "bias"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+        "count": 576
+      },
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton",
+        "count": 576
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_cddaf86d2d69",
+    "count": 384,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          47,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          47,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          47,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          47,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": true,
+        "py_type": "bool"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "topk_weights",
+      "topk_indices",
+      "token_expert_indices",
+      "gating_output",
+      "renormalize",
+      "bias"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+        "count": 192
+      },
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton",
+        "count": 192
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_1d49cb73a939",
+    "count": 384,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          16,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          16,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          16,
+          10
+        ],
+        "stride": [
+          10,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          16,
+          512
+        ],
+        "stride": [
+          512,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": true,
+        "py_type": "bool"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "topk_weights",
+      "topk_indices",
+      "token_expert_indices",
+      "gating_output",
+      "renormalize",
+      "bias"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+        "count": 192
+      },
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "triton",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton",
+        "count": 192
+      }
+    ]
+  }
+]

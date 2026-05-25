@@ -1,0 +1,204 @@
+{
+  "rank": 36,
+  "backend": "hip",
+  "kernel_name": "silu_and_mul",
+  "op_category": "activation",
+  "max_time_pct": 1.57,
+  "n_source_models": 5,
+  "n_instances": 21,
+  "canonical": {
+    "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton",
+    "task_dir": "vllm_silu_and_mul"
+  },
+  "instances": [
+    {
+      "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+      "engine": "vllm",
+      "mode": "triton",
+      "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton",
+      "time_pct": 1.57,
+      "source_dir": "results/Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_triton/vllm_silu_and_mul",
+      "is_canonical": true
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-R1",
+      "engine": "vllm",
+      "mode": "triton_mla",
+      "combo": "deepseek-ai_DeepSeek-R1__vllm_triton_mla",
+      "time_pct": 1.55,
+      "source_dir": "results/deepseek-ai_DeepSeek-R1__vllm_triton_mla/vllm_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+      "time_pct": 1.44,
+      "source_dir": "results/Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default/vllm_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3.5-35B-A3B",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+      "time_pct": 1.38,
+      "source_dir": "results/Qwen_Qwen3.5-35B-A3B__vllm_default/vllm_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-R1",
+      "engine": "vllm",
+      "mode": "triton",
+      "combo": "deepseek-ai_DeepSeek-R1__vllm_triton",
+      "time_pct": 1.37,
+      "source_dir": "results/deepseek-ai_DeepSeek-R1__vllm_triton/vllm_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-235B-A22B-FP8",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+      "time_pct": 1.23,
+      "source_dir": "results/Qwen_Qwen3-235B-A22B-FP8__vllm_default/vllm_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3.5-35B-A3B",
+      "engine": "vllm",
+      "mode": "triton",
+      "combo": "Qwen_Qwen3.5-35B-A3B__vllm_triton",
+      "time_pct": 0.85,
+      "source_dir": "results/Qwen_Qwen3.5-35B-A3B__vllm_triton/vllm_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-R1",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "deepseek-ai_DeepSeek-R1__vllm_default",
+      "time_pct": 0.81,
+      "source_dir": "results/deepseek-ai_DeepSeek-R1__vllm_default/vllm_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-235B-A22B-FP8",
+      "engine": "vllm",
+      "mode": "triton",
+      "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_triton",
+      "time_pct": 0.78,
+      "source_dir": "results/Qwen_Qwen3-235B-A22B-FP8__vllm_triton/vllm_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-V3.2",
+      "engine": "vllm",
+      "mode": "triton",
+      "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton",
+      "time_pct": 0.75,
+      "source_dir": "results/deepseek-ai_DeepSeek-V3.2__vllm_triton/vllm_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-V3.2",
+      "engine": "sglang",
+      "mode": "default",
+      "combo": "deepseek-ai_DeepSeek-V3.2__sglang_default",
+      "time_pct": 0.35,
+      "source_dir": "results/deepseek-ai_DeepSeek-V3.2__sglang_default/sglang_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-V3.2",
+      "engine": "sglang",
+      "mode": "hip",
+      "combo": "deepseek-ai_DeepSeek-V3.2__sglang_hip",
+      "time_pct": 0.34,
+      "source_dir": "results/deepseek-ai_DeepSeek-V3.2__sglang_hip/sglang_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-V3.2",
+      "engine": "sglang",
+      "mode": "triton",
+      "combo": "deepseek-ai_DeepSeek-V3.2__sglang_triton",
+      "time_pct": 0.34,
+      "source_dir": "results/deepseek-ai_DeepSeek-V3.2__sglang_triton/sglang_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-R1",
+      "engine": "sglang",
+      "mode": "default",
+      "combo": "deepseek-ai_DeepSeek-R1__sglang_default",
+      "time_pct": 0.24,
+      "source_dir": "results/deepseek-ai_DeepSeek-R1__sglang_default/sglang_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-V3.2",
+      "engine": "vllm",
+      "mode": "triton_mla",
+      "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton_mla",
+      "time_pct": 0.24,
+      "source_dir": "results/deepseek-ai_DeepSeek-V3.2__vllm_triton_mla/vllm_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-V3.2",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "deepseek-ai_DeepSeek-V3.2__vllm_hip",
+      "time_pct": 0.21,
+      "source_dir": "results/deepseek-ai_DeepSeek-V3.2__vllm_hip/vllm_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-V3.2",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "deepseek-ai_DeepSeek-V3.2__vllm_default",
+      "time_pct": 0.2,
+      "source_dir": "results/deepseek-ai_DeepSeek-V3.2__vllm_default/vllm_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_hip",
+      "time_pct": 0.17,
+      "source_dir": "results/Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_hip/vllm_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-R1",
+      "engine": "sglang",
+      "mode": "triton",
+      "combo": "deepseek-ai_DeepSeek-R1__sglang_triton",
+      "time_pct": 0.12,
+      "source_dir": "results/deepseek-ai_DeepSeek-R1__sglang_triton/sglang_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-R1",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "deepseek-ai_DeepSeek-R1__vllm_hip",
+      "time_pct": 0.09,
+      "source_dir": "results/deepseek-ai_DeepSeek-R1__vllm_hip/vllm_silu_and_mul",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-R1",
+      "engine": "sglang",
+      "mode": "hip",
+      "combo": "deepseek-ai_DeepSeek-R1__sglang_hip",
+      "time_pct": 0.07,
+      "source_dir": "results/deepseek-ai_DeepSeek-R1__sglang_hip/sglang_silu_and_mul",
+      "is_canonical": false
+    }
+  ]
+}
