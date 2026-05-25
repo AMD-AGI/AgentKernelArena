@@ -357,18 +357,6 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             logger.info(f"  {k}: {v}")
     logger.info("=" * 60)
 
-    if not (workspace_path / ".git").exists():
-        gi = workspace_path / ".gitignore"
-        if not gi.exists():
-            gi.write_text(
-                "baseline_metrics.json\nprofile.json\n.optimization_strategies.md\n"
-                "baseline_perf.yaml\noptimized_perf.yaml\nconfig.yaml\n__pycache__/\n"
-                "*.pyc\naiter/\n.rocprofv3/\ntraj.json\ndo_task.sh\n"
-            )
-        subprocess.run(["git", "init"], cwd=str(workspace_path), capture_output=True)
-        subprocess.run(["git", "add", "."], cwd=str(workspace_path), capture_output=True)
-        subprocess.run(["git", "commit", "-m", "baseline"], cwd=str(workspace_path), capture_output=True)
-
     geak_yaml = Path(__file__).with_name("geak.yaml")
     cmd = (
         f"{AGENT}"
