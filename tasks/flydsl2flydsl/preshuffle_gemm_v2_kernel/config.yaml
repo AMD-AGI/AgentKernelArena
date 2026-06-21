@@ -1,0 +1,24 @@
+task_type: flydsl2flydsl
+source_file_path:
+  - kernel.py
+harness_path: test_kernel_harness.py
+compile_command:
+  - python3 -c "from kernel import compile_preshuffle_gemm_v2; compile_preshuffle_gemm_v2(N=256,K=256,tile_m=16,tile_n=64,tile_k=256,in_dtype='fp8',out_dtype='bf16'); print('compile ok')"
+correctness_command:
+  - python3 test_kernel_harness.py --correctness
+performance_command:
+  - python3 test_kernel_harness.py --full-benchmark
+target_kernel_functions:
+  - compile_preshuffle_gemm_v2
+source_origin:
+  repo: https://github.com/ROCm/FlyDSL
+  path: kernels/preshuffle_gemm_v2.py
+  commit: ad1d4a507603b0524318be0fa3f076c31b676e3d
+  date: 2026-06-21
+prompt:
+  instructions: |
+    Optimize the FlyDSL preshuffle GEMM v2 (layout API, fp8/fp16/bf16) for AMD CDNA GPUs.
+    You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
+    You MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,
+    or any wrapper that bypasses JitFunction.__call__. Only optimize the GPU kernel
+    computation itself.

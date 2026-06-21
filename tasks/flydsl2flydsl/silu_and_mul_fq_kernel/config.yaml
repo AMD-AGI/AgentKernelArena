@@ -1,0 +1,25 @@
+task_type: flydsl2flydsl
+source_file_path:
+  - kernel.py
+harness_path: test_kernel_harness.py
+compile_command:
+  - python3 -c "from kernel import build_silu_and_mul_fq_module; build_silu_and_mul_fq_module(1024, 2, quant_mode='none'); print('compile ok')"
+correctness_command:
+  - python3 test_kernel_harness.py --correctness
+performance_command:
+  - python3 test_kernel_harness.py --full-benchmark
+target_kernel_functions:
+  - build_silu_and_mul_fq_module
+source_origin:
+  repo: https://github.com/ROCm/FlyDSL
+  path: kernels/silu_and_mul_fq.py
+  commit: ad1d4a507603b0524318be0fa3f076c31b676e3d
+  date: 2026-06-21
+prompt:
+  instructions: |
+    Optimize the FlyDSL fused SiLU/SwiGLU + optional quantization + sorted-scale kernel
+    for AMD MI300X-class CDNA GPUs (split-K MoE stage-1 post-processing).
+    You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
+    You MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,
+    or any wrapper that bypasses JitFunction.__call__. Only optimize the GPU kernel
+    computation itself.

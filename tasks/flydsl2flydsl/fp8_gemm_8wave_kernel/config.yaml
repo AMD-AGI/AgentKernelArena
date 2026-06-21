@@ -1,0 +1,24 @@
+task_type: flydsl2flydsl
+source_file_path:
+  - kernel.py
+harness_path: test_kernel_harness.py
+compile_command:
+  - python3 -c "from kernel import compile_fp8_gemm_8w; compile_fp8_gemm_8w(K=256); print('compile ok')"
+correctness_command:
+  - python3 test_kernel_harness.py --correctness
+performance_command:
+  - python3 test_kernel_harness.py --full-benchmark
+target_kernel_functions:
+  - compile_fp8_gemm_8w
+source_origin:
+  repo: https://github.com/ROCm/FlyDSL
+  path: kernels/fp8_gemm_8wave.py
+  commit: ad1d4a507603b0524318be0fa3f076c31b676e3d
+  date: 2026-06-21
+prompt:
+  instructions: |
+    Optimize the FlyDSL 8-wave FP8 GEMM with row-wise scales for AMD CDNA4-class GPUs.
+    You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
+    You MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,
+    or any wrapper that bypasses JitFunction.__call__. Only optimize the GPU kernel
+    computation itself.
