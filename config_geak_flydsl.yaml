@@ -1,25 +1,28 @@
 # ============================================================================
-# GEAK FlyDSL Benchmark Configuration
+# FlyDSL benchmark task list (shared “geak flydsl” recipe)
 # ============================================================================
 # Usage: python main.py --config_name config_geak_flydsl.yaml
 #
-# Mirrors the GEAK team's pattern (config_geak_triton.yaml).
-# Run inside a container with FlyDSL + GEAK installed.
+# Task order follows L1 → L2 → L3 (compute pattern), matching
+# tasks/flydsl2flydsl/README.md.
 
 agent:
   template: geak_v3_flydsl
 
 tasks:
-  - flydsl2flydsl/rmsnorm_kernel
-  - flydsl2flydsl/layernorm_kernel
+  # --- L1 ---
   - flydsl2flydsl/softmax_kernel
+  - flydsl2flydsl/rmsnorm_kernel
+  # --- L2 ---
+  - flydsl2flydsl/layernorm_kernel
   - flydsl2flydsl/fused_rope_cache_kernel
-  - flydsl2flydsl/flash_attn_func_kernel
-  - flydsl2flydsl/hgemm_splitk_kernel
-  - flydsl2flydsl/pa_decode_fp8_kernel
   - flydsl2flydsl/topk_gating_softmax_kernel
   - flydsl2flydsl/moe_sorting_kernel
   - flydsl2flydsl/silu_and_mul_fq_kernel
+  # --- L3 ---
+  - flydsl2flydsl/flash_attn_func_kernel
+  - flydsl2flydsl/hgemm_splitk_kernel
+  - flydsl2flydsl/pa_decode_fp8_kernel
   - flydsl2flydsl/blockscale_preshuffle_gemm_kernel
   - flydsl2flydsl/fp8_gemm_4wave_kernel
   - flydsl2flydsl/fp8_gemm_8wave_kernel
