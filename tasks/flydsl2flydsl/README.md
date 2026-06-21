@@ -67,6 +67,5 @@ FlyDSL helper modules used by several examples (same `kernels.` import path as `
 
 ## Benchmark config
 
-For the shared FlyDSL benchmark recipe, see the **`geak-flydsl-common-benchmark`**
-branch, where these task paths are wired into `config_geak_flydsl.yaml` (grouped by
-the same L1/L2/L3 pattern).
+The benchmark config (`config_geak_flydsl.yaml`) that lists these tasks (grouped by
+the same L1/L2/L3 pattern) lives on the **`geak-flydsl-common-benchmark`** branch.
