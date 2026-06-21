@@ -17,6 +17,14 @@ tasks:
   - flydsl2flydsl/flash_attn_func_kernel
   - flydsl2flydsl/hgemm_splitk_kernel
   - flydsl2flydsl/pa_decode_fp8_kernel
+  - flydsl2flydsl/topk_gating_softmax_kernel
+  - flydsl2flydsl/moe_sorting_kernel
+  - flydsl2flydsl/silu_and_mul_fq_kernel
+  - flydsl2flydsl/blockscale_preshuffle_gemm_kernel
+  - flydsl2flydsl/fp8_gemm_4wave_kernel
+  - flydsl2flydsl/fp8_gemm_8wave_kernel
+  - flydsl2flydsl/preshuffle_gemm_v2_kernel
+  - flydsl2flydsl/pa_decode_swa_kernel
 
 target_gpu_model: MI300
 log_directory: logs

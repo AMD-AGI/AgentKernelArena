@@ -1,0 +1,27 @@
+task_type: flydsl2flydsl
+source_file_path:
+  - kernel.py
+harness_path: test_kernel_harness.py
+compile_command:
+  - python3 -c "from kernel import compile_moe_sorting; compile_moe_sorting(num_experts=8, topk=2, max_tokens=32); print('compile ok')"
+correctness_command:
+  - python3 test_kernel_harness.py --correctness
+performance_command:
+  - python3 test_kernel_harness.py --full-benchmark
+target_kernel_functions:
+  - compile_moe_sorting
+  - moe_sorting_flydsl
+source_origin:
+  repo: https://github.com/ROCm/FlyDSL
+  path: kernels/moe_sorting_kernel.py
+  commit: ad1d4a507603b0524318be0fa3f076c31b676e3d
+  date: 2026-06-21
+prompt:
+  instructions: |
+    Optimize the FlyDSL MoE token sorting kernels for AMD MI300X-class CDNA GPUs
+    (oneshot and multiphase paths). The kernel packs expert-grouped token indices
+    and weights for downstream grouped GEMM.
+    You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
+    You MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,
+    or any wrapper that bypasses JitFunction.__call__. Only optimize the GPU kernel
+    computation itself (e.g. tile sizes, vectorization, memory access patterns, math).
