@@ -60,21 +60,40 @@ def _load_kernel(kernel_dir, alias="flydsl_kernel"):
 _KERNEL_DIR = _resolve_kernel_dir()
 
 # ============================================================================
-# Test shapes: (M, N, K, dtype_str)
+# Test shapes: (M, N, K, dtype_str, kwargs)
+#
+# Shapes + per-shape tuning kwargs come from FlyDSL v0.2.0
+# tests/kernels/test_hgemm_splitk.py (the gfx942 parameter set). The kernel's
+# get_default_kwargs() does NOT cover arbitrary square shapes on gfx942, so the
+# explicit per-shape kwargs are required for the larger GEMMs to compile/run.
+# kwargs order: TILE_M, TILE_N, TILE_K, STAGES, SPLIT_K, BLOCK_M_WARPS,
+#               BLOCK_N_WARPS, BLOCK_K_WARPS
 # ============================================================================
 
-ALL_SHAPES = [
-    (4096, 4096, 4096, "f16"),
-    (4096, 4096, 4096, "bf16"),
-    (2048, 2048, 2048, "f16"),
-    (2048, 2048, 2048, "bf16"),
-    (1024, 4096, 4096, "f16"),
-    (512, 4096, 8192, "f16"),
-    (32, 384, 7168, "f16"),
-    (32, 384, 7168, "bf16"),
-    (65, 1024, 8192, "f16"),
-    (4, 384, 7168, "f16"),
+
+def _kw(TILE_M, TILE_N, TILE_K, STAGES, SPLIT_K, BM, BN, BK):
+    return {
+        "TILE_M": TILE_M, "TILE_N": TILE_N, "TILE_K": TILE_K,
+        "STAGES": STAGES, "SPLIT_K": SPLIT_K,
+        "BLOCK_M_WARPS": BM, "BLOCK_N_WARPS": BN, "BLOCK_K_WARPS": BK,
+    }
+
+
+# gfx942 (m, n, k, TILE_M, TILE_N, TILE_K, STAGES, SPLIT_K, BM, BN, BK)
+_GFX942_CONFIGS = [
+    (32, 384, 7168, 16, 64, 128, 2, 14, 1, 2, 1),
+    (4, 384, 7168, 16, 64, 128, 2, 14, 1, 2, 1),
+    (65, 1024, 8192, 48, 64, 128, 2, 8, 1, 2, 1),
+    (8, 5120, 2880, 32, 128, 64, 2, 9, 2, 2, 1),
+    (4096, 4096, 4096, 128, 128, 64, 2, 1, 2, 2, 1),
+    (8192, 8192, 8192, 128, 128, 64, 2, 1, 2, 2, 1),
+    (32, 2880, 2048, 32, 64, 128, 2, 4, 1, 2, 1),
 ]
+
+ALL_SHAPES = []
+for _dt in ("f16", "bf16"):
+    for _m, _n, _k, *_p in _GFX942_CONFIGS:
+        ALL_SHAPES.append((_m, _n, _k, _dt, _kw(*_p)))
 
 _n_all = len(ALL_SHAPES)
 if _n_all <= 25:
@@ -123,7 +142,7 @@ def run_correctness(shapes=None, verbose=True):
 
     dtype_map = {"f16": torch.float16, "bf16": torch.bfloat16}
     results, failures = [], []
-    for i, (M, N, K, dtype_str) in enumerate(shapes):
+    for i, (M, N, K, dtype_str, kw) in enumerate(shapes):
         try:
             torch_dtype = dtype_map[dtype_str]
             torch.manual_seed(42 + i)
@@ -132,8 +151,7 @@ def run_correctness(shapes=None, verbose=True):
             b = torch.randn(N, K, dtype=torch_dtype, device="cuda").uniform_(-1, 1)
             c = torch.zeros(M, N, dtype=torch_dtype, device="cuda")
 
-            b_shuffled = mod.hgemm_shuffle_b(b.clone())
-            mod.hgemm_splitk_(c, a, b_shuffled, False, {}, torch.cuda.current_stream())
+            mod.hgemm_splitk_(c, a, b, None, kw, torch.cuda.current_stream())
             torch.cuda.synchronize()
 
             ref = reference_gemm(a, b, dtype=torch.float32)
@@ -177,18 +195,17 @@ def run_profile(shapes=None, warmup=10, iters=50, verbose=True):
         return
 
     dtype_map = {"f16": torch.float16, "bf16": torch.bfloat16}
-    for M, N, K, dtype_str in shapes:
+    for M, N, K, dtype_str, kw in shapes:
         torch_dtype = dtype_map[dtype_str]
         a = torch.randn(M, K, dtype=torch_dtype, device="cuda")
         b = torch.randn(N, K, dtype=torch_dtype, device="cuda")
         c = torch.zeros(M, N, dtype=torch_dtype, device="cuda")
-        b_shuffled = mod.hgemm_shuffle_b(b.clone())
 
         for _ in range(warmup):
-            mod.hgemm_splitk_(c, a, b_shuffled, False, {}, torch.cuda.current_stream())
+            mod.hgemm_splitk_(c, a, b, None, kw, torch.cuda.current_stream())
         torch.cuda.synchronize()
         for _ in range(iters):
-            mod.hgemm_splitk_(c, a, b_shuffled, False, {}, torch.cuda.current_stream())
+            mod.hgemm_splitk_(c, a, b, None, kw, torch.cuda.current_stream())
         torch.cuda.synchronize()
         if verbose:
             print(f"  (M={M}, N={N}, K={K}, {dtype_str}) done")
@@ -212,20 +229,19 @@ def run_benchmark(shapes=None, warmup=10, iters=50, verbose=True):
     print(f"{'Config (M,N,K,dtype)':<32} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10}")
     print("-" * 68)
 
-    for idx, (M, N, K, dtype_str) in enumerate(shapes):
+    for idx, (M, N, K, dtype_str, kw) in enumerate(shapes):
         torch_dtype = dtype_map[dtype_str]
         torch.manual_seed(42)
 
         a = torch.randn(M, K, dtype=torch_dtype, device="cuda").uniform_(-1, 1)
         b = torch.randn(N, K, dtype=torch_dtype, device="cuda").uniform_(-1, 1)
         c = torch.zeros(M, N, dtype=torch_dtype, device="cuda")
-        b_shuffled = mod.hgemm_shuffle_b(b.clone())
 
-        mod.hgemm_splitk_(c, a, b_shuffled, False, {}, torch.cuda.current_stream())
+        mod.hgemm_splitk_(c, a, b, None, kw, torch.cuda.current_stream())
         torch.cuda.synchronize()
 
         for _ in range(warmup):
-            mod.hgemm_splitk_(c, a, b_shuffled, False, {}, torch.cuda.current_stream())
+            mod.hgemm_splitk_(c, a, b, None, kw, torch.cuda.current_stream())
         torch.cuda.synchronize()
 
         kernel_times = []
@@ -233,7 +249,7 @@ def run_benchmark(shapes=None, warmup=10, iters=50, verbose=True):
             s = torch.cuda.Event(enable_timing=True)
             e = torch.cuda.Event(enable_timing=True)
             s.record()
-            mod.hgemm_splitk_(c, a, b_shuffled, False, {}, torch.cuda.current_stream())
+            mod.hgemm_splitk_(c, a, b, None, kw, torch.cuda.current_stream())
             e.record()
             torch.cuda.synchronize()
             kernel_times.append(s.elapsed_time(e))
@@ -273,7 +289,7 @@ def run_benchmark(shapes=None, warmup=10, iters=50, verbose=True):
                 flush=True,
             )
 
-        del a, b, c, b_shuffled
+        del a, b, c
         torch.cuda.empty_cache()
 
     geomean_latency = math.exp(sum(math.log(l) for l in latencies) / len(latencies))
