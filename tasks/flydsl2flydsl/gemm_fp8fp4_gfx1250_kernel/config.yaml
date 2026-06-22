@@ -1,0 +1,17 @@
+task_type: flydsl2flydsl
+source_file_path:
+  - kernel.py
+harness_path: null            # no harness: not runnable on this platform
+source_origin:
+  repo: https://github.com/ROCm/FlyDSL
+  path: kernels/gemm_fp8fp4_gfx1250.py
+  commit: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
+  date: 2026-06-01  # v0.2.0 (28a18d3)
+platform_support:
+  required_arch: gfx1250
+  runnable_on_gfx942: false
+  status: skip
+  skip_reason: |
+    FP8/FP4 WMMA GEMM for RDNA4 gfx1250; uses WMMA + fp4 path absent on CDNA3 gfx942.
+    MI300X is gfx942 (CDNA3); this kernel targets gfx1250. Catalogued for
+    completeness but NOT benchmarked on MI300X.

@@ -13,11 +13,16 @@ target_kernel_functions:
 source_origin:
   repo: https://github.com/ROCm/FlyDSL
   path: kernels/fused_rope_cache_kernel.py
-  commit: 21536b06810a5fe3f6d5cf03b3668b2ed6a0498c
-  date: 2026-04-28
+  commit: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
+  date: 2026-06-01  # v0.2.0 (28a18d3)
 prompt:
   instructions: |
     Optimize the FlyDSL Fused RoPE + KV Cache kernel for AMD MI300X GPU.
     The kernel fuses Q/K RoPE rotation and KV cache writes into a single
     launch using NeoX-style rotation and ds_bpermute for cross-lane exchange.
     You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
+
+platform_support:
+  required_arch: gfx942
+  runnable_on_gfx942: true
+  status: active

@@ -15,8 +15,8 @@ target_kernel_functions:
 source_origin:
   repo: https://github.com/ROCm/FlyDSL
   path: kernels/pa_decode_fp8.py
-  commit: 4d84ee8f665fea906a0012cc98f0381e5f5d2818
-  date: 2026-03-24
+  commit: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
+  date: 2026-06-01  # v0.2.0 (28a18d3)
 prompt:
   instructions: |
     Optimize the FlyDSL Paged Attention Decode FP8 kernel for AMD MI300X GPU.
@@ -24,3 +24,8 @@ prompt:
     keys/values, MFMA-based dot products, online softmax, multi-partition
     reduce, and supports both one-shot and split-reduce modes.
     You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
+
+platform_support:
+  required_arch: gfx942
+  runnable_on_gfx942: true
+  status: active

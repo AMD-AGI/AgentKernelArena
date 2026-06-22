@@ -31,3 +31,8 @@ held_out_tests/
 # Documentation build environment and output
 .docvenv/
 docs/_build/
+
+# FlyDSL kernel build artifacts and profiler output (generated at run time)
+tasks/flydsl2flydsl/*/build/
+tasks/flydsl2flydsl/*/.rocprofv3/
+tasks/flydsl2flydsl/*/performance_report.json

@@ -14,8 +14,8 @@ target_kernel_functions:
 source_origin:
   repo: https://github.com/ROCm/FlyDSL
   path: kernels/moe_sorting_kernel.py
-  commit: ad1d4a507603b0524318be0fa3f076c31b676e3d
-  date: 2026-06-21
+  commit: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
+  date: 2026-06-01  # v0.2.0 (28a18d3)
 prompt:
   instructions: |
     Optimize the FlyDSL MoE token sorting kernels for AMD MI300X-class CDNA GPUs
@@ -25,3 +25,8 @@ prompt:
     You MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,
     or any wrapper that bypasses JitFunction.__call__. Only optimize the GPU kernel
     computation itself (e.g. tile sizes, vectorization, memory access patterns, math).
+
+platform_support:
+  required_arch: gfx942
+  runnable_on_gfx942: true
+  status: active

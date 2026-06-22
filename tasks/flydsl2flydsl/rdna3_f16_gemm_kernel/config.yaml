@@ -1,0 +1,17 @@
+task_type: flydsl2flydsl
+source_file_path:
+  - kernel.py
+harness_path: null            # no harness: not runnable on this platform
+source_origin:
+  repo: https://github.com/ROCm/FlyDSL
+  path: kernels/rdna3_f16_gemm.py
+  commit: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
+  date: 2026-06-01  # v0.2.0 (28a18d3)
+platform_support:
+  required_arch: rdna3
+  runnable_on_gfx942: false
+  status: skip
+  skip_reason: |
+    RDNA3 f16 WMMA GEMM; RDNA-only.
+    MI300X is gfx942 (CDNA3); this kernel targets rdna3. Catalogued for
+    completeness but NOT benchmarked on MI300X.
