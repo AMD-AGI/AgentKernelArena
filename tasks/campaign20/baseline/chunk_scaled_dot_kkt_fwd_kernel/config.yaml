@@ -1,0 +1,25 @@
+source_file_path:
+- source/triton_chunk_scaled_dot_kkt_fwd_kernel.py
+target_kernel_functions:
+- chunk_scaled_dot_kkt_fwd_kernel
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+task_type: triton2triton
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: Optimize the Triton kernel `chunk_scaled_dot_kkt_fwd_kernel` (originally
+    vllm.model_executor.layers.fla.ops.chunk_scaled_dot_kkt). Captured via inspect.getsource.
+    Tests generate inputs from test_cases.json on the fly.
+  cheatsheet: null
+extracted_from:
+  engine: vllm
+  kernel_id: triton:vllm.model_executor.layers.fla.ops.chunk_scaled_dot_kkt.chunk_scaled_dot_kkt_fwd_kernel
+  triton_fn: chunk_scaled_dot_kkt_fwd_kernel
+  origin_module: vllm.model_executor.layers.fla.ops.chunk_scaled_dot_kkt
+  source: triton_inspect
+  test_cases: 8

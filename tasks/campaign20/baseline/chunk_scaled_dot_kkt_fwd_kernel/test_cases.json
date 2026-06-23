@@ -1,0 +1,242 @@
+[
+  {
+    "test_case_id": "c2",
+    "count": 1,
+    "args_sig": [],
+    "kwargs_sig": {
+      "grid": [
+        32,
+        16
+      ],
+      "k": {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          2048,
+          4,
+          128
+        ]
+      },
+      "beta": {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          2048,
+          8
+        ]
+      },
+      "g": {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          2048,
+          8
+        ]
+      },
+      "A": {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          2048,
+          8,
+          64
+        ]
+      },
+      "cu_seqlens": {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          3
+        ]
+      },
+      "chunk_indices": {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          32,
+          2
+        ]
+      },
+      "T": 1024,
+      "H": 8,
+      "Hg": 4,
+      "K": 128,
+      "BT": 64,
+      "USE_G": true,
+      "IS_VARLEN": true
+    },
+    "params_repr": {
+      "B": 2,
+      "seqlen": 1024,
+      "H": 8,
+      "Hg": 4,
+      "K": 128,
+      "BT": 64,
+      "role": "prefill q_len=kv_len=1024"
+    }
+  },
+  {
+    "test_case_id": "c32",
+    "count": 1,
+    "args_sig": [],
+    "kwargs_sig": {
+      "grid": [
+        512,
+        256
+      ],
+      "k": {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          32768,
+          4,
+          128
+        ]
+      },
+      "beta": {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          32768,
+          8
+        ]
+      },
+      "g": {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          32768,
+          8
+        ]
+      },
+      "A": {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          32768,
+          8,
+          64
+        ]
+      },
+      "cu_seqlens": {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          33
+        ]
+      },
+      "chunk_indices": {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          512,
+          2
+        ]
+      },
+      "T": 1024,
+      "H": 8,
+      "Hg": 4,
+      "K": 128,
+      "BT": 64,
+      "USE_G": true,
+      "IS_VARLEN": true
+    },
+    "params_repr": {
+      "B": 32,
+      "seqlen": 1024,
+      "H": 8,
+      "Hg": 4,
+      "K": 128,
+      "BT": 64,
+      "role": "prefill q_len=kv_len=1024"
+    }
+  },
+  {
+    "test_case_id": "c64",
+    "count": 1,
+    "args_sig": [],
+    "kwargs_sig": {
+      "grid": [
+        1024,
+        512
+      ],
+      "k": {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          65536,
+          4,
+          128
+        ]
+      },
+      "beta": {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          65536,
+          8
+        ]
+      },
+      "g": {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          65536,
+          8
+        ]
+      },
+      "A": {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          65536,
+          8,
+          64
+        ]
+      },
+      "cu_seqlens": {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          65
+        ]
+      },
+      "chunk_indices": {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1024,
+          2
+        ]
+      },
+      "T": 1024,
+      "H": 8,
+      "Hg": 4,
+      "K": 128,
+      "BT": 64,
+      "USE_G": true,
+      "IS_VARLEN": true
+    },
+    "params_repr": {
+      "B": 64,
+      "seqlen": 1024,
+      "H": 8,
+      "Hg": 4,
+      "K": 128,
+      "BT": 64,
+      "role": "prefill q_len=kv_len=1024"
+    }
+  }
+]

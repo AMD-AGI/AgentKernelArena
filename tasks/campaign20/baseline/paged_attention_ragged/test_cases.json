@@ -1,0 +1,1665 @@
+[
+  {
+    "test_case_id": "sig_28d61f7b1f07",
+    "count": 48,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "uint8",
+        "shape": [
+          9906790400
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831843,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          33
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          256032
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          3721
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 1,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 160,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'NHD'"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.0,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 256,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {}
+  },
+  {
+    "test_case_id": "sig_b637b17af08a",
+    "count": 48,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "uint8",
+        "shape": [
+          9906790400
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831843,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          33
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          256064
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          3721
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 1,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 160,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'NHD'"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.0,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 256,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {}
+  },
+  {
+    "test_case_id": "sig_61620957a144",
+    "count": 48,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "uint8",
+        "shape": [
+          9906790400
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831843,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          33
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          256096
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          3721
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 1,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 160,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'NHD'"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.0,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 256,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {}
+  },
+  {
+    "test_case_id": "sig_f7ab469d1dc7",
+    "count": 48,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "uint8",
+        "shape": [
+          9906790400
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831843,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          33
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          256128
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          3721
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 1,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 160,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'NHD'"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.0,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 256,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {}
+  },
+  {
+    "test_case_id": "sig_c90b440e841a",
+    "count": 48,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "uint8",
+        "shape": [
+          9906790400
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831843,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          33
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          256160
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          3721
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 1,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 160,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'NHD'"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.0,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 256,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {}
+  },
+  {
+    "test_case_id": "sig_97b2f1edf640",
+    "count": 48,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "uint8",
+        "shape": [
+          9906790400
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831843,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          33
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          256192
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          3721
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 1,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 160,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'NHD'"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.0,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 256,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {}
+  },
+  {
+    "test_case_id": "sig_4d693a861996",
+    "count": 48,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "uint8",
+        "shape": [
+          9906790400
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831843,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          33
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          256224
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          3721
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 1,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 160,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'NHD'"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.0,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 256,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {}
+  },
+  {
+    "test_case_id": "sig_0219e2f70fd9",
+    "count": 48,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "uint8",
+        "shape": [
+          9906790400
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          297686,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831843,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          33
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          256256
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          3721
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 1,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 160,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'NHD'"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.0,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 256,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {}
+  },
+  {
+    "test_case_id": "perf_S512_ctx4096",
+    "count": 1,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          512,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "uint8",
+        "shape": [
+          1073741824
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          512,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          2097152,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          2097152,
+          1,
+          4,
+          128
+        ],
+        "stride": [
+          512,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831843,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          513
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          2097152
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          512
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 1,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 16,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'NHD'"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.0,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 256,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {
+      "S_seqs": 512,
+      "ctx_len": 4096,
+      "out_len": 1,
+      "heads": 32,
+      "kv_heads": 4,
+      "gqa": 8,
+      "head_size": 128,
+      "block_size": 1,
+      "partition": 256,
+      "max_num_partitions": 16,
+      "layout": "NHD",
+      "num_blocks": 2097152,
+      "kv_alloc_gb": 4.3,
+      "note": "decode; even-split ragged page table (make_consistent) -> HBM-streaming"
+    },
+    "perf_only": true
+  }
+]
