@@ -1,0 +1,14 @@
+# FlyDSL / aiter runtime + JIT artifacts (regenerated on compile/correctness)
+__pycache__/
+*.pyc
+build/
+_geak_aiter_jit_gpu*/
+*.so
+
+# scratch harness experiments / backups
+*_geak_harness*.py
+*geak_testharness*.py
+*_harness_final.py
+*harness_v[0-9].py
+*shapes_source*.txt
+*.bak

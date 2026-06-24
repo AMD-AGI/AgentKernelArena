@@ -24,6 +24,9 @@ prompt:
     computation itself.
 
 platform_support:
-  required_arch: gfx942
-  runnable_on_gfx942: true
-  status: active
+  # 4-wave FP8 GEMM emits the CDNA4-only 16B buffer_load_lds intrinsic; the
+  # gfx942 (CDNA3/MI300) LLVM backend cannot legalize it (LLVM ERROR: Do not
+  # know how to expand this operator's operand). Runnable on gfx950/CDNA4 only.
+  required_arch: gfx950
+  runnable_on_gfx942: false
+  status: skip

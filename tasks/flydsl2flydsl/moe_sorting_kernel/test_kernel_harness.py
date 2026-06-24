@@ -12,6 +12,36 @@ if _F2F not in _sys.path:
 if _THIS not in _sys.path:
     _sys.path.insert(0, _THIS)
 
+
+def _ensure_writable_flydsl_home():
+    """FlyDSL JIT cache lives under ~/.flydsl; redirect HOME when read-only."""
+    home = _os.path.expanduser("~")
+    cache = _os.path.join(home, ".flydsl")
+    try:
+        _os.makedirs(cache, exist_ok=True)
+        probe = _os.path.join(cache, ".write_probe")
+        with open(probe, "w") as f:
+            f.write("ok")
+        _os.remove(probe)
+        return
+    except OSError:
+        pass
+    import tempfile
+
+    for base in (_os.environ.get("GEAK_WORK_DIR", "").strip(), tempfile.gettempdir(), _F2F):
+        if not base:
+            continue
+        try:
+            new_home = _os.path.join(base, ".flydsl_home")
+            _os.makedirs(_os.path.join(new_home, ".flydsl"), exist_ok=True)
+            _os.environ["HOME"] = new_home
+            return
+        except OSError:
+            continue
+
+
+_ensure_writable_flydsl_home()
+
 _spec = importlib.util.spec_from_file_location(
     "kernels.moe_sorting_kernel", _os.path.join(_THIS, "kernel.py")
 )
@@ -31,9 +61,8 @@ if not torch.cuda.is_available():
 
 """Tests for MoE token sorting kernel.
 
-Validates the FlyDSL GPU kernel against:
-  1. Python reference implementation (moe_sorting_reference)
-  2. aiter/CK kernel (if available)
+Validates the FlyDSL GPU kernel against a pure-Python reference implementation
+(moe_sorting_reference). No external runtime dependency.
 
 Usage:
     FLYDSL_RUNTIME_ENABLE_CACHE=0 PYTHONPATH=./ pytest tests/kernels/test_moe_sorting.py -v
@@ -73,7 +102,7 @@ BENCH_MEASURE = 50
 # CPU reference implementation
 # ---------------------------------------------------------------------------
 def moe_sorting_reference(topk_ids, topk_weights, num_experts, unit_size=UNIT_SIZE, expert_mask=None):
-    """Pure-Python reference matching the CK/aiter packed-ID format."""
+    """Pure-Python reference matching the CK-style packed-ID format."""
     device = topk_ids.device
     M, topk = topk_ids.shape
     max_num_tokens_padded = topk_ids.numel() + num_experts * unit_size - topk
@@ -406,57 +435,6 @@ def run_test(T, E, topk, unit_size=UNIT_SIZE, max_tokens=None):
 
 
 # ---------------------------------------------------------------------------
-# Test with aiter reference (optional)
-# ---------------------------------------------------------------------------
-def run_test_vs_aiter(T, E, topk, unit_size=UNIT_SIZE, max_tokens=None):
-    """Compare FlyDSL kernel against aiter GPU kernel (if available)."""
-    try:
-        from aiter.fused_moe import moe_sorting as aiter_moe_sorting
-    except ImportError:
-        print("  [SKIP] aiter not available for cross-validation")
-        return None, None
-
-    torch.manual_seed(42 + T * 1000 + E * 10 + topk)
-    topk_ids, topk_weights = generate_topk_ids(T, E, topk)
-
-    print(f"\n  [vs aiter] T={T}, E={E}, topk={topk}")
-
-    # aiter reference
-    aiter_ids, aiter_w, aiter_eids, aiter_nvalid, _ = aiter_moe_sorting(
-        topk_ids,
-        topk_weights,
-        E,
-        model_dim=4096,
-        moebuf_dtype=torch.bfloat16,
-        block_size=unit_size,
-    )
-
-    # FlyDSL (auto-dispatches oneshot/multiphase)
-    fly_ids, fly_w, fly_eids, fly_nvalid, _ = _call_flydsl(
-        topk_ids,
-        topk_weights,
-        E,
-        model_dim=4096,
-        topk=topk,
-        unit_size=unit_size,
-    )
-    torch.cuda.synchronize()
-
-    # Compare
-    nv_ok = torch.equal(aiter_nvalid, fly_nvalid)
-    num_padded = aiter_nvalid[0].item()
-    num_valid_blocks = num_padded // unit_size
-    ids_ok = check_sorted_ids(aiter_ids, fly_ids, num_padded, topk, T, "sorted_ids(vs_aiter)")
-    w_ok = check_sorted_weights(
-        aiter_w, fly_w, aiter_ids, topk, T, label="sorted_weights(vs_aiter)", gpu_ids=fly_ids, num_padded=num_padded
-    )
-    e_ok = check_expert_ids(aiter_eids, fly_eids, "sorted_expert_ids(vs_aiter)", num_valid_blocks=num_valid_blocks)
-
-    passed = nv_ok and ids_ok and w_ok and e_ok
-    return passed, None
-
-
-# ---------------------------------------------------------------------------
 # Pytest entry points
 # ---------------------------------------------------------------------------
 ONESHOT_CONFIGS = [
@@ -679,12 +657,10 @@ def bench_graph_us(fn, warmup=BENCH_WARMUP, iters=BENCH_MEASURE):
 
 
 def run_bench_comparison(token_sweep=None):
-    """Benchmark FlyDSL vs CK (aiter) across T values in eager and graph modes."""
-    try:
-        from aiter.fused_moe import moe_sorting as aiter_moe_sorting
-    except ImportError:
-        print("  aiter not available, skipping CK comparison")
-        aiter_moe_sorting = None
+    """Benchmark FlyDSL across T values in eager and graph modes."""
+    # CK/external cross-comparison intentionally omitted: this task is pure
+    # FlyDSL and has no external runtime dependency.
+    ck_moe_sorting = None
 
     E, topk, model_dim = 256, 8, 4096
     if token_sweep is None:
@@ -741,10 +717,10 @@ def run_bench_comparison(token_sweep=None):
         fly_graph = bench_graph_us(fly_fn)
 
         ck_eager, ck_graph = None, None
-        if aiter_moe_sorting is not None:
+        if ck_moe_sorting is not None:
 
             def ck_fn():
-                aiter_moe_sorting(
+                ck_moe_sorting(
                     topk_ids, topk_weights, E, model_dim=model_dim, moebuf_dtype=torch.bfloat16, block_size=UNIT_SIZE
                 )
 
@@ -780,8 +756,7 @@ def main():
     parser.add_argument("-E", type=int, default=None, help="Number of experts")
     parser.add_argument("-k", "--topk", type=int, default=None, help="Top-k")
     parser.add_argument("--all", action="store_true", help="Run all configs")
-    parser.add_argument("--aiter", action="store_true", help="Compare with aiter")
-    parser.add_argument("--bench", action="store_true", help="Run benchmark sweep (eager + graph, FlyDSL vs CK)")
+    parser.add_argument("--bench", action="store_true", help="Run benchmark sweep (eager + graph)")
     parser.add_argument(
         "--bench-tokens", type=str, default=None, help="Comma-separated T values for bench (default: all)"
     )
@@ -819,11 +794,6 @@ def main():
         if not passed:
             failures += 1
         results.append({"T": T, "E": E, "topk": topk, "passed": passed, "us": time_us})
-
-        if args.aiter:
-            aiter_ok, _ = run_test_vs_aiter(T, E, topk)
-            if aiter_ok is False:
-                failures += 1
 
     print(f"\n{'='*60}")
     print(f"Results: {total - failures}/{total} passed")
@@ -865,7 +835,7 @@ def run_geak_correctness():
     }
 
 
-def run_geak_benchmark(shapes=None, warmup=3, iters=20, verbose=True):
+def run_geak_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
     import math
     import torch
     if shapes is None:
@@ -889,7 +859,7 @@ def run_geak_benchmark(shapes=None, warmup=3, iters=20, verbose=True):
             e.record()
             torch.cuda.synchronize()
             times.append(s.elapsed_time(e))
-        ms = sorted(times)[len(times) // 2]
+        ms = sum(times) / len(times)
         latencies.append(ms)
         report_cases.append({
             "test_case_id": f"moe_sort_{idx}",
@@ -919,8 +889,8 @@ if __name__ == "__main__":
     parser.add_argument("--profile", action="store_true")
     parser.add_argument("--benchmark", action="store_true")
     parser.add_argument("--full-benchmark", action="store_true")
-    parser.add_argument("--warmup", type=int, default=3)
-    parser.add_argument("--iterations", type=int, default=20)
+    parser.add_argument("--warmup", type=int, default=10)
+    parser.add_argument("--iterations", type=int, default=100)
     args = parser.parse_args()
     if args.correctness:
         r = run_geak_correctness()

@@ -3,15 +3,16 @@ source_file_path:
   - kernel.py
 harness_path: test_kernel_harness.py
 compile_command:
-  - python3 -c "from kernel import build_pa_decode_module; build_pa_decode_module(1, 1, 1); print('compile ok')"
+  - python3 -c "from kernel import compile_pa_decode_ps; compile_pa_decode_ps(query_input_dtype='bf16'); print('compile ok')"
 correctness_command:
   - python3 test_kernel_harness.py --correctness
 performance_command:
   - python3 test_kernel_harness.py --full-benchmark
 target_kernel_functions:
-  - build_pa_decode_module
-  - build_ps_reduce_kernel
-  - build_v2_reduce_kernel
+  - compile_pa_decode_ps
+  - get_pa_metadata
+  - get_sw_ps_max_context_partition_num
+  - pa_decode_ps_launch
 source_origin:
   repo: https://github.com/ROCm/FlyDSL
   path: kernels/pa_decode_fp8.py
@@ -26,6 +27,14 @@ prompt:
     You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
 
 platform_support:
+  # Requires `aiter` available in the environment (fp8 KV quant +
+  # paged-attention metadata/reduce reference). All other gfx942 tasks need
+  # only FlyDSL. The standard FlyDSL validation image does not ship aiter, so
+  # this task is marked `skip` for the default gate (like the gfx950-only
+  # tasks): it compiles + passes correctness/performance only in an
+  # aiter-enabled runtime. Self-containment intentionally fails (external aiter
+  # import), which is why it is excluded from the active set rather than active.
   required_arch: gfx942
   runnable_on_gfx942: true
-  status: active
+  requires_aiter: true
+  status: skip

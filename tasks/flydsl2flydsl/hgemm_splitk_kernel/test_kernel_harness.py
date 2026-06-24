@@ -211,7 +211,7 @@ def run_profile(shapes=None, warmup=10, iters=50, verbose=True):
             print(f"  (M={M}, N={N}, K={K}, {dtype_str}) done")
 
 
-def run_benchmark(shapes=None, warmup=10, iters=50, verbose=True):
+def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
     import torch
 
     if shapes is None:
@@ -253,7 +253,7 @@ def run_benchmark(shapes=None, warmup=10, iters=50, verbose=True):
             e.record()
             torch.cuda.synchronize()
             kernel_times.append(s.elapsed_time(e))
-        kernel_ms = sorted(kernel_times)[len(kernel_times) // 2]
+        kernel_ms = sum(kernel_times) / len(kernel_times)
 
         ref_times = []
         for _ in range(iters):
@@ -264,7 +264,7 @@ def run_benchmark(shapes=None, warmup=10, iters=50, verbose=True):
             e.record()
             torch.cuda.synchronize()
             ref_times.append(s.elapsed_time(e))
-        ref_ms = sorted(ref_times)[len(ref_times) // 2]
+        ref_ms = sum(ref_times) / len(ref_times)
 
         speedup = ref_ms / kernel_ms if kernel_ms > 0 else 1.0
         latencies.append(kernel_ms)
@@ -323,7 +323,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--iterations",
         type=int,
-        default=int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "50")),
+        default=int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "100")),
     )
     args = parser.parse_args()
 

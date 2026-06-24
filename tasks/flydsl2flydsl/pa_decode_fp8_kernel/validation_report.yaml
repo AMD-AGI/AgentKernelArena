@@ -1,0 +1,101 @@
+task_name: flydsl2flydsl/pa_decode_fp8_kernel
+validation_timestamp: '2026-06-24T17:42:53.052490'
+overall_status: FAIL
+checks:
+  config_schema:
+    status: PASS
+    details: 'All required fields present with correct types (source_file_path, target_kernel_functions,
+      compile_command, correctness_command, task_type). NOTE: task_type=''flydsl2flydsl'' is a newer category
+      not yet listed in the validator''s task_type enum; the field is well-formed and the category is
+      registered in the repo.'
+  source_files_exist:
+    status: PASS
+    details: kernel.py present in task workspace.
+  target_symbols_found:
+    status: PASS
+    details: All target_kernel_functions are defined as `def` in kernel.py.
+  compilation:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 5.56
+    stdout_snippet: 'compile ok
+
+      '
+    stderr_snippet: ''
+    report_file_valid: null
+  correctness:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 35.92
+    stdout_snippet: "==============================================================\nFlyDSL Paged Attention\
+      \ Decode FP8 Kernel\n==============================================================\n\n[Correctness\
+      \ Mode]\nRunning correctness on 8 shapes...\n  PASS: (b=3, q=1, heads=(8, 1), per_token) max_err=1.9531e-03\n\
+      \  PASS: (b=3, q=1, heads=(16, 1), per_token) max_err=2.0142e-03\n  PASS: (b=3, q=2, heads=(8, 1),\
+      \ per_token) max_err=2.1973e-03\n  PASS: (b=3, q=4, heads=(16, 1), per_token) max_err=2.1973e-03\n\
+      \  PASS: (b=81, q=1, head"
+    stderr_snippet: '[aiter] import [module_aiter_core] under /mnt/shared/johayang/AgentKernelArena/tasks/flydsl2flydsl/pa_decode_fp8_kernel/_geak_aiter_jit_gpu0/module_aiter_core.so
+
+      [aiter] import [module_pa_metadata] under /mnt/shared/johayang/AgentKernelArena/tasks/flydsl2flydsl/pa_decode_fp8_kernel/_geak_aiter_jit_gpu0/module_pa_metadata.so
+
+      [aiter] import [module_mla_reduce] under /mnt/shared/johayang/AgentKernelArena/tasks/flydsl2flydsl/pa_decode_fp8_kernel/_geak_aiter_jit_gpu0/module_mla_reduce.so
+
+      '
+    report_file_valid: null
+    analysis: Compares vs torch_mha_extend / reference_masked_attention with max_err tolerance; real reference
+      check.
+  performance:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 37.75
+    stdout_snippet: '==============================================================
+
+      FlyDSL Paged Attention Decode FP8 Kernel
+
+      ==============================================================
+
+
+      [Full Benchmark Mode]
+
+      Running benchmark on 8 shapes, 10 warmup, 100 iterations...
+
+      Config                                          Ref     FlyDSL    Speedup
+
+      ----------------------------------------------------------------------------
+
+      (b=  3, q=1, heads=(8, 1), per_token)   0.9815ms   0.9934ms     0.99x
+
+      (b=  3, q=1, heads=(16, 1), p'
+    stderr_snippet: '[aiter] import [module_aiter_core] under /mnt/shared/johayang/AgentKernelArena/tasks/flydsl2flydsl/pa_decode_fp8_kernel/_geak_aiter_jit_gpu0/module_aiter_core.so
+
+      [aiter] import [module_pa_metadata] under /mnt/shared/johayang/AgentKernelArena/tasks/flydsl2flydsl/pa_decode_fp8_kernel/_geak_aiter_jit_gpu0/module_pa_metadata.so
+
+      [aiter] import [module_mla_reduce] under /mnt/shared/johayang/AgentKernelArena/tasks/flydsl2flydsl/pa_decode_fp8_kernel/_geak_aiter_jit_gpu0/module_mla_reduce.so
+
+      '
+    report_file_valid: null
+    analysis: 'Methodology follows the prescribed standard: 10 warmup iterations + 100 measured iterations,
+      reported runtime is the AVERAGE (mean) across the measured iterations, and speedup is derived from
+      the averaged runtimes.'
+  correctness_implementation_review:
+    status: PASS
+    details: Compares vs torch_mha_extend / reference_masked_attention with max_err tolerance; real reference
+      check.
+    is_trivially_passing: false
+  self_contained:
+    status: FAIL
+    details: Imports `aiter.ops.attention` (get_pa_metadata_v1 / pa_reduce_v1) - the AMD aiter package
+      is an external runtime dependency that cannot be vendored. This is intentional and documented in
+      config.yaml/README, but per the self-containment rule it is recorded as FAIL.
+    missing_files:
+    - aiter.ops.attention
+  gpu_hang_check:
+    status: PASS
+    details: All executed commands completed without timeout/hang.
+  result_template_compatibility:
+    status: PASS
+    details: Harness emits GEAK_RESULT_LATENCY_MS / GEAK_RESULT_GEOMEAN_SPEEDUP, writes build/performance_report.json,
+      and returns a pass/fail exit code from --correctness; fields map deterministically to task_result_template.yaml.
+    template_name: task_result_template.yaml
+summary: 9 passed, 1 failed, 0 warned. Compile=PASS, correctness=PASS, performance=PASS. Self-containment
+  FAIL due to intentional external aiter dependency. Performance uses the prescribed 10-warmup/100-measured
+  mean methodology.

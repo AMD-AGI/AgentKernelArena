@@ -1,0 +1,85 @@
+task_name: flydsl2flydsl/pa_decode_swa_kernel
+validation_timestamp: '2026-06-24T17:42:53.186299'
+overall_status: PASS
+checks:
+  config_schema:
+    status: PASS
+    details: 'All required fields present with correct types (source_file_path, target_kernel_functions,
+      compile_command, correctness_command, task_type). NOTE: task_type=''flydsl2flydsl'' is a newer category
+      not yet listed in the validator''s task_type enum; the field is well-formed and the category is
+      registered in the repo.'
+  source_files_exist:
+    status: PASS
+    details: kernel.py present in task workspace.
+  target_symbols_found:
+    status: PASS
+    details: All target_kernel_functions are defined as `def` in kernel.py.
+  compilation:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 2.03
+    stdout_snippet: 'compile ok
+
+      '
+    stderr_snippet: ''
+    report_file_valid: null
+  correctness:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 10.84
+    stdout_snippet: "==============================================================\nFlyDSL pa_decode_swa\
+      \ (sliding-window paged-attention decode)\n==============================================================\n\
+      Running correctness on 5 shapes (vs torch reference)...\n  PASS: (seqs=1, ctx=1024, kv_heads=1,\
+      \ sw=256) max_err=3.7842e-03\n  PASS: (seqs=1, ctx=2048, kv_heads=1, sw=512) max_err=2.5635e-03\n\
+      \  PASS: (seqs=2, ctx=1024, kv_heads=2, sw=256) max_err=4.2114e-03\n  PASS: (seqs=4, ctx=1024, kv_heads=2,\
+      \ sw=256) max_err=4.88"
+    stderr_snippet: ''
+    report_file_valid: null
+    analysis: 'Independent torch reference (reference_swa_decode): dequantizes the fp8 paged KV cache
+      and computes sliding-window GQA decode attention in fp32, then compares the kernel''s bf16 output
+      (ATOL=3e-2). Real numeric check across 5 shapes; observed max_err ~3-5e-3, far below tolerance.'
+  performance:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 4.12
+    stdout_snippet: '==============================================================
+
+      FlyDSL pa_decode_swa (sliding-window paged-attention decode)
+
+      ==============================================================
+
+      Running benchmark on 5 shapes, 10 warmup, 100 iterations...
+
+      Config (seqs,ctx,kvh,sw)             FlyDSL(ms)    Speedup
+
+      --------------------------------------------------------------
+
+      (seqs= 1, ctx= 1024, kvh= 1, sw= 256)            0.9656      1.00x
+
+      (seqs= 1, ctx= 2048, kvh= 1, sw= 512)            0.9592      1.0'
+    stderr_snippet: ''
+    report_file_valid: null
+    analysis: 'Methodology follows the prescribed standard: 10 warmup iterations + 100 measured iterations,
+      reported runtime is the AVERAGE (mean) across the measured iterations, and speedup is derived from
+      the averaged runtimes.'
+  correctness_implementation_review:
+    status: PASS
+    details: 'Independent torch reference (reference_swa_decode): dequantizes the fp8 paged KV cache and
+      computes sliding-window GQA decode attention in fp32, then compares the kernel''s bf16 output (ATOL=3e-2).
+      Real numeric check across 5 shapes; observed max_err ~3-5e-3, far below tolerance.'
+    is_trivially_passing: false
+  self_contained:
+    status: PASS
+    details: All imports resolve to flydsl (environment) or the task-local vendored kernels/ subpackage;
+      no paths outside the workspace.
+    missing_files: []
+  gpu_hang_check:
+    status: PASS
+    details: All executed commands completed without timeout/hang.
+  result_template_compatibility:
+    status: PASS
+    details: Harness emits GEAK_RESULT_LATENCY_MS / GEAK_RESULT_GEOMEAN_SPEEDUP, writes build/performance_report.json,
+      and returns a pass/fail exit code from --correctness; fields map deterministically to task_result_template.yaml.
+    template_name: task_result_template.yaml
+summary: 10 passed, 0 failed, 0 warned. Compile=PASS, correctness=PASS, performance=PASS. Performance
+  uses the prescribed 10-warmup/100-measured mean methodology.

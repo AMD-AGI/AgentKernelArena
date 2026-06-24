@@ -1,0 +1,86 @@
+task_name: flydsl2flydsl/hgemm_splitk_kernel
+validation_timestamp: '2026-06-24T17:42:52.489855'
+overall_status: PASS
+checks:
+  config_schema:
+    status: PASS
+    details: 'All required fields present with correct types (source_file_path, target_kernel_functions,
+      compile_command, correctness_command, task_type). NOTE: task_type=''flydsl2flydsl'' is a newer category
+      not yet listed in the validator''s task_type enum; the field is well-formed and the category is
+      registered in the repo.'
+  source_files_exist:
+    status: PASS
+    details: kernel.py present in task workspace.
+  target_symbols_found:
+    status: PASS
+    details: All target_kernel_functions are defined as `def` in kernel.py.
+  compilation:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 2.01
+    stdout_snippet: 'compile ok
+
+      '
+    stderr_snippet: ''
+    report_file_valid: null
+  correctness:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 8.72
+    stdout_snippet: "==============================================================\nFlyDSL HGEMM SplitK\
+      \ Kernel\n==============================================================\n\n[Correctness Mode]\n\
+      Running correctness on 14 shapes...\n  PASS: (M=32, N=384, K=7168, f16) rel_err=1.1040e-03\n  PASS:\
+      \ (M=4, N=384, K=7168, f16) rel_err=1.3299e-03\n  PASS: (M=65, N=1024, K=8192, f16) rel_err=1.1277e-03\n\
+      \  PASS: (M=8, N=5120, K=2880, f16) rel_err=8.4288e-04\n  PASS: (M=4096, N=4096, K=4096, f16) rel_err=2.6213e-04\n\
+      \  PASS: (M=8192, N"
+    stderr_snippet: ''
+    report_file_valid: null
+    analysis: Compares vs reference_gemm (torch f32) using relative error threshold; real numeric check
+      across 14 shapes.
+  performance:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 8.98
+    stdout_snippet: '==============================================================
+
+      FlyDSL HGEMM SplitK Kernel
+
+      ==============================================================
+
+
+      [Full Benchmark Mode]
+
+      Running benchmark on 14 shapes, 10 warmup, 100 iterations...
+
+      Config (M,N,K,dtype)                    Ref     FlyDSL    Speedup
+
+      --------------------------------------------------------------------
+
+      (M=   32, N=  384, K= 7168, f16)  10.3838ms   0.0424ms   245.16x *
+
+      (M=    4, N=  384, K= 7168, f16)   0.0309ms   0.0361ms     0.'
+    stderr_snippet: ''
+    report_file_valid: null
+    analysis: 'Methodology follows the prescribed standard: 10 warmup iterations + 100 measured iterations,
+      reported runtime is the AVERAGE (mean) across the measured iterations, and speedup is derived from
+      the averaged runtimes.'
+  correctness_implementation_review:
+    status: PASS
+    details: Compares vs reference_gemm (torch f32) using relative error threshold; real numeric check
+      across 14 shapes.
+    is_trivially_passing: false
+  self_contained:
+    status: PASS
+    details: All imports resolve to flydsl (environment) or the task-local vendored kernels/ subpackage;
+      no paths outside the workspace.
+    missing_files: []
+  gpu_hang_check:
+    status: PASS
+    details: All executed commands completed without timeout/hang.
+  result_template_compatibility:
+    status: PASS
+    details: Harness emits GEAK_RESULT_LATENCY_MS / GEAK_RESULT_GEOMEAN_SPEEDUP, writes build/performance_report.json,
+      and returns a pass/fail exit code from --correctness; fields map deterministically to task_result_template.yaml.
+    template_name: task_result_template.yaml
+summary: 10 passed, 0 failed, 0 warned. Compile=PASS, correctness=PASS, performance=PASS. Performance
+  uses the prescribed 10-warmup/100-measured mean methodology.

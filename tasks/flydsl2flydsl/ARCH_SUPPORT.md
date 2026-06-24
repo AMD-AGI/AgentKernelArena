@@ -21,7 +21,7 @@ platform_support:
 
 ---
 
-## ✅ Active on MI300X (gfx942) — benchmarked (15)
+## ✅ Active on MI300X (gfx942) — benchmarked (13)
 
 | Task | Source (`kernels/…`) | Pattern |
 |------|----------------------|---------|
@@ -34,11 +34,9 @@ platform_support:
 | `moe_sorting_kernel` | moe_sorting_kernel.py | L2 MoE sort |
 | `blockscale_preshuffle_gemm_kernel` | blockscale_preshuffle_gemm.py | L3 GEMM (fp8 blockscale) |
 | `preshuffle_gemm_v2_kernel` | preshuffle_gemm_v2.py | L3 GEMM (preshuffle) |
-| `fp8_gemm_4wave_kernel` | fp8_gemm_4wave.py | L3 GEMM (fp8) |
-| `fp8_gemm_8wave_kernel` | fp8_gemm_8wave.py | L3 GEMM (fp8) |
 | `hgemm_splitk_kernel` | hgemm_splitk.py | L3 GEMM (split-K) |
 | `flash_attn_func_kernel` | flash_attn_func.py | L3 attention |
-| `pa_decode_fp8_kernel` | pa_decode_fp8.py | L3 paged-attn decode (fp8) |
+| `pa_decode_fp8_kernel` | pa_decode_fp8.py | L3 paged-attn decode (fp8) — **needs `aiter` in env** |
 | `pa_decode_swa_kernel` | pa_decode_swa.py | L3 paged-attn decode (SWA) |
 
 ## 🟡 Runnable on gfx942 but NOT yet wrapped (candidates, need a harness) (9)
@@ -59,9 +57,27 @@ a `test_kernel_harness.py` + `config.yaml`.
 | qk_norm_rope_quant.py | fused QK-norm + rope + quant | gfx942, gfx950 |
 | custom_all_reduce.py | multi-GPU collective (needs >1 GPU) | gfx942 |
 
-## 🔴 NOT runnable on MI300X (gfx942) — catalogued, skipped (7)
+## 🔴 NOT runnable on MI300X (gfx942) — catalogued, skipped (9)
 
-Present in the arena as `status: skip`. Require RDNA4/gfx1250 (WMMA, fp4) or RDNA.
+Present in the arena as `status: skip`. Require CDNA4/gfx950, RDNA4/gfx1250
+(WMMA, fp4) or RDNA.
+
+### Requires CDNA4 (gfx950)
+
+These two FP8 GEMMs are ported from the HipKittens CDNA4 kernels and emit the
+**CDNA4-only 16-byte `buffer_load_lds` intrinsic** (global→LDS direct DMA). The
+gfx942 (CDNA3) LLVM backend cannot legalize that operand and aborts at codegen
+with `LLVM ERROR: Do not know how to expand this operator's operand!` (process
+exits 134). `compile_command` passes because it does not trigger full codegen;
+the crash surfaces during `--correctness`. Their `config.yaml` is therefore
+`required_arch: gfx950`, `runnable_on_gfx942: false`, `status: skip`.
+
+| Task | Source (`kernels/…`) | Requires | Why not gfx942 |
+|------|----------------------|----------|----------------|
+| `fp8_gemm_4wave_kernel` | fp8_gemm_4wave.py | gfx950 | 16B `buffer_load_lds` (CDNA4-only); CDNA3 backend cannot legalize → LLVM codegen abort |
+| `fp8_gemm_8wave_kernel` | fp8_gemm_8wave.py | gfx950 | 16B `buffer_load_lds` (CDNA4-only); CDNA3 backend cannot legalize → LLVM codegen abort |
+
+### Requires RDNA4/gfx1250 or RDNA
 
 | Task | Source (`kernels/…`) | Requires | Why not gfx942 |
 |------|----------------------|----------|----------------|
@@ -81,5 +97,7 @@ Present in the arena as `status: skip`. Require RDNA4/gfx1250 (WMMA, fp4) or RDN
   `layout_utils.py`, `dpp_utils.py`, `fp8_gemm_utils.py`, `pipeline_utils.py`,
   `tensor_shim.py`, plus the `*_common_gfx1250.py` helpers for the gfx1250 GEMMs.
 - `gfx950` literals appearing alongside `gfx942` are feature-gates (e.g. HW LDS
-  transpose, K16 MFMA, 16B LDS DMA); these kernels fall back to a gfx942 path and
-  still run on MI300X.
+  transpose, K16 MFMA, 16B LDS DMA). Most kernels fall back to a gfx942 path and
+  still run on MI300X — **but `fp8_gemm_4wave` / `fp8_gemm_8wave` do NOT**: they
+  unconditionally emit the CDNA4-only 16B `buffer_load_lds` and abort at codegen
+  on gfx942 (see the gfx950 section above). They are gfx950-only.

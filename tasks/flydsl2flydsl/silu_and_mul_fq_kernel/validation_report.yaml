@@ -1,0 +1,91 @@
+task_name: flydsl2flydsl/silu_and_mul_fq_kernel
+validation_timestamp: '2026-06-24T17:42:53.517966'
+overall_status: PASS
+checks:
+  config_schema:
+    status: PASS
+    details: 'All required fields present with correct types (source_file_path, target_kernel_functions,
+      compile_command, correctness_command, task_type). NOTE: task_type=''flydsl2flydsl'' is a newer category
+      not yet listed in the validator''s task_type enum; the field is well-formed and the category is
+      registered in the repo.'
+  source_files_exist:
+    status: PASS
+    details: kernel.py present in task workspace.
+  target_symbols_found:
+    status: PASS
+    details: All target_kernel_functions are defined as `def` in kernel.py.
+  compilation:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 1.62
+    stdout_snippet: 'compile ok
+
+      '
+    stderr_snippet: ''
+    report_file_valid: null
+  correctness:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 5.32
+    stdout_snippet: "==============================================================\nFlyDSL silu_and_mul_fq\
+      \ Kernel\n==============================================================\n\n[Correctness Mode]\n\
+      Running correctness (vs torch silu*mul + MXFP4 reference) on 5 config(s)...\n  candidate : /mnt/shared/johayang/AgentKernelArena/tasks/flydsl2flydsl/silu_and_mul_fq_kernel/kernel.py\n\
+      \  PASS: (token_num=64, inter_dim=1024, topk=2, fp4) scales exact, grid_tie_frac=0.0000, max|deq-ref|=2.494e-01\n\
+      \  PASS: (token_num=128, inter_di"
+    stderr_snippet: ''
+    report_file_valid: null
+    analysis: 'Independent torch reference: computes silu(gate)*up in fp32 and re-quantizes to MXFP4 (e2m1
+      + per-32 e8m0 block scale) with the kernel''s exact scheme, then decodes the kernel''s packed fp4
+      output and compares. e8m0 block scales match exactly and all e2m1 codes match (grid_tie_frac=0.0)
+      across 5 shapes; residual vs true silu*mul is the expected fp4 granularity.'
+  performance:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 4.37
+    stdout_snippet: '==============================================================
+
+      FlyDSL silu_and_mul_fq Kernel
+
+      ==============================================================
+
+
+      [Full Benchmark Mode]
+
+      Running benchmark on 5 config(s), 10 warmup, 100 iterations...
+
+      Config (tok,inter,topk,q)             Ref     FlyDSL    Speedup
+
+      --------------------------------------------------------------------
+
+      (t=   64, i= 1024, k=2, fp4)   0.0456ms   0.3175ms     0.14x
+
+      (t=  128, i= 1024, k=2, fp4)   0.0451ms   0.2850ms     0.16x
+
+      (t='
+    stderr_snippet: ''
+    report_file_valid: null
+    analysis: 'Methodology follows the prescribed standard: 10 warmup iterations + 100 measured iterations,
+      reported runtime is the AVERAGE (mean) across the measured iterations, and speedup is derived from
+      the averaged runtimes.'
+  correctness_implementation_review:
+    status: PASS
+    details: 'Independent torch reference: computes silu(gate)*up in fp32 and re-quantizes to MXFP4 (e2m1
+      + per-32 e8m0 block scale) with the kernel''s exact scheme, then decodes the kernel''s packed fp4
+      output and compares. e8m0 block scales match exactly and all e2m1 codes match (grid_tie_frac=0.0)
+      across 5 shapes; residual vs true silu*mul is the expected fp4 granularity.'
+    is_trivially_passing: false
+  self_contained:
+    status: PASS
+    details: All imports resolve to flydsl (environment) or the task-local vendored kernels/ subpackage;
+      no paths outside the workspace.
+    missing_files: []
+  gpu_hang_check:
+    status: PASS
+    details: All executed commands completed without timeout/hang.
+  result_template_compatibility:
+    status: PASS
+    details: Harness emits GEAK_RESULT_LATENCY_MS / GEAK_RESULT_GEOMEAN_SPEEDUP, writes build/performance_report.json,
+      and returns a pass/fail exit code from --correctness; fields map deterministically to task_result_template.yaml.
+    template_name: task_result_template.yaml
+summary: 10 passed, 0 failed, 0 warned. Compile=PASS, correctness=PASS, performance=PASS. Performance
+  uses the prescribed 10-warmup/100-measured mean methodology.

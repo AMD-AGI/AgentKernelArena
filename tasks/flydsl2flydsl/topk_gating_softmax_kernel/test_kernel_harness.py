@@ -261,7 +261,7 @@ def run_geak_correctness():
     }
 
 
-def run_geak_benchmark(warmup=10, iters=50):
+def run_geak_benchmark(warmup=10, iters=100):
     import json
     import math
 
@@ -308,7 +308,7 @@ def run_geak_benchmark(warmup=10, iters=50):
             e.record()
             torch.cuda.synchronize()
             times.append(s.elapsed_time(e))
-        ms = sorted(times)[len(times) // 2]
+        ms = sum(times) / len(times)
         latencies.append(ms)
         report_cases.append(
             {
@@ -392,7 +392,7 @@ if __name__ == "__main__":
     parser.add_argument("--benchmark", action="store_true")
     parser.add_argument("--full-benchmark", action="store_true")
     parser.add_argument("--warmup", type=int, default=10)
-    parser.add_argument("--iterations", type=int, default=50)
+    parser.add_argument("--iterations", type=int, default=100)
     args = parser.parse_args()
     if args.correctness:
         r = run_geak_correctness()

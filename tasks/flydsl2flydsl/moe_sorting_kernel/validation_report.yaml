@@ -1,0 +1,74 @@
+task_name: flydsl2flydsl/moe_sorting_kernel
+validation_timestamp: '2026-06-24T17:42:52.874617'
+overall_status: PASS
+checks:
+  config_schema:
+    status: PASS
+    details: 'All required fields present with correct types (source_file_path, target_kernel_functions,
+      compile_command, correctness_command, task_type). NOTE: task_type=''flydsl2flydsl'' is a newer category
+      not yet listed in the validator''s task_type enum; the field is well-formed and the category is
+      registered in the repo.'
+  source_files_exist:
+    status: PASS
+    details: kernel.py present in task workspace.
+  target_symbols_found:
+    status: PASS
+    details: All target_kernel_functions are defined as `def` in kernel.py.
+  compilation:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 1.87
+    stdout_snippet: 'compile ok
+
+      '
+    stderr_snippet: ''
+    report_file_valid: null
+  correctness:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 4.83
+    stdout_snippet: "\n============================================================\nTest: T=8, E=32,\
+      \ topk=4, unit_size=32, path=oneshot\n============================================================\n\
+      \  [num_valid_ids] ref=[672, 8] gpu=[672, 8] (OK)\n  [sorted_ids] exact match (32 valid entries)\n\
+      \  [sorted_weights] max_err=0.00e+00 (OK)\n  [sorted_expert_ids] 21 blocks (OK)\n  [moe_buf_zeroed]\
+      \ OK\n  >>> PASSED\n\n============================================================\nTest: T=32,\
+      \ E=32, topk=4, unit_size=32, path=oneshot\n=="
+    stderr_snippet: ''
+    report_file_valid: null
+    analysis: Pure-Python CPU reference (moe_sorting_reference, CK-style packed IDs); exact id-set + weight
+      tolerance comparison.
+  performance:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 4.54
+    stdout_snippet: "\n============================================================\nTest: T=32, E=64,\
+      \ topk=8, unit_size=32, path=oneshot\n============================================================\n\
+      \  [num_valid_ids] ref=[2016, 32] gpu=[2016, 32] (OK)\n  [sorted_ids] exact match (256 valid entries)\n\
+      \  [sorted_weights] max_err=0.00e+00 (OK)\n  [sorted_expert_ids] 63 blocks (OK)\n  [moe_buf_zeroed]\
+      \ OK\n  >>> PASSED\n\n============================================================\nTest: T=128,\
+      \ E=64, topk=8, unit_size=32, path=mul"
+    stderr_snippet: ''
+    report_file_valid: null
+    analysis: 'Methodology follows the prescribed standard: 10 warmup iterations + 100 measured iterations,
+      reported runtime is the AVERAGE (mean) across the measured iterations, and speedup is derived from
+      the averaged runtimes.'
+  correctness_implementation_review:
+    status: PASS
+    details: Pure-Python CPU reference (moe_sorting_reference, CK-style packed IDs); exact id-set + weight
+      tolerance comparison.
+    is_trivially_passing: false
+  self_contained:
+    status: PASS
+    details: All imports resolve to flydsl (environment) or the task-local vendored kernels/ subpackage;
+      no paths outside the workspace.
+    missing_files: []
+  gpu_hang_check:
+    status: PASS
+    details: All executed commands completed without timeout/hang.
+  result_template_compatibility:
+    status: PASS
+    details: Harness emits GEAK_RESULT_LATENCY_MS / GEAK_RESULT_GEOMEAN_SPEEDUP, writes build/performance_report.json,
+      and returns a pass/fail exit code from --correctness; fields map deterministically to task_result_template.yaml.
+    template_name: task_result_template.yaml
+summary: 10 passed, 0 failed, 0 warned. Compile=PASS, correctness=PASS, performance=PASS. Performance
+  uses the prescribed 10-warmup/100-measured mean methodology.

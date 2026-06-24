@@ -1,0 +1,86 @@
+task_name: flydsl2flydsl/flash_attn_func_kernel
+validation_timestamp: '2026-06-24T17:42:52.041442'
+overall_status: PASS
+checks:
+  config_schema:
+    status: PASS
+    details: 'All required fields present with correct types (source_file_path, target_kernel_functions,
+      compile_command, correctness_command, task_type). NOTE: task_type=''flydsl2flydsl'' is a newer category
+      not yet listed in the validator''s task_type enum; the field is well-formed and the category is
+      registered in the repo.'
+  source_files_exist:
+    status: PASS
+    details: kernel.py present in task workspace.
+  target_symbols_found:
+    status: PASS
+    details: All target_kernel_functions are defined as `def` in kernel.py.
+  compilation:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 1.96
+    stdout_snippet: 'compile ok
+
+      '
+    stderr_snippet: ''
+    report_file_valid: null
+  correctness:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 5.09
+    stdout_snippet: "==============================================================\nFlyDSL Flash Attention\
+      \ Kernel\n==============================================================\n\n[Correctness Mode]\n\
+      Running correctness on 10 shapes...\n  PASS: (B=1, S=128, H=8, D=128, f16, causal) max_err=1.9531e-03\n\
+      \  PASS: (B=1, S=256, H=8, D=128, f16, causal) max_err=9.7656e-04\n  PASS: (B=1, S=512, H=8, D=128,\
+      \ f16, causal) max_err=1.9531e-03\n  PASS: (B=1, S=1024, H=8, D=128, f16, causal) max_err=1.9531e-03\n\
+      \  PASS: (B=1, S=2048, H=8, "
+    stderr_snippet: ''
+    report_file_valid: null
+    analysis: Compares against a torch flash-attention reference with relaxed bf16 tol (3e-2 matches upstream);
+      real check.
+  performance:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 6.35
+    stdout_snippet: '==============================================================
+
+      FlyDSL Flash Attention Kernel
+
+      ==============================================================
+
+
+      [Full Benchmark Mode]
+
+      Running benchmark on 10 shapes, 10 warmup, 100 iterations...
+
+      Config                                            Ref     FlyDSL    Speedup
+
+      ----------------------------------------------------------------------------
+
+      (B= 1,S=  128,H=  8,D=128,f16,causal)   0.7731ms   0.2757ms     2.80x *
+
+      (B= 1,S=  256,H=  8,D=128,f16,causa'
+    stderr_snippet: ''
+    report_file_valid: null
+    analysis: 'Methodology follows the prescribed standard: 10 warmup iterations + 100 measured iterations,
+      reported runtime is the AVERAGE (mean) across the measured iterations, and speedup is derived from
+      the averaged runtimes.'
+  correctness_implementation_review:
+    status: PASS
+    details: Compares against a torch flash-attention reference with relaxed bf16 tol (3e-2 matches upstream);
+      real check.
+    is_trivially_passing: false
+  self_contained:
+    status: PASS
+    details: All imports resolve to flydsl (environment) or the task-local vendored kernels/ subpackage;
+      no paths outside the workspace.
+    missing_files: []
+  gpu_hang_check:
+    status: PASS
+    details: All executed commands completed without timeout/hang.
+  result_template_compatibility:
+    status: PASS
+    details: Harness emits GEAK_RESULT_LATENCY_MS / GEAK_RESULT_GEOMEAN_SPEEDUP, writes build/performance_report.json,
+      and returns a pass/fail exit code from --correctness; fields map deterministically to task_result_template.yaml.
+    template_name: task_result_template.yaml
+summary: 10 passed, 0 failed, 0 warned. Compile=PASS, correctness=PASS, performance=PASS. Performance
+  uses the prescribed 10-warmup/100-measured mean methodology.

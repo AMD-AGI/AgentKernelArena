@@ -14,6 +14,7 @@ import math
 import os
 import random
 import sys
+import tempfile
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
@@ -22,6 +23,56 @@ from typing import List, Optional, Tuple, Union
 # ============================================================================
 
 KERNEL_FILE = "kernel.py"
+
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_FLYDSL2_DIR = os.path.abspath(os.path.join(_THIS_DIR, ".."))
+if _FLYDSL2_DIR not in sys.path:
+    sys.path.insert(0, _FLYDSL2_DIR)
+
+
+def _ensure_writable_flydsl_home():
+    """FlyDSL JIT cache lives under ~/.flydsl; redirect HOME when read-only."""
+    home = os.path.expanduser("~")
+    cache = os.path.join(home, ".flydsl")
+    try:
+        os.makedirs(cache, exist_ok=True)
+        probe = os.path.join(cache, ".write_probe")
+        with open(probe, "w") as f:
+            f.write("ok")
+        os.remove(probe)
+        return
+    except OSError:
+        pass
+    for base in (
+        os.environ.get("GEAK_WORK_DIR", "").strip(),
+        tempfile.gettempdir(),
+        _FLYDSL2_DIR,
+    ):
+        if not base:
+            continue
+        try:
+            new_home = os.path.join(base, ".flydsl_home")
+            os.makedirs(os.path.join(new_home, ".flydsl"), exist_ok=True)
+            os.environ["HOME"] = new_home
+            return
+        except OSError:
+            continue
+
+
+def _ensure_aiter_env():
+    """GEAK aiter-routing gate: must run before any ``import aiter``."""
+    work = os.environ.get("GEAK_WORK_DIR", "").strip() or _THIS_DIR
+    work = os.path.abspath(work)
+    if "AITER_META_DIR" not in os.environ:
+        os.environ["AITER_META_DIR"] = work
+    dev = os.environ.get(
+        "HIP_VISIBLE_DEVICES", os.environ.get("CUDA_VISIBLE_DEVICES", "0")
+    ).split(",")[0]
+    os.environ.setdefault("AITER_JIT_DIR", os.path.join(work, f"_geak_aiter_jit_gpu{dev}"))
+
+
+_ensure_writable_flydsl_home()
+_ensure_aiter_env()
 
 
 def _find_baseline_kernel_dir():
@@ -389,7 +440,7 @@ def run_correctness(shapes=None, verbose=True):
     }
 
 
-def run_benchmark(shapes=None, warmup=10, iters=50, verbose=True):
+def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
     import torch
 
     if shapes is None:
@@ -428,7 +479,7 @@ def run_benchmark(shapes=None, warmup=10, iters=50, verbose=True):
             e.record()
             torch.cuda.synchronize()
             kernel_times.append(s.elapsed_time(e))
-        kernel_ms = sorted(kernel_times)[len(kernel_times) // 2]
+        kernel_ms = sum(kernel_times) / len(kernel_times)
 
         # Reference timing uses the torch PS reference cost as a stable baseline.
         ref_times = []
@@ -440,7 +491,7 @@ def run_benchmark(shapes=None, warmup=10, iters=50, verbose=True):
             e.record()
             torch.cuda.synchronize()
             ref_times.append(s.elapsed_time(e))
-        ref_ms = sorted(ref_times)[len(ref_times) // 2]
+        ref_ms = sum(ref_times) / len(ref_times)
 
         speedup = ref_ms / kernel_ms if kernel_ms > 0 else 1.0
         latencies.append(kernel_ms)
@@ -497,7 +548,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--iterations",
         type=int,
-        default=int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "50")),
+        default=int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "100")),
     )
     args = parser.parse_args()
 

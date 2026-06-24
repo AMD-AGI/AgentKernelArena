@@ -1,0 +1,72 @@
+task_name: flydsl2flydsl/softmax_kernel
+validation_timestamp: '2026-06-24T17:42:53.608529'
+overall_status: PASS
+checks:
+  config_schema:
+    status: PASS
+    details: 'All required fields present with correct types (source_file_path, target_kernel_functions,
+      compile_command, correctness_command, task_type). NOTE: task_type=''flydsl2flydsl'' is a newer category
+      not yet listed in the validator''s task_type enum; the field is well-formed and the category is
+      registered in the repo.'
+  source_files_exist:
+    status: PASS
+    details: kernel.py present in task workspace.
+  target_symbols_found:
+    status: PASS
+    details: All target_kernel_functions are defined as `def` in kernel.py.
+  compilation:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 1.74
+    stdout_snippet: 'compile ok
+
+      '
+    stderr_snippet: ''
+    report_file_valid: null
+  correctness:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 3.79
+    stdout_snippet: "==============================================================\nFlyDSL Softmax Kernel\n\
+      ==============================================================\n\n[Correctness Mode]\nRunning correctness\
+      \ on 10 shapes...\n  PASS: (M=32, N=1024, f32)\n  PASS: (M=64, N=1024, f32)\n  PASS: (M=32, N=2048,\
+      \ f32)\n  PASS: (M=64, N=2048, f32)\n  PASS: (M=128, N=2048, f32)\n  PASS: (M=128, N=4096, f32)\n\
+      \  PASS: (M=256, N=4096, f32)\n  PASS: (M=512, N=4096, f32)\n  PASS: (M=256, N=8192, f32)\n  PASS:\
+      \ (M=512, N=8192, f32)\n----------"
+    stderr_snippet: ''
+    report_file_valid: null
+    analysis: torch.testing.assert_close vs torch softmax reference, atol/rtol=1e-2; real check.
+  performance:
+    status: PASS
+    exit_code: 0
+    duration_seconds: 4.97
+    stdout_snippet: "==============================================================\nFlyDSL Softmax Kernel\n\
+      ==============================================================\n\n[Full Benchmark Mode]\nRunning\
+      \ benchmark on 10 shapes, 10 warmup, 100 iterations...\n  Comparing kernel vs PyTorch\nConfig (M,N,dtype)\
+      \                Ref     FlyDSL    Speedup\n--------------------------------------------------------------\n\
+      (M=  32, N= 1024, f32)     0.5589ms   0.1820ms     3.07x *\n(M=  64, N= 1024, f32)     0.0190ms\
+      \   0.2124ms     0.09x"
+    stderr_snippet: ''
+    report_file_valid: null
+    analysis: 'Methodology follows the prescribed standard: 10 warmup iterations + 100 measured iterations,
+      reported runtime is the AVERAGE (mean) across the measured iterations, and speedup is derived from
+      the averaged runtimes.'
+  correctness_implementation_review:
+    status: PASS
+    details: torch.testing.assert_close vs torch softmax reference, atol/rtol=1e-2; real check.
+    is_trivially_passing: false
+  self_contained:
+    status: PASS
+    details: All imports resolve to flydsl (environment) or the task-local vendored kernels/ subpackage;
+      no paths outside the workspace.
+    missing_files: []
+  gpu_hang_check:
+    status: PASS
+    details: All executed commands completed without timeout/hang.
+  result_template_compatibility:
+    status: PASS
+    details: Harness emits GEAK_RESULT_LATENCY_MS / GEAK_RESULT_GEOMEAN_SPEEDUP, writes build/performance_report.json,
+      and returns a pass/fail exit code from --correctness; fields map deterministically to task_result_template.yaml.
+    template_name: task_result_template.yaml
+summary: 10 passed, 0 failed, 0 warned. Compile=PASS, correctness=PASS, performance=PASS. Performance
+  uses the prescribed 10-warmup/100-measured mean methodology.
