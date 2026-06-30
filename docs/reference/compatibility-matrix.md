@@ -27,10 +27,10 @@ The following software versions are required or verified.
 | Component | Version | Notes |
 | --- | --- | --- |
 | Docker | Current stable release | Required; evaluations run through `make docker-run`. |
-| SGLang benchmark image | `lmsysorg/sglang:v0.5.12-rocm720-mi30x` for `gfx942`; `lmsysorg/sglang:v0.5.12-rocm720-mi35x` for `gfx950` | Override with `AKA_DOCKER_IMAGE`, `AKA_DOCKER_IMAGE_GFX942`, or `AKA_DOCKER_IMAGE_GFX950`. |
-| ROCm | Bundled in the selected SGLang image | The default images are ROCm 7.2 based. |
-| Python | Provided by the image (e.g. 3.10) | Bundled in the SGLang image. |
-| PyTorch | ROCm build bundled in the image | Provided by the SGLang Docker image. |
+| Benchmark image | `lmsysorg/sglang:v0.5.12-rocm720-mi30x` for `gfx942`; `lmsysorg/sglang:v0.5.12-rocm720-mi35x` for `gfx950`; `rocm/vllm-dev:rocm7.2.1_navi_ubuntu24.04_py3.12_pytorch_2.9_vllm_0.16.0` for Navi/RDNA/Radeon `gfx10*`/`gfx11*`/`gfx12*` | Override with `AKA_DOCKER_IMAGE`, `AKA_DOCKER_IMAGE_GFX942`, `AKA_DOCKER_IMAGE_GFX950`, `AKA_DOCKER_IMAGE_NAVI`, or `AKA_DOCKER_IMAGE_<ARCH>`. |
+| ROCm | Bundled in the selected benchmark image | The default images are ROCm 7.2 based. |
+| Python | Provided by the image | Bundled in the selected benchmark image. |
+| PyTorch | ROCm build bundled in the image | Provided by the selected benchmark image. |
 | Triton | Bundled with the image's ROCm PyTorch | Required for Triton task categories. |
 | FlyDSL | Provided by the image (or `make docker-setup-flydsl`) | Required for `flydsl2flydsl` tasks. |
 | hipcc | Matches image ROCm | Required for HIP tasks. |

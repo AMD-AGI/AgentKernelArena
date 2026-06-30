@@ -7,7 +7,8 @@
 All kernel sources in this task suite are pinned to FlyDSL **v0.2.0**. The arena
 is a *complete catalog* of the v0.2.0 `kernels/` compute kernels: kernels that
 cannot run on MI300X are still included here, but are explicitly marked
-`runnable_on_gfx942: false` and are **skipped** (not failed) by the runner.
+`runnable_on_gfx942: false` / `status: skip` and are excluded from the default
+gfx942 benchmark and validation configs.
 
 Each task's `config.yaml` carries a machine-readable `platform_support` block:
 
@@ -21,7 +22,7 @@ platform_support:
 
 ---
 
-## ✅ Active on MI300X (gfx942) — benchmarked (13)
+## ✅ Active on MI300X (gfx942) — benchmarked by default (12)
 
 | Task | Source (`kernels/…`) | Pattern |
 |------|----------------------|---------|
@@ -36,8 +37,19 @@ platform_support:
 | `preshuffle_gemm_v2_kernel` | preshuffle_gemm_v2.py | L3 GEMM (preshuffle) |
 | `hgemm_splitk_kernel` | hgemm_splitk.py | L3 GEMM (split-K) |
 | `flash_attn_func_kernel` | flash_attn_func.py | L3 attention |
-| `pa_decode_fp8_kernel` | pa_decode_fp8.py | L3 paged-attn decode (fp8) — **needs `aiter` in env** |
 | `pa_decode_swa_kernel` | pa_decode_swa.py | L3 paged-attn decode (SWA) |
+
+## 🟠 Runnable on gfx942 with external runtime — skipped by default (1)
+
+`pa_decode_fp8_kernel` targets gfx942 and passes compile/correctness/performance
+in an `aiter`-enabled runtime, but it imports the external AMD `aiter` package
+for fp8 KV quantization and paged-attention metadata/reduce helpers. The default
+FlyDSL validation image does not ship that dependency, so the task is
+`status: skip` and excluded from the default gate.
+
+| Task | Source (`kernels/…`) | Why skipped by default |
+|------|----------------------|------------------------|
+| `pa_decode_fp8_kernel` | pa_decode_fp8.py | Requires external `aiter` runtime; self-containment check intentionally fails without it |
 
 ## 🟡 Runnable on gfx942 but NOT yet wrapped (candidates, need a harness) (9)
 

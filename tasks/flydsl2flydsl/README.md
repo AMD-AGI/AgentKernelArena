@@ -29,7 +29,9 @@ kernel runs there. Per-task hardware support is machine-readable in each
 
 `pa_decode_fp8_kernel` additionally requires **`aiter`** to be available in the
 environment (used for fp8 KV quantization and the paged-attention metadata/reduce
-reference); the other gfx942 tasks need only FlyDSL.
+reference). It is marked `status: skip` and excluded from the default gate because
+the standard FlyDSL validation image does not ship `aiter`; the other gfx942 tasks
+need only FlyDSL.
 
 Notably, `fp8_gemm_4wave_kernel` and `fp8_gemm_8wave_kernel` are **gfx950/CDNA4-only**:
 they emit the CDNA4-only 16B `buffer_load_lds` intrinsic, which the gfx942 LLVM
@@ -70,7 +72,7 @@ Examples are grouped by **compute pattern** (not by any other “difficulty” s
 |------|--------|
 | `flash_attn_func_kernel` | Fused multi-head attention: online softmax, MFMA32 GEMM, DMA-to-LDS, software-pipelined QK/PV. |
 | `hgemm_splitk_kernel` | Half-precision GEMM with split-K, double-buffered LDS, pre-shuffled B. |
-| `pa_decode_fp8_kernel` | Paged-attention decode with FP8 KV-cache and multi-partition reduce; most complex kernel. **Requires `aiter` available in the environment** (fp8 quant + pa metadata/reduce reference). |
+| `pa_decode_fp8_kernel` | Paged-attention decode with FP8 KV-cache and multi-partition reduce; most complex kernel. **Requires `aiter` available in the environment** and is `status: skip` in the default gate. |
 | `blockscale_preshuffle_gemm_kernel` | FP8 blockscale GEMM with preshuffled B and MFMA epilogue. |
 | `fp8_gemm_4wave_kernel` | FP8 GEMM (4-wave) with row scales. **gfx950/CDNA4-only** — emits the CDNA4-only 16B `buffer_load_lds`; aborts at codegen on gfx942 (`status: skip`, see `ARCH_SUPPORT.md`). |
 | `fp8_gemm_8wave_kernel` | FP8 GEMM (8-wave) with row scales, ported from HipKittens CDNA4. **gfx950/CDNA4-only** — emits the CDNA4-only 16B `buffer_load_lds`; aborts at codegen on gfx942 (`status: skip`, see `ARCH_SUPPORT.md`). |

@@ -3,6 +3,7 @@ set -euo pipefail
 
 DEFAULT_DOCKER_IMAGE_GFX942="${AKA_DOCKER_IMAGE_GFX942:-lmsysorg/sglang:v0.5.12-rocm720-mi30x}"
 DEFAULT_DOCKER_IMAGE_GFX950="${AKA_DOCKER_IMAGE_GFX950:-lmsysorg/sglang:v0.5.12-rocm720-mi35x}"
+DEFAULT_DOCKER_IMAGE_NAVI="${AKA_DOCKER_IMAGE_NAVI:-rocm/vllm-dev:rocm7.2.1_navi_ubuntu24.04_py3.12_pytorch_2.9_vllm_0.16.0}"
 CONTAINER_WORKDIR="${AKA_DOCKER_WORKDIR:-/workspace}"
 HOST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HOST_HOME="${HOME:?HOME must be set}"
@@ -32,6 +33,10 @@ Environment overrides:
   AKA_DOCKER_IMAGE_<ARCH> Per-arch image override, e.g. AKA_DOCKER_IMAGE_GFX950=...
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
   AKA_DOCKER_IMAGE_GFX950 Default image for gfx950.
+  AKA_DOCKER_IMAGE_NAVI   Default image for Navi/RDNA/Radeon gfx10*/gfx11*/gfx12*.
+  AKA_FLYDSL_SPEC         FlyDSL pip requirement for setup-flydsl (default: flydsl>=0.2,<0.3).
+  AKA_FLYDSL_EXTRA_INDEX_URL
+                          Extra pip index for FlyDSL wheels (default: ROCm nightly gfx942/gfx950).
   AKA_NODE_PREFIX         Host Node prefix containing bin/node and bin/codex.
 EOF
 }
@@ -75,6 +80,7 @@ docker_image_for_arch() {
     case "$arch" in
         gfx942) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_GFX942" ;;
         gfx950) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_GFX950" ;;
+        gfx10*|gfx11*|gfx12*) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_NAVI" ;;
         *)
             die "No Docker image mapping for GPU arch '$arch'. Set AKA_DOCKER_IMAGE or ${env_name}."
             ;;
@@ -163,7 +169,7 @@ detect_host_gpu_arch() {
 
 select_runtime() {
     local arch="$1"
-    [[ -n "$arch" ]] || die "Could not infer GPU arch; set AKA_GPU_ARCH=gfx942 or AKA_GPU_ARCH=gfx950"
+    [[ -n "$arch" ]] || die "Could not infer GPU arch; set AKA_GPU_ARCH=gfx942, gfx950, or a Navi/RDNA arch such as gfx1100"
 
     SELECTED_GPU_ARCH="$(normalize_gpu_arch "$arch")"
     if [[ -n "${AKA_DOCKER_IMAGE:-}" ]]; then
@@ -352,6 +358,9 @@ build_docker_args() {
         -e "TORCH_EXTENSIONS_DIR=/tmp/torch-extensions"
         -e "TRITON_CACHE_DIR=/tmp/triton-cache"
         -e "PYTHONUSERBASE=${CONTAINER_WORKDIR}/.aka-pyuserbase"
+        -e "PYTHONPATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/site-packages"
+        -e "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-cache"
+        -e "FLYDSL_AUTOTUNE_CACHE_DIR=/tmp/flydsl-autotune"
         -e "MIOPEN_USER_DB_PATH=/tmp/miopen-cache"
         -e "MIOPEN_CACHE_DIR=/tmp/miopen-cache"
         -e "MIOPEN_CUSTOM_CACHE_DIR=/tmp/miopen-cache"
@@ -380,11 +389,11 @@ build_docker_args() {
     add_device_if_present /dev/mem
 
     add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR"
-    # Persistent pip user-base (PYTHONUSERBASE) so `make docker-setup-flydsl` survives
+    # Persistent Python package overlay so `make docker-setup-flydsl` survives
     # across runs. It lives INSIDE the repo dir, which is already bind-mounted above and
     # is owned by the host user — this avoids a separate mount whose source the docker
     # daemon would have to create (which fails on NFS/root-squashed homes).
-    mkdir -p "$HOST_ROOT/.aka-pyuserbase" 2>/dev/null || true
+    mkdir -p "$HOST_ROOT/.aka-pyuserbase/site-packages" 2>/dev/null || true
     local _agent
     for _agent in $agents; do
         mount_agent "$_agent" "$strict"
@@ -557,17 +566,40 @@ PY
 }
 
 container_setup_flydsl() {
-    # If the image already provides FlyDSL, do nothing — installing a --user copy
-    # could shadow the image version with an incompatible one.
-    if python -c 'import flydsl' 2>/dev/null; then
-        python -c 'import flydsl; print("flydsl already provided by image: " + str(getattr(flydsl, "__version__", "unknown")) + "; nothing to install")'
-        return 0
-    fi
-    # Otherwise install into the persistent pip user-base (PYTHONUSERBASE), a
-    # host-mounted dir, so it survives the --rm container and is importable in later runs.
-    echo "flydsl not found in image; installing into persistent pip user-base..."
-    python -m pip install --user --upgrade flydsl
-    python -c 'import flydsl; print("flydsl=" + str(getattr(flydsl, "__version__", "unknown")) + " setup OK")'
+    local flydsl_spec="${AKA_FLYDSL_SPEC:-flydsl>=0.2,<0.3}"
+    local extra_index="${AKA_FLYDSL_EXTRA_INDEX_URL:-https://rocm.frameworks-nightlies.amd.com/whl/gfx942-gfx950/}"
+    local expected_prefix="${AKA_FLYDSL_EXPECTED_PREFIX:-0.2}"
+    local install_target="${PYTHONUSERBASE:-${CONTAINER_WORKDIR}/.aka-pyuserbase}/site-packages"
+
+    python - <<'PY' || true
+try:
+    import flydsl
+    print("existing flydsl=" + str(getattr(flydsl, "__version__", "unknown")) + " at " + str(getattr(flydsl, "__file__", "unknown")))
+except Exception as exc:
+    print("existing flydsl import failed: " + repr(exc))
+PY
+
+    # Always install into the persistent package overlay. The benchmark images
+    # may already ship FlyDSL, but those baked-in versions can lag the task suite.
+    # The image Python runs from a venv where --user installs are disabled, so use
+    # --target plus PYTHONPATH instead.
+    mkdir -p "$install_target"
+    echo "Installing FlyDSL requirement '${flydsl_spec}' into ${install_target}..."
+    python -m pip install --upgrade --force-reinstall --pre --target "$install_target" --extra-index-url "$extra_index" "$flydsl_spec"
+
+    AKA_EXPECTED_FLYDSL_PREFIX="$expected_prefix" python - <<'PY'
+import os
+import sys
+
+import flydsl
+
+version = str(getattr(flydsl, "__version__", "unknown"))
+path = str(getattr(flydsl, "__file__", "unknown"))
+expected = os.environ.get("AKA_EXPECTED_FLYDSL_PREFIX", "0.2")
+print(f"flydsl={version} path={path} setup OK")
+if not version.startswith(expected):
+    raise SystemExit(f"FlyDSL version {version!r} does not start with expected prefix {expected!r}")
+PY
 }
 
 case "${1:-}" in

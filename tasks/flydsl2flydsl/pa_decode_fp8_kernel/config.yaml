@@ -38,3 +38,7 @@ platform_support:
   runnable_on_gfx942: true
   requires_aiter: true
   status: skip
+  skip_reason: |
+    Requires the external AMD aiter runtime for fp8 KV quantization and
+    paged-attention metadata/reduce helpers. It can run on gfx942 in an
+    aiter-enabled image, but is excluded from the default self-contained gate.

@@ -9,7 +9,7 @@ myst:
 
 AgentKernelArena runs AI coding agents against GPU kernel tasks on an AMD GPU and
 evaluates the results. **Docker is the only supported workflow**: the evaluator runs
-inside the GPU-arch-specific SGLang Docker image and bind-mounts the local agent CLIs
+inside the GPU-arch-specific Docker image and bind-mounts the local agent CLIs
 plus their login state.
 
 ## Prerequisites
@@ -17,11 +17,13 @@ plus their login state.
 - **Docker**
 - **AMD GPU with ROCm-compatible Docker access** — the runner mounts `/dev/kfd`,
   `/dev/dri`, and `/dev/mem` when present.
-- **SGLang benchmark image** — `gfx942` uses
+- **Benchmark image** — `gfx942` uses
   `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses
-  `lmsysorg/sglang:v0.5.12-rocm720-mi35x`. The runner selects from
-  `target_gpu_model` for benchmark runs and from the visible host GPU for shell
-  and smoke commands.
+  `lmsysorg/sglang:v0.5.12-rocm720-mi35x`; Navi/RDNA/Radeon
+  `gfx10*`/`gfx11*`/`gfx12*` uses
+  `rocm/vllm-dev:rocm7.2.1_navi_ubuntu24.04_py3.12_pytorch_2.9_vllm_0.16.0`.
+  The runner selects from `target_gpu_model` for benchmark runs and from the
+  visible host GPU for shell and smoke commands.
 - **Git**
 - At least one supported agent CLI already installed and logged in on the host. The
   Docker runner provisions the configured agent for a run. Codex, Claude Code,
@@ -74,15 +76,16 @@ npm install -g @anthropic-ai/claude-code
 
 ## FlyDSL tasks (optional)
 
-`flydsl2flydsl` tasks need the `flydsl` package inside the container. Most images
-already ship it (`make docker-smoke` prints `flydsl=ok <version>`). If yours does
-not, install it once into the container's persistent pip user-base:
+`flydsl2flydsl` tasks need the `flydsl` package inside the container. Install or
+upgrade FlyDSL once into the container's persistent Python package overlay:
 
 ```bash
 make docker-setup-flydsl
 ```
 
-This is a no-op when the image already provides FlyDSL.
+By default this installs a FlyDSL `0.2.x` wheel, even if the selected Docker image
+already provides an older FlyDSL. Override the requirement with
+`AKA_FLYDSL_SPEC` when a task suite needs a different version.
 
 ## Configure API keys
 

@@ -2,8 +2,8 @@ validated: 13
 timestamp: '2026-06-24T17:14:26.533862'
 active_set:
   total: 12
-  PASS: 10
-  WARN: 2
+  PASS: 12
+  WARN: 0
   FAIL: 0
 tasks:
   blockscale_preshuffle_gemm_kernel: PASS
@@ -12,10 +12,10 @@ tasks:
   hgemm_splitk_kernel: PASS
   layernorm_kernel: PASS
   moe_sorting_kernel: PASS
-  pa_decode_fp8_kernel: SKIP (FAIL - not in default gate)
-  pa_decode_swa_kernel: WARN
+  pa_decode_fp8_kernel: SKIP (external aiter dependency; excluded from default gate)
+  pa_decode_swa_kernel: PASS
   preshuffle_gemm_v2_kernel: PASS
   rmsnorm_kernel: PASS
-  silu_and_mul_fq_kernel: WARN
+  silu_and_mul_fq_kernel: PASS
   softmax_kernel: PASS
   topk_gating_softmax_kernel: PASS

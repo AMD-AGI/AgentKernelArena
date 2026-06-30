@@ -31,3 +31,7 @@ platform_support:
   required_arch: gfx950
   runnable_on_gfx942: false
   status: skip
+  skip_reason: |
+    Requires gfx950/CDNA4. This kernel emits the CDNA4-only 16-byte
+    buffer_load_lds intrinsic; the gfx942/CDNA3 backend cannot legalize it and
+    aborts during codegen.

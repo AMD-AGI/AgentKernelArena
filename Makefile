@@ -18,8 +18,8 @@ help:
 	@echo "make docker-check-agents - Verify Codex, Claude Code, and Cursor Agent login reuse in Docker"
 	@echo "make docker-smoke        - Verify Docker Python, ROCm tools, imports, and GPU access"
 	@echo "make docker-run CONFIG=config.yaml RUN_ARGS=\"--run-suffix test\" - Run benchmark in Docker"
-	@echo "                         Images: gfx942->mi30x, gfx950->mi35x; override with AKA_DOCKER_IMAGE=..."
-	@echo "make docker-setup-flydsl - Install FlyDSL into the container (needed for flydsl2flydsl tasks)"
+	@echo "                         Images: gfx942->mi30x, gfx950->mi35x, gfx10*/11*/12*->navi; override with AKA_DOCKER_IMAGE=..."
+	@echo "make docker-setup-flydsl - Install/upgrade FlyDSL 0.2.x in the container (needed for flydsl2flydsl tasks)"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "make sync-perf-helpers   - Refresh committed perf-helper stubs in task sources"
@@ -50,8 +50,8 @@ docker-smoke:
 docker-run:
 	@$(DOCKER_RUNNER) run --config_name $(CONFIG) $(RUN_ARGS)
 
-# Install FlyDSL into the container's persistent pip user-base (the base image does
-# not ship it). Run once per machine/image; needed only for flydsl2flydsl tasks.
+# Install/upgrade FlyDSL into the container's persistent Python package overlay. Run once
+# per machine/image; needed only for flydsl2flydsl tasks.
 docker-setup-flydsl:
 	@$(DOCKER_RUNNER) setup-flydsl
 

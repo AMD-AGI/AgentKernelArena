@@ -92,7 +92,7 @@ AgentKernelArena/
 ### Prerequisites
 
 - Docker
-- The SGLang Docker image for your GPU arch (`gfx942` uses `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses `lmsysorg/sglang:v0.5.12-rocm720-mi35x`)
+- The benchmark Docker image for your GPU arch (`gfx942` uses `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses `lmsysorg/sglang:v0.5.12-rocm720-mi35x`; Navi/RDNA/Radeon `gfx10*`/`gfx11*`/`gfx12*` uses `rocm/vllm-dev:rocm7.2.1_navi_ubuntu24.04_py3.12_pytorch_2.9_vllm_0.16.0`)
 - Git
 - Host-installed agent CLIs for the agents you plan to evaluate
 
