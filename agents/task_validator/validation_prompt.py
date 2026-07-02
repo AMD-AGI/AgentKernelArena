@@ -160,7 +160,9 @@ Verify that config.yaml contains all required fields:
 - `compile_command` (list of strings)
 - `correctness_command` (list of strings)
 - `task_type` (string, one of: hip2hip, cuda2hip, triton2triton, torch2hip, instruction2triton, rocprim, flydsl2flydsl, repository)
-Also check that optional fields (`performance_command`, `prompt`) are well-formed if present.
+Also check that optional fields (`performance_command`, `prompt`, `platform_support`) are well-formed if present.
+`platform_support`, when present, is a mapping with optional `status` (`active` or `skip`),
+optional `required_arch` (string such as `gfx942`), and optional `skip_reason` (string).
 
 **IMPORTANT — `task_type: repository` schema differs.** Repository tasks clone a full upstream
 project and drive it through `scripts/task_runner.py` instead of shipping an isolated kernel file.

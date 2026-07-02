@@ -219,10 +219,14 @@ def build_fused_rope_cache_module(
                 # Use ds_bpermute to get pair element via LDS cross-lane shuffle (no VMEM).
                 q_pair_e = ds_bpermute_pair(q_e_vec, pair_byte_addr)
 
-                q_cos = q_e * cos_e
-                q_pair_sin = q_pair_e * sin_e
+                q_f = q_e.to(fx.Float32)
+                q_pair_f = q_pair_e.to(fx.Float32)
+                cos_f = cos_e.to(fx.Float32)
+                sin_f = sin_e.to(fx.Float32)
+                q_cos = q_f * cos_f
+                q_pair_sin = q_pair_f * sin_f
                 q_sin_term = is_first_half.select(-q_pair_sin, q_pair_sin)
-                q_rot_e = q_cos + q_sin_term
+                q_rot_e = (q_cos + q_sin_term).to(elem_dtype)
 
                 store_vec(q_rot_e.ir_value(), qo_div, tid)
 
@@ -241,10 +245,14 @@ def build_fused_rope_cache_module(
                 # Use ds_bpermute to get pair element via LDS cross-lane shuffle (no VMEM).
                 k_pair_e = ds_bpermute_pair(k_e_vec, pair_byte_addr)
 
-                k_cos = k_e * cos_e
-                k_pair_sin = k_pair_e * sin_e
+                k_f = k_e.to(fx.Float32)
+                k_pair_f = k_pair_e.to(fx.Float32)
+                cos_f = cos_e.to(fx.Float32)
+                sin_f = sin_e.to(fx.Float32)
+                k_cos = k_f * cos_f
+                k_pair_sin = k_pair_f * sin_f
                 k_sin_term = is_first_half.select(-k_pair_sin, k_pair_sin)
-                k_rot_e = k_cos + k_sin_term
+                k_rot_e = (k_cos + k_sin_term).to(elem_dtype)
 
                 store_vec(k_rot_e.ir_value(), ko_div, tid)
                 # K_buf, K_out_buf now dead — 8 SGPRs freed

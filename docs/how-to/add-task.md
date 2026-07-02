@@ -105,7 +105,18 @@ prompt:
   source_code: null      # override the default source-code section
   instructions: null     # custom instructions
   cheatsheet: null        # reference/cheatsheet content
+
+# Optional platform gate. Omit this block for tasks that run everywhere.
+platform_support:
+  required_arch: gfx942   # compared with target_gpu_model's resolved gfx arch
+  status: active          # active | skip
+  skip_reason: null       # recommended when status is skip
 ```
+
+Tasks with `platform_support.status: skip`, or with a `required_arch` that does
+not match the current run, are skipped before workspace creation. Historical
+per-suite helper fields such as `runnable_on_gfx942` are documentation only;
+the scheduler uses `platform_support.status` and `platform_support.required_arch`.
 
 ## Authoring rules
 

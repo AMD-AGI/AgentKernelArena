@@ -73,6 +73,7 @@ For isolated-kernel tasks (`hip2hip`, `cuda2hip`, `triton2triton`,
 | `task_type` | Yes | One of `hip2hip`, `cuda2hip`, `triton2triton`, `instruction2triton`, `torch2hip`, or `flydsl2flydsl` |
 | `performance_command` | No | Command(s) to measure performance |
 | `task_result_template` | No | Override the result template (`null` = default) |
+| `platform_support` | No | Optional run-gating metadata; see below |
 | `prompt.source_code` | No | Override the prompt's source-code section |
 | `prompt.instructions` | No | Custom prompt instructions |
 | `prompt.cheatsheet` | No | Reference/cheatsheet content for the prompt |
@@ -91,8 +92,24 @@ For repository-level tasks (`task_type: repository`):
 | `post_clone_install_mode` | No | Controls when `post_clone_install` runs, for example `every_setup` |
 | `source_file_path` | No | Optional target source-file hints, relative to the cloned repository root |
 | `target_kernel_functions` | No | Optional target function or kernel-symbol hints |
+| `platform_support` | No | Optional run-gating metadata; see below |
 | `prompt.instructions` | No | Custom prompt instructions |
 | `prompt.cheatsheet` | No | Reference/cheatsheet content for the prompt |
+
+Optional platform support metadata:
+
+```yaml
+platform_support:
+  required_arch: gfx942   # optional; compared with target_gpu_model's gfx arch
+  status: active          # optional; active or skip
+  skip_reason: null       # recommended when status is skip
+```
+
+If `platform_support` is omitted, the task is scheduled normally. If
+`status: skip`, or if `required_arch` does not match the current run's resolved
+GPU architecture, the task is skipped before workspace creation and agent
+launch. Historical task-specific fields such as `runnable_on_gfx942` are
+documentation only and do not affect scheduling.
 
 See [Add a task](../how-to/add-task.md) for layout and authoring rules.
 

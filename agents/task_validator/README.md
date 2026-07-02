@@ -36,6 +36,10 @@ make docker-run CONFIG=config.yaml
 
 Each task workspace will contain a `validation_report.yaml` with per-check results. A `validation_summary.yaml` is written to the workspace root with aggregated statistics.
 
+Tasks filtered by `platform_support.status: skip` or a non-matching
+`platform_support.required_arch` are skipped before workspace creation and are
+not included in the validation summary counts.
+
 ### Agent Configuration
 
 Edit `agents/task_validator/agent_config.yaml`:

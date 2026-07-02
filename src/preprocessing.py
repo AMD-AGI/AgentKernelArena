@@ -12,7 +12,7 @@ from typing import Any, Optional
 from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
 
 
-def _resolve_gfx_arch(target_gpu_model: str) -> str | None:
+def resolve_gfx_arch(target_gpu_model: str) -> str | None:
     """
     Look up the gfx architecture token (e.g. 'gfx942') for a given GPU model
     name (e.g. 'MI300') from default_cheatsheet.yaml.
@@ -47,7 +47,7 @@ def setup_rocm_env(target_gpu_model: str, logger: logging.Logger) -> None:
 
     Should be called once at the start of main(), before any task is launched.
     """
-    gfx_arch = _resolve_gfx_arch(target_gpu_model)
+    gfx_arch = resolve_gfx_arch(target_gpu_model)
     if not gfx_arch:
         logger.warning(
             f"Could not resolve gfx arch for GPU model '{target_gpu_model}'. "

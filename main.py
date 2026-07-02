@@ -6,7 +6,12 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 from src.tasks import get_task_config
-from src.preprocessing import setup_workspace, setup_rocm_env, is_task_complete
+from src.preprocessing import (
+    setup_workspace,
+    setup_rocm_env,
+    is_task_complete,
+    resolve_gfx_arch,
+)
 from src.module_registration import AgentType, load_agent_launcher, load_post_processing_handler
 from src.evaluator import measure_baseline, evaluate_kernel, write_task_result
 from src.runtime_env import apply_subprocess_python_path
@@ -22,6 +27,105 @@ parser.add_argument("--resume-run", type=str, default=None,
                     help="Resume an existing run by specifying the run directory name (e.g., run_20250115_143022)")
 parser.add_argument("--resume-latest", action="store_true",
                     help="Resume the most recent run in the workspace")
+
+
+def should_run_task_for_platform(
+    task_name: str,
+    task_config: dict,
+    current_gfx_arch: str | None,
+    logger: logging.Logger,
+) -> bool:
+    """Return False when a task declares platform support that excludes this run."""
+    platform_support = task_config.get("platform_support")
+    if platform_support is None:
+        return True
+    if not isinstance(platform_support, dict):
+        logger.warning(
+            "Task %s has non-dict platform_support=%r; treating task as runnable",
+            task_name,
+            platform_support,
+        )
+        return True
+
+    raw_status = platform_support.get("status", "active")
+    status = str(raw_status).strip().lower() if raw_status is not None else "active"
+    if status == "skip":
+        skip_reason = str(platform_support.get("skip_reason") or "").strip()
+        suffix = f": {skip_reason}" if skip_reason else ""
+        logger.warning(
+            "Skipping task %s before workspace setup: platform_support.status=skip%s",
+            task_name,
+            suffix,
+        )
+        return False
+    if status and status != "active":
+        logger.warning(
+            "Task %s has unsupported platform_support.status=%r; treating task as runnable",
+            task_name,
+            raw_status,
+        )
+
+    required_arch = platform_support.get("required_arch")
+    if not required_arch:
+        return True
+    if not isinstance(required_arch, str):
+        logger.warning(
+            "Task %s has non-string platform_support.required_arch=%r; treating task as runnable",
+            task_name,
+            required_arch,
+        )
+        return True
+
+    required_arch = required_arch.strip()
+    if not required_arch:
+        return True
+    if not current_gfx_arch:
+        logger.warning(
+            "Skipping task %s before workspace setup: platform_support.required_arch=%s, "
+            "but current target GPU arch could not be resolved",
+            task_name,
+            required_arch,
+        )
+        return False
+    if required_arch != current_gfx_arch:
+        logger.warning(
+            "Skipping task %s before workspace setup: platform_support.required_arch=%s "
+            "does not match current target GPU arch %s",
+            task_name,
+            required_arch,
+            current_gfx_arch,
+        )
+        return False
+
+    return True
+
+
+def filter_tasks_by_platform(
+    task_config_dict: dict[str, str],
+    current_gfx_arch: str | None,
+    logger: logging.Logger,
+) -> dict[str, str]:
+    """Drop tasks that declare platform_support constraints for another runtime."""
+    runnable_tasks: dict[str, str] = {}
+    skipped_tasks: list[str] = []
+
+    for task_name, task_config_dir in task_config_dict.items():
+        with open(task_config_dir, "r") as f:
+            task_config = yaml.safe_load(f) or {}
+        if should_run_task_for_platform(task_name, task_config, current_gfx_arch, logger):
+            runnable_tasks[task_name] = task_config_dir
+        else:
+            skipped_tasks.append(task_name)
+
+    if skipped_tasks:
+        logger.warning(
+            "Platform support preflight skipped %d task(s): %s",
+            len(skipped_tasks),
+            skipped_tasks,
+        )
+
+    return runnable_tasks
+
 
 def main() -> None:
     """Main entry point for AgentKernelArena framework."""
@@ -136,6 +240,7 @@ def main() -> None:
 
     # Set PYTORCH_ROCM_ARCH based on target_gpu_model before any task runs
     setup_rocm_env(target_gpu_model, logger)
+    current_gfx_arch = resolve_gfx_arch(target_gpu_model)
 
     # Load agent launcher
     try:
@@ -152,6 +257,11 @@ def main() -> None:
         task_config_dict = {}
         for category in tasks:
             task_config_dict.update(get_task_config(category=category))
+
+    task_config_dict = filter_tasks_by_platform(task_config_dict, current_gfx_arch, logger)
+    if len(task_config_dict) == 0:
+        logger.info("No tasks remain after platform support preflight. Nothing to run.")
+        return
 
     # Filter out completed tasks if resuming
     if resume_mode:

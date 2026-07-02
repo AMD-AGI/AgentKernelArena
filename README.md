@@ -191,7 +191,19 @@ prompt:
   source_code: null      # Optional: override default source code inclusion
   instructions: null     # Optional: custom instructions
   cheatsheet: null       # Optional: provide cheatsheet/reference
+
+# Optional: skip tasks that do not apply to this run's target GPU arch.
+platform_support:
+  required_arch: gfx942   # Compared with target_gpu_model's resolved gfx arch
+  status: active          # active | skip
+  skip_reason: null       # Recommended when status is skip
 ```
+
+If `platform_support` is omitted, the task runs as before. If
+`platform_support.status: skip`, or if `required_arch` does not match the
+current `target_gpu_model`, the framework skips the task before creating a
+workspace or launching an agent. Historical fields such as
+`runnable_on_gfx942` are documentation only and are not used for scheduling.
 
 
 ## Scoring System
