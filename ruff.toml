@@ -1,0 +1,30 @@
+# Ruff configuration for AgentKernelArena.
+#
+# Scope: the framework's own Python code (src/, agents/, main.py, compare_runs.py,
+# visualization/). Benchmark task sources under tasks/ are intentionally excluded:
+# they are agent-editable fixtures/templates that may contain deliberately
+# incomplete or unusual code (e.g. "# Your code here", mock kernels), so linting
+# them would produce false positives.
+
+target-version = "py310"
+line-length = 120
+
+extend-exclude = [
+    "tasks",
+    "held_out",
+    "docs",
+    "workspace_*",
+    "works",
+    "logs",
+    "*.ipynb",
+]
+
+[lint]
+# Enforced rule set = the "must-fix", bug-catching subset only. This is kept green
+# on the current tree so the gate is meaningful (it fails on real regressions, not
+# on pre-existing style debt). Broader style rules are run separately as advisory.
+#   E9  - syntax errors (E901/E902/E999)
+#   F63 - invalid comparisons / assert on a tuple
+#   F7  - misplaced statements (return/break/continue outside a valid scope)
+#   F82 - undefined names (F821/F822/F823)
+select = ["E9", "F63", "F7", "F82"]

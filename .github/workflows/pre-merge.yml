@@ -1,0 +1,77 @@
+name: pre-merge
+
+# 合入前 CI (pre-merge gate)
+# ---------------------------------------------------------------------------
+# Fast, CPU-only, deterministic checks that must pass BEFORE a pull request is
+# merged. These are designed to be configured as *required status checks* in the
+# branch-protection rules for `main`. They deliberately avoid GPU / ROCm and
+# heavy runtime dependencies so they run on standard GitHub-hosted runners in a
+# couple of minutes.
+#
+# Heavy, GPU-dependent validation (real kernel compile / correctness / perf) runs
+# post-merge on self-hosted AMD runners — see post-merge.yml.
+#
+# NOTE: perf-helper stub integrity is already gated on PRs by perf-helpers.yml,
+# so it is not duplicated here.
+
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+
+# Cancel superseded runs for the same PR / ref to save runner minutes.
+concurrency:
+  group: pre-merge-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install "ruff==0.15.17"
+      # Enforced: bug-catching rule set from ruff.toml (E9/F63/F7/F82). Kept green
+      # on the current tree, so a failure here means a real regression.
+      - name: Ruff lint
+        run: ruff check --output-format=github .
+      # Advisory: formatting is not enforced yet; surface diffs without blocking.
+      - name: Ruff format check (advisory)
+        run: ruff format --check .
+        continue-on-error: true
+
+  compile:
+    name: Byte-compile (syntax check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # Catches syntax / indentation errors across the framework sources without
+      # importing GPU dependencies.
+      - name: Byte-compile framework sources
+        run: python -m compileall -q src agents main.py compare_runs.py
+
+  validate-task-configs:
+    name: Validate task configs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install PyYAML
+        run: pip install pyyaml
+      # Ensures every tasks/**/config.yaml parses and matches the minimal schema
+      # (valid mapping, known task_type, well-typed command/prompt fields).
+      - name: Validate tasks/**/config.yaml
+        run: python .github/scripts/validate_task_configs.py

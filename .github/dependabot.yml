@@ -1,0 +1,25 @@
+version: 2
+
+# Keep CI action pins and documentation dependencies current.
+updates:
+  # GitHub Actions used by the workflows in .github/workflows/.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "ci"
+
+  # Sphinx / documentation toolchain (docs/sphinx/requirements.txt).
+  - package-ecosystem: "pip"
+    directory: "/docs/sphinx"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docs"
+    labels:
+      - "dependencies"
+      - "docs"

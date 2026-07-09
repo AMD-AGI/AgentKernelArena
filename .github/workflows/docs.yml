@@ -1,0 +1,49 @@
+name: docs
+
+# Documentation build check (Sphinx).
+# - Pre-merge: runs on PRs that touch docs, catching build breakage before merge.
+# - Post-merge: runs on pushes to main as a safety net.
+# Hosting/publishing is handled by Read the Docs via .readthedocs.yaml; this
+# workflow only verifies the HTML build succeeds and archives the output.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".readthedocs.yaml"
+      - ".github/workflows/docs.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".readthedocs.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build docs (Sphinx HTML)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          # Match the Read the Docs build (.readthedocs.yaml).
+          python-version: "3.10"
+      - name: Install doc requirements
+        run: pip install -r docs/sphinx/requirements.txt
+      - name: Sphinx build (HTML)
+        run: sphinx-build -b html docs docs/_build/html
+      - name: Upload built HTML
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-html
+          path: docs/_build/html
+          retention-days: 14
