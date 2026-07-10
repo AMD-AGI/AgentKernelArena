@@ -31,3 +31,9 @@ held_out_tests/
 # Documentation build environment and output
 .docvenv/
 docs/_build/
+
+# Python test / coverage artifacts
+.coverage
+coverage.xml
+.pytest_cache/
+htmlcov/
