@@ -1,0 +1,33 @@
+# Test & coverage configuration for AgentKernelArena.
+#
+# NOTE: this file intentionally has NO [build-system] / [project] table — the
+# framework runs from source inside the pinned ROCm/SGLang Docker image (see the
+# Makefile), it is not installed as a package. This file only centralizes the
+# pytest / coverage settings so the CPU unit suite under tests/ behaves the same
+# locally and in CI. (Ruff is configured separately in ruff.toml.)
+
+[tool.pytest.ini_options]
+# Only collect the first-party unit tests. tasks/ is deliberately NOT collected:
+# those files are agent-editable benchmark fixtures that import torch/triton and
+# other GPU dependencies, and are not unit tests.
+testpaths = ["tests"]
+# Put the repo root on sys.path so tests can do `from src... import ...`.
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.coverage.run]
+# Measure coverage of the framework sources only.
+source = ["src"]
+omit = [
+    "*/__init__.py",
+    "src/tools/perf/*",
+]
+
+[tool.coverage.report]
+skip_empty = true
+precision = 2
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

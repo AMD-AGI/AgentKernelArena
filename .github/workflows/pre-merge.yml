@@ -8,8 +8,11 @@ name: pre-merge
 # heavy runtime dependencies so they run on standard GitHub-hosted runners in a
 # couple of minutes.
 #
-# Heavy, GPU-dependent validation (real kernel compile / correctness / perf) runs
-# post-merge on self-hosted AMD runners — see post-merge.yml.
+# Companion CPU workflows: tests-coverage.yml (pytest + coverage), docs.yml
+# (Sphinx build on doc changes) and codeql.yml (security scan). GPU-dependent
+# validation (real kernel compile / correctness / perf) is intentionally out of
+# scope: it needs self-hosted AMD runners and can be added later as a separate
+# opt-in workflow.
 #
 # NOTE: perf-helper stub integrity is already gated on PRs by perf-helpers.yml,
 # so it is not duplicated here.

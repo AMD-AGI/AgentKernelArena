@@ -1,0 +1,47 @@
+name: tests-coverage
+
+# CPU unit tests + coverage. Structure mirrors the sibling Hyperloom repo's
+# tests-coverage.yml. Runs the first-party suite under tests/ (no GPU / ROCm —
+# only pytest + PyYAML), on PRs and on pushes to main so coverage is tracked on
+# the trunk as well as gated on PRs.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit tests (pytest + coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov coverage pyyaml
+      - name: Run tests with coverage
+        run: pytest --cov=src --cov-report=xml --cov-report=term
+      - name: Coverage summary
+        if: always()
+        run: |
+          coverage report --skip-empty | tee /tmp/coverage.txt
+          TOTAL_LINE=$(grep -E '^TOTAL ' /tmp/coverage.txt | tail -1)
+          TOTAL=$(echo "$TOTAL_LINE" | awk '{print $NF}')
+          {
+            echo "## Coverage";
+            echo "";
+            echo "Total: ${TOTAL:-unknown}";
+          } >> "$GITHUB_STEP_SUMMARY"
