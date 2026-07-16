@@ -38,11 +38,9 @@ The following software versions are required or verified.
 The following agent CLIs are supported with AgentKernelArena. See
 [Installation](../install/install.md) for setup instructions.
 
-| Agent |
-| --- |
-| Cursor Agent CLI |
-| Claude Code |
-| Codex CLI |
+- Cursor Agent CLI
+- Claude Code
+- Codex CLI
 
 ## Model providers
 
