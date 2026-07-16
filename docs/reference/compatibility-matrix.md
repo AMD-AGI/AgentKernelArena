@@ -7,48 +7,26 @@ myst:
 
 # AgentKernelArena compatibility matrix
 
-## Hardware
+Use the following matrix to view AgentKernelArena compatibility and system requirements:
 
-The following hardware configurations are supported and tested.
-
-| Component | Supported | Notes |
-| --- | --- | --- |
-| GPU architecture | AMD Instinct™ MI300 series | `target_gpu_model: MI300` |
-| GPU architecture | AMD Instinct™ MI355X | |
-
-## Software
-
-The following software versions are required or verified.
-
-| Component | Version | Notes |
-| --- | --- | --- |
-| Docker | Current stable release | Required; serial evaluations run through `make docker-run`; multi-GPU evaluations run through `make docker-parallel-run`. |
-| SGLang benchmark image | `lmsysorg/sglang:v0.5.12-rocm720-mi30x` for `gfx942`; `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705` for `gfx950` | The verified `gfx950` digest is `sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78`. Override with `AKA_DOCKER_IMAGE`, `AKA_DOCKER_IMAGE_GFX942`, or `AKA_DOCKER_IMAGE_GFX950`. |
-| ROCm | Bundled in the selected SGLang image | The default images are ROCm 7.2 based. |
-| Python | Provided by the image (for example, 3.10) | Bundled in the SGLang image. |
-| PyTorch | ROCm build bundled in the image | Provided by the SGLang Docker image. |
-| Triton | Bundled with the image's ROCm PyTorch | Required for Triton task categories. |
-| AITER | `0.1.17.dev110+g9127c94a1` in the verified `gfx950` image | Required by AITER-backed task oracles and kernels. |
-| FlyDSL | `0.2.2` in the verified `gfx950` image (or `make docker-setup-flydsl` when absent) | Required for `flydsl2flydsl`, `torch2flydsl`, and `triton2flydsl` tasks. |
-| hipcc | Matches image ROCm | Required for HIP tasks. |
-| rocprof-compute | Matches image ROCm | Required for HIP performance profiling. |
-
-## Agents
-
-The following agent CLIs are supported with AgentKernelArena. See
-[Installation](../install/install.md) for setup instructions.
-
-- Cursor Agent CLI
-- Claude Code
-- Codex CLI
-
-## Model providers
-
-The following model providers are supported.
-
-| Provider | Notes |
-| --- | --- |
-| OpenAI | Requires `OPENAI_API_KEY`. |
-| Anthropic | Requires `ANTHROPIC_API_KEY`. |
-| OpenRouter | Requires `OPENROUTER_API_KEY`. |
-| Local vLLM | Self-hosted on port `30001` using `make vllm`. |
+| Category | Component | AMD Instinct GPU | ROCm | Python | PyTorch | Docker image | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Hardware | GPU architecture | MI300 series | — | — | — | — | `target_gpu_model: MI300` |
+| Hardware | GPU architecture | MI355X | — | — | — | — | |
+| Software | Docker | — | — | — | — | — | Current stable release. Required; serial evaluations run through `make docker-run`; multi-GPU evaluations run through `make docker-parallel-run`. |
+| Software | SGLang benchmark image | MI300 series (`gfx942`) | 7.2 | — | — | `lmsysorg/sglang:v0.5.12-rocm720-mi30x` | Override with `AKA_DOCKER_IMAGE` or `AKA_DOCKER_IMAGE_GFX942`. |
+| Software | SGLang benchmark image | MI355X (`gfx950`) | 7.2 | — | — | `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705` | Verified digest: `sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78`. Override with `AKA_DOCKER_IMAGE` or `AKA_DOCKER_IMAGE_GFX950`. |
+| Software | Python | — | — | 3.10 | — | — | Bundled in the SGLang image. |
+| Software | PyTorch | — | — | — | ROCm build | — | Provided by the SGLang Docker image. |
+| Software | Triton | — | — | — | — | — | Bundled with the image's ROCm PyTorch. Required for Triton task categories. |
+| Software | AITER | MI355X (`gfx950`) | — | — | — | — | Version `0.1.17.dev110+g9127c94a1` in the verified `gfx950` image. Required by AITER-backed task oracles and kernels. |
+| Software | FlyDSL | — | — | — | — | — | Version `0.2.2` in the verified `gfx950` image, or run `make docker-setup-flydsl` when absent. Required for `flydsl2flydsl`, `torch2flydsl`, and `triton2flydsl` tasks. |
+| Software | hipcc | — | Matches image ROCm | — | — | — | Required for HIP tasks. |
+| Software | rocprof-compute | — | Matches image ROCm | — | — | — | Required for HIP performance profiling. |
+| Agents | Cursor Agent CLI | — | — | — | — | — | See [Installation](../install/install.md) for setup instructions. |
+| Agents | Claude Code | — | — | — | — | — | See [Installation](../install/install.md) for setup instructions. |
+| Agents | Codex CLI | — | — | — | — | — | See [Installation](../install/install.md) for setup instructions. |
+| Model providers | OpenAI | — | — | — | — | — | Requires `OPENAI_API_KEY`. |
+| Model providers | Anthropic | — | — | — | — | — | Requires `ANTHROPIC_API_KEY`. |
+| Model providers | OpenRouter | — | — | — | — | — | Requires `OPENROUTER_API_KEY`. |
+| Model providers | Local vLLM | — | — | — | — | — | Self-hosted on port `30001` using `make vllm`. |
