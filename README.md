@@ -207,7 +207,7 @@ make docker-setup-flydsl
 
 Performance timing helpers are maintained in `src/tools/perf/` and materialized into run workspaces. See [src/tools/perf/README.md](src/tools/perf/README.md) before changing task timing code.
 
-For detailed installation and compatibility information, see [docs/install/install.md](docs/install/install.md) and [docs/reference/compatibility-matrix.md](docs/reference/compatibility-matrix.md).
+For detailed installation and compatibility information, see [docs/install/install.md](docs/install/install.md) and [docs/reference/compatibility-matrix.rst](docs/reference/compatibility-matrix.rst).
 
 ## Usage
 
