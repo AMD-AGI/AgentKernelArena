@@ -38,8 +38,8 @@ parser.add_argument(
     default="example_configs/quickstart_claude_mi300.yaml",
     help=(
         "run configuration for AgentKernelArena (default: "
-        "example_configs/quickstart_claude_mi300.yaml for MI300/MI300X). "
-        "Select a matching config explicitly when using another GPU."
+        "example_configs/quickstart_claude_mi300.yaml for the generic MI300-series target). "
+        "Select a model-specific config for exact hardware tuning context."
     ),
 )
 parser.add_argument(

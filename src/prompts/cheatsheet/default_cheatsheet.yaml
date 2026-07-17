@@ -2,20 +2,37 @@
 # Cheatsheet Configuration
 #
 # Two independent dimensions:
-#   architecture: GPU-model → hardware spec document + gfx arch string
+#   architecture: GPU-model → hardware spec document(s) + gfx arch string
 #   knowledge:    target language → language best-practice guide (GPU-agnostic)
 #
 # prompt_builder.py combines BOTH for every task:
-#   final cheatsheet = architecture[gpu_model].file + knowledge[language]
+#   final cheatsheet = architecture[gpu_model].files + knowledge[language]
+#
+# ``file`` remains supported for architecture entries that only need one
+# document. ``files`` composes shared architecture guidance with a model profile.
 # ============================================================
 
 architecture:
   MI300:
     gfx_arch: gfx942
-    file: src/prompts/cheatsheet/MI300X_architecture.md
+    files:
+      - src/prompts/cheatsheet/CDNA3_gfx942_architecture.md
+      - src/prompts/cheatsheet/MI300_series_profile.md
   MI300X:
     gfx_arch: gfx942
-    file: src/prompts/cheatsheet/MI300X_architecture.md
+    files:
+      - src/prompts/cheatsheet/CDNA3_gfx942_architecture.md
+      - src/prompts/cheatsheet/MI300X_profile.md
+  MI325X:
+    gfx_arch: gfx942
+    files:
+      - src/prompts/cheatsheet/CDNA3_gfx942_architecture.md
+      - src/prompts/cheatsheet/MI325X_profile.md
+  MI300A:
+    gfx_arch: gfx942
+    files:
+      - src/prompts/cheatsheet/CDNA3_gfx942_architecture.md
+      - src/prompts/cheatsheet/MI300A_profile.md
   MI355X:
     gfx_arch: gfx950
     file: src/prompts/cheatsheet/MI355X_architecture.md

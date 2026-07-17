@@ -9,12 +9,23 @@ myst:
 
 ## Hardware
 
-The following hardware configurations are supported and tested.
+The following GPU models have explicit runtime and optimization-prompt
+configuration. Model-to-architecture and Docker routing are covered by automated
+tests. Hardware task validation is listed separately so that configured support
+is not mistaken for results from unavailable physical GPUs.
 
-| Component | Supported | Notes |
-| --- | --- | --- |
-| GPU architecture | AMD Instinct™ MI300 series | `target_gpu_model: MI300` |
-| GPU architecture | AMD Instinct™ MI355X | `target_gpu_model: MI355X` |
+| GPU model | Configuration value | LLVM target | Validation status |
+| --- | --- | --- | --- |
+| AMD Instinct™ MI300X | `target_gpu_model: MI300X` | `gfx942` | Supported by the existing MI300-series runtime path. |
+| AMD Instinct™ MI325X | `target_gpu_model: MI325X` | `gfx942` | Configuration tested; physical GPU task validation pending. |
+| AMD Instinct™ MI300A | `target_gpu_model: MI300A` | `gfx942` | Configuration tested; physical GPU task validation pending. |
+| Generic AMD Instinct™ MI300 series | `target_gpu_model: MI300` | `gfx942` | Backward-compatible fallback; runtime detection is required for SKU-specific limits. |
+| AMD Instinct™ MI355X | `target_gpu_model: MI355X` | `gfx950` | Supported and tested. |
+
+MI300X, MI325X, and MI300A share the `gfx942` compiler target but load separate
+hardware profiles. The shared CDNA 3 guidance contains ISA-level constraints;
+each profile supplies its model-specific compute topology, HBM limits, and
+partitioning guidance.
 
 ## Software
 

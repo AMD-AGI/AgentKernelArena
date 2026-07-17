@@ -31,8 +31,8 @@ Usage:
   src/scripts/docker_benchmark.sh smoke
 
 Default run config:
-  example_configs/quickstart_claude_mi300.yaml (MI300/MI300X).
-  On another GPU, pass --config_name with a matching run configuration.
+  example_configs/quickstart_claude_mi300.yaml (generic MI300-series target).
+  Pass --config_name with a model-specific run configuration for exact tuning context.
 
 Environment overrides:
   GPU_IDS                 Comma/space separated GPU indices for parallel-run.

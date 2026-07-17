@@ -93,24 +93,31 @@ their own runtime dependencies. Review the corresponding directory under
 ## Choose an example configuration
 
 Choose the configuration that matches the physical GPU and installed agent.
-The two quickstart configurations each run one GELU task; the benchmark
-configuration is a longer 60-task Cursor Agent run.
+Each quickstart configuration runs one GELU task; the benchmark configuration
+is a longer 60-task Cursor Agent run.
 
 | Configuration | Purpose |
 | --- | --- |
-| `example_configs/quickstart_claude_mi300.yaml` | First Claude Code run on MI300/MI300X (`gfx942`). |
+| `example_configs/quickstart_claude_mi300.yaml` | Generic MI300-series (`gfx942`) fallback. |
+| `example_configs/quickstart_claude_mi300x.yaml` | First Claude Code run on MI300X (`gfx942`). |
+| `example_configs/quickstart_claude_mi325x.yaml` | First Claude Code run on MI325X (`gfx942`). |
+| `example_configs/quickstart_claude_mi300a.yaml` | First Claude Code run on MI300A (`gfx942`). |
 | `example_configs/quickstart_claude_mi355x.yaml` | First Claude Code run on MI355X (`gfx950`). |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; requires an installed and authenticated Cursor Agent CLI. |
 
-The default `make docker-run` configuration is the MI300/MI300X quickstart.
-On another GPU, always pass the matching `CONFIG`; for MI355X, use
-`example_configs/quickstart_claude_mi355x.yaml`.
+The default `make docker-run` configuration is the generic MI300-series
+quickstart. Prefer the matching model-specific `CONFIG` so the optimization
+agent receives accurate hardware limits.
 
 Select one quickstart configuration in the current shell:
 
 ```bash
-# MI300/MI300X:
-CONFIG_PATH=example_configs/quickstart_claude_mi300.yaml
+# MI300X:
+CONFIG_PATH=example_configs/quickstart_claude_mi300x.yaml
+
+# For MI325X or MI300A instead:
+# CONFIG_PATH=example_configs/quickstart_claude_mi325x.yaml
+# CONFIG_PATH=example_configs/quickstart_claude_mi300a.yaml
 
 # For MI355X instead:
 # CONFIG_PATH=example_configs/quickstart_claude_mi355x.yaml

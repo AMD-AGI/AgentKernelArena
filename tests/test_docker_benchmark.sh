@@ -156,7 +156,21 @@ assert_has "$NATIVE_CLAUDE_HOME/.claude:$NATIVE_CLAUDE_HOME/.claude" "${args[@]}
 assert_has "$NATIVE_CLAUDE_HOME/.claude.json:$NATIVE_CLAUDE_HOME/.claude.json" "${args[@]}"
 assert_has "claude_code" "${args[@]}"
 
-# Omitting --config_name uses the one-task MI300/MI300X Claude quickstart.
+# Every explicit MI300-series model resolves to the shared gfx942 runtime.
+for gpu_model in MI300X MI325X MI300A; do
+    model_config="$TEST_HOME/${gpu_model,,}-config.yaml"
+    printf 'agent:\n  template: claude_code\ntarget_gpu_model: %s\n' "$gpu_model" > "$model_config"
+    mapfile -t args < <(
+        env \
+            HOME="$NATIVE_CLAUDE_HOME" \
+            bash "$RUNNER" preflight --config_name "$model_config" 2>/dev/null
+    )
+    assert_has "lmsysorg/sglang:v0.5.12-rocm720-mi30x" "${args[@]}"
+    assert_has "AGENT_KERNEL_ARENA_GPU_ARCH=gfx942" "${args[@]}"
+    assert_has "PYTORCH_ROCM_ARCH=gfx942" "${args[@]}"
+done
+
+# Omitting --config_name uses the one-task generic MI300-series Claude quickstart.
 mapfile -t args < <(
     env \
         HOME="$NATIVE_CLAUDE_HOME" \

@@ -1,4 +1,5 @@
-# Minimal first-run example for Claude Code on MI300/MI300X (gfx942).
+# Generic MI300-series Claude Code quickstart (gfx942).
+# Prefer the model-specific MI300X, MI325X, or MI300A config for accurate tuning context.
 agent:
   template: claude_code
 
