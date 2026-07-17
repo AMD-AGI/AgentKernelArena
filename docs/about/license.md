@@ -1,7 +1,7 @@
 ---
 myst:
     html_meta:
-        "description": "AgentKernelArena is released under the Apache License, Version 2.0 by Advanced Micro Devices, Inc. View the full license text on this page."
+        "description": "AgentKernelArena is released under the Apache License, Version 2.0; this page links to the full repository license."
         "keywords": "AgentKernelArena, license, Apache 2.0, open source, AMD"
 ---
 
@@ -10,7 +10,8 @@ myst:
 AgentKernelArena is released under the Apache License, Version 2.0. The full
 license text is in the
 [`LICENSE`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/LICENSE) file
-in the AgentKernelArena GitHub repository.
+in the AgentKernelArena GitHub repository. The following is the project license
+notice, not a replacement for the full license text:
 
 ```text
                                  Apache License

@@ -1,0 +1,10 @@
+# Minimal first-run example for Claude Code on MI355X (gfx950).
+agent:
+  template: claude_code
+
+tasks:
+  - hip2hip/gpumode/GELU
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

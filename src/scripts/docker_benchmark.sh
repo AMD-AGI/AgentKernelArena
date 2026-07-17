@@ -12,22 +12,27 @@ HOST_GID="$(id -g)"
 SELECTED_GPU_ARCH=""
 SELECTED_IMAGE=""
 AGENT_STATE_MOUNT_ROOT="${AKA_AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
+DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
 
 # /opt/venv/bin is placed before /usr/local/bin and /usr/bin so that a bare
 # `python3` / `pytest` resolves to the torch-enabled venv interpreter rather than
 # the system python (which lacks torch). Without this, repository tasks whose
 # commands call `python3 scripts/task_runner.py` fail with ModuleNotFoundError: torch.
-container_path="/opt/node/bin:${HOST_HOME}/.local/bin:/opt/venv/bin:/usr/local/bin:/opt/rocm/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin"
+container_path="/opt/claude-node/bin:/opt/node/bin:${HOST_HOME}/.local/bin:/opt/venv/bin:/usr/local/bin:/opt/rocm/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 usage() {
     cat <<'EOF'
 Usage:
   src/scripts/docker_benchmark.sh run [main.py args...]
   src/scripts/docker_benchmark.sh parallel-run [main.py args...]
-  src/scripts/docker_benchmark.sh preflight [--config_name config.yaml]
+  src/scripts/docker_benchmark.sh preflight [--config_name <run-config.yaml>]
   src/scripts/docker_benchmark.sh shell
-  src/scripts/docker_benchmark.sh check-agents
+  src/scripts/docker_benchmark.sh check-agents [--config_name <run-config.yaml>]
   src/scripts/docker_benchmark.sh smoke
+
+Default run config:
+  example_configs/quickstart_claude_mi300.yaml (MI300/MI300X).
+  On another GPU, pass --config_name with a matching run configuration.
 
 Environment overrides:
   GPU_IDS                 Comma/space separated GPU indices for parallel-run.
@@ -37,7 +42,8 @@ Environment overrides:
   AKA_DOCKER_IMAGE_<ARCH> Per-arch image override, e.g. AKA_DOCKER_IMAGE_GFX950=...
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
   AKA_DOCKER_IMAGE_GFX950 Default image for gfx950.
-  AKA_NODE_PREFIX         Host Node prefix containing bin/node and bin/codex.
+  AKA_NODE_PREFIX         Host Node prefix containing bin/node and npm-installed agent CLI(s).
+  AKA_AGENTS              Agent CLI(s) to check, comma/space separated; use all for all three.
 EOF
 }
 
@@ -206,6 +212,41 @@ detect_node_prefix() {
     dirname "$(dirname "$node_bin")"
 }
 
+# Resolve the Node prefix that owns a CLI installed with `npm -g`. Prefer an
+# explicit override, then the CLI found on PATH, then the active Node prefix.
+# Return non-zero when no prefix contains both bin/node and bin/<cli>.
+detect_node_cli_prefix() {
+    local cli="$1"
+    local prefix="" cli_bin=""
+
+    if [[ -n "${AKA_NODE_PREFIX:-}" ]]; then
+        prefix="$AKA_NODE_PREFIX"
+        if [[ -e "$prefix/bin/node" && -e "$prefix/bin/$cli" ]]; then
+            printf '%s\n' "$prefix"
+            return 0
+        fi
+        return 1
+    fi
+
+    cli_bin="$(command -v "$cli" || true)"
+    if [[ -n "$cli_bin" && "$(basename "$(dirname "$cli_bin")")" == "bin" ]]; then
+        prefix="$(dirname "$(dirname "$cli_bin")")"
+        if [[ -e "$prefix/bin/node" && -e "$prefix/bin/$cli" ]]; then
+            printf '%s\n' "$prefix"
+            return 0
+        fi
+    fi
+
+    if command -v node >/dev/null 2>&1; then
+        prefix="$(detect_node_prefix)"
+        if [[ -e "$prefix/bin/node" && -e "$prefix/bin/$cli" ]]; then
+            printf '%s\n' "$prefix"
+            return 0
+        fi
+    fi
+    return 1
+}
+
 docker_args=()
 declare -A _MOUNTED_TARGETS=()
 
@@ -274,19 +315,49 @@ resolve_required_agents() {
     esac
 }
 
+# Normalize the user-facing check list and reject specialized integrations that
+# do not use one of the three host CLI mount paths.
+normalize_check_agents() {
+    local raw="$*"
+    raw="${raw//,/ }"
+    local -a normalized=()
+    local agent
+    for agent in $raw; do
+        case "$agent" in
+            all)
+                normalized+=(codex claude_code cursor)
+                ;;
+            claude|claude_code)
+                normalized+=(claude_code)
+                ;;
+            cursor|cursor-agent)
+                normalized+=(cursor)
+                ;;
+            codex)
+                normalized+=(codex)
+                ;;
+            *)
+                die "docker-check-agents only supports codex, claude_code, cursor, or all; got '$agent'"
+                ;;
+        esac
+    done
+    [[ "${#normalized[@]}" -gt 0 ]] || die "No agent selected for docker-check-agents"
+    printf '%s\n' "${normalized[*]}"
+}
+
 # Mount one agent's CLI install + auth dirs. $2=strict (1 require, 0 best-effort).
 mount_agent() {
     local agent="$1" strict="${2:-1}"
     local isolate="${AGENT_HOME_ISOLATION:-0}"
     case "$agent" in
         codex)
-            if ! command -v node >/dev/null 2>&1; then
-                [[ "$strict" == "1" ]] && die "Codex agent requires host node on PATH"
-                warn "node not found on PATH; skipping Codex agent mounts"
+            local node_prefix
+            node_prefix="$(detect_node_cli_prefix codex || true)"
+            if [[ -z "$node_prefix" ]]; then
+                [[ "$strict" == "1" ]] && die "npm-installed Codex not found on host PATH or under AKA_NODE_PREFIX"
+                warn "npm-installed Codex not found; skipping Codex agent mounts"
                 return 0
             fi
-            local node_prefix
-            node_prefix="$(detect_node_prefix)"
             need_path "$node_prefix/bin/node" "host node" "$strict" || return 0
             need_path "$node_prefix/bin/codex" "host codex" "$strict" || return 0
             need_path "$HOST_HOME/.codex" "Codex auth/config directory" "$strict" || return 0
@@ -298,12 +369,25 @@ mount_agent() {
             fi
             ;;
         claude_code)
-            need_path "$HOST_HOME/.local/bin" "host local bin directory" "$strict" || return 0
-            need_path "$HOST_HOME/.local/share/claude" "Claude Code local install" "$strict" || return 0
+            local native_claude_bin="$HOST_HOME/.local/bin/claude"
+            local native_claude_root="$HOST_HOME/.local/share/claude"
+            local claude_node_prefix=""
+            if [[ -e "$native_claude_bin" && -d "$native_claude_root" ]]; then
+                add_mount "$HOST_HOME/.local/bin" "$HOST_HOME/.local/bin" ro
+                add_mount "$native_claude_root" "$native_claude_root" ro
+            else
+                claude_node_prefix="$(detect_node_cli_prefix claude || true)"
+                if [[ -z "$claude_node_prefix" ]]; then
+                    if [[ "$strict" == "1" ]]; then
+                        die "Claude Code not found; install it with npm -g or the native installer, then ensure 'claude' is on PATH"
+                    fi
+                    warn "Claude Code not found; skipping Claude Code mounts"
+                    return 0
+                fi
+                add_mount "$claude_node_prefix" /opt/claude-node ro
+            fi
             need_path "$HOST_HOME/.claude" "Claude Code auth directory" "$strict" || return 0
             need_path "$HOST_HOME/.claude.json" "Claude Code auth/config file" "$strict" || return 0
-            add_mount "$HOST_HOME/.local/bin" "$HOST_HOME/.local/bin" ro
-            add_mount "$HOST_HOME/.local/share/claude" "$HOST_HOME/.local/share/claude" ro
             if [[ "$isolate" == "1" ]]; then
                 add_mount "$HOST_HOME/.claude" "$AGENT_STATE_MOUNT_ROOT/.claude" ro
                 add_mount "$HOST_HOME/.claude.json" "$AGENT_STATE_MOUNT_ROOT/.claude.json" ro
@@ -475,7 +559,7 @@ docker_exec() {
 }
 
 extract_config_name() {
-    local config="config.yaml"
+    local config="$DEFAULT_RUN_CONFIG"
     local arg
     while [[ $# -gt 0 ]]; do
         arg="$1"
@@ -510,9 +594,15 @@ for cmd in ("hipcc", "rocprof-compute"):
         raise SystemExit(f"missing command: {cmd}")
     print(f"{cmd}={path}")
 
-for mod_name in ("torch", "triton", "pytest", "yaml", "numpy", "flydsl"):
+for mod_name in ("torch", "triton", "pytest", "yaml", "numpy"):
     mod = importlib.import_module(mod_name)
     print(f"{mod_name}=ok {getattr(mod, '__version__', '')}")
+
+try:
+    flydsl = importlib.import_module("flydsl")
+    print(f"flydsl=ok {getattr(flydsl, '__version__', '')}")
+except ModuleNotFoundError:
+    print("flydsl=optional-missing (run `make docker-setup-flydsl` before FlyDSL tasks)")
 
 import torch
 print(f"torch_cuda_available={torch.cuda.is_available()}")
@@ -526,7 +616,7 @@ if actual_arch:
 if selected_arch and actual_arch and not actual_arch.startswith(selected_arch):
     raise SystemExit(
         f"selected GPU arch {selected_arch} does not match visible device arch {actual_arch}; "
-        "fix target_gpu_model for benchmark runs, or use AKA_GPU_ARCH only for shell/smoke diagnostics"
+        "fix target_gpu_model for experiment runs, or use AKA_GPU_ARCH only for shell/smoke diagnostics"
     )
 PY
 }
@@ -597,7 +687,7 @@ PY
 }
 
 container_preflight() {
-    local config_name="${1:-config.yaml}"
+    local config_name="${1:-$DEFAULT_RUN_CONFIG}"
     container_smoke
     # Only verify the agent(s) this config actually uses (mounts are scoped the same way).
     container_check_agents $(resolve_required_agents "$config_name")
@@ -899,11 +989,17 @@ case "${1:-}" in
         docker "${docker_args[@]}"
         ;;
     check-agents)
+        shift
         select_runtime_for_host
-        # check-agents is the strict, all-three verification path.
-        REQUIRED_AGENTS="codex claude_code cursor"
+        config_name="$(extract_config_name "$@")"
+        if [[ -z "${AKA_AGENTS:-}" ]]; then
+            [[ -f "$config_name" ]] || die "config file not found: $config_name"
+        fi
+        # By default, check only the CLI selected by CONFIG. AKA_AGENTS can
+        # request one, several, or `all` explicitly.
+        REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"
         AGENTS_STRICT=1
-        docker_exec 0 bash src/scripts/docker_benchmark.sh _container_check_agents
+        docker_exec 0 bash src/scripts/docker_benchmark.sh _container_check_agents $REQUIRED_AGENTS
         ;;
     smoke)
         select_runtime_for_host
@@ -926,7 +1022,8 @@ case "${1:-}" in
         container_smoke
         ;;
     _container_check_agents)
-        container_check_agents
+        shift
+        container_check_agents "$@"
         ;;
     _container_preflight)
         shift

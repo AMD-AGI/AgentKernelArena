@@ -32,9 +32,9 @@ docker run -d --name geak-aka \
   -v /path/to/GEAK:/GEAK -w /workspace \
   lmsysorg/sglang:v0.5.12-rocm720-mi30x sleep infinity
 
-# 3. Install GEAK (provides the `geak` CLI) + AKA deps inside the container
+# 3. Install GEAK (provides the `geak` CLI). The pinned image supplies the
+# AgentKernelArena runtime dependencies.
 docker exec geak-aka pip install -e /GEAK
-docker exec geak-aka pip install -r /workspace/requirements.txt
 ```
 
 ### LLM authentication (AMD gateway or personal)
@@ -58,7 +58,6 @@ The model is set in `agents/geak_v3/geak.yaml` (`model.model_name`, default
 
 Edit `agents/geak_v3/agent_config.yaml`:
 
-- **`run.cmd`** — the executable (`geak`).
 - **`run.configs`** — CLI options, e.g.
   `-c geak.yaml --yolo --num-parallel=2 --gpu-ids=0,1`.
   `-c geak.yaml` resolves to `agents/geak_v3/geak.yaml` (auto-expanded to an
@@ -96,8 +95,10 @@ with more GPUs via `GEAK_GPU_IDS` / `--num-parallel`.
 
 - **AKA run log:** `logs/*.log` (path from `log_directory` in `config.yaml`).
 - **Per-task result (authoritative):**
-  `workspace_.../<task>_<timestamp>/task_result.yaml` (plus `baseline_perf.yaml`,
-  `optimized_perf.yaml`, `build/performance_report.json`).
-- **GEAK internals:** `workspace_.../<task>_<timestamp>_logs/`
+  `workspace_<gpu>_geak_v3/run_<timestamp>/<task>_<timestamp>/task_result.yaml`
+  (plus `baseline_perf.yaml`, `optimized_perf.yaml`, and
+  `build/performance_report.json`).
+- **GEAK internals:**
+  `workspace_<gpu>_geak_v3/run_<timestamp>/<task>_<timestamp>_logs/`
   (`final_report.json`, `geak_agent.log`, the winning `.diff`).
-- **Aggregate:** `workspace_.../run_*/reports/overall_summary.csv`.
+- **Aggregate:** `workspace_<gpu>_geak_v3/run_<timestamp>/reports/overall_summary.csv`.

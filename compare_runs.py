@@ -3,8 +3,8 @@
 Standalone script to compare two AgentKernelArena runs.
 
 Usage:
-    python compare_runs.py run1_path run2_path
-    python compare_runs.py workspace_MI300_cursor/run_20250115_143022 workspace_MI300_cursor/run_20250115_160530
+    python3 compare_runs.py run1_path run2_path
+    python3 compare_runs.py workspace_MI300_cursor/run_20260714_120000_baseline workspace_MI300_cursor/run_20260714_140000_treatment
 """
 
 import json
@@ -19,7 +19,7 @@ def load_run_data(run_path: Path) -> Dict[str, Any]:
     Load task_type_breakdown.json from a run directory.
     
     Args:
-        run_path: Path to run directory (e.g., workspace_MI300_cursor/run_20250115_143022)
+        run_path: Path to run directory (e.g., workspace_MI300_cursor/run_20260714_120000_baseline)
     
     Returns:
         Dictionary containing run data from JSON file
@@ -310,7 +310,7 @@ def generate_comparison_report(run1_path: Path, run2_path: Path, output_path: Op
     # Determine output path
     if output_path is None:
         # Auto-generate path in comparisons/ directory at project root
-        # Extract run directory names (e.g., "run_20250115_143022" from full path)
+        # Extract run directory names (e.g., "run_20260714_120000_baseline" from full path)
         run1_name = run1_path.name
         run2_name = run2_path.name
         
@@ -341,23 +341,23 @@ def main():
         epilog="""
 Examples:
   # Compare two runs
-  python compare_runs.py workspace_MI300_cursor/run_20250115_143022 workspace_MI300_cursor/run_20250115_160530
+  python3 compare_runs.py workspace_MI300_cursor/run_20260714_120000_baseline workspace_MI300_cursor/run_20260714_140000_treatment
   
   # Compare and save to file
-  python compare_runs.py run1 run2 --output comparison_report.txt
+  python3 compare_runs.py run1 run2 --output comparison_report.txt
         """
     )
     
     parser.add_argument(
         'run1',
         type=str,
-        help='Path to first run directory (e.g., workspace_MI300_cursor/run_20250115_143022)'
+        help='Path to baseline/first run directory (e.g., workspace_MI300_cursor/run_20260714_120000_baseline)'
     )
     
     parser.add_argument(
         'run2',
         type=str,
-        help='Path to second run directory (e.g., workspace_MI300_cursor/run_20250115_160530)'
+        help='Path to treatment/second run directory (e.g., workspace_MI300_cursor/run_20260714_140000_treatment)'
     )
     
     parser.add_argument(
@@ -392,4 +392,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-

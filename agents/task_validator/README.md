@@ -5,21 +5,23 @@
 The **task_validator** agent validates that tasks in AgentKernelArena are correctly configured, self-contained, and functional. It does **not** optimize kernels. Instead, it runs 10 automated checks on each task and produces a structured `validation_report.yaml`.
 
 Use it to:
-- Audit existing tasks for quality and compliance before publishing to leaderboards.
+- Audit existing tasks before controlled comparisons or RL data collection.
 - Validate new tasks before merging them into the task suite.
 - Identify broken tasks (missing files, external dependencies, trivially-passing correctness checks, GPU hangs).
 
 ## How to Use
 
-### 1. Set `config.yaml`
+### 1. Create a run configuration
+
+Save the following as `config_task_validator.yaml`:
 
 ```yaml
 agent:
   template: task_validator
 tasks:
-  - hip2hip/rmsnorm
-  - cuda2hip/awq_gemm
-  - triton2triton/triton_fused_moe
+  - hip2hip/gpumode/GELU
+  - triton2triton/vllm/triton_rms_norm
+  - repository/rocprim/device_merge_sort
   # - all                     # validate every task
 target_gpu_model: MI300
 log_directory: logs
@@ -29,7 +31,7 @@ workspace_directory_prefix: workspace
 ### 2. Run
 
 ```bash
-make docker-run CONFIG=config.yaml
+make docker-run CONFIG=config_task_validator.yaml
 ```
 
 ### 3. Read Results
@@ -38,18 +40,23 @@ Each task workspace will contain a `validation_report.yaml` with per-check resul
 
 ### Agent Configuration
 
-Edit `agents/task_validator/agent_config.yaml`:
+Edit `agents/task_validator/agent_config.yaml`. This portable example leaves the
+model unset so the selected CLI uses its default:
 
 ```yaml
-backend: claude_code          # claude_code | codex | cursor
+backend: claude_code          # claude_code | codex
 timeout_seconds: 1200         # max time per task validation (set 0 to disable timeout)
 python_path: null             # null -> auto-use framework-detected interpreter (recommended)
 
 # Optional model settings for the active backend.
 # claude_code: passed as `claude --model` and `claude --effort`
 # codex: passed as `codex exec --model` and `model_reasoning_effort`
-model: sonnet
+model: null                   # null uses the selected CLI's default
 effort: max
+
+compile_timeout: 600
+correctness_timeout: 600
+performance_timeout: 600
 ```
 
 ## Validation Checks
@@ -59,17 +66,17 @@ effort: max
 | 1 | **config_schema** | All required fields exist in `config.yaml` with correct types |
 | 2 | **source_files_exist** | Every file in `source_file_path` exists in the workspace |
 | 3 | **target_symbols_found** | Every function in `target_kernel_functions` is defined in source files |
-| 4 | **compilation** | `compile_command` runs successfully (exit code 0, within 120s timeout) |
-| 5 | **correctness** | `correctness_command` runs successfully (exit code 0, within 180s timeout) |
-| 6 | **performance** | `performance_command` runs successfully (if present, within 180s timeout) |
+| 4 | **compilation** | `compile_command` succeeds within the configured `compile_timeout` |
+| 5 | **correctness** | `correctness_command` succeeds within the configured `correctness_timeout` |
+| 6 | **performance** | `performance_command` succeeds within the configured `performance_timeout`, if present |
 | 7 | **correctness_implementation_review** | The correctness check is meaningful (not trivially passing) |
-| 8 | **self_contained** | No missing headers, imports, or references to external repos/paths |
+| 8 | **self_contained** | No missing headers/imports; isolated tasks avoid undeclared external paths, while repository tasks declare upstream dependencies |
 | 9 | **gpu_hang_check** | No command hangs or times out |
 | 10 | **result_template_compatibility** | Task output maps to the standard `task_result_template.yaml` schema |
 
 ### Overall Status
 
-- **PASS** — all checks passed
+- **PASS** — all applicable checks passed; a contract-approved `SKIP` does not prevent PASS
 - **WARN** — no failures, but at least one warning (e.g., questionable correctness implementation)
 - **FAIL** — at least one check failed
 
@@ -82,7 +89,7 @@ Every new task added to `tasks/` must satisfy the following requirements to pass
 ### Required Directory Structure
 
 ```
-tasks/<task_type>/<task_name>/
+tasks/<task_type>/[<suite>/...]/<task_name>/
 ├── config.yaml                  # Task configuration (required)
 ├── scripts/
 │   └── task_runner.py           # Validation runner (recommended pattern)
@@ -111,7 +118,8 @@ compile_command:
 correctness_command:
   - python3 scripts/task_runner.py --mode correctness
 
-# Task type: one of hip2hip, cuda2hip, triton2triton, torch2hip, instruction2triton, rocprim
+# Task type: one of hip2hip, cuda2hip, triton2triton, triton2flydsl,
+# instruction2triton, torch2hip, torch2flydsl, flydsl2flydsl, repository
 task_type: cuda2hip
 ```
 
@@ -122,7 +130,7 @@ task_type: cuda2hip
 performance_command:
   - python3 scripts/task_runner.py --mode performance
 
-# Override which result template to use (null = default)
+# Legacy compatibility only; the centralized evaluator writes the standard schema.
 task_result_template: null
 
 # Prompt overrides for the optimization agent (null = auto-generated)
@@ -134,7 +142,10 @@ prompt:
 
 ### Self-Containedness Rules
 
-A task **must** be fully self-contained. This means:
+A normal isolated-kernel task **must** be fully self-contained. A
+`task_type: repository` task can declare an upstream repository with `repo_url`;
+its adapter scripts and dependency/setup contract must still be self-contained.
+For isolated tasks:
 
 1. **No external repo dependencies.** Do not reference paths like `../../vllm/`, `/opt/external/`, or assume a cloned repo exists in the workspace. All source code the task needs must be inside the task directory.
 
@@ -168,7 +179,7 @@ The correctness check **must** be a real validation, not a trivial pass:
 ### Performance Check Rules (if applicable)
 
 1. The `performance_command` should measure kernel execution time and report it in a parseable format.
-2. Output should include baseline time and optimized time for speedup calculation.
+2. It only needs to report the runtime for the implementation currently in the workspace. The framework runs the same command before and after agent execution and computes speedup.
 3. A `build/performance_report.json` with timing data is recommended.
 4. Recommended methodology: `10` warmup iterations + `100` measured iterations, and report the average measured runtime (speedup should be derived from averaged runtimes). The validator may mark performance as `WARN` if a task is functional but does not follow or clearly document this methodology.
 
@@ -177,11 +188,7 @@ The correctness check **must** be a real validation, not a trivial pass:
 The task's output flow (compile → correctness → performance) must produce results that can populate the standard `task_result_template.yaml`:
 
 ```yaml
-task_name: "<task_type>/<task_name>"
-best_optimized_source_file_path:
-  - <source files>
-best_optimized_kernel_functions:
-  - <kernel functions>
+task_name: "<full path relative to tasks/>"
 pass_compilation: true/false
 compilation_error_message: null
 pass_correctness: true/false
@@ -189,7 +196,14 @@ correctness_error_message: null
 base_execution_time: 0.0          # in ms
 best_optimized_execution_time: 0.0
 speedup_ratio: 0.0
-optimization_summary: ""
+baseline_benchmark_methods: []
+optimized_benchmark_methods: []
+benchmark_method_consistent: true/false
+valid_baseline_cases: 0
+valid_optimized_cases: 0
+speedup_calculation_error_message: null
+optimization_summary: "Framework-generated evaluator summary"
+score: 0.0
 ```
 
 ### Checklist for New Task Authors
@@ -202,8 +216,7 @@ Before submitting a new task, verify:
 - [ ] `compile_command` succeeds with exit code 0
 - [ ] `correctness_command` succeeds with exit code 0
 - [ ] Correctness check compares against a real reference (not trivially passing)
-- [ ] No `#include` / `import` references to files outside the task directory
-- [ ] No hardcoded paths to external repos or data
+- [ ] Isolated tasks have no undeclared external paths; repository tasks declare `repo_url` and setup requirements
 - [ ] Commands complete within reasonable time (no GPU hangs)
 - [ ] Output is compatible with `task_result_template.yaml`
 

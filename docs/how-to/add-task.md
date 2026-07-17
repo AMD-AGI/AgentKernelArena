@@ -7,10 +7,10 @@ myst:
 
 # Add a task in AgentKernelArena
 
-A task is a single GPU kernel optimization problem. Each task lives in its own
-directory under `tasks/<task_type>/<task_name>/` and is described by a
-`config.yaml`. This topic covers the directory layout, the configuration schema,
-and the supported task types.
+A task is a single GPU kernel optimization problem. Each task lives below its
+task-type directory and is described by a `config.yaml`. Optional suite and
+difficulty directories can appear between the task type and task name, for
+example `tasks/triton2triton/rocmbench/hard/gemm/`.
 
 ## Task types
 
@@ -36,7 +36,7 @@ tasks under `tasks/repository/`.
 ## Directory layout
 
 ```text
-tasks/<task_type>/<task_name>/
+tasks/<task_type>/[<suite>/...]/<task_name>/
 ├── config.yaml                  # Task configuration (required)
 ├── scripts/
 │   └── task_runner.py           # Compile/correctness/performance runner (recommended)
@@ -84,6 +84,7 @@ optional hints when the target files and symbols are known.
 
 ```yaml
 repo_url: https://github.com/ROCm/rocPRIM.git
+# repo_subdir: rocPRIM        # optional; defaults from repo_url
 task_type: repository
 repository_language: hip
 
@@ -101,7 +102,13 @@ correctness_command:
 performance_command:
   - python3 scripts/task_runner.py --mode performance
 
-# Override which result template to use (null = default)
+# Optional per-command limits in seconds (framework defaults are 3600).
+compile_timeout: 3600
+correctness_timeout: 3600
+performance_timeout: 3600
+
+# Legacy compatibility only; the centralized evaluator always writes the
+# standard task_result.yaml schema.
 task_result_template: null
 
 # Prompt overrides for the optimization agent (null = auto-generated)
@@ -110,6 +117,10 @@ prompt:
   instructions: null     # custom instructions
   cheatsheet: null        # reference/cheatsheet content
 ```
+
+Some specialized launchers and task runners use additional fields such as
+`harness_path` or `target_file_path`. Document those fields with the task or
+agent that consumes them; they are not part of the common evaluator schema.
 
 ## Authoring rules
 

@@ -37,9 +37,12 @@ traj.json
 **/baseline_metrics.json
 **/profile.json
 
-# Generated held-out test data (methodology is in held_out/, data is private)
+# Generated held-out test data (methodology is in src/held_out/, data is private)
 held_out_tests/
 
 # Documentation build environment and output
 .docvenv/
 docs/_build/
+
+# Generated visualization data and manually collected report bundles
+.visualization/

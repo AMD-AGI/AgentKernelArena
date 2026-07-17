@@ -428,7 +428,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         # Placeholder for Cursor backend
         raise NotImplementedError("Cursor backend not yet implemented for task_validator")
     else:
-        raise ValueError(f"Unknown backend: {backend}. Supported: claude_code, codex, cursor")
+        raise ValueError(f"Unknown backend: {backend}. Supported: claude_code, codex")
 
     # Verify that validation_report.yaml was generated
     report_path = Path(workspace) / "validation_report.yaml"

@@ -22,7 +22,7 @@ float val = a[threadIdx.x * N];
 
 Rules:
 - Prefer Structure-of-Arrays (SoA) over Array-of-Structures (AoS).
-- Align buffers to 128 bytes (`hipMallocAligned` or `__attribute__((aligned(128)))`).
+- Device allocations from `hipMalloc` already satisfy device-allocation alignment requirements. Use `hipMallocPitch` for pitch-aware 2D layouts, and explicit alignment attributes only for host/static objects when needed.
 - Use vector loads (`float4`, `half2`, `uint4`) to widen memory transactions and reduce instruction count.
 
 ---

@@ -15,9 +15,14 @@ We aim to acknowledge reports within 1 business day.
 
 This policy covers code and configuration in this repository — the AgentKernelArena orchestration framework (`main.py`, `src/`), agent integrations under `agents/`, task definitions under `tasks/`, and workspace isolation logic.
 
-Because AgentKernelArena launches third-party LLM agent CLIs (Cursor Agent, Claude Code, Codex, etc.) inside per-task workspaces and executes the kernel code those agents produce, please flag any of the following privately:
+AgentKernelArena launches third-party LLM agent CLIs (Cursor Agent, Claude Code,
+Codex, and specialized integrations) and executes the kernel code they produce.
+Per-task workspaces separate experiment artifacts for reproducibility and
+concurrency; they are not security sandboxes. The Docker runner uses privileged
+GPU containers and mounts repository and agent-authentication state. Please flag
+any of the following privately:
 
-- Sandbox escape from a per-task workspace
+- Unexpected access outside the assigned task workspace or to mounted credentials/repository data
 - Credential leakage through prompts, logs, or generated code
 - Supply-chain risk from dynamically installed agent CLIs or model SDKs
 - Resource-exhaustion or denial-of-service against the host runner

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a browser-friendly data bundle for the Arena report dashboard."""
+"""Build a browser-friendly data bundle for the AgentKernelArena dashboard."""
 
 from __future__ import annotations
 
@@ -12,12 +12,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from src.visualization.paths import DATA_ROOT, PROJECT_ROOT, REPORTS_ROOT
 
-VISUALIZATION_ROOT = Path(__file__).resolve().parents[2]
-PROJECT_ROOT = VISUALIZATION_ROOT.parent
-DASHBOARD_DIR = VISUALIZATION_ROOT / "frontend" / "dashboard"
-OUTPUT_JSON = DASHBOARD_DIR / "data.json"
-OUTPUT_JS = DASHBOARD_DIR / "data.js"
+
+OUTPUT_JSON = DATA_ROOT / "data.json"
+OUTPUT_JS = DATA_ROOT / "data.js"
 
 STATUS_PATTERN = re.compile(
     r"^(PASS|FAIL|PARTIAL)\s+(\S+)\s+Score:\s*([0-9.]+)\s+Speedup:\s*([0-9.]+)x\s*$"
@@ -54,8 +53,24 @@ def as_float(value: str) -> float:
         return 0.0
 
 
+def project_display_path(path: Path) -> Path:
+    """Return a stable dashboard label for a project or local-report path."""
+
+    try:
+        return path.relative_to(PROJECT_ROOT)
+    except ValueError:
+        try:
+            return Path("reports") / path.relative_to(REPORTS_ROOT)
+        except ValueError:
+            return path
+
+
 def artifact_path(path: Path) -> str:
-    return "artifacts/" + path.relative_to(PROJECT_ROOT).as_posix()
+    try:
+        relative = path.relative_to(REPORTS_ROOT)
+    except ValueError:
+        return "artifacts/" + path.relative_to(PROJECT_ROOT).as_posix()
+    return "reports/" + relative.as_posix()
 
 
 def parse_args() -> argparse.Namespace:
@@ -65,22 +80,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--include-workspace-runs",
         action="store_true",
-        help="Also scan workspace_*/run_*/reports outside visualization/reports.",
+        help="Also scan workspace_*/run_*/reports outside .visualization/reports.",
     )
     return parser.parse_args()
 
 
 def is_local_visualization_report_directory(report_dir: Path) -> bool:
     try:
-        relative = report_dir.relative_to(PROJECT_ROOT)
+        relative = report_dir.relative_to(REPORTS_ROOT)
     except ValueError:
         return False
 
-    return (
-        len(relative.parts) == 3
-        and relative.parts[0] == "visualization"
-        and relative.parts[1] == "reports"
-    )
+    return len(relative.parts) == 1
 
 
 def is_workspace_run_report_directory(report_dir: Path) -> bool:
@@ -108,9 +119,8 @@ def discover_report_directories(include_workspace_runs: bool = False) -> list[Pa
     report_dirs: list[Path] = []
     seen: set[Path] = set()
 
-    visualization_reports_root = VISUALIZATION_ROOT / "reports"
-    if visualization_reports_root.exists():
-        for report_dir in sorted(p for p in visualization_reports_root.iterdir() if p.is_dir()):
+    if REPORTS_ROOT.exists():
+        for report_dir in sorted(p for p in REPORTS_ROOT.iterdir() if p.is_dir()):
             report_dir = report_dir.resolve()
             if report_dir in seen or not is_local_visualization_report_directory(report_dir):
                 continue
@@ -136,11 +146,11 @@ def discover_report_directories(include_workspace_runs: bool = False) -> list[Pa
                 seen.add(report_dir)
                 report_dirs.append(report_dir)
 
-    return sorted(report_dirs, key=lambda path: path.relative_to(PROJECT_ROOT).as_posix())
+    return sorted(report_dirs, key=lambda path: project_display_path(path).as_posix())
 
 
 def report_identity(report_dir: Path) -> dict[str, str]:
-    relative = report_dir.relative_to(PROJECT_ROOT)
+    relative = project_display_path(report_dir)
     if is_local_visualization_report_directory(report_dir):
         base_path = relative
     else:
@@ -291,7 +301,7 @@ def build_dataset(include_workspace_runs: bool = False) -> dict[str, Any]:
             "scanRoot": PROJECT_ROOT.as_posix(),
             "includeWorkspaceRuns": include_workspace_runs,
             "discoveredReportDirectories": [
-                path.relative_to(PROJECT_ROOT).as_posix() for path in discovered_report_dirs
+                project_display_path(path).as_posix() for path in discovered_report_dirs
             ],
             "warnings": warnings,
         },
@@ -302,26 +312,33 @@ def build_dataset(include_workspace_runs: bool = False) -> dict[str, Any]:
     return dataset
 
 
-def main() -> None:
-    args = parse_args()
-    DASHBOARD_DIR.mkdir(parents=True, exist_ok=True)
-    dataset = build_dataset(include_workspace_runs=args.include_workspace_runs)
+def write_dashboard_data(include_workspace_runs: bool = False) -> dict[str, Any]:
+    """Build the dataset and write generated payloads outside the source tree."""
+
+    DATA_ROOT.mkdir(parents=True, exist_ok=True)
+    dataset = build_dataset(include_workspace_runs=include_workspace_runs)
     OUTPUT_JSON.write_text(json.dumps(dataset, indent=2))
     OUTPUT_JS.write_text(
         "window.ARENA_REPORT_DATA = " + json.dumps(dataset, indent=2) + ";\n"
     )
 
-    print(f"Wrote {OUTPUT_JSON.relative_to(VISUALIZATION_ROOT)}")
-    print(f"Wrote {OUTPUT_JS.relative_to(VISUALIZATION_ROOT)}")
+    print(f"Wrote {project_display_path(OUTPUT_JSON)}")
+    print(f"Wrote {project_display_path(OUTPUT_JS)}")
     print(
         f"Discovered {len(dataset['reports'])} report directories under {PROJECT_ROOT} "
-        f"(include_workspace_runs={args.include_workspace_runs})"
+        f"(include_workspace_runs={include_workspace_runs})"
     )
     warnings = dataset["meta"]["warnings"]
     if warnings:
         print(f"Warnings: {len(warnings)}")
         for warning in warnings:
             print(f"  - {warning}")
+    return dataset
+
+
+def main() -> None:
+    args = parse_args()
+    write_dashboard_data(include_workspace_runs=args.include_workspace_runs)
 
 
 if __name__ == "__main__":

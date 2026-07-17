@@ -8,7 +8,7 @@ restores the original kernel in orig/, and measures baseline vs optimized
 performance on the unseen shapes.
 
 Usage:
-    python held_out/run_heldout_eval.py \
+    python3 -m src.held_out.run_heldout_eval \
         --run-dir workspace_MI300_cursor/run_20260417_142419 \
         --heldout-dir held_out_tests/ \
         --tasks-dir tasks/ \
@@ -25,11 +25,11 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 # Allow running from repo root
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from held_out.injection import apply_all_injections
+from src.held_out.injection import apply_all_injections
 from src.evaluator import (
     evaluate_compilation,
     evaluate_correctness,

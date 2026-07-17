@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Materialize canonical perf helpers into task workspaces.
 
-This is a local debugging utility. Normal benchmark runs call
+This is a local debugging utility. Normal experiment runs call
 setup_workspace(), which materializes helpers automatically.
 """
 

@@ -3,7 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Arena Report Dashboard</title>
+    <meta name="description" content="Compare AgentKernelArena experiment reports." />
+    <title>Agent Experiment Dashboard</title>
     <link rel="stylesheet" href="./dashboard/styles.css" />
   </head>
   <body>
@@ -12,15 +13,15 @@
 
     <main class="page">
       <header class="hero reveal">
-        <div class="eyebrow">Arena Visual Dashboard</div>
+        <div class="eyebrow">Agent Experiment Dashboard</div>
         <div class="hero-topline">
-          <h1>Benchmark reports, compared the way you actually read them.</h1>
+          <h1>Controlled agent runs, compared outcome by outcome.</h1>
           <div id="meta-pill" class="meta-pill">Waiting for data</div>
         </div>
         <p class="hero-copy">
-          Aggregates run reports discovered across AgentKernelArena, typically under
-          `workspace_*/run_*/reports`. Focus on total score, speedup distribution,
-          task-type performance, and per-task status deltas.
+          Compare baseline and treatment reports discovered across AgentKernelArena,
+          typically under `workspace_*/run_*/reports`. Inspect score, correctness,
+          speedup distributions, and per-task regressions or improvements.
         </p>
         <div id="source-note" class="source-note"></div>
       </header>
@@ -113,12 +114,12 @@
       <section class="panel reveal">
         <div class="panel-header">
           <div>
-            <div class="section-kicker">Leaderboard</div>
-            <h2>Report Ranking</h2>
+            <div class="section-kicker">Run comparison</div>
+            <h2>Experiment Outcomes</h2>
           </div>
           <p class="section-copy">
-            This table keeps the full report-level metrics visible so you can
-            quickly judge who is strongest, who is stable, and who fails more often.
+            This table keeps report-level metrics visible so you can compare
+            treatments, stability, and failure rates across matched runs.
           </p>
         </div>
         <div class="table-wrap">

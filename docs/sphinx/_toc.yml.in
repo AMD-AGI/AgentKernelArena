@@ -24,7 +24,7 @@ subtrees:
 - caption: How to
   entries:
     - file: how-to/run-evaluation
-      title: Run an evaluation
+      title: Run an experiment
     - file: how-to/parallel-run
       title: Run tasks in parallel across multiple GPUs
     - file: how-to/agents
@@ -33,6 +33,8 @@ subtrees:
       title: Add a task
     - file: how-to/task-validator
       title: Validate tasks
+    - file: how-to/held-out-evaluation
+      title: Evaluate on held-out shapes
     - file: how-to/visualization
       title: Visualize and compare runs
 
@@ -46,7 +48,7 @@ subtrees:
     - file: reference/api-reference
       title: Configuration and API reference
     - file: reference/benchmark-methodology
-      title: Performance benchmark methodology
+      title: Performance measurement methodology
 
 - caption: About
   entries:

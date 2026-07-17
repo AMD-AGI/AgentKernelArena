@@ -1,19 +1,52 @@
 ---
 myst:
     html_meta:
-        "description": "Learn how to configure config.yaml, run an AgentKernelArena evaluation against GPU kernel tasks, resume interrupted runs, and read scored results."
-        "keywords": "AgentKernelArena, run evaluation, config.yaml, GPU kernel, ROCm, AMD, task results, resume run, scoring"
+        "description": "Configure and run a controlled AgentKernelArena experiment, resume interrupted work, and read RL-ready outcome signals."
+        "keywords": "AgentKernelArena, A/B experiment, config.yaml, GPU kernel, ROCm, AMD, task results, resume run, reward, scoring"
 ---
 
-# Run an evaluation in AgentKernelArena
+# Run an experiment in AgentKernelArena
 
-An evaluation runs one agent against a set of tasks and produces scored results.
-This topic explains how to configure a run, execute it, resume an
-interrupted run, and read the output.
+An experiment runs one agent configuration against a task set and produces
+structured outcome and score signals. Repeat the run with one controlled change
+to create an A/B comparison. This topic explains how to configure, execute,
+resume, and inspect a run.
 
-## Configure `config.yaml`
+## Choose or create a run configuration
 
-The root `config.yaml` selects the agent, the tasks, and the target GPU:
+A run configuration selects the agent, tasks, and target GPU. The repository
+ships three examples:
+
+| Configuration | Purpose |
+| --- | --- |
+| `example_configs/quickstart_claude_mi300.yaml` | One Claude Code GELU task on MI300/MI300X (`gfx942`). |
+| `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`). |
+| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; use only after installing and authenticating Cursor Agent. |
+
+For a first run, select the quickstart that matches the physical GPU:
+
+```bash
+CONFIG_PATH=example_configs/quickstart_claude_mi300.yaml
+# For MI355X instead:
+# CONFIG_PATH=example_configs/quickstart_claude_mi355x.yaml
+```
+
+Install and authenticate the agent named by the selected config, then verify it
+inside the runtime container:
+
+```bash
+make docker-check-agents CONFIG="$CONFIG_PATH"
+```
+
+To define a different experiment, copy the nearest example and edit the copy:
+
+```bash
+cp "$CONFIG_PATH" my_experiment.yaml
+CONFIG_PATH=my_experiment.yaml
+```
+
+For example, replace the contents of `my_experiment.yaml` with the following to
+use Cursor Agent. Install and authenticate Cursor before selecting it:
 
 ```yaml
 agent:
@@ -43,36 +76,36 @@ select tasks at any level of granularity.
 | `hip2hip/gpumode/GELU` | A single task |
 
 See [Configuration and API reference](../reference/api-reference.md) for the full
-set of `config.yaml` fields.
+set of run-configuration fields.
 
 ## Start a run
 
 ```bash
-make docker-run CONFIG=config.yaml
+make docker-run CONFIG="$CONFIG_PATH"
 ```
 
 Use a non-default config file to keep multiple task sets side-by-side:
 
 ```bash
-make docker-run CONFIG=config_triton.yaml
+CONFIG_PATH=config_triton.yaml
+make docker-run CONFIG="$CONFIG_PATH"
 ```
 
 Add a suffix to label a run directory (useful for A/B testing):
 
 ```bash
-make docker-run CONFIG=config.yaml RUN_ARGS="--run-suffix cursor_with_mcp"
+make docker-run CONFIG="$CONFIG_PATH" RUN_ARGS="--run-suffix cursor_with_mcp"
 # → workspace_MI300_cursor/run_20260617_101500_cursor_with_mcp
 ```
 
-For debugging, enter the exact Docker runtime used by the benchmark:
+For debugging, enter the same Docker runtime used by the experiment:
 
 ```bash
 make docker-shell
 ```
 
 The Docker runner currently supports Codex, Claude Code, and Cursor Agent login
-reuse from the host. It preflights the selected config before starting the
-benchmark run.
+reuse from the host. It preflights the selected config before starting the run.
 
 ## Run across multiple GPUs
 
@@ -82,25 +115,27 @@ container per GPU, masks each worker to one GPU, and lets workers claim tasks
 from a shared queue:
 
 ```bash
-make docker-parallel-run CONFIG=config.yaml GPU_IDS=0,1,2,3,4,5,6,7
+make docker-parallel-run CONFIG="$CONFIG_PATH" GPU_IDS=0,1,2,3,4,5,6,7
 ```
 
 If `GPU_IDS` is omitted, the runner discovers GPU IDs with `rocm-smi --showid`:
 
 ```bash
-make docker-parallel-run CONFIG=config.yaml
+make docker-parallel-run CONFIG="$CONFIG_PATH"
 ```
 
 `RUN_ARGS` works the same way as `docker-run`:
 
 ```bash
 make docker-parallel-run \
-  CONFIG=config.yaml \
+  CONFIG="$CONFIG_PATH" \
   GPU_IDS=0,1 \
   RUN_ARGS="--run-suffix parallel_smoke"
 ```
 
-Parallel runs support optimization agents and `task_validator`. See
+The Docker parallel path is verified for `cursor`, `claude_code`, `codex`, and
+`task_validator`. Specialized GEAK/mini-swe templates require their own
+dependencies and worker-visible GPU configuration. See
 [Run tasks in parallel across multiple GPUs](parallel-run.md) for scheduling,
 GPU isolation, resume behavior, and failure handling.
 
@@ -108,7 +143,7 @@ GPU isolation, resume behavior, and failure handling.
 
 ```mermaid
 flowchart TD
-    A[Load config.yaml] --> B[Register agent launcher]
+    A[Load run configuration] --> B[Register agent launcher]
     B --> C[Discover tasks]
     C --> D[Create timestamped workspace per task]
     D --> E[Measure baseline performance]
@@ -130,22 +165,30 @@ For each task, the framework:
 After all tasks finish, a post-processing step aggregates the per-task results
 into a run report.
 
+`task_validator` uses a separate path: it skips baseline measurement and kernel
+scoring, writes `validation_report.yaml` per task, and aggregates a
+`validation_summary.yaml`.
+
+Run the same configuration again with one agent capability changed and a new
+`--run-suffix` to form a controlled A/B pair. See
+[Configure agents and models](agents.md#ab-testing-and-ablation-studies).
+
 ## Resume an interrupted run
 
 Long runs can be resumed; completed tasks are skipped.
 
 ```bash
 # Resume a specific run directory
-make docker-run CONFIG=config.yaml RUN_ARGS="--resume-run run_20260617_101500"
+make docker-run CONFIG="$CONFIG_PATH" RUN_ARGS="--resume-run run_20260617_101500"
 
 # Resume the most recent run
-make docker-run CONFIG=config.yaml RUN_ARGS="--resume-latest"
+make docker-run CONFIG="$CONFIG_PATH" RUN_ARGS="--resume-latest"
 ```
 
 For a parallel run, use the same `RUN_ARGS` with `docker-parallel-run`:
 
 ```bash
-make docker-parallel-run CONFIG=config.yaml GPU_IDS=0,1,2,3 RUN_ARGS="--resume-latest"
+make docker-parallel-run CONFIG="$CONFIG_PATH" GPU_IDS=0,1,2,3 RUN_ARGS="--resume-latest"
 ```
 
 ## Read the results
@@ -160,9 +203,13 @@ workspace_<gpu>_<agent>/
     │   ├── running/
     │   ├── done/
     │   └── failed/
-    └── <task_name>_<timestamp>/
-        ├── task_result.yaml      # per-task result + score
-        └── ...                   # agent output, modified kernel, logs
+    ├── <task_name>_<timestamp>/
+    │   ├── task_result.yaml      # per-task outcome + reward/score
+    │   └── ...                   # modified source and task artifacts
+    └── reports/
+        ├── overall_summary.csv
+        ├── task_type_breakdown.json
+        └── overall_report.txt
 ```
 
 Each `task_result.yaml` contains the scored outcome:
@@ -178,7 +225,8 @@ optimization_summary: "..."
 score: 278.0
 ```
 
-The `score` combines compilation, correctness, and speedup. See
+The `score` combines compilation, correctness, and speedup and can be consumed
+as a reward by an external policy-search or RL system. See
 [Configuration and API reference](../reference/api-reference.md#scoring) for the
 scoring formula, and [Visualize and compare runs](visualization.md) to render and
 compare reports across agents.

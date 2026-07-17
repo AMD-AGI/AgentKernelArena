@@ -47,7 +47,6 @@ easy:
 - test_randn
 - test_random_int
 - test_reverse_range
-- test_triton_flip
 
 medium:
 - layernorm
@@ -74,4 +73,3 @@ hard:
 - test_tma_store_gemm
 - triton_multreduce_matmul_kernel
 ```
-

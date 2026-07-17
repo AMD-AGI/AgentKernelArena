@@ -1,6 +1,6 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 """
-Codegen injection for held-out shape replacement.
+Code-generation helpers for held-out shape replacement.
 
 Handles three patterns:
 1. triton2triton/vllm: replace TEST_SHAPES = [...] block in task_runner.py

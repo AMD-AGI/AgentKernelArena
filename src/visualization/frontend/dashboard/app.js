@@ -24,7 +24,7 @@
 
   if (!dataset || !Array.isArray(dataset.reports)) {
     showFatal(
-      "Dashboard data not found. Run `python backend/scripts/build_dashboard_data.py` to generate `frontend/dashboard/data.js` first."
+      "Dashboard data not found. Run `python3 -m src.visualization build --include-workspace-runs` first."
     );
     return;
   }

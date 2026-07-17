@@ -1,5 +1,5 @@
-# Task Result Template for double output
-# Replace placeholders with actual results and save as task_result.yaml in your working directory.
+# Legacy four-output schema retained for task-config compatibility.
+# Agents must not write task_result.yaml; the centralized evaluator writes the standard schema.
 
 task_name: "<tasks/...>"               # Full task path from tasks/ directory
 

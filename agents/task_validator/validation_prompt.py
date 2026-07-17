@@ -159,7 +159,7 @@ Verify that config.yaml contains all required fields:
 - `target_kernel_functions` (list of strings)
 - `compile_command` (list of strings)
 - `correctness_command` (list of strings)
-- `task_type` (string, one of: hip2hip, cuda2hip, triton2triton, triton2flydsl, torch2hip, torch2flydsl, instruction2triton, rocprim, flydsl2flydsl, repository)
+- `task_type` (string, one of: hip2hip, cuda2hip, triton2triton, triton2flydsl, torch2hip, torch2flydsl, instruction2triton, flydsl2flydsl, repository)
 Also check that optional fields (`performance_command`, `prompt`) are well-formed if present.
 
 **IMPORTANT — `task_type: repository` schema differs.** Repository tasks clone a full upstream
@@ -314,8 +314,8 @@ Based on checks 4-6, report whether any command appeared to hang:
 Status: PASS if all commands completed normally, FAIL if any hung, WARN if timeouts occurred but process was recoverable.
 
 ### Check 10: Result Template Compatibility
-Check if the task's compile/correctness/performance flow would produce output compatible with the standard `task_result_template.yaml` schema.
-The schema expects: task_name, best_optimized_source_file_path, best_optimized_kernel_functions, pass_compilation, compilation_error_message, pass_correctness, correctness_error_message, base_execution_time, best_optimized_execution_time, speedup_ratio, optimization_summary.
+Check if the task's compile/correctness/performance flow provides the signals needed by the centralized evaluator's `task_result.yaml` schema.
+The core schema expects: task_name, pass_compilation, compilation_error_message, pass_correctness, correctness_error_message, base_execution_time, best_optimized_execution_time, speedup_ratio, timing-method metadata, valid-case counts, speedup_calculation_error_message, optimization_summary, and score.
 Does the task's runner/script produce timing information? Does it output pass/fail status in a parseable way?
 If outputs are in `eval_result.yaml` with parseable keys (`compiled`, `correctness`, `speedup`, `ori_time`, `opt_time`) and/or `build/*.json` reports, consider this compatible via deterministic field mapping; do not require exact file name or exact schema shape.
 
@@ -325,8 +325,7 @@ and `build/performance_report.json` (per-case `execution_time_ms` for the optimi
 with `baseline_perf.yaml` (per-case baseline `execution_time_ms` produced by the harness), give a
 deterministic mapping: pass_compilation/pass_correctness from the JSON reports, best_optimized_execution_time
 from the performance report, base_execution_time from baseline_perf.yaml, and speedup_ratio = base/optimized.
-`eval_result.yaml` and the `task_result_template` field are NOT required for repository tasks — do not FAIL
-solely on their absence. Mark PASS when these reports are present (or would be produced by the runner).
+`eval_result.yaml` and the legacy `task_result_template` field are NOT required — do not FAIL solely on their absence. Mark PASS when the command results and reports can be mapped deterministically.
 
 For optimization tasks whose performance test emits per-case timing (e.g. `perf/benchmark_results.json`
 with mean/median per configuration) and signals compile/correctness via pytest exit codes — typical of

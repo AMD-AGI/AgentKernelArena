@@ -1,7 +1,7 @@
 ---
 myst:
     html_meta:
-        "description": "Use the AgentKernelArena task_validator agent to run 10 automated quality checks on GPU kernel tasks before merging or publishing leaderboard results."
+        "description": "Use the AgentKernelArena task_validator agent to run 10 automated quality checks before using GPU kernel tasks in shared experiments."
         "keywords": "AgentKernelArena, task validator, GPU kernel, quality checks, ROCm, HIP, Triton, validation report"
 ---
 
@@ -10,11 +10,12 @@ myst:
 The `task_validator` agent checks that tasks are correctly configured,
 reproducible, and functional. It doesn't optimize kernels — it audits them.
 Use it to validate new tasks before merging and to audit existing tasks before
-publishing results to a leaderboard.
+using them in controlled comparisons or RL data collection.
 
 ## Run the validator
 
-Set the validator as the agent in `config.yaml` and list the tasks to check:
+Save a run configuration such as `config_validator.yaml` with the validator as
+the agent and the tasks to check:
 
 ```yaml
 agent:
@@ -31,7 +32,7 @@ workspace_directory_prefix: workspace
 Then run:
 
 ```bash
-make docker-run CONFIG=config.yaml
+make docker-run CONFIG=config_validator.yaml
 ```
 
 Each task workspace receives a `validation_report.yaml` with per-check results,
@@ -44,7 +45,7 @@ reports:
 
 ```bash
 make docker-parallel-run \
-  CONFIG=config.yaml \
+  CONFIG=config_validator.yaml \
   GPU_IDS=0,1,2,3,4,5,6,7 \
   RUN_ARGS="--run-suffix validator_parallel8"
 ```
@@ -55,18 +56,23 @@ Parallel resume skips validator tasks whose workspace already contains
 ## Validator configuration
 
 The validator's own backend and limits are set in
-`agents/task_validator/agent_config.yaml`:
+`agents/task_validator/agent_config.yaml`. This backend-neutral example leaves
+the model unset so the selected CLI uses its default:
 
 ```yaml
-backend: claude_code          # claude_code | codex | cursor
+backend: claude_code          # claude_code | codex
 timeout_seconds: 1200         # max time per task validation (0 disables the timeout)
 python_path: null             # null uses the framework/container Python
 
 # Optional model settings for the active backend.
 # claude_code: passed as `claude --model` and `claude --effort`
 # codex: passed as `codex exec --model` and `model_reasoning_effort`
-model: sonnet
+model: null                   # null uses the selected CLI's default
 effort: max
+
+compile_timeout: 600
+correctness_timeout: 600
+performance_timeout: 600
 ```
 
 ## `task_validator` checks
@@ -78,9 +84,9 @@ The `task_validator` runs the following checks in order.
 | 1 | `config_schema` | All required fields exist with correct types |
 | 2 | `source_files_exist` | Every file in `source_file_path` exists |
 | 3 | `target_symbols_found` | Every `target_kernel_functions` symbol is defined in source |
-| 4 | `compilation` | `compile_command` succeeds (exit 0, within 120s) |
-| 5 | `correctness` | `correctness_command` succeeds (exit 0, within 180s) |
-| 6 | `performance` | `performance_command` succeeds, if present (within 180s) |
+| 4 | `compilation` | `compile_command` succeeds within `compile_timeout` |
+| 5 | `correctness` | `correctness_command` succeeds within `correctness_timeout` |
+| 6 | `performance` | `performance_command` succeeds within `performance_timeout`, if present |
 | 7 | `correctness_implementation_review` | The correctness check is meaningful, not trivially passing |
 | 8 | `self_contained` | No missing headers/imports; isolated tasks avoid undeclared external repos/paths, and repository tasks declare their upstream in `repo_url` |
 | 9 | `gpu_hang_check` | No command hangs or times out |
@@ -88,7 +94,8 @@ The `task_validator` runs the following checks in order.
 
 ## Overall status
 
-- **PASS** — all checks passed.
+- **PASS** — all applicable checks passed; a contract-approved `SKIP` does not
+  prevent PASS.
 - **WARN** — no failures, but at least one warning (for example, a questionable
   correctness implementation). Acceptable with justification.
 - **FAIL** — at least one check failed; the task must be fixed before merging.
@@ -99,11 +106,7 @@ A validated task's **compile → correctness → performance** flow must produce
 that populate the standard template:
 
 ```yaml
-task_name: "<task_type>/<task_name>"
-best_optimized_source_file_path:
-  - <source files>
-best_optimized_kernel_functions:
-  - <kernel functions>
+task_name: "<full path relative to tasks/>"
 pass_compilation: true/false
 compilation_error_message: null
 pass_correctness: true/false
@@ -111,7 +114,14 @@ correctness_error_message: null
 base_execution_time: 0.0          # ms
 best_optimized_execution_time: 0.0
 speedup_ratio: 0.0
-optimization_summary: ""
+baseline_benchmark_methods: []
+optimized_benchmark_methods: []
+benchmark_method_consistent: true/false
+valid_baseline_cases: 0
+valid_optimized_cases: 0
+speedup_calculation_error_message: null
+optimization_summary: "Framework-generated evaluator summary"
+score: 0.0
 ```
 
 For the full author checklist and self-containedness rules, see

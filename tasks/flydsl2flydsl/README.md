@@ -7,18 +7,19 @@ These tasks require [FlyDSL](https://github.com/ROCm/FlyDSL) and a ROCm-enabled 
 Recommended setup from the repository root:
 
 ```bash
-make setup-flydsl
+make docker-setup-flydsl
 ```
 
-This installs FlyDSL into the project virtual environment and verifies both FlyDSL import and ROCm PyTorch GPU availability.
+This installs FlyDSL into the Docker runtime's persistent pip user-base when the
+selected image does not already provide it, then verifies the import and ROCm
+PyTorch GPU availability.
 
-Manual install, if needed:
+For manual inspection, enter the supported runtime first:
 
 ```bash
-pip install flydsl
+make docker-shell
+python3 -c "import flydsl; print(flydsl.__version__)"
 ```
-
-Verify: `python3 -c "import flydsl; print(flydsl.__version__)"`
 
 ## Task Difficulty
 

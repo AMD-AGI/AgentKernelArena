@@ -35,11 +35,11 @@ parser = argparse.ArgumentParser(description="arguments for AgentKernelArena")
 parser.add_argument(
     "--config_name",
     type=str,
-    default="config.yaml",
+    default="example_configs/quickstart_claude_mi300.yaml",
     help=(
-        "the config of AgentKernelArena, default set to config. You can set "
-        "different tasks in different config yaml file in order to run multi "
-        "evaluation task in one folder."
+        "run configuration for AgentKernelArena (default: "
+        "example_configs/quickstart_claude_mi300.yaml for MI300/MI300X). "
+        "Select a matching config explicitly when using another GPU."
     ),
 )
 parser.add_argument(

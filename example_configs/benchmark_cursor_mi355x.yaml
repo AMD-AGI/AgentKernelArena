@@ -2,6 +2,9 @@
 # Agent & Task Configuration
 # ============================================================================
 
+# Curated 60-task benchmark example for Cursor Agent on MI355X (gfx950).
+# For a first run, use one of the quickstart_claude_*.yaml examples instead.
+
 # Agent Template Selection
 # Choose ONE agent template that defines how the LLM interacts with the system
 # Available options:
@@ -11,6 +14,7 @@
 # - task_validator
 # - geak_v3            # GEAK-v3 optimizer (HIP kernels, via the `geak` CLI)
 # - geak_v3_triton     # GEAK-v3 optimizer (Triton kernels, via the `geak` CLI)
+# - mini_swe_triton    # mini-swe-agent-based Triton optimizer
 agent:
   template: cursor
 
@@ -45,7 +49,7 @@ tasks:
   - hip2hip/gpumode/TransformerFFNLayer
   - hip2hip/others/assign_score_withk
   - hip2hip/others/ball_query
-  
+
   # triton2triton/vllm: 10 tasks
   - triton2triton/vllm/triton_awq_dequantize
   - triton2triton/vllm/triton_awq_gemm
@@ -69,7 +73,7 @@ tasks:
   - triton2triton/rocmbench/medium/softmax
   - triton2triton/rocmbench/hard/gemm
   - triton2triton/rocmbench/hard/moe_gemm
-  
+
   # torch2hip: 10 tasks
   - torch2hip/gpumode/1001_NormalAttention_dot
   - torch2hip/gpumode/10024_Feedforward

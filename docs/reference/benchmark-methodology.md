@@ -1,15 +1,22 @@
 ---
 myst:
     html_meta:
-        "description": "Learn how AgentKernelArena measures kernel performance using CUDA-graph and CUDA-event timing, including warmup iterations, sampling, and speedup computation."
+        "description": "Learn how AgentKernelArena measures baseline and optimized kernel performance, records timing methods, and computes speedup signals."
         "keywords": "AgentKernelArena, benchmark, CUDA graph, CUDA event, HIP, Triton, kernel timing, warmup, speedup, performance measurement"
 ---
 
-# Performance benchmark methodology in AgentKernelArena
+# Performance measurement methodology in AgentKernelArena
 
-Performance timing in AgentKernelArena is not uniform across task categories.
-There are two timing implementations; both use 10 warmup iterations and average the
-measured samples, but they differ in how samples are collected.
+Performance timing is defined by each task's `performance_command`. The
+framework runs that command on the original implementation and again on the
+agent-modified implementation, then parses structured or textual timing output.
+Task suites can use different warmup counts, sample counts, and timing APIs.
+
+This page documents two common timing families. The bundled vLLM and ROCmBench
+suites use shared helpers materialized from `src/tools/perf/`; gpumode uses
+task-local `cal_kernel_perf.py` copies. FlyDSL and repository-level tasks use
+additional task-specific harnesses; inspect their `config.yaml`, runner, and
+recorded timing metadata before comparing results across suites.
 
 The shared Triton timing helpers are maintained in `src/tools/perf/`; committed
 task sources contain stubs and markers, and `setup_workspace()` materializes the
@@ -21,8 +28,9 @@ helper workflow for maintenance details.
 
 Used by:
 
-- `triton2triton/vllm/*/scripts/task_runner.py` (118 tasks) — `_benchmark_cuda_graph_or_events()`
-- `*/rocmbench/*/performance_utils_pytest.py` (62 tasks, `instruction2triton` + `triton2triton`) — `_measure_times()`
+- `triton2triton/vllm/*/scripts/task_runner.py` — `_benchmark_cuda_graph_or_events()`
+- `*/rocmbench/*/performance_utils_pytest.py` (`instruction2triton` and
+  `triton2triton`) — `_measure_times()`
 
 Method:
 
@@ -50,17 +58,19 @@ Method:
 - `hip2hip/others/ball_query` uses its own `scripts/task_runner.py` event timing
   (correctness was strengthened separately; timing is unchanged).
 
-## Cross-category comparison notes
+## Cross-suite comparison notes
 
-The following notes apply when comparing results across the two timing categories.
+The following notes apply when comparing results across timing implementations.
 
-- Both paths satisfy the validator's "10 warmup / 100 measured / averaged" expectation.
-  The CUDA-graph path is accepted as an equivalent (warmup + 100 averaged graph-replay
-  samples); see `agents/task_validator/validation_prompt.py` Check 6.
-- Speedup is computed by the harness (`src/evaluator.py`): it runs the same
-  `performance_command` against the original kernel (baseline) and the optimized kernel,
-  then `speedup_ratio = base / optimized`. Comparing across categories is only valid
-  when both sides used the same timing method — see `benchmark_method` in the results.
-- The two categories currently use separate implementations with no shared
-  benchmark module, so cross-category comparisons require verifying that both
-  sides used the same timing method before drawing conclusions.
+- The shared CUDA-graph and gpumode paths use 10 warmups and 100 averaged
+  measurements. Other task-specific harnesses may use different methodology;
+  the validator can report a warning when a task does not follow or document the
+  expected method.
+- `src/evaluator.py` matches baseline and optimized test cases and prefers the
+  average of their per-case speedup ratios. It falls back to aggregate
+  `base_execution_time / best_optimized_execution_time` only when an explicit
+  ratio is unavailable.
+- `task_result.yaml` records baseline and optimized timing-method metadata and a
+  `benchmark_method_consistent` flag. Treat a mixed-method speedup as suspect.
+- Even when method names match, cross-suite comparisons require checking shapes,
+  warmups, sample counts, synchronization, and aggregation rules.

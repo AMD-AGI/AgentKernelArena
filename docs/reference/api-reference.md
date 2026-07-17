@@ -1,19 +1,19 @@
 ---
 myst:
     html_meta:
-        "description": "Complete reference for AgentKernelArena configuration: run config.yaml schema, task config fields, CLI flags, scoring formula, and the agent registry."
+        "description": "Common AgentKernelArena configuration reference: run config.yaml schema, task config fields, CLI flags, scoring formula, and the agent registry."
         "keywords": "AgentKernelArena, API reference, config.yaml, CLI flags, scoring, agent registry, ROCm, GPU kernel"
 ---
 
 # AgentKernelArena configuration and API reference
 
-This topic documents the run configuration (`config.yaml`), the per-task
-configuration, the command-line flags, the scoring formula, and the agent
-registry.
+This topic documents run configuration files, per-task
+configuration, command-line flags, scoring formula, and agent registry.
 
-## Run configuration (`config.yaml`)
+## Run configuration
 
-The root `config.yaml` defines a single evaluation run.
+A run configuration defines a single experiment. Start from a file under
+`example_configs/` and copy it when creating a new experiment.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -22,6 +22,18 @@ The root `config.yaml` defines a single evaluation run.
 | `target_gpu_model` | string | Target GPU model, for example `MI300` or `MI355X`. Used to select the Docker image architecture, set `PYTORCH_ROCM_ARCH`, and name the workspace. |
 | `log_directory` | string | Directory for run logs. |
 | `workspace_directory_prefix` | string | Prefix for the workspace directory. The full name is `<prefix>_<gpu>_<agent>`. |
+
+Specialized GEAK and mini-swe integrations also accept some optional top-level
+fields:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `gpu_ids` | string | Comma-separated GPU IDs exposed to specialized internal workers. This is separate from the host runner's `GPU_IDS` variable. |
+| `num_parallel` | integer | Number of GEAK sub-agents/worktrees to run in parallel. mini-swe configures this under its agent config instead. |
+| `run_mode` | string | `geak_v3_triton` mode override, such as `quick` or `full`. |
+
+Agent-specific settings remain in `agents/<agent_name>/agent_config.yaml`; see
+the selected integration's directory for precedence rules and additional fields.
 
 Example:
 
@@ -44,7 +56,7 @@ The in-container `main.py` entrypoint accepts these flags:
 
 | Flag | Description |
 | --- | --- |
-| `--config_name <file>` | Config file to load (default `config.yaml`). Use separate files to keep multiple task sets in one folder |
+| `--config_name <file>` | Config file to load (default `example_configs/quickstart_claude_mi300.yaml` for MI300/MI300X). Pass a matching config explicitly on another GPU |
 | `--run-suffix <suffix>` | Suffix appended to the run directory name (letters, numbers, `.`, `_`, `-` only). Useful for labeling A/B runs |
 | `--resume-run <run_dir>` | Resume a specific run directory, skipping completed tasks |
 | `--resume-latest` | Resume the most recent run in the workspace |
@@ -71,15 +83,15 @@ The following flags are internal implementation details used by
 
 ## Docker runner Make targets
 
-The following Make targets are available for running evaluations.
+The following Make targets are available for running experiments.
 
 | Target | Description |
 | --- | --- |
-| `make docker-run CONFIG=config.yaml` | Run tasks serially in one Docker container |
-| `make docker-parallel-run CONFIG=config.yaml GPU_IDS=0,1` | Run one Docker worker per listed GPU, using a shared dynamic task queue |
+| `make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml` | Run tasks serially in one Docker container |
+| `make docker-parallel-run CONFIG=example_configs/benchmark_cursor_mi355x.yaml GPU_IDS=0,1` | Run one Docker worker per listed GPU, using a shared dynamic task queue |
 | `make docker-smoke` | Verify Docker, ROCm runtime visibility, Python imports, and GPU access |
-| `make docker-check-agents` | Verify host agent CLI login reuse inside Docker |
-| `make docker-shell` | Open an interactive shell in the benchmark Docker runtime |
+| `make docker-check-agents CONFIG=example_configs/quickstart_claude_mi300.yaml` | Verify the first-class host CLI selected by the config inside Docker (`task_validator` resolves to its backend). Override with `AGENTS=claude_code,codex`; use `AGENTS=all` for all three. Specialized integrations use their own checks |
+| `make docker-shell` | Open an interactive shell in the experiment runtime |
 
 `docker-parallel-run` accepts these environment variables:
 
@@ -112,7 +124,10 @@ For isolated-kernel tasks (`hip2hip`, `cuda2hip`, `triton2triton`,
 | `correctness_command` | Yes | Command(s) to validate correctness |
 | `task_type` | Yes | One of `hip2hip`, `cuda2hip`, `triton2triton`, `triton2flydsl`, `instruction2triton`, `torch2hip`, `torch2flydsl`, or `flydsl2flydsl` |
 | `performance_command` | No | Command(s) to measure performance |
-| `task_result_template` | No | Override the result template (`null` = default) |
+| `compile_timeout` | No | Per-command compilation timeout in seconds (default `3600`) |
+| `correctness_timeout` | No | Per-command correctness timeout in seconds (default `3600`) |
+| `performance_timeout` | No | Per-command performance timeout in seconds (default `3600`) |
+| `task_result_template` | No | Legacy compatibility field. The centralized evaluator writes the standard result schema regardless of this value |
 | `prompt.source_code` | No | Override the prompt's source-code section |
 | `prompt.instructions` | No | Custom prompt instructions |
 | `prompt.cheatsheet` | No | Reference/cheatsheet content for the prompt |
@@ -127,8 +142,12 @@ For repository-level tasks (`task_type: repository`):
 | `compile_command` | Yes | Command(s) to compile or build-check |
 | `correctness_command` | Yes | Command(s) to validate correctness |
 | `performance_command` | No | Command(s) to measure performance |
+| `compile_timeout` | No | Per-command compilation timeout in seconds (default `3600`) |
+| `correctness_timeout` | No | Per-command correctness timeout in seconds (default `3600`) |
+| `performance_timeout` | No | Per-command performance timeout in seconds (default `3600`) |
 | `post_clone_install` | No | Setup command(s) to run after cloning the upstream repository |
 | `post_clone_install_mode` | No | Controls when `post_clone_install` runs, for example `every_setup` |
+| `repo_subdir` | No | Workspace subdirectory for the clone; defaults to the repository name derived from `repo_url` |
 | `source_file_path` | No | Optional target source-file hints, relative to the cloned repository root |
 | `target_kernel_functions` | No | Optional target function or kernel-symbol hints |
 | `prompt.instructions` | No | Custom prompt instructions |
@@ -142,7 +161,7 @@ Each task produces a `task_result.yaml` in its workspace:
 
 | Field | Description |
 | --- | --- |
-| `task_name` | `<task_type>/<task_name>` |
+| `task_name` | Full task-directory path relative to `tasks/`, including any suite/difficulty levels |
 | `pass_compilation` | Whether the optimized kernel compiled |
 | `compilation_error_message` | Error text if compilation failed, else `null` |
 | `pass_correctness` | Whether correctness passed |
@@ -156,7 +175,7 @@ Each task produces a `task_result.yaml` in its workspace:
 | `valid_baseline_cases` | Number of baseline test cases with usable timing results |
 | `valid_optimized_cases` | Number of optimized test cases with usable timing results |
 | `speedup_calculation_error_message` | Error text if speedup could not be calculated, else `null` |
-| `optimization_summary` | Free-text summary from the agent |
+| `optimization_summary` | Framework-generated note identifying the optimizing agent and centralized evaluator |
 | `score` | Computed score (see below) |
 
 ## Scoring
@@ -184,6 +203,12 @@ falls back to `base_execution_time / best_optimized_execution_time` when an
 explicit ratio is not present.
 
 This is the default scoring scheme; you can define your own in `src/score.py`.
+
+For an A/B pair, compare completed run directories with:
+
+```bash
+python3 compare_runs.py <baseline-run-directory> <treatment-run-directory>
+```
 
 ## Agent registry
 

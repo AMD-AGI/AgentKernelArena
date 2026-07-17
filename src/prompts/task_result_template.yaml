@@ -1,21 +1,24 @@
-# Task Result Template
-# Fill out this template after completing the optimization task
+# Reference schema written by the centralized evaluator.
+# Optimization agents must not create task_result.yaml themselves.
 
-task_name: "rocm-examples/bitonic_sort"          # Full task path from tasks/ directory
+task_name: "<full path relative to tasks/>"
 
-best_optimized_source_file_path:                 # List of optimized source files
-- main.hip
-best_optimized_kernel_functions:                 # List of optimized kernel functions
-- bitonic_sort_kernel
+pass_compilation: false
+compilation_error_message: null
 
-pass_compilation: false                           # true if compilation succeeded, false otherwise
-compilation_error_message: null                   # Error message if compilation failed, null if passed
+pass_correctness: false
+correctness_error_message: null
 
-pass_correctness: false                           # true if correctness tests passed, false otherwise
-correctness_error_message: null                   # Error message if correctness failed, null if passed
+base_execution_time: 0.0
+best_optimized_execution_time: 0.0
+speedup_ratio: 0.0
 
-base_execution_time: 0.0                         # Baseline execution time (ms or seconds)
-best_optimized_execution_time: 0.0               # Best optimized execution time (same unit as base)
-speedup_ratio: 0.0                               # Calculated as: base_execution_time / best_optimized_execution_time
+baseline_benchmark_methods: []
+optimized_benchmark_methods: []
+benchmark_method_consistent: false
+valid_baseline_cases: 0
+valid_optimized_cases: 0
+speedup_calculation_error_message: null
 
-optimization_summary: "Brief summary of optimization strategies and key improvements made."
+optimization_summary: "Framework-generated evaluator summary"
+score: 0.0

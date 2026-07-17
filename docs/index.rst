@@ -1,16 +1,16 @@
 .. meta::
-   :description: AgentKernelArena is a standardized arena for evaluating AI coding agents on real GPU kernel optimization tasks on AMD GPUs.
-   :keywords: AgentKernelArena, ROCm, GPU, kernel, optimization, agent, LLM, HIP, Triton, benchmark, AMD
+   :description: AgentKernelArena is an A/B testing and RL-ready environment for developing AI agents on real GPU kernel optimization tasks.
+   :keywords: AgentKernelArena, A/B testing, agent reinforcement learning, ROCm, GPU, kernel optimization, AI agent, HIP, Triton, AMD
 
 ******************************
 AgentKernelArena documentation
 ******************************
 
-AgentKernelArena is a standardized evaluation arena, built by AMD, that measures
-how well AI coding agents perform on real GPU kernel optimization tasks. It runs
-LLM-powered agents side-by-side on the same tasks in isolated workspaces and
-scores them with objective, reproducible metrics for compilation, correctness,
-and GPU performance.
+AgentKernelArena is a controlled experimentation platform for developing AI
+agents on real GPU kernel optimization tasks. It enables reproducible A/B tests
+across models, prompts, tools, and agent policies, and produces objective
+compilation, correctness, and performance signals that external agent-RL
+systems can use as rewards.
 
 The AgentKernelArena source code is hosted in the
 `AMD-AGI/AgentKernelArena <https://github.com/AMD-AGI/AgentKernelArena>`_ GitHub
@@ -25,7 +25,7 @@ repository.
 
    .. grid-item-card:: How to
 
-      * :doc:`Run an evaluation <how-to/run-evaluation>`
+      * :doc:`Run an experiment <how-to/run-evaluation>`
       * :doc:`Run tasks in parallel across multiple GPUs <how-to/parallel-run>`
       * :doc:`Configure agents and models <how-to/agents>`
       * :doc:`Add a task <how-to/add-task>`
@@ -39,7 +39,7 @@ repository.
    .. grid-item-card:: Reference
 
       * :doc:`Configuration and API reference <reference/api-reference>`
-      * :doc:`Performance benchmark methodology <reference/benchmark-methodology>`
+      * :doc:`Performance measurement methodology <reference/benchmark-methodology>`
 
 To contribute to the documentation, see the
 `AgentKernelArena GitHub repository <https://github.com/AMD-AGI/AgentKernelArena>`_.

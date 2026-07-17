@@ -34,9 +34,9 @@ docker run -d --name geak-aka \
   -v /path/to/GEAK:/GEAK -w /workspace \
   lmsysorg/sglang:v0.5.12-rocm720-mi30x sleep infinity
 
-# 3. Install GEAK (provides the `geak` CLI) + AKA deps inside the container
+# 3. Install GEAK (provides the `geak` CLI). The pinned image supplies the
+# AgentKernelArena runtime dependencies.
 docker exec geak-aka pip install -e /GEAK
-docker exec geak-aka pip install -r /workspace/requirements.txt
 ```
 
 ### LLM authentication (AMD gateway or personal)

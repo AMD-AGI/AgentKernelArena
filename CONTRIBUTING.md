@@ -4,10 +4,10 @@ Thanks for your interest in AgentKernelArena! This guide explains how to contrib
 
 ## Before You Start
 
-- Read `README.md` to understand the project scope — a standardized arena for evaluating LLM coding agents on GPU kernel optimization tasks.
-- Skim `config.yaml` to understand how agents, tasks, and LLM parameters are configured.
-- Ensure you have a supported GPU environment (AMD GPU with ROCm 6.4+ / 7.0+ / 7.1+) and Docker.
-- Confirm you have access to at least one supported agent (Cursor Agent, Claude Code, or Codex) and any required API keys.
+- Read `README.md` to understand the project scope: controlled A/B experiments and RL-ready feedback for GPU kernel agents.
+- Skim the files under `example_configs/` for run-level agent/task/GPU selection and the relevant `agents/<name>/agent_config.yaml` for agent-specific model and runtime settings.
+- Ensure you have an AMD GPU with ROCm-compatible Docker access; the supported workflow uses the pinned ROCm/SGLang images documented in the compatibility matrix.
+- Confirm that the selected agent integration and its authentication/dependencies are available.
 
 ## Development Setup
 
@@ -15,20 +15,27 @@ Docker is the only supported path. All runs happen inside the pinned ROCm/SGLang
 container; see `docs/install/install.md`.
 
 ```bash
-# Verify the container can see Python, ROCm tools, GPU, and your agent logins
+# Verify the container can see Python, ROCm tools, and the GPU
 make docker-smoke
-make docker-check-agents
+
+# Select a run config and verify only its agent
+CONFIG_PATH=example_configs/quickstart_claude_mi300.yaml
+make docker-check-agents CONFIG="$CONFIG_PATH"
+
+# Optional strict check of all three first-class CLIs
+make docker-check-agents AGENTS=all
 
 # Optional: install the Cursor Agent CLI on the host (so it can be mounted)
 make install-cursor-agent
 
-# Optional: install FlyDSL into the container (only for flydsl2flydsl tasks)
+# Optional: install FlyDSL when the image lacks it (for all three FlyDSL task types)
 make docker-setup-flydsl
 
 # Optional: install local commit hooks
 pre-commit install
 
-# Optional: start a local vLLM server for self-hosted models
+# Optional: start a local OpenAI-compatible vLLM endpoint. Connecting an agent
+# to it is integration-specific; the endpoint does not reconfigure agents.
 make vllm
 ```
 
@@ -39,7 +46,7 @@ make vllm
 3. Run a smoke test against at least one task before submitting:
 
 ```bash
-make docker-run CONFIG=config.yaml
+make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml
 ```
 
 4. Open a Pull Request with motivation, impact, and verification steps.
@@ -48,7 +55,7 @@ make docker-run CONFIG=config.yaml
 
 - Follow PEP 8 for Python code.
 - Keep agent integrations isolated under `agents/<agent_name>/` — don't leak agent-specific logic into `src/`.
-- Update `config.yaml`, `README.md`, and the agent registry (`agents/__init__.py`) when adding a new agent.
+- Update the relevant example run configurations, docs, `AgentType`, and the launcher/handler branches in `src/module_registration.py` when adding a new agent. `agents/__init__.py` only provides the shared decorator registry.
 - Add documentation or comments when intent is non-obvious.
 - Performance timing helpers are generated into run workspaces from
   `src/tools/perf/`.
@@ -65,12 +72,12 @@ This project depends on GPU hardware/drivers and orchestrates external LLM agent
 
 - Test environment (GPU model, ROCm version, Docker image, OS)
 - Agent(s) used and their versions
-- Task category exercised (rocm-examples, rocprim, customer_hip, triton, torch2hip)
+- Task selector exercised (for example `hip2hip`, `triton2triton`, `instruction2triton`, `torch2hip`, a FlyDSL task type, or `repository`)
 - Key commands and output summary, e.g.:
 
 ```bash
-make docker-run CONFIG=config.yaml
-python compare_runs.py --runs <run-id-1> <run-id-2>
+make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml
+python3 compare_runs.py <run-directory-1> <run-directory-2>
 ```
 
 - For changes to scoring or evaluation logic, attach before/after results on at least one task category.
@@ -80,26 +87,26 @@ python compare_runs.py --runs <run-id-1> <run-id-2>
 
 Please include:
 
-- Reproduction steps (exact `config.yaml` snippet or command flags)
+- Reproduction steps (exact run-configuration snippet or command flags)
 - Expected vs actual behavior
 - Environment (OS, GPU, ROCm version, Python version, agent CLI version)
-- Relevant logs from the workspace under `works/` or a minimal repro
+- Relevant files from `logs/` and `workspace_<gpu>_<agent>/run_<timestamp>/`, or a minimal repro
 
 ## Security
 
 If you discover a security issue, do not open a public issue. Contact maintainers through a private channel.
 
-This project executes third-party AI agents in isolated workspaces — flag any sandbox-escape, credential-leakage, or supply-chain concerns privately.
+This project executes third-party AI agents permissively inside privileged Docker containers. Per-task workspaces are a reproducibility boundary, not a security sandbox; report unexpected access to mounted credentials, repository files, or host resources privately.
 
 ## Suggested Contributions
 
 - Add new agent integrations under `agents/`
-- Extend task coverage (new HIP, Triton, or Torch2HIP tasks under `tasks/`)
+- Extend task coverage across HIP, Triton, FlyDSL, PyTorch conversion, instruction-generated, or repository-level tasks
 - Improve scoring or fairness logic in `src/score.py`
-- Improve the leaderboard or visualization (`visualization/`)
+- Improve A/B comparison, experiment tracking, or visualization (`src/visualization/`)
 - Add support for new models / providers (OpenAI, Anthropic, OpenRouter, vLLM)
 - Improve docs, examples, and tests
 
 ## License
 
-By contributing, you agree that your contributions are licensed under the repository `LICENSE` (MIT).
+By contributing, you agree that your contributions are licensed under the repository `LICENSE` (Apache License 2.0).
