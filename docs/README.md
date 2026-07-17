@@ -26,7 +26,7 @@ python -m sphinx -T -b html docs docs/_build/html
 | `what-is-aka.rst` | Overview | Product overview, key features, and use cases. |
 | `install/install.md` | Installation | Docker runner (`make docker-smoke`/`docker-run`), agent CLIs, and API keys. |
 | `reference/release-notes.md` | Release Notes | Per-release feature breakdown; initial release lists all features. |
-| `reference/compatibility-matrix.rst` | Compatibility Matrix | Verified hardware/software versions. |
+| `reference/compatibility-matrix.md` | Compatibility Matrix | Verified hardware/software versions. |
 | `reference/api-reference.md` | Configuration and API reference | `config.yaml` schema, task `config.yaml` schema, CLI flags, scoring, and the agent registry. |
 | `reference/benchmark-methodology.md` | Reference | Timing methodology, benchmark helper materialization, and speedup interpretation. |
 | `how-to/run-evaluation.md` | How-to | Configure `config.yaml`, run through Docker, resume runs, and read results. |
