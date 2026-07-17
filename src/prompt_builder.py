@@ -79,17 +79,19 @@ Your job is complete once you have optimized the kernel code. The framework will
 
 
 def _load_cheatsheet(task_type_name: str, target_gpu_model: str, project_root: Path,
-                     task_config: dict, logger: logging.Logger) -> tuple[str, str | None]:
+                     task_config: dict, logger: logging.Logger, *,
+                     include_knowledge: bool = True) -> tuple[str, str | None]:
     """
     Load the combined cheatsheet prompt and resolve the target gfx arch string.
 
     The cheatsheet config (default_cheatsheet.yaml) has two independent sections:
-      - architecture: maps GPU model name → hardware spec document + gfx_arch string
+      - architecture: maps GPU model name → hardware spec document(s) + gfx_arch string
       - knowledge:    maps target language → language best-practice guide (GPU-agnostic)
 
     For task_type ``repository``, the task config must set ``repository_language`` to a
     key under ``knowledge`` (e.g. hip, triton). Add new stacks by extending that map and the
-    referenced markdown file.
+    referenced markdown file. Set ``include_knowledge=False`` for integrations that need
+    only the target architecture and model profile.
 
     Returns:
         (cheatsheet_text, gfx_arch)  where gfx_arch may be None if not found.
@@ -116,15 +118,26 @@ def _load_cheatsheet(task_type_name: str, target_gpu_model: str, project_root: P
         )
         if arch_entry:
             gfx_arch = arch_entry.get('gfx_arch')
-            arch_file = arch_entry.get('file')
-            if arch_file:
+            arch_files = arch_entry.get('files')
+            if arch_files is None:
+                legacy_arch_file = arch_entry.get('file')
+                arch_files = [legacy_arch_file] if legacy_arch_file else []
+            elif isinstance(arch_files, str):
+                arch_files = [arch_files]
+
+            for arch_file in arch_files:
                 arch_path = project_root / arch_file
                 parts.append(arch_path.read_text())
                 logger.info(f"Loaded architecture context for '{target_gpu_model}': {arch_path}")
-            else:
-                logger.warning(f"Architecture entry for '{target_gpu_model}' has no 'file' key")
+            if not arch_files:
+                logger.warning(
+                    f"Architecture entry for '{target_gpu_model}' has no 'file' or 'files' key"
+                )
         else:
             logger.warning(f"No architecture entry for GPU '{target_gpu_model}' in default_cheatsheet.yaml")
+
+        if not include_knowledge:
+            return "\n\n---\n\n".join(parts) if parts else "", gfx_arch
 
         # --- Knowledge section ---
         # L3 repository tasks: language is configured per task (repository_language → key in default_cheatsheet.yaml).

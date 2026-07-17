@@ -19,7 +19,7 @@ A run configuration defines a single experiment. Start from a file under
 | --- | --- | --- |
 | `agent.template` | string | Agent to run. One of the [supported agents](../how-to/agents.md#supported-agents). |
 | `tasks` | list of strings | Task selectors relative to `tasks/`. Use `all` for every task, a category prefix for a group, or a full path for a single task. |
-| `target_gpu_model` | string | Target GPU model, for example `MI300` or `MI355X`. Used to select the Docker image architecture, set `PYTORCH_ROCM_ARCH`, and name the workspace. |
+| `target_gpu_model` | string | Target GPU model: `MI300X`, `MI325X`, `MI300A`, `MI355X`, or the generic `MI300` compatibility target. Used to select the Docker image architecture, compose model-aware optimization context, set `PYTORCH_ROCM_ARCH`, and name the workspace. |
 | `log_directory` | string | Directory for run logs. |
 | `workspace_directory_prefix` | string | Prefix for the workspace directory. The full name is `<prefix>_<gpu>_<agent>`. |
 
@@ -56,7 +56,7 @@ The in-container `main.py` entrypoint accepts these flags:
 
 | Flag | Description |
 | --- | --- |
-| `--config_name <file>` | Config file to load (default `example_configs/quickstart_claude_mi300.yaml` for MI300/MI300X). Pass a matching config explicitly on another GPU |
+| `--config_name <file>` | Config file to load (default `example_configs/quickstart_claude_mi300.yaml` for the generic MI300-series target). Pass a model-specific config for exact hardware context |
 | `--run-suffix <suffix>` | Suffix appended to the run directory name (letters, numbers, `.`, `_`, `-` only). Useful for labeling A/B runs |
 | `--resume-run <run_dir>` | Resume a specific run directory, skipping completed tasks |
 | `--resume-latest` | Resume the most recent run in the workspace |

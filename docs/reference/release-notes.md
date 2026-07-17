@@ -27,8 +27,10 @@ experimentation platform and RL-ready task environment for GPU kernel agents.
 - **Docker-first execution**: select pinned ROCm/SGLang images from the target
   GPU architecture.
 - **Example run configurations**: provide one-task Claude Code quickstarts for
-  MI300/MI300X and MI355X plus a curated 60-task Cursor benchmark for MI355X
-  under `example_configs/`.
+  the generic MI300-series target, MI300X, MI325X, MI300A, and MI355X plus a
+  curated 60-task Cursor benchmark for MI355X under `example_configs/`.
+- **Model-aware MI300 profiles**: compose shared CDNA 3 (`gfx942`) guidance with
+  separate MI300X, MI325X, and MI300A topology and memory profiles.
 - **Centralized outcomes**: independently measure compilation, correctness, and
   GPU performance, then compute a configurable score.
 - **Visualization module**: build and serve the comparison dashboard through

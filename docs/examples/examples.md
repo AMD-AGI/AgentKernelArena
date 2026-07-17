@@ -17,11 +17,11 @@ multi-GPU examples use `make docker-parallel-run`.
 
 Run the single-task Claude Code quickstart for the physical GPU.
 
-1. Select the MI300/MI300X example (use
-   `example_configs/quickstart_claude_mi355x.yaml` on MI355X):
+1. Select the example matching the physical GPU (use the adjacent MI325X,
+   MI300A, or MI355X quickstart for those models):
 
     ```bash
-    CONFIG_PATH=example_configs/quickstart_claude_mi300.yaml
+    CONFIG_PATH=example_configs/quickstart_claude_mi300x.yaml
     ```
 
 2. Run:

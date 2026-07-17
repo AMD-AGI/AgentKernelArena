@@ -187,17 +187,22 @@ installation. The npm path requires Node.js 22+ and npm. See the
 [official Claude Code setup guide](https://code.claude.com/docs/en/installation)
 for the current alternatives.
 
-The repository provides three ready-to-use run configurations:
+The repository provides generic and model-specific quickstarts plus a longer
+MI355X benchmark configuration:
 
 | Configuration | Purpose |
 | --- | --- |
-| `example_configs/quickstart_claude_mi300.yaml` | One Claude Code GELU task on MI300/MI300X (`gfx942`); use this for a first run on MI300-series hardware. |
+| `example_configs/quickstart_claude_mi300.yaml` | Generic MI300-series (`gfx942`) Claude Code GELU task; retains backward compatibility without assuming a physical SKU. |
+| `example_configs/quickstart_claude_mi300x.yaml` | Model-specific MI300X (`gfx942`) Claude Code GELU task. |
+| `example_configs/quickstart_claude_mi325x.yaml` | Model-specific MI325X (`gfx942`) Claude Code GELU task. |
+| `example_configs/quickstart_claude_mi300a.yaml` | Model-specific MI300A (`gfx942`) Claude Code GELU task. |
 | `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`); use this for a first run on MI355X. |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
 
-Running `make docker-run` without `CONFIG` uses the MI300/MI300X Claude
-quickstart. On another GPU, pass the matching configuration explicitly; for
-example, use `CONFIG=example_configs/quickstart_claude_mi355x.yaml` on MI355X.
+Running `make docker-run` without `CONFIG` uses the generic MI300-series Claude
+quickstart. Pass the exact model configuration to give the optimization agent
+the correct XCD, CU, and HBM limits. For example, use
+`CONFIG=example_configs/quickstart_claude_mi325x.yaml` on MI325X.
 
 FlyDSL tasks require FlyDSL in the container. The pinned image may already provide it; otherwise run:
 

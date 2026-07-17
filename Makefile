@@ -7,7 +7,7 @@
 SHELL := /bin/bash
 
 .PHONY: help docker-shell docker-check-agents docker-smoke docker-run docker-parallel-run docker-setup-flydsl \
-        check-docker-runner check-evaluator check-held-out check-visualization \
+        check-docker-runner check-evaluator check-gpu-architecture check-held-out check-visualization \
         visualization-build visualization-serve visualization-run \
         sync-perf-helpers check-perf-helpers materialize-perf-workspace \
         materialize-perf-task cleanup-works install-cursor-agent vllm
@@ -23,12 +23,13 @@ help:
 	@echo "make docker-smoke        - Verify Docker Python, ROCm tools, imports, and GPU access"
 	@echo "make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml RUN_ARGS=\"--run-suffix test\" - Run an experiment in Docker"
 	@echo "make docker-parallel-run CONFIG=example_configs/benchmark_cursor_mi355x.yaml GPU_IDS=0,1 - Run an experiment across one worker container per GPU"
-	@echo "                         Default CONFIG is the MI300/MI300X Claude quickstart"
+	@echo "                         Default CONFIG is the generic MI300-series Claude quickstart"
 	@echo "                         On other GPUs, pass a matching CONFIG explicitly"
 	@echo "                         Images: gfx942->mi30x, gfx950->mi35x; override with AKA_DOCKER_IMAGE=..."
 	@echo "make docker-setup-flydsl - Install FlyDSL when absent (for flydsl2flydsl, torch2flydsl, and triton2flydsl)"
 	@echo "make check-docker-runner - Check Docker runner syntax and runtime-specific arguments"
 	@echo "make check-evaluator     - Run centralized evaluator unit tests"
+	@echo "make check-gpu-architecture - Check GPU model mappings and composed architecture prompts"
 	@echo "make check-held-out      - Run held-out module unit tests"
 	@echo "make visualization-run   - Build and serve the local comparison dashboard"
 	@echo "make check-visualization - Run visualization module unit tests"
@@ -79,6 +80,9 @@ check-docker-runner:
 
 check-evaluator:
 	@python3 -m unittest discover -s tests -p 'test_evaluator_*.py'
+
+check-gpu-architecture:
+	@python3 -m unittest discover -s tests -p 'test_gpu_architecture.py'
 
 check-held-out:
 	@python3 -m unittest discover -s tests -p 'test_held_out.py'

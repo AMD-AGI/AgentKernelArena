@@ -23,6 +23,7 @@ from typing import Any
 import yaml
 
 from agents import register_agent
+from src.prompt_builder import _load_cheatsheet
 
 
 def _read_stream(stream, lines: list, prefix: str, log_func):
@@ -122,6 +123,16 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     num_parallel = agent_config.get("agent", {}).get("num_parallel", 2)
     model = agent_config.get("agent", {}).get("model", "claude-opus-4-6")
     step_limit = agent_config.get("agent", {}).get("step_limit", 100)
+    target_gpu_model = str(eval_config.get("target_gpu_model") or "MI300")
+    project_root = Path(__file__).resolve().parents[2]
+    architecture_context, gfx_arch = _load_cheatsheet(
+        task_config.get("task_type", "triton2triton"),
+        target_gpu_model,
+        project_root,
+        task_config,
+        logger,
+        include_knowledge=False,
+    )
 
     # PYTHONPATH for mini-swe-agent modules. GEAK_SRC must point to the
     # absolute path of the GEAK source tree (the directory containing
@@ -149,6 +160,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logger.info(f"  num_parallel: {num_parallel}")
     logger.info(f"  model:        {model}")
     logger.info(f"  step_limit:   {step_limit}")
+    logger.info(f"  target_gpu:   {target_gpu_model} ({gfx_arch or 'unknown architecture'})")
     logger.info("=" * 60)
 
     all_output: list[str] = []
@@ -161,7 +173,11 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     else:
         kernel_snippet = kernel_code
 
-    task_prompt = f"""Optimize this Triton GPU kernel for maximum performance on AMD MI300X (gfx942/gfx950).
+    target_description = target_gpu_model
+    if gfx_arch:
+        target_description += f" ({gfx_arch})"
+
+    task_prompt = f"""Optimize this Triton GPU kernel for maximum performance on AMD {target_description}.
 
 The kernel is at: {kernel_path.name}
 The test harness is at: {harness_path.name}
@@ -176,7 +192,9 @@ Rules:
 - Correctness must pass after your changes
 - Focus on real kernel-body optimizations (block sizes, memory access patterns,
   vectorization, loop unrolling, warp-level primitives)
-- Target: AMD MI300X with gfx942/gfx950 architecture, 304 CUs, HBM3
+
+Target hardware context:
+{architecture_context or f"No model profile is available for {target_description}; inspect the visible GPU before tuning."}
 
 Current kernel code:
 ```python

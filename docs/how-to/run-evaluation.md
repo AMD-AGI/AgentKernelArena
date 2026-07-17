@@ -15,18 +15,23 @@ resume, and inspect a run.
 ## Choose or create a run configuration
 
 A run configuration selects the agent, tasks, and target GPU. The repository
-ships three examples:
+ships generic and model-specific quickstarts plus a longer benchmark example:
 
 | Configuration | Purpose |
 | --- | --- |
-| `example_configs/quickstart_claude_mi300.yaml` | One Claude Code GELU task on MI300/MI300X (`gfx942`). |
+| `example_configs/quickstart_claude_mi300.yaml` | Generic MI300-series (`gfx942`) fallback. |
+| `example_configs/quickstart_claude_mi300x.yaml` | One Claude Code GELU task on MI300X (`gfx942`). |
+| `example_configs/quickstart_claude_mi325x.yaml` | One Claude Code GELU task on MI325X (`gfx942`). |
+| `example_configs/quickstart_claude_mi300a.yaml` | One Claude Code GELU task on MI300A (`gfx942`). |
 | `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`). |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; use only after installing and authenticating Cursor Agent. |
 
 For a first run, select the quickstart that matches the physical GPU:
 
 ```bash
-CONFIG_PATH=example_configs/quickstart_claude_mi300.yaml
+CONFIG_PATH=example_configs/quickstart_claude_mi300x.yaml
+# MI325X: example_configs/quickstart_claude_mi325x.yaml
+# MI300A: example_configs/quickstart_claude_mi300a.yaml
 # For MI355X instead:
 # CONFIG_PATH=example_configs/quickstart_claude_mi355x.yaml
 ```
