@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT))
 from src.perf_helper_materialization import (  # noqa: E402
     ROCMBENCH_HELPER_STUB,
     VLLM_HELPER_STUB_BLOCK,
+    image_kernel_targets,
     replace_marked_region,
     rocmbench_targets,
     vllm_targets,
@@ -49,7 +50,8 @@ def main() -> int:
                 p.write_text(ROCMBENCH_HELPER_STUB)
                 wrote += 1
 
-    for p in vllm_targets(ROOT):
+    inline_targets = list(vllm_targets(ROOT)) + list(image_kernel_targets(ROOT))
+    for p in inline_targets:
         cur = p.read_text()
         new = replace_marked_region(cur, VLLM_HELPER_STUB_BLOCK)
         if new is None:
@@ -71,7 +73,8 @@ def main() -> int:
         return 0
 
     print(f"synced {wrote} file(s) "
-          f"({len(rocmbench_targets(ROOT))} rocmbench + {len(vllm_targets(ROOT))} vllm checked)")
+          f"({len(rocmbench_targets(ROOT))} rocmbench + {len(vllm_targets(ROOT))} vllm "
+          f"+ {len(image_kernel_targets(ROOT))} image_kernel checked)")
     return 0
 
 

@@ -127,12 +127,13 @@ def _load_cheatsheet(task_type_name: str, target_gpu_model: str, project_root: P
             logger.warning(f"No architecture entry for GPU '{target_gpu_model}' in default_cheatsheet.yaml")
 
         # --- Knowledge section ---
-        # L3 repository tasks: language is configured per task (repository_language → key in default_cheatsheet.yaml).
-        if task_type_name == 'repository':
+        # L3 repository / image_kernel tasks: language is configured per task
+        # (repository_language → key in default_cheatsheet.yaml).
+        if task_type_name in ('repository', 'image_kernel'):
             raw = task_config.get('repository_language')
             if raw is None or str(raw).strip() == '':
                 raise ValueError(
-                    "repository_language is required when task_type is 'repository' "
+                    f"repository_language is required when task_type is '{task_type_name}' "
                     "(e.g. hip, triton). Must match a key under `knowledge` in "
                     "src/prompts/cheatsheet/default_cheatsheet.yaml."
                 )
@@ -148,7 +149,7 @@ def _load_cheatsheet(task_type_name: str, target_gpu_model: str, project_root: P
             knowledge_path = project_root / knowledge_file
             parts.append(knowledge_path.read_text())
             logger.info(f"Loaded knowledge cheatsheet for '{target_language}': {knowledge_path}")
-        elif task_type_name == 'repository':
+        elif task_type_name in ('repository', 'image_kernel'):
             known = sorted(knowledge_map.keys())
             raise ValueError(
                 f"Unknown repository_language '{target_language}': not defined under "
@@ -204,6 +205,27 @@ def _gpu_arch_precheck_prompt(target_gpu_model: str, gfx_arch: str | None) -> st
 """
 
 
+def _harness_integrity_prompt() -> str:
+    """Tell every agent that harness/test edits are disallowed and enforced."""
+    return """
+### Protected Harness / Test Files
+
+Do **not** modify task harness, test, scoring, or measurement files. These files
+are protected and the run will be rejected if they change:
+
+- `config.yaml` / `config.yml`
+- anything under `scripts/`
+- anything under `test/` or `tests/`
+- `conftest.py`
+- `performance_utils_pytest.py`
+- files ending in `_test.py`, `_test.cpp`, `_test.cu`, or `_test.hip`
+
+Only optimize the kernel implementation and its real source dependencies. Do not
+improve the score by changing inputs, expected outputs, tolerances, iteration
+counts, timing helpers, report writers, or benchmark harness code.
+"""
+
+
 def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config: dict, logger: logging.Logger) -> str:
     """
     Build the initial prompt for the agent based on task configuration.
@@ -223,9 +245,10 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
         2b. Task Contract  ← injected for task_type == 'hip2hip' only
         3. GPU Arch Pre-check
         4. Instructions
-        5. Output Format
-        6. Cheatsheet  (architecture context + language knowledge, combined)
-        7. Workspace Directory
+        5. Harness Integrity
+        6. Output Format
+        7. Cheatsheet  (architecture context + language knowledge, combined)
+        8. Workspace Directory
     """
     # Load task configuration
     task_config_path = Path(task_config_dir)
@@ -265,6 +288,8 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
         task_type_prompt = task_type.triton2flydsl_task_type()
     elif task_type_name == 'repository':
         task_type_prompt = task_type.repository_task_type()
+    elif task_type_name == 'image_kernel':
+        task_type_prompt = task_type.image_kernel_task_type()
     else:
         raise ValueError(f"Unknown task type: {task_type_name}")
 
@@ -308,7 +333,10 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
 
     prompt_sections.append(instructions_prompt)
 
-    # 6. Output Format Section
+    # 6. Harness Integrity Section
+    prompt_sections.append(_harness_integrity_prompt())
+
+    # 7. Output Format Section
     task_result_template = task_config.get('task_result_template', '')
     task_result_prompt = task_config.get('prompt', {}).get('output_format')
     if task_result_prompt is None:
@@ -316,11 +344,11 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
 
     prompt_sections.append(task_result_prompt)
 
-    # 7. Cheatsheet Section (architecture + knowledge combined)
+    # 8. Cheatsheet Section (architecture + knowledge combined)
     prompt_sections.append(cheatsheet_prompt)
 
-    # 8. Workspace Directory Information
-    if task_type_name == 'repository':
+    # 9. Workspace Directory Information
+    if task_type_name in ('repository', 'image_kernel'):
         workspace_info = f"""
 ### Workspace Directory
 Your working directory is: `{workspace_directory}`

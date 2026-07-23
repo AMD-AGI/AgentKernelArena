@@ -1,0 +1,16 @@
+task_type: image_kernel
+image_repo_path: /sgl-workspace/aiter
+image_repo_exclude:
+- aiter/jit/build
+- aiter/jit/flydsl_cache
+repository_language: triton
+source_file_path:
+- aiter/ops/triton/_triton_kernels/gemm/basic/gemm_a8w8.py
+target_kernel_functions:
+- _gemm_a8w8_kernel
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance

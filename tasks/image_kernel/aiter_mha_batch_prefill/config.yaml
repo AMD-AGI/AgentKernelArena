@@ -1,0 +1,17 @@
+task_type: image_kernel
+image_repo_path: /sgl-workspace/aiter
+image_repo_exclude:
+- aiter/jit/build
+- aiter/jit/flydsl_cache
+repository_language: hip
+source_file_path:
+- csrc/py_itfs_ck/mha_batch_prefill_kernels.cu
+target_kernel_functions:
+- mha_batch_prefill
+- get_ck_fmha_batch_prefill_args
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance

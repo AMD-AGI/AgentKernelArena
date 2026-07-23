@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 from .testcases import TestCaseResult, parse_test_cases_from_json, parse_test_cases_from_stdout
 from .evaluator_utils import run_command
+from .jit_rebuild import force_jit_rebuild
 
 # Default for performance_command subprocess (CMake benchmarks can be slow)
 _DEFAULT_PERFORMANCE_COMMAND_TIMEOUT_S = 3600
@@ -289,6 +290,7 @@ def measure_performance(
         List of TestCaseResult objects (empty list if measurement failed)
     """
     log = logger or logging.getLogger(__name__)
+    rebuild_env = force_jit_rebuild(task_config, log, workspace)
     performance_commands = task_config.get('performance_command', [])
     task_type = task_config.get('task_type')
     
@@ -305,7 +307,7 @@ def measure_performance(
             cmd = cmd + " --baseline_only"
 
         clear_performance_report_files(workspace, task_type, log)
-        success, stdout, stderr = run_command(cmd, workspace, timeout=perf_timeout, logger=log)
+        success, stdout, stderr = run_command(cmd, workspace, timeout=perf_timeout, logger=log, extra_env=rebuild_env)
         
         # Combine stdout and stderr for parsing
         combined_output = stdout + stderr

@@ -14,6 +14,7 @@ class AgentType(Enum):
     GEAK_V3 = "geak_v3"
     GEAK_V3_TRITON = "geak_v3_triton"
     MINI_SWE_TRITON = "mini_swe_triton"
+    FORGE = "forge"
 
     @classmethod
     def from_string(cls, agent_string: str) -> 'AgentType':
@@ -71,6 +72,8 @@ def load_agent_launcher(agent_type: AgentType, logger: logging.Logger) -> Callab
             from agents.geak_v3_triton import launch_agent  # noqa: F401
         elif agent_type == AgentType.MINI_SWE_TRITON:
             from agents.mini_swe_triton import launch_agent  # noqa: F401
+        elif agent_type == AgentType.FORGE:
+            from agents.forge import launch_agent  # noqa: F401
     except ImportError as e:
         logger.error(f"Failed to import agent {agent_name}: {e}")
         raise
@@ -106,7 +109,7 @@ def load_post_processing_handler(agent_type: AgentType, logger: logging.Logger) 
         from agents.task_validator.validation_postprocessing import validation_post_processing
         logger.info(f"Using validation_post_processing for agent: {agent_name}")
         return validation_post_processing
-    elif agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.GEAK_V3, AgentType.GEAK_V3_TRITON, AgentType.MINI_SWE_TRITON]:
+    elif agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.GEAK_V3, AgentType.GEAK_V3_TRITON, AgentType.MINI_SWE_TRITON, AgentType.FORGE]:
         logger.info(f"Using general_post_processing for agent: {agent_name}")
         return general_post_processing
     else:

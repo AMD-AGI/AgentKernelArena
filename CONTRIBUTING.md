@@ -77,7 +77,7 @@ This project depends on GPU hardware/drivers and orchestrates external LLM agent
 
 ```bash
 make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml
-python3 compare_runs.py <run-directory-1> <run-directory-2>
+python3 src/tools/compare_runs.py <run-directory-1> <run-directory-2>
 ```
 
 - For changes to scoring or evaluation logic, attach before/after results on at least one task category.

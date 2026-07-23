@@ -3,8 +3,8 @@
 Standalone script to compare two AgentKernelArena runs.
 
 Usage:
-    python3 compare_runs.py run1_path run2_path
-    python3 compare_runs.py workspace_MI300_cursor/run_20260714_120000_baseline workspace_MI300_cursor/run_20260714_140000_treatment
+    python3 src/tools/compare_runs.py run1_path run2_path
+    python3 src/tools/compare_runs.py workspace_MI300_cursor/run_20260714_120000_baseline workspace_MI300_cursor/run_20260714_140000_treatment
 """
 
 import json
@@ -314,8 +314,9 @@ def generate_comparison_report(run1_path: Path, run2_path: Path, output_path: Op
         run1_name = run1_path.name
         run2_name = run2_path.name
         
-        # Project root is the directory where compare_runs.py is located
-        project_root = Path(__file__).resolve().parent
+        # Keep generated comparisons at the project root even though this CLI
+        # lives under src/tools/.
+        project_root = Path(__file__).resolve().parents[2]
         
         comparisons_dir = project_root / "comparisons"
         comparisons_dir.mkdir(parents=True, exist_ok=True)
@@ -341,10 +342,10 @@ def main():
         epilog="""
 Examples:
   # Compare two runs
-  python3 compare_runs.py workspace_MI300_cursor/run_20260714_120000_baseline workspace_MI300_cursor/run_20260714_140000_treatment
+  python3 src/tools/compare_runs.py workspace_MI300_cursor/run_20260714_120000_baseline workspace_MI300_cursor/run_20260714_140000_treatment
   
   # Compare and save to file
-  python3 compare_runs.py run1 run2 --output comparison_report.txt
+  python3 src/tools/compare_runs.py run1 run2 --output comparison_report.txt
         """
     )
     

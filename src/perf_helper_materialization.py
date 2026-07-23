@@ -83,6 +83,27 @@ def vllm_targets(root: Path = ROOT) -> list[Path]:
     ]
 
 
+def _marker_filtered_targets(root: Path, pattern: str) -> list[Path]:
+    """Return runner files matching ``pattern`` that carry a generated helper region.
+
+    Unlike ``vllm_targets`` (where every runner is expected to embed the markers),
+    image_kernel tasks adopt the shared CUDA-graph helper task-by-task. A file only
+    participates once it contains the AKA-GENERATED markers; runners still using a
+    bespoke timer are left untouched.
+    """
+    targets = []
+    for p in sorted(glob.glob(str(root / pattern))):
+        text = Path(p).read_text()
+        if any(marker in text for marker in MARK_STARTS) or MARK_END in text:
+            targets.append(Path(p))
+    return targets
+
+
+def image_kernel_targets(root: Path = ROOT) -> list[Path]:
+    """Return committed image_kernel task runners that carry a generated helper region."""
+    return _marker_filtered_targets(root, "tasks/image_kernel/*/scripts/task_runner.py")
+
+
 def canonical_rocmbench_helper(root: Path = ROOT) -> str:
     return (root / "src" / "tools" / "perf" / "performance_utils_pytest.py").read_text()
 
@@ -138,6 +159,8 @@ def materialize_perf_helpers_in_workspace(
             helper.write_text(rocmbench_helper)
             materialized.append(helper)
 
+    # Inline helper region lives in the task's scripts/task_runner.py (vLLM tasks
+    # and image_kernel tasks), delimited by the AKA-GENERATED marker block.
     vllm_block = canonical_vllm_block(root)
     runner = workspace / "scripts" / "task_runner.py"
     if runner.exists():

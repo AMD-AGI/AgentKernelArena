@@ -216,7 +216,7 @@ This is the default scoring scheme; you can define your own in `src/score.py`.
 For an A/B pair, compare completed run directories with:
 
 ```bash
-python3 compare_runs.py <baseline-run-directory> <treatment-run-directory>
+python3 src/tools/compare_runs.py <baseline-run-directory> <treatment-run-directory>
 ```
 
 ## Agent registry

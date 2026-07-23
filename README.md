@@ -39,7 +39,7 @@ make docker-run CONFIG="$CONFIG_PATH" RUN_ARGS="--run-suffix treatment"
 Compare the generated reports directly:
 
 ```bash
-python3 compare_runs.py \
+python3 src/tools/compare_runs.py \
   workspace_MI300_claude_code/run_<timestamp>_baseline \
   workspace_MI300_claude_code/run_<timestamp>_treatment
 ```
@@ -57,7 +57,6 @@ the observed deltas together with run-to-run variance.
 AgentKernelArena/
 ├── main.py                         # Run orchestration, resume, and parallel queue
 ├── example_configs/                # Quickstart and curated benchmark run configs
-├── compare_runs.py                 # Compare two completed experiment runs
 ├── src/
 │   ├── module_registration.py     # Agent registration and handler selection
 │   ├── preprocessing.py            # Workspace and repository setup
@@ -68,7 +67,9 @@ AgentKernelArena/
 │   ├── postprocessing.py           # Aggregate run reports
 │   ├── held_out/                   # Optional generalization evaluation module
 │   ├── visualization/              # Dashboard module and static frontend
-│   └── tools/perf/                 # Canonical performance helpers
+│   └── tools/
+│       ├── compare_runs.py         # Compare two completed experiment runs
+│       └── perf/                   # Canonical performance helpers
 ├── agents/
 │   ├── cursor/                     # Cursor Agent CLI
 │   ├── claude_code/                # Claude Code CLI

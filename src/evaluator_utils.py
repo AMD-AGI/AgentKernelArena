@@ -143,6 +143,7 @@ def run_command(
     timeout: int = 300,
     logger: Optional[logging.Logger] = None,
     docker_container: Optional[str] = None,
+    extra_env: Optional[dict] = None,
 ) -> Tuple[bool, str, str]:
     """
     Run a shell command in the workspace directory.
@@ -157,6 +158,9 @@ def run_command(
         timeout: Command timeout in seconds
         logger: Optional logger for output
         docker_container: If set, run the command inside this Docker container
+        extra_env: Optional env vars applied to THIS subprocess only (merged over
+            the inherited env). Used e.g. to scope AITER_REBUILD=1 to a single
+            build step without leaking it into the parent process / later tasks.
 
     Returns:
         Tuple of (success: bool, stdout: str, stderr: str)
@@ -165,6 +169,8 @@ def run_command(
 
     try:
         env = build_subprocess_env()
+        if extra_env:
+            env.update({str(k): str(v) for k, v in extra_env.items()})
         if docker_container:
             # When running inside a Docker container we can't rewrite "python3" to
             # the host interpreter path — skip normalize_python_command and wrap

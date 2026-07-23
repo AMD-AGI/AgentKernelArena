@@ -1,0 +1,46 @@
+# Configuration for the KernelForge "forge" agent.
+#
+# This agent bridges AgentKernelArena to KernelForge's `kernel-agents forge-loop`:
+# an autonomous optimization loop (baseline -> agent edit -> 5-stage validate ->
+# bench -> keep/revert) running as a hard-killable subprocess.
+
+# Model passed to KernelForge (exported as KERNEL_AGENTS_MODEL). Must be served
+# by the configured Anthropic gateway (ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN).
+model: claude-opus-4-8
+
+# Backend expertise (fellow) is INFERRED by the launcher, per task family:
+#   * repository / image_kernel tasks -> from `repository_language`
+#       hip -> hip-fellow, triton -> triton-fellow
+#       (the source repo like aiter/sglang is NOT the fellow: the aiter fellow
+#        only integrates prebuilt ops, so an aiter-repo HIP kernel uses hip)
+#   * snippet "<src>2<dst>" tasks     -> the target side picks the fellow
+#       triton2triton / instruction2triton -> triton-fellow
+#       hip2hip / cuda2hip / torch2hip      -> hip-fellow
+#       flydsl2flydsl                       -> flydsl-fellow
+# (valid: ck, flydsl, triton, aiter, hip, hipblaslt). To force a specific
+# fellow regardless of the task, uncomment:
+# fellow: triton-fellow
+
+# Loop budget: max_iters is intentionally high so a forge run is bounded by TIME
+# (see timeout_seconds below), not by an iteration count.
+max_iters: 1000
+
+# Correctness gate (dB) used by the 5-stage validation pipeline.
+snr_threshold: 30.0
+
+# The single time budget for a forge run: a hard wall-clock cap (seconds) on the
+# forge-loop subprocess. The loop's own --max-hours is derived from this
+# (timeout_seconds / 3600 minus a ~15min margin) so the loop self-stops just
+# before this hard kill. NOTE: for API-launched runs the bootstrap overwrites
+# this per-run (e.g. 115200 for a 32h run); the value below is only the local
+# fallback default.
+timeout_seconds: 7200
+
+# Claude permission mode. acceptEdits works under root; bypassPermissions is
+# blocked by Claude Code's security policy for root.
+permission_mode: acceptEdits
+
+# NOTE: no shapes_json here on purpose. The generic adapter ignores --shape (the
+# task's own pytest owns its shapes), so passing kernel-specific n= values adds
+# no value and isn't portable across tasks. The forge-loop CLI defaults to "{}".
+# Only set shapes_json if you use a per-kernel driver that parses --shape.

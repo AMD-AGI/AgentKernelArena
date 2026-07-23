@@ -1,0 +1,15 @@
+agent:
+  template: task_validator
+
+tasks:
+  - image_kernel/aiter_fp8_gemm
+  - image_kernel/aiter_gemm
+  - image_kernel/aiter_mha_batch_prefill
+  - image_kernel/aiter_pa_decode
+  - image_kernel/aiter_pa_ragged
+  - image_kernel/aiter_rmsnorm
+  - image_kernel/sglang_store_cache
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

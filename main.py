@@ -25,6 +25,7 @@ from src.evaluator import (
 )
 from src.runtime_env import apply_subprocess_python_path
 from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
+from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
 
 
 QUEUE_DIR_NAME = ".parallel"
@@ -483,6 +484,8 @@ def run_task(
                 logger.info("Measuring baseline performance...")
                 baseline_cases = measure_baseline(workspace_path, task_config, logger)
 
+        harness_snapshot = snapshot_workspace_harness(workspace_path)
+
         logger.info(f"Launching agent: {agent.value}")
         agent_launcher(
             eval_config=eval_config,
@@ -492,6 +495,11 @@ def run_task(
         logger.info("Agent execution completed")
 
         if not is_validator:
+            # Agents work inside the task workspace and could accidentally modify
+            # protected harness/test files or generated perf helpers. Verify the
+            # harness is untouched, then re-materialize perf helpers from
+            # src/tools/perf/ so benchmark methodology stays canonical.
+            verify_workspace_harness(harness_snapshot)
             materialize_perf_helpers_in_workspace(workspace_path, logger=logger)
             logger.info("Running centralized evaluation...")
             evaluation_results = evaluate_kernel(

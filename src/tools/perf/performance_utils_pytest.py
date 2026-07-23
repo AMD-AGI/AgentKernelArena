@@ -65,6 +65,13 @@ def _measure_times(
     max_graph_repeats: int = 1000,
 ) -> tuple[list[float], dict[str, Any]]:
     """Run warmup + measured iterations and return per-call times in ms plus metadata."""
+    # A captured graph whose measured per-iteration time falls below this floor is
+    # treated as empty (it recorded no device work) and rejected in favour of
+    # per-launch event timing, so a graph that silently captured nothing is never
+    # reported as a fabricated ~0 ms cuda_graph result. Real kernels measure far
+    # above this floor; an empty-graph replay measures ~1e-5 ms.
+    empty_graph_floor_ms = 1e-4
+
     for _ in range(config.warm_up):
         callable_fn()
     _sync_if_needed()
@@ -124,16 +131,31 @@ def _measure_times(
                 torch.cuda.synchronize()
                 retry_times.append(start_event.elapsed_time(end_event) / n_repeat)
 
+        graph_mean = sum(retry_times) / len(retry_times)
+        if graph_mean < empty_graph_floor_ms:
+            metadata.update({
+                "benchmark_method": "cuda_event_fallback",
+                "benchmark_effective_repeats": int(config.repetition),
+                "benchmark_fallback_reason": "empty_cuda_graph_capture",
+            })
+            return _measure_cuda_events(callable_fn, config.repetition), metadata
+
         metadata.update({
             "benchmark_method": "cuda_graph",
             "benchmark_effective_repeats": int(n_repeat),
         })
         return retry_times, metadata
     except Exception as exc:
+        # Isolate the aborted capture before re-measuring so the fallback timing is
+        # not polluted by the failed attempt (a mid-capture failure can leave the
+        # first few launches abnormally slow).
         try:
             torch.cuda.synchronize()
         except Exception:
             pass
+        for _ in range(min(3, max(1, int(config.warm_up)))):
+            callable_fn()
+        _sync_if_needed()
         metadata.update({
             "benchmark_method": "cuda_event_fallback",
             "benchmark_effective_repeats": int(config.repetition),

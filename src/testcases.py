@@ -11,6 +11,24 @@ from typing import List, Optional, Tuple, Dict, Any
 from dataclasses import dataclass
 
 _SYNTHETIC_TEST_ID_METADATA_KEY = "_synthetic_test_case_id"
+_TIMING_SOURCE_METADATA_KEY = "_timing_source"
+
+_DEVICE_TIME_KEYS = [
+    "device_time_ms",
+    "gpu_time_ms",
+    "kernel_time_ms",
+    "cuda_event_time_ms",
+    "cuda_graph_time_ms",
+    "execution_time_ms",
+]
+_AMBIGUOUS_TIME_KEYS = ["execution_time", "time_ms", "time"]
+_HOST_TIME_KEYS = [
+    "host_time_ms",
+    "wall_time_ms",
+    "elapsed_time_ms",
+    "total_time_ms",
+    "end_to_end_time_ms",
+]
 
 
 @dataclass
@@ -54,20 +72,32 @@ def _extract_time_from_dict(
             if time_val is not None:
                 return time_val, 'opt_time'  # Task runners already write milliseconds
     
-    # Standard time keys (in order of preference)
-    time_keys = ['execution_time_ms', 'execution_time', 'time_ms', 'time']
-    for key in time_keys:
+    # Prefer device-side timings.  Host/wall timings include Python launch,
+    # synchronization, subprocess, and harness overhead and can be gamed by
+    # editing the test harness; they are not valid kernel timings.
+    for key in _DEVICE_TIME_KEYS:
         if key in data:
             time_val = _safe_float(data.get(key))
             if time_val is None:
                 continue
-            if key.endswith('_ms') or key == 'time_ms':
+            return time_val, key
+
+    # Ambiguous legacy fields are retained for compatibility.  Prefer adding a
+    # device-specific field above in new task runners.
+    for key in _AMBIGUOUS_TIME_KEYS:
+        if key in data:
+            time_val = _safe_float(data.get(key))
+            if time_val is None:
+                continue
+            if key == 'time_ms':
                 return time_val, key
-            elif time_val < 1000.0:  # Likely already in ms
+            if time_val < 1000.0:  # Likely already in ms
                 return time_val, key
-            else:  # Likely in seconds, convert to ms
-                return time_val * 1000.0, key
-    
+            return time_val * 1000.0, key
+
+    if any(key in data for key in _HOST_TIME_KEYS):
+        return 0.0, None
+
     # Pytest benchmark format: nested timing_ms structure
     if 'timing_ms' in data:
         timing = data['timing_ms']
@@ -130,10 +160,11 @@ def _parse_single_case_from_dict(
         return None
     
     # Build metadata
-    exclude_keys = ['test_case_id', 'shape', 'shapes', 'execution_time_ms',
-                   'execution_time', 'time_ms', 'time', 'timing_ms', 'params',
-                   'ori_time', 'opt_time', 'bytes_per_second_gs']
+    exclude_keys = ['test_case_id', 'shape', 'shapes', 'timing_ms', 'params',
+                   'ori_time', 'opt_time', 'bytes_per_second_gs'] + _DEVICE_TIME_KEYS + _AMBIGUOUS_TIME_KEYS + _HOST_TIME_KEYS
     metadata = _build_metadata_from_case(case, exclude_keys)
+    if matched_key:
+        metadata[_TIMING_SOURCE_METADATA_KEY] = matched_key
     
     # For torch2hip, include both ori_time and opt_time in metadata for reference
     if task_type == 'torch2hip':
@@ -226,8 +257,13 @@ def parse_test_cases_from_json(
             if test_case:
                 test_cases.append(test_case)
             else:
-                # Fallback: Look for any keys ending in '_ms' (custom format)
-                ms_keys = [k for k in report.keys() if k.endswith('_ms')]
+                # Fallback: Look for custom device-side *_ms timings.  Exclude
+                # explicit host/wall timings; they include harness overhead and
+                # should not be scored as kernel execution time.
+                ms_keys = [
+                    k for k in report.keys()
+                    if k.endswith('_ms') and k not in _HOST_TIME_KEYS
+                ]
                 if ms_keys:
                     for idx, ms_key in enumerate(sorted(ms_keys)):
                         time_val = _safe_float(report.get(ms_key))

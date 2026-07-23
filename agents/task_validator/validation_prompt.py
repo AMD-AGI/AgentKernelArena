@@ -159,7 +159,7 @@ Verify that config.yaml contains all required fields:
 - `target_kernel_functions` (list of strings)
 - `compile_command` (list of strings)
 - `correctness_command` (list of strings)
-- `task_type` (string, one of: hip2hip, cuda2hip, triton2triton, triton2flydsl, torch2hip, torch2flydsl, instruction2triton, flydsl2flydsl, repository)
+- `task_type` (string, one of: hip2hip, cuda2hip, triton2triton, triton2flydsl, torch2hip, torch2flydsl, instruction2triton, flydsl2flydsl, repository, image_kernel)
 Also check that optional fields (`performance_command`, `prompt`, `platform_support`) are well-formed if present.
 `platform_support`, when present, is a mapping with optional `status` (`active` or `skip`),
 optional `required_arch` (string such as `gfx942`), and optional `skip_reason` (string).
@@ -171,13 +171,18 @@ For `task_type: repository`:
 - `source_file_path` and `target_kernel_functions` are OPTIONAL (they are hints into the cloned
   tree, not always present). Do NOT FAIL this check merely because they are absent for a repository
   task. Optional `post_clone_install` / `post_clone_install_mode` may also be present.
+For `task_type: image_kernel`:
+- `image_repo_path` (string) is REQUIRED; `repository_language` (string) is expected.
+- `source_file_path` and `target_kernel_functions` are required as for other kernel tasks.
+- Optional `image_repo_exclude` must be a list of safe relative paths when present. These paths
+  name disposable build/cache content to omit while seeding the repository from the task image.
 Status: PASS if all required fields for the task_type exist and have correct types, FAIL otherwise.
 
 ### Check 2: Source Files Exist
 For each file listed in `source_file_path`: {source_files}
 Check if the file exists in the workspace directory `{workspace}`.
 Look for the file directly and also under common subdirectories (source/, src/, scripts/).
-For `task_type: repository`, the source files live inside the cloned upstream repository tree,
+For `task_type: repository` or `task_type: image_kernel`, the source files live inside the upstream repository tree,
 whose top-level prefix may differ from the configured path (e.g. a repo `aiter` clones such that
 `aiter/ops/triton/x.py` actually resolves to `aiter/aiter/ops/triton/x.py`). Search RECURSIVELY
 under the workspace and match by the trailing path / basename; PASS if a matching file is found
@@ -306,8 +311,12 @@ project's own build system. Dependencies resolved by the project's build (e.g. C
 task's declared `post_clone_install` step are EXPECTED and allowed — do NOT FAIL self-contained merely
 because the upstream build fetches or installs its standard build/test dependencies. Only FAIL a
 repository task here if it references resources outside its own clone + declared install step.
+For `task_type: image_kernel`, the task similarly receives a full upstream repository copied from
+the declared `image_repo_path`. Dependencies already installed in the task's declared container image
+are expected environment dependencies. Do not require an external clone or install step; only FAIL if
+runtime files are missing from both the seeded repository and its declared container environment.
 List all missing files/dependencies found.
-Status: PASS if fully self-contained (or, for repository tasks, dependencies are covered by the upstream build system and declared post_clone_install), FAIL if external dependencies found.
+Status: PASS if fully self-contained (or its repository/image-kernel dependencies are covered as described above), FAIL if external dependencies found.
 
 ### Check 9: GPU Hang Check
 Based on checks 4-6, report whether any command appeared to hang:
@@ -321,7 +330,7 @@ The core schema expects: task_name, pass_compilation, compilation_error_message,
 Does the task's runner/script produce timing information? Does it output pass/fail status in a parseable way?
 If outputs are in `eval_result.yaml` with parseable keys (`compiled`, `correctness`, `speedup`, `ori_time`, `opt_time`) and/or `build/*.json` reports, consider this compatible via deterministic field mapping; do not require exact file name or exact schema shape.
 
-For `task_type: repository` (driven by `scripts/task_runner.py`), the standard outputs are
+For `task_type: repository` or `task_type: image_kernel` (driven by `scripts/task_runner.py`), the standard outputs are
 `build/compile_report.json` (compile pass/fail), `build/correctness_report.json` (correctness pass/fail),
 and `build/performance_report.json` (per-case `execution_time_ms` for the optimized build). These, combined
 with `baseline_perf.yaml` (per-case baseline `execution_time_ms` produced by the harness), give a

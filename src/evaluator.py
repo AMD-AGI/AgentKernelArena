@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 
 from .evaluator_utils import inspect_target_definitions, run_command
+from .jit_rebuild import force_jit_rebuild
 from .performance import measure_performance, measure_baseline
 from .testcases import TestCaseResult, save_performance_results, calculate_average_speedup, collect_benchmark_methods
 
@@ -48,6 +49,7 @@ def evaluate_compilation(
         Tuple of (passed: bool, error_message: Optional[str])
     """
     log = logger or logging.getLogger(__name__)
+    rebuild_env = force_jit_rebuild(task_config, log, workspace)
     compile_commands = task_config.get('compile_command', [])
     
     if not compile_commands:
@@ -57,7 +59,7 @@ def evaluate_compilation(
     compile_timeout = int(task_config.get("compile_timeout", _DEFAULT_COMPILE_TIMEOUT_S))
     
     for cmd in compile_commands:
-        success, stdout, stderr = run_command(cmd, workspace, timeout=compile_timeout, logger=log)
+        success, stdout, stderr = run_command(cmd, workspace, timeout=compile_timeout, logger=log, extra_env=rebuild_env)
         if not success:
             error_msg = f"Compilation failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
             return False, error_msg
@@ -82,6 +84,7 @@ def evaluate_correctness(
         Tuple of (passed: bool, error_message: Optional[str])
     """
     log = logger or logging.getLogger(__name__)
+    rebuild_env = force_jit_rebuild(task_config, log, workspace)
     correctness_commands = task_config.get('correctness_command', [])
     
     if not correctness_commands:
@@ -94,7 +97,7 @@ def evaluate_correctness(
     
     for cmd in correctness_commands:
         success, stdout, stderr = run_command(
-            cmd, workspace, timeout=correctness_timeout, logger=log
+            cmd, workspace, timeout=correctness_timeout, logger=log, extra_env=rebuild_env
         )
         if not success:
             error_msg = f"Correctness test failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"

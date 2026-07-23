@@ -21,7 +21,7 @@ execution, and RL-ready GPU kernel evaluation.
 
 - Added first-class A/B experimentation workflows with labeled baseline and treatment runs.
 - Exposed compilation, correctness, latency, speedup, and score fields as structured signals for external agent-RL systems.
-- Added run comparison through `compare_runs.py` and the standalone visualization dashboard.
+- Added run comparison through `src/tools/compare_runs.py` and the standalone visualization dashboard.
 - Added held-out evaluation for testing kernel generalization on unseen shapes.
 - Centralized compilation, correctness, performance measurement, result generation, and scoring outside agent-editable code.
 
