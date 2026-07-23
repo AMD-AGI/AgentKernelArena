@@ -1,28 +1,14 @@
 """
 html_theme is usually unchanged (rocm_docs_theme).
 flavor defines the site header display, select the flavor for the corresponding portals
-flavor options: rocm, rocm-docs-home, rocm-blogs, rocm-ds, instinct, ai-developer-hub, local, generic
+flavor options: rocm, rocm-docs-home, rocm-blogs, rocm-ds, instinct, ai-developer-hub, local, generic, hyperloom
 """
 
 version_number = "0.2.0"
 
 html_theme = "rocm_docs_theme"
 html_theme_options = {
-    "flavor": "generic",
-    "header_title": f"AgentKernelArena {version_number}",
-    "header_link": False,
-    "version_list_link": False,
-    "nav_secondary_items": {
-        "Hyperloom": "https://rocm.docs.amd.com/projects/hyperloom/en/latest/index.html",
-        "GitHub": "https://github.com/AMD-AGI/AgentKernelArena",
-        "Community": False,
-        "Blogs": "https://rocm.blogs.amd.com/",
-        "ROCm Developer Hub": "https://www.amd.com/en/developer/resources/rocm-hub.html",
-        "Instinct™ Docs": "https://instinct.docs.amd.com/",
-        "Infinity Hub": "https://www.amd.com/en/developer/resources/infinity-hub.html",
-        "Support": "https://github.com/AMD-AGI/AgentKernelArena/issues/new/choose",
-    },
-    "link_main_doc": False,
+    "flavor": "hyperloom",
 }
 
 # This section turns on/off article info
