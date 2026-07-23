@@ -49,6 +49,8 @@ subtrees:
       title: Configuration and API reference
     - file: reference/benchmark-methodology
       title: Performance measurement methodology
+    - url: https://rocm.docs.amd.com/projects/hyperloom/en/latest/index.html
+      title: Hyperloom
 
 - caption: About
   entries:
