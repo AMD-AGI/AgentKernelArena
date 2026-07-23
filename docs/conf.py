@@ -11,6 +11,8 @@ html_theme_options = {
     "flavor": "hyperloom",
     "header_title": f"AgentKernelArena {version_number}",
     "header_link": False,
+    "use_repository_button": True,
+    "use_issues_button": True,
     "version_list_link": False,
     "nav_secondary_items": {
         "Hyperloom": "https://rocm.docs.amd.com/projects/hyperloom/en/latest/index.html",
