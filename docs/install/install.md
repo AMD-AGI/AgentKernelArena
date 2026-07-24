@@ -117,8 +117,8 @@ Arena integration supports only `hip2hip`, `triton2triton`, and
 Workflow artifacts are written in a hidden sibling directory outside the
 scored task workspace.
 
-See the [GEAK v4 agent README](../../agents/geak_v4/README.md) for the complete
-contract. Its offline tests do not make a real paid Claude workflow call.
+See the [GEAK v4 agent guidance](../how-to/agents.md#geak-v4) for the complete
+setup flow. Its offline tests do not make a real paid Claude workflow call.
 
 ## Choose an example configuration
 

@@ -21,7 +21,7 @@ The following agents are available.
 | `cursor` | Cursor Agent CLI |
 | `claude_code` | Anthropic Claude Code CLI |
 | `codex` | OpenAI Codex CLI |
-| `geak_v4` | GEAK v4 deterministic kernel Workflow through Claude Code (see [GEAK v4 setup](../../agents/geak_v4/README.md)) |
+| `geak_v4` | GEAK v4 deterministic kernel Workflow through Claude Code (see [GEAK v4 setup](#geak-v4)) |
 | `geak_v3` | Specialized GEAK integration for HIP optimization |
 | `geak_v3_triton` | Specialized GEAK integration for Triton optimization |
 | `mini_swe_triton` | mini-swe-agent-based Triton optimization |
@@ -87,8 +87,8 @@ The setup target installs only `claude-agent-sdk`; it does not `pip install`
 GEAK. The checkout is mounted read-only, while workflow artifacts are written
 to a hidden directory beside the scored task workspace. Offline validation
 does not invoke a real paid Claude workflow. See the
-[agent README](../../agents/geak_v4/README.md) for the full task and patch
-contract.
+[repository agent README](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/geak_v4/README.md)
+for the full task and patch contract.
 
 `make vllm` starts an OpenAI-compatible local endpoint on port `30001`, but it
 does not automatically reconfigure an agent. Point the selected integration at
