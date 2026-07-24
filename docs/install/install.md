@@ -87,19 +87,50 @@ installation and its alternative npm installation. See the
 for current installation alternatives.
 
 The `geak_v3`, `geak_v3_triton`, and `mini_swe_triton` integrations require
-their own runtime dependencies. Review the corresponding directory under
-`agents/` before selecting one.
+their own runtime dependencies. GEAK v4 has a dedicated setup path described
+below. Review the corresponding directory under `agents/` before selecting a
+specialized integration.
+
+## Set up GEAK v4 (optional)
+
+GEAK v4 requires Claude Code 2.1.177 or newer, authenticated on the host, and a
+local GEAK checkout. The Docker runner expects this sibling layout by default:
+
+```text
+parent/
+├── AgentKernelArena/
+└── GEAK/
+```
+
+Clone `https://github.com/AMD-AGI/GEAK.git` into that location, or export
+`AKA_GEAK_ROOT=/absolute/path/to/GEAK`. Then install the Agent SDK into the
+persistent container Python dependency directory:
+
+```bash
+make docker-setup-geak
+```
+
+This target installs only `claude-agent-sdk`; it does not `pip install` GEAK.
+The Docker runner mounts the GEAK checkout read-only at `/opt/geak`. V1 of the
+Arena integration supports only `hip2hip`, `triton2triton`, and
+`flydsl2flydsl` tasks with exactly one non-test, non-harness source file.
+Workflow artifacts are written in a hidden sibling directory outside the
+scored task workspace.
+
+See the [GEAK v4 agent README](../../agents/geak_v4/README.md) for the complete
+contract. Its offline tests do not make a real paid Claude workflow call.
 
 ## Choose an example configuration
 
 Choose the configuration that matches the physical GPU and installed agent.
-The two quickstart configurations each run one GELU task; the benchmark
+The three quickstart configurations each run one GELU task; the benchmark
 configuration is a longer 60-task Cursor Agent run.
 
 | Configuration | Purpose |
 | --- | --- |
 | `example_configs/quickstart_claude_mi300.yaml` | First Claude Code run on MI300/MI300X (`gfx942`). |
 | `example_configs/quickstart_claude_mi355x.yaml` | First Claude Code run on MI355X (`gfx950`). |
+| `example_configs/quickstart_geak_v4_mi300.yaml` | First GEAK v4 run on MI300/MI300X (`gfx942`); requires the GEAK v4 setup above. |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; requires an installed and authenticated Cursor Agent CLI. |
 
 The default `make docker-run` configuration is the MI300/MI300X quickstart.
@@ -135,7 +166,7 @@ cp "$CONFIG_PATH" my_experiment.yaml
 `flydsl2flydsl`, `torch2flydsl`, and `triton2flydsl` tasks need the `flydsl`
 package inside the container. The selected image may already ship it
 (`make docker-smoke` prints `flydsl=ok <version>` when present). If yours does
-not, install it once into the container's persistent pip user-base:
+not, install it once into the container's persistent dependency directory:
 
 ```bash
 make docker-setup-flydsl
@@ -146,23 +177,25 @@ This is a no-op when the image already provides FlyDSL.
 ## Configure authentication and providers
 
 Cursor, Claude Code, and Codex reuse their host CLI authentication. A normal run
-preflights only its selected CLI. For another config that selects one of these
-CLIs—or `task_validator`, which resolves to its configured backend—check the
-same CLI without starting a task by passing that run config:
+preflights only its selected dependencies. For another config that selects one
+of these CLIs, GEAK v4, or `task_validator`, which resolves to its configured
+backend, check the same stack without starting a task by passing that run
+config:
 
 ```bash
 make docker-check-agents CONFIG=my_experiment.yaml
 
 # Optional overrides:
 make docker-check-agents AGENTS=claude_code,codex
+make docker-check-agents AGENTS=geak_v4
 make docker-check-agents AGENTS=all
 ```
 
 `AGENTS=all` is the explicit strict check for Cursor, Claude Code, and Codex.
-Specialized integrations such as GEAK and mini-swe use their own dependency and
-authentication checks. They read credentials and provider endpoints from their
-own environment/configuration; there is no shared provider field in the root
-run configuration.
+GEAK v4 has its own composite check for Claude, the Agent SDK, the read-only
+workflow checkout, and a profiler. Legacy GEAK and mini-swe integrations use
+their own dependency and authentication checks. There is no shared provider
+field in the root run configuration.
 
 To run against a self-hosted model instead of a hosted provider, start a local
 vLLM server:

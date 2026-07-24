@@ -53,6 +53,16 @@ def _is_protected_path(rel: Path) -> bool:
     return name.endswith(_HARNESS_FILE_SUFFIXES)
 
 
+def is_protected_workspace_path(path: str | Path) -> bool:
+    """Return whether a workspace-relative path belongs to the task harness.
+
+    Agent integrations that import patches can use this public predicate before
+    touching the workspace.  The final digest check remains authoritative, but
+    rejecting protected paths up front avoids partially applying an unsafe patch.
+    """
+    return _is_protected_path(Path(path))
+
+
 def _iter_protected_files(root: Path) -> Iterable[Path]:
     for path in root.rglob("*"):
         if not path.is_file():

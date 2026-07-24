@@ -57,6 +57,16 @@ run_check_args() {
         bash "$RUNNER" check-agents --config_name "$config" 2>/dev/null
 }
 
+run_setup_geak_args() {
+    local home="$1"
+    local geak_root="$2"
+    env \
+        HOME="$home" \
+        AKA_GPU_ARCH=gfx950 \
+        AKA_GEAK_ROOT="$geak_root" \
+        bash "$RUNNER" setup-geak 2>/dev/null
+}
+
 assert_cache_args_present() {
     local suffix="$1"
     shift
@@ -155,6 +165,76 @@ assert_has "$NATIVE_CLAUDE_HOME/.local/share/claude:$NATIVE_CLAUDE_HOME/.local/s
 assert_has "$NATIVE_CLAUDE_HOME/.claude:$NATIVE_CLAUDE_HOME/.claude" "${args[@]}"
 assert_has "$NATIVE_CLAUDE_HOME/.claude.json:$NATIVE_CLAUDE_HOME/.claude.json" "${args[@]}"
 assert_has "claude_code" "${args[@]}"
+
+# GEAK v4 composes the native Claude mount with a read-only workflow checkout.
+# The fake Docker captures argv only; no daemon, network, Claude, or GEAK code runs.
+GEAK_ROOT="$TEST_HOME/geak"
+GEAK_CONFIG="$TEST_HOME/geak-config.yaml"
+mkdir -p \
+    "$GEAK_ROOT/kernel_workflow/roles" \
+    "$GEAK_ROOT/kernel_workflow/knowledge" \
+    "$GEAK_ROOT/kernel_workflow/scripts"
+touch \
+    "$GEAK_ROOT/kernel_workflow/kernel_workflow.js" \
+    "$GEAK_ROOT/kernel_workflow/scripts/gpu_lock.sh"
+printf 'agent:\n  template: geak_v4\n' > "$GEAK_CONFIG"
+
+mapfile -t args < <(run_check_args \
+    "$NATIVE_CLAUDE_HOME" \
+    "$GEAK_CONFIG" \
+    AKA_GEAK_ROOT="$GEAK_ROOT")
+assert_has "$NATIVE_CLAUDE_HOME/.local/bin:$NATIVE_CLAUDE_HOME/.local/bin:ro" "${args[@]}"
+assert_has "$NATIVE_CLAUDE_HOME/.local/share/claude:$NATIVE_CLAUDE_HOME/.local/share/claude:ro" "${args[@]}"
+assert_has "$NATIVE_CLAUDE_HOME/.claude:$NATIVE_CLAUDE_HOME/.claude" "${args[@]}"
+assert_has "$NATIVE_CLAUDE_HOME/.claude.json:$NATIVE_CLAUDE_HOME/.claude.json" "${args[@]}"
+assert_has "$GEAK_ROOT:/opt/geak:ro" "${args[@]}"
+assert_has "GEAK_V4_ROOT=/opt/geak" "${args[@]}"
+assert_has "PYTHONPATH=/workspace/.aka-pyuserbase/site-packages" "${args[@]}"
+assert_has "$ROOT/.aka-pyuserbase:/workspace/.aka-pyuserbase:ro" "${args[@]}"
+assert_has "_container_check_agents" "${args[@]}"
+assert_has "geak_v4" "${args[@]}"
+assert_not_has "claude_code" "${args[@]}"
+
+# An explicitly selected GEAK agent is strict about the host checkout.
+if run_check_args \
+    "$NATIVE_CLAUDE_HOME" \
+    "$GEAK_CONFIG" \
+    AKA_GEAK_ROOT="$TEST_HOME/missing-geak" >/dev/null; then
+    fail "GEAK agent check unexpectedly accepted a missing AKA_GEAK_ROOT"
+fi
+
+# setup-geak uses the same mounts and routes into the SDK-only container setup.
+mapfile -t args < <(run_setup_geak_args "$NATIVE_CLAUDE_HOME" "$GEAK_ROOT")
+assert_has "$GEAK_ROOT:/opt/geak:ro" "${args[@]}"
+assert_has "GEAK_V4_ROOT=/opt/geak" "${args[@]}"
+assert_has "$ROOT/.aka-pyuserbase:/workspace/.aka-pyuserbase" "${args[@]}"
+assert_not_has "$ROOT/.aka-pyuserbase:/workspace/.aka-pyuserbase:ro" "${args[@]}"
+assert_has "_container_setup_geak" "${args[@]}"
+assert_not_has "_container_check_agents" "${args[@]}"
+
+# The runtime venv disables user-site packages. Verify setup uses the persistent
+# PYTHONPATH target instead of pip --user, without contacting a package index.
+SETUP_FAKE_BIN="$TEST_HOME/setup-fake-bin"
+SETUP_CALLS="$TEST_HOME/setup-python-calls"
+mkdir -p "$SETUP_FAKE_BIN"
+printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'if [[ "$1" == "-c" && "$2" == "import claude_agent_sdk" ]]; then exit 1; fi' \
+    'printf "%s\n" "$*" >> "$AKA_SETUP_LOG"' \
+    'exit 0' \
+    > "$SETUP_FAKE_BIN/python"
+chmod +x "$SETUP_FAKE_BIN/python"
+env \
+    PATH="$SETUP_FAKE_BIN:$PATH" \
+    AKA_SETUP_LOG="$SETUP_CALLS" \
+    PYTHONUSERBASE="$TEST_HOME/python-deps" \
+    bash "$RUNNER" _container_setup_geak >/dev/null
+mapfile -t setup_calls < "$SETUP_CALLS"
+assert_has \
+    "-m pip install --upgrade --target $TEST_HOME/python-deps/site-packages claude-agent-sdk" \
+    "${setup_calls[@]}"
+[[ "$(tr '\n' ' ' < "$SETUP_CALLS")" != *"--user"* ]] \
+    || fail "GEAK setup unexpectedly used pip --user"
 
 # Omitting --config_name uses the one-task MI300/MI300X Claude quickstart.
 mapfile -t args < <(

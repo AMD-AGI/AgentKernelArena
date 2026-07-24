@@ -74,6 +74,7 @@ AgentKernelArena/
 │   ├── cursor/                     # Cursor Agent CLI
 │   ├── claude_code/                # Claude Code CLI
 │   ├── codex/                      # Codex CLI
+│   ├── geak_v4/                    # GEAK v4 deterministic Workflow
 │   ├── geak_v3/                    # GEAK HIP optimization
 │   ├── geak_v3_triton/             # GEAK Triton optimization
 │   ├── mini_swe_triton/            # mini-swe-agent Triton optimization
@@ -114,12 +115,13 @@ Each run selects one `agent.template`. Repeated runs can compare different agent
 | `cursor` | Cursor Agent CLI integration |
 | `claude_code` | Claude Code CLI integration |
 | `codex` | Codex CLI integration |
+| `geak_v4` | GEAK v4 deterministic kernel Workflow through Claude Code |
 | `geak_v3` | GEAK optimization for HIP tasks |
 | `geak_v3_triton` | GEAK optimization for Triton tasks |
 | `mini_swe_triton` | mini-swe-agent-based Triton optimization |
 | `task_validator` | Task quality validation; does not optimize kernels |
 
-Agent-specific models, effort settings, iteration guidance, timeouts, and provider configuration live under `agents/<agent_name>/agent_config.yaml` or in the selected agent CLI. Specialized agents may require additional setup; inspect their directories and agent-specific README files where present.
+Agent-specific models, effort settings, iteration guidance, timeouts, and provider configuration live under `agents/<agent_name>/agent_config.yaml` or in the selected agent CLI. Specialized agents may require additional setup; inspect their directories and agent-specific README files where present. GEAK v4 setup and its single-source task contract are documented in [agents/geak_v4/README.md](agents/geak_v4/README.md).
 
 ## Task Environments
 
@@ -188,12 +190,13 @@ installation. The npm path requires Node.js 22+ and npm. See the
 [official Claude Code setup guide](https://code.claude.com/docs/en/installation)
 for the current alternatives.
 
-The repository provides three ready-to-use run configurations:
+The repository provides four ready-to-use run configurations:
 
 | Configuration | Purpose |
 | --- | --- |
 | `example_configs/quickstart_claude_mi300.yaml` | One Claude Code GELU task on MI300/MI300X (`gfx942`); use this for a first run on MI300-series hardware. |
 | `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`); use this for a first run on MI355X. |
+| `example_configs/quickstart_geak_v4_mi300.yaml` | One GEAK v4 GELU task on MI300/MI300X (`gfx942`); requires the additional GEAK checkout and SDK setup. |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
 
 Running `make docker-run` without `CONFIG` uses the MI300/MI300X Claude
@@ -205,6 +208,18 @@ FlyDSL tasks require FlyDSL in the container. The pinned image may already provi
 ```bash
 make docker-setup-flydsl
 ```
+
+GEAK v4 requires a GEAK checkout beside AgentKernelArena by default, Claude
+Code 2.1.177 or newer logged in on the host, and the Agent SDK:
+
+```bash
+make docker-setup-geak
+```
+
+Set `AKA_GEAK_ROOT=/absolute/path/to/GEAK` when the checkout is not the default
+sibling directory. This target installs only `claude-agent-sdk`; it does not
+`pip install` GEAK, which is mounted read-only. See the
+[GEAK v4 agent README](agents/geak_v4/README.md) before selecting its example.
 
 Performance timing helpers are maintained in `src/tools/perf/` and materialized into run workspaces. See [src/tools/perf/README.md](src/tools/perf/README.md) before changing task timing code.
 
@@ -227,18 +242,19 @@ Run agent-specific settings such as `model`, `effort`, `max_iterations`, and
 `timeout_seconds` are configured in the selected agent's `agent_config.yaml`,
 not in the run configuration.
 
-For a Cursor, Claude Code, Codex, or task-validator config, verify only the
-selected first-class host CLI (the validator resolves to its configured backend):
+For a Cursor, Claude Code, Codex, GEAK v4, or task-validator config, verify only
+the dependencies selected by the config (the validator resolves to its
+configured backend):
 
 ```bash
 CONFIG_PATH=my_experiment.yaml
 make docker-check-agents CONFIG="$CONFIG_PATH"
 ```
 
-Use `AGENTS=claude_code,codex` to check an explicit subset or `AGENTS=all` to
-check Cursor, Claude Code, and Codex together. Specialized integrations such as
-GEAK and mini-swe have their own dependency checks and are not handled by this
-command.
+Use `AGENTS=claude_code,codex` to check an explicit subset,
+`AGENTS=geak_v4` to check the GEAK v4 stack, or `AGENTS=all` to check Cursor,
+Claude Code, and Codex together. Legacy GEAK and mini-swe integrations retain
+their own dependency checks.
 
 ### Run Serially
 
@@ -258,9 +274,10 @@ make docker-parallel-run CONFIG="$CONFIG_PATH"
 ```
 
 The Docker parallel path is verified for `cursor`, `claude_code`, `codex`, and
-`task_validator`. Specialized GEAK/mini-swe integrations need their own
-dependencies and GPU-ID configuration before they are used with isolated
-workers.
+`task_validator`. `geak_v4` maps each isolated worker to logical GPU 0, but
+still requires the setup in its agent README. A paid Claude workflow invocation
+is not part of the integration's offline validation. Legacy GEAK/mini-swe
+integrations need their own dependencies and GPU-ID configuration.
 
 ### Resume a Run
 

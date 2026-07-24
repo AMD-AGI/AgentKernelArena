@@ -7,6 +7,9 @@ DEFAULT_DOCKER_IMAGE_GFX950="${AKA_DOCKER_IMAGE_GFX950:-$GFX950_V0514_DOCKER_IMA
 CONTAINER_WORKDIR="${AKA_DOCKER_WORKDIR:-/workspace}"
 HOST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HOST_HOME="${HOME:?HOME must be set}"
+HOST_GEAK_ROOT="${AKA_GEAK_ROOT:-$(dirname "$HOST_ROOT")/GEAK}"
+CONTAINER_GEAK_ROOT="/opt/geak"
+CONTAINER_PYTHON_DEPS="${CONTAINER_WORKDIR}/.aka-pyuserbase/site-packages"
 HOST_UID="$(id -u)"
 HOST_GID="$(id -g)"
 SELECTED_GPU_ARCH=""
@@ -28,6 +31,7 @@ Usage:
   src/scripts/docker_benchmark.sh preflight [--config_name <run-config.yaml>]
   src/scripts/docker_benchmark.sh shell
   src/scripts/docker_benchmark.sh check-agents [--config_name <run-config.yaml>]
+  src/scripts/docker_benchmark.sh setup-geak
   src/scripts/docker_benchmark.sh smoke
 
 Default run config:
@@ -43,7 +47,8 @@ Environment overrides:
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
   AKA_DOCKER_IMAGE_GFX950 Default image for gfx950.
   AKA_NODE_PREFIX         Host Node prefix containing bin/node and npm-installed agent CLI(s).
-  AKA_AGENTS              Agent CLI(s) to check, comma/space separated; use all for all three.
+  AKA_GEAK_ROOT           Host GEAK checkout (default: sibling GEAK directory).
+  AKA_AGENTS              Agent stack(s) to check, comma/space separated; `all` checks the three host CLIs.
 EOF
 }
 
@@ -309,6 +314,7 @@ resolve_required_agents() {
     [[ "$tmpl" == "task_validator" ]] && tmpl="$(read_validator_backend)"
     case "$tmpl" in
         claude|claude_code) printf 'claude_code\n' ;;
+        geak_v4) printf 'geak_v4\n' ;;
         cursor|cursor-agent) printf 'cursor\n' ;;
         codex) printf 'codex\n' ;;
         *) printf '%s\n' "$tmpl" ;;
@@ -330,6 +336,9 @@ normalize_check_agents() {
             claude|claude_code)
                 normalized+=(claude_code)
                 ;;
+            geak_v4)
+                normalized+=(geak_v4)
+                ;;
             cursor|cursor-agent)
                 normalized+=(cursor)
                 ;;
@@ -337,7 +346,7 @@ normalize_check_agents() {
                 normalized+=(codex)
                 ;;
             *)
-                die "docker-check-agents only supports codex, claude_code, cursor, or all; got '$agent'"
+                die "docker-check-agents only supports codex, claude_code, cursor, geak_v4, or all; got '$agent'"
                 ;;
         esac
     done
@@ -395,6 +404,29 @@ mount_agent() {
                 add_mount "$HOST_HOME/.claude" "$HOST_HOME/.claude"
                 add_mount "$HOST_HOME/.claude.json" "$HOST_HOME/.claude.json"
             fi
+            ;;
+        geak_v4)
+            # GEAK v4 is a composite integration: it needs the normal mounted
+            # Claude CLI/login plus a read-only GEAK Workflow checkout.
+            mount_agent claude_code "$strict"
+            need_path \
+                "$HOST_GEAK_ROOT/kernel_workflow/kernel_workflow.js" \
+                "GEAK v4 kernel workflow (set AKA_GEAK_ROOT)" \
+                "$strict" || return 0
+            need_path \
+                "$HOST_GEAK_ROOT/kernel_workflow/roles" \
+                "GEAK v4 workflow roles" \
+                "$strict" || return 0
+            need_path \
+                "$HOST_GEAK_ROOT/kernel_workflow/knowledge" \
+                "GEAK v4 workflow knowledge" \
+                "$strict" || return 0
+            need_path \
+                "$HOST_GEAK_ROOT/kernel_workflow/scripts/gpu_lock.sh" \
+                "GEAK v4 GPU lock helper" \
+                "$strict" || return 0
+            add_mount "$HOST_GEAK_ROOT" "$CONTAINER_GEAK_ROOT" ro
+            docker_args+=(-e "GEAK_V4_ROOT=${CONTAINER_GEAK_ROOT}")
             ;;
         cursor)
             need_path "$HOST_HOME/.local/bin" "host local bin directory" "$strict" || return 0
@@ -469,6 +501,7 @@ build_docker_args() {
         -e "TORCH_EXTENSIONS_DIR=/tmp/torch-extensions${cache_postfix}"
         -e "TRITON_CACHE_DIR=/tmp/triton-cache${cache_postfix}"
         -e "PYTHONUSERBASE=${CONTAINER_WORKDIR}/.aka-pyuserbase"
+        -e "PYTHONPATH=${CONTAINER_PYTHON_DEPS}"
         -e "MIOPEN_USER_DB_PATH=/tmp/miopen-cache${cache_postfix}"
         -e "MIOPEN_CACHE_DIR=/tmp/miopen-cache${cache_postfix}"
         -e "MIOPEN_CUSTOM_CACHE_DIR=/tmp/miopen-cache${cache_postfix}"
@@ -527,11 +560,24 @@ build_docker_args() {
     add_device_if_present /dev/mem
 
     add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR"
-    # Persistent pip user-base (PYTHONUSERBASE) so `make docker-setup-flydsl` survives
-    # across runs. It lives INSIDE the repo dir, which is already bind-mounted above and
-    # is owned by the host user — this avoids a separate mount whose source the docker
-    # daemon would have to create (which fails on NFS/root-squashed homes).
-    mkdir -p "$HOST_ROOT/.aka-pyuserbase" 2>/dev/null || true
+    # Persistent dependency target so optional Python packages survive across
+    # runs. The image's /opt/venv disables user-site packages, so setup targets
+    # use pip --target and this explicit PYTHONPATH instead of pip --user.
+    # It lives inside the repo's existing bind mount and remains host-user-owned.
+    mkdir -p "$HOST_ROOT/.aka-pyuserbase/site-packages" 2>/dev/null || true
+    if [[ "${PYTHON_DEPS_WRITABLE:-0}" == "1" ]]; then
+        add_mount \
+            "$HOST_ROOT/.aka-pyuserbase" \
+            "${CONTAINER_WORKDIR}/.aka-pyuserbase"
+    else
+        # Override the parent repo's RW bind at this nested path. Agent code is
+        # imported from PYTHONPATH, so allowing Workflow to write here would
+        # enable sitecustomize-based benchmark/harness injection.
+        add_mount \
+            "$HOST_ROOT/.aka-pyuserbase" \
+            "${CONTAINER_WORKDIR}/.aka-pyuserbase" \
+            ro
+    fi
     local _agent
     for _agent in $agents; do
         mount_agent "$_agent" "$strict"
@@ -657,7 +703,7 @@ if "codex" in agents:
     codex_line = next((line for line in codex_status.splitlines() if "Logged in" in line), codex_status.splitlines()[-1])
     print(f"codex_status={codex_line}")
 
-if "claude_code" in agents:
+if "claude_code" in agents or "geak_v4" in agents:
     require_cmd("claude")
     claude_version = run_checked(["claude", "--version"]).splitlines()[-1]
     claude_status_raw = run_checked(["claude", "auth", "status"])
@@ -670,6 +716,52 @@ if "claude_code" in agents:
         f"subscriptionType={claude_status.get('subscriptionType')} "
         f"version={claude_version}"
     )
+
+if "geak_v4" in agents:
+    import inspect
+    import pathlib
+    import re
+
+    version_match = re.search(r"(\d+)\.(\d+)\.(\d+)", claude_version)
+    if not version_match or tuple(map(int, version_match.groups())) < (2, 1, 177):
+        raise SystemExit(
+            f"GEAK v4 requires Claude Code >=2.1.177; found {claude_version}"
+        )
+    try:
+        from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+    except (ImportError, AttributeError) as exc:
+        raise SystemExit(
+            "claude_agent_sdk lacks the persistent-client API; "
+            "run make docker-setup-geak"
+        ) from exc
+    if "cli_path" not in inspect.signature(ClaudeAgentOptions).parameters:
+        raise SystemExit(
+            "claude_agent_sdk lacks ClaudeAgentOptions.cli_path; "
+            "run make docker-setup-geak"
+        )
+
+    geak_root = pathlib.Path(os.environ.get("GEAK_V4_ROOT", "/opt/geak"))
+    required = [
+        (geak_root / "kernel_workflow" / "kernel_workflow.js", "file"),
+        (geak_root / "kernel_workflow" / "roles", "directory"),
+        (geak_root / "kernel_workflow" / "knowledge", "directory"),
+        (geak_root / "kernel_workflow" / "scripts" / "gpu_lock.sh", "file"),
+    ]
+    invalid = [
+        f"{path} (expected {kind})"
+        for path, kind in required
+        if (
+            path.is_symlink()
+            or (kind == "file" and not path.is_file())
+            or (kind == "directory" and not path.is_dir())
+        )
+    ]
+    if invalid:
+        raise SystemExit("GEAK v4 checkout is incomplete: " + ", ".join(invalid))
+    # Arena's common smoke/run contract requires rocprof-compute, so the
+    # agent-only preflight must enforce the same dependency.
+    require_cmd("rocprof-compute")
+    print(f"geak_v4=ok root={geak_root} sdk=claude_agent_sdk")
 
 if "cursor" in agents:
     require_cmd("cursor-agent")
@@ -710,17 +802,30 @@ PY
 }
 
 container_setup_flydsl() {
-    # If the image already provides FlyDSL, do nothing — installing a --user copy
+    # If the image already provides FlyDSL, do nothing — installing a target copy
     # could shadow the image version with an incompatible one.
     if python -c 'import flydsl' 2>/dev/null; then
         python -c 'import flydsl; print("flydsl already provided by image: " + str(getattr(flydsl, "__version__", "unknown")) + "; nothing to install")'
         return 0
     fi
-    # Otherwise install into the persistent pip user-base (PYTHONUSERBASE), a
-    # host-mounted dir, so it survives the --rm container and is importable in later runs.
-    echo "flydsl not found in image; installing into persistent pip user-base..."
-    python -m pip install --user --upgrade flydsl
+    # /opt/venv disables user-site packages. Install into the explicit target
+    # already placed on PYTHONPATH so it survives the --rm container.
+    local target="${PYTHONUSERBASE:?PYTHONUSERBASE must be set}/site-packages"
+    mkdir -p "$target"
+    echo "flydsl not found in image; installing into persistent dependency target..."
+    python -m pip install --upgrade --target "$target" flydsl
     python -c 'import flydsl; print("flydsl=" + str(getattr(flydsl, "__version__", "unknown")) + " setup OK")'
+}
+
+container_setup_geak() {
+    # The Workflow sources are used directly from the read-only /opt/geak
+    # checkout. Only install the SDK lifecycle dependency; never pip-install
+    # GEAK itself (its package bootstrap performs unrelated host-side setup).
+    local target="${PYTHONUSERBASE:?PYTHONUSERBASE must be set}/site-packages"
+    mkdir -p "$target"
+    echo "Installing/upgrading claude-agent-sdk in the persistent dependency target..."
+    python -m pip install --upgrade --target "$target" claude-agent-sdk
+    python -c 'import inspect; from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient; assert "cli_path" in inspect.signature(ClaudeAgentOptions).parameters; print("claude-agent-sdk persistent client setup OK")'
 }
 
 container_prepare_worker_home() {
@@ -1013,10 +1118,21 @@ case "${1:-}" in
         # FlyDSL install needs no agent CLIs.
         REQUIRED_AGENTS=""
         AGENTS_STRICT=0
+        PYTHON_DEPS_WRITABLE=1
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_setup_flydsl
+        ;;
+    setup-geak)
+        select_runtime_for_host
+        REQUIRED_AGENTS="geak_v4"
+        AGENTS_STRICT=1
+        PYTHON_DEPS_WRITABLE=1
+        docker_exec 0 bash src/scripts/docker_benchmark.sh _container_setup_geak
         ;;
     _container_setup_flydsl)
         container_setup_flydsl
+        ;;
+    _container_setup_geak)
+        container_setup_geak
         ;;
     _container_smoke)
         container_smoke

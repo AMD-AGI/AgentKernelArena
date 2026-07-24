@@ -36,6 +36,7 @@ The following software versions are required or verified.
 | Triton | Bundled with the image's ROCm PyTorch | Required for Triton task categories. |
 | AITER | `0.1.17.dev110+g9127c94a1` in the verified `gfx950` image | Required by AITER-backed task oracles and kernels. |
 | FlyDSL | `0.2.2` in the verified `gfx950` image (or `make docker-setup-flydsl` when absent) | Required for `flydsl2flydsl`, `torch2flydsl`, and `triton2flydsl` tasks. |
+| Claude Code for GEAK v4 | 2.1.177 or newer | Must be authenticated on the host; GEAK's dynamic Workflow also requires `claude-agent-sdk`. |
 
 ## Agents
 
@@ -48,6 +49,7 @@ The following templates are selectable in the current `AgentType` registry. See
 | `cursor` | Cursor Agent CLI and host login state. |
 | `claude_code` | Native/local or npm-installed Claude Code CLI and host login state. |
 | `codex` | Codex CLI and host login state. |
+| `geak_v4` | Claude Code 2.1.177+, host login state, `claude-agent-sdk`, a read-only local GEAK checkout, and a supported profiler. |
 | `geak_v3` | GEAK CLI; HIP-oriented integration. |
 | `geak_v3_triton` | GEAK CLI; Triton-oriented integration. |
 | `mini_swe_triton` | mini-swe-agent/GEAK dependencies. |

@@ -21,6 +21,7 @@ The following agents are available.
 | `cursor` | Cursor Agent CLI |
 | `claude_code` | Anthropic Claude Code CLI |
 | `codex` | OpenAI Codex CLI |
+| `geak_v4` | GEAK v4 deterministic kernel Workflow through Claude Code (see [GEAK v4 setup](../../agents/geak_v4/README.md)) |
 | `geak_v3` | Specialized GEAK integration for HIP optimization |
 | `geak_v3_triton` | Specialized GEAK integration for Triton optimization |
 | `mini_swe_triton` | mini-swe-agent-based Triton optimization |
@@ -37,8 +38,10 @@ Each agent lives under `agents/<agent_name>/` and is registered into a shared
 registry, so the framework loads only the agent you select.
 
 The Cursor, Claude Code, and Codex integrations reuse their host CLI login
-state. Specialized integrations have additional setup and configuration under
-their respective `agents/<agent_name>/` directories.
+state. GEAK v4 also reuses the Claude Code login and adds a read-only GEAK
+checkout plus the Claude Agent SDK. Specialized integrations have additional
+setup and configuration under their respective `agents/<agent_name>/`
+directories.
 
 ## Models, providers, and agent settings
 
@@ -48,19 +51,44 @@ effort, timeout, and iteration settings through its CLI and
 `agents/<agent_name>/agent_config.yaml`.
 
 For Cursor, Claude Code, and Codex, authenticate with the host CLI. A normal run
-preflights only the selected CLI. When the config selects one of these
-first-class integrations (or `task_validator`), select the run configuration
-first and check its CLI/backend:
+preflights only the selected dependencies. When the config selects one of these
+first-class integrations, GEAK v4, or `task_validator`, select the run
+configuration first and check its CLI/backend:
 
 ```bash
 CONFIG_PATH=example_configs/quickstart_claude_mi300.yaml
 make docker-check-agents CONFIG="$CONFIG_PATH"
 ```
 
-Use `AGENTS=<comma-separated names>` for an explicit subset or `AGENTS=all` for
-all three first-class CLIs and login states. Specialized integrations are not
-handled by this command; their README files document their own dependencies,
-API keys, and endpoint configuration.
+Use `AGENTS=<comma-separated names>` for an explicit subset,
+`AGENTS=geak_v4` for GEAK v4, or `AGENTS=all` for all three first-class CLIs
+and login states. Legacy specialized integrations retain their own dependency
+checks; their README files document their dependencies and endpoint
+configuration.
+
+## GEAK v4
+
+V1 of the GEAK v4 Arena integration supports `hip2hip`, `triton2triton`, and
+`flydsl2flydsl` tasks that declare exactly one ordinary kernel source. A test or
+harness source, a protected path, or multiple source files is rejected.
+
+Place the GEAK checkout beside AgentKernelArena, or set
+`AKA_GEAK_ROOT=/absolute/path/to/GEAK`. Install and log in to Claude Code
+2.1.177 or newer on the host, then run:
+
+```bash
+make docker-setup-geak
+CONFIG_PATH=example_configs/quickstart_geak_v4_mi300.yaml
+make docker-check-agents CONFIG="$CONFIG_PATH"
+make docker-run CONFIG="$CONFIG_PATH"
+```
+
+The setup target installs only `claude-agent-sdk`; it does not `pip install`
+GEAK. The checkout is mounted read-only, while workflow artifacts are written
+to a hidden directory beside the scored task workspace. Offline validation
+does not invoke a real paid Claude workflow. See the
+[agent README](../../agents/geak_v4/README.md) for the full task and patch
+contract.
 
 `make vllm` starts an OpenAI-compatible local endpoint on port `30001`, but it
 does not automatically reconfigure an agent. Point the selected integration at

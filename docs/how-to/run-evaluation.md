@@ -15,12 +15,13 @@ resume, and inspect a run.
 ## Choose or create a run configuration
 
 A run configuration selects the agent, tasks, and target GPU. The repository
-ships three examples:
+ships four examples:
 
 | Configuration | Purpose |
 | --- | --- |
 | `example_configs/quickstart_claude_mi300.yaml` | One Claude Code GELU task on MI300/MI300X (`gfx942`). |
 | `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`). |
+| `example_configs/quickstart_geak_v4_mi300.yaml` | One GEAK v4 GELU task on MI300/MI300X (`gfx942`); complete its agent-specific setup first. |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; use only after installing and authenticating Cursor Agent. |
 
 For a first run, select the quickstart that matches the physical GPU:
@@ -102,10 +103,14 @@ For debugging, enter the same Docker runtime used by the experiment:
 
 ```bash
 make docker-shell
+
+# Mount the composite GEAK v4 stack when debugging that integration:
+make docker-shell AGENTS=geak_v4
 ```
 
-The Docker runner currently supports Codex, Claude Code, and Cursor Agent login
-reuse from the host. It preflights the selected config before starting the run.
+The Docker runner supports Codex, Claude Code, and Cursor Agent login reuse from
+the host. It also provisions the composite GEAK v4 stack when selected. It
+preflights the selected config before starting the run.
 
 ## Run across multiple GPUs
 
@@ -134,7 +139,8 @@ make docker-parallel-run \
 ```
 
 The Docker parallel path is verified for `cursor`, `claude_code`, `codex`, and
-`task_validator`. Specialized GEAK/mini-swe templates require their own
+`task_validator`. `geak_v4` maps each isolated worker to logical GPU 0 after
+its agent-specific setup. Legacy GEAK/mini-swe templates require their own
 dependencies and worker-visible GPU configuration. See
 [Run tasks in parallel across multiple GPUs](parallel-run.md) for scheduling,
 GPU isolation, resume behavior, and failure handling.

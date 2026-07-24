@@ -71,12 +71,18 @@ The supported agent templates are now:
 - `claude_code`
 - `codex`
 - `cursor`
+- `geak_v4`
 - `geak_v3`
 - `geak_v3_triton`
 - `mini_swe_triton`
 - `task_validator`
 
-The task validator now includes Codex backend support, repository-task validation, improved Python-environment propagation, stronger source and target checks, starter-stub detection, and standardized validation reports.
+The GEAK v4 integration runs the deterministic kernel Workflow through Claude
+Code against a disposable task copy and imports only a Director-validated,
+single-source patch. The task validator now includes Codex backend support,
+repository-task validation, improved Python-environment propagation, stronger
+source and target checks, starter-stub detection, and standardized validation
+reports.
 
 #### Documentation and onboarding
 

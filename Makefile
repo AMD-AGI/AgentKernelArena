@@ -6,7 +6,7 @@
 
 SHELL := /bin/bash
 
-.PHONY: help docker-shell docker-check-agents docker-smoke docker-run docker-parallel-run docker-setup-flydsl \
+.PHONY: help docker-shell docker-check-agents docker-smoke docker-run docker-parallel-run docker-setup-flydsl docker-setup-geak \
         check-docker-runner check-evaluator check-held-out check-visualization \
         visualization-build visualization-serve visualization-run \
         sync-perf-helpers check-perf-helpers materialize-perf-workspace \
@@ -17,7 +17,7 @@ help:
 	@echo "======================================================"
 	@echo "Docker-first workflow (the only supported path):"
 	@echo "make docker-shell        - Enter the runtime image with repo and agent auth mounted"
-	@echo "make docker-check-agents - Verify the first-class host CLI selected by CONFIG"
+	@echo "make docker-check-agents - Verify the agent stack selected by CONFIG"
 	@echo "                         Use CONFIG=... for another config; AGENTS=... overrides it"
 	@echo "                         AGENTS=all explicitly checks all three first-class CLIs"
 	@echo "make docker-smoke        - Verify Docker Python, ROCm tools, imports, and GPU access"
@@ -27,6 +27,7 @@ help:
 	@echo "                         On other GPUs, pass a matching CONFIG explicitly"
 	@echo "                         Images: gfx942->mi30x, gfx950->mi35x; override with AKA_DOCKER_IMAGE=..."
 	@echo "make docker-setup-flydsl - Install FlyDSL when absent (for flydsl2flydsl, torch2flydsl, and triton2flydsl)"
+	@echo "make docker-setup-geak   - Install the GEAK v4 Claude Agent SDK dependency"
 	@echo "make check-docker-runner - Check Docker runner syntax and runtime-specific arguments"
 	@echo "make check-evaluator     - Run centralized evaluator unit tests"
 	@echo "make check-held-out      - Run held-out module unit tests"
@@ -55,7 +56,11 @@ VISUALIZATION_PORT ?= 8080
 MATERIALIZE_FORCE_ARG := $(if $(filter 1 true yes,$(FORCE)),--force,)
 
 docker-shell:
-	@$(DOCKER_RUNNER) shell
+	@if [[ -n "$(AGENTS)" ]]; then \
+		AKA_AGENTS="$(AGENTS)" $(DOCKER_RUNNER) shell; \
+	else \
+		$(DOCKER_RUNNER) shell; \
+	fi
 
 docker-check-agents:
 	@AKA_AGENTS="$(AGENTS)" $(DOCKER_RUNNER) check-agents --config_name $(CONFIG)
@@ -69,10 +74,15 @@ docker-run:
 docker-parallel-run:
 	@GPU_IDS="$(GPU_IDS)" $(DOCKER_RUNNER) parallel-run --config_name $(CONFIG) $(RUN_ARGS)
 
-# Install FlyDSL into the container's persistent pip user-base when the selected
+# Install FlyDSL into the container's persistent Python dependency target when the selected
 # image does not ship it. Needed by all three FlyDSL task types.
 docker-setup-flydsl:
 	@$(DOCKER_RUNNER) setup-flydsl
+
+# Install the Claude Agent SDK into the persistent container Python dependency target.
+# The GEAK Workflow checkout itself is bind-mounted read-only from AKA_GEAK_ROOT.
+docker-setup-geak:
+	@$(DOCKER_RUNNER) setup-geak
 
 check-docker-runner:
 	@bash tests/test_docker_benchmark.sh

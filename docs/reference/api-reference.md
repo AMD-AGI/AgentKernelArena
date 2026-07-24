@@ -90,7 +90,8 @@ The following Make targets are available for running experiments.
 | `make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml` | Run tasks serially in one Docker container |
 | `make docker-parallel-run CONFIG=example_configs/benchmark_cursor_mi355x.yaml GPU_IDS=0,1` | Run one Docker worker per listed GPU, using a shared dynamic task queue |
 | `make docker-smoke` | Verify Docker, ROCm runtime visibility, Python imports, and GPU access |
-| `make docker-check-agents CONFIG=example_configs/quickstart_claude_mi300.yaml` | Verify the first-class host CLI selected by the config inside Docker (`task_validator` resolves to its backend). Override with `AGENTS=claude_code,codex`; use `AGENTS=all` for all three. Specialized integrations use their own checks |
+| `make docker-check-agents CONFIG=example_configs/quickstart_claude_mi300.yaml` | Verify the agent stack selected by the config inside Docker (`task_validator` resolves to its backend). Override with `AGENTS=claude_code,codex` or `AGENTS=geak_v4`; `AGENTS=all` checks the three host CLIs. |
+| `make docker-setup-geak` | Install only `claude-agent-sdk` into the persistent container dependency directory; GEAK itself is mounted read-only from `AKA_GEAK_ROOT`. |
 | `make docker-shell` | Open an interactive shell in the experiment runtime |
 
 `docker-parallel-run` accepts these environment variables:
