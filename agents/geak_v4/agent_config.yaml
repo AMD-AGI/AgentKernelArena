@@ -1,0 +1,30 @@
+# GEAK v4 runs the deterministic kernel_workflow through Claude Code's dynamic
+# Workflow tool. Point the runner at your GEAK checkout's kernel_workflow/
+# directory; the GEAK_V4_WORKFLOW_DIR environment variable overrides this value.
+# All run artifacts are written to a hidden sibling of the Arena task workspace.
+workflow_dir: /opt/geak/kernel_workflow
+
+# Defaults from GEAK v4's supported standalone kernel workflow.
+model: claude-opus-4-8
+effort: ultracode
+budget: 6
+min_improve: 0.02
+deep_cost: 2
+use_expert_skills: false
+
+# Hard wall-clock bound for the complete multi-agent workflow.
+timeout_seconds: 43200
+
+# Newer Claude Code builds may finish detached validation work after the
+# background task notification. Keep the SDK client alive for this bounded
+# on-disk completion grace period.
+done_grace_seconds: 1800
+done_poll_seconds: 5
+
+# V1 deliberately targets existing, isolated kernels with one declared source
+# file. Author/translation tasks need a separate frozen-baseline adapter, while
+# repository/image tasks need a storage/copy-cost qualification first.
+supported_task_types:
+  - hip2hip
+  - triton2triton
+  - flydsl2flydsl
