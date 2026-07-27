@@ -652,6 +652,20 @@ def _prepare_moe(case: dict, correctness: bool = False) -> dict:
         )
         w1_quant = w1_quant.view(w1.shape)
         w2_quant = w2_quant.view(w2.shape)
+    elif quant_type == aiter.QuantType.per_1x128:
+        # aiter's per-block quant wrapper unpacks `m, n = x.shape`, so it only
+        # accepts 2D input, while MoE weights are 3D (experts, N, K). Fold the
+        # expert dim into the rows before quantizing and restore it afterwards.
+        w1_quant, w1_scale = torch_quant(
+            w1.view(-1, w1.shape[-1]), quant_dtype=weight_dtype
+        )
+        w2_quant, w2_scale = torch_quant(
+            w2.view(-1, w2.shape[-1]), quant_dtype=weight_dtype
+        )
+        w1_quant = w1_quant.view(w1.shape)
+        w2_quant = w2_quant.view(w2.shape)
+        w1_scale = w1_scale.view(experts, w1.shape[1], -1)
+        w2_scale = w2_scale.view(experts, w2.shape[1], -1)
     else:
         w1_quant, w1_scale = torch_quant(w1, quant_dtype=weight_dtype)
         w2_quant, w2_scale = torch_quant(w2, quant_dtype=weight_dtype)
@@ -732,12 +746,13 @@ def _moe_reference(inputs: dict):
     torch_quant = aiter.get_torch_quant(inputs["quant_type"])
     params = inputs["params"]
     if inputs["quant_type"] == aiter.QuantType.per_1x128:
+        # The per-block wrapper already splits the trailing dim into 1x128
+        # blocks internally and unpacks `m, n = x.shape`, so it must be fed the
+        # 2D activation directly; reshaping to 3D here raised ValueError.
         a1_quant, a1_scale = torch_quant(
-            inputs["hidden"].view(inputs["hidden"].shape[0], -1, 128),
-            quant_dtype=inputs["activation_dtype"],
+            inputs["hidden"], quant_dtype=inputs["activation_dtype"]
         )
         a1_quant = a1_quant.view(inputs["hidden"].shape)
-        a1_scale = a1_scale.squeeze(-1)
     elif (
         inputs["quant_type"] == aiter.QuantType.per_1x32
         and inputs["activation_dtype"]
@@ -764,8 +779,9 @@ def _moe_reference(inputs: dict):
         w1_scale=inputs["w1_scale"],
     )
     if inputs["quant_type"] == aiter.QuantType.per_1x128:
+        # Same 2D-only constraint as the stage-1 activation quant above.
         a2_quant, a2_scale = torch_quant(
-            stage1.view(stage1.shape[0], -1, 128),
+            stage1.view(stage1.shape[0], -1),
             quant_dtype=inputs["activation_dtype"],
         )
         a2_scale = a2_scale.view(
