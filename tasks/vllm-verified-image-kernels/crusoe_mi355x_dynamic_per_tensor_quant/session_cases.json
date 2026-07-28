@@ -1,0 +1,88 @@
+{
+  "source_day": "2026-07-20",
+  "date_field": "session_ended_at",
+  "platform": "MI355X/gfx950",
+  "framework": "vllm 0.24.0",
+  "base_image": "harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0",
+  "selection": "routable_kernels; gpu_pct>=3; session-derived shapes/dtypes",
+  "task_name": "mi355x-ci-dynamic-per-tensor-quant-20260720",
+  "operator": "dynamic_per_tensor_quant",
+  "cases": [
+    {
+      "id": "mixtral-k006",
+      "model": "Mixtral-8x7B-Instruct-v0.1",
+      "session_breakdown_id": 88512,
+      "kernel_ids": [
+        "k006"
+      ],
+      "gpu_pct": 10.544,
+      "params": {
+        "shape": [
+          64,
+          4096
+        ],
+        "input_dtype": "bf16",
+        "output_dtype": "fp8",
+        "scale_shape": [
+          1
+        ]
+      },
+      "trace_input_shapes": [
+        "(64,4096) fp8 output",
+        "(64,4096) bf16 input",
+        "(1,) fp32 scale"
+      ]
+    },
+    {
+      "id": "mixtral-k002",
+      "model": "Mixtral-8x7B-Instruct-v0.1",
+      "session_breakdown_id": 88512,
+      "kernel_ids": [
+        "k002"
+      ],
+      "gpu_pct": 5.402,
+      "params": {
+        "shape": [
+          64,
+          512
+        ],
+        "input_dtype": "bf16",
+        "output_dtype": "fp8",
+        "scale_shape": [
+          1
+        ]
+      },
+      "trace_input_shapes": [
+        "(64,512) fp8 output",
+        "(64,512) bf16 input",
+        "(1,) fp32 scale"
+      ]
+    },
+    {
+      "id": "mixtral-k004",
+      "model": "Mixtral-8x7B-Instruct-v0.1",
+      "session_breakdown_id": 88512,
+      "kernel_ids": [
+        "k004"
+      ],
+      "gpu_pct": 5.27,
+      "params": {
+        "shape": [
+          64,
+          2,
+          1792
+        ],
+        "input_dtype": "bf16",
+        "output_dtype": "fp8",
+        "scale_shape": [
+          1
+        ]
+      },
+      "trace_input_shapes": [
+        "(64,2,1792) fp8 output",
+        "(64,2,1792) bf16 input",
+        "(1,) fp32 scale"
+      ]
+    }
+  ]
+}

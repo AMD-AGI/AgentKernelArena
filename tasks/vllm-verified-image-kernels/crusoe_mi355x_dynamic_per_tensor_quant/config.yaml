@@ -1,0 +1,23 @@
+task_type: image_kernel
+image_repo_path: /usr/local/lib/python3.12/dist-packages/aiter_meta
+repo_subdir: aiter_meta
+repository_language: hip
+source_file_path:
+- csrc/kernels/quant_kernels.cu
+target_kernel_functions:
+- dynamic_per_tensor_quant
+- data_to_scale_kernel
+- scaled_quant_kernel
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: Optimize dynamic_per_tensor_quant on MI355X/gfx950. The harness cases
+    are parsed from Hyperloom 2026-07-20 sessions and stored in session_cases.json.
+    Preserve all correctness cases and improve CUDA-graph measured performance.
+  cheatsheet: null

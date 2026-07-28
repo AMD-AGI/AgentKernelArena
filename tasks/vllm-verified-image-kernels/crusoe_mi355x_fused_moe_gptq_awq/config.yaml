@@ -1,0 +1,31 @@
+task_type: image_kernel
+image_repo_path: /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe
+repo_subdir: vllm_fused_moe
+image_repo_exclude:
+- __pycache__
+repository_language: triton
+source_file_path:
+- fused_moe.py
+target_kernel_functions:
+- fused_moe_kernel_gptq_awq
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: Optimize the Triton WNA16 (int4 weight / bf16 activation) fused-MoE
+    kernel fused_moe_kernel_gptq_awq (in fused_moe.py) on MI355X/gfx950. This is the
+    GPTQ/AWQ-quantized expert GEMM path; on ROCm it is always selected for int4
+    weight-only MoE (should_moe_wna16_use_cuda requires is_cuda(), false on ROCm),
+    so it dominates Kimi-K2.7-Code's MoE. The harness cases use the real
+    Kimi-K2.7-Code compressed-tensors config (384 experts, top-8, hidden 7168,
+    per-rank intermediate 256, int4 symmetric group_size=32) reconstructed from the
+    Hyperloom 2026-07-24 session and stored in session_cases.json. Preserve all
+    correctness cases and improve CUDA-graph measured performance. Do not change the
+    signature of fused_moe_kernel_gptq_awq, invoke_fused_moe_wna16_triton_kernel or
+    fused_experts_impl.
+  cheatsheet: null

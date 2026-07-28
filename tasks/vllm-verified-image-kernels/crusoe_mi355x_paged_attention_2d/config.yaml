@@ -1,0 +1,29 @@
+task_type: image_kernel
+image_repo_path: /usr/local/lib/python3.12/dist-packages/vllm/v1/attention/ops
+repo_subdir: vllm_v1_attention_ops
+image_repo_exclude:
+- __pycache__
+repository_language: triton
+source_file_path:
+- chunked_prefill_paged_decode.py
+target_kernel_functions:
+- kernel_paged_attention_2d
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: Optimize the Triton decode paged-attention kernel kernel_paged_attention_2d
+    (in chunked_prefill_paged_decode.py) on MI355X/gfx950. This kernel is the vLLM
+    ROCm fallback path taken when head_size is not 64/128 (here head_size=256, GQA
+    4:1, BF16), so the fast hand-written ROCm asm paged-attention does not apply and
+    this Triton kernel dominates decode. The harness cases are reconstructed from
+    the Qwen3.5-122B-A10B-FP8 Hyperloom 2026-07-24 session and stored in
+    session_cases.json. Preserve all correctness cases and improve CUDA-graph
+    measured performance. Do not change the public signature of
+    chunked_prefill_paged_decode or kernel_paged_attention_2d.
+  cheatsheet: null

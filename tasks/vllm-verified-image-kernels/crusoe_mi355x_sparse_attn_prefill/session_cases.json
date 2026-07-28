@@ -1,0 +1,98 @@
+{
+  "source_day": "2026-07-24",
+  "date_field": "session_ended_at",
+  "platform": "MI355X/gfx950",
+  "framework": "vllm 0.24.0",
+  "base_image": "harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0",
+  "selection": "hot prefill leaf _sparse_attn_prefill_ragged_kernel; DeepSeek-V4 sparse attention (DSA); real DS-V4-Flash config",
+  "task_name": "mi355x-deepseek-v4-flash-sparse-attn-prefill-20260724",
+  "operator": "sparse_attn_prefill_ragged",
+  "provenance": {
+    "model": "DeepSeek-V4-Flash",
+    "session_id": "5fa5a97c-fbf2-4c3e-a84e-78576f745622",
+    "device_kernel": "_sparse_attn_prefill_ragged_kernel",
+    "entry": "vllm/v1/attention/ops/rocm_aiter_mla_sparse.py: _sparse_attn_prefill_ragged_kernel (launched by _rocm_sparse_attn_prefill_ragged_triton; top-level rocm_sparse_attn_prefill)",
+    "call_chain": "DeepSeek-V4 sparse MLA prefill -> rocm_sparse_attn_prefill -> _rocm_sparse_attn_prefill_ragged_triton",
+    "role": "DeepSeek Sparse Attention (DSA) prefill: each query attends only to a top-k selected set of MLA-latent KV positions (ragged CSR indices/indptr). The latent (head_dim=512 = 448 NoPE + 64 RoPE) is used as BOTH K and V; online softmax over the selected positions.",
+    "config": {
+      "num_attention_heads": 64,
+      "num_key_value_heads": 1,
+      "head_dim": 512,
+      "nope_head_dim": 448,
+      "rope_head_dim": 64,
+      "index_topk": 512,
+      "sliding_window": 128,
+      "dtype": "bf16",
+      "source": "DeepSeek-V4-Flash config.json (num_attention_heads=64, num_key_value_heads=1, head_dim=512, index_topk=512, sliding_window=128) + rocm_aiter_mla_sparse.py constants _DSV4_SPARSE_NOPE_DIM=448 / _DSV4_SPARSE_ROPE_DIM=64"
+    },
+    "notes": "The trace records this leaf as a graph-synthetic op with EMPTY input dims (P4: shapes not recorded). num_heads/head_dim/nope/rope/topk are the real DS-V4-Flash config values; sq (prefill query count) uses the model's observed token buckets {64,1073,7211}; skv (KV pool size) is a representative reconstruction (>= topk). The kernel itself is pure ragged gather-attention over the provided indices, so correctness is well-defined for any synthesized sparse pattern. Sliding window is applied upstream when building indices and is not modelled by this kernel."
+  },
+  "cases": [
+    {
+      "id": "dsv4-flash-prefill-sq7211",
+      "model": "DeepSeek-V4-Flash",
+      "session_id": "5fa5a97c-fbf2-4c3e-a84e-78576f745622",
+      "kernel_ids": ["prefill-ragged"],
+      "gpu_pct": 10.231,
+      "params": {
+        "num_queries": 7211,
+        "num_heads": 64,
+        "nope_head_dim": 448,
+        "rope_head_dim": 64,
+        "head_dim": 512,
+        "topk": 512,
+        "num_kv": 8192,
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "q (7211,64,512) bf16",
+        "kv (8192,512) bf16",
+        "indices/indptr ragged, topk=512"
+      ]
+    },
+    {
+      "id": "dsv4-flash-prefill-sq1073",
+      "model": "DeepSeek-V4-Flash",
+      "session_id": "5fa5a97c-fbf2-4c3e-a84e-78576f745622",
+      "kernel_ids": ["prefill-ragged"],
+      "gpu_pct": null,
+      "params": {
+        "num_queries": 1073,
+        "num_heads": 64,
+        "nope_head_dim": 448,
+        "rope_head_dim": 64,
+        "head_dim": 512,
+        "topk": 512,
+        "num_kv": 6144,
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "q (1073,64,512) bf16",
+        "kv (6144,512) bf16",
+        "indices/indptr ragged, topk=512"
+      ]
+    },
+    {
+      "id": "dsv4-flash-prefill-sq64",
+      "model": "DeepSeek-V4-Flash",
+      "session_id": "5fa5a97c-fbf2-4c3e-a84e-78576f745622",
+      "kernel_ids": ["prefill-ragged"],
+      "gpu_pct": null,
+      "params": {
+        "num_queries": 64,
+        "num_heads": 64,
+        "nope_head_dim": 448,
+        "rope_head_dim": 64,
+        "head_dim": 512,
+        "topk": 512,
+        "num_kv": 4096,
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "q (64,64,512) bf16",
+        "kv (4096,512) bf16",
+        "indices/indptr ragged, topk=512"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+task_type: image_kernel
+image_repo_path: /usr/local/lib/python3.12/dist-packages/vllm/v1/attention/ops
+repo_subdir: vllm_v1_attention_ops
+image_repo_exclude:
+- __pycache__
+repository_language: triton
+source_file_path:
+- rocm_aiter_mla_sparse.py
+target_kernel_functions:
+- _sparse_attn_prefill_ragged_kernel
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: Optimize the Triton ragged sparse-attention prefill kernel
+    _sparse_attn_prefill_ragged_kernel (in rocm_aiter_mla_sparse.py) on MI355X/gfx950.
+    This is DeepSeek-V4 Sparse Attention (DSA) prefill - each query attends only to
+    a top-k selected set of MLA-latent KV positions supplied in ragged CSR form
+    (indices/indptr); the latent (head_dim=512 = 448 NoPE + 64 RoPE) serves as both
+    K and V. The harness cases use the real DeepSeek-V4-Flash config (64 query
+    heads, index_topk=512, BF16) reconstructed from the Hyperloom 2026-07-24 session
+    and stored in session_cases.json. Preserve all correctness cases and improve
+    CUDA-graph measured performance. Do not change the signature of
+    _sparse_attn_prefill_ragged_kernel or _rocm_sparse_attn_prefill_ragged_triton.
+  cheatsheet: null

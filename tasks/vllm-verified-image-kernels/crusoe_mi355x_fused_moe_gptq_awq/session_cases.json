@@ -1,0 +1,109 @@
+{
+  "source_day": "2026-07-24",
+  "date_field": "session_ended_at",
+  "platform": "MI355X/gfx950",
+  "framework": "vllm 0.24.0",
+  "base_image": "harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0",
+  "selection": "hot MoE leaf fused_moe_kernel_gptq_awq; WNA16 int4 GPTQ/AWQ experts; real Kimi-K2.7-Code config",
+  "task_name": "mi355x-kimi-k2.7-code-fused-moe-gptq-awq-20260724",
+  "operator": "fused_moe_gptq_awq",
+  "provenance": {
+    "model": "Kimi-K2.7-Code",
+    "session_id": "0e13b6b5-a63f-44e2-b6ff-cc2308e6cb82",
+    "device_kernel": "fused_moe_kernel_gptq_awq",
+    "entry": "vllm/model_executor/layers/fused_moe/fused_moe.py: fused_moe_kernel_gptq_awq (launched by invoke_fused_moe_wna16_triton_kernel; orchestrated by fused_experts_impl)",
+    "call_chain": "compressed_tensors_moe_wna16.apply -> fused_experts -> fused_experts_impl -> invoke_fused_moe_wna16_triton_kernel -> fused_moe_kernel_gptq_awq",
+    "why_triton": "should_moe_wna16_use_cuda() requires current_platform.is_cuda(), which is False on ROCm; the int4 weight-only MoE therefore always uses this Triton kernel on gfx950.",
+    "config": {
+      "num_experts": 384,
+      "topk": 8,
+      "hidden": 7168,
+      "intermediate_per_rank": 256,
+      "tensor_parallel": 8,
+      "weight_bits": 4,
+      "group_size": 32,
+      "has_zero_point": false,
+      "act_dtype": "bf16",
+      "scale_dtype": "bf16",
+      "source": "Kimi-K2.7-Code (hidden_size=7168, num_experts_per_tok=8, 384 routed experts, moe_intermediate_size=2048 -> per-rank 256 under TP=8). int4/group_size=32 inferred from observed weight/scale shapes w1 (384,512,3584), w2 (384,7168,128), scale (384,7168,8): 256/8=32."
+    },
+    "notes": "Weight/activation/routing shapes are from the trace (activation (M,7168) bf16; weight storage (384,512,3584)/(384,7168,128); scale (384,7168,8); routing (M,8)). Weights are synthesized as random int4 (symmetric, zero-point=8) with per-group bf16 scales; both kernel and reference use the identical dequantized weights so correctness is exact up to bf16 rounding. Token buckets M are the model's observed prefill/decode counts. The two same-named leaf sequences reported (43.862% and 30.391% E2E) are aggregate over these buckets."
+  },
+  "cases": [
+    {
+      "id": "kimi-k2.7-moe-m7211",
+      "model": "Kimi-K2.7-Code",
+      "session_id": "0e13b6b5-a63f-44e2-b6ff-cc2308e6cb82",
+      "kernel_ids": ["gptq-awq-seq"],
+      "gpu_pct": 43.862,
+      "params": {
+        "tokens": 7211,
+        "num_experts": 384,
+        "topk": 8,
+        "hidden": 7168,
+        "inter": 256,
+        "group_size": 32,
+        "weight_bits": 4,
+        "has_zero_point": false,
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "activation (7211,7168) bf16",
+        "w1 (384,512,3584) int4-packed uint8",
+        "w2 (384,7168,128) int4-packed uint8",
+        "scale (384,7168,8) bf16",
+        "routing (7211,8)"
+      ]
+    },
+    {
+      "id": "kimi-k2.7-moe-m1080",
+      "model": "Kimi-K2.7-Code",
+      "session_id": "0e13b6b5-a63f-44e2-b6ff-cc2308e6cb82",
+      "kernel_ids": ["gptq-awq-seq"],
+      "gpu_pct": null,
+      "params": {
+        "tokens": 1080,
+        "num_experts": 384,
+        "topk": 8,
+        "hidden": 7168,
+        "inter": 256,
+        "group_size": 32,
+        "weight_bits": 4,
+        "has_zero_point": false,
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "activation (1080,7168) bf16",
+        "w1 (384,512,3584) int4-packed uint8",
+        "w2 (384,7168,128) int4-packed uint8",
+        "scale (384,7168,8) bf16",
+        "routing (1080,8)"
+      ]
+    },
+    {
+      "id": "kimi-k2.7-moe-m64",
+      "model": "Kimi-K2.7-Code",
+      "session_id": "0e13b6b5-a63f-44e2-b6ff-cc2308e6cb82",
+      "kernel_ids": ["gptq-awq-seq"],
+      "gpu_pct": null,
+      "params": {
+        "tokens": 64,
+        "num_experts": 384,
+        "topk": 8,
+        "hidden": 7168,
+        "inter": 256,
+        "group_size": 32,
+        "weight_bits": 4,
+        "has_zero_point": false,
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "activation (64,7168) bf16",
+        "w1 (384,512,3584) int4-packed uint8",
+        "w2 (384,7168,128) int4-packed uint8",
+        "scale (384,7168,8) bf16",
+        "routing (64,8)"
+      ]
+    }
+  ]
+}
