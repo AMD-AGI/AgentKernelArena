@@ -1,0 +1,20 @@
+task_type: image_kernel
+image_repo_path: /sgl-workspace/sglang/python/sglang
+repo_subdir: sglang
+repository_language: triton
+source_file_path:
+  - kernels/ops/quantization/mxfp8_amd_gfx95.py
+target_kernel_functions:
+  - _mxfp8_linear_kernel
+  - _mxfp8_dot_scaled_linear
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: Optimize SGLang _mxfp8_linear_kernel (MXFP8 dense GEMM via tl.dot_scaled) on MI355X/gfx950. Verified harness in tasks/sglang-verified-image-kernels; cases in session_cases.json.
+  cheatsheet: null

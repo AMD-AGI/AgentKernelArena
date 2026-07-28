@@ -1,0 +1,72 @@
+{
+  "source_day": "2026-07-24",
+  "date_field": "hot-kernel-analysis",
+  "platform": "MI355X/gfx950",
+  "framework": "sglang origin/main MXFP8",
+  "base_image": "harbor.crusoe.primus-safe.amd.com/proxy/primussafe/sglang:v0.5.12-rocm720-mi35x-profilerfix",
+  "selection": "P0 hot kernel _mxfp8_linear_kernel; session-derived shapes; gfx950 verified 2026-07-28",
+  "task_name": "mi355x-sg-mxfp8-linear-v3",
+  "operator": "mxfp8_linear",
+  "cases": [
+    {
+      "id": "linear-m64-n256-k128",
+      "model": "MiniMax-M3-MXFP8",
+      "session_breakdown_id": "linear-m64-n256-k128",
+      "kernel_ids": [
+        "_mxfp8_linear_kernel",
+        "_mxfp8_dot_scaled_linear"
+      ],
+      "gpu_pct": 10.0,
+      "trace_input_shapes": {
+        "m": 64,
+        "n": 256,
+        "k": 128
+      },
+      "params": {
+        "m": 64,
+        "n": 256,
+        "k": 128
+      }
+    },
+    {
+      "id": "linear-m37-n512-k256",
+      "model": "MiniMax-M3-MXFP8",
+      "session_breakdown_id": "linear-m37-n512-k256",
+      "kernel_ids": [
+        "_mxfp8_linear_kernel",
+        "_mxfp8_dot_scaled_linear"
+      ],
+      "gpu_pct": 10.0,
+      "trace_input_shapes": {
+        "m": 37,
+        "n": 512,
+        "k": 256
+      },
+      "params": {
+        "m": 37,
+        "n": 512,
+        "k": 256
+      }
+    },
+    {
+      "id": "linear-m1-n6144-k4096",
+      "model": "MiniMax-M3-MXFP8",
+      "session_breakdown_id": "linear-m1-n6144-k4096",
+      "kernel_ids": [
+        "_mxfp8_linear_kernel",
+        "_mxfp8_dot_scaled_linear"
+      ],
+      "gpu_pct": 10.0,
+      "trace_input_shapes": {
+        "m": 1,
+        "n": 6144,
+        "k": 4096
+      },
+      "params": {
+        "m": 1,
+        "n": 6144,
+        "k": 4096
+      }
+    }
+  ]
+}
