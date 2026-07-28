@@ -1,0 +1,66 @@
+{
+  "source_day": "2026-07-23",
+  "date_field": "geak_capture + model_config",
+  "platform": "MI355X/gfx950",
+  "framework": "sglang origin/main MXFP8 (v0.5.12-rocm720-mi35x)",
+  "base_image": "harbor.crusoe.primus-safe.amd.com/proxy/primussafe/sglang:v0.5.12-rocm720-mi35x-profilerfix",
+  "model": "MiniMax-M3-MXFP8",
+  "session_id": "17520246-e676-42be-83b4-6741291d723f",
+  "operator": "mxfp8_linear",
+  "kernel": "_mxfp8_linear_kernel",
+  "timed_callable": "_run_mxfp8_linear_kernel",
+  "task_name": "mi355x-sg-mxfp8-linear",
+  "gpu_pct": 17.04,
+  "profile": {
+    "calls": 5520,
+    "total_ms": 424.7126,
+    "pct_gpu_time": 17.04
+  },
+  "quant": {
+    "scheme": "mxfp8_ocp_1x32_e8m0",
+    "operand_dtype": "float8_e4m3fn",
+    "scale_dtype": "uint8_e8m0",
+    "block_size": [1, 32],
+    "out_dtype": "bfloat16",
+    "accumulate": "fp32"
+  },
+  "provenance": "shapes from geak/e2e_cycle0/kernels/_mxfp8_linear_kernel_task/meta.json (families qkv_proj/o_proj, decode/prefill M buckets) captured from the live TP=8 MiniMax-M3 server; K/N confirmed against model config.json (hidden=6144, num_attention_heads=64, num_key_value_heads=4, head_dim=128, TP=8).",
+  "cases": [
+    {
+      "id": "qkv_proj-decode-m1",
+      "family": "qkv_proj",
+      "regime": "decode",
+      "params": {"m": 1, "n": 1280, "k": 6144, "max_relerr": 0.06}
+    },
+    {
+      "id": "qkv_proj-decode-m64",
+      "family": "qkv_proj",
+      "regime": "decode",
+      "params": {"m": 64, "n": 1280, "k": 6144, "max_relerr": 0.06}
+    },
+    {
+      "id": "qkv_proj-prefill-m16384",
+      "family": "qkv_proj",
+      "regime": "prefill",
+      "params": {"m": 16384, "n": 1280, "k": 6144, "max_relerr": 0.06}
+    },
+    {
+      "id": "o_proj-decode-m1",
+      "family": "o_proj",
+      "regime": "decode",
+      "params": {"m": 1, "n": 6144, "k": 1024, "max_relerr": 0.06}
+    },
+    {
+      "id": "o_proj-decode-m64",
+      "family": "o_proj",
+      "regime": "decode",
+      "params": {"m": 64, "n": 6144, "k": 1024, "max_relerr": 0.06}
+    },
+    {
+      "id": "o_proj-prefill-m16384",
+      "family": "o_proj",
+      "regime": "prefill",
+      "params": {"m": 16384, "n": 6144, "k": 1024, "max_relerr": 0.06}
+    }
+  ]
+}

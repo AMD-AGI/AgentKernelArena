@@ -1,0 +1,32 @@
+task_type: image_kernel
+image_repo_path: /sgl-workspace/sglang/python/sglang
+repo_subdir: sglang
+repository_language: triton
+source_file_path:
+  - kernels/ops/moe/mxfp8_moe_amd_gfx95.py
+target_kernel_functions:
+  - _mxfp8_grouped_gemm_kernel
+  - _grouped_gemm_mxfp8
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+compile_timeout: 1800
+correctness_timeout: 1800
+performance_timeout: 1800
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: >-
+    Optimize the SGLang fused-MoE grouped GEMM kernel _mxfp8_grouped_gemm_kernel
+    (tl.dot_scaled, CDNA4/gfx950) and its launcher _grouped_gemm_mxfp8 in
+    kernels/ops/moe/mxfp8_moe_amd_gfx95.py. The harness times both grouped-GEMM
+    launches of one MoE forward (GEMM1 a_div=top_k, GEMM2 a_div=1 weighted). Cases are
+    the real MiniMax-M3-MXFP8 (TP=8) MoE dims: hidden 6144, per-rank inter 384, 128
+    experts, top-k 4, across decode (T=1,64) and prefill (T=16384); see
+    session_cases.json. MXFP8 contract: FP8-E4M3 operands, UE8M0 uint8 per-1x32 block
+    scales, FP32 accumulate, BF16 output, SwiGLU-OAI activation. Preserve all
+    correctness cases and improve the CUDA-graph measured performance.
+  cheatsheet: null

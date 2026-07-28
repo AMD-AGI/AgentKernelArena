@@ -1,0 +1,30 @@
+task_type: image_kernel
+image_repo_path: /sgl-workspace/sglang/python/sglang
+repo_subdir: sglang
+repository_language: triton
+source_file_path:
+  - kernels/ops/quantization/mxfp8_amd_gfx95.py
+target_kernel_functions:
+  - _mxfp8_linear_kernel
+  - _run_mxfp8_linear_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+compile_timeout: 1800
+correctness_timeout: 1800
+performance_timeout: 1800
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: >-
+    Optimize the SGLang dense MXFP8 GEMM kernel _mxfp8_linear_kernel (tl.dot_scaled,
+    CDNA4/gfx950) and its launcher _run_mxfp8_linear_kernel in
+    kernels/ops/quantization/mxfp8_amd_gfx95.py. Cases are the real MiniMax-M3-MXFP8
+    (TP=8) qkv_proj/o_proj shapes across decode (M=1,64) and prefill (M=16384); see
+    session_cases.json. MXFP8 contract: FP8-E4M3 operands, UE8M0 uint8 per-1x32 block
+    scales, FP32 accumulate, BF16 output. Preserve all correctness cases and improve
+    the CUDA-graph measured performance.
+  cheatsheet: null
