@@ -13,6 +13,10 @@ SELECTED_GPU_ARCH=""
 SELECTED_IMAGE=""
 AGENT_STATE_MOUNT_ROOT="${AKA_AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
 DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
+# Set by host-side commands after reading the selected run config. Keep this
+# separate from REQUIRED_AGENTS because geak_v4 is normalized to claude_code
+# before Docker arguments are built.
+GEAK_V4_RUNTIME=0
 
 # /opt/venv/bin is placed before /usr/local/bin and /usr/bin so that a bare
 # `python3` / `pytest` resolves to the torch-enabled venv interpreter rather than
@@ -284,6 +288,24 @@ read_agent_template() {
     sed -nE 's/^[[:space:]]+template:[[:space:]]*["'"'"']?([A-Za-z0-9_]+).*/\1/p' "$config" | head -n 1
 }
 
+configure_geak_v4_runtime() {
+    local config="$1"
+    GEAK_V4_RUNTIME=0
+    if [[ "$(read_agent_template "$config")" == "geak_v4" ]]; then
+        GEAK_V4_RUNTIME=1
+    fi
+}
+
+agent_list_contains() {
+    local agents="$1"
+    local expected="$2"
+    local agent
+    for agent in $agents; do
+        [[ "$agent" == "$expected" ]] && return 0
+    done
+    return 1
+}
+
 # task_validator delegates to a backend CLI; read which one.
 read_validator_backend() {
     local cfg="$HOST_ROOT/agents/task_validator/agent_config.yaml"
@@ -471,10 +493,6 @@ build_docker_args() {
         -e "TORCH_EXTENSIONS_DIR=/tmp/torch-extensions${cache_postfix}"
         -e "TRITON_CACHE_DIR=/tmp/triton-cache${cache_postfix}"
         -e "PYTHONUSERBASE=${CONTAINER_WORKDIR}/.aka-pyuserbase"
-        # geak_v4's claude-agent-sdk is installed with `pip install --target` into
-        # this host-mounted dir (see container_setup_geak); forward it on PYTHONPATH
-        # so the venv python can import it. Harmless when the dir is absent.
-        -e "PYTHONPATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/geak-sdk"
         -e "MIOPEN_USER_DB_PATH=/tmp/miopen-cache${cache_postfix}"
         -e "MIOPEN_CACHE_DIR=/tmp/miopen-cache${cache_postfix}"
         -e "MIOPEN_CUSTOM_CACHE_DIR=/tmp/miopen-cache${cache_postfix}"
@@ -486,6 +504,14 @@ build_docker_args() {
         -e "PATH=${container_path}"
         -w "$CONTAINER_WORKDIR"
     )
+
+    # geak_v4's claude-agent-sdk is installed with `pip install --target` into
+    # this host-mounted dir (see container_setup_geak). Only put it on
+    # PYTHONPATH for GEAK runs so its dependency closure cannot shadow the
+    # runtime image's pinned packages for existing agents.
+    if [[ "$GEAK_V4_RUNTIME" == "1" ]]; then
+        docker_args+=(-e "PYTHONPATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/geak-sdk")
+    fi
 
     # The pinned gfx950 image ships root-owned AITER/FlyDSL caches, and its
     # /tmp/aiter_configs directory is not writable by the host UID used below.
@@ -515,28 +541,28 @@ build_docker_args() {
     if [[ "${AGENT_HOME_ISOLATION:-0}" == "1" ]]; then
         docker_args+=(-e "AGENT_KERNEL_ARENA_ISOLATED_HOME=1")
     fi
-    # Forward the host's Claude / Anthropic auth+config so agents that drive Claude
-    # (e.g. geak_v4) can authenticate without a persisted host login mounted at
-    # ~/.claude.json. This deliberately supports the AMD Core42 / Primus-safe
-    # gateway used on these hosts, where the credential is an ANTHROPIC_AUTH_TOKEN
-    # paired with an ANTHROPIC_BASE_URL (NOT a plain ANTHROPIC_API_KEY against
-    # api.anthropic.com). Each var is passed by name only (no "=value") so secrets
-    # stay out of argv / process listings, and only vars actually set on the host
-    # are forwarded.
-    local claude_env_var
-    for claude_env_var in \
-        ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_BASE_URL \
-        ANTHROPIC_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL \
-        ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL \
-        CLAUDE_CODE_SUBAGENT_MODEL API_TIMEOUT_MS \
-        CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS \
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC \
-        NODE_EXTRA_CA_CERTS SSL_CERT_FILE CURL_CA_BUNDLE \
-        REQUESTS_CA_BUNDLE NODE_TLS_REJECT_UNAUTHORIZED; do
-        if [[ -n "${!claude_env_var:-}" ]]; then
-            docker_args+=(-e "$claude_env_var")
-        fi
-    done
+    # Forward the host's Claude / Anthropic auth+config only for GEAK execution
+    # containers that provision Claude Code. Requiring both conditions keeps
+    # existing Claude/task-validator runs unchanged and prevents setup-geak
+    # (which has no agent CLI) from receiving runtime credentials. Each var is
+    # passed by name only (no "=value") so secrets stay out of argv / process
+    # listings.
+    if [[ "$GEAK_V4_RUNTIME" == "1" ]] && agent_list_contains "$agents" claude_code; then
+        local claude_env_var
+        for claude_env_var in \
+            ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_BASE_URL \
+            ANTHROPIC_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL \
+            ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL \
+            CLAUDE_CODE_SUBAGENT_MODEL API_TIMEOUT_MS \
+            CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS \
+            CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC \
+            NODE_EXTRA_CA_CERTS SSL_CERT_FILE CURL_CA_BUNDLE \
+            REQUESTS_CA_BUNDLE NODE_TLS_REJECT_UNAUTHORIZED; do
+            if [[ -n "${!claude_env_var:-}" ]]; then
+                docker_args+=(-e "$claude_env_var")
+            fi
+        done
+    fi
 
     # GPU device nodes are group-owned (ROCm): /dev/dri/renderD* by `render` and
     # /dev/kfd by `render` or `video` depending on the host's udev rules. Add the
@@ -565,9 +591,9 @@ build_docker_args() {
         mount_agent "$_agent" "$strict"
     done
 
-    # Mount the GEAK kernel_workflow checkout read-only at the same path and
-    # forward GEAK_V4_WORKFLOW_DIR so the launcher inside the container finds it.
-    if [[ -n "${GEAK_V4_WORKFLOW_DIR:-}" ]]; then
+    # Mount the GEAK kernel_workflow checkout only for GEAK runs so an exported
+    # host setting does not change the container surface for existing agents.
+    if [[ "$GEAK_V4_RUNTIME" == "1" && -n "${GEAK_V4_WORKFLOW_DIR:-}" ]]; then
         local geak_dir
         geak_dir="$(cd "$GEAK_V4_WORKFLOW_DIR" 2>/dev/null && pwd || true)"
         if [[ -n "$geak_dir" && -d "$geak_dir" ]]; then
@@ -961,6 +987,7 @@ run_parallel() {
     local config_name
     config_name="$(extract_config_name "$@")"
     select_runtime_for_config "$config_name"
+    configure_geak_v4_runtime "$config_name"
 
     REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
     AGENTS_STRICT=1
@@ -1041,6 +1068,7 @@ case "${1:-}" in
         shift
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
+        configure_geak_v4_runtime "$config_name"
         # Only the configured agent's CLI/auth is required for a run.
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
@@ -1055,6 +1083,7 @@ case "${1:-}" in
         shift
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
+        configure_geak_v4_runtime "$config_name"
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
@@ -1075,6 +1104,7 @@ case "${1:-}" in
         if [[ -z "${AKA_AGENTS:-}" ]]; then
             [[ -f "$config_name" ]] || die "config file not found: $config_name"
         fi
+        configure_geak_v4_runtime "$config_name"
         # By default, check only the CLI selected by CONFIG. AKA_AGENTS can
         # request one, several, or `all` explicitly.
         REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"
@@ -1097,6 +1127,7 @@ case "${1:-}" in
         ;;
     setup-geak)
         select_runtime_for_host
+        GEAK_V4_RUNTIME=1
         REQUIRED_AGENTS=""
         AGENTS_STRICT=0
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_setup_geak
