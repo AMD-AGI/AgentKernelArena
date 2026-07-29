@@ -13,6 +13,10 @@ SELECTED_GPU_ARCH=""
 SELECTED_IMAGE=""
 AGENT_STATE_MOUNT_ROOT="${AKA_AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
 DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
+# Set by host-side commands after reading the selected run config. Keep this
+# separate from REQUIRED_AGENTS because geak_v4 is normalized to claude_code
+# before Docker arguments are built.
+GEAK_V4_RUNTIME=0
 
 # /opt/venv/bin is placed before /usr/local/bin and /usr/bin so that a bare
 # `python3` / `pytest` resolves to the torch-enabled venv interpreter rather than
@@ -284,6 +288,24 @@ read_agent_template() {
     sed -nE 's/^[[:space:]]+template:[[:space:]]*["'"'"']?([A-Za-z0-9_]+).*/\1/p' "$config" | head -n 1
 }
 
+configure_geak_v4_runtime() {
+    local config="$1"
+    GEAK_V4_RUNTIME=0
+    if [[ "$(read_agent_template "$config")" == "geak_v4" ]]; then
+        GEAK_V4_RUNTIME=1
+    fi
+}
+
+agent_list_contains() {
+    local agents="$1"
+    local expected="$2"
+    local agent
+    for agent in $agents; do
+        [[ "$agent" == "$expected" ]] && return 0
+    done
+    return 1
+}
+
 # task_validator delegates to a backend CLI; read which one.
 read_validator_backend() {
     local cfg="$HOST_ROOT/agents/task_validator/agent_config.yaml"
@@ -311,6 +333,8 @@ resolve_required_agents() {
         claude|claude_code) printf 'claude_code\n' ;;
         cursor|cursor-agent) printf 'cursor\n' ;;
         codex) printf 'codex\n' ;;
+        # GEAK v4 drives Claude Code; extra deps handled in build/preflight.
+        geak_v4|geak-v4|geak) printf 'claude_code\n' ;;
         *) printf '%s\n' "$tmpl" ;;
     esac
 }
@@ -327,7 +351,7 @@ normalize_check_agents() {
             all)
                 normalized+=(codex claude_code cursor)
                 ;;
-            claude|claude_code)
+            claude|claude_code|geak_v4|geak-v4|geak)
                 normalized+=(claude_code)
                 ;;
             cursor|cursor-agent)
@@ -481,6 +505,14 @@ build_docker_args() {
         -w "$CONTAINER_WORKDIR"
     )
 
+    # geak_v4's claude-agent-sdk is installed with `pip install --target` into
+    # this host-mounted dir (see container_setup_geak). Only put it on
+    # PYTHONPATH for GEAK runs so its dependency closure cannot shadow the
+    # runtime image's pinned packages for existing agents.
+    if [[ "$GEAK_V4_RUNTIME" == "1" ]]; then
+        docker_args+=(-e "PYTHONPATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/geak-sdk")
+    fi
+
     # The pinned gfx950 image ships root-owned AITER/FlyDSL caches, and its
     # /tmp/aiter_configs directory is not writable by the host UID used below.
     # Keep these overrides tied to that exact runtime so custom images and
@@ -509,6 +541,28 @@ build_docker_args() {
     if [[ "${AGENT_HOME_ISOLATION:-0}" == "1" ]]; then
         docker_args+=(-e "AGENT_KERNEL_ARENA_ISOLATED_HOME=1")
     fi
+    # Forward the host's Claude / Anthropic auth+config only for GEAK execution
+    # containers that provision Claude Code. Requiring both conditions keeps
+    # existing Claude/task-validator runs unchanged and prevents setup-geak
+    # (which has no agent CLI) from receiving runtime credentials. Each var is
+    # passed by name only (no "=value") so secrets stay out of argv / process
+    # listings.
+    if [[ "$GEAK_V4_RUNTIME" == "1" ]] && agent_list_contains "$agents" claude_code; then
+        local claude_env_var
+        for claude_env_var in \
+            ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_BASE_URL \
+            ANTHROPIC_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL \
+            ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL \
+            CLAUDE_CODE_SUBAGENT_MODEL API_TIMEOUT_MS \
+            CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS \
+            CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC \
+            NODE_EXTRA_CA_CERTS SSL_CERT_FILE CURL_CA_BUNDLE \
+            REQUESTS_CA_BUNDLE NODE_TLS_REJECT_UNAUTHORIZED; do
+            if [[ -n "${!claude_env_var:-}" ]]; then
+                docker_args+=(-e "$claude_env_var")
+            fi
+        done
+    fi
 
     # GPU device nodes are group-owned (ROCm): /dev/dri/renderD* by `render` and
     # /dev/kfd by `render` or `video` depending on the host's udev rules. Add the
@@ -536,6 +590,21 @@ build_docker_args() {
     for _agent in $agents; do
         mount_agent "$_agent" "$strict"
     done
+
+    # Mount the GEAK kernel_workflow checkout only for GEAK runs so an exported
+    # host setting does not change the container surface for existing agents.
+    if [[ "$GEAK_V4_RUNTIME" == "1" && -n "${GEAK_V4_WORKFLOW_DIR:-}" ]]; then
+        local geak_dir
+        geak_dir="$(cd "$GEAK_V4_WORKFLOW_DIR" 2>/dev/null && pwd || true)"
+        if [[ -n "$geak_dir" && -d "$geak_dir" ]]; then
+            add_mount "$geak_dir" "$geak_dir" ro
+            docker_args+=(-e "GEAK_V4_WORKFLOW_DIR=$geak_dir")
+        elif [[ "$strict" == "1" ]]; then
+            die "GEAK_V4_WORKFLOW_DIR is set but is not a directory: $GEAK_V4_WORKFLOW_DIR"
+        else
+            warn "GEAK_V4_WORKFLOW_DIR is set but is not a directory: $GEAK_V4_WORKFLOW_DIR; skipping GEAK mount"
+        fi
+    fi
 
     # The base image lacks the GNU `time` binary and the container runs as a
     # non-root user (so it cannot apt-install it). Bind-mount the host binary
@@ -691,6 +760,11 @@ container_preflight() {
     container_smoke
     # Only verify the agent(s) this config actually uses (mounts are scoped the same way).
     container_check_agents $(resolve_required_agents "$config_name")
+    # GEAK v4 also needs the Claude Agent SDK and its kernel_workflow checkout.
+    if [[ "$(read_agent_template "$config_name")" == geak_v4 ]]; then
+        container_setup_geak
+        container_check_geak
+    fi
 python - "$config_name" <<'PY'
 import pathlib
 import sys
@@ -721,6 +795,38 @@ container_setup_flydsl() {
     echo "flydsl not found in image; installing into persistent pip user-base..."
     python -m pip install --user --upgrade flydsl
     python -c 'import flydsl; print("flydsl=" + str(getattr(flydsl, "__version__", "unknown")) + " setup OK")'
+}
+
+container_setup_geak() {
+    # Install claude-agent-sdk when the image does not ship it.
+    if python -c 'import claude_agent_sdk' 2>/dev/null; then
+        python -c 'import claude_agent_sdk; print("claude-agent-sdk already provided by image: " + str(getattr(claude_agent_sdk, "__version__", "unknown")) + "; nothing to install")'
+        return 0
+    fi
+    # Install into a host-mounted target dir (survives the --rm container) and
+    # rely on the forwarded PYTHONPATH (see build_docker_args) to import it.
+    # `pip install --target` is the only option that works on the standard sglang
+    # runtimes: their python is a virtualenv rooted at /opt/venv, which both
+    # rejects `--user` (user-site disabled) and is unwritable by the non-root
+    # container user (so a plain in-venv install fails with EACCES). --target
+    # writes to a dir owned by the host UID and works on system-python images too.
+    # Trade-off: --target cannot see the venv's already-installed deps, so it
+    # pulls the SDK's full dependency closure (a few hundred MB, several minutes
+    # on first run). This is a one-time provisioning cost — later runs import the
+    # SDK via PYTHONPATH and short-circuit above.
+    local target="${PYTHONUSERBASE:-$PWD/.aka-pyuserbase}/geak-sdk"
+    echo "claude-agent-sdk not found in image; installing into $target ..."
+    python -m pip install --target "$target" claude-agent-sdk
+    PYTHONPATH="$target${PYTHONPATH:+:$PYTHONPATH}" python -c 'import claude_agent_sdk; print("claude-agent-sdk=" + str(getattr(claude_agent_sdk, "__version__", "unknown")) + " setup OK")'
+}
+
+container_check_geak() {
+    # Confirm the kernel_workflow checkout is reachable inside the container.
+    local dir="${GEAK_V4_WORKFLOW_DIR:-/opt/geak/kernel_workflow}"
+    if [[ ! -f "$dir/kernel_workflow.js" ]]; then
+        die "GEAK kernel workflow not found: $dir/kernel_workflow.js. Export GEAK_V4_WORKFLOW_DIR on the host (the runner mounts and forwards it) to your GEAK kernel_workflow directory."
+    fi
+    echo "geak_workflow=$dir/kernel_workflow.js"
 }
 
 container_prepare_worker_home() {
@@ -881,6 +987,7 @@ run_parallel() {
     local config_name
     config_name="$(extract_config_name "$@")"
     select_runtime_for_config "$config_name"
+    configure_geak_v4_runtime "$config_name"
 
     REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
     AGENTS_STRICT=1
@@ -961,6 +1068,7 @@ case "${1:-}" in
         shift
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
+        configure_geak_v4_runtime "$config_name"
         # Only the configured agent's CLI/auth is required for a run.
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
@@ -975,6 +1083,7 @@ case "${1:-}" in
         shift
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
+        configure_geak_v4_runtime "$config_name"
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
@@ -995,6 +1104,7 @@ case "${1:-}" in
         if [[ -z "${AKA_AGENTS:-}" ]]; then
             [[ -f "$config_name" ]] || die "config file not found: $config_name"
         fi
+        configure_geak_v4_runtime "$config_name"
         # By default, check only the CLI selected by CONFIG. AKA_AGENTS can
         # request one, several, or `all` explicitly.
         REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"
@@ -1015,8 +1125,19 @@ case "${1:-}" in
         AGENTS_STRICT=0
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_setup_flydsl
         ;;
+    setup-geak)
+        select_runtime_for_host
+        GEAK_V4_RUNTIME=1
+        REQUIRED_AGENTS=""
+        AGENTS_STRICT=0
+        docker_exec 0 bash src/scripts/docker_benchmark.sh _container_setup_geak
+        ;;
     _container_setup_flydsl)
         container_setup_flydsl
+        ;;
+    _container_setup_geak)
+        container_setup_geak
+        container_check_geak
         ;;
     _container_smoke)
         container_smoke

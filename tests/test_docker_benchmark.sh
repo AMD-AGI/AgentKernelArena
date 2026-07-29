@@ -73,6 +73,10 @@ assert_cache_args_absent() {
 
 TEST_HOME="$(mktemp -d)"
 trap 'rm -rf "$TEST_HOME"' EXIT
+UNRELATED_GEAK_WORKFLOW_DIR="$TEST_HOME/unrelated-geak-workflow"
+GEAK_SDK_PYTHONPATH="PYTHONPATH=/workspace/.aka-pyuserbase/geak-sdk"
+mkdir -p "$UNRELATED_GEAK_WORKFLOW_DIR"
+touch "$UNRELATED_GEAK_WORKFLOW_DIR/kernel_workflow.js"
 
 bash -n "$RUNNER"
 
@@ -125,7 +129,12 @@ mkdir -p \
 touch "$CURSOR_HOME/.local/bin/cursor-agent"
 printf 'agent:\n  template: cursor\n' > "$CURSOR_CONFIG"
 
-mapfile -t args < <(run_check_args "$CURSOR_HOME" "$CURSOR_CONFIG")
+mapfile -t args < <(run_check_args \
+    "$CURSOR_HOME" \
+    "$CURSOR_CONFIG" \
+    ANTHROPIC_AUTH_TOKEN=cursor-must-not-receive-this \
+    ANTHROPIC_BASE_URL=https://gateway.example/api \
+    GEAK_V4_WORKFLOW_DIR="$UNRELATED_GEAK_WORKFLOW_DIR")
 assert_has "$CURSOR_HOME/.local/share/cursor-agent:$CURSOR_HOME/.local/share/cursor-agent:ro" "${args[@]}"
 assert_has "$CURSOR_HOME/.cursor:$CURSOR_HOME/.cursor" "${args[@]}"
 assert_has "$CURSOR_HOME/.config/cursor:$CURSOR_HOME/.config/cursor" "${args[@]}"
@@ -133,6 +142,34 @@ assert_has "_container_check_agents" "${args[@]}"
 assert_has "cursor" "${args[@]}"
 assert_not_has "$CURSOR_HOME/.claude:$CURSOR_HOME/.claude" "${args[@]}"
 assert_not_has "$CURSOR_HOME/.codex:$CURSOR_HOME/.codex" "${args[@]}"
+assert_not_has "ANTHROPIC_AUTH_TOKEN" "${args[@]}"
+assert_not_has "ANTHROPIC_BASE_URL" "${args[@]}"
+assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
+assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
+assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
+
+# A Codex-only config likewise receives neither Claude credentials nor GEAK's
+# dependency path/mount, even when both are configured on the host.
+CODEX_HOME="$TEST_HOME/codex-home"
+CODEX_PREFIX="$TEST_HOME/codex-node"
+CODEX_CONFIG="$TEST_HOME/codex-config.yaml"
+mkdir -p "$CODEX_HOME/.codex" "$CODEX_PREFIX/bin"
+touch "$CODEX_PREFIX/bin/node" "$CODEX_PREFIX/bin/codex"
+printf 'agent:\n  template: codex\n' > "$CODEX_CONFIG"
+
+mapfile -t args < <(run_check_args \
+    "$CODEX_HOME" \
+    "$CODEX_CONFIG" \
+    AKA_NODE_PREFIX="$CODEX_PREFIX" \
+    ANTHROPIC_API_KEY=codex-must-not-receive-this \
+    GEAK_V4_WORKFLOW_DIR="$UNRELATED_GEAK_WORKFLOW_DIR")
+assert_has "$CODEX_PREFIX:/opt/node:ro" "${args[@]}"
+assert_has "$CODEX_HOME/.codex:$CODEX_HOME/.codex" "${args[@]}"
+assert_has "codex" "${args[@]}"
+assert_not_has "ANTHROPIC_API_KEY" "${args[@]}"
+assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
+assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
+assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
 
 # A natively installed Claude CLI is a launcher in ~/.local/bin that resolves
 # into ~/.local/share/claude/versions. Both sides of that symlink must be
@@ -149,12 +186,20 @@ touch \
 ln -s ../share/claude/versions/2.1.0 "$NATIVE_CLAUDE_HOME/.local/bin/claude"
 printf 'agent:\n  template: claude_code\n' > "$NATIVE_CLAUDE_CONFIG"
 
-mapfile -t args < <(run_check_args "$NATIVE_CLAUDE_HOME" "$NATIVE_CLAUDE_CONFIG")
+mapfile -t args < <(run_check_args \
+    "$NATIVE_CLAUDE_HOME" \
+    "$NATIVE_CLAUDE_CONFIG" \
+    ANTHROPIC_AUTH_TOKEN=claude-must-not-receive-this \
+    GEAK_V4_WORKFLOW_DIR="$UNRELATED_GEAK_WORKFLOW_DIR")
 assert_has "$NATIVE_CLAUDE_HOME/.local/bin:$NATIVE_CLAUDE_HOME/.local/bin:ro" "${args[@]}"
 assert_has "$NATIVE_CLAUDE_HOME/.local/share/claude:$NATIVE_CLAUDE_HOME/.local/share/claude:ro" "${args[@]}"
 assert_has "$NATIVE_CLAUDE_HOME/.claude:$NATIVE_CLAUDE_HOME/.claude" "${args[@]}"
 assert_has "$NATIVE_CLAUDE_HOME/.claude.json:$NATIVE_CLAUDE_HOME/.claude.json" "${args[@]}"
 assert_has "claude_code" "${args[@]}"
+assert_not_has "ANTHROPIC_AUTH_TOKEN" "${args[@]}"
+assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
+assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
+assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
 
 # Omitting --config_name uses the one-task MI300/MI300X Claude quickstart.
 mapfile -t args < <(
@@ -220,5 +265,88 @@ assert_has "codex" "${args[@]}"
 assert_has "claude_code" "${args[@]}"
 assert_has "cursor" "${args[@]}"
 assert_not_has "all" "${args[@]}"
+
+# A geak_v4 config provisions the Claude Code CLI/auth and, when
+# GEAK_V4_WORKFLOW_DIR is exported, mounts that checkout and forwards the var.
+GEAK_HOME="$TEST_HOME/geak-home"
+GEAK_PREFIX="$TEST_HOME/geak-node"
+GEAK_CONFIG="$TEST_HOME/geak-config.yaml"
+GEAK_WORKFLOW_DIR="$TEST_HOME/geak-checkout/kernel_workflow"
+mkdir -p "$GEAK_HOME/.claude" "$GEAK_PREFIX/bin" "$GEAK_WORKFLOW_DIR"
+touch \
+    "$GEAK_HOME/.claude.json" \
+    "$GEAK_PREFIX/bin/node" \
+    "$GEAK_PREFIX/bin/claude" \
+    "$GEAK_WORKFLOW_DIR/kernel_workflow.js"
+printf 'agent:\n  template: geak_v4\n' > "$GEAK_CONFIG"
+
+mapfile -t args < <(run_check_args \
+    "$GEAK_HOME" \
+    "$GEAK_CONFIG" \
+    AKA_NODE_PREFIX="$GEAK_PREFIX" \
+    GEAK_V4_WORKFLOW_DIR="$GEAK_WORKFLOW_DIR")
+assert_has "$GEAK_PREFIX:/opt/claude-node:ro" "${args[@]}"
+assert_has "$GEAK_HOME/.claude:$GEAK_HOME/.claude" "${args[@]}"
+assert_has "$GEAK_HOME/.claude.json:$GEAK_HOME/.claude.json" "${args[@]}"
+assert_has "claude_code" "${args[@]}"
+assert_has "$GEAK_WORKFLOW_DIR:$GEAK_WORKFLOW_DIR:ro" "${args[@]}"
+assert_has "GEAK_V4_WORKFLOW_DIR=$GEAK_WORKFLOW_DIR" "${args[@]}"
+# The Claude Agent SDK is installed with `pip install --target` into the mounted
+# user-base (setup-geak); its dir must be forwarded on PYTHONPATH so the venv
+# python in the standard sglang images can import it.
+assert_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
+
+# The explicit setup command has no run config or required agent CLI, but still
+# needs the GEAK-only dependency path and workflow mount for its container check.
+mapfile -t args < <(
+    env \
+        HOME="$TEST_HOME" \
+        AKA_GPU_ARCH=gfx950 \
+        GEAK_V4_WORKFLOW_DIR="$GEAK_WORKFLOW_DIR" \
+        ANTHROPIC_AUTH_TOKEN=setup-must-not-receive-this \
+        bash "$RUNNER" setup-geak 2>/dev/null
+)
+assert_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
+assert_has "$GEAK_WORKFLOW_DIR:$GEAK_WORKFLOW_DIR:ro" "${args[@]}"
+assert_has "GEAK_V4_WORKFLOW_DIR=$GEAK_WORKFLOW_DIR" "${args[@]}"
+assert_has "_container_setup_geak" "${args[@]}"
+assert_not_has "ANTHROPIC_AUTH_TOKEN" "${args[@]}"
+
+# Without GEAK_V4_WORKFLOW_DIR the checkout mount/env are absent.
+mapfile -t args < <(run_check_args \
+    "$GEAK_HOME" \
+    "$GEAK_CONFIG" \
+    AKA_NODE_PREFIX="$GEAK_PREFIX")
+assert_has "claude_code" "${args[@]}"
+assert_not_has "GEAK_V4_WORKFLOW_DIR=$GEAK_WORKFLOW_DIR" "${args[@]}"
+assert_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
+
+# The host's Claude gateway credentials are forwarded by name (value stays out of
+# argv). These hosts use the AMD Core42 / Primus-safe gateway, where the credential
+# is an ANTHROPIC_AUTH_TOKEN paired with an ANTHROPIC_BASE_URL.
+mapfile -t args < <(run_check_args \
+    "$GEAK_HOME" \
+    "$GEAK_CONFIG" \
+    AKA_NODE_PREFIX="$GEAK_PREFIX" \
+    ANTHROPIC_AUTH_TOKEN=dummy-token-value \
+    ANTHROPIC_BASE_URL=https://gateway.example/api)
+assert_has "ANTHROPIC_AUTH_TOKEN" "${args[@]}"
+assert_not_has "ANTHROPIC_AUTH_TOKEN=dummy-token-value" "${args[@]}"
+assert_has "ANTHROPIC_BASE_URL" "${args[@]}"
+
+# A plain ANTHROPIC_API_KEY (e.g. api.anthropic.com auth) is likewise forwarded.
+mapfile -t args < <(env -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_BASE_URL \
+    HOME="$GEAK_HOME" AKA_GPU_ARCH=gfx950 AKA_NODE_PREFIX="$GEAK_PREFIX" \
+    ANTHROPIC_API_KEY=dummy-key-value \
+    bash "$RUNNER" check-agents --config_name "$GEAK_CONFIG" 2>/dev/null)
+assert_has "ANTHROPIC_API_KEY" "${args[@]}"
+assert_not_has "ANTHROPIC_API_KEY=dummy-key-value" "${args[@]}"
+
+# When no Claude credentials are present on the host, none are forwarded.
+mapfile -t args < <(env -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL \
+    HOME="$GEAK_HOME" AKA_GPU_ARCH=gfx950 AKA_NODE_PREFIX="$GEAK_PREFIX" \
+    bash "$RUNNER" check-agents --config_name "$GEAK_CONFIG" 2>/dev/null)
+assert_not_has "ANTHROPIC_AUTH_TOKEN" "${args[@]}"
+assert_not_has "ANTHROPIC_API_KEY" "${args[@]}"
 
 echo "PASS: docker_benchmark runtime and agent-selection argument tests"
