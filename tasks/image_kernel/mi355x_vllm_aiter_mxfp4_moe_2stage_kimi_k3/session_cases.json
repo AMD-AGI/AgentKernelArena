@@ -1,0 +1,85 @@
+{
+  "source_day": "2026-07-28",
+  "date_field": "session_started_at",
+  "platform": "MI355X/gfx950",
+  "framework": "vllm 0.1.dev19253+g5f76ae224.d20260727 (ROCm 7.2.3)",
+  "faithful_reproduction": true,
+  "run_environment_requirement": "MUST run in the session's build (vLLM 0.1.dev19253+g5f76ae224.d20260727 + its matching aiter dev build) on MI355X/gfx950. Stock aiter 0.1.13.post1 will NOT reproduce this: it lacks ActivationType.Situ, lacks the Kimi-K3 flydsl dispatch/tune rows, and its shuffle_scale_a16w4 asserts on inter_dim=384 (12 groups) instead of padding to 16. See README.",
+  "selection": "hot_kernels k001/k002/k003 from Kimi-K3 session 20260728T091437Z; routed-expert MoE GEMM (mxfp4 group_size=32, bf16 activation x fp4 weight, g1u1). k001/k002/k003 are the SAME aiter MoE 2-stage op in different execution modes/stages.",
+  "task_name": "mi355x-kimi-k3-aiter-mxfp4-moe-2stage-20260728",
+  "operator": "aiter_mxfp4_moe_2stage",
+  "provenance": {
+    "session_root": "/shared_nfs/zgong/Hyperloom-Sessions/vllm/_archive/Kimi-K3_20260728T091437Z_pod_restart_disk_quota",
+    "invocation_spec": "/shared_nfs/zgong/Hyperloom-Sessions/vllm/kernel-agent/forge/20260728T091437Z/forge-0126d71f/invocation_spec_pseudo_op_moe_flydsl_stage1.json",
+    "vllm_version": "0.1.dev19253+g5f76ae224.d20260727",
+    "kernel_identity": {
+      "k001": "hipGraphLaunch->moe_gemm1_0 (Synthetic Op) -- decode CUDA-graph, MoE stage1 (gate/up, g1u1). Backend not resolved in trace (launcher Not found).",
+      "k002": "hipGraphLaunch->moe_gemm2_0 (Synthetic Op) -- decode CUDA-graph, MoE stage2 (down). Backend not resolved; likely ck2stages down.",
+      "k003": "pseudo_op::moe_flydsl_stage1 -- eager/prefill, FlyDSL stage1 (gate/up). Entry aiter/fused_moe.py(1169):_flydsl_stage1_wrapper. Stage2 twin is k006 (moe_flydsl_stage2, entry line 1243).",
+      "note_flydsl": "Only k003/k006 are confirmed FlyDSL by op name. k001/k002 are decode graph nodes named moe_gemm1_0/moe_gemm2_0; the trace does not resolve their backend."
+    },
+    "logical_dims": "Per-rank (TP=8) routed-expert MoE. model_dim = routed_expert_hidden = 3584. inter_dim = moe_intermediate 3072 / TP8 = 384. experts = 896, topk = 16. mxfp4-pack group_size=32 -> QuantType.per_1x32. Activation tensor entering the op is bf16; weights are fp4x2 (mxfp4). g1u1=True.",
+    "scale_layout": "per_1x32 group scales, dtype Float8_e8m0fnu. w1_scale (688128,112) = (experts*inter*2, model_dim/32) = (896*768, 112). w2_scale (3211264,16) = (experts*model_dim, ceil8(inter/32)) = (896*3584, 12->padded 16). The inter-dim group count 12 is padded up to 16 (multiple of 8) by the session aiter's scale shuffle.",
+    "activation_note": "Kimi-K3 routed experts use the 'situ' (situ_and_mul) gated activation (trace op _C::situ_and_mul). params.activation='situ'. This requires ActivationType.Situ, present in the session build but NOT in stock aiter 0.1.13.post1."
+  },
+  "cases": [
+    {
+      "id": "kimi-k3-prefill-flydsl-k003-k006",
+      "model": "Kimi-K3",
+      "session_breakdown_id": "20260728T091437Z",
+      "kernel_ids": [
+        "k003",
+        "k006"
+      ],
+      "gpu_pct": 6.122,
+      "exact_shape_source": "invocation_spec (trace-recorded, authoritative)",
+      "params": {
+        "token": 7211,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true
+      },
+      "trace_input_shapes": [
+        "act (7211,3584) bf16",
+        "w1 (896,768,1792) fp4",
+        "w2 (896,3584,192) fp4",
+        "topk_weights (7211,16) fp32",
+        "topk_ids (7211,16) int32",
+        "w1_scale (688128,112) Float8_e8m0fnu",
+        "w2_scale (3211264,16) Float8_e8m0fnu"
+      ]
+    },
+    {
+      "id": "kimi-k3-decode-graph-k001-k002",
+      "model": "Kimi-K3",
+      "session_breakdown_id": "20260728T091437Z",
+      "kernel_ids": [
+        "k001",
+        "k002"
+      ],
+      "gpu_pct": 19.101,
+      "exact_shape_source": "RECONSTRUCTED -- k001/k002 are hipGraph synthetic ops; per-call M NOT recorded in trace.",
+      "params": {
+        "token": 62,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true
+      },
+      "trace_input_shapes": [
+        "stage1 moe_gemm1_0 + stage2 moe_gemm2_0, decode CUDA-graph synthetic ops -- exact M NOT recorded. Logical dims identical to the prefill case; only M (decode batch) differs. token=62 reconstructed from the steady-state slice concurrency (conc62); real graph-capture batch not archived."
+      ]
+    }
+  ]
+}

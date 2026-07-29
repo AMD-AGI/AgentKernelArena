@@ -1,0 +1,36 @@
+task_type: image_kernel
+image_repo_path: /usr/local/lib/python3.12/dist-packages/aiter
+repo_subdir: aiter
+repository_language: python
+source_file_path:
+- fused_moe.py
+target_kernel_functions:
+- fused_moe
+- _flydsl_stage1_wrapper
+- _flydsl_stage2_wrapper
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: >-
+    Faithful reproduction of the Kimi-K3 routed-expert MoE 2-stage GEMM as it
+    actually executed in Hyperloom session 20260728T091437Z on MI355X/gfx950. This
+    is the aiter MoE path behind hot kernels k001 (moe_gemm1_0, decode-graph
+    stage1 gate/up), k002 (moe_gemm2_0, decode-graph stage2 down) and k003
+    (moe_flydsl_stage1, eager/prefill FlyDSL stage1; stage2 twin k006). Config:
+    bf16 activation x fp4 (mxfp4-pack, group_size=32 -> per_1x32) weight, g1u1,
+    'situ' activation, per-rank (TP=8) dims model_dim=3584 / inter_dim=384 /
+    experts=896 / topk=16. Exact shapes/dtypes are trace-recorded in
+    session_cases.json (from the forge invocation_spec).
+    IMPORTANT: run this in the SESSION BUILD (vLLM 0.1.dev19253+g5f76ae224.d20260727
+    plus its matching aiter dev build). Stock aiter 0.1.13.post1 cannot reproduce
+    it (no ActivationType.Situ; no Kimi-K3 flydsl dispatch/tune rows; shuffle_scale
+    asserts on inter_dim=384 instead of padding 12 groups to 16). The true device
+    kernel (FlyDSL asm / ck2stages fp4) is not an in-tree editable .cu; the
+    source-resolved edit surface is aiter/fused_moe.py.
+  cheatsheet: null
