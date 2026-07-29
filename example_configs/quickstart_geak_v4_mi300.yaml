@@ -1,5 +1,6 @@
 # Minimal first-run example for GEAK v4 on MI300/MI300X (gfx942).
-# Complete agents/geak_v4/README.md setup before running it.
+# Complete agents/geak_v4/README.md setup first, and export GEAK_V4_WORKFLOW_DIR
+# on the host (the Docker runner mounts/forwards it and installs the SDK).
 agent:
   template: geak_v4
 

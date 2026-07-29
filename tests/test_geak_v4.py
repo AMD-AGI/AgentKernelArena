@@ -478,6 +478,47 @@ def test_normalize_flagged_candidate_is_rejected(tmp_path):
     assert "did not accept" in result["reason"]
 
 
+def test_normalize_ok_requires_patch_applied_when_launcher_asks(tmp_path):
+    """An accepted gain that never reached the workspace must not report ok."""
+    eval_dir = tmp_path / "eval"
+    eval_dir.mkdir()
+    _write_json(eval_dir / "workflow_return.json", _workflow_return(eval_dir))
+    _write_json(
+        eval_dir / "director_validation.json",
+        _director_validation(eval_dir, applied_to_original="false"),
+    )
+    (eval_dir / "final_patch.diff").write_text(
+        "non-empty offline fixture\n",
+        encoding="utf-8",
+    )
+
+    relaxed = workflow_runner.normalize_result(eval_dir)
+    assert relaxed["status"] == "ok"
+
+    strict = workflow_runner.normalize_result(eval_dir, require_applied=True)
+    assert strict["status"] == "error"
+    assert strict["applied_to_original"] == "false"
+    assert "did not apply the patch to the workspace" in strict["reason"]
+
+
+def test_normalize_ok_when_patch_applied_and_apply_required(tmp_path):
+    eval_dir = tmp_path / "eval"
+    eval_dir.mkdir()
+    _write_json(eval_dir / "workflow_return.json", _workflow_return(eval_dir))
+    _write_json(
+        eval_dir / "director_validation.json",
+        _director_validation(eval_dir, applied_to_original="true"),
+    )
+    (eval_dir / "final_patch.diff").write_text(
+        "non-empty offline fixture\n",
+        encoding="utf-8",
+    )
+
+    result = workflow_runner.normalize_result(eval_dir, require_applied=True)
+    assert result["status"] == "ok"
+    assert result["applied_to_original"] == "true"
+
+
 def test_normalize_rejects_patch_not_named_by_director(tmp_path):
     eval_dir = tmp_path / "eval"
     eval_dir.mkdir()

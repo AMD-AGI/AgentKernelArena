@@ -611,8 +611,14 @@ def _number(value: Any) -> float | None:
 def normalize_result(
     eval_dir: Path,
     workflow_return: dict[str, Any] | None = None,
+    *,
+    require_applied: bool = False,
 ) -> dict[str, Any]:
-    """Build the stable runner result from GEAK's authoritative artifacts."""
+    """Build the stable runner result from GEAK's authoritative artifacts.
+
+    With ``require_applied`` set, an accepted gain is only ``"ok"`` when the
+    patch actually reached the workspace (``applied_to_original == "true"``).
+    """
     disk_return_path = eval_dir / "workflow_return.json"
     disk_return = _read_json(disk_return_path)
     disk_return_present = disk_return_path.exists() or disk_return_path.is_symlink()
@@ -651,21 +657,28 @@ def normalize_result(
     patch_path = eval_dir / "final_patch.diff"
     patch_exists = patch_path.is_file() and patch_path.stat().st_size > 0
 
+    applied_to_original = str(
+        validation.get("applied_to_original", "unknown")
+    ).lower()
     accepted = validation_status == "accepted" and correctness == "pass"
     gained = speedup is not None and speedup > 1.0
     director_valid = _valid_director_validation(validation, eval_dir)
     primary_metric_valid = speedup is not None
+    patch_applied_ok = (not require_applied) or applied_to_original == "true"
     if (
         accepted
         and gained
         and patch_exists
         and director_valid
+        and patch_applied_ok
         and not workflow_contract_invalid
     ):
         status = "ok"
     elif accepted and director_valid and workflow_contract_invalid:
         status = "error"
     elif accepted and director_valid and not primary_metric_valid:
+        status = "error"
+    elif accepted and gained and director_valid and not patch_applied_ok:
         status = "error"
     elif accepted and director_valid and not gained:
         status = "no_gain"
@@ -690,6 +703,12 @@ def normalize_result(
         reason = f"GEAK did not verify a speedup above 1.0x (speedup={speedup})"
     elif not patch_exists:
         reason = f"GEAK accepted a gain but produced no non-empty patch at {patch_path}"
+    elif not patch_applied_ok:
+        reason = (
+            "GEAK accepted a gain but did not apply the patch to the workspace "
+            f"(applied_to_original={applied_to_original!r}); Arena would re-score "
+            "the unmodified baseline"
+        )
     else:
         reason = ""
 
@@ -795,7 +814,11 @@ def run_handoff(handoff: dict[str, Any]) -> dict[str, Any]:
                 os.close(eval_directory_fd)
 
         if _terminal_artifact_exists(eval_dir):
-            result = normalize_result(eval_dir, parsed_return)
+            result = normalize_result(
+                eval_dir,
+                parsed_return,
+                require_applied=workflow_args.get("apply_to_original") == "true",
+            )
             if invocation_error:
                 result["recovered_after_error"] = type(invocation_error).__name__
             return result
