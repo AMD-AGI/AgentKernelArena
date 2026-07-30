@@ -4,7 +4,12 @@ repo_subdir: aiter
 image_repo_exclude:
 - __pycache__
 - jit/build
-repository_language: python
+# The compute cores are FlyDSL (flydsl_moe1_* / flydsl_moe2_*) and the edit
+# surface includes ops/flydsl/moe_kernels.py. Must be one of the keys under
+# `knowledge` in src/prompts/cheatsheet/default_cheatsheet.yaml (flydsl/hip/triton),
+# which is also forge's fellow set -- 'python' hard-fails prompt_builder and makes
+# forge fall back to the wrong fellow.
+repository_language: flydsl
 source_file_path:
 - fused_moe.py
 - ops/flydsl/moe_kernels.py
