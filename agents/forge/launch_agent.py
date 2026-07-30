@@ -368,6 +368,52 @@ def _resolve_fellow(task_config: dict[str, Any], agent_config: dict[str, Any]) -
     return f"{_infer_backend(task_config)}-fellow"
 
 
+# Framework aliases whose identity forms the KB kernel-page slug component. Maps
+# a path component to its canonical framework. Must match KernelForge's set and
+# Hyperloom's _resolve_framework so a solution written here resolves to the SAME
+# page a Hyperloom forge-loop reads. ``aiter_meta`` is aiter's C++/CK companion
+# package and shares aiter's identity.
+_FRAMEWORK_ALIASES = {
+    "vllm": "vllm",
+    "sglang": "sglang",
+    "aiter": "aiter",
+    "aiter_meta": "aiter",
+}
+
+
+def _framework_from_path(path: str) -> str:
+    """First (shallowest == owning package) known framework component in a path."""
+    for comp in Path(path).parts:
+        canon = _FRAMEWORK_ALIASES.get(comp.lower())
+        if canon:
+            return canon
+    return ""
+
+
+def _resolve_framework(task_config: dict[str, Any], kernel_file: str) -> str:
+    """Framework identity for the KB slug: the package the kernel source lives in.
+
+    Producer (this arena run) and consumer (a Hyperloom forge-loop) must resolve
+    the same framework string for the same operator, or the kernel-page slug
+    diverges and the solution is missed. Kernels live in different packages:
+    some directly in ``vllm``/``sglang`` (e.g.
+    ``.../vllm/model_executor/layers/fused_moe``), others in ``aiter`` /
+    ``aiter_meta``. ``image_repo_path`` records the ORIGINAL package location but
+    can point at a DEEP subdir, so we scan its full path (not its basename) for
+    the owning framework, then fall back to the resolved kernel path.
+
+    framework is a SOFT slug input: returns "" when unsure so the caller omits
+    ``--framework`` and forge-loop infers it from the path (never raises, never
+    guesses a wrong value). The serving stack a kernel is used FROM is NOT the
+    framework; the framework is the package whose source is edited.
+    """
+    for base in (str(task_config.get("image_repo_path") or ""), str(kernel_file or "")):
+        framework = _framework_from_path(base)
+        if framework:
+            return framework
+    return ""
+
+
 def _derive_workload_key(task_config_dir: str, arena_root: str) -> str:
     """Return the Arena task identity to pass as KernelForge's ``--workload-key``.
 
@@ -654,6 +700,14 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         cmd_parts += ["--source-files", ",".join(str(p) for p in all_source_files)]
     if target_funcs:
         cmd_parts += ["--target-functions", ",".join(str(f) for f in target_funcs)]
+    # Explicit KB framework identity so this run's solution lands on the same
+    # kernel page a Hyperloom forge-loop will read (both pass --framework; the
+    # slug must not depend on differing workspace layouts). Omitted when unknown
+    # -> forge-loop infers from the kernel path.
+    framework = _resolve_framework(task_config, str(kernel_file))
+    if framework:
+        cmd_parts += ["--framework", framework]
+        logger.info("Forge: KB framework=%s", framework)
     # Repo commit as the KB framework version (used only when the installed
     # package version is unknown — e.g. a source-checkout framework).
     if repo_commit:
