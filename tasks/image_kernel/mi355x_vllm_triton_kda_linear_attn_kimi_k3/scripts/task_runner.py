@@ -1,19 +1,32 @@
 #!/usr/bin/env python3
 """Image-kernel harness for Kimi-K3 KDA (Kimi Delta Attention) linear attention.
 
-KDA is the flash-linear-attention (FLA) Triton-JIT gated-delta-rule path used by
-Kimi-K3's 69 linear-attention layers. Hot kernels:
-  - k007: fused_recurrent_kda_packed_decode_kernel  (decode, recurrent)
-  - prefill chunk kernels: chunk_kda_fwd / chunk_gated_delta_rule_fwd_h /
-    kda_gate_chunk_cumsum / causal_conv1d / l2norm / layer_norm_gated / solve_tril
+KDA is the Triton-JIT gated-delta-rule path used by Kimi-K3's 69 linear-attention
+layers. The kernels are vendored per GPU vendor under
+``vllm/models/kimi_k3/{amd,nvidia}/ops/third_party/kda`` -- this harness targets the
+AMD/ROCm copy, which is the one ``kimi_gdn_linear_attn.py`` selects on ROCm.
 
-Real op entry (vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py):
-  prefill : chunk_kda_with_fused_gate(q,k,v,raw_g,beta,A_log,g_bias=dt_bias,...)
-  decode  : g = fused_kda_gate(raw_g,A_log,dt_bias); fused_recurrent_kda(q,k,v,g,beta,...)
+Hot kernels covered (Hyperloom session 20260728T091437Z, rank0 of TP=8):
+  - k007 ``fused_recurrent_kda_packed_decode_kernel`` -- decode. Launched ONLY by
+    ``fused_recurrent_kda_packed_decode`` from the non-spec decode branch
+    (kimi_gdn_linear_attn.py:609). NOTE: ``fused_recurrent_kda`` is a different
+    entry that launches ``fused_recurrent_kda_fwd_kernel`` on the speculative-decode
+    branch; K3 has ``num_nextn_predict_layers=0`` so that kernel never runs.
+  - prefill chunk kernels (``chunk_kda_fwd_*``, ``chunk_gated_delta_rule_fwd_h_*``,
+    ``kda_gate_chunk_cumsum_*``, ``l2norm_*``, ``solve_tril`` ...) reached through
+    ``chunk_kda_with_fused_gate`` (kimi_gdn_linear_attn.py:569).
 
-Dims aligned to the Kimi-K3 session (per-rank, TP=8): num_heads=96/8=12, head_dim=128
-(d_k=d_v=128), chunk_size=64. Long-sequence cases are added on top of the session's
-real ISL (1024).
+Contract details that the harness must honour (all read off the kernel sources):
+  * ``A_log`` is 1-D of length ``local_num_heads``; ``dt_bias`` is
+    ``local_num_heads * head_dim`` (kimi_gdn_linear_attn.py:238,266).
+  * ``raw_beta`` is PRE-sigmoid -- both kernels apply ``sigmoid`` internally
+    (fused_recurrent.py:525, chunk.py:470).
+  * K3 sets ``gate_lower_bound = -5.0``, which selects the *safe gate* branch
+    ``gate = lower_bound * sigmoid(exp(A_log) * (raw_g + dt_bias))``. This is a
+    different function from the softplus branch used when the bound is unset
+    (fused_recurrent.py:513-521, chunk.py:507-515).
+  * ``state_indices`` entries must be > 0; ``<= 0`` is the NULL slot and makes the
+    kernel emit zeros for that row (fused_recurrent.py:481).
 """
 from __future__ import annotations
 
@@ -27,133 +40,41 @@ WORKSPACE = Path(__file__).resolve().parents[1]
 SPEC = json.loads((WORKSPACE / "session_cases.json").read_text())
 OPERATOR = SPEC["operator"]
 CASES = SPEC["cases"]
+KDA_CONFIG = SPEC["kda_config"]
+# K3 linear_attn_config.gate_lower_bound; selects the safe-gate branch.
+GATE_LOWER_BOUND = KDA_CONFIG["gate_lower_bound"]
 
 
 def _configure() -> None:
     for key in ("GPU_ARCHS", "PYTORCH_ROCM_ARCH", "AMDGPU_TARGETS", "GPU_TARGETS"):
         os.environ.setdefault(key, "gfx950")
+    # The agent edits the workspace-seeded copy of vllm, so it has to shadow the
+    # in-image install. Without this every `import vllm` resolves to
+    # /usr/local/lib/python3.12/dist-packages/vllm and kernel edits are ignored.
+    if (WORKSPACE / "vllm" / "__init__.py").is_file():
+        sys.path.insert(0, str(WORKSPACE))
+    # Triton keys its JIT cache on the kernel source, so an edit already forces a
+    # recompile. Pinning the cache inside the workspace additionally guarantees a
+    # run can never serve a binary compiled from a different workspace's source.
+    os.environ.setdefault("TRITON_CACHE_DIR", str(WORKSPACE / "build" / "triton_cache"))
     os.chdir(WORKSPACE)
 
 
-# >>> AKA-GENERATED: shared CUDA-graph benchmark helpers >>>
-def _measure_cuda_event_fallback(fn, repetition):
-    import time
-
-    import torch
-
-    times_ms = []
-    for _ in range(max(1, int(repetition))):
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
-            start_event.record()
-            fn()
-            end_event.record()
-            torch.cuda.synchronize()
-            times_ms.append(start_event.elapsed_time(end_event))
-        else:
-            start = time.perf_counter()
-            fn()
-            times_ms.append((time.perf_counter() - start) * 1000.0)
-    return times_ms
+# >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>
+def _measure_cuda_event_fallback(*args, **kwargs):
+    raise RuntimeError(
+        "CUDA-graph benchmark helpers were not materialized. "
+        "Run this task through AgentKernelArena so setup_workspace() can inject "
+        "src/tools/perf/vllm_cuda_graph_block.py into the workspace."
+    )
 
 
-def _benchmark_cuda_graph_or_events(
-    fn,
-    warmup=5,
-    repetition=30,
-    target_ms=1.0,
-    max_graph_repeats=200,
-    use_cuda_graph=True,
-    **_,
-):
-    import torch
-
-    for _ in range(max(0, int(warmup))):
-        fn()
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-
-    metadata = {
-        "benchmark_target_ms": float(target_ms),
-        "benchmark_samples": int(repetition),
-        "benchmark_max_repeats": int(max_graph_repeats),
-    }
-    if not torch.cuda.is_available() or not use_cuda_graph:
-        times = _measure_cuda_event_fallback(fn, repetition)
-        metadata.update(
-            benchmark_method=(
-                "cpu_timer_fallback"
-                if not torch.cuda.is_available()
-                else "cuda_event_fallback"
-            ),
-            benchmark_effective_repeats=int(repetition),
-        )
-        return sum(times) / len(times), metadata
-
-    try:
-        stream = torch.cuda.Stream()
-        stream.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(stream):
-            estimate_graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(estimate_graph):
-                for _ in range(3):
-                    fn()
-            torch.cuda.synchronize()
-
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
-            start_event.record(stream)
-            estimate_graph.replay()
-            end_event.record(stream)
-            torch.cuda.synchronize()
-            estimate_ms = start_event.elapsed_time(end_event) / 3
-            repeats = min(
-                max_graph_repeats,
-                max(1, int(target_ms / max(estimate_ms, 1e-9))),
-            )
-
-            graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(graph):
-                for _ in range(repeats):
-                    fn()
-            torch.cuda.synchronize()
-
-            times = []
-            for _ in range(max(1, int(repetition))):
-                start_event = torch.cuda.Event(enable_timing=True)
-                end_event = torch.cuda.Event(enable_timing=True)
-                start_event.record(stream)
-                graph.replay()
-                end_event.record(stream)
-                torch.cuda.synchronize()
-                times.append(start_event.elapsed_time(end_event) / repeats)
-
-        mean_ms = sum(times) / len(times)
-        if mean_ms < 1e-6:
-            raise RuntimeError("empty_cuda_graph_capture")
-        metadata.update(
-            benchmark_method="cuda_graph",
-            benchmark_effective_repeats=int(repeats),
-        )
-        return mean_ms, metadata
-    except Exception as exc:
-        try:
-            torch.cuda.synchronize()
-        except Exception:
-            pass
-        times = _measure_cuda_event_fallback(fn, repetition)
-        metadata.update(
-            benchmark_method="cuda_event_fallback",
-            benchmark_effective_repeats=int(repetition),
-            benchmark_fallback_reason=(
-                f"cuda_graph_failed: {type(exc).__name__}: {str(exc)[:160]}"
-            ),
-        )
-        return sum(times) / len(times), metadata
-
-
+def _benchmark_cuda_graph_or_events(*args, **kwargs):
+    raise RuntimeError(
+        "CUDA-graph benchmark helpers were not materialized. "
+        "Run this task through AgentKernelArena so setup_workspace() can inject "
+        "src/tools/perf/vllm_cuda_graph_block.py into the workspace."
+    )
 # <<< AKA-GENERATED <<<
 
 
@@ -172,157 +93,188 @@ def _torch():
 
 
 def _kda_ops():
-    from vllm.model_executor.layers.fla.ops.kda import (
+    """AMD/ROCm vendored KDA entry points (the copy kimi_gdn_linear_attn.py picks)."""
+    from vllm.models.kimi_k3.amd.ops.third_party.kda import (
         chunk_kda_with_fused_gate,
-        fused_kda_gate,
-        fused_recurrent_kda,
+        fused_recurrent_kda_packed_decode,
     )
 
-    return chunk_kda_with_fused_gate, fused_kda_gate, fused_recurrent_kda
+    return chunk_kda_with_fused_gate, fused_recurrent_kda_packed_decode
 
 
+# --------------------------------------------------------------------------- #
+# Inputs
+# --------------------------------------------------------------------------- #
 def _prepare(case: dict, correctness: bool = False) -> dict:
     torch = _torch()
     p = dict(case["params"])
-    H = p["num_heads"]          # per-rank heads (K3 TP=8 -> 96/8 = 12)
+    H = p["num_heads"]          # per-rank heads (K3 num_heads=96, TP=8 -> 12)
     D = p["head_dim"]           # d_k = d_v = 128
-    mode = p["mode"]            # "chunk" (prefill/long) | "recurrent" (decode)
+    mode = p["mode"]            # "chunk" (prefill) | "packed_decode" (k007)
     num_seqs = p["num_seqs"]
     seq_len = p["seq_len"]
     if correctness:
-        # keep correctness cheap but exercise multi-chunk (chunk_size=64)
-        seq_len = min(seq_len, 256)
+        # The golden is an O(T) float64 recurrence, so cap the token count. 320
+        # still spans 5 chunks at chunk_size=64 and exercises the cross-chunk path.
+        seq_len = min(seq_len, 320)
         num_seqs = min(num_seqs, 4)
-
-    torch.manual_seed(23)
-    gen = torch.Generator(device="cuda").manual_seed(23)
     total_t = num_seqs * seq_len
-    dt = torch.bfloat16
 
-    q = torch.randn(1, total_t, H, D, device="cuda", dtype=dt, generator=gen) * 0.5
-    k = torch.randn(1, total_t, H, D, device="cuda", dtype=dt, generator=gen) * 0.5
-    v = torch.randn(1, total_t, H, D, device="cuda", dtype=dt, generator=gen) * 0.5
-    raw_g = torch.randn(1, total_t, H, D, device="cuda", dtype=torch.float32, generator=gen)
-    beta = torch.sigmoid(
-        torch.randn(1, total_t, H, device="cuda", dtype=torch.float32, generator=gen)
-    )
-    # A_log: per-head decay parameter [1,1,H,1]; dt_bias (g_bias): [H*D]
-    A_log = torch.rand(1, 1, H, 1, device="cuda", dtype=torch.float32, generator=gen) * 2.0 - 4.0
+    gen = torch.Generator(device="cuda").manual_seed(int(case.get("seed", 23)))
+
+    def rnd(*shape, dtype=torch.bfloat16, scale=1.0):
+        return torch.randn(*shape, device="cuda", dtype=dtype, generator=gen) * scale
+
+    # Layer parameters, shaped exactly as the vLLM KDA layer holds them.
+    A_log = torch.rand(H, device="cuda", dtype=torch.float32, generator=gen) * 2.0 - 4.0
     dt_bias = torch.rand(H * D, device="cuda", dtype=torch.float32, generator=gen) * 0.1
-    h0 = torch.zeros(num_seqs, H, D, D, device="cuda", dtype=torch.float32)
-    cu = torch.arange(0, (num_seqs + 1) * seq_len, seq_len, device="cuda", dtype=torch.int32)
-    ssm_idx = torch.arange(num_seqs, device="cuda", dtype=torch.long)
-    return {
+    raw_g = rnd(1, total_t, H, D, dtype=torch.float32)
+    raw_beta = rnd(1, total_t, H, dtype=torch.float32)  # pre-sigmoid on purpose
+
+    inp = {
         "cfg": case, "mode": mode, "H": H, "D": D,
         "num_seqs": num_seqs, "seq_len": seq_len, "total_t": total_t,
-        "q": q, "k": k, "v": v, "raw_g": raw_g, "beta": beta,
-        "A_log": A_log, "dt_bias": dt_bias, "h0": h0, "cu": cu, "ssm_idx": ssm_idx,
+        "raw_g": raw_g, "raw_beta": raw_beta, "A_log": A_log, "dt_bias": dt_bias,
         "scale": D ** -0.5,
     }
 
+    if mode == "chunk":
+        inp["q"] = rnd(1, total_t, H, D, scale=0.5)
+        inp["k"] = rnd(1, total_t, H, D, scale=0.5)
+        inp["v"] = rnd(1, total_t, H, D, scale=0.5)
+        # chunk takes one state per sequence, [N, H, V, K].
+        state = rnd(num_seqs, H, D, D, dtype=torch.float32, scale=0.1).contiguous()
+        inp["cu"] = torch.arange(
+            0, (num_seqs + 1) * seq_len, seq_len, device="cuda", dtype=torch.int32
+        )
+        inp["seg_state0"] = [state[n].double().clone() for n in range(num_seqs)]
+        inp["segments"] = [(n * seq_len, (n + 1) * seq_len) for n in range(num_seqs)]
+    else:
+        # packed decode consumes the post-conv fused QKV block, [B, 3 * H * D],
+        # laid out q | k | v with each part head-major (fused_recurrent.py:491-502).
+        inp["mixed_qkv"] = rnd(total_t, 3 * H * D, scale=0.5).contiguous()
+        # A state cache with slot 0 reserved as the NULL slot; indices start at 1.
+        state = rnd(num_seqs + 1, H, D, D, dtype=torch.float32, scale=0.1).contiguous()
+        inp["state_indices"] = torch.arange(
+            1, num_seqs + 1, device="cuda", dtype=torch.int32
+        )
+        inp["seg_state0"] = [state[n + 1].double().clone() for n in range(num_seqs)]
+        inp["segments"] = [(n, n + 1) for n in range(num_seqs)]
+
+    # Both kernels update the state in place, so the golden's starting state is
+    # snapshotted above (seg_state0) BEFORE any kernel touches it.
+    inp["state"] = state
+    return inp
+
 
 def _run(inp: dict):
-    torch = _torch()
-    chunk_kda_with_fused_gate, fused_kda_gate, fused_recurrent_kda = _kda_ops()
+    chunk_kda_with_fused_gate, fused_recurrent_kda_packed_decode = _kda_ops()
     if inp["mode"] == "chunk":
-        o, s = chunk_kda_with_fused_gate(
-            q=inp["q"], k=inp["k"], v=inp["v"], raw_g=inp["raw_g"], beta=inp["beta"],
-            A_log=inp["A_log"], g_bias=inp["dt_bias"], initial_state=inp["h0"],
-            output_final_state=True, use_qk_l2norm_in_kernel=True, cu_seqlens=inp["cu"],
-            scale=inp["scale"],
+        return chunk_kda_with_fused_gate(
+            q=inp["q"], k=inp["k"], v=inp["v"],
+            raw_g=inp["raw_g"], raw_beta=inp["raw_beta"], A_log=inp["A_log"],
+            g_bias=inp["dt_bias"], lower_bound=GATE_LOWER_BOUND,
+            initial_state=inp["state"], output_final_state=True,
+            use_qk_l2norm_in_kernel=True, cu_seqlens=inp["cu"],
         )
-        return o, s
-    else:  # recurrent / packed decode (k007): num_seqs seqs x seq_len tokens
-        g = fused_kda_gate(
-            inp["raw_g"].reshape(inp["total_t"], inp["H"] * inp["D"]),
-            inp["A_log"], inp["D"], g_bias=inp["dt_bias"],
-        ).unsqueeze(0)
-        # NOTE: ssm_state_indices must be None here. With a non-null index tensor the
-        # kernel takes the continuous-batching path and skips any seq whose state
-        # index is <= 0 (NULL_BLOCK_ID), which silently produces ~0 output. Passing
-        # None + inplace_final_state=False uses the per-sequence (bos-offset) state.
-        o, s = fused_recurrent_kda(
-            q=inp["q"], k=inp["k"], v=inp["v"], g=g, beta=inp["beta"].to(torch.bfloat16),
-            initial_state=inp["h0"], inplace_final_state=False,
-            use_qk_l2norm_in_kernel=True, cu_seqlens=inp["cu"], ssm_state_indices=None,
-        )
-        return o, s
+    return fused_recurrent_kda_packed_decode(
+        mixed_qkv=inp["mixed_qkv"], raw_g=inp["raw_g"], raw_beta=inp["raw_beta"],
+        A_log=inp["A_log"], dt_bias=inp["dt_bias"], lower_bound=GATE_LOWER_BOUND,
+        initial_state=inp["state"], state_indices=inp["state_indices"],
+    )
 
 
+# --------------------------------------------------------------------------- #
+# Reference
+# --------------------------------------------------------------------------- #
 def _golden(inp: dict):
-    """Independent float64 reference for the KDA gated-delta-rule recurrence.
+    """Independent float64 transcription of the KDA gated-delta-rule recurrence.
 
-    Transcribed directly from fused_recurrent_gated_delta_rule_fwd_kernel
-    (IS_KDA=True) and fused_kda_gate / kda_gate_fwd_kernel:
+    Taken directly from ``fused_recurrent_kda_packed_decode_kernel``
+    (fused_recurrent.py:504-533); ``chunk_kda_with_fused_gate`` computes the same
+    recurrence blockwise, so one reference covers both modes:
 
-      gate g_t = -exp(A_log_h) * softplus(raw_g + dt_bias)          # per (h, k-channel)
-      per token (state S is [H, V, K] = [H, d_v, d_k], reset per sequence):
-        q = l2norm(q_t) * scale ; k = l2norm(k_t) ; v = v_t
-        S  = S * exp(g_t)[.,None,:]      # decay per k-column
-        v  = v - (S @ k)                 # delta-rule "remove old value"
-        v  = v * beta_t                  # beta scalar per head
-        S  = S + outer(v, k)
-        o_t = S @ q
-    Runs one segment per cu_seqlens interval so it covers both chunk
-    (1 seq x T) and packed-decode (N seqs x 1) layouts.
+        g_t   = lower_bound * sigmoid(exp(A_log) * (raw_g + dt_bias))   # safe gate
+        q     = l2norm(q_t) * scale ;  k = l2norm(k_t) ;  v = v_t
+        S     = S * exp(g_t)              # decay per k-column
+        v     = v - S @ k                 # delta-rule "remove old value"
+        v     = v * sigmoid(raw_beta_t)
+        S     = S + outer(v, k)
+        o_t   = S @ q
     """
     torch = _torch()
-    H, D = inp["H"], inp["D"]
-    scale = inp["scale"]
-    cu = inp["cu"].tolist()
-    q = inp["q"][0].double()
-    k = inp["k"][0].double()
-    v = inp["v"][0].double()
-    rg = inp["raw_g"][0].double()
-    beta = inp["beta"][0].double()
-    A = inp["A_log"].reshape(H).double()
-    dtb = inp["dt_bias"].reshape(H, D).double()
-    g = (-torch.exp(A)).view(1, H, 1) * torch.nn.functional.softplus(rg + dtb.view(1, H, D))
+    H, D, scale = inp["H"], inp["D"], inp["scale"]
+
+    if inp["mode"] == "chunk":
+        q = inp["q"][0].double()
+        k = inp["k"][0].double()
+        v = inp["v"][0].double()
+    else:
+        m = inp["mixed_qkv"].double()
+        q = m[:, : H * D].reshape(-1, H, D)
+        k = m[:, H * D: 2 * H * D].reshape(-1, H, D)
+        v = m[:, 2 * H * D:].reshape(-1, H, D)
+
+    raw_g = inp["raw_g"][0].double()
+    a = torch.exp(inp["A_log"].double()).view(1, H, 1)
+    pre_gate = raw_g + inp["dt_bias"].reshape(H, D).double().view(1, H, D)
+    if GATE_LOWER_BOUND is None:
+        gate = -a * torch.nn.functional.softplus(pre_gate)
+    else:
+        gate = GATE_LOWER_BOUND * torch.sigmoid(a * pre_gate)
+    beta = torch.sigmoid(inp["raw_beta"][0].double())
+
     qn = q / torch.sqrt((q * q).sum(-1, keepdim=True) + 1e-6) * scale
     kn = k / torch.sqrt((k * k).sum(-1, keepdim=True) + 1e-6)
-    o = torch.zeros(inp["total_t"], H, D, dtype=torch.float64, device="cuda")
-    h0 = inp["h0"].double()  # [num_seqs, H, V, K]
-    for n in range(len(cu) - 1):
-        bos, eos = cu[n], cu[n + 1]
-        S = h0[n].clone()
+
+    out = torch.zeros(inp["total_t"], H, D, dtype=torch.float64, device="cuda")
+    for (bos, eos), S0 in zip(inp["segments"], inp["seg_state0"]):
+        S = S0.clone()                                     # [H, V, K]
         for t in range(bos, eos):
-            S = S * torch.exp(g[t]).unsqueeze(1)          # [H, V, K] decay k-columns
-            vt = v[t] - (S * kn[t].unsqueeze(1)).sum(-1)  # v - S@k -> [H, V]
-            vt = vt * beta[t].unsqueeze(-1)               # * beta (per head)
-            S = S + vt.unsqueeze(2) * kn[t].unsqueeze(1)  # + outer(v, k)
-            o[t] = (S * qn[t].unsqueeze(1)).sum(-1)       # S @ q -> [H, V]
-    return o.unsqueeze(0)
+            S = S * torch.exp(gate[t]).unsqueeze(1)        # decay k-columns
+            vt = v[t] - (S * kn[t].unsqueeze(1)).sum(-1)   # v - S @ k  -> [H, V]
+            vt = vt * beta[t].unsqueeze(-1)
+            S = S + vt.unsqueeze(2) * kn[t].unsqueeze(1)   # + outer(v, k)
+            out[t] = (S * qn[t].unsqueeze(1)).sum(-1)      # S @ q
+    return out.unsqueeze(0)
 
 
+# --------------------------------------------------------------------------- #
+# Modes
+# --------------------------------------------------------------------------- #
 def run_compile() -> None:
     inp = _prepare(CASES[0], correctness=True)
-    o, _ = _run(inp)
+    out, _state = _run(inp)
     _torch().cuda.synchronize()
-    print(f"{OPERATOR} compile smoke: PASS  out={tuple(o.shape)}")
+    print(f"{OPERATOR} compile smoke: PASS  out={tuple(out.shape)}")
 
 
 def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
         inp = _prepare(case, correctness=True)
-        # Compute the golden BEFORE _run: the chunk kernel writes the final state
-        # into initial_state (inp["h0"]) in place, which would corrupt the golden's
-        # starting state if computed afterward.
-        ref = _golden(inp)  # independent float64 recurrence
-        o, _s = _run(inp)
+        ref = _golden(inp)          # BEFORE _run: the kernels mutate the state
+        out, _state = _run(inp)
         torch.cuda.synchronize()
-        # (1) finite + exact shape
-        assert torch.isfinite(o).all(), (case["id"], "non-finite output")
-        exp_o = (1, inp["total_t"], inp["H"], inp["D"])
-        assert tuple(o.shape) == exp_o, (case["id"], tuple(o.shape), exp_o)
-        # (2) numerical accuracy vs golden: cosine + normalized max error.
-        got = o.double().flatten()
+
+        assert torch.isfinite(out).all(), (case["id"], "non-finite output")
+        expected_shape = (1, inp["total_t"], inp["H"], inp["D"])
+        assert tuple(out.shape) == expected_shape, (
+            case["id"], tuple(out.shape), expected_shape
+        )
+
+        got = out.double().flatten()
         gold = ref.flatten()
         cos = torch.nn.functional.cosine_similarity(got, gold, dim=0).item()
         denom = gold.abs().max().clamp_min(1e-8)
         rel_max = ((got - gold).abs().max() / denom).item()
-        assert cos > 0.999, (case["id"], f"cosine {cos:.6f} vs golden too low")
-        assert rel_max < 0.03, (case["id"], f"normalized max err {rel_max:.4f} too high")
+        tol = case["params"]
+        assert cos > tol.get("min_cosine", 0.999), (
+            case["id"], f"cosine {cos:.6f} vs float64 golden too low"
+        )
+        assert rel_max < tol.get("max_rel_err", 0.03), (
+            case["id"], f"normalized max err {rel_max:.4f} too high"
+        )
         print(
             "correctness PASS", case["id"],
             f"cos={cos:.6f} rel_max_err={rel_max:.4f} |o|={got.norm().item():.3f}",
@@ -335,22 +287,28 @@ def run_performance() -> None:
         inp = _prepare(case, correctness=False)
         _run(inp)
         _torch().cuda.synchronize()
-        # long sequences take longer per call -> allow more graph headroom
+        bench = case.get("benchmark", {})
         exec_ms, meta = _benchmark_cuda_graph_or_events(
-            lambda: _run(inp), warmup=3, repetition=20, target_ms=2.0, max_graph_repeats=50,
+            lambda: _run(inp),
+            warmup=bench.get("warmup", 3),
+            repetition=bench.get("repetition", 20),
+            target_ms=bench.get("target_ms", 2.0),
+            max_graph_repeats=bench.get("max_graph_repeats", 50),
         )
         metadata = {
             **case["params"],
-            "model": case["model"],
-            "kernel_ids": case["kernel_ids"],
+            "model": case.get("model"),
+            "kernel_ids": case.get("kernel_ids"),
             "gpu_pct": case.get("gpu_pct"),
-            "benchmark_method": meta.get("benchmark_method"),
         }
         metadata.update({k: v for k, v in meta.items() if k.startswith("benchmark_")})
         rows.append({
             "test_case_id": case["id"],
             "shape": case.get("trace_input_shapes"),
             "execution_time_ms": exec_ms,
+            # Flat, not nested: src/testcases.py reads benchmark_method from the
+            # top level of each row when building TestCaseResult.metadata.
+            **{k: v for k, v in meta.items() if k.startswith("benchmark_")},
             "metadata": metadata,
         })
         print(case["id"], f"{exec_ms:.6f} ms", meta.get("benchmark_method"),

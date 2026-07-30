@@ -1,39 +1,59 @@
 task_type: image_kernel
 image_repo_path: /usr/local/lib/python3.12/dist-packages/vllm
 repo_subdir: vllm
+image_repo_exclude:
+- __pycache__
 repository_language: triton
 source_file_path:
-- model_executor/layers/fla/ops/kda.py
-- model_executor/layers/fla/ops/chunk.py
-- model_executor/layers/fla/ops/chunk_delta_h.py
-- model_executor/layers/fla/ops/cumsum.py
-- model_executor/layers/fla/ops/fused_recurrent.py
-- model_executor/layers/fla/ops/l2norm.py
-- model_executor/layers/fla/ops/wy_fast.py
-- model_executor/layers/fla/ops/solve_tril.py
+- models/kimi_k3/amd/ops/third_party/kda/chunk.py
+- models/kimi_k3/amd/ops/third_party/kda/chunk_intra.py
+- models/kimi_k3/amd/ops/third_party/kda/chunk_intra_token_parallel.py
+- models/kimi_k3/amd/ops/third_party/kda/fused_recurrent.py
+- third_party/flash_linear_attention/ops/chunk_delta_h.py
+- third_party/flash_linear_attention/ops/cumsum.py
+- third_party/flash_linear_attention/ops/l2norm.py
+- third_party/flash_linear_attention/ops/solve_tril.py
+- third_party/flash_linear_attention/ops/wy_fast.py
 target_kernel_functions:
+- fused_recurrent_kda_packed_decode
 - chunk_kda_with_fused_gate
-- fused_recurrent_kda
-- fused_kda_gate
 compile_command:
 - python3 scripts/task_runner.py compile
 correctness_command:
 - python3 scripts/task_runner.py correctness
 performance_command:
 - python3 scripts/task_runner.py performance
+compile_timeout: 1800
+correctness_timeout: 3600
+performance_timeout: 3600
 task_result_template: null
+platform_support:
+  required_arch: gfx950
+  status: active
+  skip_reason: null
 prompt:
   source_code: null
   instructions: >-
     Optimize Kimi-K3 KDA (Kimi Delta Attention) linear attention on MI355X/gfx950.
-    KDA is the flash-linear-attention Triton-JIT gated-delta-rule path used by K3's
-    69 linear-attention layers: decode hot kernel k007
-    (fused_recurrent_kda_packed_decode_kernel) plus the prefill chunk kernels
-    (chunk_kda_fwd / chunk_gated_delta_rule_fwd_h / kda_gate_chunk_cumsum /
-    causal_conv1d / l2norm / layer_norm_gated / solve_tril). Dims match the session
-    (per-rank TP=8): num_heads=12, head_dim=128 (d_k=d_v=128), chunk_size=64.
-    session_cases.json includes the session's real ISL=1024 plus long-sequence
-    cases up to T=32768. Preserve the correctness checks (determinism + finite +
-    exact shapes + non-degenerate state) and improve CUDA-graph measured
-    performance, especially at long sequence length.
+    KDA is the Triton-JIT gated-delta-rule path used by K3's 69 linear-attention
+    layers. The kernels are vendored per GPU vendor; the ROCm copy that
+    kimi_gdn_linear_attn.py selects lives in models/kimi_k3/amd/ops/third_party/kda/
+    (chunk.py, chunk_intra.py, chunk_intra_token_parallel.py, fused_recurrent.py)
+    plus the shared FLA ops under third_party/flash_linear_attention/ops/.
+    Two entry points are timed: fused_recurrent_kda_packed_decode (decode hot
+    kernel k007, fused_recurrent_kda_packed_decode_kernel) and
+    chunk_kda_with_fused_gate (the prefill chunk-KDA kernel group). Do NOT
+    retarget anything at fused_recurrent_kda: that is the speculative-decode entry
+    and K3 never executes it (num_nextn_predict_layers=0).
+    Dims are the session's per-rank TP=8 shapes: num_heads=12, head_dim=128
+    (d_k=d_v), chunk_size=64, gate_lower_bound=-5.0. That lower bound selects the
+    safe-gate branch gate = -5.0 * sigmoid(exp(A_log) * (raw_g + dt_bias)) rather
+    than the softplus branch, and raw_beta arrives pre-sigmoid because both kernels
+    apply sigmoid internally. session_cases.json carries the session's real packed
+    prefill token counts (7211 and 1080) plus long-sequence headroom up to T=32768.
+    Correctness is numerical parity against an independent float64 golden
+    (cos > 0.999 and normalized max error < 0.03). Preserve all correctness cases
+    and improve the CUDA-graph measured performance, especially at long sequence
+    length. Keep the public signatures of fused_recurrent_kda_packed_decode and
+    chunk_kda_with_fused_gate unchanged.
   cheatsheet: null

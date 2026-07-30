@@ -4,29 +4,22 @@ Faithful `image_kernel` reproduction of the **Kimi-K3 routed-expert MoE 2-stage
 GEMM** as it actually ran in Hyperloom session `20260728T091437Z` on MI355X/gfx950
 (session archived at `_archive/Kimi-K3_20260728T091437Z_pod_restart_disk_quota`).
 
-Goal: match the session's real shapes/dtypes/config exactly. This task is **not
-meant to run on stock aiter** — run it in the session build (see below).
-
 ## Which hot kernels this covers
 
-k001, k002, k003 are the **same aiter MoE 2-stage op** in different execution
-modes / stages (one MoE layer = two GEMMs with an activation in between; "fused"
-means routing/gather/activation/scale are fused into the GEMMs, not that the two
-GEMMs are merged):
+k001/k002/k003/k006 are the **same aiter MoE 2-stage op** in different execution
+modes and stages (one MoE layer = two GEMMs with an activation between them):
 
-| kernel_id | trace op                        | mode            | stage          | backend (per trace) |
-|-----------|---------------------------------|-----------------|----------------|---------------------|
-| k001      | `hipGraphLaunch->moe_gemm1_0`   | decode (graph)  | stage1 gate/up | not resolved        |
-| k002      | `hipGraphLaunch->moe_gemm2_0`   | decode (graph)  | stage2 down    | not resolved        |
-| k003      | `pseudo_op::moe_flydsl_stage1`  | prefill (eager) | stage1 gate/up | **FlyDSL** (named)  |
-| (k006)    | `pseudo_op::moe_flydsl_stage2`  | prefill (eager) | stage2 down    | FlyDSL (named)      |
-
-Only k003/k006 are confirmed FlyDSL by op name. k001/k002 are decode graph nodes
-named generically (`moe_gemm1_0/2_0`); the trace does not resolve their backend.
+| kernel_id | trace op                       | mode            | stage          | backend (per trace) |
+|-----------|--------------------------------|-----------------|----------------|---------------------|
+| k001      | `hipGraphLaunch->moe_gemm1_0`  | decode (graph)  | stage1 gate/up | not resolved        |
+| k002      | `hipGraphLaunch->moe_gemm2_0`  | decode (graph)  | stage2 down    | not resolved        |
+| k003      | `pseudo_op::moe_flydsl_stage1` | prefill (eager) | stage1 gate/up | **FlyDSL** (named)  |
+| k006      | `pseudo_op::moe_flydsl_stage2` | prefill (eager) | stage2 down    | FlyDSL (named)      |
 
 Two cases:
-- `kimi-k3-prefill-flydsl-k003-k006` — `token=7211`, **exact** trace shape. Covers k003 (+k006).
-- `kimi-k3-decode-graph-k001-k002` — `token=62`, **reconstructed** (decode M not recorded). Covers k001+k002.
+- `kimi-k3-prefill-flydsl-k003-k006` — `token=7211`, **exact** trace shape.
+- `kimi-k3-decode-graph-k001-k002` — `token=62`, **reconstructed** (decode M is not
+  recorded for hipGraph synthetic ops; 62 is the steady-state slice concurrency).
 
 ## Exact shapes / dtypes (authoritative)
 
@@ -42,50 +35,83 @@ w1_scale   (688128, 112)     Float8_e8m0fnu    # (896*768, 3584/32)
 w2_scale   (3211264, 16)     Float8_e8m0fnu    # (896*3584, 12 -> padded to 16)
 ```
 
-Logical per-rank (TP=8) MoE config: `model_dim=3584`, `inter_dim=384`
-(= `moe_intermediate 3072 / TP8`), `experts=896`, `topk=16`,
-`quant_type=per_1x32` (mxfp4 group_size 32), activation tensor `bf16`,
-weight `fp4x2`, activation function **situ** (`situ_and_mul`), `g1u1=True`.
+Per-rank (TP=8) config: `model_dim=3584`, `inter_dim=384` (`moe_intermediate 3072 / TP8`),
+`experts=896`, `topk=16`, `quant_type=per_1x32` (mxfp4 group_size 32), bf16 activation,
+`fp4x2` weight, `g1u1=True`, activation **SiTUv2** with `beta=4.0` / `linear_beta=25.0`.
 
-## Run environment (REQUIRED — this is the whole point)
+## Dispatch fidelity (verified)
 
-Run in the **session build**: vLLM `0.1.dev19253+g5f76ae224.d20260727` plus its
-matching aiter dev build, on MI355X/gfx950.
+Running this harness on the session image reproduces the session's own aiter
+dispatch lines **verbatim**, for both M buckets the cases land in:
 
-**Stock `amd-aiter 0.1.13.post1` cannot reproduce this** (verified on this host —
-all three are concrete version/build differences, not spec errors):
+```
+token 7211 -> M=8192  kernelName1='flydsl_moe1_abf16_wfp4_bf16_t32x128x256_w2'
+                      kernelName2='flydsl_moe2_abf16_wfp4_bf16_t32x256x256_atomic_bnt2_xcd4_persist'
+token 62   -> M=64    kernelName1='flydsl_moe1_abf16_wfp4_bf16_t32x64x256_w3_xcd4_kw2'
+                      kernelName2='flydsl_moe2_abf16_wfp4_bf16_t32x256x128_atomic_bnt2_persist'
+```
 
-1. **No `ActivationType.Situ`** — stock enum is only `Gelu/No/Silu/Swiglu`. The
-   runner hard-fails with a clear message rather than substituting a wrong gate.
-2. **No Kimi-K3 dispatch/tune rows** — stock `fused_moe` finds no tuned config for
-   `(3584, 384, 896, 16)` and falls back to a generic ck2stages kernel that does
-   not support `inter_dim=384` → `device_gemm ... does not support this GEMM
-   problem`. (Bundled tune CSVs cover kimik2/dsv3/minimax/qwen3, not kimik3.)
-3. **`shuffle_scale_a16w4` asserts on inter_dim=384** — 384/32 = 12 groups; stock
-   asserts instead of padding to 16 (the session build pads 12→16, which is why
-   the trace w2_scale is `(…,16)`).
+Both appear in the session's own logs, so the harness exercises the same kernels.
 
-The kernel *families* K3 used (`flydsl_moe1_afp4_wfp4_*`, `moe_ck2stages_gemm2_…
-FP4X2`) do exist in stock aiter — what differs is the K3 dispatch/tuning, situ,
-and scale padding. That is why the session ran fine and a stock-image extraction
-does not: **different build**, confirmed by the vLLM version gap
-(`0.1.dev19253` vs `0.24.0`).
+## Three contract details that are easy to get wrong
 
-## Notes
+All three were verified against the in-image sources, not assumed:
 
-- The true device kernel is FlyDSL asm / ck2stages fp4, not an in-tree editable
-  `.cu`; `config.yaml` points at `aiter/fused_moe.py` (the source-resolved dispatch
-  wrapper / FlyDSL stage wrappers). Matches the session's "part-complete" (k003).
-- Weights/scales are freshly generated (via aiter's own quant+shuffle helpers, so
-  layouts stay build-consistent), not the real checkpoint — for kernel timing, not
-  accuracy validation.
-- `token=62` in the decode case is reconstructed (conc62 in the steady-state
-  slice); the real graph-capture batch is not archived.
+1. **The activation enum is `Situv2`, not `Situ`.** This build exposes
+   `ActivationType.{Gelu,No,Silu,Situv2,Swiglu}` and the K3 dispatch branches all
+   key on `Situv2` (`aiter/fused_moe.py:619,1202,2198,3104`). The session logs
+   contain 3409 occurrences of `ActivationType.Situv2` and none of `Situ`.
+
+2. **K3's SiTU a16w4 path runs `GateMode.SEPARATED`, so weights and scales must be
+   shuffled with `gate_up=False`** (GGUU rows). `gate_up=True` produces the
+   GUGU/INTERLEAVE layout used by the gpt-oss `use_mxfp4_w4a16` path; feeding that
+   to the SEPARATED kernel yields output with the *right magnitude but cosine ~0*
+   against the reference. Authority:
+   `vllm/model_executor/layers/fused_moe/experts/rocm_aiter_moe.py:369-386`.
+
+3. **The SiTUv2 beta parameters must come from the model config.** `fused_moe`
+   defaults to `1.0/1.0` while `torch_moe_stage1` defaults to `2.0/1.5`
+   (`aiter/fused_moe.py:676-677` vs `:2998-2999`) — neither is K3's value. K3
+   `config.json text_config` sets `activation_situ_beta=4.0` and
+   `activation_situ_linear_beta=25.0`; the harness drives both the kernel call and
+   the reference from those, so the two sides cannot silently drift apart.
+
+## Correctness
+
+Compared against aiter's own dequantized `torch_moe_stage1`/`torch_moe_stage2`,
+which unpack the mxfp4 nibbles, apply the per-1x32 e8m0 group scales and
+accumulate in fp32 — a real independent implementation of the op, not a wrapper
+around the kernel under test. Gate: `cos > 0.999` and relative norm error `< 0.05`.
+
+Measured on MI355X: `cos = 0.99997`, `rel_err = 0.006-0.008`. The stage2 kernel
+reduces with atomics, so results vary slightly run to run (observed cos spread
+0.999968-0.999983); the gate leaves ~6x margin over that.
+
+Only the *token count* is reduced for correctness (to 64). Expert count and all
+dims stay at the session values so the same FlyDSL kernel pair is dispatched.
+
+## Edit surface and JIT freshness
+
+The compute core (FlyDSL asm / ck2stages fp4) is not an in-tree editable `.cu`, so
+the source-resolved edit surface is the aiter Python dispatch: `fused_moe.py`,
+`ops/flydsl/moe_kernels.py`, `ops/shuffle.py`.
+
+The harness puts the workspace-seeded `aiter` copy first on `sys.path`, so an
+agent's edits shadow the in-image install. Verified: scaling `fused_moe`'s return
+by 1.5 in the workspace copy changes the measured output by exactly 1.5x. aiter's
+JIT output is pinned to `<workspace>/build/jit` so no run can load another run's
+compiled module.
+
+`aiter` locates its C++ headers relative to the directory *containing* the package
+(`aiter/utility/aiter_types.py:_find_aiter_enum_h` hardcodes `parents[2]` and
+ignores `AITER_META_DIR`), so `_configure()` links the image's `aiter_meta` next to
+the seeded copy. Those are C++ sources outside this task's edit surface, so they
+are linked rather than duplicated per run.
 
 ## Run
 
 ```
 python3 scripts/task_runner.py compile       # smoke: one MoE call
-python3 scripts/task_runner.py correctness   # cosine error < 0.03 vs torch_moe reference
-python3 scripts/task_runner.py performance   # CUDA-graph timed, writes build/performance_report.json
+python3 scripts/task_runner.py correctness   # cos > 0.999 vs the torch reference
+python3 scripts/task_runner.py performance   # CUDA-graph timed -> build/performance_report.json
 ```

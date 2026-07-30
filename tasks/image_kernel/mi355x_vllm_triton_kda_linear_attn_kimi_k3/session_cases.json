@@ -1,91 +1,185 @@
 {
   "source_day": "2026-07-28",
+  "date_field": "session_started_at",
   "platform": "MI355X/gfx950",
-  "framework": "vllm 0.1.dev19253+g5f76ae224.d20260727 (session) / vllm 0.24.0 (verified-runnable here)",
-  "task_name": "mi355x-kimi-k3-kda-linear-attn-20260728",
+  "framework": "vllm 0.1.dev19253+g5f76ae224.d20260727 (ROCm 7.2.3)",
+  "model": "Kimi-K3",
+  "session_id": "20260728T091437Z",
   "operator": "kda_linear_attn",
-  "language": "triton (flash-linear-attention, @triton.jit, runtime-compiled)",
+  "task_name": "mi355x-kimi-k3-kda-linear-attn-20260728",
+  "language": "triton (@triton.jit, runtime-compiled; vendored FLA under vllm/models/kimi_k3/amd/ops/third_party/kda)",
+  "selection": "hot kernel k007 (fused_recurrent_kda_packed_decode_kernel, decode) plus the prefill chunk-KDA kernel group, both reached through vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py. KDA is Triton-JIT so the trace shows launcher = Not found; the entry points below were recovered from the session call stacks.",
   "provenance": {
     "session_root": "/shared_nfs/zgong/Hyperloom-Sessions/vllm/_archive/Kimi-K3_20260728T091437Z_pod_restart_disk_quota",
-    "source_file": "vllm/model_executor/layers/fla/ops/kda.py (+ chunk.py, chunk_delta_h.py, cumsum.py, fused_recurrent.py, l2norm.py, wy_fast.py, solve_tril.py, causal_conv1d.py)",
-    "caller": "vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py",
+    "tracelens": "kernel-agent/runs/20260728T091437Z/20260728T162131Z_tl-6a4bc7d1/tracelens",
+    "call_stack": [
+      "vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py(381): _forward",
+      "vllm/models/kimi_k3/amd/ops/third_party/kda/chunk.py(774): chunk_kda_with_fused_gate",
+      "vllm/models/kimi_k3/amd/ops/third_party/kda/chunk.py(694): chunk_kda_with_fused_gate_fwd",
+      "vllm/models/kimi_k3/amd/ops/third_party/kda/chunk_intra.py(573): chunk_kda_fwd_intra"
+    ],
     "op_entries": {
-      "prefill": "chunk_kda_with_fused_gate(q,k,v,raw_g,beta,A_log,g_bias=dt_bias,initial_state,cu_seqlens,use_qk_l2norm_in_kernel=True)",
-      "decode": "g=fused_kda_gate(raw_g,A_log,dt_bias); fused_recurrent_kda(q,k,v,g,beta,initial_state,cu_seqlens,ssm_state_indices)"
+      "prefill": "chunk_kda_with_fused_gate(q,k,v,raw_g,raw_beta,A_log,g_bias=dt_bias,lower_bound,initial_state,output_final_state=True,use_qk_l2norm_in_kernel=True,cu_seqlens)  -- kimi_gdn_linear_attn.py:569",
+      "decode": "fused_recurrent_kda_packed_decode(mixed_qkv,raw_g,raw_beta,A_log,dt_bias,lower_bound,initial_state,state_indices)  -- kimi_gdn_linear_attn.py:609"
     },
-    "kda_dims_source": "Kimi Linear tech report (arXiv:2510.26692) + K3 config: d_k=d_v=head_dim=128, num_heads=96, chunk_size=64, hidden=7168, 69 KDA layers. dt_bias length = num_heads*head_dim = 12288 (per-rank 96/8*128 = 1536).",
-    "tp_note": "Trace is rank0 of TP=8, so per-rank num_heads = 96/8 = 12, head_dim = 128. Cases use the per-rank shape (num_heads=12) to match the session. A full/no-TP variant (num_heads=96) is included as an extra long-seq stress case.",
+    "shape_evidence": "tracelens unified_perf_summary.csv: aten::fill_ under chunk_kda_fwd_intra carries Input Dims (1, 7211, 12, 64) and (1, 1080, 12, 64) bf16 -- i.e. per-rank H=12 and packed prefill token counts 7211 / 1080. ISL=1024 is the per-REQUEST input length, NOT the packed batch token count, so it is not a kernel shape.",
+    "decode_entry_note": "k007 fused_recurrent_kda_packed_decode_kernel is launched only by fused_recurrent_kda_packed_decode (fused_recurrent.py:596) from the non-spec decode branch. The sibling fused_recurrent_kda launches fused_recurrent_kda_fwd_kernel on the speculative-decode branch; K3 sets num_nextn_predict_layers=0, and fused_recurrent_kda_fwd_kernel appears 0 times in every trace artifact of this session.",
+    "decode_batch_note": "Decode graph nodes do not record per-call M. num_seqs=62 is reconstructed from the steady-state slice concurrency (conc62) of mixed_steady_state_..._bs318_conc62_..._rank0.",
     "hot_kernel_ids": {
-      "k007": "fused_recurrent_kda_packed_decode_kernel (decode; 48.402 ms, 2.11% GPU). Covered by the recurrent case.",
-      "prefill_chunk_kernels": "chunk_gated_delta_rule_fwd_kernel_h_blockdim64, chunk_kda_fwd_kernel_intra_sub_chunk, chunk_kda_fwd_kernel_inter_solve_fused, chunk_gla_fwd_kernel_o, recompute_w_u_fwd_kernel, kda_gate_chunk_cumsum_vector_kernel, l2norm_fwd_kernel2, layer_norm_gated_fwd_kernel, _causal_conv1d_fwd_kernel, _gather_initial_states_kernel. These are the prefill (eager) KDA chunk path; they had no individual k-IDs in the candidate list (grouped as KDA prefill, ~43.7 ms). Covered by the chunk cases."
+      "k007": "fused_recurrent_kda_packed_decode_kernel (decode; 48.402 ms, 2.11% GPU) -- the packed_decode case.",
+      "prefill_chunk_kernels": "chunk_gated_delta_rule_fwd_kernel_h_blockdim64, chunk_kda_fwd_kernel_intra_sub_chunk, chunk_kda_fwd_kernel_inter_solve_fused, chunk_gla_fwd_kernel_o, recompute_w_u_fwd_kernel, kda_gate_chunk_cumsum_vector_kernel, l2norm_fwd_kernel2, layer_norm_gated_fwd_kernel (prefill/eager KDA, ~43.7 ms, grouped with no individual k-IDs) -- the chunk cases."
     },
-    "correctness_note": "Real numerical parity against an independent float64 golden (scripts/task_runner.py:_golden) transcribed from fused_recurrent_gated_delta_rule_fwd_kernel(IS_KDA=True) + fused_kda_gate/kda_gate_fwd_kernel. Gate g_t = -exp(A_log_h)*softplus(raw_g+dt_bias); per-token recurrence: q=l2norm(q)*scale, k=l2norm(k); S=S*exp(g_t) (per k-column); v-=S@k; v*=beta; S+=outer(v,k); o=S@q. Verified: chunk_kda_with_fused_gate matches the golden at cos=0.99999 (rel_max_err<0.007); the packed-decode recurrent path also matches at cos=0.99999 when called with ssm_state_indices=None + inplace_final_state=False. Gate: correctness asserts cos>0.999 and normalized max error <0.03. Performance (CUDA-graph timing) is the optimization target.",
-    "input_note": "q/k/v/raw_g/beta/A_log/dt_bias are freshly generated (kernel timing/consistency, not accuracy). Layout [1, total_tokens, H, D] with cu_seqlens, matching the real caller's rearrange 'n (h d) -> 1 n h d'."
+    "correctness_note": "Numerical parity against an independent float64 golden (scripts/task_runner.py:_golden) transcribed from fused_recurrent_kda_packed_decode_kernel (fused_recurrent.py:504-533). raw_beta is passed PRE-sigmoid because both kernels apply sigmoid internally (fused_recurrent.py:525, chunk.py:470). Gate uses the safe-gate branch selected by gate_lower_bound=-5.0. Both kernels update the state in place, so the golden snapshots the starting state before the kernel runs."
+  },
+  "kda_config": {
+    "source": "K3 config.json linear_attn_config, recorded verbatim in the session specialist logs",
+    "num_heads": 96,
+    "head_dim": 128,
+    "gate_lower_bound": -5.0,
+    "short_conv_kernel_size": 4,
+    "use_full_rank_gate": true,
+    "kda_layers": 69,
+    "full_attn_layers": 24,
+    "tensor_parallel_size": 8,
+    "local_num_heads": 12,
+    "chunk_size": 64,
+    "gate_note": "gate_lower_bound is not a clamp: a non-null value selects the safe-gate branch gate = lower_bound * sigmoid(exp(A_log) * (raw_g + dt_bias)) instead of the softplus branch gate = -exp(A_log) * softplus(raw_g + dt_bias) used when it is null (fused_recurrent.py:513-521, chunk.py:507-515)."
   },
   "cases": [
     {
-      "id": "kda-decode-recurrent-k007",
+      "id": "kda-decode-packed-k007",
       "model": "Kimi-K3",
-      "kernel_ids": ["k007"],
+      "kernel_ids": [
+        "k007"
+      ],
       "gpu_pct": 2.113,
-      "params": {"mode": "recurrent", "num_seqs": 62, "seq_len": 1, "num_heads": 12, "head_dim": 128, "chunk_size": 64},
-      "trace_input_shapes": ["decode: 62 packed seqs x 1 token; q/k/v/g [1,62,12,128] bf16; beta [1,62,12]; state [62,12,128,128] fp32. num_seqs=62 from steady-state conc62 (per-call M not recorded)."]
+      "exact_shape_source": "RECONSTRUCTED -- decode batch from steady-state slice concurrency conc62",
+      "trace_input_shapes": [
+        "mixed_qkv (62, 4608) bf16",
+        "raw_g (1, 62, 12, 128) f32",
+        "raw_beta (1, 62, 12) f32"
+      ],
+      "params": {
+        "mode": "packed_decode",
+        "num_heads": 12,
+        "head_dim": 128,
+        "num_seqs": 62,
+        "seq_len": 1,
+        "min_cosine": 0.999,
+        "max_rel_err": 0.03
+      },
+      "benchmark": {
+        "warmup": 5,
+        "repetition": 30,
+        "target_ms": 1.0,
+        "max_graph_repeats": 200
+      },
+      "seed": 23
     },
     {
-      "id": "kda-prefill-chunk-isl1024",
+      "id": "kda-prefill-chunk-t7211",
       "model": "Kimi-K3",
-      "kernel_ids": ["kda-prefill-chunk"],
-      "gpu_pct": null,
-      "params": {"mode": "chunk", "num_seqs": 1, "seq_len": 1024, "num_heads": 12, "head_dim": 128, "chunk_size": 64},
-      "trace_input_shapes": ["prefill ISL=1024 (session real input len); q/k/v/raw_g [1,1024,12,128] bf16; beta [1,1024,12]; state [1,12,128,128] fp32"]
+      "kernel_ids": [
+        "chunk_kda_fwd_*",
+        "chunk_gated_delta_rule_fwd_h_*",
+        "kda_gate_chunk_cumsum_*"
+      ],
+      "exact_shape_source": "trace -- aten::fill_ under chunk_kda_fwd_intra, Input Dims (1, 7211, 12, 64)",
+      "trace_input_shapes": [
+        "q/k/v (1, 7211, 12, 128) bf16",
+        "raw_g (1, 7211, 12, 128) f32"
+      ],
+      "params": {
+        "mode": "chunk",
+        "num_heads": 12,
+        "head_dim": 128,
+        "num_seqs": 1,
+        "seq_len": 7211,
+        "min_cosine": 0.999,
+        "max_rel_err": 0.03
+      },
+      "benchmark": {
+        "warmup": 3,
+        "repetition": 20,
+        "target_ms": 2.0,
+        "max_graph_repeats": 20
+      },
+      "seed": 124
     },
     {
-      "id": "kda-long-2048",
+      "id": "kda-prefill-chunk-t1080",
       "model": "Kimi-K3",
-      "kernel_ids": ["kda-prefill-chunk"],
-      "gpu_pct": null,
-      "params": {"mode": "chunk", "num_seqs": 1, "seq_len": 2048, "num_heads": 12, "head_dim": 128, "chunk_size": 64},
-      "trace_input_shapes": ["long-seq stress T=2048"]
+      "kernel_ids": [
+        "chunk_kda_fwd_*"
+      ],
+      "exact_shape_source": "trace -- aten::fill_ under chunk_kda_fwd_intra, Input Dims (1, 1080, 12, 64)",
+      "trace_input_shapes": [
+        "q/k/v (1, 1080, 12, 128) bf16"
+      ],
+      "params": {
+        "mode": "chunk",
+        "num_heads": 12,
+        "head_dim": 128,
+        "num_seqs": 1,
+        "seq_len": 1080,
+        "min_cosine": 0.999,
+        "max_rel_err": 0.03
+      },
+      "benchmark": {
+        "warmup": 3,
+        "repetition": 20,
+        "target_ms": 2.0,
+        "max_graph_repeats": 50
+      },
+      "seed": 225
     },
     {
-      "id": "kda-long-4096",
+      "id": "kda-long-chunk-t16384",
       "model": "Kimi-K3",
-      "kernel_ids": ["kda-prefill-chunk"],
-      "gpu_pct": null,
-      "params": {"mode": "chunk", "num_seqs": 1, "seq_len": 4096, "num_heads": 12, "head_dim": 128, "chunk_size": 64},
-      "trace_input_shapes": ["long-seq stress T=4096"]
+      "kernel_ids": [
+        "chunk_kda_fwd_*"
+      ],
+      "exact_shape_source": "EXTRAPOLATED -- long-context headroom beyond the session's max_model_len 6144",
+      "params": {
+        "mode": "chunk",
+        "num_heads": 12,
+        "head_dim": 128,
+        "num_seqs": 1,
+        "seq_len": 16384,
+        "min_cosine": 0.999,
+        "max_rel_err": 0.03
+      },
+      "benchmark": {
+        "warmup": 2,
+        "repetition": 15,
+        "target_ms": 2.0,
+        "max_graph_repeats": 10
+      },
+      "seed": 326
     },
     {
-      "id": "kda-long-8192",
+      "id": "kda-long-chunk-t32768",
       "model": "Kimi-K3",
-      "kernel_ids": ["kda-prefill-chunk"],
-      "gpu_pct": null,
-      "params": {"mode": "chunk", "num_seqs": 1, "seq_len": 8192, "num_heads": 12, "head_dim": 128, "chunk_size": 64},
-      "trace_input_shapes": ["long-seq stress T=8192"]
-    },
-    {
-      "id": "kda-long-16384",
-      "model": "Kimi-K3",
-      "kernel_ids": ["kda-prefill-chunk"],
-      "gpu_pct": null,
-      "params": {"mode": "chunk", "num_seqs": 1, "seq_len": 16384, "num_heads": 12, "head_dim": 128, "chunk_size": 64},
-      "trace_input_shapes": ["long-seq stress T=16384"]
-    },
-    {
-      "id": "kda-long-32768",
-      "model": "Kimi-K3",
-      "kernel_ids": ["kda-prefill-chunk"],
-      "gpu_pct": null,
-      "params": {"mode": "chunk", "num_seqs": 1, "seq_len": 32768, "num_heads": 12, "head_dim": 128, "chunk_size": 64},
-      "trace_input_shapes": ["long-seq stress T=32768 (approaching K3 max_model_len regime; max_position_embeddings=1048576)"]
-    },
-    {
-      "id": "kda-long-32768-fullheads",
-      "model": "Kimi-K3",
-      "kernel_ids": ["kda-prefill-chunk"],
-      "gpu_pct": null,
-      "params": {"mode": "chunk", "num_seqs": 1, "seq_len": 32768, "num_heads": 96, "head_dim": 128, "chunk_size": 64},
-      "trace_input_shapes": ["long-seq stress T=32768 with full (no-TP) num_heads=96"]
+      "kernel_ids": [
+        "chunk_kda_fwd_*"
+      ],
+      "exact_shape_source": "EXTRAPOLATED -- long-context headroom beyond the session's max_model_len 6144",
+      "params": {
+        "mode": "chunk",
+        "num_heads": 12,
+        "head_dim": 128,
+        "num_seqs": 1,
+        "seq_len": 32768,
+        "min_cosine": 0.999,
+        "max_rel_err": 0.03
+      },
+      "benchmark": {
+        "warmup": 2,
+        "repetition": 10,
+        "target_ms": 2.0,
+        "max_graph_repeats": 5
+      },
+      "seed": 427
     }
   ]
 }
