@@ -46,12 +46,24 @@ prompt:
     shapes and dtypes are trace-recorded in session_cases.json (from the forge
     invocation_spec); the harness reproduces the session's own FlyDSL kernel
     dispatch for both M buckets.
-    The compute core (FlyDSL asm / ck2stages fp4) is not an in-tree editable .cu,
-    so the source-resolved edit surface is the aiter Python dispatch: fused_moe.py
-    plus ops/flydsl/moe_kernels.py and ops/shuffle.py. Useful levers are the
-    2-stage kernel selection and tuned-config lookup, block_m / ksplit choice,
-    the moe_sorting dispatch policy, and avoiding redundant work between stage1
-    and stage2 -- not editing the harness.
+    The compute core is a FlyDSL MLIR builder
+    (ops/flydsl/kernels/mixed_moe_gemm_2stage.py, compile_mixed_moe_gemm1_a16w4 /
+    compile_mixed_moe_gemm2_a16w4), which is outside this task's edit surface. The
+    edit surface is the aiter Python dispatch: fused_moe.py plus
+    ops/flydsl/moe_kernels.py and ops/shuffle.py. Useful levers are the 2-stage
+    kernel selection and tuned-config lookup -- 864 a16w4 kernel variants are
+    registered, keyed by tile_m/tile_n/tile_k plus w*/bnt*/xcd*/kw* suffixes, and
+    the per-M-bucket choice is what stage1 (20.2% efficiency) and stage2 (14.1%)
+    currently leave on the table -- plus block_m / ksplit choice, the moe_sorting
+    dispatch policy, and avoiding redundant work between stage1 and stage2. Do not
+    edit the harness.
+    The harness enforces five invariants that a valid patch must keep: correctness
+    and performance must dispatch the same FlyDSL kernel pair; dispatch must stay
+    on the tuned path rather than the heuristic fallback; shuffle_scale_a16w4 and
+    e8m0_shuffle must remain equivalent for w2_scale (vLLM's loader uses the
+    latter); nLane must stay 16 (vLLM hardcodes it); and correctness is the worst
+    of 3 runs because stage2 reduces with atomics. All 14 reachable M buckets are
+    correctness-checked.
     Two contract details that must be preserved: K3's SiTU a16w4 path runs
     GateMode.SEPARATED, so weights and scales are shuffled with gate_up=False
     (gate_up=True is the gpt-oss INTERLEAVE layout and silently produces garbage);

@@ -9,17 +9,32 @@ GEMM** as it actually ran in Hyperloom session `20260728T091437Z` on MI355X/gfx9
 k001/k002/k003/k006 are the **same aiter MoE 2-stage op** in different execution
 modes and stages (one MoE layer = two GEMMs with an activation between them):
 
-| kernel_id | trace op                       | mode            | stage          | backend (per trace) |
-|-----------|--------------------------------|-----------------|----------------|---------------------|
-| k001      | `hipGraphLaunch->moe_gemm1_0`  | decode (graph)  | stage1 gate/up | not resolved        |
-| k002      | `hipGraphLaunch->moe_gemm2_0`  | decode (graph)  | stage2 down    | not resolved        |
-| k003      | `pseudo_op::moe_flydsl_stage1` | prefill (eager) | stage1 gate/up | **FlyDSL** (named)  |
-| k006      | `pseudo_op::moe_flydsl_stage2` | prefill (eager) | stage2 down    | FlyDSL (named)      |
+| kernel_id | trace op                       | mode            | stage          | backend            |
+|-----------|--------------------------------|-----------------|----------------|--------------------|
+| k001      | `hipGraphLaunch->moe_gemm1_0`  | decode (graph)  | stage1 gate/up | **FlyDSL** (a16w4) |
+| k002      | `hipGraphLaunch->moe_gemm2_0`  | decode (graph)  | stage2 down    | **FlyDSL** (a16w4) |
+| k003      | `pseudo_op::moe_flydsl_stage1` | prefill (eager) | stage1 gate/up | **FlyDSL** (named) |
+| k006      | `pseudo_op::moe_flydsl_stage2` | prefill (eager) | stage2 down    | FlyDSL (named)     |
 
-Two cases:
+TraceLens reports k001/k002 as "not resolved" because they are hipGraph synthetic
+ops with no launcher. They are not a separate backend: `moe_gemm1_0` is the device
+symbol emitted by `compile_mixed_moe_gemm1_a16w4`
+(`aiter/ops/flydsl/kernels/mixed_moe_gemm_2stage.py:4951`, inner `def moe_gemm1`
+at `:5300`; the `_0` suffix is FlyDSL's compiled-instance index). So all four
+kernel_ids are the same FlyDSL pair, captured in a graph (decode) or launched
+eagerly (prefill).
+
+Two scored cases:
 - `kimi-k3-prefill-flydsl-k003-k006` — `token=7211`, **exact** trace shape.
 - `kimi-k3-decode-graph-k001-k002` — `token=62`, **reconstructed** (decode M is not
   recorded for hipGraph synthetic ops; 62 is the steady-state slice concurrency).
+  Corroborated after the fact: the session's own `trace_split/` contains
+  `decode_only_steady_state_..._bs64_conc64_...`, and `M=64` is one of the 14
+  buckets dispatched in its `server.log` — so `token=62` lands on the kernel pair
+  decode actually used.
+
+Plus 12 `mbucket-*` correctness-only cases covering the other M buckets (see
+[Correctness](#correctness)).
 
 ## Exact shapes / dtypes (authoritative)
 
@@ -81,14 +96,66 @@ All three were verified against the in-image sources, not assumed:
 Compared against aiter's own dequantized `torch_moe_stage1`/`torch_moe_stage2`,
 which unpack the mxfp4 nibbles, apply the per-1x32 e8m0 group scales and
 accumulate in fp32 — a real independent implementation of the op, not a wrapper
-around the kernel under test. Gate: `cos > 0.999` and relative norm error `< 0.05`.
+around the kernel under test. Gate: `cos > 0.999` and relative norm error `< 0.05`,
+taken as the **worst of 3 runs** (stage2 reduces with atomics, so a single pass
+can be lucky).
 
-Measured on MI355X: `cos = 0.99997`, `rel_err = 0.006-0.008`. The stage2 kernel
-reduces with atomics, so results vary slightly run to run (observed cos spread
-0.999968-0.999983); the gate leaves ~6x margin over that.
+### Every M bucket is checked, at its real token count
 
-Only the *token count* is reduced for correctness (to 64). Expert count and all
-dims stay at the session values so the same FlyDSL kernel pair is dispatched.
+The FlyDSL kernel pair is chosen **per M bucket** from the tuned CSV, and the 14
+buckets the session actually dispatched (`1,2,4,…,8192`, all present in its
+`server.log`) map to **14 distinct kernel pairs**. So correctness must run at the
+same token count performance is measured at, or it validates a different kernel:
+
+```
+token=62   -> flydsl_moe1_..._t32x64x256_w3_xcd4_kw2  | flydsl_moe2_..._t32x256x128_atomic_bnt2_persist
+token=7211 -> flydsl_moe1_..._t32x128x256_w2          | flydsl_moe2_..._t32x256x256_atomic_bnt2_xcd4_persist
+```
+
+Both scored cases therefore run correctness at their real token, and 12
+`mbucket-*` cases (`correctness_only`, not scored) cover the remaining buckets.
+All 14 pass; measured worst-of-3 on MI355X, whole suite in ~30 s:
+
+| bucket | 1 | 2 | 4 | 8 | 16 | 32 | 62 | 128 | 256 | 512 | 1024 | 2048 | 4096 | 7211 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| cos | .999997 | .999997 | .999997 | .999865 | .999919 | .999965 | .999971 | .999976 | .999969 | .999962 | .999984 | .999983 | .999983 | .999925 |
+| rel_err | .0026 | .0026 | .0025 | .0165 | .0127 | .0083 | .0077 | .0070 | .0079 | .0087 | .0056 | .0058 | .0058 | .0123 |
+
+There is no token clamp. It was previously 64, which is why the scored M=8192
+kernel went unchecked. Measured: the torch reference costs ~0.4 s and ~37 GiB
+peak at token=7211, and that cost is dominated by dequantizing all 896 expert
+weights — token-independent (`token=64 -> 37.15 GiB`, `token=7211 -> 37.31 GiB`).
+`moe_config.correctness_max_token` remains as an escape hatch; if it (or a
+per-case `correctness_token`) shrinks the token, `run_correctness` re-derives the
+dispatched pair at the performance token and **fails** unless the pair is
+identical.
+
+## Gates
+
+Five checks beyond the numeric comparison, each verified to fire (negative-tested
+on MI355X):
+
+| gate | catches | where |
+|---|---|---|
+| M-bucket identity | correctness and performance landing on different kernel pairs | `run_correctness` |
+| tuned-dispatch assertion | aiter falling back to the heuristic FlyDSL branch (`fused_moe.py:2272`) instead of the tuned path the session ran — i.e. a whole run spent optimising code that never executes | `run_compile`, `run_correctness`, `run_performance` |
+| `w2_scale` layout invariant | a patch editing one branch of `shuffle_scale` but not the other; vLLM's loader reaches `w2_scale` via `e8m0_shuffle` (`is_guinterleave=False`) while this harness uses `shuffle_scale_a16w4` (`is_guinterleave=True`) — byte-identical today, and the harness cannot notice divergence on its own because it drives both sides | `_prepare` |
+| `nLane == 16` | a kernel needing a different `nLane`; vLLM hardcodes 16 at `mxfp4.py:789,792` and would never reach it | `_prepare` |
+| worst-of-3 | atomic non-determinism turning a marginal result into an intermittent pass | `run_correctness` |
+
+The performance report also records `dispatched_stage1_kernel` /
+`dispatched_stage2_kernel` per case, so the scored kernel is identifiable after
+the fact rather than inferred.
+
+### Why these matter for applying the patch to vLLM
+
+The deliverable is a patch to **`aiter` only** — vLLM is not modified.
+`rocm_aiter_ops.shuffle_weight_a16w4` / `shuffle_scale_a16w4` are pure forwarders
+into `aiter.ops.shuffle` (`vllm/_aiter_ops.py:2727,2748`), so a patched aiter is
+also what vLLM's weight loader uses and layouts stay consistent for free. The two
+places that do **not** follow automatically are the hardcoded `nLane=16` and the
+`e8m0_shuffle` entry point for `w2_scale`; those are exactly what the two
+invariant gates pin down.
 
 ## Edit surface and JIT freshness
 

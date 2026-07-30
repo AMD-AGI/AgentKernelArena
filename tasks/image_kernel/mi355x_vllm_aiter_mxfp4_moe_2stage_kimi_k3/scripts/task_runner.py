@@ -27,8 +27,11 @@ in-image sources rather than assumed:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import logging
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -93,6 +96,104 @@ def _benchmark_cuda_graph_or_events(*args, **kwargs):
 # <<< AKA-GENERATED <<<
 
 
+# --------------------------------------------------------------------------- #
+# Dispatch capture
+#
+# aiter picks the FlyDSL kernel pair per M bucket by looking the padded token
+# count up in the tuned CSV, and logs the choice at INFO:
+#
+#   [fused_moe] using 2stage (kernelName1='flydsl_moe1_...', kernelName2='...') for (...)
+#
+# Two things can go wrong silently and both are caught here:
+#   * the tuned CSV (/tmp/aiter_configs/tuned_fmoe.csv, a runtime merge artifact)
+#     is missing, so aiter falls back to the heuristic branch
+#     (aiter/fused_moe.py:2272 "no tuned FlyDSL config ... heuristic FlyDSL
+#     fallback"). The session ran entirely on the tuned path, so optimising the
+#     fallback branch would be wasted work.
+#   * correctness and performance run at token counts that land in different M
+#     buckets, so the kernel pair being scored is never the kernel pair being
+#     checked. Each of the 14 buckets dispatches a *different* tuned pair.
+# --------------------------------------------------------------------------- #
+_KN1_RE = re.compile(r"kernelName1='([^']*)'")
+_KN2_RE = re.compile(r"kernelName2='([^']*)'")
+
+
+class _LogCapture(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__()
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self.messages.append(record.getMessage())
+        except Exception:  # pragma: no cover - never break the run on logging
+            pass
+
+
+@contextlib.contextmanager
+def _capture_aiter_log():
+    """Capture aiter's logger output for the duration of the block."""
+    from aiter import logger as aiter_logger
+
+    cap = _LogCapture()
+    previous = aiter_logger.level
+    aiter_logger.addHandler(cap)
+    aiter_logger.setLevel(logging.INFO)
+    try:
+        yield cap
+    finally:
+        aiter_logger.removeHandler(cap)
+        aiter_logger.setLevel(previous)
+
+
+def _dispatch_names(inputs: dict) -> tuple[str, str, str]:
+    """Run the op once and report which FlyDSL kernel pair aiter dispatched.
+
+    ``get_2stage_cfgs`` is lru_cached, so the log line only appears on the first
+    lookup of a key; clear it so the capture is not silently empty.
+    """
+    from aiter.fused_moe import get_2stage_cfgs
+
+    get_2stage_cfgs.cache_clear()
+    with _capture_aiter_log() as cap:
+        _run(inputs)
+        _torch().cuda.synchronize()
+    blob = "\n".join(cap.messages)
+    kn1 = _KN1_RE.search(blob)
+    kn2 = _KN2_RE.search(blob)
+    return (kn1.group(1) if kn1 else "", kn2.group(1) if kn2 else "", blob)
+
+
+def _assert_tuned_dispatch(label: str, kn1: str, kn2: str, blob: str) -> None:
+    if "heuristic FlyDSL fallback" in blob:
+        raise AssertionError(
+            f"{label}: aiter fell back to the heuristic FlyDSL branch. The session "
+            f"ran entirely on the tuned path, so this run would optimise code that "
+            f"never executes in production. Check that the merged tuned config "
+            f"(normally /tmp/aiter_configs/tuned_fmoe.csv) is present."
+        )
+    if "2stage default" in blob or not (kn1 and kn2):
+        raise AssertionError(
+            f"{label}: no tuned 2-stage config was found (kernelName1={kn1!r}, "
+            f"kernelName2={kn2!r}). Expected a 'using 2stage (kernelName1=...)' "
+            f"line from aiter. Captured log:\n{blob[:2000]}"
+        )
+    if not (kn1.startswith("flydsl_moe1_") and kn2.startswith("flydsl_moe2_")):
+        raise AssertionError(
+            f"{label}: dispatched pair is not the FlyDSL a16w4 pair this task "
+            f"reproduces (kernelName1={kn1!r}, kernelName2={kn2!r})."
+        )
+
+
+def _free() -> None:
+    """Release the ~37 GiB of dequantized fp32 weights a case leaves behind.
+
+    Callers must ``del`` their own references first: deleting a parameter inside
+    this function would only drop the local name.
+    """
+    _torch().cuda.empty_cache()
+
+
 def _write_report(rows: list) -> None:
     report_dir = WORKSPACE / "build"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -129,6 +230,55 @@ def _activation(aiter):
 
 
 # --------------------------------------------------------------------------- #
+# vLLM boundary contract
+#
+# The patch this task produces is applied to `aiter`; vLLM is never modified.
+# vLLM reaches the same shuffle code, but through a *different entry point* and
+# at a different time (weight load, not per call):
+#
+#   vllm .../quantization/mxfp4.py:788-799  _setup_kernel_k3_situ
+#       w13       = rocm_aiter_ops.shuffle_weight_a16w4(w13, 16, guinterleave)
+#       w2        = rocm_aiter_ops.shuffle_weight_a16w4(w2,  16, False)
+#       w13_scale = rocm_aiter_ops.shuffle_scale_a16w4(..., num_experts, guinterleave)
+#       w2_scale  = e8m0_shuffle(...)          <-- NOT shuffle_scale_a16w4
+#
+# rocm_aiter_ops.* are pure forwarders into aiter.ops.shuffle
+# (vllm/_aiter_ops.py:2727,2748), so a patched aiter is used by vLLM's loader
+# too and layouts stay consistent -- with two exceptions that the harness cannot
+# notice on its own, because it drives both sides itself:
+#
+#   * nLane is hardcoded to 16 on the vLLM side.
+#   * w2_scale goes through e8m0_shuffle -> shuffle_scale(is_guinterleave=False),
+#     a different branch of aiter/ops/shuffle.py:338 than the
+#     shuffle_scale_a16w4 -> shuffle_scale(is_guinterleave=True) path used here.
+#     They are byte-identical for K3's (3211264, 16) w2_scale today; a patch that
+#     touches one branch and not the other would pass here and corrupt stage2 in
+#     vLLM.
+# --------------------------------------------------------------------------- #
+def _assert_vllm_shuffle_contract(torch, n_lane: int, w2_scale, w2_scale_runtime) -> None:
+    if n_lane != 16:
+        raise AssertionError(
+            f"n_lane={n_lane}, but vLLM hardcodes 16 at "
+            f"vllm/model_executor/layers/quantization/mxfp4.py:789,792. A kernel "
+            f"that needs a different nLane cannot be reached from vLLM."
+        )
+    from aiter.utility.fp4_utils import e8m0_shuffle
+
+    vllm_layout = e8m0_shuffle(w2_scale)
+    if vllm_layout.shape != w2_scale_runtime.shape or not torch.equal(
+        vllm_layout.reshape(-1), w2_scale_runtime.reshape(-1)
+    ):
+        raise AssertionError(
+            "w2_scale layout divergence: shuffle_scale_a16w4(w2_scale, experts, "
+            "False) no longer equals e8m0_shuffle(w2_scale). vLLM's loader uses "
+            "e8m0_shuffle (mxfp4.py:799), so this patch would pass correctness "
+            "here and produce a wrong w2_scale layout in vLLM. Keep the "
+            "is_guinterleave=False and is_guinterleave=True branches of "
+            "aiter/ops/shuffle.py:338 in agreement for this shape."
+        )
+
+
+# --------------------------------------------------------------------------- #
 # Inputs
 # --------------------------------------------------------------------------- #
 def _prepare(case: dict, correctness: bool = False) -> dict:
@@ -144,10 +294,20 @@ def _prepare(case: dict, correctness: bool = False) -> dict:
     ):
         raise RuntimeError(f"case {case['id']} is not the K3 a16w4 g1u1 contract: {p}")
 
-    # The float64-free torch reference dequantizes every expert weight, so trim the
-    # token count for correctness; expert/dim geometry stays at the session values
-    # so the same FlyDSL kernel pair is dispatched.
-    token = min(p["token"], MOE_CONFIG["correctness_max_token"]) if correctness else p["token"]
+    # Correctness runs at the case's own token by default, because the FlyDSL
+    # kernel pair is selected per M bucket: shrinking the token count for
+    # correctness would check a different kernel than performance measures. The
+    # torch reference is dominated by dequantizing all 896 expert weights, which
+    # is token-independent (~0.4 s / ~37 GiB at token=7211 on MI355X), so there is
+    # nothing to save by shrinking it. ``correctness_max_token`` stays as an
+    # escape hatch; when it lowers the token, run_correctness proves the bucket
+    # is unchanged rather than trusting it.
+    token = p["token"]
+    if correctness:
+        token = int(case.get("correctness_token", token))
+        cap = MOE_CONFIG.get("correctness_max_token")
+        if cap:
+            token = min(token, int(cap))
     experts, model_dim, inter_dim, topk = (
         p["experts"], p["model_dim"], p["inter_dim"], p["topk"]
     )
@@ -168,10 +328,12 @@ def _prepare(case: dict, correctness: bool = False) -> dict:
     w2_quant, w2_scale = torch_quant(w2, quant_dtype=dtypes.fp4x2)
 
     # gate_up=False keeps the GGUU (SEPARATED) layout the SiTU a16w4 kernel wants.
-    w1_runtime = shuffle_weight_a16w4(w1_quant, 16, False)
-    w2_runtime = shuffle_weight_a16w4(w2_quant, 16, False)
+    n_lane = int(MOE_CONFIG.get("n_lane", 16))
+    w1_runtime = shuffle_weight_a16w4(w1_quant, n_lane, False)
+    w2_runtime = shuffle_weight_a16w4(w2_quant, n_lane, False)
     w1_scale_runtime = shuffle_scale_a16w4(w1_scale, experts, False)
     w2_scale_runtime = shuffle_scale_a16w4(w2_scale, experts, False)
+    _assert_vllm_shuffle_contract(torch, n_lane, w2_scale, w2_scale_runtime)
 
     return {
         "cfg": case, "params": p, "token": token, "topk": topk,
@@ -258,40 +420,88 @@ def run_compile() -> None:
     inputs = _prepare(CASES[0], correctness=True)
     out = _run(inputs)
     _torch().cuda.synchronize()
+    kn1, kn2, blob = _dispatch_names(inputs)
+    _assert_tuned_dispatch("compile", kn1, kn2, blob)
     print(f"{OPERATOR} compile smoke: PASS  out={tuple(out.shape)}")
+    print(f"  tuned dispatch OK  stage1={kn1}\n                     stage2={kn2}")
+
+
+# Correctness is repeated because stage2 reduces with atomics, so the result is
+# not bit-reproducible (observed cosine spread ~1.5e-5). A single pass can be
+# lucky; gate on the worst of N.
+_CORRECTNESS_REPEATS = 3
 
 
 def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
         inputs = _prepare(case, correctness=True)
-        got = _run(inputs)
-        torch.cuda.synchronize()
-        expected = _reference(inputs)
-
-        assert torch.isfinite(got).all(), (case["id"], "non-finite output")
-        assert tuple(got.shape) == tuple(expected.shape), (
-            case["id"], tuple(got.shape), tuple(expected.shape)
-        )
-        g, e = got.float().flatten(), expected.float().flatten()
-        cos = torch.nn.functional.cosine_similarity(g, e, dim=0).item()
-        rel_norm = ((g - e).norm() / e.norm().clamp_min(1e-8)).item()
         tol = case["params"]
-        assert cos > tol.get("min_cosine", 0.97), (
-            case["id"], f"cosine {cos:.6f} vs torch reference too low"
+        token_used = inputs["token"]
+
+        kn1, kn2, blob = _dispatch_names(inputs)
+        _assert_tuned_dispatch(case["id"], kn1, kn2, blob)
+
+        # If someone shrinks the correctness token, prove the M bucket -- and so
+        # the kernel pair -- is unchanged instead of assuming it.
+        perf_token = case["params"]["token"]
+        if not case.get("correctness_only") and token_used != perf_token:
+            perf_inputs = _prepare(case, correctness=False)
+            p_kn1, p_kn2, p_blob = _dispatch_names(perf_inputs)
+            _assert_tuned_dispatch(f"{case['id']} (perf token)", p_kn1, p_kn2, p_blob)
+            del perf_inputs
+            _free()
+            if (kn1, kn2) != (p_kn1, p_kn2):
+                raise AssertionError(
+                    f"{case['id']}: correctness runs at token={token_used} which "
+                    f"dispatches ({kn1}, {kn2}), but performance is measured at "
+                    f"token={perf_token} which dispatches ({p_kn1}, {p_kn2}). The "
+                    f"scored kernel would never be correctness-checked. Set "
+                    f"correctness_token to the performance token, or add an "
+                    f"mbucket-* case for that bucket."
+                )
+
+        expected = _reference(inputs)
+        worst_cos, worst_err = 1.0, 0.0
+        for _ in range(_CORRECTNESS_REPEATS):
+            got = _run(inputs)
+            torch.cuda.synchronize()
+            assert torch.isfinite(got).all(), (case["id"], "non-finite output")
+            assert tuple(got.shape) == tuple(expected.shape), (
+                case["id"], tuple(got.shape), tuple(expected.shape)
+            )
+            g, e = got.float().flatten(), expected.float().flatten()
+            worst_cos = min(
+                worst_cos, torch.nn.functional.cosine_similarity(g, e, dim=0).item()
+            )
+            worst_err = max(worst_err, ((g - e).norm() / e.norm().clamp_min(1e-8)).item())
+
+        assert worst_cos > tol.get("min_cosine", 0.97), (
+            case["id"], f"worst-of-{_CORRECTNESS_REPEATS} cosine {worst_cos:.6f} "
+            f"vs torch reference too low"
         )
-        assert rel_norm < tol.get("max_rel_norm_err", 0.25), (
-            case["id"], f"relative norm error {rel_norm:.4f} too high"
+        assert worst_err < tol.get("max_rel_norm_err", 0.25), (
+            case["id"], f"worst-of-{_CORRECTNESS_REPEATS} relative norm error "
+            f"{worst_err:.4f} too high"
         )
-        print("correctness PASS", case["id"], f"cos={cos:.6f} rel_err={rel_norm:.4f}")
+        print(f"correctness PASS {case['id']:34s} token={token_used:<6d} "
+              f"cos={worst_cos:.6f} rel_err={worst_err:.4f}")
+        del inputs, expected, got, g, e
+        _free()
 
 
 def run_performance() -> None:
     rows = []
     for case in CASES:
+        if case.get("correctness_only"):
+            continue
         inputs = _prepare(case, correctness=False)
         _run(inputs)
         _torch().cuda.synchronize()
+        # The scored path must be the tuned FlyDSL path the session ran, not the
+        # heuristic fallback; record which pair was actually timed.
+        kn1, kn2, blob = _dispatch_names(inputs)
+        _assert_tuned_dispatch(case["id"], kn1, kn2, blob)
         bench = case.get("benchmark", {})
         exec_ms, meta = _benchmark_cuda_graph_or_events(
             lambda: _run(inputs),
@@ -306,6 +516,8 @@ def run_performance() -> None:
             "session_breakdown_id": case.get("session_breakdown_id"),
             "kernel_ids": case.get("kernel_ids"),
             "gpu_pct": case.get("gpu_pct"),
+            "dispatched_stage1_kernel": kn1,
+            "dispatched_stage2_kernel": kn2,
         }
         metadata.update({k: v for k, v in meta.items() if k.startswith("benchmark_")})
         rows.append({
@@ -319,6 +531,9 @@ def run_performance() -> None:
         })
         print(case["id"], f"{exec_ms:.6f} ms", meta.get("benchmark_method"),
               meta.get("benchmark_fallback_reason", ""))
+        print(f"  timed stage1={kn1}\n        stage2={kn2}")
+        del inputs
+        _free()
     _write_report(rows)
 
 
