@@ -20,6 +20,7 @@ from pathlib import Path
 
 WORKSPACE = Path(__file__).resolve().parents[1]
 SPEC = json.loads((WORKSPACE / "session_cases.json").read_text())
+OPERATOR = SPEC["operator"]
 CASES = SPEC["cases"]
 
 

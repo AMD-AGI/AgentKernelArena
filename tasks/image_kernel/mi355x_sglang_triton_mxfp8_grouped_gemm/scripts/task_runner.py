@@ -25,6 +25,7 @@ from pathlib import Path
 
 WORKSPACE = Path(__file__).resolve().parents[1]
 SPEC = json.loads((WORKSPACE / "session_cases.json").read_text())
+OPERATOR = SPEC["operator"]
 CASES = SPEC["cases"]
 BLOCK_M = 64
 CORRECTNESS_MAX_TOKENS = 64  # cap T so the O(T*top_k) python reference stays cheap
