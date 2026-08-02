@@ -1,5 +1,6 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 import argparse
+import json
 import logging
 import os
 import re
@@ -508,6 +509,19 @@ def run_task(
                 baseline_cases,
                 logger,
             )
+            if agent == AgentType.FORGE:
+                forge_status_path = (
+                    workspace_path
+                    / "forge_experiments"
+                    / "arena_forge_status.json"
+                )
+                try:
+                    forge_status = json.loads(forge_status_path.read_text())
+                except (OSError, json.JSONDecodeError) as error:
+                    logger.warning("Forge status is unavailable: %s", error)
+                else:
+                    if isinstance(forge_status, dict):
+                        evaluation_results["forge_result"] = forge_status
             write_task_result(
                 workspace_path,
                 evaluation_results,

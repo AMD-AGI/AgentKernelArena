@@ -4,12 +4,24 @@ repo_subdir: aiter
 repository_language: triton
 source_file_path:
 - ops/triton/_triton_kernels/attention/unified_attention.py
-- ops/triton/attention/unified_attention.py
 target_kernel_functions:
 - kernel_unified_attention_2d
 - kernel_unified_attention_3d
 - reduce_segments
-- unified_attention
+knowledge_base:
+  logical_operator: unified_attention_with_output
+  kernel_kind: triton
+  source_owner: aiter
+  workload:
+    source: session_cases.json
+    primary_case: minimax-k004
+    selector_schema:
+      name: hyperloom-v1
+      fields:
+        q_tokens: QTOKENS
+        num_q_heads: QHEADS
+        num_kv_heads: KVHEADS
+        head_size: HEADSIZE
 compile_command:
 - python3 scripts/task_runner.py compile
 correctness_command:

@@ -9,10 +9,9 @@
 model: claude-opus-4-8
 
 # Backend expertise (fellow) is INFERRED by the launcher, per task family:
-#   * repository / image_kernel tasks -> from `repository_language`
-#       hip -> hip-fellow, triton -> triton-fellow
-#       (the source repo like aiter/sglang is NOT the fellow: the aiter fellow
-#        only integrates prebuilt ops, so an aiter-repo HIP kernel uses hip)
+#   * repository / image_kernel tasks -> curated `kernel_kind` first, then
+#     `repository_language`; this keeps HIP source syntax separate from CK/FlyDSL
+#     implementation semantics.
 #   * snippet "<src>2<dst>" tasks     -> the target side picks the fellow
 #       triton2triton / instruction2triton -> triton-fellow
 #       hip2hip / cuda2hip / torch2hip      -> hip-fellow
@@ -40,7 +39,10 @@ timeout_seconds: 7200
 # blocked by Claude Code's security policy for root.
 permission_mode: acceptEdits
 
-# NOTE: no shapes_json here on purpose. The generic adapter ignores --shape (the
-# task's own pytest owns its shapes), so passing kernel-specific n= values adds
-# no value and isn't portable across tasks. The forge-loop CLI defaults to "{}".
-# Only set shapes_json if you use a per-kernel driver that parses --shape.
+# compatibility preserves normal Arena evaluation without requiring remote KB
+# publication. Set mode to producer for a publication-required long run; producer
+# tasks must declare the Forge KB producer contract under knowledge_base.
+knowledge_base:
+  mode: compatibility
+  # Reserved before Arena's hard timeout for final result and KB publication.
+  finalization_margin_seconds: 900

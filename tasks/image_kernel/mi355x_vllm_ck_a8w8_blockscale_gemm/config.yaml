@@ -6,6 +6,12 @@ source_file_path:
 - csrc/ck_gemm_a8w8_blockscale/gemm_a8w8_blockscale.cu
 target_kernel_functions:
 - gemm_a8w8_blockscale
+knowledge_base:
+  kernel_kind: aiter_ck
+  source_owner: aiter
+  workload:
+    source: session_cases.json
+    primary_case: deepseek-flash-k003
 compile_command:
 - python3 scripts/task_runner.py compile
 correctness_command:

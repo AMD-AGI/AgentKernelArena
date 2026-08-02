@@ -366,6 +366,9 @@ def write_task_result(
         'speedup_calculation_error_message': speedup_error,
         'optimization_summary': f'Optimized by {agent_name} using centralized evaluator'
     }
+    forge_result = evaluation_results.get('forge_result')
+    if isinstance(forge_result, dict):
+        task_result['forge_result'] = forge_result
     
     result_file = workspace / 'task_result.yaml'
     with open(result_file, 'w') as f:

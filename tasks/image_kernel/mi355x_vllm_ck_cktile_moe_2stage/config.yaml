@@ -7,6 +7,12 @@ source_file_path:
 target_kernel_functions:
 - cktile_moe_gemm1
 - cktile_moe_gemm2
+knowledge_base:
+  kernel_kind: aiter_ck
+  source_owner: aiter
+  workload:
+    source: session_cases.json
+    primary_case: gptoss-k034-k047
 compile_command:
 - python3 scripts/task_runner.py compile
 correctness_command:

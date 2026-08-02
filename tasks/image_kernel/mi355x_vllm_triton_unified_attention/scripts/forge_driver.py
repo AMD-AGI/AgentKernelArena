@@ -30,7 +30,8 @@ only stdout — see kernel_agents.mcp_server.tools.{test,bench} and
 kernel_agents.loop.task_preparer.DRIVER_CONTRACT_SPEC):
 
   * Correctness  ``--shape <s> --mode <smoke|stability|determinism|full>``
-        runs the task's own ``run_correctness()`` (per-operator reference +
+        selects the declared ``CASE_ID`` and runs the task's own
+        ``run_correctness()`` (per-operator reference +
         tolerance) and prints ``allclose: True/False``. We deliberately do NOT
         print an ``SNR: <db> dB`` line: these quantized / attention ops sit below
         forge's default 30 dB SNR gate, so emitting SNR would fail even the
@@ -38,10 +39,11 @@ kernel_agents.loop.task_preparer.DRIVER_CONTRACT_SPEC):
         SNR preferred, allclose otherwise).
 
   * Benchmark    ``--shape <s> --warmup <n> --iters <n> --bench-mode``
-        runs the task's own ``run_performance()`` (graph-timed) and then, from
+        selects the declared ``CASE_ID``, runs the task's own
+        ``run_performance()`` (graph-timed), and then, from
         the ``build/performance_report.json`` it wrote, prints
-        ``case_ms: <case_id> <ms>`` for every case plus a single ``mean_ms: <ms>``
-        aggregate (arithmetic mean across cases, matching Arena's evaluator). The
+        ``case_ms: <case_id> <ms>`` for the selected case plus a single
+        ``mean_ms: <ms>`` value. The
         real CUDA/HIP-graph replays satisfy forge-loop's graph probe.
 
   * Profiling    ``--profile-run [--profile-case <case_id>]``
@@ -81,6 +83,23 @@ def _import_task_runner():
 
 def _report_path(tr) -> Path:
     return Path(tr.WORKSPACE) / "build" / "performance_report.json"
+
+
+def _select_shape_case(tr, shape: str) -> str:
+    """Restrict the task runner to the exact CASE_ID in a Forge selector."""
+    if not shape or shape == "default":
+        raise ValueError("unified-attention Forge runs require a CASE_ID selector")
+    selector: dict[str, str] = {}
+    for item in shape.split(","):
+        key, separator, value = item.partition("=")
+        if separator and key.strip():
+            selector[key.strip()] = value.strip()
+    case_id = selector.get("CASE_ID", "")
+    cases = [case for case in tr.CASES if str(case.get("id") or "") == case_id]
+    if len(cases) != 1:
+        raise ValueError(f"unknown or ambiguous CASE_ID selector: {case_id!r}")
+    tr.CASES = cases
+    return case_id
 
 
 def _run_correctness(tr) -> int:
@@ -159,6 +178,8 @@ def main() -> int:
 
     tr, _scripts_dir = _import_task_runner()
     tr._configure()  # arch env + make the seeded (agent-editable) repo importable
+    if not args.profile_run:
+        _select_shape_case(tr, args.shape)
 
     import torch
     if not torch.cuda.is_available():
