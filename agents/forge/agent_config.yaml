@@ -38,6 +38,3 @@ timeout_seconds: 7200
 # Claude permission mode. acceptEdits works under root; bypassPermissions is
 # blocked by Claude Code's security policy for root.
 permission_mode: acceptEdits
-
-# Reserved before Arena's hard timeout so forge-loop can persist its final state.
-finalization_margin_seconds: 900

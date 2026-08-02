@@ -42,7 +42,6 @@ def _command(tmp_path: Path, **overrides) -> list[str]:
         "agent_config": {
             "max_iters": 1000,
             "timeout_seconds": 7200,
-            "finalization_margin_seconds": 900,
         },
         "gpu_arch": "gfx950",
         "fellow": "triton-fellow",
@@ -236,19 +235,9 @@ def test_publication_status_is_diagnostic(payload, published, state):
     assert "required" not in status
 
 
-def test_forge_budget_reserves_finalization_margin():
-    assert _forge_max_hours(
-        {
-            "timeout_seconds": 7200,
-            "finalization_margin_seconds": 900,
-        }
-    ) == 1.75
-    assert _forge_max_hours(
-        {
-            "timeout_seconds": 600,
-            "finalization_margin_seconds": 900,
-        }
-    ) == 1.0
+def test_forge_budget_reserves_internal_shutdown_margin():
+    assert _forge_max_hours({"timeout_seconds": 7200}) == 1.75
+    assert _forge_max_hours({"timeout_seconds": 600}) == 1.0
 
 
 @pytest.mark.parametrize(

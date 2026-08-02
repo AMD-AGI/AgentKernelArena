@@ -41,6 +41,7 @@ from agents import register_agent
 
 _FORGE_RESULT_SENTINEL = "__FORGE_RESULT__"
 _KB_STATUS_FILE = "arena_forge_status.json"
+_FORGE_SHUTDOWN_MARGIN_SECONDS = 900
 _KERNEL_KIND_BACKENDS = {
     "aiter": "aiter",
     "ck": "ck",
@@ -174,12 +175,12 @@ def _forge_max_hours(agent_config: dict[str, Any]) -> float:
     stop at ~8h). The default timeout (29700s) yields ~8h.
     """
     timeout_s = float(agent_config.get("timeout_seconds", 3600))
-    margin_s = float(agent_config.get("finalization_margin_seconds", 900))
-    if margin_s < 0:
-        raise ValueError("finalization_margin_seconds cannot be negative")
     # forge-loop enforces a one-hour minimum. The Arena hard timeout remains the
     # final authority for shorter smoke runs.
-    loop_seconds = max(3600.0, timeout_s - margin_s)
+    loop_seconds = max(
+        3600.0,
+        timeout_s - _FORGE_SHUTDOWN_MARGIN_SECONDS,
+    )
     return round(loop_seconds / 3600.0, 3)
 
 
