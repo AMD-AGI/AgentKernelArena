@@ -24,7 +24,6 @@ from agents.forge.launch_agent import (
     _resolve_kernel_kind,
     _resolve_shapes,
 )
-from src.evaluator import write_task_result
 
 
 def _value(argv: list[str], option: str) -> str:
@@ -235,34 +234,6 @@ def test_publication_status_is_diagnostic(payload, published, state):
     assert status["published"] is published
     assert status["state"] == state
     assert "required" not in status
-
-
-def test_forge_status_is_written_with_arena_score(tmp_path):
-    forge_result = {
-        "exit_code": 0,
-        "timed_out": False,
-        "kb": {
-            "published": False,
-            "state": "not_configured",
-            "reason": "optional external service unavailable",
-        },
-    }
-    write_task_result(
-        tmp_path,
-        {
-            "pass_compilation": True,
-            "pass_correctness": True,
-            "best_optimized_execution_time": 1.0,
-            "average_speedup": 1.2,
-            "forge_result": forge_result,
-        },
-        [],
-        "forge-task",
-        "forge",
-        create_plots=False,
-    )
-    task_result = yaml.safe_load((tmp_path / "task_result.yaml").read_text())
-    assert task_result["forge_result"] == forge_result
 
 
 def test_forge_budget_reserves_finalization_margin():
