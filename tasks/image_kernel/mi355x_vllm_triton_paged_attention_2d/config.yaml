@@ -8,7 +8,7 @@ source_file_path:
 - chunked_prefill_paged_decode.py
 target_kernel_functions:
 - kernel_paged_attention_2d
-knowledge_base:
+kernel_identity:
   logical_operator: unified_attention_with_output
   kernel_kind: triton
   source_owner: vllm

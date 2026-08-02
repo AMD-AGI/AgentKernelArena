@@ -7,7 +7,7 @@ source_file_path:
 target_kernel_functions:
   - _mxfp8_linear_kernel
   - _run_mxfp8_linear_kernel
-knowledge_base:
+kernel_identity:
   logical_operator: mxfp8_linear
   kernel_kind: triton
   source_owner: sglang

@@ -7,7 +7,7 @@ source_file_path:
 target_kernel_functions:
 - ck_moe_stage1
 - ck_moe_stage2
-knowledge_base:
+kernel_identity:
   logical_operator: ck_moe_2stage
   kernel_kind: ck
   source_owner: aiter

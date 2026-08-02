@@ -7,7 +7,7 @@ source_file_path:
 target_kernel_functions:
   - _mxfp8_grouped_gemm_kernel
   - _grouped_gemm_mxfp8
-knowledge_base:
+kernel_identity:
   logical_operator: mxfp8_grouped_gemm
   kernel_kind: triton
   source_owner: sglang

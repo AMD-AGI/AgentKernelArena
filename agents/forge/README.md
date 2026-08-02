@@ -1,39 +1,15 @@
 # Forge agent
 
-## Knowledge-base modes
+## Kernel identity metadata
 
-The run config selects producer intent without environment variables:
+Arena runs Forge and scores the resulting kernel. Optional external knowledge
+services are owned by KernelForge; their availability or publication status does
+not decide whether Arena writes a score.
 
-```yaml
-agent:
-  template: forge
-  knowledge_base:
-    mode: producer
-    finalization_margin_seconds: 900
-```
-
-These values overlay the defaults in `agent_config.yaml`. The available modes
-are:
-
-- `compatibility`: normal non-KB Arena optimization and scoring. Forge KB
-  producer metadata and gbrain credentials are optional.
-- `producer`: one publication-required Forge run. Preflight requires inherited
-  `GBRAIN_BASE_URL` and `GBRAIN_TOKEN`, a `kernel-agents` executable on `PATH`
-  that exposes the Forge KB producer contract, and complete task metadata. A
-  nonzero Forge exit or a result that does not confirm publication of the latest
-  local best fails the task before Arena writes a score.
-
-Producer success uses KernelForge's commit-level publication proof:
-`remote_publication.published_commit` must equal `best_commit` and
-`pending_commit` must be empty. The mirrored
-`kb_experience.publication` object is accepted when the top-level object is
-absent. A later summary refresh returning `not_better_than_kb` does not invalidate
-an earlier durable publication of that same best commit.
-
-Producer task metadata uses this schema:
+Tasks may provide metadata that Arena forwards to `forge-loop`:
 
 ```yaml
-knowledge_base:
+kernel_identity:
   logical_operator: unified_attention_with_output
   kernel_kind: triton
   source_owner: aiter
@@ -47,14 +23,15 @@ knowledge_base:
         head_size: HEADSIZE
 ```
 
-`knowledge_base.kernel_kind` is Arena-internal producer metadata. Arena uses it
-to select and validate the KernelForge fellow/backend before launch; it is not
-passed as a `--kernel-kind` argument and is not part of KernelForge's
+When `kernel_identity` is absent, Arena omits its operator and workload flags and
+lets forge-loop use its normal inference/defaults. When present, each supplied
+field is forwarded. `kernel_kind` selects the fellow used for the run; it is not
+passed as a `--kernel-kind` CLI argument and is not part of KernelForge's
 implementation signature.
 
 The source JSON must contain a non-empty `cases` list. Each case must have a
-unique `id` and a non-empty scalar `params` mapping. Producer tasks using session
-cases declare a `hyperloom-v1` selector schema that maps only dimensions
+unique `id` and a non-empty scalar `params` mapping. Tasks using session cases
+may declare a `hyperloom-v1` selector schema that maps dimensions
 Hyperloom can deterministically emit to uppercase selector keys without
 underscores. Every original parameter remains preserved in
 `session_cases.json`, while only mapped flat selectors are passed through
@@ -65,7 +42,7 @@ underscores.
 Inline workloads are also supported:
 
 ```yaml
-knowledge_base:
+kernel_identity:
   logical_operator: rms_norm
   kernel_kind: triton
   source_owner: vllm
@@ -83,13 +60,13 @@ dependencies but must not edit files absent from that allowlist.
 `target_kernel_functions` remains the concrete symbol list; it is not a
 substitute for `logical_operator`. Keep it focused on useful edit/profile hints
 defined in the editable sources. Reuse identity is based on KernelForge's
-source-derived pristine implementation signature, so producer task hints do not
+source-derived pristine implementation signature, so task hints do not
 need to reproduce a consumer caller's target list exactly.
 
-## MI355X producer metadata
+## MI355X metadata
 
 Every `tasks/image_kernel/mi355x_*` task declares an explicit
-`knowledge_base.logical_operator`, canonical `kernel_kind`, source owner, and
+`kernel_identity.logical_operator`, canonical `kernel_kind`, source owner, and
 structured workload. CK implementations use `kernel_kind: ck`; AITER ownership
 is represented independently by `source_owner: aiter`.
 
@@ -102,5 +79,5 @@ therefore represent the combined operation rather than an individual stage.
 `unified_attention_with_output`, while their source-owner component keeps the
 AITER and vLLM implementations on separate Kernel pages.
 
-TileLang metadata uses `kernel_kind: tilelang`. Running it in producer mode also
-requires a matching KernelForge fellow/backend implementation.
+TileLang metadata uses `kernel_kind: tilelang`; running it requires a matching
+KernelForge fellow/backend implementation.

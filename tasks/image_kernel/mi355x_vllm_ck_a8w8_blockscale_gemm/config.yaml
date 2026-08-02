@@ -6,7 +6,7 @@ source_file_path:
 - csrc/ck_gemm_a8w8_blockscale/gemm_a8w8_blockscale.cu
 target_kernel_functions:
 - gemm_a8w8_blockscale
-knowledge_base:
+kernel_identity:
   logical_operator: gemm_a8w8_blockscale_ck
   kernel_kind: ck
   source_owner: aiter

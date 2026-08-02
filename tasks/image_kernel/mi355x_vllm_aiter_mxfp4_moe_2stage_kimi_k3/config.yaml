@@ -18,7 +18,7 @@ target_kernel_functions:
 - fused_moe
 - _flydsl_stage1_wrapper
 - _flydsl_stage2_wrapper
-knowledge_base:
+kernel_identity:
   logical_operator: aiter_mxfp4_moe_2stage
   kernel_kind: flydsl
   source_owner: aiter

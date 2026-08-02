@@ -7,7 +7,7 @@ source_file_path:
 target_kernel_functions:
 - cktile_moe_gemm1
 - cktile_moe_gemm2
-knowledge_base:
+kernel_identity:
   logical_operator: cktile_moe_2stage
   kernel_kind: ck
   source_owner: aiter

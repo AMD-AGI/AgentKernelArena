@@ -39,10 +39,5 @@ timeout_seconds: 7200
 # blocked by Claude Code's security policy for root.
 permission_mode: acceptEdits
 
-# compatibility preserves normal Arena evaluation without requiring remote KB
-# publication. Set mode to producer for a publication-required long run; producer
-# tasks must declare the Forge KB producer contract under knowledge_base.
-knowledge_base:
-  mode: compatibility
-  # Reserved before Arena's hard timeout for final result and KB publication.
-  finalization_margin_seconds: 900
+# Reserved before Arena's hard timeout so forge-loop can persist its final state.
+finalization_margin_seconds: 900

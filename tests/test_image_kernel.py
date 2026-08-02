@@ -21,10 +21,10 @@ LOG = logging.getLogger("test_image_kernel")
 
 
 # --------------------------------------------------------------------------
-# 0. MI355X image_kernel tasks are strict KB producers. Their configs must
-#    declare the complete, explicit identity and workload contract.
+# 0. MI355X image_kernel tasks declare the complete, explicit identity and
+#    workload contract forwarded to forge-loop.
 # --------------------------------------------------------------------------
-def test_mi355x_image_kernel_configs_require_producer_metadata():
+def test_mi355x_image_kernel_configs_require_kernel_identity():
     tasks_root = Path(__file__).resolve().parents[1] / "tasks" / "image_kernel"
     config_paths = sorted(tasks_root.glob("mi355x_*/config.yaml"))
     assert config_paths, "no MI355X image_kernel task configs found"
@@ -45,19 +45,19 @@ def test_mi355x_image_kernel_configs_require_producer_metadata():
             ):
                 errors.append(f"{task_name}: {field} must be a non-empty string list")
 
-        knowledge_base = config.get("knowledge_base")
-        if not isinstance(knowledge_base, dict):
-            errors.append(f"{task_name}: knowledge_base must be a mapping")
+        kernel_identity = config.get("kernel_identity")
+        if not isinstance(kernel_identity, dict):
+            errors.append(f"{task_name}: kernel_identity must be a mapping")
             continue
 
         for field in ("logical_operator", "kernel_kind", "source_owner"):
-            value = knowledge_base.get(field)
+            value = kernel_identity.get(field)
             if not isinstance(value, str) or not value.strip():
-                errors.append(f"{task_name}: knowledge_base.{field} is required")
+                errors.append(f"{task_name}: kernel_identity.{field} is required")
 
-        workload = knowledge_base.get("workload")
+        workload = kernel_identity.get("workload")
         if not isinstance(workload, dict) or not workload:
-            errors.append(f"{task_name}: knowledge_base.workload is required")
+            errors.append(f"{task_name}: kernel_identity.workload is required")
             continue
         has_source = isinstance(workload.get("source"), str) and bool(
             workload["source"].strip()

@@ -6,7 +6,7 @@ source_file_path:
 - tilelang.py
 target_kernel_functions:
 - mhc_fused_post_pre_tilelang
-knowledge_base:
+kernel_identity:
   logical_operator: mhc_fused_post_pre
   kernel_kind: tilelang
   source_owner: vllm

@@ -17,7 +17,7 @@ source_file_path:
 target_kernel_functions:
 - fused_recurrent_kda_packed_decode
 - chunk_kda_with_fused_gate
-knowledge_base:
+kernel_identity:
   logical_operator: kda_linear_attn
   kernel_kind: triton
   source_owner: vllm

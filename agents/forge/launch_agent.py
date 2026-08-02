@@ -41,16 +41,6 @@ from agents import register_agent
 
 _FORGE_RESULT_SENTINEL = "__FORGE_RESULT__"
 _KB_STATUS_FILE = "arena_forge_status.json"
-_PRODUCER_REQUIRED_FLAGS = {
-    "--framework",
-    "--operator-name",
-    "--result-json",
-    "--shapes-json",
-    "--source-files",
-    "--target-functions",
-    "--workload-key",
-}
-_SOURCE_OWNERS = {"aiter", "sglang", "standalone", "vllm"}
 _KERNEL_KIND_BACKENDS = {
     "aiter": "aiter",
     "ck": "ck",
@@ -60,40 +50,6 @@ _KERNEL_KIND_BACKENDS = {
     "torch": "triton",
     "triton": "triton",
 }
-
-
-def _kb_mode(agent_config: dict[str, Any]) -> str:
-    """Return the declarative KB mode; ordinary evaluation is the default."""
-    kb_config = agent_config.get("knowledge_base") or {}
-    if not isinstance(kb_config, dict):
-        raise ValueError("agent knowledge_base configuration must be a mapping")
-    mode = str(kb_config.get("mode", "compatibility")).strip().lower()
-    if mode not in {"compatibility", "producer"}:
-        raise ValueError(
-            "agent knowledge_base.mode must be 'compatibility' or 'producer'"
-        )
-    return mode
-
-
-def _apply_run_kb_config(
-    agent_config: dict[str, Any],
-    eval_config: dict[str, Any],
-) -> dict[str, Any]:
-    """Overlay per-run KB intent without mutating the shared agent config."""
-    run_agent = eval_config.get("agent") or {}
-    if not isinstance(run_agent, dict):
-        raise ValueError("run agent configuration must be a mapping")
-    run_kb = run_agent.get("knowledge_base")
-    if run_kb is None:
-        return agent_config
-    if not isinstance(run_kb, dict):
-        raise ValueError("run agent.knowledge_base configuration must be a mapping")
-    merged = dict(agent_config)
-    base_kb = agent_config.get("knowledge_base") or {}
-    if not isinstance(base_kb, dict):
-        raise ValueError("agent knowledge_base configuration must be a mapping")
-    merged["knowledge_base"] = {**base_kb, **run_kb}
-    return merged
 
 
 def _normalize_gfx_arch(arch: str) -> str:
@@ -218,21 +174,11 @@ def _forge_max_hours(agent_config: dict[str, Any]) -> float:
     stop at ~8h). The default timeout (29700s) yields ~8h.
     """
     timeout_s = float(agent_config.get("timeout_seconds", 3600))
-    kb_config = agent_config.get("knowledge_base") or {}
-    margin_s = float(kb_config.get("finalization_margin_seconds", 900))
+    margin_s = float(agent_config.get("finalization_margin_seconds", 900))
     if margin_s < 0:
-        raise ValueError("knowledge_base.finalization_margin_seconds cannot be negative")
-    if (
-        _kb_mode(agent_config) == "producer"
-        and timeout_s - margin_s < 3600
-    ):
-        raise ValueError(
-            "Producer timeout_seconds must leave at least one hour for forge-loop "
-            f"after the KB finalization margin ({timeout_s:g}s total, "
-            f"{margin_s:g}s margin)"
-        )
-    # forge-loop enforces a one-hour minimum. Producer mode rejects an impossible
-    # budget above; compatibility smoke runs retain the historical outer timeout.
+        raise ValueError("finalization_margin_seconds cannot be negative")
+    # forge-loop enforces a one-hour minimum. The Arena hard timeout remains the
+    # final authority for shorter smoke runs.
     loop_seconds = max(3600.0, timeout_s - margin_s)
     return round(loop_seconds / 3600.0, 3)
 
@@ -428,11 +374,11 @@ def _infer_backend(task_config: dict[str, Any]) -> str:
     task_type = str(task_config.get("task_type") or "").lower().strip()
 
     if task_type in ("image_kernel", "repository"):
-        kb_config = task_config.get("knowledge_base") or {}
-        if not isinstance(kb_config, dict):
-            kb_config = {}
+        identity_config = task_config.get("kernel_identity") or {}
+        if not isinstance(identity_config, dict):
+            identity_config = {}
         kernel_kind = str(
-            kb_config.get("kernel_kind")
+            identity_config.get("kernel_kind")
             or task_config.get("kernel_kind")
             or ""
         ).lower().strip().replace("-", "_")
@@ -467,31 +413,19 @@ def _resolve_fellow(task_config: dict[str, Any], agent_config: dict[str, Any]) -
     return f"{_infer_backend(task_config)}-fellow"
 
 
-def _task_kb_config(task_config: dict[str, Any]) -> dict[str, Any]:
-    """Return the task's canonical KB declaration."""
-    value = task_config.get("knowledge_base") or {}
+def _task_kernel_identity(task_config: dict[str, Any]) -> dict[str, Any]:
+    """Return optional task metadata forwarded to forge-loop."""
+    value = task_config.get("kernel_identity") or {}
     if not isinstance(value, dict):
-        raise ValueError("task knowledge_base configuration must be a mapping")
+        raise ValueError("task kernel_identity configuration must be a mapping")
     return value
 
 
-def _resolve_kernel_kind(
-    task_config: dict[str, Any],
-    backend: str,
-    *,
-    producer: bool,
-) -> str:
-    """Resolve the implementation kind without inventing producer metadata."""
-    kb_config = _task_kb_config(task_config)
-    explicit = kb_config.get("kernel_kind", task_config.get("kernel_kind"))
-    if explicit:
-        return str(explicit).strip().lower()
-    if producer:
-        raise ValueError(
-            "KB producer task requires knowledge_base.kernel_kind; migrate the "
-            "task instead of inferring implementation identity"
-        )
-    return ""
+def _resolve_kernel_kind(task_config: dict[str, Any]) -> str:
+    """Return the optional implementation kind supplied by the task."""
+    identity_config = _task_kernel_identity(task_config)
+    explicit = identity_config.get("kernel_kind", task_config.get("kernel_kind"))
+    return str(explicit or "").strip().lower()
 
 
 # Framework aliases whose identity forms the KB kernel-page slug component. Maps
@@ -507,75 +441,25 @@ _FRAMEWORK_ALIASES = {
 }
 
 
-def _framework_from_path(path: str) -> str:
-    """First (shallowest == owning package) known framework component in a path."""
-    for comp in Path(path).parts:
-        canon = _FRAMEWORK_ALIASES.get(comp.lower())
-        if canon:
-            return canon
-    return ""
-
-
-def _resolve_framework(
-    task_config: dict[str, Any],
-    kernel_file: str,
-    source_files: list[Path] | None = None,
-) -> str:
-    """Framework identity for the KB slug: the package the kernel source lives in.
-
-    Producer (this arena run) and consumer (a Hyperloom forge-loop) must resolve
-    the same framework string for the same operator, or the kernel-page slug
-    diverges and the solution is missed. Kernels live in different packages:
-    some directly in ``vllm``/``sglang`` (e.g.
-    ``.../vllm/model_executor/layers/fused_moe``), others in ``aiter`` /
-    ``aiter_meta``. ``image_repo_path`` records the ORIGINAL package location but
-    can point at a DEEP subdir, so we scan its full path (not its basename) for
-    the owning framework, then fall back to the resolved kernel path.
-
-    framework is a SOFT slug input: returns "" when unsure so the caller omits
-    ``--framework`` and forge-loop infers it from the path (never raises, never
-    guesses a wrong value). The serving stack a kernel is used FROM is NOT the
-    framework; the framework is the package whose source is edited.
-    """
-    kb_config = _task_kb_config(task_config)
+def _resolve_framework(task_config: dict[str, Any]) -> str:
+    """Return the optional source owner explicitly supplied by the task."""
+    identity_config = _task_kernel_identity(task_config)
     explicit = str(
-        kb_config.get("source_owner")
+        identity_config.get("source_owner")
         or task_config.get("source_owner_framework")
         or ""
     ).strip()
-    if explicit:
-        return _FRAMEWORK_ALIASES.get(explicit.lower(), explicit.lower())
-
-    candidates = [
-        str(task_config.get("image_repo_path") or ""),
-        *(str(path) for path in (source_files or [])),
-        str(kernel_file or ""),
-    ]
-    source_origin = task_config.get("source_origin") or {}
-    if isinstance(source_origin, dict):
-        candidates.extend(
-            [str(source_origin.get("repo") or ""), str(source_origin.get("path") or "")]
-        )
-    for base in candidates:
-        framework = _framework_from_path(base)
-        if framework:
-            return framework
-    return ""
+    return _FRAMEWORK_ALIASES.get(explicit.lower(), explicit.lower()) if explicit else ""
 
 
-def _logical_operator(task_config: dict[str, Any], *, producer: bool) -> str:
-    """Return only explicitly declared logical identity."""
-    kb_config = _task_kb_config(task_config)
+def _logical_operator(task_config: dict[str, Any]) -> str:
+    """Return the optional explicit logical identity."""
+    identity_config = _task_kernel_identity(task_config)
     value = str(
-        kb_config.get("logical_operator")
+        identity_config.get("logical_operator")
         or task_config.get("logical_operator")
         or ""
     ).strip()
-    if producer and not value:
-        raise ValueError(
-            "KB producer task requires knowledge_base.logical_operator; task "
-            "directory names and target symbols are not logical operator identity"
-        )
     return _normalize_logical_operator(value)
 
 
@@ -633,7 +517,7 @@ def _selector_schema(
     if raw_schema is None:
         return {}
     if not isinstance(raw_schema, dict):
-        raise ValueError("knowledge_base.workload.selector_schema must be a mapping")
+        raise ValueError("kernel_identity.workload.selector_schema must be a mapping")
     name = str(raw_schema.get("name") or "").strip()
     if name != "hyperloom-v1":
         raise ValueError("selector_schema.name must be 'hyperloom-v1'")
@@ -715,7 +599,7 @@ def _load_session_workload(
     if not primary_case:
         if len(parsed_cases) != 1:
             raise ValueError(
-                "knowledge_base.workload.primary_case is required when the source "
+                "kernel_identity.workload.primary_case is required when the source "
                 "contains multiple cases"
             )
         primary_case = parsed_cases[0][0]
@@ -752,14 +636,11 @@ def _resolve_shapes(
     task_config: dict[str, Any],
     task_config_dir: str,
     agent_config: dict[str, Any],
-    *,
-    producer: bool,
 ) -> dict[str, Any] | None:
-    """Resolve mode-appropriate shapes without leaking producer metadata."""
-    if not producer:
-        # Compatibility mode preserves only the historical agent-level override.
-        # Task knowledge_base.workload is producer metadata and must not change
-        # ordinary Forge benchmark selection.
+    """Resolve optional task workload metadata for forge-loop."""
+    identity_config = _task_kernel_identity(task_config)
+    workload = identity_config.get("workload")
+    if workload is None:
         legacy = agent_config.get("shapes_json")
         if not legacy:
             return None
@@ -771,21 +652,14 @@ def _resolve_shapes(
             raise ValueError("agent shapes_json must decode to an object")
         return parsed
 
-    kb_config = _task_kb_config(task_config)
-    workload = kb_config.get("workload")
-    if workload is None:
-        raise ValueError(
-            "KB producer task requires knowledge_base.workload with either "
-            "'shapes' or a session-case 'source'"
-        )
     if not isinstance(workload, dict):
-        raise ValueError("knowledge_base.workload must be a mapping")
+        raise ValueError("kernel_identity.workload must be a mapping")
     if workload.get("source"):
         return _load_session_workload(workload, task_config_dir)
 
     raw_shapes = workload.get("shapes", workload)
     if not isinstance(raw_shapes, dict):
-        raise ValueError("knowledge_base.workload.shapes must be a mapping")
+        raise ValueError("kernel_identity.workload.shapes must be a mapping")
     primary = _validate_shape(raw_shapes.get("primary"), "workload.shapes.primary")
     normalized: dict[str, Any] = {"primary": primary}
     if "minimal" in raw_shapes:
@@ -976,88 +850,6 @@ if __name__ == "__main__":
 """
 
 
-def _check_producer_cli_capabilities(forge_bin: str) -> None:
-    """Verify the executable on PATH exposes all required producer flags."""
-    try:
-        completed = subprocess.run(
-            [forge_bin, "forge-loop", "--help"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=30,
-        )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise RuntimeError(f"Cannot inspect kernel-agents forge-loop capabilities: {error}") from error
-    help_text = f"{completed.stdout}\n{completed.stderr}"
-    if completed.returncode != 0:
-        raise RuntimeError(
-            "kernel-agents forge-loop --help failed while checking producer "
-            f"capabilities (exit {completed.returncode}): {help_text.strip()}"
-        )
-    advertised = set(re.findall(r"(?<!\w)--[a-z][a-z0-9-]*", help_text))
-    missing = sorted(_PRODUCER_REQUIRED_FLAGS - advertised)
-    if missing:
-        raise RuntimeError(
-            "Installed kernel-agents does not support the Forge KB producer "
-            f"contract; missing CLI flags: {', '.join(missing)}"
-        )
-
-
-def _producer_preflight(
-    *,
-    forge_bin: str,
-    env: dict[str, str],
-    logical_operator: str,
-    kernel_kind: str,
-    framework: str,
-    shapes: dict[str, Any] | None,
-    fellow: str,
-    backend: str,
-) -> None:
-    """Fail before a long run when publication cannot satisfy its contract."""
-    missing_credentials = [
-        name for name in ("GBRAIN_BASE_URL", "GBRAIN_TOKEN") if not env.get(name)
-    ]
-    if missing_credentials:
-        raise RuntimeError(
-            "KB producer mode requires inherited credentials: "
-            + ", ".join(missing_credentials)
-        )
-    if framework and framework not in _SOURCE_OWNERS:
-        raise RuntimeError(
-            f"Unknown KB source_owner {framework!r}; expected one of "
-            f"{sorted(_SOURCE_OWNERS)}"
-        )
-    expected_backend = _kernel_kind_backend(kernel_kind)
-    if kernel_kind and not expected_backend:
-        raise RuntimeError(f"Unknown KB kernel_kind {kernel_kind!r}")
-    missing_metadata = [
-        name
-        for name, value in (
-            ("logical_operator", logical_operator),
-            ("kernel_kind", kernel_kind),
-            ("source_owner", framework),
-            ("workload", shapes),
-        )
-        if not value
-    ]
-    if missing_metadata:
-        raise RuntimeError(
-            "KB producer task is missing required producer metadata: "
-            + ", ".join(missing_metadata)
-        )
-    if not fellow.endswith("-fellow"):
-        raise RuntimeError(f"Invalid KernelForge fellow {fellow!r}")
-    fellow_backend = fellow.removesuffix("-fellow")
-    if expected_backend != backend or expected_backend != fellow_backend:
-        raise RuntimeError(
-            "KB producer kernel_kind/fellow/backend mismatch: "
-            f"kernel_kind={kernel_kind!r} requires {expected_backend!r}, "
-            f"fellow={fellow!r}, backend={backend!r}"
-        )
-    _check_producer_cli_capabilities(forge_bin)
-
-
 def _build_forge_command(
     *,
     forge_bin: str,
@@ -1077,7 +869,7 @@ def _build_forge_command(
     framework: str,
     shapes: dict[str, Any] | None,
 ) -> list[str]:
-    """Build argv without shell parsing so the producer contract is testable."""
+    """Build argv without shell parsing so task metadata is forwarded exactly."""
     cmd = [
         forge_bin,
         "forge-loop",
@@ -1157,8 +949,8 @@ def _read_forge_result(result_json: Path, stdout: str) -> dict[str, Any] | None:
     return None
 
 
-def _publication_status(result: dict[str, Any] | None, *, required: bool) -> dict[str, Any]:
-    """Prove the current durable best has no pending remote publication."""
+def _publication_status(result: dict[str, Any] | None) -> dict[str, Any]:
+    """Summarize optional remote publication diagnostics."""
     def _authoritative(publication: Any) -> bool:
         if not isinstance(publication, dict) or "published_commit" not in publication:
             return False
@@ -1168,7 +960,6 @@ def _publication_status(result: dict[str, Any] | None, *, required: bool) -> dic
         )
 
     status: dict[str, Any] = {
-        "required": required,
         "published": False,
         "latest_best_published": False,
         "authoritative": False,
@@ -1245,31 +1036,6 @@ def _publication_status(result: dict[str, Any] | None, *, required: bool) -> dic
     return status
 
 
-def _validate_producer_outcome(
-    *,
-    returncode: int | None,
-    timed_out: bool,
-    forge_result: dict[str, Any] | None,
-    kb_status: dict[str, Any],
-) -> None:
-    """Reject process and publication failures before Arena scoring."""
-    if timed_out:
-        raise RuntimeError("KB producer forge-loop timed out before completion")
-    if returncode != 0:
-        raise RuntimeError(f"KB producer forge-loop failed with exit code {returncode}")
-    if forge_result is None:
-        raise RuntimeError("KB producer forge-loop returned no structured result")
-    if not kb_status.get("authoritative"):
-        raise RuntimeError(
-            "KB producer result lacks authoritative remote publication state"
-        )
-    if not kb_status.get("latest_best_published"):
-        raise RuntimeError(
-            "KB producer did not publish the latest local best: "
-            f"{kb_status.get('state')} ({kb_status.get('reason') or 'no reason reported'})"
-        )
-
-
 def _write_forge_status(
     experiments_dir: Path,
     *,
@@ -1318,12 +1084,11 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     config_path = Path(__file__).with_name("agent_config.yaml")
     with config_path.open("r") as f:
         agent_config = yaml.safe_load(f) or {}
-    agent_config = _apply_run_kb_config(agent_config, eval_config)
-    producer = _kb_mode(agent_config) == "producer"
 
     # Task config: locate the kernel file + target function(s).
     with open(task_config_dir, "r") as f:
         task_config = yaml.safe_load(f) or {}
+    identity_config = _task_kernel_identity(task_config)
     source_files = task_config.get("source_file_path") or []
     if not isinstance(source_files, list) or not source_files:
         raise RuntimeError(f"Task config has no source_file_path: {task_config_dir}")
@@ -1336,48 +1101,32 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         editable_source_entries,
         task_config,
         logger,
-        strict=producer,
+        strict=bool(identity_config),
     )
     target_funcs = task_config.get("target_kernel_functions") or []
     if not isinstance(target_funcs, list):
         raise ValueError("target_kernel_functions must be a list")
     target_funcs = [str(name).strip() for name in target_funcs if str(name).strip()]
-    if producer and not target_funcs:
-        raise ValueError(
-            "KB producer task requires concrete target_kernel_functions"
-        )
     task_type = str(task_config.get("task_type") or "").strip()
 
     gpu_arch = _resolve_gpu_arch(eval_config)
     fellow = _resolve_fellow(task_config, agent_config)
     backend = fellow.split("-")[0]
-    logical_operator = _logical_operator(task_config, producer=producer)
-    kernel_kind = _resolve_kernel_kind(task_config, backend, producer=producer)
+    logical_operator = _logical_operator(task_config)
+    kernel_kind = _resolve_kernel_kind(task_config)
     shapes = _resolve_shapes(
         task_config,
         task_config_dir,
         agent_config,
-        producer=producer,
     )
-    framework = _resolve_framework(task_config, str(kernel_file), all_source_files)
+    framework = _resolve_framework(task_config)
 
-    # Preserve all existing parent credentials. Producer mode validates gbrain
-    # credentials but never manufactures or renames credential variables.
+    # Preserve all existing parent credentials. KernelForge independently decides
+    # whether optional external integrations are configured.
     env = os.environ.copy()
     env["IS_SANDBOX"] = "1"
     env.setdefault("PYTHONUNBUFFERED", "1")
     env.pop("ANTHROPIC_API_KEY", None)
-    if producer:
-        _producer_preflight(
-            forge_bin=forge_bin,
-            env=env,
-            logical_operator=logical_operator,
-            kernel_kind=kernel_kind,
-            framework=framework,
-            shapes=shapes,
-            fellow=fellow,
-            backend=backend,
-        )
 
     # Materialize the driver: prefer a task-shipped scripts/forge_driver.py
     # (used verbatim); otherwise generate a shim that delegates to the shared
@@ -1442,7 +1191,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         task_type=task_type,
         source_files=all_source_files,
         target_functions=target_funcs,
-        logical_operator=logical_operator if producer else "",
+        logical_operator=logical_operator,
         framework=framework,
         shapes=shapes,
     )
@@ -1451,14 +1200,13 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     cmd = " ".join(shlex.quote(p) for p in cmd_parts)
 
     logger.info("Forge Preflight")
-    logger.info(f"  KB mode:     {'producer' if producer else 'compatibility'}")
     logger.info(f"  forge bin:   {forge_bin}")
     logger.info(f"  kernel:      {kernel_file}")
     logger.info(f"  driver:      {driver_dest}")
     logger.info(f"  gpu target:  {gpu_arch}")
     logger.info(f"  model:       {model}")
     logger.info(f"  fellow:      {fellow} (inferred from task_type={task_config.get('task_type')!r})")
-    logger.info(f"  operator:    {logical_operator or '<compatibility inference>'}")
+    logger.info(f"  operator:    {logical_operator or '<forge inference>'}")
     logger.info(f"  kernel kind: {kernel_kind}")
     logger.info(f"  source owner:{framework or '<unknown>'}")
     logger.info(
@@ -1543,7 +1291,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     if stderr_lines:
         output += "\n=== STDERR ===\n" + "\n".join(stderr_lines)
     forge_result = _read_forge_result(result_json, "\n".join(stdout_lines))
-    kb_status = _publication_status(forge_result, required=producer)
+    kb_status = _publication_status(forge_result)
     _write_forge_status(
         experiments_dir,
         returncode=process.returncode,
@@ -1558,11 +1306,4 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         kb_status["state"],
         kb_status["reason"] or "no error",
     )
-    if producer:
-        _validate_producer_outcome(
-            returncode=process.returncode,
-            timed_out=timed_out,
-            forge_result=forge_result,
-            kb_status=kb_status,
-        )
     return output
