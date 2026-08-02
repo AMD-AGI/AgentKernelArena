@@ -88,7 +88,7 @@ def _report_path(tr) -> Path:
 def _select_shape_case(tr, shape: str) -> str:
     """Restrict the task runner to the exact CASE_ID in a Forge selector."""
     if not shape or shape == "default":
-        raise ValueError("unified-attention Forge runs require a CASE_ID selector")
+        return ""
     selector: dict[str, str] = {}
     for item in shape.split(","):
         key, separator, value = item.partition("=")

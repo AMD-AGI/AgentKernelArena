@@ -833,6 +833,11 @@ def test_unified_attention_task_is_producer_ready():
             {"id": "gemma-k002"},
         ]
     )
+    assert driver._select_shape_case(task_runner, "default") == ""
+    assert task_runner.CASES == [
+        {"id": "minimax-k004"},
+        {"id": "gemma-k002"},
+    ]
     selected = driver._select_shape_case(
         task_runner,
         "CASE_ID=minimax-k004,QTOKENS=64,HEADSIZE=128",
