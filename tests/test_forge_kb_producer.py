@@ -606,43 +606,111 @@ def test_producer_budget_reserves_finalization_margin():
         )
 
 
-def test_actual_ck_and_flydsl_task_backends():
-    root = Path(__file__).resolve().parents[1]
-    ck_tasks = [
-        "mi355x_vllm_ck_moe_2stage",
-        "mi355x_vllm_ck_cktile_moe_2stage",
-        "mi355x_vllm_ck_a8w8_blockscale_gemm",
-    ]
-    for task_name in ck_tasks:
-        config_path = (
-            root / "tasks" / "image_kernel" / task_name / "config.yaml"
-        )
-        config = yaml.safe_load(config_path.read_text())
-        assert _infer_backend(config) == "ck"
-        assert config["knowledge_base"]["kernel_kind"] == "aiter_ck"
-        assert "logical_operator" not in config["knowledge_base"]
-        assert _resolve_shapes(
-            config,
-            str(config_path),
-            {"knowledge_base": {"mode": "compatibility"}},
-            producer=False,
-        ) is None
-        with pytest.raises(ValueError, match="logical_operator"):
-            _logical_operator(config, producer=True)
-
-    flydsl = yaml.safe_load(
+@pytest.mark.parametrize(
+    ("task_name", "logical_operator", "kernel_kind", "source_owner"),
+    [
         (
-            root
-            / "tasks"
-            / "image_kernel"
-            / "mi355x_vllm_aiter_mxfp4_moe_2stage_kimi_k3"
-            / "config.yaml"
-        ).read_text()
+            "mi355x_vllm_aiter_mxfp4_moe_2stage_kimi_k3",
+            "aiter_mxfp4_moe_2stage",
+            "flydsl",
+            "aiter",
+        ),
+        (
+            "mi355x_vllm_triton_unified_attention",
+            "unified_attention_with_output",
+            "triton",
+            "aiter",
+        ),
+        ("mi355x_vllm_ck_moe_2stage", "ck_moe_2stage", "ck", "aiter"),
+        (
+            "mi355x_vllm_ck_cktile_moe_2stage",
+            "cktile_moe_2stage",
+            "ck",
+            "aiter",
+        ),
+        (
+            "mi355x_vllm_ck_a8w8_blockscale_gemm",
+            "gemm_a8w8_blockscale_ck",
+            "ck",
+            "aiter",
+        ),
+        (
+            "mi355x_vllm_triton_kda_linear_attn_kimi_k3",
+            "kda_linear_attn",
+            "triton",
+            "vllm",
+        ),
+        (
+            "mi355x_vllm_triton_sparse_attn_prefill_ragged",
+            "sparse_attn_prefill_ragged",
+            "triton",
+            "vllm",
+        ),
+        (
+            "mi355x_vllm_triton_paged_attention_2d",
+            "unified_attention_with_output",
+            "triton",
+            "vllm",
+        ),
+        (
+            "mi355x_vllm_triton_fused_moe_gptq_awq",
+            "fused_moe_gptq_awq",
+            "triton",
+            "vllm",
+        ),
+        (
+            "mi355x_vllm_tilelang_mhc_fused_post_pre",
+            "mhc_fused_post_pre",
+            "tilelang",
+            "vllm",
+        ),
+        (
+            "mi355x_vllm_hip_dynamic_per_tensor_quant",
+            "dynamic_per_tensor_quant",
+            "hip",
+            "aiter",
+        ),
+        (
+            "mi355x_sglang_triton_mxfp8_linear",
+            "mxfp8_linear",
+            "triton",
+            "sglang",
+        ),
+        (
+            "mi355x_sglang_triton_mxfp8_grouped_gemm",
+            "mxfp8_grouped_gemm",
+            "triton",
+            "sglang",
+        ),
+    ],
+)
+def test_all_mi355x_tasks_declare_producer_metadata(
+    task_name,
+    logical_operator,
+    kernel_kind,
+    source_owner,
+):
+    root = Path(__file__).resolve().parents[1]
+    config_path = (
+        root / "tasks" / "image_kernel" / task_name / "config.yaml"
     )
-    assert _infer_backend(flydsl) == "flydsl"
-    assert "knowledge_base" not in flydsl
-    with pytest.raises(ValueError, match="logical_operator"):
-        _logical_operator(flydsl, producer=True)
+    config = yaml.safe_load(config_path.read_text())
+    kb = config["knowledge_base"]
+
+    assert kb["logical_operator"] == logical_operator
+    assert kb["kernel_kind"] == kernel_kind
+    assert kb["source_owner"] == source_owner
+    assert _logical_operator(config, producer=True) == logical_operator
+    assert _resolve_kernel_kind(config, kernel_kind, producer=True) == kernel_kind
+    assert _resolve_framework(config, "/workspace/unknown.py") == source_owner
+    shapes = _resolve_shapes(
+        config,
+        str(config_path),
+        {"knowledge_base": {"mode": "producer"}},
+        producer=True,
+    )
+    assert shapes["primary"]
+    assert shapes["validation"]
 
 
 def test_unified_attention_task_is_producer_ready():

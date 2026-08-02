@@ -8,6 +8,13 @@ source_file_path:
 - chunked_prefill_paged_decode.py
 target_kernel_functions:
 - kernel_paged_attention_2d
+knowledge_base:
+  logical_operator: unified_attention_with_output
+  kernel_kind: triton
+  source_owner: vllm
+  workload:
+    source: session_cases.json
+    primary_case: qwen3_5-122b-decode-m64-ctx1024
 compile_command:
 - python3 scripts/task_runner.py compile
 correctness_command:

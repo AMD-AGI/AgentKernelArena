@@ -86,31 +86,21 @@ defined in the editable sources. Reuse identity is based on KernelForge's
 source-derived pristine implementation signature, so producer task hints do not
 need to reproduce a consumer caller's target list exactly.
 
-## Unresolved task metadata
+## MI355X producer metadata
 
-`mi355x_vllm_triton_unified_attention` is producer-ready. Its exact Hyperloom
-logical identity is `unified_attention_with_output`; the source owner is aiter,
-the implementation kind is Triton, and its editable source set is the same
-single `_triton_kernels/attention/unified_attention.py` implementation selected
-by Hyperloom. Its selector schema contains only trace-visible token/head
-dimensions; context, block size, and dtypes remain preserved session metadata.
+Every `tasks/image_kernel/mi355x_*` task declares an explicit
+`knowledge_base.logical_operator`, canonical `kernel_kind`, source owner, and
+structured workload. CK implementations use `kernel_kind: ck`; AITER ownership
+is represented independently by `source_owner: aiter`.
 
-The three `mi355x_vllm_ck_*` image tasks declare the known CK implementation
-kind, aiter source ownership, and checked-in workloads. They are not yet
-producer-ready because their `session_cases.json` operator values are Arena
-harness labels, not preserved Hyperloom logical identities. In particular, the
-MoE tasks combine stage 1 and stage 2 even though Hyperloom routes those stages
-as separate logical operators. Split those producer tasks by logical operation
-and record the exact invocation identity before adding `logical_operator`.
-The a8w8 task likewise requires confirmation of the original invocation
-identity; `a8w8_blockscale_gemm` must not be assumed to be that identity.
+Multi-stage MoE and KDA tasks intentionally use one task-level logical operator
+covering their complete measured pipeline. Their Solution patch and workload
+therefore represent the combined operation rather than an individual stage.
 
-`mi355x_vllm_aiter_mxfp4_moe_2stage_kimi_k3` uses the FlyDSL fellow, but is not
-producer-ready: one Arena task combines the confirmed
-`moe_flydsl_stage1`/`moe_flydsl_stage2` operations with decode graph nodes whose
-backend was not resolved. Split it into one logical operator per producer task
-or add metadata only after the intended Hyperloom logical identity is known.
+`mi355x_vllm_triton_unified_attention` and
+`mi355x_vllm_triton_paged_attention_2d` share the logical operation
+`unified_attention_with_output`, while their source-owner component keeps the
+AITER and vLLM implementations on separate Kernel pages.
 
-Tasks without `knowledge_base.logical_operator`, `kernel_kind`, and a workload
-remain valid in compatibility mode. Producer preflight lists missing metadata
-instead of deriving an operator from a task directory or guessing a backend.
+TileLang metadata uses `kernel_kind: tilelang`. Running it in producer mode also
+requires a matching KernelForge fellow/backend implementation.

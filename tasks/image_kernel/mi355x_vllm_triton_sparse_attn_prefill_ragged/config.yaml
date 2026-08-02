@@ -8,6 +8,13 @@ source_file_path:
 - rocm_aiter_mla_sparse.py
 target_kernel_functions:
 - _sparse_attn_prefill_ragged_kernel
+knowledge_base:
+  logical_operator: sparse_attn_prefill_ragged
+  kernel_kind: triton
+  source_owner: vllm
+  workload:
+    source: session_cases.json
+    primary_case: dsv4-flash-prefill-sq7211
 compile_command:
 - python3 scripts/task_runner.py compile
 correctness_command:

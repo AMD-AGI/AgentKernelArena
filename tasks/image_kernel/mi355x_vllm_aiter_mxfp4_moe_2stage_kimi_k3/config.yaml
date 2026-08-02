@@ -18,6 +18,13 @@ target_kernel_functions:
 - fused_moe
 - _flydsl_stage1_wrapper
 - _flydsl_stage2_wrapper
+knowledge_base:
+  logical_operator: aiter_mxfp4_moe_2stage
+  kernel_kind: flydsl
+  source_owner: aiter
+  workload:
+    source: session_cases.json
+    primary_case: kimi-k3-prefill-flydsl-k003-k006
 compile_command:
 - python3 scripts/task_runner.py compile
 correctness_command:

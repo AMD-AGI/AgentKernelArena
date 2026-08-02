@@ -398,11 +398,7 @@ _VALID_FELLOW_BACKENDS = {"ck", "flydsl", "triton", "aiter", "hip", "hipblaslt"}
 def _kernel_kind_backend(kernel_kind: str) -> str:
     """Map an explicit implementation kind to its KernelForge fellow backend."""
     kind = str(kernel_kind or "").strip().lower().replace("-", "_")
-    if (
-        kind in {"aiter_ck", "ck"}
-        or kind.startswith("ck_")
-        or kind.endswith("_ck")
-    ):
+    if kind == "ck" or kind.startswith("ck_") or kind.endswith("_ck"):
         return "ck"
     if "flydsl" in kind:
         return "flydsl"

@@ -7,7 +7,8 @@ source_file_path:
 target_kernel_functions:
 - gemm_a8w8_blockscale
 knowledge_base:
-  kernel_kind: aiter_ck
+  logical_operator: gemm_a8w8_blockscale_ck
+  kernel_kind: ck
   source_owner: aiter
   workload:
     source: session_cases.json

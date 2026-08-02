@@ -8,6 +8,39 @@ target_kernel_functions:
 - dynamic_per_tensor_quant
 - data_to_scale_kernel
 - scaled_quant_kernel
+knowledge_base:
+  logical_operator: dynamic_per_tensor_quant
+  kernel_kind: hip
+  source_owner: aiter
+  workload:
+    shapes:
+      primary:
+        CASE_ID: mixtral-k006
+        D0: 64
+        D1: 4096
+        RANK: 2
+        INPUT_DTYPE: bf16
+        OUTPUT_DTYPE: fp8
+      validation:
+      - CASE_ID: mixtral-k006
+        D0: 64
+        D1: 4096
+        RANK: 2
+        INPUT_DTYPE: bf16
+        OUTPUT_DTYPE: fp8
+      - CASE_ID: mixtral-k002
+        D0: 64
+        D1: 512
+        RANK: 2
+        INPUT_DTYPE: bf16
+        OUTPUT_DTYPE: fp8
+      - CASE_ID: mixtral-k004
+        D0: 64
+        D1: 2
+        D2: 1792
+        RANK: 3
+        INPUT_DTYPE: bf16
+        OUTPUT_DTYPE: fp8
 compile_command:
 - python3 scripts/task_runner.py compile
 correctness_command:

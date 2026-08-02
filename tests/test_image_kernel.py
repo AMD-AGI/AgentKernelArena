@@ -15,8 +15,68 @@ import time
 from pathlib import Path
 
 import pytest
+import yaml
 
 LOG = logging.getLogger("test_image_kernel")
+
+
+# --------------------------------------------------------------------------
+# 0. MI355X image_kernel tasks are strict KB producers. Their configs must
+#    declare the complete, explicit identity and workload contract.
+# --------------------------------------------------------------------------
+def test_mi355x_image_kernel_configs_require_producer_metadata():
+    tasks_root = Path(__file__).resolve().parents[1] / "tasks" / "image_kernel"
+    config_paths = sorted(tasks_root.glob("mi355x_*/config.yaml"))
+    assert config_paths, "no MI355X image_kernel task configs found"
+
+    errors: list[str] = []
+    for config_path in config_paths:
+        config = yaml.safe_load(config_path.read_text()) or {}
+        task_name = config_path.parent.name
+        if config.get("task_type") != "image_kernel":
+            errors.append(f"{task_name}: task_type must be image_kernel")
+
+        for field in ("source_file_path", "target_kernel_functions"):
+            values = config.get(field)
+            if not (
+                isinstance(values, list)
+                and values
+                and all(isinstance(value, str) and value.strip() for value in values)
+            ):
+                errors.append(f"{task_name}: {field} must be a non-empty string list")
+
+        knowledge_base = config.get("knowledge_base")
+        if not isinstance(knowledge_base, dict):
+            errors.append(f"{task_name}: knowledge_base must be a mapping")
+            continue
+
+        for field in ("logical_operator", "kernel_kind", "source_owner"):
+            value = knowledge_base.get(field)
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"{task_name}: knowledge_base.{field} is required")
+
+        workload = knowledge_base.get("workload")
+        if not isinstance(workload, dict) or not workload:
+            errors.append(f"{task_name}: knowledge_base.workload is required")
+            continue
+        has_source = isinstance(workload.get("source"), str) and bool(
+            workload["source"].strip()
+        )
+        has_shapes = isinstance(workload.get("shapes"), dict) and bool(
+            workload["shapes"]
+        )
+        if not has_source and not has_shapes:
+            errors.append(
+                f"{task_name}: workload requires a non-empty source or shapes mapping"
+            )
+        if has_source:
+            primary_case = workload.get("primary_case")
+            if not isinstance(primary_case, str) or not primary_case.strip():
+                errors.append(
+                    f"{task_name}: source workload requires a primary_case"
+                )
+
+    assert not errors, "\n".join(errors)
 
 
 # --------------------------------------------------------------------------

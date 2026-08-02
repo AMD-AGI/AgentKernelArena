@@ -8,6 +8,13 @@ source_file_path:
 - fused_moe.py
 target_kernel_functions:
 - fused_moe_kernel_gptq_awq
+knowledge_base:
+  logical_operator: fused_moe_gptq_awq
+  kernel_kind: triton
+  source_owner: vllm
+  workload:
+    source: session_cases.json
+    primary_case: kimi-k2.7-moe-m7211
 compile_command:
 - python3 scripts/task_runner.py compile
 correctness_command:

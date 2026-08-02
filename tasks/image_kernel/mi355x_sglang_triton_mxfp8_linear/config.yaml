@@ -7,6 +7,13 @@ source_file_path:
 target_kernel_functions:
   - _mxfp8_linear_kernel
   - _run_mxfp8_linear_kernel
+knowledge_base:
+  logical_operator: mxfp8_linear
+  kernel_kind: triton
+  source_owner: sglang
+  workload:
+    source: session_cases.json
+    primary_case: qkv_proj-decode-m1
 compile_command:
   - python3 scripts/task_runner.py compile
 correctness_command:
