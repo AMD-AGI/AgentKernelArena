@@ -14,6 +14,9 @@ source_file_path:
 - fused_moe.py
 - ops/flydsl/moe_kernels.py
 - ops/shuffle.py
+editable_sources:
+- configs/model_configs/kimik3_fp4_tuned_fmoe.csv
+- ops/flydsl/kernels/mixed_moe_gemm_2stage.py
 target_kernel_functions:
 - fused_moe
 - _flydsl_stage1_wrapper
@@ -55,15 +58,14 @@ prompt:
     dispatch for both M buckets.
     The compute core is a FlyDSL MLIR builder
     (ops/flydsl/kernels/mixed_moe_gemm_2stage.py, compile_mixed_moe_gemm1_a16w4 /
-    compile_mixed_moe_gemm2_a16w4), which is outside this task's edit surface. The
-    edit surface is the aiter Python dispatch: fused_moe.py plus
-    ops/flydsl/moe_kernels.py and ops/shuffle.py. Useful levers are the 2-stage
-    kernel selection and tuned-config lookup -- 864 a16w4 kernel variants are
-    registered, keyed by tile_m/tile_n/tile_k plus w*/bnt*/xcd*/kw* suffixes, and
-    the per-M-bucket choice is what stage1 (20.2% efficiency) and stage2 (14.1%)
-    currently leave on the table -- plus block_m / ksplit choice, the moe_sorting
-    dispatch policy, and avoiding redundant work between stage1 and stage2. Do not
-    edit the harness.
+    compile_mixed_moe_gemm2_a16w4) and is part of this task's edit surface. The
+    full edit surface also includes the tuned Kimi-K3 CSV and the aiter Python
+    dispatch in fused_moe.py, ops/flydsl/moe_kernels.py, and ops/shuffle.py.
+    Useful levers are the MFMA pipeline, tile/block loop structure, LDS usage,
+    stage2 atomic reduction, 2-stage kernel selection, and tuned-config lookup.
+    The 864 a16w4 variants are keyed by tile_m/tile_n/tile_k plus
+    w*/bnt*/xcd*/kw* suffixes. Preserve the per-M-bucket dispatch contract,
+    block_m / ksplit semantics, and moe_sorting behavior. Do not edit the harness.
     The harness enforces five invariants that a valid patch must keep: correctness
     and performance must dispatch the same FlyDSL kernel pair; dispatch must stay
     on the tuned path rather than the heuristic fallback; shuffle_scale_a16w4 and
