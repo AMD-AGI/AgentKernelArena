@@ -41,6 +41,10 @@ traj.json
 # Generated held-out test data (methodology is in src/held_out/, data is private)
 held_out_tests/
 
+# Repository-level quality_loop audit state and isolated git worktrees
+quality_loop_runs/
+.quality_loop_worktrees/
+
 # Documentation build environment and output
 .docvenv/
 docs/_build/
