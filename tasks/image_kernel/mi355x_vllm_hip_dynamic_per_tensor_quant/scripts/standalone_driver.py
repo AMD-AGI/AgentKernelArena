@@ -349,6 +349,43 @@ def _run_quant(inputs: dict):
     return inputs["output"]
 
 
+def _assert_quant_correct(inputs: dict, got) -> None:
+    torch = _torch()
+    expected_scale = (
+        inputs["input"].abs().float().max()
+        / torch.finfo(torch.float8_e4m3fn).max
+    )
+    torch.testing.assert_close(
+        inputs["scale"],
+        expected_scale.reshape(1),
+        atol=1e-5,
+        rtol=2e-2,
+    )
+    torch.testing.assert_close(
+        got.float() * inputs["scale"],
+        inputs["input"].float(),
+        atol=0.25,
+        rtol=0.15,
+    )
+
+
+def _run_quant_correctness(inputs: dict) -> None:
+    torch = _torch()
+
+    # The scale is an output and must not depend on allocator-provided contents.
+    inputs["scale"].fill_(torch.finfo(inputs["scale"].dtype).max)
+    got = _run_quant(inputs)
+    torch.cuda.synchronize()
+    _assert_quant_correct(inputs, got)
+
+    # Reuse the same buffers with a smaller input maximum. This catches
+    # implementations that retain the previous scale across invocations.
+    inputs["input"].mul_(torch.finfo(inputs["input"].dtype).eps)
+    got = _run_quant(inputs)
+    torch.cuda.synchronize()
+    _assert_quant_correct(inputs, got)
+
+
 def run_compile() -> None:
     inputs = _make(CASES[0], correctness=True)
     _run(inputs)
@@ -409,22 +446,9 @@ def _run(inputs: dict):
 
 
 def run_correctness() -> None:
-    torch = _torch()
     for case in CASES:
         inputs = _make(case, correctness=True)
-        got = _run(inputs)
-        torch.cuda.synchronize()
-        expected_scale = (
-            inputs["input"].abs().float().max()
-            / torch.finfo(torch.float8_e4m3fn).max
-        )
-        torch.testing.assert_close(
-            inputs["scale"], expected_scale.reshape(1), atol=1e-5, rtol=2e-2
-        )
-        torch.testing.assert_close(
-            got.float() * inputs["scale"], inputs["input"].float(),
-            atol=0.25, rtol=0.15,
-        )
+        _run_quant_correctness(inputs)
         print("correctness PASS", case["id"])
 
 

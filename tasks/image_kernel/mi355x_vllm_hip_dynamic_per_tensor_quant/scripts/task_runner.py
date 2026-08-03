@@ -395,6 +395,43 @@ def _run_quant(inputs: dict):
     return inputs["output"]
 
 
+def _assert_quant_correct(inputs: dict, got) -> None:
+    torch = _torch()
+    expected_scale = (
+        inputs["input"].abs().float().max()
+        / torch.finfo(torch.float8_e4m3fn).max
+    )
+    torch.testing.assert_close(
+        inputs["scale"],
+        expected_scale.reshape(1),
+        atol=1e-5,
+        rtol=2e-2,
+    )
+    torch.testing.assert_close(
+        got.float() * inputs["scale"],
+        inputs["input"].float(),
+        atol=0.25,
+        rtol=0.15,
+    )
+
+
+def _run_quant_correctness(inputs: dict) -> None:
+    torch = _torch()
+
+    # The scale is an output and must not depend on allocator-provided contents.
+    inputs["scale"].fill_(torch.finfo(inputs["scale"].dtype).max)
+    got = _run_quant(inputs)
+    torch.cuda.synchronize()
+    _assert_quant_correct(inputs, got)
+
+    # Reuse the same buffers with a smaller input maximum. This catches
+    # implementations that retain the previous scale across invocations.
+    inputs["input"].mul_(torch.finfo(inputs["input"].dtype).eps)
+    got = _run_quant(inputs)
+    torch.cuda.synchronize()
+    _assert_quant_correct(inputs, got)
+
+
 def _load_mhc_module():
     # Import the installed package first so its custom ops are registered once.
     # Then suppress registration while loading the editable workspace copy;
@@ -868,6 +905,11 @@ def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
         inputs = _make(case, correctness=True)
+        if OPERATOR == "dynamic_per_tensor_quant":
+            _run_quant_correctness(inputs)
+            print("correctness PASS", case["id"])
+            continue
+
         got = _run(inputs)
         torch.cuda.synchronize()
         if OPERATOR == "unified_attention":
@@ -877,23 +919,6 @@ def run_correctness() -> None:
         elif OPERATOR == "a8w8_blockscale_gemm":
             torch.testing.assert_close(
                 got, _gemm_reference(inputs), atol=0.15, rtol=0.12
-            )
-        elif OPERATOR == "dynamic_per_tensor_quant":
-            expected_scale = (
-                inputs["input"].abs().float().max()
-                / torch.finfo(torch.float8_e4m3fn).max
-            )
-            torch.testing.assert_close(
-                inputs["scale"],
-                expected_scale.reshape(1),
-                atol=1e-5,
-                rtol=2e-2,
-            )
-            torch.testing.assert_close(
-                got.float() * inputs["scale"],
-                inputs["input"].float(),
-                atol=0.25,
-                rtol=0.15,
             )
         elif OPERATOR == "mhc_fused_post_pre":
             for actual, expected in zip(got, _mhc_reference(inputs)):
