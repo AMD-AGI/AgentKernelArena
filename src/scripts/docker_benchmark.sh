@@ -17,6 +17,10 @@ DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
 # separate from REQUIRED_AGENTS because geak_v4 is normalized to claude_code
 # before Docker arguments are built.
 GEAK_V4_RUNTIME=0
+# quality_loop keeps the repository checkout read-only in the agent container.
+# Only these host-validated, run-specific subdirectories are over-mounted rw.
+QUALITY_LOOP_ARTIFACT_REL=""
+QUALITY_LOOP_WORKTREE_REL=""
 
 # /opt/venv/bin is placed before /usr/local/bin and /usr/bin so that a bare
 # `python3` / `pytest` resolves to the torch-enabled venv interpreter rather than
@@ -32,6 +36,7 @@ Usage:
   src/scripts/docker_benchmark.sh preflight [--config_name <run-config.yaml>]
   src/scripts/docker_benchmark.sh shell
   src/scripts/docker_benchmark.sh check-agents [--config_name <run-config.yaml>]
+  src/scripts/docker_benchmark.sh quality-loop [--config <quality-loop-config.yaml>] [quality_loop args...]
   src/scripts/docker_benchmark.sh smoke
 
 Default run config:
@@ -580,7 +585,21 @@ build_docker_args() {
     add_device_if_present /dev/dri
     add_device_if_present /dev/mem
 
-    add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR"
+    if [[ -n "$QUALITY_LOOP_ARTIFACT_REL" || -n "$QUALITY_LOOP_WORKTREE_REL" ]]; then
+        [[ -n "$QUALITY_LOOP_ARTIFACT_REL" && -n "$QUALITY_LOOP_WORKTREE_REL" ]] \
+            || die "quality_loop requires both artifact and worktree mount paths"
+        require_path "$HOST_ROOT/$QUALITY_LOOP_ARTIFACT_REL" "quality_loop artifact directory"
+        require_path "$HOST_ROOT/$QUALITY_LOOP_WORKTREE_REL" "quality_loop worktree"
+        add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR" ro
+        add_mount \
+            "$HOST_ROOT/$QUALITY_LOOP_ARTIFACT_REL" \
+            "$CONTAINER_WORKDIR/$QUALITY_LOOP_ARTIFACT_REL"
+        add_mount \
+            "$HOST_ROOT/$QUALITY_LOOP_WORKTREE_REL" \
+            "$CONTAINER_WORKDIR/$QUALITY_LOOP_WORKTREE_REL"
+    else
+        add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR"
+    fi
     # Persistent pip user-base (PYTHONUSERBASE) so `make docker-setup-flydsl` survives
     # across runs. It lives INSIDE the repo dir, which is already bind-mounted above and
     # is owned by the host user — this avoids a separate mount whose source the docker
@@ -645,6 +664,46 @@ extract_config_name() {
         shift || true
     done
     printf '%s\n' "$config"
+}
+
+extract_quality_loop_config() {
+    local config="agents/quality_loop/agent_config.yaml"
+    local arg
+    while [[ $# -gt 0 ]]; do
+        arg="$1"
+        case "$arg" in
+            --config)
+                shift
+                [[ $# -gt 0 ]] || die "--config requires a value"
+                config="$1"
+                ;;
+            --config=*)
+                config="${arg#--config=}"
+                ;;
+        esac
+        shift || true
+    done
+    printf '%s\n' "$config"
+}
+
+extract_quality_loop_resume() {
+    local arg
+    while [[ $# -gt 0 ]]; do
+        arg="$1"
+        case "$arg" in
+            --resume)
+                shift
+                [[ $# -gt 0 ]] || die "--resume requires a run ID"
+                printf '%s\n' "$1"
+                return
+                ;;
+            --resume=*)
+                printf '%s\n' "${arg#--resume=}"
+                return
+                ;;
+        esac
+        shift || true
+    done
 }
 
 container_smoke() {
@@ -1078,6 +1137,42 @@ case "${1:-}" in
     parallel-run)
         shift
         run_parallel "$@"
+        ;;
+    quality-loop)
+        shift
+        quality_loop_config="$(extract_quality_loop_config "$@")"
+        [[ -f "$quality_loop_config" ]] || die "quality_loop config file not found: $quality_loop_config"
+        if has_arg --plan "$@"; then
+            python3 -m agents.quality_loop "$@"
+            exit
+        fi
+        quality_loop_resume="$(extract_quality_loop_resume "$@" || true)"
+        if [[ -n "$quality_loop_resume" ]]; then
+            quality_loop_run_id="$(python3 -m agents.quality_loop.host check "$@")"
+        else
+            quality_loop_run_id="$(python3 -m agents.quality_loop.host start "$@")"
+        fi
+        echo "quality_loop run ID: $quality_loop_run_id" >&2
+        mapfile -t quality_loop_paths < <(
+            python3 -m agents.quality_loop.host paths "$@" --run-id "$quality_loop_run_id"
+        )
+        [[ "${#quality_loop_paths[@]}" -eq 2 ]] \
+            || die "quality_loop host returned invalid runtime paths"
+        QUALITY_LOOP_ARTIFACT_REL="${quality_loop_paths[0]}"
+        QUALITY_LOOP_WORKTREE_REL="${quality_loop_paths[1]}"
+        select_runtime_for_config "$quality_loop_config"
+        REQUIRED_AGENTS="codex"
+        AGENTS_STRICT=1
+        AGENT_HOME_ISOLATION=1
+        AKA_CONTAINER_HOME="/tmp/aka-quality-loop-${quality_loop_run_id}"
+        AKA_CACHE_SUFFIX="quality-loop-${quality_loop_run_id}"
+        quality_loop_container_args=("$@")
+        if [[ -z "$quality_loop_resume" ]]; then
+            quality_loop_container_args+=(--resume "$quality_loop_run_id")
+        fi
+        quality_loop_container_args+=(--defer-github --skip-preflight)
+        docker_exec 0 python3 -m agents.quality_loop "${quality_loop_container_args[@]}"
+        python3 -m agents.quality_loop.host finalize "$@" --run-id "$quality_loop_run_id"
         ;;
     preflight)
         shift

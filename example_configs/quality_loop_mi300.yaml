@@ -1,0 +1,28 @@
+tasks:
+  - all
+target_gpu_model: MI300
+
+quality_loop:
+  backend:
+    name: codex
+    model: null
+    effort: xhigh
+    timeout_seconds: 3600
+  reviewer:
+    name: codex
+    model: null
+    effort: xhigh
+    timeout_seconds: 1800
+  max_repair_attempts: 1
+  optimization_iterations: 1
+  easy_speedup_threshold: 5.0
+  easy_confirmation_runs: 3
+  case_enhancement: true
+  artifact_root: quality_loop_runs
+  worktree_root: .quality_loop_worktrees
+  github:
+    publish: true
+    draft_pr: true
+    branch_prefix: quality-loop
+    base_branch: null
+    issue_labels: []
