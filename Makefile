@@ -7,7 +7,7 @@
 SHELL := /bin/bash
 
 .PHONY: help docker-shell docker-check-agents docker-smoke docker-run docker-parallel-run docker-setup-flydsl docker-setup-geak \
-        check-docker-runner check-evaluator check-held-out check-visualization \
+        check-docker-runner check-evaluator check-forge check-held-out check-visualization \
         visualization-build visualization-serve visualization-run \
         sync-perf-helpers check-perf-helpers materialize-perf-workspace \
         materialize-perf-task cleanup-works install-cursor-agent vllm
@@ -30,6 +30,7 @@ help:
 	@echo "make docker-setup-geak   - Install the Claude Agent SDK when absent (for the geak_v4 agent)"
 	@echo "make check-docker-runner - Check Docker runner syntax and runtime-specific arguments"
 	@echo "make check-evaluator     - Run centralized evaluator unit tests"
+	@echo "make check-forge         - Run Forge metadata adapter unit tests"
 	@echo "make check-held-out      - Run held-out module unit tests"
 	@echo "make visualization-run   - Build and serve the local comparison dashboard"
 	@echo "make check-visualization - Run visualization module unit tests"
@@ -85,6 +86,9 @@ check-docker-runner:
 
 check-evaluator:
 	@python3 -m unittest discover -s tests -p 'test_evaluator_*.py'
+
+check-forge:
+	@python3 -m pytest -q tests/test_forge_framework.py tests/test_forge_kb_producer.py
 
 check-held-out:
 	@python3 -m unittest discover -s tests -p 'test_held_out.py'
