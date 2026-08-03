@@ -68,11 +68,10 @@ prompt:
     block_m / ksplit semantics, and moe_sorting behavior. Do not edit the harness.
     The harness enforces five invariants that a valid patch must keep: correctness
     and performance must dispatch the same FlyDSL kernel pair; dispatch must stay
-    on the tuned path rather than the heuristic fallback; shuffle_scale_a16w4 and
-    e8m0_shuffle must remain equivalent for w2_scale (vLLM's loader uses the
-    latter); nLane must stay 16 (vLLM hardcodes it); and correctness is the worst
-    of 3 runs because stage2 reduces with atomics. All 14 reachable M buckets are
-    correctness-checked.
+    on the tuned path rather than the heuristic fallback; w2_scale must use the
+    same e8m0_shuffle path as vLLM; nLane must stay 16 (vLLM hardcodes it); and
+    correctness is the worst of 3 runs because stage2 reduces with atomics. All
+    14 reachable M buckets are correctness-checked.
     Two contract details that must be preserved: K3's SiTU a16w4 path runs
     GateMode.SEPARATED, so weights and scales are shuffled with gate_up=False
     (gate_up=True is the gpt-oss INTERLEAVE layout and silently produces garbage);

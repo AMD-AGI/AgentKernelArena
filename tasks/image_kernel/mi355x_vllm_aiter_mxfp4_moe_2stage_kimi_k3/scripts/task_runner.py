@@ -243,38 +243,20 @@ def _activation(aiter):
 #       w2_scale  = e8m0_shuffle(...)          <-- NOT shuffle_scale_a16w4
 #
 # rocm_aiter_ops.* are pure forwarders into aiter.ops.shuffle
-# (vllm/_aiter_ops.py:2727,2748), so a patched aiter is used by vLLM's loader
-# too and layouts stay consistent -- with two exceptions that the harness cannot
-# notice on its own, because it drives both sides itself:
+# (vllm/_aiter_ops.py:2727,2748), so a patched aiter is used by vLLM's loader.
+# The harness must still reproduce the two entry-point choices that vLLM pins:
 #
 #   * nLane is hardcoded to 16 on the vLLM side.
-#   * w2_scale goes through e8m0_shuffle -> shuffle_scale(is_guinterleave=False),
-#     a different branch of aiter/ops/shuffle.py:338 than the
-#     shuffle_scale_a16w4 -> shuffle_scale(is_guinterleave=True) path used here.
-#     They are byte-identical for K3's (3211264, 16) w2_scale today; a patch that
-#     touches one branch and not the other would pass here and corrupt stage2 in
-#     vLLM.
+#   * w2_scale goes through e8m0_shuffle -> shuffle_scale(is_guinterleave=False).
+#     Use that exact path here rather than assuming the distinct
+#     shuffle_scale_a16w4(is_guinterleave=True) branch is byte-identical.
 # --------------------------------------------------------------------------- #
-def _assert_vllm_shuffle_contract(torch, n_lane: int, w2_scale, w2_scale_runtime) -> None:
+def _assert_vllm_shuffle_contract(n_lane: int) -> None:
     if n_lane != 16:
         raise AssertionError(
             f"n_lane={n_lane}, but vLLM hardcodes 16 at "
             f"vllm/model_executor/layers/quantization/mxfp4.py:789,792. A kernel "
             f"that needs a different nLane cannot be reached from vLLM."
-        )
-    from aiter.utility.fp4_utils import e8m0_shuffle
-
-    vllm_layout = e8m0_shuffle(w2_scale)
-    if vllm_layout.shape != w2_scale_runtime.shape or not torch.equal(
-        vllm_layout.reshape(-1), w2_scale_runtime.reshape(-1)
-    ):
-        raise AssertionError(
-            "w2_scale layout divergence: shuffle_scale_a16w4(w2_scale, experts, "
-            "False) no longer equals e8m0_shuffle(w2_scale). vLLM's loader uses "
-            "e8m0_shuffle (mxfp4.py:799), so this patch would pass correctness "
-            "here and produce a wrong w2_scale layout in vLLM. Keep the "
-            "is_guinterleave=False and is_guinterleave=True branches of "
-            "aiter/ops/shuffle.py:338 in agreement for this shape."
         )
 
 
@@ -287,6 +269,7 @@ def _prepare(case: dict, correctness: bool = False) -> dict:
     from aiter import dtypes
     from aiter.fused_moe import fused_topk
     from aiter.ops.shuffle import shuffle_scale_a16w4, shuffle_weight_a16w4
+    from aiter.utility.fp4_utils import e8m0_shuffle
 
     p = dict(case["params"])
     if (p["quant_type"], p["a_dtype"], p["w_dtype"], p["use_g1u1"]) != (
@@ -332,8 +315,8 @@ def _prepare(case: dict, correctness: bool = False) -> dict:
     w1_runtime = shuffle_weight_a16w4(w1_quant, n_lane, False)
     w2_runtime = shuffle_weight_a16w4(w2_quant, n_lane, False)
     w1_scale_runtime = shuffle_scale_a16w4(w1_scale, experts, False)
-    w2_scale_runtime = shuffle_scale_a16w4(w2_scale, experts, False)
-    _assert_vllm_shuffle_contract(torch, n_lane, w2_scale, w2_scale_runtime)
+    w2_scale_runtime = e8m0_shuffle(w2_scale)
+    _assert_vllm_shuffle_contract(n_lane)
 
     return {
         "cfg": case, "params": p, "token": token, "topk": topk,

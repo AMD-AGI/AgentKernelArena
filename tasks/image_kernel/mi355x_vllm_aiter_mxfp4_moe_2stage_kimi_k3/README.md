@@ -139,7 +139,7 @@ on MI355X):
 |---|---|---|
 | M-bucket identity | correctness and performance landing on different kernel pairs | `run_correctness` |
 | tuned-dispatch assertion | aiter falling back to the heuristic FlyDSL branch (`fused_moe.py:2272`) instead of the tuned path the session ran — i.e. a whole run spent optimising code that never executes | `run_compile`, `run_correctness`, `run_performance` |
-| `w2_scale` layout invariant | a patch editing one branch of `shuffle_scale` but not the other; vLLM's loader reaches `w2_scale` via `e8m0_shuffle` (`is_guinterleave=False`) while this harness uses `shuffle_scale_a16w4` (`is_guinterleave=True`) — byte-identical today, and the harness cannot notice divergence on its own because it drives both sides | `_prepare` |
+| `w2_scale` deployment path | a patch that only works with the distinct `shuffle_scale_a16w4` layout; vLLM's loader reaches `w2_scale` through `e8m0_shuffle` (`is_guinterleave=False`), so the harness uses that exact path too | `_prepare` |
 | `nLane == 16` | a kernel needing a different `nLane`; vLLM hardcodes 16 at `mxfp4.py:789,792` and would never reach it | `_prepare` |
 | worst-of-3 | atomic non-determinism turning a marginal result into an intermittent pass | `run_correctness` |
 
@@ -152,10 +152,9 @@ the fact rather than inferred.
 The deliverable is a patch to **`aiter` only** — vLLM is not modified.
 `rocm_aiter_ops.shuffle_weight_a16w4` / `shuffle_scale_a16w4` are pure forwarders
 into `aiter.ops.shuffle` (`vllm/_aiter_ops.py:2727,2748`), so a patched aiter is
-also what vLLM's weight loader uses and layouts stay consistent for free. The two
-places that do **not** follow automatically are the hardcoded `nLane=16` and the
-`e8m0_shuffle` entry point for `w2_scale`; those are exactly what the two
-invariant gates pin down.
+also what vLLM's weight loader uses and layouts stay consistent for free. The
+harness explicitly pins the hardcoded `nLane=16` and drives `w2_scale` through
+the same `e8m0_shuffle` entry point as vLLM.
 
 ## Edit surface and JIT freshness
 
