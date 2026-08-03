@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -9,6 +11,7 @@ from src.perf_helper_materialization import (
     MARK_START,
     VLLM_HELPER_STUB_BLOCK,
     canonical_aka_helper,
+    configured_performance_entrypoints,
     materialize_perf_helpers_in_workspace,
 )
 from src.tools.sync_perf_helpers import audit_task_benchmark_entrypoints
@@ -66,6 +69,52 @@ def test_materializes_helper_beside_eval_tools_entrypoint(tmp_path):
     materialize_perf_helpers_in_workspace(tmp_path)
 
     assert (eval_tools / AKA_HELPER_FILE_NAME).read_text() == canonical_aka_helper(ROOT)
+
+
+def test_dependency_free_yaml_fields_support_folded_and_flow_commands(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("src.perf_helper_materialization.yaml", None)
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    folded = scripts / "folded runner.py"
+    folded.write_text("print('folded')\n")
+    direct = tmp_path / "direct.py"
+    direct.write_text("print('direct')\n")
+    harness = tmp_path / "harness.py"
+    harness.write_text("print('harness')\n")
+    (tmp_path / "config.yaml").write_text(
+        "harness_path: 'harness.py'\n"
+        "performance_command:\n"
+        "  - >-\n"
+        "    python3 'scripts/folded\n"
+        "    runner.py' --benchmark\n"
+        "  - python3 direct.py\n"
+    )
+
+    assert configured_performance_entrypoints(tmp_path) == {
+        folded,
+        direct,
+        harness,
+    }
+
+    (tmp_path / "config.yaml").write_text(
+        "performance_command: [python3 direct.py]\n"
+    )
+    assert configured_performance_entrypoints(tmp_path) == {direct}
+
+
+def test_perf_helper_audit_runs_without_site_packages():
+    result = subprocess.run(
+        [sys.executable, "-S", "src/tools/sync_perf_helpers.py", "--check"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert "benchmark entrypoints=" in result.stdout
 
 
 def test_materializes_native_header_only_when_driver_includes_it(tmp_path):

@@ -9,12 +9,17 @@ AgentKernelArena's ``src`` package at runtime.
 from __future__ import annotations
 
 import glob
+import json
 import logging
+import re
 import shlex
 from pathlib import Path
 from typing import Any
 
-import yaml
+try:
+    import yaml
+except ModuleNotFoundError:  # Minimal perf-helper audit CI intentionally has no PyYAML.
+    yaml = None  # type: ignore[assignment]
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -151,14 +156,135 @@ def _workspace_uses_rocmbench_helper(workspace: Path) -> bool:
     return False
 
 
+_TOP_LEVEL_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*\s*:")
+_SEQUENCE_ITEM = re.compile(r"^(\s*)-\s+(.*)$")
+
+
+def _yaml_scalar(value: str) -> str:
+    """Decode the small YAML string subset used by benchmark path fields."""
+
+    value = value.strip()
+    if not value:
+        return ""
+    if value.startswith("'") and value.endswith("'"):
+        return value[1:-1].replace("''", "'")
+    if value.startswith('"') and value.endswith('"'):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value[1:-1]
+
+    # In a plain YAML scalar a hash starts a comment only when separated from
+    # the value by whitespace.  Hashes embedded in shell/Python tokens survive.
+    value = re.split(r"\s+#", value, maxsplit=1)[0]
+    return value.rstrip()
+
+
+def _yaml_flow_sequence(value: str) -> list[str] | None:
+    """Parse a top-level YAML flow sequence of scalar strings."""
+
+    if not (value.startswith("[") and value.endswith("]")):
+        return None
+    fields: list[str] = []
+    start = 1
+    quote: str | None = None
+    escaped = False
+    for index, char in enumerate(value[1:-1], start=1):
+        if quote is not None:
+            if quote == '"' and escaped:
+                escaped = False
+            elif quote == '"' and char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in {"'", '"'}:
+            quote = char
+        elif char == ",":
+            fields.append(_yaml_scalar(value[start:index]))
+            start = index + 1
+    fields.append(_yaml_scalar(value[start:-1]))
+    return [field for field in fields if field]
+
+
+def _yaml_sequence(lines: list[str]) -> list[str]:
+    """Parse a block sequence, including YAML's folded continuation lines."""
+
+    items: list[tuple[str, list[str]]] = []
+    for line in lines:
+        match = _SEQUENCE_ITEM.match(line)
+        if match:
+            items.append((match.group(2).strip(), []))
+        elif items and (not line or line[0].isspace()):
+            items[-1][1].append(line.strip())
+
+    parsed: list[str] = []
+    for first, continuation in items:
+        if first in {"|", "|-", "|+"}:
+            value = "\n".join(continuation)
+        elif first in {">", ">-", ">+"}:
+            value = " ".join(part for part in continuation if part)
+        else:
+            value = " ".join(part for part in [first, *continuation] if part)
+        parsed.append(_yaml_scalar(value))
+    return parsed
+
+
+def _dependency_free_config_fields(text: str) -> dict[str, Any]:
+    """Read only the YAML fields needed to locate benchmark harnesses.
+
+    This intentionally is not a general YAML loader.  It supports scalar and
+    block/flow-sequence forms for ``performance_command`` plus scalar
+    ``harness_path``.  Keeping this narrow path in the standard library lets the
+    perf-helper source audit run in a clean Python installation; full task config
+    consumers continue to use PyYAML.
+    """
+
+    lines = text.splitlines()
+    config: dict[str, Any] = {}
+    for index, line in enumerate(lines):
+        if line[:1].isspace() or line.startswith("#") or ":" not in line:
+            continue
+        key, inline = line.split(":", 1)
+        key = key.strip()
+        if key not in {"harness_path", "performance_command"}:
+            continue
+
+        inline = inline.strip()
+        if key == "harness_path":
+            config[key] = _yaml_scalar(inline)
+            continue
+        if inline:
+            flow_sequence = _yaml_flow_sequence(inline)
+            config[key] = (
+                flow_sequence if flow_sequence is not None else _yaml_scalar(inline)
+            )
+            continue
+
+        end = index + 1
+        while end < len(lines):
+            candidate = lines[end]
+            if candidate and not candidate[0].isspace() and _TOP_LEVEL_KEY.match(candidate):
+                break
+            end += 1
+        config[key] = _yaml_sequence(lines[index + 1 : end])
+    return config
+
+
 def _load_workspace_config(workspace: Path) -> dict[str, Any]:
     for name in ("config.yaml", "config.yml"):
         path = workspace / name
         if not path.is_file():
             continue
         try:
-            data = yaml.safe_load(path.read_text()) or {}
-        except (OSError, yaml.YAMLError):
+            text = path.read_text()
+        except OSError:
+            return {}
+        if yaml is None:
+            return _dependency_free_config_fields(text)
+        try:
+            data = yaml.safe_load(text) or {}
+        except yaml.YAMLError:
             return {}
         return data if isinstance(data, dict) else {}
     return {}
