@@ -23,7 +23,7 @@ Contract implemented (forge-loop runs ``python forge_driver.py <args>`` and read
 only stdout — see kernel_agents.mcp_server.tools.{test,bench} and
 kernel_agents.loop.task_preparer.DRIVER_CONTRACT_SPEC):
 
-  * Correctness  ``--shape <s> --mode <smoke|stability|determinism|full>``
+  * Correctness  ``--mode <smoke|stability|determinism|full>``
         prints ``allclose: True/False`` (all cases pass their own relerr tol).
         NOTE: we deliberately do NOT print an ``SNR: <db> dB`` line. This MXFP8
         GEMM has a quantization noise floor below forge's default 30 dB SNR gate,
@@ -33,7 +33,7 @@ kernel_agents.loop.task_preparer.DRIVER_CONTRACT_SPEC):
         ``allclose`` is a valid contract fallback (test tool: SNR preferred,
         allclose otherwise).
 
-  * Benchmark    ``--shape <s> --warmup <n> --iters <n> --bench-mode``
+  * Benchmark    ``--warmup <n> --iters <n> --bench-mode``
         prints ``case_ms: <case_id> <ms>`` for every case and a single
         ``mean_ms: <ms>`` aggregate (arithmetic mean across cases, matching
         Arena's own evaluator aggregation). Timing runs under a CUDA/HIP graph
@@ -41,7 +41,7 @@ kernel_agents.loop.task_preparer.DRIVER_CONTRACT_SPEC):
         once and REPLAYED per timed iteration), so forge-loop's graph-replay
         probe is satisfied for real.
 
-  * Profiling    ``--profile-run [--profile-case <case_id>]``
+  * Profiling    ``--profile-run``
         builds ONE case's inputs and launches ONLY the target launcher
         (``_run``): a few warmups to settle Triton JIT/autotune, a couple of
         profiled launches, one synchronize, exit 0. No timing is printed.
@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import math
 import sys
 from pathlib import Path
 
@@ -79,16 +80,12 @@ def _import_task_runner():
     raise RuntimeError(f"task_runner.py not found near {here}")
 
 
-def _case_map(tr):
-    return {c["id"]: c for c in tr.CASES}
-
-
 def _case_size(case: dict) -> int:
     p = case["params"]
     return int(p["m"]) * int(p["n"]) * int(p["k"])
 
 
-def _run_correctness(tr, mode: str) -> int:
+def _run_correctness(tr) -> int:
     """Reuse the harness's kernel-vs-reference check; gate on relerr, not SNR."""
     torch = tr._torch()
     all_ok = True
@@ -109,7 +106,7 @@ def _run_correctness(tr, mode: str) -> int:
 def _run_bench(tr, warmup: int, iters: int) -> int:
     """Graph-timed bench: one CUDA-graph mean per case (reuses task_runner)."""
     torch = tr._torch()
-    means = []
+    results = []
     for case in tr.CASES:
         inputs = tr._make(case)
         tr._run(inputs)  # warm/JIT settle before capture
@@ -119,27 +116,27 @@ def _run_bench(tr, warmup: int, iters: int) -> int:
             warmup=max(1, warmup),
             repetition=max(1, iters),
         )
-        means.append(ms)
-        # Per-case time (forge can round-trip the case_id to --profile-case).
-        print(f"case_ms: {case['id']} {ms:.6f}")
-        print(f"# bench {case['id']}: {ms:.6f} ms method={meta.get('benchmark_method')}"
+        if not math.isfinite(ms) or ms <= 0:
+            print(f"error: invalid timing for case {case['id']!r}: {ms!r}", file=sys.stderr)
+            return 1
+        results.append((case["id"], ms, meta))
+    if len(results) != len(tr.CASES) or not results:
+        print("error: benchmark did not produce every task case", file=sys.stderr)
+        return 1
+    for case_id, ms, meta in results:
+        print(f"case_ms: {case_id} {ms:.6f}")
+        print(f"# bench {case_id}: {ms:.6f} ms method={meta.get('benchmark_method')}"
               f" {meta.get('benchmark_fallback_reason', '')}".rstrip())
-    # Aggregate forge uses for keep/revert = arithmetic mean across cases
-    # (matches arena_task_adapter / Arena's evaluator). Label it honestly.
+    means = [ms for _, ms, _ in results]
     agg = sum(means) / len(means)
     print(f"mean_ms: {agg:.6f}")
     return 0
 
 
-def _run_profile(tr, case_id: str) -> int:
+def _run_profile(tr) -> int:
     """Kernel-only profiling for one case: warm, a few launches, sync, exit 0."""
     torch = tr._torch()
-    cases = _case_map(tr)
-    if case_id and case_id in cases:
-        case = cases[case_id]
-    else:
-        # Default: the largest / dominant case (biggest M*N*K) when unspecified.
-        case = max(tr.CASES, key=_case_size)
+    case = max(tr.CASES, key=_case_size)
     inputs = tr._make(case)
     for _ in range(5):          # settle Triton JIT / autotune selection
         tr._run(inputs)
@@ -152,14 +149,12 @@ def _run_profile(tr, case_id: str) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="SGLang MXFP8 dense-GEMM forge driver")
-    parser.add_argument("--shape", default="default")  # task owns its shapes
     parser.add_argument("--mode", default="full")       # all modes -> task correctness
     parser.add_argument("--bench-mode", action="store_true")
     parser.add_argument("--profile-run", action="store_true")
-    parser.add_argument("--profile-case", default="")
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--iters", type=int, default=30)
-    args, _unknown = parser.parse_known_args()
+    args = parser.parse_args()
 
     tr = _import_task_runner()
     tr._configure()  # set gfx950 arch env + make the seeded sglang copy importable
@@ -171,10 +166,10 @@ def main() -> int:
         return 1
 
     if args.profile_run:
-        return _run_profile(tr, args.profile_case)
+        return _run_profile(tr)
     if args.bench_mode:
         return _run_bench(tr, args.warmup, args.iters)
-    return _run_correctness(tr, args.mode)
+    return _run_correctness(tr)
 
 
 if __name__ == "__main__":

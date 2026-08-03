@@ -21,7 +21,6 @@ kernel with the task's own compile/correctness/performance commands.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
@@ -486,217 +485,6 @@ def _normalize_logical_operator(value: str) -> str:
     return normalized.strip(": ")
 
 
-def _json_scalar(value: Any, path: str) -> None:
-    """Validate a workload value is stable JSON data."""
-    if value is None or isinstance(value, (str, bool, int)):
-        return
-    if isinstance(value, float):
-        if value != value or value in (float("inf"), float("-inf")):
-            raise ValueError(f"{path} must not contain NaN or infinity")
-        return
-    raise ValueError(f"{path} values must be JSON scalars, got {type(value).__name__}")
-
-
-def _validate_shape(shape: Any, path: str) -> dict[str, Any]:
-    if not isinstance(shape, dict) or not shape:
-        raise ValueError(f"{path} must be a non-empty mapping")
-    normalized: dict[str, Any] = {}
-    for raw_key, value in shape.items():
-        key = str(raw_key).strip()
-        if not key:
-            raise ValueError(f"{path} contains an empty dimension name")
-        _json_scalar(value, f"{path}.{key}")
-        normalized[key] = value
-    return normalized
-
-
-def _selector_schema(
-    workload: dict[str, Any],
-    parsed_cases: list[tuple[str, dict[str, Any]]],
-) -> dict[str, str]:
-    raw_schema = workload.get("selector_schema")
-    if raw_schema is None:
-        return {}
-    if not isinstance(raw_schema, dict):
-        raise ValueError("kernel_identity.workload.selector_schema must be a mapping")
-    name = str(raw_schema.get("name") or "").strip()
-    if name != "hyperloom-v1":
-        raise ValueError("selector_schema.name must be 'hyperloom-v1'")
-    fields = raw_schema.get("fields")
-    if not isinstance(fields, dict) or not fields:
-        raise ValueError("selector_schema.fields must be a non-empty mapping")
-
-    normalized: dict[str, str] = {}
-    for raw_param, raw_selector in fields.items():
-        param = str(raw_param).strip()
-        selector = str(raw_selector).strip()
-        if not param or not re.fullmatch(r"[A-Z][A-Z0-9]*", selector):
-            raise ValueError(
-                "selector_schema.fields must map parameter names to unambiguous "
-                "uppercase selector keys without underscores"
-            )
-        if selector == "CASEID" or selector in normalized.values():
-            raise ValueError(f"Duplicate or reserved selector key: {selector}")
-        normalized[param] = selector
-
-    case_param_keys = {
-        key
-        for _, params in parsed_cases
-        for key in params
-    }
-    extra = sorted(set(normalized) - case_param_keys)
-    if extra:
-        raise ValueError(
-            "selector_schema.fields references parameters absent from session cases: "
-            f"{extra}"
-        )
-    missing_by_case = {
-        case_id: sorted(set(normalized) - set(params))
-        for case_id, params in parsed_cases
-        if set(normalized) - set(params)
-    }
-    if missing_by_case:
-        raise ValueError(
-            "selector_schema.fields must be present in every session case: "
-            f"{missing_by_case}"
-        )
-    return normalized
-
-
-def _load_session_workload(
-    workload: dict[str, Any],
-    task_config_dir: str,
-) -> dict[str, Any]:
-    source_name = str(workload.get("source") or "").strip()
-    source_path = Path(source_name)
-    if not source_path.is_absolute():
-        source_path = Path(task_config_dir).resolve().parent / source_path
-    try:
-        document = json.loads(source_path.read_text())
-    except OSError as error:
-        raise ValueError(f"Cannot read KB workload source {source_path}: {error}") from error
-    except json.JSONDecodeError as error:
-        raise ValueError(f"Invalid KB workload JSON {source_path}: {error}") from error
-    cases = document.get("cases") if isinstance(document, dict) else None
-    if not isinstance(cases, list) or not cases:
-        raise ValueError(f"KB workload source {source_path} has no non-empty cases list")
-
-    parsed_cases: list[tuple[str, dict[str, Any]]] = []
-    seen_case_ids: set[str] = set()
-    for index, case in enumerate(cases):
-        if not isinstance(case, dict):
-            raise ValueError(f"KB workload case {index} must be a mapping")
-        case_id = str(case.get("id") or "").strip()
-        if not case_id:
-            raise ValueError(f"KB workload case {index} has no id")
-        if case_id in seen_case_ids:
-            raise ValueError(f"KB workload source contains duplicate case id {case_id!r}")
-        seen_case_ids.add(case_id)
-        parsed_cases.append(
-            (case_id, _validate_shape(case.get("params"), f"workload case {case_id}.params"))
-        )
-
-    primary_case = str(workload.get("primary_case") or "").strip()
-    if not primary_case:
-        if len(parsed_cases) != 1:
-            raise ValueError(
-                "kernel_identity.workload.primary_case is required when the source "
-                "contains multiple cases"
-            )
-        primary_case = parsed_cases[0][0]
-    matches = [shape for case_id, shape in parsed_cases if case_id == primary_case]
-    if len(matches) != 1:
-        raise ValueError(
-            f"KB workload primary_case {primary_case!r} does not select exactly one case"
-        )
-    field_mapping = _selector_schema(workload, parsed_cases)
-    if not field_mapping:
-        primary = matches[0]
-        validation = [shape for _, shape in parsed_cases]
-        return {"primary": primary, "validation": validation}
-
-    selectors = {
-        case_id: {
-            "CASE_ID": case_id,
-            **{
-                selector: params[param]
-                for param, selector in field_mapping.items()
-            },
-        }
-        for case_id, params in parsed_cases
-    }
-    primary = selectors[primary_case]
-    return {
-        "primary": primary,
-        "minimal": primary,
-        "validation": list(selectors.values()),
-    }
-
-
-def _resolve_shapes(
-    task_config: dict[str, Any],
-    task_config_dir: str,
-    agent_config: dict[str, Any],
-) -> dict[str, Any] | None:
-    """Resolve optional task workload metadata for forge-loop."""
-    identity_config = _task_kernel_identity(task_config)
-    workload = identity_config.get("workload")
-    if workload is None:
-        legacy = agent_config.get("shapes_json")
-        if not legacy:
-            return None
-        try:
-            parsed = json.loads(str(legacy))
-        except json.JSONDecodeError as error:
-            raise ValueError(f"Invalid agent shapes_json: {error}") from error
-        if not isinstance(parsed, dict):
-            raise ValueError("agent shapes_json must decode to an object")
-        return parsed
-
-    if not isinstance(workload, dict):
-        raise ValueError("kernel_identity.workload must be a mapping")
-    if workload.get("source"):
-        return _load_session_workload(workload, task_config_dir)
-
-    raw_shapes = workload.get("shapes", workload)
-    if not isinstance(raw_shapes, dict):
-        raise ValueError("kernel_identity.workload.shapes must be a mapping")
-    primary = _validate_shape(raw_shapes.get("primary"), "workload.shapes.primary")
-    normalized: dict[str, Any] = {"primary": primary}
-    if "minimal" in raw_shapes:
-        normalized["minimal"] = _validate_shape(
-            raw_shapes["minimal"], "workload.shapes.minimal"
-        )
-    if "validation" in raw_shapes:
-        validation = raw_shapes["validation"]
-        if not isinstance(validation, list) or not validation:
-            raise ValueError("workload.shapes.validation must be a non-empty list")
-        normalized["validation"] = [
-            _validate_shape(shape, f"workload.shapes.validation[{index}]")
-            for index, shape in enumerate(validation)
-        ]
-    return normalized
-
-
-def _canonical_workload_key(shapes: dict[str, Any]) -> str:
-    """Return an unambiguous deterministic key derived from the primary selector."""
-    primary = _validate_shape(shapes.get("primary"), "shapes.primary")
-    compute_selector = {
-        key: primary[key]
-        for key in sorted(primary)
-        if key.upper() != "CASE_ID"
-    }
-    if not compute_selector:
-        raise ValueError("KB workload primary shape has no compute dimensions")
-    payload = json.dumps(
-        compute_selector,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-    ).encode()
-    return f"shape-v2-{hashlib.sha256(payload).hexdigest()}"
-
-
 def _git(workspace: str, *args: str, logger: logging.Logger) -> None:
     """Run a git command in the workspace, tolerating non-zero exit."""
     result = subprocess.run(
@@ -868,7 +656,6 @@ def _build_forge_command(
     target_functions: list[str],
     logical_operator: str,
     framework: str,
-    shapes: dict[str, Any] | None,
 ) -> list[str]:
     """Build argv without shell parsing so task metadata is forwarded exactly."""
     cmd = [
@@ -913,15 +700,6 @@ def _build_forge_command(
         cmd.extend(["--operator-name", logical_operator])
     if framework:
         cmd.extend(["--framework", framework])
-    if shapes:
-        cmd.extend(
-            [
-                "--shapes-json",
-                json.dumps(shapes, sort_keys=True, separators=(",", ":")),
-                "--workload-key",
-                _canonical_workload_key(shapes),
-            ]
-        )
     return cmd
 
 
@@ -1115,11 +893,6 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     backend = fellow.split("-")[0]
     logical_operator = _logical_operator(task_config)
     kernel_kind = _resolve_kernel_kind(task_config)
-    shapes = _resolve_shapes(
-        task_config,
-        task_config_dir,
-        agent_config,
-    )
     framework = _resolve_framework(task_config)
 
     # Preserve all existing parent credentials. KernelForge independently decides
@@ -1194,7 +967,6 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         target_functions=target_funcs,
         logical_operator=logical_operator,
         framework=framework,
-        shapes=shapes,
     )
     # Human-readable rendering for the log only; the process is launched from the
     # argv list (cmd_parts) with shell=False, so no shell parsing is involved.
@@ -1210,10 +982,6 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logger.info(f"  operator:    {logical_operator or '<forge inference>'}")
     logger.info(f"  kernel kind: {kernel_kind}")
     logger.info(f"  source owner:{framework or '<unknown>'}")
-    logger.info(
-        "  workload:    %s",
-        _canonical_workload_key(shapes) if shapes else "<forge default>",
-    )
     logger.info(f"  budget:      {agent_config.get('max_iters')} iters / {_forge_max_hours(agent_config)}h")
     logger.info(f"  gateway:     {env.get('ANTHROPIC_BASE_URL', '<unset>')}")
     logger.info(f"Running command: {cmd}")

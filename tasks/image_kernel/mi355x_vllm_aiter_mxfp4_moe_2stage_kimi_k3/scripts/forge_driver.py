@@ -19,20 +19,20 @@ correctness and bench mode).
 Contract implemented (forge-loop runs ``python forge_driver.py <args>`` and reads
 only stdout):
 
-  * Correctness  ``--shape <s> --mode <smoke|stability|determinism|full>``
+  * Correctness  ``--mode <smoke|stability|determinism|full>``
         prints ``SNR: <db> dB`` against the harness's dequantized torch reference
         (``torch_moe_stage1``/``torch_moe_stage2``), reporting the worst case.
         NOTE the stage2 kernel reduces with atomics, so the SNR moves a little
         run to run; the measured level clears forge's 30 dB gate with margin.
 
-  * Benchmark    ``--shape <s> --warmup <n> --iters <n> --bench-mode``
+  * Benchmark    ``--warmup <n> --iters <n> --bench-mode``
         prints ``case_ms: <case_id> <ms>`` per case plus one ``mean_ms: <ms>``
         aggregate (arithmetic mean across cases, matching Arena's evaluator).
         Timing goes through ``task_runner._benchmark_cuda_graph_or_events``: the
         MoE call is captured once into a CUDA/HIP graph and REPLAYED per timed
         iteration, so forge-loop's graph-replay probe is satisfied for real.
 
-  * Profiling    ``--profile-run [--profile-case <case_id>]``
+  * Profiling    ``--profile-run``
         builds one case's inputs and launches ONLY ``fused_moe``: a few warmups to
         settle the aiter JIT and tuned-config lookup, a couple of profiled
         launches, one synchronize, exit 0. No timing is printed.
@@ -62,10 +62,6 @@ def _import_task_runner():
             spec.loader.exec_module(module)
             return module
     raise RuntimeError(f"task_runner.py not found near {here}")
-
-
-def _case_map(tr):
-    return {c["id"]: c for c in tr.CASES}
 
 
 def _case_cost(case: dict) -> int:
@@ -98,7 +94,7 @@ def _run_bench(tr, warmup: int, iters: int) -> int:
     """Graph-timed bench: one CUDA-graph mean per case (reuses task_runner)."""
     import torch
 
-    means = []
+    results = []
     for case in tr.CASES:
         inputs = tr._prepare(case, correctness=False)
         tr._run(inputs)                # settle the aiter JIT / tuned-config lookup
@@ -111,20 +107,27 @@ def _run_bench(tr, warmup: int, iters: int) -> int:
             target_ms=bench.get("target_ms", 1.0),
             max_graph_repeats=bench.get("max_graph_repeats", 100),
         )
-        means.append(ms)
-        print(f"case_ms: {case['id']} {ms:.6f}")
-        print(f"# bench {case['id']}: {ms:.6f} ms method={meta.get('benchmark_method')}"
+        if not math.isfinite(ms) or ms <= 0:
+            print(f"error: invalid timing for case {case['id']!r}: {ms!r}", file=sys.stderr)
+            return 1
+        results.append((case["id"], ms, meta))
+    if len(results) != len(tr.CASES) or not results:
+        print("error: benchmark did not produce every task case", file=sys.stderr)
+        return 1
+    for case_id, ms, meta in results:
+        print(f"case_ms: {case_id} {ms:.6f}")
+        print(f"# bench {case_id}: {ms:.6f} ms method={meta.get('benchmark_method')}"
               f" {meta.get('benchmark_fallback_reason', '')}".rstrip())
+    means = [ms for _, ms, _ in results]
     print(f"mean_ms: {sum(means) / len(means):.6f}")
     return 0
 
 
-def _run_profile(tr, case_id: str) -> int:
+def _run_profile(tr) -> int:
     """Kernel-only profiling for one case: warm, a few launches, sync, exit 0."""
     import torch
 
-    cases = _case_map(tr)
-    case = cases.get(case_id) or max(tr.CASES, key=_case_cost)
+    case = max(tr.CASES, key=_case_cost)
     inputs = tr._prepare(case, correctness=False)
     for _ in range(3):                 # settle JIT + tuned-config selection
         tr._run(inputs)
@@ -137,14 +140,12 @@ def _run_profile(tr, case_id: str) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Kimi-K3 aiter mxfp4 MoE forge driver")
-    parser.add_argument("--shape", default="default")   # the task owns its shapes
     parser.add_argument("--mode", default="full")       # all modes -> task correctness
     parser.add_argument("--bench-mode", action="store_true")
     parser.add_argument("--profile-run", action="store_true")
-    parser.add_argument("--profile-case", default="")
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--iters", type=int, default=20)
-    args, _unknown = parser.parse_known_args()
+    args = parser.parse_args()
 
     tr = _import_task_runner()
     tr._configure()   # gfx950 env + workspace-seeded aiter first on sys.path
@@ -156,7 +157,7 @@ def main() -> int:
         return 1
 
     if args.profile_run:
-        return _run_profile(tr, args.profile_case)
+        return _run_profile(tr)
     if args.bench_mode:
         return _run_bench(tr, args.warmup, args.iters)
     return _run_correctness(tr)

@@ -12,7 +12,8 @@ into the KernelForge driver contract consumed by
         src.evaluator.evaluate_correctness(...) -> "allclose: True/False"
   * bench mode (--bench-mode):
         src.evaluator.evaluate_compilation(...)   # rebuild the edited source
-        src.performance.measure_performance(...) -> "mean_ms: <mean-of-cases>"
+        src.performance.measure_performance(...) -> one "case_ms:" per task case
+                                                   plus "mean_ms: <mean-of-cases>"
         (arithmetic mean across test cases, matching Arena's own evaluator
         aggregation — deliberately a MEAN, not a median, so the label is honest)
 
@@ -37,6 +38,8 @@ in that calls :func:`run`.
 """
 
 import argparse
+import json
+import math
 import statistics
 import sys
 from pathlib import Path
@@ -62,6 +65,70 @@ def _rebuild_edited_source(workspace: str, task_config_data: dict) -> tuple[bool
     from src.evaluator import evaluate_compilation
 
     return evaluate_compilation(Path(workspace), task_config_data)
+
+
+def _expected_case_ids(task_config: str, task_config_data: dict) -> list[str] | None:
+    """Load the declared task suite when kernel identity names a case source."""
+    identity = task_config_data.get("kernel_identity")
+    workload = identity.get("workload") if isinstance(identity, dict) else None
+    source = workload.get("source") if isinstance(workload, dict) else None
+    if not source:
+        return None
+
+    source_path = Path(str(source))
+    if not source_path.is_absolute():
+        source_path = Path(task_config).resolve().parent / source_path
+    document = json.loads(source_path.read_text())
+    rows = document.get("cases") if isinstance(document, dict) else None
+    if not isinstance(rows, list) or not rows:
+        raise ValueError(f"task suite {source_path} has no non-empty cases list")
+
+    case_ids: list[str] = []
+    for index, row in enumerate(rows):
+        case_id = str(row.get("id") or "").strip() if isinstance(row, dict) else ""
+        if not case_id:
+            raise ValueError(f"task suite {source_path} case {index} has no id")
+        if case_id in case_ids:
+            raise ValueError(f"task suite {source_path} has duplicate case id {case_id!r}")
+        case_ids.append(case_id)
+    return case_ids
+
+
+def _complete_case_timings(cases: list, expected_ids: list[str] | None) -> list[tuple[str, float]]:
+    """Validate every measured case before emitting any benchmark result."""
+    timings: list[tuple[str, float]] = []
+    seen_ids: set[str] = set()
+    for index, case in enumerate(cases):
+        case_id = str(getattr(case, "test_case_id", "") or "").strip()
+        if not case_id:
+            raise ValueError(f"performance case {index} has no test_case_id")
+        if case_id in seen_ids:
+            raise ValueError(f"performance results contain duplicate case id {case_id!r}")
+        seen_ids.add(case_id)
+
+        raw_time = getattr(case, "execution_time_ms", None)
+        if isinstance(raw_time, bool):
+            raise ValueError(f"performance case {case_id!r} has invalid timing {raw_time!r}")
+        try:
+            elapsed_ms = float(raw_time)
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"performance case {case_id!r} has invalid timing {raw_time!r}"
+            ) from error
+        if not math.isfinite(elapsed_ms) or elapsed_ms <= 0:
+            raise ValueError(f"performance case {case_id!r} has invalid timing {raw_time!r}")
+        timings.append((case_id, elapsed_ms))
+
+    if not timings:
+        raise ValueError("Arena measure_performance returned no cases")
+    if expected_ids is not None:
+        missing = [case_id for case_id in expected_ids if case_id not in seen_ids]
+        unexpected = [case_id for case_id, _ in timings if case_id not in expected_ids]
+        if missing or unexpected:
+            raise ValueError(
+                f"incomplete performance suite: missing={missing}, unexpected={unexpected}"
+            )
+    return timings
 
 
 def do_correctness(workspace: str, task_config: str, arena_root: str = "") -> int:
@@ -118,18 +185,24 @@ def do_bench(workspace: str, task_config: str, arena_root: str = "") -> int:
     # is_baseline=False: bench whatever kernel is currently in the tree (forge
     # benches the pristine kernel and each edited version the same way).
     cases = measure_performance(Path(workspace), task_config_data, is_baseline=False)
-    times = [c.execution_time_ms for c in cases
-             if getattr(c, "execution_time_ms", None) and c.execution_time_ms > 0]
-    if not times:
-        print("error: Arena measure_performance returned no usable timing")
+    try:
+        timings = _complete_case_timings(
+            cases,
+            _expected_case_ids(task_config, task_config_data),
+        )
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        print(f"error: {error}")
         return 1
+
+    for case_id, elapsed_ms in timings:
+        print(f"case_ms: {case_id.replace(' ', '_')} {elapsed_ms:.6f}")
 
     # Aggregate the per-case times into the single wall time the forge-loop uses
     # for its keep/revert decision. This is the ARITHMETIC MEAN across cases,
     # matching Arena's own evaluator (sum/len over cases), so forge optimizes the
     # same quantity Arena scores. Reported as ``mean_ms:`` (not ``median_ms:``)
     # so the label reflects the statistic actually computed.
-    agg = statistics.mean(times)
+    agg = statistics.mean(elapsed_ms for _, elapsed_ms in timings)
     print(f"mean_ms: {agg:.6f}")
     return 0
 
@@ -142,14 +215,12 @@ def run(workspace: str, task_config: str, arena_root: str = "", argv: list[str] 
         task_config: path to the task's config.yaml.
         arena_root: AgentKernelArena repo root, prepended to sys.path so Arena's
             ``src`` package (evaluator / performance) is importable.
-        argv: driver args from KernelForge (``--shape`` / ``--mode`` /
-            ``--bench-mode`` / ...); defaults to ``sys.argv[1:]``.
+        argv: driver args from KernelForge.
     """
     if arena_root and arena_root not in sys.path:
         sys.path.insert(0, arena_root)
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--shape", default="default")   # task harness owns its shapes
     ap.add_argument("--mode", default="full")        # all modes -> task correctness
     ap.add_argument("--bench-mode", action="store_true")
     ap.add_argument("--warmup", type=int, default=10)

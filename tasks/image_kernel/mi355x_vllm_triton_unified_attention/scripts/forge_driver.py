@@ -29,8 +29,8 @@ Contract implemented (forge-loop runs ``python forge_driver.py <args>`` and read
 only stdout — see kernel_agents.mcp_server.tools.{test,bench} and
 kernel_agents.loop.task_preparer.DRIVER_CONTRACT_SPEC):
 
-  * Correctness  ``--shape <s> --mode <smoke|stability|determinism|full>``
-        selects the declared ``CASE_ID`` and runs the task's own
+  * Correctness  ``--mode <smoke|stability|determinism|full>``
+        runs the task's own
         ``run_correctness()`` (per-operator reference +
         tolerance) and prints ``allclose: True/False``. We deliberately do NOT
         print an ``SNR: <db> dB`` line: these quantized / attention ops sit below
@@ -38,15 +38,15 @@ kernel_agents.loop.task_preparer.DRIVER_CONTRACT_SPEC):
         PRISTINE kernel. ``allclose`` is a valid contract fallback (test tool:
         SNR preferred, allclose otherwise).
 
-  * Benchmark    ``--shape <s> --warmup <n> --iters <n> --bench-mode``
-        selects the declared ``CASE_ID``, runs the task's own
+  * Benchmark    ``--warmup <n> --iters <n> --bench-mode``
+        runs the task's own
         ``run_performance()`` (graph-timed), and then, from
         the ``build/performance_report.json`` it wrote, prints
-        ``case_ms: <case_id> <ms>`` for the selected case plus a single
+        ``case_ms: <case_id> <ms>`` for every case plus a single
         ``mean_ms: <ms>`` value. The
         real CUDA/HIP-graph replays satisfy forge-loop's graph probe.
 
-  * Profiling    ``--profile-run [--profile-case <case_id>]``
+  * Profiling    ``--profile-run``
         builds ONE case's inputs (``_make(case, correctness=False)``) and launches
         ONLY the target region (``_run``): a few warmups to settle Triton JIT, a
         couple of profiled launches, one synchronize, exit 0. No timing printed.
@@ -58,6 +58,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -85,23 +86,6 @@ def _report_path(tr) -> Path:
     return Path(tr.WORKSPACE) / "build" / "performance_report.json"
 
 
-def _select_shape_case(tr, shape: str) -> str:
-    """Restrict the task runner to the exact CASE_ID in a Forge selector."""
-    if not shape or shape == "default":
-        return ""
-    selector: dict[str, str] = {}
-    for item in shape.split(","):
-        key, separator, value = item.partition("=")
-        if separator and key.strip():
-            selector[key.strip()] = value.strip()
-    case_id = selector.get("CASE_ID", "")
-    cases = [case for case in tr.CASES if str(case.get("id") or "") == case_id]
-    if len(cases) != 1:
-        raise ValueError(f"unknown or ambiguous CASE_ID selector: {case_id!r}")
-    tr.CASES = cases
-    return case_id
-
-
 def _run_correctness(tr) -> int:
     """Delegate to the task's own per-operator correctness; map to allclose."""
     ok = True
@@ -118,28 +102,41 @@ def _run_bench(tr) -> int:
     """Delegate to the task's graph-timed run_performance(); expose per-case ms."""
     tr.run_performance()  # writes build/performance_report.json, graph-timed
     rows = json.loads(_report_path(tr).read_text())
-    times = []
-    for row in rows:
-        cid = str(row.get("test_case_id", "")).replace(" ", "_")
-        ms = row.get("execution_time_ms")
-        if ms is None or float(ms) <= 0:
-            continue
-        times.append(float(ms))
-        print(f"case_ms: {cid} {float(ms):.6f}")
-    if not times:
-        print("error: run_performance produced no usable timing", file=sys.stderr)
+    expected_ids = [str(case.get("id") or "") for case in tr.CASES]
+    if not isinstance(rows, list):
+        print("error: performance report must be a list", file=sys.stderr)
         return 1
+    timings = []
+    seen_ids = set()
+    try:
+        for row in rows:
+            cid = str(row.get("test_case_id") or "")
+            ms = float(row.get("execution_time_ms"))
+            if not cid or cid in seen_ids or not math.isfinite(ms) or ms <= 0:
+                raise ValueError(f"invalid or duplicate performance case {cid!r}")
+            seen_ids.add(cid)
+            timings.append((cid, ms))
+    except (AttributeError, TypeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    missing = [case_id for case_id in expected_ids if case_id not in seen_ids]
+    unexpected = [case_id for case_id, _ in timings if case_id not in expected_ids]
+    if missing or unexpected:
+        print(
+            f"error: incomplete performance suite: missing={missing}, unexpected={unexpected}",
+            file=sys.stderr,
+        )
+        return 1
+    for cid, ms in timings:
+        print(f"case_ms: {cid.replace(' ', '_')} {ms:.6f}")
+    times = [ms for _, ms in timings]
     print(f"mean_ms: {sum(times) / len(times):.6f}")
     return 0
 
 
-def _pick_profile_case(tr, case_id: str) -> dict:
+def _pick_profile_case(tr) -> dict:
     cases = {c["id"]: c for c in tr.CASES}
-    if case_id and case_id in cases:
-        return cases[case_id]
-    # Fallback (forge normally passes --profile-case, derived from case_ms): use
-    # the slowest case from a prior perf report if present, else the last case
-    # (session cases are ordered decode->prefill, i.e. smallest->largest).
+    # Prefer the slowest case from a prior complete performance run.
     rp = _report_path(tr)
     if rp.is_file():
         try:
@@ -152,9 +149,9 @@ def _pick_profile_case(tr, case_id: str) -> dict:
     return tr.CASES[-1]
 
 
-def _run_profile(tr, case_id: str) -> int:
+def _run_profile(tr) -> int:
     torch = tr._torch()
-    case = _pick_profile_case(tr, case_id)
+    case = _pick_profile_case(tr)
     inputs = tr._make(case, correctness=False)
     for _ in range(5):          # settle Triton JIT / autotune selection
         tr._run(inputs)
@@ -167,19 +164,15 @@ def _run_profile(tr, case_id: str) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generic image_kernel forge driver")
-    parser.add_argument("--shape", default="default")  # task owns its shapes
     parser.add_argument("--mode", default="full")       # all modes -> task correctness
     parser.add_argument("--bench-mode", action="store_true")
     parser.add_argument("--profile-run", action="store_true")
-    parser.add_argument("--profile-case", default="")
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--iters", type=int, default=30)
-    args, _unknown = parser.parse_known_args()
+    args = parser.parse_args()
 
     tr, _scripts_dir = _import_task_runner()
     tr._configure()  # arch env + make the seeded (agent-editable) repo importable
-    if not args.profile_run:
-        _select_shape_case(tr, args.shape)
 
     import torch
     if not torch.cuda.is_available():
@@ -188,7 +181,7 @@ def main() -> int:
         return 1
 
     if args.profile_run:
-        return _run_profile(tr, args.profile_case)
+        return _run_profile(tr)
     if args.bench_mode:
         return _run_bench(tr)
     return _run_correctness(tr)

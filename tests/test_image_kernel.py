@@ -21,8 +21,8 @@ LOG = logging.getLogger("test_image_kernel")
 
 
 # --------------------------------------------------------------------------
-# 0. MI355X image_kernel tasks declare the complete, explicit identity and
-#    workload contract forwarded to forge-loop.
+# 0. MI355X image_kernel tasks declare complete kernel identity and task-suite
+#    metadata. Workloads remain Arena evaluation inputs, not Forge selectors.
 # --------------------------------------------------------------------------
 def test_mi355x_image_kernel_configs_require_kernel_identity():
     tasks_root = Path(__file__).resolve().parents[1] / "tasks" / "image_kernel"
@@ -69,13 +69,6 @@ def test_mi355x_image_kernel_configs_require_kernel_identity():
             errors.append(
                 f"{task_name}: workload requires a non-empty source or shapes mapping"
             )
-        if has_source:
-            primary_case = workload.get("primary_case")
-            if not isinstance(primary_case, str) or not primary_case.strip():
-                errors.append(
-                    f"{task_name}: source workload requires a primary_case"
-                )
-
     assert not errors, "\n".join(errors)
 
 

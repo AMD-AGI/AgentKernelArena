@@ -1,8 +1,6 @@
 """Pure-Python coverage for Arena's forge-loop task metadata adapter."""
 from __future__ import annotations
 
-import importlib.util
-import json
 import logging
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,7 +10,6 @@ import yaml
 
 from agents.forge.launch_agent import (
     _build_forge_command,
-    _canonical_workload_key,
     _declared_editable_sources,
     _forge_max_hours,
     _infer_backend,
@@ -22,8 +19,8 @@ from agents.forge.launch_agent import (
     _resolve_all_source_files,
     _resolve_framework,
     _resolve_kernel_kind,
-    _resolve_shapes,
 )
+from agents.forge.drivers import arena_task_adapter
 
 
 def _value(argv: list[str], option: str) -> str:
@@ -50,10 +47,6 @@ def _command(tmp_path: Path, **overrides) -> list[str]:
         "target_functions": ["dispatch", "_device_kernel"],
         "logical_operator": "unified_attention",
         "framework": "aiter",
-        "shapes": {
-            "primary": {"N": 4096, "M": 64},
-            "validation": [{"N": 4096, "M": 1}],
-        },
     }
     values.update(overrides)
     return _build_forge_command(**values)
@@ -61,7 +54,6 @@ def _command(tmp_path: Path, **overrides) -> list[str]:
 
 def test_supplied_kernel_identity_fields_are_forwarded(tmp_path):
     argv = _command(tmp_path)
-    shapes = json.loads(_value(argv, "--shapes-json"))
 
     assert _value(argv, "--operator-name") == "unified_attention"
     assert _value(argv, "--framework") == "aiter"
@@ -70,7 +62,8 @@ def test_supplied_kernel_identity_fields_are_forwarded(tmp_path):
         str(tmp_path / "wrapper.py"),
         str(tmp_path / "kernel.py"),
     ]
-    assert _value(argv, "--workload-key") == _canonical_workload_key(shapes)
+    assert "--shapes-json" not in argv
+    assert "--workload-key" not in argv
     assert "--kernel-kind" not in argv
     assert "--resume" not in argv
 
@@ -80,7 +73,6 @@ def test_absent_kernel_identity_fields_are_omitted(tmp_path):
         tmp_path,
         logical_operator="",
         framework="",
-        shapes=None,
     )
     assert "--operator-name" not in argv
     assert "--framework" not in argv
@@ -140,62 +132,6 @@ def test_explicit_source_owner_wins_for_wrapper_anchor():
         "kernel_identity": {"source_owner": "aiter"},
     }
     assert _resolve_framework(config) == "aiter"
-
-
-def test_session_workload_is_structured_and_shape_derived(tmp_path):
-    session = {
-        "cases": [
-            {"id": "small", "params": {"N": 1024, "M": 1}},
-            {"id": "primary", "params": {"M": 64, "N": 1024}},
-        ]
-    }
-    (tmp_path / "session_cases.json").write_text(json.dumps(session))
-    task_config = {
-        "kernel_identity": {
-            "workload": {
-                "source": "session_cases.json",
-                "primary_case": "primary",
-            }
-        }
-    }
-
-    shapes = _resolve_shapes(
-        task_config,
-        str(tmp_path / "config.yaml"),
-        {},
-    )
-    assert shapes == {
-        "primary": {"M": 64, "N": 1024},
-        "validation": [{"N": 1024, "M": 1}, {"M": 64, "N": 1024}],
-    }
-    assert _canonical_workload_key(shapes).startswith("shape-v2-")
-
-
-def test_absent_workload_uses_optional_legacy_shapes():
-    assert _resolve_shapes({}, "/tmp/config.yaml", {}) is None
-    assert _resolve_shapes(
-        {},
-        "/tmp/config.yaml",
-        {"shapes_json": '{"primary":{"M":32,"N":64}}'},
-    ) == {"primary": {"M": 32, "N": 64}}
-
-
-def test_multi_case_workload_requires_explicit_primary(tmp_path):
-    (tmp_path / "session_cases.json").write_text(
-        json.dumps(
-            {
-                "cases": [
-                    {"id": "a", "params": {"M": 1}},
-                    {"id": "b", "params": {"M": 2}},
-                ]
-            }
-        )
-    )
-    config = {
-        "kernel_identity": {"workload": {"source": "session_cases.json"}}
-    }
-    with pytest.raises(ValueError, match="primary_case"):
-        _resolve_shapes(config, str(tmp_path / "config.yaml"), {})
 
 
 @pytest.mark.parametrize(
@@ -335,12 +271,9 @@ def test_all_mi355x_tasks_declare_kernel_identity(
     assert _logical_operator(config) == logical_operator
     assert _resolve_kernel_kind(config) == kernel_kind
     assert _resolve_framework(config) == source_owner
-    shapes = _resolve_shapes(config, str(config_path), {})
-    assert shapes["primary"]
-    assert shapes["validation"]
 
 
-def test_unified_attention_metadata_and_driver_contract():
+def test_unified_attention_metadata():
     root = Path(__file__).resolve().parents[1]
     config_path = (
         root
@@ -350,35 +283,80 @@ def test_unified_attention_metadata_and_driver_contract():
         / "config.yaml"
     )
     config = yaml.safe_load(config_path.read_text())
-    shapes = _resolve_shapes(config, str(config_path), {})
-
     assert _infer_backend(config) == "triton"
     assert _logical_operator(config) == "unified_attention_with_output"
     assert _resolve_kernel_kind(config) == "triton"
     assert _resolve_framework(config) == "aiter"
-    assert shapes["primary"]["CASE_ID"] == "minimax-k004"
 
-    driver_path = config_path.parent / "scripts" / "forge_driver.py"
-    spec = importlib.util.spec_from_file_location(
-        "_test_unified_forge_driver",
-        driver_path,
+
+def test_existing_mi355x_forge_drivers_reject_case_selectors():
+    root = Path(__file__).resolve().parents[1]
+    driver_paths = sorted(
+        (root / "tasks" / "image_kernel").glob("mi355x_*/scripts/forge_driver.py")
     )
-    driver = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(driver)
-    task_runner = SimpleNamespace(
-        CASES=[
-            {"id": "minimax-k004"},
-            {"id": "gemma-k002"},
-        ]
-    )
-    assert driver._select_shape_case(task_runner, "default") == ""
-    assert task_runner.CASES == [
-        {"id": "minimax-k004"},
-        {"id": "gemma-k002"},
+
+    assert len(driver_paths) == 10
+    for driver_path in driver_paths:
+        source = driver_path.read_text()
+        assert '"--shape"' not in source
+        assert '"--profile-case"' not in source
+        assert "parse_known_args" not in source
+        assert "case_ms:" in source
+        assert "mean_ms:" in source
+
+
+def test_adapter_rejects_incomplete_and_invalid_performance_cases():
+    cases = [
+        SimpleNamespace(test_case_id="a", execution_time_ms=1.0),
+        SimpleNamespace(test_case_id="b", execution_time_ms=2.0),
     ]
-    selected = driver._select_shape_case(
-        task_runner,
-        "CASE_ID=minimax-k004,QTOKENS=64,HEADSIZE=128",
+    assert arena_task_adapter._complete_case_timings(cases, ["a", "b"]) == [
+        ("a", 1.0),
+        ("b", 2.0),
+    ]
+
+    with pytest.raises(ValueError, match="missing=\\['b'\\]"):
+        arena_task_adapter._complete_case_timings(cases[:1], ["a", "b"])
+    cases[1].execution_time_ms = float("nan")
+    with pytest.raises(ValueError, match="invalid timing"):
+        arena_task_adapter._complete_case_timings(cases, ["a", "b"])
+
+
+def test_adapter_benchmark_emits_every_case_and_mean(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "kernel_identity": {
+                    "workload": {"source": "session_cases.json"},
+                },
+                "performance_command": ["unused"],
+            }
+        )
     )
-    assert selected == "minimax-k004"
-    assert task_runner.CASES == [{"id": "minimax-k004"}]
+    (tmp_path / "session_cases.json").write_text(
+        '{"cases":[{"id":"a"},{"id":"b"}]}'
+    )
+    measured = [
+        SimpleNamespace(test_case_id="a", execution_time_ms=1.0),
+        SimpleNamespace(test_case_id="b", execution_time_ms=3.0),
+    ]
+    monkeypatch.setattr(
+        "src.performance.measure_performance",
+        lambda *args, **kwargs: measured,
+    )
+
+    assert arena_task_adapter.do_bench(
+        str(tmp_path),
+        str(config_path),
+        str(Path(__file__).resolve().parents[1]),
+    ) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "case_ms: a 1.000000",
+        "case_ms: b 3.000000",
+        "mean_ms: 2.000000",
+    ]

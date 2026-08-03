@@ -20,20 +20,20 @@ the first check, so task preparation is skipped entirely.
 Contract implemented (forge-loop runs ``python forge_driver.py <args>`` and reads
 only stdout):
 
-  * Correctness  ``--shape <s> --mode <smoke|stability|determinism|full>``
+  * Correctness  ``--mode <smoke|stability|determinism|full>``
         prints ``SNR: <db> dB`` -- the worst case's signal-to-noise ratio against
         the harness's independent float64 golden. KDA clears forge's default 30 dB
         gate with a wide margin (measured 48-57 dB), so SNR is emitted rather than
         the weaker ``allclose`` fallback.
 
-  * Benchmark    ``--shape <s> --warmup <n> --iters <n> --bench-mode``
+  * Benchmark    ``--warmup <n> --iters <n> --bench-mode``
         prints ``case_ms: <case_id> <ms>`` per case plus one ``mean_ms: <ms>``
         aggregate (arithmetic mean across cases, matching Arena's own evaluator).
         Timing goes through ``task_runner._benchmark_cuda_graph_or_events``, i.e.
         the call is captured once into a CUDA/HIP graph and REPLAYED per timed
         iteration, so forge-loop's graph-replay probe is satisfied for real.
 
-  * Profiling    ``--profile-run [--profile-case <case_id>]``
+  * Profiling    ``--profile-run``
         builds one case's inputs and launches ONLY the target entry point: a few
         warmups to settle the Triton JIT, a couple of profiled launches, one
         synchronize, exit 0. No timing is printed.
@@ -70,10 +70,6 @@ def _import_task_runner():
     raise RuntimeError(f"task_runner.py not found near {here}")
 
 
-def _case_map(tr):
-    return {c["id"]: c for c in tr.CASES}
-
-
 def _case_cost(case: dict) -> int:
     p = case["params"]
     return int(p["num_seqs"]) * int(p["seq_len"]) * int(p["num_heads"]) * int(p["head_dim"])
@@ -104,7 +100,7 @@ def _run_bench(tr, warmup: int, iters: int) -> int:
     """Graph-timed bench: one CUDA-graph mean per case (reuses task_runner)."""
     import torch
 
-    means = []
+    results = []
     for case in tr.CASES:
         inp = tr._prepare(case, correctness=False)
         tr._run(inp)                   # settle the Triton JIT before capture
@@ -117,20 +113,27 @@ def _run_bench(tr, warmup: int, iters: int) -> int:
             target_ms=bench.get("target_ms", 2.0),
             max_graph_repeats=bench.get("max_graph_repeats", 50),
         )
-        means.append(ms)
-        print(f"case_ms: {case['id']} {ms:.6f}")
-        print(f"# bench {case['id']}: {ms:.6f} ms method={meta.get('benchmark_method')}"
+        if not math.isfinite(ms) or ms <= 0:
+            print(f"error: invalid timing for case {case['id']!r}: {ms!r}", file=sys.stderr)
+            return 1
+        results.append((case["id"], ms, meta))
+    if len(results) != len(tr.CASES) or not results:
+        print("error: benchmark did not produce every task case", file=sys.stderr)
+        return 1
+    for case_id, ms, meta in results:
+        print(f"case_ms: {case_id} {ms:.6f}")
+        print(f"# bench {case_id}: {ms:.6f} ms method={meta.get('benchmark_method')}"
               f" {meta.get('benchmark_fallback_reason', '')}".rstrip())
+    means = [ms for _, ms, _ in results]
     print(f"mean_ms: {sum(means) / len(means):.6f}")
     return 0
 
 
-def _run_profile(tr, case_id: str) -> int:
+def _run_profile(tr) -> int:
     """Kernel-only profiling for one case: warm, a few launches, sync, exit 0."""
     import torch
 
-    cases = _case_map(tr)
-    case = cases.get(case_id) or max(tr.CASES, key=_case_cost)
+    case = max(tr.CASES, key=_case_cost)
     inp = tr._prepare(case, correctness=False)
     for _ in range(3):                 # settle Triton JIT / autotune selection
         tr._run(inp)
@@ -143,14 +146,12 @@ def _run_profile(tr, case_id: str) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Kimi-K3 KDA forge driver")
-    parser.add_argument("--shape", default="default")   # the task owns its shapes
     parser.add_argument("--mode", default="full")       # all modes -> task correctness
     parser.add_argument("--bench-mode", action="store_true")
     parser.add_argument("--profile-run", action="store_true")
-    parser.add_argument("--profile-case", default="")
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--iters", type=int, default=20)
-    args, _unknown = parser.parse_known_args()
+    args = parser.parse_args()
 
     tr = _import_task_runner()
     tr._configure()   # gfx950 env + workspace-seeded vllm first on sys.path
@@ -162,7 +163,7 @@ def main() -> int:
         return 1
 
     if args.profile_run:
-        return _run_profile(tr, args.profile_case)
+        return _run_profile(tr)
     if args.bench_mode:
         return _run_bench(tr, args.warmup, args.iters)
     return _run_correctness(tr)
