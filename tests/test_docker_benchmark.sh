@@ -97,7 +97,7 @@ assert_cache_args_absent() {
 
 TEST_HOME="$(mktemp -d)"
 PATH_TEST_PARENT="$ROOT/.eval-tool-runner-test-$$"
-trap 'rm -rf "$TEST_HOME" "$PATH_TEST_PARENT"' EXIT
+trap 'rm -rf "$TEST_HOME" "$PATH_TEST_PARENT" "$ROOT/quality_loop_runs/test-run" "$ROOT/.quality_loop_worktrees/test-run"' EXIT
 UNRELATED_GEAK_WORKFLOW_DIR="$TEST_HOME/unrelated-geak-workflow"
 GEAK_SDK_PYTHONPATH="PYTHONPATH=/workspace/.aka-pyuserbase/geak-sdk"
 mkdir -p "$UNRELATED_GEAK_WORKFLOW_DIR"
@@ -240,6 +240,43 @@ assert_not_has "ANTHROPIC_BASE_URL" "${args[@]}"
 assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
 assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
+
+# quality_loop provisions only isolated Codex state, never GitHub CLI state, and
+# mounts the main checkout read-only while over-mounting only this run's state rw.
+QUALITY_HOME="$TEST_HOME/quality-home"
+QUALITY_PREFIX="$TEST_HOME/quality-node"
+QUALITY_BIN="$TEST_HOME/quality-bin"
+QUALITY_CONFIG="$TEST_HOME/quality-loop.yaml"
+mkdir -p "$QUALITY_HOME/.codex" "$QUALITY_HOME/.config/gh" "$QUALITY_PREFIX/bin" "$QUALITY_BIN"
+touch "$QUALITY_PREFIX/bin/node" "$QUALITY_PREFIX/bin/codex"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$QUALITY_BIN/gh"
+chmod +x "$QUALITY_BIN/gh"
+printf '#!/usr/bin/env bash\ncase "$*" in *"agents.quality_loop.host start"*) echo test-run;; *"agents.quality_loop.host paths"*) printf "quality_loop_runs/test-run\\n.quality_loop_worktrees/test-run\\n";; *"agents.quality_loop.host finalize"*) echo test-pr;; esac\n' > "$QUALITY_BIN/python3"
+chmod +x "$QUALITY_BIN/python3"
+printf 'tasks:\n  - hip2hip/gpumode/GELU\ntarget_gpu_model: MI300\nquality_loop: {}\n' > "$QUALITY_CONFIG"
+mkdir -p "$ROOT/quality_loop_runs/test-run" "$ROOT/.quality_loop_worktrees/test-run"
+
+mapfile -t args < <(
+    env \
+        HOME="$QUALITY_HOME" \
+        PATH="$QUALITY_BIN:$PATH" \
+        AKA_NODE_PREFIX="$QUALITY_PREFIX" \
+        bash "$RUNNER" quality-loop --config "$QUALITY_CONFIG" 2>/dev/null
+)
+assert_has "$QUALITY_PREFIX:/opt/node:ro" "${args[@]}"
+assert_has "$QUALITY_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+assert_has "$ROOT:/workspace:ro" "${args[@]}"
+assert_has "$ROOT/quality_loop_runs/test-run:/workspace/quality_loop_runs/test-run" "${args[@]}"
+assert_has "$ROOT/.quality_loop_worktrees/test-run:/workspace/.quality_loop_worktrees/test-run" "${args[@]}"
+assert_not_has "$QUALITY_BIN/gh:$QUALITY_BIN/gh:ro" "${args[@]}"
+assert_not_has "$QUALITY_HOME/.config/gh:$QUALITY_HOME/.config/gh:ro" "${args[@]}"
+assert_has "python3" "${args[@]}"
+assert_has "agents.quality_loop" "${args[@]}"
+assert_has "--resume" "${args[@]}"
+assert_has "test-run" "${args[@]}"
+assert_has "--defer-github" "${args[@]}"
+assert_has "--skip-preflight" "${args[@]}"
+rm -rf "$ROOT/quality_loop_runs/test-run" "$ROOT/.quality_loop_worktrees/test-run"
 
 # A Codex-only config likewise receives neither Claude credentials nor GEAK's
 # dependency path/mount, even when both are configured on the host.
