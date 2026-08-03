@@ -340,7 +340,9 @@ def _build_context(
     workspace_directory_name = (
         f"{config['workspace_directory_prefix']}_{config['target_gpu_model']}_{agent.value}"
     )
-    workspace_directory = (project_root / workspace_directory_name).resolve()
+    workspace_directory = (
+        project_root / "experiments" / workspace_directory_name
+    ).resolve()
     resolved_run = _resolve_run(args, workspace_directory)
     if resolved_run is None:
         return None

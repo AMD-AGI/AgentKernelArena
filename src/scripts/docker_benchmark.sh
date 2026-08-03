@@ -922,7 +922,7 @@ resolve_workspace_dir_for_config() {
     [[ -n "$prefix" ]] || die "workspace_directory_prefix not found in $config"
     [[ -n "$model" ]] || die "target_gpu_model not found in $config"
     [[ -n "$agent" ]] || die "agent.template not found in $config"
-    printf '%s/%s_%s_%s\n' "$HOST_ROOT" "$prefix" "$model" "$agent"
+    printf '%s/experiments/%s_%s_%s\n' "$HOST_ROOT" "$prefix" "$model" "$agent"
 }
 
 resolve_latest_run_name() {

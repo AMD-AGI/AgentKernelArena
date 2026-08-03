@@ -271,6 +271,12 @@ def build_inputs(test_case: dict, seed: int = 0xC0FFEE) -> Tuple[List[Any], Dict
         _arg_from_sig(s, gen, name=args_names[i], ctx=ctx)
         for i, s in enumerate(args_sig)
     ]
+    # CuCount was captured on MI300X (304 CUs). Use the live device value so
+    # the same self-contained task launches the intended grid on MI355X and
+    # other supported AMD GPUs.
+    for i, name in enumerate(args_names):
+        if name.lower() == "cucount":
+            args[i] = torch.cuda.get_device_properties(0).multi_processor_count
     kwargs: Dict[str, Any] = {}
     for k, v in (test_case.get("kwargs_sig") or {}).items():
         kwargs[k] = _arg_from_sig(v, gen, name=k, ctx=ctx)

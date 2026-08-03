@@ -57,7 +57,7 @@ Pass a completed run directory and the generated held-out configurations:
 
 ```bash
 python3 -m src.held_out.run_heldout_eval \
-  --run-dir workspace_MI300_claude_code/run_<timestamp> \
+  --run-dir experiments/workspace_MI300_claude_code/run_<timestamp> \
   --heldout-dir held_out_tests/ \
   --tasks-dir tasks/
 ```

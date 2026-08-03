@@ -448,7 +448,7 @@ def is_task_complete(
     Check if a task is already completed.
 
     Args:
-        run_directory: Run-level directory (e.g., workspace_MI300_cursor/run_20250115_143022/)
+        run_directory: Run-level directory (e.g., experiments/workspace_MI300_cursor/run_20250115_143022/)
         task_name: Full task name (e.g., "hip2hip/gpumode/SiLU")
         timestamp: Timestamp string used in task directory name
         agent_name: Agent name. task_validator uses validation_report.yaml;
@@ -478,7 +478,7 @@ def setup_workspace(task_config_dir: str, run_directory: Path, timestamp: str, l
 
     Args:
         task_config_dir: Path to task's config.yaml
-        run_directory: Run-level directory (e.g., workspace_MI300_cursor/run_20250115_143022/)
+        run_directory: Run-level directory (e.g., experiments/workspace_MI300_cursor/run_20250115_143022/)
         timestamp: Timestamp string for unique workspace naming
         logger: Logger instance
         task_name: Full task name (e.g., "hip2hip/gpumode/SiLU") for unique directory naming

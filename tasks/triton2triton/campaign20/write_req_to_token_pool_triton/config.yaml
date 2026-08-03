@@ -10,7 +10,7 @@ performance_command:
 - python3 scripts/task_runner.py performance
 task_type: triton2triton
 platform_support:
-  required_arch: gfx942
+  required_arch: gfx950
   status: active
   skip_reason: null
 task_result_template: null

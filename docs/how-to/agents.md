@@ -95,8 +95,8 @@ You can also generate a text comparison directly:
 
 ```bash
 python3 src/tools/compare_runs.py \
-  workspace_MI300_claude_code/run_<timestamp>_baseline \
-  workspace_MI300_claude_code/run_<timestamp>_with_capability
+  experiments/workspace_MI300_claude_code/run_<timestamp>_baseline \
+  experiments/workspace_MI300_claude_code/run_<timestamp>_with_capability
 ```
 
 The resulting `task_result.yaml` files expose compilation, correctness, timing,

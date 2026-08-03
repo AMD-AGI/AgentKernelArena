@@ -125,9 +125,9 @@ def _get_run_directory(workspace_paths: List[str]) -> Path:
     Extract run directory from workspace paths.
     
     Workspace paths are task directories like:
-    workspace_MI300_cursor/run_20250115_143022/task_hip2hip_silu_20250115_143022/
+    experiments/workspace_MI300_cursor/run_20250115_143022/task_hip2hip_silu_20250115_143022/
     
-    Returns the run directory: workspace_MI300_cursor/run_20250115_143022/
+    Returns the run directory: experiments/workspace_MI300_cursor/run_20250115_143022/
     """
     if not workspace_paths:
         raise ValueError("Cannot determine run directory: empty workspace_paths")
@@ -360,7 +360,7 @@ def _collect_all_tasks_from_run(run_directory: Path) -> List[str]:
     Collect all task directories from a run directory that have task_result.yaml.
     
     Args:
-        run_directory: Run-level directory (e.g., workspace_MI300_cursor/run_20250115_143022/)
+        run_directory: Run-level directory (e.g., experiments/workspace_MI300_cursor/run_20250115_143022/)
     
     Returns:
         List of task directory paths (as strings) that have task_result.yaml
@@ -665,5 +665,5 @@ def export_task_results_csv(
 if __name__ == "__main__":
     
     # manually generate report
-    workspace_path = "workspace_MI300_claude_code"
+    workspace_path = "experiments/workspace_MI300_claude_code"
     general_post_processing(workspace_path, logger = None)

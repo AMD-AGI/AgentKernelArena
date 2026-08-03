@@ -54,7 +54,7 @@ host-CLI integrations).
 
 ```bash
 python3 -m src.held_out.run_heldout_eval \
-    --run-dir workspace_MI300_cursor/run_20260417_142419 \
+    --run-dir experiments/workspace_MI300_cursor/run_20260417_142419 \
     --heldout-dir held_out_tests/ \
     --tasks-dir tasks/
 ```

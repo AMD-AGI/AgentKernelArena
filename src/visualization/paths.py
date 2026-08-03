@@ -15,6 +15,7 @@ def _configured_path(environment_name: str, default: Path) -> Path:
 
 
 PROJECT_ROOT = _configured_path("AKA_PROJECT_ROOT", MODULE_ROOT.parents[1])
+EXPERIMENTS_ROOT = PROJECT_ROOT / "experiments"
 RUNTIME_ROOT = _configured_path(
     "AKA_VISUALIZATION_RUNTIME_ROOT", PROJECT_ROOT / ".visualization"
 )

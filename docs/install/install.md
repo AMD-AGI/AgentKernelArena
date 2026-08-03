@@ -180,7 +180,7 @@ provider settings.
 
 The quickstart run above confirms that the framework, GPU, and agent CLI work
 together. It creates a timestamped workspace directory
-(`workspace_<gpu>_<agent>/run_<timestamp>/`), logs to `logs/`, and writes a
+(`experiments/workspace_<gpu>_<agent>/run_<timestamp>/`), logs to `logs/`, and writes a
 `task_result.yaml` for the task.
 
 To run across multiple GPUs, list host GPU IDs or omit `GPU_IDS` to discover

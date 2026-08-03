@@ -118,7 +118,7 @@ Override per run via env: `GEAK_GPU_IDS`, `GEAK_NUM_PARALLEL`, `GEAK_MODEL`,
 docker exec geak-aka tail -f /workspace/logs/*.log
 
 # Per-kernel AKA results (authoritative)
-for f in workspace_*/run_*/*/task_result.yaml; do
+for f in experiments/workspace_*/run_*/*/task_result.yaml; do
   [ -f "$f" ] && echo "$(basename $(dirname "$f")): $(grep speedup_ratio "$f")"
 done
 ```

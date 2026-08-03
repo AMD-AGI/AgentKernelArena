@@ -19,7 +19,7 @@ def create_parser() -> argparse.ArgumentParser:
     build_parser.add_argument(
         "--include-workspace-runs",
         action="store_true",
-        help="Include workspace_*/run_*/reports directories.",
+        help="Include experiments/workspace_*/run_*/reports directories.",
     )
 
     serve_parser = subparsers.add_parser("serve", help="Serve the dashboard.")
@@ -31,7 +31,7 @@ def create_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--include-workspace-runs",
         action="store_true",
-        help="Include workspace_*/run_*/reports directories.",
+        help="Include experiments/workspace_*/run_*/reports directories.",
     )
     _add_server_arguments(run_parser)
     return parser

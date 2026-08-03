@@ -6,6 +6,7 @@ build/
 .idea
 .claude
 workspace_*
+/experiments/
 
 # Auto-cloned agent dependencies
 agents/geak_optimagentv2/GEAK-agent/

@@ -49,6 +49,7 @@ class VisualizationBuildTests(unittest.TestCase):
             local_report = reports_root / "manual_baseline"
             workspace_report = (
                 project_root
+                / "experiments"
                 / "workspace_MI300_claude_code"
                 / "run_20260715_120000"
                 / "reports"
@@ -59,6 +60,7 @@ class VisualizationBuildTests(unittest.TestCase):
             with mock.patch.multiple(
                 build_data,
                 PROJECT_ROOT=project_root,
+                EXPERIMENTS_ROOT=project_root / "experiments",
                 REPORTS_ROOT=reports_root,
                 DATA_ROOT=data_root,
                 OUTPUT_JSON=data_root / "data.json",
@@ -92,7 +94,7 @@ class VisualizationBuildTests(unittest.TestCase):
                     for report in full_dataset["reports"]
                 }
                 self.assertIn(
-                    "artifacts/workspace_MI300_claude_code/"
+                    "artifacts/experiments/workspace_MI300_claude_code/"
                     "run_20260715_120000/reports/overall_summary.csv",
                     source_paths,
                 )
@@ -131,8 +133,8 @@ class VisualizationServerTests(unittest.TestCase):
             self.reports / "manual" / "overall_summary.csv",
         )
         self.assertEqual(
-            self.resolve("/artifacts/workspace_x/run_x/reports/overall_report.txt"),
-            self.root / "workspace_x" / "run_x" / "reports" / "overall_report.txt",
+            self.resolve("/artifacts/experiments/workspace_x/run_x/reports/overall_report.txt"),
+            self.root / "experiments" / "workspace_x" / "run_x" / "reports" / "overall_report.txt",
         )
 
     def test_rejects_traversal_hidden_paths_and_non_report_artifacts(self) -> None:

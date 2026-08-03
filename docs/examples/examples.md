@@ -34,7 +34,7 @@ Run the single-task Claude Code quickstart for the physical GPU.
 3. Inspect the result:
 
     ```text
-    workspace_MI300_claude_code/
+    experiments/workspace_MI300_claude_code/
     └── run_<timestamp>/
         └── hip2hip_gpumode_GELU_<timestamp>/
             └── task_result.yaml
@@ -89,7 +89,7 @@ make docker-run CONFIG=config_triton.yaml RUN_ARGS="--run-suffix baseline"
 make docker-run CONFIG=config_triton.yaml RUN_ARGS="--run-suffix with_capability"
 ```
 
-Both runs land in `workspace_MI300_<agent>/` with distinct run names. Build the
+Both runs land in `experiments/workspace_MI300_<agent>/` with distinct run names. Build the
 dashboard and compare them side-by-side:
 
 ```bash
@@ -153,7 +153,7 @@ make docker-parallel-run \
 The run directory contains normal per-task workspaces plus a scheduler queue:
 
 ```text
-workspace_MI355X_claude_code/
+experiments/workspace_MI355X_claude_code/
 └── run_<timestamp>_claude_parallel8/
     ├── .parallel/
     │   ├── pending/

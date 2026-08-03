@@ -14,7 +14,7 @@ roofline_probe_command:
 - env GEAK_PERF_LARGE=1 python3 scripts/task_runner.py performance
 task_type: hip2hip
 platform_support:
-  required_arch: gfx942
+  required_arch: gfx950
   status: active
   skip_reason: null
 task_result_template: null

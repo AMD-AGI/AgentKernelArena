@@ -27,13 +27,13 @@ By default, it scans only visualization-specific report bundles:
 ```
 
 Workspace-run reports, which are usually located at
-`workspace_<gpu>_<agent>/run_<timestamp>/reports/`, can also be scanned, but this
+`experiments/workspace_<gpu>_<agent>/run_<timestamp>/reports/`, can also be scanned, but this
 is opt-in.
 
 ## Build the dashboard data and serve it
 
 After a normal AgentKernelArena run, reports land in
-`workspace_<gpu>_<agent>/run_<timestamp>/reports/`. Pass
+`experiments/workspace_<gpu>_<agent>/run_<timestamp>/reports/`. Pass
 `--include-workspace-runs` so the module picks them up. Run the following from
 the AgentKernelArena repository root:
 

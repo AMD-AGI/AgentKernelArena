@@ -39,7 +39,7 @@ help:
 	@echo "make check-perf-helpers  - Verify task perf-helper stubs and markers are valid"
 	@echo "make materialize-perf-workspace WORKSPACE=workspace_x - Inject canonical perf helpers into workspace(s)"
 	@echo "make materialize-perf-task TASK=tasks/... OUT=/tmp/aka-task - Copy task(s) and inject canonical perf helpers"
-	@echo "make cleanup-works       - Remove workspace_* directories and logs"
+	@echo "make cleanup-works       - Remove experiments/workspace_* directories and logs"
 	@echo "make install-cursor-agent - Install the Cursor Agent CLI on the host"
 
 DOCKER_RUNNER := src/scripts/docker_benchmark.sh
@@ -123,7 +123,7 @@ materialize-perf-task:
 
 cleanup-works:
 	@echo "Removing workspace directories and logs..."
-	@rm -rf workspace_*
+	@rm -rf experiments/workspace_*
 	@rm -rf logs
 	@echo "✓ Workspace directories and logs removed"
 

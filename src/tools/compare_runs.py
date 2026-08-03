@@ -4,7 +4,7 @@ Standalone script to compare two AgentKernelArena runs.
 
 Usage:
     python3 src/tools/compare_runs.py run1_path run2_path
-    python3 src/tools/compare_runs.py workspace_MI300_cursor/run_20260714_120000_baseline workspace_MI300_cursor/run_20260714_140000_treatment
+    python3 src/tools/compare_runs.py experiments/workspace_MI300_cursor/run_20260714_120000_baseline experiments/workspace_MI300_cursor/run_20260714_140000_treatment
 """
 
 import json
@@ -19,7 +19,7 @@ def load_run_data(run_path: Path) -> Dict[str, Any]:
     Load task_type_breakdown.json from a run directory.
     
     Args:
-        run_path: Path to run directory (e.g., workspace_MI300_cursor/run_20260714_120000_baseline)
+        run_path: Path to run directory (e.g., experiments/workspace_MI300_cursor/run_20260714_120000_baseline)
     
     Returns:
         Dictionary containing run data from JSON file
@@ -342,7 +342,7 @@ def main():
         epilog="""
 Examples:
   # Compare two runs
-  python3 src/tools/compare_runs.py workspace_MI300_cursor/run_20260714_120000_baseline workspace_MI300_cursor/run_20260714_140000_treatment
+  python3 src/tools/compare_runs.py experiments/workspace_MI300_cursor/run_20260714_120000_baseline experiments/workspace_MI300_cursor/run_20260714_140000_treatment
   
   # Compare and save to file
   python3 src/tools/compare_runs.py run1 run2 --output comparison_report.txt
@@ -352,13 +352,13 @@ Examples:
     parser.add_argument(
         'run1',
         type=str,
-        help='Path to baseline/first run directory (e.g., workspace_MI300_cursor/run_20260714_120000_baseline)'
+        help='Path to baseline/first run directory (e.g., experiments/workspace_MI300_cursor/run_20260714_120000_baseline)'
     )
     
     parser.add_argument(
         'run2',
         type=str,
-        help='Path to treatment/second run directory (e.g., workspace_MI300_cursor/run_20260714_140000_treatment)'
+        help='Path to treatment/second run directory (e.g., experiments/workspace_MI300_cursor/run_20260714_140000_treatment)'
     )
     
     parser.add_argument(

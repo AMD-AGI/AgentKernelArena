@@ -95,10 +95,10 @@ with more GPUs via `GEAK_GPU_IDS` / `--num-parallel`.
 
 - **AKA run log:** `logs/*.log` (path from `log_directory` in `config.yaml`).
 - **Per-task result (authoritative):**
-  `workspace_<gpu>_geak_v3/run_<timestamp>/<task>_<timestamp>/task_result.yaml`
+  `experiments/workspace_<gpu>_geak_v3/run_<timestamp>/<task>_<timestamp>/task_result.yaml`
   (plus `baseline_perf.yaml`, `optimized_perf.yaml`, and
   `build/performance_report.json`).
 - **GEAK internals:**
-  `workspace_<gpu>_geak_v3/run_<timestamp>/<task>_<timestamp>_logs/`
+  `experiments/workspace_<gpu>_geak_v3/run_<timestamp>/<task>_<timestamp>_logs/`
   (`final_report.json`, `geak_agent.log`, the winning `.diff`).
-- **Aggregate:** `workspace_<gpu>_geak_v3/run_<timestamp>/reports/overall_summary.csv`.
+- **Aggregate:** `experiments/workspace_<gpu>_geak_v3/run_<timestamp>/reports/overall_summary.csv`.
