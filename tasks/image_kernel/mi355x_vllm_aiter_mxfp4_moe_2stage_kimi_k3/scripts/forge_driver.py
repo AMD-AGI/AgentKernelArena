@@ -69,6 +69,14 @@ def _case_cost(case: dict) -> int:
     return int(p["token"]) * int(p["topk"]) * int(p["model_dim"])
 
 
+def _scored_cases(tr) -> list[dict]:
+    """Return only performance-scored cases; correctness-only buckets are gates."""
+    cases = [case for case in tr.CASES if not case.get("correctness_only")]
+    if not cases:
+        raise RuntimeError("task declares no performance-scored cases")
+    return cases
+
+
 def _run_correctness(tr) -> int:
     """Per-case SNR against the dequantized torch reference; report the worst."""
     import torch
@@ -91,11 +99,12 @@ def _run_correctness(tr) -> int:
 
 
 def _run_bench(tr, warmup: int, iters: int) -> int:
-    """Graph-timed bench: one CUDA-graph mean per case (reuses task_runner)."""
+    """Graph-timed bench: one CUDA-graph mean per scored case."""
     import torch
 
+    cases = _scored_cases(tr)
     results = []
-    for case in tr.CASES:
+    for case in cases:
         inputs = tr._prepare(case, correctness=False)
         tr._run(inputs)                # settle the aiter JIT / tuned-config lookup
         torch.cuda.synchronize()
@@ -111,8 +120,8 @@ def _run_bench(tr, warmup: int, iters: int) -> int:
             print(f"error: invalid timing for case {case['id']!r}: {ms!r}", file=sys.stderr)
             return 1
         results.append((case["id"], ms, meta))
-    if len(results) != len(tr.CASES) or not results:
-        print("error: benchmark did not produce every task case", file=sys.stderr)
+    if len(results) != len(cases):
+        print("error: benchmark did not produce every scored case", file=sys.stderr)
         return 1
     for case_id, ms, meta in results:
         print(f"case_ms: {case_id} {ms:.6f}")
@@ -127,7 +136,7 @@ def _run_profile(tr) -> int:
     """Kernel-only profiling for one case: warm, a few launches, sync, exit 0."""
     import torch
 
-    case = max(tr.CASES, key=_case_cost)
+    case = max(_scored_cases(tr), key=_case_cost)
     inputs = tr._prepare(case, correctness=False)
     for _ in range(3):                 # settle JIT + tuned-config selection
         tr._run(inputs)
