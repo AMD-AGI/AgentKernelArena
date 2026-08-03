@@ -6,4 +6,4 @@ repos:
         entry: make check-perf-helpers
         language: system
         pass_filenames: false
-        files: ^(src/tools/perf/|src/tools/sync_perf_helpers\.py|src/tools/materialize_perf_helpers\.py|src/perf_helper_materialization\.py|tasks/.*/rocmbench/.*/performance_utils_pytest\.py|tasks/triton2triton/vllm/.*/scripts/task_runner\.py)$
+        files: ^(src/tools/perf/|src/tools/sync_perf_helpers\.py|src/tools/materialize_perf_helpers\.py|src/perf_helper_materialization\.py|tasks/.*/rocmbench/.*/performance_utils_pytest\.py|tasks/.*/scripts/task_runner\.py)$

@@ -1,0 +1,14 @@
+agent:
+  template: task_validator
+
+tasks:
+  - triton2triton/campaign20/gemm_a16_w16_kernel
+  - triton2triton/campaign20/gemm_a8w8_blockscale_kernel
+  - triton2triton/campaign20/topk_forward
+  - triton2triton/campaign20/write_req_to_token_pool_triton
+  - hip2hip/campaign20/paged_attention_large
+  - hip2hip/campaign20/wvsplitk
+
+target_gpu_model: MI300
+log_directory: logs
+workspace_directory_prefix: workspace

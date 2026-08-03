@@ -156,8 +156,9 @@ The shared performance timing helpers are generated from `src/tools/perf/` into 
 run workspace. In committed task sources:
 
 - `tasks/*/rocmbench/**/performance_utils_pytest.py` is intentionally a stub.
-- The `AKA-GENERATED` region in `triton2triton/vllm/*/scripts/task_runner.py` is
-  intentionally a stub block.
+- The `AKA-GENERATED` region in any `tasks/**/scripts/task_runner.py` that opts
+  into shared timing is intentionally a stub block. The vLLM runners remain
+  mandatory users of this mechanism.
 
 Do not hand-edit those stubs. If a task needs shared timing behavior, add the
 stub/marker and run `make sync-perf-helpers`. If you need to change timing logic,
