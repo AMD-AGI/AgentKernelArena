@@ -460,38 +460,21 @@ def _tol_for(dtype: torch.dtype) -> Tuple[float, float]:
 
 
 def compare(got: Any, expected: Any) -> Optional[str]:
-    """Return None if equal-within-tolerance, else a short diff message.
-
-    Mask out non-finite (NaN/Inf) positions and overflow-magnitude artifacts
-    when computing the diff. Some AITER CK MoE kernels produce
-    non-deterministic NaN/Inf or near-overflow values at "garbage" expert
-    slots when called with synthetic random weights (the real model uses
-    pre-shuffled, scaled weights that don't blow up). Per
-    instruction_WIP.md kernel_moe_gemm notes, the assertion strategy is
-    "shape and non-zero output", not strict allclose, since random
-    non-pre-shuffled weights produce -inf and overflow artifacts.
-    """
+    """Return None if equal-within-tolerance, else a short diff message."""
     if isinstance(got, torch.Tensor) and isinstance(expected, torch.Tensor):
         if got.shape != expected.shape:
             return f"shape mismatch: got {tuple(got.shape)} vs {tuple(expected.shape)}"
         atol, rtol = _tol_for(got.dtype)
         a = got.detach().to(torch.float32).cpu()
         b = expected.detach().to(torch.float32).cpu()
-        # Mask non-finite + magnitude-overflow positions. bf16 can represent
-        # up to ~3.4e38, but realistic activation/GEMM outputs from any LLM
-        # layer fit comfortably under 1e8. Anything bigger is an
-        # accumulator-overflow artifact from random non-pre-shuffled MoE
-        # weights and varies with atomic-add ordering across runs.
-        OVERFLOW = 1.0e8
-        finite = (
-            torch.isfinite(a) & torch.isfinite(b)
-            & (a.abs() < OVERFLOW) & (b.abs() < OVERFLOW)
-        )
-        if not finite.any():
-            return None  # both all-NaN/Inf/overflow — equivalent garbage
-        af, bf = a[finite], b[finite]
-        if not torch.allclose(af, bf, atol=atol, rtol=rtol):
-            diff = (af - bf).abs().max().item()
+        if not torch.isfinite(a).all():
+            count = int((~torch.isfinite(a)).sum().item())
+            return f"kernel output contains {count} non-finite value(s)"
+        if not torch.isfinite(b).all():
+            count = int((~torch.isfinite(b)).sum().item())
+            return f"reference output contains {count} non-finite value(s)"
+        if not torch.allclose(a, b, atol=atol, rtol=rtol):
+            diff = (a - b).abs().max().item()
             return f"max abs diff {diff:.4g} > atol={atol}"
         return None
     if isinstance(got, (list, tuple)) and isinstance(expected, (list, tuple)):

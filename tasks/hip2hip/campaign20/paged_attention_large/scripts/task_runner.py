@@ -263,15 +263,13 @@ def run_performance():
     only_perf = _v not in ("", "0", "false", "False", "no")
     cases = [c for c in allcases if c.get("perf_only")] if only_perf else allcases
     # Iteration counts are env-tunable. GEAK passes GEAK_BENCHMARK_ITERATIONS
-    # (the harness has no --iterations flag), so honour it; default to a light
-    # 30 timed iters (was 100) so an 8-case sweep stays comfortably under the
-    # preprocess/eval timeouts instead of tripping the 3600s cap and getting
-    # the build SIGKILL'd mid-flight (which is what stranded stale locks).
+    # (the harness has no --iterations flag), so honour it. The defaults follow
+    # the arena's accepted 10-warmup/100-measured-sample methodology.
     def _env_int(name, default):
         try: return max(1, int(os.environ.get(name, "") or default))
         except Exception: return default
-    n_iter = _env_int("GEAK_BENCHMARK_ITERATIONS", 30)
-    n_warmup = _env_int("GEAK_BENCHMARK_WARMUP", 5)
+    n_iter = _env_int("GEAK_BENCHMARK_ITERATIONS", 100)
+    n_warmup = _env_int("GEAK_BENCHMARK_WARMUP", 10)
     # Hard per-case wall-clock guard so one pathological case (huge inputs /
     # runaway kernel) can't hang the whole benchmark. Best-effort: SIGALRM
     # fires in the main thread and lands when control returns to Python.
