@@ -9,6 +9,19 @@ import math
 
 import torch
 import triton
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+
+
+def benchmark_cuda_graph_or_events(*args, **kwargs):
+    samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
+    values = sorted(samples)
+    midpoint = len(values) // 2
+    median_ms = (
+        values[midpoint]
+        if len(values) % 2
+        else (values[midpoint - 1] + values[midpoint]) / 2.0
+    )
+    return median_ms, metadata
 
 # Kernel under test — kernel.py sits next to this harness (Python adds the
 # script's directory to sys.path[0] automatically), and GEAK copies both files
@@ -375,6 +388,7 @@ def do_benchmark(indices):
     """Benchmark selected configs, return list of latencies."""
     torch.manual_seed(42)
     latencies = []
+    methods = []
 
     for idx in indices:
         cfg = ALL_CONFIGS[idx]
@@ -383,28 +397,14 @@ def do_benchmark(indices):
         inputs_tuple = build_inputs(cfg)
         fn, _ = make_kernel_fn(inputs_tuple)
 
-        # Warmup
-        for _ in range(WARMUP):
-            fn()
-        torch.cuda.synchronize()
-
-        # Timed iterations
-        times = []
-        for _ in range(ITERATIONS):
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            start.record()
-            fn()
-            end.record()
-            torch.cuda.synchronize()
-            times.append(start.elapsed_time(end))
-
-        times.sort()
-        median_ms = times[len(times) // 2]
+        median_ms, benchmark_meta = benchmark_cuda_graph_or_events(
+            fn, warmup=WARMUP, repetition=ITERATIONS,
+        )
         latencies.append(median_ms)
+        methods.append(benchmark_meta["benchmark_method"])
         print("  {}  {:.4f}ms".format(_format_config(cfg), median_ms))
 
-    return latencies
+    return latencies, methods
 
 
 def geometric_mean(values):
@@ -443,18 +443,26 @@ def main():
     elif args.benchmark:
         indices = list(range(len(ALL_CONFIGS)))  # use all configs so benchmark matches full-benchmark
         print("Running benchmark on {} configs...".format(len(indices)))
-        latencies = do_benchmark(indices)
+        latencies, methods = do_benchmark(indices)
         print("GEAK_SHAPES_USED={}".format(indices))
         gm = geometric_mean(latencies)
         print("GEAK_RESULT_LATENCY_MS={:.4f}".format(gm))
+        print("GEAK_BENCHMARK_METHOD={}".format(
+            methods[0] if len(set(methods)) == 1
+            else "mixed:" + ",".join(sorted(set(methods)))
+        ))
 
     elif args.full_benchmark:
         indices = list(range(len(ALL_CONFIGS)))
         print("Running full benchmark on {} configs...".format(len(indices)))
-        latencies = do_benchmark(indices)
+        latencies, methods = do_benchmark(indices)
         print("GEAK_SHAPES_USED={}".format(indices))
         gm = geometric_mean(latencies)
         print("GEAK_RESULT_LATENCY_MS={:.4f}".format(gm))
+        print("GEAK_BENCHMARK_METHOD={}".format(
+            methods[0] if len(set(methods)) == 1
+            else "mixed:" + ",".join(sorted(set(methods)))
+        ))
 
     elif args.profile:
         indices = _pick(ALL_CONFIGS, 5)

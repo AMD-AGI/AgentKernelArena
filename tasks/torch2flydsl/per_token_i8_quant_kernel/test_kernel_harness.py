@@ -30,6 +30,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 KERNEL_FILE = "kernel.py"
 MODEL_FILE = "model.py"
@@ -211,23 +212,11 @@ def run_correctness(verbose=True):
 
 
 def _mean_ms(fn, warmup, iters):
-    import torch
-
-    fn()
-    torch.cuda.synchronize()
-    for _ in range(warmup):
-        fn()
-    torch.cuda.synchronize()
-    times = []
-    for _ in range(iters):
-        s = torch.cuda.Event(enable_timing=True)
-        e = torch.cuda.Event(enable_timing=True)
-        s.record()
-        fn()
-        e.record()
-        torch.cuda.synchronize()
-        times.append(s.elapsed_time(e))
-    return sum(times) / len(times)
+    mean_ms, bench_meta = benchmark_cuda_graph_or_events(
+        fn, warmup=warmup, repetition=iters
+    )
+    _mean_ms.benchmark_metadata = bench_meta
+    return mean_ms
 
 
 def run_benchmark(warmup=10, iters=100, verbose=True):
@@ -260,6 +249,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         with torch.no_grad():
             op_ms = _mean_ms(lambda: _aiter_op(input), warmup, iters)
             ref_ms = _mean_ms(lambda: model(input), warmup, iters)
+            ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = (
                 _mean_ms(
                     lambda: kmod.flydsl_per_token_i8_quant(input), warmup, iters
@@ -269,10 +259,14 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             )
 
         primary_ms = ker_ms if ker_ms is not None else ref_ms
+        bench_meta = _mean_ms.benchmark_metadata
         latencies.append(primary_ms)
         report.append({
             "test_case_id": f"test_case_{idx}",
             "execution_time_ms": primary_ms,
+            **bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
             "shape": [shape["m"], shape["n"]],
             "params": {"m": shape["m"], "n": shape["n"], "dtype": "int8"},
             "aiter_ms": op_ms,

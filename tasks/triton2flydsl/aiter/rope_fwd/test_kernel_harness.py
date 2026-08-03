@@ -14,7 +14,7 @@ Modes:
                     output AND match the torch reference at the upstream tolerance
                     (atol=1e-1, rtol=1e-1)
                     [mirrors op_tests/test_rope.py:ref_rope_sbhd_fwd]
-  --full-benchmark  warmup + cuda-event timing, write build/performance_report.json
+  --full-benchmark  graph-first GPU timing, write build/performance_report.json
 """
 import argparse
 import ast
@@ -24,6 +24,7 @@ import math
 import os
 import sys
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 SOURCE_FILE = "rope_fwd.py"
 ENTRY = "rope_fwd"
@@ -209,22 +210,16 @@ def run_benchmark(verbose=True):
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
-        times = []
-        for _ in range(ITERS):
-            s = torch.cuda.Event(enable_timing=True)
-            e = torch.cuda.Event(enable_timing=True)
-            s.record()
-            fn()
-            e.record()
-            torch.cuda.synchronize()
-            times.append(s.elapsed_time(e))
-        ms = sum(times) / len(times)
+        ms, bench_meta = benchmark_cuda_graph_or_events(
+            fn, warmup=0, repetition=ITERS
+        )
         latencies.append(ms)
         nbytes = 2.0 * shape["S"] * shape["B"] * H * D * 2  # bf16 read+write
         report.append(
             {
                 "test_case_id": f"perf{idx + 1}",
                 "execution_time_ms": ms,
+                **bench_meta,
                 "params": {"B": shape["B"], "S": shape["S"], "H": H, "D": D},
                 "gbps": nbytes / (ms * 1e-3) / 1e9,
             }

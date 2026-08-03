@@ -96,6 +96,82 @@ def compare_masked_logits(got, ref, vocab_size, max_mask_mismatch):
             return False, f"common finite values max diff={max_diff}"
     return True, None
 
+
+def prepare_direct_launch(mod, logits, k, p, mask_value=float("-inf")):
+    """Prepare a stable direct kernel launch with no timed host setup."""
+    import torch
+
+    assert logits.ndim == 2
+    assert logits.dtype == torch.float32
+    assert logits.is_cuda
+
+    batch_size, vocab_size = logits.shape
+    topk_enabled = k is not None
+    topp_enabled = p is not None
+    assert batch_size > 0 and (topk_enabled or topp_enabled)
+
+    if k is not None:
+        assert k.ndim == 1 and k.shape[0] == batch_size and k.is_cuda
+        k_ptr = k.to(torch.int32)
+    else:
+        k_ptr = logits
+
+    if p is not None:
+        assert p.ndim == 1 and p.shape[0] == batch_size and p.is_cuda
+        p_ptr = p.to(torch.float32)
+    else:
+        p_ptr = logits
+
+    num_sm = torch.cuda.get_device_properties(logits.device).multi_processor_count
+    num_programs = min(num_sm, batch_size)
+    buffer_rows = min(mod._next_power_of_2(num_programs), num_sm)
+    buffer = logits.new_empty((buffer_rows, vocab_size))
+    if buffer_rows > num_programs:
+        buffer = buffer[:num_programs]
+
+    normal_cdf_to_sigma_table = torch.tensor(
+        mod._NORMAL_CDF_TO_SIGMA_TABLE,
+        dtype=torch.float32,
+        device=logits.device,
+    )
+    percentile_to_std_table = torch.tensor(
+        mod._PERCENTILE_TO_STD_TABLE,
+        dtype=torch.float32,
+        device=logits.device,
+    )
+
+    grid = (num_programs,)
+    kernel_args = (
+        logits,
+        buffer,
+        percentile_to_std_table,
+        normal_cdf_to_sigma_table,
+        k_ptr,
+        p_ptr,
+    )
+    kernel_meta = {
+        "BATCH_SIZE": batch_size,
+        "MASK_VALUE": mask_value,
+        "VOCAB_SIZE": vocab_size,
+        "BLOCK_SIZE": 8192,
+        "BLOCK_SIZE_TRUNC": 4096,
+        "TOPK_ENABLED": topk_enabled,
+        "TOPP_ENABLED": topp_enabled,
+    }
+    kernel_launcher = mod._topk_topp_kernel[grid]
+
+    def launch():
+        kernel_launcher(*kernel_args, **kernel_meta)
+
+    return {
+        "launch": launch,
+        "buffer": buffer,
+        "normal_cdf_to_sigma_table": normal_cdf_to_sigma_table,
+        "percentile_to_std_table": percentile_to_std_table,
+        "k_ptr": k_ptr,
+        "p_ptr": p_ptr,
+    }
+
 def run_correctness():
     import torch
     try: mod = load_module()
@@ -116,6 +192,18 @@ def run_correctness():
             if not ok:
                 return False, f"Shape {i+1}: top-k mismatch ({msg})"
 
+            direct_logits_topk = logits.clone()
+            direct_topk = prepare_direct_launch(
+                mod, direct_logits_topk, k, None,
+            )
+            direct_topk["launch"]()
+            torch.cuda.synchronize()
+            ok, msg = compare_masked_logits(
+                direct_logits_topk, ref_topk, vocab_size, max_mask_mismatch=1,
+            )
+            if not ok:
+                return False, f"Shape {i+1}: direct top-k mismatch ({msg})"
+
             logits_topkp = logits.clone()
             ref_topkp = reference_apply_top_k_top_p(logits.clone(), k, p)
             mod.apply_top_k_top_p_triton(logits_topkp, k, p)
@@ -125,6 +213,21 @@ def run_correctness():
             ok, msg = compare_masked_logits(logits_topkp, ref_topkp, vocab_size, max_mask_mismatch=max_mismatch)
             if not ok:
                 return False, f"Shape {i+1}: top-k + top-p mismatch ({msg})"
+
+            direct_logits_topkp = logits.clone()
+            direct_topkp = prepare_direct_launch(
+                mod, direct_logits_topkp, k, p,
+            )
+            direct_topkp["launch"]()
+            torch.cuda.synchronize()
+            ok, msg = compare_masked_logits(
+                direct_logits_topkp,
+                ref_topkp,
+                vocab_size,
+                max_mask_mismatch=max_mismatch,
+            )
+            if not ok:
+                return False, f"Shape {i+1}: direct top-k + top-p mismatch ({msg})"
 
             # Invariant: top-k + top-p should keep no more tokens than top-k only.
             kept_topk = torch.isfinite(logits_topk).sum(dim=-1)
@@ -148,31 +251,26 @@ def run_performance():
     for test_idx, (batch_size, vocab_size) in enumerate(TEST_SHAPES):
         try:
             torch.manual_seed(0)
-            for _ in range(WARMUP_ITERATIONS):
-                logits = torch.randn(batch_size, vocab_size, device=device, dtype=torch.float32)
-                k = torch.full((batch_size,), 50, dtype=torch.int32, device=device)
-                mod.apply_top_k_top_p_triton(logits, k, None)
-            torch.cuda.synchronize()
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
-                logits = torch.randn(batch_size, vocab_size, device=device, dtype=torch.float32)
-                k = torch.full((batch_size,), 50, dtype=torch.int32, device=device)
-                start_events[j].record()
-                mod.apply_top_k_top_p_triton(logits, k, None)
-                end_events[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "per_iteration_prepare_or_state_reset",
-            }
+            base_logits = torch.randn(
+                batch_size, vocab_size, device=device, dtype=torch.float32,
+            )
+            logits = base_logits.clone()
+            k = torch.full(
+                (batch_size,), 50, dtype=torch.int32, device=device,
+            )
+            direct = prepare_direct_launch(mod, logits, k, None)
+
+            def _prepare_logits():
+                # The helper invokes preparation on the active benchmark stream
+                # before its start event/replay, so this copy is not timed.
+                logits.copy_(base_logits)
+
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                direct["launch"],
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                prepare_fn=_prepare_logits,
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

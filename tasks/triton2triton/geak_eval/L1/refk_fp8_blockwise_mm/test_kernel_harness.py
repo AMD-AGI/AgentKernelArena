@@ -9,6 +9,19 @@ import argparse
 import math
 import os
 import sys
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+
+
+def benchmark_cuda_graph_or_events(*args, **kwargs):
+    samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
+    values = sorted(samples)
+    midpoint = len(values) // 2
+    median_ms = (
+        values[midpoint]
+        if len(values) % 2
+        else (values[midpoint - 1] + values[midpoint]) / 2.0
+    )
+    return median_ms, metadata
 
 _HARNESS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _HARNESS_DIR not in sys.path:
@@ -53,18 +66,12 @@ def check_correctness(cfg):
 
 def _bench_one(cfg, warmup, iters):
     a, b, a_scale, b_scale, c = get_inputs(**cfg)
-    for _ in range(warmup):
-        fp8_blockwise_mm_triton(a, b, a_scale, b_scale, c.clone())
-    torch.cuda.synchronize()
-
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    start.record()
-    for _ in range(iters):
-        fp8_blockwise_mm_triton(a, b, a_scale, b_scale, c.clone())
-    end.record()
-    torch.cuda.synchronize()
-    return start.elapsed_time(end) / iters
+    output = c.clone()
+    return benchmark_cuda_graph_or_events(
+        lambda: fp8_blockwise_mm_triton(a, b, a_scale, b_scale, output),
+        warmup=warmup,
+        repetition=iters,
+    )
 
 
 def run_correctness(indices):
@@ -95,14 +102,19 @@ def run_benchmark(indices, warmup, iters):
     torch.manual_seed(42)
     print("Running benchmark on {} configs ...".format(len(indices)))
     latencies = []
+    methods = []
     for idx in indices:
         cfg = ALL_CONFIGS[idx]
-        ms = _bench_one(cfg, warmup, iters)
+        ms, metadata = _bench_one(cfg, warmup, iters)
         latencies.append(ms)
+        methods.append(metadata["benchmark_method"])
         print("  [{}] {}  {:.4f}ms".format(idx, _label(cfg), ms))
     geo = math.exp(sum(math.log(l) for l in latencies) / len(latencies))
     print("GEAK_SHAPES_USED={}".format(indices))
     print("GEAK_RESULT_LATENCY_MS={:.4f}".format(geo))
+    print("GEAK_BENCHMARK_METHOD={}".format(
+        methods[0] if len(set(methods)) == 1 else "mixed:" + ",".join(sorted(set(methods)))
+    ))
 
 
 def run_profile(indices):

@@ -5,6 +5,19 @@ import os
 import sys
 import types
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+
+
+def benchmark_cuda_graph_or_events(*args, **kwargs):
+    samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
+    values = sorted(samples)
+    midpoint = len(values) // 2
+    median_ms = (
+        values[midpoint]
+        if len(values) % 2
+        else (values[midpoint - 1] + values[midpoint]) / 2.0
+    )
+    return median_ms, metadata
 
 def _find_baseline_kernel_dir():
     """Find preprocess dir (has benchmark_baseline.txt) by walking up from GEAK_WORK_DIR."""
@@ -383,6 +396,7 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
 
     latencies = []
     speedups = []
+    benchmark_methods = []
 
     print(f"Running benchmark on {len(shapes)} shapes, {warmup} warmup, {iters} iterations each...")
     print(f"  Comparing kernel vs {ref_label}")
@@ -392,8 +406,8 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
     for M, N1, N2 in shapes:
         x1, w1, x2, w2, res1 = generate_inputs(M, N1, N2, dtype)
 
-        for _ in range(warmup):
-            _ = fused_rms_fp8_group_quant(
+        def run_kernel():
+            return fused_rms_fp8_group_quant(
                 x1, w1, 1e-6,
                 inp2=x2, inp2_weight=w2, inp2_epsilon=1e-6,
                 group_size=group_size,
@@ -401,34 +415,14 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
                 res1=res1,
                 output_unquantized_inp1=True,
             )
-        torch.cuda.synchronize()
 
-        triton_times = []
-        for _ in range(iters):
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            start.record()
-            _ = fused_rms_fp8_group_quant(
-                x1, w1, 1e-6,
-                inp2=x2, inp2_weight=w2, inp2_epsilon=1e-6,
-                group_size=group_size,
-                dtype_quant=fp8_dtype,
-                res1=res1,
-                output_unquantized_inp1=True,
-            )
-            end.record()
-            torch.cuda.synchronize()
-            triton_times.append(start.elapsed_time(end))
+        triton_ms, triton_meta = benchmark_cuda_graph_or_events(
+            run_kernel, warmup=warmup, repetition=iters,
+        )
 
-        triton_ms = sorted(triton_times)[len(triton_times) // 2]
-
-        ref_times = []
-        for _ in range(iters):
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            start.record()
+        def run_reference():
             if baseline_fn is not None:
-                _ = baseline_fn(
+                return baseline_fn(
                     x1, w1, 1e-6,
                     inp2=x2, inp2_weight=w2, inp2_epsilon=1e-6,
                     group_size=group_size,
@@ -436,19 +430,19 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
                     res1=res1,
                     output_unquantized_inp1=True,
                 )
-            else:
-                _ = run_torch_rms_fp8_group_quant(
-                    x1, w1, 1e-6, x2, w2, 1e-6, res1, fp8_dtype, group_size
-                )
-            end.record()
-            torch.cuda.synchronize()
-            ref_times.append(start.elapsed_time(end))
+            return run_torch_rms_fp8_group_quant(
+                x1, w1, 1e-6, x2, w2, 1e-6, res1, fp8_dtype, group_size
+            )
 
-        ref_ms = sorted(ref_times)[len(ref_times) // 2]
-        speedup = ref_ms / triton_ms if triton_ms > 0 else 1.0
+        ref_ms, ref_meta = benchmark_cuda_graph_or_events(
+            run_reference, warmup=warmup, repetition=iters,
+        )
+        methods_match = triton_meta["benchmark_method"] == ref_meta["benchmark_method"]
+        speedup = ref_ms / triton_ms if methods_match and triton_ms > 0 else 1.0
 
         latencies.append(triton_ms)
         speedups.append(speedup)
+        benchmark_methods.append(triton_meta["benchmark_method"])
 
         marker = " *" if speedup > 1.0 else ""
         if verbose:
@@ -465,6 +459,10 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
     print(f"{'Geometric mean speedup:':<22} {geomean_speedup:.2f}x")
     print(f"GEAK_RESULT_LATENCY_MS={geomean_latency:.4f}", flush=True)
     print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}", flush=True)
+    print("GEAK_BENCHMARK_METHOD={}".format(
+        benchmark_methods[0] if len(set(benchmark_methods)) == 1
+        else "mixed:" + ",".join(sorted(set(benchmark_methods)))
+    ))
 
     return {
         "geomean_latency_ms": geomean_latency,

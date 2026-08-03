@@ -9,6 +9,7 @@ import subprocess
 import sys
 import venv
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
 
 TASK_NAME = "repository/aiter/moe_routing_sigmoid_top1_fused"
 REPO_SUBDIR = "aiter"
@@ -98,23 +99,11 @@ def _configure_runtime() -> None:
     os.chdir(repo_root)
 
 
-def _benchmark_ms(fn, warmup: int = 10, rep: int = 30) -> float:
-    import torch
-
-    for _ in range(warmup):
-        fn()
-    torch.cuda.synchronize()
-
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    samples: list[float] = []
-    for _ in range(rep):
-        start.record()
-        fn()
-        end.record()
-        torch.cuda.synchronize()
-        samples.append(start.elapsed_time(end))
-    return statistics.median(samples)
+def _benchmark_ms(fn, warmup: int = 10, rep: int = 30) -> tuple[float, dict]:
+    samples, metadata = benchmark_cuda_graph_or_events_samples(
+        fn, warmup=warmup, repetition=rep,
+    )
+    return statistics.median(samples), metadata
 
 
 def _write_performance_report(results: list[dict]) -> None:
@@ -193,13 +182,14 @@ def run_performance() -> None:
     results: list[dict] = []
     for test_case_id, case in benchmark_cases:
         _run_kernel(case)
-        time_ms = _benchmark_ms(lambda: _run_kernel(case))
+        time_ms, benchmark_meta = _benchmark_ms(lambda: _run_kernel(case))
         params = case["params"]
         results.append(
             {
                 "test_case_id": test_case_id,
                 "shape": [params["M"], params["N"], params["K"]],
                 "execution_time_ms": time_ms,
+                **benchmark_meta,
                 "metadata": params,
             }
         )

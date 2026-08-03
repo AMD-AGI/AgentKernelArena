@@ -35,6 +35,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from _aka_benchmark import benchmark_cuda_graph_or_events
+
 # ============================================================================
 # GEAK bootstrap
 # ============================================================================
@@ -348,20 +350,11 @@ def run_profile(shapes=None, warmup=10, iters=50, verbose=True):
             print(f"  (M={M}, N={N}, K={K}) done")
 
 
-def _time_mean_ms(fn, iters):
-    """Mean GPU time (ms) over `iters` measured runs, timed with cuda events."""
-    import torch
-
-    times = []
-    for _ in range(iters):
-        s = torch.cuda.Event(enable_timing=True)
-        e = torch.cuda.Event(enable_timing=True)
-        s.record()
-        fn()
-        e.record()
-        torch.cuda.synchronize()
-        times.append(s.elapsed_time(e))
-    return sum(times) / len(times)
+def _time_mean_ms(fn, warmup, iters):
+    """Graph-first mean GPU time in milliseconds for one callable invocation."""
+    return benchmark_cuda_graph_or_events(
+        fn, warmup=warmup, repetition=iters
+    )
 
 
 def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
@@ -395,25 +388,26 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         b_ref = inp["b_fp8"].float()                 # [N, K] logical
 
         def kfn():
-            cf(*args)
+            cf(*(args[:-1] + (torch.cuda.current_stream(),)))
 
         def reffn():
             torch.mm(a_ref, b_ref.t())
 
-        # Warmup (also triggers any lazy first-launch work for the kernel).
-        for _ in range(warmup):
-            kfn()
-        torch.cuda.synchronize()
-        for _ in range(max(2, warmup // 2)):
-            reffn()
-        torch.cuda.synchronize()
+        kernel_ms, kernel_bench_meta = _time_mean_ms(kfn, warmup, iters)
+        ref_ms, ref_bench_meta = _time_mean_ms(reffn, warmup, iters)
 
-        kernel_ms = _time_mean_ms(kfn, iters)
-        ref_ms = _time_mean_ms(reffn, iters)
-
-        speedup = ref_ms / kernel_ms if kernel_ms > 0 else 1.0
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
         latencies.append(kernel_ms)
-        speedups.append(speedup)
+        if speedup is not None:
+            speedups.append(speedup)
 
         flops = 2.0 * M * N * K
         tflops = flops / (kernel_ms * 1e-3) / 1e12
@@ -421,6 +415,9 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         report_cases.append({
             "test_case_id": f"test_case_{idx}",
             "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
             "shape": [M, N, K],
             "params": {"M": M, "N": N, "K": K, "dtype": OUT_DTYPE,
                        "tile_m": TILE_M, "tile_n": TILE_N, "tile_k": TILE_K},
@@ -429,11 +426,11 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
             "speedup_vs_torch": speedup,
         })
 
-        marker = " *" if speedup > 1.0 else ""
+        marker = " *" if speedup is not None and speedup > 1.0 else ""
         if verbose:
             print(
                 f"(M={M:>5}, N={N:>5}, K={K:>5})"
-                f" {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup:>8.2f}x{marker}"
+                f" {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}{marker}"
                 f" {tflops:>9.1f}",
                 flush=True,
             )
@@ -442,7 +439,12 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         torch.cuda.empty_cache()
 
     geomean_latency = math.exp(sum(math.log(l) for l in latencies) / len(latencies))
-    geomean_speedup = math.exp(sum(math.log(s) for s in speedups) / len(speedups))
+    geomean_speedup = math.exp(sum(math.log(s) for s in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
 
     build_dir = Path(_KERNEL_DIR) / "build"
     build_dir.mkdir(exist_ok=True)
@@ -451,9 +453,10 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
 
     print("-" * 74)
     print(f"{'Geometric mean latency:':<26} {geomean_latency:.4f} ms")
-    print(f"{'Geometric mean speedup:':<26} {geomean_speedup:.2f}x")
+    print(f"{'Geometric mean speedup:':<26} {geomean_speedup_display}")
     print(f"GEAK_RESULT_LATENCY_MS={geomean_latency:.4f}", flush=True)
-    print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}", flush=True)
+    if geomean_speedup is not None:
+        print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}", flush=True)
 
     return {"geomean_latency_ms": geomean_latency, "geomean_speedup": geomean_speedup}
 

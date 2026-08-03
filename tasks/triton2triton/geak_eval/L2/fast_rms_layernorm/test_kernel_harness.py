@@ -5,6 +5,19 @@ import os
 import sys
 import types
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+
+
+def benchmark_cuda_graph_or_events(*args, **kwargs):
+    samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
+    values = sorted(samples)
+    midpoint = len(values) // 2
+    median_ms = (
+        values[midpoint]
+        if len(values) % 2
+        else (values[midpoint - 1] + values[midpoint]) / 2.0
+    )
+    return median_ms, metadata
 
 def _find_baseline_kernel_dir():
     """Find preprocess dir (has benchmark_baseline.txt) by walking up from GEAK_WORK_DIR."""
@@ -169,22 +182,10 @@ def gemma_rms_layernorm_reference(x, weight, eps=1e-5):
 
 
 def benchmark_fn(fn, warmup=50, iterations=200):
-    """Time a callable using CUDA events. Returns median latency in ms."""
-    for _ in range(warmup):
-        fn()
-    torch.cuda.synchronize()
-
-    start_events = [torch.cuda.Event(enable_timing=True) for _ in range(iterations)]
-    end_events = [torch.cuda.Event(enable_timing=True) for _ in range(iterations)]
-
-    for i in range(iterations):
-        start_events[i].record()
-        fn()
-        end_events[i].record()
-
-    torch.cuda.synchronize()
-    times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-    return statistics.median(times)
+    """Time a callable with graph replay, falling back to CUDA events."""
+    return benchmark_cuda_graph_or_events(
+        fn, warmup=warmup, repetition=iterations,
+    )
 
 
 def run_correctness(shapes, atol=1e-2, rtol=1e-2):
@@ -274,31 +275,35 @@ def run_benchmark(shapes, warmup=50, iterations=200):
 
     speedups = []
     kernel_latencies = []
+    benchmark_methods = []
 
     for shape in shapes:
         hidden_dim = shape[-1]
         x = torch.randn(*shape, dtype=torch.float32, device='cpu').to('cuda')
         layernorm = SimpleLayerNorm(hidden_dim, eps=1e-5).to('cuda')
 
-        kernel_ms = benchmark_fn(
+        kernel_ms, kernel_meta = benchmark_fn(
             lambda: fast_rms_layernorm(layernorm, x, gemma=False),
             warmup=warmup, iterations=iterations,
         )
         if baseline_fn is not None:
-            ref_ms = benchmark_fn(
+            ref_ms, ref_meta = benchmark_fn(
                 lambda: baseline_fn(layernorm, x, gemma=False),
                 warmup=warmup, iterations=iterations,
             )
         else:
-            ref_ms = benchmark_fn(
+            ref_ms, ref_meta = benchmark_fn(
                 lambda: rms_layernorm_reference(x, layernorm.weight, eps=1e-5),
                 warmup=warmup, iterations=iterations,
             )
 
-        speedup = ref_ms / kernel_ms if kernel_ms > 0 else float('inf')
+        methods_match = kernel_meta["benchmark_method"] == ref_meta["benchmark_method"]
+        speedup = ref_ms / kernel_ms if methods_match and kernel_ms > 0 else 1.0
         speedups.append(speedup)
         kernel_latencies.append(kernel_ms)
-        print(f"  Shape {shape}: kernel={kernel_ms:.4f} ms | ref={ref_ms:.4f} ms | speedup={speedup:.3f}x")
+        benchmark_methods.append(kernel_meta["benchmark_method"])
+        speedup_text = f"{speedup:.3f}x" if methods_match else "N/A (timing methods differ)"
+        print(f"  Shape {shape}: kernel={kernel_ms:.4f} ms | ref={ref_ms:.4f} ms | speedup={speedup_text}")
 
     geo_mean = math.exp(sum(math.log(s) for s in speedups) / len(speedups))
     median_latency = statistics.median(kernel_latencies)
@@ -308,6 +313,10 @@ def run_benchmark(shapes, warmup=50, iterations=200):
     print(f"Median kernel latency: {median_latency:.4f} ms")
     print(f"GEAK_RESULT_LATENCY_MS={median_latency:.6f}")
     print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geo_mean:.4f}")
+    print("GEAK_BENCHMARK_METHOD={}".format(
+        benchmark_methods[0] if len(set(benchmark_methods)) == 1
+        else "mixed:" + ",".join(sorted(set(benchmark_methods)))
+    ))
     return 0
 
 

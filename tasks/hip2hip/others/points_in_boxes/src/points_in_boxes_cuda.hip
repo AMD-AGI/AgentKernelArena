@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <torch/serialize/tensor.h>
 #include <torch/types.h>
+#include <ATen/cuda/HIPContext.h>
 
 #define THREADS_PER_BLOCK 256
 #define DIVUP(m, n) ((m) / (n) + ((m) % (n) > 0))
@@ -114,8 +115,9 @@ void points_in_boxes_part_launcher(int batch_size, int boxes_num, int pts_num,
 
   dim3 blocks(DIVUP(pts_num, THREADS_PER_BLOCK), batch_size);
   dim3 threads(THREADS_PER_BLOCK);
-  points_in_boxes_part_kernel<<<blocks, threads>>>(batch_size, boxes_num, pts_num,
-                                                   boxes, pts, box_idx_of_points);
+  hipStream_t stream = at::cuda::getCurrentCUDAStream();
+  points_in_boxes_part_kernel<<<blocks, threads, 0, stream>>>(
+      batch_size, boxes_num, pts_num, boxes, pts, box_idx_of_points);
 
   err = hipGetLastError();
   if (hipSuccess != err) {
@@ -138,7 +140,8 @@ void points_in_boxes_all_launcher(int batch_size, int boxes_num, int pts_num,
 
   dim3 blocks(DIVUP(pts_num, THREADS_PER_BLOCK), batch_size);
   dim3 threads(THREADS_PER_BLOCK);
-  points_in_boxes_all_kernel<<<blocks, threads>>>(
+  hipStream_t stream = at::cuda::getCurrentCUDAStream();
+  points_in_boxes_all_kernel<<<blocks, threads, 0, stream>>>(
       batch_size, boxes_num, pts_num, boxes, pts, box_idx_of_points);
 
   err = hipGetLastError();

@@ -16,6 +16,7 @@ Usage:
 """
 import argparse
 import logging
+import math
 import re
 import shutil
 import sys
@@ -38,8 +39,10 @@ from src.evaluator import (
 from src.performance import measure_baseline
 from src.testcases import (
     TestCaseResult,
-    save_performance_results,
+    analyze_benchmark_method_consistency,
     calculate_average_speedup,
+    save_performance_results,
+    select_method_matched_baselines,
 )
 from src.score import score as calc_score
 
@@ -62,7 +65,48 @@ def setup_logging(log_file: Optional[Path] = None) -> logging.Logger:
 
 
 def _valid_perf_cases(cases: List[TestCaseResult]) -> List[TestCaseResult]:
-    return [c for c in cases if c.execution_time_ms is not None and c.execution_time_ms > 0]
+    return [
+        c
+        for c in cases
+        if c.execution_time_ms is not None
+        and math.isfinite(c.execution_time_ms)
+        and c.execution_time_ms > 0
+    ]
+
+
+def _select_heldout_comparison_cases(
+    baseline_cases: List[TestCaseResult],
+    optimized_cases: List[TestCaseResult],
+    logger: logging.Logger,
+) -> tuple[
+    List[TestCaseResult],
+    List[TestCaseResult],
+    bool,
+    List[Dict[str, Any]],
+]:
+    """Select method-matched held-out baselines and validate the full set."""
+
+    comparison_baseline_cases = select_method_matched_baselines(
+        baseline_cases, optimized_cases, logger
+    )
+    valid_baseline = _valid_perf_cases(comparison_baseline_cases)
+    valid_optimized = _valid_perf_cases(optimized_cases)
+    method_consistent, method_mismatches = analyze_benchmark_method_consistency(
+        valid_baseline,
+        valid_optimized,
+        logger,
+        require_complete_match=True,
+    )
+    all_cases_valid = (
+        len(valid_baseline) == len(comparison_baseline_cases)
+        and len(valid_optimized) == len(optimized_cases)
+    )
+    return (
+        comparison_baseline_cases,
+        valid_optimized,
+        method_consistent and all_cases_valid,
+        method_mismatches,
+    )
 
 
 def resolve_task_id(workspace_dir: Path) -> Optional[str]:
@@ -230,6 +274,8 @@ def evaluate_single_task(
         # comparison
         "generalization_status": "both_fail",
         "speedup_ratio": 0.0,
+        "benchmark_method_consistent": False,
+        "benchmark_method_mismatches": [],
         "score": 0.0,
         # original run results (on original shapes, for reference)
         "original_run_pass_correctness": run_result.get("pass_correctness", False),
@@ -281,6 +327,7 @@ def evaluate_single_task(
 
     # ── 4. Evaluate ORIGINAL kernel (orig/) ─────────────────────────────
     is_torch2hip = task_config.get("task_type") == "torch2hip"
+    baseline_cases: List[TestCaseResult] = []
     valid_baseline: List[TestCaseResult] = []
 
     if is_torch2hip:
@@ -336,6 +383,7 @@ def evaluate_single_task(
     logger.info(f"[{task_id}] Generalization status: {status}")
 
     # ── 7. Performance (only when the respective kernel is correct) ─────
+    optimized_cases: List[TestCaseResult] = []
     valid_optimized: List[TestCaseResult] = []
 
     if orig_correct and not is_torch2hip:
@@ -357,10 +405,41 @@ def evaluate_single_task(
             )
             save_performance_results(valid_optimized, opt_ws, "optimized_perf.yaml", logger)
 
-    if status == "both_pass" and valid_baseline and valid_optimized:
-        result["speedup_ratio"] = calculate_average_speedup(
-            valid_baseline, valid_optimized, logger,
+    if status == "both_pass" and baseline_cases and optimized_cases:
+        (
+            comparison_baseline_cases,
+            valid_optimized,
+            benchmark_method_consistent,
+            benchmark_method_mismatches,
+        ) = _select_heldout_comparison_cases(
+            baseline_cases, optimized_cases, logger
         )
+        valid_baseline = _valid_perf_cases(comparison_baseline_cases)
+        result["benchmark_method_consistent"] = benchmark_method_consistent
+        result["benchmark_method_mismatches"] = benchmark_method_mismatches
+        save_performance_results(
+            comparison_baseline_cases,
+            orig_ws,
+            "comparison_baseline_perf.yaml",
+            logger,
+        )
+
+        # Report the same selected baseline that is used for the held-out score.
+        # In particular, an optimized Event fallback uses its paired forced-Event
+        # baseline rather than the graph-first baseline average.
+        if valid_baseline:
+            result["orig_heldout_execution_time"] = (
+                sum(c.execution_time_ms for c in valid_baseline)
+                / len(valid_baseline)
+            )
+
+        if benchmark_method_consistent:
+            result["speedup_ratio"] = calculate_average_speedup(
+                valid_baseline,
+                valid_optimized,
+                logger,
+                require_complete_match=True,
+            )
 
     # ── 8. Score ────────────────────────────────────────────────────────
     result["score"] = calc_score(
@@ -369,6 +448,7 @@ def evaluate_single_task(
         result["orig_heldout_execution_time"],
         result["opt_execution_time"],
         result["speedup_ratio"],
+        benchmark_method_consistent=result["benchmark_method_consistent"],
     )
 
     logger.info(

@@ -12,6 +12,10 @@ from typing import Any, Dict, List, Tuple, Union
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from compile import clear_workdir
 from utils import load_function_from_path, load_hip_kernel, save_eval_result
+from _aka_benchmark import (
+    benchmark_cuda_graph_or_events,
+    hip_source_graph_capture_policy,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -140,23 +144,17 @@ def _write_perf_report(report: Dict[str, Any]) -> None:
         json.dump(report, f, indent=2)
 
 
-def cal_hip_latency(kernel_hip: Any, inputs: List[Any], hip_fn: Any, n_iter: int = 100, n_warmup: int = 10) -> float:
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-
-    for _ in range(n_warmup):
-        kernel_hip(*inputs, fn=hip_fn)
-
-    torch.cuda.synchronize()
-    start.record()
-    for _ in range(n_iter):
-        kernel_hip(*inputs, fn=hip_fn)
-    end.record()
-    torch.cuda.synchronize()
-
-    elapsed = start.elapsed_time(end)
-    avg_time = elapsed / n_iter
-    return avg_time
+def cal_hip_latency(kernel_hip: Any, inputs: List[Any], hip_fn: Any,
+                    n_iter: int = 100, n_warmup: int = 10,
+                    use_cuda_graph: bool = True,
+                    fallback_reason: str | None = None) -> Tuple[float, Dict[str, Any]]:
+    return benchmark_cuda_graph_or_events(
+        lambda: kernel_hip(*inputs, fn=hip_fn),
+        warmup=n_warmup,
+        repetition=n_iter,
+        use_cuda_graph=use_cuda_graph,
+        fallback_reason=fallback_reason,
+    )
 
 
 def _normalize_get_inputs_result(inputs_result: Any) -> Any:
@@ -193,6 +191,14 @@ def cal_kernel_perf(
     auto_cleanup: bool = True,
 ) -> Tuple[Any, Any, Any]:
     failed_ret: Tuple[Any, Any, Any] = (None, None, None)
+    ref_graph_enabled, ref_graph_reason = hip_source_graph_capture_policy(
+        ref_hip_kernel_path
+    )
+    opt_graph_enabled, opt_graph_reason = hip_source_graph_capture_policy(
+        hip_kernel_path
+    )
+    graph_enabled = ref_graph_enabled and opt_graph_enabled
+    graph_fallback_reason = ref_graph_reason or opt_graph_reason
 
     # Create separate build directories for reference and optimized kernels
     ref_hip_dir = os.path.join(build_dir, "hip_ref")
@@ -327,18 +333,39 @@ def cal_kernel_perf(
 
         # Performance comparison: reference HIP vs optimized HIP
         try:
-            ref_time = cal_hip_latency(kernel_func, inputs_func_cuda, ref_hip_fn)
-            opt_time = cal_hip_latency(kernel_func, inputs_func_cuda, opt_hip_fn)
+            ref_time, ref_meta = cal_hip_latency(
+                kernel_func,
+                inputs_func_cuda,
+                ref_hip_fn,
+                use_cuda_graph=graph_enabled,
+                fallback_reason=graph_fallback_reason,
+            )
+            opt_time, opt_meta = cal_hip_latency(
+                kernel_func,
+                inputs_func_cuda,
+                opt_hip_fn,
+                use_cuda_graph=graph_enabled,
+                fallback_reason=graph_fallback_reason,
+            )
             
             case_entry["ref_time"] = round(ref_time, 5)
             case_entry["opt_time"] = round(opt_time, 5)
-            case_entry["speedup"] = round(ref_time / opt_time, 2) if opt_time > 0 else None
             case_entry["execution_time_ms"] = round(opt_time, 5)
+            case_entry.update(opt_meta)
+            ref_method = ref_meta.get("benchmark_method")
+            opt_method = opt_meta.get("benchmark_method")
+            case_entry["reference_benchmark_method"] = ref_method
+            case_entry["benchmark_method_consistent"] = ref_method == opt_method
+            case_entry["speedup"] = (
+                round(ref_time / opt_time, 2)
+                if opt_time > 0 and ref_method == opt_method else None
+            )
             
             ref_times.append(ref_time)
             opt_times.append(opt_time)
             
-            print(f"[INFO] Case {case_idx}: ref={ref_time:.5f}ms, opt={opt_time:.5f}ms, speedup={case_entry['speedup']:.2f}x")
+            speedup_text = f"{case_entry['speedup']:.2f}x" if case_entry["speedup"] is not None else "N/A"
+            print(f"[INFO] Case {case_idx}: ref={ref_time:.5f}ms, opt={opt_time:.5f}ms, speedup={speedup_text}")
         except Exception as e:
             print(f"[Error] {kernel_name} case {case_idx} performance exception: {e}")
             case_entry["error"] = f"perf_exception: {e}"
@@ -365,13 +392,22 @@ def cal_kernel_perf(
         # Calculate average times across all test cases
         avg_ref_time = sum(ref_times) / len(ref_times)
         avg_opt_time = sum(opt_times) / len(opt_times)
-        avg_speedup = avg_ref_time / avg_opt_time if avg_opt_time > 0 else None
+        methods_consistent = bool(report["test_cases"]) and all(
+            case.get("benchmark_method_consistent", False)
+            for case in report["test_cases"]
+        )
+        avg_speedup = (
+            avg_ref_time / avg_opt_time
+            if methods_consistent and avg_opt_time > 0 else None
+        )
 
         print(f"[INFO] HIP kernel {kernel_name} processed {len(ref_times)} test cases.")
-        print(f"[INFO] Average: ref={avg_ref_time:.5f}ms, opt={avg_opt_time:.5f}ms, speedup={avg_speedup:.2f}x")
+        avg_speedup_text = f"{avg_speedup:.2f}x" if avg_speedup is not None else "N/A"
+        print(f"[INFO] Average: ref={avg_ref_time:.5f}ms, opt={avg_opt_time:.5f}ms, speedup={avg_speedup_text}")
         
         report["status"] = "ok"
         report["message"] = f"Performance benchmark completed for {len(ref_times)} test cases"
+        report["benchmark_method_consistent"] = methods_consistent
         report["speedup"] = round(avg_speedup, 2) if avg_speedup else None
         report["ori_time"] = round(avg_ref_time, 5)
         report["opt_time"] = round(avg_opt_time, 5)
@@ -380,7 +416,7 @@ def cal_kernel_perf(
         if auto_cleanup:
             clear_workdir(ref_hip_dir)
             clear_workdir(opt_hip_dir)
-        return round(avg_speedup, 2) if avg_speedup else None, round(avg_ref_time, 5), round(avg_opt_time, 5)
+        return round(avg_speedup, 2) if avg_speedup is not None else 0.0, round(avg_ref_time, 5), round(avg_opt_time, 5)
 
 
 if __name__ == "__main__":
@@ -389,4 +425,3 @@ if __name__ == "__main__":
     if ret_perf[0] is not None:
         save_eval_result({"speedup": ret_perf[0], "ori_time": ret_perf[1], "opt_time": ret_perf[2]})
     sys.exit(0 if ret_perf[0] is not None else 1)
-

@@ -10,7 +10,7 @@ per token.
 Modes:
   --compile         ast-parse + import the standalone source, assert entry/kernel symbols
   --correctness     run the triton kernel on TEST_SHAPES, assert finite output
-  --full-benchmark  warmup + cuda-event timing, write build/performance_report.json
+  --full-benchmark  graph-first GPU timing, write build/performance_report.json
 
 The flydsl-vs-triton comparison will be added when the FlyDSL target lands.
 """
@@ -22,6 +22,7 @@ import math
 import os
 import sys
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 SOURCE_FILE = "moe_routing_sigmoid_top1.py"
 ENTRY = "routing_sigmoid_top1"
@@ -162,21 +163,15 @@ def run_benchmark(verbose=True):
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
-        times = []
-        for _ in range(ITERS):
-            s = torch.cuda.Event(enable_timing=True)
-            e = torch.cuda.Event(enable_timing=True)
-            s.record()
-            fn()
-            e.record()
-            torch.cuda.synchronize()
-            times.append(s.elapsed_time(e))
-        ms = sum(times) / len(times)
+        ms, bench_meta = benchmark_cuda_graph_or_events(
+            fn, warmup=0, repetition=ITERS
+        )
         latencies.append(ms)
         report.append(
             {
                 "test_case_id": f"perf{idx + 1}",
                 "execution_time_ms": ms,
+                **bench_meta,
                 "params": {k: shape[k] for k in ("M", "K", "N", "shared")},
             }
         )

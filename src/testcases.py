@@ -3,6 +3,7 @@
 Test case handling for evaluator: data structures, parsing, matching, and speedup calculation.
 """
 import json
+import math
 import re
 import logging
 import yaml
@@ -12,6 +13,7 @@ from dataclasses import dataclass
 
 _SYNTHETIC_TEST_ID_METADATA_KEY = "_synthetic_test_case_id"
 _TIMING_SOURCE_METADATA_KEY = "_timing_source"
+_ALTERNATE_EVENT_PREFIX = "benchmark_alternate_event_"
 
 _DEVICE_TIME_KEYS = [
     "device_time_ms",
@@ -45,7 +47,8 @@ def _safe_float(value: Any) -> Optional[float]:
     try:
         if value is None:
             return None
-        return float(value)
+        converted = float(value)
+        return converted if math.isfinite(converted) else None
     except (TypeError, ValueError):
         return None
 
@@ -322,28 +325,63 @@ def parse_test_cases_from_stdout(
     """
     log = logger or logging.getLogger(__name__)
     test_cases = []
+
+    benchmark_metadata: Dict[str, Any] = {}
+    method_match = re.search(
+        r'^\s*GEAK_BENCHMARK_METHOD=(.*)$', output, re.MULTILINE
+    )
+    if method_match:
+        benchmark_metadata['benchmark_method'] = method_match.group(1).strip()
+    fallback_match = re.search(
+        r'^\s*GEAK_BENCHMARK_FALLBACK_REASON=(.*)$', output, re.MULTILINE
+    )
+    if fallback_match:
+        benchmark_metadata['benchmark_fallback_reason'] = fallback_match.group(1).strip()
+
+    # GEAK harnesses use a machine-readable token rather than a JSON report.
+    geak_matches = re.findall(r'GEAK_RESULT_LATENCY_MS=([0-9.]+)', output)
+    for idx, time_str in enumerate(geak_matches):
+        test_cases.append(TestCaseResult(
+            test_case_id=f"geak_{idx}",
+            execution_time_ms=float(time_str),
+            metadata={
+                **benchmark_metadata,
+                _SYNTHETIC_TEST_ID_METADATA_KEY: True,
+                _TIMING_SOURCE_METADATA_KEY: "GEAK_RESULT_LATENCY_MS",
+            },
+        ))
     
     # Pattern 1: "Test case N: X ms" or "TestCase N: X ms"
     pattern1 = r'(?:Test\s+case|TestCase)\s+(\d+)[:\s]+([0-9.]+)\s*ms'
-    matches1 = re.findall(pattern1, output, re.IGNORECASE)
-    for match in matches1:
-        test_id, time_str = match
-        test_cases.append(TestCaseResult(
-            test_case_id=f"test_case_{test_id}",
-            execution_time_ms=float(time_str)
-        ))
+    if not test_cases:
+        matches1 = re.findall(pattern1, output, re.IGNORECASE)
+        for match in matches1:
+            test_id, time_str = match
+            test_cases.append(TestCaseResult(
+                test_case_id=f"test_case_{test_id}",
+                execution_time_ms=float(time_str),
+                metadata={
+                    **benchmark_metadata,
+                    _SYNTHETIC_TEST_ID_METADATA_KEY: True,
+                },
+            ))
     
     # Pattern 2: "Shape [X, Y, Z]: X ms" or "shape: [X, Y, Z], time: X ms"
     pattern2 = r'(?:Shape|shape)[:\s]+\[([0-9,\s]+)\][:\s]+([0-9.]+)\s*ms'
-    matches2 = re.findall(pattern2, output, re.IGNORECASE)
-    for idx, match in enumerate(matches2):
-        shape_str, time_str = match
-        shape = [int(x.strip()) for x in shape_str.split(',')]
-        test_cases.append(TestCaseResult(
-            test_case_id=f"shape_{idx}",
-            shape=shape,
-            execution_time_ms=float(time_str)
-        ))
+    if not test_cases:
+        matches2 = re.findall(pattern2, output, re.IGNORECASE)
+        for idx, match in enumerate(matches2):
+            shape_str, time_str = match
+            shape = [int(x.strip()) for x in shape_str.split(',')]
+            test_cases.append(TestCaseResult(
+                test_case_id=f"shape_{idx}",
+                shape=shape,
+                execution_time_ms=float(time_str),
+                metadata={
+                    **benchmark_metadata,
+                    _SYNTHETIC_TEST_ID_METADATA_KEY: True,
+                },
+            ))
     
     # Pattern 3: Multiple "Performance: X ms" lines (if no other pattern matched)
     if not test_cases:
@@ -352,7 +390,11 @@ def parse_test_cases_from_stdout(
         for idx, time_str in enumerate(matches3):
             test_cases.append(TestCaseResult(
                 test_case_id=f"perf_{idx}",
-                execution_time_ms=float(time_str)
+                execution_time_ms=float(time_str),
+                metadata={
+                    **benchmark_metadata,
+                    _SYNTHETIC_TEST_ID_METADATA_KEY: True,
+                },
             ))
     
     log.info(f"Parsed {len(test_cases)} test case(s) from stdout")
@@ -369,10 +411,14 @@ def match_test_cases(
     Match test cases between baseline and optimized results.
     
     Matching strategy:
-    1. Match by params when present
-    2. Match by shape when present
-    3. Match by explicit test_case_id
+    1. Match by unique explicit test_case_id
+    2. Match by unique params when present
+    3. Match by unique shape when present
     4. Match by index for any remaining cases when allowed
+
+    A key is only usable when it identifies exactly one remaining case on each
+    side.  Ambiguous duplicate semantic keys are deferred to a later strategy
+    instead of being paired greedily by input order.
     
     Args:
         baseline_cases: Baseline test case results
@@ -418,32 +464,44 @@ def match_test_cases(
     def remaining_cases(cases, used_ids):
         return [case for case in cases if id(case) not in used_ids]
 
-    def match_by_key(key_fn, strategy_name: str) -> None:
+    def match_by_unique_key(key_fn, strategy_name: str) -> None:
         nonlocal matched
         remaining_baseline = remaining_cases(baseline_cases, used_baseline)
         remaining_optimized = remaining_cases(optimized_cases, used_optimized)
+
+        baseline_by_key = {}
+        optimized_by_key = {}
+        for base_case in remaining_baseline:
+            base_key = key_fn(base_case)
+            if base_key is not None:
+                baseline_by_key.setdefault(base_key, []).append(base_case)
+        for opt_case in remaining_optimized:
+            opt_key = key_fn(opt_case)
+            if opt_key is not None:
+                optimized_by_key.setdefault(opt_key, []).append(opt_case)
 
         for base_case in remaining_baseline:
             base_key = key_fn(base_case)
             if base_key is None:
                 continue
-            for opt_case in remaining_optimized:
-                if id(opt_case) in used_optimized:
-                    continue
-                opt_key = key_fn(opt_case)
-                if opt_key is not None and base_key == opt_key:
-                    matched.append((base_case, opt_case))
-                    used_baseline.add(id(base_case))
-                    used_optimized.add(id(opt_case))
-                    break
+            baseline_candidates = baseline_by_key.get(base_key, [])
+            optimized_candidates = optimized_by_key.get(base_key, [])
+            if len(baseline_candidates) != 1 or len(optimized_candidates) != 1:
+                continue
+
+            opt_case = optimized_candidates[0]
+            matched.append((base_case, opt_case))
+            used_baseline.add(id(base_case))
+            used_optimized.add(id(opt_case))
 
         if matched:
             log.debug(f"Matched {len(matched)} cumulative test case(s) after {strategy_name}")
 
-    # Prefer semantic keys over generated IDs so reordered pytest results do not mismatch.
-    match_by_key(get_params_key, "params matching")
-    match_by_key(get_shape_key, "shape matching")
-    match_by_key(get_explicit_id_key, "explicit test_case_id matching")
+    # Stable producer-supplied IDs are the strongest identity signal. Generated
+    # parser IDs are excluded above because they merely encode result order.
+    match_by_unique_key(get_explicit_id_key, "explicit test_case_id matching")
+    match_by_unique_key(get_params_key, "params matching")
+    match_by_unique_key(get_shape_key, "shape matching")
 
     if allow_index_fallback:
         remaining_baseline = remaining_cases(baseline_cases, used_baseline)
@@ -509,9 +567,28 @@ def calculate_average_speedup(
         )
         return 0.0
     
+    method_mismatches = _benchmark_method_mismatches(matched)
+    if method_mismatches:
+        for mismatch in method_mismatches:
+            log.warning(
+                "Benchmark method mismatch for test case %s: baseline=%r, optimized=%r",
+                mismatch['test_case_id'],
+                mismatch['baseline_benchmark_method'],
+                mismatch['optimized_benchmark_method'],
+            )
+        log.warning(
+            "Refusing to calculate speedup across different benchmark methods"
+        )
+        return 0.0
+
     speedups = []
     for base_case, opt_case in matched:
-        if base_case.execution_time_ms > 0 and opt_case.execution_time_ms > 0:
+        if (
+            math.isfinite(base_case.execution_time_ms)
+            and math.isfinite(opt_case.execution_time_ms)
+            and base_case.execution_time_ms > 0
+            and opt_case.execution_time_ms > 0
+        ):
             speedup = base_case.execution_time_ms / opt_case.execution_time_ms
             speedups.append(speedup)
             log.debug(f"Test case {base_case.test_case_id}: {base_case.execution_time_ms:.4f} ms -> {opt_case.execution_time_ms:.4f} ms (speedup: {speedup:.2f}x)")
@@ -530,6 +607,191 @@ def calculate_average_speedup(
     return avg_speedup
 
 
+def _benchmark_method_mismatches(
+    matched_cases: List[Tuple[TestCaseResult, TestCaseResult]],
+) -> List[Dict[str, Any]]:
+    """Describe exact per-pair benchmark method mismatches.
+
+    A ``mixed:...`` value is an aggregate set, not a stable case-to-method
+    mapping.  Equal mixed strings therefore cannot prove that the same shapes
+    used the same timer in the baseline and optimized runs.  Refuse those
+    aggregate comparisons instead of silently scoring a potentially swapped
+    graph/event assignment.
+    """
+
+    mismatches: List[Dict[str, Any]] = []
+    comparable_methods = {'cuda_graph', 'cuda_event_fallback'}
+    for base_case, opt_case in matched_cases:
+        base_method = (base_case.metadata or {}).get('benchmark_method')
+        opt_method = (opt_case.metadata or {}).get('benchmark_method')
+        mixed_aggregate = (
+            isinstance(base_method, str) and base_method.startswith('mixed:')
+        ) or (
+            isinstance(opt_method, str) and opt_method.startswith('mixed:')
+        )
+        missing_or_unknown = (
+            base_method not in comparable_methods
+            or opt_method not in comparable_methods
+        )
+        if (
+            base_method == opt_method
+            and not mixed_aggregate
+            and not missing_or_unknown
+        ):
+            continue
+        mismatch = {
+            'test_case_id': base_case.test_case_id,
+            'optimized_test_case_id': opt_case.test_case_id,
+            'baseline_benchmark_method': base_method,
+            'optimized_benchmark_method': opt_method,
+        }
+        if mixed_aggregate:
+            mismatch['reason'] = 'ambiguous_mixed_aggregate'
+        elif missing_or_unknown:
+            mismatch['reason'] = 'missing_or_unknown_benchmark_method'
+        mismatches.append(mismatch)
+    return mismatches
+
+
+def analyze_benchmark_method_consistency(
+    baseline_cases: List[TestCaseResult],
+    optimized_cases: List[TestCaseResult],
+    logger: Optional[logging.Logger] = None,
+    require_complete_match: bool = True,
+) -> Tuple[bool, List[Dict[str, Any]]]:
+    """Check benchmark methods on matched cases, allowing per-shape fallback.
+
+    Different cases may legitimately use different methods.  A comparison is
+    consistent when every matched baseline/optimized pair uses the same exact
+    non-aggregate method.  ``mixed:...`` summaries are rejected because they do
+    not preserve which shape used which method.
+    """
+
+    allow_index_fallback = (
+        not require_complete_match
+        or (len(baseline_cases) == 1 and len(optimized_cases) == 1)
+    )
+    matched = match_test_cases(
+        baseline_cases,
+        optimized_cases,
+        logger,
+        allow_index_fallback=allow_index_fallback,
+    )
+    if not matched:
+        return False, []
+    if require_complete_match and (
+        len(matched) != len(baseline_cases) or len(matched) != len(optimized_cases)
+    ):
+        return False, []
+    mismatches = _benchmark_method_mismatches(matched)
+    return not mismatches, mismatches
+
+
+def attach_event_fallback_baselines(
+    baseline_cases: List[TestCaseResult],
+    event_cases: List[TestCaseResult],
+    logger: Optional[logging.Logger] = None,
+) -> List[TestCaseResult]:
+    """Attach forced-Event timing as an auditable alternate baseline.
+
+    The normal baseline remains the graph-first result.  When an optimized
+    callable genuinely cannot be captured, evaluation can select the paired
+    Event timing for that exact case instead of comparing unlike methods.
+    """
+
+    log = logger or logging.getLogger(__name__)
+    matched = match_test_cases(
+        baseline_cases,
+        event_cases,
+        log,
+        # Index matching is only safe for the unavoidable singleton legacy
+        # format. Equal-length multi-case lists can be unrelated or reordered.
+        allow_index_fallback=len(baseline_cases) == len(event_cases) == 1,
+    )
+    if len(matched) != len(baseline_cases) or len(matched) != len(event_cases):
+        log.warning(
+            "Could not attach complete Event baseline set: matched=%d, "
+            "baseline=%d, event=%d",
+            len(matched),
+            len(baseline_cases),
+            len(event_cases),
+        )
+
+    for baseline_case, event_case in matched:
+        event_metadata = event_case.metadata or {}
+        if event_metadata.get("benchmark_method") != "cuda_event_fallback":
+            log.warning(
+                "Ignoring non-Event alternate baseline for %s: %r",
+                baseline_case.test_case_id,
+                event_metadata.get("benchmark_method"),
+            )
+            continue
+        if baseline_case.metadata is None:
+            baseline_case.metadata = {}
+        baseline_case.metadata[f"{_ALTERNATE_EVENT_PREFIX}time_ms"] = (
+            event_case.execution_time_ms
+        )
+        for key, value in event_metadata.items():
+            if key.startswith("benchmark_") and value is not None:
+                suffix = key[len("benchmark_") :]
+                baseline_case.metadata[f"{_ALTERNATE_EVENT_PREFIX}{suffix}"] = value
+    return baseline_cases
+
+
+def select_method_matched_baselines(
+    baseline_cases: List[TestCaseResult],
+    optimized_cases: List[TestCaseResult],
+    logger: Optional[logging.Logger] = None,
+) -> List[TestCaseResult]:
+    """Select each baseline timing variant matching the optimized method."""
+
+    log = logger or logging.getLogger(__name__)
+    allow_index_fallback = len(baseline_cases) == len(optimized_cases) == 1
+    matched = match_test_cases(
+        baseline_cases,
+        optimized_cases,
+        log,
+        allow_index_fallback=allow_index_fallback,
+    )
+    if len(matched) != len(baseline_cases) or len(matched) != len(optimized_cases):
+        return baseline_cases
+
+    selected: List[TestCaseResult] = []
+    for baseline_case, optimized_case in matched:
+        metadata = dict(baseline_case.metadata or {})
+        execution_time_ms = baseline_case.execution_time_ms
+        optimized_method = (optimized_case.metadata or {}).get("benchmark_method")
+        baseline_method = metadata.get("benchmark_method")
+        alternate_method = metadata.get(f"{_ALTERNATE_EVENT_PREFIX}method")
+        alternate_time = _safe_float(
+            metadata.get(f"{_ALTERNATE_EVENT_PREFIX}time_ms")
+        )
+
+        if (
+            optimized_method == "cuda_event_fallback"
+            and baseline_method != optimized_method
+            and alternate_method == optimized_method
+            and alternate_time is not None
+            and alternate_time > 0.0
+        ):
+            execution_time_ms = alternate_time
+            for key, value in list(metadata.items()):
+                if not key.startswith(_ALTERNATE_EVENT_PREFIX):
+                    continue
+                suffix = key[len(_ALTERNATE_EVENT_PREFIX) :]
+                if suffix != "time_ms":
+                    metadata[f"benchmark_{suffix}"] = value
+            metadata["benchmark_baseline_variant"] = "forced_event"
+
+        selected.append(TestCaseResult(
+            test_case_id=baseline_case.test_case_id,
+            shape=baseline_case.shape,
+            execution_time_ms=execution_time_ms,
+            metadata=metadata,
+        ))
+    return selected
+
+
 def save_performance_results(
     test_cases: List[TestCaseResult],
     workspace: Path,
@@ -539,8 +801,8 @@ def save_performance_results(
     """
     Save test case results to YAML file.
     
-    Only saves essential fields: test_case_id, execution_time_ms, shape (if available), and params (if available).
-    All other metadata is excluded to keep the file clean.
+    Saves identifying fields, timing, params, and canonical ``benchmark_*``
+    metadata. Other task-specific metadata is excluded to keep the file compact.
     
     Args:
         test_cases: List of test case results
@@ -564,15 +826,17 @@ def save_performance_results(
         # Only include params from metadata, exclude everything else
         if case.metadata and 'params' in case.metadata:
             case_dict['params'] = case.metadata['params']
-        # Persist the timing method (and any fallback reason) so that baseline vs
-        # optimized comparisons can detect mixed-method measurements. A baseline timed
-        # with cuda_graph (host-overhead-free) compared against an optimized kernel that
-        # fell back to cuda_event timing (per-launch + sync overhead) would otherwise
-        # fabricate a speedup/regression from the measurement-method delta alone.
+        # Persist all canonical benchmark metadata so baseline and optimized
+        # measurements can be audited and compared after workspace reload.
         if case.metadata:
-            for k in ('benchmark_method', 'benchmark_fallback_reason'):
-                if case.metadata.get(k) is not None:
-                    case_dict[k] = case.metadata[k]
+            for key, value in case.metadata.items():
+                if key.startswith('benchmark_') and value is not None:
+                    case_dict[key] = value
+            # Preserve whether an ID was generated from list order. Without
+            # this private provenance bit, a YAML reload would treat a
+            # synthetic ID as an explicit stable key and could mispair cases.
+            if case.metadata.get(_SYNTHETIC_TEST_ID_METADATA_KEY):
+                case_dict[_SYNTHETIC_TEST_ID_METADATA_KEY] = True
         results['test_cases'].append(case_dict)
     
     output_file = workspace / filename
@@ -630,8 +894,9 @@ def collect_benchmark_methods(test_cases: List[TestCaseResult]) -> List[str]:
     """Return the sorted set of distinct `benchmark_method` values across test cases.
 
     The method is read from each case's metadata (populated from the benchmark JSON
-    and persisted into baseline_perf.yaml / optimized_perf.yaml). An empty list means
-    no method was recorded (e.g. an older report or a non-rocmbench task).
+    and persisted into baseline_perf.yaml / optimized_perf.yaml). An empty list
+    means no method was recorded; such cases are retained but are not comparable
+    for speedup.
     """
     methods = set()
     for case in test_cases:

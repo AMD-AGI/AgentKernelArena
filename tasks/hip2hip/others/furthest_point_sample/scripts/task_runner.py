@@ -11,8 +11,16 @@ sys.path.insert(0, TASK_DIR)
 os.chdir(TASK_DIR)
 
 import torch
+from _aka_benchmark import (
+    benchmark_cuda_graph_or_events,
+    hip_source_graph_capture_policy,
+)
 
 TASK_NAME = "hip2hip/furthest_point_sample"
+HIP_GRAPH_ENABLED, HIP_GRAPH_FALLBACK_REASON = hip_source_graph_capture_policy(
+    os.path.join(TASK_DIR, "src", "furthest_point_sample.cpp"),
+    os.path.join(TASK_DIR, "src", "furthest_point_sample_cuda.hip"),
+)
 
 # 5 test shapes: (B, N, npoints)
 TEST_SHAPES = [
@@ -91,17 +99,11 @@ def run_correctness():
 
 
 def _time_kernel(fn, n_warmup=10, n_iter=100):
-    for _ in range(n_warmup):
-        fn()
-    torch.cuda.synchronize()
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    start.record()
-    for _ in range(n_iter):
-        fn()
-    end.record()
-    torch.cuda.synchronize()
-    return start.elapsed_time(end) / n_iter
+    return benchmark_cuda_graph_or_events(
+        fn, warmup=n_warmup, repetition=n_iter,
+        use_cuda_graph=HIP_GRAPH_ENABLED,
+        fallback_reason=HIP_GRAPH_FALLBACK_REASON,
+    )
 
 
 def run_performance():
@@ -114,15 +116,16 @@ def run_performance():
         xyz = torch.randn(B, N, 3, device="cuda", dtype=torch.float32)
 
         # Perf1: FPS on raw point coordinates
-        ms_coords = _time_kernel(lambda: furthest_point_sample(xyz, npoints))
+        ms_coords, meta_coords = _time_kernel(lambda: furthest_point_sample(xyz, npoints))
 
         # Perf2: FPS with pre-computed distance matrix
         dist_matrix = torch.cdist(xyz, xyz).pow(2)
-        ms_dist = _time_kernel(lambda: furthest_point_sample_with_dist(dist_matrix, npoints))
+        ms_dist, meta_dist = _time_kernel(lambda: furthest_point_sample_with_dist(dist_matrix, npoints))
 
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_fps_coords",
             "execution_time_ms": ms_coords,
+            **meta_coords,
             "params": {
                 "B": B,
                 "N": N,
@@ -133,6 +136,7 @@ def run_performance():
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_fps_dist",
             "execution_time_ms": ms_dist,
+            **meta_dist,
             "params": {
                 "B": B,
                 "N": N,

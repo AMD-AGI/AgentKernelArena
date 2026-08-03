@@ -7,12 +7,30 @@ import re
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from .testcases import TestCaseResult, parse_test_cases_from_json, parse_test_cases_from_stdout
+from .testcases import (
+    TestCaseResult,
+    attach_event_fallback_baselines,
+    parse_test_cases_from_json,
+    parse_test_cases_from_stdout,
+)
 from .evaluator_utils import run_command
 from .jit_rebuild import force_jit_rebuild
 
 # Default for performance_command subprocess (CMake benchmarks can be slow)
 _DEFAULT_PERFORMANCE_COMMAND_TIMEOUT_S = 3600
+
+
+def _benchmark_method_uses_cuda_graph(case: TestCaseResult) -> bool:
+    """Return whether a case's exact or aggregate method includes graph timing."""
+
+    method = (case.metadata or {}).get("benchmark_method")
+    if method == "cuda_graph":
+        return True
+    if not isinstance(method, str) or not method.startswith("mixed:"):
+        return False
+    return "cuda_graph" in {
+        item.strip() for item in method[len("mixed:") :].split(",")
+    }
 
 
 def performance_report_candidates(workspace: Path, task_type: Optional[str] = None) -> List[Path]:
@@ -275,7 +293,8 @@ def measure_performance(
     workspace: Path,
     task_config: Dict[str, Any],
     logger: Optional[logging.Logger] = None,
-    is_baseline: bool = False
+    is_baseline: bool = False,
+    force_event: bool = False,
 ) -> List[TestCaseResult]:
     """
     Measure kernel execution time for all test cases.
@@ -285,12 +304,16 @@ def measure_performance(
         task_config: Task configuration dict
         logger: Optional logger
         is_baseline: If True, use ori_time for torch2hip; if False, use opt_time
+        force_event: Set the protected benchmark-helper environment override so
+            a graph-capable baseline also records a paired GPU-Event variant.
         
     Returns:
         List of TestCaseResult objects (empty list if measurement failed)
     """
     log = logger or logging.getLogger(__name__)
-    rebuild_env = force_jit_rebuild(task_config, log, workspace)
+    rebuild_env = dict(force_jit_rebuild(task_config, log, workspace))
+    if force_event:
+        rebuild_env["AKA_BENCHMARK_FORCE_EVENT"] = "1"
     performance_commands = task_config.get('performance_command', [])
     task_type = task_config.get('task_type')
     
@@ -353,6 +376,17 @@ def measure_baseline(
     log.info("Measuring baseline performance...")
     
     baseline_cases = measure_performance(workspace, task_config, logger, is_baseline=True)
+
+    if any(_benchmark_method_uses_cuda_graph(case) for case in baseline_cases):
+        log.info("Measuring paired GPU-Event fallback baseline...")
+        event_cases = measure_performance(
+            workspace,
+            task_config,
+            logger,
+            is_baseline=True,
+            force_event=True,
+        )
+        attach_event_fallback_baselines(baseline_cases, event_cases, log)
     
     if baseline_cases:
         # Save baseline results

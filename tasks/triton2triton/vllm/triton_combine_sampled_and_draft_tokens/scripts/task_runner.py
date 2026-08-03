@@ -183,34 +183,23 @@ def run_performance():
                 cu_num_logits[r + 1] = cu_num_logits[r] + tokens_per_req
             total_logits = int(cu_num_logits[-1].item())
 
-            for _ in range(WARMUP_ITERATIONS):
-                mod.combine_sampled_and_draft_tokens(
-                    input_ids.clone(), idx_mapping, last_sampled_tokens, query_start_loc,
-                    seq_lens, prefill_len, draft_tokens, cu_num_logits, total_logits,
-                )
-            torch.cuda.synchronize()
-
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
-                start_events[j].record()
-                mod.combine_sampled_and_draft_tokens(
-                    input_ids.clone(), idx_mapping, last_sampled_tokens, query_start_loc,
-                    seq_lens, prefill_len, draft_tokens, cu_num_logits, total_logits,
-                )
-                end_events[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "timed_clone_or_fresh_tensor",
-            }
+            input_ids_work = input_ids.clone()
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                lambda: mod.combine_sampled_and_draft_tokens(
+                    input_ids_work,
+                    idx_mapping,
+                    last_sampled_tokens,
+                    query_start_loc,
+                    seq_lens,
+                    prefill_len,
+                    draft_tokens,
+                    cu_num_logits,
+                    total_logits,
+                ),
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                target_ms=20.0,
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

@@ -12,10 +12,15 @@ discarded rather than treated as tampering; see ``verify_workspace_harness``.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
+
+import yaml
+
+from .perf_helper_materialization import configured_performance_entrypoints
 
 
 _HARNESS_DIRS = {
@@ -25,9 +30,11 @@ _HARNESS_DIRS = {
     "tests",
 }
 _HARNESS_FILE_NAMES = {
+    "_aka_benchmark.py",
     "config.yaml",
     "config.yml",
     "conftest.py",
+    "hip_graph_benchmark.hpp",
     "performance_utils_pytest.py",
 }
 _HARNESS_FILE_SUFFIXES = (
@@ -58,13 +65,16 @@ def _is_protected_path(rel: Path) -> bool:
 
 
 def _iter_protected_files(root: Path) -> Iterable[Path]:
+    configured_entrypoints = {
+        path.resolve() for path in configured_performance_entrypoints(root)
+    }
     for path in root.rglob("*"):
         if not path.is_file():
             continue
         rel = path.relative_to(root)
         if ".git" in rel.parts or "__pycache__" in rel.parts:
             continue
-        if _is_protected_path(rel):
+        if _is_protected_path(rel) or path.resolve() in configured_entrypoints:
             yield path
 
 
@@ -76,14 +86,97 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def _task_config(root: Path) -> dict:
+    for name in ("config.yaml", "config.yml"):
+        path = root / name
+        if not path.is_file():
+            continue
+        try:
+            data = yaml.safe_load(path.read_text()) or {}
+        except (OSError, yaml.YAMLError):
+            return {}
+        return data if isinstance(data, dict) else {}
+    return {}
+
+
+def _string_list(value) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, str)]
+    return []
+
+
+def _editable_entrypoint_targets(root: Path) -> dict[Path, set[str]]:
+    """Return co-located benchmark/source files and their editable functions.
+
+    A small number of ROCmBench tasks intentionally keep the Triton kernel and
+    pytest harness in one configured file. Protecting that whole entrypoint
+    would make the optimization task impossible, so its declared target
+    function bodies are excluded from the integrity digest while imports,
+    decorators, signatures, helpers, and benchmark tests remain protected.
+    """
+
+    config = _task_config(root)
+    targets = {
+        name.strip()
+        for configured in _string_list(config.get("target_kernel_functions"))
+        for name in configured.split(",")
+        if name.strip()
+    }
+    if not targets:
+        return {}
+    source_paths = set()
+    for configured in _string_list(config.get("source_file_path")):
+        path = (root / configured).resolve()
+        if path.is_file():
+            source_paths.add(path)
+    entrypoints = {
+        path.resolve() for path in configured_performance_entrypoints(root)
+    }
+    return {
+        path: targets
+        for path in source_paths & entrypoints
+        if path.suffix == ".py"
+    }
+
+
+def _sha256_python_harness(path: Path, editable_targets: set[str]) -> str:
+    """Hash Python structure after masking declared target function bodies."""
+
+    try:
+        tree = ast.parse(path.read_text())
+    except (OSError, UnicodeDecodeError, SyntaxError):
+        return "invalid-python:" + _sha256(path)
+
+    for node in tree.body:
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name in editable_targets
+        ):
+            node.body = [ast.Pass()]
+    canonical = ast.dump(tree, annotate_fields=True, include_attributes=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _protected_digests(root: Path) -> dict[str, str]:
+    editable_entrypoints = _editable_entrypoint_targets(root)
+    digests = {}
+    for path in sorted(_iter_protected_files(root)):
+        resolved = path.resolve()
+        if resolved in editable_entrypoints:
+            digest = _sha256_python_harness(path, editable_entrypoints[resolved])
+        else:
+            digest = _sha256(path)
+        digests[str(path.relative_to(root))] = digest
+    return digests
+
+
 def snapshot_workspace_harness(root: Path) -> WorkspaceSnapshot:
     """Capture digests for task-owned harness and test files."""
 
     root = Path(root)
-    digests = {
-        str(path.relative_to(root)): _sha256(path)
-        for path in sorted(_iter_protected_files(root))
-    }
+    digests = _protected_digests(root)
     return WorkspaceSnapshot(root=root, digests=digests)
 
 

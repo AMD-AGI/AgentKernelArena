@@ -11,8 +11,16 @@ sys.path.insert(0, TASK_DIR)
 os.chdir(TASK_DIR)
 
 import torch
+from _aka_benchmark import (
+    benchmark_cuda_graph_or_events,
+    hip_source_graph_capture_policy,
+)
 
 TASK_NAME = "hip2hip/ball_query"
+HIP_GRAPH_ENABLED, HIP_GRAPH_FALLBACK_REASON = hip_source_graph_capture_policy(
+    os.path.join(TASK_DIR, "src", "ball_query.cpp"),
+    os.path.join(TASK_DIR, "src", "ball_query_cuda.hip"),
+)
 
 # 5 test shapes: (B, N, M, max_radius, nsample)
 TEST_SHAPES = [
@@ -99,17 +107,11 @@ def run_correctness():
 
 
 def _time_kernel(fn, n_warmup=10, n_iter=100):
-    for _ in range(n_warmup):
-        fn()
-    torch.cuda.synchronize()
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    start.record()
-    for _ in range(n_iter):
-        fn()
-    end.record()
-    torch.cuda.synchronize()
-    return start.elapsed_time(end) / n_iter
+    return benchmark_cuda_graph_or_events(
+        fn, warmup=n_warmup, repetition=n_iter,
+        use_cuda_graph=HIP_GRAPH_ENABLED,
+        fallback_reason=HIP_GRAPH_FALLBACK_REASON,
+    )
 
 
 def run_performance():
@@ -123,13 +125,14 @@ def run_performance():
         center_xyz = torch.randn(B, M, 3, device="cuda", dtype=torch.float32)
 
         # Perf1: fixed radius ball query (min=0, max=max_r)
-        ms_fixed = _time_kernel(lambda: ball_query(0.0, max_r, nsample, xyz, center_xyz))
+        ms_fixed, meta_fixed = _time_kernel(lambda: ball_query(0.0, max_r, nsample, xyz, center_xyz))
         # Perf2: dilated/annular ball query (min=max_r, max=max_r*2)
-        ms_dilated = _time_kernel(lambda: ball_query(max_r, max_r * 2, nsample, xyz, center_xyz))
+        ms_dilated, meta_dilated = _time_kernel(lambda: ball_query(max_r, max_r * 2, nsample, xyz, center_xyz))
 
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_fixed_radius",
             "execution_time_ms": ms_fixed,
+            **meta_fixed,
             "params": {
                 "B": B,
                 "N": N,
@@ -142,6 +145,7 @@ def run_performance():
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_dilated_radius",
             "execution_time_ms": ms_dilated,
+            **meta_dilated,
             "params": {
                 "B": B,
                 "N": N,

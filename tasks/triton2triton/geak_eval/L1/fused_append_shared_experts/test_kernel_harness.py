@@ -14,6 +14,19 @@ import argparse
 import math
 import os
 import sys
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+
+
+def benchmark_cuda_graph_or_events(*args, **kwargs):
+    samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
+    values = sorted(samples)
+    midpoint = len(values) // 2
+    median_ms = (
+        values[midpoint]
+        if len(values) % 2
+        else (values[midpoint - 1] + values[midpoint]) / 2.0
+    )
+    return median_ms, metadata
 
 # ── Constants ──────────────────────────────────────────────────────────────
 WARMUP = 50
@@ -119,37 +132,29 @@ def run_correctness(indices):
 def run_benchmark(indices):
     torch.manual_seed(42)
     latencies = []
+    methods = []
     print("Running benchmark on {} configs ...".format(len(indices)))
     for idx in indices:
         cfg = ALL_CONFIGS[idx]
         topk_ids, topk_weights = build_inputs(cfg)
-        # Warmup
-        for _ in range(WARMUP):
+        def kernel_call():
             fused_append_shared_experts(
                 topk_ids, topk_weights, cfg["S"], cfg["scale_factor"], N=cfg["N"]
             )
-        torch.cuda.synchronize()
-        # Timed iterations
-        times = []
-        for _ in range(ITERATIONS):
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            start.record()
-            fused_append_shared_experts(
-                topk_ids, topk_weights, cfg["S"], cfg["scale_factor"], N=cfg["N"]
-            )
-            end.record()
-            torch.cuda.synchronize()
-            times.append(start.elapsed_time(end))
-        times.sort()
-        median_ms = times[len(times) // 2]
-        latencies.append(median_ms)
-        print("  [{}] {}  {:.4f}ms".format(idx, cfg_label(cfg), median_ms))
+        latency_ms, metadata = benchmark_cuda_graph_or_events(
+            kernel_call, warmup=WARMUP, repetition=ITERATIONS
+        )
+        latencies.append(latency_ms)
+        methods.append(metadata["benchmark_method"])
+        print("  [{}] {}  {:.4f}ms".format(idx, cfg_label(cfg), latency_ms))
     # Geometric mean
     log_sum = sum(math.log(t) for t in latencies)
     geomean = math.exp(log_sum / len(latencies))
     print("GEAK_SHAPES_USED={}".format(indices))
     print("GEAK_RESULT_LATENCY_MS={:.4f}".format(geomean))
+    print("GEAK_BENCHMARK_METHOD={}".format(
+        methods[0] if len(set(methods)) == 1 else "mixed:" + ",".join(sorted(set(methods)))
+    ))
 
 
 # ── Profile ───────────────────────────────────────────────────────────────

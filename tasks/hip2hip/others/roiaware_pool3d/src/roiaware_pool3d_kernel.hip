@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <ATen/cuda/HIPContext.h>
 #include <torch/serialize/tensor.h>
 #include <torch/types.h>
 
@@ -229,7 +230,7 @@ void roiaware_pool3d_launcher(int boxes_num, int pts_num, int channels,
                               int out_z, const float *rois, const float *pts,
                               const float *pts_feature, int *argmax,
                               int *pts_idx_of_voxels, float *pooled_features,
-                              int pool_method) {
+                              int *pts_mask, int pool_method) {
   // params rois: (N, 7) [x, y, z, x_size, y_size, z_size, rz] in LiDAR coordinate
   // params pts: (npoints, 3) [x, y, z] in LiDAR coordinate
   // params pts_feature: (npoints, C)
@@ -238,39 +239,30 @@ void roiaware_pool3d_launcher(int boxes_num, int pts_num, int channels,
   // params pooled_features: (N, out_x, out_y, out_z, C)
   // params pool_method: 0: max_pool 1: avg_pool
 
-  int *pts_mask = NULL;
-  hipMalloc(&pts_mask, boxes_num * pts_num * sizeof(int));  // (N, M)
-  hipMemset(pts_mask, -1, boxes_num * pts_num * sizeof(int));
-
   dim3 blocks_mask(DIVUP(pts_num, THREADS_PER_BLOCK), boxes_num);
   dim3 threads(THREADS_PER_BLOCK);
- hipLaunchKernelGGL(( generate_pts_mask_for_box3d), dim3(blocks_mask), dim3(threads), 0, 0, 
+  hipStream_t stream = at::cuda::getCurrentCUDAStream();
+ hipLaunchKernelGGL(( generate_pts_mask_for_box3d), dim3(blocks_mask), dim3(threads), 0, stream,
       boxes_num, pts_num, out_x, out_y, out_z, rois, pts, pts_mask);
 
   // TODO: Merge the collect and pool functions, SS
 
   dim3 blocks_collect(DIVUP(boxes_num, THREADS_PER_BLOCK));
- hipLaunchKernelGGL(( collect_inside_pts_for_box3d), dim3(blocks_collect), dim3(threads), 0, 0, 
+ hipLaunchKernelGGL(( collect_inside_pts_for_box3d), dim3(blocks_collect), dim3(threads), 0, stream,
       boxes_num, pts_num, max_pts_each_voxel, out_x, out_y, out_z, pts_mask,
       pts_idx_of_voxels);
 
   dim3 blocks_pool(DIVUP(out_x * out_y * out_z, THREADS_PER_BLOCK), channels,
                    boxes_num);
   if (pool_method == 0) {
-   hipLaunchKernelGGL(( roiaware_maxpool3d), dim3(blocks_pool), dim3(threads), 0, 0, 
+   hipLaunchKernelGGL(( roiaware_maxpool3d), dim3(blocks_pool), dim3(threads), 0, stream,
         boxes_num, pts_num, channels, max_pts_each_voxel, out_x, out_y, out_z,
         pts_feature, pts_idx_of_voxels, pooled_features, argmax);
   } else if (pool_method == 1) {
-   hipLaunchKernelGGL(( roiaware_avgpool3d), dim3(blocks_pool), dim3(threads), 0, 0, 
+   hipLaunchKernelGGL(( roiaware_avgpool3d), dim3(blocks_pool), dim3(threads), 0, stream,
         boxes_num, pts_num, channels, max_pts_each_voxel, out_x, out_y, out_z,
         pts_feature, pts_idx_of_voxels, pooled_features);
   }
-
-  hipFree(pts_mask);
-
-#ifdef DEBUG
-  hipDeviceSynchronize();  // for using printf in kernel function
-#endif
 }
 
 __global__ void roiaware_maxpool3d_backward(int boxes_num, int channels,
@@ -354,11 +346,12 @@ void roiaware_pool3d_backward_launcher(int boxes_num, int out_x, int out_y,
   dim3 blocks(DIVUP(out_x * out_y * out_z, THREADS_PER_BLOCK), channels,
               boxes_num);
   dim3 threads(THREADS_PER_BLOCK);
+  hipStream_t stream = at::cuda::getCurrentCUDAStream();
   if (pool_method == 0) {
-   hipLaunchKernelGGL(( roiaware_maxpool3d_backward), dim3(blocks), dim3(threads), 0, 0, 
+   hipLaunchKernelGGL(( roiaware_maxpool3d_backward), dim3(blocks), dim3(threads), 0, stream,
         boxes_num, channels, out_x, out_y, out_z, argmax, grad_out, grad_in);
   } else if (pool_method == 1) {
-   hipLaunchKernelGGL(( roiaware_avgpool3d_backward), dim3(blocks), dim3(threads), 0, 0, 
+   hipLaunchKernelGGL(( roiaware_avgpool3d_backward), dim3(blocks), dim3(threads), 0, stream,
         boxes_num, channels, out_x, out_y, out_z, max_pts_each_voxel,
         pts_idx_of_voxels, grad_out, grad_in);
   }

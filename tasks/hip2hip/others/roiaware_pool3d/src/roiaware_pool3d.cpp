@@ -20,7 +20,7 @@ void roiaware_pool3d_launcher(int boxes_num, int pts_num, int channels,
                               int out_z, const float *rois, const float *pts,
                               const float *pts_feature, int *argmax,
                               int *pts_idx_of_voxels, float *pooled_features,
-                              int pool_method);
+                              int *pts_mask, int pool_method);
 
 void roiaware_pool3d_backward_launcher(int boxes_num, int out_x, int out_y,
                                        int out_z, int channels,
@@ -71,11 +71,17 @@ int roiaware_pool3d_gpu(at::Tensor rois, at::Tensor pts, at::Tensor pts_feature,
   int *argmax_data = argmax.data_ptr<int>();
   int *pts_idx_of_voxels_data = pts_idx_of_voxels.data_ptr<int>();
   float *pooled_features_data = pooled_features.data_ptr<float>();
+  // Allocate temporary storage through PyTorch's capture-aware caching
+  // allocator.  The tensor remains alive until all launcher work has been
+  // enqueued, and the allocator safely tracks its use on the current stream.
+  at::Tensor pts_mask = at::empty(
+      {boxes_num, pts_num}, rois.options().dtype(at::kInt));
+  int *pts_mask_data = pts_mask.data_ptr<int>();
 
   roiaware_pool3d_launcher(
       boxes_num, pts_num, channels, max_pts_each_voxel, out_x, out_y, out_z,
       rois_data, pts_data, pts_feature_data, argmax_data,
-      pts_idx_of_voxels_data, pooled_features_data, pool_method);
+      pts_idx_of_voxels_data, pooled_features_data, pts_mask_data, pool_method);
 
   return 1;
 }

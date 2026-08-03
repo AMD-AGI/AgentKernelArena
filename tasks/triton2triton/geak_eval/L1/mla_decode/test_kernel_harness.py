@@ -9,6 +9,19 @@ import sys
 import math
 
 import torch
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+
+
+def benchmark_cuda_graph_or_events(*args, **kwargs):
+    samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
+    values = sorted(samples)
+    midpoint = len(values) // 2
+    median_ms = (
+        values[midpoint]
+        if len(values) % 2
+        else (values[midpoint - 1] + values[midpoint]) / 2.0
+    )
+    return median_ms, metadata
 
 # Ensure aiter is importable
 REPO_ROOT = os.environ.get(
@@ -236,7 +249,7 @@ def check_correctness_val(out_ref, out_asm, ctx_len=0, nhead=0, decode_qlen=0):
 
 
 def benchmark_kernel(inputs):
-    """Benchmark the MLA decode kernel, return median latency in ms."""
+    """Benchmark the MLA decode kernel with graph replay when supported."""
     out_asm = torch.empty(
         (inputs["total_q"], inputs["q"].shape[1], inputs["v_head_dim"]),
         dtype=torch.bfloat16,
@@ -259,25 +272,9 @@ def benchmark_kernel(inputs):
             logit_cap=0.0,
         )
 
-    # Warmup
-    for _ in range(WARMUP):
-        fn()
-    torch.cuda.synchronize()
-
-    # Benchmark with GPU events
-    latencies = []
-    for _ in range(ITERATIONS):
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        start.record()
-        fn()
-        end.record()
-        end.synchronize()
-        latencies.append(start.elapsed_time(end))
-
-    latencies.sort()
-    median_ms = latencies[len(latencies) // 2]
-    return median_ms
+    return benchmark_cuda_graph_or_events(
+        fn, warmup=WARMUP, repetition=ITERATIONS
+    )
 
 
 def config_str(cfg):
@@ -321,15 +318,17 @@ def mode_correctness(indices):
 def mode_benchmark(indices):
     print("Running benchmark on {} configs...".format(len(indices)))
     latencies = []
+    methods = []
     for idx in indices:
         cfg = ALL_CONFIGS[idx]
         ctx_len, batch_size, nhead, decode_qlen = cfg
         label = config_str(cfg)
         try:
             inputs = setup_inputs(ctx_len, batch_size, nhead, decode_qlen)
-            ms = benchmark_kernel(inputs)
+            ms, metadata = benchmark_kernel(inputs)
             print("  {}  {:.4f}ms".format(label, ms))
             latencies.append(ms)
+            methods.append(metadata["benchmark_method"])
         except Exception as e:
             print("  {}  ERROR: {}".format(label, e))
         finally:
@@ -339,6 +338,9 @@ def mode_benchmark(indices):
     if latencies:
         geo_mean = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
         print("GEAK_RESULT_LATENCY_MS={:.4f}".format(geo_mean))
+        print("GEAK_BENCHMARK_METHOD={}".format(
+            methods[0] if len(set(methods)) == 1 else "mixed:" + ",".join(sorted(set(methods)))
+        ))
     else:
         print("No successful benchmarks")
         sys.exit(1)

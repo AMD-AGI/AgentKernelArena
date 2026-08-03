@@ -11,8 +11,16 @@ sys.path.insert(0, TASK_DIR)
 os.chdir(TASK_DIR)
 
 import torch
+from _aka_benchmark import (
+    benchmark_cuda_graph_or_events,
+    hip_source_graph_capture_policy,
+)
 
 TASK_NAME = "hip2hip/three_nn"
+HIP_GRAPH_ENABLED, HIP_GRAPH_FALLBACK_REASON = hip_source_graph_capture_policy(
+    os.path.join(TASK_DIR, "src", "three_nn.cpp"),
+    os.path.join(TASK_DIR, "src", "three_nn_cuda.hip"),
+)
 ATOL, RTOL = 1e-4, 1e-4
 
 # 5 test shapes: (B, N_target, M_source)
@@ -86,23 +94,16 @@ def run_performance():
         target = torch.randn(B, N, 3, device="cuda", dtype=torch.float32)
         source = torch.randn(B, M, 3, device="cuda", dtype=torch.float32)
 
-        for _ in range(10):
-            three_nn(target, source)
-        torch.cuda.synchronize()
-
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        n_iter = 100
-        start.record()
-        for _ in range(n_iter):
-            three_nn(target, source)
-        end.record()
-        torch.cuda.synchronize()
-        elapsed_ms = start.elapsed_time(end) / n_iter
+        elapsed_ms, benchmark_meta = benchmark_cuda_graph_or_events(
+            lambda: three_nn(target, source), warmup=10, repetition=100,
+            use_cuda_graph=HIP_GRAPH_ENABLED,
+            fallback_reason=HIP_GRAPH_FALLBACK_REASON,
+        )
         
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}",
             "execution_time_ms": elapsed_ms,
+            **benchmark_meta,
             "params": {
                 "B": B,
                 "N_target": N,

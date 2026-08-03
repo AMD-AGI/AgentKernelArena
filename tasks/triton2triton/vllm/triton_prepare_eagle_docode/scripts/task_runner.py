@@ -185,16 +185,23 @@ def run_performance():
     for test_idx, (nr, tt, hs, mml, mnr) in enumerate(TEST_SHAPES):
         try:
             inputs = make_inputs(nr, tt, hs, mml, mnr, device)
+            initial_mutable_inputs = tuple(value.clone() for value in inputs[5:])
 
             def _bench_fn():
                 mod.prepare_eagle_decode(
                     inputs[0], inputs[1], inputs[2], inputs[3], inputs[4],
                     inputs[5], inputs[6], inputs[7], inputs[8], inputs[9], mml, mnr,
                 )
+
+            def _prepare_benchmark_state():
+                for value, initial_value in zip(inputs[5:], initial_mutable_inputs):
+                    value.copy_(initial_value)
+
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
                 _bench_fn,
                 warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS,
+                prepare_fn=_prepare_benchmark_state,
             )
 
             test_cases.append({

@@ -11,8 +11,16 @@ sys.path.insert(0, TASK_DIR)
 os.chdir(TASK_DIR)
 
 import torch
+from _aka_benchmark import (
+    benchmark_cuda_graph_or_events,
+    hip_source_graph_capture_policy,
+)
 
 TASK_NAME = "hip2hip/roiaware_pool3d"
+HIP_GRAPH_ENABLED, HIP_GRAPH_FALLBACK_REASON = hip_source_graph_capture_policy(
+    os.path.join(TASK_DIR, "src", "roiaware_pool3d.cpp"),
+    os.path.join(TASK_DIR, "src", "roiaware_pool3d_kernel.hip"),
+)
 
 # 5 test shapes: (num_rois, num_pts, C, out_size)
 TEST_SHAPES = [
@@ -155,17 +163,11 @@ def run_correctness():
 
 
 def _time_kernel(fn, n_warmup=10, n_iter=100):
-    for _ in range(n_warmup):
-        fn()
-    torch.cuda.synchronize()
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    start.record()
-    for _ in range(n_iter):
-        fn()
-    end.record()
-    torch.cuda.synchronize()
-    return start.elapsed_time(end) / n_iter
+    return benchmark_cuda_graph_or_events(
+        fn, warmup=n_warmup, repetition=n_iter,
+        use_cuda_graph=HIP_GRAPH_ENABLED,
+        fallback_reason=HIP_GRAPH_FALLBACK_REASON,
+    )
 
 
 def run_performance():
@@ -184,13 +186,14 @@ def run_performance():
         pool_avg = RoIAwarePool3d(out_size=out_size, max_pts_per_voxel=128, mode='avg')
 
         # Perf1: max pooling
-        ms_max = _time_kernel(lambda: pool_max(rois, pts, pts_feature))
+        ms_max, meta_max = _time_kernel(lambda: pool_max(rois, pts, pts_feature))
         # Perf2: avg pooling
-        ms_avg = _time_kernel(lambda: pool_avg(rois, pts, pts_feature))
+        ms_avg, meta_avg = _time_kernel(lambda: pool_avg(rois, pts, pts_feature))
 
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_maxpool",
             "execution_time_ms": ms_max,
+            **meta_max,
             "params": {
                 "num_rois": num_rois,
                 "num_pts": num_pts,
@@ -202,6 +205,7 @@ def run_performance():
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_avgpool",
             "execution_time_ms": ms_avg,
+            **meta_avg,
             "params": {
                 "num_rois": num_rois,
                 "num_pts": num_pts,

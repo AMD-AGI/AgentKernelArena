@@ -21,6 +21,19 @@ Benchmark iteration count is taken from `--iterations`, or defaults to
 `GEAK_RESULT_LATENCY_MS=<value>`.
 """
 from __future__ import annotations
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+
+
+def benchmark_cuda_graph_or_events(*args, **kwargs):
+    samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
+    values = sorted(samples)
+    midpoint = len(values) // 2
+    median_ms = (
+        values[midpoint]
+        if len(values) % 2
+        else (values[midpoint - 1] + values[midpoint]) / 2.0
+    )
+    return median_ms, metadata
 
 # GEAK materialized harness bootstrap
 import importlib.util
@@ -362,6 +375,7 @@ def run_benchmark(shapes, warmup: int = 50, iters: int = 200, verbose: bool = Tr
     latencies = []
     speedups = []
     results = []
+    benchmark_methods = []
 
     if verbose:
         print(
@@ -372,49 +386,33 @@ def run_benchmark(shapes, warmup: int = 50, iters: int = 200, verbose: bool = Tr
     for idx, (batch, hidden, k) in enumerate(shapes):
         x = make_input(batch, hidden, seed=42 + idx)
 
-        # Warmup
-        for _ in range(warmup):
-            triton_op(x, k)
-        torch.cuda.synchronize()
+        triton_ms, triton_meta = benchmark_cuda_graph_or_events(
+            lambda: triton_op(x, k), warmup=warmup, repetition=iters,
+        )
 
-        # Benchmark Triton (kernel under test)
-        triton_times = []
-        for _ in range(iters):
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            start.record()
-            triton_op(x, k)
-            end.record()
-            torch.cuda.synchronize()
-            triton_times.append(start.elapsed_time(end))
-
-        triton_ms = sorted(triton_times)[len(triton_times) // 2]  # median
-
-        # Benchmark reference (baseline Triton or PyTorch)
-        ref_times = []
-        for _ in range(iters):
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            start.record()
+        def run_reference():
             if baseline_topk is not None:
-                baseline_topk(x, k, largest=True)
-            else:
-                torch_op(x, k)
-            end.record()
-            torch.cuda.synchronize()
-            ref_times.append(start.elapsed_time(end))
+                return baseline_topk(x, k, largest=True)
+            return torch_op(x, k)
 
-        ref_ms = sorted(ref_times)[len(ref_times) // 2]  # median
+        ref_ms, ref_meta = benchmark_cuda_graph_or_events(
+            run_reference, warmup=warmup, repetition=iters,
+        )
 
-        speedup = ref_ms / triton_ms if triton_ms > 0 else 1.0
+        methods_match = triton_meta["benchmark_method"] == ref_meta["benchmark_method"]
+        speedup = ref_ms / triton_ms if methods_match and triton_ms > 0 else 1.0
         speedups.append(speedup)
         latencies.append(triton_ms)
+        benchmark_methods.append(triton_meta["benchmark_method"])
 
         results.append({
             "config": (batch, hidden, k),
             "ref_ms": ref_ms,
             "triton_ms": triton_ms,
             "speedup": speedup,
+            **triton_meta,
+            "reference_benchmark_method": ref_meta["benchmark_method"],
+            "benchmark_method_consistent": methods_match,
         })
 
         if verbose:
@@ -439,6 +437,11 @@ def run_benchmark(shapes, warmup: int = 50, iters: int = 200, verbose: bool = Tr
         print(f"{'Geometric mean speedup:':<22} {geomean_speedup:.2f}x")
         print(f"GEAK_RESULT_LATENCY_MS={geomean_latency:.4f}")
         print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}")
+
+    print("GEAK_BENCHMARK_METHOD={}".format(
+        benchmark_methods[0] if len(set(benchmark_methods)) == 1
+        else "mixed:" + ",".join(sorted(set(benchmark_methods)))
+    ))
 
     return {
         "geomean_latency_ms": geomean_latency,

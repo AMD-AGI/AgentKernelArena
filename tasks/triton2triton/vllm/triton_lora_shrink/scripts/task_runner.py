@@ -179,37 +179,70 @@ def run_performance():
              lora_ids, num_active_loras, scaling) = make_test_data(
                 M, hidden_size, lora_rank, num_loras, num_slices, device, 0)
 
-            for _ in range(WARMUP_ITERATIONS):
-                mod.lora_shrink(
-                    inputs, lora_a_weights, output_tensor, token_lora_mapping,
-                    token_indices_sorted, num_tokens_per_lora, lora_token_start_loc,
-                    lora_ids, num_active_loras, scaling,
-                )
-            torch.cuda.synchronize()
+            # Avoid the wrapper's per-call CUDA pointer tensor construction.
+            # Its output reset remains in the captured graph because the split-K
+            # target kernel accumulates atomically into output_tensor.
+            (
+                lora_ptr_tensor,
+                lora_stride0,
+                lora_stride1,
+                lora_stride2,
+            ) = mod._get_lora_a_ptr(lora_a_weights, inputs.device)
+            split_k = 64 if M < 128 else 8
+            block_m = 32
+            block_n = 16
+            block_k = 256 if M < 128 else 32
+            even_k = hidden_size % (block_k * split_k) == 0
+            grid = (
+                split_k
+                * mod.triton.cdiv(M, block_m)
+                * mod.triton.cdiv(lora_rank, block_n),
+                num_slices,
+                num_active_loras,
+            )
+            input_stride0, input_stride1 = inputs.stride()
+            output_stride0, output_stride1, output_stride2 = output_tensor.stride()
 
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
+            def _bench_fn():
                 output_tensor.zero_()
-                start_events[j].record()
-                mod.lora_shrink(
-                    inputs, lora_a_weights, output_tensor, token_lora_mapping,
-                    token_indices_sorted, num_tokens_per_lora, lora_token_start_loc,
-                    lora_ids, num_active_loras, scaling,
+                mod._lora_shrink_kernel[grid](
+                    inputs,
+                    lora_ptr_tensor,
+                    output_tensor,
+                    M,
+                    lora_rank,
+                    hidden_size,
+                    token_indices_sorted,
+                    num_tokens_per_lora,
+                    lora_token_start_loc,
+                    lora_ids,
+                    scaling,
+                    input_stride0,
+                    input_stride1,
+                    lora_stride0,
+                    lora_stride1,
+                    lora_stride2,
+                    output_stride0,
+                    output_stride1,
+                    output_stride2,
+                    block_m,
+                    block_n,
+                    block_k,
+                    even_k,
+                    split_k,
+                    8,  # GROUP_SIZE_M
+                    num_slices,
+                    False,  # USE_GDC
+                    num_warps=4,
+                    num_stages=2,
+                    launch_pdl=False,
                 )
-                end_events[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "per_iteration_prepare_or_state_reset",
-            }
+
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                _bench_fn,
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
@@ -227,6 +260,8 @@ def run_performance():
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
+                "benchmark_method": "benchmark_failed",
+                "benchmark_fallback_reason": "performance_case_exception",
                 "params": {
                     "M": M,
                     "hidden_size": hidden_size,

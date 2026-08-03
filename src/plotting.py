@@ -3,6 +3,7 @@
 Plotting utilities for visualizing baseline vs optimized performance.
 """
 import logging
+import math
 from pathlib import Path
 from typing import Optional, List, Any
 import matplotlib
@@ -10,7 +11,12 @@ matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .testcases import TestCaseResult, load_performance_results, match_test_cases
+from .testcases import (
+    TestCaseResult,
+    analyze_benchmark_method_consistency,
+    load_performance_results,
+    match_test_cases,
+)
 
 
 def format_value(value: Any) -> str:
@@ -123,7 +129,13 @@ def plot_performance_comparison(
     log = logger or logging.getLogger(__name__)
     
     # Load performance results
-    baseline_cases = load_performance_results(workspace, "baseline_perf.yaml", logger)
+    baseline_cases = load_performance_results(
+        workspace,
+        "comparison_baseline_perf.yaml"
+        if (workspace / "comparison_baseline_perf.yaml").exists()
+        else "baseline_perf.yaml",
+        logger,
+    )
     optimized_cases = load_performance_results(workspace, "optimized_perf.yaml", logger)
     
     if not baseline_cases:
@@ -133,9 +145,37 @@ def plot_performance_comparison(
     if not optimized_cases:
         log.warning("No optimized performance data found, skipping plotting")
         return None
+
+    method_consistent, method_mismatches = analyze_benchmark_method_consistency(
+        baseline_cases,
+        optimized_cases,
+        logger,
+        require_complete_match=True,
+    )
+    if not method_consistent:
+        log.warning(
+            "Benchmark cases are incomplete or use different timing methods; "
+            "skipping misleading performance plots: %s",
+            method_mismatches,
+        )
+        return None
+    if any(
+        not math.isfinite(case.execution_time_ms) or case.execution_time_ms <= 0.0
+        for case in [*baseline_cases, *optimized_cases]
+    ):
+        log.warning(
+            "Performance data contains non-positive or non-finite timings; "
+            "skipping misleading performance plots"
+        )
+        return None
     
     # Match test cases
-    matched = match_test_cases(baseline_cases, optimized_cases, logger)
+    matched = match_test_cases(
+        baseline_cases,
+        optimized_cases,
+        logger,
+        allow_index_fallback=(len(baseline_cases) == len(optimized_cases) == 1),
+    )
     
     if not matched:
         log.warning("No matched test cases found, skipping plotting")
@@ -257,4 +297,3 @@ def plot_performance_comparison(
     log.info(f"Saved speedup plot to {plot_file2}")
     
     return plot_file1
-

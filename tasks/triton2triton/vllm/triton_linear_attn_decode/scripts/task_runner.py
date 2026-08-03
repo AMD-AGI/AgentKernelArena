@@ -182,34 +182,19 @@ def run_performance():
             v = torch.randn(B, H, 1, E, device=device, dtype=dtype)
             kv_caches = torch.randn(B, H, D, E, device=device, dtype=dtype) * 0.1
 
-            # Warmup
-            for _ in range(WARMUP_ITERATIONS):
-                kv_c = kv_caches.clone()
-                mod.linear_attn_decode_forward(q, k, v, kv_c, slope_rate, slot_idx)
-            torch.cuda.synchronize()
+            kv_work = kv_caches.clone()
 
-            # Benchmark
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            def _bench_fn():
+                mod.linear_attn_decode_forward(
+                    q, k, v, kv_work, slope_rate, slot_idx
+                )
 
-            for j in range(n_iter):
-                kv_c = kv_caches.clone()
-                start_events[j].record()
-                mod.linear_attn_decode_forward(q, k, v, kv_c, slope_rate, slot_idx)
-                end_events[j].record()
-
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "per_iteration_prepare_or_state_reset",
-            }
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                _bench_fn,
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                prepare_fn=lambda: kv_work.copy_(kv_caches),
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

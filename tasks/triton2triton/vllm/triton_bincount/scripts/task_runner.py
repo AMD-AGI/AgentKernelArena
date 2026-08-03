@@ -109,27 +109,35 @@ def run_performance():
             prefill_len = torch.full((batch,), seq_len, dtype=torch.int32, device=device)
             prompt_mask = torch.zeros(batch, (vocab + 31) // 32, dtype=torch.int32, device=device)
             output_counts = torch.zeros(batch, vocab, dtype=torch.int32, device=device)
-            for _ in range(WARMUP_ITERATIONS): mod.bincount(idx_mapping, all_token_ids, prompt_len, prefill_len, prompt_mask, output_counts, seq_len)
-            torch.cuda.synchronize()
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
-                prompt_mask.zero_(); output_counts.zero_()
-                start_events[j].record()
-                mod.bincount(idx_mapping, all_token_ids, prompt_len, prefill_len, prompt_mask, output_counts, seq_len)
-                end_events[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "per_iteration_prepare_or_state_reset",
-            }
+            block_size = 1024
+            num_blocks = (seq_len + block_size - 1) // block_size
+
+            def run_kernel():
+                # The public wrapper uses advanced-index assignment, which is
+                # not graph-capturable on ROCm. These equivalent device resets
+                # plus the actual target launch keep the full GPU work inside
+                # the replayable graph without adding a task dependency.
+                prompt_mask.zero_()
+                output_counts.zero_()
+                mod._bincount_kernel[(batch, num_blocks)](
+                    idx_mapping,
+                    all_token_ids,
+                    all_token_ids.stride(0),
+                    prompt_len,
+                    prefill_len,
+                    prompt_mask,
+                    prompt_mask.stride(0),
+                    output_counts,
+                    output_counts.stride(0),
+                    BLOCK_SIZE=block_size,
+                )
+
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                run_kernel,
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                target_ms=20.0,
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

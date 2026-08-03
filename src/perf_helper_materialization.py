@@ -1,26 +1,34 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
-"""Materialize canonical perf helpers into task workspaces.
+"""Materialize canonical performance helpers into task workspaces.
 
-Task sources keep small stubs so generated helper code does not pollute normal
-development diffs. Before a task runs, the framework replaces those stubs with
-the canonical timing helpers from src/tools/perf/.
+Committed tasks keep small stubs/imports.  A copied run workspace receives the
+self-contained helpers beside its performance entrypoints, so it never imports
+AgentKernelArena's ``src`` package at runtime.
 """
 
 from __future__ import annotations
 
 import glob
 import logging
+import shlex
 from pathlib import Path
+from typing import Any
+
+import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
 PERF = ROOT / "src" / "tools" / "perf"
 
+AKA_HELPER_FILE_NAME = "_aka_benchmark.py"
+NATIVE_HIP_DRIVER = Path("scripts/native/benchmark_driver.hip")
+NATIVE_HIP_INCLUDE = '#include "hip_graph_benchmark.hpp"'
+NATIVE_HIP_MATERIALIZED = Path("scripts/native/hip_graph_benchmark.hpp")
+
 MARK_START = (
     "# >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - "
     "edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>"
 )
-# Keep old marker forms readable so existing branches can be upgraded by sync.
 OLD_MARK_START = (
     "# >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - "
     "edit tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>"
@@ -31,7 +39,7 @@ LEGACY_MARK_START = (
 )
 MARK_STARTS = (MARK_START, OLD_MARK_START, LEGACY_MARK_START)
 MARK_END = "# <<< AKA-GENERATED <<<"
-FUNC_ANCHOR = "def _measure_cuda_event_fallback(fn, repetition):"
+FUNC_ANCHOR = "def _measure_cuda_event_fallback("
 VLLM_HELPER_SYMBOLS = ("_measure_cuda_event_fallback", "_benchmark_cuda_graph_or_events")
 
 ROCMBENCH_HELPER_STUB = '''"""Generated at workspace setup from src/tools/perf/performance_utils_pytest.py.
@@ -66,69 +74,74 @@ def _benchmark_cuda_graph_or_events(*args, **kwargs):
 
 
 def rocmbench_targets(root: Path = ROOT) -> list[Path]:
-    """Return committed rocmbench helper stub targets under tasks/."""
+    """Return committed ROCmBench helper stub targets under ``tasks/``."""
+
     return [
-        Path(p)
-        for p in sorted(
-            glob.glob(str(root / "tasks/*/rocmbench/**/performance_utils_pytest.py"), recursive=True)
+        Path(path)
+        for path in sorted(
+            glob.glob(
+                str(root / "tasks/*/rocmbench/**/performance_utils_pytest.py"),
+                recursive=True,
+            )
         )
     ]
 
 
 def vllm_targets(root: Path = ROOT) -> list[Path]:
-    """Return committed vLLM task runners with generated helper regions."""
+    """Return committed vLLM runners with generated helper regions."""
+
     return [
-        Path(p)
-        for p in sorted(glob.glob(str(root / "tasks/triton2triton/vllm/*/scripts/task_runner.py")))
+        Path(path)
+        for path in sorted(
+            glob.glob(str(root / "tasks/triton2triton/vllm/*/scripts/task_runner.py"))
+        )
     ]
 
 
 def _marker_filtered_targets(root: Path, pattern: str) -> list[Path]:
-    """Return runner files matching ``pattern`` that carry a generated helper region.
-
-    Unlike ``vllm_targets`` (where every runner is expected to embed the markers),
-    image_kernel tasks adopt the shared CUDA-graph helper task-by-task. A file only
-    participates once it contains the AKA-GENERATED markers; runners still using a
-    bespoke timer are left untouched.
-    """
     targets = []
-    for p in sorted(glob.glob(str(root / pattern))):
-        text = Path(p).read_text()
+    for path_string in sorted(glob.glob(str(root / pattern))):
+        path = Path(path_string)
+        text = path.read_text()
         if any(marker in text for marker in MARK_STARTS) or MARK_END in text:
-            targets.append(Path(p))
+            targets.append(path)
     return targets
 
 
 def image_kernel_targets(root: Path = ROOT) -> list[Path]:
-    """Return committed image_kernel task runners that carry a generated helper region."""
+    """Return image task runners that carry a generated helper region."""
+
     return _marker_filtered_targets(root, "tasks/image_kernel/*/scripts/task_runner.py")
 
 
 def canonical_rocmbench_helper(root: Path = ROOT) -> str:
-    return (root / "src" / "tools" / "perf" / "performance_utils_pytest.py").read_text()
+    return (root / "src/tools/perf/performance_utils_pytest.py").read_text()
+
+
+def canonical_aka_helper(root: Path = ROOT) -> str:
+    return (root / "src/tools/perf/aka_benchmark.py").read_text()
 
 
 def canonical_vllm_block(root: Path = ROOT) -> str:
-    text = (root / "src" / "tools" / "perf" / "vllm_cuda_graph_block.py").read_text()
-    return text[text.index(FUNC_ANCHOR):]
+    text = (root / "src/tools/perf/vllm_cuda_graph_block.py").read_text()
+    return text[text.index(FUNC_ANCHOR) :]
 
 
 def replace_marked_region(current: str, block: str) -> str | None:
-    """Replace the generated vLLM region, returning None if markers are invalid."""
+    """Replace an AKA-GENERATED region, or return ``None`` for bad markers."""
+
     start = next((marker for marker in MARK_STARTS if marker in current), None)
     if start is None or MARK_END not in current:
         return None
     pre = current[: current.index(start)]
-    post = current[current.index(MARK_END) + len(MARK_END):]
+    post = current[current.index(MARK_END) + len(MARK_END) :]
     return pre + MARK_START + "\n" + block + MARK_END + post
 
 
 def _workspace_uses_rocmbench_helper(workspace: Path) -> bool:
-    """Return true when a copied task imports the rocmbench pytest helper."""
     helper = workspace / "performance_utils_pytest.py"
     if helper.exists():
         return True
-
     for source in workspace.glob("*.py"):
         try:
             if "performance_utils_pytest" in source.read_text():
@@ -138,36 +151,177 @@ def _workspace_uses_rocmbench_helper(workspace: Path) -> bool:
     return False
 
 
+def _load_workspace_config(workspace: Path) -> dict[str, Any]:
+    for name in ("config.yaml", "config.yml"):
+        path = workspace / name
+        if not path.is_file():
+            continue
+        try:
+            data = yaml.safe_load(path.read_text()) or {}
+        except (OSError, yaml.YAMLError):
+            return {}
+        return data if isinstance(data, dict) else {}
+    return {}
+
+
+def _resolved_workspace_file(workspace: Path, token: str) -> Path | None:
+    token = token.split("::", 1)[0].strip("'\"")
+    if not token or token in {".", ".."}:
+        return None
+    candidate = Path(token)
+    if candidate.is_absolute():
+        return None
+    path = (workspace / candidate).resolve()
+    try:
+        path.relative_to(workspace.resolve())
+    except ValueError:
+        return None
+    return path if path.is_file() else None
+
+
+def _python_entrypoint(tokens: list[str], index: int, workspace: Path) -> Path | None:
+    position = index + 1
+    while position < len(tokens):
+        token = tokens[position]
+        if token in {"&&", "||", ";", "|"}:
+            return None
+        if token == "-c":
+            return None
+        if token == "-m":
+            # ``python -m pytest path.py``: protect the selected pytest file.
+            position += 2
+            while position < len(tokens):
+                path = _resolved_workspace_file(workspace, tokens[position])
+                if path is not None:
+                    return path
+                position += 1
+            return None
+        if not token.startswith("-"):
+            return _resolved_workspace_file(workspace, token)
+        position += 1
+    return None
+
+
+def configured_performance_entrypoints(workspace: Path) -> set[Path]:
+    """Resolve source files directly invoked by ``performance_command``.
+
+    The parser deliberately selects executable scripts, not arbitrary file-valued
+    arguments such as ``--hip_file source.hip``.  This protects benchmark harnesses
+    without accidentally making the kernel source immutable.
+    """
+
+    workspace = Path(workspace)
+    config = _load_workspace_config(workspace)
+    entrypoints: set[Path] = set()
+
+    harness_path = config.get("harness_path")
+    if isinstance(harness_path, str):
+        path = _resolved_workspace_file(workspace, harness_path)
+        if path is not None:
+            entrypoints.add(path)
+
+    commands = config.get("performance_command") or []
+    if isinstance(commands, str):
+        commands = [commands]
+    for command in commands:
+        if not isinstance(command, str):
+            continue
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            continue
+        for index, token in enumerate(tokens):
+            executable = Path(token).name
+            path: Path | None = None
+            if executable.startswith("python") or executable in {"pypy", "pypy3"}:
+                path = _python_entrypoint(tokens, index, workspace)
+            elif executable in {"bash", "sh"} and index + 1 < len(tokens):
+                path = _resolved_workspace_file(workspace, tokens[index + 1])
+            elif executable.startswith("pytest"):
+                for candidate in tokens[index + 1 :]:
+                    path = _resolved_workspace_file(workspace, candidate)
+                    if path is not None:
+                        break
+            elif index == 0:
+                path = _resolved_workspace_file(workspace, token)
+            if path is not None:
+                entrypoints.add(path)
+    return entrypoints
+
+
+def _aka_importing_entrypoints(workspace: Path) -> set[Path]:
+    candidates = configured_performance_entrypoints(workspace)
+    candidates.update(workspace.glob("*.py"))
+    for directory in (workspace / "scripts", workspace / "eval_tools"):
+        if directory.is_dir():
+            candidates.update(directory.glob("*.py"))
+
+    importers: set[Path] = set()
+    for path in candidates:
+        if not path.is_file() or path.name == AKA_HELPER_FILE_NAME:
+            continue
+        try:
+            text = path.read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if "_aka_benchmark" in text:
+            importers.add(path)
+    return importers
+
+
+def _materialize_file(path: Path, content: str, materialized: list[Path]) -> None:
+    if path.exists() and path.read_text() == content:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+    materialized.append(path)
+
+
+def _materialize_native_helper(
+    workspace: Path,
+    root: Path,
+    materialized: list[Path],
+) -> None:
+    driver = workspace / NATIVE_HIP_DRIVER
+    if not driver.is_file() or NATIVE_HIP_INCLUDE not in driver.read_text():
+        return
+    canonical = root / "src/tools/perf/native_hip_graph_benchmark.hpp"
+    if not canonical.is_file():
+        raise RuntimeError(
+            f"Native graph benchmark requested by {driver}, but canonical helper is missing: {canonical}"
+        )
+    _materialize_file(workspace / NATIVE_HIP_MATERIALIZED, canonical.read_text(), materialized)
+
+
 def materialize_perf_helpers_in_workspace(
     workspace: Path,
     logger: logging.Logger | None = None,
     root: Path = ROOT,
 ) -> list[Path]:
-    """Replace committed stubs in a copied task workspace with canonical helpers.
+    """Materialize canonical helpers in a copied task workspace.
 
-    The function is safe to call more than once. It only touches
-    performance_utils_pytest.py files and marked vLLM helper regions.
+    The operation is idempotent.  Python helpers are copied only beside files
+    that import ``_aka_benchmark``; native HIP support is copied only when the
+    canonical include is requested by the protected benchmark driver.
     """
+
     log = logger or logging.getLogger(__name__)
     workspace = Path(workspace)
     materialized: list[Path] = []
 
-    rocmbench_helper = canonical_rocmbench_helper(root)
-    helper = workspace / "performance_utils_pytest.py"
     if _workspace_uses_rocmbench_helper(workspace):
-        if not helper.exists() or helper.read_text() != rocmbench_helper:
-            helper.write_text(rocmbench_helper)
-            materialized.append(helper)
+        _materialize_file(
+            workspace / "performance_utils_pytest.py",
+            canonical_rocmbench_helper(root),
+            materialized,
+        )
 
-    # Inline helper region lives in the task's scripts/task_runner.py (vLLM tasks
-    # and image_kernel tasks), delimited by the AKA-GENERATED marker block.
-    vllm_block = canonical_vllm_block(root)
-    runner = workspace / "scripts" / "task_runner.py"
+    runner = workspace / "scripts/task_runner.py"
     if runner.exists():
         current = runner.read_text()
-        has_generated_marker = any(marker in current for marker in MARK_STARTS) or MARK_END in current
-        if has_generated_marker:
-            new_text = replace_marked_region(current, vllm_block)
+        has_marker = any(marker in current for marker in MARK_STARTS) or MARK_END in current
+        if has_marker:
+            new_text = replace_marked_region(current, canonical_vllm_block(root))
             if new_text is None:
                 raise RuntimeError(f"Invalid AKA-GENERATED helper markers in workspace file: {runner}")
             if new_text != current:
@@ -176,9 +330,19 @@ def materialize_perf_helpers_in_workspace(
         elif any(symbol in current for symbol in VLLM_HELPER_SYMBOLS):
             raise RuntimeError(f"Missing AKA-GENERATED helper markers in workspace file: {runner}")
 
+    canonical_python = canonical_aka_helper(root)
+    helper_targets = {
+        entrypoint.parent / AKA_HELPER_FILE_NAME
+        for entrypoint in _aka_importing_entrypoints(workspace)
+    }
+    for helper in sorted(helper_targets):
+        _materialize_file(helper, canonical_python, materialized)
+
+    _materialize_native_helper(workspace, root, materialized)
+
     if materialized:
         log.info(
             "Materialized canonical perf helper(s) in workspace: %s",
-            [str(p.relative_to(workspace)) for p in materialized],
+            [str(path.relative_to(workspace)) for path in materialized],
         )
     return materialized

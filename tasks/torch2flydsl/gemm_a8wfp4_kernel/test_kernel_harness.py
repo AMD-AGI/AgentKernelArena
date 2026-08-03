@@ -26,6 +26,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 KERNEL_FILE = "kernel.py"
 MODEL_FILE = "model.py"
@@ -230,35 +231,33 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             device_op(a, w)
         torch.cuda.synchronize()
 
-        ktimes = []
-        for _ in range(iters):
-            s = torch.cuda.Event(enable_timing=True)
-            e = torch.cuda.Event(enable_timing=True)
-            s.record()
-            device_op(a, w)
-            e.record()
-            torch.cuda.synchronize()
-            ktimes.append(s.elapsed_time(e))
-        kernel_ms = sum(ktimes) / len(ktimes)
+        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+            lambda: device_op(a, w), warmup=0, repetition=iters
+        )
 
-        rtimes = []
-        for _ in range(iters):
-            s = torch.cuda.Event(enable_timing=True)
-            e = torch.cuda.Event(enable_timing=True)
-            s.record()
-            torch.mm(a.float(), w.float().transpose(0, 1))
-            e.record()
-            torch.cuda.synchronize()
-            rtimes.append(s.elapsed_time(e))
-        ref_ms = sum(rtimes) / len(rtimes)
+        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+            lambda: torch.mm(a.float(), w.float().transpose(0, 1)), warmup=0, repetition=iters
+        )
 
-        speedup = ref_ms / kernel_ms if kernel_ms > 0 else 1.0
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
         latencies.append(kernel_ms)
-        speedups.append(speedup)
+        if speedup is not None:
+            speedups.append(speedup)
         tflops = 2.0 * m * n * k / (kernel_ms * 1e-3) / 1e12
         report.append({
             "test_case_id": f"test_case_{idx}",
             "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
             "shape": [m, n, k],
             "params": {"M": m, "N": n, "K": k, "dtype": "fp8_a_mxfp4_w"},
             "tflops": tflops,
@@ -266,13 +265,18 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         if verbose:
             print(
                 f"(M={m:>4}, N={n:>5}, K={k:>5}) {ref_ms:>8.4f}ms "
-                f"{kernel_ms:>8.4f}ms {speedup:>8.2f}x"
+                f"{kernel_ms:>8.4f}ms {speedup_display}"
             )
         del a, w
         torch.cuda.empty_cache()
 
     geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
-    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups))
+    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
 
     build_dir = Path(_KERNEL_DIR) / "build"
     build_dir.mkdir(exist_ok=True)
@@ -281,7 +285,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
 
     print("-" * 62)
     print(f"Geometric mean latency: {geomean_latency:.4f} ms")
-    print(f"Geometric mean speedup: {geomean_speedup:.2f}x")
+    print(f"Geometric mean speedup: {geomean_speedup_display}")
     return {"geomean_latency_ms": geomean_latency, "geomean_speedup": geomean_speedup}
 
 

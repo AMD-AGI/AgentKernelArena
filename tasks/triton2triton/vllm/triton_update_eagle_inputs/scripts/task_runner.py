@@ -142,31 +142,21 @@ def run_performance():
     for test_idx, (nr, hs, mml) in enumerate(TEST_SHAPES):
         try:
             inputs = make_inputs(nr, hs, mml, device)
+            initial_mutable_inputs = tuple(value.clone() for value in inputs[2:])
 
-            for _ in range(WARMUP_ITERATIONS):
-                mod.update_eagle_inputs(inputs[0], inputs[1], inputs[2],
-                                       inputs[3], inputs[4], inputs[5], mml)
-            torch.cuda.synchronize()
+            def _prepare_benchmark_state():
+                for value, initial_value in zip(inputs[2:], initial_mutable_inputs):
+                    value.copy_(initial_value)
 
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
-                start_events[j].record()
-                mod.update_eagle_inputs(inputs[0], inputs[1], inputs[2],
-                                       inputs[3], inputs[4], inputs[5], mml)
-                end_events[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "stateful_in_place_kernel",
-            }
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                lambda: mod.update_eagle_inputs(
+                    inputs[0], inputs[1], inputs[2], inputs[3], inputs[4], inputs[5], mml,
+                ),
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                target_ms=20.0,
+                prepare_fn=_prepare_benchmark_state,
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
