@@ -64,128 +64,20 @@ def _configure() -> None:
 
 
 # >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>
-def _measure_cuda_event_fallback(fn, repetition):
-    import time
-    import torch
-
-    times_ms = []
-    for _ in range(max(1, int(repetition))):
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
-            start_event.record()
-            fn()
-            end_event.record()
-            torch.cuda.synchronize()
-            times_ms.append(start_event.elapsed_time(end_event))
-        else:
-            start = time.perf_counter()
-            fn()
-            times_ms.append((time.perf_counter() - start) * 1000.0)
-    return times_ms
+def _measure_cuda_event_fallback(*args, **kwargs):
+    raise RuntimeError(
+        "CUDA-graph benchmark helpers were not materialized. "
+        "Run this task through AgentKernelArena so setup_workspace() can inject "
+        "src/tools/perf/vllm_cuda_graph_block.py into the workspace."
+    )
 
 
-def _benchmark_cuda_graph_or_events(
-    fn,
-    warmup=5,
-    repetition=30,
-    target_ms=1.0,
-    max_graph_repeats=200,
-    use_cuda_graph=True,
-    **_,
-):
-    import torch
-
-    for _ in range(max(0, int(warmup))):
-        fn()
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-
-    metadata = {
-        "benchmark_target_ms": float(target_ms),
-        "benchmark_samples": int(repetition),
-        "benchmark_max_repeats": int(max_graph_repeats),
-    }
-    if not torch.cuda.is_available() or not use_cuda_graph:
-        times = _measure_cuda_event_fallback(fn, repetition)
-        metadata.update(
-            benchmark_method=(
-                "cpu_timer_fallback"
-                if not torch.cuda.is_available()
-                else "cuda_event_fallback"
-            ),
-            benchmark_effective_repeats=int(repetition),
-            benchmark_fallback_reason=(
-                "cuda_unavailable"
-                if not torch.cuda.is_available()
-                else "cuda_graph_disabled"
-            ),
-        )
-        return sum(times) / len(times), metadata
-
-    try:
-        stream = torch.cuda.Stream()
-        stream.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(stream):
-            estimate_graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(estimate_graph):
-                for _ in range(3):
-                    fn()
-            torch.cuda.synchronize()
-
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
-            start_event.record(stream)
-            estimate_graph.replay()
-            end_event.record(stream)
-            torch.cuda.synchronize()
-            estimate_ms = start_event.elapsed_time(end_event) / 3
-            repeats = min(
-                max_graph_repeats,
-                max(1, int(target_ms / max(estimate_ms, 1e-9))),
-            )
-
-            graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(graph):
-                for _ in range(repeats):
-                    fn()
-            torch.cuda.synchronize()
-
-            times = []
-            for _ in range(max(1, int(repetition))):
-                start_event = torch.cuda.Event(enable_timing=True)
-                end_event = torch.cuda.Event(enable_timing=True)
-                start_event.record(stream)
-                graph.replay()
-                end_event.record(stream)
-                torch.cuda.synchronize()
-                times.append(start_event.elapsed_time(end_event) / repeats)
-
-        mean_ms = sum(times) / len(times)
-        if mean_ms < 1e-4:
-            raise RuntimeError("empty_cuda_graph_capture")
-        metadata.update(
-            benchmark_method="cuda_graph",
-            benchmark_effective_repeats=int(repeats),
-        )
-        return mean_ms, metadata
-    except Exception as exc:
-        try:
-            torch.cuda.synchronize()
-        except Exception:
-            pass
-        times = _measure_cuda_event_fallback(fn, repetition)
-        metadata.update(
-            benchmark_method="cuda_event_fallback",
-            benchmark_effective_repeats=int(repetition),
-            benchmark_fallback_reason=(
-                f"cuda_graph_failed: {type(exc).__name__}: {str(exc)[:160]}"
-            ),
-        )
-        return sum(times) / len(times), metadata
-
-
+def _benchmark_cuda_graph_or_events(*args, **kwargs):
+    raise RuntimeError(
+        "CUDA-graph benchmark helpers were not materialized. "
+        "Run this task through AgentKernelArena so setup_workspace() can inject "
+        "src/tools/perf/vllm_cuda_graph_block.py into the workspace."
+    )
 # <<< AKA-GENERATED <<<
 
 
