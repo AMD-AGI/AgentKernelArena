@@ -6,7 +6,7 @@
 
 # Model passed to KernelForge (exported as KERNEL_AGENTS_MODEL). Must be served
 # by the configured Anthropic gateway (ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN).
-model: claude-opus-4-8
+model: claude-opus-5
 
 # Backend expertise (fellow) is INFERRED by the launcher, per task family:
 #   * repository / image_kernel tasks -> curated `kernel_kind` first, then
