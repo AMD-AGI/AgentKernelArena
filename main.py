@@ -26,6 +26,13 @@ from src.evaluator import (
 from src.runtime_env import apply_subprocess_python_path
 from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
 from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
+from src.eval_tools.config import EvalToolsConfig
+from src.eval_tools.contracts import SourceEvidence
+from src.eval_tools.evidence import (
+    SubmissionEvidence,
+    capture_submission_evidence,
+    load_submission_evidence,
+)
 
 
 QUEUE_DIR_NAME = ".parallel"
@@ -426,6 +433,26 @@ def _filter_completed_tasks(
     return tasks_to_run
 
 
+def _submission_evidence_for_task(
+    *,
+    workspace: Path,
+    task_config: dict[str, Any],
+    run_directory: Path,
+) -> SubmissionEvidence:
+    """Capture or verify the immutable pre-agent source snapshot for one task."""
+
+    storage = run_directory / ".eval-tool-evidence" / workspace.name
+    if storage.exists():
+        evidence = load_submission_evidence(storage)
+        if evidence.workspace != workspace.resolve():
+            raise RuntimeError(
+                "submission evidence belongs to a different workspace: "
+                f"{evidence.workspace} != {workspace.resolve()}"
+            )
+        return evidence
+    return capture_submission_evidence(workspace, task_config, storage)
+
+
 def run_task(
     *,
     eval_config: dict[str, Any],
@@ -458,6 +485,18 @@ def run_task(
 
         task_type = task_config.get("task_type", "")
         is_validator = agent == AgentType.TASK_VALIDATOR
+        eval_tools_config = EvalToolsConfig.from_mapping(eval_config)
+        submission_evidence: SubmissionEvidence | None = None
+        if not is_validator and eval_tools_config.enabled:
+            submission_evidence = _submission_evidence_for_task(
+                workspace=workspace_path,
+                task_config=task_config,
+                run_directory=run_directory,
+            )
+            logger.info(
+                "Captured immutable submission evidence: %s",
+                submission_evidence.storage_dir,
+            )
 
         # Task packages may include a previously committed validator report.
         # It is evidence about an older source snapshot, not completion evidence
@@ -504,11 +543,45 @@ def run_task(
             verify_workspace_harness(harness_snapshot)
             materialize_perf_helpers_in_workspace(workspace_path, logger=logger)
             logger.info("Running centralized evaluation...")
+            tool_manager = None
+            tool_source_evidence = None
+            if eval_tools_config.enabled:
+                assert submission_evidence is not None
+                submission_evidence.verify()
+                tool_source_evidence = SourceEvidence(
+                    original_root=str(submission_evidence.files_dir),
+                    original_fingerprint=submission_evidence.fingerprint,
+                    candidate_fingerprint=submission_evidence.candidate_fingerprint(),
+                    metadata={
+                        "manifest": str(
+                            submission_evidence.storage_dir / "manifest.json"
+                        ),
+                        "declared_file_count": len(
+                            submission_evidence.manifest.get("entries", [])
+                        ),
+                    },
+                )
+                # Imported lazily so legacy runs with no evaluation tools do not
+                # initialize sockets or tool plugins.
+                from src.eval_tools.factory import (
+                    create_default_manager,
+                    task_artifact_root,
+                )
+
+                tool_manager = create_default_manager()
+                tool_artifact_root = task_artifact_root(workspace_path)
+            else:
+                tool_artifact_root = None
             evaluation_results = evaluate_kernel(
                 workspace_path,
                 task_config,
                 baseline_cases,
                 logger,
+                tool_manager=tool_manager,
+                eval_tools_config=eval_tools_config,
+                tool_source_evidence=tool_source_evidence,
+                tool_artifact_root=tool_artifact_root,
+                gpu_arch=os.environ.get("PYTORCH_ROCM_ARCH"),
             )
             write_task_result(
                 workspace_path,

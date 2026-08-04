@@ -7,6 +7,7 @@ build/
 .claude
 workspace_*
 /experiments/
+/.eval-tool-artifacts/
 
 # Auto-cloned agent dependencies
 agents/geak_optimagentv2/GEAK-agent/

@@ -48,6 +48,9 @@ from src.perf_helper_materialization import materialize_perf_helpers_in_workspac
 from src.preprocessing import _resolve_gfx_arch, setup_workspace
 from src.prompt_builder import prompt_builder
 from src.testcases import collect_benchmark_methods
+from src.eval_tools.config import EvalToolsConfig
+from src.eval_tools.contracts import SourceEvidence
+from src.eval_tools.evidence import capture_submission_evidence
 
 
 def _task_slug(task_id: str) -> str:
@@ -130,6 +133,8 @@ def difficulty_is_easy(
         and statistics.median(speedups) >= config.easy_speedup_threshold
         and result.get("pass_compilation") is True
         and result.get("pass_correctness") is True
+        and result.get("pass_tool_gate", True) is True
+        and result.get("tool_policy_satisfied", True) is True
         and result.get("benchmark_method_consistent") is True
         and int(result.get("valid_baseline_cases", 0)) > 0
         and result.get("valid_baseline_cases") == result.get("valid_optimized_cases")
@@ -499,6 +504,14 @@ class QualityLoop:
     ) -> tuple[Path, list[Any], dict[str, Any]]:
         workspace = self._make_workspace(task_id, task_dir, stage_dir)
         task_config = self._load_task_config(task_dir)
+        eval_tools_config = EvalToolsConfig.from_mapping(self._eval_config())
+        submission_evidence = None
+        if eval_tools_config.enabled:
+            submission_evidence = capture_submission_evidence(
+                workspace,
+                task_config,
+                stage_dir / "submission_evidence",
+            )
         original_sources = stage_dir / "original_sources"
         original_sources.mkdir()
         source_manifest: dict[str, str] = {}
@@ -538,7 +551,40 @@ class QualityLoop:
         if snapshot_tree(original_sources) != original_source_tree:
             raise RuntimeError("optimizer modified the protected original-source snapshot")
         materialize_perf_helpers_in_workspace(workspace, logger=self.logger)
-        evaluation = evaluate_kernel(workspace, task_config, baseline_cases, self.logger)
+        tool_manager = None
+        tool_source_evidence = None
+        if eval_tools_config.enabled:
+            assert submission_evidence is not None
+            submission_evidence.verify()
+            tool_source_evidence = SourceEvidence(
+                original_root=str(submission_evidence.files_dir),
+                original_fingerprint=submission_evidence.fingerprint,
+                candidate_fingerprint=submission_evidence.candidate_fingerprint(),
+                metadata={
+                    "manifest": str(submission_evidence.storage_dir / "manifest.json"),
+                    "quality_loop_task": task_id,
+                },
+            )
+            from src.eval_tools.factory import (
+                create_default_manager,
+                task_artifact_root,
+            )
+
+            tool_manager = create_default_manager()
+            tool_report_root = task_artifact_root(workspace)
+        else:
+            tool_report_root = None
+        evaluation = evaluate_kernel(
+            workspace,
+            task_config,
+            baseline_cases,
+            self.logger,
+            tool_manager=tool_manager,
+            eval_tools_config=eval_tools_config,
+            tool_source_evidence=tool_source_evidence,
+            tool_artifact_root=tool_report_root,
+            gpu_arch=_resolve_gfx_arch(self.config.target_gpu_model),
+        )
         write_task_result(
             workspace,
             evaluation,
@@ -809,7 +855,7 @@ class QualityLoop:
         )
 
     def _eval_config(self) -> dict[str, Any]:
-        return {
+        result = {
             "target_gpu_model": self.config.target_gpu_model,
             "agent": {
                 "template": "codex",
@@ -820,6 +866,9 @@ class QualityLoop:
                 "max_iterations": 1,
             },
         }
+        if self.config.evaluation_tools:
+            result["evaluation_tools"] = dict(self.config.evaluation_tools)
+        return result
 
     @staticmethod
     def _load_task_config(task_dir: Path) -> dict[str, Any]:

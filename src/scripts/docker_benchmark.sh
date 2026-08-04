@@ -3,6 +3,8 @@ set -euo pipefail
 
 DEFAULT_DOCKER_IMAGE_GFX942="${AKA_DOCKER_IMAGE_GFX942:-lmsysorg/sglang:v0.5.12-rocm720-mi30x}"
 GFX950_V0514_DOCKER_IMAGE="lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705"
+GFX950_V0514_MANIFEST_DIGEST="sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78"
+GFX950_V0514_IMMUTABLE_IMAGE="lmsysorg/sglang-rocm@${GFX950_V0514_MANIFEST_DIGEST}"
 DEFAULT_DOCKER_IMAGE_GFX950="${AKA_DOCKER_IMAGE_GFX950:-$GFX950_V0514_DOCKER_IMAGE}"
 CONTAINER_WORKDIR="${AKA_DOCKER_WORKDIR:-/workspace}"
 HOST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -21,6 +23,19 @@ GEAK_V4_RUNTIME=0
 # Only these host-validated, run-specific subdirectories are over-mounted rw.
 QUALITY_LOOP_ARTIFACT_REL=""
 QUALITY_LOOP_WORKTREE_REL=""
+EVAL_TOOL_SOCKET_CONTAINER_DIR="/run/aka-eval-tools"
+EVAL_TOOL_INPUT_CONTAINER_DIR="/input"
+EVAL_TOOL_FRAMEWORK_CONTAINER_ROOT="/opt/aka-eval-tools"
+EVAL_TOOL_SCRATCH_CONTAINER_DIR="/work"
+EVAL_TOOL_ARTIFACT_CONTAINER_DIR="/artifacts"
+EVAL_TOOL_RUNTIME_DIR=""
+EVAL_TOOL_SOCKET_HOST_DIR=""
+EVAL_TOOL_ARTIFACT_HOST_ROOT=""
+EVAL_TOOL_ARTIFACT_SCORING_ROOT=""
+EVAL_TOOL_SELECTED=""
+eval_tool_docker_args=()
+eval_tool_container_names=()
+eval_tool_ids=()
 
 # /opt/venv/bin is placed before /usr/local/bin and /usr/bin so that a bare
 # `python3` / `pytest` resolves to the torch-enabled venv interpreter rather than
@@ -38,6 +53,8 @@ Usage:
   src/scripts/docker_benchmark.sh check-agents [--config_name <run-config.yaml>]
   src/scripts/docker_benchmark.sh quality-loop [--config <quality-loop-config.yaml>] [quality_loop args...]
   src/scripts/docker_benchmark.sh smoke
+  src/scripts/docker_benchmark.sh eval-tools-smoke
+  src/scripts/docker_benchmark.sh build-eval-tool-images
 
 Default run config:
   example_configs/quickstart_claude_mi300.yaml (MI300/MI300X).
@@ -53,6 +70,9 @@ Environment overrides:
   AKA_DOCKER_IMAGE_GFX950 Default image for gfx950.
   AKA_NODE_PREFIX         Host Node prefix containing bin/node and npm-installed agent CLI(s).
   AKA_AGENTS              Agent CLI(s) to check, comma/space separated; use all for all three.
+  AKA_EVAL_TOOLS          Override evaluation_tools.enabled (comma/space separated).
+  AKA_EVAL_TOOL_IMAGE_<TOOL>
+                           Per-tool sidecar image override, e.g. AKA_EVAL_TOOL_IMAGE_GPU_ASAN.
 EOF
 }
 
@@ -102,7 +122,11 @@ docker_image_for_arch() {
 }
 
 uses_gfx950_v0514_runtime() {
-    [[ "$SELECTED_GPU_ARCH" == "gfx950" && "$SELECTED_IMAGE" == "$GFX950_V0514_DOCKER_IMAGE" ]]
+    [[ "$SELECTED_GPU_ARCH" == "gfx950" ]] || return 1
+    [[ "$SELECTED_IMAGE" == "$GFX950_V0514_DOCKER_IMAGE" \
+        || "$SELECTED_IMAGE" == "$GFX950_V0514_IMMUTABLE_IMAGE" \
+        || ( -n "${AKA_SCORING_IMAGE_RUNTIME_REF:-}" \
+            && "$SELECTED_IMAGE" == "$AKA_SCORING_IMAGE_RUNTIME_REF" ) ]]
 }
 
 read_target_gpu_model() {
@@ -455,6 +479,362 @@ add_device_if_present() {
     fi
 }
 
+normalize_eval_tool_id() {
+    local tool="${1//-/_}"
+    tool="$(printf '%s' "$tool" | tr '[:upper:]' '[:lower:]')"
+    case "$tool" in
+        triton_fpsan|gpu_asan|rocjitsu|hip_fpsan) printf '%s\n' "$tool" ;;
+        *) die "Unsupported evaluation tool '$1'" ;;
+    esac
+}
+
+resolve_eval_tools() {
+    local config="${1:-}"
+    local raw=""
+    if [[ -n "${AKA_EVAL_TOOLS:-}" ]]; then
+        raw="${AKA_EVAL_TOOLS//,/ }"
+    elif [[ -n "$config" && -f "$config" ]]; then
+        raw="$(python3 - "$config" <<'PY'
+import sys
+import yaml
+
+value = (yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}).get("evaluation_tools")
+if not value:
+    raise SystemExit(0)
+enabled = value.get("enabled", ()) if isinstance(value, dict) else ()
+if enabled is True:
+    enabled = ("triton_fpsan", "gpu_asan", "rocjitsu", "hip_fpsan")
+elif isinstance(enabled, str):
+    enabled = (enabled,)
+print(" ".join(str(item) for item in enabled or ()))
+PY
+)"
+    fi
+
+    local seen=" " tool normalized
+    for tool in $raw; do
+        normalized="$(normalize_eval_tool_id "$tool")"
+        [[ "$seen" != *" $normalized "* ]] \
+            || die "Duplicate evaluation tool '$normalized'"
+        seen+="$normalized "
+        printf '%s\n' "$normalized"
+    done
+}
+
+eval_tool_image() {
+    local tool="$1" tool_upper env_name override
+    [[ "$SELECTED_GPU_ARCH" == "gfx950" ]] \
+        || die "Evaluation-tool sidecars are verified only for gfx950; selected ${SELECTED_GPU_ARCH:-unknown}"
+    tool_upper="$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')"
+    env_name="AKA_EVAL_TOOL_IMAGE_${tool_upper}"
+    override="${!env_name:-}"
+    if [[ -n "$override" ]]; then
+        printf '%s\n' "$override"
+    else
+        printf 'agent-kernel-arena/eval-tool-%s:gfx950\n' "${tool//_/-}"
+    fi
+}
+
+verify_eval_tool_scoring_image() {
+    local selected_id pinned_id
+    [[ "$SELECTED_GPU_ARCH" == "gfx950" ]] \
+        || die "Evaluation-tool sidecars are verified only for gfx950"
+    selected_id="$(docker image inspect --format '{{.Id}}' "$SELECTED_IMAGE" 2>/dev/null || true)"
+    pinned_id="$(docker image inspect --format '{{.Id}}' "$GFX950_V0514_IMMUTABLE_IMAGE" 2>/dev/null || true)"
+    [[ "$selected_id" == sha256:* ]] \
+        || die "Could not resolve immutable scoring image ID for $SELECTED_IMAGE"
+    [[ "$pinned_id" == sha256:* ]] \
+        || die "Pinned evaluation scoring image is unavailable: $GFX950_V0514_IMMUTABLE_IMAGE"
+    [[ "$selected_id" == "$pinned_id" ]] \
+        || die "Evaluation tools are unverified with scoring image $SELECTED_IMAGE ($selected_id); expected $GFX950_V0514_DOCKER_IMAGE ($pinned_id)"
+    export AKA_SCORING_IMAGE_RUNTIME_REF="$selected_id"
+    export AKA_SCORING_IMAGE_REFERENCE="$SELECTED_IMAGE"
+    # Launch by immutable local config ID after verification.  This closes the
+    # gap in which a mutable tag could move between inspection and docker run.
+    SELECTED_IMAGE="$selected_id"
+}
+
+path_has_symlink_component() {
+    local path="$1" current="/" component
+    local -a components=()
+    [[ "$path" == /* ]] || return 0
+    IFS='/' read -r -a components <<< "${path#/}"
+    for component in "${components[@]}"; do
+        [[ -z "$component" ]] && continue
+        current="${current%/}/$component"
+        [[ ! -L "$current" ]] || return 0
+    done
+    return 1
+}
+
+prepare_eval_tool_artifact_dir() {
+    local artifact_host_parent="$1" label="$2"
+    local artifact_label artifact_host_dir artifact_namespace_root
+    local artifact_parent_real host_root_real
+    artifact_label="$(safe_label "$label")"
+    [[ -n "$artifact_label" && "$artifact_label" != "." && "$artifact_label" != ".." ]] \
+        || die "invalid evaluation-tool artifact label: $label"
+    [[ -d "$artifact_host_parent" ]] \
+        || die "evaluation-tool artifact parent not found: $artifact_host_parent"
+    path_has_symlink_component "$artifact_host_parent" \
+        && die "evaluation-tool artifact parent contains a symlink: $artifact_host_parent"
+    host_root_real="$(realpath -e "$HOST_ROOT")"
+    artifact_parent_real="$(realpath -e "$artifact_host_parent")"
+    case "$artifact_parent_real" in
+        "$host_root_real"|"$host_root_real"/*) ;;
+        *) die "evaluation-tool artifact parent must stay inside repository: $artifact_parent_real" ;;
+    esac
+    artifact_namespace_root="$artifact_parent_real/.eval-tool-artifacts"
+    [[ ! -L "$artifact_namespace_root" ]] \
+        || die "evaluation-tool artifact namespace must not be a symlink: $artifact_namespace_root"
+    mkdir -p "$artifact_namespace_root"
+    artifact_host_dir="$artifact_namespace_root/$artifact_label"
+    [[ ! -L "$artifact_host_dir" ]] \
+        || die "evaluation-tool worker artifact directory must not be a symlink: $artifact_host_dir"
+    mkdir -p "$artifact_host_dir"
+    artifact_host_dir="$(realpath -e "$artifact_host_dir")"
+    case "$artifact_host_dir" in
+        "$artifact_namespace_root"/*) ;;
+        *) die "evaluation-tool artifact root escaped its namespace: $artifact_host_dir" ;;
+    esac
+    # Docker's daemon may be root-squashed on NFS homes. Execute-only access
+    # lets it resolve the already-created bind source without exposing a
+    # directory listing; the host/container worker UID remains the owner.
+    chmod 0711 "$artifact_namespace_root" "$artifact_host_dir"
+    printf '%s\n' "$artifact_host_dir"
+}
+
+prepare_rocjitsu_passwd_file() {
+    local image="$1" target="$2"
+    local base_passwd
+
+    # ROCr currently crashes inside rocJITsu when getpwuid(3) cannot resolve
+    # the caller. Keep the sidecar at the host UID (never root), but give this
+    # one container an image-derived passwd file containing that UID. The file
+    # lives in the mode-0700 per-run runtime directory and is mounted read-only.
+    base_passwd="$(
+        docker run --rm --network=none --entrypoint /bin/cat \
+            "$image" /etc/passwd
+    )"
+    [[ -n "$base_passwd" ]] \
+        || die "Could not read /etc/passwd from rocJITsu image $image"
+    printf '%s\n' "$base_passwd" > "$target"
+
+    if ! awk -F: -v uid="$HOST_UID" \
+        '$3 == uid { found = 1 } END { exit(found ? 0 : 1) }' "$target"; then
+        printf 'aka-eval:x:%s:%s:rocJITsu eval worker:%s:/usr/sbin/nologin\n' \
+            "$HOST_UID" "$HOST_GID" "${EVAL_TOOL_SCRATCH_CONTAINER_DIR}/home" \
+            >> "$target"
+    fi
+    chmod 0644 "$target"
+}
+
+build_eval_tool_docker_args() {
+    local tool="$1" image="$2" container_name="$3"
+    local socket_host_dir="$4" scratch_host_dir="$5" artifact_host_dir="$6"
+    local runtime_ref="${7:-unverified}"
+    local passwd_host_file="${8:-}"
+
+    # Inspection, plan identity, and execution must refer to the same immutable
+    # object. Refuse a tag here so future callers cannot reopen a tag-movement
+    # race after start_eval_tool_sidecars has resolved the local config ID.
+    [[ "$image" == sha256:* && "$image" == "$runtime_ref" ]] \
+        || die "evaluation-tool sidecars must launch by their resolved immutable image ID"
+
+    require_path "$HOST_ROOT" "evaluation-tool input root"
+    require_path "$socket_host_dir" "evaluation-tool socket directory"
+    require_path "$scratch_host_dir" "evaluation-tool scratch directory"
+    require_path "$artifact_host_dir" "evaluation-tool artifact directory"
+    if [[ "$tool" == "rocjitsu" ]]; then
+        [[ -n "$passwd_host_file" ]] \
+            || die "rocJITsu sidecar requires an image-derived passwd file"
+        require_path "$passwd_host_file" "rocJITsu passwd file"
+    elif [[ -n "$passwd_host_file" ]]; then
+        die "passwd override is restricted to the rocJITsu sidecar"
+    fi
+
+    eval_tool_docker_args=(
+        run -d --rm
+        --name "$container_name"
+        --entrypoint /opt/venv/bin/python
+        --network=none
+        --cap-drop=ALL
+        --security-opt=no-new-privileges
+        --read-only
+        --user "${HOST_UID}:${HOST_GID}"
+        --tmpfs "/tmp:rw,nosuid,nodev,uid=${HOST_UID},gid=${HOST_GID},mode=1777"
+        -e "HOME=${EVAL_TOOL_SCRATCH_CONTAINER_DIR}/home"
+        -e "TMPDIR=/tmp"
+        -e "XDG_CACHE_HOME=${EVAL_TOOL_SCRATCH_CONTAINER_DIR}/cache"
+        -e "TORCH_EXTENSIONS_DIR=${EVAL_TOOL_SCRATCH_CONTAINER_DIR}/torch-extensions"
+        -e "TRITON_CACHE_DIR=${EVAL_TOOL_SCRATCH_CONTAINER_DIR}/triton-cache"
+        # Keep trusted worker/helper imports exclusive to the image-owned tree.
+        # Candidate files remain addressable by argv and cwd under /input:ro.
+        -e "PYTHONPATH=${EVAL_TOOL_FRAMEWORK_CONTAINER_ROOT}"
+        -e "PYTHONDONTWRITEBYTECODE=1"
+        -e "AKA_EVAL_TOOL_FRAMEWORK_ROOT=${EVAL_TOOL_FRAMEWORK_CONTAINER_ROOT}"
+        -e "AKA_EVAL_TOOL_RUNTIME_REF=${runtime_ref}"
+        -e "AKA_EVAL_TOOL_INSTANCE=${container_name}"
+        -v "${HOST_ROOT}:${EVAL_TOOL_INPUT_CONTAINER_DIR}:ro"
+        -v "${scratch_host_dir}:${EVAL_TOOL_SCRATCH_CONTAINER_DIR}:rw"
+        -v "${artifact_host_dir}:${EVAL_TOOL_ARTIFACT_CONTAINER_DIR}:rw"
+        -v "${socket_host_dir}:${EVAL_TOOL_SOCKET_CONTAINER_DIR}:rw"
+    )
+
+    if [[ "$tool" == "rocjitsu" ]]; then
+        eval_tool_docker_args+=(
+            -v "${passwd_host_file}:/etc/passwd:ro"
+        )
+    fi
+
+    local gpu_grp gpu_gid
+    for gpu_grp in render video; do
+        gpu_gid="$(getent group "$gpu_grp" 2>/dev/null | cut -d: -f3 || true)"
+        [[ -z "$gpu_gid" ]] || eval_tool_docker_args+=(--group-add "$gpu_gid")
+    done
+    [[ ! -e /dev/kfd ]] || eval_tool_docker_args+=(--device=/dev/kfd)
+    [[ ! -e /dev/dri ]] || eval_tool_docker_args+=(--device=/dev/dri)
+
+    if [[ -n "${AKA_VISIBLE_GPU:-}" ]]; then
+        eval_tool_docker_args+=(
+            -e "ROCR_VISIBLE_DEVICES=${AKA_VISIBLE_GPU}"
+            -e "HIP_VISIBLE_DEVICES=${AKA_LOGICAL_GPU:-0}"
+            -e "CUDA_VISIBLE_DEVICES=${AKA_LOGICAL_GPU:-0}"
+            -e "GPU_DEVICE_ORDINAL=${AKA_LOGICAL_GPU:-0}"
+        )
+    fi
+
+    eval_tool_docker_args+=(
+        "$image"
+        -m src.eval_tools.worker
+        --tool "$tool"
+        --socket "${EVAL_TOOL_SOCKET_CONTAINER_DIR}/${tool}.sock"
+        --input-root "$EVAL_TOOL_INPUT_CONTAINER_DIR"
+        --scratch-root "$EVAL_TOOL_SCRATCH_CONTAINER_DIR"
+        --artifact-root "$EVAL_TOOL_ARTIFACT_CONTAINER_DIR"
+    )
+}
+
+start_eval_tool_sidecars() {
+    local config="$1" label="$2"
+    local artifact_host_parent="${3:-$HOST_ROOT}"
+    local artifact_scoring_parent="${4:-$CONTAINER_WORKDIR}"
+    eval_tool_ids=()
+    while IFS= read -r tool; do
+        [[ -z "$tool" ]] || eval_tool_ids+=("$tool")
+    done < <(resolve_eval_tools "$config")
+    [[ "${#eval_tool_ids[@]}" -gt 0 ]] || return 0
+    verify_eval_tool_scoring_image
+
+    [[ "$artifact_scoring_parent" == /* ]] \
+        || die "evaluation-tool scoring artifact parent must be absolute: $artifact_scoring_parent"
+    local artifact_namespace artifact_host_dir artifact_scoring_root artifact_label
+    artifact_label="$(safe_label "$label")"
+    artifact_namespace=".eval-tool-artifacts/$artifact_label"
+    artifact_host_dir="$(prepare_eval_tool_artifact_dir "$artifact_host_parent" "$label")"
+    artifact_scoring_root="${artifact_scoring_parent%/}/$artifact_namespace"
+
+    EVAL_TOOL_RUNTIME_DIR="$(mktemp -d "${TMPDIR:-/tmp}/aka-eval-tools-$(safe_label "$label").XXXXXX")"
+    EVAL_TOOL_SOCKET_HOST_DIR="$EVAL_TOOL_RUNTIME_DIR/sockets"
+    EVAL_TOOL_ARTIFACT_HOST_ROOT="$artifact_host_dir"
+    EVAL_TOOL_ARTIFACT_SCORING_ROOT="$artifact_scoring_root"
+    EVAL_TOOL_SELECTED="$(IFS=,; printf '%s' "${eval_tool_ids[*]}")"
+    mkdir -p "$EVAL_TOOL_SOCKET_HOST_DIR" "$EVAL_TOOL_RUNTIME_DIR/scratch"
+    chmod 0700 "$EVAL_TOOL_RUNTIME_DIR" "$EVAL_TOOL_SOCKET_HOST_DIR"
+    export AKA_EVAL_TOOL_SOCKET_HOST_DIR="$EVAL_TOOL_SOCKET_HOST_DIR"
+    export AKA_EVAL_TOOL_ARTIFACT_HOST_ROOT="$EVAL_TOOL_ARTIFACT_HOST_ROOT"
+    export AKA_EVAL_TOOL_ARTIFACT_SCORING_ROOT="$EVAL_TOOL_ARTIFACT_SCORING_ROOT"
+    export AKA_EVAL_TOOLS_SELECTED="$EVAL_TOOL_SELECTED"
+    eval_tool_container_names=()
+
+    local tool image name scratch socket socket_host_dir attempt runtime_ref runtime_env passwd_host_file
+    for tool in "${eval_tool_ids[@]}"; do
+        image="$(eval_tool_image "$tool")"
+        runtime_ref="$(docker image inspect --format '{{.Id}}' "$image")"
+        [[ "$runtime_ref" == sha256:* ]] \
+            || die "Could not resolve immutable image ID for $tool image $image"
+        runtime_env="AKA_EVAL_TOOL_RUNTIME_REF_$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')"
+        printf -v "$runtime_env" '%s' "$runtime_ref"
+        export "$runtime_env"
+        name="aka-eval-$(safe_label "$label")-${tool//_/-}-$$"
+        scratch="$EVAL_TOOL_RUNTIME_DIR/scratch/$tool"
+        # Each sidecar receives only its own writable socket directory. The
+        # scoring container mounts their parent read-only and selects the
+        # matching nested path, so one tool cannot replace another tool's UDS.
+        socket_host_dir="$EVAL_TOOL_SOCKET_HOST_DIR/$tool"
+        mkdir -p "$scratch/home" "$scratch/cache" "$socket_host_dir"
+        chmod 0700 "$socket_host_dir"
+        passwd_host_file=""
+        if [[ "$tool" == "rocjitsu" ]]; then
+            passwd_host_file="$EVAL_TOOL_RUNTIME_DIR/rocjitsu.passwd"
+            prepare_rocjitsu_passwd_file "$runtime_ref" "$passwd_host_file"
+        fi
+        build_eval_tool_docker_args \
+            "$tool" "$runtime_ref" "$name" "$socket_host_dir" \
+            "$scratch" "$artifact_host_dir" "$runtime_ref" "$passwd_host_file"
+        docker "${eval_tool_docker_args[@]}" >/dev/null
+        eval_tool_container_names+=("$name")
+        socket="$socket_host_dir/$tool.sock"
+        # Workers run one synthetic known-bug positive control before exposing
+        # the socket. HIP compilation and rocJITsu simulation can take a minute
+        # on a cold cache, so readiness is bounded at five minutes.
+        for attempt in $(seq 1 600); do
+            [[ -S "$socket" ]] && break
+            if ! docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null | grep -qx true; then
+                die "Evaluation-tool sidecar exited before readiness: tool=$tool container=$name"
+            fi
+            sleep 0.5
+        done
+        [[ -S "$socket" ]] || die "Timed out waiting for evaluation-tool sidecar: $tool"
+        # Publish a stable flat client path only after readiness. The sidecar
+        # cannot tamper with this symlink because its RW bind is the nested
+        # directory, while the scoring container receives the parent read-only.
+        ln -s -- "$tool/$tool.sock" "$EVAL_TOOL_SOCKET_HOST_DIR/$tool.sock"
+    done
+}
+
+stop_eval_tool_sidecars() {
+    local name
+    for name in "${eval_tool_container_names[@]:-}"; do
+        [[ -z "$name" ]] || docker stop --time 5 "$name" >/dev/null 2>&1 || true
+    done
+    eval_tool_container_names=()
+    unset AKA_EVAL_TOOL_SOCKET_HOST_DIR
+    unset AKA_EVAL_TOOL_ARTIFACT_HOST_ROOT
+    unset AKA_EVAL_TOOL_ARTIFACT_SCORING_ROOT
+    unset AKA_EVAL_TOOLS_SELECTED
+    unset AKA_SCORING_IMAGE_RUNTIME_REF
+    unset AKA_SCORING_IMAGE_REFERENCE
+    local tool runtime_env
+    for tool in triton_fpsan gpu_asan rocjitsu hip_fpsan; do
+        runtime_env="AKA_EVAL_TOOL_RUNTIME_REF_$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')"
+        unset "$runtime_env"
+    done
+    if [[ -n "$EVAL_TOOL_RUNTIME_DIR" && -d "$EVAL_TOOL_RUNTIME_DIR" ]]; then
+        case "$EVAL_TOOL_RUNTIME_DIR" in
+            "${TMPDIR:-/tmp}"/aka-eval-tools-*) rm -rf -- "$EVAL_TOOL_RUNTIME_DIR" ;;
+            *) warn "Refusing to remove unexpected eval-tool runtime path: $EVAL_TOOL_RUNTIME_DIR" ;;
+        esac
+    fi
+    EVAL_TOOL_RUNTIME_DIR=""
+    EVAL_TOOL_SOCKET_HOST_DIR=""
+    EVAL_TOOL_ARTIFACT_HOST_ROOT=""
+    EVAL_TOOL_ARTIFACT_SCORING_ROOT=""
+    EVAL_TOOL_SELECTED=""
+}
+
+build_eval_tool_images() {
+    select_runtime_for_host
+    [[ "$SELECTED_GPU_ARCH" == "gfx950" ]] \
+        || die "Tool images currently have verified build locks only for gfx950"
+    local tool image dockerfile
+    for tool in triton_fpsan gpu_asan rocjitsu hip_fpsan; do
+        image="$(eval_tool_image "$tool")"
+        dockerfile="$HOST_ROOT/docker/eval-tools/${tool//_/-}/Dockerfile"
+        docker build --pull=false -f "$dockerfile" -t "$image" "$HOST_ROOT"
+    done
+}
+
 build_docker_args() {
     local interactive="${1:-0}"
     # Which agent CLIs to provision, and whether their absence is fatal.
@@ -599,6 +979,60 @@ build_docker_args() {
             "$CONTAINER_WORKDIR/$QUALITY_LOOP_WORKTREE_REL"
     else
         add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR"
+    fi
+    # A scoring container receives the per-worker Unix-socket directory and its
+    # dedicated report tree. Tool images, credentials, Docker access, and the
+    # rest of the experiments/workspace tree never enter a sidecar writable.
+    if [[ -n "${AKA_EVAL_TOOL_SOCKET_HOST_DIR:-}" ]]; then
+        local artifact_host_namespace artifact_scoring_namespace
+        local artifact_host_label artifact_scoring_label
+        [[ -d "$AKA_EVAL_TOOL_SOCKET_HOST_DIR" ]] \
+            || die "evaluation-tool socket directory not found: $AKA_EVAL_TOOL_SOCKET_HOST_DIR"
+        add_mount \
+            "$AKA_EVAL_TOOL_SOCKET_HOST_DIR" \
+            "$EVAL_TOOL_SOCKET_CONTAINER_DIR" ro
+        [[ -d "${AKA_EVAL_TOOL_ARTIFACT_HOST_ROOT:-}" ]] \
+            || die "evaluation-tool artifact directory not found: ${AKA_EVAL_TOOL_ARTIFACT_HOST_ROOT:-unset}"
+        [[ "${AKA_EVAL_TOOL_ARTIFACT_SCORING_ROOT:-}" == /* ]] \
+            || die "evaluation-tool scoring artifact root must be absolute"
+        artifact_host_namespace="${AKA_EVAL_TOOL_ARTIFACT_HOST_ROOT%/*}"
+        artifact_scoring_namespace="${AKA_EVAL_TOOL_ARTIFACT_SCORING_ROOT%/*}"
+        artifact_host_label="${AKA_EVAL_TOOL_ARTIFACT_HOST_ROOT##*/}"
+        artifact_scoring_label="${AKA_EVAL_TOOL_ARTIFACT_SCORING_ROOT##*/}"
+        [[ "${artifact_host_namespace##*/}" == ".eval-tool-artifacts" \
+            && "${artifact_scoring_namespace##*/}" == ".eval-tool-artifacts" ]] \
+            || die "evaluation-tool artifact roots must use the .eval-tool-artifacts namespace"
+        [[ -n "$artifact_host_label" && "$artifact_host_label" == "$artifact_scoring_label" ]] \
+            || die "evaluation-tool host/scoring worker labels must match"
+        [[ -d "$artifact_host_namespace" ]] \
+            || die "evaluation-tool artifact namespace not found: $artifact_host_namespace"
+        # The broad repository mount is writable in ordinary/parallel runs.
+        # Hide its artifact namespace behind a read-only bind, then over-mount
+        # only this worker's validated child as writable. A sibling worker can
+        # neither alter reports nor swap another worker's bind source by symlink.
+        add_mount \
+            "$artifact_host_namespace" \
+            "$artifact_scoring_namespace" ro
+        add_mount \
+            "$AKA_EVAL_TOOL_ARTIFACT_HOST_ROOT" \
+            "$AKA_EVAL_TOOL_ARTIFACT_SCORING_ROOT"
+        docker_args+=(
+            -e "AKA_EVAL_TOOL_SOCKET_DIR=$EVAL_TOOL_SOCKET_CONTAINER_DIR"
+            -e "AKA_EVAL_TOOL_SCORING_ROOT=$CONTAINER_WORKDIR"
+            -e "AKA_EVAL_TOOL_ARTIFACT_SCORING_ROOT=$AKA_EVAL_TOOL_ARTIFACT_SCORING_ROOT"
+            -e "AKA_SCORING_IMAGE_RUNTIME_REF=${AKA_SCORING_IMAGE_RUNTIME_REF:?missing verified scoring image ID}"
+            -e "AKA_SCORING_IMAGE_REFERENCE=${AKA_SCORING_IMAGE_REFERENCE:?missing scoring image reference}"
+        )
+        if [[ -n "${AKA_EVAL_TOOLS_SELECTED:-}" ]]; then
+            docker_args+=(-e "AKA_EVAL_TOOLS_SELECTED=${AKA_EVAL_TOOLS_SELECTED}")
+        fi
+        local eval_tool runtime_env
+        for eval_tool in triton_fpsan gpu_asan rocjitsu hip_fpsan; do
+            runtime_env="AKA_EVAL_TOOL_RUNTIME_REF_$(printf '%s' "$eval_tool" | tr '[:lower:]' '[:upper:]')"
+            if [[ -n "${!runtime_env:-}" ]]; then
+                docker_args+=(-e "$runtime_env=${!runtime_env}")
+            fi
+        done
     fi
     # Persistent pip user-base (PYTHONUSERBASE) so `make docker-setup-flydsl` survives
     # across runs. It lives INSIDE the repo dir, which is already bind-mounted above and
@@ -1092,6 +1526,8 @@ run_parallel() {
             export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_name}-worker-${worker_id}"
             export AKA_CACHE_SUFFIX="${safe_run_name}-worker-${worker_id}"
             export AGENT_HOME_ISOLATION=1
+            trap stop_eval_tool_sidecars EXIT
+            start_eval_tool_sidecars "$config_name" "${safe_run_name}-worker-${worker_id}"
             docker_exec 0 python main.py "$@" --parallel-worker --worker-id "$worker_id" --run-name "$run_name"
         ) &
         pids+=("$!")
@@ -1132,7 +1568,11 @@ case "${1:-}" in
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
+        trap stop_eval_tool_sidecars EXIT
+        start_eval_tool_sidecars "$config_name" "run-${BASHPID}"
         docker_exec 0 python main.py "$@"
+        stop_eval_tool_sidecars
+        trap - EXIT
         ;;
     parallel-run)
         shift
@@ -1171,7 +1611,13 @@ case "${1:-}" in
             quality_loop_container_args+=(--resume "$quality_loop_run_id")
         fi
         quality_loop_container_args+=(--defer-github --skip-preflight)
+        trap stop_eval_tool_sidecars EXIT
+        start_eval_tool_sidecars \
+            "$quality_loop_config" \
+            "quality-loop-${quality_loop_run_id}"
         docker_exec 0 python3 -m agents.quality_loop "${quality_loop_container_args[@]}"
+        stop_eval_tool_sidecars
+        trap - EXIT
         python3 -m agents.quality_loop.host finalize "$@" --run-id "$quality_loop_run_id"
         ;;
     preflight)
@@ -1213,6 +1659,21 @@ case "${1:-}" in
         AGENTS_STRICT=0
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_smoke
         ;;
+    eval-tools-smoke)
+        select_runtime_for_host
+        export AKA_EVAL_TOOLS="${AKA_EVAL_TOOLS:-triton_fpsan,gpu_asan,rocjitsu,hip_fpsan}"
+        trap stop_eval_tool_sidecars EXIT
+        start_eval_tool_sidecars "" "smoke-${BASHPID}"
+        for eval_tool in "${eval_tool_ids[@]}"; do
+            python3 -m src.eval_tools health \
+                --socket "$EVAL_TOOL_SOCKET_HOST_DIR/$eval_tool.sock"
+        done
+        stop_eval_tool_sidecars
+        trap - EXIT
+        ;;
+    build-eval-tool-images)
+        build_eval_tool_images
+        ;;
     setup-flydsl)
         select_runtime_for_host
         # FlyDSL install needs no agent CLIs.
@@ -1247,6 +1708,28 @@ case "${1:-}" in
         ;;
     _container_prepare_worker_home)
         container_prepare_worker_home
+        ;;
+    _print_eval_tool_docker_args)
+        shift
+        [[ "$#" -eq 6 || "$#" -eq 7 || "$#" -eq 8 ]] \
+            || die "_print_eval_tool_docker_args expects TOOL IMAGE NAME SOCKET SCRATCH ARTIFACT [RUNTIME_REF [PASSWD_FILE]]"
+        build_eval_tool_docker_args "$@"
+        printf '%s\n' "${eval_tool_docker_args[@]}"
+        ;;
+    _verify_eval_tool_scoring_image)
+        shift
+        [[ "$#" -eq 2 ]] \
+            || die "_verify_eval_tool_scoring_image expects ARCH IMAGE"
+        SELECTED_GPU_ARCH="$1"
+        SELECTED_IMAGE="$2"
+        verify_eval_tool_scoring_image
+        printf '%s\n' "$SELECTED_IMAGE" "$AKA_SCORING_IMAGE_RUNTIME_REF" "$AKA_SCORING_IMAGE_REFERENCE"
+        ;;
+    _prepare_eval_tool_artifact_dir)
+        shift
+        [[ "$#" -eq 2 ]] \
+            || die "_prepare_eval_tool_artifact_dir expects PARENT LABEL"
+        prepare_eval_tool_artifact_dir "$1" "$2"
         ;;
     ""|-h|--help|help)
         usage
