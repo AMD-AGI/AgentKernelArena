@@ -46,6 +46,8 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import math
+import os
+import re
 import sys
 from pathlib import Path
 
@@ -77,6 +79,81 @@ def _scored_cases(tr) -> list[dict]:
     return cases
 
 
+_RUNTIME_TENSOR_KEYS = (
+    "hidden",
+    "w1",
+    "w2",
+    "w1_scale",
+    "w2_scale",
+    "topk_weights",
+    "topk_ids",
+)
+
+
+def _profile_cache_path(tr, case_id: str) -> Path:
+    """Return this workspace's cache for profiler-safe packed runtime inputs."""
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", case_id or "default")
+    return Path(tr.WORKSPACE) / "build" / "profile_input_cache" / f"{safe}.pt"
+
+
+def _save_profile_inputs(tr, case: dict, inputs: dict) -> None:
+    """Atomically refresh packed inputs after an unprofiled canonical benchmark."""
+    import torch
+
+    path = _profile_cache_path(tr, case["id"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": 1,
+        "case_id": case["id"],
+        "token": inputs["token"],
+        "topk": inputs["topk"],
+        "tensors": {key: inputs[key] for key in _RUNTIME_TENSOR_KEYS},
+    }
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        torch.save(payload, temporary)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _load_profile_inputs(tr, case: dict):
+    """Load packed inputs without running quantization/shuffle under counters."""
+    import torch
+
+    path = _profile_cache_path(tr, case["id"])
+    if not path.is_file():
+        print(
+            f"error: profile input cache is missing for {case['id']!r}; "
+            "run --bench-mode before --profile-run",
+            file=sys.stderr,
+        )
+        return None
+    try:
+        payload = torch.load(path, map_location="cuda")
+    except Exception as error:
+        print(f"error: unusable profile input cache {path}: {error}", file=sys.stderr)
+        return None
+    tensors = payload.get("tensors") if isinstance(payload, dict) else None
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema_version") != 1
+        or payload.get("case_id") != case["id"]
+        or not isinstance(tensors, dict)
+        or any(key not in tensors for key in _RUNTIME_TENSOR_KEYS)
+    ):
+        print(f"error: invalid profile input cache schema: {path}", file=sys.stderr)
+        return None
+    aiter = tr._aiter()
+    return {
+        **tensors,
+        "token": int(payload["token"]),
+        "topk": int(payload["topk"]),
+        "quant_type": aiter.QuantType.per_1x32,
+        "activation": tr._activation(aiter),
+    }
+
+
 def _run_correctness(tr) -> int:
     """Per-case SNR against the dequantized torch reference; report the worst."""
     import torch
@@ -103,6 +180,7 @@ def _run_bench(tr, warmup: int, iters: int) -> int:
     import torch
 
     cases = _scored_cases(tr)
+    profile_case_id = max(cases, key=_case_cost)["id"]
     results = []
     for case in cases:
         inputs = tr._prepare(case, correctness=False)
@@ -119,6 +197,15 @@ def _run_bench(tr, warmup: int, iters: int) -> int:
         if not math.isfinite(ms) or ms <= 0:
             print(f"error: invalid timing for case {case['id']!r}: {ms!r}", file=sys.stderr)
             return 1
+        if case["id"] == profile_case_id:
+            try:
+                _save_profile_inputs(tr, case, inputs)
+            except Exception as error:
+                print(
+                    f"# profile: could not refresh input cache for "
+                    f"{case['id']}: {error}",
+                    file=sys.stderr,
+                )
         results.append((case["id"], ms, meta))
     if len(results) != len(cases):
         print("error: benchmark did not produce every scored case", file=sys.stderr)
@@ -133,11 +220,13 @@ def _run_bench(tr, warmup: int, iters: int) -> int:
 
 
 def _run_profile(tr) -> int:
-    """Kernel-only profiling for one case: warm, a few launches, sync, exit 0."""
+    """Profile one scored case using pre-packed, benchmark-refreshed inputs."""
     import torch
 
     case = max(_scored_cases(tr), key=_case_cost)
-    inputs = tr._prepare(case, correctness=False)
+    inputs = _load_profile_inputs(tr, case)
+    if inputs is None:
+        return 1
     for _ in range(3):                 # settle JIT + tuned-config selection
         tr._run(inputs)
     torch.cuda.synchronize()
