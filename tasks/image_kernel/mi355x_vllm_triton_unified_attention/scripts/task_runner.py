@@ -101,10 +101,22 @@ def _import_aiter():
     return aiter
 
 
-def _make_attention(case: dict, correctness: bool = False) -> dict:
+def _make_attention(
+    case: dict,
+    correctness: bool = False,
+    *,
+    ctx_len_override: int | None = None,
+    expected_path: str | None = None,
+) -> dict:
     torch = _torch()
     params = dict(case["params"])
-    ctx_len = min(params["ctx_len"], 128) if correctness else params["ctx_len"]
+    ctx_len = (
+        ctx_len_override
+        if ctx_len_override is not None
+        else min(params["ctx_len"], 128)
+        if correctness
+        else params["ctx_len"]
+    )
     num_seqs = params["q_tokens"]
     num_q_heads = params["num_q_heads"]
     num_kv_heads = params["num_kv_heads"]
@@ -152,30 +164,97 @@ def _make_attention(case: dict, correctness: bool = False) -> dict:
         "ctx_len": ctx_len,
         "scale": head_size**-0.5,
         "one": one,
+        "expected_attention_path": expected_path,
     }
 
 
-def _run_attention(inputs: dict):
-    from aiter.ops.triton.attention.unified_attention import unified_attention
+def _attention_correctness_inputs(case: dict) -> list[tuple[str, dict]]:
+    full_ctx_len = int(case["params"]["ctx_len"])
+    return [
+        (
+            "2d",
+            _make_attention(
+                case,
+                correctness=True,
+                ctx_len_override=min(full_ctx_len, 128),
+                expected_path="2d",
+            ),
+        ),
+        (
+            "3d",
+            _make_attention(
+                case,
+                correctness=True,
+                ctx_len_override=full_ctx_len,
+                expected_path="3d",
+            ),
+        ),
+    ]
 
-    unified_attention(
-        inputs["query"],
-        inputs["key"],
-        inputs["value"],
-        inputs["output"],
-        inputs["cu_seqlens_q"],
-        1,
-        inputs["seqused_k"],
-        inputs["ctx_len"],
-        inputs["scale"],
-        True,
-        (-1, -1),
-        inputs["block_table"],
-        0.0,
-        inputs["one"],
-        inputs["one"],
-        inputs["one"],
+
+class _KernelLaunchRecorder:
+    def __init__(self, kernel):
+        self.kernel = kernel
+        self.called = False
+
+    def __getitem__(self, grid):
+        launch = self.kernel[grid]
+
+        def recorded_launch(*args, **kwargs):
+            self.called = True
+            return launch(*args, **kwargs)
+
+        return recorded_launch
+
+
+def _run_attention(inputs: dict):
+    import aiter.ops.triton.attention.unified_attention as attention
+
+    expected_path = inputs.get("expected_attention_path")
+    kernel_names = (
+        "kernel_unified_attention_2d",
+        "kernel_unified_attention_3d",
+        "reduce_segments",
     )
+    originals = {}
+    recorders = {}
+    if expected_path is not None:
+        for name in kernel_names:
+            originals[name] = getattr(attention, name)
+            recorders[name] = _KernelLaunchRecorder(originals[name])
+            setattr(attention, name, recorders[name])
+
+    try:
+        attention.unified_attention(
+            inputs["query"],
+            inputs["key"],
+            inputs["value"],
+            inputs["output"],
+            inputs["cu_seqlens_q"],
+            1,
+            inputs["seqused_k"],
+            inputs["ctx_len"],
+            inputs["scale"],
+            True,
+            (-1, -1),
+            inputs["block_table"],
+            0.0,
+            inputs["one"],
+            inputs["one"],
+            inputs["one"],
+        )
+    finally:
+        for name, kernel in originals.items():
+            setattr(attention, name, kernel)
+
+    if expected_path == "2d":
+        assert recorders["kernel_unified_attention_2d"].called
+        assert not recorders["kernel_unified_attention_3d"].called
+        assert not recorders["reduce_segments"].called
+    elif expected_path == "3d":
+        assert not recorders["kernel_unified_attention_2d"].called
+        assert recorders["kernel_unified_attention_3d"].called
+        assert recorders["reduce_segments"].called
     return inputs["output"]
 
 
@@ -750,8 +829,12 @@ def _run(inputs: dict):
 
 
 def run_compile() -> None:
-    inputs = _make(CASES[0], correctness=True)
-    _run(inputs)
+    if OPERATOR == "unified_attention":
+        for _, inputs in _attention_correctness_inputs(CASES[0]):
+            _run_attention(inputs)
+    else:
+        inputs = _make(CASES[0], correctness=True)
+        _run(inputs)
     _torch().cuda.synchronize()
     print(f"{OPERATOR} compile smoke: PASS")
 
@@ -759,14 +842,20 @@ def run_compile() -> None:
 def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
+        if OPERATOR == "unified_attention":
+            for path, inputs in _attention_correctness_inputs(case):
+                got = _run_attention(inputs)
+                torch.cuda.synchronize()
+                torch.testing.assert_close(
+                    got, _attention_reference(inputs), atol=0.08, rtol=0.08
+                )
+                print("correctness PASS", case["id"], f"path={path}")
+            continue
+
         inputs = _make(case, correctness=True)
         got = _run(inputs)
         torch.cuda.synchronize()
-        if OPERATOR == "unified_attention":
-            torch.testing.assert_close(
-                got, _attention_reference(inputs), atol=0.08, rtol=0.08
-            )
-        elif OPERATOR == "a8w8_blockscale_gemm":
+        if OPERATOR == "a8w8_blockscale_gemm":
             torch.testing.assert_close(
                 got, _gemm_reference(inputs), atol=0.15, rtol=0.12
             )

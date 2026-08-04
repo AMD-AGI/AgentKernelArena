@@ -4,7 +4,12 @@ repo_subdir: aiter
 repository_language: triton
 source_file_path:
 - ops/triton/_triton_kernels/attention/unified_attention.py
+editable_sources:
+- ops/triton/attention/unified_attention.py
 target_kernel_functions:
+- unified_attention
+- select_3d_config
+- use_2d_kernel
 - kernel_unified_attention_2d
 - kernel_unified_attention_3d
 - reduce_segments

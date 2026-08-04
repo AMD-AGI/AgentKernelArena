@@ -42,6 +42,22 @@ def _load_k3_forge_driver():
     return module
 
 
+def _load_unified_attention_task_runner():
+    root = Path(__file__).resolve().parents[1]
+    path = (
+        root
+        / "tasks/image_kernel/mi355x_vllm_triton_unified_attention"
+        / "scripts/task_runner.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "_unified_attention_task_runner_test", path
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _command(tmp_path: Path, **overrides) -> list[str]:
     values = {
         "forge_bin": "/usr/bin/kernel-agents",
@@ -302,6 +318,61 @@ def test_unified_attention_metadata():
     assert _logical_operator(config) == "unified_attention_with_output"
     assert _resolve_kernel_kind(config) == "triton"
     assert _resolve_framework(config) == "aiter"
+    assert _declared_editable_sources(config) == [
+        "ops/triton/_triton_kernels/attention/unified_attention.py",
+        "ops/triton/attention/unified_attention.py",
+    ]
+    assert {
+        "unified_attention",
+        "select_3d_config",
+        "use_2d_kernel",
+        "kernel_unified_attention_2d",
+        "kernel_unified_attention_3d",
+        "reduce_segments",
+    }.issubset(config["target_kernel_functions"])
+
+
+def test_unified_attention_correctness_covers_2d_and_3d(monkeypatch):
+    runner = _load_unified_attention_task_runner()
+    case = runner.CASES[0]
+    calls = []
+
+    def fake_make_attention(
+        supplied_case,
+        correctness=False,
+        *,
+        ctx_len_override=None,
+        expected_path=None,
+    ):
+        calls.append(
+            {
+                "case": supplied_case,
+                "correctness": correctness,
+                "ctx_len": ctx_len_override,
+                "expected_path": expected_path,
+            }
+        )
+        return calls[-1]
+
+    monkeypatch.setattr(runner, "_make_attention", fake_make_attention)
+
+    variants = runner._attention_correctness_inputs(case)
+
+    assert [name for name, _ in variants] == ["2d", "3d"]
+    assert calls == [
+        {
+            "case": case,
+            "correctness": True,
+            "ctx_len": min(case["params"]["ctx_len"], 128),
+            "expected_path": "2d",
+        },
+        {
+            "case": case,
+            "correctness": True,
+            "ctx_len": case["params"]["ctx_len"],
+            "expected_path": "3d",
+        },
+    ]
 
 
 def test_existing_mi355x_forge_drivers_reject_case_selectors():
