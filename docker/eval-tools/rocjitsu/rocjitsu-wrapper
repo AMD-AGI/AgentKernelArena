@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export LD_LIBRARY_PATH="/opt/rocjitsu/runtime:/opt/rocjitsu/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# rocJITsu's current gfx950 runtime exposes one simulated agent numbered zero.
+# A physical host GPU mask (for example ROCR_VISIBLE_DEVICES=4) would otherwise
+# filter that simulated agent out of the launched HIP process.
+export ROCR_VISIBLE_DEVICES=0
+export HIP_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=0
+export GPU_DEVICE_ORDINAL=0
+exec /opt/rocjitsu/bin/rocjitsu "$@"

@@ -12,7 +12,7 @@ import logging
 import math
 import yaml
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, Mapping, TYPE_CHECKING
 
 from .evaluator_utils import inspect_target_definitions, run_command
 from .jit_rebuild import force_jit_rebuild
@@ -24,6 +24,11 @@ from .testcases import (
     collect_benchmark_methods,
     save_performance_results,
 )
+
+if TYPE_CHECKING:
+    from .eval_tools.config import EvalToolsConfig
+    from .eval_tools.contracts import SourceEvidence
+    from .eval_tools.manager import EvalToolManager
 
 # Default timeouts for run_command (seconds). Repository CMake builds can exceed a few minutes.
 _DEFAULT_COMPILE_TIMEOUT_S = 3600
@@ -129,7 +134,13 @@ def evaluate_kernel(
     workspace: Path,
     task_config: Dict[str, Any],
     baseline_cases: List[TestCaseResult],
-    logger: Optional[logging.Logger] = None
+    logger: Optional[logging.Logger] = None,
+    *,
+    tool_manager: Optional["EvalToolManager"] = None,
+    eval_tools_config: Optional["EvalToolsConfig | Mapping[str, Any]"] = None,
+    tool_source_evidence: Optional["SourceEvidence | Mapping[str, Any]"] = None,
+    tool_artifact_root: Optional[Path] = None,
+    gpu_arch: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Standardized evaluation of optimized kernel.
@@ -148,6 +159,9 @@ def evaluate_kernel(
         - average_speedup: float
         - compilation_error_message: Optional[str]
         - correctness_error_message: Optional[str]
+        - pass_tool_gate: bool (independent from numerical correctness)
+        - tool_policy_satisfied: bool
+        - tool_evaluation: Optional[dict]
     """
     log = logger or logging.getLogger(__name__)
     log.info("=" * 80)
@@ -166,6 +180,9 @@ def evaluate_kernel(
         'speedup_calculation_error_message': None,
         'benchmark_method_consistent': False,
         'benchmark_method_mismatches': [],
+        'pass_tool_gate': True,
+        'tool_policy_satisfied': True,
+        'tool_evaluation': None,
     }
     
     # 1. Compilation check
@@ -212,9 +229,49 @@ def evaluate_kernel(
     if not pass_correctness:
         log.warning("Correctness failed, skipping performance measurement")
         return results
-    
-    # 3. Performance measurement (only if both compilation and correctness passed)
-    log.info("Step 3: Measuring performance...")
+
+    # 3. Optional evaluation tools.  Keep their outcome separate from ordinary
+    # correctness: a race/memory/numerical-semantic finding is distinct evidence,
+    # and unsupported tooling must never be reported as a correctness failure.
+    # The policy decides only whether performance may proceed.
+    if eval_tools_config is not None:
+        from .eval_tools.config import EvalToolsConfig, merge_task_tool_config
+
+        parsed_tool_config = (
+            eval_tools_config
+            if isinstance(eval_tools_config, EvalToolsConfig)
+            else EvalToolsConfig.from_mapping(eval_tools_config)
+        )
+        parsed_tool_config = merge_task_tool_config(
+            parsed_tool_config, task_config
+        )
+        if parsed_tool_config.enabled:
+            log.info("Step 3: Running isolated evaluation tools...")
+            if tool_manager is None:
+                raise ValueError(
+                    "evaluation_tools are enabled but no EvalToolManager was provided"
+                )
+            report = tool_manager.evaluate(
+                workspace=workspace,
+                task_config=task_config,
+                config=parsed_tool_config,
+                gpu_arch=gpu_arch,
+                artifact_root=tool_artifact_root,
+                original_evidence=tool_source_evidence,
+            )
+            results['tool_evaluation'] = report.to_dict()
+            results['pass_tool_gate'] = report.decision.allowed
+            results['tool_policy_satisfied'] = report.decision.policy_satisfied
+            if not report.decision.allowed:
+                log.warning(
+                    "Evaluation-tool required policy rejected performance: %s",
+                    ", ".join(report.decision.reasons) or "unspecified tool failure",
+                )
+                return results
+
+    # 4. Performance measurement (only after compilation, correctness, and any
+    # required tool policy have passed).
+    log.info("Step 4: Measuring performance...")
     optimized_cases = measure_performance(workspace, task_config, logger)
     
     if optimized_cases:
@@ -413,6 +470,8 @@ def write_task_result(
         'compilation_error_message': evaluation_results.get('compilation_error_message'),
         'pass_correctness': evaluation_results['pass_correctness'],
         'correctness_error_message': evaluation_results.get('correctness_error_message'),
+        'pass_tool_gate': evaluation_results.get('pass_tool_gate', True),
+        'tool_policy_satisfied': evaluation_results.get('tool_policy_satisfied', True),
         'base_execution_time': avg_baseline_time,  # Average baseline time
         'best_optimized_execution_time': optimized_time,  # Average optimized time
         'speedup_ratio': avg_speedup,  # Average speedup across test cases
@@ -425,6 +484,9 @@ def write_task_result(
         'speedup_calculation_error_message': speedup_error,
         'optimization_summary': f'Optimized by {agent_name} using centralized evaluator'
     }
+    tool_evaluation = evaluation_results.get('tool_evaluation')
+    if tool_evaluation is not None:
+        task_result['tool_evaluation'] = tool_evaluation
     
     result_file = workspace / 'task_result.yaml'
     with open(result_file, 'w') as f:

@@ -30,6 +30,7 @@ python -m sphinx -T -b html docs docs/_build/html
 | `reference/api-reference.md` | Configuration and API reference | Run configuration schema, task `config.yaml` schema, CLI flags, scoring, and the agent registry. |
 | `reference/benchmark-methodology.md` | Reference | Timing methodology, performance-helper materialization, and speedup interpretation. |
 | `how-to/run-evaluation.md` | How-to | Choose or create a run configuration, run an experiment through Docker, resume runs, and read results. |
+| `how-to/use-evaluation-tools.md` | How-to | Configure isolated sanitizer/analysis sidecars, interpret capability and findings, and understand the strict language/GPU support matrix. |
 | `how-to/parallel-run.md` | How-to | Run one isolated Docker worker per GPU, use the shared `.parallel/` task queue, resume parallel runs, and parallelize `task_validator`. |
 | `how-to/agents.md` | How-to | Supported agents, model providers, and A/B testing. |
 | `how-to/add-task.md` | How-to | Task directory layout, `config.yaml` fields, and task types. |

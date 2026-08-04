@@ -37,6 +37,29 @@ The following software versions are required or verified.
 | AITER | `0.1.17.dev110+g9127c94a1` in the verified `gfx950` image | Required by AITER-backed task oracles and kernels. |
 | FlyDSL | `0.2.2` in the verified `gfx950` image (or `make docker-setup-flydsl` when absent) | Required for `flydsl2flydsl`, `torch2flydsl`, and `triton2flydsl` tasks. |
 
+## Evaluation-tool sidecars
+
+Optional Triton FpSan, GPU ASan, rocJITsu, and HIP-FpSan dependencies are kept
+out of the scoring image and installed in one isolated sidecar image per tool.
+The scoring image, FlyDSL, and AITER versions in the preceding table remain
+unchanged.
+
+| GPU architecture | Sidecar status | Notes |
+| --- | --- | --- |
+| `gfx950` (MI355X) | Runtime-qualified, candidate-dependent | Pinned image/build locks and all four integrated startup controls pass on the current hardware. End-to-end readiness still depends on language, artifact, adapter, and candidate attestation. Trusted single-dispatch Triton/FlyDSL rocJITsu capsule replay is implemented, but automatic evaluator-owned capsule capture and binding to the correctness run remain advisory-only gaps. |
+| `gfx942` (MI300X/MI325X) | Unverified | No equivalent image/adapter/positive-control qualification has completed; the host runner currently rejects evaluation-tool sidecars. |
+
+The runtime base digest and per-tool package/source locks are recorded in
+`docker/eval-tools/images.lock.yaml`. See [Check kernels with evaluation
+tools](../how-to/use-evaluation-tools.md#strict-support-matrix) for the strict
+Triton, HIP, FlyDSL, AITER, rocBLAS, and RCCL matrix. Normal task compatibility
+does not imply sanitizer coverage. Tool startup resolves both the selected
+scoring-image reference and the pinned `gfx950` SGLang content-addressed
+manifest reference to immutable local image IDs and requires those local IDs to
+match. Aliases of that exact image are allowed, but rebuilt, upgraded, or
+retagged images are rejected. The scoring container is launched by the verified
+image ID.
+
 ## Agents
 
 The following templates are selectable in the current `AgentType` registry. See

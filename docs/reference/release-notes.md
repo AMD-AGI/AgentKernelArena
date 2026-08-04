@@ -21,6 +21,11 @@ execution, and RL-ready GPU kernel evaluation.
 
 - Added first-class A/B experimentation workflows with labeled baseline and treatment runs.
 - Exposed compilation, correctness, latency, speedup, and score fields as structured signals for external agent-RL systems.
+- Added opt-in, per-tool sidecar plumbing and typed reports for Triton FpSan,
+  ROCm GPU ASan, rocJITsu, and HIP-FpSan. The initial sidecar locks are verified
+  only for `gfx950`. Workers automatically execute synthetic startup controls,
+  while useful candidate runs still require task-specific adapters and
+  attestations.
 - Added run comparison through `src/tools/compare_runs.py` and the standalone visualization dashboard.
 - Added held-out evaluation for testing kernel generalization on unseen shapes.
 - Centralized compilation, correctness, performance measurement, result generation, and scoring outside agent-editable code.
@@ -115,6 +120,37 @@ The task validator now includes Codex backend support, repository-task validatio
 - `cuda2hip` is recognized by the prompt system, but no bundled cuda2hip task suite is currently included.
 - Local vLLM provider configuration remains specific to the selected agent integration.
 - GPU task execution requires compatible physical AMD hardware and ROCm driver access.
+- Evaluation-tool sidecars are experimental and `gfx950`-only. Startup controls
+  prove a tool installation can detect its synthetic bug, not that a candidate
+  was instrumented. No bundled task currently supplies a production-qualified
+  adapter/attestation. All four integrated startup controls pass on the current
+  MI355X qualification host. Synthetic manager-to-sidecar candidate pairs also
+  distinguished clean from seeded-bug Triton FpSan, HIP/Triton GPU ASan, and
+  HIP-FpSan runs; trusted AOT replay produced a clean Triton result and found the
+  seeded FlyDSL LDS race. These fixtures do not qualify a bundled task. Keep the
+  policy advisory until each selected candidate path is independently qualified.
+- The current runner exposes evaluation-tool sockets and agent-writable report
+  paths during the same container run. Per-tool writable socket directories and
+  a read-only top-level artifact namespace plus one writable
+  `.eval-tool-artifacts/<label>` child prevent cross-socket mutation,
+  cross-worker writable aliases, and the previous writable whole-`experiments`
+  alias. Sibling reports remain visible read-only. The current worker report
+  directory is explicitly mounted read/write into scoring, including when the
+  quality-loop repository root is read-only. The agent can still call
+  unauthenticated evaluator sockets and write its own worker's diagnostic
+  artifacts in the same phase. Tool reports are not a tamper-resistant reward
+  boundary until agent and evaluation phases are separated and candidate
+  provenance is strengthened.
+- Tool startup requires the selected scoring image to resolve to the same
+  immutable local Docker image ID as the pinned SGLang content-addressed
+  manifest reference. The selected reference and ID are serialized in plan
+  evidence. Build-attestation artifact paths are relative to and contained
+  below the attestation directory; absolute and escaping paths are rejected.
+- Triton/FlyDSL rocJITsu AOT replay now validates a workspace-contained,
+  language-matched, single-dispatch `gfx950` capsule, forbids task launchers, and
+  invokes the image-owned native replay helper. Automatic evaluator-owned
+  capsule capture and binding to the ordinary correctness dispatch are not yet
+  implemented, so this path remains advisory.
 
 ## AgentKernelArena 0.1.0
 
