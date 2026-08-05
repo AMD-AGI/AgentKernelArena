@@ -15,8 +15,61 @@ import time
 from pathlib import Path
 
 import pytest
+import yaml
 
 LOG = logging.getLogger("test_image_kernel")
+
+
+# --------------------------------------------------------------------------
+# 0. MI355X image_kernel tasks declare complete kernel identity and task-suite
+#    metadata. Workloads remain Arena evaluation inputs, not Forge selectors.
+# --------------------------------------------------------------------------
+def test_mi355x_image_kernel_configs_require_kernel_identity():
+    tasks_root = Path(__file__).resolve().parents[1] / "tasks" / "image_kernel"
+    config_paths = sorted(tasks_root.glob("mi355x_*/config.yaml"))
+    assert config_paths, "no MI355X image_kernel task configs found"
+
+    errors: list[str] = []
+    for config_path in config_paths:
+        config = yaml.safe_load(config_path.read_text()) or {}
+        task_name = config_path.parent.name
+        if config.get("task_type") != "image_kernel":
+            errors.append(f"{task_name}: task_type must be image_kernel")
+
+        for field in ("source_file_path", "target_kernel_functions"):
+            values = config.get(field)
+            if not (
+                isinstance(values, list)
+                and values
+                and all(isinstance(value, str) and value.strip() for value in values)
+            ):
+                errors.append(f"{task_name}: {field} must be a non-empty string list")
+
+        kernel_identity = config.get("kernel_identity")
+        if not isinstance(kernel_identity, dict):
+            errors.append(f"{task_name}: kernel_identity must be a mapping")
+            continue
+
+        for field in ("logical_operator", "kernel_kind", "source_owner"):
+            value = kernel_identity.get(field)
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"{task_name}: kernel_identity.{field} is required")
+
+        workload = kernel_identity.get("workload")
+        if not isinstance(workload, dict) or not workload:
+            errors.append(f"{task_name}: kernel_identity.workload is required")
+            continue
+        has_source = isinstance(workload.get("source"), str) and bool(
+            workload["source"].strip()
+        )
+        has_shapes = isinstance(workload.get("shapes"), dict) and bool(
+            workload["shapes"]
+        )
+        if not has_source and not has_shapes:
+            errors.append(
+                f"{task_name}: workload requires a non-empty source or shapes mapping"
+            )
+    assert not errors, "\n".join(errors)
 
 
 # --------------------------------------------------------------------------
@@ -245,6 +298,34 @@ def test_prompt_builder_accepts_image_kernel(tmp_path):
     assert isinstance(prompt, str) and len(prompt) > 0
     # must have selected the image_kernel task-type prompt (not raised "Unknown task type")
     assert "image" in prompt.lower()
+
+
+def test_mi355x_validator_discovers_every_mi355x_image_task(monkeypatch):
+    from main import _discover_tasks
+
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.chdir(root)
+    config = yaml.safe_load(
+        (root / "example_configs/pr69_image_kernel_validator_mi355x.yaml").read_text()
+    )
+    discovered = _discover_tasks(config["tasks"])
+    expected = {
+        f"image_kernel/{path.parent.name}"
+        for path in (root / "tasks/image_kernel").glob("mi355x_*/config.yaml")
+    }
+
+    assert expected
+    assert set(discovered) == expected
+
+
+def test_task_discovery_rejects_unmatched_selectors(monkeypatch):
+    from main import _discover_tasks
+
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.chdir(root)
+
+    with pytest.raises(ValueError, match="matched no task configs"):
+        _discover_tasks(["image_kernel/task_that_does_not_exist"])
 
 
 if __name__ == "__main__":

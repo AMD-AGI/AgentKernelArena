@@ -1,0 +1,88 @@
+{
+  "source_day": "2026-07-20",
+  "date_field": "session_ended_at",
+  "platform": "MI355X/gfx950",
+  "framework": "vllm 0.24.0",
+  "base_image": "harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0",
+  "selection": "routable_kernels; gpu_pct>=3; session-derived shapes/dtypes",
+  "task_name": "mi355x-ci-ck-moe-2stage-20260720",
+  "operator": "ck_moe_2stage",
+  "cases": [
+    {
+      "id": "deepseek-pro-k018-k074",
+      "model": "DeepSeek-V4-Pro",
+      "session_breakdown_id": 88574,
+      "kernel_ids": [
+        "k018",
+        "k074"
+      ],
+      "gpu_pct": 13.447,
+      "params": {
+        "token": 64,
+        "model_dim": 7168,
+        "inter_dim": 512,
+        "experts": 384,
+        "topk": 6,
+        "quant_type": "per_1x32",
+        "activation": "silu",
+        "a_dtype": "fp4",
+        "w_dtype": "fp4",
+        "use_g1u1": true
+      },
+      "trace_input_shapes": [
+        "stage1 (64,3584) fp4; (384,1024,3584) fp4; out (64,6,512) bf16",
+        "stage2 (64,6,256) fp4; (384,7168,256) fp4; out (64,7168) bf16"
+      ]
+    },
+    {
+      "id": "minimax-k010",
+      "model": "MiniMax-M2.7",
+      "session_breakdown_id": 88517,
+      "kernel_ids": [
+        "k010"
+      ],
+      "gpu_pct": 3.229,
+      "params": {
+        "token": 7216,
+        "model_dim": 3072,
+        "inter_dim": 384,
+        "experts": 256,
+        "topk": 8,
+        "quant_type": "per_1x128",
+        "activation": "silu",
+        "a_dtype": "fp8",
+        "w_dtype": "fp8",
+        "use_g1u1": true
+      },
+      "trace_input_shapes": [
+        "stage1 (7216,3072) fp8; (256,768,3072) fp8; out (7216,8,384) bf16"
+      ]
+    },
+    {
+      "id": "mixtral-k023-k025",
+      "model": "Mixtral-8x7B-Instruct-v0.1",
+      "session_breakdown_id": 88512,
+      "kernel_ids": [
+        "k023",
+        "k025"
+      ],
+      "gpu_pct": 18.322,
+      "params": {
+        "token": 64,
+        "model_dim": 4096,
+        "inter_dim": 1792,
+        "experts": 8,
+        "topk": 2,
+        "quant_type": "per_Tensor",
+        "activation": "silu",
+        "a_dtype": "fp8",
+        "w_dtype": "fp8",
+        "use_g1u1": true
+      },
+      "trace_input_shapes": [
+        "stage1 (64,4096) fp8; (8,3584,4096) fp8; out (64,2,1792) bf16",
+        "stage2 (64,2,1792) fp8; (8,4096,1792) fp8; out (64,4096) bf16"
+      ]
+    }
+  ]
+}

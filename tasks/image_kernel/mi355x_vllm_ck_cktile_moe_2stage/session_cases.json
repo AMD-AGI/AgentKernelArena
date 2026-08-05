@@ -1,0 +1,38 @@
+{
+  "source_day": "2026-07-20",
+  "date_field": "session_ended_at",
+  "platform": "MI355X/gfx950",
+  "framework": "vllm 0.24.0",
+  "base_image": "harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0",
+  "selection": "routable_kernels; gpu_pct>=3; session-derived shapes/dtypes",
+  "task_name": "mi355x-ci-cktile-moe-2stage-20260720",
+  "operator": "cktile_moe_2stage",
+  "cases": [
+    {
+      "id": "gptoss-k034-k047",
+      "model": "gpt-oss-120b",
+      "session_breakdown_id": 88624,
+      "kernel_ids": [
+        "k034",
+        "k047"
+      ],
+      "gpu_pct": 16.223,
+      "params": {
+        "token": 64,
+        "model_dim": 3072,
+        "inter_dim": 512,
+        "experts": 128,
+        "topk": 4,
+        "quant_type": "per_1x32",
+        "activation": "swiglu",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true
+      },
+      "trace_input_shapes": [
+        "gemm1 (64,3072) bf16; (128,1024,1536) fp4; out (64,4,512) bf16",
+        "gemm2 (64,4,512) bf16; (128,3072,256) fp4; out (64,3072) bf16"
+      ]
+    }
+  ]
+}

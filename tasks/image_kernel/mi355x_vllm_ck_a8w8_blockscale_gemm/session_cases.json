@@ -1,0 +1,87 @@
+{
+  "source_day": "2026-07-20",
+  "date_field": "session_ended_at",
+  "platform": "MI355X/gfx950",
+  "framework": "vllm 0.24.0",
+  "base_image": "harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0",
+  "selection": "routable_kernels; gpu_pct>=3; session-derived shapes/dtypes",
+  "task_name": "mi355x-ci-a8w8-blockscale-gemm-20260720",
+  "operator": "a8w8_blockscale_gemm",
+  "cases": [
+    {
+      "id": "deepseek-flash-k003",
+      "model": "DeepSeek-V4-Flash",
+      "session_breakdown_id": 88507,
+      "kernel_ids": [
+        "k003"
+      ],
+      "gpu_pct": 4.682,
+      "params": {
+        "m": 7211,
+        "n": 32768,
+        "k": 1024,
+        "dtype": "fp8",
+        "out_dtype": "bf16",
+        "block_n": 128,
+        "block_k": 128
+      },
+      "trace_input_shapes": [
+        "(7211,1024) fp8",
+        "(32768,1024) fp8",
+        "(7211,8) fp32",
+        "(256,8) fp32",
+        "(7211,32768) bf16"
+      ]
+    },
+    {
+      "id": "glm-k004",
+      "model": "GLM-5.2",
+      "session_breakdown_id": 88580,
+      "kernel_ids": [
+        "k004"
+      ],
+      "gpu_pct": 4.902,
+      "params": {
+        "m": 64,
+        "n": 2624,
+        "k": 6144,
+        "dtype": "fp8",
+        "out_dtype": "bf16",
+        "block_n": 128,
+        "block_k": 128
+      },
+      "trace_input_shapes": [
+        "(64,6144) fp8",
+        "(2624,6144) fp8",
+        "(64,48) fp32",
+        "(21,48) fp32",
+        "(64,2624) bf16"
+      ]
+    },
+    {
+      "id": "glm-k022",
+      "model": "GLM-5.2",
+      "session_breakdown_id": 88580,
+      "kernel_ids": [
+        "k022"
+      ],
+      "gpu_pct": 3.851,
+      "params": {
+        "m": 7214,
+        "n": 2624,
+        "k": 6144,
+        "dtype": "fp8",
+        "out_dtype": "bf16",
+        "block_n": 128,
+        "block_k": 128
+      },
+      "trace_input_shapes": [
+        "(7214,6144) fp8",
+        "(2624,6144) fp8",
+        "(7214,48) fp32",
+        "(21,48) fp32",
+        "(7214,2624) bf16"
+      ]
+    }
+  ]
+}

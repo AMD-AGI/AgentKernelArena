@@ -1,0 +1,84 @@
+{
+  "source_day": "2026-07-24",
+  "date_field": "session_ended_at",
+  "platform": "MI355X/gfx950",
+  "framework": "vllm 0.24.0",
+  "base_image": "harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0",
+  "selection": "hot decode leaf kernel_paged_attention_2d; Triton fallback (head_size=256); session-derived heads/dtype",
+  "task_name": "mi355x-qwen3_5-122b-paged-attention-2d-20260724",
+  "operator": "paged_attention_2d",
+  "provenance": {
+    "model": "Qwen3.5-122B-A10B-FP8",
+    "session_id": "90d4b4a8-1db6-4e9b-9ce4-b1d9e7d5238d",
+    "device_kernel": "kernel_paged_attention_2d",
+    "entry": "vllm/v1/attention/ops/chunked_prefill_paged_decode.py: kernel_paged_attention_2d (launched by chunked_prefill_paged_decode)",
+    "call_chain": "unified_attention_with_output -> v1/attention/backends/rocm_attn.py -> chunked_prefill_paged_decode",
+    "why_triton": "use_rocm_custom_paged_attention supports head_size in {64,128} on gfx9; head_size=256 forces the Triton fallback",
+    "notes": "Per-rank slice under TP=8: num_query_heads=4, num_kv_heads=1 (GQA 4:1), head_size=256, BF16 Q/K/V/O. The trace records Q/O (M,4,256) and K/V-step (M,1,256) but NOT the per-sequence KV context length (TraceLens perf-model N_KV is not a real layout), so ctx_len below is a representative reconstruction from the model's decode regime (input=1024, output=1024, max_model_len=6144, concurrency 64)."
+  },
+  "cases": [
+    {
+      "id": "qwen3_5-122b-decode-m64-ctx1024",
+      "model": "Qwen3.5-122B-A10B-FP8",
+      "session_id": "90d4b4a8-1db6-4e9b-9ce4-b1d9e7d5238d",
+      "kernel_ids": ["L001"],
+      "gpu_pct": 15.799,
+      "params": {
+        "num_seqs": 64,
+        "num_query_heads": 4,
+        "num_kv_heads": 1,
+        "head_size": 256,
+        "block_size": 16,
+        "ctx_len": 1024,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "Q/O (64,4,256) bf16",
+        "K/V step (64,1,256) bf16"
+      ]
+    },
+    {
+      "id": "qwen3_5-122b-decode-m64-ctx2048",
+      "model": "Qwen3.5-122B-A10B-FP8",
+      "session_id": "90d4b4a8-1db6-4e9b-9ce4-b1d9e7d5238d",
+      "kernel_ids": ["L001"],
+      "gpu_pct": null,
+      "params": {
+        "num_seqs": 64,
+        "num_query_heads": 4,
+        "num_kv_heads": 1,
+        "head_size": 256,
+        "block_size": 16,
+        "ctx_len": 2048,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "Q/O (64,4,256) bf16",
+        "K/V step (64,1,256) bf16"
+      ]
+    },
+    {
+      "id": "qwen3_5-122b-decode-m64-ctx3072",
+      "model": "Qwen3.5-122B-A10B-FP8",
+      "session_id": "90d4b4a8-1db6-4e9b-9ce4-b1d9e7d5238d",
+      "kernel_ids": ["L001"],
+      "gpu_pct": null,
+      "params": {
+        "num_seqs": 64,
+        "num_query_heads": 4,
+        "num_kv_heads": 1,
+        "head_size": 256,
+        "block_size": 16,
+        "ctx_len": 3072,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "Q/O (64,4,256) bf16",
+        "K/V step (64,1,256) bf16"
+      ]
+    }
+  ]
+}

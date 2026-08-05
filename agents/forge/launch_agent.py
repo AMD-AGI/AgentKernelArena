@@ -21,13 +21,14 @@ kernel with the task's own compile/correctness/performance commands.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import re
 import shlex
 import shutil
 import signal
 import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
@@ -36,6 +37,19 @@ from typing import Any
 import yaml
 
 from agents import register_agent
+
+_FORGE_RESULT_SENTINEL = "__FORGE_RESULT__"
+_KB_STATUS_FILE = "arena_forge_status.json"
+_FORGE_SHUTDOWN_MARGIN_SECONDS = 900
+
+
+def _normalize_gfx_arch(arch: str) -> str:
+    """Normalize rocminfo/config variants to the Forge KB architecture token."""
+    match = re.search(r"gfx[0-9a-f]+", str(arch or "").lower())
+    if not match:
+        raise ValueError(f"Invalid AMD GPU architecture: {arch!r}")
+    return match.group(0)
+
 
 def _resolve_gpu_arch(eval_config: dict[str, Any]) -> str:
     """Resolve the gfx arch for the forge run, reusing Arena's shared resolution.
@@ -56,12 +70,12 @@ def _resolve_gpu_arch(eval_config: dict[str, Any]) -> str:
 
     detected = _detect_gfx_arch_from_rocminfo()
     if detected:
-        return detected
+        return _normalize_gfx_arch(detected)
 
     model = str(eval_config.get("target_gpu_model", "")).strip()
     arch = _resolve_gfx_arch(model)
     if arch:
-        return arch
+        return _normalize_gfx_arch(arch)
 
     raise ValueError(
         f"Cannot resolve a gfx arch for target_gpu_model={model!r}: it was not "
@@ -151,7 +165,13 @@ def _forge_max_hours(agent_config: dict[str, Any]) -> float:
     stop at ~8h). The default timeout (29700s) yields ~8h.
     """
     timeout_s = float(agent_config.get("timeout_seconds", 3600))
-    return round(max(0.1, timeout_s / 3600.0 - 0.25), 3)
+    # forge-loop enforces a one-hour minimum. The Arena hard timeout remains the
+    # final authority for shorter smoke runs.
+    loop_seconds = max(
+        3600.0,
+        timeout_s - _FORGE_SHUTDOWN_MARGIN_SECONDS,
+    )
+    return round(loop_seconds / 3600.0, 3)
 
 
 def _repo_subdir_name(task_config: dict[str, Any]) -> str | None:
@@ -216,70 +236,64 @@ def _resolve_kernel_file(workspace: str, source_files: list, task_config: dict[s
     return p
 
 
+def _declared_editable_sources(task_config: dict[str, Any]) -> list[str]:
+    """Return the complete ordered source allowlist for Forge edits."""
+    primary = task_config.get("source_file_path") or []
+    dependent = task_config.get("editable_sources") or []
+    if not isinstance(primary, list) or not all(
+        isinstance(path, str) and path.strip() for path in primary
+    ):
+        raise ValueError("source_file_path must be a list of non-empty paths")
+    if not isinstance(dependent, list) or not all(
+        isinstance(path, str) and path.strip() for path in dependent
+    ):
+        raise ValueError("editable_sources must be a list of non-empty paths")
+    return list(
+        dict.fromkeys(
+            [
+                *(path.strip() for path in primary),
+                *(path.strip() for path in dependent),
+            ]
+        )
+    )
+
+
 def _resolve_all_source_files(
     workspace: str, source_files: list, task_config: dict[str, Any],
     logger: logging.Logger,
+    *,
+    strict: bool = False,
 ) -> list[Path]:
-    """Resolve EVERY source_file_path entry to an absolute workspace path.
+    """Resolve every declared editable source to an absolute workspace path.
 
     The first entry (anchor) must exist; extra entries that cannot be resolved
     are warned and skipped rather than failing the run (a task may list an
     optional/relocated file). Order-preserving, de-duplicated.
     """
     resolved: list[Path] = []
+    workspace_root = Path(workspace).resolve()
     for i, rel in enumerate(source_files):
         p = _resolve_one_source_file(workspace, rel, task_config)
         if p is not None:
+            try:
+                p.relative_to(workspace_root)
+            except ValueError as error:
+                raise RuntimeError(
+                    f"Editable source escapes the workspace: {p}"
+                ) from error
             if p not in resolved:
                 resolved.append(p)
         elif i == 0:
             raise RuntimeError(
                 f"Anchor kernel file not found in workspace: {Path(workspace) / str(rel)}"
             )
+        elif strict:
+            raise RuntimeError(
+                f"Producer editable source entry not found in workspace: {rel}"
+            )
         else:
-            logger.warning("forge: source_file_path entry not found, skipping: %s", rel)
+            logger.warning("forge: editable source entry not found, skipping: %s", rel)
     return resolved
-
-
-def _git_short_head(repo_dir: Path) -> str:
-    """Return the short HEAD commit of a git repo dir, or "" (best-effort)."""
-    if not (repo_dir / ".git").exists():
-        return ""
-    try:
-        r = subprocess.run(
-            ["git", "-C", str(repo_dir), "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, check=False,
-        )
-        return r.stdout.strip() if r.returncode == 0 else ""
-    except Exception:  # noqa: BLE001 - best-effort
-        return ""
-
-
-def _repo_head_commit(workspace: str, task_config: dict[str, Any], logger: logging.Logger) -> str:
-    """Return the short HEAD commit to record as the KB framework version.
-
-    Order:
-      1. the workspace repo subdir's own .git (repository tasks: a git clone) —
-         read BEFORE ``_strip_nested_git`` removes it;
-      2. the in-image source tree (``image_repo_path``) for image_kernel tasks,
-         whose seeded workspace copy drops .git but whose in-image checkout still
-         has one.
-    Best-effort: returns "" when no commit can be read (KB then falls back to the
-    installed package version / unknown).
-    """
-    candidates: list[Path] = []
-    subdir = _repo_subdir_name(task_config)
-    if subdir:
-        candidates.append(Path(workspace) / subdir)
-    image_repo_path = task_config.get("image_repo_path")
-    if image_repo_path:
-        candidates.append(Path(str(image_repo_path)))
-    for repo_dir in candidates:
-        commit = _git_short_head(repo_dir)
-        if commit:
-            logger.info(f"forge: recorded repo commit {commit} ({repo_dir.name}) for KB version")
-            return commit
-    return ""
 
 
 def _strip_nested_git(workspace: str, logger: logging.Logger) -> None:
@@ -313,51 +327,53 @@ def _strip_nested_git(workspace: str, logger: logging.Logger) -> None:
         )
 
 
-# KernelForge fellows available to the single-fellow forge-loop path
-# (see kernel_agents.fellows.base.build_single_fellow_prompt).
-_VALID_FELLOW_BACKENDS = {"ck", "flydsl", "triton", "aiter", "hip", "hipblaslt"}
+def _normalize_fellow_backend(value: Any) -> str:
+    return str(value or "").strip().lower().replace("-", "_")
 
 
 def _infer_backend(task_config: dict[str, Any]) -> str:
-    """Infer the fellow backend (kernel language) from the task config.
+    """Resolve the configured backend name that Arena forwards to KernelForge.
 
     Two task families need different signals:
 
       * Repository / image_kernel tasks ship a whole source tree, not a
-        "<src>2<dst>" pair, so their task_type carries no language. The kernel
-        language is stated explicitly by ``repository_language`` — the
-        authoritative signal. The source REPO (aiter / sglang) must NOT be used
-        as the fellow: there is no kernel-building sglang fellow, and the aiter
-        fellow only INTEGRATES prebuilt operators rather than editing kernel
-        source, so an aiter-repo HIP kernel is optimized by the hip fellow.
+        "<src>2<dst>" pair, so their explicit ``kernel_kind`` wins when present;
+        otherwise ``repository_language`` describes the editable source language.
       * Snippet tasks are "<source>2<target>" (triton2triton, cuda2hip,
         torch2hip, flydsl2flydsl, instruction2triton, ...); the optimized kernel
         is in the TARGET language, i.e. the part after the last '2'.
 
-    A repo/image task that lacks a usable ``repository_language`` falls through
-    to the generic heuristics (keyword scan, then triton) with a warning: a
-    mislabeled fellow only degrades the run, it never hard-fails it.
+    Arena does not maintain KernelForge's supported-backend registry and does not
+    substitute an unknown backend. KernelForge owns support validation.
     """
-    task_type = str(task_config.get("task_type") or "").lower().strip()
+    task_type = _normalize_fellow_backend(task_config.get("task_type"))
 
     if task_type in ("image_kernel", "repository"):
-        lang = str(task_config.get("repository_language") or "").lower().strip()
-        if lang in _VALID_FELLOW_BACKENDS:
-            return lang
-        logging.getLogger(__name__).warning(
-            "Task type %r has no usable 'repository_language' (got %r); falling "
-            "back to generic backend inference. Set repository_language to one "
-            "of %s to select the correct fellow.",
-            task_type, lang, sorted(_VALID_FELLOW_BACKENDS),
+        identity_config = task_config.get("kernel_identity") or {}
+        if not isinstance(identity_config, dict):
+            identity_config = {}
+        kernel_kind = _normalize_fellow_backend(
+            identity_config.get("kernel_kind")
+            or task_config.get("kernel_kind")
+            or ""
+        )
+        if kernel_kind:
+            return kernel_kind
+
+        repository_language = _normalize_fellow_backend(
+            task_config.get("repository_language")
+        )
+        if repository_language:
+            return repository_language
+        raise ValueError(
+            f"Task type {task_type!r} requires kernel_identity.kernel_kind, "
+            "kernel_kind, or repository_language to select a Forge fellow"
         )
 
     target = task_type.rsplit("2", 1)[-1] if "2" in task_type else task_type
-    if target in _VALID_FELLOW_BACKENDS:
-        return target
-    for backend in _VALID_FELLOW_BACKENDS:
-        if backend in task_type:
-            return backend
-    return "triton"
+    if not target:
+        raise ValueError("task_type is required to select a Forge fellow")
+    return target
 
 
 def _resolve_fellow(task_config: dict[str, Any], agent_config: dict[str, Any]) -> str:
@@ -368,23 +384,76 @@ def _resolve_fellow(task_config: dict[str, Any], agent_config: dict[str, Any]) -
     return f"{_infer_backend(task_config)}-fellow"
 
 
-def _derive_workload_key(task_config_dir: str, arena_root: str) -> str:
-    """Return the Arena task identity to pass as KernelForge's ``--workload-key``.
+def _task_kernel_identity(task_config: dict[str, Any]) -> dict[str, Any]:
+    """Return optional task metadata forwarded to forge-loop."""
+    value = task_config.get("kernel_identity") or {}
+    if not isinstance(value, dict):
+        raise ValueError("task kernel_identity configuration must be a mapping")
+    return value
 
-    Several Arena tasks can optimize the SAME kernel source under different
-    benchmark regimes (e.g. ``aiter_pa_decode`` vs ``aiter_pa_ragged`` both edit
-    ``pa_kernels.cuh``). They resolve to the same KernelForge kernel identity, so
-    without a distinct workload key their KB experience would rank together and
-    suppress / mis-seed each other. The task's path relative to ``tasks/`` (e.g.
-    ``image_kernel/aiter_pa_decode``) is a stable, globally-unique identity for
-    the workload; fall back to the task directory name if the relative path can't
-    be computed.
-    """
-    task_dir = Path(task_config_dir).resolve().parent
-    try:
-        return str(task_dir.relative_to(Path(arena_root).resolve() / "tasks"))
-    except ValueError:
-        return task_dir.name
+
+def _resolve_kernel_kind(task_config: dict[str, Any]) -> str:
+    """Return the optional implementation kind supplied by the task."""
+    identity_config = _task_kernel_identity(task_config)
+    explicit = identity_config.get("kernel_kind", task_config.get("kernel_kind"))
+    return str(explicit or "").strip().lower()
+
+
+# Framework aliases whose identity forms the KB kernel-page slug component. Maps
+# a path component to its canonical framework. Must match KernelForge's set and
+# Hyperloom's _resolve_framework so a solution written here resolves to the SAME
+# page a Hyperloom forge-loop reads. ``aiter_meta`` is aiter's C++/CK companion
+# package and shares aiter's identity.
+_FRAMEWORK_ALIASES = {
+    "vllm": "vllm",
+    "sglang": "sglang",
+    "aiter": "aiter",
+    "aiter_meta": "aiter",
+}
+
+
+def _resolve_framework(task_config: dict[str, Any]) -> str:
+    """Return the optional source owner explicitly supplied by the task."""
+    identity_config = _task_kernel_identity(task_config)
+    explicit = str(
+        identity_config.get("source_owner")
+        or task_config.get("source_owner_framework")
+        or ""
+    ).strip()
+    return _FRAMEWORK_ALIASES.get(explicit.lower(), explicit.lower()) if explicit else ""
+
+
+def _logical_operator(task_config: dict[str, Any]) -> str:
+    """Return the optional explicit logical identity."""
+    identity_config = _task_kernel_identity(task_config)
+    value = str(
+        identity_config.get("logical_operator")
+        or task_config.get("logical_operator")
+        or ""
+    ).strip()
+    return _normalize_logical_operator(value)
+
+
+def _normalize_logical_operator(value: str) -> str:
+    """Match Hyperloom's balanced-template logical operation normalization."""
+    raw = str(value or "").strip()
+    if "<" not in raw:
+        normalized = raw
+    else:
+        characters: list[str] = []
+        depth = 0
+        for character in raw:
+            if character == "<":
+                depth += 1
+            elif character == ">":
+                if depth > 0:
+                    depth -= 1
+            elif depth == 0:
+                characters.append(character)
+        normalized = "".join(characters).strip() or raw
+    normalized = re.sub(r"\s*::\s*", "::", normalized)
+    normalized = re.sub(r":{3,}", "::", normalized)
+    return normalized.strip(": ")
 
 
 def _git(workspace: str, *args: str, logger: logging.Logger) -> None:
@@ -444,7 +513,14 @@ def _init_git_workspace(workspace: str, logger: logging.Logger) -> None:
     _git(workspace, "commit", "-m", "forge: initial workspace snapshot", logger=logger)
 
 
-def _write_program_md(task_config: dict[str, Any], target_funcs, gpu_arch: str, backend: str, dest: Path) -> None:
+def _write_program_md(
+    task_config: dict[str, Any],
+    target_funcs,
+    gpu_arch: str,
+    backend: str,
+    editable_sources: list[Path],
+    dest: Path,
+) -> None:
     """Generate a program.md for the forge agent from the Arena task prompt."""
     prompt_cfg = task_config.get("prompt") or {}
     instructions = prompt_cfg.get("instructions") or ""
@@ -459,20 +535,21 @@ def _write_program_md(task_config: dict[str, Any], target_funcs, gpu_arch: str, 
     task_type = str(task_config.get("task_type") or "").strip().lower()
     scope_section = ""
     if task_type in ("repository", "image_kernel"):
+        source_allowlist = "\n".join(
+            f"- `{path}`" for path in editable_sources
+        )
         scope_section = f"""
-## Kernel Scope (the target file may not be self-contained)
+## Editable Source Scope
 `{funcs}` lives in the target kernel file, but the code that governs its
 performance may span OTHER files in this workspace (headers it includes, modules
-it imports, dispatch/config layers, or JIT template sources). You are NOT limited
-to the single target file:
-1. Before editing, use Grep/Glob/Read to trace the real implementation across the
-   repository (includes, imports, call sites, templates) so you edit where the
-   performance-relevant code actually is.
-2. You MAY edit any source file the kernel depends on when that is where the
-   change belongs. The loop stages every tracked source edit, so a cross-file
-   change is validated, benchmarked, and kept/reverted as one unit.
-3. Do NOT edit the measurement files (the test driver / harness / perf helpers);
-   the loop rejects edits to those.
+it imports, dispatch/config layers, or JIT template sources).
+
+The complete editable source allowlist is:
+{source_allowlist}
+
+You may inspect any dependency, but edit ONLY files in this allowlist. If an
+additional dependency must be editable, stop and report that the task's
+`editable_sources` declaration is incomplete. Do not edit measurement files.
 """
 
     dest.write_text(
@@ -533,6 +610,205 @@ if __name__ == "__main__":
 """
 
 
+def _build_forge_command(
+    *,
+    forge_bin: str,
+    kernel_file: Path,
+    driver_dest: Path,
+    workspace: str,
+    experiments_dir: Path,
+    result_json: Path,
+    program_md: Path,
+    agent_config: dict[str, Any],
+    gpu_arch: str,
+    fellow: str,
+    task_type: str,
+    source_files: list[Path],
+    target_functions: list[str],
+    logical_operator: str,
+    framework: str,
+) -> list[str]:
+    """Build argv without shell parsing so task metadata is forwarded exactly."""
+    cmd = [
+        forge_bin,
+        "forge-loop",
+        "--kernel",
+        str(kernel_file),
+        "--driver",
+        str(driver_dest),
+        "--workspace",
+        str(workspace),
+        "--experiments-dir",
+        str(experiments_dir),
+        "--result-json",
+        str(result_json),
+        "--snr-threshold",
+        str(agent_config.get("snr_threshold", 30.0)),
+        "--max-iters",
+        str(agent_config.get("max_iters", 2)),
+        "--max-hours",
+        str(_forge_max_hours(agent_config)),
+        "--gpu-target",
+        gpu_arch,
+        "--fellow",
+        fellow,
+        "--git-branch",
+        "forge-optimize",
+        "--program-md-file",
+        str(program_md),
+        "--model",
+        str(agent_config.get("model", "claude-opus-4-8")),
+        "--permission-mode",
+        str(agent_config.get("permission_mode", "acceptEdits")),
+        "--task-type",
+        task_type,
+    ]
+    if source_files:
+        cmd.extend(["--source-files", ",".join(str(path) for path in source_files)])
+    if target_functions:
+        cmd.extend(["--target-functions", ",".join(str(name) for name in target_functions)])
+    if logical_operator:
+        cmd.extend(["--operator-name", logical_operator])
+    if framework:
+        cmd.extend(["--framework", framework])
+    return cmd
+
+
+def _read_forge_result(result_json: Path, stdout: str) -> dict[str, Any] | None:
+    """Read the structured result file, then fall back to the stdout sentinel."""
+    try:
+        result = json.loads(result_json.read_text())
+        if isinstance(result, dict):
+            return result
+    except (OSError, json.JSONDecodeError):
+        pass
+    matches = re.findall(
+        re.escape(_FORGE_RESULT_SENTINEL)
+        + r"(.*?)"
+        + re.escape(_FORGE_RESULT_SENTINEL),
+        stdout,
+        flags=re.DOTALL,
+    )
+    for payload in reversed(matches):
+        try:
+            result = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(result, dict):
+            return result
+    return None
+
+
+def _publication_status(result: dict[str, Any] | None) -> dict[str, Any]:
+    """Summarize optional remote publication diagnostics."""
+    def _authoritative(publication: Any) -> bool:
+        if not isinstance(publication, dict) or "published_commit" not in publication:
+            return False
+        return (
+            "pending_commit" in publication
+            or publication.get("status") == "warm_start_existing"
+        )
+
+    status: dict[str, Any] = {
+        "published": False,
+        "latest_best_published": False,
+        "authoritative": False,
+        "state": "result_missing" if result is None else "not_published",
+        "reason": "",
+        "best_commit": "",
+        "published_commit": "",
+        "pending_commit": "",
+    }
+    if result is None:
+        status["reason"] = "forge_result_missing"
+        return status
+
+    best_commit = str(result.get("best_commit") or "")
+    status["best_commit"] = best_commit
+    top_level = result.get("remote_publication")
+    publication = top_level if isinstance(top_level, dict) else None
+    source = "remote_publication"
+    kb_experience = result.get("kb_experience")
+    top_level_authoritative = _authoritative(publication)
+    if not top_level_authoritative and isinstance(kb_experience, dict):
+        nested = kb_experience.get("publication")
+        nested_authoritative = _authoritative(nested)
+        if nested_authoritative or publication is None:
+            publication = nested
+            source = "kb_experience.publication"
+    if publication is None:
+        status["state"] = "schema_unsupported"
+        status["reason"] = (
+            "forge result has neither remote_publication nor "
+            "kb_experience.publication"
+        )
+        return status
+
+    status["source"] = source
+    status["authoritative"] = _authoritative(publication)
+    published_commit = str(publication.get("published_commit") or "")
+    pending_commit = str(publication.get("pending_commit") or "")
+    status["published_commit"] = published_commit
+    status["pending_commit"] = pending_commit
+    status["publication_state"] = str(publication.get("status") or "")
+    latest_best_published = bool(
+        status["authoritative"]
+        and best_commit
+        and published_commit == best_commit
+        and not pending_commit
+    )
+    status["published"] = latest_best_published
+    status["latest_best_published"] = latest_best_published
+    status["state"] = (
+        "published"
+        if latest_best_published
+        else str(publication.get("status") or "not_published")
+    )
+    if not best_commit:
+        status["reason"] = "best_commit_missing"
+    elif not status["authoritative"]:
+        status["reason"] = "publication_schema_incomplete"
+    elif pending_commit:
+        status["reason"] = f"publication_pending:{pending_commit}"
+    elif published_commit != best_commit:
+        status["reason"] = (
+            f"published_commit_mismatch:{published_commit or '<none>'}!={best_commit}"
+        )
+
+    if isinstance(kb_experience, dict):
+        final_write = kb_experience.get("write")
+        if isinstance(final_write, dict):
+            status["final_write"] = {
+                key: final_write[key]
+                for key in ("written", "reason")
+                if key in final_write
+            }
+    return status
+
+
+def _write_forge_status(
+    experiments_dir: Path,
+    *,
+    returncode: int | None,
+    timed_out: bool,
+    result: dict[str, Any] | None,
+    kb_status: dict[str, Any],
+) -> dict[str, Any]:
+    summary = {
+        "exit_code": returncode,
+        "timed_out": timed_out,
+        "kb": kb_status,
+        "experiment_id": (result or {}).get("experiment_id", ""),
+        "improved": bool((result or {}).get("improved", False)),
+        "best_iteration": (result or {}).get("best_iteration", 0),
+    }
+    experiments_dir.mkdir(parents=True, exist_ok=True)
+    (experiments_dir / _KB_STATUS_FILE).write_text(
+        json.dumps(summary, indent=2, sort_keys=True)
+    )
+    return summary
+
+
 @register_agent("forge")
 def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: str) -> str:
     """Run one KernelForge forge-loop over the Arena task workspace.
@@ -562,19 +838,40 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     # Task config: locate the kernel file + target function(s).
     with open(task_config_dir, "r") as f:
         task_config = yaml.safe_load(f) or {}
+    identity_config = _task_kernel_identity(task_config)
     source_files = task_config.get("source_file_path") or []
-    if not source_files:
+    if not isinstance(source_files, list) or not source_files:
         raise RuntimeError(f"Task config has no source_file_path: {task_config_dir}")
     kernel_file = _resolve_kernel_file(workspace, source_files, task_config)
-    # Resolve the FULL editable surface (repository tasks list several files; the
-    # entry file is often only a dispatcher). The anchor is all_source_files[0].
-    all_source_files = _resolve_all_source_files(workspace, source_files, task_config, logger)
+    editable_source_entries = _declared_editable_sources(task_config)
+    # Resolve the complete edit allowlist. source_file_path[0] remains the anchor;
+    # editable_sources adds dependent files without changing anchor semantics.
+    all_source_files = _resolve_all_source_files(
+        workspace,
+        editable_source_entries,
+        task_config,
+        logger,
+        strict=bool(identity_config),
+    )
     target_funcs = task_config.get("target_kernel_functions") or []
+    if not isinstance(target_funcs, list):
+        raise ValueError("target_kernel_functions must be a list")
+    target_funcs = [str(name).strip() for name in target_funcs if str(name).strip()]
     task_type = str(task_config.get("task_type") or "").strip()
 
     gpu_arch = _resolve_gpu_arch(eval_config)
     fellow = _resolve_fellow(task_config, agent_config)
     backend = fellow.split("-")[0]
+    logical_operator = _logical_operator(task_config)
+    kernel_kind = _resolve_kernel_kind(task_config)
+    framework = _resolve_framework(task_config)
+
+    # Preserve all existing parent credentials. KernelForge independently decides
+    # whether optional external integrations are configured.
+    env = os.environ.copy()
+    env["IS_SANDBOX"] = "1"
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    env.pop("ANTHROPIC_API_KEY", None)
 
     # Materialize the driver: prefer a task-shipped scripts/forge_driver.py
     # (used verbatim); otherwise generate a shim that delegates to the shared
@@ -602,16 +899,19 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 
     # program.md for agent guidance.
     program_md = Path(workspace) / "forge_program.md"
-    _write_program_md(task_config, target_funcs, gpu_arch, backend, program_md)
+    _write_program_md(
+        task_config,
+        target_funcs,
+        gpu_arch,
+        backend,
+        all_source_files,
+        program_md,
+    )
 
     # Repository / image_kernel tasks bring a cloned repo (with its own nested
-    # .git) into the workspace. Capture the repo commit (for the KB version) FIRST,
-    # then strip .git BEFORE git init so the outer workspace git tracks the repo's
-    # files (otherwise keep/revert is a no-op on the real kernel). No-op / skipped
-    # for single-file snippet tasks.
-    repo_commit = ""
+    # .git) into the workspace. Strip it before outer git init so keep/revert
+    # tracks the real source files.
     if task_type.lower() in ("repository", "image_kernel"):
-        repo_commit = _repo_head_commit(workspace, task_config, logger)
         _strip_nested_git(workspace, logger)
 
     # The loop needs a git repo for the keep/revert pattern.
@@ -619,69 +919,29 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 
     experiments_dir = Path(workspace) / "forge_experiments"
     result_json = experiments_dir / "forge_result.json"
+    result_json.unlink(missing_ok=True)
 
     model = str(agent_config.get("model", "claude-opus-4-8"))
-    permission_mode = str(agent_config.get("permission_mode", "acceptEdits"))
-
-    # Build the forge-loop command. All task-specific config is passed as flags
-    # (model / permission-mode / gpu-target / fellow / paths) so nothing relies
-    # on forge-specific environment variables.
-    cmd_parts = [
-        forge_bin, "forge-loop",
-        "--kernel", str(kernel_file),
-        "--driver", str(driver_dest),
-        "--workspace", str(workspace),
-        "--experiments-dir", str(experiments_dir),
-        "--result-json", str(result_json),
-        "--snr-threshold", str(agent_config.get("snr_threshold", 30.0)),
-        "--max-iters", str(agent_config.get("max_iters", 2)),
-        "--max-hours", str(_forge_max_hours(agent_config)),
-        "--gpu-target", gpu_arch,
-        "--fellow", fellow,
-        "--git-branch", "forge-optimize",
-        "--program-md-file", str(program_md),
-        "--model", model,
-        "--permission-mode", permission_mode,
-        # Task-shape awareness: lets forge-loop switch on single-file vs repo/
-        # image_kernel and enable multi-file handling only where needed.
-        "--task-type", task_type,
-    ]
-    # Full editable source set + target functions (repository tasks span several
-    # files; the entry file is often only a dispatcher). forge-loop uses these
-    # for PMC name hints, the in-session edit budget, and the agent prompt. The
-    # anchor stays --kernel; for single-file tasks --source-files is just it.
-    if all_source_files:
-        cmd_parts += ["--source-files", ",".join(str(p) for p in all_source_files)]
-    if target_funcs:
-        cmd_parts += ["--target-functions", ",".join(str(f) for f in target_funcs)]
-    # Repo commit as the KB framework version (used only when the installed
-    # package version is unknown — e.g. a source-checkout framework).
-    if repo_commit:
-        cmd_parts += ["--framework-version", repo_commit]
-    # Workload identity: distinguishes tasks that share one kernel source but
-    # exercise different shape regimes, so their KB experience does not collide.
-    cmd_parts += ["--workload-key", _derive_workload_key(task_config_dir, arena_root)]
-    # shapes_json is only meaningful for per-kernel drivers that parse --shape.
-    # The generic arena_task_adapter ignores --shape (the task's pytest owns its
-    # shapes), so we omit it unless a task explicitly configures one — the
-    # forge-loop CLI defaults to "{}" (one default-shape sweep).
-    shapes_json = agent_config.get("shapes_json")
-    if shapes_json:
-        cmd_parts += ["--shapes-json", str(shapes_json)]
+    cmd_parts = _build_forge_command(
+        forge_bin=forge_bin,
+        kernel_file=kernel_file,
+        driver_dest=driver_dest,
+        workspace=workspace,
+        experiments_dir=experiments_dir,
+        result_json=result_json,
+        program_md=program_md,
+        agent_config=agent_config,
+        gpu_arch=gpu_arch,
+        fellow=fellow,
+        task_type=task_type,
+        source_files=all_source_files,
+        target_functions=target_funcs,
+        logical_operator=logical_operator,
+        framework=framework,
+    )
     # Human-readable rendering for the log only; the process is launched from the
     # argv list (cmd_parts) with shell=False, so no shell parsing is involved.
     cmd = " ".join(shlex.quote(p) for p in cmd_parts)
-
-    # Environment: inherit the gateway auth (ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN)
-    # from the parent. Only two non-inherited vars remain, both genuinely
-    # environmental (not forge config): IS_SANDBOX (required by the claude CLI's
-    # bypassPermissions under root) and PYTHONUNBUFFERED (streaming). Everything
-    # else is a CLI flag or baked into the generated driver.
-    env = os.environ.copy()
-    env["IS_SANDBOX"] = "1"
-    env.setdefault("PYTHONUNBUFFERED", "1")
-    # The gateway uses bearer auth; ensure x-api-key auth isn't picked instead.
-    env.pop("ANTHROPIC_API_KEY", None)
 
     logger.info("Forge Preflight")
     logger.info(f"  forge bin:   {forge_bin}")
@@ -689,7 +949,10 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logger.info(f"  driver:      {driver_dest}")
     logger.info(f"  gpu target:  {gpu_arch}")
     logger.info(f"  model:       {model}")
-    logger.info(f"  fellow:      {fellow} (inferred from task_type={task_config.get('task_type')!r})")
+    logger.info(f"  fellow:      {fellow} (resolved from task configuration)")
+    logger.info(f"  operator:    {logical_operator or '<forge inference>'}")
+    logger.info(f"  kernel kind: {kernel_kind}")
+    logger.info(f"  source owner:{framework or '<unknown>'}")
     logger.info(f"  budget:      {agent_config.get('max_iters')} iters / {_forge_max_hours(agent_config)}h")
     logger.info(f"  gateway:     {env.get('ANTHROPIC_BASE_URL', '<unset>')}")
     logger.info(f"Running command: {cmd}")
@@ -740,11 +1003,17 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     for t in threads:
         t.start()
 
+    timed_out = False
     try:
         process.wait(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
+        timed_out = True
         logger.warning(f"Forge loop timed out after {timeout_seconds}s; terminating process group")
         _terminate_process_group(process, logger)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            logger.error("Forge process leader did not exit after process-group termination")
 
     for t in threads:
         t.join(timeout=1)
@@ -761,4 +1030,20 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     output = "\n".join(stdout_lines)
     if stderr_lines:
         output += "\n=== STDERR ===\n" + "\n".join(stderr_lines)
+    forge_result = _read_forge_result(result_json, "\n".join(stdout_lines))
+    kb_status = _publication_status(forge_result)
+    _write_forge_status(
+        experiments_dir,
+        returncode=process.returncode,
+        timed_out=timed_out,
+        result=forge_result,
+        kb_status=kb_status,
+    )
+    logger.info(
+        "Forge result: exit=%s timed_out=%s KB=%s (%s)",
+        process.returncode,
+        timed_out,
+        kb_status["state"],
+        kb_status["reason"] or "no error",
+    )
     return output

@@ -2,13 +2,19 @@ agent:
   template: task_validator
 
 tasks:
-  - image_kernel/aiter_fp8_gemm
-  - image_kernel/aiter_gemm
-  - image_kernel/aiter_mha_batch_prefill
-  - image_kernel/aiter_pa_decode
-  - image_kernel/aiter_pa_ragged
-  - image_kernel/aiter_rmsnorm
-  - image_kernel/sglang_store_cache
+  - image_kernel/mi355x_sglang_triton_mxfp8_grouped_gemm
+  - image_kernel/mi355x_sglang_triton_mxfp8_linear
+  - image_kernel/mi355x_vllm_aiter_mxfp4_moe_2stage_kimi_k3
+  - image_kernel/mi355x_vllm_ck_a8w8_blockscale_gemm
+  - image_kernel/mi355x_vllm_ck_cktile_moe_2stage
+  - image_kernel/mi355x_vllm_ck_moe_2stage
+  - image_kernel/mi355x_vllm_hip_dynamic_per_tensor_quant
+  - image_kernel/mi355x_vllm_tilelang_mhc_fused_post_pre
+  - image_kernel/mi355x_vllm_triton_fused_moe_gptq_awq
+  - image_kernel/mi355x_vllm_triton_kda_linear_attn_kimi_k3
+  - image_kernel/mi355x_vllm_triton_paged_attention_2d
+  - image_kernel/mi355x_vllm_triton_sparse_attn_prefill_ragged
+  - image_kernel/mi355x_vllm_triton_unified_attention
 
 target_gpu_model: MI355X
 log_directory: logs
