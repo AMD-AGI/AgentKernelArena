@@ -25,8 +25,32 @@ from agents.forge.launch_agent import (
 from agents.forge.drivers import arena_task_adapter
 
 
+CK_TASK_NAMES = (
+    "mi355x_vllm_ck_a8w8_blockscale_gemm",
+    "mi355x_vllm_ck_cktile_moe_2stage",
+    "mi355x_vllm_ck_moe_2stage",
+)
+
+
 def _value(argv: list[str], option: str) -> str:
     return argv[argv.index(option) + 1]
+
+
+def _load_ck_forge_driver(task_name: str):
+    root = Path(__file__).resolve().parents[1]
+    path = (
+        root
+        / "tasks"
+        / "image_kernel"
+        / task_name
+        / "scripts"
+        / "forge_driver.py"
+    )
+    spec = importlib.util.spec_from_file_location(f"_{task_name}_driver_test", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _load_k3_forge_driver():
@@ -414,14 +438,44 @@ def test_existing_mi355x_forge_drivers_reject_case_selectors():
         (root / "tasks" / "image_kernel").glob("mi355x_*/scripts/forge_driver.py")
     )
 
-    assert len(driver_paths) == 10
+    assert len(driver_paths) == 13
     for driver_path in driver_paths:
         source = driver_path.read_text()
         assert '"--shape"' not in source
         assert '"--profile-case"' not in source
         assert "parse_known_args" not in source
+        assert '"--profile-run"' in source
         assert "case_ms:" in source
         assert "mean_ms:" in source
+
+
+@pytest.mark.parametrize("task_name", CK_TASK_NAMES)
+def test_ck_profile_run_launches_only_the_target_operator(task_name, tmp_path):
+    driver = _load_ck_forge_driver(task_name)
+    prepared = []
+    launches = []
+    synchronizations = []
+    torch = SimpleNamespace(
+        cuda=SimpleNamespace(synchronize=lambda: synchronizations.append(True))
+    )
+    cases = [{"id": "first"}, {"id": "profile"}]
+
+    def make(case, correctness=False):
+        prepared.append((case, correctness))
+        return {"case": case}
+
+    task_runner = SimpleNamespace(
+        WORKSPACE=tmp_path,
+        CASES=cases,
+        _torch=lambda: torch,
+        _make=make,
+        _run=lambda inputs: launches.append(inputs),
+    )
+
+    assert driver._run_profile(task_runner) == 0
+    assert prepared == [(cases[-1], False)]
+    assert launches == [{"case": cases[-1]}] * 8
+    assert len(synchronizations) == 2
 
 
 def test_k3_profile_run_uses_cached_inputs_without_preparing(monkeypatch):
