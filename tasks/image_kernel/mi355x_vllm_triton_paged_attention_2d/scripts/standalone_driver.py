@@ -336,11 +336,22 @@ def _load_kernel_module():
     return module
 
 
-def _make(case: dict, correctness: bool = False) -> dict:
+def _scored_dimensions(case: dict) -> tuple[int, int]:
+    params = case["params"]
+    return params["num_seqs"], params["ctx_len"]
+
+
+def _compile_smoke_case(case: dict) -> dict:
+    smoke_case = {**case, "params": dict(case["params"])}
+    smoke_case["params"]["num_seqs"] = min(case["params"]["num_seqs"], 8)
+    smoke_case["params"]["ctx_len"] = min(case["params"]["ctx_len"], 256)
+    return smoke_case
+
+
+def _make(case: dict) -> dict:
     torch = _torch()
     params = dict(case["params"])
-    num_seqs = min(params["num_seqs"], 8) if correctness else params["num_seqs"]
-    ctx_len = min(params["ctx_len"], 256) if correctness else params["ctx_len"]
+    num_seqs, ctx_len = _scored_dimensions(case)
     num_query_heads = params["num_query_heads"]
     num_kv_heads = params["num_kv_heads"]
     head_size = params["head_size"]
@@ -465,7 +476,7 @@ def _reference(inputs: dict):
 
 
 def run_compile() -> None:
-    inputs = _make(CASES[0], correctness=True)
+    inputs = _make(_compile_smoke_case(CASES[0]))
     _run(inputs)
     _torch().cuda.synchronize()
     print(f"{OPERATOR} compile smoke: PASS")
@@ -474,7 +485,7 @@ def run_compile() -> None:
 def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
-        inputs = _make(case, correctness=True)
+        inputs = _make(case)
         got = _run(inputs)
         torch.cuda.synchronize()
         torch.testing.assert_close(
@@ -486,7 +497,7 @@ def run_correctness() -> None:
 def run_performance() -> None:
     rows = []
     for case in CASES:
-        inputs = _make(case, correctness=False)
+        inputs = _make(case)
         _run(inputs)
         _torch().cuda.synchronize()
         execution_time_ms, bench_meta = _benchmark_cuda_graph_or_events(
@@ -611,7 +622,7 @@ def _pick_profile_case(tr, case_id: str) -> dict:
 def _run_profile(tr, case_id: str) -> int:
     torch = tr._torch()
     case = _pick_profile_case(tr, case_id)
-    inputs = tr._make(case, correctness=False)
+    inputs = tr._make(case)
     for _ in range(5):          # settle Triton JIT / autotune selection
         tr._run(inputs)
     torch.cuda.synchronize()

@@ -58,6 +58,22 @@ def _load_unified_attention_task_runner():
     return module
 
 
+def _load_paged_attention_module(filename: str):
+    root = Path(__file__).resolve().parents[1]
+    path = (
+        root
+        / "tasks/image_kernel/mi355x_vllm_triton_paged_attention_2d"
+        / "scripts"
+        / filename
+    )
+    module_name = f"_paged_attention_{path.stem}_test"
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _command(tmp_path: Path, **overrides) -> list[str]:
     values = {
         "forge_bin": "/usr/bin/kernel-agents",
@@ -373,6 +389,23 @@ def test_unified_attention_correctness_covers_2d_and_3d(monkeypatch):
             "expected_path": "3d",
         },
     ]
+
+
+@pytest.mark.parametrize("filename", ["task_runner.py", "standalone_driver.py"])
+def test_paged_attention_correctness_uses_full_scored_dimensions(filename):
+    runner = _load_paged_attention_module(filename)
+
+    dimensions = [runner._scored_dimensions(case) for case in runner.CASES]
+    compile_smoke = runner._compile_smoke_case(runner.CASES[0])
+
+    assert dimensions == [(64, 1024), (64, 2048), (64, 3072)]
+    assert [
+        (ctx_len + case["params"]["block_size"] - 1)
+        // case["params"]["block_size"]
+        for case, (_, ctx_len) in zip(runner.CASES, dimensions)
+    ] == [64, 128, 192]
+    assert runner._scored_dimensions(compile_smoke) == (8, 256)
+    assert runner._scored_dimensions(runner.CASES[0]) == (64, 1024)
 
 
 def test_existing_mi355x_forge_drivers_reject_case_selectors():
