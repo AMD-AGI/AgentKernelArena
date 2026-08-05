@@ -300,6 +300,34 @@ def test_prompt_builder_accepts_image_kernel(tmp_path):
     assert "image" in prompt.lower()
 
 
+def test_mi355x_validator_discovers_every_mi355x_image_task(monkeypatch):
+    from main import _discover_tasks
+
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.chdir(root)
+    config = yaml.safe_load(
+        (root / "example_configs/pr69_image_kernel_validator_mi355x.yaml").read_text()
+    )
+    discovered = _discover_tasks(config["tasks"])
+    expected = {
+        f"image_kernel/{path.parent.name}"
+        for path in (root / "tasks/image_kernel").glob("mi355x_*/config.yaml")
+    }
+
+    assert expected
+    assert set(discovered) == expected
+
+
+def test_task_discovery_rejects_unmatched_selectors(monkeypatch):
+    from main import _discover_tasks
+
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.chdir(root)
+
+    with pytest.raises(ValueError, match="matched no task configs"):
+        _discover_tasks(["image_kernel/task_that_does_not_exist"])
+
+
 if __name__ == "__main__":
     import sys
 

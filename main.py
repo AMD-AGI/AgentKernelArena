@@ -214,12 +214,23 @@ def _configure_logging(
 
 
 def _discover_tasks(tasks: list[str]) -> dict[str, str]:
+    if not tasks:
+        raise ValueError("No task selectors were configured")
+
     if "all" in tasks:
-        return get_task_config()
+        discovered = get_task_config()
+        if not discovered:
+            raise ValueError("Task selector 'all' matched no task configs")
+        return discovered
 
     task_config_dict: dict[str, str] = {}
     for category in tasks:
-        task_config_dict.update(get_task_config(category=category))
+        discovered = get_task_config(category=category)
+        if not discovered:
+            raise ValueError(
+                f"Configured task selector {category!r} matched no task configs"
+            )
+        task_config_dict.update(discovered)
     return task_config_dict
 
 
@@ -377,7 +388,11 @@ def _build_context(
             logger.error(f"Failed to load agent launcher: {e}")
             return None
 
-    configured_tasks = _discover_tasks(tasks)
+    try:
+        configured_tasks = _discover_tasks(tasks)
+    except ValueError as error:
+        logger.error("Task discovery failed: %s", error)
+        return None
     logger.info(f"Found {len(configured_tasks)} configured task(s)")
     task_config_dict = filter_tasks_by_platform(configured_tasks, current_gfx_arch, logger)
     logger.info(f"Found {len(task_config_dict)} runnable task(s) after platform preflight")
