@@ -19,6 +19,7 @@ from agents.forge.launch_agent import (
     _normalize_logical_operator,
     _publication_status,
     _resolve_all_source_files,
+    _resolve_fellow,
     _resolve_framework,
     _resolve_kernel_kind,
 )
@@ -151,10 +152,11 @@ def test_absent_kernel_identity_fields_are_omitted(tmp_path):
     assert "--workload-key" not in argv
 
 
-def test_direct_triton_and_flydsl_backend_resolution():
+def test_configured_backend_resolution_is_forwarded_without_fallback():
     assert _infer_backend({"task_type": "triton2triton"}) == "triton"
     assert _infer_backend({"task_type": "instruction2triton"}) == "triton"
     assert _infer_backend({"task_type": "flydsl2flydsl"}) == "flydsl"
+    assert _infer_backend({"task_type": "torch2torch"}) == "torch"
     assert _infer_backend(
         {"task_type": "image_kernel", "repository_language": "flydsl"}
     ) == "flydsl"
@@ -165,6 +167,18 @@ def test_direct_triton_and_flydsl_backend_resolution():
             "kernel_identity": {"kernel_kind": "ck"},
         }
     ) == "ck"
+    tilelang = {
+        "task_type": "image_kernel",
+        "repository_language": "tilelang",
+        "kernel_identity": {"kernel_kind": "tilelang"},
+    }
+    assert _infer_backend(tilelang) == "tilelang"
+    assert _resolve_fellow(tilelang, {}) == "tilelang-fellow"
+
+
+def test_repository_backend_resolution_requires_explicit_language():
+    with pytest.raises(ValueError, match="requires .*repository_language"):
+        _infer_backend({"task_type": "image_kernel"})
 
 
 def test_balanced_template_logical_operator_matches_hyperloom():
@@ -342,6 +356,8 @@ def test_all_mi355x_tasks_declare_kernel_identity(
     assert _logical_operator(config) == logical_operator
     assert _resolve_kernel_kind(config) == kernel_kind
     assert _resolve_framework(config) == source_owner
+    assert _infer_backend(config) == kernel_kind
+    assert _resolve_fellow(config, {}) == f"{kernel_kind}-fellow"
 
 
 def test_unified_attention_metadata():
@@ -370,6 +386,22 @@ def test_unified_attention_metadata():
         "kernel_unified_attention_3d",
         "reduce_segments",
     }.issubset(config["target_kernel_functions"])
+
+
+def test_tilelang_backend_is_forwarded_to_forge_without_substitution(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    config_path = (
+        root
+        / "tasks"
+        / "image_kernel"
+        / "mi355x_vllm_tilelang_mhc_fused_post_pre"
+        / "config.yaml"
+    )
+    config = yaml.safe_load(config_path.read_text())
+    fellow = _resolve_fellow(config, {})
+
+    assert fellow == "tilelang-fellow"
+    assert _value(_command(tmp_path, fellow=fellow), "--fellow") == fellow
 
 
 def test_unified_attention_correctness_covers_2d_and_3d(monkeypatch):

@@ -8,16 +8,16 @@
 # by the configured Anthropic gateway (ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN).
 model: claude-opus-5
 
-# Backend expertise (fellow) is INFERRED by the launcher, per task family:
-#   * repository / image_kernel tasks -> curated `kernel_kind` first, then
-#     `repository_language`; this keeps HIP source syntax separate from CK/FlyDSL
-#     implementation semantics.
+# Backend expertise (fellow) is resolved by the launcher, per task family:
+#   * repository / image_kernel tasks -> explicit `kernel_kind` first, then
+#     `repository_language`.
 #   * snippet "<src>2<dst>" tasks     -> the target side picks the fellow
 #       triton2triton / instruction2triton -> triton-fellow
 #       hip2hip / cuda2hip / torch2hip      -> hip-fellow
 #       flydsl2flydsl                       -> flydsl-fellow
-# (valid: ck, flydsl, triton, aiter, hip, hipblaslt). To force a specific
-# fellow regardless of the task, uncomment:
+# Arena forwards the resolved name without checking KernelForge's supported
+# backend set; KernelForge owns that validation. To force a specific fellow
+# regardless of the task, uncomment:
 # fellow: triton-fellow
 
 # Loop budget: max_iters is intentionally high so a forge run is bounded by TIME

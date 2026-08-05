@@ -50,5 +50,6 @@ therefore represent the combined operation rather than an individual stage.
 `unified_attention_with_output`, while their source-owner component keeps the
 AITER and vLLM implementations on separate Kernel pages.
 
-TileLang metadata uses `kernel_kind: tilelang`; running it requires a matching
-KernelForge fellow/backend implementation.
+TileLang metadata uses `kernel_kind: tilelang`, so Arena forwards
+`tilelang-fellow` without substituting another backend. KernelForge decides
+whether the installed version supports that fellow.

@@ -41,15 +41,6 @@ from agents import register_agent
 _FORGE_RESULT_SENTINEL = "__FORGE_RESULT__"
 _KB_STATUS_FILE = "arena_forge_status.json"
 _FORGE_SHUTDOWN_MARGIN_SECONDS = 900
-_KERNEL_KIND_BACKENDS = {
-    "aiter": "aiter",
-    "ck": "ck",
-    "flydsl": "flydsl",
-    "hip": "hip",
-    "hipblaslt": "hipblaslt",
-    "torch": "triton",
-    "triton": "triton",
-}
 
 
 def _normalize_gfx_arch(arch: str) -> str:
@@ -336,73 +327,53 @@ def _strip_nested_git(workspace: str, logger: logging.Logger) -> None:
         )
 
 
-# KernelForge fellows available to the single-fellow forge-loop path
-# (see kernel_agents.fellows.base.build_single_fellow_prompt).
-_VALID_FELLOW_BACKENDS = {"ck", "flydsl", "triton", "aiter", "hip", "hipblaslt"}
-
-
-def _kernel_kind_backend(kernel_kind: str) -> str:
-    """Map an explicit implementation kind to its KernelForge fellow backend."""
-    kind = str(kernel_kind or "").strip().lower().replace("-", "_")
-    if kind == "ck" or kind.startswith("ck_") or kind.endswith("_ck"):
-        return "ck"
-    if "flydsl" in kind:
-        return "flydsl"
-    if "triton" in kind:
-        return "triton"
-    return _KERNEL_KIND_BACKENDS.get(kind, "")
+def _normalize_fellow_backend(value: Any) -> str:
+    return str(value or "").strip().lower().replace("-", "_")
 
 
 def _infer_backend(task_config: dict[str, Any]) -> str:
-    """Infer the fellow backend (kernel language) from the task config.
+    """Resolve the configured backend name that Arena forwards to KernelForge.
 
     Two task families need different signals:
 
       * Repository / image_kernel tasks ship a whole source tree, not a
-        "<src>2<dst>" pair, so their task_type carries no language. A curated
-        ``kernel_kind`` selects CK/FlyDSL/Triton semantics when present; otherwise
-        ``repository_language`` describes the editable source language. The
-        source REPO (aiter / sglang) must NOT be used as the fellow.
+        "<src>2<dst>" pair, so their explicit ``kernel_kind`` wins when present;
+        otherwise ``repository_language`` describes the editable source language.
       * Snippet tasks are "<source>2<target>" (triton2triton, cuda2hip,
         torch2hip, flydsl2flydsl, instruction2triton, ...); the optimized kernel
         is in the TARGET language, i.e. the part after the last '2'.
 
-    A repo/image task that lacks a usable ``repository_language`` falls through
-    to the generic heuristics (keyword scan, then triton) with a warning: a
-    mislabeled fellow only degrades the run, it never hard-fails it.
+    Arena does not maintain KernelForge's supported-backend registry and does not
+    substitute an unknown backend. KernelForge owns support validation.
     """
-    task_type = str(task_config.get("task_type") or "").lower().strip()
+    task_type = _normalize_fellow_backend(task_config.get("task_type"))
 
     if task_type in ("image_kernel", "repository"):
         identity_config = task_config.get("kernel_identity") or {}
         if not isinstance(identity_config, dict):
             identity_config = {}
-        kernel_kind = str(
+        kernel_kind = _normalize_fellow_backend(
             identity_config.get("kernel_kind")
             or task_config.get("kernel_kind")
             or ""
-        ).lower().strip().replace("-", "_")
-        kind_backend = _kernel_kind_backend(kernel_kind)
-        if kind_backend:
-            return kind_backend
+        )
+        if kernel_kind:
+            return kernel_kind
 
-        lang = str(task_config.get("repository_language") or "").lower().strip()
-        if lang in _VALID_FELLOW_BACKENDS:
-            return lang
-        logging.getLogger(__name__).warning(
-            "Task type %r has no usable 'repository_language' (got %r); falling "
-            "back to generic backend inference. Set repository_language to one "
-            "of %s to select the correct fellow.",
-            task_type, lang, sorted(_VALID_FELLOW_BACKENDS),
+        repository_language = _normalize_fellow_backend(
+            task_config.get("repository_language")
+        )
+        if repository_language:
+            return repository_language
+        raise ValueError(
+            f"Task type {task_type!r} requires kernel_identity.kernel_kind, "
+            "kernel_kind, or repository_language to select a Forge fellow"
         )
 
     target = task_type.rsplit("2", 1)[-1] if "2" in task_type else task_type
-    if target in _VALID_FELLOW_BACKENDS:
-        return target
-    for backend in _VALID_FELLOW_BACKENDS:
-        if backend in task_type:
-            return backend
-    return "triton"
+    if not target:
+        raise ValueError("task_type is required to select a Forge fellow")
+    return target
 
 
 def _resolve_fellow(task_config: dict[str, Any], agent_config: dict[str, Any]) -> str:
@@ -978,7 +949,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logger.info(f"  driver:      {driver_dest}")
     logger.info(f"  gpu target:  {gpu_arch}")
     logger.info(f"  model:       {model}")
-    logger.info(f"  fellow:      {fellow} (inferred from task_type={task_config.get('task_type')!r})")
+    logger.info(f"  fellow:      {fellow} (resolved from task configuration)")
     logger.info(f"  operator:    {logical_operator or '<forge inference>'}")
     logger.info(f"  kernel kind: {kernel_kind}")
     logger.info(f"  source owner:{framework or '<unknown>'}")
