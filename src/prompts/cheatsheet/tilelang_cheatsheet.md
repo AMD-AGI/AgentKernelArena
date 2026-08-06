@@ -168,8 +168,9 @@ Guidelines:
 - One block per token is right when each token's work is small and independent. Once
   tokens exceed a few thousand, tile the token dimension instead so blocks stay
   resident and launch overhead amortizes.
-- Grid dimensions become the block indices in declaration order — keep the fastest
-  varying dimension last for locality.
+- Grid dimensions become the block indices in declaration order: the first grid
+  argument maps to `blockIdx.x`, so put the fastest-varying logical grid dimension
+  first for locality.
 
 ---
 
@@ -177,9 +178,9 @@ Guidelines:
 
 ```python
 # pass 1: partial results into [n_splits, tokens, ...]
-with T.Kernel(num_tokens, n_tiles, n_splits, threads=n_thr) as (i_n, i_t, i_s):
+with T.Kernel(num_tokens, n_tiles, n_splits, threads=n_thr) as (i_t, i_n, i_s):
     ...
-    out[i_s, i_n, out_idx] = partial
+    out[i_s, i_t, out_idx] = partial
 
 # pass 2: combine the splits
 for i_split in T.serial(n_splits):

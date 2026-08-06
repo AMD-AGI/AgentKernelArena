@@ -219,11 +219,13 @@ are protected and the run will be rejected if they change:
 - `performance_utils_pytest.py`
 - files ending in `_test.py`, `_test.cpp`, `_test.cu`, `_test.hip`, or `_harness.py`
 
-The last two rules match by **name, anywhere in the workspace** — not just inside a
-test directory. If you create your own scratch, profiling, or sweep script, give it a
-name outside those patterns (`dev/sweep.py`, `bench_scratch.py`) and keep it out of the
-protected directories. Any file you create that matches a protected pattern is deleted
-before scoring, so work placed there is simply lost.
+The directory rules match those directory names in any path component. Every filename
+and suffix rule matches by **name, anywhere in the workspace** — for example, both
+`dev/config.yaml` and `dev/extra_test.py` are protected. If you create your own scratch,
+profiling, or sweep script, give it a name outside those patterns (`dev/sweep.py`,
+`bench_scratch.py`) and keep it out of the protected directories. Any file you create
+that matches a protected pattern is deleted before scoring, so work placed there is
+simply lost.
 
 Only optimize the kernel implementation and its real source dependencies. Do not
 improve the score by changing inputs, expected outputs, tolerances, iteration
