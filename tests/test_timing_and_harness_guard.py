@@ -64,6 +64,21 @@ def test_harness_guard_rejects_harness_edits(tmp_path):
         verify_workspace_harness(snapshot)
 
 
+def test_harness_guard_rejects_harness_deletion(tmp_path):
+    from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
+
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    runner = scripts / "task_runner.py"
+    runner.write_text("print('measure honestly')\n")
+
+    snapshot = snapshot_workspace_harness(tmp_path)
+    runner.unlink()
+
+    with pytest.raises(RuntimeError, match="deleted="):
+        verify_workspace_harness(snapshot)
+
+
 def test_harness_guard_allows_source_edits(tmp_path):
     from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
 
@@ -77,3 +92,85 @@ def test_harness_guard_allows_source_edits(tmp_path):
     kernel.write_text("def kernel(): return 1\n")
 
     verify_workspace_harness(snapshot)
+
+
+def test_harness_guard_discards_agent_created_scratch_file(tmp_path):
+    """A scratch file the agent invents cannot have influenced the baseline score.
+
+    Real case: an agent spent 28 minutes optimizing, then left `dev/extra_test.py`
+    behind. The name matched the global `*_test.py` rule and the whole run was thrown
+    away. Deleting the file restores the measured state exactly, so the run survives.
+    """
+    from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "kernel.py").write_text("def kernel(): pass\n")
+
+    snapshot = snapshot_workspace_harness(tmp_path)
+
+    dev = tmp_path / "dev"
+    dev.mkdir()
+    scratch = dev / "extra_test.py"
+    scratch.write_text("print('scratch sweep')\n")
+
+    verify_workspace_harness(snapshot)
+
+    assert not scratch.exists(), "the agent-created protected-pattern file must be removed"
+
+
+def test_harness_guard_discards_added_file_but_still_rejects_real_tampering(tmp_path):
+    from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
+
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    runner = scripts / "task_runner.py"
+    runner.write_text("print('measure honestly')\n")
+
+    snapshot = snapshot_workspace_harness(tmp_path)
+
+    added = tmp_path / "sweep_test.py"
+    added.write_text("print('scratch')\n")
+    runner.write_text("print('fake a faster result')\n")
+
+    with pytest.raises(RuntimeError) as excinfo:
+        verify_workspace_harness(snapshot)
+
+    assert "modified=" in str(excinfo.value)
+    assert not added.exists()
+
+
+def test_harness_guard_discards_file_added_inside_protected_dir(tmp_path):
+    from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
+
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_existing.py").write_text("def test_a(): pass\n")
+
+    snapshot = snapshot_workspace_harness(tmp_path)
+
+    sneaky = tests_dir / "conftest_override.py"
+    sneaky.write_text("def pytest_collection_modifyitems(items): items.clear()\n")
+
+    verify_workspace_harness(snapshot)
+
+    assert not sneaky.exists()
+    assert (tests_dir / "test_existing.py").exists()
+
+
+def test_harness_guard_logs_every_discard(tmp_path):
+    from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
+
+    snapshot = snapshot_workspace_harness(tmp_path)
+    (tmp_path / "scratch_test.py").write_text("print('x')\n")
+
+    warnings = []
+
+    class _Recorder:
+        def warning(self, message):
+            warnings.append(message)
+
+    verify_workspace_harness(snapshot, logger=_Recorder())
+
+    assert any("scratch_test.py" in w for w in warnings), \
+        "a removal that leaves no trace is worse than a hard failure"

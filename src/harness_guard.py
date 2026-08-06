@@ -4,6 +4,10 @@
 Agents should optimize kernels, not the measurement harness.  This module
 records a digest snapshot of task-owned harness files before an agent runs and
 verifies that those files are unchanged before scoring.
+
+Note that the protected set is defined by naming patterns, not only by location, so a
+file an agent creates anywhere in the workspace can fall inside it.  Such files are
+discarded rather than treated as tampering; see ``verify_workspace_harness``.
 """
 
 from __future__ import annotations
@@ -83,29 +87,56 @@ def snapshot_workspace_harness(root: Path) -> WorkspaceSnapshot:
     return WorkspaceSnapshot(root=root, digests=digests)
 
 
-def verify_workspace_harness(snapshot: WorkspaceSnapshot) -> None:
-    """Raise if any protected harness file was modified, deleted, or added."""
+def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None) -> None:
+    """Reject tampering with protected harness files; discard ones the agent added.
 
-    current = {
-        str(path.relative_to(snapshot.root)): _sha256(path)
-        for path in sorted(_iter_protected_files(snapshot.root))
-    }
+    Editing or deleting a harness file the task shipped is harness hacking and the score
+    is refused.  A file the agent *created* is a different case: the baseline harness ran
+    without it, so deleting it restores exactly the state that was measured, and no score
+    can have been influenced by it.  Discarding it is therefore as safe as rejecting the
+    run, and it does not throw away hours of legitimate kernel work because the agent left
+    a scratch file whose name happened to end in ``_test.py``.
+
+    Deletions are always logged: a silent removal would be worse than a hard failure.
+    """
+
+    def _scan() -> dict[str, str]:
+        return {
+            str(path.relative_to(snapshot.root)): _sha256(path)
+            for path in sorted(_iter_protected_files(snapshot.root))
+        }
+
     before = snapshot.digests
+    current = _scan()
+
+    discarded = sorted(rel for rel in current if rel not in before)
+    for rel in discarded:
+        (snapshot.root / rel).unlink()
+        message = (
+            f"Discarded agent-created file matching a protected harness pattern: {rel}. "
+            "It did not exist when the baseline was measured, so it cannot contribute to "
+            "the score; scratch files must not use harness/test naming."
+        )
+        if logger is not None:
+            logger.warning(message)
+
+    if discarded:
+        current = _scan()
+
     modified = sorted(
         rel for rel, digest in before.items()
         if rel in current and current[rel] != digest
     )
     deleted = sorted(rel for rel in before if rel not in current)
-    added = sorted(rel for rel in current if rel not in before)
-    if not (modified or deleted or added):
+    if not (modified or deleted):
         return
     details = []
     if modified:
         details.append(f"modified={modified}")
     if deleted:
         details.append(f"deleted={deleted}")
-    if added:
-        details.append(f"added={added}")
+    if discarded:
+        details.append(f"discarded={discarded}")
     raise RuntimeError(
         "Protected test/harness files changed during agent execution; "
         "kernel score is rejected to prevent harness hacking: "

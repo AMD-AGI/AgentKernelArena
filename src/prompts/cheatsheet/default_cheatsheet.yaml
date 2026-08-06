@@ -33,6 +33,7 @@ architecture:
       triton: src/prompts/cheatsheet/triton_rdna_cheatsheet.md
 
 knowledge:
-  hip:    src/prompts/cheatsheet/hip_cheatsheet.md
-  triton: src/prompts/cheatsheet/triton_cheatsheet.md
-  flydsl: src/prompts/cheatsheet/flydsl_cheatsheet.md
+  hip:      src/prompts/cheatsheet/hip_cheatsheet.md
+  triton:   src/prompts/cheatsheet/triton_cheatsheet.md
+  flydsl:   src/prompts/cheatsheet/flydsl_cheatsheet.md
+  tilelang: src/prompts/cheatsheet/tilelang_cheatsheet.md

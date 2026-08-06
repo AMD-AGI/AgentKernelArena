@@ -214,11 +214,16 @@ Do **not** modify task harness, test, scoring, or measurement files. These files
 are protected and the run will be rejected if they change:
 
 - `config.yaml` / `config.yml`
-- anything under `scripts/`
-- anything under `test/` or `tests/`
+- anything under `script/`, `scripts/`, `test/`, or `tests/`
 - `conftest.py`
 - `performance_utils_pytest.py`
-- files ending in `_test.py`, `_test.cpp`, `_test.cu`, or `_test.hip`
+- files ending in `_test.py`, `_test.cpp`, `_test.cu`, `_test.hip`, or `_harness.py`
+
+The last two rules match by **name, anywhere in the workspace** — not just inside a
+test directory. If you create your own scratch, profiling, or sweep script, give it a
+name outside those patterns (`dev/sweep.py`, `bench_scratch.py`) and keep it out of the
+protected directories. Any file you create that matches a protected pattern is deleted
+before scoring, so work placed there is simply lost.
 
 Only optimize the kernel implementation and its real source dependencies. Do not
 improve the score by changing inputs, expected outputs, tolerances, iteration
