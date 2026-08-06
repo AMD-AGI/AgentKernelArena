@@ -1,0 +1,50 @@
+[
+ {
+  "test_case_id": "c2",
+  "count": 1,
+  "args_sig": [],
+  "kwargs_sig": {},
+  "params_repr": {
+   "B": 2,
+   "q_len": 1,
+   "kv_len": 1024,
+   "num_query_heads": 64,
+   "num_kv_heads": 8,
+   "head_size": 64,
+   "block_size": 64,
+   "regime": "decode"
+  }
+ },
+ {
+  "test_case_id": "c32",
+  "count": 1,
+  "args_sig": [],
+  "kwargs_sig": {},
+  "params_repr": {
+   "B": 32,
+   "q_len": 1,
+   "kv_len": 1024,
+   "num_query_heads": 64,
+   "num_kv_heads": 8,
+   "head_size": 64,
+   "block_size": 64,
+   "regime": "decode"
+  }
+ },
+ {
+  "test_case_id": "c64",
+  "count": 1,
+  "args_sig": [],
+  "kwargs_sig": {},
+  "params_repr": {
+   "B": 64,
+   "q_len": 1,
+   "kv_len": 1024,
+   "num_query_heads": 64,
+   "num_kv_heads": 8,
+   "head_size": 64,
+   "block_size": 64,
+   "regime": "decode"
+  }
+ }
+]

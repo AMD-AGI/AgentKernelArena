@@ -1,0 +1,993 @@
+[
+  {
+    "test_case_id": "sig_91eb270fe708",
+    "count": 95880,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          128,
+          4096
+        ],
+        "stride": [
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          4096
+        ],
+        "stride": [
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+        "count": 95880
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_a6f816730e0a",
+    "count": 1024,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          37984,
+          4096
+        ],
+        "stride": [
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          4096
+        ],
+        "stride": [
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+        "count": 1024
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_34c6787c2d55",
+    "count": 98304,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          512,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+        "count": 49152
+      },
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_hip",
+        "count": 49152
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_f376ca31172d",
+    "count": 73728,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          16,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+        "count": 36864
+      },
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_hip",
+        "count": 36864
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_ae3e0c7506c3",
+    "count": 2056,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          37984,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+        "count": 1028
+      },
+      {
+        "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_hip",
+        "count": 1028
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_06de0e61e142",
+    "count": 24480,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          128,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+        "count": 12240
+      },
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_hip",
+        "count": 12240
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_f97e2b0e3611",
+    "count": 512,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          151936,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          2048
+        ],
+        "stride": [
+          2048,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+        "count": 256
+      },
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_hip",
+        "count": 256
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_a6a0fd1cdc57",
+    "count": 709920,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          256,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_default",
+        "count": 118320
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_hip",
+        "count": 118320
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton_mla",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton_mla",
+        "count": 118320
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_default",
+        "count": 118320
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_hip",
+        "count": 118320
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton_mla",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton_mla",
+        "count": 118320
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_c423f8c6d387",
+    "count": 12288,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          16160,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_default",
+        "count": 2048
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_hip",
+        "count": 2048
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-R1",
+        "engine": "vllm",
+        "mode": "triton_mla",
+        "combo": "deepseek-ai_DeepSeek-R1__vllm_triton_mla",
+        "count": 2048
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_default",
+        "count": 2048
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_hip",
+        "count": 2048
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton_mla",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton_mla",
+        "count": 2048
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_228a0a69990f",
+    "count": 373320,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          64,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ],
+    "sources": [
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_default",
+        "count": 124440
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_hip",
+        "count": 124440
+      },
+      {
+        "model": "deepseek-ai_DeepSeek-V3.2",
+        "engine": "vllm",
+        "mode": "triton_mla",
+        "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton_mla",
+        "count": 124440
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_291b8dd0b92c",
+    "count": 18360,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          5120,
+          2880
+        ],
+        "stride": [
+          2880,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          2880
+        ],
+        "stride": [
+          2880,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          5120
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ],
+    "sources": [
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "openai_gpt-oss-120b__vllm_default",
+        "count": 9180
+      },
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "openai_gpt-oss-120b__vllm_hip",
+        "count": 9180
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_d257625fefea",
+    "count": 18360,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          2880,
+          4096
+        ],
+        "stride": [
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          4096
+        ],
+        "stride": [
+          4096,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          2880
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ],
+    "sources": [
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "openai_gpt-oss-120b__vllm_default",
+        "count": 9180
+      },
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "openai_gpt-oss-120b__vllm_hip",
+        "count": 9180
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_feea1eea6fbf",
+    "count": 18360,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          128,
+          2880
+        ],
+        "stride": [
+          2880,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          2880
+        ],
+        "stride": [
+          2880,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          128
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ],
+    "sources": [
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "openai_gpt-oss-120b__vllm_default",
+        "count": 9180
+      },
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "openai_gpt-oss-120b__vllm_hip",
+        "count": 9180
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_6688e58ae019",
+    "count": 512,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          201088,
+          2880
+        ],
+        "stride": [
+          2880,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          2880
+        ],
+        "stride": [
+          2880,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ],
+    "sources": [
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "openai_gpt-oss-120b__vllm_default",
+        "count": 256
+      },
+      {
+        "model": "openai_gpt-oss-120b",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "openai_gpt-oss-120b__vllm_hip",
+        "count": 256
+      }
+    ]
+  }
+]
