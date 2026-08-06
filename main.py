@@ -514,7 +514,7 @@ def run_task(
             # protected harness/test files or generated perf helpers. Verify the
             # harness is untouched, then re-materialize perf helpers from
             # src/tools/perf/ so benchmark methodology stays canonical.
-            verify_workspace_harness(harness_snapshot)
+            verify_workspace_harness(harness_snapshot, logger=logger)
             materialize_perf_helpers_in_workspace(workspace_path, logger=logger)
             logger.info("Running centralized evaluation...")
             evaluation_results = evaluate_kernel(

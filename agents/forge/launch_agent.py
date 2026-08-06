@@ -569,9 +569,14 @@ keeping numerical results correct (the loop gates on an SNR threshold).
 2. Do NOT change the kernel's function signature or parameter list.
 3. Do NOT remove imports or helper utilities in the file.
 4. Do NOT edit task harness, test, scoring, or measurement files (`config.yaml`,
-   `scripts/`, `test/`, `tests/`, `conftest.py`, `performance_utils_pytest.py`,
-   `*_test.py`, `*_test.cpp`, `*_test.cu`, `*_test.hip`). The Arena runner
-   hashes these files and rejects the score if they change.
+   `script/`, `scripts/`, `test/`, `tests/`, `conftest.py`,
+   `performance_utils_pytest.py`, `*_test.py`, `*_test.cpp`, `*_test.cu`,
+   `*_test.hip`, `*_harness.py`). The Arena runner hashes these files and rejects
+   the score if they change. Directory rules match any path component; filename and
+   suffix rules match anywhere in the workspace, so both `dev/config.yaml` and
+   `dev/extra_test.py` are protected. Name your own scratch scripts outside those
+   patterns (`dev/sweep.py`) — a file you create that matches is deleted before
+   scoring.
 5. Build, run, and verify your edit YOURSELF (compile, run the driver, profile)
    before finishing. The loop additionally runs a canonical correctness (SNR gate)
    and benchmark pass on your final kernel after you stop.
