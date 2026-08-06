@@ -21,7 +21,7 @@ A run configuration defines a single experiment. Start from a file under
 | `tasks` | list of strings | Task selectors relative to `tasks/`. Use `all` for every task, a category prefix for a group, or a full path for a single task. |
 | `target_gpu_model` | string | Target GPU model, for example `MI300` or `MI355X`. Used to select the Docker image architecture, set `PYTORCH_ROCM_ARCH`, and name the workspace. |
 | `log_directory` | string | Directory for run logs. |
-| `workspace_directory_prefix` | string | Prefix for the workspace directory. The full name is `<prefix>_<gpu>_<agent>`. |
+| `workspace_directory_prefix` | string | Prefix for the workspace directory. Runs are stored under the ignored path `experiments/<prefix>_<gpu>_<agent>`. |
 
 Specialized GEAK and mini-swe integrations also accept some optional top-level
 fields:

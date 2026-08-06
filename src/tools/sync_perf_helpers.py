@@ -14,9 +14,9 @@ Run this script after adding tasks or changing marker/stub structure:
 Two helper families:
   1. Every */rocmbench/**/performance_utils_pytest.py should be the committed
      stub from src.perf_helper_materialization. setup_workspace() replaces it.
-  2. Every triton2triton/vllm/*/scripts/task_runner.py should contain the
-     committed stub block between AKA-GENERATED markers. setup_workspace()
-     replaces that block.
+  2. Every triton2triton/vllm/*/scripts/task_runner.py, plus any other task
+     runner that opts in with AKA-GENERATED markers, should contain the
+     committed stub block. setup_workspace() replaces that block.
 """
 import argparse
 import pathlib
@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT))
 from src.perf_helper_materialization import (  # noqa: E402
     ROCMBENCH_HELPER_STUB,
     VLLM_HELPER_STUB_BLOCK,
-    image_kernel_targets,
+    marked_task_runner_targets,
     replace_marked_region,
     rocmbench_targets,
     vllm_targets,
@@ -50,7 +50,9 @@ def main() -> int:
                 p.write_text(ROCMBENCH_HELPER_STUB)
                 wrote += 1
 
-    inline_targets = list(vllm_targets(ROOT)) + list(image_kernel_targets(ROOT))
+    inline_targets = sorted(
+        set(vllm_targets(ROOT)) | set(marked_task_runner_targets(ROOT))
+    )
     for p in inline_targets:
         cur = p.read_text()
         new = replace_marked_region(cur, VLLM_HELPER_STUB_BLOCK)
@@ -73,8 +75,8 @@ def main() -> int:
         return 0
 
     print(f"synced {wrote} file(s) "
-          f"({len(rocmbench_targets(ROOT))} rocmbench + {len(vllm_targets(ROOT))} vllm "
-          f"+ {len(image_kernel_targets(ROOT))} image_kernel checked)")
+          f"({len(rocmbench_targets(ROOT))} rocmbench + "
+          f"{len(inline_targets)} inline task runners checked)")
     return 0
 
 

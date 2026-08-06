@@ -92,7 +92,7 @@ def _marker_filtered_targets(root: Path, pattern: str) -> list[Path]:
     bespoke timer are left untouched.
     """
     targets = []
-    for p in sorted(glob.glob(str(root / pattern))):
+    for p in sorted(glob.glob(str(root / pattern), recursive=True)):
         text = Path(p).read_text()
         if any(marker in text for marker in MARK_STARTS) or MARK_END in text:
             targets.append(Path(p))
@@ -102,6 +102,17 @@ def _marker_filtered_targets(root: Path, pattern: str) -> list[Path]:
 def image_kernel_targets(root: Path = ROOT) -> list[Path]:
     """Return committed image_kernel task runners that carry a generated helper region."""
     return _marker_filtered_targets(root, "tasks/image_kernel/*/scripts/task_runner.py")
+
+
+def marked_task_runner_targets(root: Path = ROOT) -> list[Path]:
+    """Return any task runner that opts into the shared inline timing helper.
+
+    vLLM runners remain mandatory targets through :func:`vllm_targets`. Other
+    task suites opt in by carrying the AKA-GENERATED marker block, which lets
+    new suites use the canonical helper without adding another path-specific
+    scanner here.
+    """
+    return _marker_filtered_targets(root, "tasks/**/scripts/task_runner.py")
 
 
 def canonical_rocmbench_helper(root: Path = ROOT) -> str:

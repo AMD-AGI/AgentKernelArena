@@ -13,7 +13,7 @@ The module keeps three kinds of files separate:
 Normal run reports remain under:
 
 ```text
-workspace_<gpu>_<agent>/run_<timestamp>/reports/
+experiments/workspace_<gpu>_<agent>/run_<timestamp>/reports/
 ```
 
 ## Commands

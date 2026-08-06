@@ -95,7 +95,7 @@ Add a suffix to label a run directory (useful for A/B testing):
 
 ```bash
 make docker-run CONFIG="$CONFIG_PATH" RUN_ARGS="--run-suffix cursor_with_mcp"
-# → workspace_MI300_cursor/run_20260617_101500_cursor_with_mcp
+# → experiments/workspace_MI300_cursor/run_20260617_101500_cursor_with_mcp
 ```
 
 For debugging, enter the same Docker runtime used by the experiment:
@@ -193,10 +193,10 @@ make docker-parallel-run CONFIG="$CONFIG_PATH" GPU_IDS=0,1,2,3 RUN_ARGS="--resum
 
 ## Read the results
 
-A run produces this layout under the workspace directory:
+A run produces this ignored layout under `experiments/`:
 
 ```text
-workspace_<gpu>_<agent>/
+experiments/workspace_<gpu>_<agent>/
 └── run_<timestamp>/
     ├── .parallel/              # present for docker-parallel-run
     │   ├── pending/

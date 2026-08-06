@@ -52,7 +52,7 @@ make docker-parallel-run \
 The runner creates a shared queue in the run directory:
 
 ```text
-workspace_<gpu>_<agent>/
+experiments/workspace_<gpu>_<agent>/
 └── run_<timestamp>[_suffix]/
     └── .parallel/
         ├── pending/

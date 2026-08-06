@@ -40,8 +40,8 @@ Compare the generated reports directly:
 
 ```bash
 python3 src/tools/compare_runs.py \
-  workspace_MI300_claude_code/run_<timestamp>_baseline \
-  workspace_MI300_claude_code/run_<timestamp>_treatment
+  experiments/workspace_MI300_claude_code/run_<timestamp>_baseline \
+  experiments/workspace_MI300_claude_code/run_<timestamp>_treatment
 ```
 
 For visual comparison, build the local dashboard as described in the
@@ -57,6 +57,7 @@ the observed deltas together with run-to-run variance.
 AgentKernelArena/
 ├── main.py                         # Run orchestration, resume, and parallel queue
 ├── example_configs/                # Quickstart and curated benchmark run configs
+├── experiments/                    # Ignored generated workspaces and run artifacts
 ├── src/
 │   ├── module_registration.py     # Agent registration and handler selection
 │   ├── preprocessing.py            # Workspace and repository setup

@@ -9,7 +9,7 @@ performance on the unseen shapes.
 
 Usage:
     python3 -m src.held_out.run_heldout_eval \
-        --run-dir workspace_MI300_cursor/run_20260417_142419 \
+        --run-dir experiments/workspace_MI300_cursor/run_20260417_142419 \
         --heldout-dir held_out_tests/ \
         --tasks-dir tasks/ \
         [--output-suffix _heldout]
@@ -507,7 +507,7 @@ def main():
     parser = argparse.ArgumentParser(description="Held-out evaluation for AgentKernelArena")
     parser.add_argument(
         "--run-dir", required=True,
-        help="Path to the completed run directory (e.g. workspace_MI300_cursor/run_20260417_142419)",
+        help="Path to the completed run directory (e.g. experiments/workspace_MI300_cursor/run_20260417_142419)",
     )
     parser.add_argument(
         "--heldout-dir", required=True,

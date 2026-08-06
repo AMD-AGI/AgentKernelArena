@@ -12,7 +12,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from src.visualization.paths import DATA_ROOT, PROJECT_ROOT, REPORTS_ROOT
+from src.visualization.paths import (
+    DATA_ROOT,
+    EXPERIMENTS_ROOT,
+    PROJECT_ROOT,
+    REPORTS_ROOT,
+)
 
 
 OUTPUT_JSON = DATA_ROOT / "data.json"
@@ -80,7 +85,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--include-workspace-runs",
         action="store_true",
-        help="Also scan workspace_*/run_*/reports outside .visualization/reports.",
+        help="Also scan experiments/workspace_*/run_*/reports.",
     )
     return parser.parse_args()
 
@@ -101,10 +106,11 @@ def is_workspace_run_report_directory(report_dir: Path) -> bool:
         return False
 
     return (
-        len(relative.parts) == 3
-        and relative.parts[0].startswith("workspace_")
-        and relative.parts[1].startswith("run_")
-        and relative.parts[2] == "reports"
+        len(relative.parts) == 4
+        and relative.parts[0] == "experiments"
+        and relative.parts[1].startswith("workspace_")
+        and relative.parts[2].startswith("run_")
+        and relative.parts[3] == "reports"
     )
 
 
@@ -129,9 +135,11 @@ def discover_report_directories(include_workspace_runs: bool = False) -> list[Pa
             seen.add(report_dir)
             report_dirs.append(report_dir)
 
-    if include_workspace_runs:
+    if include_workspace_runs and EXPERIMENTS_ROOT.is_dir():
         for workspace_dir in sorted(
-            p for p in PROJECT_ROOT.iterdir() if p.is_dir() and p.name.startswith("workspace_")
+            p
+            for p in EXPERIMENTS_ROOT.iterdir()
+            if p.is_dir() and p.name.startswith("workspace_")
         ):
             for run_dir in sorted(
                 p for p in workspace_dir.iterdir() if p.is_dir() and p.name.startswith("run_")
