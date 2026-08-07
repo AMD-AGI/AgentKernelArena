@@ -154,15 +154,29 @@ def read_kfd_topology(topology_root: Path) -> list[dict[str, Any]]:
         raise GpuBoundaryError(f"KFD topology has no numeric nodes: {topology_root}")
     for entry in numeric_entries:
         properties_path = entry / "properties"
+        gpu_id_path = entry / "gpu_id"
         properties = _parse_properties(properties_path)
-        raw_gpu_id = properties.get("gpu_id")
-        if raw_gpu_id is None:
-            if _nonnegative_int(properties.get("simd_count", "0"), "simd_count") > 0:
-                raise GpuBoundaryError(f"GPU KFD node lacks gpu_id: {entry}")
-            continue
-        gpu_id = _nonnegative_int(raw_gpu_id, f"{properties_path} gpu_id")
+        try:
+            gpu_id_bytes = gpu_id_path.read_bytes()
+            raw_gpu_id = gpu_id_bytes.decode("ascii")
+        except (OSError, UnicodeError) as error:
+            raise GpuBoundaryError(
+                f"cannot read KFD gpu_id: {gpu_id_path}: {error}"
+            ) from error
+        gpu_id = _nonnegative_int(raw_gpu_id, f"{gpu_id_path}")
+        simd_count = _nonnegative_int(
+            properties.get("simd_count", ""), f"{properties_path} simd_count"
+        )
         if gpu_id == 0:
+            if simd_count != 0:
+                raise GpuBoundaryError(
+                    f"KFD node has GPU SIMD resources but a zero gpu_id: {entry}"
+                )
             continue
+        if simd_count == 0:
+            raise GpuBoundaryError(
+                f"KFD node has a nonzero gpu_id but no GPU SIMD resources: {entry}"
+            )
         if "unique_id" not in properties or "drm_render_minor" not in properties:
             raise GpuBoundaryError(
                 f"GPU KFD node lacks unique_id or drm_render_minor: {entry}"
@@ -178,6 +192,7 @@ def read_kfd_topology(topology_root: Path) -> list[dict[str, Any]]:
                     properties["unique_id"], f"{properties_path} unique_id"
                 ),
                 "drm_render_minor": render_minor,
+                "gpu_id_sha256": hashlib.sha256(gpu_id_bytes).hexdigest(),
                 "properties_sha256": hashlib.sha256(
                     properties_path.read_bytes()
                 ).hexdigest(),
@@ -237,6 +252,7 @@ def build_plan(
                 {
                     "node_id": node["node_id"],
                     "gpu_id": node["gpu_id"],
+                    "gpu_id_sha256": node["gpu_id_sha256"],
                     "properties_sha256": node["properties_sha256"],
                 }
             )
@@ -356,6 +372,7 @@ def verify_plan(
             for node in kfd_nodes:
                 node_id = node["node_id"]
                 gpu_id = node.get("gpu_id")
+                gpu_id_sha256 = node.get("gpu_id_sha256")
                 properties_sha256 = node.get("properties_sha256")
                 if (
                     not isinstance(node_id, int)
@@ -365,6 +382,8 @@ def verify_plan(
                     or not isinstance(gpu_id, int)
                     or isinstance(gpu_id, bool)
                     or gpu_id <= 0
+                    or not isinstance(gpu_id_sha256, str)
+                    or not _SHA256.fullmatch(gpu_id_sha256)
                     or not isinstance(properties_sha256, str)
                     or not _SHA256.fullmatch(properties_sha256)
                 ):
