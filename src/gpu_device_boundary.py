@@ -156,6 +156,21 @@ def _numeric_topology_entries(topology_root: Path) -> list[Path]:
     return numeric_entries
 
 
+def _read_topology_generation(topology_root: Path) -> int:
+    generation_path = topology_root.parent / "generation_id"
+    try:
+        raw = generation_path.read_bytes()
+        text = raw.decode("ascii")
+    except (OSError, UnicodeError) as error:
+        raise GpuBoundaryError(
+            f"cannot read KFD topology generation: {generation_path}: {error}"
+        ) from error
+    generation = _nonnegative_int(text, f"{generation_path}")
+    if generation > 0xFFFFFFFFFFFFFFFF:
+        raise GpuBoundaryError(f"{generation_path} is outside the uint64 range")
+    return generation
+
+
 def _read_kfd_node(entry: Path) -> dict[str, Any] | None:
     properties_path = entry / "properties"
     gpu_id_path = entry / "gpu_id"
@@ -208,17 +223,32 @@ def _read_kfd_node(entry: Path) -> dict[str, Any] | None:
     }
 
 
-def read_kfd_topology(topology_root: Path) -> list[dict[str, Any]]:
+def _read_kfd_topology_snapshot(
+    topology_root: Path,
+) -> tuple[list[dict[str, Any]], int]:
+    generation_before = _read_topology_generation(topology_root)
+    entries = _numeric_topology_entries(topology_root)
     nodes: list[dict[str, Any]] = []
-    for entry in _numeric_topology_entries(topology_root):
+    for entry in entries:
         node = _read_kfd_node(entry)
         if node is not None:
             nodes.append(node)
+    generation_after = _read_topology_generation(topology_root)
+    entries_after = _numeric_topology_entries(topology_root)
+    if generation_after != generation_before or [entry.name for entry in entries_after] != [
+        entry.name for entry in entries
+    ]:
+        raise GpuBoundaryError("KFD topology changed during evidence collection")
     if not nodes:
         raise GpuBoundaryError("KFD topology contains no complete GPU nodes")
     gpu_ids = [node["gpu_id"] for node in nodes]
     if len(gpu_ids) != len(set(gpu_ids)):
         raise GpuBoundaryError("KFD topology contains duplicate nonzero gpu_id values")
+    return nodes, generation_before
+
+
+def read_kfd_topology(topology_root: Path) -> list[dict[str, Any]]:
+    nodes, _ = _read_kfd_topology_snapshot(topology_root)
     return nodes
 
 
@@ -235,7 +265,7 @@ def _permission_denied(error: BaseException) -> bool:
 
 def _read_selected_runtime_topology(
     topology_root: Path, selected: Mapping[str, Any]
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], int]:
     expected: dict[int, dict[str, Any]] = {}
     for render in selected["render_nodes"]:
         for planned in render["kfd_nodes"]:
@@ -247,8 +277,10 @@ def _read_selected_runtime_topology(
                 "drm_render_minor": render["minor"],
             }
 
+    generation_before = _read_topology_generation(topology_root)
+    entries = _numeric_topology_entries(topology_root)
     observed: list[dict[str, Any]] = []
-    for entry in _numeric_topology_entries(topology_root):
+    for entry in entries:
         node_id = int(entry.name)
         try:
             node = _read_kfd_node(entry)
@@ -274,9 +306,15 @@ def _read_selected_runtime_topology(
                     f"live selected KFD node {node_id} differs from planned {key}"
                 )
         observed.append(node)
+    generation_after = _read_topology_generation(topology_root)
+    entries_after = _numeric_topology_entries(topology_root)
+    if generation_after != generation_before or [entry.name for entry in entries_after] != [
+        entry.name for entry in entries
+    ]:
+        raise GpuBoundaryError("KFD topology changed during runtime verification")
     if {node["node_id"] for node in observed} != set(expected):
         raise GpuBoundaryError("live KFD topology is missing a planned selected node")
-    return sorted(observed, key=lambda node: node["node_id"])
+    return sorted(observed, key=lambda node: node["node_id"]), generation_before
 
 
 def _character_device(path: Path, stat_fn: StatFn) -> dict[str, int]:
@@ -299,7 +337,7 @@ def build_plan(
 ) -> dict[str, Any]:
     ordered = _ordered_gpu_ids(ordered_gpu_ids)
     inventory = parse_rocm_smi_inventory(rocm_smi_inventory)
-    topology = read_kfd_topology(topology_root)
+    topology, topology_generation = _read_kfd_topology_snapshot(topology_root)
     missing = [host_id for host_id in ordered if host_id not in inventory]
     if missing:
         raise GpuBoundaryError(f"rocm-smi inventory lacks requested cards: {missing}")
@@ -371,6 +409,7 @@ def build_plan(
             {host_id: inventory[host_id] for host_id in ordered}
         ),
         "kfd_topology_sha256": canonical_digest(topology),
+        "kfd_topology_generation_id": topology_generation,
     }
     body["sha256"] = canonical_digest(body)
     verify_plan(body, expected_gpu_ids=ordered)
@@ -409,6 +448,14 @@ def verify_plan(
         digest_value = material.get(digest_key)
         if not isinstance(digest_value, str) or not _SHA256.fullmatch(digest_value):
             raise GpuBoundaryError(f"GPU boundary plan has an invalid {digest_key}")
+    topology_generation = material.get("kfd_topology_generation_id")
+    if (
+        not isinstance(topology_generation, int)
+        or isinstance(topology_generation, bool)
+        or topology_generation < 0
+        or topology_generation > 0xFFFFFFFFFFFFFFFF
+    ):
+        raise GpuBoundaryError("GPU boundary plan has an invalid topology generation")
     for device in devices:
         if not isinstance(device, dict):
             raise GpuBoundaryError("GPU boundary device is not an object")
@@ -630,10 +677,13 @@ def verify_runtime_identity(
         int(Path(render["path"]).name.removeprefix("renderD"))
         for render in selected["render_nodes"]
     )
-    matching_nodes = _read_selected_runtime_topology(topology_root, selected)
+    matching_nodes, topology_generation = _read_selected_runtime_topology(
+        topology_root, selected
+    )
     observed_minors = sorted({node["drm_render_minor"] for node in matching_nodes})
     if (
         not matching_nodes
+        or topology_generation != verified["kfd_topology_generation_id"]
         or any(node["unique_id"] != selected["unique_id"] for node in matching_nodes)
         or observed_minors != expected_minors
     ):
@@ -649,6 +699,7 @@ def verify_runtime_identity(
             "gcn_arch_name": str(torch_observation["gcn_arch_name"]),
         },
         "kfd_nodes": matching_nodes,
+        "kfd_topology_generation_id": topology_generation,
         "observed_render_minors": observed_minors,
     }
     receipt = {

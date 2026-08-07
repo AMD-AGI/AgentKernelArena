@@ -60,6 +60,7 @@ def _fake_devices(dev_root: Path, minors: list[int]):
 def _build_xcp_plan(tmp_path: Path, gpu_ids: tuple[str, ...] = ("0",)):
     topology = tmp_path / "topology"
     topology.mkdir()
+    (tmp_path / "generation_id").write_text("1\n", encoding="ascii")
     _write_node(
         topology,
         0,
@@ -158,6 +159,26 @@ def test_resolver_is_deterministic_for_identical_evidence(tmp_path) -> None:
     )
 
     assert first == second
+    assert first["kfd_topology_generation_id"] == 1
+
+
+def test_resolver_rejects_a_generation_change_during_scan(tmp_path, monkeypatch) -> None:
+    _, topology, _, _, _ = _build_xcp_plan(tmp_path)
+    generation_path = topology.parent / "generation_id"
+    original = boundary._read_kfd_node
+    changed = False
+
+    def change_generation(entry):
+        nonlocal changed
+        node = original(entry)
+        if not changed:
+            generation_path.write_text("2\n", encoding="ascii")
+            changed = True
+        return node
+
+    monkeypatch.setattr(boundary, "_read_kfd_node", change_generation)
+    with pytest.raises(boundary.GpuBoundaryError, match="changed during"):
+        boundary.read_kfd_topology(topology)
 
 
 def test_resolver_reads_gpu_id_from_the_kfd_node_file(tmp_path) -> None:
@@ -475,6 +496,42 @@ def test_runtime_verifier_rejects_selected_topology_drift(
     _deny_node_reads(monkeypatch, 9)
 
     with pytest.raises(boundary.GpuBoundaryError):
+        boundary.verify_runtime_identity(
+            plan,
+            "0",
+            structural_receipt=structural,
+            rocm_smi_inventory={"card0": _inventory()["card0"]},
+            torch_observation={
+                "device_count": 1,
+                "device_name": "AMD Instinct MI355X",
+                "gcn_arch_name": "gfx950",
+            },
+            topology_root=topology,
+        )
+
+
+def test_runtime_verifier_rejects_a_different_topology_generation(
+    tmp_path, monkeypatch
+) -> None:
+    plan, topology, dev_root, fake_lstat, _ = _build_xcp_plan(tmp_path)
+    structural = boundary.verify_visible_devices(
+        plan,
+        "0",
+        dev_root=dev_root,
+        stat_fn=fake_lstat,
+        environ={
+            "AGENT_KERNEL_ARENA_HOST_GPU_ID": "0",
+            "AGENT_KERNEL_ARENA_GPU_BOUNDARY_PLAN_SHA256": plan["sha256"],
+            "ROCR_VISIBLE_DEVICES": "0",
+            "HIP_VISIBLE_DEVICES": "0",
+            "CUDA_VISIBLE_DEVICES": "0",
+            "GPU_DEVICE_ORDINAL": "0",
+        },
+    )
+    (topology.parent / "generation_id").write_text("2\n", encoding="ascii")
+    _deny_node_reads(monkeypatch, 9)
+
+    with pytest.raises(boundary.GpuBoundaryError, match="topology"):
         boundary.verify_runtime_identity(
             plan,
             "0",
