@@ -21,6 +21,7 @@ The following agents are available.
 | `cursor` | Cursor Agent CLI |
 | `claude_code` | Anthropic Claude Code CLI |
 | `codex` | OpenAI Codex CLI |
+| `apex` | Apex bundle-producing kernel optimizer; AgentKernelArena remains the evaluator |
 | `geak_v3` | Specialized GEAK integration for HIP optimization |
 | `geak_v3_triton` | Specialized GEAK integration for Triton optimization |
 | `mini_swe_triton` | mini-swe-agent-based Triton optimization |
@@ -40,6 +41,13 @@ The Cursor, Claude Code, and Codex integrations reuse their host CLI login
 state. Specialized integrations have additional setup and configuration under
 their respective `agents/<agent_name>/` directories.
 
+The Apex integration selects one of those three CLIs as its backend (Codex by
+default), translates each supported task into a caller-neutral `TaskSpec`, and
+imports only a validated source patch bundle. Bootstrap Apex's pinned Magpie and
+TraceLens dependencies, set `AKA_APEX_ROOT`, and follow the focused
+[`agents/apex` setup and A/B guide](../../agents/apex/README.md). The Docker
+runner mounts only the selected backend's authentication state.
+
 ## Models, providers, and agent settings
 
 AgentKernelArena has no shared model/provider field in the run configuration.
@@ -58,9 +66,10 @@ make docker-check-agents CONFIG="$CONFIG_PATH"
 ```
 
 Use `AGENTS=<comma-separated names>` for an explicit subset or `AGENTS=all` for
-all three first-class CLIs and login states. Specialized integrations are not
-handled by this command; their README files document their own dependencies,
-API keys, and endpoint configuration.
+all three first-class CLIs and login states. Passing `AGENTS=apex`, or selecting
+an Apex run config, resolves to the one backend configured for Apex. Other
+specialized integrations document their own dependency and endpoint checks in
+their README files.
 
 `make vllm` starts an OpenAI-compatible local endpoint on port `30001`, but it
 does not automatically reconfigure an agent. Point the selected integration at

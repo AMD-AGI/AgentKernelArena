@@ -48,6 +48,7 @@ The following templates are selectable in the current `AgentType` registry. See
 | `cursor` | Cursor Agent CLI and host login state. |
 | `claude_code` | Native/local or npm-installed Claude Code CLI and host login state. |
 | `codex` | Codex CLI and host login state. |
+| `apex` | Read-only, path-stable Apex checkout with its bootstrapped venv plus the single Codex (default), Claude, or Cursor backend selected in `agents/apex/agent_config.yaml`; V1 supports `triton2triton`. |
 | `geak_v3` | GEAK CLI; HIP-oriented integration. |
 | `geak_v3_triton` | GEAK CLI; Triton-oriented integration. |
 | `mini_swe_triton` | mini-swe-agent/GEAK dependencies. |

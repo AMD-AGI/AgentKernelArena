@@ -17,6 +17,9 @@ DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
 # separate from REQUIRED_AGENTS because geak_v4 is normalized to claude_code
 # before Docker arguments are built.
 GEAK_V4_RUNTIME=0
+APEX_RUNTIME=0
+APEX_HOST_ROOT=""
+APEX_CONTAINER_ROOT=""
 
 # /opt/venv/bin is placed before /usr/local/bin and /usr/bin so that a bare
 # `python3` / `pytest` resolves to the torch-enabled venv interpreter rather than
@@ -48,6 +51,8 @@ Environment overrides:
   AKA_DOCKER_IMAGE_GFX950 Default image for gfx950.
   AKA_NODE_PREFIX         Host Node prefix containing bin/node and npm-installed agent CLI(s).
   AKA_AGENTS              Agent CLI(s) to check, comma/space separated; use all for all three.
+  AKA_APEX_ROOT           Host Apex checkout used when agent.template is apex.
+  AKA_APEX_CONTAINER_ROOT Must equal the host Apex path for its editable venv.
 EOF
 }
 
@@ -296,6 +301,28 @@ configure_geak_v4_runtime() {
     fi
 }
 
+configure_apex_runtime() {
+    local config="$1"
+    APEX_RUNTIME=0
+    APEX_HOST_ROOT=""
+    [[ "$(read_agent_template "$config")" == "apex" ]] || return 0
+    APEX_RUNTIME=1
+
+    local candidate="${AKA_APEX_ROOT:-}"
+    if [[ -z "$candidate" && -d "$HOST_ROOT/../Apex" ]]; then
+        candidate="$HOST_ROOT/../Apex"
+    fi
+    [[ -n "$candidate" ]] || die "Apex checkout not found; set AKA_APEX_ROOT"
+    APEX_HOST_ROOT="$(cd "$candidate" 2>/dev/null && pwd || true)"
+    [[ -n "$APEX_HOST_ROOT" && -f "$APEX_HOST_ROOT/main.py" ]] \
+        || die "Apex entrypoint not found below AKA_APEX_ROOT: $candidate/main.py"
+    APEX_CONTAINER_ROOT="${AKA_APEX_CONTAINER_ROOT:-$APEX_HOST_ROOT}"
+    [[ "$APEX_CONTAINER_ROOT" == "$APEX_HOST_ROOT" ]] \
+        || die "AKA_APEX_CONTAINER_ROOT must equal $APEX_HOST_ROOT so the pinned editable venv remains valid"
+    [[ -x "$APEX_HOST_ROOT/.venv/bin/python" ]] \
+        || die "Apex venv missing; run '$APEX_HOST_ROOT/scripts/bootstrap_dependencies.py install' first"
+}
+
 agent_list_contains() {
     local agents="$1"
     local expected="$2"
@@ -311,6 +338,21 @@ read_validator_backend() {
     local cfg="$HOST_ROOT/agents/task_validator/agent_config.yaml"
     [[ -f "$cfg" ]] || { printf 'claude_code\n'; return; }
     sed -nE 's/^backend:[[:space:]]*["'"'"']?([A-Za-z0-9_]+).*/\1/p' "$cfg" | head -n 1
+}
+
+read_apex_backend() {
+    local cfg="$HOST_ROOT/agents/apex/agent_config.yaml"
+    [[ -f "$cfg" ]] || { printf 'codex\n'; return; }
+    sed -nE 's/^backend:[[:space:]]*["'"'"']?([A-Za-z0-9_-]+).*/\1/p' "$cfg" | head -n 1
+}
+
+normalize_backend_agent() {
+    case "$1" in
+        claude|claude_code) printf 'claude_code\n' ;;
+        cursor|cursor-agent) printf 'cursor\n' ;;
+        codex) printf 'codex\n' ;;
+        *) die "Apex backend must be codex, claude, or cursor; got '$1'" ;;
+    esac
 }
 
 # Decide which agent CLIs to provision into the container.
@@ -333,6 +375,7 @@ resolve_required_agents() {
         claude|claude_code) printf 'claude_code\n' ;;
         cursor|cursor-agent) printf 'cursor\n' ;;
         codex) printf 'codex\n' ;;
+        apex) normalize_backend_agent "$(read_apex_backend)" ;;
         # GEAK v4 drives Claude Code; extra deps handled in build/preflight.
         geak_v4|geak-v4|geak) printf 'claude_code\n' ;;
         *) printf '%s\n' "$tmpl" ;;
@@ -359,6 +402,9 @@ normalize_check_agents() {
                 ;;
             codex)
                 normalized+=(codex)
+                ;;
+            apex)
+                normalized+=("$(normalize_backend_agent "$(read_apex_backend)")")
                 ;;
             *)
                 die "docker-check-agents only supports codex, claude_code, cursor, or all; got '$agent'"
@@ -581,6 +627,14 @@ build_docker_args() {
     add_device_if_present /dev/mem
 
     add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR"
+    if [[ "$APEX_RUNTIME" == "1" ]]; then
+        add_mount "$APEX_HOST_ROOT" "$APEX_CONTAINER_ROOT" ro
+        docker_args+=(
+            -e "APEX_ROOT=$APEX_CONTAINER_ROOT"
+            -e "APEX_PYTHON=$APEX_CONTAINER_ROOT/.venv/bin/python"
+            -e "PYTHONDONTWRITEBYTECODE=1"
+        )
+    fi
     # Persistent pip user-base (PYTHONUSERBASE) so `make docker-setup-flydsl` survives
     # across runs. It lives INSIDE the repo dir, which is already bind-mounted above and
     # is owned by the host user — this avoids a separate mount whose source the docker
@@ -988,6 +1042,7 @@ run_parallel() {
     config_name="$(extract_config_name "$@")"
     select_runtime_for_config "$config_name"
     configure_geak_v4_runtime "$config_name"
+    configure_apex_runtime "$config_name"
 
     REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
     AGENTS_STRICT=1
@@ -1069,6 +1124,7 @@ case "${1:-}" in
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
         configure_geak_v4_runtime "$config_name"
+        configure_apex_runtime "$config_name"
         # Only the configured agent's CLI/auth is required for a run.
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
@@ -1084,6 +1140,7 @@ case "${1:-}" in
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
         configure_geak_v4_runtime "$config_name"
+        configure_apex_runtime "$config_name"
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
@@ -1105,6 +1162,7 @@ case "${1:-}" in
             [[ -f "$config_name" ]] || die "config file not found: $config_name"
         fi
         configure_geak_v4_runtime "$config_name"
+        configure_apex_runtime "$config_name"
         # By default, check only the CLI selected by CONFIG. AKA_AGENTS can
         # request one, several, or `all` explicitly.
         REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"

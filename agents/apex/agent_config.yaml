@@ -1,0 +1,26 @@
+# Apex is an orchestrating kernel optimizer. Its selected backend is the only
+# host agent CLI/auth state that AgentKernelArena mounts into the worker.
+backend: codex
+model: gpt-5.5
+effort: xhigh
+
+# APEX_ROOT is preferred at runtime. In the Docker runner the host checkout is
+# mounted read-only at /opt/apex and this value is forwarded automatically.
+apex_root: null
+python_path: null
+
+supported_task_types:
+  - triton2triton
+
+max_iterations: 1
+max_turns: 25
+timeout_seconds: 3600
+compile_timeout_seconds: 3600
+correctness_timeout_seconds: 3600
+performance_timeout_seconds: 3600
+
+# Controller-owned interchange limits. Apex artifacts remain outside the scored
+# task workspace and AgentKernelArena independently validates the returned patch.
+max_result_bytes: 8388608
+max_bundle_bytes: 67108864
+max_process_output_bytes: 4194304

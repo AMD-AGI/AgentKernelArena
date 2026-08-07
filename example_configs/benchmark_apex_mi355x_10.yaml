@@ -1,0 +1,20 @@
+# Apex side of the matched 10-task MI355X A/B benchmark. Keep the task list
+# byte-for-byte equivalent to benchmark_codex_mi355x_10.yaml.
+agent:
+  template: apex
+
+tasks:
+  - triton2triton/vllm/triton_awq_dequantize
+  - triton2triton/vllm/triton_awq_gemm
+  - triton2triton/vllm/triton_batched_moe
+  - triton2triton/vllm/triton_flash_prefill_attention
+  - triton2triton/vllm/triton_fused_moe
+  - triton2triton/vllm/triton_layernorm_gated
+  - triton2triton/vllm/triton_matmul_persistent
+  - triton2triton/vllm/triton_rms_norm
+  - triton2triton/vllm/triton_scaled_mm
+  - triton2triton/vllm/triton_topk_log_softmax
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

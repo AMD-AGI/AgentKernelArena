@@ -74,6 +74,7 @@ AgentKernelArena/
 │   ├── cursor/                     # Cursor Agent CLI
 │   ├── claude_code/                # Claude Code CLI
 │   ├── codex/                      # Codex CLI
+│   ├── apex/                       # Apex bundle-producing optimizer
 │   ├── geak_v3/                    # GEAK HIP optimization
 │   ├── geak_v3_triton/             # GEAK Triton optimization
 │   ├── mini_swe_triton/            # mini-swe-agent Triton optimization
@@ -114,6 +115,7 @@ Each run selects one `agent.template`. Repeated runs can compare different agent
 | `cursor` | Cursor Agent CLI integration |
 | `claude_code` | Claude Code CLI integration |
 | `codex` | Codex CLI integration |
+| `apex` | Apex optimization with source-bundle import and Arena-central scoring |
 | `geak_v3` | GEAK optimization for HIP tasks |
 | `geak_v3_triton` | GEAK optimization for Triton tasks |
 | `mini_swe_triton` | mini-swe-agent-based Triton optimization |
@@ -188,12 +190,15 @@ installation. The npm path requires Node.js 22+ and npm. See the
 [official Claude Code setup guide](https://code.claude.com/docs/en/installation)
 for the current alternatives.
 
-The repository provides three ready-to-use run configurations:
+The repository provides quickstart and curated benchmark configurations:
 
 | Configuration | Purpose |
 | --- | --- |
 | `example_configs/quickstart_claude_mi300.yaml` | One Claude Code GELU task on MI300/MI300X (`gfx942`); use this for a first run on MI300-series hardware. |
 | `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`); use this for a first run on MI355X. |
+| `example_configs/quickstart_apex_mi300.yaml` | One Apex Triton task on MI300/MI300X (`gfx942`); requires a bootstrapped Apex checkout. |
+| `example_configs/quickstart_apex_mi355x.yaml` | One Apex Triton task on MI355X (`gfx950`); requires a bootstrapped Apex checkout. |
+| `example_configs/benchmark_{apex,codex}_mi355x_10.yaml` | Matched ten-task vLLM Triton A/B configurations; see [`agents/apex/README.md`](agents/apex/README.md). |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
 
 Running `make docker-run` without `CONFIG` uses the MI300/MI300X Claude

@@ -1,0 +1,639 @@
+"""Offline contract tests for the Apex AgentKernelArena adapter."""
+
+from __future__ import annotations
+
+import json
+import importlib
+import logging
+from pathlib import Path
+
+import pytest
+import yaml
+
+from src.module_registration import AgentType, load_agent_launcher
+
+apex_launcher = importlib.import_module("agents.apex.launch_agent")
+
+
+def _write_yaml(path: Path, value: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(value, sort_keys=False), encoding="utf-8")
+
+
+def _task(tmp_path: Path, *, task_type: str = "triton2triton") -> tuple[Path, Path]:
+    workspace = tmp_path / "run" / "task_workspace"
+    source = workspace / "source" / "kernel.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("value = 1\n", encoding="utf-8")
+    scripts = workspace / "scripts"
+    scripts.mkdir()
+    (scripts / "task_runner.py").write_text("# trusted fixture\n", encoding="utf-8")
+    config = (
+        tmp_path
+        / "repo"
+        / "tasks"
+        / task_type
+        / "vllm"
+        / "sample_kernel"
+        / "config.yaml"
+    )
+    _write_yaml(
+        config,
+        {
+            "source_file_path": ["source/kernel.py"],
+            "target_kernel_functions": ["sample_kernel"],
+            "compile_command": ["python3 scripts/task_runner.py compile"],
+            "correctness_command": ["python3 scripts/task_runner.py correctness"],
+            "performance_command": ["python3 scripts/task_runner.py performance"],
+            "task_type": task_type,
+            "prompt": {"instructions": "Optimize the sample kernel.", "cheatsheet": None},
+        },
+    )
+    return workspace, config
+
+
+def _agent_config() -> dict[str, object]:
+    return {
+        "backend": "codex",
+        "model": "gpt-5.5",
+        "effort": "xhigh",
+        "supported_task_types": ["triton2triton"],
+        "max_iterations": 3,
+        "max_turns": 25,
+        "timeout_seconds": 120,
+        "compile_timeout_seconds": 10,
+        "correctness_timeout_seconds": 20,
+        "performance_timeout_seconds": 30,
+    }
+
+
+def _spec(tmp_path: Path) -> tuple[Path, Path, dict[str, object]]:
+    workspace, config_path = _task(tmp_path)
+    task_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    artifact_root = workspace.parent / ".artifacts"
+    artifact_root.mkdir()
+    spec = apex_launcher._build_task_spec(
+        task_config_path=config_path,
+        task_config=task_config,
+        eval_config={"target_gpu_model": "MI355X"},
+        agent_config=_agent_config(),
+        workspace=workspace,
+        artifact_root=artifact_root,
+        prompt="BASE PROMPT",
+    )
+    return workspace, artifact_root, spec
+
+
+def _make_bundle(
+    artifact_root: Path,
+    spec: dict[str, object],
+    *,
+    after: int = 2,
+    changed_files: list[str] | None = None,
+) -> tuple[Path, str, dict[str, object]]:
+    bundle = artifact_root / "bundle"
+    bundle.mkdir()
+    patch = bundle / "candidate.patch"
+    patch.write_text(
+        "--- a/source/kernel.py\n"
+        "+++ b/source/kernel.py\n"
+        "@@ -1 +1 @@\n"
+        "-value = 1\n"
+        f"+value = {after}\n",
+        encoding="utf-8",
+    )
+    declared = changed_files or ["source/kernel.py"]
+    manifest = {
+        "schema_version": 1,
+        "task_id": spec["task_id"],
+        "baseline": {
+            "resolution_hash": "a" * 64,
+            "file_hashes": spec["baseline"]["file_hashes"],
+        },
+        "changed_files": declared,
+        "candidate_file_hashes": {
+            "source/kernel.py": apex_launcher._sha256_bytes(
+                f"value = {after}\n".encode("utf-8")
+            )
+        },
+        "patches": [
+            {
+                "path": "candidate.patch",
+                "sha256": apex_launcher._sha256_file(patch),
+            }
+        ],
+        "delivery": {"mode": "bundle", "applied": False},
+    }
+    (bundle / "bundle.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    digest = apex_launcher._bundle_digest(manifest, [patch])
+    result = {
+        "schema_version": 1,
+        "task_id": spec["task_id"],
+        "status": "candidate_ready",
+        "reason_code": "candidate_verified",
+        "applied": False,
+        "external_verification_required": True,
+        "bundle_path": str(bundle),
+        "bundle_digest": digest,
+        "changed_files": declared,
+        # Deliberately untrusted fields: the adapter must not use them.
+        "score": 999999,
+        "safety_certified": True,
+    }
+    return bundle, digest, result
+
+
+def test_agent_registry_loads_apex() -> None:
+    assert AgentType.from_string("apex") is AgentType.APEX
+    assert (
+        load_agent_launcher(AgentType.APEX, logging.getLogger(__name__))
+        is apex_launcher.launch_agent
+    )
+
+
+def test_task_spec_maps_caller_contract_without_arena_scoring(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("PYTORCH_ROCM_ARCH", raising=False)
+    workspace, artifact_root, spec = _spec(tmp_path)
+
+    assert spec["schema_version"] == 1
+    assert spec["task_id"] == "triton2triton.vllm.sample_kernel"
+    assert spec["workspace"] == str(workspace)
+    assert spec["results_dir"] == str(artifact_root)
+    assert spec["instructions"] == "BASE PROMPT"
+    assert spec["gpu_arch"] == "gfx950"
+    assert spec["language"] == "triton"
+    assert spec["editable_files"] == ["source/kernel.py"]
+    assert spec["target_functions"] == ["sample_kernel"]
+    assert spec["commands"]["compile"] == {
+        "argv": ["python3", "scripts/task_runner.py", "compile"],
+        "timeout_seconds": 10,
+    }
+    assert spec["commands"]["correctness"]["timeout_seconds"] == 20
+    assert spec["commands"]["performance"]["timeout_seconds"] == 30
+    assert len(spec["baseline"]["file_hashes"]["source/kernel.py"]) == 64
+    assert spec["recipe"]["provenance"] == "external_evaluator"
+    assert spec["agent_backend"] == "codex"
+    assert spec["agent_options"] == {"model": "gpt-5.5", "effort": "xhigh"}
+    assert spec["budget"] == {
+        "max_iterations": 3,
+        "max_turns": 25,
+        "timeout_seconds": 120,
+    }
+    assert "score" not in spec
+    assert "arena" not in json.dumps(spec).lower()
+
+
+def test_task_spec_rejects_unsupported_type_before_subprocess(tmp_path) -> None:
+    workspace, config_path = _task(tmp_path, task_type="hip2hip")
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    with pytest.raises(apex_launcher.ApexAdapterError, match="does not support task_type"):
+        apex_launcher._build_task_spec(
+            task_config_path=config_path,
+            task_config=config,
+            eval_config={"target_gpu_model": "MI355X"},
+            agent_config=_agent_config(),
+            workspace=workspace,
+            artifact_root=tmp_path / "artifacts",
+            prompt="prompt",
+        )
+
+
+@pytest.mark.parametrize("source", ["../escape.py", "/absolute.py", "./source/kernel.py"])
+def test_task_spec_rejects_non_normalized_source_paths(tmp_path, source) -> None:
+    workspace, config_path = _task(tmp_path)
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config["source_file_path"] = [source]
+    with pytest.raises(apex_launcher.ApexAdapterError, match="workspace-relative path"):
+        apex_launcher._build_task_spec(
+            task_config_path=config_path,
+            task_config=config,
+            eval_config={"target_gpu_model": "MI355X"},
+            agent_config=_agent_config(),
+            workspace=workspace,
+            artifact_root=tmp_path / "artifacts",
+            prompt="prompt",
+        )
+
+
+def test_task_spec_rejects_source_symlink(tmp_path) -> None:
+    workspace, config_path = _task(tmp_path)
+    source = workspace / "source" / "kernel.py"
+    target = workspace / "real.py"
+    target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    source.unlink()
+    source.symlink_to(target)
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    with pytest.raises(apex_launcher.ApexAdapterError, match="symlink"):
+        apex_launcher._build_task_spec(
+            task_config_path=config_path,
+            task_config=config,
+            eval_config={"target_gpu_model": "MI355X"},
+            agent_config=_agent_config(),
+            workspace=workspace,
+            artifact_root=tmp_path / "artifacts",
+            prompt="prompt",
+        )
+
+
+def test_task_spec_rejects_shell_operator_commands(tmp_path) -> None:
+    workspace, config_path = _task(tmp_path)
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config["compile_command"] = ["python3 compile.py && touch escaped"]
+    with pytest.raises(apex_launcher.ApexAdapterError, match="without shell operators"):
+        apex_launcher._build_task_spec(
+            task_config_path=config_path,
+            task_config=config,
+            eval_config={"target_gpu_model": "MI355X"},
+            agent_config=_agent_config(),
+            workspace=workspace,
+            artifact_root=tmp_path / "artifacts",
+            prompt="prompt",
+        )
+
+
+def test_task_spec_rejects_multiple_commands_per_phase(tmp_path) -> None:
+    workspace, config_path = _task(tmp_path)
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config["compile_command"] = ["python3 compile_a.py", "python3 compile_b.py"]
+    with pytest.raises(apex_launcher.ApexAdapterError, match="exactly one compile_command"):
+        apex_launcher._build_task_spec(
+            task_config_path=config_path,
+            task_config=config,
+            eval_config={"target_gpu_model": "MI355X"},
+            agent_config=_agent_config(),
+            workspace=workspace,
+            artifact_root=tmp_path / "artifacts",
+            prompt="prompt",
+        )
+
+
+def test_valid_bundle_is_applied_only_to_declared_source(tmp_path) -> None:
+    workspace, artifact_root, spec = _spec(tmp_path)
+    _, _, result = _make_bundle(artifact_root, spec)
+
+    changed = apex_launcher._validate_and_apply_bundle(
+        result=result,
+        task_spec=spec,
+        workspace=workspace,
+        artifact_root=artifact_root,
+        max_result_bytes=1024 * 1024,
+        max_bundle_bytes=1024 * 1024,
+    )
+
+    assert changed == ["source/kernel.py"]
+    assert (workspace / "source/kernel.py").read_text(encoding="utf-8") == "value = 2\n"
+    assert (workspace / "scripts/task_runner.py").read_text(encoding="utf-8") == "# trusted fixture\n"
+    assert not (workspace / "task_result.yaml").exists()
+
+
+def test_bundle_digest_tampering_is_rejected_without_workspace_change(tmp_path) -> None:
+    workspace, artifact_root, spec = _spec(tmp_path)
+    _, _, result = _make_bundle(artifact_root, spec)
+    result["bundle_digest"] = "0" * 64
+
+    with pytest.raises(apex_launcher.ApexAdapterError, match="bundle digest mismatch"):
+        apex_launcher._validate_and_apply_bundle(
+            result=result,
+            task_spec=spec,
+            workspace=workspace,
+            artifact_root=artifact_root,
+            max_result_bytes=1024 * 1024,
+            max_bundle_bytes=1024 * 1024,
+        )
+    assert (workspace / "source/kernel.py").read_text(encoding="utf-8") == "value = 1\n"
+
+
+def test_bundle_wrong_baseline_is_rejected(tmp_path) -> None:
+    workspace, artifact_root, spec = _spec(tmp_path)
+    bundle, _, result = _make_bundle(artifact_root, spec)
+    manifest_path = bundle / "bundle.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["baseline"]["file_hashes"]["source/kernel.py"] = "0" * 64
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    result["bundle_digest"] = apex_launcher._bundle_digest(
+        manifest, [bundle / "candidate.patch"]
+    )
+
+    with pytest.raises(apex_launcher.ApexAdapterError, match="baseline file hashes"):
+        apex_launcher._validate_and_apply_bundle(
+            result=result,
+            task_spec=spec,
+            workspace=workspace,
+            artifact_root=artifact_root,
+            max_result_bytes=1024 * 1024,
+            max_bundle_bytes=1024 * 1024,
+        )
+
+
+def test_bundle_undeclared_file_is_rejected(tmp_path) -> None:
+    workspace, artifact_root, spec = _spec(tmp_path)
+    _, _, result = _make_bundle(
+        artifact_root,
+        spec,
+        changed_files=["source/kernel.py", "scripts/task_runner.py"],
+    )
+    with pytest.raises(apex_launcher.ApexAdapterError, match="undeclared files"):
+        apex_launcher._validate_and_apply_bundle(
+            result=result,
+            task_spec=spec,
+            workspace=workspace,
+            artifact_root=artifact_root,
+            max_result_bytes=1024 * 1024,
+            max_bundle_bytes=1024 * 1024,
+        )
+
+
+def test_bundle_extra_file_is_rejected(tmp_path) -> None:
+    workspace, artifact_root, spec = _spec(tmp_path)
+    bundle, _, result = _make_bundle(artifact_root, spec)
+    (bundle / "unbound.txt").write_text("not covered by digest contract\n", encoding="utf-8")
+    with pytest.raises(apex_launcher.ApexAdapterError, match="undeclared files"):
+        apex_launcher._validate_and_apply_bundle(
+            result=result,
+            task_spec=spec,
+            workspace=workspace,
+            artifact_root=artifact_root,
+            max_result_bytes=1024 * 1024,
+            max_bundle_bytes=1024 * 1024,
+        )
+
+
+def test_bundle_symlink_is_rejected(tmp_path) -> None:
+    workspace, artifact_root, spec = _spec(tmp_path)
+    bundle, _, result = _make_bundle(artifact_root, spec)
+    target = bundle / "candidate.patch"
+    alias = bundle / "alias.patch"
+    alias.symlink_to(target)
+    with pytest.raises(apex_launcher.ApexAdapterError, match="symlink"):
+        apex_launcher._validate_and_apply_bundle(
+            result=result,
+            task_spec=spec,
+            workspace=workspace,
+            artifact_root=artifact_root,
+            max_result_bytes=1024 * 1024,
+            max_bundle_bytes=1024 * 1024,
+        )
+
+
+def test_bundle_duplicate_patch_path_is_rejected(tmp_path) -> None:
+    workspace, artifact_root, spec = _spec(tmp_path)
+    bundle, _, result = _make_bundle(artifact_root, spec)
+    manifest_path = bundle / "bundle.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["patches"].append(dict(manifest["patches"][0]))
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    result["bundle_digest"] = apex_launcher._bundle_digest(
+        manifest, [bundle / "candidate.patch", bundle / "candidate.patch"]
+    )
+
+    with pytest.raises(apex_launcher.ApexAdapterError, match="duplicate patch path"):
+        apex_launcher._validate_and_apply_bundle(
+            result=result,
+            task_spec=spec,
+            workspace=workspace,
+            artifact_root=artifact_root,
+            max_result_bytes=1024 * 1024,
+            max_bundle_bytes=1024 * 1024,
+        )
+
+
+def test_git_parser_prevents_mismatched_patch_header_escape(tmp_path) -> None:
+    workspace, artifact_root, spec = _spec(tmp_path)
+    bundle, _, result = _make_bundle(artifact_root, spec)
+    patch = bundle / "candidate.patch"
+    patch.write_text(
+        "--- a/scripts/task_runner.py\n"
+        "+++ b/scripts/task_runner.py\n"
+        "@@ -1 +1 @@\n"
+        "-# trusted fixture\n"
+        "+# compromised fixture\n",
+        encoding="utf-8",
+    )
+    manifest_path = bundle / "bundle.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["patches"][0]["sha256"] = apex_launcher._sha256_file(patch)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    result["bundle_digest"] = apex_launcher._bundle_digest(manifest, [patch])
+
+    with pytest.raises(apex_launcher.ApexAdapterError, match="Git-parsed patch targets"):
+        apex_launcher._validate_and_apply_bundle(
+            result=result,
+            task_spec=spec,
+            workspace=workspace,
+            artifact_root=artifact_root,
+            max_result_bytes=1024 * 1024,
+            max_bundle_bytes=1024 * 1024,
+        )
+    assert (workspace / "source/kernel.py").read_text(encoding="utf-8") == "value = 1\n"
+    assert (workspace / "scripts/task_runner.py").read_text(encoding="utf-8") == "# trusted fixture\n"
+
+
+def test_candidate_hash_mismatch_restores_workspace(tmp_path) -> None:
+    workspace, artifact_root, spec = _spec(tmp_path)
+    bundle, _, result = _make_bundle(artifact_root, spec)
+    manifest_path = bundle / "bundle.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["candidate_file_hashes"]["source/kernel.py"] = "0" * 64
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    result["bundle_digest"] = apex_launcher._bundle_digest(
+        manifest, [bundle / "candidate.patch"]
+    )
+
+    with pytest.raises(apex_launcher.ApexAdapterError, match="applied source hash"):
+        apex_launcher._validate_and_apply_bundle(
+            result=result,
+            task_spec=spec,
+            workspace=workspace,
+            artifact_root=artifact_root,
+            max_result_bytes=1024 * 1024,
+            max_bundle_bytes=1024 * 1024,
+        )
+    assert (workspace / "source/kernel.py").read_text(encoding="utf-8") == "value = 1\n"
+
+
+def test_launch_agent_builds_spec_and_applies_candidate(tmp_path, monkeypatch) -> None:
+    workspace, config_path = _task(tmp_path)
+    apex_root = tmp_path / "apex"
+    apex_root.mkdir()
+    (apex_root / "main.py").write_text("# fake entrypoint\n", encoding="utf-8")
+    monkeypatch.setenv("APEX_ROOT", str(apex_root))
+    monkeypatch.setattr(
+        apex_launcher,
+        "load_prompt_builder",
+        lambda *args, **kwargs: (lambda *a, **k: "MATCHED BASE PROMPT"),
+    )
+    captured: dict[str, object] = {}
+
+    def fake_run(command, *, cwd, backend, timeout_seconds, output_limit, logger):
+        captured["command"] = command
+        captured["backend"] = backend
+        spec_path = Path(command[command.index("--task-spec") + 1])
+        result_path = Path(command[command.index("--result-json") + 1])
+        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        captured["spec"] = spec
+        _, _, result = _make_bundle(Path(spec["results_dir"]), spec)
+        result_path.write_text(json.dumps(result), encoding="utf-8")
+        return 0, "apex-output"
+
+    monkeypatch.setattr(apex_launcher, "_run_apex", fake_run)
+    output = apex_launcher.launch_agent(
+        {"target_gpu_model": "MI355X"},
+        str(config_path),
+        str(workspace),
+    )
+
+    assert captured["backend"] == "codex"
+    assert "--result-json" in captured["command"]
+    assert captured["spec"]["instructions"] == "MATCHED BASE PROMPT"
+    assert Path(captured["spec"]["results_dir"]).parent.parent == workspace.parent
+    assert (workspace / "source/kernel.py").read_text(encoding="utf-8") == "value = 2\n"
+    assert "999999" not in output
+    assert '"status": "candidate_ready"' in output
+    assert not (workspace / "task_result.yaml").exists()
+
+
+def test_launch_agent_no_gain_leaves_workspace_at_baseline(tmp_path, monkeypatch) -> None:
+    workspace, config_path = _task(tmp_path)
+    apex_root = tmp_path / "apex"
+    apex_root.mkdir()
+    (apex_root / "main.py").write_text("# fake entrypoint\n", encoding="utf-8")
+    monkeypatch.setenv("APEX_ROOT", str(apex_root))
+    monkeypatch.setattr(
+        apex_launcher,
+        "load_prompt_builder",
+        lambda *args, **kwargs: (lambda *a, **k: "prompt"),
+    )
+
+    def fake_run(command, *, cwd, backend, timeout_seconds, output_limit, logger):
+        spec_path = Path(command[command.index("--task-spec") + 1])
+        result_path = Path(command[command.index("--result-json") + 1])
+        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        result_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "task_id": spec["task_id"],
+                    "status": "no_gain",
+                    "reason_code": "baseline_is_best",
+                    "applied": False,
+                    "external_verification_required": True,
+                    "bundle_path": None,
+                    "bundle_digest": None,
+                    "changed_files": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return 4, "no gain"
+
+    monkeypatch.setattr(apex_launcher, "_run_apex", fake_run)
+    output = apex_launcher.launch_agent(
+        {"target_gpu_model": "MI355X"}, str(config_path), str(workspace)
+    )
+
+    assert (workspace / "source/kernel.py").read_text(encoding="utf-8") == "value = 1\n"
+    assert '"status": "no_gain"' in output
+
+
+def test_launch_agent_does_not_turn_infrastructure_error_into_baseline_score(
+    tmp_path, monkeypatch
+) -> None:
+    workspace, config_path = _task(tmp_path)
+    apex_root = tmp_path / "apex"
+    apex_root.mkdir()
+    (apex_root / "main.py").write_text("# fake entrypoint\n", encoding="utf-8")
+    monkeypatch.setenv("APEX_ROOT", str(apex_root))
+    monkeypatch.setattr(
+        apex_launcher,
+        "load_prompt_builder",
+        lambda *args, **kwargs: (lambda *a, **k: "prompt"),
+    )
+
+    def fake_run(command, *, cwd, backend, timeout_seconds, output_limit, logger):
+        spec_path = Path(command[command.index("--task-spec") + 1])
+        result_path = Path(command[command.index("--result-json") + 1])
+        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        result_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "task_id": spec["task_id"],
+                    "status": "infrastructure_error",
+                    "reason_code": "backend_unavailable",
+                    "applied": False,
+                    "external_verification_required": True,
+                    "changed_files": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return 5, "backend failed"
+
+    monkeypatch.setattr(apex_launcher, "_run_apex", fake_run)
+    with pytest.raises(apex_launcher.ApexAdapterError, match="infrastructure_error"):
+        apex_launcher.launch_agent(
+            {"target_gpu_model": "MI355X"}, str(config_path), str(workspace)
+        )
+    assert not (workspace / "task_result.yaml").exists()
+
+
+def test_matched_benchmark_configs_have_identical_ten_tasks() -> None:
+    root = Path(__file__).resolve().parents[1]
+    apex = yaml.safe_load(
+        (root / "example_configs/benchmark_apex_mi355x_10.yaml").read_text()
+    )
+    codex = yaml.safe_load(
+        (root / "example_configs/benchmark_codex_mi355x_10.yaml").read_text()
+    )
+    assert apex["agent"]["template"] == "apex"
+    assert codex["agent"]["template"] == "codex"
+    assert {key: value for key, value in apex.items() if key != "agent"} == {
+        key: value for key, value in codex.items() if key != "agent"
+    }
+    assert len(apex["tasks"]) == 10
+    assert len(set(apex["tasks"])) == 10
+    assert all(task.startswith("triton2triton/vllm/") for task in apex["tasks"])
+    for task in apex["tasks"]:
+        task_root = root / "tasks" / task
+        task_config = yaml.safe_load(
+            (task_root / "config.yaml").read_text(encoding="utf-8")
+        )
+        assert task_config["task_type"] == "triton2triton"
+        for phase in ("compile", "correctness", "performance"):
+            assert len(task_config[f"{phase}_command"]) == 1
+        sources = task_config["source_file_path"]
+        assert sources and all(path.startswith("source/") for path in sources)
+        assert all((task_root / path).is_file() for path in sources)
+
+    apex_agent = yaml.safe_load(
+        (root / "agents/apex/agent_config.yaml").read_text(encoding="utf-8")
+    )
+    codex_agent = yaml.safe_load(
+        (root / "agents/codex/agent_config.yaml").read_text(encoding="utf-8")
+    )
+    assert apex_agent["model"] == codex_agent["model"] == "gpt-5.5"
+    assert apex_agent["effort"] == codex_agent["effort"] == "xhigh"
+    assert apex_agent["timeout_seconds"] == codex_agent["timeout_seconds"] == 3600
+    assert apex_agent["max_iterations"] == 1
+
+
+def test_backend_environment_drops_unselected_credentials(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-secret")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-secret")
+    monkeypatch.setenv("CURSOR_TOKEN", "cursor-secret")
+    monkeypatch.setenv("CODEX_HOME", "/codex")
+
+    codex = apex_launcher._subprocess_environment("codex")
+    assert codex["OPENAI_API_KEY"] == "openai-secret"
+    assert codex["CODEX_HOME"] == "/codex"
+    assert "ANTHROPIC_API_KEY" not in codex
+    assert "CURSOR_TOKEN" not in codex
+
+    claude = apex_launcher._subprocess_environment("claude")
+    assert claude["ANTHROPIC_API_KEY"] == "anthropic-secret"
+    assert "OPENAI_API_KEY" not in claude
+    assert "CODEX_HOME" not in claude
+    assert "CURSOR_TOKEN" not in claude

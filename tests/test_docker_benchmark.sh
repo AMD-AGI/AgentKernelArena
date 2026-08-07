@@ -171,6 +171,36 @@ assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
 assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
 
+# Apex is an orchestrating agent. The runner mounts its checkout read-only and
+# provisions only the backend selected in agents/apex/agent_config.yaml (Codex
+# by default), rather than exposing all three backend credentials.
+APEX_ROOT="$TEST_HOME/apex-checkout"
+APEX_CONFIG="$TEST_HOME/apex-config.yaml"
+mkdir -p "$APEX_ROOT"
+touch "$APEX_ROOT/main.py"
+mkdir -p "$APEX_ROOT/.venv/bin"
+touch "$APEX_ROOT/.venv/bin/python"
+chmod +x "$APEX_ROOT/.venv/bin/python"
+printf 'agent:\n  template: apex\n' > "$APEX_CONFIG"
+
+mapfile -t args < <(run_check_args \
+    "$CODEX_HOME" \
+    "$APEX_CONFIG" \
+    AKA_APEX_ROOT="$APEX_ROOT" \
+    AKA_NODE_PREFIX="$CODEX_PREFIX" \
+    ANTHROPIC_API_KEY=apex-codex-must-not-receive-this)
+assert_has "$APEX_ROOT:$APEX_ROOT:ro" "${args[@]}"
+assert_has "APEX_ROOT=$APEX_ROOT" "${args[@]}"
+assert_has "APEX_PYTHON=$APEX_ROOT/.venv/bin/python" "${args[@]}"
+assert_has "PYTHONDONTWRITEBYTECODE=1" "${args[@]}"
+assert_not_has "PYTHONPATH=" "${args[@]}"
+assert_has "$CODEX_PREFIX:/opt/node:ro" "${args[@]}"
+assert_has "$CODEX_HOME/.codex:$CODEX_HOME/.codex" "${args[@]}"
+assert_has "codex" "${args[@]}"
+assert_not_has "$CODEX_HOME/.claude:$CODEX_HOME/.claude" "${args[@]}"
+assert_not_has "$CODEX_HOME/.local/share/cursor-agent:$CODEX_HOME/.local/share/cursor-agent:ro" "${args[@]}"
+assert_not_has "ANTHROPIC_API_KEY" "${args[@]}"
+
 # A natively installed Claude CLI is a launcher in ~/.local/bin that resolves
 # into ~/.local/share/claude/versions. Both sides of that symlink must be
 # mounted at the same absolute paths inside the container.
