@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import errno
 import hashlib
 import os
 from pathlib import Path
@@ -59,7 +60,16 @@ def _fake_devices(dev_root: Path, minors: list[int]):
 def _build_xcp_plan(tmp_path: Path, gpu_ids: tuple[str, ...] = ("0",)):
     topology = tmp_path / "topology"
     topology.mkdir()
-    _write_node(topology, 0, gpu_id=0, simd_count=0)
+    _write_node(
+        topology,
+        0,
+        gpu_id=0,
+        simd_count=0,
+        drm_render_minor=0,
+        vendor_id=0,
+        device_id=0,
+        gfx_target_version=0,
+    )
     _write_node(
         topology,
         1,
@@ -107,6 +117,18 @@ def _build_xcp_plan(tmp_path: Path, gpu_ids: tuple[str, ...] = ("0",)):
     return plan, topology, dev_root, fake_lstat, identities
 
 
+def _deny_node_reads(monkeypatch, *node_ids: int) -> None:
+    denied = {str(node_id) for node_id in node_ids}
+    original = Path.read_bytes
+
+    def guarded_read_bytes(path: Path) -> bytes:
+        if path.parent.name in denied and path.name in {"gpu_id", "properties"}:
+            raise PermissionError(errno.EPERM, "device cgroup denied KFD node", path)
+        return original(path)
+
+    monkeypatch.setattr(Path, "read_bytes", guarded_read_bytes)
+
+
 def test_resolver_joins_rocm_unique_id_to_all_noncontiguous_xcp_nodes(tmp_path) -> None:
     plan, _, _, _, _ = _build_xcp_plan(tmp_path, ("0", "7"))
 
@@ -146,6 +168,9 @@ def test_resolver_reads_gpu_id_from_the_kfd_node_file(tmp_path) -> None:
     assert first_node["gpu_id_sha256"] == hashlib.sha256(
         (topology / "1" / "gpu_id").read_bytes()
     ).hexdigest()
+    assert first_node["properties_sha256"] == hashlib.sha256(
+        (topology / "1" / "properties").read_bytes()
+    ).hexdigest()
     assert "gpu_id " not in (topology / "1" / "properties").read_text(
         encoding="utf-8"
     )
@@ -158,7 +183,73 @@ def test_resolver_fails_closed_on_missing_or_contradictory_gpu_id_file(tmp_path)
         boundary.read_kfd_topology(topology)
 
     (topology / "1" / "gpu_id").write_text("0\n", encoding="ascii")
-    with pytest.raises(boundary.GpuBoundaryError, match="GPU SIMD resources"):
+    with pytest.raises(boundary.GpuBoundaryError, match="non-GPU node"):
+        boundary.read_kfd_topology(topology)
+
+
+@pytest.mark.parametrize("raw_gpu_id", ["+101\n", "00101\n", "1_01\n", "4294967296\n"])
+def test_resolver_rejects_noncanonical_or_out_of_range_gpu_ids(
+    tmp_path, raw_gpu_id
+) -> None:
+    _, topology, _, _, _ = _build_xcp_plan(tmp_path)
+    (topology / "1" / "gpu_id").write_text(raw_gpu_id, encoding="ascii")
+
+    with pytest.raises(boundary.GpuBoundaryError):
+        boundary.read_kfd_topology(topology)
+
+
+def test_resolver_rejects_duplicate_gpu_ids(tmp_path) -> None:
+    _, topology, _, _, _ = _build_xcp_plan(tmp_path)
+    (topology / "2" / "gpu_id").write_text("101\n", encoding="ascii")
+
+    with pytest.raises(boundary.GpuBoundaryError, match="duplicate"):
+        boundary.read_kfd_topology(topology)
+
+
+@pytest.mark.parametrize(
+    ("property_name", "property_value"),
+    [
+        ("unique_id", "2748"),
+        ("drm_render_minor", "128"),
+        ("vendor_id", "4098"),
+        ("device_id", "30115"),
+        ("gfx_target_version", "90500"),
+    ],
+)
+def test_resolver_rejects_zero_gpu_id_with_gpu_identity(
+    tmp_path, property_name, property_value
+) -> None:
+    _, topology, _, _, _ = _build_xcp_plan(tmp_path)
+    cpu_properties = topology / "0" / "properties"
+    lines = cpu_properties.read_text(encoding="utf-8").splitlines()
+    replacement = f"{property_name} {property_value}"
+    replaced = False
+    for index, line in enumerate(lines):
+        if line.startswith(f"{property_name} "):
+            lines[index] = replacement
+            replaced = True
+    if not replaced:
+        lines.append(replacement)
+    cpu_properties.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    with pytest.raises(boundary.GpuBoundaryError, match="non-GPU node"):
+        boundary.read_kfd_topology(topology)
+
+
+@pytest.mark.parametrize("mutation", ["zero_simd", "missing_unique_id", "missing_render"])
+def test_resolver_rejects_incomplete_nonzero_gpu_nodes(tmp_path, mutation) -> None:
+    _, topology, _, _, _ = _build_xcp_plan(tmp_path)
+    properties_path = topology / "1" / "properties"
+    lines = properties_path.read_text(encoding="utf-8").splitlines()
+    if mutation == "zero_simd":
+        lines = ["simd_count 0" if line.startswith("simd_count ") else line for line in lines]
+    elif mutation == "missing_unique_id":
+        lines = [line for line in lines if not line.startswith("unique_id ")]
+    else:
+        lines = [line for line in lines if not line.startswith("drm_render_minor ")]
+    properties_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    with pytest.raises(boundary.GpuBoundaryError):
         boundary.read_kfd_topology(topology)
 
 
@@ -245,7 +336,9 @@ def test_container_verifier_accepts_exact_boundary_and_emits_receipt(tmp_path) -
     )
 
 
-def test_runtime_verifier_proves_one_matching_rocm_torch_and_kfd_identity(tmp_path) -> None:
+def test_runtime_verifier_proves_one_matching_rocm_torch_and_kfd_identity(
+    tmp_path, monkeypatch
+) -> None:
     plan, topology, dev_root, fake_lstat, _ = _build_xcp_plan(tmp_path)
     environment = {
         "AGENT_KERNEL_ARENA_HOST_GPU_ID": "0",
@@ -258,6 +351,7 @@ def test_runtime_verifier_proves_one_matching_rocm_torch_and_kfd_identity(tmp_pa
     structural = boundary.verify_visible_devices(
         plan, "0", dev_root=dev_root, stat_fn=fake_lstat, environ=environment
     )
+    _deny_node_reads(monkeypatch, 9)
 
     receipt = boundary.verify_runtime_identity(
         plan,
@@ -278,6 +372,121 @@ def test_runtime_verifier_proves_one_matching_rocm_torch_and_kfd_identity(tmp_pa
     assert receipt["runtime_identity"]["rocm_smi_identity"]["unique_id"] == (
         "0x0000000000000abc"
     )
+
+
+def test_runtime_verifier_rejects_a_readable_unselected_gpu(tmp_path) -> None:
+    plan, topology, dev_root, fake_lstat, _ = _build_xcp_plan(tmp_path)
+    structural = boundary.verify_visible_devices(
+        plan,
+        "0",
+        dev_root=dev_root,
+        stat_fn=fake_lstat,
+        environ={
+            "AGENT_KERNEL_ARENA_HOST_GPU_ID": "0",
+            "AGENT_KERNEL_ARENA_GPU_BOUNDARY_PLAN_SHA256": plan["sha256"],
+            "ROCR_VISIBLE_DEVICES": "0",
+            "HIP_VISIBLE_DEVICES": "0",
+            "CUDA_VISIBLE_DEVICES": "0",
+            "GPU_DEVICE_ORDINAL": "0",
+        },
+    )
+
+    with pytest.raises(boundary.GpuBoundaryError, match="unexpected GPU KFD node"):
+        boundary.verify_runtime_identity(
+            plan,
+            "0",
+            structural_receipt=structural,
+            rocm_smi_inventory={"card0": _inventory()["card0"]},
+            torch_observation={
+                "device_count": 1,
+                "device_name": "AMD Instinct MI355X",
+                "gcn_arch_name": "gfx950",
+            },
+            topology_root=topology,
+        )
+
+
+def test_runtime_verifier_rejects_permission_denial_for_selected_node(
+    tmp_path, monkeypatch
+) -> None:
+    plan, topology, dev_root, fake_lstat, _ = _build_xcp_plan(tmp_path)
+    structural = boundary.verify_visible_devices(
+        plan,
+        "0",
+        dev_root=dev_root,
+        stat_fn=fake_lstat,
+        environ={
+            "AGENT_KERNEL_ARENA_HOST_GPU_ID": "0",
+            "AGENT_KERNEL_ARENA_GPU_BOUNDARY_PLAN_SHA256": plan["sha256"],
+            "ROCR_VISIBLE_DEVICES": "0",
+            "HIP_VISIBLE_DEVICES": "0",
+            "CUDA_VISIBLE_DEVICES": "0",
+            "GPU_DEVICE_ORDINAL": "0",
+        },
+    )
+    _deny_node_reads(monkeypatch, 1, 9)
+
+    with pytest.raises(boundary.GpuBoundaryError, match="cannot read KFD"):
+        boundary.verify_runtime_identity(
+            plan,
+            "0",
+            structural_receipt=structural,
+            rocm_smi_inventory={"card0": _inventory()["card0"]},
+            torch_observation={
+                "device_count": 1,
+                "device_name": "AMD Instinct MI355X",
+                "gcn_arch_name": "gfx950",
+            },
+            topology_root=topology,
+        )
+
+
+@pytest.mark.parametrize("mutation", ["gpu_id", "properties", "missing_node"])
+def test_runtime_verifier_rejects_selected_topology_drift(
+    tmp_path, monkeypatch, mutation
+) -> None:
+    plan, topology, dev_root, fake_lstat, _ = _build_xcp_plan(tmp_path)
+    structural = boundary.verify_visible_devices(
+        plan,
+        "0",
+        dev_root=dev_root,
+        stat_fn=fake_lstat,
+        environ={
+            "AGENT_KERNEL_ARENA_HOST_GPU_ID": "0",
+            "AGENT_KERNEL_ARENA_GPU_BOUNDARY_PLAN_SHA256": plan["sha256"],
+            "ROCR_VISIBLE_DEVICES": "0",
+            "HIP_VISIBLE_DEVICES": "0",
+            "CUDA_VISIBLE_DEVICES": "0",
+            "GPU_DEVICE_ORDINAL": "0",
+        },
+    )
+    if mutation == "gpu_id":
+        (topology / "1" / "gpu_id").write_text("999\n", encoding="ascii")
+    elif mutation == "properties":
+        properties = topology / "1" / "properties"
+        properties.write_text(
+            properties.read_text(encoding="utf-8") + "num_cp_queues 1\n",
+            encoding="utf-8",
+        )
+    else:
+        for path in (topology / "1").iterdir():
+            path.unlink()
+        (topology / "1").rmdir()
+    _deny_node_reads(monkeypatch, 9)
+
+    with pytest.raises(boundary.GpuBoundaryError):
+        boundary.verify_runtime_identity(
+            plan,
+            "0",
+            structural_receipt=structural,
+            rocm_smi_inventory={"card0": _inventory()["card0"]},
+            torch_observation={
+                "device_count": 1,
+                "device_name": "AMD Instinct MI355X",
+                "gcn_arch_name": "gfx950",
+            },
+            topology_root=topology,
+        )
 
 
 def test_runtime_verifier_rejects_more_than_one_torch_device(tmp_path) -> None:

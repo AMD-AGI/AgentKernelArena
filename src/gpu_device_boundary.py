@@ -10,6 +10,7 @@ The container verifier then proves that Docker exposed exactly that set.
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -58,20 +59,20 @@ def _normalize_unique_id(raw: Any, label: str) -> str:
 
 
 def _positive_int(raw: Any, label: str) -> int:
-    try:
-        number = int(str(raw).strip(), 10)
-    except ValueError as error:
-        raise GpuBoundaryError(f"{label} is not a decimal integer: {raw!r}") from error
+    text = str(raw).strip()
+    if re.fullmatch(r"0|[1-9][0-9]*", text) is None:
+        raise GpuBoundaryError(f"{label} is not a canonical decimal integer: {raw!r}")
+    number = int(text, 10)
     if number <= 0:
         raise GpuBoundaryError(f"{label} must be positive")
     return number
 
 
 def _nonnegative_int(raw: Any, label: str) -> int:
-    try:
-        number = int(str(raw).strip(), 10)
-    except ValueError as error:
-        raise GpuBoundaryError(f"{label} is not a decimal integer: {raw!r}") from error
+    text = str(raw).strip()
+    if re.fullmatch(r"0|[1-9][0-9]*", text) is None:
+        raise GpuBoundaryError(f"{label} is not a canonical decimal integer: {raw!r}")
+    number = int(text, 10)
     if number < 0:
         raise GpuBoundaryError(f"{label} must be nonnegative")
     return number
@@ -121,9 +122,10 @@ def parse_rocm_smi_inventory(raw: str | bytes | Mapping[str, Any]) -> dict[str, 
     return parsed
 
 
-def _parse_properties(path: Path) -> dict[str, str]:
+def _parse_properties(path: Path) -> tuple[dict[str, str], bytes]:
     try:
-        text = path.read_text(encoding="utf-8")
+        raw = path.read_bytes()
+        text = raw.decode("utf-8")
     except (OSError, UnicodeError) as error:
         raise GpuBoundaryError(f"cannot read KFD properties: {path}: {error}") from error
     properties: dict[str, str] = {}
@@ -138,69 +140,143 @@ def _parse_properties(path: Path) -> dict[str, str]:
         if key in properties:
             raise GpuBoundaryError(f"duplicate KFD property {key!r} in {path}")
         properties[key] = value.strip()
-    return properties
+    return properties, raw
 
 
-def read_kfd_topology(topology_root: Path) -> list[dict[str, Any]]:
+def _numeric_topology_entries(topology_root: Path) -> list[Path]:
     try:
         entries = list(topology_root.iterdir())
     except OSError as error:
         raise GpuBoundaryError(f"cannot enumerate KFD topology: {topology_root}: {error}") from error
-    nodes: list[dict[str, Any]] = []
     numeric_entries = sorted(
         (entry for entry in entries if entry.name.isdigit()), key=lambda item: int(item.name)
     )
     if not numeric_entries:
         raise GpuBoundaryError(f"KFD topology has no numeric nodes: {topology_root}")
-    for entry in numeric_entries:
-        properties_path = entry / "properties"
-        gpu_id_path = entry / "gpu_id"
-        properties = _parse_properties(properties_path)
-        try:
-            gpu_id_bytes = gpu_id_path.read_bytes()
-            raw_gpu_id = gpu_id_bytes.decode("ascii")
-        except (OSError, UnicodeError) as error:
+    return numeric_entries
+
+
+def _read_kfd_node(entry: Path) -> dict[str, Any] | None:
+    properties_path = entry / "properties"
+    gpu_id_path = entry / "gpu_id"
+    properties, properties_bytes = _parse_properties(properties_path)
+    try:
+        gpu_id_bytes = gpu_id_path.read_bytes()
+        raw_gpu_id = gpu_id_bytes.decode("ascii")
+    except (OSError, UnicodeError) as error:
+        raise GpuBoundaryError(
+            f"cannot read KFD gpu_id: {gpu_id_path}: {error}"
+        ) from error
+    gpu_id = _nonnegative_int(raw_gpu_id, f"{gpu_id_path}")
+    if gpu_id > 0xFFFFFFFF:
+        raise GpuBoundaryError(f"{gpu_id_path} is outside the uint32 range")
+    simd_count = _nonnegative_int(
+        properties.get("simd_count", ""), f"{properties_path} simd_count"
+    )
+    if gpu_id == 0:
+        zero_only = ("drm_render_minor", "vendor_id", "device_id", "gfx_target_version")
+        malformed = simd_count != 0 or "unique_id" in properties
+        for key in zero_only:
+            malformed = malformed or _nonnegative_int(
+                properties.get(key, ""), f"{properties_path} {key}"
+            ) != 0
+        if malformed:
             raise GpuBoundaryError(
-                f"cannot read KFD gpu_id: {gpu_id_path}: {error}"
-            ) from error
-        gpu_id = _nonnegative_int(raw_gpu_id, f"{gpu_id_path}")
-        simd_count = _nonnegative_int(
-            properties.get("simd_count", ""), f"{properties_path} simd_count"
-        )
-        if gpu_id == 0:
-            if simd_count != 0:
-                raise GpuBoundaryError(
-                    f"KFD node has GPU SIMD resources but a zero gpu_id: {entry}"
-                )
-            continue
-        if simd_count == 0:
-            raise GpuBoundaryError(
-                f"KFD node has a nonzero gpu_id but no GPU SIMD resources: {entry}"
+                f"KFD non-GPU node contains GPU identity or resources: {entry}"
             )
-        if "unique_id" not in properties or "drm_render_minor" not in properties:
-            raise GpuBoundaryError(
-                f"GPU KFD node lacks unique_id or drm_render_minor: {entry}"
-            )
-        render_minor = _positive_int(
-            properties["drm_render_minor"], f"{properties_path} drm_render_minor"
+        return None
+    if simd_count == 0:
+        raise GpuBoundaryError(
+            f"KFD node has a nonzero gpu_id but no GPU SIMD resources: {entry}"
         )
-        nodes.append(
-            {
-                "node_id": int(entry.name),
-                "gpu_id": gpu_id,
-                "unique_id": _normalize_unique_id(
-                    properties["unique_id"], f"{properties_path} unique_id"
-                ),
-                "drm_render_minor": render_minor,
-                "gpu_id_sha256": hashlib.sha256(gpu_id_bytes).hexdigest(),
-                "properties_sha256": hashlib.sha256(
-                    properties_path.read_bytes()
-                ).hexdigest(),
-            }
+    if "unique_id" not in properties or "drm_render_minor" not in properties:
+        raise GpuBoundaryError(
+            f"GPU KFD node lacks unique_id or drm_render_minor: {entry}"
         )
+    render_minor = _positive_int(
+        properties["drm_render_minor"], f"{properties_path} drm_render_minor"
+    )
+    return {
+        "node_id": int(entry.name),
+        "gpu_id": gpu_id,
+        "unique_id": _normalize_unique_id(
+            properties["unique_id"], f"{properties_path} unique_id"
+        ),
+        "drm_render_minor": render_minor,
+        "gpu_id_sha256": hashlib.sha256(gpu_id_bytes).hexdigest(),
+        "properties_sha256": hashlib.sha256(properties_bytes).hexdigest(),
+    }
+
+
+def read_kfd_topology(topology_root: Path) -> list[dict[str, Any]]:
+    nodes: list[dict[str, Any]] = []
+    for entry in _numeric_topology_entries(topology_root):
+        node = _read_kfd_node(entry)
+        if node is not None:
+            nodes.append(node)
     if not nodes:
         raise GpuBoundaryError("KFD topology contains no complete GPU nodes")
+    gpu_ids = [node["gpu_id"] for node in nodes]
+    if len(gpu_ids) != len(set(gpu_ids)):
+        raise GpuBoundaryError("KFD topology contains duplicate nonzero gpu_id values")
     return nodes
+
+
+def _permission_denied(error: BaseException) -> bool:
+    current: BaseException | None = error
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        if isinstance(current, OSError) and current.errno in (errno.EACCES, errno.EPERM):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _read_selected_runtime_topology(
+    topology_root: Path, selected: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    expected: dict[int, dict[str, Any]] = {}
+    for render in selected["render_nodes"]:
+        for planned in render["kfd_nodes"]:
+            node_id = planned["node_id"]
+            if node_id in expected:
+                raise GpuBoundaryError("selected GPU plan repeats a KFD node")
+            expected[node_id] = {
+                **planned,
+                "drm_render_minor": render["minor"],
+            }
+
+    observed: list[dict[str, Any]] = []
+    for entry in _numeric_topology_entries(topology_root):
+        node_id = int(entry.name)
+        try:
+            node = _read_kfd_node(entry)
+        except GpuBoundaryError as error:
+            if node_id not in expected and _permission_denied(error):
+                continue
+            raise
+        if node is None:
+            continue
+        planned = expected.get(node_id)
+        if planned is None:
+            raise GpuBoundaryError(
+                f"formal worker can read an unexpected GPU KFD node: {entry}"
+            )
+        for key in (
+            "gpu_id",
+            "gpu_id_sha256",
+            "properties_sha256",
+            "drm_render_minor",
+        ):
+            if node[key] != planned[key]:
+                raise GpuBoundaryError(
+                    f"live selected KFD node {node_id} differs from planned {key}"
+                )
+        observed.append(node)
+    if {node["node_id"] for node in observed} != set(expected):
+        raise GpuBoundaryError("live KFD topology is missing a planned selected node")
+    return sorted(observed, key=lambda node: node["node_id"])
 
 
 def _character_device(path: Path, stat_fn: StatFn) -> dict[str, int]:
@@ -554,13 +630,13 @@ def verify_runtime_identity(
         int(Path(render["path"]).name.removeprefix("renderD"))
         for render in selected["render_nodes"]
     )
-    matching_nodes = [
-        node
-        for node in read_kfd_topology(topology_root)
-        if node["unique_id"] == selected["unique_id"]
-    ]
+    matching_nodes = _read_selected_runtime_topology(topology_root, selected)
     observed_minors = sorted({node["drm_render_minor"] for node in matching_nodes})
-    if not matching_nodes or observed_minors != expected_minors:
+    if (
+        not matching_nodes
+        or any(node["unique_id"] != selected["unique_id"] for node in matching_nodes)
+        or observed_minors != expected_minors
+    ):
         raise GpuBoundaryError("live KFD topology does not match selected render nodes")
 
     runtime = {
