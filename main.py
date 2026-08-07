@@ -779,6 +779,11 @@ def _formal_descriptor_snapshot(
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(path, flags)
+    except FileNotFoundError:
+        # Another worker may atomically claim a path returned by our glob before
+        # we open it. Preserve ENOENT so claim_next_descriptor can treat that as
+        # the expected loser side of the race and continue scanning.
+        raise
     except OSError as error:
         raise CampaignError(f"cannot safely open formal descriptor: {path}") from error
     try:
@@ -1087,7 +1092,12 @@ def claim_next_descriptor(
 
     for descriptor in sorted(pending_dir.glob("*.yaml")):
         if formal:
-            identity, payload = _formal_descriptor_snapshot(descriptor)
+            try:
+                identity, payload = _formal_descriptor_snapshot(descriptor)
+            except FileNotFoundError:
+                # A competing worker won the atomic rename after this worker's
+                # directory scan but before it could open the descriptor.
+                continue
             _validate_formal_descriptor_payload(run_directory, descriptor, payload)
         else:
             payload = _read_descriptor(descriptor)
@@ -1105,21 +1115,31 @@ def claim_next_descriptor(
                 r"[^A-Za-z0-9._-]+", "_", worker_id
             ).strip("_") or "worker"
             claimed = running_dir / f"worker_{worker_component}__{descriptor.name}"
-        try:
-            if formal:
+        if formal:
+            try:
                 os.rename(descriptor, claimed)
+            except FileNotFoundError:
+                # Another worker won the claim between our validated snapshot
+                # and the atomic rename.
+                continue
+            try:
                 claimed_identity, claimed_payload = _formal_descriptor_snapshot(claimed)
-                if claimed_identity != identity or claimed_payload != payload:
-                    raise CampaignError("formal descriptor identity changed during claim")
-                _validate_formal_descriptor_payload(
-                    run_directory, claimed, claimed_payload
-                )
-            else:
+            except FileNotFoundError as error:
+                raise CampaignError(
+                    "formal claimed descriptor disappeared before verification"
+                ) from error
+            if claimed_identity != identity or claimed_payload != payload:
+                raise CampaignError("formal descriptor identity changed during claim")
+            _validate_formal_descriptor_payload(
+                run_directory, claimed, claimed_payload
+            )
+        else:
+            try:
                 descriptor.rename(claimed)
-            logger.info(f"Claimed task descriptor: {claimed.name}")
-            return claimed
-        except FileNotFoundError:
-            continue
+            except FileNotFoundError:
+                continue
+        logger.info(f"Claimed task descriptor: {claimed.name}")
+        return claimed
     return None
 
 

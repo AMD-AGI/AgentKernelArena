@@ -274,6 +274,93 @@ def test_concurrent_formal_claim_has_exactly_one_consumer_and_no_hardlink(
     assert os.lstat(running[0]).st_nlink == 1
 
 
+def test_formal_claim_tolerates_descriptor_disappearing_before_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, tasks, mappings = _make_formal_run(tmp_path, ("task_a",))
+    pending = _pending_descriptor(run, tasks[0], mappings[0], total_tasks=1)
+    running = run / aka_main.QUEUE_DIR_NAME / "running"
+    claimed_by_other = running / f"worker_other__{pending.name}"
+    original_snapshot = aka_main._formal_descriptor_snapshot
+    simulated = False
+
+    def simulate_competing_claim(path: Path):
+        nonlocal simulated
+        if not simulated and path == pending:
+            simulated = True
+            os.rename(path, claimed_by_other)
+        return original_snapshot(path)
+
+    monkeypatch.setattr(
+        aka_main, "_formal_descriptor_snapshot", simulate_competing_claim
+    )
+
+    assert (
+        aka_main.claim_next_descriptor(
+            run, "0", logging.getLogger(__name__), host_gpu_id="0"
+        )
+        is None
+    )
+    assert claimed_by_other.exists()
+    assert not pending.exists()
+
+
+def test_formal_claim_tolerates_descriptor_disappearing_before_atomic_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, tasks, mappings = _make_formal_run(tmp_path, ("task_a",))
+    pending = _pending_descriptor(run, tasks[0], mappings[0], total_tasks=1)
+    running = run / aka_main.QUEUE_DIR_NAME / "running"
+    claimed_by_other = running / f"worker_other__{pending.name}"
+    original_rename = aka_main.os.rename
+    simulated = False
+
+    def simulate_competing_rename(source: Path, destination: Path):
+        nonlocal simulated
+        if not simulated and Path(source) == pending:
+            simulated = True
+            original_rename(source, claimed_by_other)
+        return original_rename(source, destination)
+
+    monkeypatch.setattr(aka_main.os, "rename", simulate_competing_rename)
+
+    assert (
+        aka_main.claim_next_descriptor(
+            run, "0", logging.getLogger(__name__), host_gpu_id="0"
+        )
+        is None
+    )
+    assert claimed_by_other.exists()
+    assert not pending.exists()
+
+
+def test_formal_claim_fails_closed_if_claim_disappears_after_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, tasks, mappings = _make_formal_run(tmp_path, ("task_a",))
+    pending = _pending_descriptor(run, tasks[0], mappings[0], total_tasks=1)
+    original_snapshot = aka_main._formal_descriptor_snapshot
+
+    def simulate_post_claim_removal(path: Path):
+        if path.parent.name == "running":
+            path.unlink()
+        return original_snapshot(path)
+
+    monkeypatch.setattr(
+        aka_main, "_formal_descriptor_snapshot", simulate_post_claim_removal
+    )
+
+    with pytest.raises(
+        campaign.CampaignError,
+        match="claimed descriptor disappeared before verification",
+    ):
+        aka_main.claim_next_descriptor(
+            run, "0", logging.getLogger(__name__), host_gpu_id="0"
+        )
+
+    assert not pending.exists()
+
+
 def test_failed_descriptor_roundtrip_preserves_parser_worker_identity(
     tmp_path: Path,
 ) -> None:
