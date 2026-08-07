@@ -104,8 +104,8 @@ touch "$UNRELATED_GEAK_WORKFLOW_DIR/kernel_workflow.js"
 bash -n "$RUNNER"
 grep -Fq 'json.dumps(dict(device_count=count' "$RUNNER" \
     || fail "runtime GPU observation must avoid nested single-quote corruption"
-grep -Fq -- '--ro-bind /proc /proc' "$RUNNER" \
-    || fail "rootless bwrap preflight must reuse Docker's private procfs"
+grep -Fq -- '--bind /proc /proc' "$RUNNER" \
+    || fail "rootless bwrap preflight must expose writable Docker-private procfs for nested Codex userns"
 
 # Formal HOME preparation is fail-closed: it overrides every caller-provided
 # mutable path. The same helper must be a strict no-op outside a formal campaign.
@@ -369,6 +369,7 @@ formal_label="${formal_home#/tmp/aka-home-}"
 assert_has "XDG_CACHE_HOME=/tmp/agent-cache-$formal_label" "${args[@]}"
 assert_has "AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT=$CAMPAIGN_DATA_ROOT" "${args[@]}"
 assert_has "/usr/bin/bwrap:/usr/bin/bwrap:ro" "${args[@]}"
+assert_has "$ROOT/agents/codex/formal_requirements.toml:/etc/codex/requirements.toml:ro" "${args[@]}"
 assert_has "--security-opt=seccomp=unconfined" "${args[@]}"
 assert_has "--security-opt=apparmor=unconfined" "${args[@]}"
 assert_has "--security-opt=no-new-privileges:true" "${args[@]}"

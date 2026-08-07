@@ -109,8 +109,14 @@ reuse from the host. It preflights the selected config before starting the run.
 Matched Apex-versus-Codex runs also execute a fail-closed runtime-isolation
 preflight and repeat it in every worker. The resulting stable security receipt is
 part of `campaign_manifest.yaml`; a worker with different UID/capability/NNP,
-seccomp/AppArmor/Yama, `bwrap`, namespace, or `/proc` escape-probe evidence cannot
-join the run.
+seccomp/AppArmor/Yama, `bwrap`/Codex identity, managed-policy hash, namespace,
+parent-process escape evidence, or managed Codex sandbox behavior cannot join the
+run. The outer attempt keeps Docker's private PID namespace and writable `/proc`
+for nested Codex user namespaces, while live probes require parent
+root/fd/environ/mem access to remain blocked. The managed Codex profile is tested
+separately for workspace write access, credential-read denial, and command-network
+denial. It also requires a distinct inner PID namespace. The inherited procfs can
+show the outer status entry, but root/fd/environ/mem aliases must remain unreadable.
 
 ## Run across multiple GPUs
 

@@ -215,15 +215,22 @@ read-only and writes proposals only to a separate artifact root; AgentKernelAren
 rechecks the full workspace manifest before applying a validated source bundle.
 Formal Docker workers stay non-root, drop every capability, and enable Docker
 `no-new-privileges`. Rootless `bwrap` needs unconfined Docker seccomp/AppArmor
-profiles on this runtime; it reuses Docker's private `/proc` read-only while
-creating per-attempt PID, mount, and IPC namespaces plus private `/tmp` and
-`/dev/shm`. Preflight and every init/worker/postprocess container require Yama
-`ptrace_scope >= 1` and run a live sentinel probe: the inherited parent `/proc`
-entry must remain visible, while both `/proc/<parent>/root` and
-`/proc/<parent>/fd` escape paths must fail specifically with `EACCES`/`EPERM`.
-The stable UID/capability/NNP/seccomp/AppArmor/Yama, `bwrap` hash/version, and
-probe results are bound into the immutable comparison contract; any drift fails
-the worker before an agent session starts.
+profiles on this runtime. The outer per-attempt `bwrap` creates mount and IPC
+namespaces plus private `/tmp` and `/dev/shm`, but deliberately preserves the
+Docker worker's already-private PID namespace and writable `/proc`; nested Codex
+needs that procfs to construct its own command sandbox. Preflight and every
+init/worker/postprocess container require Yama `ptrace_scope >= 1` and run a live
+sentinel probe: the inherited parent `/proc` entry must remain visible, while
+`/proc/<parent>/{root,fd,environ,mem}` escape paths must fail specifically with
+`EACCES`/`EPERM`. A content-pinned managed Codex permission profile separately
+proves workspace writes, denies command network and credential reads, and
+disables hooks. The same live probe requires Codex's inner PID namespace to differ
+from the worker's. Codex inherits the worker-private procfs, so the outer status
+entry remains visible, but its root/fd/environ/mem aliases must all be unreadable.
+The stable UID/capability/NNP/seccomp/AppArmor/Yama, exact
+`bwrap` and Codex identities, managed-policy hash, and both live probe results
+are bound into the immutable comparison contract; any drift fails the worker
+before an agent session starts.
 
 FlyDSL tasks require FlyDSL in the container. The pinned image may already provide it; otherwise run:
 

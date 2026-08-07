@@ -36,11 +36,13 @@ def _policy() -> dict:
 
 def _runtime_isolation_receipt(*, yama_ptrace_scope: int = 1) -> dict:
     return {
-        "schema": "aka.runtime-isolation-receipt/v1",
+        "schema": "aka.runtime-isolation-receipt/v2",
         "policy": {
             "docker_capabilities": "drop_all",
             "docker_no_new_privileges": True,
-            "proc_escape_guard": "yama_ptrace_scope_and_live_parent_root_fd_probe_v1",
+            "proc_escape_guard": (
+                "yama_ptrace_scope_and_live_parent_root_fd_environ_mem_probe_v2"
+            ),
         },
         "outer_runtime": {
             "effective_uid": 1000,
@@ -64,13 +66,33 @@ def _runtime_isolation_receipt(*, yama_ptrace_scope: int = 1) -> dict:
             "sha256": "8" * 64,
             "version": "bubblewrap 1.0",
         },
+        "codex_cli": {
+            "resolved_path": "/opt/node/bin/codex",
+            "sha256": "7" * 64,
+            "version": "codex-cli test",
+        },
+        "codex_requirements": {
+            "resolved_path": "/etc/codex/requirements.toml",
+            "sha256": "6" * 64,
+            "permission_profile": "aka_formal_kernel_v1",
+            "agent_requested_sandbox": "workspace-write_legacy_cli",
+            "effective_profile_probe": "explicit_named_profile_live",
+            "normalization_evidence": "managed_allowlist_plus_pinned_cli_identity",
+            "workspace_write": True,
+            "credential_path": "~/.codex/auth.json",
+            "credential_read": "deny",
+            "command_network": "deny",
+            "hooks": "disabled",
+        },
         "attempt_probe": {
             "campaign_data_hidden": True,
             "parent_process_visible_in_inherited_proc": True,
             "parent_root_escape_blocked": True,
             "parent_fd_escape_blocked": True,
-            "proc_mount_read_only": True,
-            "pid_namespace_unshared": True,
+            "parent_environ_escape_blocked": True,
+            "parent_mem_escape_blocked": True,
+            "proc_mount_read_write": True,
+            "pid_namespace_preserved": True,
             "ipc_namespace_unshared": True,
             "private_shm": True,
             "no_new_privileges": True,
@@ -78,6 +100,17 @@ def _runtime_isolation_receipt(*, yama_ptrace_scope: int = 1) -> dict:
             "bounding_capabilities_zero": True,
             "all_capability_sets_zero": True,
             "seccomp_disabled": True,
+        },
+        "codex_sandbox_probe": {
+            "workspace_write_enforced": True,
+            "credential_read_denied": True,
+            "command_network_denied": True,
+            "inner_pid_namespace_unshared": True,
+            "outer_process_visible_in_inherited_proc": True,
+            "outer_root_alias_blocked": True,
+            "outer_fd_alias_blocked": True,
+            "outer_environ_alias_blocked": True,
+            "outer_mem_alias_blocked": True,
         },
     }
 
@@ -103,6 +136,22 @@ def test_runtime_isolation_receipt_records_only_stable_namespace_evidence(
             _runtime_isolation_receipt()["bubblewrap"],
         ),
     )
+    monkeypatch.setattr(
+        campaign_isolation,
+        "_codex_requirements_identity",
+        lambda: (
+            Path("/etc/codex/requirements.toml"),
+            _runtime_isolation_receipt()["codex_requirements"],
+        ),
+    )
+    monkeypatch.setattr(
+        campaign_isolation,
+        "_codex_cli_identity",
+        lambda: (
+            Path("/opt/node/bin/codex"),
+            _runtime_isolation_receipt()["codex_cli"],
+        ),
+    )
     observed: dict[str, object] = {}
 
     def fake_probe(*, binary, data_root, outer):
@@ -110,6 +159,11 @@ def test_runtime_isolation_receipt_records_only_stable_namespace_evidence(
         return probe
 
     monkeypatch.setattr(campaign_isolation, "_attempt_escape_probe", fake_probe)
+    monkeypatch.setattr(
+        campaign_isolation,
+        "_codex_sandbox_probe",
+        lambda **_kwargs: _runtime_isolation_receipt()["codex_sandbox_probe"],
+    )
 
     receipt = campaign_isolation.runtime_isolation_receipt()
 
@@ -147,6 +201,77 @@ def test_attempt_escape_probe_rejects_non_policy_proc_errors(tmp_path, monkeypat
         campaign_isolation._attempt_escape_probe(
             binary=Path("/usr/bin/bwrap"), data_root=tmp_path, outer=outer
         )
+
+
+def test_codex_requirements_are_content_pinned(tmp_path, monkeypatch) -> None:
+    requirements = (
+        Path(__file__).resolve().parents[1]
+        / "agents"
+        / "codex"
+        / "formal_requirements.toml"
+    )
+    monkeypatch.setattr(
+        campaign_isolation, "_CODEX_REQUIREMENTS_PATH", requirements
+    )
+
+    resolved, identity = campaign_isolation._codex_requirements_identity()
+
+    assert resolved == requirements.resolve()
+    assert identity["permission_profile"] == "aka_formal_kernel_v1"
+    assert identity["credential_read"] == "deny"
+    assert identity["command_network"] == "deny"
+
+    changed = tmp_path / "requirements.toml"
+    changed.write_bytes(requirements.read_bytes() + b"\n# changed\n")
+    monkeypatch.setattr(campaign_isolation, "_CODEX_REQUIREMENTS_PATH", changed)
+    with pytest.raises(
+        campaign_isolation.CampaignIsolationError, match="pinned policy"
+    ):
+        campaign_isolation._codex_requirements_identity()
+
+
+def test_codex_sandbox_probe_uses_managed_profile(tmp_path, monkeypatch) -> None:
+    observed: dict[str, object] = {}
+
+    class Completed:
+        returncode = 0
+        stderr = ""
+        stdout = json.dumps(
+            {
+                "workspace_write_enforced": True,
+                "credential_read_denied": True,
+                "command_network_denied": True,
+                "inner_pid_namespace_unshared": True,
+                "outer_process_visible_in_inherited_proc": True,
+                "outer_root_alias_blocked": True,
+                "outer_fd_alias_blocked": True,
+                "outer_environ_alias_blocked": True,
+                "outer_mem_alias_blocked": True,
+            }
+        )
+
+    def fake_run(command, **kwargs):
+        observed["command"] = command
+        observed["environment"] = kwargs["env"]
+        return Completed()
+
+    monkeypatch.setattr(campaign_isolation.subprocess, "run", fake_run)
+
+    result = campaign_isolation._codex_sandbox_probe(
+        codex_binary=Path("/opt/node/bin/codex"),
+        bubblewrap_binary=Path("/usr/bin/bwrap"),
+        data_root=tmp_path,
+    )
+
+    command = observed["command"]
+    assert result["credential_read_denied"] is True
+    assert result["inner_pid_namespace_unshared"] is True
+    assert "--include-managed-config" in command
+    profile_index = command.index("--permission-profile")
+    assert command[profile_index + 1] == "aka_formal_kernel_v1"
+    assert "--unshare-pid" not in command[: command.index("--")]
+    environment = observed["environment"]
+    assert environment["CODEX_HOME"].endswith("/home/.codex")
 
 
 def test_outer_runtime_isolation_fails_closed_on_yama_or_capabilities(monkeypatch) -> None:
@@ -282,6 +407,14 @@ def test_formal_attempt_mount_keeps_workspace_read_only_and_artifacts_private(
     shm_sentinel.write_text("host-visible\n", encoding="utf-8")
     monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
     monkeypatch.setenv("AGENT_STATE_MOUNT_ROOT", str(state_root))
+    monkeypatch.setattr(
+        campaign_isolation,
+        "_codex_requirements_identity",
+        lambda: (
+            Path("/etc/codex/requirements.toml"),
+            _runtime_isolation_receipt()["codex_requirements"],
+        ),
+    )
     command = campaign_isolation.wrap_attempt_command(
         [
             "/bin/sh",
@@ -304,7 +437,8 @@ def test_formal_attempt_mount_keeps_workspace_read_only_and_artifacts_private(
         read_only_roots=(workspace,),
     )
     proc_index = command.index("/proc")
-    assert command[proc_index - 1] == "--ro-bind"
+    assert command[proc_index - 1] == "--bind"
+    assert "--unshare-pid" not in command
     assert "--proc" not in command
 
     try:

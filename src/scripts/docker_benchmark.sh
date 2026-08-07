@@ -14,6 +14,8 @@ SELECTED_IMAGE=""
 SELECTED_IMAGE_ID=""
 SELECTED_IMAGE_REPO_DIGESTS=""
 AGENT_STATE_MOUNT_ROOT="${AKA_AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
+FORMAL_CODEX_REQUIREMENTS_HOST="$HOST_ROOT/agents/codex/formal_requirements.toml"
+FORMAL_CODEX_REQUIREMENTS_CONTAINER="/etc/codex/requirements.toml"
 DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
 # Set by host-side commands after reading the selected run config. Keep this
 # separate from REQUIRED_AGENTS because geak_v4 is normalized to claude_code
@@ -913,6 +915,12 @@ build_docker_args() {
         add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR" ro
         add_mount "$CAMPAIGN_DATA_ROOT" "$CAMPAIGN_DATA_ROOT"
         add_mount /usr/bin/bwrap /usr/bin/bwrap ro
+        need_path \
+            "$FORMAL_CODEX_REQUIREMENTS_HOST" \
+            "formal Codex requirements policy" 1
+        add_mount \
+            "$FORMAL_CODEX_REQUIREMENTS_HOST" \
+            "$FORMAL_CODEX_REQUIREMENTS_CONTAINER" ro
         if [[ -n "$CAMPAIGN_GPU_PLAN_HOST" ]]; then
             add_mount "$CAMPAIGN_GPU_PLAN_HOST" "$CAMPAIGN_GPU_PLAN_CONTAINER" ro
         fi
@@ -1138,8 +1146,8 @@ container_preflight() {
     fi
     if grep -Eq '^[[:space:]]+comparison:[[:space:]]*apex_vs_codex([[:space:]#]|$)' "$config_name"; then
         command -v bwrap >/dev/null 2>&1 || die "bwrap is unavailable in campaign container"
-        bwrap --die-with-parent --unshare-pid --unshare-ipc --ro-bind / / \
-            --dev-bind /dev /dev --tmpfs /dev/shm --ro-bind /proc /proc -- /bin/true \
+        bwrap --die-with-parent --unshare-ipc --ro-bind / / \
+            --dev-bind /dev /dev --tmpfs /dev/shm --bind /proc /proc -- /bin/true \
             || die "bwrap cannot create the required per-attempt mount namespace"
         python3 - <<'PY'
 import json

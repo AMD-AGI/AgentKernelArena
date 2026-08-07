@@ -103,6 +103,10 @@ def _install_fake_codex(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path
     binary.chmod(0o755)
     monkeypatch.setenv("PATH", f"{binary_dir}{os.pathsep}{os.environ.get('PATH', '')}")
     monkeypatch.setattr(
+        "src.campaign_isolation._codex_requirements_identity",
+        lambda: (Path("/etc/codex/requirements.toml"), {"sha256": "f" * 64}),
+    )
+    monkeypatch.setattr(
         launcher,
         "load_prompt_builder",
         lambda _agent_type, _logger: (

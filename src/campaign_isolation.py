@@ -28,8 +28,11 @@ class CampaignIsolationError(RuntimeError):
     """Raised when a formal attempt cannot be given a private filesystem view."""
 
 
-_RUNTIME_ISOLATION_SCHEMA = "aka.runtime-isolation-receipt/v1"
+_RUNTIME_ISOLATION_SCHEMA = "aka.runtime-isolation-receipt/v2"
 _ZERO_CAPABILITY_FIELDS = ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb")
+_CODEX_REQUIREMENTS_PATH = Path("/etc/codex/requirements.toml")
+_CODEX_PERMISSION_PROFILE = "aka_formal_kernel_v1"
+_CODEX_REQUIREMENTS_SHA256 = "0c68db4f0ee56b42f15af2896e51f4e667d9d6f86d9d3864dfec571278572ade"
 
 
 def _proc_status() -> dict[str, str]:
@@ -156,6 +159,8 @@ def mount_options(path):
 
 parent_root = f"/proc/{outer_pid}/root{sentinel}"
 parent_fd = f"/proc/{outer_pid}/fd/{outer_fd}"
+parent_environ = f"/proc/{outer_pid}/environ"
+parent_mem = f"/proc/{outer_pid}/mem"
 proc_options = mount_options("/proc")
 direct_error = read_error(sentinel)
 parent_root_error = read_error(parent_root)
@@ -165,14 +170,18 @@ result = {
     "parent_process_visible_in_inherited_proc": read_error(f"/proc/{outer_pid}/status") is None,
     "parent_root_escape_blocked": parent_root_error in {errno.EACCES, errno.EPERM},
     "parent_fd_escape_blocked": parent_fd_error in {errno.EACCES, errno.EPERM},
-    "proc_mount_read_only": bool(proc_options) and all("ro" in item for item in proc_options),
-    "pid_namespace_unshared": os.readlink("/proc/self/ns/pid") != outer_pid_namespace,
+    "parent_environ_escape_blocked": read_error(parent_environ) in {errno.EACCES, errno.EPERM},
+    "parent_mem_escape_blocked": read_error(parent_mem) in {errno.EACCES, errno.EPERM},
+    "proc_mount_read_write": bool(proc_options) and "rw" in proc_options[-1],
+    "pid_namespace_preserved": os.readlink("/proc/self/ns/pid") == outer_pid_namespace,
     "ipc_namespace_unshared": os.readlink("/proc/self/ns/ipc") != outer_ipc_namespace,
     "private_shm": any(
         len(fields) > 6 and fields[4] == "/dev/shm" and "tmpfs" in fields
         for fields in (
             line.split()
-            for line in pathlib.Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()
+            for line in pathlib.Path("/proc/self/mountinfo")
+            .read_text(encoding="utf-8")
+            .splitlines()
         )
     ),
     "no_new_privileges": status_value("NoNewPrivs") == "1",
@@ -202,6 +211,118 @@ def _sha256_regular_file(path: Path) -> str:
     except OSError as error:
         raise CampaignIsolationError(f"cannot hash isolation executable: {path}") from error
     return digest.hexdigest()
+
+
+def _codex_requirements_identity() -> tuple[Path, dict[str, Any]]:
+    """Validate the immutable managed policy used by both formal treatments."""
+    path = _CODEX_REQUIREMENTS_PATH
+    try:
+        metadata = path.lstat()
+    except OSError as error:
+        raise CampaignIsolationError("formal Codex requirements are unavailable") from error
+    if (
+        path.is_symlink()
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_nlink != 1
+    ):
+        raise CampaignIsolationError("formal Codex requirements file is unsafe")
+    digest = _sha256_regular_file(path)
+    if digest != _CODEX_REQUIREMENTS_SHA256:
+        raise CampaignIsolationError("formal Codex requirements violate the pinned policy")
+    resolved = path.resolve(strict=True)
+    return resolved, {
+        "resolved_path": str(resolved),
+        "sha256": digest,
+        "permission_profile": _CODEX_PERMISSION_PROFILE,
+        "agent_requested_sandbox": "workspace-write_legacy_cli",
+        "effective_profile_probe": "explicit_named_profile_live",
+        "normalization_evidence": "managed_allowlist_plus_pinned_cli_identity",
+        "workspace_write": True,
+        "credential_path": "~/.codex/auth.json",
+        "credential_read": "deny",
+        "command_network": "deny",
+        "hooks": "disabled",
+    }
+
+
+_CODEX_SANDBOX_PROBE = r"""
+import errno
+import json
+import os
+import pathlib
+import socket
+import sys
+
+workspace = pathlib.Path(sys.argv[1])
+credential = pathlib.Path(sys.argv[2])
+outer_pid_namespace = sys.argv[3]
+outer_pid = int(sys.argv[4])
+outer_credential_fd = int(sys.argv[5])
+marker = workspace / "managed-sandbox-write-probe"
+
+def read_error(path):
+    try:
+        pathlib.Path(path).read_bytes()
+    except OSError as error:
+        return error.errno
+    return None
+
+try:
+    credential.read_bytes()
+    credential_errno = None
+except OSError as error:
+    credential_errno = error.errno
+
+try:
+    marker.write_text("ok", encoding="utf-8")
+    workspace_write = marker.read_text(encoding="utf-8") == "ok"
+except OSError:
+    workspace_write = False
+
+network_errno = None
+sock = None
+try:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(1.0)
+    network_errno = sock.connect_ex(("1.1.1.1", 443))
+except OSError as error:
+    network_errno = error.errno
+finally:
+    if sock is not None:
+        sock.close()
+
+outer_proc = f"/proc/{outer_pid}"
+blocked_proc_errors = {errno.EACCES, errno.EPERM, errno.ENOENT}
+result = {
+    "workspace_write_enforced": workspace_write,
+    "credential_read_denied": credential_errno in {errno.EACCES, errno.EPERM, errno.ENOENT},
+    "command_network_denied": network_errno in {
+        errno.EACCES,
+        errno.EPERM,
+        errno.ENETDOWN,
+        errno.ENETUNREACH,
+        errno.EHOSTUNREACH,
+    },
+    "inner_pid_namespace_unshared": (
+        os.readlink("/proc/self/ns/pid") != outer_pid_namespace
+    ),
+    "outer_process_visible_in_inherited_proc": (
+        read_error(f"{outer_proc}/status") is None
+    ),
+    "outer_root_alias_blocked": (
+        read_error(f"{outer_proc}/root{credential}") in blocked_proc_errors
+    ),
+    "outer_fd_alias_blocked": (
+        read_error(f"{outer_proc}/fd/{outer_credential_fd}") in blocked_proc_errors
+    ),
+    "outer_environ_alias_blocked": (
+        read_error(f"{outer_proc}/environ") in blocked_proc_errors
+    ),
+    "outer_mem_alias_blocked": read_error(f"{outer_proc}/mem") in blocked_proc_errors,
+}
+print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+raise SystemExit(0 if all(result.values()) else 74)
+"""
 
 
 def _bubblewrap_identity() -> tuple[Path, dict[str, str]]:
@@ -234,7 +355,6 @@ def _bubblewrap_base_command(binary: str | Path, data_root: Path) -> list[str]:
     return [
         str(binary),
         "--die-with-parent",
-        "--unshare-pid",
         "--unshare-ipc",
         "--ro-bind",
         "/",
@@ -244,7 +364,7 @@ def _bubblewrap_base_command(binary: str | Path, data_root: Path) -> list[str]:
         "/dev",
         "--tmpfs",
         "/dev/shm",
-        "--ro-bind",
+        "--bind",
         "/proc",
         "/proc",
         "--tmpfs",
@@ -252,6 +372,132 @@ def _bubblewrap_base_command(binary: str | Path, data_root: Path) -> list[str]:
         "--tmpfs",
         str(data_root),
     ]
+
+
+def _codex_cli_identity() -> tuple[Path, dict[str, str]]:
+    discovered = shutil.which("codex")
+    if not discovered:
+        raise CampaignIsolationError("formal campaign requires the Codex CLI")
+    try:
+        binary = Path(discovered).resolve(strict=True)
+        completed = subprocess.run(
+            [str(binary), "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise CampaignIsolationError("cannot identify the Codex CLI") from error
+    version = (completed.stdout or completed.stderr).strip()
+    if completed.returncode != 0 or not version:
+        raise CampaignIsolationError("Codex CLI version is unavailable")
+    return binary, {
+        "resolved_path": str(binary),
+        "sha256": _sha256_regular_file(binary),
+        "version": version,
+    }
+
+
+def _codex_sandbox_probe(
+    *, codex_binary: Path, bubblewrap_binary: Path, data_root: Path
+) -> dict[str, bool]:
+    """Exercise the exact outer mount boundary and Codex managed command policy."""
+    probe_dir = Path(tempfile.mkdtemp(prefix=".aka-codex-sandbox-probe-", dir=data_root))
+    home = probe_dir / "home"
+    workspace = probe_dir / "workspace"
+    credential = home / ".codex" / "auth.json"
+    credential_descriptor = -1
+    try:
+        credential.parent.mkdir(parents=True)
+        workspace.mkdir()
+        credential.write_text('{"fixture":"must-not-be-readable"}\n', encoding="utf-8")
+        credential_descriptor = os.open(credential, os.O_RDONLY)
+        outer_pid_namespace = os.readlink("/proc/self/ns/pid")
+        outer_pid = os.getpid()
+
+        command = _bubblewrap_base_command(bubblewrap_binary, data_root)
+        current = data_root
+        for part in probe_dir.relative_to(data_root).parts:
+            current /= part
+            command.extend(["--dir", str(current)])
+        command.extend(
+            [
+                "--bind",
+                str(probe_dir),
+                str(probe_dir),
+                "--",
+                str(codex_binary),
+                "sandbox",
+                "--include-managed-config",
+                "--permission-profile",
+                _CODEX_PERMISSION_PROFILE,
+                "-C",
+                str(workspace),
+                "--",
+                sys.executable,
+                "-c",
+                _CODEX_SANDBOX_PROBE,
+                str(workspace),
+                str(credential),
+                outer_pid_namespace,
+                str(outer_pid),
+                str(credential_descriptor),
+            ]
+        )
+        environment = dict(os.environ)
+        environment.update(
+            {
+                "HOME": str(home),
+                "CODEX_HOME": str(home / ".codex"),
+                "XDG_CONFIG_HOME": str(home / ".config"),
+                "XDG_STATE_HOME": str(home / ".local/state"),
+            }
+        )
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=30,
+                env=environment,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise CampaignIsolationError("Codex managed sandbox probe failed to run") from error
+        lines = [line for line in completed.stdout.splitlines() if line.strip()]
+        try:
+            result = json.loads(lines[-1]) if lines else None
+        except json.JSONDecodeError as error:
+            raise CampaignIsolationError(
+                f"Codex managed sandbox probe emitted invalid evidence: {completed.stderr.strip()}"
+            ) from error
+        expected_keys = {
+            "workspace_write_enforced",
+            "credential_read_denied",
+            "command_network_denied",
+            "inner_pid_namespace_unshared",
+            "outer_process_visible_in_inherited_proc",
+            "outer_root_alias_blocked",
+            "outer_fd_alias_blocked",
+            "outer_environ_alias_blocked",
+            "outer_mem_alias_blocked",
+        }
+        if (
+            completed.returncode != 0
+            or not isinstance(result, dict)
+            or set(result) != expected_keys
+            or any(result.get(key) is not True for key in expected_keys)
+        ):
+            raise CampaignIsolationError(
+                "Codex managed sandbox probe failed closed: "
+                f"result={result!r} stderr={completed.stderr.strip()!r}"
+            )
+        return result
+    finally:
+        if credential_descriptor >= 0:
+            os.close(credential_descriptor)
+        shutil.rmtree(probe_dir, ignore_errors=False)
 
 
 def _attempt_escape_probe(
@@ -321,8 +567,10 @@ def _attempt_escape_probe(
             "parent_process_visible_in_inherited_proc",
             "parent_root_escape_blocked",
             "parent_fd_escape_blocked",
-            "proc_mount_read_only",
-            "pid_namespace_unshared",
+            "parent_environ_escape_blocked",
+            "parent_mem_escape_blocked",
+            "proc_mount_read_write",
+            "pid_namespace_preserved",
             "ipc_namespace_unshared",
             "private_shm",
             "no_new_privileges",
@@ -357,11 +605,18 @@ def runtime_isolation_receipt() -> dict[str, Any]:
         raise CampaignIsolationError("formal campaign data root is unavailable") from error
     outer = _outer_runtime_observation()
     binary, bubblewrap = _bubblewrap_identity()
+    _requirements_path, codex_requirements = _codex_requirements_identity()
+    codex_binary, codex_cli = _codex_cli_identity()
     attempt = _attempt_escape_probe(binary=binary, data_root=data_root, outer=outer)
+    codex_sandbox = _codex_sandbox_probe(
+        codex_binary=codex_binary,
+        bubblewrap_binary=binary,
+        data_root=data_root,
+    )
     # Namespace inode identifiers are deliberately used only by the live probe:
     # they differ for every Docker worker and would make the Apex/Codex
-    # comparison contract run-specific.  The manifest records the verified
-    # relationship instead (the two `*_namespace_unshared` booleans).
+    # comparison contract run-specific. The manifest records only the verified
+    # relationships (attempt PID preserved, attempt IPC unshared).
     recorded_outer = {
         key: value
         for key, value in outer.items()
@@ -377,14 +632,25 @@ def runtime_isolation_receipt() -> dict[str, Any]:
             "docker_seccomp": "unconfined_for_rootless_userns",
             "docker_pid_namespace": "private_default",
             "attempt_mount_namespace": "bubblewrap",
-            "attempt_pid_namespace": "unshared",
+            "attempt_pid_namespace": "docker_worker_shared_for_nested_codex_userns",
             "attempt_ipc_namespace": "unshared",
-            "attempt_proc": "read_only_bind_of_docker_private_procfs",
-            "proc_escape_guard": "yama_ptrace_scope_and_live_parent_root_fd_probe_v1",
+            "attempt_proc": "read_write_bind_of_docker_private_procfs",
+            "proc_escape_guard": (
+                "yama_ptrace_scope_and_live_parent_root_fd_environ_mem_probe_v2"
+            ),
+            "command_sandbox": "codex_managed_permission_profile_bwrap",
+            "command_pid_namespace": (
+                "nested_codex_unshared_with_inherited_proc_guard_v1"
+            ),
+            "command_network": "managed_profile_denied_live_probe_v1",
+            "credential_read": "denied_by_managed_permission_profile",
         },
         "outer_runtime": recorded_outer,
         "bubblewrap": bubblewrap,
+        "codex_cli": codex_cli,
+        "codex_requirements": codex_requirements,
         "attempt_probe": attempt,
+        "codex_sandbox_probe": codex_sandbox,
     }
 
 
@@ -548,6 +814,7 @@ def wrap_attempt_command(
     # Re-resolve, hash, and version-check the read-only mounted executable at
     # attempt construction time instead of trusting a prior PATH lookup.
     binary, _identity = _bubblewrap_identity()
+    _codex_requirements_identity()
     data_root_raw = os.environ.get("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", "")
     data_root = Path(data_root_raw)
     if not data_root.is_absolute() or not data_root.is_dir():

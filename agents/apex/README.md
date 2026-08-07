@@ -112,10 +112,17 @@ the Docker reference plus its daemon-inspected content ID and repo digests, comp
 evaluator/task-package hashes, every GPU's unique ID/serial/model/gfx plus task
 mapping, and a live runtime-isolation receipt. The receipt proves a non-root UID,
 zero inheritable/permitted/effective/bounding/ambient capabilities, NNP, the pinned
-seccomp/AppArmor/Yama state, the exact `bwrap` binary, read-only inherited `/proc`,
-unshared PID/IPC namespaces, private shared memory, and blocked parent-root/fd
-escape probes. Init, every worker, and postprocess independently reproduce this
-receipt before accepting the immutable manifest. `comparison_contract_sha256`
+seccomp/AppArmor/Yama state, the exact `bwrap` and Codex binaries, the managed
+Codex policy hash, an outer mount/IPC namespace with private shared memory, and
+blocked parent root/fd/environ/mem escape probes. The attempt intentionally keeps
+the Docker worker's private PID namespace and writable `/proc` so nested Codex can
+create its own command sandbox. A separate live Codex probe must prove that the
+managed profile permits workspace writes while denying credential reads and
+command network. It also proves the inner PID namespace differs; the inherited
+procfs may expose the outer status entry, but root/fd/environ/mem aliases must all
+remain unreadable. Init, every worker, and
+postprocess independently reproduce this receipt before accepting the immutable
+manifest. `comparison_contract_sha256`
 excludes the treatment template/config and
 run-specific GPU lease fields (run name, PID, timestamp, receipt hash, and lock path),
 while retaining the common lease policy, physical unique IDs, protected device paths,
@@ -144,10 +151,15 @@ explicit read-only bind: only its separate result/artifact root and fresh auth-o
 are writable. The adapter verifies a full pre-apply workspace manifest before it may
 apply a validated Apex bundle, so `no_gain` cannot retain direct or undeclared edits.
 Both treatments use strict `approval_policy=never`, ignored user config and exec-policy
-rules, an ephemeral session, a private IPC namespace, and private `/dev/shm`. A missing
-or unusable `bwrap` fails campaign preflight. Formal Docker workers remain non-root and
-receive no added Linux capabilities; rootless bubblewrap mounts Docker's already-private
-`/proc` read-only instead of creating a nested procfs.
+rules, an ephemeral session, a private outer IPC namespace, and private `/dev/shm`.
+The content-pinned `/etc/codex/requirements.toml` selects the only allowed managed
+permission profile, disables hooks and command network, and denies sandboxed commands
+access to `~/.codex/auth.json`; the Codex supervisor can still authenticate before
+launching those commands. A missing or unusable `bwrap`, a different requirements
+file, or any failed live property probe aborts campaign preflight. Formal Docker
+workers remain non-root and receive no added Linux capabilities. The outer attempt
+boundary bind-mounts Docker's already-private `/proc` read-write and preserves its PID
+namespace solely so Codex can create the nested user-namespace sandbox.
 
 Formal GPU workers do not use `--privileged`, `/dev/mem`, or the complete `/dev/dri`
 tree. A host-resolved plan maps each physical `unique_id` through KFD topology to its
