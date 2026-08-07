@@ -34,7 +34,13 @@ from typing import Any, Iterable
 import yaml
 
 from agents import register_agent
-from src.agent_turn_budget import FORMAL_MATCHED_MAX_TURNS
+from src.agent_turn_budget import (
+    FORMAL_MATCHED_MAX_TURNS,
+    TURN_POLICY,
+    budget_stop_reason_matches,
+    context_packet_objective_matches,
+    render_apex_run_control,
+)
 from src.module_registration import AgentType, load_prompt_builder
 from src.campaign_isolation import (
     attempt_command_pass_fds,
@@ -59,7 +65,10 @@ _APEX_GENERIC_CONTEXT_MARKER = (
 )
 _NORMAL_NO_PATCH_STATUSES = {"no_gain"}
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v1"
+_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v2"
+_CALLER_RUN_CONTROL_SCHEMA = "aka.apex-caller-run-control/v1"
+_INSTRUCTION_ADAPTATION_SCHEMA = "aka.apex-instruction-adaptation/v1"
+_ARENA_PYTHON_ENV = "AGENT_KERNEL_ARENA_PYTHON"
 _TERM_GRACE_SECONDS = 10.0
 _KILL_GRACE_SECONDS = 5.0
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -170,6 +179,7 @@ def _apex_task_instructions(
     workspace: Path,
     sources: Iterable[str],
     symbols: Iterable[str],
+    caller_run_control: dict[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Preserve the Arena task contract within Apex's bounded objective field.
 
@@ -215,6 +225,16 @@ def _apex_task_instructions(
         strategy = "omit_known_generic_mi355x_triton_context_v1"
         marker = _APEX_GENERIC_CONTEXT_MARKER.lstrip("\n")
 
+    if caller_run_control is not None:
+        instructions = (
+            f"{instructions.rstrip()}\n\n{render_apex_run_control(caller_run_control)}"
+        )
+        strategy = (
+            "append_formal_run_control_v1"
+            if strategy == "verbatim"
+            else f"{strategy}_and_append_formal_run_control_v1"
+        )
+
     if len(instructions) > _APEX_INSTRUCTION_LIMIT:
         raise ApexAdapterError(
             "Apex task instructions exceed the ContextPacket text limit after adaptation: "
@@ -223,7 +243,7 @@ def _apex_task_instructions(
 
     adapted_bytes = instructions.encode("utf-8")
     provenance = {
-        "schema": "aka.apex-instruction-adaptation/v1",
+        "schema": _INSTRUCTION_ADAPTATION_SCHEMA,
         "strategy": strategy,
         "limit_characters": _APEX_INSTRUCTION_LIMIT,
         "boundary_marker": marker,
@@ -239,6 +259,84 @@ def _apex_task_instructions(
         },
     }
     return instructions, provenance
+
+
+def _formal_python_interpreter(*, required: bool) -> dict[str, Any] | None:
+    """Resolve the caller-selected interpreter without silently choosing a fallback."""
+
+    raw = os.environ.get(_ARENA_PYTHON_ENV)
+    if not raw:
+        if required:
+            raise ApexAdapterError(
+                f"formal Apex requires {_ARENA_PYTHON_ENV} to be set"
+            )
+        return None
+    path = Path(raw)
+    if not path.is_absolute():
+        raise ApexAdapterError(f"{_ARENA_PYTHON_ENV} must be an absolute path")
+    try:
+        resolved = path.resolve(strict=True)
+        metadata = resolved.stat()
+    except OSError as error:
+        raise ApexAdapterError(
+            f"{_ARENA_PYTHON_ENV} does not resolve to a usable interpreter"
+        ) from error
+    if not stat.S_ISREG(metadata.st_mode) or not os.access(resolved, os.X_OK):
+        raise ApexAdapterError(
+            f"{_ARENA_PYTHON_ENV} must resolve to an executable regular file"
+        )
+    return {
+        "environment_variable": _ARENA_PYTHON_ENV,
+        "path": raw,
+        "resolved_path": str(resolved),
+        "sha256": _sha256_file(resolved),
+    }
+
+
+def _bind_formal_python(
+    command: dict[str, Any], interpreter: dict[str, Any]
+) -> dict[str, Any]:
+    """Make Python verifier argv use the exact interpreter selected by the runner."""
+
+    argv = list(command["argv"])
+    launcher = Path(argv[0]).name if argv else ""
+    if launcher in {"python", "python3"}:
+        argv[0] = interpreter["path"]
+    elif launcher in {"pytest", "py.test"}:
+        argv = [interpreter["path"], "-m", "pytest", *argv[1:]]
+    return {"argv": argv, "timeout_seconds": command["timeout_seconds"]}
+
+
+def _caller_run_control(
+    *,
+    formal_campaign: bool,
+    commands: dict[str, dict[str, Any]],
+    max_turns: int,
+    max_iterations: int,
+) -> dict[str, Any] | None:
+    if not formal_campaign:
+        return None
+    interpreter = _formal_python_interpreter(required=True)
+    assert interpreter is not None
+    bound_commands = {
+        phase: _bind_formal_python(commands[phase], interpreter)
+        for phase in ("compile", "correctness", "performance")
+    }
+    return {
+        "schema": _CALLER_RUN_CONTROL_SCHEMA,
+        "deliverable_versions": max_iterations,
+        "structured_turn_budget": {
+            "policy": TURN_POLICY,
+            "max_turns": max_turns,
+            "counting": "assistant_message_and_tool_call_start_each_count_once",
+        },
+        "candidate_persistence": "leave_best_source_before_budget_boundary",
+        "python_interpreter": interpreter,
+        "verifier_argv": {
+            phase: list(bound_commands[phase]["argv"])
+            for phase in ("compile", "correctness", "performance")
+        },
+    }
 
 
 def _workspace_manifest(workspace: Path) -> dict[str, dict[str, Any]]:
@@ -429,7 +527,13 @@ def _build_task_spec(
     workspace: Path,
     artifact_root: Path,
     prompt: str,
+    formal_campaign: bool | None = None,
 ) -> dict[str, Any]:
+    formal_campaign = (
+        is_formal_campaign(eval_config)
+        if formal_campaign is None
+        else formal_campaign
+    )
     task_type = str(task_config.get("task_type") or "").strip()
     supported = set(_string_list(
         agent_config.get("supported_task_types", []),
@@ -470,15 +574,10 @@ def _build_task_spec(
         relative: _sha256_file(_ensure_regular_workspace_file(workspace, relative))
         for relative in sources
     }
-    commands = {
+    commands: dict[str, dict[str, Any]] = {
         "compile": compile_commands,
         "correctness": correctness_commands,
         "performance": performance_commands,
-    }
-    recipe_material = {
-        "task_config": _sha256_file(task_config_path),
-        "commands": commands,
-        "source_files": sources,
     }
     backend = str(agent_config.get("backend") or "codex").strip().lower()
     if backend not in {"codex", "claude", "cursor"}:
@@ -495,11 +594,31 @@ def _build_task_spec(
             raise ApexAdapterError(
                 f"formal Apex requires max_turns={FORMAL_MATCHED_MAX_TURNS}"
             )
+    if formal_campaign and iteration_budget != 1:
+        raise ApexAdapterError("formal Apex requires exactly one deliverable version")
+    caller_run_control = _caller_run_control(
+        formal_campaign=formal_campaign,
+        commands=commands,
+        max_turns=max_turns,
+        max_iterations=iteration_budget,
+    )
+    if caller_run_control is not None:
+        interpreter = caller_run_control["python_interpreter"]
+        commands = {
+            phase: _bind_formal_python(commands[phase], interpreter)
+            for phase in ("compile", "correctness", "performance")
+        }
+    recipe_material = {
+        "task_config": _sha256_file(task_config_path),
+        "commands": commands,
+        "source_files": sources,
+    }
     instructions, instruction_adaptation = _apex_task_instructions(
         prompt,
         workspace=workspace,
         sources=sources,
         symbols=symbols,
+        caller_run_control=caller_run_control,
     )
     return {
         "schema_version": _SCHEMA_VERSION,
@@ -510,6 +629,7 @@ def _build_task_spec(
         # Apex ignores unknown TaskSpec fields. This adapter-owned receipt makes
         # the transform immutable without expanding Apex's caller-neutral V1 API.
         "instruction_adaptation": instruction_adaptation,
+        "caller_run_control": caller_run_control,
         "language": "triton",
         "editable_files": sources,
         "target_functions": symbols,
@@ -852,6 +972,46 @@ def _canonical_json_digest(value: Any) -> str:
     )
 
 
+def _validate_instruction_adaptation(
+    task_spec: dict[str, Any], original_prompt_bytes: bytes
+) -> dict[str, Any]:
+    """Recompute both sides of the caller-owned prompt adaptation receipt."""
+
+    adaptation = task_spec.get("instruction_adaptation")
+    if (
+        not isinstance(adaptation, dict)
+        or adaptation.get("schema") != _INSTRUCTION_ADAPTATION_SCHEMA
+    ):
+        raise ApexAdapterError("TaskSpec instruction_adaptation is missing or invalid")
+    try:
+        original_text = original_prompt_bytes.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ApexAdapterError("original Arena prompt is not valid UTF-8") from error
+    instructions = task_spec.get("instructions")
+    if not isinstance(instructions, str):
+        raise ApexAdapterError("TaskSpec instructions must be text")
+    adapted_bytes = instructions.encode("utf-8")
+    expected_original = {
+        "characters": len(original_text),
+        "bytes": len(original_prompt_bytes),
+        "sha256": _sha256_bytes(original_prompt_bytes),
+    }
+    expected_adapted = {
+        "characters": len(instructions),
+        "bytes": len(adapted_bytes),
+        "sha256": _sha256_bytes(adapted_bytes),
+    }
+    if adaptation.get("original") != expected_original:
+        raise ApexAdapterError(
+            "instruction_adaptation original digest/size does not match Arena prompt"
+        )
+    if adaptation.get("adapted") != expected_adapted:
+        raise ApexAdapterError(
+            "instruction_adaptation adapted digest/size does not match TaskSpec"
+        )
+    return adaptation
+
+
 def _regular_path_below(root: Path, raw: Any, *, label: str) -> Path:
     if not isinstance(raw, str) or not Path(raw).is_absolute():
         raise ApexAdapterError(f"{label} must be an absolute path")
@@ -902,11 +1062,49 @@ def _validate_apex_lineage(
 ) -> dict[str, Any]:
     """Validate Apex's terminal result through its journal and transcript CAS."""
     status = result.get("status")
-    expected_verdict = {"candidate_ready": "keep", "no_gain": "revert"}.get(status)
-    if expected_verdict is None:
-        raise ApexAdapterError("only terminal candidate_ready/no_gain lineage is scoreable")
-    if result.get("error") is not None:
-        raise ApexAdapterError("successful Apex terminal result must have error=null")
+    terminal_contracts = {
+        "candidate_ready": {
+            "verdict": "keep",
+            "agent_event": "agent_completed",
+            "reason": None,
+            "run_reason": "candidate_ready",
+        },
+        "no_gain": {
+            "verdict": "revert",
+            "agent_event": "agent_completed",
+            "reason": None,
+            "run_reason": None,
+        },
+        "budget_exhausted": {
+            "verdict": "reject",
+            "agent_event": "agent_failed",
+            "reason": "agent_turn_budget_exceeded",
+            "run_reason": "agent_turn_budget_exceeded",
+        },
+    }
+    contract = terminal_contracts.get(status)
+    if contract is None:
+        raise ApexAdapterError(
+            "formal Apex lineage supports candidate_ready, no_gain, or budget_exhausted"
+        )
+    expected_verdict = contract["verdict"]
+    failure_reason = contract["reason"]
+    if failure_reason is None:
+        if result.get("error") is not None:
+            raise ApexAdapterError("successful Apex terminal result must have error=null")
+    else:
+        error = result.get("error")
+        if (
+            result.get("reason_code") != failure_reason
+            or not isinstance(error, dict)
+            or error.get("reason_code") != failure_reason
+            or result.get("bundle_path") is not None
+            or result.get("bundle_digest") is not None
+            or result.get("changed_files") != []
+        ):
+            raise ApexAdapterError(
+                "budget_exhausted result does not carry the exact failure contract"
+            )
     baseline = result.get("baseline_lock")
     if not isinstance(baseline, dict) or baseline.get("file_hashes") != task_spec["baseline"]["file_hashes"]:
         raise ApexAdapterError("Apex result baseline_lock does not match TaskSpec")
@@ -1011,6 +1209,13 @@ def _validate_apex_lineage(
         or journal_ref.get("head_checksum") != head["checksum"]
     ):
         raise ApexAdapterError("Apex result journal head does not match verified journal")
+    expected_run_event = "run.failed" if failure_reason else "run.succeeded"
+    expected_run_reason = contract["run_reason"] or result.get("reason_code")
+    if (
+        head["event_type"] != expected_run_event
+        or head["payload"].get("reason") != expected_run_reason
+    ):
+        raise ApexAdapterError("Apex terminal run event disagrees with result status")
     verdict_ref = result.get("internal_verdict_ref")
     verdict_events = [event for event in events if event["event_id"] == verdict_ref]
     if len(verdict_events) != 1 or verdict_events[0]["event_type"] not in {
@@ -1022,23 +1227,51 @@ def _validate_apex_lineage(
     verdict_payload = verdict_events[0]["payload"]
     if verdict_payload.get("verdict", expected_verdict) != expected_verdict:
         raise ApexAdapterError("Apex terminal decision disagrees with result verdict")
+    if failure_reason and (
+        verdict_events[0]["event_type"] != "decision"
+        or verdict_payload.get("reason") != failure_reason
+    ):
+        raise ApexAdapterError("Apex failed decision does not bind the failure reason")
 
     completed = [event for event in events if event["event_type"] == "agent_completed"]
     failed = [event for event in events if event["event_type"] == "agent_failed"]
-    if len(completed) != 1 or failed:
-        raise ApexAdapterError("formal Apex attempt requires exactly one successful agent invocation")
-    payload = completed[0]["payload"]
+    expected_events = completed if contract["agent_event"] == "agent_completed" else failed
+    unexpected_events = failed if contract["agent_event"] == "agent_completed" else completed
+    if len(expected_events) != 1 or unexpected_events:
+        raise ApexAdapterError(
+            f"formal Apex {status} requires exactly one {contract['agent_event']} event"
+        )
+    agent_event = expected_events[0]
+    payload = agent_event["payload"]
     expected_options = task_spec["agent_options"]
-    if (
+    common_agent_mismatch = (
         payload.get("backend") != task_spec["agent_backend"]
         or payload.get("model") != expected_options.get("model")
         or payload.get("effort") != expected_options.get("effort")
-        or payload.get("exit_code") != 0
         or payload.get("timed_out") is not False
-        or payload.get("budget_exceeded") is not False
         or payload.get("budget_enforcement_failed") is not False
-    ):
-        raise ApexAdapterError("Apex agent_completed outcome/identity is inconsistent")
+    )
+    if failure_reason is None:
+        outcome_mismatch = (
+            payload.get("exit_code") != 0
+            or payload.get("budget_exceeded") is not False
+            or payload.get("budget_reason") is not None
+        )
+    else:
+        observed_turns = payload.get("observed_turns")
+        outcome_mismatch = (
+            type(payload.get("exit_code")) is not int
+            or payload.get("budget_exceeded") is not True
+            or not budget_stop_reason_matches(
+                reason=payload.get("budget_reason"),
+                observed_turns=observed_turns,
+                max_turns=task_spec["budget"]["max_turns"],
+            )
+        )
+    if common_agent_mismatch or outcome_mismatch:
+        raise ApexAdapterError(
+            f"Apex {contract['agent_event']} outcome/identity is inconsistent"
+        )
     invocation = payload.get("invocation")
     if not isinstance(invocation, dict) or invocation.get("schema") != "apex.agent-invocation/v1":
         raise ApexAdapterError("Apex agent invocation receipt is missing")
@@ -1059,6 +1292,7 @@ def _validate_apex_lineage(
         or not isinstance(invocation.get("entrypoint_sha256"), str)
         or not _SHA256.fullmatch(invocation["entrypoint_sha256"])
         or invocation.get("max_turns") != task_spec["budget"]["max_turns"]
+        or invocation.get("turn_policy") != TURN_POLICY
         or invocation.get("isolation") != expected_isolation
         or not isinstance(argv, list)
         or "--strict-config" not in argv
@@ -1070,6 +1304,36 @@ def _validate_apex_lineage(
     executed = Path(str(invocation.get("resolved_executable_path", "")))
     if not executed.is_absolute() or not executed.is_file() or _sha256_file(executed) != invocation["entrypoint_sha256"]:
         raise ApexAdapterError("Apex Codex entrypoint identity is not reproducible")
+
+    prompt_events = [event for event in events if event["event_type"] == "prompt_sent"]
+    if len(prompt_events) != 1:
+        raise ApexAdapterError("formal Apex attempt requires exactly one prompt_sent event")
+    prompt_event = prompt_events[0]
+    prompt_bindings = [
+        item
+        for item in prompt_event["payload"].get("artifacts", [])
+        if isinstance(item, dict) and item.get("role") == "prompt"
+    ]
+    if (
+        len(prompt_bindings) != 1
+        or prompt_event["sequence"] >= agent_event["sequence"]
+        or agent_event["parent_event_id"] != prompt_event["event_id"]
+        or prompt_event["payload"].get("attempt_id")
+        != agent_event["payload"].get("attempt_id")
+    ):
+        raise ApexAdapterError("Apex prompt event is not uniquely bound to agent invocation")
+    prompt_path, prompt_bytes = _verify_artifact_receipt(
+        artifact_store=store,
+        receipt=prompt_bindings[0].get("receipt"),
+        label="agent prompt",
+    )
+    if not context_packet_objective_matches(
+        prompt_bytes, task_spec.get("instructions")
+    ):
+        raise ApexAdapterError(
+            "Apex event-bound prompt does not bind TaskSpec instructions as "
+            "ContextPacket role.objective"
+        )
 
     bindings = payload.get("artifacts")
     if not isinstance(bindings, list):
@@ -1099,6 +1363,43 @@ def _validate_apex_lineage(
         or transcript.get("invocation") != invocation
     ):
         raise ApexAdapterError("Apex transcript does not bind the verified invocation")
+    semantic_events = transcript.get("semantic_events")
+    budget = transcript.get("budget")
+    if not isinstance(semantic_events, list) or not isinstance(budget, dict):
+        raise ApexAdapterError("Apex transcript lacks semantic turn evidence")
+    message_count = sum(
+        1
+        for event in semantic_events
+        if isinstance(event, dict) and event.get("kind") == "agent_message"
+    )
+    tool_call_count = sum(
+        1
+        for event in semantic_events
+        if isinstance(event, dict) and event.get("kind") == "tool_called"
+    )
+    observed_turns = message_count + tool_call_count
+    max_turns = task_spec["budget"]["max_turns"]
+    expected_budget_exceeded = failure_reason is not None
+    if (
+        payload.get("observed_turns") != observed_turns
+        or payload.get("message_event_count") != message_count
+        or payload.get("tool_call_event_count") != tool_call_count
+        or payload.get("semantic_event_count") != len(semantic_events)
+        or budget.get("turn_policy") != TURN_POLICY
+        or budget.get("max_turns") != max_turns
+        or budget.get("observed_turns") != observed_turns
+        or budget.get("exceeded") is not expected_budget_exceeded
+        or budget.get("enforcement_failed") is not False
+        or budget.get("reason") != payload.get("budget_reason")
+        or (
+            not expected_budget_exceeded
+            and (
+                type(max_turns) is not int
+                or not 1 <= observed_turns <= max_turns
+            )
+        )
+    ):
+        raise ApexAdapterError("Apex transcript turn evidence is inconsistent")
 
     declared_receipts = store_ref.get("receipt_digests")
     if not isinstance(declared_receipts, list) or any(
@@ -1126,6 +1427,12 @@ def _validate_apex_lineage(
                 label=f"event {event['event_id']} artifact {index}",
             )
             event_artifact_digests.add(binding["receipt"]["digest"])
+    if len(declared_receipts) != len(set(declared_receipts)) or not set(
+        declared_receipts
+    ).issubset(event_artifact_digests):
+        raise ApexAdapterError(
+            "Apex result artifact receipt set is not event-bound"
+        )
 
     return {
         "journal_path": journal,
@@ -1137,6 +1444,15 @@ def _validate_apex_lineage(
         "transcript_digest": _sha256_bytes(transcript_bytes),
         "event_artifact_digests": sorted(event_artifact_digests),
         "invocation": invocation,
+        "prompt_bytes": prompt_bytes,
+        "prompt_event": {
+            "binding": "apex.prompt_sent_event_cas/v1",
+            "event_id": prompt_event["event_id"],
+            "sha256": _sha256_bytes(prompt_bytes),
+            "size_bytes": len(prompt_bytes),
+            "artifact_path": str(prompt_path),
+            "stdin_transport_attested": False,
+        },
         "codex": {
             "binary_sha256": invocation["entrypoint_sha256"],
             "version": invocation["cli_version"],
@@ -1178,11 +1494,23 @@ def _write_apex_attempt_receipt(
     *,
     receipt_path: Path,
     task_spec_bytes: bytes,
+    original_prompt_bytes: bytes,
     result_path: Path,
     outcome: ApexProcessOutcome,
     receipt: dict[str, Any],
     lineage: dict[str, Any] | None,
 ) -> None:
+    try:
+        task_spec = json.loads(
+            task_spec_bytes,
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        raise ApexAdapterError("sealed TaskSpec bytes are not valid JSON") from error
+    if not isinstance(task_spec, dict):
+        raise ApexAdapterError("sealed TaskSpec must contain an object")
+    adaptation = _validate_instruction_adaptation(task_spec, original_prompt_bytes)
     if receipt_path.exists():
         raise ApexAdapterError(f"Apex attempt receipt already exists: {receipt_path}")
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1194,6 +1522,9 @@ def _write_apex_attempt_receipt(
     artifacts = {
         "task_spec": _write_read_only_atomic(
             artifact_dir / "task_spec.json", task_spec_bytes
+        ),
+        "original_arena_prompt": _write_read_only_atomic(
+            artifact_dir / "original_arena_prompt.txt", original_prompt_bytes
         ),
         "apex_stdout": _write_read_only_atomic(
             artifact_dir / "apex_stdout.txt", outcome.stdout
@@ -1214,6 +1545,27 @@ def _write_apex_attempt_receipt(
         artifacts["agent_transcript"] = _write_read_only_atomic(
             artifact_dir / "agent_transcript.json", lineage["transcript_bytes"]
         )
+        artifacts["agent_prompt"] = _write_read_only_atomic(
+            artifact_dir / "agent_prompt.txt", lineage["prompt_bytes"]
+        )
+    original_artifact = artifacts["original_arena_prompt"]
+    if (
+        original_artifact["sha256"] != adaptation["original"]["sha256"]
+        or original_artifact["size_bytes"] != adaptation["original"]["bytes"]
+    ):
+        raise ApexAdapterError(
+            "sealed original Arena prompt artifact disagrees with adaptation receipt"
+        )
+    if lineage is not None:
+        prompt_artifact = artifacts["agent_prompt"]
+        prompt_event = lineage["prompt_event"]
+        if (
+            prompt_artifact["sha256"] != prompt_event["sha256"]
+            or prompt_artifact["size_bytes"] != prompt_event["size_bytes"]
+        ):
+            raise ApexAdapterError(
+                "sealed agent prompt artifact disagrees with prompt event receipt"
+            )
     receipt["artifacts"] = artifacts
     payload = (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode("utf-8")
     _write_read_only_atomic(receipt_path, payload)
@@ -1565,6 +1917,11 @@ def launch_agent(
         workspace=workspace_path,
         artifact_root=artifact_root,
         prompt=prompt,
+        formal_campaign=formal_campaign,
+    )
+    original_prompt_bytes = prompt.encode("utf-8")
+    instruction_adaptation = _validate_instruction_adaptation(
+        task_spec, original_prompt_bytes
     )
     task_spec_bytes = (
         json.dumps(task_spec, indent=2, sort_keys=True) + "\n"
@@ -1690,6 +2047,7 @@ def launch_agent(
             "python_sha256": _sha256_file(Path(python_path).resolve(strict=True)),
         },
         "task_spec_sha256": task_spec_sha256,
+        "instruction_adaptation": instruction_adaptation,
         "task_spec_contract": (
             {
                 "policy": "prelaunch_read_only_sibling_bind_v1",
@@ -1778,10 +2136,6 @@ def launch_agent(
         status_value = result.get("status")
         status = status_value if isinstance(status_value, str) else ""
         receipt["terminal_status"] = status
-        if return_code != 0:
-            raise ApexAdapterError(
-                f"Apex returned {status or 'an invalid result'} with process exit code {return_code}"
-            )
         if formal_campaign:
             lineage = _validate_apex_lineage(
                 result=result, task_spec=task_spec, artifact_root=artifact_root
@@ -1796,9 +2150,15 @@ def launch_agent(
                 "event_count": lineage["event_count"],
                 "transcript_sha256": lineage["transcript_digest"],
                 "event_artifact_digests": lineage["event_artifact_digests"],
+                "prompt_event": lineage["prompt_event"],
                 "internal_verdict": result.get("internal_verdict"),
                 "internal_verdict_ref": result.get("internal_verdict_ref"),
             }
+        if return_code != 0:
+            raise ApexAdapterError(
+                f"Apex returned {status or 'an invalid result'} with process exit "
+                f"code {return_code}"
+            )
 
         if status == "candidate_ready":
             changed = _validate_and_apply_bundle(
@@ -1828,6 +2188,7 @@ def launch_agent(
             _write_apex_attempt_receipt(
                 receipt_path=receipt_path,
                 task_spec_bytes=task_spec_bytes,
+                original_prompt_bytes=original_prompt_bytes,
                 result_path=result_path,
                 outcome=outcome,
                 receipt=receipt,
@@ -1839,6 +2200,7 @@ def launch_agent(
             _write_apex_attempt_receipt(
                 receipt_path=receipt_path,
                 task_spec_bytes=task_spec_bytes,
+                original_prompt_bytes=original_prompt_bytes,
                 result_path=result_path,
                 outcome=outcome,
                 receipt=receipt,

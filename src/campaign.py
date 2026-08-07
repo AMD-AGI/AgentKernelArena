@@ -20,7 +20,13 @@ from typing import Any, Callable
 
 import yaml
 
-from src.agent_turn_budget import FORMAL_MATCHED_MAX_TURNS, TURN_POLICY
+from src.agent_turn_budget import (
+    FORMAL_MATCHED_MAX_TURNS,
+    TURN_POLICY,
+    budget_stop_reason_matches,
+    context_packet_objective_matches,
+    render_apex_run_control,
+)
 from src.campaign_isolation import CampaignIsolationError, runtime_isolation_receipt
 from src.gpu_device_boundary import GpuBoundaryError, load_plan
 from src.gpu_exclusivity import (
@@ -37,7 +43,9 @@ _MEASUREMENT_CONTRACT = "aka_native_100_repetition_external_score"
 _OBJECTIVE_POLICY_ID = "aka.task-package-objective-and-protected-harness/v1"
 _PROMPT_POLICY_ID = "aka.shared-objective-backend-native-context-receipted/v1"
 _CODEX_RECEIPT_SCHEMA = "agentkernelarena.codex-attempt-receipt/v1"
-_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v1"
+_APEX_RECEIPT_SCHEMA_V1 = "agentkernelarena.apex-attempt-receipt/v1"
+_APEX_RECEIPT_SCHEMA_V2 = "agentkernelarena.apex-attempt-receipt/v2"
+_APEX_RECEIPT_SCHEMAS = {_APEX_RECEIPT_SCHEMA_V1, _APEX_RECEIPT_SCHEMA_V2}
 _SHA1 = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
@@ -338,6 +346,11 @@ def _agent_manifest(repo_root: Path, agent_name: str, policy: CampaignPolicy) ->
         raise CampaignError("resolved codex binary is not a regular file")
     return {
         "template": agent_name,
+        "session_receipt_schema": (
+            _APEX_RECEIPT_SCHEMA_V2
+            if agent_name == "apex"
+            else _CODEX_RECEIPT_SCHEMA
+        ),
         "backend": config.get("backend", "codex"),
         "model": config["model"],
         "effort": config["effort"],
@@ -797,6 +810,32 @@ def _attempt_record(
                 "gpu": receipt.get("gpu"),
                 "lineage": receipt.get("lineage"),
             }
+            if receipt.get("schema") in _APEX_RECEIPT_SCHEMAS:
+                lineage = receipt.get("lineage")
+                prompt_event = (
+                    lineage.get("prompt_event")
+                    if isinstance(lineage, dict)
+                    else None
+                )
+                lineage_errors = set(receipt_errors) - {
+                    "apex_session_not_successful"
+                }
+                binding["lineage_verified"] = (
+                    isinstance(lineage, dict) and not lineage_errors
+                )
+                binding["event_bound_prompt"] = (
+                    {
+                        "binding": prompt_event.get("binding"),
+                        "event_id": prompt_event.get("event_id"),
+                        "sha256": prompt_event.get("sha256"),
+                        "size_bytes": prompt_event.get("size_bytes"),
+                        "stdin_transport_attested": prompt_event.get(
+                            "stdin_transport_attested"
+                        ),
+                    }
+                    if isinstance(prompt_event, dict) and not lineage_errors
+                    else None
+                )
             record["session_receipt_binding"] = binding
             record["session_receipt_binding_sha256"] = _canonical_json_digest(binding)
         record["eligibility_errors"].extend(receipt_errors)
@@ -811,6 +850,26 @@ def _attempt_record(
         return record
     report = _load_mapping(report_path, "attempt task result")
     errors = _evaluation_eligibility_errors(workspace, report)
+    evaluation_mode = report.get("evaluation_mode")
+    agent_session_score_eligible = report.get("agent_session_score_eligible")
+    agent_session_terminal_status = report.get("agent_session_terminal_status")
+    # The controller began writing these fields after diagnostic replays were
+    # made explicit. Keep older sealed campaigns readable, but when either
+    # field is present require the complete candidate-scoring contract.
+    if evaluation_mode is not None or agent_session_score_eligible is not None:
+        if evaluation_mode != "candidate_scoring_v1":
+            errors.append("diagnostic_evaluation_not_scoreable")
+        if agent_session_score_eligible is not True:
+            errors.append("agent_session_not_score_eligible")
+    if receipt is not None and receipt.get("schema") in _APEX_RECEIPT_SCHEMAS:
+        receipt_terminal_status = receipt.get("terminal_status")
+        if receipt_terminal_status != "candidate_ready":
+            errors.append("apex_terminal_status_not_candidate_ready")
+        if (
+            agent_session_terminal_status is not None
+            and agent_session_terminal_status != receipt_terminal_status
+        ):
+            errors.append("apex_report_terminal_status_mismatch")
     try:
         workspace_manifest = _regular_tree_manifest(workspace)
     except CampaignError:
@@ -843,6 +902,9 @@ def _attempt_record(
             "optimized_execution_time_ms": optimized_ms,
             "speedup_ratio": float(report.get("speedup_ratio") or 0.0),
             "benchmark_method_consistent": consistent,
+            "evaluation_mode": evaluation_mode,
+            "agent_session_score_eligible": agent_session_score_eligible,
+            "agent_session_terminal_status": agent_session_terminal_status,
             "selection_eligible": eligible,
             "measured_rate_per_ms": 1.0 / optimized_ms if eligible else 0.0,
             "eligibility_errors": errors,
@@ -899,6 +961,34 @@ def _expected_comparison_contract_sha256(run_directory: Path) -> str | None:
         json.dumps(comparison, sort_keys=True, separators=(",", ":")).encode()
     )
     return digest if digest == observed else None
+
+
+def _expected_session_receipt_schema(run_directory: Path) -> str | None:
+    """Resolve the only receipt schema allowed by the sealed agent manifest."""
+
+    manifest_path = run_directory / "campaign_manifest.yaml"
+    if not _safe_read_only_file(manifest_path):
+        return None
+    try:
+        manifest = _load_mapping(manifest_path, "campaign manifest")
+    except (CampaignError, OSError, yaml.YAMLError):
+        return None
+    agent = manifest.get("agent")
+    if not isinstance(agent, dict):
+        return None
+    template = agent.get("template")
+    expected = agent.get("session_receipt_schema")
+    if template == "apex":
+        # Sealed Apex manifests created before receipt v2 had no marker.
+        if expected is None:
+            return _APEX_RECEIPT_SCHEMA_V1
+        return expected if expected in _APEX_RECEIPT_SCHEMAS else None
+    if template == "codex":
+        # Direct Codex has had one receipt generation; accept marker-less history.
+        if expected is None:
+            return _CODEX_RECEIPT_SCHEMA
+        return expected if expected == _CODEX_RECEIPT_SCHEMA else None
+    return None
 
 
 def _comparison_contract_receipt_errors(
@@ -1004,7 +1094,7 @@ def _validate_session_receipt(
     run_directory: Path,
     expected_task_name: str | None = None,
 ) -> tuple[dict[str, Any] | None, list[str]]:
-    """Recompute direct-Codex receipt evidence before it can affect selection."""
+    """Recompute the manifest-selected receipt type before it affects selection."""
     errors: list[str] = []
     if not _safe_read_only_file(receipt_path):
         return None, ["unsafe_or_mutable_direct_codex_session_receipt"]
@@ -1013,17 +1103,27 @@ def _validate_session_receipt(
     except (CampaignError, OSError, yaml.YAMLError):
         return None, ["unreadable_direct_codex_session_receipt"]
 
-    if receipt.get("schema") == _APEX_RECEIPT_SCHEMA:
+    expected_schema = _expected_session_receipt_schema(run_directory)
+    if expected_schema is None:
+        return receipt, ["session_receipt_manifest_schema_contract_invalid"]
+    if receipt.get("schema") != expected_schema:
+        mismatch = (
+            "apex_receipt_schema_generation_mismatch"
+            if expected_schema in _APEX_RECEIPT_SCHEMAS
+            else "direct_codex_receipt_schema_generation_mismatch"
+        )
+        return receipt, [mismatch]
+
+    if expected_schema in _APEX_RECEIPT_SCHEMAS:
         return _validate_apex_session_receipt(
             receipt=receipt,
             receipt_path=receipt_path,
             workspace=workspace,
             run_directory=run_directory,
             expected_task_name=expected_task_name,
+            expected_receipt_schema=expected_schema,
         )
 
-    if receipt.get("schema") != _CODEX_RECEIPT_SCHEMA:
-        errors.append("direct_codex_receipt_schema_mismatch")
     errors.extend(
         _comparison_contract_receipt_errors(
             receipt, run_directory, prefix="direct_codex"
@@ -1471,12 +1571,211 @@ def _validate_apex_journal_snapshot(
     return events, errors
 
 
+def _apex_instruction_adaptation_errors(
+    *,
+    receipt: dict[str, Any],
+    task_spec: dict[str, Any],
+    original_prompt_path: Path,
+) -> list[str]:
+    """Recompute the caller-owned original/adapted prompt binding."""
+    errors: list[str] = []
+    adaptation = receipt.get("instruction_adaptation")
+    if (
+        not isinstance(adaptation, dict)
+        or adaptation.get("schema") != "aka.apex-instruction-adaptation/v1"
+        or task_spec.get("instruction_adaptation") != adaptation
+    ):
+        return ["apex_instruction_adaptation_contract_mismatch"]
+    try:
+        original_bytes = original_prompt_path.read_bytes()
+        original_text = original_bytes.decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ["apex_original_prompt_unreadable"]
+    original_summary = {
+        "characters": len(original_text),
+        "bytes": len(original_bytes),
+        "sha256": _sha256_bytes(original_bytes),
+    }
+    if adaptation.get("original") != original_summary:
+        errors.append("apex_original_prompt_digest_mismatch")
+    instructions = task_spec.get("instructions")
+    if not isinstance(instructions, str):
+        errors.append("apex_adapted_prompt_digest_mismatch")
+    else:
+        adapted_bytes = instructions.encode("utf-8")
+        adapted_summary = {
+            "characters": len(instructions),
+            "bytes": len(adapted_bytes),
+            "sha256": _sha256_bytes(adapted_bytes),
+        }
+        if adaptation.get("adapted") != adapted_summary:
+            errors.append("apex_adapted_prompt_digest_mismatch")
+    return errors
+
+
+def _apex_run_control_errors(task_spec: dict[str, Any]) -> list[str]:
+    """Validate the caller-owned formal budget and verifier command contract."""
+
+    control = task_spec.get("caller_run_control")
+    commands = task_spec.get("commands")
+    if not isinstance(control, dict) or not isinstance(commands, dict):
+        return ["apex_caller_run_control_invalid"]
+    turn_budget = control.get("structured_turn_budget")
+    interpreter = control.get("python_interpreter")
+    verifier_argv = control.get("verifier_argv")
+    if (
+        control.get("schema") != "aka.apex-caller-run-control/v1"
+        or control.get("deliverable_versions") != 1
+        or control.get("candidate_persistence")
+        != "leave_best_source_before_budget_boundary"
+        or turn_budget
+        != {
+            "policy": TURN_POLICY,
+            "max_turns": FORMAL_MATCHED_MAX_TURNS,
+            "counting": "assistant_message_and_tool_call_start_each_count_once",
+        }
+        or not isinstance(interpreter, dict)
+        or interpreter.get("environment_variable")
+        != "AGENT_KERNEL_ARENA_PYTHON"
+        or not isinstance(interpreter.get("path"), str)
+        or not Path(interpreter["path"]).is_absolute()
+        or not isinstance(interpreter.get("resolved_path"), str)
+        or not Path(interpreter["resolved_path"]).is_absolute()
+        or not isinstance(interpreter.get("sha256"), str)
+        or not _SHA256.fullmatch(interpreter["sha256"])
+        or not isinstance(verifier_argv, dict)
+    ):
+        return ["apex_caller_run_control_invalid"]
+    for phase in ("compile", "correctness", "performance"):
+        command = commands.get(phase)
+        argv = command.get("argv") if isinstance(command, dict) else None
+        if (
+            not isinstance(argv, list)
+            or not argv
+            or verifier_argv.get(phase) != argv
+            or argv[0] != interpreter["path"]
+        ):
+            return ["apex_caller_run_control_invalid"]
+    if set(verifier_argv) != {"compile", "correctness", "performance"}:
+        return ["apex_caller_run_control_invalid"]
+    instructions = task_spec.get("instructions")
+    expected_suffix = f"\n\n{render_apex_run_control(control)}"
+    if not isinstance(instructions, str) or not instructions.endswith(expected_suffix):
+        return ["apex_caller_run_control_invalid"]
+    return []
+
+
+def _apex_turn_evidence_errors(
+    *,
+    transcript: dict[str, Any],
+    payload: dict[str, Any],
+    task_spec: dict[str, Any],
+    budget_exceeded: bool,
+) -> list[str]:
+    semantic_events = transcript.get("semantic_events")
+    budget = transcript.get("budget")
+    if not isinstance(semantic_events, list) or not isinstance(budget, dict):
+        return ["apex_agent_turn_evidence_invalid"]
+    message_count = sum(
+        1
+        for event in semantic_events
+        if isinstance(event, dict) and event.get("kind") == "agent_message"
+    )
+    tool_call_count = sum(
+        1
+        for event in semantic_events
+        if isinstance(event, dict) and event.get("kind") == "tool_called"
+    )
+    observed_turns = message_count + tool_call_count
+    max_turns = task_spec.get("budget", {}).get("max_turns")
+    if (
+        payload.get("observed_turns") != observed_turns
+        or payload.get("message_event_count") != message_count
+        or payload.get("tool_call_event_count") != tool_call_count
+        or payload.get("semantic_event_count") != len(semantic_events)
+        or budget.get("turn_policy") != TURN_POLICY
+        or budget.get("max_turns") != max_turns
+        or budget.get("observed_turns") != observed_turns
+        or budget.get("exceeded") is not budget_exceeded
+        or budget.get("enforcement_failed") is not False
+        or budget.get("reason") != payload.get("budget_reason")
+        or (
+            not budget_exceeded
+            and (
+                type(max_turns) is not int
+                or not 1 <= observed_turns <= max_turns
+            )
+        )
+    ):
+        return ["apex_agent_turn_evidence_invalid"]
+    return []
+
+
+def _apex_prompt_event_errors(
+    *,
+    events: list[dict[str, Any]],
+    agent_event: dict[str, Any],
+    lineage: dict[str, Any] | None,
+    invocation: dict[str, Any] | None,
+    agent_prompt_path: Path,
+    expected_objective: object,
+) -> list[str]:
+    prompt_events = [event for event in events if event["event_type"] == "prompt_sent"]
+    if len(prompt_events) != 1:
+        return ["apex_prompt_event_binding_mismatch"]
+    prompt_event = prompt_events[0]
+    bindings = prompt_event["payload"].get("artifacts")
+    prompt_bindings = [
+        binding
+        for binding in bindings
+        if isinstance(binding, dict) and binding.get("role") == "prompt"
+    ] if isinstance(bindings, list) else []
+    prompt_receipt = (
+        prompt_bindings[0].get("receipt") if len(prompt_bindings) == 1 else None
+    )
+    summary = lineage.get("prompt_event") if isinstance(lineage, dict) else None
+    errors: list[str] = []
+    if (
+        not isinstance(prompt_receipt, dict)
+        or not isinstance(summary, dict)
+        or summary.get("binding") != "apex.prompt_sent_event_cas/v1"
+        or summary.get("event_id") != prompt_event["event_id"]
+        or summary.get("sha256") != prompt_receipt.get("digest")
+        or summary.get("size_bytes") != prompt_receipt.get("size")
+        or summary.get("sha256") != _sha256_file(agent_prompt_path)
+        or summary.get("size_bytes") != agent_prompt_path.stat().st_size
+        or not isinstance(summary.get("artifact_path"), str)
+        or not Path(summary["artifact_path"]).is_absolute()
+        or summary.get("stdin_transport_attested") is not False
+        or not isinstance(summary.get("sha256"), str)
+        or not _SHA256.fullmatch(summary["sha256"])
+        or isinstance(summary.get("size_bytes"), bool)
+        or not isinstance(summary.get("size_bytes"), int)
+        or summary["size_bytes"] < 0
+        or prompt_event["sequence"] >= agent_event["sequence"]
+        or agent_event["parent_event_id"] != prompt_event["event_id"]
+        or prompt_event["payload"].get("attempt_id")
+        != agent_event["payload"].get("attempt_id")
+        or not isinstance(invocation, dict)
+        or invocation.get("prompt_transport") != "stdin"
+    ):
+        errors.append("apex_prompt_event_binding_mismatch")
+    try:
+        prompt_bytes = agent_prompt_path.read_bytes()
+    except OSError:
+        prompt_bytes = b""
+    if not context_packet_objective_matches(prompt_bytes, expected_objective):
+        errors.append("apex_prompt_objective_binding_mismatch")
+    return errors
+
+
 def _validate_apex_session_receipt(
     *,
     receipt: dict[str, Any],
     receipt_path: Path,
     workspace: Path | None,
     run_directory: Path,
+    expected_receipt_schema: str,
     expected_task_name: str | None = None,
 ) -> tuple[dict[str, Any] | None, list[str]]:
     errors: list[str] = []
@@ -1490,11 +1789,35 @@ def _validate_apex_session_receipt(
             expected_task_name=expected_task_name,
         )
     )
-    if receipt.get("schema") != _APEX_RECEIPT_SCHEMA:
+    receipt_schema = receipt.get("schema")
+    if receipt_schema not in _APEX_RECEIPT_SCHEMAS:
         errors.append("apex_receipt_schema_mismatch")
-    if receipt.get("session_succeeded") is not True:
+    if receipt_schema != expected_receipt_schema:
+        errors.append("apex_receipt_schema_generation_mismatch")
+    terminal_status = receipt.get("terminal_status")
+    session_succeeded = receipt.get("session_succeeded")
+    budget_exhausted = (
+        terminal_status == "budget_exhausted" and session_succeeded is False
+    )
+    successful_terminal = (
+        terminal_status in {"candidate_ready", "no_gain"}
+        and session_succeeded is True
+    )
+    if session_succeeded is not True:
         errors.append("apex_session_not_successful")
-    if receipt.get("timed_out") is not False or receipt.get("exit_code") != 0:
+    exit_code = receipt.get("exit_code")
+    status_consistent = (
+        successful_terminal
+        and receipt.get("timed_out") is False
+        and exit_code == 0
+    ) or (
+        budget_exhausted
+        and receipt.get("timed_out") is False
+        and isinstance(exit_code, int)
+        and not isinstance(exit_code, bool)
+        and exit_code != 0
+    )
+    if not status_consistent:
         errors.append("apex_receipt_success_status_inconsistent")
     cleanup = receipt.get("process_group_cleanup")
     if (
@@ -1603,6 +1926,7 @@ def _validate_apex_session_receipt(
         except (OSError, ValueError):
             errors.append("apex_task_spec_prelaunch_contract_invalid")
 
+    new_prompt_receipt = expected_receipt_schema == _APEX_RECEIPT_SCHEMA_V2
     expected_artifacts = {
         "task_spec": "task_spec.json",
         "apex_stdout": "apex_stdout.txt",
@@ -1611,6 +1935,9 @@ def _validate_apex_session_receipt(
         "event_journal": "event_journal.sqlite",
         "agent_transcript": "agent_transcript.json",
     }
+    if new_prompt_receipt:
+        expected_artifacts["original_arena_prompt"] = "original_arena_prompt.txt"
+        expected_artifacts["agent_prompt"] = "agent_prompt.txt"
     artifacts, artifact_errors = _validate_receipt_artifacts(
         receipt=receipt,
         receipt_path=receipt_path,
@@ -1629,6 +1956,15 @@ def _validate_apex_session_receipt(
         )
     except CampaignError:
         return receipt, sorted(set(errors + ["apex_lineage_json_unreadable"]))
+    if new_prompt_receipt:
+        errors.extend(
+            _apex_instruction_adaptation_errors(
+                receipt=receipt,
+                task_spec=task_spec,
+                original_prompt_path=artifacts["original_arena_prompt"],
+            )
+        )
+        errors.extend(_apex_run_control_errors(task_spec))
     if receipt.get("task_spec_sha256") != _sha256_file(artifacts["task_spec"]):
         errors.append("apex_task_spec_digest_mismatch")
     if isinstance(task_spec_contract, dict) and (
@@ -1651,23 +1987,40 @@ def _validate_apex_session_receipt(
     ):
         errors.append("apex_result_digest_mismatch")
     status = result.get("status")
-    verdict = {"candidate_ready": "keep", "no_gain": "revert"}.get(status)
-    if (
+    verdict = {
+        "candidate_ready": "keep",
+        "no_gain": "revert",
+        "budget_exhausted": "reject",
+    }.get(status)
+    result_contract_invalid = (
         verdict is None
         or receipt.get("terminal_status") != status
         or result.get("internal_verdict") != verdict
-        or result.get("error") is not None
         or result.get("task_id") != task_spec.get("task_id")
         or result.get("baseline_lock", {}).get("file_hashes")
         != task_spec.get("baseline", {}).get("file_hashes")
-    ):
+    )
+    failed_terminal = status == "budget_exhausted"
+    if failed_terminal:
+        result_error = result.get("error")
+        result_contract_invalid = result_contract_invalid or (
+            result.get("reason_code") != "agent_turn_budget_exceeded"
+            or not isinstance(result_error, dict)
+            or result_error.get("reason_code") != "agent_turn_budget_exceeded"
+        )
+    else:
+        result_contract_invalid = result_contract_invalid or result.get("error") is not None
+    if result_contract_invalid:
         errors.append("apex_terminal_result_contract_mismatch")
-    if status == "no_gain" and (
+    no_candidate_payload = (
         result.get("bundle_path") is not None
         or result.get("bundle_digest") is not None
         or result.get("changed_files") != []
-    ):
+    )
+    if status == "no_gain" and no_candidate_payload:
         errors.append("apex_no_gain_receipt_invalid")
+    elif status == "budget_exhausted" and no_candidate_payload:
+        errors.append("apex_budget_exhausted_receipt_invalid")
 
     events, journal_errors = _validate_apex_journal_snapshot(
         journal_path=artifacts["event_journal"], result=result
@@ -1675,21 +2028,40 @@ def _validate_apex_session_receipt(
     errors.extend(journal_errors)
     completed = [event for event in events if event["event_type"] == "agent_completed"]
     failed = [event for event in events if event["event_type"] == "agent_failed"]
-    if len(completed) != 1 or failed:
+    expected_agent_events = failed if failed_terminal else completed
+    unexpected_agent_events = completed if failed_terminal else failed
+    agent_event = expected_agent_events[0] if len(expected_agent_events) == 1 else None
+    if agent_event is None or unexpected_agent_events:
         errors.append("apex_agent_completion_event_invalid")
     else:
-        payload = completed[0]["payload"]
+        payload = agent_event["payload"]
         invocation = payload.get("invocation")
-        if (
+        outcome_invalid = (
             payload.get("backend") != "codex"
             or payload.get("model") != task_spec.get("agent_options", {}).get("model")
             or payload.get("effort") != task_spec.get("agent_options", {}).get("effort")
-            or payload.get("exit_code") != 0
             or payload.get("timed_out") is not False
-            or payload.get("budget_exceeded") is not False
             or payload.get("budget_enforcement_failed") is not False
             or invocation != receipt.get("invocation")
-        ):
+        )
+        if failed_terminal:
+            observed_turns = payload.get("observed_turns")
+            outcome_invalid = outcome_invalid or (
+                type(payload.get("exit_code")) is not int
+                or payload.get("budget_exceeded") is not True
+                or not budget_stop_reason_matches(
+                    reason=payload.get("budget_reason"),
+                    observed_turns=observed_turns,
+                    max_turns=FORMAL_MATCHED_MAX_TURNS,
+                )
+            )
+        else:
+            outcome_invalid = outcome_invalid or (
+                payload.get("exit_code") != 0
+                or payload.get("budget_exceeded") is not False
+                or (new_prompt_receipt and payload.get("budget_reason") is not None)
+            )
+        if outcome_invalid:
             errors.append("apex_agent_completion_receipt_mismatch")
         if (
             transcript.get("schema") != "apex.agent-transcript/v1"
@@ -1738,6 +2110,45 @@ def _validate_apex_session_receipt(
             }.issubset(set(argv or []))
         ):
             errors.append("apex_inner_codex_invocation_contract_mismatch")
+        if new_prompt_receipt:
+            agent_bindings = payload.get("artifacts")
+            transcript_bindings = [
+                binding
+                for binding in agent_bindings
+                if isinstance(binding, dict)
+                and binding.get("role") == "agent_transcript"
+            ] if isinstance(agent_bindings, list) else []
+            transcript_event_receipt = (
+                transcript_bindings[0].get("receipt")
+                if len(transcript_bindings) == 1
+                else None
+            )
+            if (
+                not isinstance(transcript_event_receipt, dict)
+                or transcript_event_receipt.get("digest")
+                != _sha256_file(artifacts["agent_transcript"])
+                or transcript_event_receipt.get("size")
+                != artifacts["agent_transcript"].stat().st_size
+            ):
+                errors.append("apex_agent_transcript_event_binding_mismatch")
+            errors.extend(
+                _apex_turn_evidence_errors(
+                    transcript=transcript,
+                    payload=payload,
+                    task_spec=task_spec,
+                    budget_exceeded=failed_terminal,
+                )
+            )
+            errors.extend(
+                _apex_prompt_event_errors(
+                    events=events,
+                    agent_event=agent_event,
+                    lineage=lineage if isinstance(lineage, dict) else None,
+                    invocation=invocation if isinstance(invocation, dict) else None,
+                    agent_prompt_path=artifacts["agent_prompt"],
+                    expected_objective=task_spec.get("instructions"),
+                )
+            )
     verdict_ref = result.get("internal_verdict_ref")
     matching_verdicts = [event for event in events if event["event_id"] == verdict_ref]
     if len(matching_verdicts) != 1 or matching_verdicts[0]["event_type"] not in {
@@ -1746,6 +2157,30 @@ def _validate_apex_session_receipt(
         "action.failed",
     }:
         errors.append("apex_internal_verdict_ref_invalid")
+    elif failed_terminal and (
+        matching_verdicts[0]["event_type"] != "decision"
+        or matching_verdicts[0]["payload"].get("verdict") != "reject"
+        or matching_verdicts[0]["payload"].get("reason")
+        != "agent_turn_budget_exceeded"
+    ):
+        errors.append("apex_internal_verdict_ref_invalid")
+    elif status == "candidate_ready" and (
+        matching_verdicts[0]["event_type"] != "decision"
+        or matching_verdicts[0]["payload"].get("verdict") != "keep"
+    ):
+        errors.append("apex_internal_verdict_ref_invalid")
+    if new_prompt_receipt and events:
+        expected_head_type = "run.failed" if failed_terminal else "run.succeeded"
+        expected_head_reason = (
+            "agent_turn_budget_exceeded"
+            if failed_terminal
+            else "candidate_ready" if status == "candidate_ready" else result.get("reason_code")
+        )
+        if (
+            events[-1]["event_type"] != expected_head_type
+            or events[-1]["payload"].get("reason") != expected_head_reason
+        ):
+            errors.append("apex_terminal_run_event_mismatch")
     if isinstance(lineage, dict) and events and (
         lineage.get("journal_head_event_id") != events[-1]["event_id"]
         or lineage.get("journal_head_checksum") != events[-1]["checksum"]
@@ -1770,6 +2205,21 @@ def _validate_apex_session_receipt(
         event_artifact_digests
     ):
         errors.append("apex_event_artifact_summary_mismatch")
+    if new_prompt_receipt:
+        store_ref = result.get("artifact_store_ref")
+        declared_digests = (
+            store_ref.get("receipt_digests") if isinstance(store_ref, dict) else None
+        )
+        if (
+            not isinstance(declared_digests, list)
+            or any(
+                not isinstance(digest, str) or not _SHA256.fullmatch(digest)
+                for digest in declared_digests
+            )
+            or len(declared_digests) != len(set(declared_digests))
+            or not set(declared_digests).issubset(event_artifact_digests)
+        ):
+            errors.append("apex_artifact_store_receipt_set_mismatch")
     return receipt, sorted(set(errors))
 
 

@@ -9,6 +9,126 @@ from collections.abc import Mapping
 
 TURN_POLICY = "structured_agent_turn_v1"
 FORMAL_MATCHED_MAX_TURNS = 50
+_CONTEXT_PACKET_HEADER = "# Apex ContextPacket\n"
+_ROLE_SECTION = "## Identity and role\n\n> "
+_OBJECTIVE_SECTION = "\n\n## Objective and target\n"
+
+
+def budget_stop_reason_matches(
+    *, reason: object, observed_turns: object, max_turns: object
+) -> bool:
+    """Bind each formal stop reason to the exact counter state that emits it."""
+
+    if (
+        isinstance(observed_turns, bool)
+        or not isinstance(observed_turns, int)
+        or isinstance(max_turns, bool)
+        or not isinstance(max_turns, int)
+    ):
+        return False
+    if reason == "max_turns_exhausted_before_follow_up":
+        return observed_turns == max_turns
+    if reason == "max_turns_exceeded":
+        return observed_turns > max_turns
+    return False
+
+
+def context_packet_objective_matches(
+    prompt_bytes: bytes, expected_objective: object
+) -> bool:
+    """Bind the event-receipted prompt to canonical ContextPacket role data."""
+
+    if not isinstance(expected_objective, str):
+        return False
+    try:
+        prompt = prompt_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    if (
+        not prompt.startswith(_CONTEXT_PACKET_HEADER)
+        or prompt.count(_ROLE_SECTION) != 1
+    ):
+        return False
+    value_start = prompt.index(_ROLE_SECTION) + len(_ROLE_SECTION)
+    value_end = prompt.find("\n", value_start)
+    if value_end < 0 or not prompt.startswith(_OBJECTIVE_SECTION, value_end):
+        return False
+    encoded = prompt[value_start:value_end]
+    try:
+        value = json.loads(
+            encoded,
+            parse_constant=_reject_json_constant,
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+    except (json.JSONDecodeError, ValueError):
+        return False
+    if not isinstance(value, Mapping) or set(value) != {"identity", "role"}:
+        return False
+    role = value.get("role")
+    if (
+        not isinstance(value.get("identity"), Mapping)
+        or not isinstance(role, Mapping)
+        or set(role) != {"kind", "objective"}
+        or role.get("kind") != "kernel_optimizer"
+        or role.get("objective") != expected_objective
+    ):
+        return False
+    canonical = json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return encoded == canonical
+
+
+def _reject_json_constant(value: str) -> object:
+    raise ValueError(f"non-finite JSON constant is forbidden: {value}")
+
+
+def _reject_duplicate_json_keys(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON key is forbidden: {key}")
+        value[key] = item
+    return value
+
+
+def render_apex_run_control(control: Mapping[str, object]) -> str:
+    """Render the canonical human-visible Apex formal run-control suffix."""
+
+    python_interpreter = control["python_interpreter"]
+    structured_budget = control["structured_turn_budget"]
+    verifier_argv = control["verifier_argv"]
+    if (
+        not isinstance(python_interpreter, Mapping)
+        or not isinstance(structured_budget, Mapping)
+        or not isinstance(verifier_argv, Mapping)
+    ):
+        raise ValueError("malformed Apex caller run control")
+    interpreter = python_interpreter["path"]
+    environment_variable = python_interpreter["environment_variable"]
+    verifier_lines = "\n".join(
+        f"- {phase}: `{json.dumps(verifier_argv[phase], ensure_ascii=False)}`"
+        for phase in ("compile", "correctness", "performance")
+    )
+    return (
+        "### Formal run control\n\n"
+        "Produce one final source version. Work on a candidate promptly and, before "
+        "the budget boundary, leave the best source found in every editable file; do "
+        "not finish on an exploratory or known-slower variant.\n\n"
+        f"The hard limit is {structured_budget['max_turns']} "
+        f"`{structured_budget['policy']}` turns. Each assistant "
+        "message and each tool-call start counts once. Reserve enough turns to restore "
+        "the best source and finish.\n\n"
+        f"Use exactly `{interpreter}` as `{environment_variable}`. The three trusted "
+        "verifier argv vectors are:\n"
+        f"{verifier_lines}"
+    )
 
 
 class AgentTurnBudget:
@@ -147,4 +267,11 @@ def _nonnegative_int(value: Mapping[str, object], *keys: str) -> int | None:
     return None
 
 
-__all__ = ["AgentTurnBudget", "TURN_POLICY"]
+__all__ = [
+    "AgentTurnBudget",
+    "FORMAL_MATCHED_MAX_TURNS",
+    "TURN_POLICY",
+    "budget_stop_reason_matches",
+    "context_packet_objective_matches",
+    "render_apex_run_control",
+]

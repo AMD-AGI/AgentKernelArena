@@ -4,6 +4,7 @@ import importlib
 import hashlib
 import json
 import os
+import re
 import runpy
 import sqlite3
 import subprocess
@@ -669,6 +670,38 @@ def _write_result(workspace: Path, optimized_ms: float, *, correct: bool = True)
     )
 
 
+def test_diagnostic_replay_is_never_selection_eligible(tmp_path) -> None:
+    run = tmp_path / "run"
+    workspace = run / "attempt_01" / "workspace"
+    workspace.mkdir(parents=True)
+    _write_result(workspace, 1.0)
+    report_path = workspace / "task_result.yaml"
+    report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
+    report["evaluation_mode"] = "diagnostic_baseline_replay_v1"
+    report["agent_session_score_eligible"] = False
+    report["agent_session_succeeded"] = False
+    report["agent_session_error_type"] = "ApexAdapterError"
+    report_path.write_text(
+        yaml.safe_dump(report, default_flow_style=False, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    record = campaign._attempt_record(
+        attempt=1,
+        workspace=workspace,
+        run_directory=run,
+        success=True,
+        receipt_path=run / "attempt_01/session_receipt.json",
+        require_session_receipt=False,
+    )
+
+    assert record["selection_eligible"] is False
+    assert record["evaluation_mode"] == "diagnostic_baseline_replay_v1"
+    assert record["agent_session_score_eligible"] is False
+    assert "diagnostic_evaluation_not_scoreable" in record["eligibility_errors"]
+    assert "agent_session_not_score_eligible" in record["eligibility_errors"]
+
+
 def test_formal_attempt_mount_keeps_workspace_read_only_and_artifacts_private(
     tmp_path, monkeypatch
 ) -> None:
@@ -779,6 +812,8 @@ def test_formal_codex_home_copies_auth_only(tmp_path, monkeypatch) -> None:
 def _write_campaign_codex_contract(
     run_directory: Path,
     task_names: tuple[str, ...] = ("triton2triton/vllm/example",),
+    apex_receipt_schema: str = "agentkernelarena.apex-attempt-receipt/v2",
+    agent_template: str = "apex",
 ) -> dict:
     codex = {
         "model": "gpt-5.5",
@@ -868,6 +903,14 @@ def _write_campaign_codex_contract(
                 "schema": "aka.matched-campaign/v1",
                 "comparison_contract_sha256": comparison_digest,
                 "comparison_contract": comparison_contract,
+                "agent": {
+                    "template": agent_template,
+                    "session_receipt_schema": (
+                        "agentkernelarena.codex-attempt-receipt/v1"
+                        if agent_template == "codex"
+                        else apex_receipt_schema
+                    ),
+                },
                 "runtime": {"gpu": gpu},
                 "configuration": {"tasks": tasks},
             }
@@ -1049,12 +1092,105 @@ def _write_valid_codex_receipt(receipt_path: Path, codex_contract: dict) -> Path
     return artifact_payloads["raw_stdout"][0]
 
 
+def _context_packet_prompt(objective: str) -> bytes:
+    identity_and_role = {
+        "identity": {"context_packet_id": "context-fixture"},
+        "role": {"kind": "kernel_optimizer", "objective": objective},
+    }
+    encoded = json.dumps(
+        identity_and_role,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return (
+        "# Apex ContextPacket\n\n"
+        "This packet is the complete task-local observation for this invocation.\n\n"
+        "## Identity and role\n\n"
+        f"> {encoded}\n\n"
+        "## Objective and target\n\n"
+        "> {}\n"
+    ).encode("utf-8")
+
+
 def _write_valid_apex_receipt(
-    receipt_path: Path, codex_contract: dict, *, max_turns: int = 50
+    receipt_path: Path,
+    codex_contract: dict,
+    *,
+    max_turns: int = 50,
+    status: str = "no_gain",
+    new_prompt_receipt: bool = False,
+    run_control_turns: int | None = None,
+    omit_run_control_suffix: bool = False,
+    budget_turn_count: int | None = None,
+    budget_reason_override: str | None = None,
+    inner_exit_code: int = 0,
+    omit_run_control_from_agent_prompt: bool = False,
+    successful_turn_count: int | None = None,
 ) -> None:
+    assert status in {"candidate_ready", "no_gain", "budget_exhausted"}
+    failed = status == "budget_exhausted"
+    candidate_ready = status == "candidate_ready"
     artifact_dir = receipt_path.parent / f".{receipt_path.stem}.artifacts"
     artifact_dir.mkdir(parents=True)
     baseline_hashes = {"source/kernel.py": "1" * 64}
+    original_prompt = "Original Arena task prompt.\n".encode()
+    adapted_instructions = "Adapted Apex task instructions."
+    instruction_adaptation = {
+        "schema": "aka.apex-instruction-adaptation/v1",
+        "strategy": "test_v1",
+        "original": {
+            "characters": len(original_prompt.decode()),
+            "bytes": len(original_prompt),
+            "sha256": hashlib.sha256(original_prompt).hexdigest(),
+        },
+        "adapted": {
+            "characters": len(adapted_instructions),
+            "bytes": len(adapted_instructions.encode()),
+            "sha256": hashlib.sha256(adapted_instructions.encode()).hexdigest(),
+        },
+    }
+    caller_run_control = None
+    verifier_argv = None
+    if new_prompt_receipt:
+        interpreter_path = "/opt/venv/bin/python"
+        verifier_argv = {
+            phase: [interpreter_path, "scripts/task_runner.py", phase]
+            for phase in ("compile", "correctness", "performance")
+        }
+        caller_run_control = {
+            "schema": "aka.apex-caller-run-control/v1",
+            "deliverable_versions": 1,
+            "structured_turn_budget": {
+                "policy": "structured_agent_turn_v1",
+                "max_turns": (
+                    max_turns if run_control_turns is None else run_control_turns
+                ),
+                "counting": (
+                    "assistant_message_and_tool_call_start_each_count_once"
+                ),
+            },
+            "candidate_persistence": "leave_best_source_before_budget_boundary",
+            "python_interpreter": {
+                "environment_variable": "AGENT_KERNEL_ARENA_PYTHON",
+                "path": interpreter_path,
+                "resolved_path": interpreter_path,
+                "sha256": "a" * 64,
+            },
+            "verifier_argv": verifier_argv,
+        }
+        if not omit_run_control_suffix:
+            adapted_instructions = (
+                f"{adapted_instructions}\n\n"
+                f"{campaign.render_apex_run_control(caller_run_control)}"
+            )
+        adapted_bytes = adapted_instructions.encode()
+        instruction_adaptation["adapted"] = {
+            "characters": len(adapted_instructions),
+            "bytes": len(adapted_bytes),
+            "sha256": hashlib.sha256(adapted_bytes).hexdigest(),
+        }
     invocation = {
         "schema": "apex.agent-invocation/v1",
         "cli_name": "codex",
@@ -1083,33 +1219,144 @@ def _write_valid_apex_receipt(
         }
         | {"response_token_limit": "not_supported_context_advisory_only"},
     }
+    selected_turn_count = (
+        max_turns if budget_turn_count is None else budget_turn_count
+    ) if failed else (
+        (1 if successful_turn_count is None else successful_turn_count)
+        if new_prompt_receipt
+        else 0
+    )
+    semantic_events = [
+        {"kind": "agent_message", "index": index}
+        for index in range(selected_turn_count)
+    ]
+    observed_turns = len(semantic_events)
+    budget_reason = None
+    if failed:
+        budget_reason = budget_reason_override or (
+            "max_turns_exceeded"
+            if observed_turns > max_turns
+            else "max_turns_exhausted_before_follow_up"
+        )
+    transcript_budget = {"exceeded": failed, "enforcement_failed": False}
+    if new_prompt_receipt:
+        transcript_budget |= {
+            "turn_policy": "structured_agent_turn_v1",
+            "max_turns": max_turns,
+            "observed_turns": observed_turns,
+            "reason": budget_reason,
+        }
     transcript = {
         "schema": "apex.agent-transcript/v1",
         "backend": "codex",
         "model": codex_contract["model"],
         "effort": codex_contract["effort"],
         "invocation": invocation,
-        "budget": {"exceeded": False, "enforcement_failed": False},
+        "budget": transcript_budget,
         "events": [],
-        "semantic_events": [],
+        "semantic_events": semantic_events,
         "usage": None,
         "cost": None,
     }
+    transcript_content = json.dumps(transcript).encode()
+    transcript_digest = hashlib.sha256(transcript_content).hexdigest()
     agent_payload = {
         "backend": "codex",
         "model": codex_contract["model"],
         "effort": codex_contract["effort"],
-        "exit_code": 0,
+        "exit_code": inner_exit_code,
         "timed_out": False,
-        "budget_exceeded": False,
+        "budget_exceeded": failed,
         "budget_enforcement_failed": False,
         "invocation": invocation,
-        "artifacts": [],
+        "artifacts": (
+            [
+                {
+                    "role": "agent_transcript",
+                    "receipt": {
+                        "digest": transcript_digest,
+                        "size": len(transcript_content),
+                    },
+                }
+            ]
+            if new_prompt_receipt
+            else []
+        ),
     }
-    event_values = [
-        (1, "evt-agent", "agent_completed", agent_payload, None, "txn-agent"),
-        (2, "evt-decision", "decision", {"verdict": "revert"}, "evt-agent", "txn-decision"),
-    ]
+    if new_prompt_receipt:
+        agent_payload |= {
+            "budget_reason": budget_reason,
+            "observed_turns": observed_turns,
+            "message_event_count": observed_turns,
+            "tool_call_event_count": 0,
+            "semantic_event_count": observed_turns,
+            "attempt_id": "attempt-test",
+        }
+        prompt_objective = (
+            "Adapted Apex task instructions."
+            if omit_run_control_from_agent_prompt
+            else adapted_instructions
+        )
+        rendered_prompt = _context_packet_prompt(prompt_objective)
+        rendered_prompt_digest = hashlib.sha256(rendered_prompt).hexdigest()
+        prompt_payload = {
+            "attempt_id": "attempt-test",
+            "artifacts": [
+                {
+                    "role": "prompt",
+                    "receipt": {
+                        "digest": rendered_prompt_digest,
+                        "size": len(rendered_prompt),
+                    },
+                }
+            ],
+        }
+        verdict = "reject" if failed else "keep" if candidate_ready else "revert"
+        reason = (
+            "agent_turn_budget_exceeded"
+            if failed
+            else "candidate_ready" if candidate_ready else "baseline_is_best"
+        )
+        event_values = [
+            (1, "evt-prompt", "prompt_sent", prompt_payload, None, "txn-prompt"),
+            (
+                2,
+                "evt-agent",
+                "agent_failed" if failed else "agent_completed",
+                agent_payload,
+                "evt-prompt",
+                "txn-agent",
+            ),
+            (
+                3,
+                "evt-decision",
+                "decision",
+                {"verdict": verdict, "reason": reason},
+                "evt-agent",
+                "txn-decision",
+            ),
+            (
+                4,
+                "evt-run",
+                "run.failed" if failed else "run.succeeded",
+                {"reason": reason},
+                "evt-decision",
+                "txn-run",
+            ),
+        ]
+    else:
+        rendered_prompt_digest = None
+        event_values = [
+            (1, "evt-agent", "agent_completed", agent_payload, None, "txn-agent"),
+            (
+                2,
+                "evt-decision",
+                "decision",
+                {"verdict": "keep" if candidate_ready else "revert"},
+                "evt-agent",
+                "txn-decision",
+            ),
+        ]
     events = []
     for sequence, event_id, event_type, payload, parent, transaction_id in event_values:
         material = {
@@ -1192,30 +1439,64 @@ def _write_valid_apex_receipt(
         },
         "baseline": {"file_hashes": baseline_hashes},
     }
+    if new_prompt_receipt:
+        assert caller_run_control is not None
+        assert verifier_argv is not None
+        task_spec |= {
+            "instructions": adapted_instructions,
+            "instruction_adaptation": instruction_adaptation,
+            "commands": {
+                phase: {"argv": argv, "timeout_seconds": 3600}
+                for phase, argv in verifier_argv.items()
+            },
+            "caller_run_control": caller_run_control,
+        }
+    event_artifact_digests = sorted(
+        {
+            binding["receipt"]["digest"]
+            for event in events
+            for binding in event["payload"].get("artifacts", [])
+        }
+    )
+    declared_result_digests = [transcript_digest] if new_prompt_receipt else []
+    reason_code = (
+        "agent_turn_budget_exceeded"
+        if failed
+        else (
+            "candidate_verified_for_external_evaluation"
+            if candidate_ready
+            else "baseline_is_best"
+        )
+    )
     result = {
         "schema_version": 1,
         "run_id": "run-test",
         "task_id": "task-test",
-        "status": "no_gain",
-        "reason_code": "baseline_is_best",
+        "status": status,
+        "reason_code": reason_code,
         "applied": False,
         "external_verification_required": True,
-        "bundle_path": None,
-        "bundle_digest": None,
-        "changed_files": [],
+        "bundle_path": "/attempt/bundle" if candidate_ready else None,
+        "bundle_digest": "b" * 64 if candidate_ready else None,
+        "changed_files": ["source/kernel.py"] if candidate_ready else [],
         "baseline_lock": {
             "resolution_hash": "2" * 64,
             "file_hashes": baseline_hashes,
         },
-        "internal_verdict": "revert",
+        "internal_verdict": (
+            "reject" if failed else "keep" if candidate_ready else "revert"
+        ),
         "internal_verdict_ref": "evt-decision",
         "event_journal_ref": {
             "path": "/attempt/events.sqlite",
             "head_event_id": events[-1]["event_id"],
             "head_checksum": events[-1]["checksum"],
         },
-        "artifact_store_ref": {"path": "/attempt/artifacts", "receipt_digests": []},
-        "error": None,
+        "artifact_store_ref": {
+            "path": "/attempt/artifacts",
+            "receipt_digests": declared_result_digests,
+        },
+        "error": {"reason_code": reason_code} if failed else None,
     }
     payloads = {
         "task_spec": ("task_spec.json", json.dumps(task_spec).encode()),
@@ -1225,9 +1506,18 @@ def _write_valid_apex_receipt(
         "event_journal": ("event_journal.sqlite", journal.read_bytes()),
         "agent_transcript": (
             "agent_transcript.json",
-            json.dumps(transcript).encode(),
+            transcript_content,
         ),
     }
+    if new_prompt_receipt:
+        payloads["original_arena_prompt"] = (
+            "original_arena_prompt.txt",
+            original_prompt,
+        )
+        payloads["agent_prompt"] = (
+            "agent_prompt.txt",
+            rendered_prompt,
+        )
     artifacts = {}
     for name, (filename, content) in payloads.items():
         path = artifact_dir / filename
@@ -1247,14 +1537,40 @@ def _write_valid_apex_receipt(
     task_spec_contract_path.chmod(0o444)
     task_spec_contract_root.chmod(0o555)
     artifact_dir.chmod(0o555)
+    lineage = {
+        "run_id": "run-test",
+        "result_sha256": artifacts["apex_result"]["sha256"],
+        "journal_head_event_id": events[-1]["event_id"],
+        "journal_head_checksum": events[-1]["checksum"],
+        "event_count": len(events),
+        "transcript_sha256": artifacts["agent_transcript"]["sha256"],
+        "event_artifact_digests": event_artifact_digests,
+        "internal_verdict": (
+            "reject" if failed else "keep" if candidate_ready else "revert"
+        ),
+        "internal_verdict_ref": "evt-decision",
+    }
+    if new_prompt_receipt:
+        lineage["prompt_event"] = {
+            "binding": "apex.prompt_sent_event_cas/v1",
+            "event_id": "evt-prompt",
+            "sha256": rendered_prompt_digest,
+            "size_bytes": len(rendered_prompt),
+            "artifact_path": "/attempt/artifacts/rendered_prompt.txt",
+            "stdin_transport_attested": False,
+        }
     receipt = {
-        "schema": "agentkernelarena.apex-attempt-receipt/v1",
+        "schema": (
+            "agentkernelarena.apex-attempt-receipt/v2"
+            if new_prompt_receipt
+            else "agentkernelarena.apex-attempt-receipt/v1"
+        ),
         "comparison_contract_sha256": codex_contract[
             "_comparison_contract_sha256"
         ],
-        "session_succeeded": True,
-        "terminal_status": "no_gain",
-        "exit_code": 0,
+        "session_succeeded": not failed,
+        "terminal_status": status,
+        "exit_code": 1 if failed else 0,
         "timed_out": False,
         "budgets": {
             "inner_agent_timeout_seconds": 3600,
@@ -1309,19 +1625,11 @@ def _write_valid_apex_receipt(
             "effort": codex_contract["effort"],
         },
         "invocation": invocation,
-        "lineage": {
-            "run_id": "run-test",
-            "result_sha256": artifacts["apex_result"]["sha256"],
-            "journal_head_event_id": events[-1]["event_id"],
-            "journal_head_checksum": events[-1]["checksum"],
-            "event_count": 2,
-            "transcript_sha256": artifacts["agent_transcript"]["sha256"],
-            "event_artifact_digests": [],
-            "internal_verdict": "revert",
-            "internal_verdict_ref": "evt-decision",
-        },
+        "lineage": lineage,
         "artifacts": artifacts,
     }
+    if new_prompt_receipt:
+        receipt["instruction_adaptation"] = instruction_adaptation
     receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
     receipt_path.chmod(0o444)
 
@@ -2010,7 +2318,7 @@ def test_direct_codex_receipt_artifacts_and_pinned_identity_are_recomputed(
     run.mkdir()
     workspace = run / ".campaign_attempts/task/attempt_01/workspace"
     workspace.mkdir(parents=True)
-    codex_contract = _write_campaign_codex_contract(run)
+    codex_contract = _write_campaign_codex_contract(run, agent_template="codex")
     receipt_path = workspace.parent / "session_receipt.json"
     raw_stdout = _write_valid_codex_receipt(receipt_path, codex_contract)
 
@@ -2043,7 +2351,7 @@ def test_direct_codex_prompt_and_comparison_contract_are_independently_recompute
     run.mkdir()
     workspace = run / ".campaign_attempts/task/attempt_01/workspace"
     workspace.mkdir(parents=True)
-    codex_contract = _write_campaign_codex_contract(run)
+    codex_contract = _write_campaign_codex_contract(run, agent_template="codex")
     receipt_path = workspace.parent / "session_receipt.json"
     _write_valid_codex_receipt(receipt_path, codex_contract)
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
@@ -2076,16 +2384,89 @@ def test_direct_codex_prompt_and_comparison_contract_are_independently_recompute
     prompt_path.parent.chmod(0o700)
 
 
+def test_apex_manifest_rejects_substituted_direct_codex_receipt(tmp_path) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    _write_result(workspace, 1.0)
+    codex_contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_codex_receipt(receipt_path, codex_contract)
+
+    try:
+        receipt, errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert receipt is not None
+        assert errors == ["apex_receipt_schema_generation_mismatch"]
+        record = campaign._attempt_record(
+            attempt=1,
+            workspace=workspace,
+            run_directory=run,
+            success=True,
+            receipt_path=receipt_path,
+            require_session_receipt=True,
+        )
+        assert record["selection_eligible"] is False
+        assert "apex_receipt_schema_generation_mismatch" in record[
+            "eligibility_errors"
+        ]
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
+def test_direct_codex_manifest_rejects_substituted_apex_receipt(tmp_path) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(
+        run, agent_template="codex"
+    )
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(
+        receipt_path,
+        codex_contract,
+        new_prompt_receipt=True,
+    )
+
+    try:
+        receipt, errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert receipt is not None
+        assert errors == ["direct_codex_receipt_schema_generation_mismatch"]
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
+@pytest.mark.parametrize("new_prompt_receipt", [False, True])
 def test_apex_receipt_recomputes_result_event_invocation_and_transcript_lineage(
-    tmp_path,
+    tmp_path, new_prompt_receipt,
 ) -> None:
     run = tmp_path / "run"
     run.mkdir()
     workspace = run / ".campaign_attempts/task/attempt_01/workspace"
     workspace.mkdir(parents=True)
-    codex_contract = _write_campaign_codex_contract(run)
+    codex_contract = _write_campaign_codex_contract(
+        run,
+        apex_receipt_schema=(
+            "agentkernelarena.apex-attempt-receipt/v2"
+            if new_prompt_receipt
+            else "agentkernelarena.apex-attempt-receipt/v1"
+        ),
+    )
     receipt_path = workspace.parent / "session_receipt.json"
-    _write_valid_apex_receipt(receipt_path, codex_contract)
+    _write_valid_apex_receipt(
+        receipt_path,
+        codex_contract,
+        new_prompt_receipt=new_prompt_receipt,
+    )
 
     receipt, errors = campaign._validate_session_receipt(
         receipt_path=receipt_path,
@@ -2114,7 +2495,10 @@ def test_apex_receipt_must_bind_immutable_comparison_contract(tmp_path) -> None:
     run.mkdir()
     workspace = run / ".campaign_attempts/task/attempt_01/workspace"
     workspace.mkdir(parents=True)
-    codex_contract = _write_campaign_codex_contract(run)
+    codex_contract = _write_campaign_codex_contract(
+        run,
+        apex_receipt_schema="agentkernelarena.apex-attempt-receipt/v1",
+    )
     receipt_path = workspace.parent / "session_receipt.json"
     _write_valid_apex_receipt(receipt_path, codex_contract)
     payload = json.loads(receipt_path.read_text(encoding="utf-8"))
@@ -2140,7 +2524,10 @@ def test_apex_receipt_rejects_turn_budget_drift_from_comparison_contract(
     run.mkdir()
     workspace = run / ".campaign_attempts/task/attempt_01/workspace"
     workspace.mkdir(parents=True)
-    codex_contract = _write_campaign_codex_contract(run)
+    codex_contract = _write_campaign_codex_contract(
+        run,
+        apex_receipt_schema="agentkernelarena.apex-attempt-receipt/v1",
+    )
     receipt_path = workspace.parent / "session_receipt.json"
     _write_valid_apex_receipt(receipt_path, codex_contract, max_turns=49)
 
@@ -2153,6 +2540,366 @@ def test_apex_receipt_rejects_turn_budget_drift_from_comparison_contract(
     assert "apex_task_spec_budget_contract_mismatch" in errors
     assert "apex_inner_codex_invocation_contract_mismatch" in errors
     _unlock_apex_receipt_directories(run)
+
+
+def test_budget_exhausted_apex_receipt_has_verified_lineage_but_is_never_eligible(
+    tmp_path,
+) -> None:
+    run = tmp_path / "run"
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    _write_result(workspace, 1.0)
+    report_path = workspace / "task_result.yaml"
+    report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
+    report |= {
+        "evaluation_mode": "diagnostic_baseline_replay_v1",
+        "agent_session_score_eligible": False,
+        "agent_session_succeeded": False,
+    }
+    report_path.write_text(yaml.safe_dump(report), encoding="utf-8")
+    codex_contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(
+        receipt_path,
+        codex_contract,
+        status="budget_exhausted",
+        new_prompt_receipt=True,
+    )
+
+    try:
+        receipt, errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert receipt is not None
+        assert errors == ["apex_session_not_successful"]
+
+        record = campaign._attempt_record(
+            attempt=1,
+            workspace=workspace,
+            run_directory=run,
+            success=False,
+            receipt_path=receipt_path,
+            require_session_receipt=True,
+        )
+        assert record["selection_eligible"] is False
+        assert record["session_receipt_binding"]["lineage_verified"] is True
+        prompt = record["session_receipt_binding"]["event_bound_prompt"]
+        assert prompt["binding"] == "apex.prompt_sent_event_cas/v1"
+        assert re.fullmatch(r"[0-9a-f]{64}", prompt["sha256"])
+        assert {
+            "apex_artifact_set_mismatch",
+            "apex_codex_identity_contract_mismatch",
+            "apex_receipt_success_status_inconsistent",
+            "apex_terminal_result_contract_mismatch",
+            "apex_agent_completion_event_invalid",
+        }.isdisjoint(record["eligibility_errors"])
+        assert "apex_session_not_successful" in record["eligibility_errors"]
+        assert "diagnostic_evaluation_not_scoreable" in record["eligibility_errors"]
+        assert "agent_session_not_score_eligible" in record["eligibility_errors"]
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
+def test_budget_exhausted_apex_receipt_accepts_inner_sigterm_exit(tmp_path) -> None:
+    run = tmp_path / "run"
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(
+        receipt_path,
+        codex_contract,
+        status="budget_exhausted",
+        new_prompt_receipt=True,
+        inner_exit_code=-15,
+    )
+
+    try:
+        receipt, errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert receipt is not None
+        assert errors == ["apex_session_not_successful"]
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
+def test_no_gain_apex_receipt_is_audited_but_never_selection_eligible(
+    tmp_path,
+) -> None:
+    run = tmp_path / "run"
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    _write_result(workspace, 1.0)
+    report_path = workspace / "task_result.yaml"
+    report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
+    report |= {
+        "evaluation_mode": "no_candidate_baseline_replay_v1",
+        "agent_session_score_eligible": False,
+        "agent_session_succeeded": True,
+        "agent_session_terminal_status": "no_gain",
+    }
+    report_path.write_text(yaml.safe_dump(report), encoding="utf-8")
+    codex_contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(
+        receipt_path,
+        codex_contract,
+        status="no_gain",
+        new_prompt_receipt=True,
+    )
+
+    try:
+        receipt, receipt_errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert receipt is not None
+        assert receipt_errors == []
+        record = campaign._attempt_record(
+            attempt=1,
+            workspace=workspace,
+            run_directory=run,
+            success=True,
+            receipt_path=receipt_path,
+            require_session_receipt=True,
+        )
+        assert record["selection_eligible"] is False
+        assert "apex_terminal_status_not_candidate_ready" in record[
+            "eligibility_errors"
+        ]
+        assert "agent_session_not_score_eligible" in record["eligibility_errors"]
+        assert record["agent_session_terminal_status"] == "no_gain"
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
+def test_new_apex_receipt_rejects_run_control_drift(tmp_path) -> None:
+    run = tmp_path / "run"
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(
+        receipt_path,
+        codex_contract,
+        new_prompt_receipt=True,
+        run_control_turns=49,
+    )
+
+    try:
+        _, errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert "apex_caller_run_control_invalid" in errors
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
+def test_new_apex_receipt_rejects_run_control_missing_from_instructions(
+    tmp_path,
+) -> None:
+    run = tmp_path / "run"
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(
+        receipt_path,
+        codex_contract,
+        new_prompt_receipt=True,
+        omit_run_control_suffix=True,
+    )
+
+    try:
+        _, errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert "apex_caller_run_control_invalid" in errors
+        assert "apex_adapted_prompt_digest_mismatch" not in errors
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
+def test_new_apex_receipt_rejects_event_prompt_missing_run_control(tmp_path) -> None:
+    run = tmp_path / "run"
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(
+        receipt_path,
+        codex_contract,
+        new_prompt_receipt=True,
+        omit_run_control_from_agent_prompt=True,
+    )
+
+    try:
+        _, errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert "apex_prompt_objective_binding_mismatch" in errors
+        assert "apex_prompt_event_binding_mismatch" not in errors
+        assert "apex_caller_run_control_invalid" not in errors
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
+@pytest.mark.parametrize("status", ["candidate_ready", "no_gain"])
+@pytest.mark.parametrize("turn_count", [0, 51])
+def test_successful_apex_receipt_rejects_turn_count_outside_budget(
+    tmp_path, status, turn_count
+) -> None:
+    run = tmp_path / "run"
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(
+        receipt_path,
+        codex_contract,
+        status=status,
+        new_prompt_receipt=True,
+        successful_turn_count=turn_count,
+    )
+
+    try:
+        _, errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert "apex_agent_turn_evidence_invalid" in errors
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
+def test_v2_apex_receipt_cannot_downgrade_to_legacy_validation(tmp_path) -> None:
+    run = tmp_path / "run"
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(
+        receipt_path,
+        codex_contract,
+        new_prompt_receipt=True,
+    )
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["schema"] = "agentkernelarena.apex-attempt-receipt/v1"
+    receipt.pop("instruction_adaptation")
+    receipt["artifacts"].pop("original_arena_prompt")
+    receipt["artifacts"].pop("agent_prompt")
+    receipt_path.chmod(0o644)
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    receipt_path.chmod(0o444)
+
+    try:
+        _, errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert errors == ["apex_receipt_schema_generation_mismatch"]
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
+@pytest.mark.parametrize(
+    ("turn_count", "budget_reason"),
+    [
+        (50, "max_turns_exceeded"),
+        (51, "max_turns_exhausted_before_follow_up"),
+    ],
+)
+def test_budget_exhausted_receipt_rejects_reason_count_mismatch(
+    tmp_path, turn_count, budget_reason
+) -> None:
+    run = tmp_path / "run"
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(
+        receipt_path,
+        codex_contract,
+        status="budget_exhausted",
+        new_prompt_receipt=True,
+        budget_turn_count=turn_count,
+        budget_reason_override=budget_reason,
+    )
+
+    try:
+        _, errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert "apex_agent_completion_receipt_mismatch" in errors
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
+@pytest.mark.parametrize(
+    ("tamper", "expected_error"),
+    [
+        ("journal", "apex_event_journal_hash_mismatch"),
+        ("transcript", "apex_agent_transcript_hash_mismatch"),
+        ("prompt_binding", "apex_prompt_event_binding_mismatch"),
+    ],
+)
+def test_budget_exhausted_apex_receipt_detects_lineage_corruption(
+    tmp_path, tamper, expected_error
+) -> None:
+    run = tmp_path / "run"
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(
+        receipt_path,
+        codex_contract,
+        status="budget_exhausted",
+        new_prompt_receipt=True,
+    )
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    if tamper in {"journal", "transcript"}:
+        artifact_name = (
+            "event_journal" if tamper == "journal" else "agent_transcript"
+        )
+        artifact_path = Path(payload["artifacts"][artifact_name]["path"])
+        artifact_path.parent.chmod(0o700)
+        artifact_path.chmod(0o644)
+        with artifact_path.open("ab") as stream:
+            stream.write(b" ")
+        artifact_path.chmod(0o444)
+        artifact_path.parent.chmod(0o555)
+    else:
+        receipt_path.chmod(0o644)
+        payload["lineage"]["prompt_event"]["sha256"] = "0" * 64
+        receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+        receipt_path.chmod(0o444)
+
+    try:
+        _, errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert expected_error in errors
+    finally:
+        _unlock_apex_receipt_directories(run)
 
 
 @pytest.mark.parametrize("agent_name", ["apex", "codex"])
@@ -2204,7 +2951,7 @@ def test_three_valid_direct_codex_receipts_allow_canonical_projection(
     monkeypatch.setenv("AGENT_KERNEL_ARENA_HOST_GPU_ID", "0")
     run = tmp_path / "run"
     run.mkdir()
-    codex_contract = _write_campaign_codex_contract(run)
+    codex_contract = _write_campaign_codex_contract(run, agent_template="codex")
 
     def single_attempt(**kwargs):
         attempt_run = Path(kwargs["run_directory"])
@@ -2246,7 +2993,10 @@ def test_three_valid_apex_receipts_allow_canonical_projection(
     monkeypatch.setenv("AGENT_KERNEL_ARENA_HOST_GPU_ID", "0")
     run = tmp_path / "run"
     run.mkdir()
-    codex_contract = _write_campaign_codex_contract(run)
+    codex_contract = _write_campaign_codex_contract(
+        run,
+        apex_receipt_schema="agentkernelarena.apex-attempt-receipt/v1",
+    )
 
     def single_attempt(**kwargs):
         attempt_run = Path(kwargs["run_directory"])
@@ -2257,7 +3007,11 @@ def test_three_valid_apex_receipts_allow_canonical_projection(
         assert kwargs["eval_config"]["campaign_attempt"][
             "comparison_contract_sha256"
         ] == codex_contract["_comparison_contract_sha256"]
-        _write_valid_apex_receipt(receipt_path, codex_contract)
+        _write_valid_apex_receipt(
+            receipt_path,
+            codex_contract,
+            status="candidate_ready",
+        )
         return True, workspace
 
     try:
@@ -2351,6 +3105,63 @@ def test_failed_agent_session_still_gets_diagnostic_evaluation_but_returns_failu
     assert completed is False
     assert observed_workspace == workspace
     report = yaml.safe_load((workspace / "task_result.yaml").read_text())
+    assert report["evaluation_mode"] == "diagnostic_baseline_replay_v1"
+    assert report["agent_session_score_eligible"] is False
     assert report["agent_session_succeeded"] is False
     assert report["agent_session_error_type"] == "RuntimeError"
     assert "evaluation_elapsed_seconds" in attempt
+
+
+def test_apex_no_gain_metadata_never_marks_baseline_as_scoreable(tmp_path) -> None:
+    receipt_path = tmp_path / "session_receipt.json"
+    receipt_path.write_text(
+        json.dumps(
+            {
+                "schema": "agentkernelarena.apex-attempt-receipt/v2",
+                "session_succeeded": True,
+                "terminal_status": "no_gain",
+            }
+        ),
+        encoding="utf-8",
+    )
+    receipt_path.chmod(0o444)
+
+    metadata = aka_main._campaign_evaluation_metadata(
+        agent=aka_main.AgentType.APEX,
+        campaign_attempt={"receipt_path": str(receipt_path.resolve())},
+        agent_error=None,
+    )
+
+    assert metadata == {
+        "evaluation_mode": "no_candidate_baseline_replay_v1",
+        "agent_session_score_eligible": False,
+        "agent_session_succeeded": True,
+        "agent_session_error_type": None,
+        "agent_session_terminal_status": "no_gain",
+    }
+
+
+def test_apex_candidate_ready_metadata_is_scoreable(tmp_path) -> None:
+    receipt_path = tmp_path / "session_receipt.json"
+    receipt_path.write_text(
+        json.dumps(
+            {
+                "schema": "agentkernelarena.apex-attempt-receipt/v2",
+                "session_succeeded": True,
+                "terminal_status": "candidate_ready",
+            }
+        ),
+        encoding="utf-8",
+    )
+    receipt_path.chmod(0o444)
+
+    metadata = aka_main._campaign_evaluation_metadata(
+        agent=aka_main.AgentType.APEX,
+        campaign_attempt={"receipt_path": str(receipt_path.resolve())},
+        agent_error=None,
+    )
+
+    assert metadata["evaluation_mode"] == "candidate_scoring_v1"
+    assert metadata["agent_session_score_eligible"] is True
+    assert metadata["agent_session_succeeded"] is True
+    assert metadata["agent_session_terminal_status"] == "candidate_ready"

@@ -40,11 +40,27 @@ The raw TaskSpec records original and adapted byte and character lengths, SHA-25
 hashes, the exact boundary, and the transform version. Short prompts pass through
 byte-for-byte. An oversized prompt with a missing or ambiguous boundary, or one that
 remains over the bound, fails closed; the adapter never applies arbitrary truncation.
+Formal TaskSpecs also carry `caller_run_control`, a structured copy of the matched
+execution contract. It fixes one deliverable version, 50
+`structured_agent_turn_v1` turns (each assistant message and each tool-call start
+counts once), and requires the agent to leave its best source in the editable files
+before the boundary. The caller-selected `AGENT_KERNEL_ARENA_PYTHON` must be an
+absolute, executable interpreter; a formal launch fails closed if it is absent. The
+adapter binds Python-based compile, correctness, and performance argv to that exact
+path, records all three argv vectors, and renders a compact copy into the instructions.
+Receipt validation independently regenerates this text and requires it as the exact
+instruction suffix; the structured field alone is not accepted because Apex treats it
+as caller metadata. The checked-in ten-task prompt test proves every result stays
+within 8,192 characters.
+
 For a formal attempt, the raw TaskSpec is written before launch under a sealed sibling
 contract directory and mounted read-only, while Apex's result/artifact directory stays
 separately writable. The adapter retains the prelaunch bytes and digest, verifies the
 same sealed file after the subprocess exits, and copies those original bytes—not a
-post-process reread—into the immutable attempt receipt.
+post-process reread—into the immutable attempt receipt. The untouched Arena prompt is
+also copied into a separate `0444` `original_arena_prompt.txt` receipt artifact. Its
+bytes and digest are recomputed against `instruction_adaptation.original`; a mismatch
+invalidates the receipt rather than leaving an unbound transformation claim.
 
 Run artifacts are written beside, never inside, the scored workspace under
 `.<task-workspace>_apex/<run-id>/`.
@@ -168,7 +184,38 @@ prompt bytes, so its invocation prompt hash is independently reproducible rather
 self-attested. The Apex adapter separately caps its outer transport
 at 4 MiB. Apex receipts additionally snapshot the
 TaskSpec, TaskResult, checksummed event journal, canonical agent transcript, and
-terminal verdict lineage. A nonzero `no_gain` is invalid. Failed sessions and
+terminal verdict lineage. The event-bound inner agent prompt is also copied into the
+outer immutable receipt, so later audits do not depend on a still-live Apex CAS path.
+New formal receipts use `agentkernelarena.apex-attempt-receipt/v2`; the campaign
+manifest freezes that schema before any attempt starts. The auditor keeps explicit
+read-only support for sealed v1 history, but a v2 receipt cannot drop these fields or
+change its schema to select the legacy validation path. Receipt dispatch is selected
+from the sealed manifest's agent template and schema, never from the receipt's own
+type claim, so an Apex and direct-Codex receipt cannot be substituted for each other.
+The adapter requires
+exactly one `prompt_sent` CAS binding
+and a direct journal parent edge from that event to the sole `agent_completed` or
+`agent_failed` event. The outer receipt records the prompt event ID, digest, and size
+as an event-bound CAS fact; it explicitly does not claim that these bytes were
+independently attested at stdin transport. Both adapter and postprocess parse the
+canonical `Identity and role` JSON in those exact bytes and require
+`role.objective` to equal the sealed TaskSpec instructions, including the full formal
+run-control suffix.
+
+Successful `candidate_ready` and `no_gain` results require one `agent_completed` and
+no `agent_failed`, plus one through 50 recomputed structured turns. A
+`budget_exhausted` result instead requires exactly one
+`agent_failed`, an `agent_turn_budget_exceeded` result/error/decision chain, and
+matching transcript flags, reason, observed assistant-message count, tool-call-start
+count, invocation policy, and 50-turn bound. The inner process exit code may be zero
+when it races the observer or `-15` after normal SIGTERM cleanup; it is evidence, not
+the budget verdict. Formal lineage is validated before the
+outer Apex return code is rejected, so a failed session retains audit evidence while
+still raising and keeping `session_succeeded=false`. A nonzero `no_gain` is invalid.
+The two observer stop reasons are exact: `max_turns_exhausted_before_follow_up`
+requires exactly 50 turns, while `max_turns_exceeded` requires more than 50. A valid
+`no_gain` is an audited successful session but its central baseline replay is marked
+`no_candidate_baseline_replay_v1` and can never enter campaign selection. Failed sessions and
 untrusted evidence remain diagnostic-only: they cannot create the ordinary task
 workspace or count as completion. Only a complete campaign gets a canonical
 copied projection of its selected attempt.
@@ -230,3 +277,19 @@ The bundle digest is SHA-256 over canonical JSON for the parsed manifest
 in manifest order. Digests are lowercase 64-character hexadecimal strings with
 no `sha256:` prefix. This binds both metadata and payload without trusting a
 self-reported score.
+
+## Focused tests
+
+The adapter tests are CPU-only. Run `python3 -m pytest -q -p no:cacheprovider
+tests/test_apex_agent.py` in an environment with the project test dependencies.
+For the checked MI355X runtime, the equivalent repository-wide command is:
+
+```bash
+docker run --rm --user "$(id -u):$(id -g)" \
+  --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  --entrypoint /bin/bash -e PYTHONDONTWRITEBYTECODE=1 \
+  -v /usr/bin/bwrap:/usr/bin/bwrap:ro \
+  -v "$PWD":/workspace:ro -w /workspace \
+  lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705 \
+  -lc 'python3 -m pytest -q -p no:cacheprovider tests'
+```

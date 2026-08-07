@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import signal
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -267,6 +268,7 @@ def test_task_spec_maps_caller_contract_without_arena_scoring(tmp_path, monkeypa
         "max_turns": 50,
         "timeout_seconds": 120,
     }
+    assert spec["caller_run_control"] is None
     assert "score" not in spec
     assert "arena" not in json.dumps(spec).lower()
 
@@ -358,8 +360,11 @@ def test_oversized_prompt_that_remains_over_limit_fails_closed(tmp_path) -> None
         )
 
 
-def test_formal_mi355x_cohort_preserves_task_contract_and_omits_cheatsheets() -> None:
+def test_formal_mi355x_cohort_preserves_task_contract_and_omits_cheatsheets(
+    monkeypatch,
+) -> None:
     repository = Path(__file__).resolve().parents[1]
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_PYTHON", sys.executable)
     run_config = yaml.safe_load(
         (repository / "example_configs/benchmark_apex_mi355x_10.yaml").read_text(
             encoding="utf-8"
@@ -383,11 +388,22 @@ def test_formal_mi355x_cohort_preserves_task_contract_and_omits_cheatsheets() ->
         task_instructions = task_config["prompt"]["instructions"]
         assert task_instructions in task_contract
 
+        commands = {
+            phase: apex_launcher._command_specs(task_config, phase, 3600)
+            for phase in ("compile", "correctness", "performance")
+        }
+        run_control = apex_launcher._caller_run_control(
+            formal_campaign=True,
+            commands=commands,
+            max_turns=50,
+            max_iterations=1,
+        )
         instructions, provenance = apex_launcher._apex_task_instructions(
             prompt,
             workspace=workspace,
             sources=task_config["source_file_path"],
             symbols=task_config["target_kernel_functions"],
+            caller_run_control=run_control,
         )
 
         assert instructions.startswith(task_contract + "\n\n")
@@ -400,8 +416,21 @@ def test_formal_mi355x_cohort_preserves_task_contract_and_omits_cheatsheets() ->
         for symbol in task_config["target_kernel_functions"]:
             assert f"- `{symbol}`" in instructions
         assert len(instructions) <= apex_launcher._APEX_INSTRUCTION_LIMIT
+        assert "Produce one final source version" in instructions
+        assert "Each assistant message and each tool-call start counts once" in instructions
+        assert sys.executable in instructions
+        assert run_control["structured_turn_budget"] == {
+            "policy": "structured_agent_turn_v1",
+            "max_turns": 50,
+            "counting": "assistant_message_and_tool_call_start_each_count_once",
+        }
+        assert all(
+            argv[0] == sys.executable
+            for argv in run_control["verifier_argv"].values()
+        )
         assert provenance["strategy"] == (
-            "omit_known_generic_mi355x_triton_context_v1"
+            "omit_known_generic_mi355x_triton_context_v1_"
+            "and_append_formal_run_control_v1"
         )
         assert provenance["original"]["sha256"] == hashlib.sha256(
             prompt.encode("utf-8")
@@ -443,6 +472,85 @@ def test_matched_campaign_forces_one_inner_apex_iteration(tmp_path) -> None:
 
     assert spec["budget"]["max_iterations"] == 1
     assert spec["budget"]["max_turns"] == 50
+
+
+def test_formal_task_spec_binds_run_control_and_exact_python(
+    tmp_path, monkeypatch
+) -> None:
+    workspace, config_path = _task(tmp_path)
+    task_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    artifact_root = workspace.parent / ".artifacts"
+    artifact_root.mkdir()
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_PYTHON", sys.executable)
+    spec = apex_launcher._build_task_spec(
+        task_config_path=config_path,
+        task_config=task_config,
+        eval_config={
+            "target_gpu_model": "MI355X",
+            "campaign": {"comparison": "apex_vs_codex"},
+            "campaign_attempt": {"fresh_session": True},
+        },
+        agent_config=_agent_config(),
+        workspace=workspace,
+        artifact_root=artifact_root,
+        prompt="BASE PROMPT",
+    )
+
+    control = spec["caller_run_control"]
+    assert control["schema"] == "aka.apex-caller-run-control/v1"
+    assert control["deliverable_versions"] == 1
+    assert control["python_interpreter"]["path"] == sys.executable
+    assert control["structured_turn_budget"]["policy"] == (
+        "structured_agent_turn_v1"
+    )
+    assert all(
+        spec["commands"][phase]["argv"][0] == sys.executable
+        == control["verifier_argv"][phase][0]
+        for phase in ("compile", "correctness", "performance")
+    )
+    assert "leave the best source found" in spec["instructions"]
+    assert len(spec["instructions"]) <= apex_launcher._APEX_INSTRUCTION_LIMIT
+
+
+def test_formal_task_spec_requires_caller_python(tmp_path, monkeypatch) -> None:
+    workspace, config_path = _task(tmp_path)
+    task_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    artifact_root = workspace.parent / ".artifacts"
+    artifact_root.mkdir()
+    monkeypatch.delenv("AGENT_KERNEL_ARENA_PYTHON", raising=False)
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="formal Apex requires AGENT_KERNEL_ARENA_PYTHON",
+    ):
+        apex_launcher._build_task_spec(
+            task_config_path=config_path,
+            task_config=task_config,
+            eval_config={
+                "target_gpu_model": "MI355X",
+                "campaign": {"comparison": "apex_vs_codex"},
+                "campaign_attempt": {"fresh_session": True},
+            },
+            agent_config=_agent_config(),
+            workspace=workspace,
+            artifact_root=artifact_root,
+            prompt="BASE PROMPT",
+        )
+
+
+def test_formal_python_binding_rewrites_pytest_entrypoint() -> None:
+    bound = apex_launcher._bind_formal_python(
+        {
+            "argv": ["pytest", "-vv", "test_kernel.py"],
+            "timeout_seconds": 30,
+        },
+        {"path": sys.executable},
+    )
+
+    assert bound == {
+        "argv": [sys.executable, "-m", "pytest", "-vv", "test_kernel.py"],
+        "timeout_seconds": 30,
+    }
 
 
 def test_matched_campaign_rejects_asymmetric_turn_budget(tmp_path) -> None:
@@ -878,6 +986,8 @@ def _formal_apex_launch_fixture(
     *,
     mutate_workspace: bool,
     mutate_task_spec: bool = False,
+    result_status: str = "no_gain",
+    return_code: int = 0,
 ):
     workspace, config_path = _task(tmp_path)
     apex_root = tmp_path / "apex"
@@ -899,6 +1009,7 @@ def _formal_apex_launch_fixture(
     }
     captured: dict[str, object] = {}
     monkeypatch.setenv("APEX_ROOT", str(apex_root))
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_PYTHON", sys.executable)
     monkeypatch.setattr(
         apex_launcher,
         "load_prompt_builder",
@@ -937,23 +1048,36 @@ def _formal_apex_launch_fixture(
             (workspace / "undeclared-agent-file.txt").write_text(
                 "must never survive as a scoreable no_gain\n", encoding="utf-8"
             )
+        reason = (
+            "agent_turn_budget_exceeded"
+            if result_status == "budget_exhausted"
+            else "baseline_is_best"
+        )
         result_path.write_text(
             json.dumps(
                 {
                     "schema_version": 1,
                     "task_id": spec["task_id"],
-                    "status": "no_gain",
-                    "reason_code": "baseline_is_best",
+                    "status": result_status,
+                    "reason_code": reason,
                     "applied": False,
                     "external_verification_required": True,
                     "bundle_path": None,
                     "bundle_digest": None,
                     "changed_files": [],
+                    "internal_verdict": (
+                        "reject" if result_status == "budget_exhausted" else "revert"
+                    ),
+                    "error": (
+                        {"reason_code": reason}
+                        if result_status == "budget_exhausted"
+                        else None
+                    ),
                 }
             ),
             encoding="utf-8",
         )
-        return 0, "formal apex output"
+        return return_code, "formal apex output"
 
     def fake_lineage(**kwargs):
         del kwargs
@@ -967,6 +1091,14 @@ def _formal_apex_launch_fixture(
             "transcript_bytes": b"{}",
             "transcript_digest": "b" * 64,
             "event_artifact_digests": [],
+            "prompt_event": {
+                "binding": "apex.prompt_sent_event_cas/v1",
+                "event_id": "event-prompt",
+                "sha256": "c" * 64,
+                "size_bytes": 13,
+                "artifact_path": str(attempt_root / "unused-prompt"),
+                "stdin_transport_attested": False,
+            },
         }
 
     def fake_receipt(**kwargs):
@@ -1026,12 +1158,583 @@ def test_formal_apex_rejects_task_spec_mutation_and_receipts_prelaunch_bytes(
         apex_launcher.launch_agent(eval_config, str(config_path), str(workspace))
 
     receipt = captured["receipt"]
+    assert receipt["schema"] == "agentkernelarena.apex-attempt-receipt/v2"
     assert receipt["session_succeeded"] is False
     assert receipt["task_spec_contract"]["postlaunch_unchanged"] is False
     received_spec = json.loads(captured["receipt_task_spec_bytes"])
-    assert received_spec["instructions"] == "formal prompt"
+    assert received_spec["instructions"].startswith("formal prompt\n\n")
+    assert "### Formal run control" in received_spec["instructions"]
     on_disk_spec = json.loads(Path(captured["task_spec_path"]).read_text())
     assert on_disk_spec["instructions"] == "subprocess-forged instructions"
+
+
+def _successful_process_outcome() -> apex_launcher.ApexProcessOutcome:
+    return apex_launcher.ApexProcessOutcome(
+        exit_code=0,
+        stdout=b"stdout\n",
+        stderr=b"",
+        timed_out=False,
+        cleanup={"verification_performed": True, "verified_absent": True},
+        readers_completed=True,
+        capture_errors=(),
+    )
+
+
+def test_apex_receipt_seals_original_arena_prompt(tmp_path) -> None:
+    _, _, spec = _spec(tmp_path)
+    task_spec_bytes = (json.dumps(spec, sort_keys=True) + "\n").encode()
+    receipt_path = tmp_path / "session_receipt.json"
+
+    apex_launcher._write_apex_attempt_receipt(
+        receipt_path=receipt_path,
+        task_spec_bytes=task_spec_bytes,
+        original_prompt_bytes=b"BASE PROMPT",
+        result_path=tmp_path / "missing-result.json",
+        outcome=_successful_process_outcome(),
+        receipt={"schema": "fixture"},
+        lineage=None,
+    )
+
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    artifact = receipt["artifacts"]["original_arena_prompt"]
+    artifact_path = Path(artifact["path"])
+    assert artifact_path.read_bytes() == b"BASE PROMPT"
+    assert artifact["sha256"] == hashlib.sha256(b"BASE PROMPT").hexdigest()
+    assert artifact["size_bytes"] == len(b"BASE PROMPT")
+    assert artifact_path.stat().st_mode & 0o777 == 0o444
+    assert receipt_path.stat().st_mode & 0o777 == 0o444
+    assert artifact_path.parent.stat().st_mode & 0o777 == 0o555
+
+
+def test_apex_receipt_seals_event_bound_agent_prompt(tmp_path) -> None:
+    _, _, spec = _spec(tmp_path)
+    task_spec_bytes = (json.dumps(spec, sort_keys=True) + "\n").encode()
+    receipt_path = tmp_path / "session_receipt.json"
+    result_path = tmp_path / "result.json"
+    result_path.write_text("{}\n", encoding="utf-8")
+    journal_path = tmp_path / "journal.sqlite"
+    journal_path.write_bytes(b"journal")
+    prompt_bytes = b"INNER EVENT-BOUND PROMPT"
+
+    apex_launcher._write_apex_attempt_receipt(
+        receipt_path=receipt_path,
+        task_spec_bytes=task_spec_bytes,
+        original_prompt_bytes=b"BASE PROMPT",
+        result_path=result_path,
+        outcome=_successful_process_outcome(),
+        receipt={"schema": "fixture"},
+        lineage={
+            "journal_path": journal_path,
+            "transcript_bytes": b"{}",
+            "prompt_bytes": prompt_bytes,
+            "prompt_event": {
+                "sha256": hashlib.sha256(prompt_bytes).hexdigest(),
+                "size_bytes": len(prompt_bytes),
+            },
+        },
+    )
+
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    artifact = receipt["artifacts"]["agent_prompt"]
+    artifact_path = Path(artifact["path"])
+    assert artifact_path.read_bytes() == prompt_bytes
+    assert artifact["sha256"] == hashlib.sha256(prompt_bytes).hexdigest()
+    assert artifact_path.stat().st_mode & 0o777 == 0o444
+
+
+def test_apex_receipt_rejects_original_prompt_digest_tampering(tmp_path) -> None:
+    _, _, spec = _spec(tmp_path)
+    spec["instruction_adaptation"]["original"]["sha256"] = "0" * 64
+    task_spec_bytes = (json.dumps(spec, sort_keys=True) + "\n").encode()
+    receipt_path = tmp_path / "session_receipt.json"
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="original digest/size does not match Arena prompt",
+    ):
+        apex_launcher._write_apex_attempt_receipt(
+            receipt_path=receipt_path,
+            task_spec_bytes=task_spec_bytes,
+            original_prompt_bytes=b"BASE PROMPT",
+            result_path=tmp_path / "missing-result.json",
+            outcome=_successful_process_outcome(),
+            receipt={"schema": "fixture"},
+            lineage=None,
+        )
+
+    assert not receipt_path.exists()
+    assert not (tmp_path / ".session_receipt.artifacts").exists()
+
+
+def _store_artifact(store: Path, content: bytes, media_type: str) -> dict[str, object]:
+    digest = hashlib.sha256(content).hexdigest()
+    relative = f"sha256/{digest[:2]}/{digest}"
+    path = store / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return {
+        "digest": digest,
+        "media_type": media_type,
+        "relative_path": relative,
+        "size": len(content),
+    }
+
+
+def _context_packet_prompt(objective: str) -> bytes:
+    identity_and_role = {
+        "identity": {"context_packet_id": "context-fixture"},
+        "role": {"kind": "kernel_optimizer", "objective": objective},
+    }
+    encoded = json.dumps(
+        identity_and_role,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return (
+        "# Apex ContextPacket\n\n"
+        "This packet is the complete task-local observation for this invocation.\n\n"
+        "## Identity and role\n\n"
+        f"> {encoded}\n\n"
+        "## Objective and target\n\n"
+        "> {}\n"
+    ).encode("utf-8")
+
+
+def _lineage_fixture(
+    artifact_root: Path,
+    spec: dict[str, object],
+    *,
+    status: str,
+    budget_flag: bool = True,
+    intervening_prompt_event: bool = False,
+    turn_count: int | None = None,
+    budget_reason_override: str | None = None,
+    inner_exit_code: int = 0,
+    prompt_objective: str | None = None,
+) -> tuple[dict[str, object], Path]:
+    run_id = "run-fixture"
+    attempt_id = "attempt-fixture"
+    run_root = artifact_root / "runs" / run_id
+    store = run_root / "artifacts"
+    store.mkdir(parents=True)
+    prompt_bytes = _context_packet_prompt(
+        str(spec["instructions"])
+        if prompt_objective is None
+        else prompt_objective
+    )
+    prompt_receipt = _store_artifact(store, prompt_bytes, "text/plain")
+    failure = status == "budget_exhausted"
+    selected_turn_count = (
+        spec["budget"]["max_turns"] if failure else 1
+    ) if turn_count is None else turn_count
+    semantic_events = (
+        [
+            {
+                "kind": "agent_message",
+                "role": "assistant",
+                "source_event_index": index + 1,
+            }
+            for index in range(selected_turn_count)
+        ]
+    )
+    observed_turns = len(semantic_events)
+    budget_reason = None
+    if failure:
+        budget_reason = budget_reason_override or (
+            "max_turns_exceeded"
+            if observed_turns > spec["budget"]["max_turns"]
+            else "max_turns_exhausted_before_follow_up"
+        )
+    executable = Path(sys.executable).resolve(strict=True)
+    invocation = {
+        "schema": "apex.agent-invocation/v1",
+        "cli_name": "codex",
+        "cli_version": "codex-cli fixture",
+        "entrypoint_sha256": apex_launcher._sha256_file(executable),
+        "resolved_executable_path": str(executable),
+        "max_turns": spec["budget"]["max_turns"],
+        "turn_policy": "structured_agent_turn_v1",
+        "prompt_transport": "stdin",
+        "argv": [
+            str(executable),
+            "exec",
+            "--strict-config",
+            "--ignore-user-config",
+            "--ignore-rules",
+            "--ephemeral",
+            "-",
+        ],
+        "isolation": {
+            "approval": "never_via_strict_config",
+            "execpolicy_rules": "ignored",
+            "project_instructions": "backend_default_may_load",
+            "response_token_limit": "not_supported_context_advisory_only",
+            "sandbox": "workspace-write",
+            "session": "ephemeral",
+            "user_config": "ignored",
+        },
+    }
+    transcript = {
+        "schema": "apex.agent-transcript/v1",
+        "backend": spec["agent_backend"],
+        "model": spec["agent_options"]["model"],
+        "effort": spec["agent_options"]["effort"],
+        "invocation": invocation,
+        "semantic_events": semantic_events,
+        "budget": {
+            "turn_policy": "structured_agent_turn_v1",
+            "max_turns": spec["budget"]["max_turns"],
+            "observed_turns": observed_turns,
+            "exceeded": budget_flag if failure else False,
+            "enforcement_failed": False,
+            "reason": budget_reason,
+        },
+    }
+    transcript_bytes = json.dumps(transcript, sort_keys=True).encode()
+    transcript_receipt = _store_artifact(
+        store, transcript_bytes, "application/json"
+    )
+    agent_payload = {
+        "attempt_id": attempt_id,
+        "backend": spec["agent_backend"],
+        "model": spec["agent_options"]["model"],
+        "effort": spec["agent_options"]["effort"],
+        "exit_code": inner_exit_code,
+        "timed_out": False,
+        "budget_exceeded": budget_flag if failure else False,
+        "budget_enforcement_failed": False,
+        "budget_reason": budget_reason,
+        "observed_turns": observed_turns,
+        "message_event_count": observed_turns,
+        "tool_call_event_count": 0,
+        "semantic_event_count": observed_turns,
+        "invocation": invocation,
+        "artifacts": [
+            {"role": "agent_transcript", "receipt": transcript_receipt}
+        ],
+    }
+    candidate_ready = status == "candidate_ready"
+    reason = (
+        "agent_turn_budget_exceeded"
+        if failure
+        else "candidate_ready" if candidate_ready else "baseline_is_best"
+    )
+    verdict = "reject" if failure else "keep" if candidate_ready else "revert"
+    raw_events = [
+        (
+            "prompt_sent",
+            {
+                "attempt_id": attempt_id,
+                "artifacts": [{"role": "prompt", "receipt": prompt_receipt}],
+            },
+        ),
+    ]
+    if intervening_prompt_event:
+        raw_events.append(("knowledge_read", {"attempt_id": attempt_id}))
+    raw_events.extend([
+        ("agent_failed" if failure else "agent_completed", agent_payload),
+        (
+            "decision",
+            {"attempt_id": attempt_id, "verdict": verdict, "reason": reason},
+        ),
+        ("run.failed" if failure else "run.succeeded", {"reason": reason}),
+    ])
+    transaction_id = "tx-fixture"
+    events: list[dict[str, object]] = []
+    parent = None
+    for sequence, (event_type, payload) in enumerate(raw_events, start=1):
+        event = {
+            "sequence": sequence,
+            "event_id": f"evt-{sequence}",
+            "run_id": run_id,
+            "event_type": event_type,
+            "payload": payload,
+            "parent_event_id": parent,
+            "idempotency_key": f"fixture.{sequence}",
+            "transaction_id": transaction_id,
+            "created_at_ns": sequence,
+        }
+        event["checksum"] = apex_launcher._canonical_json_digest(event)
+        events.append(event)
+        parent = event["event_id"]
+    journal = run_root / "events" / "run.db"
+    journal.parent.mkdir()
+    connection = sqlite3.connect(journal)
+    connection.executescript(
+        """
+        CREATE TABLE transactions (
+          transaction_id TEXT PRIMARY KEY, first_sequence INTEGER NOT NULL,
+          last_sequence INTEGER NOT NULL, event_count INTEGER NOT NULL,
+          checksum TEXT NOT NULL
+        );
+        CREATE TABLE events (
+          sequence INTEGER PRIMARY KEY, event_id TEXT NOT NULL UNIQUE,
+          run_id TEXT NOT NULL, event_type TEXT NOT NULL, payload_json TEXT NOT NULL,
+          parent_event_id TEXT, idempotency_key TEXT NOT NULL,
+          transaction_id TEXT NOT NULL, created_at_ns INTEGER NOT NULL,
+          checksum TEXT NOT NULL
+        );
+        """
+    )
+    transaction_checksum = apex_launcher._canonical_json_digest(
+        {
+            "transaction_id": transaction_id,
+            "event_checksums": [event["checksum"] for event in events],
+        }
+    )
+    connection.execute(
+        "INSERT INTO transactions VALUES (?, ?, ?, ?, ?)",
+        (transaction_id, 1, len(events), len(events), transaction_checksum),
+    )
+    for event in events:
+        connection.execute(
+            "INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                event["sequence"],
+                event["event_id"],
+                event["run_id"],
+                event["event_type"],
+                json.dumps(event["payload"], sort_keys=True),
+                event["parent_event_id"],
+                event["idempotency_key"],
+                event["transaction_id"],
+                event["created_at_ns"],
+                event["checksum"],
+            ),
+        )
+    connection.commit()
+    connection.close()
+    result = {
+        "run_id": run_id,
+        "task_id": spec["task_id"],
+        "status": status,
+        "reason_code": reason,
+        "error": {"reason_code": reason} if failure else None,
+        "bundle_path": None,
+        "bundle_digest": None,
+        "changed_files": [],
+        "baseline_lock": {"file_hashes": spec["baseline"]["file_hashes"]},
+        "internal_verdict": verdict,
+        "internal_verdict_ref": next(
+            event["event_id"]
+            for event in events
+            if event["event_type"] == "decision"
+        ),
+        "event_journal_ref": {
+            "path": str(journal),
+            "head_event_id": events[-1]["event_id"],
+            "head_checksum": events[-1]["checksum"],
+        },
+        "artifact_store_ref": {
+            "path": str(store),
+            "receipt_digests": [transcript_receipt["digest"]],
+        },
+    }
+    return result, store / prompt_receipt["relative_path"]
+
+
+def test_formal_lineage_validates_success_and_event_bound_prompt(tmp_path) -> None:
+    _, artifact_root, spec = _spec(tmp_path)
+    result, _ = _lineage_fixture(artifact_root, spec, status="candidate_ready")
+
+    lineage = apex_launcher._validate_apex_lineage(
+        result=result, task_spec=spec, artifact_root=artifact_root
+    )
+
+    assert lineage["prompt_event"]["event_id"] == "evt-1"
+    expected_prompt = _context_packet_prompt(str(spec["instructions"]))
+    assert lineage["prompt_event"]["sha256"] == hashlib.sha256(
+        expected_prompt
+    ).hexdigest()
+    assert lineage["prompt_event"]["size_bytes"] == len(expected_prompt)
+    assert lineage["prompt_event"]["stdin_transport_attested"] is False
+
+
+def test_formal_lineage_rejects_prompt_with_different_role_objective(tmp_path) -> None:
+    _, artifact_root, spec = _spec(tmp_path)
+    result, _ = _lineage_fixture(
+        artifact_root,
+        spec,
+        status="candidate_ready",
+        prompt_objective="Objective without the caller run control.",
+    )
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="does not bind TaskSpec instructions",
+    ):
+        apex_launcher._validate_apex_lineage(
+            result=result, task_spec=spec, artifact_root=artifact_root
+        )
+
+
+@pytest.mark.parametrize("status", ["candidate_ready", "no_gain"])
+@pytest.mark.parametrize("turn_count", [0, 51])
+def test_formal_success_lineage_rejects_turn_count_outside_budget(
+    tmp_path, status, turn_count
+) -> None:
+    _, artifact_root, spec = _spec(tmp_path)
+    result, _ = _lineage_fixture(
+        artifact_root,
+        spec,
+        status=status,
+        turn_count=turn_count,
+    )
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="transcript turn evidence is inconsistent",
+    ):
+        apex_launcher._validate_apex_lineage(
+            result=result, task_spec=spec, artifact_root=artifact_root
+        )
+
+
+def test_formal_lineage_validates_budget_exhausted_agent_failure(tmp_path) -> None:
+    _, artifact_root, spec = _spec(tmp_path)
+    result, _ = _lineage_fixture(
+        artifact_root, spec, status="budget_exhausted"
+    )
+
+    lineage = apex_launcher._validate_apex_lineage(
+        result=result, task_spec=spec, artifact_root=artifact_root
+    )
+
+    assert lineage["invocation"]["turn_policy"] == "structured_agent_turn_v1"
+    assert lineage["prompt_event"]["binding"] == "apex.prompt_sent_event_cas/v1"
+
+
+def test_formal_lineage_accepts_sigterm_exit_on_budget_exhaustion(tmp_path) -> None:
+    _, artifact_root, spec = _spec(tmp_path)
+    result, _ = _lineage_fixture(
+        artifact_root,
+        spec,
+        status="budget_exhausted",
+        inner_exit_code=-15,
+    )
+
+    lineage = apex_launcher._validate_apex_lineage(
+        result=result, task_spec=spec, artifact_root=artifact_root
+    )
+
+    assert lineage["invocation"]["turn_policy"] == "structured_agent_turn_v1"
+
+
+def test_formal_lineage_validates_exceeded_budget_reason_at_turn_51(tmp_path) -> None:
+    _, artifact_root, spec = _spec(tmp_path)
+    result, _ = _lineage_fixture(
+        artifact_root,
+        spec,
+        status="budget_exhausted",
+        turn_count=51,
+    )
+
+    lineage = apex_launcher._validate_apex_lineage(
+        result=result, task_spec=spec, artifact_root=artifact_root
+    )
+
+    assert lineage["invocation"]["turn_policy"] == "structured_agent_turn_v1"
+
+
+@pytest.mark.parametrize(
+    ("turn_count", "budget_reason"),
+    [
+        (50, "max_turns_exceeded"),
+        (51, "max_turns_exhausted_before_follow_up"),
+    ],
+)
+def test_formal_lineage_rejects_budget_reason_count_mismatch(
+    tmp_path, turn_count, budget_reason
+) -> None:
+    _, artifact_root, spec = _spec(tmp_path)
+    result, _ = _lineage_fixture(
+        artifact_root,
+        spec,
+        status="budget_exhausted",
+        turn_count=turn_count,
+        budget_reason_override=budget_reason,
+    )
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="agent_failed outcome/identity is inconsistent",
+    ):
+        apex_launcher._validate_apex_lineage(
+            result=result, task_spec=spec, artifact_root=artifact_root
+        )
+
+
+def test_formal_lineage_rejects_budget_failure_flag_tampering(tmp_path) -> None:
+    _, artifact_root, spec = _spec(tmp_path)
+    result, _ = _lineage_fixture(
+        artifact_root,
+        spec,
+        status="budget_exhausted",
+        budget_flag=False,
+    )
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="agent_failed outcome/identity is inconsistent",
+    ):
+        apex_launcher._validate_apex_lineage(
+            result=result, task_spec=spec, artifact_root=artifact_root
+        )
+
+
+def test_formal_lineage_rejects_prompt_cas_tampering(tmp_path) -> None:
+    _, artifact_root, spec = _spec(tmp_path)
+    result, prompt_path = _lineage_fixture(
+        artifact_root, spec, status="candidate_ready"
+    )
+    prompt_path.write_bytes(b"FORGED INNER PROMPT")
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="agent prompt artifact receipt does not match stored bytes",
+    ):
+        apex_launcher._validate_apex_lineage(
+            result=result, task_spec=spec, artifact_root=artifact_root
+        )
+
+
+def test_formal_lineage_rejects_unbound_result_artifact(tmp_path) -> None:
+    _, artifact_root, spec = _spec(tmp_path)
+    result, prompt_path = _lineage_fixture(
+        artifact_root, spec, status="candidate_ready"
+    )
+    unbound = _store_artifact(
+        prompt_path.parents[2], b"UNBOUND", "application/octet-stream"
+    )
+    result["artifact_store_ref"]["receipt_digests"].append(unbound["digest"])
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="artifact receipt set is not event-bound",
+    ):
+        apex_launcher._validate_apex_lineage(
+            result=result, task_spec=spec, artifact_root=artifact_root
+        )
+
+
+def test_formal_lineage_rejects_noncausal_prompt_edge(tmp_path) -> None:
+    _, artifact_root, spec = _spec(tmp_path)
+    result, _ = _lineage_fixture(
+        artifact_root,
+        spec,
+        status="candidate_ready",
+        intervening_prompt_event=True,
+    )
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="prompt event is not uniquely bound to agent invocation",
+    ):
+        apex_launcher._validate_apex_lineage(
+            result=result, task_spec=spec, artifact_root=artifact_root
+        )
 
 
 def test_formal_apex_rejects_missing_comparison_contract_digest() -> None:
@@ -1040,6 +1743,30 @@ def test_formal_apex_rejects_missing_comparison_contract_digest() -> None:
         match="lacks a valid comparison contract digest",
     ):
         apex_launcher._comparison_contract_sha256({}, formal_campaign=True)
+
+
+def test_formal_budget_failure_validates_lineage_before_exit_code(
+    tmp_path, monkeypatch
+) -> None:
+    workspace, config_path, _, eval_config, captured = _formal_apex_launch_fixture(
+        tmp_path,
+        monkeypatch,
+        mutate_workspace=False,
+        result_status="budget_exhausted",
+        return_code=1,
+    )
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="budget_exhausted with process exit code 1",
+    ):
+        apex_launcher.launch_agent(eval_config, str(config_path), str(workspace))
+
+    receipt = captured["receipt"]
+    assert receipt["session_succeeded"] is False
+    assert receipt["terminal_status"] == "budget_exhausted"
+    assert receipt["lineage"]["prompt_event"]["event_id"] == "event-prompt"
+    assert receipt["invocation"] == {}
 
 
 def test_formal_apex_rejects_no_gain_after_direct_workspace_mutation(

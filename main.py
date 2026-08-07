@@ -597,9 +597,12 @@ def _run_single_task(
             if isinstance(campaign_attempt, dict):
                 result_path = workspace_path / "task_result.yaml"
                 result = yaml.safe_load(result_path.read_text(encoding="utf-8")) or {}
-                result["agent_session_succeeded"] = agent_error is None
-                result["agent_session_error_type"] = (
-                    type(agent_error).__name__ if agent_error is not None else None
+                result.update(
+                    _campaign_evaluation_metadata(
+                        agent=agent,
+                        campaign_attempt=campaign_attempt,
+                        agent_error=agent_error,
+                    )
                 )
                 result_path.write_text(
                     yaml.safe_dump(result, default_flow_style=False, sort_keys=False),
@@ -624,6 +627,80 @@ def _run_single_task(
             campaign_attempt["evaluation_elapsed_seconds"] = evaluation_elapsed
         logger.error(f"Task {task_name} failed with error: {e}", exc_info=True)
         return False, workspace_path
+
+
+def _campaign_evaluation_metadata(
+    *,
+    agent: AgentType,
+    campaign_attempt: dict[str, Any],
+    agent_error: Exception | None,
+) -> dict[str, Any]:
+    """Classify central evaluation without turning Apex no-gain into a candidate."""
+
+    session_succeeded = agent_error is None
+    metadata: dict[str, Any] = {
+        "evaluation_mode": (
+            "candidate_scoring_v1"
+            if session_succeeded
+            else "diagnostic_baseline_replay_v1"
+        ),
+        "agent_session_score_eligible": session_succeeded,
+        "agent_session_succeeded": session_succeeded,
+        "agent_session_error_type": (
+            type(agent_error).__name__ if agent_error is not None else None
+        ),
+        "agent_session_terminal_status": None,
+    }
+    if agent is not AgentType.APEX:
+        return metadata
+
+    raw_receipt = campaign_attempt.get("receipt_path")
+    try:
+        receipt_path = Path(raw_receipt)
+        receipt_metadata = receipt_path.lstat()
+        if (
+            not receipt_path.is_absolute()
+            or not stat.S_ISREG(receipt_metadata.st_mode)
+            or receipt_path.is_symlink()
+            or receipt_metadata.st_nlink != 1
+            or receipt_metadata.st_mode & 0o222
+        ):
+            raise ValueError("unsafe Apex session receipt")
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        if not isinstance(receipt, dict):
+            raise ValueError("Apex session receipt is not an object")
+    except (OSError, TypeError, ValueError, json.JSONDecodeError, UnicodeDecodeError):
+        metadata["evaluation_mode"] = "diagnostic_unbound_session_replay_v1"
+        metadata["agent_session_score_eligible"] = False
+        metadata["agent_session_succeeded"] = False
+        if agent_error is None:
+            metadata["agent_session_error_type"] = "ApexReceiptMetadataError"
+        return metadata
+
+    terminal_status = receipt.get("terminal_status")
+    metadata["agent_session_terminal_status"] = (
+        terminal_status if isinstance(terminal_status, str) else None
+    )
+    if agent_error is not None:
+        return metadata
+    if (
+        receipt.get("schema") != "agentkernelarena.apex-attempt-receipt/v2"
+        or receipt.get("session_succeeded") is not True
+    ):
+        metadata["evaluation_mode"] = "diagnostic_unbound_session_replay_v1"
+        metadata["agent_session_score_eligible"] = False
+        metadata["agent_session_succeeded"] = False
+        metadata["agent_session_error_type"] = "ApexReceiptMetadataError"
+    elif terminal_status == "candidate_ready":
+        metadata["evaluation_mode"] = "candidate_scoring_v1"
+        metadata["agent_session_score_eligible"] = True
+    elif terminal_status == "no_gain":
+        metadata["evaluation_mode"] = "no_candidate_baseline_replay_v1"
+        metadata["agent_session_score_eligible"] = False
+    else:
+        metadata["evaluation_mode"] = "diagnostic_unbound_session_replay_v1"
+        metadata["agent_session_score_eligible"] = False
+    return metadata
 
 
 def run_task(
