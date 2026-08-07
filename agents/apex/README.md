@@ -139,7 +139,9 @@ are writable. The adapter verifies a full pre-apply workspace manifest before it
 apply a validated Apex bundle, so `no_gain` cannot retain direct or undeclared edits.
 Both treatments use strict `approval_policy=never`, ignored user config and exec-policy
 rules, an ephemeral session, a private IPC namespace, and private `/dev/shm`. A missing
-or unusable `bwrap` fails campaign preflight.
+or unusable `bwrap` fails campaign preflight. Formal Docker workers remain non-root and
+receive no added Linux capabilities; rootless bubblewrap mounts Docker's already-private
+`/proc` read-only instead of creating a nested procfs.
 
 Formal GPU workers do not use `--privileged`, `/dev/mem`, or the complete `/dev/dri`
 tree. A host-resolved plan maps each physical `unique_id` through KFD topology to its

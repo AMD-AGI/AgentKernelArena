@@ -113,6 +113,9 @@ def test_formal_attempt_mount_keeps_workspace_read_only_and_artifacts_private(
         writable_roots=(artifact_root, attempt_home),
         read_only_roots=(workspace,),
     )
+    proc_index = command.index("/proc")
+    assert command[proc_index - 1] == "--ro-bind"
+    assert "--proc" not in command
 
     try:
         completed = campaign.subprocess.run(command, capture_output=True, text=True)

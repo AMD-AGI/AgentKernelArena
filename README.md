@@ -213,6 +213,9 @@ the agent, and require immutable Apex or direct-Codex session receipts before
 an attempt can enter central selection. The Apex treatment sees the scored workspace
 read-only and writes proposals only to a separate artifact root; AgentKernelArena
 rechecks the full workspace manifest before applying a validated source bundle.
+Formal Docker workers stay non-root without added capabilities. Rootless `bwrap` reuses
+Docker's private `/proc` read-only while creating the per-attempt mount and IPC
+namespaces; an unusable user-namespace/AppArmor setup fails preflight.
 
 FlyDSL tasks require FlyDSL in the container. The pinned image may already provide it; otherwise run:
 

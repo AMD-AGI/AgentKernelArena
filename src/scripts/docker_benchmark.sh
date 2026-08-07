@@ -757,11 +757,12 @@ build_docker_args() {
     if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
         # A formal worker must remain subject to Docker's device cgroup. In
         # particular, --privileged would make an individual --device mapping
-        # meaningless by granting the container every host device.
+        # meaningless by granting the container every host device. Rootless
+        # bubblewrap needs user-namespace mount syscalls, but the non-root
+        # worker needs no host-namespace capabilities.
         docker_args+=(
-            --cap-add=SYS_ADMIN
-            --cap-add=SYS_PTRACE
             --security-opt=seccomp=unconfined
+            --security-opt=apparmor=unconfined
         )
     else
         docker_args+=(
@@ -979,7 +980,7 @@ docker_exec() {
             command -v rocm-smi >/dev/null 2>&1 || exit 1
             rocm-smi --showuniqueid --showserial --showproductname --json \
                 > "$runtime_inventory" || exit 1
-            python3 -c "import json, torch; count=torch.cuda.device_count(); props=torch.cuda.get_device_properties(0) if count else None; print(json.dumps({'device_count': count, 'device_name': getattr(props, 'name', ''), 'gcn_arch_name': getattr(props, 'gcnArchName', '')}))" \
+            python3 -c "import json, torch; count=torch.cuda.device_count(); props=torch.cuda.get_device_properties(0) if count else None; print(json.dumps(dict(device_count=count, device_name=getattr(props, \"name\", \"\"), gcn_arch_name=getattr(props, \"gcnArchName\", \"\"))))" \
                 > "$torch_observation" || exit 1
             python3 src/gpu_device_boundary.py verify-runtime \
                 --plan "$AGENT_KERNEL_ARENA_GPU_BOUNDARY_PLAN" \
@@ -1136,7 +1137,7 @@ container_preflight() {
     if grep -Eq '^[[:space:]]+comparison:[[:space:]]*apex_vs_codex([[:space:]#]|$)' "$config_name"; then
         command -v bwrap >/dev/null 2>&1 || die "bwrap is unavailable in campaign container"
         bwrap --die-with-parent --unshare-pid --unshare-ipc --ro-bind / / \
-            --dev-bind /dev /dev --tmpfs /dev/shm --proc /proc -- /bin/true \
+            --dev-bind /dev /dev --tmpfs /dev/shm --ro-bind /proc /proc -- /bin/true \
             || die "bwrap cannot create the required per-attempt mount namespace"
     fi
 python - "$config_name" <<'PY'
