@@ -635,7 +635,7 @@ def _campaign_evaluation_metadata(
     campaign_attempt: dict[str, Any],
     agent_error: Exception | None,
 ) -> dict[str, Any]:
-    """Classify central evaluation without turning Apex no-gain into a candidate."""
+    """Classify evaluation from the sealed treatment and its immutable receipt."""
 
     session_succeeded = agent_error is None
     metadata: dict[str, Any] = {
@@ -651,7 +651,63 @@ def _campaign_evaluation_metadata(
         ),
         "agent_session_terminal_status": None,
     }
-    if agent is not AgentType.APEX:
+    if agent not in {AgentType.APEX, AgentType.CODEX}:
+        return metadata
+    if agent_error is not None:
+        return metadata
+
+    try:
+        manifest_path = Path(campaign_attempt["campaign_manifest_path"])
+        manifest_metadata = manifest_path.lstat()
+        expected_manifest_sha256 = campaign_attempt["campaign_manifest_sha256"]
+        if (
+            not manifest_path.is_absolute()
+            or not stat.S_ISREG(manifest_metadata.st_mode)
+            or manifest_path.is_symlink()
+            or manifest_metadata.st_nlink != 1
+            or manifest_metadata.st_mode & 0o222
+            or not isinstance(expected_manifest_sha256, str)
+            or not _SHA256.fullmatch(expected_manifest_sha256)
+            or hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+            != expected_manifest_sha256
+        ):
+            raise ValueError("unsafe or changed campaign manifest")
+        manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+        sealed_agent = manifest.get("agent") if isinstance(manifest, dict) else None
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("schema") != "aka.matched-campaign/v1"
+            or not isinstance(sealed_agent, dict)
+            or sealed_agent.get("template") != agent.value
+        ):
+            raise ValueError("campaign agent template mismatch")
+        expected_receipt_schema = sealed_agent.get("session_receipt_schema")
+        if expected_receipt_schema is None:
+            expected_receipt_schema = (
+                "agentkernelarena.apex-attempt-receipt/v1"
+                if agent is AgentType.APEX
+                else "agentkernelarena.codex-attempt-receipt/v1"
+            )
+        allowed_schemas = {
+            AgentType.APEX: {
+                "agentkernelarena.apex-attempt-receipt/v1",
+                "agentkernelarena.apex-attempt-receipt/v2",
+                "agentkernelarena.apex-attempt-receipt/v3",
+            },
+            AgentType.CODEX: {
+                "agentkernelarena.codex-attempt-receipt/v1",
+                "agentkernelarena.codex-attempt-receipt/v2",
+                "agentkernelarena.codex-attempt-receipt/v3",
+            },
+        }
+        if expected_receipt_schema not in allowed_schemas[agent]:
+            raise ValueError("unsupported sealed receipt schema")
+    except (KeyError, OSError, TypeError, ValueError, yaml.YAMLError, UnicodeDecodeError):
+        metadata["evaluation_mode"] = "diagnostic_unbound_session_replay_v1"
+        metadata["agent_session_score_eligible"] = False
+        metadata["agent_session_succeeded"] = False
+        if agent_error is None:
+            metadata["agent_session_error_type"] = "CampaignManifestMetadataError"
         return metadata
 
     raw_receipt = campaign_attempt.get("receipt_path")
@@ -684,19 +740,44 @@ def _campaign_evaluation_metadata(
     if agent_error is not None:
         return metadata
     if (
-        receipt.get("schema") != "agentkernelarena.apex-attempt-receipt/v2"
+        receipt.get("schema") != expected_receipt_schema
         or receipt.get("session_succeeded") is not True
     ):
         metadata["evaluation_mode"] = "diagnostic_unbound_session_replay_v1"
         metadata["agent_session_score_eligible"] = False
         metadata["agent_session_succeeded"] = False
         metadata["agent_session_error_type"] = "ApexReceiptMetadataError"
-    elif terminal_status == "candidate_ready":
+    elif agent is AgentType.APEX and terminal_status == "candidate_ready":
         metadata["evaluation_mode"] = "candidate_scoring_v1"
         metadata["agent_session_score_eligible"] = True
-    elif terminal_status == "no_gain":
+    elif agent is AgentType.APEX and terminal_status == "no_gain":
         metadata["evaluation_mode"] = "no_candidate_baseline_replay_v1"
         metadata["agent_session_score_eligible"] = False
+    elif agent is AgentType.CODEX:
+        integrity = receipt.get("workspace_integrity")
+        final_changes = (
+            integrity.get("final_changes") if isinstance(integrity, dict) else None
+        )
+        changed_files = (
+            final_changes.get("changed_files")
+            if isinstance(final_changes, dict)
+            else None
+        )
+        if not isinstance(changed_files, list) or any(
+            not isinstance(path, str) or not path for path in changed_files
+        ):
+            metadata["evaluation_mode"] = "diagnostic_unbound_session_replay_v1"
+            metadata["agent_session_score_eligible"] = False
+            metadata["agent_session_succeeded"] = False
+            metadata["agent_session_error_type"] = "CodexReceiptMetadataError"
+        elif changed_files:
+            metadata["evaluation_mode"] = "candidate_scoring_v1"
+            metadata["agent_session_score_eligible"] = True
+            metadata["agent_session_terminal_status"] = "candidate_ready"
+        else:
+            metadata["evaluation_mode"] = "no_candidate_baseline_replay_v1"
+            metadata["agent_session_score_eligible"] = False
+            metadata["agent_session_terminal_status"] = "no_gain"
     else:
         metadata["evaluation_mode"] = "diagnostic_unbound_session_replay_v1"
         metadata["agent_session_score_eligible"] = False

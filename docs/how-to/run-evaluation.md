@@ -123,14 +123,20 @@ requires a distinct inner PID namespace, exactly one visible ROCm device, and a
 successful Torch allocation plus reduction on that GPU. The inherited procfs can
 show the outer status entry, but root/fd/environ/mem aliases must remain unreadable.
 
-Their comparison-contract v3 fixes the exact-turn checkpoint policy as well. A
-candidate stopped at turn 50 is eligible only after the entire inner process group
-is `SIGSTOP`-suspended and verified, source bytes are captured from that quiescent
-state, cleanup is verified, and the remaining stdout tail is drained and digested.
-Turn 49 is not an exact checkpoint; turn 51, timeout, output truncation, suspension
-failure, and cleanup failure are rejected. Apex and direct Codex use distinct v3
-attempt receipts carrying equivalent evidence, while central Arena evaluation remains
-the scoring authority.
+Their comparison-contract v3 fixes the exact-turn checkpoint policy as well. Direct
+Codex continuously discovers the attempt tree from `/proc` parent lineage and an
+inherited attempt token, so `setsid()` and double-fork/reparent descendants remain in
+scope. A candidate stopped at turn 50 is eligible only after that tree is
+`SIGSTOP`-suspended and stable, source bytes are captured from the quiescent state,
+every tracked process is absent after cleanup, and the remaining stdout tail is
+drained and digested. If the process naturally exits before suspension completes,
+the independent natural-exit path instead requires exit code zero, complete stream
+EOF, no truncation or reader error, and a wholly absent tracked tree before capture.
+Turn 49 is not an exact checkpoint; turn 51, timeout, output truncation, a live
+descendant, suspension failure, and cleanup failure are rejected. Apex and direct
+Codex use distinct v3 attempt receipts carrying equivalent evidence, while central
+Arena evaluation remains the scoring authority. A successful session with no source
+delta is a non-scoreable baseline replay in either treatment.
 
 ## Run across multiple GPUs
 

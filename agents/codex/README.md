@@ -65,6 +65,18 @@ rejects any missing or mismatched binding. Direct Codex additionally publishes t
 exact UTF-8 rendered prompt as a read-only receipt artifact; the verifier hashes
 those bytes and requires the result to equal `invocation.prompt_sha256`.
 
+Receipt v3 enforces exact-turn source persistence independently of the Codex process
+group. The launcher continuously tracks Linux `/proc` parent lineage and an inherited
+per-attempt token, stops both the root group and escaped `setsid()`/reparented
+descendants, and requires two stable all-stopped scans before taking the turn-50
+source snapshot. Cleanup addresses every tracked PID as well as the root group and
+cannot be verified while any live tracked member remains. If the leader naturally
+exits before suspension can be proven, source capture is allowed only after exit code
+zero, complete stdout/stderr EOF, untruncated capture, and an empty tracked process
+tree. The receipt binds which of these two routes established the checkpoint. A
+successful receipt whose final declared-source delta is empty is retained as a
+non-scoreable baseline replay, not a candidate.
+
 Do not treat Codex's legacy `sandbox: workspace-write` session label as proof of the
 effective policy. The pinned managed file and successful negative live probes are
 the authoritative evidence.

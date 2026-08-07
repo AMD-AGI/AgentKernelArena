@@ -89,6 +89,38 @@ if mode == "exact_boundary_late_write":
         }), flush=True)
     time.sleep(30)
 
+if mode == "exact_boundary_natural_exit":
+    with open("kernel.py", "w", encoding="utf-8") as stream:
+        stream.write("optimized_natural_exit = True\n")
+    for index in range(50):
+        print(json.dumps({
+            "type": "item.completed",
+            "item": {"type": "agent_message", "text": f"turn-{index}"},
+        }), flush=True)
+    raise SystemExit(0)
+
+if mode == "exact_boundary_setsid_double_fork":
+    child_code = r"""
+import json, os, signal, time
+os.setsid()
+child = os.fork()
+if child:
+    os._exit(0)
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+print(json.dumps({"type": "escaped.child", "pid": os.getpid(), "pgid": os.getpgrp()}), flush=True)
+time.sleep(30)
+"""
+    subprocess.Popen([sys.executable, "-c", child_code])
+    time.sleep(0.1)
+    with open("kernel.py", "w", encoding="utf-8") as stream:
+        stream.write("optimized_with_descendant = True\n")
+    for index in range(50):
+        print(json.dumps({
+            "type": "item.completed",
+            "item": {"type": "agent_message", "text": f"turn-{index}"},
+        }), flush=True)
+    time.sleep(30)
+
 if mode == "output_flood":
     payload = "x" * 1024
     for index in range(17000):
@@ -592,6 +624,132 @@ def test_exact_boundary_snapshot_excludes_deterministic_late_cleanup_write(
         if receipt:
             _make_artifact_dir_removable(receipt)
         shutil.rmtree(binary_parent)
+
+
+def _formal_boundary_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    mode: str,
+) -> tuple[dict, Path, Path]:
+    binary_parent = Path(tempfile.mkdtemp(prefix="aka-codex-test-", dir="/var/tmp"))
+    _install_fake_codex(binary_parent, monkeypatch)
+    monkeypatch.setenv("FAKE_CODEX_MODE", mode)
+    monkeypatch.setattr(launcher, "_TERM_GRACE_SECONDS", 0.2)
+    monkeypatch.setattr(launcher, "_KILL_GRACE_SECONDS", 2.0)
+    data_root = tmp_path / "campaign"
+    attempt = data_root / "run/task/attempt_01"
+    workspace = attempt / "workspace"
+    workspace.mkdir(parents=True)
+    source = workspace / "kernel.py"
+    source.write_text("baseline = True\n", encoding="utf-8")
+    task_config = tmp_path / "task.yaml"
+    task_config.write_text("source_file_path: kernel.py\n", encoding="utf-8")
+    state_root = tmp_path / "agent-state/.codex"
+    state_root.mkdir(parents=True)
+    (state_root / "auth.json").write_text("{}\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_STATE_MOUNT_ROOT", str(state_root.parent))
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
+    receipt_path = attempt / "session_receipt.json"
+    launcher.launch_agent(
+        {
+            "campaign": {"comparison": "apex_vs_codex"},
+            "campaign_attempt": {
+                "fresh_session": True,
+                "receipt_path": str(receipt_path),
+                "task_deadline_monotonic": time.monotonic() + 30,
+                "comparison_contract_sha256": "d" * 64,
+            },
+        },
+        str(task_config),
+        str(workspace),
+    )
+    return _load_receipt(receipt_path), source, binary_parent
+
+
+def test_exact_boundary_accepts_only_fully_reaped_natural_exit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original_suspend = launcher._suspend_process_group
+
+    def suspend_after_exit(process, logger, tracker):
+        process.wait(timeout=2)
+        return original_suspend(process, logger, tracker)
+
+    monkeypatch.setattr(launcher, "_suspend_process_group", suspend_after_exit)
+    receipt: dict = {}
+    binary_parent: Path | None = None
+    try:
+        receipt, source, binary_parent = _formal_boundary_fixture(
+            tmp_path,
+            monkeypatch,
+            mode="exact_boundary_natural_exit",
+        )
+        assert receipt["exit_code"] == 0
+        assert receipt["process_group_cleanup"]["reason"] == (
+            "natural_exact_boundary_exit"
+        )
+        assert receipt["process_group_cleanup"]["verified_absent"] is True
+        assert receipt["capture"]["readers_completed"] is True
+        persistence = receipt["candidate_persistence"]
+        assert persistence["boundary_resolution"] == (
+            "complete_natural_exit_process_tree_absent"
+        )
+        assert persistence["boundary_snapshot"]["capture_mode"] == (
+            "complete_natural_exit_process_tree_absent"
+        )
+        assert source.read_text(encoding="utf-8") == (
+            "optimized_natural_exit = True\n"
+        )
+    finally:
+        if receipt:
+            _make_artifact_dir_removable(receipt)
+        if binary_parent is not None:
+            shutil.rmtree(binary_parent)
+
+
+def test_exact_boundary_tracks_and_reaps_setsid_double_fork_descendant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    receipt: dict = {}
+    binary_parent: Path | None = None
+    try:
+        receipt, source, binary_parent = _formal_boundary_fixture(
+            tmp_path,
+            monkeypatch,
+            mode="exact_boundary_setsid_double_fork",
+        )
+        suspension = receipt["process_group_suspension"]
+        assert suspension["method"] == "sigstop_process_tree"
+        assert suspension["verified"] is True
+        assert any(
+            member["pgrp"] != suspension["pgid"]
+            for member in suspension["members"]
+        )
+        cleanup = receipt["process_group_cleanup"]
+        assert cleanup["scope"] == "process_tree"
+        assert cleanup["verified_absent"] is True
+        assert cleanup["tracked_members_after_cleanup"] == []
+        events = [
+            json.loads(line)
+            for line in _artifact_bytes(receipt, "raw_stdout").decode().splitlines()
+        ]
+        escaped_pid = next(
+            event["pid"] for event in events if event.get("type") == "escaped.child"
+        )
+        try:
+            stat_line = Path(f"/proc/{escaped_pid}/stat").read_text(encoding="utf-8")
+        except OSError:
+            stat_line = ""
+        assert not stat_line or stat_line[stat_line.rfind(")") + 2] == "Z"
+        assert source.read_text(encoding="utf-8") == (
+            "optimized_with_descendant = True\n"
+        )
+    finally:
+        if receipt:
+            _make_artifact_dir_removable(receipt)
+        if binary_parent is not None:
+            shutil.rmtree(binary_parent)
 
 
 def test_direct_codex_output_is_bounded_and_truncation_invalidates_session(

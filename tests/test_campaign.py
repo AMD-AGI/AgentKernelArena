@@ -1,3 +1,4 @@
+import base64
 import fcntl
 import logging
 import importlib
@@ -945,6 +946,7 @@ def _write_campaign_codex_contract(
         "_comparison_contract_sha256": comparison_digest,
         "_task_config_paths": task_config_paths,
         "_checkpoint_policy": checkpoint_policy,
+        "_apex_receipt_schema": apex_receipt_schema,
     }
 
 
@@ -953,6 +955,7 @@ def _write_valid_codex_receipt(
     codex_contract: dict,
     *,
     exact_boundary: bool = False,
+    source_changed: bool = True,
 ) -> Path:
     artifact_dir = receipt_path.parent / f".{receipt_path.stem}.artifacts"
     artifact_dir.mkdir(parents=True)
@@ -960,7 +963,7 @@ def _write_valid_codex_receipt(
     before_manifest = {"kernel.py": source_metadata}
     after_metadata = (
         {"sha256": "2" * 64, "size_bytes": 2, "mode": "0644"}
-        if exact_boundary
+        if exact_boundary or source_changed
         else source_metadata
     )
     after_manifest = {"kernel.py": after_metadata}
@@ -1002,9 +1005,12 @@ def _write_valid_codex_receipt(
     suspension = (
         {
             "policy_id": "sigstop_process_group_snapshot_v1",
-            "method": "sigstop_process_group",
+            "method": "sigstop_process_tree",
+            "scope": "proc_descendant_lineage_and_inherited_attempt_token_v1",
             "pgid": 1234,
             "sent": True,
+            "root_group_signal_sent": True,
+            "individually_signaled_pids": [1234],
             "verification_performed": True,
             "verified": True,
             "verification_polls": 2,
@@ -1021,6 +1027,7 @@ def _write_valid_codex_receipt(
     boundary_snapshot = (
         {
             "policy_id": "sigstop_process_group_snapshot_v1",
+            "capture_mode": "verified_process_tree_suspension",
             "manifest_sha256": campaign._canonical_json_digest(after_manifest),
             "files": [
                 {
@@ -1048,6 +1055,18 @@ def _write_valid_codex_receipt(
         if exact_boundary
         else None
     )
+    process_cleanup = {
+        "reason": "exact_turn_boundary" if exact_boundary else "normal_exit",
+        "verification_performed": True,
+        "verified_absent": True,
+        "sigterm_sent": exact_boundary,
+        "sigcont_sent": exact_boundary,
+        "sigkill_sent": False,
+        "scope": "process_tree",
+        "tracked_members_before_cleanup": [],
+        "tracked_members_after_cleanup": [],
+        "process_tracker_errors": [],
+    }
     receipt = {
         "schema": (
             "agentkernelarena.codex-attempt-receipt/v3"
@@ -1063,13 +1082,7 @@ def _write_valid_codex_receipt(
         "exit_code": -int(signal.SIGTERM) if exact_boundary else 0,
         "timed_out": False,
         "effective_timeout_seconds": 3599.0,
-        "process_group_cleanup": {
-            "reason": "exact_turn_boundary" if exact_boundary else "normal_exit",
-            "verification_performed": True,
-            "verified_absent": True,
-            "sigterm_sent": exact_boundary,
-            "sigcont_sent": exact_boundary,
-        },
+        "process_group_cleanup": process_cleanup,
         "process_group_suspension": suspension,
         "capture": {
             "readers_completed": True,
@@ -1111,7 +1124,9 @@ def _write_valid_codex_receipt(
                 ).hexdigest(),
                 "created_files": [],
                 "deleted_files": [],
-                "changed_files": ["kernel.py"] if exact_boundary else [],
+                "changed_files": ["kernel.py"]
+                if exact_boundary or source_changed
+                else [],
                 "unauthorized_changed_files": [],
                 "editable_mode_changes": [],
             },
@@ -1129,7 +1144,9 @@ def _write_valid_codex_receipt(
                 ).hexdigest(),
                 "created_files": [],
                 "deleted_files": [],
-                "changed_files": ["kernel.py"] if exact_boundary else [],
+                "changed_files": ["kernel.py"]
+                if exact_boundary or source_changed
+                else [],
                 "unauthorized_changed_files": [],
                 "editable_mode_changes": [],
             },
@@ -1191,6 +1208,10 @@ def _write_valid_codex_receipt(
         receipt["invocation"]["boundary_quiescence_policy_id"] = (
             "sigstop_process_group_snapshot_v1"
         )
+        receipt["invocation"]["process_tree_tracking"] = {
+            "policy": "proc_descendant_lineage_and_inherited_attempt_token_v1",
+            "token_sha256": "a" * 64,
+        }
         receipt["candidate_persistence"] = {
             "schema": "aka.candidate-persistence-receipt/v3",
             "policy_id": "structured_agent_turn_checkpoint_v2",
@@ -1223,6 +1244,9 @@ def _write_valid_codex_receipt(
                     "output_tail_sha256": campaign._canonical_json_digest(
                         output_tail
                     ),
+                    "process_tree_cleanup_sha256": campaign._canonical_json_digest(
+                        process_cleanup
+                    ),
                 }
                 if exact_boundary
                 else None
@@ -1230,6 +1254,10 @@ def _write_valid_codex_receipt(
             "suspension": suspension,
             "boundary_snapshot": boundary_snapshot,
             "output_tail": output_tail,
+            "boundary_resolution": (
+                "verified_process_tree_suspension" if exact_boundary else None
+            ),
+            "process_tree_cleanup": process_cleanup if exact_boundary else None,
         }
     receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
     receipt_path.chmod(0o444)
@@ -1274,6 +1302,16 @@ def _write_valid_apex_receipt(
     successful_turn_count: int | None = None,
 ) -> None:
     assert status in {"candidate_ready", "no_gain", "budget_exhausted"}
+    checkpoint_receipt = (
+        codex_contract.get("_apex_receipt_schema")
+        == "agentkernelarena.apex-attempt-receipt/v3"
+    )
+    assert not checkpoint_receipt or new_prompt_receipt
+    turn_policy = (
+        "structured_agent_turn_checkpoint_v2"
+        if checkpoint_receipt
+        else "structured_agent_turn_v1"
+    )
     failed = status == "budget_exhausted"
     candidate_ready = status == "candidate_ready"
     artifact_dir = receipt_path.parent / f".{receipt_path.stem}.artifacts"
@@ -1307,7 +1345,7 @@ def _write_valid_apex_receipt(
             "schema": "aka.apex-caller-run-control/v1",
             "deliverable_versions": 1,
             "structured_turn_budget": {
-                "policy": "structured_agent_turn_v1",
+                "policy": turn_policy,
                 "max_turns": (
                     max_turns if run_control_turns is None else run_control_turns
                 ),
@@ -1315,7 +1353,6 @@ def _write_valid_apex_receipt(
                     "assistant_message_and_tool_call_start_each_count_once"
                 ),
             },
-            "candidate_persistence": "leave_best_source_before_budget_boundary",
             "python_interpreter": {
                 "environment_variable": "AGENT_KERNEL_ARENA_PYTHON",
                 "path": interpreter_path,
@@ -1324,6 +1361,14 @@ def _write_valid_apex_receipt(
             },
             "verifier_argv": verifier_argv,
         }
+        if checkpoint_receipt:
+            caller_run_control["candidate_persistence_policy_id"] = (
+                "structured_agent_turn_checkpoint_v2"
+            )
+        else:
+            caller_run_control["candidate_persistence"] = (
+                "leave_best_source_before_budget_boundary"
+            )
         if not omit_run_control_suffix:
             adapted_instructions = (
                 f"{adapted_instructions}\n\n"
@@ -1336,7 +1381,11 @@ def _write_valid_apex_receipt(
             "sha256": hashlib.sha256(adapted_bytes).hexdigest(),
         }
     invocation = {
-        "schema": "apex.agent-invocation/v1",
+        "schema": (
+            "apex.agent-invocation/v2"
+            if checkpoint_receipt
+            else "apex.agent-invocation/v1"
+        ),
         "cli_name": "codex",
         "cli_version": codex_contract["codex_version"],
         "executable_path": "/usr/bin/codex",
@@ -1355,7 +1404,7 @@ def _write_valid_apex_receipt(
         "requested_allowed_files": ["source/kernel.py"],
         "allowed_files_enforced_by_cli": False,
         "max_turns": max_turns,
-        "turn_policy": "structured_agent_turn_v1",
+        "turn_policy": turn_policy,
         "isolation": {
             key: value
             for key, value in codex_contract["isolation"].items()
@@ -1363,6 +1412,10 @@ def _write_valid_apex_receipt(
         }
         | {"response_token_limit": "not_supported_context_advisory_only"},
     }
+    if checkpoint_receipt:
+        invocation["boundary_quiescence_policy_id"] = (
+            "sigstop_process_group_snapshot_v1"
+        )
     selected_turn_count = (
         max_turns if budget_turn_count is None else budget_turn_count
     ) if failed else (
@@ -1391,7 +1444,11 @@ def _write_valid_apex_receipt(
             "reason": budget_reason,
         }
     transcript = {
-        "schema": "apex.agent-transcript/v1",
+        "schema": (
+            "apex.agent-transcript/v2"
+            if checkpoint_receipt
+            else "apex.agent-transcript/v1"
+        ),
         "backend": "codex",
         "model": codex_contract["model"],
         "effort": codex_contract["effort"],
@@ -1402,6 +1459,28 @@ def _write_valid_apex_receipt(
         "usage": None,
         "cost": None,
     }
+    if checkpoint_receipt:
+        transcript.pop("budget")
+        transcript["termination"] = {
+            "kind": "completed",
+            "reason": None,
+            "capture_status": "complete",
+            "candidate_capture_allowed": True,
+            "observer_stop_sent": False,
+            "suspension": {
+                "policy_id": "sigstop_process_group_snapshot_v1",
+                "sent": False,
+                "verified": False,
+            },
+            "discarded_stdout_tail": {
+                "lines": 0,
+                "bytes": 0,
+                "sha256": None,
+            },
+            "observed_turns": observed_turns,
+            "max_turns": max_turns,
+            "turn_policy": turn_policy,
+        }
     transcript_content = json.dumps(transcript).encode()
     transcript_digest = hashlib.sha256(transcript_content).hexdigest()
     agent_payload = {
@@ -1436,6 +1515,22 @@ def _write_valid_apex_receipt(
             "semantic_event_count": observed_turns,
             "attempt_id": "attempt-test",
         }
+        if checkpoint_receipt:
+            agent_payload |= {
+                "termination_kind": "completed",
+                "termination_reason": None,
+                "capture_status": "complete",
+                "candidate_capture_allowed": True,
+                "observer_stop_sent": False,
+                "observer_suspend_sent": False,
+                "suspension_verified": False,
+                "boundary_quiescence_policy_id": (
+                    "sigstop_process_group_snapshot_v1"
+                ),
+                "discarded_stdout_lines": 0,
+                "discarded_stdout_bytes": 0,
+                "discarded_stdout_sha256": None,
+            }
         prompt_objective = (
             "Adapted Apex task instructions."
             if omit_run_control_from_agent_prompt
@@ -1642,6 +1737,68 @@ def _write_valid_apex_receipt(
         },
         "error": {"reason_code": reason_code} if failed else None,
     }
+    source_bundle_snapshot: bytes | None = None
+    bundle_summary: dict[str, object] | None = None
+    if checkpoint_receipt and candidate_ready:
+        patch_content = (
+            b"--- a/source/kernel.py\n"
+            b"+++ b/source/kernel.py\n"
+            b"@@ -1 +1 @@\n"
+            b"-baseline\n"
+            b"+optimized\n"
+        )
+        patch_path = "patches/source_kernel.py.patch"
+        patch_sha256 = hashlib.sha256(patch_content).hexdigest()
+        bundle_manifest = {
+            "schema_version": 1,
+            "task_id": "task-test",
+            "baseline": {"file_hashes": baseline_hashes},
+            "changed_files": ["source/kernel.py"],
+            "patches": [
+                {
+                    "path": patch_path,
+                    "sha256": patch_sha256,
+                }
+            ],
+            "delivery": {"mode": "bundle", "applied": False},
+        }
+        bundle_hasher = hashlib.sha256(
+            json.dumps(
+                bundle_manifest,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+        bundle_hasher.update(patch_content)
+        bundle_digest = bundle_hasher.hexdigest()
+        source_bundle_snapshot = json.dumps(
+            {
+                "schema": "aka.apex-source-bundle-snapshot/v1",
+                "bundle_digest": bundle_digest,
+                "manifest": bundle_manifest,
+                "patches": [
+                    {
+                        "path": patch_path,
+                        "sha256": patch_sha256,
+                        "size_bytes": len(patch_content),
+                        "content_base64": base64.b64encode(patch_content).decode(
+                            "ascii"
+                        ),
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        bundle_summary = {
+            "bundle_digest": bundle_digest,
+            "snapshot_sha256": hashlib.sha256(source_bundle_snapshot).hexdigest(),
+            "snapshot_size_bytes": len(source_bundle_snapshot),
+        }
+        result["bundle_digest"] = bundle_digest
     payloads = {
         "task_spec": ("task_spec.json", json.dumps(task_spec).encode()),
         "apex_stdout": ("apex_stdout.txt", b"done\n"),
@@ -1653,6 +1810,11 @@ def _write_valid_apex_receipt(
             transcript_content,
         ),
     }
+    if source_bundle_snapshot is not None:
+        payloads["source_bundle"] = (
+            "source_bundle_snapshot.json",
+            source_bundle_snapshot,
+        )
     if new_prompt_receipt:
         payloads["original_arena_prompt"] = (
             "original_arena_prompt.txt",
@@ -1703,11 +1865,17 @@ def _write_valid_apex_receipt(
             "artifact_path": "/attempt/artifacts/rendered_prompt.txt",
             "stdin_transport_attested": False,
         }
+    if bundle_summary is not None:
+        lineage["bundle"] = bundle_summary
     receipt = {
         "schema": (
-            "agentkernelarena.apex-attempt-receipt/v2"
-            if new_prompt_receipt
-            else "agentkernelarena.apex-attempt-receipt/v1"
+            codex_contract["_apex_receipt_schema"]
+            if checkpoint_receipt
+            else (
+                "agentkernelarena.apex-attempt-receipt/v2"
+                if new_prompt_receipt
+                else "agentkernelarena.apex-attempt-receipt/v1"
+            )
         ),
         "comparison_contract_sha256": codex_contract[
             "_comparison_contract_sha256"
@@ -1774,6 +1942,28 @@ def _write_valid_apex_receipt(
     }
     if new_prompt_receipt:
         receipt["instruction_adaptation"] = instruction_adaptation
+    if checkpoint_receipt:
+        receipt["candidate_persistence"] = {
+            "schema": "aka.candidate-persistence-receipt/v3",
+            "policy_id": "structured_agent_turn_checkpoint_v2",
+            "boundary_quiescence_policy_id": (
+                "sigstop_process_group_snapshot_v1"
+            ),
+            "termination_kind": "completed",
+            "termination_reason": None,
+            "capture_status": "complete",
+            "candidate_capture_allowed": True,
+            "observer_stop_sent": False,
+            "observer_suspend_sent": False,
+            "suspension_verified": False,
+            "discarded_stdout_tail": {
+                "lines": 0,
+                "bytes": 0,
+                "sha256": None,
+            },
+            "observed_turns": observed_turns,
+            "checkpoint": None,
+        }
     receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
     receipt_path.chmod(0o444)
 
@@ -2557,6 +2747,63 @@ def test_direct_codex_exact_boundary_checkpoint_is_formally_eligible(tmp_path) -
     )
 
 
+def test_direct_codex_exact_boundary_accepts_proven_natural_exit(tmp_path) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(
+        run,
+        agent_template="codex",
+        checkpoint_policy=True,
+    )
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_codex_receipt(
+        receipt_path, codex_contract, exact_boundary=True
+    )
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    cleanup = payload["process_group_cleanup"]
+    cleanup |= {
+        "reason": "natural_exact_boundary_exit",
+        "sigterm_sent": False,
+        "sigcont_sent": False,
+        "tracked_members_before_cleanup": [],
+        "tracked_members_after_cleanup": [],
+        "process_tracker_errors": [],
+    }
+    payload["exit_code"] = 0
+    payload["process_group_suspension"] = None
+    persistence = payload["candidate_persistence"]
+    persistence["suspension"] = None
+    persistence["boundary_resolution"] = (
+        "complete_natural_exit_process_tree_absent"
+    )
+    persistence["process_tree_cleanup"] = cleanup
+    persistence["boundary_snapshot"]["capture_mode"] = (
+        "complete_natural_exit_process_tree_absent"
+    )
+    checkpoint = persistence["checkpoint"]
+    checkpoint["suspension_sha256"] = campaign._canonical_json_digest(None)
+    checkpoint["boundary_snapshot_sha256"] = campaign._canonical_json_digest(
+        persistence["boundary_snapshot"]
+    )
+    checkpoint["process_tree_cleanup_sha256"] = campaign._canonical_json_digest(
+        cleanup
+    )
+    receipt_path.chmod(0o644)
+    receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+    receipt_path.chmod(0o444)
+
+    receipt, errors = campaign._validate_session_receipt(
+        receipt_path=receipt_path,
+        workspace=workspace,
+        run_directory=run,
+    )
+
+    assert receipt is not None
+    assert errors == []
+
+
 @pytest.mark.parametrize(
     ("mutation", "expected_error"),
     [
@@ -2565,6 +2812,7 @@ def test_direct_codex_exact_boundary_checkpoint_is_formally_eligible(tmp_path) -
         ("timeout", "direct_codex_receipt_success_status_inconsistent"),
         ("truncation", "direct_codex_stdout_capture_bound_invalid"),
         ("cleanup", "direct_codex_process_group_not_verified_absent"),
+        ("escaped_descendant", "direct_codex_process_group_not_verified_absent"),
         ("suspension", "direct_codex_checkpoint_suspension_invalid"),
         ("resume", "direct_codex_checkpoint_resume_cleanup_invalid"),
         ("tail_digest", "direct_codex_boundary_output_tail_digest_mismatch"),
@@ -2598,6 +2846,17 @@ def test_direct_codex_checkpoint_rejects_incomplete_boundary_evidence(
         payload["capture"]["stdout"]["discarded_bytes"] = 1
     elif mutation == "cleanup":
         payload["process_group_cleanup"]["verified_absent"] = False
+    elif mutation == "escaped_descendant":
+        payload["process_group_cleanup"]["tracked_members_after_cleanup"] = [
+            {
+                "pid": 4321,
+                "state": "S",
+                "ppid": 1,
+                "pgrp": 4321,
+                "session": 4321,
+                "starttime": 99,
+            }
+        ]
     elif mutation == "suspension":
         payload["process_group_suspension"]["verified"] = False
     elif mutation == "resume":
@@ -3253,6 +3512,60 @@ def test_three_valid_direct_codex_receipts_allow_canonical_projection(
         _unlock_apex_receipt_directories(run)
 
 
+def test_zero_delta_direct_codex_receipts_cannot_be_scored_or_canonical(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_HOST_GPU_ID", "0")
+    run = tmp_path / "run"
+    run.mkdir()
+    codex_contract = _write_campaign_codex_contract(run, agent_template="codex")
+
+    def single_attempt(**kwargs):
+        attempt_run = Path(kwargs["run_directory"])
+        workspace = attempt_run / "triton2triton_vllm_example_20260807_000000"
+        workspace.mkdir()
+        _write_result(workspace, 0.5)
+        receipt_path = Path(kwargs["eval_config"]["campaign_attempt"]["receipt_path"])
+        _write_valid_codex_receipt(
+            receipt_path,
+            codex_contract,
+            source_changed=False,
+        )
+        return True, workspace
+
+    try:
+        completed, canonical = campaign.run_matched_task_campaign(
+            eval_config={"campaign": _policy(), "assigned_host_gpu_id": "0"},
+            agent=SimpleNamespace(value="codex"),
+            agent_launcher=object(),
+            task_name="triton2triton/vllm/example",
+            task_config_dir=codex_contract["_task_config_paths"][
+                "triton2triton/vllm/example"
+            ],
+            run_directory=run,
+            timestamp="20260807_000000",
+            logger=logging.getLogger(__name__),
+            task_index=1,
+            total_tasks=1,
+            single_attempt=single_attempt,
+        )
+        assert completed is False
+        assert canonical is None
+        evidence = yaml.safe_load(
+            (
+                run
+                / ".campaign_attempts/triton2triton_vllm_example/task_campaign.yaml"
+            ).read_text()
+        )
+        assert all(
+            "no_source_delta_candidate" in attempt["eligibility_errors"]
+            and attempt["selection_eligible"] is False
+            for attempt in evidence["attempts"]
+        )
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
 def test_three_valid_apex_receipts_allow_canonical_projection(
     tmp_path, monkeypatch
 ) -> None:
@@ -3261,7 +3574,8 @@ def test_three_valid_apex_receipts_allow_canonical_projection(
     run.mkdir()
     codex_contract = _write_campaign_codex_contract(
         run,
-        apex_receipt_schema="agentkernelarena.apex-attempt-receipt/v1",
+        apex_receipt_schema="agentkernelarena.apex-attempt-receipt/v3",
+        checkpoint_policy=True,
     )
 
     def single_attempt(**kwargs):
@@ -3277,6 +3591,7 @@ def test_three_valid_apex_receipts_allow_canonical_projection(
             receipt_path,
             codex_contract,
             status="candidate_ready",
+            new_prompt_receipt=True,
         )
         return True, workspace
 
@@ -3306,7 +3621,7 @@ def test_three_valid_apex_receipts_allow_canonical_projection(
         )
         assert all(
             attempt["session_receipt_binding"]["schema"]
-            == "agentkernelarena.apex-attempt-receipt/v1"
+            == "agentkernelarena.apex-attempt-receipt/v3"
             for attempt in evidence["attempts"]
         )
         assert all(
@@ -3378,12 +3693,42 @@ def test_failed_agent_session_still_gets_diagnostic_evaluation_but_returns_failu
     assert "evaluation_elapsed_seconds" in attempt
 
 
+def _metadata_campaign_attempt(
+    tmp_path: Path,
+    *,
+    receipt_path: Path,
+    template: str,
+    receipt_schema: str,
+) -> dict[str, str]:
+    manifest_path = tmp_path / f"{template}_campaign_manifest.yaml"
+    manifest_path.write_text(
+        yaml.safe_dump(
+            {
+                "schema": "aka.matched-campaign/v1",
+                "agent": {
+                    "template": template,
+                    "session_receipt_schema": receipt_schema,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest_path.chmod(0o444)
+    return {
+        "receipt_path": str(receipt_path.resolve()),
+        "campaign_manifest_path": str(manifest_path.resolve()),
+        "campaign_manifest_sha256": hashlib.sha256(
+            manifest_path.read_bytes()
+        ).hexdigest(),
+    }
+
+
 def test_apex_no_gain_metadata_never_marks_baseline_as_scoreable(tmp_path) -> None:
     receipt_path = tmp_path / "session_receipt.json"
     receipt_path.write_text(
         json.dumps(
             {
-                "schema": "agentkernelarena.apex-attempt-receipt/v2",
+                "schema": "agentkernelarena.apex-attempt-receipt/v3",
                 "session_succeeded": True,
                 "terminal_status": "no_gain",
             }
@@ -3394,7 +3739,12 @@ def test_apex_no_gain_metadata_never_marks_baseline_as_scoreable(tmp_path) -> No
 
     metadata = aka_main._campaign_evaluation_metadata(
         agent=aka_main.AgentType.APEX,
-        campaign_attempt={"receipt_path": str(receipt_path.resolve())},
+        campaign_attempt=_metadata_campaign_attempt(
+            tmp_path,
+            receipt_path=receipt_path,
+            template="apex",
+            receipt_schema="agentkernelarena.apex-attempt-receipt/v3",
+        ),
         agent_error=None,
     )
 
@@ -3412,6 +3762,81 @@ def test_apex_candidate_ready_metadata_is_scoreable(tmp_path) -> None:
     receipt_path.write_text(
         json.dumps(
             {
+                "schema": "agentkernelarena.apex-attempt-receipt/v3",
+                "session_succeeded": True,
+                "terminal_status": "candidate_ready",
+            }
+        ),
+        encoding="utf-8",
+    )
+    receipt_path.chmod(0o444)
+
+    metadata = aka_main._campaign_evaluation_metadata(
+        agent=aka_main.AgentType.APEX,
+        campaign_attempt=_metadata_campaign_attempt(
+            tmp_path,
+            receipt_path=receipt_path,
+            template="apex",
+            receipt_schema="agentkernelarena.apex-attempt-receipt/v3",
+        ),
+        agent_error=None,
+    )
+
+    assert metadata["evaluation_mode"] == "candidate_scoring_v1"
+    assert metadata["agent_session_score_eligible"] is True
+    assert metadata["agent_session_succeeded"] is True
+    assert metadata["agent_session_terminal_status"] == "candidate_ready"
+
+
+@pytest.mark.parametrize(
+    ("changed_files", "mode", "eligible", "terminal"),
+    [
+        (["kernel.py"], "candidate_scoring_v1", True, "candidate_ready"),
+        ([], "no_candidate_baseline_replay_v1", False, "no_gain"),
+    ],
+)
+def test_direct_codex_metadata_requires_a_source_delta(
+    tmp_path, changed_files, mode, eligible, terminal
+) -> None:
+    receipt_path = tmp_path / "codex_session_receipt.json"
+    receipt_path.write_text(
+        json.dumps(
+            {
+                "schema": "agentkernelarena.codex-attempt-receipt/v3",
+                "session_succeeded": True,
+                "workspace_integrity": {
+                    "final_changes": {"changed_files": changed_files}
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    receipt_path.chmod(0o444)
+
+    metadata = aka_main._campaign_evaluation_metadata(
+        agent=aka_main.AgentType.CODEX,
+        campaign_attempt=_metadata_campaign_attempt(
+            tmp_path,
+            receipt_path=receipt_path,
+            template="codex",
+            receipt_schema="agentkernelarena.codex-attempt-receipt/v3",
+        ),
+        agent_error=None,
+    )
+
+    assert metadata["evaluation_mode"] == mode
+    assert metadata["agent_session_score_eligible"] is eligible
+    assert metadata["agent_session_succeeded"] is True
+    assert metadata["agent_session_terminal_status"] == terminal
+
+
+def test_metadata_rejects_receipt_schema_not_selected_by_sealed_manifest(
+    tmp_path,
+) -> None:
+    receipt_path = tmp_path / "session_receipt.json"
+    receipt_path.write_text(
+        json.dumps(
+            {
                 "schema": "agentkernelarena.apex-attempt-receipt/v2",
                 "session_succeeded": True,
                 "terminal_status": "candidate_ready",
@@ -3423,11 +3848,14 @@ def test_apex_candidate_ready_metadata_is_scoreable(tmp_path) -> None:
 
     metadata = aka_main._campaign_evaluation_metadata(
         agent=aka_main.AgentType.APEX,
-        campaign_attempt={"receipt_path": str(receipt_path.resolve())},
+        campaign_attempt=_metadata_campaign_attempt(
+            tmp_path,
+            receipt_path=receipt_path,
+            template="apex",
+            receipt_schema="agentkernelarena.apex-attempt-receipt/v3",
+        ),
         agent_error=None,
     )
 
-    assert metadata["evaluation_mode"] == "candidate_scoring_v1"
-    assert metadata["agent_session_score_eligible"] is True
-    assert metadata["agent_session_succeeded"] is True
-    assert metadata["agent_session_terminal_status"] == "candidate_ready"
+    assert metadata["evaluation_mode"] == "diagnostic_unbound_session_replay_v1"
+    assert metadata["agent_session_score_eligible"] is False

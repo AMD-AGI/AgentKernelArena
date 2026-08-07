@@ -833,6 +833,26 @@ def _attempt_record(
         )
         record["session_receipt"] = str(receipt_path.relative_to(run_directory))
         if receipt is not None:
+            receipt_schema = receipt.get("schema")
+            source_delta_files: list[str] | None = None
+            if receipt_schema in _CODEX_RECEIPT_SCHEMAS:
+                integrity = receipt.get("workspace_integrity")
+                final_changes = (
+                    integrity.get("final_changes")
+                    if isinstance(integrity, dict)
+                    else None
+                )
+                changed_files = (
+                    final_changes.get("changed_files")
+                    if isinstance(final_changes, dict)
+                    else None
+                )
+                if isinstance(changed_files, list) and all(
+                    isinstance(path, str) and path for path in changed_files
+                ):
+                    source_delta_files = changed_files
+                    if not changed_files:
+                        receipt_errors.append("no_source_delta_candidate")
             record["session_receipt_sha256"] = _sha256_file(receipt_path)
             record["session_succeeded"] = receipt.get("session_succeeded") is True
             binding = {
@@ -853,6 +873,7 @@ def _attempt_record(
                 "workspace_integrity": receipt.get("workspace_integrity"),
                 "gpu": receipt.get("gpu"),
                 "lineage": receipt.get("lineage"),
+                "source_delta_files": source_delta_files,
             }
             if receipt.get("schema") in _APEX_RECEIPT_SCHEMAS:
                 lineage = receipt.get("lineage")
@@ -1217,6 +1238,14 @@ def _validate_session_receipt(
         not isinstance(cleanup, dict)
         or cleanup.get("verification_performed") is not True
         or cleanup.get("verified_absent") is not True
+        or (
+            expected_schema == _CODEX_RECEIPT_SCHEMA_V3
+            and (
+                cleanup.get("scope") != "process_tree"
+                or cleanup.get("process_tracker_errors") != []
+                or cleanup.get("tracked_members_after_cleanup") != []
+            )
+        )
     ):
         errors.append("direct_codex_process_group_not_verified_absent")
     capture = receipt.get("capture")
@@ -1308,11 +1337,6 @@ def _validate_session_receipt(
             or (not checkpoint_turn_budget and checkpoint is not None)
         ):
             errors.append("direct_codex_candidate_persistence_invalid")
-        if checkpoint_turn_budget and (
-            not isinstance(cleanup, dict)
-            or cleanup.get("reason") != "exact_turn_boundary"
-        ):
-            errors.append("direct_codex_checkpoint_cleanup_invalid")
         if expected_schema == _CODEX_RECEIPT_SCHEMA_V3 and (
             candidate_persistence.get("boundary_quiescence_policy_id")
             != BOUNDARY_QUIESCENCE_POLICY
@@ -1323,16 +1347,20 @@ def _validate_session_receipt(
             persisted_suspension = candidate_persistence.get("suspension")
             boundary_snapshot = candidate_persistence.get("boundary_snapshot")
             output_tail = candidate_persistence.get("output_tail")
-            if (
-                not isinstance(suspension, dict)
-                or suspension.get("policy_id") != BOUNDARY_QUIESCENCE_POLICY
-                or suspension.get("method") != "sigstop_process_group"
-                or suspension.get("sent") is not True
-                or suspension.get("verification_performed") is not True
-                or suspension.get("verified") is not True
-                or not isinstance(suspension.get("members"), list)
-                or not suspension["members"]
-                or any(
+            persisted_cleanup = candidate_persistence.get("process_tree_cleanup")
+            boundary_resolution = candidate_persistence.get("boundary_resolution")
+            suspension_route = (
+                isinstance(suspension, dict)
+                and suspension.get("policy_id") == BOUNDARY_QUIESCENCE_POLICY
+                and suspension.get("method") == "sigstop_process_tree"
+                and suspension.get("scope")
+                == "proc_descendant_lineage_and_inherited_attempt_token_v1"
+                and suspension.get("sent") is True
+                and suspension.get("verification_performed") is True
+                and suspension.get("verified") is True
+                and isinstance(suspension.get("members"), list)
+                and bool(suspension["members"])
+                and not any(
                     not isinstance(member, dict)
                     or isinstance(member.get("pid"), bool)
                     or not isinstance(member.get("pid"), int)
@@ -1340,16 +1368,46 @@ def _validate_session_receipt(
                     or member.get("state") not in {"T", "t", "Z"}
                     for member in suspension.get("members", [])
                 )
-                or not isinstance(suspension.get("members_sha256"), str)
-                or suspension.get("members_sha256")
-                != _canonical_json_digest(suspension["members"])
-                or persisted_suspension != suspension
+                and isinstance(suspension.get("members_sha256"), str)
+                and suspension.get("members_sha256")
+                == _canonical_json_digest(suspension["members"])
+                and boundary_resolution == "verified_process_tree_suspension"
+                and isinstance(cleanup, dict)
+                and cleanup.get("reason") == "exact_turn_boundary"
+                and cleanup.get("sigterm_sent") is True
+                and cleanup.get("sigcont_sent") is True
+            )
+            natural_exit_route = (
+                receipt.get("exit_code") == 0
+                and isinstance(cleanup, dict)
+                and cleanup.get("reason") == "natural_exact_boundary_exit"
+                and cleanup.get("scope") == "process_tree"
+                and cleanup.get("verified_absent") is True
+                and cleanup.get("sigterm_sent") is False
+                and cleanup.get("sigcont_sent") is False
+                and cleanup.get("sigkill_sent") is False
+                and cleanup.get("tracked_members_before_cleanup") == []
+                and cleanup.get("process_tracker_errors") == []
+                and cleanup.get("tracked_members_after_cleanup") == []
+                and boundary_resolution
+                == "complete_natural_exit_process_tree_absent"
+                and (
+                    not isinstance(suspension, dict)
+                    or suspension.get("verified") is not True
+                )
+            )
+            if not (suspension_route or natural_exit_route) or (
+                persisted_suspension != suspension
+                or persisted_cleanup != cleanup
             ):
                 errors.append("direct_codex_checkpoint_suspension_invalid")
             if (
-                not isinstance(cleanup, dict)
-                or cleanup.get("sigterm_sent") is not True
-                or cleanup.get("sigcont_sent") is not True
+                boundary_resolution == "verified_process_tree_suspension"
+                and (
+                    not isinstance(cleanup, dict)
+                    or cleanup.get("sigterm_sent") is not True
+                    or cleanup.get("sigcont_sent") is not True
+                )
             ):
                 errors.append("direct_codex_checkpoint_resume_cleanup_invalid")
             if (
@@ -1362,6 +1420,12 @@ def _validate_session_receipt(
                 or not _SHA256.fullmatch(boundary_snapshot["manifest_sha256"])
                 or not isinstance(boundary_snapshot.get("files"), list)
                 or not boundary_snapshot["files"]
+                or boundary_snapshot.get("capture_mode")
+                != (
+                    "verified_process_tree_suspension"
+                    if suspension_route
+                    else "complete_natural_exit_process_tree_absent"
+                )
             ):
                 errors.append("direct_codex_boundary_snapshot_invalid")
             if (
@@ -1378,12 +1442,13 @@ def _validate_session_receipt(
                 errors.append("direct_codex_boundary_output_tail_invalid")
             if isinstance(checkpoint, dict) and all(
                 isinstance(value, dict)
-                for value in (suspension, boundary_snapshot, output_tail)
+                for value in (boundary_snapshot, output_tail, cleanup)
             ):
                 digest_fields = {
                     "suspension_sha256": suspension,
                     "boundary_snapshot_sha256": boundary_snapshot,
                     "output_tail_sha256": output_tail,
+                    "process_tree_cleanup_sha256": cleanup,
                 }
                 if any(
                     checkpoint.get(field) != _canonical_json_digest(value)
@@ -1471,8 +1536,19 @@ def _validate_session_receipt(
             )
             or (
                 expected_schema == _CODEX_RECEIPT_SCHEMA_V3
-                and invocation.get("boundary_quiescence_policy_id")
-                != BOUNDARY_QUIESCENCE_POLICY
+                and (
+                    invocation.get("boundary_quiescence_policy_id")
+                    != BOUNDARY_QUIESCENCE_POLICY
+                    or not isinstance(invocation.get("process_tree_tracking"), dict)
+                    or invocation["process_tree_tracking"].get("policy")
+                    != "proc_descendant_lineage_and_inherited_attempt_token_v1"
+                    or not isinstance(
+                        invocation["process_tree_tracking"].get("token_sha256"), str
+                    )
+                    or not _SHA256.fullmatch(
+                        invocation["process_tree_tracking"]["token_sha256"]
+                    )
+                )
             )
         ):
             errors.append("direct_codex_budget_invocation_mismatch")
@@ -1673,6 +1749,9 @@ def _validate_session_receipt(
                             ),
                             "output_tail_sha256": _canonical_json_digest(
                                 candidate_persistence.get("output_tail")
+                            ),
+                            "process_tree_cleanup_sha256": _canonical_json_digest(
+                                candidate_persistence.get("process_tree_cleanup")
                             ),
                         }
                     )
@@ -3273,6 +3352,8 @@ def run_matched_task_campaign(
             "task_package_manifest_sha256": task_binding[
                 "package_manifest_sha256"
             ],
+            "campaign_manifest_path": str(campaign_manifest_path.resolve()),
+            "campaign_manifest_sha256": campaign_manifest_sha256,
         }
         success, workspace = single_attempt(
             eval_config=attempt_config,

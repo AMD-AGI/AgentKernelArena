@@ -55,7 +55,7 @@ class CodexSessionError(RuntimeError):
 
 
 class CodexSessionTimeout(CodexSessionError):
-    """Raised after a timed-out Codex process group has been cleaned up."""
+    """Raised after a timed-out Codex attempt tree has been cleaned up."""
 
 
 def integrate_agent_config(
@@ -413,8 +413,9 @@ def _capture_suspended_workspace(
     workspace: Path,
     editable_files: tuple[str, ...],
     destination: Path,
+    capture_mode: str = "verified_process_tree_suspension",
 ) -> tuple[dict[str, dict[str, Any]], tuple[str, ...], dict[str, Any]]:
-    """Capture the exact source bytes while the entire agent group is stopped."""
+    """Capture source after verified tree suspension or complete natural exit."""
 
     errors: list[str] = []
     try:
@@ -451,6 +452,7 @@ def _capture_suspended_workspace(
 
     receipt = {
         "policy_id": BOUNDARY_QUIESCENCE_POLICY,
+        "capture_mode": capture_mode,
         "manifest_sha256": (
             _sha256_bytes(_canonical_json_bytes(manifest)) if manifest else None
         ),
@@ -469,6 +471,8 @@ def _candidate_persistence_receipt(
     suspension: dict[str, Any] | None,
     boundary_snapshot: dict[str, Any] | None,
     output_tail: dict[str, Any] | None,
+    boundary_resolution: str | None,
+    process_tree_cleanup: dict[str, Any],
 ) -> dict[str, Any]:
     """Bind retained source bytes to the shared matched-campaign policy."""
     exact_boundary = turn_budget.exact_boundary_reached
@@ -494,6 +498,9 @@ def _candidate_persistence_receipt(
             "output_tail_sha256": _sha256_bytes(
                 _canonical_json_bytes(output_tail)
             ),
+            "process_tree_cleanup_sha256": _sha256_bytes(
+                _canonical_json_bytes(process_tree_cleanup)
+            ),
         }
     return {
         "schema": "aka.candidate-persistence-receipt/v3",
@@ -508,6 +515,10 @@ def _candidate_persistence_receipt(
         "suspension": suspension if exact_boundary else None,
         "boundary_snapshot": boundary_snapshot if exact_boundary else None,
         "output_tail": output_tail if exact_boundary else None,
+        "boundary_resolution": boundary_resolution if exact_boundary else None,
+        "process_tree_cleanup": (
+            process_tree_cleanup if exact_boundary else None
+        ),
     }
 
 
@@ -723,8 +734,105 @@ def _linux_process_group_states(pgid: int) -> dict[int, str] | None:
     return states
 
 
+def _linux_process_table() -> dict[int, dict[str, int | str]] | None:
+    """Return the process identities needed for descendant-lineage tracking."""
+
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return None
+    try:
+        entries = list(proc.iterdir())
+    except OSError:
+        return None
+    table: dict[int, dict[str, int | str]] = {}
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            stat_line = (entry / "stat").read_text(encoding="utf-8")
+            fields = stat_line[stat_line.rfind(")") + 2 :].split()
+            table[int(entry.name)] = {
+                "state": fields[0],
+                "ppid": int(fields[1]),
+                "pgrp": int(fields[2]),
+                "session": int(fields[3]),
+                "starttime": int(fields[19]),
+            }
+        except (OSError, ValueError, IndexError):
+            continue
+    return table
+
+
+class _AttemptProcessTracker:
+    """Track an attempt's descendants even when they leave the root PGID."""
+
+    def __init__(self, root_pid: int, token: str) -> None:
+        self.root_pid = root_pid
+        self._token = token.encode("utf-8")
+        self._known: dict[int, int] = {}
+        self._errors: list[str] = []
+        self._lock = threading.Lock()
+        self.scan()
+
+    def _has_token(self, pid: int) -> bool:
+        try:
+            environ = Path(f"/proc/{pid}/environ").read_bytes()
+        except OSError:
+            return False
+        return any(value == self._token for value in environ.split(b"\0"))
+
+    def scan(self) -> list[dict[str, int | str]]:
+        table = _linux_process_table()
+        if table is None:
+            with self._lock:
+                if "linux_proc_unavailable" not in self._errors:
+                    self._errors.append("linux_proc_unavailable")
+            return []
+        with self._lock:
+            identities = {
+                pid
+                for pid, record in table.items()
+                if self._known.get(pid) == record["starttime"]
+            }
+            root = table.get(self.root_pid)
+            if root is not None:
+                identities.add(self.root_pid)
+            identities.update(
+                pid for pid in table if self._has_token(pid)
+            )
+            changed = True
+            while changed:
+                before = len(identities)
+                identities.update(
+                    pid
+                    for pid, record in table.items()
+                    if record["ppid"] in identities
+                )
+                changed = len(identities) != before
+            for pid in identities:
+                self._known[pid] = int(table[pid]["starttime"])
+            return [
+                {"pid": pid, **table[pid]}
+                for pid in sorted(identities)
+                if table[pid]["state"] != "Z"
+            ]
+
+    def errors(self) -> list[str]:
+        with self._lock:
+            return list(self._errors)
+
+
+def _track_attempt_processes(
+    tracker: _AttemptProcessTracker, stop: threading.Event
+) -> None:
+    while not stop.wait(0.01):
+        tracker.scan()
+
+
 def _suspend_process_group(
-    process: subprocess.Popen[str], logger: logging.Logger
+    process: subprocess.Popen[str],
+    logger: logging.Logger,
+    tracker: _AttemptProcessTracker,
 ) -> dict[str, Any]:
     """Stop and synchronously verify every live member before source capture.
 
@@ -738,9 +846,12 @@ def _suspend_process_group(
     pgid = process.pid
     evidence: dict[str, Any] = {
         "policy_id": BOUNDARY_QUIESCENCE_POLICY,
-        "method": "sigstop_process_group",
+        "method": "sigstop_process_tree",
+        "scope": "proc_descendant_lineage_and_inherited_attempt_token_v1",
         "pgid": pgid,
         "sent": False,
+        "root_group_signal_sent": False,
+        "individually_signaled_pids": [],
         "verification_performed": False,
         "verified": False,
         "verification_polls": 0,
@@ -752,39 +863,49 @@ def _suspend_process_group(
     try:
         os.killpg(pgid, signal.SIGSTOP)
         evidence["sent"] = True
+        evidence["root_group_signal_sent"] = True
     except ProcessLookupError:
-        evidence["error"] = "process_group_missing"
-        return evidence
+        pass
     except OSError as error:
         evidence["error"] = f"{type(error).__name__}: {error}"
         return evidence
 
     deadline = time.monotonic() + _SUSPEND_GRACE_SECONDS
-    previous_live_pids: tuple[int, ...] | None = None
+    previous_live_identities: tuple[tuple[int, int], ...] | None = None
     stable_polls = 0
     while time.monotonic() < deadline:
-        states = _linux_process_group_states(pgid)
+        members = tracker.scan()
         evidence["verification_performed"] = True
         evidence["verification_polls"] += 1
-        if states is None:
-            evidence["error"] = "process_group_state_verification_unavailable"
+        if tracker.errors():
+            evidence["error"] = "process_tree_state_verification_unavailable"
             break
-        live = {pid: state for pid, state in states.items() if state != "Z"}
-        live_pids = tuple(sorted(live))
-        all_stopped = bool(live) and all(
-            state in {"T", "t"} for state in live.values()
+        signaled = set(evidence["individually_signaled_pids"])
+        for member in members:
+            pid = int(member["pid"])
+            if member["state"] not in {"T", "t"}:
+                try:
+                    os.kill(pid, signal.SIGSTOP)
+                    evidence["sent"] = True
+                    signaled.add(pid)
+                except ProcessLookupError:
+                    pass
+        evidence["individually_signaled_pids"] = sorted(signaled)
+        members = tracker.scan()
+        live_identities = tuple(
+            sorted((int(item["pid"]), int(item["starttime"])) for item in members)
         )
-        if all_stopped and live_pids == previous_live_pids:
+        all_stopped = bool(members) and all(
+            item["state"] in {"T", "t"} for item in members
+        )
+        if all_stopped and live_identities == previous_live_identities:
             stable_polls += 1
         elif all_stopped:
             stable_polls = 1
         else:
             stable_polls = 0
-        previous_live_pids = live_pids
+        previous_live_identities = live_identities
         if stable_polls >= _SUSPEND_STABLE_POLLS:
-            members = [
-                {"pid": pid, "state": states[pid]} for pid in sorted(states)
-            ]
             evidence["stable_polls"] = stable_polls
             evidence["members"] = members
             evidence["members_sha256"] = _sha256_bytes(
@@ -796,18 +917,30 @@ def _suspend_process_group(
 
     evidence["stable_polls"] = stable_polls
     if evidence["error"] is None:
-        evidence["error"] = "process_group_suspension_not_verified"
-    logger.error("Codex process-group suspension failed: %s", evidence["error"])
+        evidence["error"] = (
+            "process_tree_empty_before_suspension"
+            if not tracker.scan()
+            else "process_tree_suspension_not_verified"
+        )
+    logger.error("Codex process-tree suspension failed: %s", evidence["error"])
     return evidence
 
 
 def _wait_for_process_group_exit(
-    process: subprocess.Popen[str], pgid: int, timeout: float
+    process: subprocess.Popen[str],
+    pgid: int,
+    timeout: float,
+    tracker: _AttemptProcessTracker | None = None,
 ) -> bool:
     deadline = time.monotonic() + timeout
     while True:
         process.poll()
-        if not _process_group_exists(pgid):
+        tree_members = tracker.scan() if tracker is not None else []
+        if (
+            (tracker is None or not tracker.errors())
+            and not _process_group_exists(pgid)
+            and not tree_members
+        ):
             return True
         if time.monotonic() >= deadline:
             return False
@@ -820,8 +953,9 @@ def _terminate_process_group(
     *,
     reason: str,
     resume_stopped_group: bool = False,
+    tracker: _AttemptProcessTracker | None = None,
 ) -> dict[str, Any]:
-    """TERM, then KILL, the isolated Codex group and verify it is absent."""
+    """TERM, then KILL, the root group and tracked descendants; prove absence."""
     pgid = process.pid
     cleanup = {
         "required": True,
@@ -832,35 +966,62 @@ def _terminate_process_group(
         "sigkill_sent": False,
         "verified_absent": False,
         "verification_performed": True,
+        "scope": "process_tree" if tracker is not None else "process_group",
+        "tracked_members_before_cleanup": (
+            tracker.scan() if tracker is not None else []
+        ),
     }
     try:
         os.killpg(pgid, signal.SIGTERM)
         cleanup["sigterm_sent"] = True
     except ProcessLookupError:
-        cleanup["verified_absent"] = not _process_group_exists(pgid)
-        return cleanup
+        pass
+
+    tracked = tracker.scan() if tracker is not None else []
+    for member in tracked:
+        try:
+            os.kill(int(member["pid"]), signal.SIGTERM)
+            cleanup["sigterm_sent"] = True
+        except ProcessLookupError:
+            pass
 
     if resume_stopped_group:
         try:
             os.killpg(pgid, signal.SIGCONT)
             cleanup["sigcont_sent"] = True
         except ProcessLookupError:
-            cleanup["verified_absent"] = not _process_group_exists(pgid)
-            return cleanup
+            pass
+        for member in tracked:
+            try:
+                os.kill(int(member["pid"]), signal.SIGCONT)
+                cleanup["sigcont_sent"] = True
+            except ProcessLookupError:
+                pass
 
-    if _wait_for_process_group_exit(process, pgid, _TERM_GRACE_SECONDS):
+    if _wait_for_process_group_exit(
+        process, pgid, _TERM_GRACE_SECONDS, tracker
+    ):
         cleanup["verified_absent"] = True
+        cleanup["tracked_members_after_cleanup"] = []
         return cleanup
 
-    logger.warning("Codex process group survived SIGTERM; sending SIGKILL")
+    logger.warning("Codex attempt process tree survived SIGTERM; sending SIGKILL")
     try:
         os.killpg(pgid, signal.SIGKILL)
         cleanup["sigkill_sent"] = True
     except ProcessLookupError:
-        cleanup["verified_absent"] = not _process_group_exists(pgid)
-        return cleanup
+        pass
+    for member in tracker.scan() if tracker is not None else []:
+        try:
+            os.kill(int(member["pid"]), signal.SIGKILL)
+            cleanup["sigkill_sent"] = True
+        except ProcessLookupError:
+            pass
     cleanup["verified_absent"] = _wait_for_process_group_exit(
-        process, pgid, _KILL_GRACE_SECONDS
+        process, pgid, _KILL_GRACE_SECONDS, tracker
+    )
+    cleanup["tracked_members_after_cleanup"] = (
+        tracker.scan() if tracker is not None else []
     )
     return cleanup
 
@@ -1115,6 +1276,8 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         _copy_workspace_snapshot(workspace_path, baseline_snapshot)
     attempt_home = prepare_attempt_home(eval_config, backend="codex")
     process_env = isolated_environment(process_env, attempt_home)
+    attempt_process_token = f"AKA_ATTEMPT_PROCESS_TOKEN={uuid.uuid4().hex}"
+    process_env["AKA_ATTEMPT_PROCESS_TOKEN"] = attempt_process_token.split("=", 1)[1]
     executed_codex_bin = str(resolved_codex_bin)
     codex_version = _get_codex_version(executed_codex_bin, process_env)
 
@@ -1193,6 +1356,14 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         release_attempt_command_fds(isolated_cmd)
     if process.stdin:
         process.stdin.close()
+    process_tracker = _AttemptProcessTracker(process.pid, attempt_process_token)
+    process_tracker_stop = threading.Event()
+    process_tracker_thread = threading.Thread(
+        target=_track_attempt_processes,
+        args=(process_tracker, process_tracker_stop),
+        daemon=True,
+    )
+    process_tracker_thread.start()
 
     raw_stdout_chunks: list[str] = []
     raw_stderr_chunks: list[str] = []
@@ -1279,7 +1450,9 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
                             len(chunk) for chunk in raw_stdout_chunks
                         )
                         turn_stop_event.set()
-                        suspension = _suspend_process_group(process, logger)
+                        suspension = _suspend_process_group(
+                            process, logger, process_tracker
+                        )
                         boundary_signal["suspension"] = suspension
                         suspension_complete_event.set()
                     else:
@@ -1372,16 +1545,19 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
                     isinstance(process_group_suspension, dict)
                     and process_group_suspension.get("sent") is True
                 ),
+                tracker=process_tracker,
             )
             break
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             timed_out = True
             logger.warning(
-                "Codex agent timed out after %.3fs; terminating isolated process group",
+                "Codex agent timed out after %.3fs; terminating attempt process tree",
                 effective_timeout,
             )
-            cleanup = _terminate_process_group(process, logger, reason="timeout")
+            cleanup = _terminate_process_group(
+                process, logger, reason="timeout", tracker=process_tracker
+            )
             break
         try:
             process.wait(timeout=min(0.1, remaining))
@@ -1394,15 +1570,29 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 
     if cleanup["reason"] == "normal_exit":
         cleanup["verification_performed"] = True
-        cleanup["verified_absent"] = not _process_group_exists(process.pid)
+        cleanup["scope"] = "process_tree"
+        cleanup["tracked_members_before_cleanup"] = process_tracker.scan()
+        cleanup["verified_absent"] = (
+            not process_tracker.errors()
+            and not _process_group_exists(process.pid)
+            and not cleanup["tracked_members_before_cleanup"]
+        )
         if not cleanup["verified_absent"]:
             logger.warning(
-                "Codex leader exited but its process group is still live; cleaning it up"
+                "Codex leader exited but its attempt process tree is still live; cleaning it up"
             )
             cleanup = _terminate_process_group(
-                process, logger, reason="post_exit_lingering_group"
+                process,
+                logger,
+                reason="post_exit_lingering_process_tree",
+                tracker=process_tracker,
             )
-    if boundary_signal["attempted"] and cleanup["verified_absent"]:
+    if (
+        boundary_signal["attempted"]
+        and cleanup["verified_absent"]
+        and isinstance(process_group_suspension, dict)
+        and process_group_suspension.get("verified") is True
+    ):
         cleanup["required"] = True
         cleanup["reason"] = "exact_turn_boundary"
         cleanup["boundary_signal"] = {
@@ -1411,6 +1601,13 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
                 "stdout_character_offset"
             ],
         }
+
+    process_tracker_stop.set()
+    process_tracker_thread.join(timeout=1)
+    cleanup["process_tracker_errors"] = process_tracker.errors()
+    cleanup["tracked_members_after_cleanup"] = process_tracker.scan()
+    if cleanup["process_tracker_errors"] or cleanup["tracked_members_after_cleanup"]:
+        cleanup["verified_absent"] = False
 
     stdout_thread.join(timeout=5)
     stderr_thread.join(timeout=5)
@@ -1467,6 +1664,49 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         observer_stopped=bool(reader_errors),
     )
 
+    observed_suspension = boundary_signal.get("suspension")
+    if process_group_suspension is None and isinstance(observed_suspension, dict):
+        process_group_suspension = observed_suspension
+    natural_exact_exit = (
+        turn_budget.exact_boundary_reached
+        and exit_code == 0
+        and not timed_out
+        and cleanup.get("reason") in {"normal_exit", "exact_turn_boundary"}
+        and cleanup.get("sigterm_sent") is False
+        and cleanup.get("sigcont_sent") is False
+        and cleanup.get("sigkill_sent") is False
+        and cleanup.get("tracked_members_before_cleanup") == []
+        and cleanup.get("verified_absent") is True
+        and cleanup.get("process_tracker_errors") == []
+        and cleanup.get("tracked_members_after_cleanup") == []
+        and readers_completed
+        and not reader_errors
+        and not capture_truncated
+    )
+    if natural_exact_exit and not (
+        isinstance(process_group_suspension, dict)
+        and process_group_suspension.get("verified") is True
+    ):
+        cleanup["reason"] = "natural_exact_boundary_exit"
+        cleanup["boundary_signal"] = {
+            "attempted": True,
+            "stdout_character_offset": boundary_signal[
+                "stdout_character_offset"
+            ],
+        }
+        if formal_campaign and boundary_candidate_snapshot is None:
+            boundary_candidate_snapshot = artifact_dir / ".boundary-candidates"
+            (
+                boundary_raw_after,
+                boundary_capture_errors,
+                boundary_snapshot_receipt,
+            ) = _capture_suspended_workspace(
+                workspace=workspace_path,
+                editable_files=editable_files,
+                destination=boundary_candidate_snapshot,
+                capture_mode="complete_natural_exit_process_tree_absent",
+            )
+
     workspace_after: dict[str, dict[str, Any]] | None = None
     workspace_integrity: dict[str, Any] | None = None
     complete_capture_and_cleanup = (
@@ -1477,11 +1717,11 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         and not capture_truncated
         and not turn_budget.enforcement_failed
     )
-    exact_boundary_evidence = (
+    suspended_boundary_evidence = (
         isinstance(process_group_suspension, dict)
         and process_group_suspension.get("policy_id")
         == BOUNDARY_QUIESCENCE_POLICY
-        and process_group_suspension.get("method") == "sigstop_process_group"
+        and process_group_suspension.get("method") == "sigstop_process_tree"
         and process_group_suspension.get("sent") is True
         and process_group_suspension.get("verified") is True
         and cleanup.get("reason") == "exact_turn_boundary"
@@ -1495,6 +1735,28 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             and boundary_snapshot_receipt.get("complete") is True
             and not boundary_capture_errors
         )
+    )
+    natural_boundary_evidence = (
+        natural_exact_exit
+        and cleanup.get("reason") == "natural_exact_boundary_exit"
+        and (
+            not formal_campaign
+            or isinstance(boundary_snapshot_receipt, dict)
+            and boundary_snapshot_receipt.get("capture_mode")
+            == "complete_natural_exit_process_tree_absent"
+            and boundary_snapshot_receipt.get("complete") is True
+            and not boundary_capture_errors
+        )
+    )
+    exact_boundary_evidence = (
+        suspended_boundary_evidence or natural_boundary_evidence
+    )
+    boundary_resolution = (
+        "verified_process_tree_suspension"
+        if suspended_boundary_evidence
+        else "complete_natural_exit_process_tree_absent"
+        if natural_boundary_evidence
+        else None
     )
     execution_completed = complete_capture_and_cleanup and (
         (
@@ -1556,6 +1818,8 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         suspension=process_group_suspension,
         boundary_snapshot=boundary_snapshot_receipt,
         output_tail=boundary_output_tail,
+        boundary_resolution=boundary_resolution,
+        process_tree_cleanup=cleanup,
     )
     session_succeeded = persistence_evidence_complete
     receipt = {
@@ -1597,6 +1861,10 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             "turn_policy": TURN_POLICY,
             "candidate_persistence_policy_id": CANDIDATE_PERSISTENCE_POLICY,
             "boundary_quiescence_policy_id": BOUNDARY_QUIESCENCE_POLICY,
+            "process_tree_tracking": {
+                "policy": "proc_descendant_lineage_and_inherited_attempt_token_v1",
+                "token_sha256": _sha256_bytes(attempt_process_token.encode("utf-8")),
+            },
             "structured_stream_output_limit_bytes": output_limit,
             "isolation": {
                 "approval": "never_via_strict_config",
@@ -1629,7 +1897,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     if timed_out:
         verification = cleanup["verified_absent"]
         raise CodexSessionTimeout(
-            "Codex session timed out; process-group cleanup "
+            "Codex session timed out; process-tree cleanup "
             f"verified_absent={verification}; receipt={receipt_path}"
         )
     if capture_truncated:

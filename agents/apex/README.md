@@ -212,14 +212,18 @@ when it races the observer or `-15` after normal SIGTERM cleanup; it is evidence
 the budget verdict. Formal lineage is validated before the
 outer Apex return code is rejected, so a failed session retains audit evidence while
 still raising and keeping `session_succeeded=false`. A nonzero `no_gain` is invalid.
-At the exact 50-turn boundary, both arms synchronously stop the complete inner
-Codex process group with `SIGSTOP` and verify every live member is stopped before
-capturing any candidate bytes. Policy `sigstop_process_group_snapshot_v1` is bound
-by comparison-contract v3, the invocation, transcript, event, and attempt receipt.
-Direct Codex snapshots only declared source while the group is quiescent, then sends
-TERM plus CONT, verifies the group is absent, drains and digests the post-boundary
-stdout tail, restores the baseline, and reapplies only the stopped-state snapshot.
-A cleanup handler or late tool write therefore cannot alter the retained candidate.
+At the exact 50-turn boundary, both arms bind policy
+`sigstop_process_group_snapshot_v1` through comparison-contract v3, the invocation,
+transcript, event, and attempt receipt. Direct Codex strengthens that named policy by
+continuously tracking the complete attempt tree through `/proc` parent lineage and an
+inherited token. It stops the root group plus escaped `setsid()` or reparented
+descendants and verifies a stable all-stopped tree before capturing candidate bytes.
+It then sends TERM plus CONT to the tracked tree, verifies every member is absent,
+drains and digests the post-boundary stdout tail, restores the baseline, and reapplies
+only the stopped-state snapshot. If Codex naturally exits before suspension can be
+proven, an independent route requires exit code zero, complete stream EOF, no
+truncation, and an absent tracked tree before source capture. A cleanup handler, late
+tool write, or escaped descendant therefore cannot alter the retained candidate.
 Apex emits the same suspension proof and discarded-tail digest; its exact-boundary
 candidate must additionally traverse the frozen-source, compile, correctness, safety,
 measurement, reward, decision, and immutable-bundle gate chain. A count of 49 is not
@@ -232,10 +236,12 @@ The historical observer stop reasons remain exact:
 `max_turns_exhausted_before_follow_up` requires exactly 50 turns, while
 `max_turns_exceeded` requires more than 50. A valid
 `no_gain` is an audited successful session but its central baseline replay is marked
-`no_candidate_baseline_replay_v1` and can never enter campaign selection. Failed sessions and
-untrusted evidence remain diagnostic-only: they cannot create the ordinary task
-workspace or count as completion. Only a complete campaign gets a canonical
-copied projection of its selected attempt.
+`no_candidate_baseline_replay_v1` and can never enter campaign selection. Direct
+Codex receives the same treatment when its verified final declared-source delta is
+empty, so neither arm can score the unchanged baseline. Failed sessions and untrusted
+evidence remain diagnostic-only: they cannot create the ordinary task workspace or
+count as completion. Only a complete campaign gets a canonical copied projection of
+its selected attempt.
 
 The checked-in campaign workspaces and logs live under `/data/viouyang/apex/aka`, not
 the smaller home filesystem. Both repositories must be clean before formal campaign
