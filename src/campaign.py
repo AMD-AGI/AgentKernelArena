@@ -19,7 +19,7 @@ from typing import Any, Callable
 
 import yaml
 
-from src.agent_turn_budget import TURN_POLICY
+from src.agent_turn_budget import FORMAL_MATCHED_MAX_TURNS, TURN_POLICY
 from src.campaign_isolation import CampaignIsolationError, runtime_isolation_receipt
 from src.gpu_device_boundary import GpuBoundaryError, load_plan
 from src.gpu_exclusivity import (
@@ -310,8 +310,10 @@ def _agent_manifest(repo_root: Path, agent_name: str, policy: CampaignPolicy) ->
         raise CampaignError("matched campaign requires one inner iteration per fresh session")
     if int(config.get("timeout_seconds", 0)) != policy.attempt_timeout_seconds:
         raise CampaignError("agent timeout must match campaign attempt_timeout_seconds")
-    if int(config.get("max_turns", 0)) != 25:
-        raise CampaignError("matched campaign requires max_turns=25")
+    if int(config.get("max_turns", 0)) != FORMAL_MATCHED_MAX_TURNS:
+        raise CampaignError(
+            f"matched campaign requires max_turns={FORMAL_MATCHED_MAX_TURNS}"
+        )
     if int(config.get("structured_stream_output_limit_bytes", 0)) != 16 * 1024 * 1024:
         raise CampaignError("matched campaign requires a 16 MiB inner Codex stream bound")
     codex = shutil.which("codex")
@@ -854,9 +856,9 @@ def _validate_session_receipt(
     if (
         not isinstance(turn_budget, dict)
         or turn_budget.get("policy") != TURN_POLICY
-        or turn_budget.get("max_turns") != 25
+        or turn_budget.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
         or not isinstance(turn_budget.get("observed_turns"), int)
-        or not 1 <= turn_budget["observed_turns"] <= 25
+        or not 1 <= turn_budget["observed_turns"] <= FORMAL_MATCHED_MAX_TURNS
         or turn_budget.get("budget_exceeded") is not False
         or turn_budget.get("enforcement_failed") is not False
         or turn_budget.get("stop_reason") is not None
@@ -905,7 +907,7 @@ def _validate_session_receipt(
         ):
             errors.append("direct_codex_identity_contract_mismatch")
         if (
-            expected_codex.get("max_turns") != 25
+            expected_codex.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
             or expected_codex.get("turn_policy") != TURN_POLICY
             or expected_codex.get("structured_stream_output_limit_bytes")
             != 16 * 1024 * 1024
@@ -935,7 +937,7 @@ def _validate_session_receipt(
         ):
             errors.append("direct_codex_prompt_digest_invalid")
         if (
-            invocation.get("max_turns") != 25
+            invocation.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
             or invocation.get("turn_policy") != TURN_POLICY
             or invocation.get("structured_stream_output_limit_bytes")
             != 16 * 1024 * 1024
@@ -1299,8 +1301,14 @@ def _validate_apex_session_receipt(
         }.items()
     ):
         errors.append("apex_codex_identity_contract_mismatch")
-    if isinstance(expected_codex, dict) and receipt.get("outer_isolation") != expected_codex.get(
-        "isolation"
+    if isinstance(expected_codex, dict) and (
+        expected_codex.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
+        or expected_codex.get("turn_policy") != TURN_POLICY
+    ):
+        errors.append("apex_immutable_budget_contract_mismatch")
+    if (
+        isinstance(expected_codex, dict)
+        and receipt.get("outer_isolation") != expected_codex.get("isolation")
     ):
         errors.append("apex_outer_isolation_contract_mismatch")
     workspace_integrity = receipt.get("workspace_integrity")
@@ -1344,6 +1352,14 @@ def _validate_apex_session_receipt(
         return receipt, sorted(set(errors + ["apex_lineage_json_unreadable"]))
     if receipt.get("task_spec_sha256") != _sha256_file(artifacts["task_spec"]):
         errors.append("apex_task_spec_digest_mismatch")
+    task_budget = task_spec.get("budget")
+    if (
+        not isinstance(task_budget, dict)
+        or task_budget.get("max_iterations") != 1
+        or task_budget.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
+        or task_budget.get("timeout_seconds") != 3600
+    ):
+        errors.append("apex_task_spec_budget_contract_mismatch")
     lineage = receipt.get("lineage")
     if not isinstance(lineage, dict) or lineage.get("result_sha256") != _sha256_file(
         artifacts["apex_result"]
@@ -1401,7 +1417,11 @@ def _validate_apex_session_receipt(
             != _sha256_file(artifacts["agent_transcript"])
         ):
             errors.append("apex_agent_transcript_receipt_mismatch")
-        expected_isolation = expected_codex.get("isolation") if isinstance(expected_codex, dict) else {}
+        expected_isolation = (
+            expected_codex.get("isolation")
+            if isinstance(expected_codex, dict)
+            else {}
+        )
         inner_isolation = invocation.get("isolation") if isinstance(invocation, dict) else None
         common_isolation = {
             key: value
@@ -1422,6 +1442,8 @@ def _validate_apex_session_receipt(
             != (expected_codex or {}).get("codex_version")
             or invocation.get("entrypoint_sha256")
             != (expected_codex or {}).get("codex_binary_sha256")
+            or invocation.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
+            or invocation.get("turn_policy") != TURN_POLICY
             or not isinstance(argv, list)
             or not {
                 "--strict-config",

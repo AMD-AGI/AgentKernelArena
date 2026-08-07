@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import importlib
 import logging
+import os
 import signal
 import sys
 from pathlib import Path
@@ -12,6 +13,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from src.agent_turn_budget import FORMAL_MATCHED_MAX_TURNS
+from src.campaign_isolation import WrappedAttemptCommand
 from src.module_registration import AgentType, load_agent_launcher
 
 apex_launcher = importlib.import_module("agents.apex.launch_agent")
@@ -39,6 +42,30 @@ def test_apex_supervisor_verifies_normal_process_group_exit(tmp_path) -> None:
     assert outcome.cleanup["verified_absent"] is True
     assert outcome.readers_completed is True
     assert outcome.capture_errors == ()
+
+
+def test_apex_supervisor_releases_wrapped_fd_when_spawn_fails(
+    tmp_path, monkeypatch
+) -> None:
+    descriptor = os.memfd_create("aka-test-apex-spawn")
+    command = WrappedAttemptCommand(["/bin/true"], pass_fds=(descriptor,))
+
+    def fail_spawn(*_args, **_kwargs):
+        raise OSError("spawn failed")
+
+    monkeypatch.setattr(apex_launcher.subprocess, "Popen", fail_spawn)
+    with pytest.raises(OSError, match="spawn failed"):
+        apex_launcher._run_apex(
+            command,
+            cwd=tmp_path,
+            backend="codex",
+            timeout_seconds=5,
+            output_limit=1024,
+            logger=logging.getLogger(__name__),
+        )
+
+    with pytest.raises(OSError):
+        os.fstat(descriptor)
 
 
 def test_apex_supervisor_timeout_kills_and_verifies_process_namespace_group(
@@ -107,7 +134,7 @@ def _agent_config() -> dict[str, object]:
         "supported_task_types": ["triton2triton"],
         "max_iterations": 3,
         "campaign_max_iterations": 1,
-        "max_turns": 25,
+        "max_turns": 50,
         "timeout_seconds": 120,
         "compile_timeout_seconds": 10,
         "correctness_timeout_seconds": 20,
@@ -227,7 +254,7 @@ def test_task_spec_maps_caller_contract_without_arena_scoring(tmp_path, monkeypa
     assert spec["agent_options"] == {"model": "gpt-5.5", "effort": "xhigh"}
     assert spec["budget"] == {
         "max_iterations": 3,
-        "max_turns": 25,
+        "max_turns": 50,
         "timeout_seconds": 120,
     }
     assert "score" not in spec
@@ -268,6 +295,51 @@ def test_matched_campaign_forces_one_inner_apex_iteration(tmp_path) -> None:
     )
 
     assert spec["budget"]["max_iterations"] == 1
+    assert spec["budget"]["max_turns"] == 50
+
+
+def test_matched_campaign_rejects_asymmetric_turn_budget(tmp_path) -> None:
+    workspace, config_path = _task(tmp_path)
+    task_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    artifact_root = workspace.parent / ".artifacts"
+    artifact_root.mkdir()
+    agent_config = _agent_config()
+    agent_config["max_turns"] = 25
+
+    with pytest.raises(apex_launcher.ApexAdapterError, match="max_turns=50"):
+        apex_launcher._build_task_spec(
+            task_config_path=config_path,
+            task_config=task_config,
+            eval_config={
+                "target_gpu_model": "MI355X",
+                "campaign": {"comparison": "apex_vs_codex"},
+            },
+            agent_config=agent_config,
+            workspace=workspace,
+            artifact_root=artifact_root,
+            prompt="BASE PROMPT",
+        )
+
+
+def test_nonformal_task_spec_preserves_legacy_turn_fallback(tmp_path) -> None:
+    workspace, config_path = _task(tmp_path)
+    task_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    artifact_root = workspace.parent / ".artifacts"
+    artifact_root.mkdir()
+    agent_config = _agent_config()
+    del agent_config["max_turns"]
+
+    spec = apex_launcher._build_task_spec(
+        task_config_path=config_path,
+        task_config=task_config,
+        eval_config={"target_gpu_model": "MI355X"},
+        agent_config=agent_config,
+        workspace=workspace,
+        artifact_root=artifact_root,
+        prompt="BASE PROMPT",
+    )
+
+    assert spec["budget"]["max_turns"] == 25
 
 
 @pytest.mark.parametrize("source", ["../escape.py", "/absolute.py", "./source/kernel.py"])
@@ -839,6 +911,11 @@ def test_matched_benchmark_configs_have_identical_ten_tasks() -> None:
     )
     assert apex["agent"]["template"] == "apex"
     assert codex["agent"]["template"] == "codex"
+    for agent_name in ("apex", "codex"):
+        agent_config = yaml.safe_load(
+            (root / "agents" / agent_name / "agent_config.yaml").read_text()
+        )
+        assert agent_config["max_turns"] == FORMAL_MATCHED_MAX_TURNS
     assert {key: value for key, value in apex.items() if key != "agent"} == {
         key: value for key, value in codex.items() if key != "agent"
     }

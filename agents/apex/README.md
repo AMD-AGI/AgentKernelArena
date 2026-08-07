@@ -86,9 +86,10 @@ make docker-parallel-run \
   RUN_ARGS="--run-suffix apex_treatment"
 ```
 
-The checked-in settings pin both paths to Codex `gpt-5.5`, `xhigh`, and a
-3600-second inner-agent budget. The campaign controller creates three fresh
-workspaces and invokes three independent Codex sessions per task on both paths;
+The checked-in settings pin both paths to Codex `gpt-5.5`, `xhigh`, a 50-turn
+structured-agent limit, and a 3600-second inner-agent budget. The campaign
+controller creates three fresh workspaces and invokes three independent Codex
+sessions per task on both paths;
 `max_iterations: 1` prevents an additional hidden inner campaign. Every attempt
 returns to AgentKernelArena for centralized compilation, correctness, and performance
 evaluation. Selection is deterministic: correctness-qualified attempts rank by their
@@ -118,11 +119,16 @@ blocked parent root/fd/environ/mem escape probes. The attempt intentionally keep
 the Docker worker's private PID namespace and writable `/proc` so nested Codex can
 create its own command sandbox. A separate live Codex probe must prove that the
 managed profile permits workspace writes while denying credential reads and
-command network. It also proves the inner PID namespace differs; the inherited
-procfs may expose the outer status entry, but root/fd/environ/mem aliases must all
-remain unreadable. Init, every worker, and
-postprocess independently reproduce this receipt before accepting the immutable
-manifest. `comparison_contract_sha256`
+command network. A content-pinned bubblewrap compatibility shim is copied into a
+sealed memfd and mounted from that exact descriptor before restoring only the
+`/dev/kfd` and render nodes already admitted by Docker after Codex creates its
+private `/dev`. Its parent is a dedicated read-only mountpoint, and live
+rename/unlink/replace/write attacks must fail; the same probe sees exactly one ROCm
+device and completes a Torch allocation plus reduction on it. It also
+proves the inner PID namespace differs; the inherited procfs may expose the outer
+status entry, but root/fd/environ/mem aliases must all remain unreadable. Init,
+every worker, and postprocess independently reproduce this receipt before accepting
+the immutable manifest. `comparison_contract_sha256`
 excludes the treatment template/config and
 run-specific GPU lease fields (run name, PID, timestamp, receipt hash, and lock path),
 while retaining the common lease policy, physical unique IDs, protected device paths,
@@ -130,7 +136,7 @@ and GPU boundary-plan digest; it must match across the Apex and direct-Codex run
 Per-task attempt evidence remains
 under `.campaign_attempts/`. Both treatments retain a read-only session receipt
 with exact backend/model/effort and invocation identity, bounded process output,
-the same 25-turn structured-agent policy and 16 MiB inner Codex stream bound, and
+the same 50-turn structured-agent policy and 16 MiB inner Codex stream bound, and
 verified process-group cleanup. The Apex adapter separately caps its outer transport
 at 4 MiB. Apex receipts additionally snapshot the
 TaskSpec, TaskResult, checksummed event journal, canonical agent transcript, and
@@ -153,9 +159,10 @@ apply a validated Apex bundle, so `no_gain` cannot retain direct or undeclared e
 Both treatments use strict `approval_policy=never`, ignored user config and exec-policy
 rules, an ephemeral session, a private outer IPC namespace, and private `/dev/shm`.
 The content-pinned `/etc/codex/requirements.toml` selects the only allowed managed
-permission profile, disables hooks and command network, and denies sandboxed commands
-access to `~/.codex/auth.json`; the Codex supervisor can still authenticate before
-launching those commands. A missing or unusable `bwrap`, a different requirements
+permission profile, disables hooks and command network, and denies sandboxed
+commands access to `~/.codex/auth.json`; the Codex supervisor can still authenticate
+before launching those commands. A missing or unusable outer `bwrap`, changed GPU
+shim, different requirements
 file, or any failed live property probe aborts campaign preflight. Formal Docker
 workers remain non-root and receive no added Linux capabilities. The outer attempt
 boundary bind-mounts Docker's already-private `/proc` read-write and preserves its PID

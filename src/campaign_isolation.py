@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -28,11 +29,36 @@ class CampaignIsolationError(RuntimeError):
     """Raised when a formal attempt cannot be given a private filesystem view."""
 
 
-_RUNTIME_ISOLATION_SCHEMA = "aka.runtime-isolation-receipt/v2"
+class WrappedAttemptCommand(list[str]):
+    """Command argv plus narrowly scoped descriptors required by its mounts."""
+
+    def __init__(self, argv: Iterable[str], *, pass_fds: Iterable[int] = ()) -> None:
+        super().__init__(argv)
+        self.pass_fds = tuple(pass_fds)
+
+    def release_pass_fds(self) -> None:
+        descriptors, self.pass_fds = self.pass_fds, ()
+        for descriptor in descriptors:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+_RUNTIME_ISOLATION_SCHEMA = "aka.runtime-isolation-receipt/v4"
 _ZERO_CAPABILITY_FIELDS = ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb")
 _CODEX_REQUIREMENTS_PATH = Path("/etc/codex/requirements.toml")
 _CODEX_PERMISSION_PROFILE = "aka_formal_kernel_v1"
 _CODEX_REQUIREMENTS_SHA256 = "0c68db4f0ee56b42f15af2896e51f4e667d9d6f86d9d3864dfec571278572ade"
+_CODEX_GPU_BWRAP_PATH = (
+    Path(__file__).resolve().parents[1] / "agents" / "codex" / "bin" / "bwrap"
+)
+_CODEX_GPU_BWRAP_SHA256 = "9271bd346d1ea5f878c8f345537e8464a56156b82f956942b66b82feb61791ef"
+_CODEX_GPU_BWRAP_SIZE_BYTES = 2381
+_CODEX_GPU_REAL_BWRAP_PATH = Path("/usr/bin/bwrap")
+_CODEX_GPU_REAL_BWRAP_SHA256 = "d78807229d616606e339c5988392b9e0ab4a6a6998fa51e4590837f426a12fca"
+_CODEX_GPU_BWRAP_TRUSTED_DIR = Path("/tmp/aka-codex-gpu-bwrap")
+_CODEX_GPU_BWRAP_TRUSTED_PATH = _CODEX_GPU_BWRAP_TRUSTED_DIR / "bwrap"
 
 
 def _proc_status() -> dict[str, str]:
@@ -241,8 +267,125 @@ def _codex_requirements_identity() -> tuple[Path, dict[str, Any]]:
         "credential_path": "~/.codex/auth.json",
         "credential_read": "deny",
         "command_network": "deny",
+        "device_access": (
+            "sealed_pinned_immutable_path_bwrap_with_docker_device_boundary"
+        ),
         "hooks": "disabled",
     }
+
+
+def _codex_gpu_bwrap_identity() -> tuple[Path, dict[str, Any]]:
+    path = _CODEX_GPU_BWRAP_PATH
+    try:
+        metadata = path.lstat()
+    except OSError as error:
+        raise CampaignIsolationError("formal Codex GPU bwrap shim is unavailable") from error
+    if (
+        path.is_symlink()
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_nlink != 1
+        or not metadata.st_mode & stat.S_IXUSR
+    ):
+        raise CampaignIsolationError("formal Codex GPU bwrap shim is unsafe")
+    if metadata.st_size != _CODEX_GPU_BWRAP_SIZE_BYTES:
+        raise CampaignIsolationError("formal Codex GPU bwrap shim violates its pin")
+    digest = _sha256_regular_file(path)
+    if digest != _CODEX_GPU_BWRAP_SHA256:
+        raise CampaignIsolationError("formal Codex GPU bwrap shim violates its pin")
+    resolved = path.resolve(strict=True)
+    try:
+        real_metadata = _CODEX_GPU_REAL_BWRAP_PATH.lstat()
+    except OSError as error:
+        raise CampaignIsolationError("formal Codex real bwrap is unavailable") from error
+    if (
+        _CODEX_GPU_REAL_BWRAP_PATH.is_symlink()
+        or not stat.S_ISREG(real_metadata.st_mode)
+        or real_metadata.st_nlink != 1
+        or not real_metadata.st_mode & stat.S_IXUSR
+    ):
+        raise CampaignIsolationError("formal Codex real bwrap is unsafe")
+    real_digest = _sha256_regular_file(_CODEX_GPU_REAL_BWRAP_PATH)
+    if real_digest != _CODEX_GPU_REAL_BWRAP_SHA256:
+        raise CampaignIsolationError("formal Codex real bwrap violates its pin")
+    return resolved, {
+        "resolved_path": str(resolved),
+        "sha256": digest,
+        "size_bytes": _CODEX_GPU_BWRAP_SIZE_BYTES,
+        "interpreter": "/usr/bin/python3 -I",
+        "real_bwrap": str(_CODEX_GPU_REAL_BWRAP_PATH),
+        "real_bwrap_sha256": real_digest,
+        "sandbox_mounted_path": str(_CODEX_GPU_BWRAP_TRUSTED_PATH),
+        "mount_transport": (
+            "sealed_memfd_ro_bind_data_under_remounted_ro_tmpfs"
+        ),
+        "device_policy": "docker_visible_kfd_and_render_nodes_only",
+    }
+
+
+def _sealed_codex_gpu_bwrap(source: Path) -> int:
+    """Copy the pinned shim into an immutable anonymous file for exact binding."""
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    source_descriptor = -1
+    sealed_descriptor = -1
+    try:
+        source_descriptor = os.open(source, flags)
+        metadata = os.fstat(source_descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
+        ):
+            raise CampaignIsolationError("formal Codex GPU bwrap shim is unsafe")
+        if metadata.st_size != _CODEX_GPU_BWRAP_SIZE_BYTES:
+            raise CampaignIsolationError("formal Codex GPU bwrap shim violates its pin")
+        payload = bytearray()
+        while len(payload) <= _CODEX_GPU_BWRAP_SIZE_BYTES:
+            chunk = os.read(
+                source_descriptor,
+                _CODEX_GPU_BWRAP_SIZE_BYTES + 1 - len(payload),
+            )
+            if not chunk:
+                break
+            payload.extend(chunk)
+        if (
+            len(payload) != _CODEX_GPU_BWRAP_SIZE_BYTES
+            or hashlib.sha256(payload).hexdigest() != _CODEX_GPU_BWRAP_SHA256
+        ):
+            raise CampaignIsolationError("formal Codex GPU bwrap shim violates its pin")
+
+        sealed_descriptor = os.memfd_create(
+            "aka-codex-gpu-bwrap",
+            os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING,
+        )
+        remaining = memoryview(payload)
+        while remaining:
+            written = os.write(sealed_descriptor, remaining)
+            if written <= 0:
+                raise CampaignIsolationError("cannot materialize formal Codex GPU bwrap")
+            remaining = remaining[written:]
+        os.fchmod(sealed_descriptor, 0o555)
+        seals = (
+            fcntl.F_SEAL_WRITE
+            | fcntl.F_SEAL_SHRINK
+            | fcntl.F_SEAL_GROW
+            | fcntl.F_SEAL_SEAL
+        )
+        fcntl.fcntl(sealed_descriptor, fcntl.F_ADD_SEALS, seals)
+        if fcntl.fcntl(sealed_descriptor, fcntl.F_GET_SEALS) != seals:
+            raise CampaignIsolationError("formal Codex GPU bwrap memfd is not fully sealed")
+        os.lseek(sealed_descriptor, 0, os.SEEK_SET)
+        result, sealed_descriptor = sealed_descriptor, -1
+        return result
+    except (AttributeError, OSError) as error:
+        raise CampaignIsolationError(
+            "cannot create sealed formal Codex GPU bwrap transport"
+        ) from error
+    finally:
+        if source_descriptor >= 0:
+            os.close(source_descriptor)
+        if sealed_descriptor >= 0:
+            os.close(sealed_descriptor)
 
 
 _CODEX_SANDBOX_PROBE = r"""
@@ -258,6 +401,7 @@ credential = pathlib.Path(sys.argv[2])
 outer_pid_namespace = sys.argv[3]
 outer_pid = int(sys.argv[4])
 outer_credential_fd = int(sys.argv[5])
+trusted_gpu_bwrap = pathlib.Path(sys.argv[6])
 marker = workspace / "managed-sandbox-write-probe"
 
 def read_error(path):
@@ -291,6 +435,75 @@ finally:
     if sock is not None:
         sock.close()
 
+mutation_denied_errors = {errno.EACCES, errno.EPERM, errno.EROFS, errno.EBUSY}
+renamed_trusted_dir = trusted_gpu_bwrap.parent.with_name(
+    trusted_gpu_bwrap.parent.name + "-renamed"
+)
+try:
+    trusted_gpu_bwrap.parent.rename(renamed_trusted_dir)
+    trusted_dir_rename_errno = None
+except OSError as error:
+    trusted_dir_rename_errno = error.errno
+
+try:
+    trusted_gpu_bwrap.unlink()
+    trusted_path_unlink_errno = None
+except OSError as error:
+    trusted_path_unlink_errno = error.errno
+
+renamed_trusted_path = trusted_gpu_bwrap.with_name(
+    trusted_gpu_bwrap.name + "-renamed"
+)
+try:
+    trusted_gpu_bwrap.rename(renamed_trusted_path)
+    trusted_path_rename_errno = None
+except OSError as error:
+    trusted_path_rename_errno = error.errno
+
+replacement = workspace / "replacement-bwrap"
+replacement.write_bytes(b"malicious")
+try:
+    replacement.replace(trusted_gpu_bwrap)
+    trusted_path_replace_errno = None
+except OSError as error:
+    trusted_path_replace_errno = error.errno
+
+try:
+    descriptor = os.open(trusted_gpu_bwrap, os.O_WRONLY | os.O_TRUNC)
+    os.close(descriptor)
+    trusted_path_write_errno = None
+except OSError as error:
+    trusted_path_write_errno = error.errno
+
+render_nodes = sorted(pathlib.Path("/dev/dri").glob("renderD*"))
+assigned_gpu_devices_visible = pathlib.Path("/dev/kfd").exists() and bool(render_nodes)
+device_descriptors = []
+device_open_error = None
+try:
+    for device in (pathlib.Path("/dev/kfd"), *render_nodes):
+        device_descriptors.append(os.open(device, os.O_RDWR | os.O_CLOEXEC))
+    assigned_gpu_devices_writable = bool(render_nodes)
+except OSError as error:
+    device_open_error = repr(error)
+    assigned_gpu_devices_writable = False
+finally:
+    for descriptor in device_descriptors:
+        os.close(descriptor)
+
+torch_probe_error = None
+try:
+    import torch
+    single_gpu_runtime_visible = torch.cuda.is_available() and torch.cuda.device_count() == 1
+    if single_gpu_runtime_visible:
+        values = torch.arange(16, dtype=torch.float32, device="cuda")
+        gpu_compute_probe_passed = values.sum().item() == 120.0
+    else:
+        gpu_compute_probe_passed = False
+except Exception as error:
+    torch_probe_error = repr(error)
+    single_gpu_runtime_visible = False
+    gpu_compute_probe_passed = False
+
 outer_proc = f"/proc/{outer_pid}"
 blocked_proc_errors = {errno.EACCES, errno.EPERM, errno.ENOENT}
 result = {
@@ -319,7 +532,61 @@ result = {
         read_error(f"{outer_proc}/environ") in blocked_proc_errors
     ),
     "outer_mem_alias_blocked": read_error(f"{outer_proc}/mem") in blocked_proc_errors,
+    "pinned_gpu_bwrap_active": os.environ.get("AKA_CODEX_GPU_BWRAP_ACTIVE") == "1",
+    "gpu_bwrap_directory_immutable": (
+        trusted_dir_rename_errno in mutation_denied_errors
+    ),
+    "gpu_bwrap_path_immutable": all(
+        value in mutation_denied_errors
+        for value in (
+            trusted_path_unlink_errno,
+            trusted_path_rename_errno,
+            trusted_path_write_errno,
+        )
+    ) and trusted_path_replace_errno in (
+        mutation_denied_errors | {errno.EXDEV}
+    ),
+    "assigned_gpu_devices_visible": assigned_gpu_devices_visible,
+    "assigned_gpu_devices_writable": assigned_gpu_devices_writable,
+    "single_gpu_runtime_visible": single_gpu_runtime_visible,
+    "gpu_compute_probe_passed": gpu_compute_probe_passed,
 }
+if not (
+    result["gpu_bwrap_directory_immutable"]
+    and result["gpu_bwrap_path_immutable"]
+    and assigned_gpu_devices_visible
+    and assigned_gpu_devices_writable
+    and single_gpu_runtime_visible
+    and gpu_compute_probe_passed
+):
+    device_metadata = {}
+    for device in (pathlib.Path("/dev/kfd"), *render_nodes):
+        try:
+            metadata = device.stat()
+            device_metadata[str(device)] = {
+                "uid": metadata.st_uid,
+                "gid": metadata.st_gid,
+                "mode": oct(metadata.st_mode & 0o777),
+            }
+        except OSError as error:
+            device_metadata[str(device)] = {"stat_error": repr(error)}
+    print(json.dumps({
+        "gpu_probe_diagnostic": {
+            "euid": os.geteuid(),
+            "egid": os.getegid(),
+            "groups": os.getgroups(),
+            "devices": device_metadata,
+            "device_open_error": device_open_error,
+            "torch_probe_error": torch_probe_error,
+            "trusted_gpu_bwrap_mutation_errnos": {
+                "rename_directory": trusted_dir_rename_errno,
+                "unlink_path": trusted_path_unlink_errno,
+                "rename_path": trusted_path_rename_errno,
+                "replace_path": trusted_path_replace_errno,
+                "write_path": trusted_path_write_errno,
+            },
+        }
+    }, sort_keys=True, separators=(",", ":")), file=sys.stderr)
 print(json.dumps(result, sort_keys=True, separators=(",", ":")))
 raise SystemExit(0 if all(result.values()) else 74)
 """
@@ -374,6 +641,27 @@ def _bubblewrap_base_command(binary: str | Path, data_root: Path) -> list[str]:
     ]
 
 
+def _mount_codex_gpu_bwrap(command: list[str], descriptor: int) -> None:
+    """Expose sealed shim bytes on an immutable private mount outside Codex's cwd."""
+    command.extend(
+        [
+            "--perms",
+            "0555",
+            "--dir",
+            str(_CODEX_GPU_BWRAP_TRUSTED_DIR),
+            "--tmpfs",
+            str(_CODEX_GPU_BWRAP_TRUSTED_DIR),
+            "--perms",
+            "0555",
+            "--ro-bind-data",
+            str(descriptor),
+            str(_CODEX_GPU_BWRAP_TRUSTED_PATH),
+            "--remount-ro",
+            str(_CODEX_GPU_BWRAP_TRUSTED_DIR),
+        ]
+    )
+
+
 def _codex_cli_identity() -> tuple[Path, dict[str, str]]:
     discovered = shutil.which("codex")
     if not discovered:
@@ -400,7 +688,11 @@ def _codex_cli_identity() -> tuple[Path, dict[str, str]]:
 
 
 def _codex_sandbox_probe(
-    *, codex_binary: Path, bubblewrap_binary: Path, data_root: Path
+    *,
+    codex_binary: Path,
+    bubblewrap_binary: Path,
+    gpu_bubblewrap_binary: Path,
+    data_root: Path,
 ) -> dict[str, bool]:
     """Exercise the exact outer mount boundary and Codex managed command policy."""
     probe_dir = Path(tempfile.mkdtemp(prefix=".aka-codex-sandbox-probe-", dir=data_root))
@@ -408,6 +700,7 @@ def _codex_sandbox_probe(
     workspace = probe_dir / "workspace"
     credential = home / ".codex" / "auth.json"
     credential_descriptor = -1
+    gpu_bwrap_descriptor = -1
     try:
         credential.parent.mkdir(parents=True)
         workspace.mkdir()
@@ -417,6 +710,8 @@ def _codex_sandbox_probe(
         outer_pid = os.getpid()
 
         command = _bubblewrap_base_command(bubblewrap_binary, data_root)
+        gpu_bwrap_descriptor = _sealed_codex_gpu_bwrap(gpu_bubblewrap_binary)
+        _mount_codex_gpu_bwrap(command, gpu_bwrap_descriptor)
         current = data_root
         for part in probe_dir.relative_to(data_root).parts:
             current /= part
@@ -443,15 +738,21 @@ def _codex_sandbox_probe(
                 outer_pid_namespace,
                 str(outer_pid),
                 str(credential_descriptor),
+                str(_CODEX_GPU_BWRAP_TRUSTED_PATH),
             ]
         )
         environment = dict(os.environ)
+        environment["PATH"] = (
+            f"{_CODEX_GPU_BWRAP_TRUSTED_DIR}{os.pathsep}"
+            f"{environment.get('PATH', '')}"
+        )
         environment.update(
             {
                 "HOME": str(home),
                 "CODEX_HOME": str(home / ".codex"),
                 "XDG_CONFIG_HOME": str(home / ".config"),
                 "XDG_STATE_HOME": str(home / ".local/state"),
+                "PYTHONDONTWRITEBYTECODE": "1",
             }
         )
         try:
@@ -462,6 +763,7 @@ def _codex_sandbox_probe(
                 check=False,
                 timeout=30,
                 env=environment,
+                pass_fds=(gpu_bwrap_descriptor,),
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             raise CampaignIsolationError("Codex managed sandbox probe failed to run") from error
@@ -482,6 +784,13 @@ def _codex_sandbox_probe(
             "outer_fd_alias_blocked",
             "outer_environ_alias_blocked",
             "outer_mem_alias_blocked",
+            "pinned_gpu_bwrap_active",
+            "gpu_bwrap_directory_immutable",
+            "gpu_bwrap_path_immutable",
+            "assigned_gpu_devices_visible",
+            "assigned_gpu_devices_writable",
+            "single_gpu_runtime_visible",
+            "gpu_compute_probe_passed",
         }
         if (
             completed.returncode != 0
@@ -497,6 +806,8 @@ def _codex_sandbox_probe(
     finally:
         if credential_descriptor >= 0:
             os.close(credential_descriptor)
+        if gpu_bwrap_descriptor >= 0:
+            os.close(gpu_bwrap_descriptor)
         shutil.rmtree(probe_dir, ignore_errors=False)
 
 
@@ -606,11 +917,13 @@ def runtime_isolation_receipt() -> dict[str, Any]:
     outer = _outer_runtime_observation()
     binary, bubblewrap = _bubblewrap_identity()
     _requirements_path, codex_requirements = _codex_requirements_identity()
+    gpu_bubblewrap_binary, gpu_bubblewrap = _codex_gpu_bwrap_identity()
     codex_binary, codex_cli = _codex_cli_identity()
     attempt = _attempt_escape_probe(binary=binary, data_root=data_root, outer=outer)
     codex_sandbox = _codex_sandbox_probe(
         codex_binary=codex_binary,
         bubblewrap_binary=binary,
+        gpu_bubblewrap_binary=gpu_bubblewrap_binary,
         data_root=data_root,
     )
     # Namespace inode identifiers are deliberately used only by the live probe:
@@ -643,10 +956,14 @@ def runtime_isolation_receipt() -> dict[str, Any]:
                 "nested_codex_unshared_with_inherited_proc_guard_v1"
             ),
             "command_network": "managed_profile_denied_live_probe_v1",
+            "command_gpu_access": (
+                "sealed_memfd_immutable_path_bwrap_and_single_gpu_probe_v1"
+            ),
             "credential_read": "denied_by_managed_permission_profile",
         },
         "outer_runtime": recorded_outer,
         "bubblewrap": bubblewrap,
+        "codex_gpu_bubblewrap": gpu_bubblewrap,
         "codex_cli": codex_cli,
         "codex_requirements": codex_requirements,
         "attempt_probe": attempt,
@@ -798,6 +1115,11 @@ def isolated_environment(environment: dict[str, str], home: Path | None) -> dict
     updated["CODEX_HOME"] = str(home / ".codex")
     updated["XDG_CONFIG_HOME"] = str(home / ".config")
     updated["XDG_STATE_HOME"] = str(home / ".local/state")
+    updated["PYTHONDONTWRITEBYTECODE"] = "1"
+    _gpu_bubblewrap, _identity = _codex_gpu_bwrap_identity()
+    updated["PATH"] = (
+        f"{_CODEX_GPU_BWRAP_TRUSTED_DIR}{os.pathsep}{updated.get('PATH', '')}"
+    )
     return updated
 
 
@@ -815,6 +1137,7 @@ def wrap_attempt_command(
     # attempt construction time instead of trusting a prior PATH lookup.
     binary, _identity = _bubblewrap_identity()
     _codex_requirements_identity()
+    gpu_bubblewrap, _gpu_bubblewrap_identity = _codex_gpu_bwrap_identity()
     data_root_raw = os.environ.get("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", "")
     data_root = Path(data_root_raw)
     if not data_root.is_absolute() or not data_root.is_dir():
@@ -864,8 +1187,27 @@ def wrap_attempt_command(
         path = workdir / relative
         if path.is_dir():
             wrapped.extend(["--tmpfs", str(path)])
-    wrapped.extend(["--", *command])
-    return wrapped
+    gpu_bwrap_descriptor = _sealed_codex_gpu_bwrap(gpu_bubblewrap)
+    try:
+        _mount_codex_gpu_bwrap(wrapped, gpu_bwrap_descriptor)
+        wrapped.extend(["--", *command])
+        return WrappedAttemptCommand(wrapped, pass_fds=(gpu_bwrap_descriptor,))
+    except Exception:
+        os.close(gpu_bwrap_descriptor)
+        raise
+
+
+def attempt_command_pass_fds(command: list[str]) -> tuple[int, ...]:
+    """Return only descriptors explicitly owned by a wrapped attempt command."""
+    if isinstance(command, WrappedAttemptCommand):
+        return command.pass_fds
+    return ()
+
+
+def release_attempt_command_fds(command: list[str]) -> None:
+    """Release parent copies after subprocess creation; safe to call repeatedly."""
+    if isinstance(command, WrappedAttemptCommand):
+        command.release_pass_fds()
 
 
 def _validated_attempt_roots(
@@ -930,10 +1272,13 @@ def _make_owner_writable(root: Path) -> None:
 
 __all__ = [
     "CampaignIsolationError",
+    "WrappedAttemptCommand",
+    "attempt_command_pass_fds",
     "is_formal_campaign",
     "formal_gpu_evidence",
     "isolated_environment",
     "prepare_attempt_home",
+    "release_attempt_command_fds",
     "runtime_isolation_receipt",
     "wrap_attempt_command",
 ]

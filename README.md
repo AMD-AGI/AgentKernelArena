@@ -224,13 +224,19 @@ sentinel probe: the inherited parent `/proc` entry must remain visible, while
 `/proc/<parent>/{root,fd,environ,mem}` escape paths must fail specifically with
 `EACCES`/`EPERM`. A content-pinned managed Codex permission profile separately
 proves workspace writes, denies command network and credential reads, and
-disables hooks. The same live probe requires Codex's inner PID namespace to differ
-from the worker's. Codex inherits the worker-private procfs, so the outer status
-entry remains visible, but its root/fd/environ/mem aliases must all be unreadable.
-The stable UID/capability/NNP/seccomp/AppArmor/Yama, exact
-`bwrap` and Codex identities, managed-policy hash, and both live probe results
-are bound into the immutable comparison contract; any drift fails the worker
-before an agent session starts.
+disables hooks. The content-pinned `bwrap` shim is copied into a sealed memfd and
+mounted from that exact descriptor beneath a dedicated read-only mountpoint. Live
+rename/unlink/replace/write attacks must fail. The shim restores only the `/dev/kfd`
+and render nodes already admitted by Docker after Codex creates its private `/dev`.
+The worker remains non-root and capability-free. The same live probe
+requires Codex's inner PID namespace to differ from the worker's, exactly one ROCm
+device to be visible, and a Torch allocation plus reduction to succeed on that
+device. Codex inherits the worker-private procfs, so the outer status entry remains
+visible, but its root/fd/environ/mem aliases must all be unreadable.
+The stable UID/capability/NNP/seccomp/AppArmor/Yama, exact outer `bwrap`, Codex
+GPU-shim and Codex identities, managed-policy hash, and both live probe results are
+bound into the immutable comparison contract; any drift fails the worker before an
+agent session starts.
 
 FlyDSL tasks require FlyDSL in the container. The pinned image may already provide it; otherwise run:
 

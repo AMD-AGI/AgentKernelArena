@@ -2,7 +2,7 @@ max_iterations: 3
 # Matched campaigns own repetition across fresh workspaces/sessions and override
 # the normal prompt guidance with one trajectory inside each outer session.
 campaign_max_iterations: 1
-max_turns: 25
+max_turns: 50
 timeout_seconds: 3600
 # Match Apex's inner Codex SubprocessSupervisor bound. This is the structured
 # agent stream, not Apex's separate outer transport receipt cap.

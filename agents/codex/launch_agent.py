@@ -20,12 +20,18 @@ import yaml
 from agents import register_agent
 from src.module_registration import AgentType, load_prompt_builder
 from src.runtime_env import build_subprocess_env
-from src.agent_turn_budget import AgentTurnBudget, TURN_POLICY
+from src.agent_turn_budget import (
+    FORMAL_MATCHED_MAX_TURNS,
+    AgentTurnBudget,
+    TURN_POLICY,
+)
 from src.campaign_isolation import (
+    attempt_command_pass_fds,
     formal_gpu_evidence,
     is_formal_campaign,
     isolated_environment,
     prepare_attempt_home,
+    release_attempt_command_fds,
     wrap_attempt_command,
 )
 
@@ -846,8 +852,10 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         raise CodexSessionError("Codex turn and output limits must be integers") from error
     if max_turns <= 0 or output_limit <= 0:
         raise CodexSessionError("Codex turn and output limits must be positive")
-    if formal_campaign and max_turns != 25:
-        raise CodexSessionError("formal direct Codex requires max_turns=25")
+    if formal_campaign and max_turns != FORMAL_MATCHED_MAX_TURNS:
+        raise CodexSessionError(
+            f"formal direct Codex requires max_turns={FORMAL_MATCHED_MAX_TURNS}"
+        )
     turn_budget = AgentTurnBudget(max_turns)
 
     editable_files: tuple[str, ...] = ()
@@ -898,14 +906,6 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         # Codex has no --effort flag; reasoning effort is a config key.
         cmd.extend(["-c", f'model_reasoning_effort="{configured_effort}"'])
     cmd.append(prompt)
-    isolated_cmd = wrap_attempt_command(
-        cmd,
-        eval_config=eval_config,
-        writable_roots=(
-            workspace_path,
-            *((attempt_home,) if attempt_home is not None else ()),
-        ),
-    )
 
     logger.info("Codex Preflight")
     logger.info(f"  codex_binary: {resolved_codex_bin}")
@@ -920,24 +920,37 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     else:
         logger.info("  model: <codex CLI default/config> (not explicitly set)")
     logger.info(f"  effort: {configured_effort if configured_effort else '<codex config default>'} (model_reasoning_effort)")
-    logger.info(f"Running command: {' '.join(shlex.quote(p) for p in isolated_cmd[:12])} ...")
+    logger.info(f"Running command: {' '.join(shlex.quote(p) for p in cmd[:12])} ...")
     logger.info("=" * 80)
     logger.info("Agent Output (streaming):")
     logger.info("=" * 80)
 
-    process = subprocess.Popen(
-        isolated_cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        cwd=workspace_path,
-        bufsize=1,
-        env=process_env,
-        encoding="utf-8",
-        errors="replace",
-        start_new_session=True,
+    isolated_cmd = wrap_attempt_command(
+        cmd,
+        eval_config=eval_config,
+        writable_roots=(
+            workspace_path,
+            *((attempt_home,) if attempt_home is not None else ()),
+        ),
     )
+    pass_fds = attempt_command_pass_fds(isolated_cmd)
+    try:
+        process = subprocess.Popen(
+            isolated_cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=workspace_path,
+            bufsize=1,
+            env=process_env,
+            encoding="utf-8",
+            errors="replace",
+            start_new_session=True,
+            pass_fds=pass_fds,
+        )
+    finally:
+        release_attempt_command_fds(isolated_cmd)
     if process.stdin:
         process.stdin.close()
 

@@ -34,13 +34,30 @@ direct launchers both request legacy `workspace-write`. The managed allowlist fo
 that request to the sole permitted profile for the receipt-pinned Codex binary, and
 any CLI identity mismatch makes the treatments incomparable. The live probe must
 prove workspace writes succeed while credential reads and command network fail. It
-must also prove that Codex creates a distinct inner PID namespace.
+must also prove that Codex creates a distinct inner PID namespace, sees exactly one
+ROCm GPU, can open the assigned GPU device nodes read-write, and completes a Torch
+allocation plus reduction on that device. Codex normally replaces `/dev` inside
+its Linux bubblewrap sandbox. The content-pinned `bin/bwrap` compatibility shim
+re-binds only `/dev/kfd` and the render nodes already admitted by Docker; any
+missing, extra, non-character, or changed shim/device input fails closed.
+The outer namespace mounts this shim read-only at
+`/tmp/aka-codex-gpu-bwrap/bwrap`, outside the task workspace that Codex excludes
+from system-bubblewrap discovery. Its parent is a dedicated tmpfs mountpoint that
+is remounted read-only, so writable `/tmp` cannot rename or replace the trusted
+pathname. Before the mount, the verified shim bytes are copied to a sealed memfd
+and passed through `--ro-bind-data`, closing the content replacement window between
+hashing and execution. The live probe requires directory rename plus file
+unlink/replace/write attacks to fail. `--help` and `--version` are delegated
+unchanged to the independently content-pinned `/usr/bin/bwrap`; real sandbox
+invocations must set the shim activation marker that the same probe verifies.
+The fixed `/usr/bin/python3 -I` shebang disables user-site and `PYTHON*` startup
+injection before any shim code runs.
 Its inherited procfs can expose the outer status entry, but the probe requires the
 outer root/fd/environ/mem aliases to remain unreadable. The receipt records the
-Codex and bubblewrap identities, the managed requirements hash,
-and every property result. Init, workers, and postprocess must
-reproduce the same receipt, and the Apex and direct-Codex comparison contracts must
-match before results are comparable.
+Codex, outer bubblewrap, and GPU-shim identities, the managed requirements hash,
+and every property result. Init, workers, and postprocess must reproduce the same
+receipt, and the Apex and direct-Codex comparison contracts must match before
+results are comparable.
 
 Do not treat Codex's legacy `sandbox: workspace-write` session label as proof of the
 effective policy. The pinned managed file and successful negative live probes are

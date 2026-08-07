@@ -17,7 +17,7 @@ max_iterations: 1
 # Matched campaigns own repetition across fresh workspaces/sessions. Keep one
 # Apex optimization attempt inside each outer session.
 campaign_max_iterations: 1
-max_turns: 25
+max_turns: 50
 timeout_seconds: 3600
 compile_timeout_seconds: 3600
 correctness_timeout_seconds: 3600

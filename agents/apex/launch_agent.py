@@ -34,12 +34,15 @@ from typing import Any, Iterable
 import yaml
 
 from agents import register_agent
+from src.agent_turn_budget import FORMAL_MATCHED_MAX_TURNS
 from src.module_registration import AgentType, load_prompt_builder
 from src.campaign_isolation import (
+    attempt_command_pass_fds,
     formal_gpu_evidence,
     is_formal_campaign,
     isolated_environment,
     prepare_attempt_home,
+    release_attempt_command_fds,
     wrap_attempt_command,
 )
 
@@ -386,8 +389,13 @@ def _build_task_spec(
     task_id = _task_id(task_config_path)
     campaign = eval_config.get("campaign") or {}
     iteration_budget = int(agent_config.get("max_iterations", 1))
+    max_turns = int(agent_config.get("max_turns", 25))
     if campaign.get("comparison") == "apex_vs_codex":
         iteration_budget = int(agent_config.get("campaign_max_iterations", 0))
+        if max_turns != FORMAL_MATCHED_MAX_TURNS:
+            raise ApexAdapterError(
+                f"formal Apex requires max_turns={FORMAL_MATCHED_MAX_TURNS}"
+            )
     return {
         "schema_version": _SCHEMA_VERSION,
         "task_id": task_id,
@@ -407,7 +415,7 @@ def _build_task_spec(
         },
         "budget": {
             "max_iterations": iteration_budget,
-            "max_turns": int(agent_config.get("max_turns", 25)),
+            "max_turns": max_turns,
             "timeout_seconds": int(agent_config.get("timeout_seconds", 3600)),
         },
         "recipe": {
@@ -585,15 +593,20 @@ def _run_apex(
     logger: logging.Logger,
     environment: dict[str, str] | None = None,
 ) -> ApexProcessOutcome:
-    process = subprocess.Popen(
-        command,
-        cwd=str(cwd),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=environment or _subprocess_environment(backend),
-        start_new_session=True,
-    )
+    pass_fds = attempt_command_pass_fds(command)
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=str(cwd),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=environment or _subprocess_environment(backend),
+            start_new_session=True,
+            pass_fds=pass_fds,
+        )
+    finally:
+        release_attempt_command_fds(command)
     assert process.stdout is not None
     assert process.stderr is not None
     stdout: list[bytes] = []
@@ -1462,12 +1475,6 @@ def launch_agent(
         if attempt_home is None:
             raise ApexAdapterError("formal campaign did not create an isolated agent home")
         process_environment = isolated_environment(process_environment, attempt_home)
-        isolated_command = wrap_attempt_command(
-            command,
-            eval_config=eval_config,
-            writable_roots=(artifact_root, attempt_home),
-            read_only_roots=(workspace_path,),
-        )
     output_limit = int(agent_config.get("max_process_output_bytes", _DEFAULT_OUTPUT_LIMIT))
     backend = task_spec["agent_backend"]
     logger.info("Apex preflight")
@@ -1490,6 +1497,12 @@ def launch_agent(
     }
     if formal_campaign:
         run_kwargs["environment"] = process_environment
+        isolated_command = wrap_attempt_command(
+            command,
+            eval_config=eval_config,
+            writable_roots=(artifact_root, attempt_home),
+            read_only_roots=(workspace_path,),
+        )
     outcome = _normalize_process_outcome(_run_apex(isolated_command, **run_kwargs))
     return_code = outcome.exit_code
     process_output = outcome.output

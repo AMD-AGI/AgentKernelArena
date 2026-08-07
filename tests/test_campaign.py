@@ -1,8 +1,12 @@
+import fcntl
 import logging
 import importlib
 import hashlib
 import json
+import os
+import runpy
 import sqlite3
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -36,7 +40,7 @@ def _policy() -> dict:
 
 def _runtime_isolation_receipt(*, yama_ptrace_scope: int = 1) -> dict:
     return {
-        "schema": "aka.runtime-isolation-receipt/v2",
+        "schema": "aka.runtime-isolation-receipt/v4",
         "policy": {
             "docker_capabilities": "drop_all",
             "docker_no_new_privileges": True,
@@ -82,7 +86,23 @@ def _runtime_isolation_receipt(*, yama_ptrace_scope: int = 1) -> dict:
             "credential_path": "~/.codex/auth.json",
             "credential_read": "deny",
             "command_network": "deny",
+            "device_access": (
+                "sealed_pinned_immutable_path_bwrap_with_docker_device_boundary"
+            ),
             "hooks": "disabled",
+        },
+        "codex_gpu_bubblewrap": {
+            "resolved_path": "/workspace/agents/codex/bin/bwrap",
+            "sha256": "9" * 64,
+            "size_bytes": 2381,
+            "interpreter": "/usr/bin/python3 -I",
+            "real_bwrap": "/usr/bin/bwrap",
+            "real_bwrap_sha256": "8" * 64,
+            "sandbox_mounted_path": "/tmp/aka-codex-gpu-bwrap/bwrap",
+            "mount_transport": (
+                "sealed_memfd_ro_bind_data_under_remounted_ro_tmpfs"
+            ),
+            "device_policy": "docker_visible_kfd_and_render_nodes_only",
         },
         "attempt_probe": {
             "campaign_data_hidden": True,
@@ -111,6 +131,13 @@ def _runtime_isolation_receipt(*, yama_ptrace_scope: int = 1) -> dict:
             "outer_fd_alias_blocked": True,
             "outer_environ_alias_blocked": True,
             "outer_mem_alias_blocked": True,
+            "pinned_gpu_bwrap_active": True,
+            "gpu_bwrap_directory_immutable": True,
+            "gpu_bwrap_path_immutable": True,
+            "assigned_gpu_devices_visible": True,
+            "assigned_gpu_devices_writable": True,
+            "single_gpu_runtime_visible": True,
+            "gpu_compute_probe_passed": True,
         },
     }
 
@@ -152,6 +179,14 @@ def test_runtime_isolation_receipt_records_only_stable_namespace_evidence(
             _runtime_isolation_receipt()["codex_cli"],
         ),
     )
+    monkeypatch.setattr(
+        campaign_isolation,
+        "_codex_gpu_bwrap_identity",
+        lambda: (
+            Path("/workspace/agents/codex/bin/bwrap"),
+            _runtime_isolation_receipt()["codex_gpu_bubblewrap"],
+        ),
+    )
     observed: dict[str, object] = {}
 
     def fake_probe(*, binary, data_root, outer):
@@ -172,6 +207,9 @@ def test_runtime_isolation_receipt_records_only_stable_namespace_evidence(
     assert "ipc_namespace" not in receipt["outer_runtime"]
     assert observed["outer"] is outer
     assert receipt["attempt_probe"]["parent_root_escape_blocked"] is True
+    assert receipt["policy"]["command_gpu_access"] == (
+        "sealed_memfd_immutable_path_bwrap_and_single_gpu_probe_v1"
+    )
 
 
 def test_attempt_escape_probe_rejects_non_policy_proc_errors(tmp_path, monkeypatch) -> None:
@@ -220,6 +258,9 @@ def test_codex_requirements_are_content_pinned(tmp_path, monkeypatch) -> None:
     assert identity["permission_profile"] == "aka_formal_kernel_v1"
     assert identity["credential_read"] == "deny"
     assert identity["command_network"] == "deny"
+    assert identity["device_access"] == (
+        "sealed_pinned_immutable_path_bwrap_with_docker_device_boundary"
+    )
 
     changed = tmp_path / "requirements.toml"
     changed.write_bytes(requirements.read_bytes() + b"\n# changed\n")
@@ -247,31 +288,275 @@ def test_codex_sandbox_probe_uses_managed_profile(tmp_path, monkeypatch) -> None
                 "outer_fd_alias_blocked": True,
                 "outer_environ_alias_blocked": True,
                 "outer_mem_alias_blocked": True,
+                "pinned_gpu_bwrap_active": True,
+                "gpu_bwrap_directory_immutable": True,
+                "gpu_bwrap_path_immutable": True,
+                "assigned_gpu_devices_visible": True,
+                "assigned_gpu_devices_writable": True,
+                "single_gpu_runtime_visible": True,
+                "gpu_compute_probe_passed": True,
             }
         )
 
     def fake_run(command, **kwargs):
         observed["command"] = command
         observed["environment"] = kwargs["env"]
+        observed["pass_fds"] = kwargs["pass_fds"]
         return Completed()
 
+    wrapper = (
+        Path(__file__).resolve().parents[1] / "agents" / "codex" / "bin" / "bwrap"
+    )
     monkeypatch.setattr(campaign_isolation.subprocess, "run", fake_run)
 
     result = campaign_isolation._codex_sandbox_probe(
         codex_binary=Path("/opt/node/bin/codex"),
         bubblewrap_binary=Path("/usr/bin/bwrap"),
+        gpu_bubblewrap_binary=wrapper,
         data_root=tmp_path,
     )
 
     command = observed["command"]
     assert result["credential_read_denied"] is True
     assert result["inner_pid_namespace_unshared"] is True
+    assert result["pinned_gpu_bwrap_active"] is True
+    assert result["gpu_bwrap_directory_immutable"] is True
+    assert result["gpu_bwrap_path_immutable"] is True
+    assert result["assigned_gpu_devices_visible"] is True
+    assert result["assigned_gpu_devices_writable"] is True
+    assert result["single_gpu_runtime_visible"] is True
+    assert result["gpu_compute_probe_passed"] is True
     assert "--include-managed-config" in command
     profile_index = command.index("--permission-profile")
     assert command[profile_index + 1] == "aka_formal_kernel_v1"
     assert "--unshare-pid" not in command[: command.index("--")]
     environment = observed["environment"]
     assert environment["CODEX_HOME"].endswith("/home/.codex")
+    assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert environment["PATH"].startswith("/tmp/aka-codex-gpu-bwrap:")
+    trusted_path = str(campaign_isolation._CODEX_GPU_BWRAP_TRUSTED_PATH)
+    trusted_dir = str(campaign_isolation._CODEX_GPU_BWRAP_TRUSTED_DIR)
+    bind_index = command.index(trusted_path)
+    assert command[bind_index - 2] == "--ro-bind-data"
+    assert int(command[bind_index - 1]) in observed["pass_fds"]
+    assert ["--tmpfs", trusted_dir] == command[
+        command.index("--tmpfs", command.index(trusted_dir) + 1) :
+        command.index("--tmpfs", command.index(trusted_dir) + 1) + 2
+    ]
+    assert ["--remount-ro", trusted_dir] == command[bind_index + 1 : bind_index + 3]
+
+
+def test_codex_sandbox_probe_fails_closed_when_gpu_compute_is_unavailable(
+    tmp_path, monkeypatch
+) -> None:
+    class Completed:
+        returncode = 74
+        stderr = ""
+        stdout = json.dumps(
+            _runtime_isolation_receipt()["codex_sandbox_probe"]
+            | {"gpu_compute_probe_passed": False}
+        )
+
+    monkeypatch.setattr(
+        campaign_isolation.subprocess,
+        "run",
+        lambda *_args, **_kwargs: Completed(),
+    )
+    wrapper = (
+        Path(__file__).resolve().parents[1] / "agents" / "codex" / "bin" / "bwrap"
+    )
+
+    with pytest.raises(
+        campaign_isolation.CampaignIsolationError,
+        match="managed sandbox probe failed closed",
+    ):
+        campaign_isolation._codex_sandbox_probe(
+            codex_binary=Path("/opt/node/bin/codex"),
+            bubblewrap_binary=Path("/usr/bin/bwrap"),
+            gpu_bubblewrap_binary=wrapper,
+            data_root=tmp_path,
+        )
+
+
+def test_codex_gpu_bwrap_injects_only_docker_visible_gpu_devices() -> None:
+    wrapper = (
+        Path(__file__).resolve().parents[1] / "agents" / "codex" / "bin" / "bwrap"
+    )
+    namespace = runpy.run_path(str(wrapper), run_name="aka_gpu_bwrap_test")
+    inject = namespace["inject_gpu_devices"]
+    original = ["--ro-bind", "/", "/", "--dev", "/dev", "--unshare-pid"]
+
+    transformed = inject(
+        original,
+        [Path("/dev/kfd"), Path("/dev/dri/renderD136")],
+    )
+
+    assert transformed == [
+        "--ro-bind",
+        "/",
+        "/",
+        "--dev",
+        "/dev",
+        "--dir",
+        "/dev/dri",
+        "--dev-bind",
+        "/dev/kfd",
+        "/dev/kfd",
+        "--dev-bind",
+        "/dev/dri/renderD136",
+        "/dev/dri/renderD136",
+        "--unshare-pid",
+    ]
+    assert original == ["--ro-bind", "/", "/", "--dev", "/dev", "--unshare-pid"]
+    with pytest.raises(ValueError, match="exactly one"):
+        inject(["--ro-bind", "/", "/"], [Path("/dev/kfd")])
+
+
+def test_codex_gpu_bwrap_delegates_capability_probes_unchanged(monkeypatch) -> None:
+    wrapper = (
+        Path(__file__).resolve().parents[1] / "agents" / "codex" / "bin" / "bwrap"
+    )
+    namespace = runpy.run_path(str(wrapper), run_name="aka_gpu_bwrap_probe_test")
+    observed: list[tuple[Path, list[str]]] = []
+
+    class ExecCalled(Exception):
+        pass
+
+    def fake_execv(path, argv):
+        observed.append((path, argv))
+        raise ExecCalled
+
+    monkeypatch.setattr(namespace["os"], "execv", fake_execv)
+    for argument in ("--help", "--version"):
+        with pytest.raises(ExecCalled):
+            namespace["main"]([argument])
+
+    assert observed == [
+        (Path("/usr/bin/bwrap"), ["/usr/bin/bwrap", "--help"]),
+        (Path("/usr/bin/bwrap"), ["/usr/bin/bwrap", "--version"]),
+    ]
+
+
+def test_codex_gpu_bwrap_python_startup_ignores_user_and_environment_code(
+    tmp_path,
+) -> None:
+    wrapper = (
+        Path(__file__).resolve().parents[1] / "agents" / "codex" / "bin" / "bwrap"
+    )
+    home = tmp_path / "home"
+    poison = tmp_path / "python-path"
+    marker = tmp_path / "python-startup-marker"
+    user_site = home / ".local/lib/python3.10/site-packages"
+    user_site.mkdir(parents=True)
+    poison.mkdir()
+    payload = (
+        "import os\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['AKA_PYTHON_STARTUP_MARKER']).write_text('loaded')\n"
+    )
+    (user_site / "usercustomize.py").write_text(payload, encoding="utf-8")
+    (poison / "sitecustomize.py").write_text(payload, encoding="utf-8")
+    environment = dict(os.environ)
+    environment.update(
+        {
+            "HOME": str(home),
+            "PYTHONPATH": str(poison),
+            "AKA_PYTHON_STARTUP_MARKER": str(marker),
+        }
+    )
+    environment.pop("PYTHONNOUSERSITE", None)
+
+    control = subprocess.run(
+        ["/usr/bin/python3", "-c", "pass"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=environment,
+    )
+    assert control.returncode == 0, control.stderr
+    assert marker.read_text(encoding="utf-8") == "loaded"
+    marker.unlink()
+
+    for argument in ("--help", "--version"):
+        completed = subprocess.run(
+            [str(wrapper), argument],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=environment,
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert not marker.exists()
+
+
+def test_codex_gpu_bwrap_transport_is_content_pinned_and_sealed() -> None:
+    wrapper = (
+        Path(__file__).resolve().parents[1] / "agents" / "codex" / "bin" / "bwrap"
+    )
+    descriptor = campaign_isolation._sealed_codex_gpu_bwrap(wrapper)
+    try:
+        seals = (
+            fcntl.F_SEAL_WRITE
+            | fcntl.F_SEAL_SHRINK
+            | fcntl.F_SEAL_GROW
+            | fcntl.F_SEAL_SEAL
+        )
+        assert fcntl.fcntl(descriptor, fcntl.F_GET_SEALS) == seals
+        payload = os.read(descriptor, 1024 * 1024)
+        assert hashlib.sha256(payload).hexdigest() == (
+            campaign_isolation._CODEX_GPU_BWRAP_SHA256
+        )
+        with pytest.raises(OSError):
+            os.write(descriptor, b"changed")
+    finally:
+        os.close(descriptor)
+
+
+def test_wrapped_attempt_command_releases_owned_descriptors_idempotently() -> None:
+    descriptor = os.memfd_create("aka-test-command")
+    command = campaign_isolation.WrappedAttemptCommand(
+        ["/bin/true"], pass_fds=(descriptor,)
+    )
+
+    assert campaign_isolation.attempt_command_pass_fds(command) == (descriptor,)
+    campaign_isolation.release_attempt_command_fds(command)
+    campaign_isolation.release_attempt_command_fds(command)
+
+    assert campaign_isolation.attempt_command_pass_fds(command) == ()
+    with pytest.raises(OSError):
+        os.fstat(descriptor)
+
+
+def test_codex_gpu_bwrap_is_content_pinned(tmp_path, monkeypatch) -> None:
+    wrapper, identity = campaign_isolation._codex_gpu_bwrap_identity()
+
+    assert wrapper.name == "bwrap"
+    assert identity["device_policy"] == "docker_visible_kfd_and_render_nodes_only"
+    assert identity["size_bytes"] == campaign_isolation._CODEX_GPU_BWRAP_SIZE_BYTES
+    assert identity["real_bwrap_sha256"] == (
+        campaign_isolation._CODEX_GPU_REAL_BWRAP_SHA256
+    )
+
+    changed = tmp_path / "bwrap"
+    changed.write_bytes(wrapper.read_bytes() + b"\n# changed\n")
+    changed.chmod(0o755)
+    monkeypatch.setattr(campaign_isolation, "_CODEX_GPU_BWRAP_PATH", changed)
+    with pytest.raises(
+        campaign_isolation.CampaignIsolationError,
+        match="violates its pin",
+    ):
+        campaign_isolation._codex_gpu_bwrap_identity()
+
+    monkeypatch.setattr(campaign_isolation, "_CODEX_GPU_BWRAP_PATH", wrapper)
+    changed_real = tmp_path / "real-bwrap"
+    changed_real.write_bytes(Path("/usr/bin/bwrap").read_bytes() + b"changed")
+    changed_real.chmod(0o755)
+    monkeypatch.setattr(campaign_isolation, "_CODEX_GPU_REAL_BWRAP_PATH", changed_real)
+    with pytest.raises(
+        campaign_isolation.CampaignIsolationError,
+        match="real bwrap violates its pin",
+    ):
+        campaign_isolation._codex_gpu_bwrap_identity()
 
 
 def test_outer_runtime_isolation_fails_closed_on_yama_or_capabilities(monkeypatch) -> None:
@@ -423,6 +708,11 @@ def test_formal_attempt_mount_keeps_workspace_read_only_and_artifacts_private(
                 f"test ! -e {sibling} && "
                 f"test ! -e {state_root / 'history.jsonl'} && "
                 f"test ! -e {shm_sentinel} && "
+                f"! mv {campaign_isolation._CODEX_GPU_BWRAP_TRUSTED_DIR} "
+                f"{campaign_isolation._CODEX_GPU_BWRAP_TRUSTED_DIR}-moved && "
+                f"! rm {campaign_isolation._CODEX_GPU_BWRAP_TRUSTED_PATH} && "
+                f"! printf malicious > "
+                f"{campaign_isolation._CODEX_GPU_BWRAP_TRUSTED_PATH} && "
                 f"test \"$(cat {source})\" = baseline && "
                 f"! printf changed > {source} && "
                 f"printf artifact > {artifact_root / 'probe.txt'} && "
@@ -442,7 +732,12 @@ def test_formal_attempt_mount_keeps_workspace_read_only_and_artifacts_private(
     assert "--proc" not in command
 
     try:
-        completed = campaign.subprocess.run(command, capture_output=True, text=True)
+        completed = campaign.subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            pass_fds=campaign_isolation.attempt_command_pass_fds(command),
+        )
 
         assert completed.returncode == 0, completed.stderr
         assert source.read_text(encoding="utf-8") == "baseline\n"
@@ -451,6 +746,7 @@ def test_formal_attempt_mount_keeps_workspace_read_only_and_artifacts_private(
         assert (sibling / "secret.txt").read_text(encoding="utf-8") == "prior attempt\n"
         assert shm_sentinel.read_text(encoding="utf-8") == "host-visible\n"
     finally:
+        campaign_isolation.release_attempt_command_fds(command)
         shm_sentinel.unlink(missing_ok=True)
 
 
@@ -486,7 +782,7 @@ def _write_campaign_codex_contract(run_directory: Path) -> dict:
         "effort": "xhigh",
         "codex_version": "codex-cli test",
         "codex_binary_sha256": "a" * 64,
-        "max_turns": 25,
+        "max_turns": 50,
         "turn_policy": "structured_agent_turn_v1",
         "structured_stream_output_limit_bytes": 16 * 1024 * 1024,
         "isolation": {
@@ -599,7 +895,7 @@ def _write_valid_codex_receipt(receipt_path: Path, codex_contract: dict) -> Path
         },
         "turn_budget": {
             "policy": "structured_agent_turn_v1",
-            "max_turns": 25,
+            "max_turns": 50,
             "observed_turns": 1,
             "budget_exceeded": False,
             "enforcement_failed": False,
@@ -680,7 +976,7 @@ def _write_valid_codex_receipt(receipt_path: Path, codex_contract: dict) -> Path
             "prompt_sha256": "b" * 64,
             "workspace": str(receipt_path.parent / "workspace"),
             "editable_files": ["kernel.py"],
-            "max_turns": 25,
+            "max_turns": 50,
             "turn_policy": "structured_agent_turn_v1",
             "structured_stream_output_limit_bytes": 16 * 1024 * 1024,
             "isolation": codex_contract["isolation"],
@@ -693,7 +989,9 @@ def _write_valid_codex_receipt(receipt_path: Path, codex_contract: dict) -> Path
     return artifact_payloads["raw_stdout"][0]
 
 
-def _write_valid_apex_receipt(receipt_path: Path, codex_contract: dict) -> None:
+def _write_valid_apex_receipt(
+    receipt_path: Path, codex_contract: dict, *, max_turns: int = 50
+) -> None:
     artifact_dir = receipt_path.parent / f".{receipt_path.stem}.artifacts"
     artifact_dir.mkdir(parents=True)
     baseline_hashes = {"source/kernel.py": "1" * 64}
@@ -716,7 +1014,7 @@ def _write_valid_apex_receipt(receipt_path: Path, codex_contract: dict) -> None:
         "prompt_transport": "stdin",
         "requested_allowed_files": ["source/kernel.py"],
         "allowed_files_enforced_by_cli": False,
-        "max_turns": 25,
+        "max_turns": max_turns,
         "turn_policy": "structured_agent_turn_v1",
         "isolation": {
             key: value
@@ -827,7 +1125,11 @@ def _write_valid_apex_receipt(receipt_path: Path, codex_contract: dict) -> None:
             "model": codex_contract["model"],
             "effort": codex_contract["effort"],
         },
-        "budget": {"max_turns": 25, "timeout_seconds": 3600},
+        "budget": {
+            "max_iterations": 1,
+            "max_turns": max_turns,
+            "timeout_seconds": 3600,
+        },
         "baseline": {"file_hashes": baseline_hashes},
     }
     result = {
@@ -1079,7 +1381,7 @@ def test_manifest_names_native_100_repetition_score_not_apex_grade(
             "permission_mode": "workspace_write_isolated",
             "inner_max_iterations": 1,
             "attempt_timeout_seconds": 3600,
-            "max_turns": 25,
+            "max_turns": 50,
             "turn_policy": "structured_agent_turn_v1",
             "structured_stream_output_limit_bytes": 16 * 1024 * 1024,
             "codex_version": "codex 1.0",
@@ -1339,7 +1641,7 @@ def test_comparison_contract_hash_ignores_treatment_template(tmp_path, monkeypat
             "permission_mode": "workspace_write_isolated",
             "inner_max_iterations": 1,
             "attempt_timeout_seconds": 3600,
-            "max_turns": 25,
+            "max_turns": 50,
             "turn_policy": "structured_agent_turn_v1",
             "structured_stream_output_limit_bytes": 16 * 1024 * 1024,
             "codex_version": "codex 1.0",
@@ -1392,7 +1694,7 @@ def test_comparison_contract_projects_run_specific_gpu_lease_receipts() -> None:
         "permission_mode": "workspace_write_isolated",
         "inner_max_iterations": 1,
         "attempt_timeout_seconds": 3600,
-        "max_turns": 25,
+        "max_turns": 50,
         "turn_policy": "structured_agent_turn_v1",
         "structured_stream_output_limit_bytes": 16 * 1024 * 1024,
         "codex_version": "codex test",
@@ -1645,6 +1947,28 @@ def test_apex_receipt_recomputes_result_event_invocation_and_transcript_lineage(
         run_directory=run,
     )
     assert "apex_workspace_pre_apply_integrity_invalid" in errors
+    (receipt_path.parent / f".{receipt_path.stem}.artifacts").chmod(0o700)
+
+
+def test_apex_receipt_rejects_turn_budget_drift_from_comparison_contract(
+    tmp_path,
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(receipt_path, codex_contract, max_turns=49)
+
+    _, errors = campaign._validate_session_receipt(
+        receipt_path=receipt_path,
+        workspace=workspace,
+        run_directory=run,
+    )
+
+    assert "apex_task_spec_budget_contract_mismatch" in errors
+    assert "apex_inner_codex_invocation_contract_mismatch" in errors
     (receipt_path.parent / f".{receipt_path.stem}.artifacts").chmod(0o700)
 
 

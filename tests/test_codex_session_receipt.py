@@ -40,6 +40,7 @@ print(json.dumps({
     "type": "isolation.probe",
     "home": os.environ.get("HOME"),
     "codex_home": os.environ.get("CODEX_HOME"),
+    "dont_write_bytecode": os.environ.get("PYTHONDONTWRITEBYTECODE") == "1",
     "forbidden_exists": os.path.exists(os.environ.get("FAKE_FORBIDDEN_PATH", "/missing")),
 }), flush=True)
 
@@ -54,7 +55,7 @@ if mode == "temporary_workspace_changes":
         stream.write(b"temporary")
 
 if mode == "turn_limit":
-    for index in range(26):
+    for index in range(51):
         print(json.dumps({
             "type": "item.completed",
             "item": {"type": "agent_message", "text": f"turn-{index}"},
@@ -301,6 +302,7 @@ def test_formal_session_uses_auth_only_home_and_cannot_see_sibling_attempt(
             "type": "isolation.probe",
             "home": str(attempt_home),
             "codex_home": str(attempt_home / ".codex"),
+            "dont_write_bytecode": True,
             "forbidden_exists": False,
         }
         assert (attempt_home / ".codex/auth.json").is_file()
@@ -310,7 +312,7 @@ def test_formal_session_uses_auth_only_home_and_cannot_see_sibling_attempt(
         )
         assert receipt["turn_budget"] == {
             "policy": "structured_agent_turn_v1",
-            "max_turns": 25,
+            "max_turns": 50,
             "observed_turns": 1,
             "budget_exceeded": False,
             "enforcement_failed": False,
@@ -383,7 +385,7 @@ def test_formal_workspace_is_sanitized_to_declared_source_only(
         shutil.rmtree(binary_parent)
 
 
-def test_direct_codex_turn_budget_stops_twenty_sixth_decision(
+def test_direct_codex_turn_budget_stops_fifty_first_decision(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _install_fake_codex(tmp_path, monkeypatch)
@@ -400,8 +402,8 @@ def test_direct_codex_turn_budget_stops_twenty_sixth_decision(
 
     receipt = _load_receipt(receipt_path)
     try:
-        assert receipt["turn_budget"]["max_turns"] == 25
-        assert receipt["turn_budget"]["observed_turns"] >= 26
+        assert receipt["turn_budget"]["max_turns"] == 50
+        assert receipt["turn_budget"]["observed_turns"] >= 51
         assert receipt["turn_budget"]["budget_exceeded"] is True
         assert receipt["session_succeeded"] is False
     finally:

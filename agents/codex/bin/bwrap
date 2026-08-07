@@ -1,0 +1,65 @@
+#!/usr/bin/python3 -I
+"""Pinned Codex bubblewrap shim that restores Docker-approved ROCm devices."""
+
+from __future__ import annotations
+
+import os
+import stat
+import sys
+from pathlib import Path
+
+
+REAL_BWRAP = Path("/usr/bin/bwrap")
+DEV_ROOT = Path("/dev")
+
+
+def inject_gpu_devices(argv: list[str], devices: list[Path]) -> list[str]:
+    """Insert explicit device binds immediately after Codex's fresh /dev mount."""
+    mount_points = [
+        index
+        for index in range(len(argv) - 1)
+        if argv[index] == "--dev" and argv[index + 1] == "/dev"
+    ]
+    if len(mount_points) != 1:
+        raise ValueError("expected exactly one Codex --dev /dev boundary")
+    if not devices or devices[0] != DEV_ROOT / "kfd":
+        raise ValueError("GPU device set must begin with /dev/kfd")
+    if any(device.parent != DEV_ROOT / "dri" for device in devices[1:]):
+        raise ValueError("GPU device set contains a non-render device")
+
+    insertion = ["--dir", "/dev/dri"]
+    for device in devices:
+        insertion.extend(("--dev-bind", str(device), str(device)))
+    offset = mount_points[0] + 2
+    return [*argv[:offset], *insertion, *argv[offset:]]
+
+
+def discover_gpu_devices() -> list[Path]:
+    devices = [DEV_ROOT / "kfd", *sorted((DEV_ROOT / "dri").glob("renderD*"))]
+    if len(devices) < 2:
+        raise RuntimeError("Docker exposed no complete ROCm device boundary")
+    for device in devices:
+        metadata = device.stat()
+        if device.is_symlink() or not stat.S_ISCHR(metadata.st_mode):
+            raise RuntimeError(f"unsafe ROCm device node: {device}")
+    return devices
+
+
+def main(argv: list[str]) -> int:
+    # Codex probes system bubblewrap candidates with --help before selecting one.
+    # Keep capability discovery byte-for-byte owned by the pinned real binary;
+    # device injection is required only for an actual sandbox invocation.
+    if argv in (["--help"], ["--version"]):
+        os.execv(REAL_BWRAP, [str(REAL_BWRAP), *argv])
+    try:
+        transformed = inject_gpu_devices(argv, discover_gpu_devices())
+    except (OSError, RuntimeError, ValueError) as error:
+        print(f"aka-gpu-bwrap: {error}", file=sys.stderr)
+        return 78
+    os.environ["AKA_CODEX_GPU_BWRAP_ACTIVE"] = "1"
+    os.execv(REAL_BWRAP, [str(REAL_BWRAP), *transformed])
+    return 127
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

@@ -115,7 +115,12 @@ run. The outer attempt keeps Docker's private PID namespace and writable `/proc`
 for nested Codex user namespaces, while live probes require parent
 root/fd/environ/mem access to remain blocked. The managed Codex profile is tested
 separately for workspace write access, credential-read denial, and command-network
-denial. It also requires a distinct inner PID namespace. The inherited procfs can
+denial. A content-pinned bubblewrap shim is transported through a sealed memfd and
+mounted beneath a dedicated read-only mountpoint before it restores only
+Docker-approved KFD/render devices inside Codex's private `/dev`. The probe
+requires rename/unlink/replace/write attacks against that path to fail and
+requires a distinct inner PID namespace, exactly one visible ROCm device, and a
+successful Torch allocation plus reduction on that GPU. The inherited procfs can
 show the outer status entry, but root/fd/environ/mem aliases must remain unreadable.
 
 ## Run across multiple GPUs

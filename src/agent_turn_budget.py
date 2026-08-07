@@ -8,6 +8,7 @@ from collections.abc import Mapping
 
 
 TURN_POLICY = "structured_agent_turn_v1"
+FORMAL_MATCHED_MAX_TURNS = 50
 
 
 class AgentTurnBudget:
