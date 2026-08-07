@@ -42,7 +42,7 @@ byte-for-byte. An oversized prompt with a missing or ambiguous boundary, or one 
 remains over the bound, fails closed; the adapter never applies arbitrary truncation.
 Formal TaskSpecs also carry `caller_run_control`, a structured copy of the matched
 execution contract. It fixes one deliverable version, 50
-`structured_agent_turn_v1` turns (each assistant message and each tool-call start
+`structured_agent_turn_checkpoint_v2` turns (each assistant message and each tool-call start
 counts once), and requires the agent to leave its best source in the editable files
 before the boundary. The caller-selected `AGENT_KERNEL_ARENA_PYTHON` must be an
 absolute, executable interpreter; a formal launch fails closed if it is absent. The
@@ -186,9 +186,9 @@ at 4 MiB. Apex receipts additionally snapshot the
 TaskSpec, TaskResult, checksummed event journal, canonical agent transcript, and
 terminal verdict lineage. The event-bound inner agent prompt is also copied into the
 outer immutable receipt, so later audits do not depend on a still-live Apex CAS path.
-New formal receipts use `agentkernelarena.apex-attempt-receipt/v2`; the campaign
+New formal receipts use `agentkernelarena.apex-attempt-receipt/v3`; the campaign
 manifest freezes that schema before any attempt starts. The auditor keeps explicit
-read-only support for sealed v1 history, but a v2 receipt cannot drop these fields or
+read-only support for sealed v1/v2 history, but a v3 receipt cannot drop these fields or
 change its schema to select the legacy validation path. Receipt dispatch is selected
 from the sealed manifest's agent template and schema, never from the receipt's own
 type claim, so an Apex and direct-Codex receipt cannot be substituted for each other.
@@ -212,8 +212,25 @@ when it races the observer or `-15` after normal SIGTERM cleanup; it is evidence
 the budget verdict. Formal lineage is validated before the
 outer Apex return code is rejected, so a failed session retains audit evidence while
 still raising and keeping `session_succeeded=false`. A nonzero `no_gain` is invalid.
-The two observer stop reasons are exact: `max_turns_exhausted_before_follow_up`
-requires exactly 50 turns, while `max_turns_exceeded` requires more than 50. A valid
+At the exact 50-turn boundary, both arms synchronously stop the complete inner
+Codex process group with `SIGSTOP` and verify every live member is stopped before
+capturing any candidate bytes. Policy `sigstop_process_group_snapshot_v1` is bound
+by comparison-contract v3, the invocation, transcript, event, and attempt receipt.
+Direct Codex snapshots only declared source while the group is quiescent, then sends
+TERM plus CONT, verifies the group is absent, drains and digests the post-boundary
+stdout tail, restores the baseline, and reapplies only the stopped-state snapshot.
+A cleanup handler or late tool write therefore cannot alter the retained candidate.
+Apex emits the same suspension proof and discarded-tail digest; its exact-boundary
+candidate must additionally traverse the frozen-source, compile, correctness, safety,
+measurement, reward, decision, and immutable-bundle gate chain. A count of 49 is not
+an exact-boundary checkpoint, 51 is always an overrun, and timeout, truncation,
+unverified suspension, or cleanup failure is ineligible. Older schemas cannot claim
+this checkpoint path. These receipts only govern source persistence; AgentKernelArena's
+outer evaluator remains the sole authority for scored correctness and performance.
+
+The historical observer stop reasons remain exact:
+`max_turns_exhausted_before_follow_up` requires exactly 50 turns, while
+`max_turns_exceeded` requires more than 50. A valid
 `no_gain` is an audited successful session but its central baseline replay is marked
 `no_candidate_baseline_replay_v1` and can never enter campaign selection. Failed sessions and
 untrusted evidence remain diagnostic-only: they cannot create the ordinary task

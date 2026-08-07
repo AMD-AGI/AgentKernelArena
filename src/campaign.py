@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
@@ -10,18 +11,22 @@ import math
 import os
 import re
 import shutil
+import signal
 import sqlite3
 import stat
 import subprocess
 import time
 from dataclasses import asdict, dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 import yaml
 
 from src.agent_turn_budget import (
+    BOUNDARY_QUIESCENCE_POLICY,
+    CANDIDATE_PERSISTENCE_POLICY,
     FORMAL_MATCHED_MAX_TURNS,
+    LEGACY_TURN_POLICY,
     TURN_POLICY,
     budget_stop_reason_matches,
     context_packet_objective_matches,
@@ -42,10 +47,26 @@ _SELECTION_POLICY = "correctness_then_measured_rate_v1"
 _MEASUREMENT_CONTRACT = "aka_native_100_repetition_external_score"
 _OBJECTIVE_POLICY_ID = "aka.task-package-objective-and-protected-harness/v1"
 _PROMPT_POLICY_ID = "aka.shared-objective-backend-native-context-receipted/v1"
-_CODEX_RECEIPT_SCHEMA = "agentkernelarena.codex-attempt-receipt/v1"
+_COMPARISON_CONTRACT_SCHEMA_V1 = "aka.apex-vs-codex-comparison-contract/v1"
+_COMPARISON_CONTRACT_SCHEMA_V2 = "aka.apex-vs-codex-comparison-contract/v2"
+_COMPARISON_CONTRACT_SCHEMA_V3 = "aka.apex-vs-codex-comparison-contract/v3"
+_CODEX_RECEIPT_SCHEMA_V1 = "agentkernelarena.codex-attempt-receipt/v1"
+_CODEX_RECEIPT_SCHEMA_V2 = "agentkernelarena.codex-attempt-receipt/v2"
+_CODEX_RECEIPT_SCHEMA_V3 = "agentkernelarena.codex-attempt-receipt/v3"
+_CODEX_RECEIPT_SCHEMA = _CODEX_RECEIPT_SCHEMA_V3
+_CODEX_RECEIPT_SCHEMAS = {
+    _CODEX_RECEIPT_SCHEMA_V1,
+    _CODEX_RECEIPT_SCHEMA_V2,
+    _CODEX_RECEIPT_SCHEMA_V3,
+}
 _APEX_RECEIPT_SCHEMA_V1 = "agentkernelarena.apex-attempt-receipt/v1"
 _APEX_RECEIPT_SCHEMA_V2 = "agentkernelarena.apex-attempt-receipt/v2"
-_APEX_RECEIPT_SCHEMAS = {_APEX_RECEIPT_SCHEMA_V1, _APEX_RECEIPT_SCHEMA_V2}
+_APEX_RECEIPT_SCHEMA_V3 = "agentkernelarena.apex-attempt-receipt/v3"
+_APEX_RECEIPT_SCHEMAS = {
+    _APEX_RECEIPT_SCHEMA_V1,
+    _APEX_RECEIPT_SCHEMA_V2,
+    _APEX_RECEIPT_SCHEMA_V3,
+}
 _SHA1 = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
@@ -347,7 +368,7 @@ def _agent_manifest(repo_root: Path, agent_name: str, policy: CampaignPolicy) ->
     return {
         "template": agent_name,
         "session_receipt_schema": (
-            _APEX_RECEIPT_SCHEMA_V2
+            _APEX_RECEIPT_SCHEMA_V3
             if agent_name == "apex"
             else _CODEX_RECEIPT_SCHEMA
         ),
@@ -359,6 +380,7 @@ def _agent_manifest(repo_root: Path, agent_name: str, policy: CampaignPolicy) ->
         "attempt_timeout_seconds": config["timeout_seconds"],
         "max_turns": config["max_turns"],
         "turn_policy": TURN_POLICY,
+        "boundary_quiescence_policy_id": BOUNDARY_QUIESCENCE_POLICY,
         "max_process_output_bytes": config["max_process_output_bytes"],
         "structured_stream_output_limit_bytes": config[
             "structured_stream_output_limit_bytes"
@@ -452,11 +474,26 @@ def _load_verified_campaign_manifest(run_directory: Path) -> dict[str, Any]:
     manifest = _load_mapping(manifest_path, "campaign manifest")
     comparison = manifest.get("comparison_contract")
     comparison_digest = manifest.get("comparison_contract_sha256")
+    comparison_schema = comparison.get("schema") if isinstance(comparison, dict) else None
+    persistence_contract_valid = (
+        comparison_schema == _COMPARISON_CONTRACT_SCHEMA_V1
+        and "candidate_persistence_policy_id" not in comparison
+    ) or (
+        comparison_schema == _COMPARISON_CONTRACT_SCHEMA_V2
+        and comparison.get("candidate_persistence_policy_id")
+        == CANDIDATE_PERSISTENCE_POLICY
+        and "boundary_quiescence_policy_id" not in comparison
+    ) or (
+        comparison_schema == _COMPARISON_CONTRACT_SCHEMA_V3
+        and comparison.get("candidate_persistence_policy_id")
+        == CANDIDATE_PERSISTENCE_POLICY
+        and comparison.get("boundary_quiescence_policy_id")
+        == BOUNDARY_QUIESCENCE_POLICY
+    )
     if (
         manifest.get("schema") != _CAMPAIGN_SCHEMA
         or not isinstance(comparison, dict)
-        or comparison.get("schema")
-        != "aka.apex-vs-codex-comparison-contract/v1"
+        or not persistence_contract_valid
         or comparison.get("objective_policy_id") != _OBJECTIVE_POLICY_ID
         or comparison.get("prompt_policy_id") != _PROMPT_POLICY_ID
         or not isinstance(comparison_digest, str)
@@ -609,7 +646,11 @@ def _comparison_contract(
     tasks: list[dict[str, Any]],
 ) -> dict[str, Any]:
     effective_codex = {
-        key: agent[key]
+        key: (
+            agent.get(key, BOUNDARY_QUIESCENCE_POLICY)
+            if key == "boundary_quiescence_policy_id"
+            else agent[key]
+        )
         for key in (
             "backend",
             "model",
@@ -619,6 +660,7 @@ def _comparison_contract(
             "attempt_timeout_seconds",
             "max_turns",
             "turn_policy",
+            "boundary_quiescence_policy_id",
             "structured_stream_output_limit_bytes",
             "codex_version",
             "codex_binary_sha256",
@@ -649,9 +691,11 @@ def _comparison_contract(
             }
         comparison_runtime["gpu"] = comparison_gpu
     return {
-        "schema": "aka.apex-vs-codex-comparison-contract/v1",
+        "schema": _COMPARISON_CONTRACT_SCHEMA_V3,
         "objective_policy_id": _OBJECTIVE_POLICY_ID,
         "prompt_policy_id": _PROMPT_POLICY_ID,
+        "candidate_persistence_policy_id": CANDIDATE_PERSISTENCE_POLICY,
+        "boundary_quiescence_policy_id": BOUNDARY_QUIESCENCE_POLICY,
         "policy": asdict(policy),
         "measurement": measurement,
         "repositories": repositories,
@@ -984,10 +1028,10 @@ def _expected_session_receipt_schema(run_directory: Path) -> str | None:
             return _APEX_RECEIPT_SCHEMA_V1
         return expected if expected in _APEX_RECEIPT_SCHEMAS else None
     if template == "codex":
-        # Direct Codex has had one receipt generation; accept marker-less history.
+        # Marker-less sealed history predates exact-boundary checkpoints.
         if expected is None:
-            return _CODEX_RECEIPT_SCHEMA
-        return expected if expected == _CODEX_RECEIPT_SCHEMA else None
+            return _CODEX_RECEIPT_SCHEMA_V1
+        return expected if expected in _CODEX_RECEIPT_SCHEMAS else None
     return None
 
 
@@ -1136,10 +1180,33 @@ def _validate_session_receipt(
             expected_task_name=expected_task_name,
         )
     )
+    candidate_persistence = receipt.get("candidate_persistence")
+    checkpoint_termination = (
+        candidate_persistence.get("termination") == "exact_turn_boundary"
+        if isinstance(candidate_persistence, dict)
+        else False
+    )
+    if expected_schema == _CODEX_RECEIPT_SCHEMA_V1 and (
+        candidate_persistence is not None
+        or isinstance(receipt.get("invocation"), dict)
+        and receipt["invocation"].get("candidate_persistence_policy_id") is not None
+    ):
+        errors.append("direct_codex_legacy_receipt_claims_checkpoint")
+    if (
+        expected_schema == _CODEX_RECEIPT_SCHEMA_V2
+        and checkpoint_termination
+    ):
+        errors.append("direct_codex_unquiesced_checkpoint_schema_rejected")
     if not isinstance(receipt.get("session_succeeded"), bool):
         errors.append("direct_codex_receipt_invalid_session_status")
     if receipt.get("session_succeeded") is True:
-        if receipt.get("timed_out") is not False or receipt.get("exit_code") != 0:
+        allowed_exit = receipt.get("exit_code") == 0 or (
+            expected_schema == _CODEX_RECEIPT_SCHEMA_V3
+            and checkpoint_termination
+            and receipt.get("exit_code")
+            in {-int(signal.SIGTERM), -int(signal.SIGKILL)}
+        )
+        if receipt.get("timed_out") is not False or not allowed_exit:
             errors.append("direct_codex_receipt_success_status_inconsistent")
         thread_id = receipt.get("thread_id")
         if not isinstance(thread_id, str) or not thread_id.strip():
@@ -1173,16 +1240,40 @@ def _validate_session_receipt(
                 errors.append(f"direct_codex_{stream_name}_capture_bound_invalid")
 
     turn_budget = receipt.get("turn_budget")
-    if (
-        not isinstance(turn_budget, dict)
-        or turn_budget.get("policy") != TURN_POLICY
-        or turn_budget.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
-        or not isinstance(turn_budget.get("observed_turns"), int)
-        or not 1 <= turn_budget["observed_turns"] <= FORMAL_MATCHED_MAX_TURNS
-        or turn_budget.get("budget_exceeded") is not False
-        or turn_budget.get("enforcement_failed") is not False
-        or turn_budget.get("stop_reason") is not None
-    ):
+    expected_turn_policy = (
+        LEGACY_TURN_POLICY
+        if expected_schema == _CODEX_RECEIPT_SCHEMA_V1
+        else TURN_POLICY
+    )
+    normal_turn_budget = (
+        isinstance(turn_budget, dict)
+        and turn_budget.get("policy") == expected_turn_policy
+        and turn_budget.get("max_turns") == FORMAL_MATCHED_MAX_TURNS
+        and isinstance(turn_budget.get("observed_turns"), int)
+        and 1 <= turn_budget["observed_turns"] <= FORMAL_MATCHED_MAX_TURNS
+        and turn_budget.get("budget_exceeded") is False
+        and turn_budget.get("enforcement_failed") is False
+        and turn_budget.get("stop_reason") is None
+        and (
+            expected_schema == _CODEX_RECEIPT_SCHEMA_V1
+            or turn_budget.get("exact_boundary_reached") is False
+            and turn_budget.get("post_boundary_turns") == 0
+        )
+    )
+    checkpoint_turn_budget = (
+        expected_schema == _CODEX_RECEIPT_SCHEMA_V3
+        and isinstance(turn_budget, dict)
+        and turn_budget.get("policy") == TURN_POLICY
+        and turn_budget.get("max_turns") == FORMAL_MATCHED_MAX_TURNS
+        and turn_budget.get("observed_turns") == FORMAL_MATCHED_MAX_TURNS
+        and turn_budget.get("exact_boundary_reached") is True
+        and turn_budget.get("post_boundary_turns") == 0
+        and turn_budget.get("budget_exceeded") is False
+        and turn_budget.get("enforcement_failed") is False
+        and turn_budget.get("stop_reason") == "exact_turn_boundary"
+        and checkpoint_termination
+    )
+    if not (normal_turn_budget or checkpoint_turn_budget):
         errors.append("direct_codex_turn_budget_invalid")
 
     workspace_integrity = receipt.get("workspace_integrity")
@@ -1193,6 +1284,112 @@ def _validate_session_receipt(
         or workspace_integrity.get("errors") != []
     ):
         errors.append("direct_codex_workspace_integrity_invalid")
+    if expected_schema in {_CODEX_RECEIPT_SCHEMA_V2, _CODEX_RECEIPT_SCHEMA_V3}:
+        checkpoint = (
+            candidate_persistence.get("checkpoint")
+            if isinstance(candidate_persistence, dict)
+            else None
+        )
+        expected_termination = (
+            "exact_turn_boundary" if checkpoint_turn_budget else "completed"
+        )
+        if (
+            not isinstance(candidate_persistence, dict)
+            or candidate_persistence.get("schema")
+            != (
+                "aka.candidate-persistence-receipt/v3"
+                if expected_schema == _CODEX_RECEIPT_SCHEMA_V3
+                else "aka.candidate-persistence-receipt/v2"
+            )
+            or candidate_persistence.get("policy_id")
+            != CANDIDATE_PERSISTENCE_POLICY
+            or candidate_persistence.get("termination") != expected_termination
+            or (checkpoint_turn_budget and not isinstance(checkpoint, dict))
+            or (not checkpoint_turn_budget and checkpoint is not None)
+        ):
+            errors.append("direct_codex_candidate_persistence_invalid")
+        if checkpoint_turn_budget and (
+            not isinstance(cleanup, dict)
+            or cleanup.get("reason") != "exact_turn_boundary"
+        ):
+            errors.append("direct_codex_checkpoint_cleanup_invalid")
+        if expected_schema == _CODEX_RECEIPT_SCHEMA_V3 and (
+            candidate_persistence.get("boundary_quiescence_policy_id")
+            != BOUNDARY_QUIESCENCE_POLICY
+        ):
+            errors.append("direct_codex_boundary_quiescence_policy_mismatch")
+        if expected_schema == _CODEX_RECEIPT_SCHEMA_V3 and checkpoint_turn_budget:
+            suspension = receipt.get("process_group_suspension")
+            persisted_suspension = candidate_persistence.get("suspension")
+            boundary_snapshot = candidate_persistence.get("boundary_snapshot")
+            output_tail = candidate_persistence.get("output_tail")
+            if (
+                not isinstance(suspension, dict)
+                or suspension.get("policy_id") != BOUNDARY_QUIESCENCE_POLICY
+                or suspension.get("method") != "sigstop_process_group"
+                or suspension.get("sent") is not True
+                or suspension.get("verification_performed") is not True
+                or suspension.get("verified") is not True
+                or not isinstance(suspension.get("members"), list)
+                or not suspension["members"]
+                or any(
+                    not isinstance(member, dict)
+                    or isinstance(member.get("pid"), bool)
+                    or not isinstance(member.get("pid"), int)
+                    or member.get("pid") <= 0
+                    or member.get("state") not in {"T", "t", "Z"}
+                    for member in suspension.get("members", [])
+                )
+                or not isinstance(suspension.get("members_sha256"), str)
+                or suspension.get("members_sha256")
+                != _canonical_json_digest(suspension["members"])
+                or persisted_suspension != suspension
+            ):
+                errors.append("direct_codex_checkpoint_suspension_invalid")
+            if (
+                not isinstance(cleanup, dict)
+                or cleanup.get("sigterm_sent") is not True
+                or cleanup.get("sigcont_sent") is not True
+            ):
+                errors.append("direct_codex_checkpoint_resume_cleanup_invalid")
+            if (
+                not isinstance(boundary_snapshot, dict)
+                or boundary_snapshot.get("policy_id")
+                != BOUNDARY_QUIESCENCE_POLICY
+                or boundary_snapshot.get("complete") is not True
+                or boundary_snapshot.get("errors") != []
+                or not isinstance(boundary_snapshot.get("manifest_sha256"), str)
+                or not _SHA256.fullmatch(boundary_snapshot["manifest_sha256"])
+                or not isinstance(boundary_snapshot.get("files"), list)
+                or not boundary_snapshot["files"]
+            ):
+                errors.append("direct_codex_boundary_snapshot_invalid")
+            if (
+                not isinstance(output_tail, dict)
+                or output_tail.get("policy") != "retained_and_digested_v1"
+                or not isinstance(output_tail.get("stdout_size_bytes"), int)
+                or output_tail["stdout_size_bytes"] < 0
+                or not isinstance(output_tail.get("stdout_sha256"), str)
+                or not _SHA256.fullmatch(output_tail["stdout_sha256"])
+                or output_tail.get("post_boundary_turns") != 0
+                or output_tail.get("capture_truncated") is not False
+                or output_tail.get("readers_completed") is not True
+            ):
+                errors.append("direct_codex_boundary_output_tail_invalid")
+            if isinstance(checkpoint, dict) and all(
+                isinstance(value, dict)
+                for value in (suspension, boundary_snapshot, output_tail)
+            ):
+                digest_fields = {
+                    "suspension_sha256": suspension,
+                    "boundary_snapshot_sha256": boundary_snapshot,
+                    "output_tail_sha256": output_tail,
+                }
+                if any(
+                    checkpoint.get(field) != _canonical_json_digest(value)
+                    for field, value in digest_fields.items()
+                ):
+                    errors.append("direct_codex_checkpoint_evidence_digest_mismatch")
 
     try:
         effective_timeout = float(receipt.get("effective_timeout_seconds"))
@@ -1228,7 +1425,12 @@ def _validate_session_receipt(
             errors.append("direct_codex_identity_contract_mismatch")
         if (
             expected_codex.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
-            or expected_codex.get("turn_policy") != TURN_POLICY
+            or expected_codex.get("turn_policy") != expected_turn_policy
+            or (
+                expected_schema == _CODEX_RECEIPT_SCHEMA_V3
+                and expected_codex.get("boundary_quiescence_policy_id")
+                != BOUNDARY_QUIESCENCE_POLICY
+            )
             or expected_codex.get("structured_stream_output_limit_bytes")
             != 16 * 1024 * 1024
         ):
@@ -1258,9 +1460,20 @@ def _validate_session_receipt(
             errors.append("direct_codex_prompt_digest_invalid")
         if (
             invocation.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
-            or invocation.get("turn_policy") != TURN_POLICY
+            or invocation.get("turn_policy") != expected_turn_policy
             or invocation.get("structured_stream_output_limit_bytes")
             != 16 * 1024 * 1024
+            or (
+                expected_schema
+                in {_CODEX_RECEIPT_SCHEMA_V2, _CODEX_RECEIPT_SCHEMA_V3}
+                and invocation.get("candidate_persistence_policy_id")
+                != CANDIDATE_PERSISTENCE_POLICY
+            )
+            or (
+                expected_schema == _CODEX_RECEIPT_SCHEMA_V3
+                and invocation.get("boundary_quiescence_policy_id")
+                != BOUNDARY_QUIESCENCE_POLICY
+            )
         ):
             errors.append("direct_codex_budget_invocation_mismatch")
         editable = invocation.get("editable_files")
@@ -1334,6 +1547,35 @@ def _validate_session_receipt(
             if evidence.get("size_bytes") != resolved_path.stat().st_size:
                 errors.append(f"direct_codex_{name}_size_mismatch")
 
+        if checkpoint_turn_budget and isinstance(candidate_persistence, dict):
+            output_tail = candidate_persistence.get("output_tail")
+            try:
+                raw_stdout_text = expected_artifacts["raw_stdout"].read_text(
+                    encoding="utf-8"
+                )
+            except (OSError, UnicodeDecodeError):
+                errors.append("direct_codex_boundary_output_tail_unreadable")
+            else:
+                offset = (
+                    output_tail.get("stdout_character_offset")
+                    if isinstance(output_tail, dict)
+                    else None
+                )
+                if not isinstance(offset, int) or not 0 <= offset <= len(
+                    raw_stdout_text
+                ):
+                    errors.append("direct_codex_boundary_output_tail_invalid")
+                else:
+                    tail_bytes = raw_stdout_text[offset:].encode("utf-8")
+                    if (
+                        output_tail.get("stdout_size_bytes") != len(tail_bytes)
+                        or output_tail.get("stdout_sha256")
+                        != _sha256_bytes(tail_bytes)
+                    ):
+                        errors.append(
+                            "direct_codex_boundary_output_tail_digest_mismatch"
+                        )
+
         rendered_prompt = expected_artifacts["rendered_prompt"]
         if _safe_read_only_file(rendered_prompt):
             prompt_sha256 = _sha256_file(rendered_prompt)
@@ -1406,6 +1648,36 @@ def _validate_session_receipt(
                 or sanitization.get("baseline_restored") is not True
             ):
                 errors.append("direct_codex_workspace_sanitization_unverified")
+            if checkpoint_turn_budget:
+                checkpoint = (
+                    candidate_persistence.get("checkpoint")
+                    if isinstance(candidate_persistence, dict)
+                    else None
+                )
+                expected_checkpoint = {
+                    "before_manifest_sha256": before_digest,
+                    "after_manifest_sha256": after_digest,
+                    "changed_files": final_changes.get("changed_files", [])
+                    if isinstance(final_changes, dict)
+                    else None,
+                    "editable_files": workspace_integrity.get("editable_files"),
+                }
+                if expected_schema == _CODEX_RECEIPT_SCHEMA_V3:
+                    expected_checkpoint.update(
+                        {
+                            "suspension_sha256": _canonical_json_digest(
+                                candidate_persistence.get("suspension")
+                            ),
+                            "boundary_snapshot_sha256": _canonical_json_digest(
+                                candidate_persistence.get("boundary_snapshot")
+                            ),
+                            "output_tail_sha256": _canonical_json_digest(
+                                candidate_persistence.get("output_tail")
+                            ),
+                        }
+                    )
+                if checkpoint != expected_checkpoint:
+                    errors.append("direct_codex_checkpoint_manifest_mismatch")
 
     return receipt, sorted(set(errors))
 
@@ -1420,6 +1692,89 @@ def _canonical_json_digest(value: Any) -> str:
             separators=(",", ":"),
         ).encode("utf-8")
     )
+
+
+def _validate_bundle_snapshot(
+    *, path: Path, result: dict[str, Any], task_spec: dict[str, Any]
+) -> list[str]:
+    """Recompute an immutable Apex bundle snapshot without its live CAS tree."""
+    try:
+        snapshot = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return ["apex_checkpoint_bundle_snapshot_unreadable"]
+    manifest = snapshot.get("manifest") if isinstance(snapshot, dict) else None
+    patches = snapshot.get("patches") if isinstance(snapshot, dict) else None
+    if (
+        not isinstance(snapshot, dict)
+        or snapshot.get("schema") != "aka.apex-source-bundle-snapshot/v1"
+        or not isinstance(manifest, dict)
+        or not isinstance(patches, list)
+        or not patches
+    ):
+        return ["apex_checkpoint_bundle_snapshot_invalid"]
+    patch_bytes: list[bytes] = []
+    observed_paths: list[str] = []
+    for item in patches:
+        if not isinstance(item, dict):
+            return ["apex_checkpoint_bundle_snapshot_invalid"]
+        relative = item.get("path")
+        if not isinstance(relative, str):
+            return ["apex_checkpoint_bundle_snapshot_invalid"]
+        parsed = PurePosixPath(relative)
+        if (
+            parsed.is_absolute()
+            or parsed.as_posix() != relative
+            or any(part in {"", ".", ".."} for part in parsed.parts)
+        ):
+            return ["apex_checkpoint_bundle_snapshot_invalid"]
+        try:
+            content = base64.b64decode(item.get("content_base64", ""), validate=True)
+        except (ValueError, TypeError):
+            return ["apex_checkpoint_bundle_snapshot_invalid"]
+        if (
+            item.get("size_bytes") != len(content)
+            or item.get("sha256") != _sha256_bytes(content)
+        ):
+            return ["apex_checkpoint_bundle_snapshot_hash_mismatch"]
+        observed_paths.append(relative)
+        patch_bytes.append(content)
+    declared_patches = manifest.get("patches")
+    if (
+        len(observed_paths) != len(set(observed_paths))
+        or not isinstance(declared_patches, list)
+        or [
+            (item.get("path"), item.get("sha256"))
+            for item in declared_patches
+            if isinstance(item, dict)
+        ]
+        != [
+            (item["path"], item["sha256"])
+            for item in patches
+        ]
+    ):
+        return ["apex_checkpoint_bundle_snapshot_manifest_mismatch"]
+    digest = hashlib.sha256(
+        json.dumps(
+            manifest,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+    for content in patch_bytes:
+        digest.update(content)
+    bundle_digest = digest.hexdigest()
+    if (
+        snapshot.get("bundle_digest") != bundle_digest
+        or result.get("bundle_digest") != bundle_digest
+        or manifest.get("task_id") != task_spec.get("task_id")
+        or manifest.get("baseline", {}).get("file_hashes")
+        != task_spec.get("baseline", {}).get("file_hashes")
+        or manifest.get("changed_files") != result.get("changed_files")
+        or manifest.get("delivery") != {"mode": "bundle", "applied": False}
+    ):
+        return ["apex_checkpoint_bundle_digest_or_contract_mismatch"]
+    return []
 
 
 def _validate_receipt_artifacts(
@@ -1571,6 +1926,136 @@ def _validate_apex_journal_snapshot(
     return events, errors
 
 
+def _apex_checkpoint_gate_chain_errors(
+    *,
+    events: list[dict[str, Any]],
+    result: dict[str, Any],
+    persistence: dict[str, Any],
+    lineage: dict[str, Any],
+    bundle_path: Path,
+    task_spec: dict[str, Any],
+) -> list[str]:
+    """Recompute the post-boundary freeze, trusted gates, and bundle binding."""
+    errors = _validate_bundle_snapshot(
+        path=bundle_path, result=result, task_spec=task_spec
+    )
+    checkpoint = persistence.get("checkpoint")
+    if not isinstance(checkpoint, dict):
+        return sorted(set(errors + ["apex_checkpoint_lineage_missing"]))
+    agent_events = [
+        event
+        for event in events
+        if event["event_type"] == "agent_completed"
+        and event["event_id"] == checkpoint.get("agent_event_id")
+    ]
+    if len(agent_events) != 1:
+        errors.append("apex_checkpoint_agent_event_mismatch")
+        return sorted(set(errors))
+    agent = agent_events[0]
+    attempt_id = agent["payload"].get("attempt_id")
+    required_types = (
+        "candidate_frozen",
+        "action.artifacts_ready",
+        "compile_result",
+        "correctness_result",
+        "safety_result",
+        "performance_command_result",
+        "measurement_result",
+        "reward_committed",
+        "action.verified",
+        "decision",
+        "run.succeeded",
+    )
+    selected: list[dict[str, Any]] = []
+    declared_chain = checkpoint.get("gate_chain")
+    if not isinstance(declared_chain, dict) or set(declared_chain) != set(required_types):
+        errors.append("apex_checkpoint_gate_chain_manifest_invalid")
+        return sorted(set(errors))
+    for event_type in required_types:
+        matches = [
+            event
+            for event in events
+            if event["event_type"] == event_type
+            and event["event_id"] == declared_chain.get(event_type)
+            and (
+                event_type == "run.succeeded"
+                or event["payload"].get(
+                    "attempt_id", event["payload"].get("action_id")
+                )
+                == attempt_id
+            )
+        ]
+        if len(matches) != 1:
+            errors.append("apex_checkpoint_gate_chain_event_mismatch")
+            return sorted(set(errors))
+        selected.append(matches[0])
+    if not (
+        agent["sequence"] < selected[0]["sequence"]
+        and [event["sequence"] for event in selected]
+        == sorted(event["sequence"] for event in selected)
+    ):
+        errors.append("apex_checkpoint_gate_chain_order_invalid")
+    candidate, artifacts_ready, compiled, correct, safety, performance, measured, reward, verified, decision, finished = selected
+    candidate_bindings = candidate["payload"].get("artifacts")
+    if (
+        candidate["payload"].get("changed_files") != result.get("changed_files")
+        or not isinstance(candidate_bindings, list)
+        or not candidate_bindings
+        or any(
+            not isinstance(binding, dict) or binding.get("role") != "candidate"
+            for binding in candidate_bindings
+        )
+        or not artifacts_ready["payload"].get("artifact_refs")
+    ):
+        errors.append("apex_checkpoint_candidate_freeze_invalid")
+    if compiled["payload"].get("passed") is not True:
+        errors.append("apex_checkpoint_compile_gate_failed")
+    if correct["payload"].get("passed") is not True:
+        errors.append("apex_checkpoint_correctness_gate_failed")
+    if (
+        safety["payload"].get("allowed_to_measure") is not True
+        or safety["payload"].get("promotion_eligible") is not True
+    ):
+        errors.append("apex_checkpoint_safety_gate_failed")
+    if (
+        performance["payload"].get("passed") is not True
+        or performance["payload"].get("runtime") != "normal_uninstrumented"
+        or performance["payload"].get("status")
+        != "command_completed_without_robust_timing_grade"
+    ):
+        errors.append("apex_checkpoint_normal_performance_gate_failed")
+    if (
+        measured["payload"].get("measurement_status") != "valid"
+        or measured["payload"].get("evidence_class") != "measured"
+        or reward["payload"].get("evidence_class") != "measured"
+        or isinstance(reward["payload"].get("scalar_reward"), bool)
+        or not isinstance(reward["payload"].get("scalar_reward"), (int, float))
+    ):
+        errors.append("apex_checkpoint_measurement_reward_invalid")
+    if (
+        not isinstance(verified["payload"].get("verification_id"), str)
+        or not _SHA256.fullmatch(verified["payload"]["verification_id"])
+        or decision["event_id"] != result.get("internal_verdict_ref")
+        or decision["payload"].get("verdict") != "keep"
+        or decision["payload"].get("bundle_digest") != result.get("bundle_digest")
+        or finished["payload"].get("reason") != "candidate_ready"
+    ):
+        errors.append("apex_checkpoint_decision_bundle_invalid")
+    artifact_sha = _sha256_file(bundle_path)
+    artifact_size = bundle_path.stat().st_size
+    expected_bundle = {
+        "bundle_digest": result.get("bundle_digest"),
+        "snapshot_sha256": artifact_sha,
+        "snapshot_size_bytes": artifact_size,
+    }
+    if (
+        any(checkpoint.get(key) != value for key, value in expected_bundle.items())
+        or lineage.get("bundle") != expected_bundle
+    ):
+        errors.append("apex_checkpoint_bundle_lineage_mismatch")
+    return sorted(set(errors))
+
+
 def _apex_instruction_adaptation_errors(
     *,
     receipt: dict[str, Any],
@@ -1613,7 +2098,9 @@ def _apex_instruction_adaptation_errors(
     return errors
 
 
-def _apex_run_control_errors(task_spec: dict[str, Any]) -> list[str]:
+def _apex_run_control_errors(
+    task_spec: dict[str, Any], *, expected_turn_policy: str
+) -> list[str]:
     """Validate the caller-owned formal budget and verifier command contract."""
 
     control = task_spec.get("caller_run_control")
@@ -1623,14 +2110,21 @@ def _apex_run_control_errors(task_spec: dict[str, Any]) -> list[str]:
     turn_budget = control.get("structured_turn_budget")
     interpreter = control.get("python_interpreter")
     verifier_argv = control.get("verifier_argv")
+    persistence_valid = (
+        control.get("candidate_persistence")
+        == "leave_best_source_before_budget_boundary"
+        if expected_turn_policy == LEGACY_TURN_POLICY
+        else control.get("candidate_persistence_policy_id")
+        == CANDIDATE_PERSISTENCE_POLICY
+        and "candidate_persistence" not in control
+    )
     if (
         control.get("schema") != "aka.apex-caller-run-control/v1"
         or control.get("deliverable_versions") != 1
-        or control.get("candidate_persistence")
-        != "leave_best_source_before_budget_boundary"
+        or not persistence_valid
         or turn_budget
         != {
-            "policy": TURN_POLICY,
+            "policy": expected_turn_policy,
             "max_turns": FORMAL_MATCHED_MAX_TURNS,
             "counting": "assistant_message_and_tool_call_start_each_count_once",
         }
@@ -1671,6 +2165,7 @@ def _apex_turn_evidence_errors(
     payload: dict[str, Any],
     task_spec: dict[str, Any],
     budget_exceeded: bool,
+    expected_turn_policy: str,
 ) -> list[str]:
     semantic_events = transcript.get("semantic_events")
     budget = transcript.get("budget")
@@ -1693,7 +2188,7 @@ def _apex_turn_evidence_errors(
         or payload.get("message_event_count") != message_count
         or payload.get("tool_call_event_count") != tool_call_count
         or payload.get("semantic_event_count") != len(semantic_events)
-        or budget.get("turn_policy") != TURN_POLICY
+        or budget.get("turn_policy") != expected_turn_policy
         or budget.get("max_turns") != max_turns
         or budget.get("observed_turns") != observed_turns
         or budget.get("exceeded") is not budget_exceeded
@@ -1708,6 +2203,151 @@ def _apex_turn_evidence_errors(
         )
     ):
         return ["apex_agent_turn_evidence_invalid"]
+    return []
+
+
+def _apex_checkpoint_evidence_errors(
+    *,
+    transcript: dict[str, Any],
+    payload: dict[str, Any],
+    persistence: Any,
+    status: str,
+) -> list[str]:
+    """Validate v3 typed termination before source can be treated as persistent."""
+    termination = transcript.get("termination")
+    semantic_events = transcript.get("semantic_events")
+    if not isinstance(termination, dict) or not isinstance(semantic_events, list):
+        return ["apex_checkpoint_termination_evidence_invalid"]
+    observed = sum(
+        1
+        for event in semantic_events
+        if isinstance(event, dict)
+        and event.get("kind") in {"agent_message", "tool_called"}
+    )
+    kind = payload.get("termination_kind")
+    exact = kind == "exact_turn_boundary"
+    expected_fields = {
+        "kind": "termination_kind",
+        "reason": "termination_reason",
+        "capture_status": "capture_status",
+        "candidate_capture_allowed": "candidate_capture_allowed",
+        "observer_stop_sent": "observer_stop_sent",
+        "observed_turns": "observed_turns",
+    }
+    expected_suspension = {
+        "policy_id": BOUNDARY_QUIESCENCE_POLICY,
+        "sent": payload.get("observer_suspend_sent"),
+        "verified": payload.get("suspension_verified"),
+    }
+    expected_discarded_tail = {
+        "lines": payload.get("discarded_stdout_lines"),
+        "bytes": payload.get("discarded_stdout_bytes"),
+        "sha256": payload.get("discarded_stdout_sha256"),
+    }
+    tail_lines = payload.get("discarded_stdout_lines")
+    tail_bytes = payload.get("discarded_stdout_bytes")
+    tail_sha256 = payload.get("discarded_stdout_sha256")
+    tail_present = (
+        isinstance(tail_lines, int)
+        and not isinstance(tail_lines, bool)
+        and tail_lines > 0
+    ) or (
+        isinstance(tail_bytes, int)
+        and not isinstance(tail_bytes, bool)
+        and tail_bytes > 0
+    )
+    tail_invalid = (
+        isinstance(tail_lines, bool)
+        or not isinstance(tail_lines, int)
+        or tail_lines < 0
+        or isinstance(tail_bytes, bool)
+        or not isinstance(tail_bytes, int)
+        or tail_bytes < 0
+        or (
+            tail_present
+            and (
+                tail_lines == 0
+                or tail_bytes == 0
+                or not isinstance(tail_sha256, str)
+                or not _SHA256.fullmatch(tail_sha256)
+            )
+        )
+        or (not tail_present and tail_sha256 is not None)
+    )
+    invalid = (
+        transcript.get("schema") != "apex.agent-transcript/v2"
+        or any(
+            termination.get(transcript_key) != payload.get(payload_key)
+            for transcript_key, payload_key in expected_fields.items()
+        )
+        or termination.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
+        or termination.get("turn_policy") != TURN_POLICY
+        or termination.get("suspension") != expected_suspension
+        or termination.get("discarded_stdout_tail")
+        != expected_discarded_tail
+        or tail_invalid
+        or payload.get("observed_turns") != observed
+        or payload.get("capture_status") != "complete"
+        or payload.get("candidate_capture_allowed") is not True
+        or payload.get("timed_out") is not False
+        or not isinstance(payload.get("observer_stop_sent"), bool)
+        or not isinstance(payload.get("observer_suspend_sent"), bool)
+        or not isinstance(payload.get("suspension_verified"), bool)
+        or payload.get("boundary_quiescence_policy_id")
+        != BOUNDARY_QUIESCENCE_POLICY
+        or kind not in {"completed", "exact_turn_boundary"}
+        or (
+            exact
+            and (
+                observed != FORMAL_MATCHED_MAX_TURNS
+                or payload.get("termination_reason")
+                != "max_turns_exact_boundary"
+                or payload.get("observer_suspend_sent") is not True
+                or payload.get("suspension_verified") is not True
+                or (
+                    payload.get("exit_code") != 0
+                    and payload.get("observer_stop_sent") is not True
+                )
+            )
+        )
+        or (
+            not exact
+            and (
+                not 1 <= observed <= FORMAL_MATCHED_MAX_TURNS
+                or payload.get("termination_reason") is not None
+                or payload.get("exit_code") != 0
+                or payload.get("observer_stop_sent") is not False
+                or payload.get("observer_suspend_sent") is not False
+                or payload.get("suspension_verified") is not False
+            )
+        )
+    )
+    if invalid:
+        return ["apex_checkpoint_termination_evidence_invalid"]
+    expected_persistence = {
+        "schema": "aka.candidate-persistence-receipt/v3",
+        "policy_id": CANDIDATE_PERSISTENCE_POLICY,
+        "boundary_quiescence_policy_id": BOUNDARY_QUIESCENCE_POLICY,
+        "termination_kind": kind,
+        "termination_reason": payload.get("termination_reason"),
+        "capture_status": "complete",
+        "candidate_capture_allowed": True,
+        "observer_stop_sent": payload.get("observer_stop_sent"),
+        "observer_suspend_sent": payload.get("observer_suspend_sent"),
+        "suspension_verified": payload.get("suspension_verified"),
+        "discarded_stdout_tail": expected_discarded_tail,
+        "observed_turns": observed,
+    }
+    if not isinstance(persistence, dict) or any(
+        persistence.get(key) != value for key, value in expected_persistence.items()
+    ):
+        return ["apex_candidate_persistence_receipt_invalid"]
+    checkpoint = persistence.get("checkpoint")
+    if exact and status == "candidate_ready":
+        if not isinstance(checkpoint, dict):
+            return ["apex_checkpoint_lineage_missing"]
+    elif checkpoint is not None:
+        return ["apex_unexpected_checkpoint_lineage"]
     return []
 
 
@@ -1790,10 +2430,18 @@ def _validate_apex_session_receipt(
         )
     )
     receipt_schema = receipt.get("schema")
+    checkpoint_receipt = expected_receipt_schema == _APEX_RECEIPT_SCHEMA_V3
     if receipt_schema not in _APEX_RECEIPT_SCHEMAS:
         errors.append("apex_receipt_schema_mismatch")
     if receipt_schema != expected_receipt_schema:
         errors.append("apex_receipt_schema_generation_mismatch")
+    candidate_persistence = receipt.get("candidate_persistence")
+    if (
+        expected_receipt_schema
+        in {_APEX_RECEIPT_SCHEMA_V1, _APEX_RECEIPT_SCHEMA_V2}
+        and candidate_persistence is not None
+    ):
+        errors.append("apex_legacy_receipt_claims_checkpoint")
     terminal_status = receipt.get("terminal_status")
     session_succeeded = receipt.get("session_succeeded")
     budget_exhausted = (
@@ -1851,6 +2499,11 @@ def _validate_apex_session_receipt(
         errors.append("apex_effective_outer_timeout_invalid")
 
     expected_codex = _expected_codex_contract(run_directory)
+    apex_expected_turn_policy = (
+        expected_codex.get("turn_policy")
+        if isinstance(expected_codex, dict)
+        else None
+    )
     observed_codex = receipt.get("codex")
     if not isinstance(expected_codex, dict):
         errors.append("missing_immutable_campaign_codex_contract")
@@ -1866,7 +2519,12 @@ def _validate_apex_session_receipt(
         errors.append("apex_codex_identity_contract_mismatch")
     if isinstance(expected_codex, dict) and (
         expected_codex.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
-        or expected_codex.get("turn_policy") != TURN_POLICY
+        or expected_codex.get("turn_policy")
+        not in {LEGACY_TURN_POLICY, TURN_POLICY}
+        or (
+            checkpoint_receipt
+            and expected_codex.get("turn_policy") != TURN_POLICY
+        )
     ):
         errors.append("apex_immutable_budget_contract_mismatch")
     if (
@@ -1926,7 +2584,10 @@ def _validate_apex_session_receipt(
         except (OSError, ValueError):
             errors.append("apex_task_spec_prelaunch_contract_invalid")
 
-    new_prompt_receipt = expected_receipt_schema == _APEX_RECEIPT_SCHEMA_V2
+    new_prompt_receipt = expected_receipt_schema in {
+        _APEX_RECEIPT_SCHEMA_V2,
+        _APEX_RECEIPT_SCHEMA_V3,
+    }
     expected_artifacts = {
         "task_spec": "task_spec.json",
         "apex_stdout": "apex_stdout.txt",
@@ -1938,6 +2599,8 @@ def _validate_apex_session_receipt(
     if new_prompt_receipt:
         expected_artifacts["original_arena_prompt"] = "original_arena_prompt.txt"
         expected_artifacts["agent_prompt"] = "agent_prompt.txt"
+    if checkpoint_receipt and terminal_status == "candidate_ready":
+        expected_artifacts["source_bundle"] = "source_bundle_snapshot.json"
     artifacts, artifact_errors = _validate_receipt_artifacts(
         receipt=receipt,
         receipt_path=receipt_path,
@@ -1964,7 +2627,12 @@ def _validate_apex_session_receipt(
                 original_prompt_path=artifacts["original_arena_prompt"],
             )
         )
-        errors.extend(_apex_run_control_errors(task_spec))
+        errors.extend(
+            _apex_run_control_errors(
+                task_spec,
+                expected_turn_policy=str(apex_expected_turn_policy),
+            )
+        )
     if receipt.get("task_spec_sha256") != _sha256_file(artifacts["task_spec"]):
         errors.append("apex_task_spec_digest_mismatch")
     if isinstance(task_spec_contract, dict) and (
@@ -2041,13 +2709,22 @@ def _validate_apex_session_receipt(
             or payload.get("model") != task_spec.get("agent_options", {}).get("model")
             or payload.get("effort") != task_spec.get("agent_options", {}).get("effort")
             or payload.get("timed_out") is not False
-            or payload.get("budget_enforcement_failed") is not False
             or invocation != receipt.get("invocation")
         )
-        if failed_terminal:
+        if checkpoint_receipt:
+            errors.extend(
+                _apex_checkpoint_evidence_errors(
+                    transcript=transcript,
+                    payload=payload,
+                    persistence=candidate_persistence,
+                    status=status,
+                )
+            )
+        elif failed_terminal:
             observed_turns = payload.get("observed_turns")
             outcome_invalid = outcome_invalid or (
                 type(payload.get("exit_code")) is not int
+                or payload.get("budget_enforcement_failed") is not False
                 or payload.get("budget_exceeded") is not True
                 or not budget_stop_reason_matches(
                     reason=payload.get("budget_reason"),
@@ -2058,13 +2735,19 @@ def _validate_apex_session_receipt(
         else:
             outcome_invalid = outcome_invalid or (
                 payload.get("exit_code") != 0
+                or payload.get("budget_enforcement_failed") is not False
                 or payload.get("budget_exceeded") is not False
                 or (new_prompt_receipt and payload.get("budget_reason") is not None)
             )
         if outcome_invalid:
             errors.append("apex_agent_completion_receipt_mismatch")
+        expected_transcript_schema = (
+            "apex.agent-transcript/v2"
+            if checkpoint_receipt
+            else "apex.agent-transcript/v1"
+        )
         if (
-            transcript.get("schema") != "apex.agent-transcript/v1"
+            transcript.get("schema") != expected_transcript_schema
             or transcript.get("backend") != "codex"
             or transcript.get("model") != payload.get("model")
             or transcript.get("effort") != payload.get("effort")
@@ -2093,14 +2776,24 @@ def _validate_apex_session_receipt(
         argv = invocation.get("argv") if isinstance(invocation, dict) else None
         if (
             not isinstance(invocation, dict)
-            or invocation.get("schema") != "apex.agent-invocation/v1"
+            or invocation.get("schema")
+            != (
+                "apex.agent-invocation/v2"
+                if checkpoint_receipt
+                else "apex.agent-invocation/v1"
+            )
             or invocation.get("cli_name") != "codex"
             or invocation.get("cli_version")
             != (expected_codex or {}).get("codex_version")
             or invocation.get("entrypoint_sha256")
             != (expected_codex or {}).get("codex_binary_sha256")
             or invocation.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
-            or invocation.get("turn_policy") != TURN_POLICY
+            or invocation.get("turn_policy") != apex_expected_turn_policy
+            or (
+                checkpoint_receipt
+                and invocation.get("boundary_quiescence_policy_id")
+                != BOUNDARY_QUIESCENCE_POLICY
+            )
             or not isinstance(argv, list)
             or not {
                 "--strict-config",
@@ -2131,14 +2824,16 @@ def _validate_apex_session_receipt(
                 != artifacts["agent_transcript"].stat().st_size
             ):
                 errors.append("apex_agent_transcript_event_binding_mismatch")
-            errors.extend(
-                _apex_turn_evidence_errors(
-                    transcript=transcript,
-                    payload=payload,
-                    task_spec=task_spec,
-                    budget_exceeded=failed_terminal,
+            if not checkpoint_receipt:
+                errors.extend(
+                    _apex_turn_evidence_errors(
+                        transcript=transcript,
+                        payload=payload,
+                        task_spec=task_spec,
+                        budget_exceeded=failed_terminal,
+                        expected_turn_policy=str(apex_expected_turn_policy),
+                    )
                 )
-            )
             errors.extend(
                 _apex_prompt_event_errors(
                     events=events,
@@ -2220,6 +2915,34 @@ def _validate_apex_session_receipt(
             or not set(declared_digests).issubset(event_artifact_digests)
         ):
             errors.append("apex_artifact_store_receipt_set_mismatch")
+    if checkpoint_receipt and status == "candidate_ready":
+        bundle_path = artifacts.get("source_bundle")
+        if not isinstance(bundle_path, Path):
+            errors.append("apex_checkpoint_bundle_snapshot_missing")
+        elif (
+            isinstance(candidate_persistence, dict)
+            and candidate_persistence.get("termination_kind")
+            == "exact_turn_boundary"
+            and isinstance(lineage, dict)
+        ):
+            errors.extend(
+                _apex_checkpoint_gate_chain_errors(
+                    events=events,
+                    result=result,
+                    persistence=candidate_persistence,
+                    lineage=lineage,
+                    bundle_path=bundle_path,
+                    task_spec=task_spec,
+                )
+            )
+        else:
+            errors.extend(
+                _validate_bundle_snapshot(
+                    path=bundle_path,
+                    result=result,
+                    task_spec=task_spec,
+                )
+            )
     return receipt, sorted(set(errors))
 
 

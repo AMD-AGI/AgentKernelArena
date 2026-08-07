@@ -213,6 +213,12 @@ the agent, and require immutable Apex or direct-Codex session receipts before
 an attempt can enter central selection. The Apex treatment sees the scored workspace
 read-only and writes proposals only to a separate artifact root; AgentKernelArena
 rechecks the full workspace manifest before applying a validated source bundle.
+The sealed comparison-contract v3 also binds exact-turn candidate persistence. At
+turn 50 the inner process group must be synchronously suspended and verified before
+source capture; the group is then cleaned up and its output tail is digested. Turn
+51, timeout, truncated capture, failed suspension, or failed cleanup cannot produce
+a candidate. The resulting source still returns to AgentKernelArena's centralized
+compile, correctness, and performance evaluator.
 Formal Docker workers stay non-root, drop every capability, and enable Docker
 `no-new-privileges`. Rootless `bwrap` needs unconfined Docker seccomp/AppArmor
 profiles on this runtime. The outer per-attempt `bwrap` creates mount and IPC

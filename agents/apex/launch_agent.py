@@ -11,6 +11,7 @@ pipeline. Apex's internal score or safety opinion is never consumed here.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
@@ -35,7 +36,10 @@ import yaml
 
 from agents import register_agent
 from src.agent_turn_budget import (
+    BOUNDARY_QUIESCENCE_POLICY,
+    CANDIDATE_PERSISTENCE_POLICY,
     FORMAL_MATCHED_MAX_TURNS,
+    LEGACY_TURN_POLICY,
     TURN_POLICY,
     budget_stop_reason_matches,
     context_packet_objective_matches,
@@ -65,7 +69,7 @@ _APEX_GENERIC_CONTEXT_MARKER = (
 )
 _NORMAL_NO_PATCH_STATUSES = {"no_gain"}
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v2"
+_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v3"
 _CALLER_RUN_CONTROL_SCHEMA = "aka.apex-caller-run-control/v1"
 _INSTRUCTION_ADAPTATION_SCHEMA = "aka.apex-instruction-adaptation/v1"
 _ARENA_PYTHON_ENV = "AGENT_KERNEL_ARENA_PYTHON"
@@ -330,7 +334,7 @@ def _caller_run_control(
             "max_turns": max_turns,
             "counting": "assistant_message_and_tool_call_start_each_count_once",
         },
-        "candidate_persistence": "leave_best_source_before_budget_boundary",
+        "candidate_persistence_policy_id": CANDIDATE_PERSISTENCE_POLICY,
         "python_interpreter": interpreter,
         "verifier_argv": {
             phase: list(bound_commands[phase]["argv"])
@@ -1249,9 +1253,77 @@ def _validate_apex_lineage(
         or payload.get("model") != expected_options.get("model")
         or payload.get("effort") != expected_options.get("effort")
         or payload.get("timed_out") is not False
-        or payload.get("budget_enforcement_failed") is not False
     )
-    if failure_reason is None:
+    typed_termination = payload.get("termination_kind")
+    exact_checkpoint = typed_termination == "exact_turn_boundary"
+    if typed_termination is not None:
+        discarded_lines = payload.get("discarded_stdout_lines")
+        discarded_bytes = payload.get("discarded_stdout_bytes")
+        discarded_sha256 = payload.get("discarded_stdout_sha256")
+        has_discarded_tail = (
+            isinstance(discarded_lines, int)
+            and not isinstance(discarded_lines, bool)
+            and discarded_lines > 0
+        ) or (
+            isinstance(discarded_bytes, int)
+            and not isinstance(discarded_bytes, bool)
+            and discarded_bytes > 0
+        )
+        discarded_tail_invalid = (
+            isinstance(discarded_lines, bool)
+            or not isinstance(discarded_lines, int)
+            or discarded_lines < 0
+            or isinstance(discarded_bytes, bool)
+            or not isinstance(discarded_bytes, int)
+            or discarded_bytes < 0
+            or (
+                has_discarded_tail
+                and (
+                    discarded_lines == 0
+                    or discarded_bytes == 0
+                    or not isinstance(discarded_sha256, str)
+                    or not _SHA256.fullmatch(discarded_sha256)
+                )
+            )
+            or (not has_discarded_tail and discarded_sha256 is not None)
+        )
+        outcome_mismatch = (
+            typed_termination not in {"completed", "exact_turn_boundary"}
+            or payload.get("capture_status") != "complete"
+            or payload.get("candidate_capture_allowed") is not True
+            or payload.get("timed_out") is not False
+            or not isinstance(payload.get("observer_stop_sent"), bool)
+            or not isinstance(payload.get("observer_suspend_sent"), bool)
+            or not isinstance(payload.get("suspension_verified"), bool)
+            or discarded_tail_invalid
+            or (
+                exact_checkpoint
+                and (
+                    payload.get("termination_reason")
+                    != "max_turns_exact_boundary"
+                    or payload.get("observed_turns")
+                    != task_spec["budget"]["max_turns"]
+                    or payload.get("observer_suspend_sent") is not True
+                    or payload.get("suspension_verified") is not True
+                    or payload.get("boundary_quiescence_policy_id")
+                    != BOUNDARY_QUIESCENCE_POLICY
+                    or (
+                        payload.get("exit_code") != 0
+                        and payload.get("observer_stop_sent") is not True
+                    )
+                )
+            )
+            or (
+                not exact_checkpoint
+                and (
+                    payload.get("termination_reason") is not None
+                    or payload.get("exit_code") != 0
+                    or payload.get("observer_suspend_sent") is not False
+                    or payload.get("suspension_verified") is not False
+                )
+            )
+        )
+    elif failure_reason is None:
         outcome_mismatch = (
             payload.get("exit_code") != 0
             or payload.get("budget_exceeded") is not False
@@ -1273,7 +1345,15 @@ def _validate_apex_lineage(
             f"Apex {contract['agent_event']} outcome/identity is inconsistent"
         )
     invocation = payload.get("invocation")
-    if not isinstance(invocation, dict) or invocation.get("schema") != "apex.agent-invocation/v1":
+    expected_invocation_schema = (
+        "apex.agent-invocation/v2"
+        if typed_termination is not None
+        else "apex.agent-invocation/v1"
+    )
+    if (
+        not isinstance(invocation, dict)
+        or invocation.get("schema") != expected_invocation_schema
+    ):
         raise ApexAdapterError("Apex agent invocation receipt is missing")
     expected_isolation = {
         "approval": "never_via_strict_config",
@@ -1292,7 +1372,13 @@ def _validate_apex_lineage(
         or not isinstance(invocation.get("entrypoint_sha256"), str)
         or not _SHA256.fullmatch(invocation["entrypoint_sha256"])
         or invocation.get("max_turns") != task_spec["budget"]["max_turns"]
-        or invocation.get("turn_policy") != TURN_POLICY
+        or invocation.get("turn_policy")
+        != (TURN_POLICY if typed_termination is not None else LEGACY_TURN_POLICY)
+        or (
+            typed_termination is not None
+            and invocation.get("boundary_quiescence_policy_id")
+            != BOUNDARY_QUIESCENCE_POLICY
+        )
         or invocation.get("isolation") != expected_isolation
         or not isinstance(argv, list)
         or "--strict-config" not in argv
@@ -1356,7 +1442,8 @@ def _validate_apex_lineage(
         raise ApexAdapterError("Apex agent transcript is not valid JSON") from error
     if (
         not isinstance(transcript, dict)
-        or transcript.get("schema") != "apex.agent-transcript/v1"
+        or transcript.get("schema")
+        not in {"apex.agent-transcript/v1", "apex.agent-transcript/v2"}
         or transcript.get("backend") != task_spec["agent_backend"]
         or transcript.get("model") != expected_options.get("model")
         or transcript.get("effort") != expected_options.get("effort")
@@ -1364,7 +1451,11 @@ def _validate_apex_lineage(
     ):
         raise ApexAdapterError("Apex transcript does not bind the verified invocation")
     semantic_events = transcript.get("semantic_events")
-    budget = transcript.get("budget")
+    budget = (
+        transcript.get("termination")
+        if transcript.get("schema") == "apex.agent-transcript/v2"
+        else transcript.get("budget")
+    )
     if not isinstance(semantic_events, list) or not isinstance(budget, dict):
         raise ApexAdapterError("Apex transcript lacks semantic turn evidence")
     message_count = sum(
@@ -1380,25 +1471,65 @@ def _validate_apex_lineage(
     observed_turns = message_count + tool_call_count
     max_turns = task_spec["budget"]["max_turns"]
     expected_budget_exceeded = failure_reason is not None
-    if (
+    common_turn_mismatch = (
         payload.get("observed_turns") != observed_turns
-        or payload.get("message_event_count") != message_count
-        or payload.get("tool_call_event_count") != tool_call_count
-        or payload.get("semantic_event_count") != len(semantic_events)
-        or budget.get("turn_policy") != TURN_POLICY
+        or budget.get("turn_policy")
+        != (TURN_POLICY if typed_termination is not None else LEGACY_TURN_POLICY)
         or budget.get("max_turns") != max_turns
         or budget.get("observed_turns") != observed_turns
-        or budget.get("exceeded") is not expected_budget_exceeded
-        or budget.get("enforcement_failed") is not False
-        or budget.get("reason") != payload.get("budget_reason")
-        or (
-            not expected_budget_exceeded
-            and (
-                type(max_turns) is not int
-                or not 1 <= observed_turns <= max_turns
+    )
+    if transcript.get("schema") == "apex.agent-transcript/v2":
+        turn_mismatch = common_turn_mismatch or any(
+            budget.get(transcript_key) != payload.get(payload_key)
+            for transcript_key, payload_key in {
+                "kind": "termination_kind",
+                "reason": "termination_reason",
+                "capture_status": "capture_status",
+                "candidate_capture_allowed": "candidate_capture_allowed",
+                "observer_stop_sent": "observer_stop_sent",
+            }.items()
+        )
+        suspension = budget.get("suspension")
+        discarded_tail = budget.get("discarded_stdout_tail")
+        turn_mismatch = turn_mismatch or (
+            not isinstance(suspension, dict)
+            or suspension
+            != {
+                "policy_id": BOUNDARY_QUIESCENCE_POLICY,
+                "sent": payload.get("observer_suspend_sent"),
+                "verified": payload.get("suspension_verified"),
+            }
+            or not isinstance(discarded_tail, dict)
+            or discarded_tail
+            != {
+                "lines": payload.get("discarded_stdout_lines"),
+                "bytes": payload.get("discarded_stdout_bytes"),
+                "sha256": payload.get("discarded_stdout_sha256"),
+            }
+        )
+        turn_mismatch = turn_mismatch or (
+            exact_checkpoint and observed_turns != max_turns
+        ) or (
+            not exact_checkpoint and not 1 <= observed_turns <= max_turns
+        )
+    else:
+        turn_mismatch = (
+            common_turn_mismatch
+            or payload.get("message_event_count") != message_count
+            or payload.get("tool_call_event_count") != tool_call_count
+            or payload.get("semantic_event_count") != len(semantic_events)
+            or budget.get("exceeded") is not expected_budget_exceeded
+            or budget.get("enforcement_failed") is not False
+            or budget.get("reason") != payload.get("budget_reason")
+            or (
+                not expected_budget_exceeded
+                and (
+                    type(max_turns) is not int
+                    or not 1 <= observed_turns <= max_turns
+                )
             )
         )
-    ):
+    if turn_mismatch:
         raise ApexAdapterError("Apex transcript turn evidence is inconsistent")
 
     declared_receipts = store_ref.get("receipt_digests")
@@ -1434,6 +1565,14 @@ def _validate_apex_lineage(
             "Apex result artifact receipt set is not event-bound"
         )
 
+    checkpoint_gate_chain = None
+    if exact_checkpoint and status == "candidate_ready":
+        checkpoint_gate_chain = _validate_checkpoint_gate_chain(
+            events=events,
+            agent_event=agent_event,
+            result=result,
+        )
+
     return {
         "journal_path": journal,
         "journal_head_event_id": head["event_id"],
@@ -1444,6 +1583,37 @@ def _validate_apex_lineage(
         "transcript_digest": _sha256_bytes(transcript_bytes),
         "event_artifact_digests": sorted(event_artifact_digests),
         "invocation": invocation,
+        "termination_kind": typed_termination or (
+            "budget_exhausted" if failure_reason else "completed"
+        ),
+        "termination_reason": payload.get("termination_reason")
+        if typed_termination is not None
+        else payload.get("budget_reason"),
+        "capture_status": payload.get("capture_status")
+        if typed_termination is not None
+        else "complete",
+        "candidate_capture_allowed": payload.get("candidate_capture_allowed")
+        if typed_termination is not None
+        else failure_reason is None,
+        "observed_turns": observed_turns,
+        "observer_stop_sent": payload.get("observer_stop_sent")
+        if typed_termination is not None
+        else False,
+        "observer_suspend_sent": payload.get("observer_suspend_sent")
+        if typed_termination is not None
+        else False,
+        "suspension_verified": payload.get("suspension_verified")
+        if typed_termination is not None
+        else False,
+        "discarded_stdout_tail": {
+            "lines": payload.get("discarded_stdout_lines"),
+            "bytes": payload.get("discarded_stdout_bytes"),
+            "sha256": payload.get("discarded_stdout_sha256"),
+        }
+        if typed_termination is not None
+        else {"lines": 0, "bytes": 0, "sha256": None},
+        "agent_event_id": agent_event["event_id"],
+        "checkpoint_gate_chain": checkpoint_gate_chain,
         "prompt_bytes": prompt_bytes,
         "prompt_event": {
             "binding": "apex.prompt_sent_event_cas/v1",
@@ -1460,6 +1630,103 @@ def _validate_apex_lineage(
             "effort": transcript["effort"],
         },
     }
+
+
+def _validate_checkpoint_gate_chain(
+    *,
+    events: list[dict[str, Any]],
+    agent_event: dict[str, Any],
+    result: dict[str, Any],
+) -> dict[str, str]:
+    """Require the evaluator-owned freeze/gate chain after an exact boundary."""
+    attempt_id = agent_event["payload"].get("attempt_id")
+    required_types = (
+        "candidate_frozen",
+        "action.artifacts_ready",
+        "compile_result",
+        "correctness_result",
+        "safety_result",
+        "performance_command_result",
+        "measurement_result",
+        "reward_committed",
+        "action.verified",
+        "decision",
+        "run.succeeded",
+    )
+    selected: list[dict[str, Any]] = []
+    for event_type in required_types:
+        matches = [
+            event
+            for event in events
+            if event["event_type"] == event_type
+            and (
+                event_type == "run.succeeded"
+                or event["payload"].get("attempt_id", event["payload"].get("action_id"))
+                == attempt_id
+            )
+        ]
+        if len(matches) != 1:
+            raise ApexAdapterError(
+                f"exact-boundary checkpoint requires one {event_type} event"
+            )
+        selected.append(matches[0])
+    if not (
+        agent_event["sequence"] < selected[0]["sequence"]
+        and [event["sequence"] for event in selected]
+        == sorted(event["sequence"] for event in selected)
+    ):
+        raise ApexAdapterError("exact-boundary trusted gate events are out of order")
+
+    candidate, artifacts_ready, compiled, correct, safety, performance, measured, reward, verified, decision, finished = selected
+    candidate_bindings = candidate["payload"].get("artifacts")
+    changed_files = result.get("changed_files")
+    if (
+        not isinstance(changed_files, list)
+        or not changed_files
+        or candidate["payload"].get("changed_files") != changed_files
+        or not isinstance(candidate_bindings, list)
+        or not candidate_bindings
+        or any(
+            not isinstance(binding, dict) or binding.get("role") != "candidate"
+            for binding in candidate_bindings
+        )
+        or not isinstance(artifacts_ready["payload"].get("artifact_refs"), list)
+        or not artifacts_ready["payload"]["artifact_refs"]
+    ):
+        raise ApexAdapterError("exact-boundary frozen candidate lineage is invalid")
+    if compiled["payload"].get("passed") is not True:
+        raise ApexAdapterError("exact-boundary compile gate did not pass")
+    if correct["payload"].get("passed") is not True:
+        raise ApexAdapterError("exact-boundary correctness gate did not pass")
+    if (
+        safety["payload"].get("allowed_to_measure") is not True
+        or safety["payload"].get("promotion_eligible") is not True
+    ):
+        raise ApexAdapterError("exact-boundary safety gate did not permit promotion")
+    if (
+        performance["payload"].get("passed") is not True
+        or performance["payload"].get("runtime") != "normal_uninstrumented"
+        or performance["payload"].get("status")
+        != "command_completed_without_robust_timing_grade"
+    ):
+        raise ApexAdapterError("exact-boundary normal-performance gate did not pass")
+    if (
+        measured["payload"].get("measurement_status") != "valid"
+        or measured["payload"].get("evidence_class") != "measured"
+        or reward["payload"].get("evidence_class") != "measured"
+        or not isinstance(reward["payload"].get("scalar_reward"), (int, float))
+    ):
+        raise ApexAdapterError("exact-boundary measurement/reward chain is invalid")
+    if (
+        not isinstance(verified["payload"].get("verification_id"), str)
+        or not _SHA256.fullmatch(verified["payload"]["verification_id"])
+        or decision["event_id"] != result.get("internal_verdict_ref")
+        or decision["payload"].get("verdict") != "keep"
+        or decision["payload"].get("bundle_digest") != result.get("bundle_digest")
+        or finished["payload"].get("reason") != "candidate_ready"
+    ):
+        raise ApexAdapterError("exact-boundary decision/bundle lineage is invalid")
+    return {event["event_type"]: event["event_id"] for event in selected}
 
 
 def _fsync_directory(path: Path) -> None:
@@ -1548,6 +1815,11 @@ def _write_apex_attempt_receipt(
         artifacts["agent_prompt"] = _write_read_only_atomic(
             artifact_dir / "agent_prompt.txt", lineage["prompt_bytes"]
         )
+        if isinstance(lineage.get("bundle_snapshot_bytes"), bytes):
+            artifacts["source_bundle"] = _write_read_only_atomic(
+                artifact_dir / "source_bundle_snapshot.json",
+                lineage["bundle_snapshot_bytes"],
+            )
     original_artifact = artifacts["original_arena_prompt"]
     if (
         original_artifact["sha256"] != adaptation["original"]["sha256"]
@@ -1566,6 +1838,19 @@ def _write_apex_attempt_receipt(
             raise ApexAdapterError(
                 "sealed agent prompt artifact disagrees with prompt event receipt"
             )
+        bundle_summary = lineage.get("bundle")
+        if isinstance(bundle_summary, dict):
+            bundle_artifact = artifacts.get("source_bundle")
+            if (
+                not isinstance(bundle_artifact, dict)
+                or bundle_artifact["sha256"]
+                != bundle_summary.get("snapshot_sha256")
+                or bundle_artifact["size_bytes"]
+                != bundle_summary.get("snapshot_size_bytes")
+            ):
+                raise ApexAdapterError(
+                    "sealed source bundle disagrees with checkpoint lineage"
+                )
     receipt["artifacts"] = artifacts
     payload = (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode("utf-8")
     _write_read_only_atomic(receipt_path, payload)
@@ -1627,6 +1912,61 @@ def _bundle_digest(manifest: dict[str, Any], patch_paths: Iterable[Path]) -> str
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                 digest.update(chunk)
     return digest.hexdigest()
+
+
+def _bundle_snapshot_bytes(
+    *, result: dict[str, Any], artifact_root: Path, size_limit: int
+) -> bytes:
+    """Serialize validated bundle bytes for immutable outer-receipt verification."""
+    bundle_path = _resolve_below(
+        artifact_root, result.get("bundle_path"), field="bundle_path"
+    )
+    files = _bundle_files(bundle_path, size_limit=size_limit)
+    manifest = _read_regular_json(
+        bundle_path / "bundle.json",
+        size_limit=_DEFAULT_RESULT_LIMIT,
+        label="bundle manifest",
+    )
+    raw_patches = manifest.get("patches")
+    if not isinstance(raw_patches, list) or not raw_patches:
+        raise ApexAdapterError("bundle snapshot requires declared patches")
+    patches: list[dict[str, Any]] = []
+    patch_paths: list[Path] = []
+    for index, entry in enumerate(raw_patches):
+        if not isinstance(entry, dict):
+            raise ApexAdapterError(f"bundle.patches[{index}] must be an object")
+        relative = _normalize_relative_path(
+            entry.get("path"), field=f"bundle.patches[{index}].path"
+        )
+        path = _resolve_below(bundle_path, relative, field="patch path")
+        content = path.read_bytes()
+        patch_paths.append(path)
+        patches.append(
+            {
+                "path": relative,
+                "sha256": _sha256_bytes(content),
+                "size_bytes": len(content),
+                "content_base64": base64.b64encode(content).decode("ascii"),
+            }
+        )
+    if files != {"bundle.json", *(item["path"] for item in patches)}:
+        raise ApexAdapterError("bundle snapshot file set disagrees with manifest")
+    bundle_digest = _bundle_digest(manifest, patch_paths)
+    if bundle_digest != result.get("bundle_digest"):
+        raise ApexAdapterError("bundle snapshot digest disagrees with Apex result")
+    snapshot = {
+        "schema": "aka.apex-source-bundle-snapshot/v1",
+        "bundle_digest": bundle_digest,
+        "manifest": manifest,
+        "patches": patches,
+    }
+    return json.dumps(
+        snapshot,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
 
 
 def _resolve_below(root: Path, raw: Any, *, field: str) -> Path:
@@ -2088,6 +2428,7 @@ def launch_agent(
         "codex": None,
         "invocation": None,
         "lineage": None,
+        "candidate_persistence": None,
     }
     try:
         if formal_campaign and not task_spec_postlaunch_unchanged:
@@ -2154,6 +2495,23 @@ def launch_agent(
                 "internal_verdict": result.get("internal_verdict"),
                 "internal_verdict_ref": result.get("internal_verdict_ref"),
             }
+            receipt["candidate_persistence"] = {
+                "schema": "aka.candidate-persistence-receipt/v3",
+                "policy_id": CANDIDATE_PERSISTENCE_POLICY,
+                "boundary_quiescence_policy_id": BOUNDARY_QUIESCENCE_POLICY,
+                "termination_kind": lineage["termination_kind"],
+                "termination_reason": lineage["termination_reason"],
+                "capture_status": lineage["capture_status"],
+                "candidate_capture_allowed": lineage[
+                    "candidate_capture_allowed"
+                ],
+                "observer_stop_sent": lineage["observer_stop_sent"],
+                "observer_suspend_sent": lineage["observer_suspend_sent"],
+                "suspension_verified": lineage["suspension_verified"],
+                "discarded_stdout_tail": lineage["discarded_stdout_tail"],
+                "observed_turns": lineage["observed_turns"],
+                "checkpoint": None,
+            }
         if return_code != 0:
             raise ApexAdapterError(
                 f"Apex returned {status or 'an invalid result'} with process exit "
@@ -2169,6 +2527,35 @@ def launch_agent(
                 max_result_bytes=max_result_bytes,
                 max_bundle_bytes=int(agent_config.get("max_bundle_bytes", _DEFAULT_BUNDLE_LIMIT)),
             )
+            if formal_campaign:
+                assert lineage is not None
+                snapshot = _bundle_snapshot_bytes(
+                    result=result,
+                    artifact_root=artifact_root,
+                    size_limit=int(
+                        agent_config.get(
+                            "max_bundle_bytes", _DEFAULT_BUNDLE_LIMIT
+                        )
+                    ),
+                )
+                bundle_summary = {
+                    "bundle_digest": result["bundle_digest"],
+                    "snapshot_sha256": _sha256_bytes(snapshot),
+                    "snapshot_size_bytes": len(snapshot),
+                }
+                lineage["bundle_snapshot_bytes"] = snapshot
+                lineage["bundle"] = bundle_summary
+                receipt_lineage = receipt["lineage"]
+                assert isinstance(receipt_lineage, dict)
+                receipt_lineage["bundle"] = bundle_summary
+                persistence = receipt["candidate_persistence"]
+                assert isinstance(persistence, dict)
+                if lineage["termination_kind"] == "exact_turn_boundary":
+                    persistence["checkpoint"] = {
+                        "agent_event_id": lineage["agent_event_id"],
+                        "gate_chain": lineage["checkpoint_gate_chain"],
+                        **bundle_summary,
+                    }
             logger.info("Applied validated Apex source bundle: %s", changed)
         elif status in _NORMAL_NO_PATCH_STATUSES:
             if result.get("bundle_path") is not None or result.get("bundle_digest") is not None:

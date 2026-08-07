@@ -7,7 +7,10 @@ import json
 from collections.abc import Mapping
 
 
-TURN_POLICY = "structured_agent_turn_v1"
+LEGACY_TURN_POLICY = "structured_agent_turn_v1"
+CANDIDATE_PERSISTENCE_POLICY = "structured_agent_turn_checkpoint_v2"
+BOUNDARY_QUIESCENCE_POLICY = "sigstop_process_group_snapshot_v1"
+TURN_POLICY = CANDIDATE_PERSISTENCE_POLICY
 FORMAL_MATCHED_MAX_TURNS = 50
 _CONTEXT_PACKET_HEADER = "# Apex ContextPacket\n"
 _ROLE_SECTION = "## Identity and role\n\n> "
@@ -26,7 +29,10 @@ def budget_stop_reason_matches(
         or not isinstance(max_turns, int)
     ):
         return False
-    if reason == "max_turns_exhausted_before_follow_up":
+    if reason in {
+        "exact_turn_boundary",
+        "max_turns_exhausted_before_follow_up",
+    }:
         return observed_turns == max_turns
     if reason == "max_turns_exceeded":
         return observed_turns > max_turns
@@ -140,6 +146,7 @@ class AgentTurnBudget:
         self.max_turns = max_turns
         self.observed_turns = 0
         self.stop_reason: str | None = None
+        self.post_boundary_turns = 0
         self._saw_decision = False
         self._saw_turn_evidence = False
 
@@ -152,10 +159,19 @@ class AgentTurnBudget:
         if value is None:
             return False
         explicit = _nonnegative_int(value, "num_turns", "turn_count", "turns")
+        decisions, requires_follow_up = _decision_count(value)
+        if self.stop_reason == "exact_turn_boundary":
+            if decisions or (
+                explicit is not None and explicit > self.observed_turns
+            ):
+                self.post_boundary_turns += max(
+                    decisions,
+                    (explicit or self.observed_turns) - self.observed_turns,
+                )
+            return True
         if explicit is not None:
             self.observed_turns = max(self.observed_turns, explicit)
             self._saw_turn_evidence = True
-        decisions, requires_follow_up = _decision_count(value)
         if decisions:
             self.observed_turns += decisions
             self._saw_decision = True
@@ -168,8 +184,8 @@ class AgentTurnBudget:
         if self.observed_turns > self.max_turns:
             self.stop_reason = "max_turns_exceeded"
             return True
-        if self.observed_turns == self.max_turns and requires_follow_up:
-            self.stop_reason = "max_turns_exhausted_before_follow_up"
+        if self.observed_turns == self.max_turns:
+            self.stop_reason = "exact_turn_boundary"
             return True
         return False
 
@@ -185,7 +201,15 @@ class AgentTurnBudget:
 
     @property
     def budget_exceeded(self) -> bool:
-        return self.stop_reason is not None and self.stop_reason.startswith("max_turns_")
+        return self.stop_reason == "max_turns_exceeded" or self.post_boundary_turns > 0
+
+    @property
+    def exact_boundary_reached(self) -> bool:
+        return (
+            self.stop_reason == "exact_turn_boundary"
+            and self.observed_turns == self.max_turns
+            and self.post_boundary_turns == 0
+        )
 
     @property
     def enforcement_failed(self) -> bool:
@@ -194,13 +218,15 @@ class AgentTurnBudget:
             "oversized_structured_event",
             "turn_observer_failed",
             "unparseable_structured_event",
-        }
+        } or self.post_boundary_turns > 0
 
     def receipt(self) -> dict[str, object]:
         return {
             "policy": TURN_POLICY,
             "max_turns": self.max_turns,
             "observed_turns": self.observed_turns,
+            "exact_boundary_reached": self.exact_boundary_reached,
+            "post_boundary_turns": self.post_boundary_turns,
             "budget_exceeded": self.budget_exceeded,
             "enforcement_failed": self.enforcement_failed,
             "stop_reason": self.stop_reason,
@@ -269,7 +295,9 @@ def _nonnegative_int(value: Mapping[str, object], *keys: str) -> int | None:
 
 __all__ = [
     "AgentTurnBudget",
+    "CANDIDATE_PERSISTENCE_POLICY",
     "FORMAL_MATCHED_MAX_TURNS",
+    "LEGACY_TURN_POLICY",
     "TURN_POLICY",
     "budget_stop_reason_matches",
     "context_packet_objective_matches",

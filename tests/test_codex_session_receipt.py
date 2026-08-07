@@ -62,6 +62,33 @@ if mode == "turn_limit":
         }), flush=True)
     time.sleep(30)
 
+if mode == "exact_boundary":
+    with open("kernel.py", "w", encoding="utf-8") as stream:
+        stream.write("optimized_at_boundary = True\n")
+    for index in range(50):
+        print(json.dumps({
+            "type": "item.completed",
+            "item": {"type": "agent_message", "text": f"turn-{index}"},
+        }), flush=True)
+    time.sleep(30)
+
+if mode == "exact_boundary_late_write":
+    with open("kernel.py", "w", encoding="utf-8") as stream:
+        stream.write("optimized_at_boundary = True\n")
+
+    def late_write(_signum, _frame):
+        with open("kernel.py", "w", encoding="utf-8") as stream:
+            stream.write("poisoned_after_boundary = True\n")
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, late_write)
+    for index in range(50):
+        print(json.dumps({
+            "type": "item.completed",
+            "item": {"type": "agent_message", "text": f"turn-{index}"},
+        }), flush=True)
+    time.sleep(30)
+
 if mode == "output_flood":
     payload = "x" * 1024
     for index in range(17000):
@@ -168,7 +195,7 @@ def test_success_receipt_binds_new_session_cli_usage_and_external_artifacts(
 
     receipt = _load_receipt(receipt_path)
     try:
-        assert receipt["schema"] == "agentkernelarena.codex-attempt-receipt/v1"
+        assert receipt["schema"] == "agentkernelarena.codex-attempt-receipt/v3"
         assert receipt["comparison_contract_sha256"] is None
         assert receipt["session_succeeded"] is True
         assert receipt["timed_out"] is False
@@ -318,9 +345,11 @@ def test_formal_session_uses_auth_only_home_and_cannot_see_sibling_attempt(
             "attempt_only_bubblewrap"
         )
         assert receipt["turn_budget"] == {
-            "policy": "structured_agent_turn_v1",
+            "policy": "structured_agent_turn_checkpoint_v2",
             "max_turns": 50,
             "observed_turns": 1,
+            "exact_boundary_reached": False,
+            "post_boundary_turns": 0,
             "budget_exceeded": False,
             "enforcement_failed": False,
             "stop_reason": None,
@@ -403,7 +432,7 @@ def test_formal_workspace_is_sanitized_to_declared_source_only(
         shutil.rmtree(binary_parent)
 
 
-def test_direct_codex_turn_budget_stops_fifty_first_decision(
+def test_direct_codex_rejects_post_boundary_turn_without_reporting_fifty_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _install_fake_codex(tmp_path, monkeypatch)
@@ -421,11 +450,148 @@ def test_direct_codex_turn_budget_stops_fifty_first_decision(
     receipt = _load_receipt(receipt_path)
     try:
         assert receipt["turn_budget"]["max_turns"] == 50
-        assert receipt["turn_budget"]["observed_turns"] >= 51
+        assert receipt["turn_budget"]["observed_turns"] == 50
+        assert receipt["turn_budget"]["post_boundary_turns"] == 1
         assert receipt["turn_budget"]["budget_exceeded"] is True
         assert receipt["session_succeeded"] is False
     finally:
         _make_artifact_dir_removable(receipt)
+
+
+def test_formal_direct_codex_persists_exact_boundary_source_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    binary_parent = Path(tempfile.mkdtemp(prefix="aka-codex-test-", dir="/var/tmp"))
+    _install_fake_codex(binary_parent, monkeypatch)
+    monkeypatch.setenv("FAKE_CODEX_MODE", "exact_boundary")
+    monkeypatch.setattr(launcher, "_TERM_GRACE_SECONDS", 0.1)
+    data_root = tmp_path / "campaign"
+    attempt = data_root / "run/task/attempt_01"
+    workspace = attempt / "workspace"
+    workspace.mkdir(parents=True)
+    source = workspace / "kernel.py"
+    source.write_text("baseline = True\n", encoding="utf-8")
+    task_config = tmp_path / "task.yaml"
+    task_config.write_text("source_file_path: kernel.py\n", encoding="utf-8")
+    state_root = tmp_path / "agent-state/.codex"
+    state_root.mkdir(parents=True)
+    (state_root / "auth.json").write_text("{}\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_STATE_MOUNT_ROOT", str(state_root.parent))
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
+    receipt_path = attempt / "session_receipt.json"
+    eval_config = {
+        "campaign": {"comparison": "apex_vs_codex"},
+        "campaign_attempt": {
+            "fresh_session": True,
+            "receipt_path": str(receipt_path),
+            "task_deadline_monotonic": time.monotonic() + 30,
+            "comparison_contract_sha256": "d" * 64,
+        },
+    }
+
+    receipt: dict = {}
+    try:
+        launcher.launch_agent(eval_config, str(task_config), str(workspace))
+        receipt = _load_receipt(receipt_path)
+        assert receipt["session_succeeded"] is True
+        assert receipt["exit_code"] == -int(signal.SIGTERM)
+        assert receipt["turn_budget"] == {
+            "policy": "structured_agent_turn_checkpoint_v2",
+            "max_turns": 50,
+            "observed_turns": 50,
+            "exact_boundary_reached": True,
+            "post_boundary_turns": 0,
+            "budget_exceeded": False,
+            "enforcement_failed": False,
+            "stop_reason": "exact_turn_boundary",
+        }
+        persistence = receipt["candidate_persistence"]
+        assert persistence["policy_id"] == "structured_agent_turn_checkpoint_v2"
+        assert persistence["schema"] == "aka.candidate-persistence-receipt/v3"
+        assert persistence["boundary_quiescence_policy_id"] == (
+            "sigstop_process_group_snapshot_v1"
+        )
+        assert persistence["termination"] == "exact_turn_boundary"
+        checkpoint = persistence["checkpoint"]
+        assert checkpoint["before_manifest_sha256"] == receipt[
+            "workspace_integrity"
+        ]["final_changes"]["before_manifest_sha256"]
+        assert checkpoint["after_manifest_sha256"] == receipt[
+            "workspace_integrity"
+        ]["final_changes"]["after_manifest_sha256"]
+        assert checkpoint["changed_files"] == ["kernel.py"]
+        assert checkpoint["editable_files"] == ["kernel.py"]
+        assert len(checkpoint["suspension_sha256"]) == 64
+        assert len(checkpoint["boundary_snapshot_sha256"]) == 64
+        assert len(checkpoint["output_tail_sha256"]) == 64
+        suspension = receipt["process_group_suspension"]
+        assert suspension["sent"] is True
+        assert suspension["verified"] is True
+        assert suspension["members"]
+        assert receipt["process_group_cleanup"]["verified_absent"] is True
+        assert receipt["process_group_cleanup"]["sigcont_sent"] is True
+        assert receipt["capture"]["readers_completed"] is True
+        assert source.read_text(encoding="utf-8") == "optimized_at_boundary = True\n"
+    finally:
+        if receipt:
+            _make_artifact_dir_removable(receipt)
+        shutil.rmtree(binary_parent)
+
+
+def test_exact_boundary_snapshot_excludes_deterministic_late_cleanup_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    binary_parent = Path(tempfile.mkdtemp(prefix="aka-codex-test-", dir="/var/tmp"))
+    _install_fake_codex(binary_parent, monkeypatch)
+    monkeypatch.setenv("FAKE_CODEX_MODE", "exact_boundary_late_write")
+    monkeypatch.setattr(launcher, "_TERM_GRACE_SECONDS", 0.2)
+    monkeypatch.setattr(
+        launcher,
+        "wrap_attempt_command",
+        lambda command, **_kwargs: command,
+    )
+    data_root = tmp_path / "campaign"
+    attempt = data_root / "run/task/attempt_01"
+    workspace = attempt / "workspace"
+    workspace.mkdir(parents=True)
+    source = workspace / "kernel.py"
+    source.write_text("baseline = True\n", encoding="utf-8")
+    task_config = tmp_path / "task.yaml"
+    task_config.write_text("source_file_path: kernel.py\n", encoding="utf-8")
+    state_root = tmp_path / "agent-state/.codex"
+    state_root.mkdir(parents=True)
+    (state_root / "auth.json").write_text("{}\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_STATE_MOUNT_ROOT", str(state_root.parent))
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
+    receipt_path = attempt / "session_receipt.json"
+    eval_config = {
+        "campaign": {"comparison": "apex_vs_codex"},
+        "campaign_attempt": {
+            "fresh_session": True,
+            "receipt_path": str(receipt_path),
+            "task_deadline_monotonic": time.monotonic() + 30,
+            "comparison_contract_sha256": "d" * 64,
+        },
+    }
+
+    receipt: dict = {}
+    try:
+        launcher.launch_agent(eval_config, str(task_config), str(workspace))
+        receipt = _load_receipt(receipt_path)
+        assert receipt["exit_code"] == 0
+        assert receipt["process_group_suspension"]["verified"] is True
+        assert receipt["process_group_cleanup"]["sigcont_sent"] is True
+        assert receipt["candidate_persistence"]["boundary_snapshot"][
+            "complete"
+        ] is True
+        assert source.read_text(encoding="utf-8") == (
+            "optimized_at_boundary = True\n"
+        )
+        assert "poisoned_after_boundary" not in source.read_text(encoding="utf-8")
+    finally:
+        if receipt:
+            _make_artifact_dir_removable(receipt)
+        shutil.rmtree(binary_parent)
 
 
 def test_direct_codex_output_is_bounded_and_truncation_invalidates_session(

@@ -33,7 +33,13 @@ except (ModuleNotFoundError, ImportError):
 
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-_COMPARISON_SCHEMA = "aka.apex-vs-codex-comparison-contract/v1"
+_COMPARISON_SCHEMAS = {
+    "aka.apex-vs-codex-comparison-contract/v1",
+    "aka.apex-vs-codex-comparison-contract/v2",
+    "aka.apex-vs-codex-comparison-contract/v3",
+}
+_CANDIDATE_PERSISTENCE_POLICY = "structured_agent_turn_checkpoint_v2"
+_BOUNDARY_QUIESCENCE_POLICY = "sigstop_process_group_snapshot_v1"
 _OBJECTIVE_POLICY = "aka.task-package-objective-and-protected-harness/v1"
 _PROMPT_POLICY = "aka.shared-objective-backend-native-context-receipted/v1"
 _CODEX_IDENTITY_FIELDS = (
@@ -102,7 +108,34 @@ def _formal_manifest_context(
         not isinstance(tasks, list)
         or not tasks
         or not isinstance(comparison, dict)
-        or comparison.get("schema") != _COMPARISON_SCHEMA
+        or comparison.get("schema") not in _COMPARISON_SCHEMAS
+        or (
+            comparison.get("schema")
+            == "aka.apex-vs-codex-comparison-contract/v2"
+            and comparison.get("candidate_persistence_policy_id")
+            != _CANDIDATE_PERSISTENCE_POLICY
+        )
+        or (
+            comparison.get("schema")
+            == "aka.apex-vs-codex-comparison-contract/v3"
+            and (
+                comparison.get("candidate_persistence_policy_id")
+                != _CANDIDATE_PERSISTENCE_POLICY
+                or comparison.get("boundary_quiescence_policy_id")
+                != _BOUNDARY_QUIESCENCE_POLICY
+                or not isinstance(comparison_codex, dict)
+                or comparison_codex.get("boundary_quiescence_policy_id")
+                != _BOUNDARY_QUIESCENCE_POLICY
+                or not isinstance(agent, dict)
+                or agent.get("boundary_quiescence_policy_id")
+                != _BOUNDARY_QUIESCENCE_POLICY
+            )
+        )
+        or (
+            comparison.get("schema")
+            == "aka.apex-vs-codex-comparison-contract/v1"
+            and "candidate_persistence_policy_id" in comparison
+        )
         or comparison.get("objective_policy_id") != _OBJECTIVE_POLICY
         or comparison.get("prompt_policy_id") != _PROMPT_POLICY
         or comparison.get("tasks") != tasks

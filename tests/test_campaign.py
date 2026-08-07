@@ -6,6 +6,7 @@ import json
 import os
 import re
 import runpy
+import signal
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -814,14 +815,20 @@ def _write_campaign_codex_contract(
     task_names: tuple[str, ...] = ("triton2triton/vllm/example",),
     apex_receipt_schema: str = "agentkernelarena.apex-attempt-receipt/v2",
     agent_template: str = "apex",
+    checkpoint_policy: bool = False,
 ) -> dict:
+    turn_policy = (
+        "structured_agent_turn_checkpoint_v2"
+        if checkpoint_policy
+        else "structured_agent_turn_v1"
+    )
     codex = {
         "model": "gpt-5.5",
         "effort": "xhigh",
         "codex_version": "codex-cli test",
         "codex_binary_sha256": "a" * 64,
         "max_turns": 50,
-        "turn_policy": "structured_agent_turn_v1",
+        "turn_policy": turn_policy,
         "structured_stream_output_limit_bytes": 16 * 1024 * 1024,
         "isolation": {
             "approval": "never_via_strict_config",
@@ -882,7 +889,11 @@ def _write_campaign_codex_contract(
         "task_mapping": task_mapping,
     }
     comparison_contract = {
-        "schema": "aka.apex-vs-codex-comparison-contract/v1",
+        "schema": (
+            "aka.apex-vs-codex-comparison-contract/v3"
+            if checkpoint_policy
+            else "aka.apex-vs-codex-comparison-contract/v1"
+        ),
         "objective_policy_id": "aka.task-package-objective-and-protected-harness/v1",
         "prompt_policy_id": (
             "aka.shared-objective-backend-native-context-receipted/v1"
@@ -891,6 +902,14 @@ def _write_campaign_codex_contract(
         "runtime": {"gpu": gpu},
         "tasks": tasks,
     }
+    if checkpoint_policy:
+        codex["boundary_quiescence_policy_id"] = (
+            "sigstop_process_group_snapshot_v1"
+        )
+        comparison_contract["candidate_persistence_policy_id"] = turn_policy
+        comparison_contract["boundary_quiescence_policy_id"] = (
+            "sigstop_process_group_snapshot_v1"
+        )
     comparison_digest = hashlib.sha256(
         json.dumps(
             comparison_contract, sort_keys=True, separators=(",", ":")
@@ -906,7 +925,11 @@ def _write_campaign_codex_contract(
                 "agent": {
                     "template": agent_template,
                     "session_receipt_schema": (
-                        "agentkernelarena.codex-attempt-receipt/v1"
+                        (
+                            "agentkernelarena.codex-attempt-receipt/v3"
+                            if checkpoint_policy
+                            else "agentkernelarena.codex-attempt-receipt/v1"
+                        )
                         if agent_template == "codex"
                         else apex_receipt_schema
                     ),
@@ -921,15 +944,28 @@ def _write_campaign_codex_contract(
     return codex | {
         "_comparison_contract_sha256": comparison_digest,
         "_task_config_paths": task_config_paths,
+        "_checkpoint_policy": checkpoint_policy,
     }
 
 
-def _write_valid_codex_receipt(receipt_path: Path, codex_contract: dict) -> Path:
+def _write_valid_codex_receipt(
+    receipt_path: Path,
+    codex_contract: dict,
+    *,
+    exact_boundary: bool = False,
+) -> Path:
     artifact_dir = receipt_path.parent / f".{receipt_path.stem}.artifacts"
     artifact_dir.mkdir(parents=True)
     source_metadata = {"sha256": "1" * 64, "size_bytes": 1, "mode": "0644"}
     before_manifest = {"kernel.py": source_metadata}
-    after_manifest = {"kernel.py": source_metadata}
+    after_metadata = (
+        {"sha256": "2" * 64, "size_bytes": 2, "mode": "0644"}
+        if exact_boundary
+        else source_metadata
+    )
+    after_manifest = {"kernel.py": after_metadata}
+    checkpoint_policy = codex_contract.get("_checkpoint_policy") is True
+    assert not exact_boundary or checkpoint_policy
     artifact_payloads = {
         "rendered_prompt": (
             artifact_dir / "rendered_prompt.txt",
@@ -963,21 +999,78 @@ def _write_valid_codex_receipt(receipt_path: Path, codex_contract: dict) -> Path
             "mode": "0444",
         }
     artifact_dir.chmod(0o555)
+    suspension = (
+        {
+            "policy_id": "sigstop_process_group_snapshot_v1",
+            "method": "sigstop_process_group",
+            "pgid": 1234,
+            "sent": True,
+            "verification_performed": True,
+            "verified": True,
+            "verification_polls": 2,
+            "stable_polls": 2,
+            "members": [{"pid": 1234, "state": "T"}],
+            "members_sha256": campaign._canonical_json_digest(
+                [{"pid": 1234, "state": "T"}]
+            ),
+            "error": None,
+        }
+        if exact_boundary
+        else None
+    )
+    boundary_snapshot = (
+        {
+            "policy_id": "sigstop_process_group_snapshot_v1",
+            "manifest_sha256": campaign._canonical_json_digest(after_manifest),
+            "files": [
+                {
+                    "path": "kernel.py",
+                    "sha256": after_metadata["sha256"],
+                    "size_bytes": after_metadata["size_bytes"],
+                }
+            ],
+            "errors": [],
+            "complete": True,
+        }
+        if exact_boundary
+        else None
+    )
+    output_tail = (
+        {
+            "policy": "retained_and_digested_v1",
+            "stdout_character_offset": 3,
+            "stdout_size_bytes": 0,
+            "stdout_sha256": hashlib.sha256(b"").hexdigest(),
+            "post_boundary_turns": 0,
+            "capture_truncated": False,
+            "readers_completed": True,
+        }
+        if exact_boundary
+        else None
+    )
     receipt = {
-        "schema": "agentkernelarena.codex-attempt-receipt/v1",
+        "schema": (
+            "agentkernelarena.codex-attempt-receipt/v3"
+            if checkpoint_policy
+            else "agentkernelarena.codex-attempt-receipt/v1"
+        ),
         "comparison_contract_sha256": codex_contract[
             "_comparison_contract_sha256"
         ],
         "session_succeeded": True,
         "thread_id": "thread-test",
         "session_id": "session-test",
-        "exit_code": 0,
+        "exit_code": -int(signal.SIGTERM) if exact_boundary else 0,
         "timed_out": False,
         "effective_timeout_seconds": 3599.0,
         "process_group_cleanup": {
+            "reason": "exact_turn_boundary" if exact_boundary else "normal_exit",
             "verification_performed": True,
             "verified_absent": True,
+            "sigterm_sent": exact_boundary,
+            "sigcont_sent": exact_boundary,
         },
+        "process_group_suspension": suspension,
         "capture": {
             "readers_completed": True,
             "errors": [],
@@ -995,12 +1088,12 @@ def _write_valid_codex_receipt(receipt_path: Path, codex_contract: dict) -> Path
             },
         },
         "turn_budget": {
-            "policy": "structured_agent_turn_v1",
+            "policy": codex_contract["turn_policy"],
             "max_turns": 50,
-            "observed_turns": 1,
+            "observed_turns": 50 if exact_boundary else 1,
             "budget_exceeded": False,
             "enforcement_failed": False,
-            "stop_reason": None,
+            "stop_reason": "exact_turn_boundary" if exact_boundary else None,
         },
         "workspace_integrity": {
             "policy": "declared_source_only_sanitized_v1",
@@ -1018,7 +1111,7 @@ def _write_valid_codex_receipt(receipt_path: Path, codex_contract: dict) -> Path
                 ).hexdigest(),
                 "created_files": [],
                 "deleted_files": [],
-                "changed_files": [],
+                "changed_files": ["kernel.py"] if exact_boundary else [],
                 "unauthorized_changed_files": [],
                 "editable_mode_changes": [],
             },
@@ -1036,7 +1129,7 @@ def _write_valid_codex_receipt(receipt_path: Path, codex_contract: dict) -> Path
                 ).hexdigest(),
                 "created_files": [],
                 "deleted_files": [],
-                "changed_files": [],
+                "changed_files": ["kernel.py"] if exact_boundary else [],
                 "unauthorized_changed_files": [],
                 "editable_mode_changes": [],
             },
@@ -1080,13 +1173,64 @@ def _write_valid_codex_receipt(receipt_path: Path, codex_contract: dict) -> Path
             "workspace": str(receipt_path.parent / "workspace"),
             "editable_files": ["kernel.py"],
             "max_turns": 50,
-            "turn_policy": "structured_agent_turn_v1",
+            "turn_policy": codex_contract["turn_policy"],
             "structured_stream_output_limit_bytes": 16 * 1024 * 1024,
             "isolation": codex_contract["isolation"],
         },
         "aggregated_usage": {"events": 1, "input_tokens": 1, "output_tokens": 1},
         "artifacts": artifacts,
     }
+    if checkpoint_policy:
+        receipt["turn_budget"] |= {
+            "exact_boundary_reached": exact_boundary,
+            "post_boundary_turns": 0,
+        }
+        receipt["invocation"]["candidate_persistence_policy_id"] = (
+            "structured_agent_turn_checkpoint_v2"
+        )
+        receipt["invocation"]["boundary_quiescence_policy_id"] = (
+            "sigstop_process_group_snapshot_v1"
+        )
+        receipt["candidate_persistence"] = {
+            "schema": "aka.candidate-persistence-receipt/v3",
+            "policy_id": "structured_agent_turn_checkpoint_v2",
+            "boundary_quiescence_policy_id": (
+                "sigstop_process_group_snapshot_v1"
+            ),
+            "termination": (
+                "exact_turn_boundary" if exact_boundary else "completed"
+            ),
+            "checkpoint": (
+                {
+                    "before_manifest_sha256": hashlib.sha256(
+                        json.dumps(
+                            before_manifest, sort_keys=True, separators=(",", ":")
+                        ).encode()
+                    ).hexdigest(),
+                    "after_manifest_sha256": hashlib.sha256(
+                        json.dumps(
+                            after_manifest, sort_keys=True, separators=(",", ":")
+                        ).encode()
+                    ).hexdigest(),
+                    "changed_files": ["kernel.py"],
+                    "editable_files": ["kernel.py"],
+                    "suspension_sha256": campaign._canonical_json_digest(
+                        suspension
+                    ),
+                    "boundary_snapshot_sha256": campaign._canonical_json_digest(
+                        boundary_snapshot
+                    ),
+                    "output_tail_sha256": campaign._canonical_json_digest(
+                        output_tail
+                    ),
+                }
+                if exact_boundary
+                else None
+            ),
+            "suspension": suspension,
+            "boundary_snapshot": boundary_snapshot,
+            "output_tail": output_tail,
+        }
     receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
     receipt_path.chmod(0o444)
     return artifact_payloads["raw_stdout"][0]
@@ -2382,6 +2526,128 @@ def test_direct_codex_prompt_and_comparison_contract_are_independently_recompute
     )
     assert "direct_codex_comparison_contract_digest_mismatch" in errors
     prompt_path.parent.chmod(0o700)
+
+
+def test_direct_codex_exact_boundary_checkpoint_is_formally_eligible(tmp_path) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(
+        run,
+        agent_template="codex",
+        checkpoint_policy=True,
+    )
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_codex_receipt(
+        receipt_path, codex_contract, exact_boundary=True
+    )
+
+    receipt, errors = campaign._validate_session_receipt(
+        receipt_path=receipt_path,
+        workspace=workspace,
+        run_directory=run,
+    )
+
+    assert receipt is not None
+    assert errors == []
+    assert receipt["turn_budget"]["observed_turns"] == 50
+    assert receipt["candidate_persistence"]["termination"] == (
+        "exact_turn_boundary"
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    [
+        ("turn_49", "direct_codex_turn_budget_invalid"),
+        ("turn_51", "direct_codex_turn_budget_invalid"),
+        ("timeout", "direct_codex_receipt_success_status_inconsistent"),
+        ("truncation", "direct_codex_stdout_capture_bound_invalid"),
+        ("cleanup", "direct_codex_process_group_not_verified_absent"),
+        ("suspension", "direct_codex_checkpoint_suspension_invalid"),
+        ("resume", "direct_codex_checkpoint_resume_cleanup_invalid"),
+        ("tail_digest", "direct_codex_boundary_output_tail_digest_mismatch"),
+    ],
+)
+def test_direct_codex_checkpoint_rejects_incomplete_boundary_evidence(
+    tmp_path, mutation, expected_error
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(
+        run,
+        agent_template="codex",
+        checkpoint_policy=True,
+    )
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_codex_receipt(
+        receipt_path, codex_contract, exact_boundary=True
+    )
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    if mutation == "turn_49":
+        payload["turn_budget"]["observed_turns"] = 49
+    elif mutation == "turn_51":
+        payload["turn_budget"]["observed_turns"] = 51
+    elif mutation == "timeout":
+        payload["timed_out"] = True
+    elif mutation == "truncation":
+        payload["capture"]["stdout"]["truncated"] = True
+        payload["capture"]["stdout"]["discarded_bytes"] = 1
+    elif mutation == "cleanup":
+        payload["process_group_cleanup"]["verified_absent"] = False
+    elif mutation == "suspension":
+        payload["process_group_suspension"]["verified"] = False
+    elif mutation == "resume":
+        payload["process_group_cleanup"]["sigcont_sent"] = False
+    else:
+        payload["candidate_persistence"]["output_tail"]["stdout_sha256"] = (
+            "0" * 64
+        )
+    receipt_path.chmod(0o644)
+    receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+    receipt_path.chmod(0o444)
+
+    _, errors = campaign._validate_session_receipt(
+        receipt_path=receipt_path,
+        workspace=workspace,
+        run_directory=run,
+    )
+
+    assert expected_error in errors
+
+
+def test_legacy_direct_codex_receipt_cannot_claim_checkpoint(tmp_path) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(
+        run,
+        agent_template="codex",
+    )
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_codex_receipt(receipt_path, codex_contract)
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    payload["candidate_persistence"] = {
+        "schema": "aka.candidate-persistence-receipt/v2",
+        "policy_id": "structured_agent_turn_checkpoint_v2",
+        "termination": "exact_turn_boundary",
+        "checkpoint": {},
+    }
+    receipt_path.chmod(0o644)
+    receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+    receipt_path.chmod(0o444)
+
+    _, errors = campaign._validate_session_receipt(
+        receipt_path=receipt_path,
+        workspace=workspace,
+        run_directory=run,
+    )
+
+    assert "direct_codex_legacy_receipt_claims_checkpoint" in errors
 
 
 def test_apex_manifest_rejects_substituted_direct_codex_receipt(tmp_path) -> None:

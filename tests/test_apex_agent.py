@@ -420,7 +420,7 @@ def test_formal_mi355x_cohort_preserves_task_contract_and_omits_cheatsheets(
         assert "Each assistant message and each tool-call start counts once" in instructions
         assert sys.executable in instructions
         assert run_control["structured_turn_budget"] == {
-            "policy": "structured_agent_turn_v1",
+                "policy": "structured_agent_turn_checkpoint_v2",
             "max_turns": 50,
             "counting": "assistant_message_and_tool_call_start_each_count_once",
         }
@@ -501,7 +501,7 @@ def test_formal_task_spec_binds_run_control_and_exact_python(
     assert control["deliverable_versions"] == 1
     assert control["python_interpreter"]["path"] == sys.executable
     assert control["structured_turn_budget"]["policy"] == (
-        "structured_agent_turn_v1"
+        "structured_agent_turn_checkpoint_v2"
     )
     assert all(
         spec["commands"][phase]["argv"][0] == sys.executable
@@ -1091,6 +1091,19 @@ def _formal_apex_launch_fixture(
             "transcript_bytes": b"{}",
             "transcript_digest": "b" * 64,
             "event_artifact_digests": [],
+            "termination_kind": "completed",
+            "termination_reason": None,
+            "capture_status": "complete",
+            "candidate_capture_allowed": True,
+            "observed_turns": 1,
+            "observer_stop_sent": False,
+            "observer_suspend_sent": False,
+            "suspension_verified": False,
+            "discarded_stdout_tail": {
+                "lines": 0,
+                "bytes": 0,
+                "sha256": None,
+            },
             "prompt_event": {
                 "binding": "apex.prompt_sent_event_cas/v1",
                 "event_id": "event-prompt",
@@ -1158,7 +1171,7 @@ def test_formal_apex_rejects_task_spec_mutation_and_receipts_prelaunch_bytes(
         apex_launcher.launch_agent(eval_config, str(config_path), str(workspace))
 
     receipt = captured["receipt"]
-    assert receipt["schema"] == "agentkernelarena.apex-attempt-receipt/v2"
+    assert receipt["schema"] == "agentkernelarena.apex-attempt-receipt/v3"
     assert receipt["session_succeeded"] is False
     assert receipt["task_spec_contract"]["postlaunch_unchanged"] is False
     received_spec = json.loads(captured["receipt_task_spec_bytes"])

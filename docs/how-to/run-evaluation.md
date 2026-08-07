@@ -123,6 +123,15 @@ requires a distinct inner PID namespace, exactly one visible ROCm device, and a
 successful Torch allocation plus reduction on that GPU. The inherited procfs can
 show the outer status entry, but root/fd/environ/mem aliases must remain unreadable.
 
+Their comparison-contract v3 fixes the exact-turn checkpoint policy as well. A
+candidate stopped at turn 50 is eligible only after the entire inner process group
+is `SIGSTOP`-suspended and verified, source bytes are captured from that quiescent
+state, cleanup is verified, and the remaining stdout tail is drained and digested.
+Turn 49 is not an exact checkpoint; turn 51, timeout, output truncation, suspension
+failure, and cleanup failure are rejected. Apex and direct Codex use distinct v3
+attempt receipts carrying equivalent evidence, while central Arena evaluation remains
+the scoring authority.
+
 ## Run across multiple GPUs
 
 Use `make docker-parallel-run` when a server has multiple GPUs and the task set
