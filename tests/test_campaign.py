@@ -34,6 +34,196 @@ def _policy() -> dict:
     }
 
 
+def _runtime_isolation_receipt(*, yama_ptrace_scope: int = 1) -> dict:
+    return {
+        "schema": "aka.runtime-isolation-receipt/v1",
+        "policy": {
+            "docker_capabilities": "drop_all",
+            "docker_no_new_privileges": True,
+            "proc_escape_guard": "yama_ptrace_scope_and_live_parent_root_fd_probe_v1",
+        },
+        "outer_runtime": {
+            "effective_uid": 1000,
+            "effective_gid": 1000,
+            "supplementary_gids": [44, 109],
+            "capabilities": {
+                "CapInh": 0,
+                "CapPrm": 0,
+                "CapEff": 0,
+                "CapBnd": 0,
+                "CapAmb": 0,
+            },
+            "no_new_privileges": True,
+            "seccomp_mode": 0,
+            "seccomp_filters": 0,
+            "apparmor_profile": "unconfined",
+            "yama_ptrace_scope": yama_ptrace_scope,
+        },
+        "bubblewrap": {
+            "resolved_path": "/usr/bin/bwrap",
+            "sha256": "8" * 64,
+            "version": "bubblewrap 1.0",
+        },
+        "attempt_probe": {
+            "campaign_data_hidden": True,
+            "parent_process_visible_in_inherited_proc": True,
+            "parent_root_escape_blocked": True,
+            "parent_fd_escape_blocked": True,
+            "proc_mount_read_only": True,
+            "pid_namespace_unshared": True,
+            "ipc_namespace_unshared": True,
+            "private_shm": True,
+            "no_new_privileges": True,
+            "effective_capabilities_zero": True,
+            "bounding_capabilities_zero": True,
+            "all_capability_sets_zero": True,
+            "seccomp_disabled": True,
+        },
+    }
+
+
+def test_runtime_isolation_receipt_records_only_stable_namespace_evidence(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(tmp_path))
+    outer = {
+        **_runtime_isolation_receipt()["outer_runtime"],
+        "pid_namespace": "pid:[101]",
+        "ipc_namespace": "ipc:[202]",
+    }
+    probe = _runtime_isolation_receipt()["attempt_probe"]
+    monkeypatch.setattr(
+        campaign_isolation, "_outer_runtime_observation", lambda: outer
+    )
+    monkeypatch.setattr(
+        campaign_isolation,
+        "_bubblewrap_identity",
+        lambda: (
+            Path("/usr/bin/bwrap"),
+            _runtime_isolation_receipt()["bubblewrap"],
+        ),
+    )
+    observed: dict[str, object] = {}
+
+    def fake_probe(*, binary, data_root, outer):
+        observed.update(binary=binary, data_root=data_root, outer=outer)
+        return probe
+
+    monkeypatch.setattr(campaign_isolation, "_attempt_escape_probe", fake_probe)
+
+    receipt = campaign_isolation.runtime_isolation_receipt()
+
+    assert receipt["outer_runtime"] == _runtime_isolation_receipt()["outer_runtime"]
+    assert "pid_namespace" not in receipt["outer_runtime"]
+    assert "ipc_namespace" not in receipt["outer_runtime"]
+    assert observed["outer"] is outer
+    assert receipt["attempt_probe"]["parent_root_escape_blocked"] is True
+
+
+def test_attempt_escape_probe_rejects_non_policy_proc_errors(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(tmp_path))
+    outer = {
+        "pid_namespace": "pid:[101]",
+        "ipc_namespace": "ipc:[202]",
+    }
+
+    class Completed:
+        returncode = 0
+        stderr = ""
+        stdout = json.dumps(
+            {
+                **_runtime_isolation_receipt()["attempt_probe"],
+                "parent_fd_escape_blocked": False,
+            }
+        )
+
+    monkeypatch.setattr(
+        campaign_isolation.subprocess, "run", lambda *_args, **_kwargs: Completed()
+    )
+    with pytest.raises(
+        campaign_isolation.CampaignIsolationError,
+        match="isolation proof is incomplete",
+    ):
+        campaign_isolation._attempt_escape_probe(
+            binary=Path("/usr/bin/bwrap"), data_root=tmp_path, outer=outer
+        )
+
+
+def test_outer_runtime_isolation_fails_closed_on_yama_or_capabilities(monkeypatch) -> None:
+    status = {
+        "CapInh": "0",
+        "CapPrm": "0",
+        "CapEff": "0",
+        "CapBnd": "0",
+        "CapAmb": "0",
+        "NoNewPrivs": "1",
+        "Seccomp": "0",
+        "Seccomp_filters": "0",
+    }
+    monkeypatch.setattr(campaign_isolation, "_proc_status", lambda: dict(status))
+    monkeypatch.setattr(campaign_isolation.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(campaign_isolation.os, "getegid", lambda: 1000)
+    monkeypatch.setattr(campaign_isolation.os, "getgroups", lambda: [109, 44, 109])
+    monkeypatch.setattr(
+        campaign_isolation.os, "readlink", lambda path: f"namespace:{path}"
+    )
+
+    real_read_text = Path.read_text
+
+    def unsafe_yama(path, *args, **kwargs):
+        if str(path) == "/proc/self/attr/current":
+            return "unconfined\n"
+        if str(path) == "/proc/sys/kernel/yama/ptrace_scope":
+            return "0\n"
+        return real_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", unsafe_yama)
+    with pytest.raises(campaign_isolation.CampaignIsolationError, match="ptrace_scope"):
+        campaign_isolation._outer_runtime_observation()
+
+    monkeypatch.setattr(
+        Path,
+        "read_text",
+        lambda path, *args, **kwargs: (
+            "unconfined\n"
+            if str(path) == "/proc/self/attr/current"
+            else "1\n"
+            if str(path) == "/proc/sys/kernel/yama/ptrace_scope"
+            else real_read_text(path, *args, **kwargs)
+        ),
+    )
+    status["CapBnd"] = "1"
+    with pytest.raises(campaign_isolation.CampaignIsolationError, match="CapBnd"):
+        campaign_isolation._outer_runtime_observation()
+
+    status["CapBnd"] = "0"
+    status["NoNewPrivs"] = "0"
+    with pytest.raises(
+        campaign_isolation.CampaignIsolationError, match="no-new-privileges"
+    ):
+        campaign_isolation._outer_runtime_observation()
+
+    status["NoNewPrivs"] = "1"
+    status["Seccomp_filters"] = "1"
+    with pytest.raises(campaign_isolation.CampaignIsolationError, match="seccomp"):
+        campaign_isolation._outer_runtime_observation()
+
+    status["Seccomp_filters"] = "0"
+    monkeypatch.setattr(
+        Path,
+        "read_text",
+        lambda path, *args, **kwargs: (
+            "docker-default (enforce)\n"
+            if str(path) == "/proc/self/attr/current"
+            else "1\n"
+            if str(path) == "/proc/sys/kernel/yama/ptrace_scope"
+            else real_read_text(path, *args, **kwargs)
+        ),
+    )
+    with pytest.raises(campaign_isolation.CampaignIsolationError, match="AppArmor"):
+        campaign_isolation._outer_runtime_observation()
+
+
 def _write_result(workspace: Path, optimized_ms: float, *, correct: bool = True) -> None:
     case = {
         "test_case_id": "case-1",
@@ -780,6 +970,9 @@ def test_manifest_names_native_100_repetition_score_not_apex_grade(
         },
     )
     monkeypatch.setattr(campaign, "_evaluator_manifest", lambda _root: {"main.py": "f" * 64})
+    monkeypatch.setattr(
+        campaign, "runtime_isolation_receipt", _runtime_isolation_receipt
+    )
 
     manifest = campaign.build_campaign_manifest(
         eval_config={"campaign": _policy()},
@@ -829,13 +1022,24 @@ def test_formal_manifest_rejects_dirty_agent_kernel_arena_checkout(
 def test_campaign_manifest_is_published_read_only(tmp_path, monkeypatch) -> None:
     run = tmp_path / "run"
     run.mkdir()
+    comparison_contract = {
+        "runtime": {"isolation": _runtime_isolation_receipt()}
+    }
+
+    def current_manifest(**_kwargs):
+        comparison = json.loads(json.dumps(comparison_contract))
+        digest = hashlib.sha256(
+            json.dumps(comparison, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        return {
+            "comparison_contract_sha256": digest,
+            "comparison_contract": comparison,
+        }
+
     monkeypatch.setattr(
         campaign,
         "build_campaign_manifest",
-        lambda **_kwargs: {
-            "comparison_contract_sha256": "a" * 64,
-            "comparison_contract": {},
-        },
+        current_manifest,
     )
     config = tmp_path / "config.yaml"
     config.write_text("campaign: {}\n", encoding="utf-8")
@@ -850,6 +1054,18 @@ def test_campaign_manifest_is_published_read_only(tmp_path, monkeypatch) -> None
 
     assert path is not None
     assert path.stat().st_mode & 0o222 == 0
+
+    comparison_contract["runtime"]["isolation"] = _runtime_isolation_receipt(
+        yama_ptrace_scope=2
+    )
+    with pytest.raises(campaign.CampaignError, match="provenance changed"):
+        campaign.ensure_campaign_manifest(
+            run_directory=run,
+            eval_config={"campaign": _policy()},
+            run_config_path=config,
+            task_config_paths={},
+            agent_name="codex",
+        )
 
 
 def test_formal_image_manifest_requires_nonempty_daemon_repo_digest(
@@ -1008,6 +1224,9 @@ def test_comparison_contract_hash_ignores_treatment_template(tmp_path, monkeypat
     )
     monkeypatch.setattr(campaign, "_evaluator_manifest", lambda _root: {"main.py": "f" * 64})
     monkeypatch.setattr(
+        campaign, "runtime_isolation_receipt", _runtime_isolation_receipt
+    )
+    monkeypatch.setattr(
         campaign,
         "_gpu_inventory",
         lambda _config, names: {
@@ -1050,6 +1269,7 @@ def test_comparison_contract_projects_run_specific_gpu_lease_receipts() -> None:
     def runtime(run_name: str, runner_pid: int, receipt_digest: str) -> dict:
         return {
             "docker": {"image_id": "sha256:" + "2" * 64},
+            "isolation": _runtime_isolation_receipt(),
             "gpu": {
                 "gpu_boundary_plan_sha256": "3" * 64,
                 "devices": [{"host_device_id": "0", "unique_id": "0x01"}],
@@ -1088,6 +1308,11 @@ def test_comparison_contract_projects_run_specific_gpu_lease_receipts() -> None:
     changed = runtime("codex-run", 202, "b" * 64)
     changed["gpu"]["gpu_boundary_plan_sha256"] = "4" * 64
     assert campaign._comparison_contract(runtime=changed, **kwargs) != first
+    changed_isolation = runtime("codex-run", 202, "b" * 64)
+    changed_isolation["isolation"] = _runtime_isolation_receipt(
+        yama_ptrace_scope=2
+    )
+    assert campaign._comparison_contract(runtime=changed_isolation, **kwargs) != first
 
 
 def test_fake_clock_enforces_remaining_session_reservation(tmp_path, monkeypatch) -> None:

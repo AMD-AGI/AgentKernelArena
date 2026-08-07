@@ -213,9 +213,17 @@ the agent, and require immutable Apex or direct-Codex session receipts before
 an attempt can enter central selection. The Apex treatment sees the scored workspace
 read-only and writes proposals only to a separate artifact root; AgentKernelArena
 rechecks the full workspace manifest before applying a validated source bundle.
-Formal Docker workers stay non-root without added capabilities. Rootless `bwrap` reuses
-Docker's private `/proc` read-only while creating the per-attempt mount and IPC
-namespaces; an unusable user-namespace/AppArmor setup fails preflight.
+Formal Docker workers stay non-root, drop every capability, and enable Docker
+`no-new-privileges`. Rootless `bwrap` needs unconfined Docker seccomp/AppArmor
+profiles on this runtime; it reuses Docker's private `/proc` read-only while
+creating per-attempt PID, mount, and IPC namespaces plus private `/tmp` and
+`/dev/shm`. Preflight and every init/worker/postprocess container require Yama
+`ptrace_scope >= 1` and run a live sentinel probe: the inherited parent `/proc`
+entry must remain visible, while both `/proc/<parent>/root` and
+`/proc/<parent>/fd` escape paths must fail specifically with `EACCES`/`EPERM`.
+The stable UID/capability/NNP/seccomp/AppArmor/Yama, `bwrap` hash/version, and
+probe results are bound into the immutable comparison contract; any drift fails
+the worker before an agent session starts.
 
 FlyDSL tasks require FlyDSL in the container. The pinned image may already provide it; otherwise run:
 

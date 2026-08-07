@@ -109,8 +109,14 @@ treatments retain the same immutable outer policy and hard task deadline.
 Each run writes `campaign_manifest.yaml`, pinning the AgentKernelArena and Apex Git
 commits and clean-state digests, Codex binary hash/version/model/effort/permissions,
 the Docker reference plus its daemon-inspected content ID and repo digests, complete
-evaluator/task-package hashes, and every GPU's unique ID/serial/model/gfx plus task
-mapping. `comparison_contract_sha256` excludes the treatment template/config and
+evaluator/task-package hashes, every GPU's unique ID/serial/model/gfx plus task
+mapping, and a live runtime-isolation receipt. The receipt proves a non-root UID,
+zero inheritable/permitted/effective/bounding/ambient capabilities, NNP, the pinned
+seccomp/AppArmor/Yama state, the exact `bwrap` binary, read-only inherited `/proc`,
+unshared PID/IPC namespaces, private shared memory, and blocked parent-root/fd
+escape probes. Init, every worker, and postprocess independently reproduce this
+receipt before accepting the immutable manifest. `comparison_contract_sha256`
+excludes the treatment template/config and
 run-specific GPU lease fields (run name, PID, timestamp, receipt hash, and lock path),
 while retaining the common lease policy, physical unique IDs, protected device paths,
 and GPU boundary-plan digest; it must match across the Apex and direct-Codex runs.

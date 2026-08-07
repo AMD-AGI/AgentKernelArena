@@ -20,6 +20,7 @@ from typing import Any, Callable
 import yaml
 
 from src.agent_turn_budget import TURN_POLICY
+from src.campaign_isolation import CampaignIsolationError, runtime_isolation_receipt
 from src.gpu_device_boundary import GpuBoundaryError, load_plan
 from src.gpu_exclusivity import (
     GpuExclusivityError,
@@ -375,6 +376,7 @@ def _evaluator_manifest(repo_root: Path) -> dict[str, str]:
     relative_paths = (
         "main.py",
         "src/campaign.py",
+        "src/campaign_isolation.py",
         "src/evaluator.py",
         "src/evaluator_utils.py",
         "src/harness_guard.py",
@@ -527,9 +529,14 @@ def build_campaign_manifest(
     }
     agent = _agent_manifest(repo_root, agent_name, policy)
     task_manifests = _task_manifests(task_config_paths)
+    try:
+        runtime_isolation = runtime_isolation_receipt()
+    except CampaignIsolationError as error:
+        raise CampaignError(f"formal runtime isolation is not proven: {error}") from error
     runtime = {
         "docker": _image_manifest(),
         "gpu": _gpu_inventory(eval_config, list(task_config_paths)),
+        "isolation": runtime_isolation,
     }
     evaluator = _evaluator_manifest(repo_root)
     comparison = _comparison_contract(

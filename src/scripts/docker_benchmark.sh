@@ -761,8 +761,10 @@ build_docker_args() {
         # bubblewrap needs user-namespace mount syscalls, but the non-root
         # worker needs no host-namespace capabilities.
         docker_args+=(
+            --cap-drop=ALL
             --security-opt=seccomp=unconfined
             --security-opt=apparmor=unconfined
+            --security-opt=no-new-privileges:true
         )
     else
         docker_args+=(
@@ -1139,6 +1141,16 @@ container_preflight() {
         bwrap --die-with-parent --unshare-pid --unshare-ipc --ro-bind / / \
             --dev-bind /dev /dev --tmpfs /dev/shm --ro-bind /proc /proc -- /bin/true \
             || die "bwrap cannot create the required per-attempt mount namespace"
+        python3 - <<'PY'
+import json
+
+from src.campaign_isolation import runtime_isolation_receipt
+
+print(
+    "runtime_isolation_receipt="
+    + json.dumps(runtime_isolation_receipt(), sort_keys=True, separators=(",", ":"))
+)
+PY
     fi
 python - "$config_name" <<'PY'
 import pathlib

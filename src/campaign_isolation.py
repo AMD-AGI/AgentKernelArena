@@ -3,10 +3,14 @@
 
 from __future__ import annotations
 
-import os
+import hashlib
 import json
+import os
 import shutil
 import stat
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -22,6 +26,366 @@ from src.gpu_exclusivity import GpuExclusivityError, load_receipt
 
 class CampaignIsolationError(RuntimeError):
     """Raised when a formal attempt cannot be given a private filesystem view."""
+
+
+_RUNTIME_ISOLATION_SCHEMA = "aka.runtime-isolation-receipt/v1"
+_ZERO_CAPABILITY_FIELDS = ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb")
+
+
+def _proc_status() -> dict[str, str]:
+    try:
+        lines = Path("/proc/self/status").read_text(encoding="utf-8").splitlines()
+    except OSError as error:
+        raise CampaignIsolationError("cannot read /proc/self/status") from error
+    status: dict[str, str] = {}
+    for line in lines:
+        key, separator, value = line.partition(":")
+        if separator:
+            status[key] = value.strip()
+    return status
+
+
+def _outer_runtime_observation() -> dict[str, Any]:
+    """Fail closed unless the outer Docker worker has the pinned security state."""
+    status = _proc_status()
+    capabilities: dict[str, int] = {}
+    for field in _ZERO_CAPABILITY_FIELDS:
+        raw = status.get(field, "")
+        try:
+            value = int(raw, 16)
+        except ValueError as error:
+            raise CampaignIsolationError(f"invalid {field} in /proc/self/status") from error
+        if value != 0:
+            raise CampaignIsolationError(f"formal Docker worker retained {field} capabilities")
+        capabilities[field] = value
+
+    try:
+        no_new_privileges = int(status.get("NoNewPrivs", ""))
+        seccomp_mode = int(status.get("Seccomp", ""))
+        seccomp_filters = int(status.get("Seccomp_filters", ""))
+    except ValueError as error:
+        raise CampaignIsolationError("invalid NNP/seccomp state in /proc/self/status") from error
+    if no_new_privileges != 1:
+        raise CampaignIsolationError("formal Docker worker requires no-new-privileges")
+    if seccomp_mode != 0 or seccomp_filters != 0:
+        raise CampaignIsolationError(
+            "formal Docker worker requires the pinned unconfined seccomp profile"
+        )
+
+    try:
+        apparmor_profile = Path("/proc/self/attr/current").read_text(
+            encoding="utf-8"
+        ).strip()
+    except OSError as error:
+        raise CampaignIsolationError("cannot read the Docker AppArmor profile") from error
+    if apparmor_profile != "unconfined":
+        raise CampaignIsolationError(
+            "formal Docker worker requires the pinned unconfined AppArmor profile"
+        )
+
+    try:
+        yama_ptrace_scope = int(
+            Path("/proc/sys/kernel/yama/ptrace_scope")
+            .read_text(encoding="utf-8")
+            .strip()
+        )
+    except (OSError, ValueError) as error:
+        raise CampaignIsolationError("cannot prove the Yama ptrace policy") from error
+    if yama_ptrace_scope < 1:
+        raise CampaignIsolationError(
+            "formal campaign requires kernel.yama.ptrace_scope >= 1"
+        )
+    if os.geteuid() == 0:
+        raise CampaignIsolationError("formal Docker worker must run as a non-root UID")
+
+    try:
+        pid_namespace = os.readlink("/proc/self/ns/pid")
+        ipc_namespace = os.readlink("/proc/self/ns/ipc")
+    except OSError as error:
+        raise CampaignIsolationError("cannot inspect outer Docker namespaces") from error
+    return {
+        "effective_uid": os.geteuid(),
+        "effective_gid": os.getegid(),
+        "supplementary_gids": sorted(set(os.getgroups())),
+        "capabilities": capabilities,
+        "no_new_privileges": True,
+        "seccomp_mode": seccomp_mode,
+        "seccomp_filters": seccomp_filters,
+        "apparmor_profile": apparmor_profile,
+        "yama_ptrace_scope": yama_ptrace_scope,
+        "pid_namespace": pid_namespace,
+        "ipc_namespace": ipc_namespace,
+    }
+
+
+_ATTEMPT_ESCAPE_PROBE = r"""
+import errno
+import json
+import os
+import pathlib
+import sys
+
+outer_pid = int(sys.argv[1])
+outer_fd = int(sys.argv[2])
+sentinel = pathlib.Path(sys.argv[3])
+outer_pid_namespace = sys.argv[4]
+outer_ipc_namespace = sys.argv[5]
+
+def read_error(path):
+    try:
+        with open(path, "rb") as stream:
+            stream.read(1)
+        return None
+    except OSError as error:
+        return error.errno
+
+def status_value(name):
+    for line in pathlib.Path("/proc/self/status").read_text(encoding="utf-8").splitlines():
+        key, separator, value = line.partition(":")
+        if separator and key == name:
+            return value.strip()
+    return ""
+
+def mount_options(path):
+    matches = []
+    for line in pathlib.Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if len(fields) > 6 and fields[4] == path:
+            matches.append(fields[5].split(","))
+    return matches
+
+parent_root = f"/proc/{outer_pid}/root{sentinel}"
+parent_fd = f"/proc/{outer_pid}/fd/{outer_fd}"
+proc_options = mount_options("/proc")
+direct_error = read_error(sentinel)
+parent_root_error = read_error(parent_root)
+parent_fd_error = read_error(parent_fd)
+result = {
+    "campaign_data_hidden": direct_error == errno.ENOENT,
+    "parent_process_visible_in_inherited_proc": read_error(f"/proc/{outer_pid}/status") is None,
+    "parent_root_escape_blocked": parent_root_error in {errno.EACCES, errno.EPERM},
+    "parent_fd_escape_blocked": parent_fd_error in {errno.EACCES, errno.EPERM},
+    "proc_mount_read_only": bool(proc_options) and all("ro" in item for item in proc_options),
+    "pid_namespace_unshared": os.readlink("/proc/self/ns/pid") != outer_pid_namespace,
+    "ipc_namespace_unshared": os.readlink("/proc/self/ns/ipc") != outer_ipc_namespace,
+    "private_shm": any(
+        len(fields) > 6 and fields[4] == "/dev/shm" and "tmpfs" in fields
+        for fields in (
+            line.split()
+            for line in pathlib.Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()
+        )
+    ),
+    "no_new_privileges": status_value("NoNewPrivs") == "1",
+    "effective_capabilities_zero": int(status_value("CapEff"), 16) == 0,
+    "bounding_capabilities_zero": int(status_value("CapBnd"), 16) == 0,
+    "all_capability_sets_zero": all(
+        int(status_value(name), 16) == 0
+        for name in ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb")
+    ),
+    "seccomp_disabled": (
+        status_value("Seccomp") == "0" and status_value("Seccomp_filters") == "0"
+    ),
+}
+print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+raise SystemExit(0 if all(result.values()) else 73)
+"""
+
+
+def _sha256_regular_file(path: Path) -> str:
+    if not path.is_file():
+        raise CampaignIsolationError(f"isolation executable is not a file: {path}")
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError as error:
+        raise CampaignIsolationError(f"cannot hash isolation executable: {path}") from error
+    return digest.hexdigest()
+
+
+def _bubblewrap_identity() -> tuple[Path, dict[str, str]]:
+    discovered = shutil.which("bwrap")
+    if not discovered:
+        raise CampaignIsolationError("formal campaign requires bubblewrap (bwrap)")
+    try:
+        binary = Path(discovered).resolve(strict=True)
+        completed = subprocess.run(
+            [str(binary), "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise CampaignIsolationError("cannot identify bubblewrap") from error
+    version = (completed.stdout or completed.stderr).strip()
+    if completed.returncode != 0 or not version:
+        raise CampaignIsolationError("bubblewrap version is unavailable")
+    return binary, {
+        "resolved_path": str(binary),
+        "sha256": _sha256_regular_file(binary),
+        "version": version,
+    }
+
+
+def _bubblewrap_base_command(binary: str | Path, data_root: Path) -> list[str]:
+    """Pinned mount/namespace boundary shared by probes and real attempts."""
+    return [
+        str(binary),
+        "--die-with-parent",
+        "--unshare-pid",
+        "--unshare-ipc",
+        "--ro-bind",
+        "/",
+        "/",
+        "--dev-bind",
+        "/dev",
+        "/dev",
+        "--tmpfs",
+        "/dev/shm",
+        "--ro-bind",
+        "/proc",
+        "/proc",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        str(data_root),
+    ]
+
+
+def _attempt_escape_probe(
+    *, binary: Path, data_root: Path, outer: dict[str, Any]
+) -> dict[str, bool]:
+    raw_root = Path(os.environ.get("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", ""))
+    if not raw_root.is_absolute() or raw_root == Path("/") or raw_root.is_symlink():
+        raise CampaignIsolationError("formal campaign data root is unsafe")
+    try:
+        resolved_root = raw_root.resolve(strict=True)
+    except OSError as error:
+        raise CampaignIsolationError("formal campaign data root is unavailable") from error
+    if resolved_root != data_root or not data_root.is_dir():
+        raise CampaignIsolationError("formal campaign data root changed during isolation proof")
+
+    probe_dir = Path(tempfile.mkdtemp(prefix=".aka-isolation-probe-", dir=data_root))
+    sentinel = probe_dir / "sentinel"
+    descriptor = -1
+    try:
+        nonce = os.urandom(32)
+        sentinel.write_bytes(nonce)
+        descriptor = os.open(sentinel, os.O_RDONLY | os.O_CLOEXEC)
+        parent_root_alias = Path(f"/proc/{os.getpid()}/root{sentinel}")
+        parent_fd_alias = Path(f"/proc/{os.getpid()}/fd/{descriptor}")
+        try:
+            root_bytes = parent_root_alias.read_bytes()
+            fd_bytes = parent_fd_alias.read_bytes()
+        except OSError as error:
+            raise CampaignIsolationError(
+                "outer runtime cannot establish readable parent /proc aliases"
+            ) from error
+        if root_bytes != nonce or fd_bytes != nonce:
+            raise CampaignIsolationError("outer parent /proc aliases do not bind the sentinel")
+        command = _bubblewrap_base_command(binary, data_root) + [
+            "--",
+            sys.executable,
+            "-c",
+            _ATTEMPT_ESCAPE_PROBE,
+            str(os.getpid()),
+            str(descriptor),
+            str(sentinel),
+            str(outer["pid_namespace"]),
+            str(outer["ipc_namespace"]),
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=20,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise CampaignIsolationError("bubblewrap isolation probe failed to run") from error
+        try:
+            result = json.loads(completed.stdout)
+        except json.JSONDecodeError as error:
+            raise CampaignIsolationError(
+                f"bubblewrap isolation probe emitted invalid evidence: {completed.stderr.strip()}"
+            ) from error
+        if completed.returncode != 0 or not isinstance(result, dict):
+            raise CampaignIsolationError(
+                f"bubblewrap isolation probe failed closed: {result!r}"
+            )
+        expected_keys = {
+            "campaign_data_hidden",
+            "parent_process_visible_in_inherited_proc",
+            "parent_root_escape_blocked",
+            "parent_fd_escape_blocked",
+            "proc_mount_read_only",
+            "pid_namespace_unshared",
+            "ipc_namespace_unshared",
+            "private_shm",
+            "no_new_privileges",
+            "effective_capabilities_zero",
+            "bounding_capabilities_zero",
+            "all_capability_sets_zero",
+            "seccomp_disabled",
+        }
+        if set(result) != expected_keys or any(
+            not isinstance(result[key], bool) for key in expected_keys
+        ):
+            raise CampaignIsolationError("bubblewrap isolation probe evidence is malformed")
+        if any(result[key] is not True for key in expected_keys):
+            raise CampaignIsolationError("bubblewrap isolation proof is incomplete")
+        return result
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        sentinel.unlink(missing_ok=True)
+        try:
+            probe_dir.rmdir()
+        except OSError as error:
+            raise CampaignIsolationError("cannot remove the isolation probe directory") from error
+
+
+def runtime_isolation_receipt() -> dict[str, Any]:
+    """Return invariant, live evidence for the formal Docker+bwrap boundary."""
+    raw_root = Path(os.environ.get("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", ""))
+    try:
+        data_root = raw_root.resolve(strict=True)
+    except OSError as error:
+        raise CampaignIsolationError("formal campaign data root is unavailable") from error
+    outer = _outer_runtime_observation()
+    binary, bubblewrap = _bubblewrap_identity()
+    attempt = _attempt_escape_probe(binary=binary, data_root=data_root, outer=outer)
+    # Namespace inode identifiers are deliberately used only by the live probe:
+    # they differ for every Docker worker and would make the Apex/Codex
+    # comparison contract run-specific.  The manifest records the verified
+    # relationship instead (the two `*_namespace_unshared` booleans).
+    recorded_outer = {
+        key: value
+        for key, value in outer.items()
+        if key not in {"pid_namespace", "ipc_namespace"}
+    }
+    return {
+        "schema": _RUNTIME_ISOLATION_SCHEMA,
+        "policy": {
+            "docker_user": "non_root",
+            "docker_capabilities": "drop_all",
+            "docker_no_new_privileges": True,
+            "docker_apparmor": "unconfined_for_rootless_userns",
+            "docker_seccomp": "unconfined_for_rootless_userns",
+            "docker_pid_namespace": "private_default",
+            "attempt_mount_namespace": "bubblewrap",
+            "attempt_pid_namespace": "unshared",
+            "attempt_ipc_namespace": "unshared",
+            "attempt_proc": "read_only_bind_of_docker_private_procfs",
+            "proc_escape_guard": "yama_ptrace_scope_and_live_parent_root_fd_probe_v1",
+        },
+        "outer_runtime": recorded_outer,
+        "bubblewrap": bubblewrap,
+        "attempt_probe": attempt,
+    }
 
 
 def is_formal_campaign(eval_config: dict[str, Any]) -> bool:
@@ -181,9 +545,9 @@ def wrap_attempt_command(
     """Hide other campaign data and expose only explicitly scoped roots."""
     if not is_formal_campaign(eval_config):
         return command
-    binary = shutil.which("bwrap")
-    if not binary:
-        raise CampaignIsolationError("formal campaign requires bubblewrap (bwrap)")
+    # Re-resolve, hash, and version-check the read-only mounted executable at
+    # attempt construction time instead of trusting a prior PATH lookup.
+    binary, _identity = _bubblewrap_identity()
     data_root_raw = os.environ.get("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", "")
     data_root = Path(data_root_raw)
     if not data_root.is_absolute() or not data_root.is_dir():
@@ -200,27 +564,7 @@ def wrap_attempt_command(
         raise CampaignIsolationError("formal campaign has no attempt writable root")
     _reject_overlapping_roots((*writable, *read_only))
 
-    wrapped = [
-        binary,
-        "--die-with-parent",
-        "--unshare-pid",
-        "--unshare-ipc",
-        "--ro-bind",
-        "/",
-        "/",
-        "--dev-bind",
-        "/dev",
-        "/dev",
-        "--tmpfs",
-        "/dev/shm",
-        "--ro-bind",
-        "/proc",
-        "/proc",
-        "--tmpfs",
-        "/tmp",
-        "--tmpfs",
-        str(data_root),
-    ]
+    wrapped = _bubblewrap_base_command(binary, data_root)
     state_root = Path(
         os.environ.get("AGENT_STATE_MOUNT_ROOT", "/opt/aka-agent-state")
     )
@@ -323,5 +667,6 @@ __all__ = [
     "formal_gpu_evidence",
     "isolated_environment",
     "prepare_attempt_home",
+    "runtime_isolation_receipt",
     "wrap_attempt_command",
 ]

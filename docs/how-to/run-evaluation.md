@@ -106,6 +106,11 @@ make docker-shell
 
 The Docker runner currently supports Codex, Claude Code, and Cursor Agent login
 reuse from the host. It preflights the selected config before starting the run.
+Matched Apex-versus-Codex runs also execute a fail-closed runtime-isolation
+preflight and repeat it in every worker. The resulting stable security receipt is
+part of `campaign_manifest.yaml`; a worker with different UID/capability/NNP,
+seccomp/AppArmor/Yama, `bwrap`, namespace, or `/proc` escape-probe evidence cannot
+join the run.
 
 ## Run across multiple GPUs
 
