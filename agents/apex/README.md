@@ -26,6 +26,26 @@ it. `no_gain` leaves the workspace at its frozen baseline. Invalid, unsupported,
 or infrastructure outcomes fail the task instead of being reported as a 1.0x
 optimization.
 
+The shared Arena prompt builder appends large generic architecture and language
+cheatsheets after the task-specific objective, source declaration, phase commands,
+protected-harness rules, and completion contract. Apex's `ContextPacket` limits any
+single mandatory text field to 8,192 characters and already retrieves its own scoped,
+provenance-aware architecture and optimization knowledge. For an oversized MI355X
+prompt, this adapter therefore preserves the complete task-specific prefix and omits
+only the known generic MI355X/Triton suffix. It reconstructs a concise workspace,
+editable-source, and target-function handoff from validated TaskSpec fields because
+the shared prompt places its workspace prose after the cheatsheets.
+
+The raw TaskSpec records original and adapted byte and character lengths, SHA-256
+hashes, the exact boundary, and the transform version. Short prompts pass through
+byte-for-byte. An oversized prompt with a missing or ambiguous boundary, or one that
+remains over the bound, fails closed; the adapter never applies arbitrary truncation.
+For a formal attempt, the raw TaskSpec is written before launch under a sealed sibling
+contract directory and mounted read-only, while Apex's result/artifact directory stays
+separately writable. The adapter retains the prelaunch bytes and digest, verifies the
+same sealed file after the subprocess exits, and copies those original bytes—not a
+post-process reread—into the immutable attempt receipt.
+
 Run artifacts are written beside, never inside, the scored workspace under
 `.<task-workspace>_apex/<run-id>/`.
 
@@ -128,7 +148,11 @@ device and completes a Torch allocation plus reduction on it. It also
 proves the inner PID namespace differs; the inherited procfs may expose the outer
 status entry, but root/fd/environ/mem aliases must all remain unreadable. Init,
 every worker, and postprocess independently reproduce this receipt before accepting
-the immutable manifest. `comparison_contract_sha256`
+the immutable manifest. The comparison contract explicitly names
+`aka.task-package-objective-and-protected-harness/v1` as its objective policy and
+`aka.shared-objective-backend-native-context-receipted/v1` as its prompt policy.
+The latter keeps the task objective and protected harness common while allowing the
+documented, receipt-bound Apex context adaptation. `comparison_contract_sha256`
 excludes the treatment template/config and
 run-specific GPU lease fields (run name, PID, timestamp, receipt hash, and lock path),
 while retaining the common lease policy, physical unique IDs, protected device paths,
@@ -137,7 +161,11 @@ Per-task attempt evidence remains
 under `.campaign_attempts/`. Both treatments retain a read-only session receipt
 with exact backend/model/effort and invocation identity, bounded process output,
 the same 50-turn structured-agent policy and 16 MiB inner Codex stream bound, and
-verified process-group cleanup. The Apex adapter separately caps its outer transport
+verified process-group cleanup. Each receipt directly carries the comparison-contract
+digest; postprocess recomputes the immutable manifest contract and rejects a missing
+or different attempt binding. The direct-Codex receipt also freezes the exact rendered
+prompt bytes, so its invocation prompt hash is independently reproducible rather than
+self-attested. The Apex adapter separately caps its outer transport
 at 4 MiB. Apex receipts additionally snapshot the
 TaskSpec, TaskResult, checksummed event journal, canonical agent transcript, and
 terminal verdict lineage. A nonzero `no_gain` is invalid. Failed sessions and

@@ -53,6 +53,10 @@ _DEFAULT_BUNDLE_LIMIT = 64 * 1024 * 1024
 _DEFAULT_OUTPUT_LIMIT = 4 * 1024 * 1024
 _MAX_WORKSPACE_FILES = 20_000
 _MAX_WORKSPACE_BYTES = 2 * 1024 * 1024 * 1024
+_APEX_INSTRUCTION_LIMIT = 8_192
+_APEX_GENERIC_CONTEXT_MARKER = (
+    "\n# AMD MI355X (CDNA 4) Kernel Optimization Context & Directives"
+)
 _NORMAL_NO_PATCH_STATUSES = {"no_gain"}
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v1"
@@ -140,6 +144,101 @@ def _canonical_digest(value: Any) -> str:
         ensure_ascii=False,
     ).encode("utf-8")
     return _sha256_bytes(payload)
+
+
+def _comparison_contract_sha256(
+    eval_config: dict[str, Any], *, formal_campaign: bool
+) -> str | None:
+    if not formal_campaign:
+        return None
+    attempt = eval_config.get("campaign_attempt")
+    digest = (
+        attempt.get("comparison_contract_sha256")
+        if isinstance(attempt, dict)
+        else None
+    )
+    if not isinstance(digest, str) or not _SHA256.fullmatch(digest):
+        raise ApexAdapterError(
+            "formal Apex attempt lacks a valid comparison contract digest"
+        )
+    return digest
+
+
+def _apex_task_instructions(
+    prompt: str,
+    *,
+    workspace: Path,
+    sources: Iterable[str],
+    symbols: Iterable[str],
+) -> tuple[str, dict[str, Any]]:
+    """Preserve the Arena task contract within Apex's bounded objective field.
+
+    Arena's shared prompt builder appends a large generic MI355X/Triton
+    knowledge section after the task-specific objective, source, harness, and
+    completion contract. Apex supplies that generic knowledge through its own
+    bounded knowledge layer. Unknown oversized layouts fail closed instead of
+    being silently or heuristically truncated.
+    """
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ApexAdapterError("Apex task prompt must be non-empty text")
+
+    original_bytes = prompt.encode("utf-8")
+    strategy = "verbatim"
+    marker = None
+    instructions = prompt
+    if len(prompt) > _APEX_INSTRUCTION_LIMIT:
+        marker_count = prompt.count(_APEX_GENERIC_CONTEXT_MARKER)
+        if marker_count != 1:
+            raise ApexAdapterError(
+                "oversized Apex prompt does not contain exactly one known generic "
+                f"context boundary; count={marker_count}"
+            )
+        boundary = prompt.index(_APEX_GENERIC_CONTEXT_MARKER)
+        task_contract = prompt[:boundary].rstrip()
+        if not task_contract:
+            raise ApexAdapterError("Apex prompt task contract is empty before context boundary")
+        source_lines = "\n".join(f"- `{value}`" for value in sources)
+        symbol_lines = "\n".join(f"- `{value}`" for value in symbols)
+        structural_handoff = (
+            "### Structured Apex handoff\n\n"
+            "AgentKernelArena's generic MI355X and Triton cheatsheets are "
+            "intentionally not duplicated here. Apex supplies scoped "
+            "architecture and optimization knowledge through its own "
+            "provenance-aware ContextPacket.\n\n"
+            f"Scored workspace: `{workspace}`\n\n"
+            f"Editable source files:\n{source_lines}\n\n"
+            f"Target kernel functions:\n{symbol_lines}\n\n"
+            "The TaskSpec separately binds evaluator commands, source hashes, "
+            "GPU architecture, and bundle delivery."
+        )
+        instructions = f"{task_contract}\n\n{structural_handoff}"
+        strategy = "omit_known_generic_mi355x_triton_context_v1"
+        marker = _APEX_GENERIC_CONTEXT_MARKER.lstrip("\n")
+
+    if len(instructions) > _APEX_INSTRUCTION_LIMIT:
+        raise ApexAdapterError(
+            "Apex task instructions exceed the ContextPacket text limit after adaptation: "
+            f"{len(instructions)} > {_APEX_INSTRUCTION_LIMIT}"
+        )
+
+    adapted_bytes = instructions.encode("utf-8")
+    provenance = {
+        "schema": "aka.apex-instruction-adaptation/v1",
+        "strategy": strategy,
+        "limit_characters": _APEX_INSTRUCTION_LIMIT,
+        "boundary_marker": marker,
+        "original": {
+            "characters": len(prompt),
+            "bytes": len(original_bytes),
+            "sha256": _sha256_bytes(original_bytes),
+        },
+        "adapted": {
+            "characters": len(instructions),
+            "bytes": len(adapted_bytes),
+            "sha256": _sha256_bytes(adapted_bytes),
+        },
+    }
+    return instructions, provenance
 
 
 def _workspace_manifest(workspace: Path) -> dict[str, dict[str, Any]]:
@@ -396,12 +495,21 @@ def _build_task_spec(
             raise ApexAdapterError(
                 f"formal Apex requires max_turns={FORMAL_MATCHED_MAX_TURNS}"
             )
+    instructions, instruction_adaptation = _apex_task_instructions(
+        prompt,
+        workspace=workspace,
+        sources=sources,
+        symbols=symbols,
+    )
     return {
         "schema_version": _SCHEMA_VERSION,
         "task_id": task_id,
         "workspace": str(workspace),
         "results_dir": str(artifact_root),
-        "instructions": prompt,
+        "instructions": instructions,
+        # Apex ignores unknown TaskSpec fields. This adapter-owned receipt makes
+        # the transform immutable without expanding Apex's caller-neutral V1 API.
+        "instruction_adaptation": instruction_adaptation,
         "language": "triton",
         "editable_files": sources,
         "target_functions": symbols,
@@ -1069,7 +1177,7 @@ def _write_read_only_atomic(path: Path, payload: bytes) -> dict[str, Any]:
 def _write_apex_attempt_receipt(
     *,
     receipt_path: Path,
-    task_spec_path: Path,
+    task_spec_bytes: bytes,
     result_path: Path,
     outcome: ApexProcessOutcome,
     receipt: dict[str, Any],
@@ -1085,7 +1193,7 @@ def _write_apex_attempt_receipt(
         raise ApexAdapterError(f"Apex receipt artifact directory exists: {artifact_dir}") from error
     artifacts = {
         "task_spec": _write_read_only_atomic(
-            artifact_dir / "task_spec.json", task_spec_path.read_bytes()
+            artifact_dir / "task_spec.json", task_spec_bytes
         ),
         "apex_stdout": _write_read_only_atomic(
             artifact_dir / "apex_stdout.txt", outcome.stdout
@@ -1111,6 +1219,25 @@ def _write_apex_attempt_receipt(
     _write_read_only_atomic(receipt_path, payload)
     artifact_dir.chmod(0o555)
     _fsync_directory(artifact_dir.parent)
+
+
+def _sealed_task_spec_matches(path: Path, expected: bytes) -> bool:
+    """Recheck the exact formal request after the untrusted subprocess exits."""
+    try:
+        metadata = path.lstat()
+        parent_metadata = path.parent.lstat()
+        return (
+            stat.S_ISREG(metadata.st_mode)
+            and not path.is_symlink()
+            and metadata.st_nlink == 1
+            and stat.S_IMODE(metadata.st_mode) == 0o444
+            and stat.S_ISDIR(parent_metadata.st_mode)
+            and not path.parent.is_symlink()
+            and stat.S_IMODE(parent_metadata.st_mode) == 0o555
+            and path.read_bytes() == expected
+        )
+    except OSError:
+        return False
 
 
 def _bundle_files(root: Path, *, size_limit: int) -> set[str]:
@@ -1407,6 +1534,9 @@ def launch_agent(
     if not workspace_path.is_dir():
         raise ApexAdapterError(f"Arena workspace does not exist: {workspace_path}")
     formal_campaign = is_formal_campaign(eval_config)
+    comparison_contract_sha256 = _comparison_contract_sha256(
+        eval_config, formal_campaign=formal_campaign
+    )
     workspace_before = _workspace_manifest(workspace_path) if formal_campaign else None
 
     run_id = (
@@ -1415,7 +1545,14 @@ def launch_agent(
     )
     artifact_root = workspace_path.parent / f".{workspace_path.name}_apex" / run_id
     artifact_root.mkdir(parents=True, exist_ok=False)
-    task_spec_path = artifact_root / "task_spec.json"
+    contract_root = (
+        artifact_root.with_name(f"{artifact_root.name}.contract")
+        if formal_campaign
+        else artifact_root
+    )
+    if formal_campaign:
+        contract_root.mkdir(mode=0o700, exist_ok=False)
+    task_spec_path = contract_root / "task_spec.json"
     result_path = artifact_root / "result.json"
 
     prompt_builder = load_prompt_builder(AgentType.APEX, logger)
@@ -1429,7 +1566,19 @@ def launch_agent(
         artifact_root=artifact_root,
         prompt=prompt,
     )
-    _atomic_write_json(task_spec_path, task_spec)
+    task_spec_bytes = (
+        json.dumps(task_spec, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    if formal_campaign:
+        _write_read_only_atomic(task_spec_path, task_spec_bytes)
+        contract_root.chmod(0o555)
+        _fsync_directory(contract_root.parent)
+        if not _sealed_task_spec_matches(task_spec_path, task_spec_bytes):
+            raise ApexAdapterError("formal Apex TaskSpec contract could not be sealed")
+    else:
+        _atomic_write_json(task_spec_path, task_spec)
+        task_spec_bytes = task_spec_path.read_bytes()
+    task_spec_sha256 = _sha256_bytes(task_spec_bytes)
 
     entrypoint, python_path = _resolve_apex_command(agent_config)
     command = [
@@ -1501,9 +1650,14 @@ def launch_agent(
             command,
             eval_config=eval_config,
             writable_roots=(artifact_root, attempt_home),
-            read_only_roots=(workspace_path,),
+            read_only_roots=(workspace_path, contract_root),
         )
     outcome = _normalize_process_outcome(_run_apex(isolated_command, **run_kwargs))
+    task_spec_postlaunch_unchanged = (
+        _sealed_task_spec_matches(task_spec_path, task_spec_bytes)
+        if formal_campaign
+        else task_spec_path.read_bytes() == task_spec_bytes
+    )
     return_code = outcome.exit_code
     process_output = outcome.output
     max_result_bytes = int(agent_config.get("max_result_bytes", _DEFAULT_RESULT_LIMIT))
@@ -1512,6 +1666,7 @@ def launch_agent(
     status = ""
     receipt: dict[str, Any] = {
         "schema": _APEX_RECEIPT_SCHEMA,
+        "comparison_contract_sha256": comparison_contract_sha256,
         "session_succeeded": False,
         "terminal_status": None,
         "exit_code": return_code,
@@ -1534,7 +1689,21 @@ def launch_agent(
             "python": str(Path(python_path).resolve(strict=True)),
             "python_sha256": _sha256_file(Path(python_path).resolve(strict=True)),
         },
-        "task_spec_sha256": _sha256_file(task_spec_path),
+        "task_spec_sha256": task_spec_sha256,
+        "task_spec_contract": (
+            {
+                "policy": "prelaunch_read_only_sibling_bind_v1",
+                "path": str(task_spec_path.resolve()),
+                "sha256": task_spec_sha256,
+                "size_bytes": len(task_spec_bytes),
+                "file_mode": "0444",
+                "directory_mode": "0555",
+                "read_only_bind": True,
+                "postlaunch_unchanged": task_spec_postlaunch_unchanged,
+            }
+            if formal_campaign
+            else None
+        ),
         "outer_isolation": (
             {
                 "approval": "never_via_strict_config",
@@ -1563,6 +1732,10 @@ def launch_agent(
         "lineage": None,
     }
     try:
+        if formal_campaign and not task_spec_postlaunch_unchanged:
+            raise ApexAdapterError(
+                "formal Apex TaskSpec contract changed during subprocess execution"
+            )
         if outcome.timed_out:
             raise ApexAdapterError(f"Apex timed out after {timeout_seconds:.3f} seconds")
         if (
@@ -1654,7 +1827,7 @@ def launch_agent(
         if receipt_path is not None:
             _write_apex_attempt_receipt(
                 receipt_path=receipt_path,
-                task_spec_path=task_spec_path,
+                task_spec_bytes=task_spec_bytes,
                 result_path=result_path,
                 outcome=outcome,
                 receipt=receipt,
@@ -1665,7 +1838,7 @@ def launch_agent(
         if receipt_path is not None:
             _write_apex_attempt_receipt(
                 receipt_path=receipt_path,
-                task_spec_path=task_spec_path,
+                task_spec_bytes=task_spec_bytes,
                 result_path=result_path,
                 outcome=outcome,
                 receipt=receipt,
@@ -1684,6 +1857,7 @@ def launch_agent(
 
 __all__ = [
     "ApexAdapterError",
+    "_apex_task_instructions",
     "_bundle_digest",
     "_build_task_spec",
     "_validate_and_apply_bundle",

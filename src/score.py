@@ -1,6 +1,8 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
-import yaml
+import stat
 from pathlib import Path
+
+import yaml
 
 def resolve_speedup_ratio(
     speedup_ratio: float | int | None = None,
@@ -120,11 +122,14 @@ def task_result_scoring(workspace_path: str) -> float:
         speedup_ratio=speedup_ratio,
     )
 
-    # Add score to the data
-    result_data['score'] = calculated_score
-
-    # Write back to the YAML file
-    with open(result_file, 'w') as f:
-        yaml.dump(result_data, f, default_flow_style=False, sort_keys=False)
+    # Ordinary runs retain the historical convenience of persisting the score.
+    # Formal campaign results are sealed read-only before post-processing; they
+    # are evaluator evidence and must remain byte-identical when reports read
+    # them.  The calculated score is still returned to the report projection.
+    writable_bits = stat.S_IMODE(result_file.stat().st_mode) & 0o222
+    if writable_bits:
+        result_data['score'] = calculated_score
+        with open(result_file, 'w') as f:
+            yaml.dump(result_data, f, default_flow_style=False, sort_keys=False)
 
     return calculated_score

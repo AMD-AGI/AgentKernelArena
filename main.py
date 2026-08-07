@@ -1,8 +1,12 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 import argparse
+import hashlib
+import json
 import logging
 import os
 import re
+import stat
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -34,11 +38,17 @@ from src.campaign import (
     run_matched_task_campaign,
     deterministic_task_gpu_mapping,
     ordered_gpu_pool,
+    _campaign_failure_reasons,
+    validate_formal_task_binding,
 )
 
 
 QUEUE_DIR_NAME = ".parallel"
 QUEUE_STATES = ("pending", "running", "done", "failed")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+_FORMAL_PRIMARY_FAILURE_REASONS = frozenset(
+    {"descriptor_gpu_affinity_mismatch", "formal_task_not_canonical"}
+)
 
 
 parser = argparse.ArgumentParser(description="arguments for AgentKernelArena")
@@ -662,18 +672,37 @@ def run_task(
         return False, None
 
 
-def run_post_processing(agent: AgentType, workspace_paths: list[str], logger: logging.Logger) -> None:
+def run_post_processing(
+    agent: AgentType,
+    workspace_paths: list[str],
+    logger: logging.Logger,
+    *,
+    run_directory: Path | None = None,
+) -> None:
     logger.info("=" * 80)
     logger.info("Running Post-Processing")
     logger.info("=" * 80)
 
+    formal = bool(
+        run_directory is not None
+        and (run_directory / "campaign_manifest.yaml").exists()
+    )
     try:
         post_processing_handler = load_post_processing_handler(agent, logger)
-        post_processing_handler(workspace_paths, logger)
+        if agent == AgentType.TASK_VALIDATOR:
+            post_processing_handler(workspace_paths, logger)
+        else:
+            post_processing_handler(
+                workspace_paths, logger, run_directory=run_directory
+            )
     except NotImplementedError as e:
         logger.warning(f"Post-processing skipped: {e}")
+        if formal:
+            raise
     except Exception as e:
         logger.error(f"Post-processing failed: {e}", exc_info=True)
+        if formal:
+            raise
 
 
 def _queue_root(run_directory: Path) -> Path:
@@ -689,16 +718,275 @@ def _descriptor_name(index: int, task_name: str) -> str:
     return f"{index:06d}_{safe_name or 'task'}.yaml"
 
 
-def _write_descriptor(path: Path, payload: dict[str, Any]) -> None:
-    tmp_path = path.with_name(f"{path.name}.tmp.{os.getpid()}")
-    with tmp_path.open("w") as f:
-        yaml.safe_dump(payload, f, default_flow_style=False, sort_keys=False)
-    tmp_path.replace(path)
+def _write_descriptor(
+    path: Path, payload: dict[str, Any], *, no_clobber: bool = False
+) -> None:
+    encoded = yaml.safe_dump(
+        payload, default_flow_style=False, sort_keys=False
+    ).encode("utf-8")
+    if no_clobber:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(path, flags, 0o600)
+        except FileExistsError as error:
+            raise CampaignError(f"descriptor already exists: {path}") from error
+        try:
+            written = 0
+            while written < len(encoded):
+                written += os.write(descriptor, encoded[written:])
+            os.fsync(descriptor)
+        except Exception:
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+            raise
+        finally:
+            os.close(descriptor)
+        return
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.tmp.", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        written = 0
+        while written < len(encoded):
+            written += os.write(descriptor, encoded[written:])
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        os.replace(temporary, path)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _read_descriptor(path: Path) -> dict[str, Any]:
     with path.open("r") as f:
         return yaml.safe_load(f) or {}
+
+
+def _formal_descriptor_snapshot(
+    path: Path,
+) -> tuple[tuple[int, int, int, str], dict[str, Any]]:
+    """Read one regular descriptor without following links and return its identity."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise CampaignError(f"cannot safely open formal descriptor: {path}") from error
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_mode & 0o222
+        ):
+            raise CampaignError(f"unsafe formal descriptor: {path}")
+        chunks: list[bytes] = []
+        size = 0
+        while True:
+            chunk = os.read(descriptor, 64 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > 1024 * 1024:
+                raise CampaignError(f"formal descriptor exceeds size limit: {path}")
+            chunks.append(chunk)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    if (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+    ) != (
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+    ):
+        raise CampaignError(f"formal descriptor changed while being read: {path}")
+    encoded = b"".join(chunks)
+    try:
+        payload = yaml.safe_load(encoded) or {}
+    except (UnicodeError, yaml.YAMLError) as error:
+        raise CampaignError(f"formal descriptor is unreadable: {path}") from error
+    if not isinstance(payload, dict):
+        raise CampaignError(f"formal descriptor must contain a mapping: {path}")
+    identity = (
+        before.st_dev,
+        before.st_ino,
+        len(encoded),
+        hashlib.sha256(encoded).hexdigest(),
+    )
+    return identity, payload
+
+
+def _validate_formal_descriptor_payload(
+    run_directory: Path,
+    descriptor: Path,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    index = payload.get("index")
+    total_tasks = payload.get("total_tasks")
+    task_name = payload.get("task_name")
+    task_config_dir = payload.get("task_config_dir")
+    assigned_gpu = payload.get("assigned_host_gpu_id")
+    if (
+        type(index) is not int
+        or type(total_tasks) is not int
+        or not isinstance(task_name, str)
+        or not task_name
+        or not isinstance(task_config_dir, str)
+        or not isinstance(assigned_gpu, str)
+        or payload.get("status") != "pending"
+    ):
+        raise CampaignError("formal descriptor fields are malformed")
+    expected_name = _descriptor_name(index, task_name)
+    if descriptor.parent.name == "pending":
+        name_matches = descriptor.name == expected_name
+    elif descriptor.parent.name == "running":
+        name_matches = descriptor.name.endswith(f"__{expected_name}")
+    else:
+        name_matches = False
+    if not name_matches:
+        raise CampaignError("formal descriptor filename differs from task identity")
+    return validate_formal_task_binding(
+        run_directory=run_directory,
+        task_name=task_name,
+        task_index=index,
+        total_tasks=total_tasks,
+        task_config_path=task_config_dir,
+        assigned_host_gpu_id=assigned_gpu,
+    )
+
+
+def _require_safe_queue_directory(path: Path) -> None:
+    try:
+        metadata = path.lstat()
+    except OSError as error:
+        raise CampaignError(f"formal queue directory is unavailable: {path}") from error
+    if not stat.S_ISDIR(metadata.st_mode) or path.is_symlink():
+        raise CampaignError(f"unsafe formal queue directory: {path}")
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _formal_failure_binding(
+    run_directory: Path,
+    task_name: str,
+    explicit_reason: str | None,
+) -> dict[str, Any]:
+    if explicit_reason not in _FORMAL_PRIMARY_FAILURE_REASONS:
+        raise CampaignError(f"unsupported formal failure reason: {explicit_reason!r}")
+    manifest_path = run_directory / "campaign_manifest.yaml"
+    try:
+        manifest_metadata = manifest_path.lstat()
+        manifest_safe = (
+            manifest_path.is_file()
+            and not manifest_path.is_symlink()
+            and manifest_metadata.st_nlink == 1
+            and not manifest_metadata.st_mode & 0o222
+        )
+    except OSError:
+        manifest_safe = False
+    if not manifest_safe:
+        raise CampaignError("formal failure marker requires immutable campaign manifest")
+    manifest = _read_descriptor(manifest_path)
+    comparison = manifest.get("comparison_contract")
+    comparison_sha256 = manifest.get("comparison_contract_sha256")
+    campaign_manifest_sha256 = _sha256_file(manifest_path)
+    tasks = manifest.get("configuration", {}).get("tasks")
+    if (
+        manifest.get("schema") != "aka.matched-campaign/v1"
+        or not isinstance(comparison, dict)
+        or not isinstance(comparison_sha256, str)
+        or not _SHA256.fullmatch(comparison_sha256)
+        or hashlib.sha256(
+            json.dumps(comparison, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        != comparison_sha256
+        or not isinstance(tasks, list)
+        or sum(
+            isinstance(task, dict) and task.get("task_name") == task_name
+            for task in tasks
+        )
+        != 1
+    ):
+        raise CampaignError("formal failure marker campaign binding is invalid")
+
+    evidence_path = (
+        run_directory
+        / ".campaign_attempts"
+        / task_name.replace("/", "_")
+        / "task_campaign.yaml"
+    )
+    binding: dict[str, Any] = {
+        "schema": "aka.formal-task-failure/v1",
+        "task_name": task_name,
+        "primary_reason": None,
+        "campaign_manifest_sha256": campaign_manifest_sha256,
+        "comparison_contract_sha256": comparison_sha256,
+        "campaign_evidence_path": None,
+        "campaign_evidence_sha256": None,
+        "reason_codes": ["immutable_task_campaign_evidence_missing"],
+    }
+    try:
+        metadata = evidence_path.lstat()
+        safe = (
+            evidence_path.is_file()
+            and not evidence_path.is_symlink()
+            and metadata.st_nlink == 1
+            and not metadata.st_mode & 0o222
+        )
+    except OSError:
+        safe = False
+    if not safe:
+        return binding
+
+    try:
+        evidence = _read_descriptor(evidence_path)
+    except (OSError, UnicodeError, yaml.YAMLError):
+        binding["reason_codes"] = ["task_campaign_evidence_unreadable"]
+        return binding
+    if not isinstance(evidence, dict):
+        binding["reason_codes"] = ["task_campaign_evidence_unreadable"]
+        return binding
+    evidence_reasons = _campaign_failure_reasons(evidence)
+    if (
+        evidence.get("schema") != "aka.matched-task-attempts/v1"
+        or evidence.get("task_name") != task_name
+        or evidence.get("campaign_manifest_sha256") != campaign_manifest_sha256
+        or evidence.get("comparison_contract_sha256") != comparison_sha256
+        or evidence.get("failure_reasons") != evidence_reasons
+        or not evidence_reasons
+    ):
+        binding["reason_codes"] = ["task_campaign_evidence_contract_invalid"]
+        return binding
+    reason_codes = sorted(set(evidence_reasons + [explicit_reason]))
+    binding.update(
+        {
+            "primary_reason": explicit_reason,
+            "campaign_evidence_path": str(evidence_path.relative_to(run_directory)),
+            "campaign_evidence_sha256": _sha256_file(evidence_path),
+            "reason_codes": reason_codes,
+        }
+    )
+    return binding
 
 
 def initialize_parallel_queue(context: dict[str, Any]) -> None:
@@ -708,31 +996,55 @@ def initialize_parallel_queue(context: dict[str, Any]) -> None:
     agent: AgentType = context["agent"]
     logger: logging.Logger = context["logger"]
 
-    for state in QUEUE_STATES:
-        _queue_state_dir(run_directory, state).mkdir(parents=True, exist_ok=True)
+    formal = parse_campaign_policy(context["config"]) is not None
+    formal_bindings: dict[str, dict[str, Any]] = {}
+    if formal:
+        assigned = deterministic_task_gpu_mapping(list(task_config_dict))
+        for index, (task_name, task_config_dir) in enumerate(
+            task_config_dict.items(), 1
+        ):
+            formal_bindings[task_name] = validate_formal_task_binding(
+                run_directory=run_directory,
+                task_name=task_name,
+                task_index=index,
+                total_tasks=len(task_config_dict),
+                task_config_path=task_config_dir,
+                assigned_host_gpu_id=assigned[index - 1]["assigned_host_gpu_id"],
+            )
 
-    for state in QUEUE_STATES:
-        for descriptor in _queue_state_dir(run_directory, state).glob("*.yaml"):
-            descriptor.unlink()
+    queue_root = _queue_root(run_directory)
+    if formal:
+        if queue_root.exists() or queue_root.is_symlink():
+            raise CampaignError(
+                f"formal parallel queue already exists; use a fresh run: {queue_root}"
+            )
+        queue_root.mkdir()
+        for state in QUEUE_STATES:
+            _queue_state_dir(run_directory, state).mkdir()
+    else:
+        for state in QUEUE_STATES:
+            _queue_state_dir(run_directory, state).mkdir(parents=True, exist_ok=True)
+        for state in QUEUE_STATES:
+            for descriptor in _queue_state_dir(run_directory, state).glob("*.yaml"):
+                descriptor.unlink()
 
     total_tasks = len(task_config_dict)
     queued = 0
     completed = 0
-    assigned_gpu = {
-        item["task_name"]: item["assigned_host_gpu_id"]
-        for item in deterministic_task_gpu_mapping(list(task_config_dict))
-    } if parse_campaign_policy(context["config"]) is not None else {}
     for index, (task_name, task_config_dir) in enumerate(task_config_dict.items(), 1):
         workspace_path = get_task_workspace_path(run_directory, task_name, timestamp)
+        binding = formal_bindings.get(task_name)
         payload = {
             "index": index,
             "total_tasks": total_tasks,
             "task_name": task_name,
-            "task_config_dir": task_config_dir,
+            "task_config_dir": (
+                binding["config_path"] if binding is not None else task_config_dir
+            ),
             "workspace_path": str(workspace_path),
         }
-        if assigned_gpu:
-            payload["assigned_host_gpu_id"] = assigned_gpu[task_name]
+        if binding is not None:
+            payload["assigned_host_gpu_id"] = binding["assigned_host_gpu_id"]
         if is_task_complete(run_directory, task_name, timestamp, agent.value):
             payload["status"] = "already_complete"
             state = "done"
@@ -741,7 +1053,17 @@ def initialize_parallel_queue(context: dict[str, Any]) -> None:
             payload["status"] = "pending"
             state = "pending"
             queued += 1
-        _write_descriptor(_queue_state_dir(run_directory, state) / _descriptor_name(index, task_name), payload)
+        descriptor_path = (
+            _queue_state_dir(run_directory, state)
+            / _descriptor_name(index, task_name)
+        )
+        _write_descriptor(
+            descriptor_path,
+            payload,
+            no_clobber=formal,
+        )
+        if formal:
+            descriptor_path.chmod(0o444)
 
     logger.info(
         f"Parallel queue initialized: queued={queued}, already_complete={completed}, "
@@ -758,15 +1080,42 @@ def claim_next_descriptor(
     pending_dir = _queue_state_dir(run_directory, "pending")
     running_dir = _queue_state_dir(run_directory, "running")
     running_dir.mkdir(parents=True, exist_ok=True)
+    formal = (run_directory / "campaign_manifest.yaml").exists()
+    if formal:
+        _require_safe_queue_directory(pending_dir)
+        _require_safe_queue_directory(running_dir)
 
     for descriptor in sorted(pending_dir.glob("*.yaml")):
-        payload = _read_descriptor(descriptor)
+        if formal:
+            identity, payload = _formal_descriptor_snapshot(descriptor)
+            _validate_formal_descriptor_payload(run_directory, descriptor, payload)
+        else:
+            payload = _read_descriptor(descriptor)
         assigned = payload.get("assigned_host_gpu_id")
         if assigned is not None and assigned != host_gpu_id:
             continue
-        claimed = running_dir / f"worker_{worker_id}__{descriptor.name}"
+        if formal:
+            if not re.fullmatch(r"[A-Za-z0-9._-]+", worker_id):
+                raise CampaignError("formal worker ID is not filename-safe")
+            claimed = running_dir / f"worker_{worker_id}__{descriptor.name}"
+            if claimed.exists() or claimed.is_symlink():
+                raise CampaignError(f"formal claim path already exists: {claimed}")
+        else:
+            worker_component = re.sub(
+                r"[^A-Za-z0-9._-]+", "_", worker_id
+            ).strip("_") or "worker"
+            claimed = running_dir / f"worker_{worker_component}__{descriptor.name}"
         try:
-            descriptor.rename(claimed)
+            if formal:
+                os.rename(descriptor, claimed)
+                claimed_identity, claimed_payload = _formal_descriptor_snapshot(claimed)
+                if claimed_identity != identity or claimed_payload != payload:
+                    raise CampaignError("formal descriptor identity changed during claim")
+                _validate_formal_descriptor_payload(
+                    run_directory, claimed, claimed_payload
+                )
+            else:
+                descriptor.rename(claimed)
             logger.info(f"Claimed task descriptor: {claimed.name}")
             return claimed
         except FileNotFoundError:
@@ -780,16 +1129,43 @@ def finish_descriptor(
     *,
     workspace_path: Path | None,
     worker_id: str,
+    failure_reason: str | None = None,
 ) -> None:
-    payload = _read_descriptor(descriptor)
+    run_directory = descriptor.parent.parent.parent
+    formal = (run_directory / "campaign_manifest.yaml").exists()
+    if formal:
+        _, payload = _formal_descriptor_snapshot(descriptor)
+    else:
+        payload = _read_descriptor(descriptor)
     payload["status"] = state
     payload["worker_id"] = worker_id
     if workspace_path is not None:
         payload["workspace_path"] = str(workspace_path)
+    if state == "failed" and formal:
+        payload["failure"] = _formal_failure_binding(
+            run_directory,
+            str(payload.get("task_name") or ""),
+            failure_reason,
+        )
     _write_descriptor(descriptor, payload)
     final_dir = descriptor.parent.parent / state
     final_dir.mkdir(parents=True, exist_ok=True)
-    descriptor.rename(final_dir / descriptor.name)
+    final_path = final_dir / descriptor.name
+    if formal:
+        _require_safe_queue_directory(descriptor.parent)
+        _require_safe_queue_directory(final_dir)
+        if final_path.exists() or final_path.is_symlink():
+            raise CampaignError(
+                f"formal terminal descriptor already exists: {final_path}"
+            )
+        descriptor.chmod(0o444)
+        identity, payload_after_write = _formal_descriptor_snapshot(descriptor)
+        os.rename(descriptor, final_path)
+        final_identity, final_payload = _formal_descriptor_snapshot(final_path)
+        if final_identity != identity or final_payload != payload_after_write:
+            raise CampaignError("formal descriptor identity changed during finalization")
+    else:
+        descriptor.rename(final_path)
 
 
 def collect_existing_workspace_paths(
@@ -842,7 +1218,15 @@ def run_serial(args: argparse.Namespace) -> int:
         if workspace_path is not None:
             workspace_paths.append(str(workspace_path))
 
-    run_post_processing(context["agent"], workspace_paths, context["logger"])
+    try:
+        run_post_processing(
+            context["agent"],
+            workspace_paths,
+            context["logger"],
+            run_directory=context["run_directory"],
+        )
+    except Exception:
+        return 1
     context["logger"].info("=" * 80)
     context["logger"].info("AgentKernelArena Framework Completed")
     context["logger"].info("=" * 80)
@@ -872,7 +1256,8 @@ def run_parallel_worker(args: argparse.Namespace) -> int:
     failures = 0
     processed = 0
     host_gpu_id = os.environ.get("AGENT_KERNEL_ARENA_HOST_GPU_ID")
-    if parse_campaign_policy(context["config"]) is not None:
+    formal_campaign = parse_campaign_policy(context["config"]) is not None
+    if formal_campaign:
         pool = ordered_gpu_pool()
         if host_gpu_id not in pool:
             context["logger"].error(
@@ -886,7 +1271,13 @@ def run_parallel_worker(args: argparse.Namespace) -> int:
         if descriptor is None:
             break
 
-        payload = _read_descriptor(descriptor)
+        if formal_campaign:
+            _, payload = _formal_descriptor_snapshot(descriptor)
+            _validate_formal_descriptor_payload(
+                context["run_directory"], descriptor, payload
+            )
+        else:
+            payload = _read_descriptor(descriptor)
         assigned_host_gpu_id = payload.get("assigned_host_gpu_id")
         if assigned_host_gpu_id is not None and assigned_host_gpu_id != host_gpu_id:
             context["logger"].error(
@@ -895,7 +1286,11 @@ def run_parallel_worker(args: argparse.Namespace) -> int:
                 host_gpu_id,
             )
             finish_descriptor(
-                descriptor, "failed", workspace_path=None, worker_id=worker_id
+                descriptor,
+                "failed",
+                workspace_path=None,
+                worker_id=worker_id,
+                failure_reason="descriptor_gpu_affinity_mismatch",
             )
             failures += 1
             continue
@@ -919,7 +1314,13 @@ def run_parallel_worker(args: argparse.Namespace) -> int:
             finish_descriptor(descriptor, "done", workspace_path=workspace_path, worker_id=worker_id)
         else:
             failures += 1
-            finish_descriptor(descriptor, "failed", workspace_path=workspace_path, worker_id=worker_id)
+            finish_descriptor(
+                descriptor,
+                "failed",
+                workspace_path=workspace_path,
+                worker_id=worker_id,
+                failure_reason="formal_task_not_canonical",
+            )
 
     context["logger"].info(
         f"Parallel worker {worker_id} completed: processed={processed}, failures={failures}"
@@ -938,7 +1339,15 @@ def run_postprocess_only(args: argparse.Namespace) -> int:
         context["timestamp"],
     )
     context["logger"].info(f"Post-processing {len(workspace_paths)} workspace(s)")
-    run_post_processing(context["agent"], workspace_paths, context["logger"])
+    try:
+        run_post_processing(
+            context["agent"],
+            workspace_paths,
+            context["logger"],
+            run_directory=context["run_directory"],
+        )
+    except Exception:
+        return 1
 
     pending_descriptors = list(_queue_state_dir(context["run_directory"], "pending").glob("*.yaml"))
     running_descriptors = list(_queue_state_dir(context["run_directory"], "running").glob("*.yaml"))

@@ -43,6 +43,7 @@ _DEFAULT_OUTPUT_LIMIT = 16 * 1024 * 1024
 _MAX_EVENT_LINE_CHARS = 1024 * 1024
 _MAX_WORKSPACE_FILES = 20_000
 _MAX_WORKSPACE_BYTES = 2 * 1024 * 1024 * 1024
+_LOWER_HEX = frozenset("0123456789abcdef")
 
 
 class CodexSessionError(RuntimeError):
@@ -90,6 +91,28 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _comparison_contract_sha256(
+    eval_config: dict[str, Any], *, formal_campaign: bool
+) -> str | None:
+    if not formal_campaign:
+        return None
+    attempt = eval_config.get("campaign_attempt")
+    digest = (
+        attempt.get("comparison_contract_sha256")
+        if isinstance(attempt, dict)
+        else None
+    )
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in _LOWER_HEX for character in digest)
+    ):
+        raise CodexSessionError(
+            "formal direct Codex attempt lacks a valid comparison contract digest"
+        )
+    return digest
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -648,11 +671,15 @@ def _write_attempt_receipt(
     raw_stdout: str,
     raw_stderr: str,
     transcript: str,
+    rendered_prompt: bytes,
     receipt: dict[str, Any],
     workspace_before: dict[str, dict[str, Any]] | None = None,
     workspace_after: dict[str, dict[str, Any]] | None = None,
 ) -> None:
     artifacts = {
+        "rendered_prompt": _write_read_only_atomic(
+            artifact_dir / "rendered_prompt.txt", rendered_prompt
+        ),
         "raw_stdout": _write_read_only_atomic(
             artifact_dir / "raw_stdout.jsonl", raw_stdout.encode("utf-8")
         ),
@@ -837,6 +864,10 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         prompt,
         prompt_agent_config,
         process_env.get("AGENT_KERNEL_ARENA_PYTHON"),
+    )
+    rendered_prompt = prompt.encode("utf-8")
+    comparison_contract_sha256 = _comparison_contract_sha256(
+        eval_config, formal_campaign=formal_campaign
     )
     configured_model = agent_config.get("model")
     configured_effort = agent_config.get("effort")
@@ -1189,6 +1220,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     )
     receipt = {
         "schema": _RECEIPT_SCHEMA,
+        "comparison_contract_sha256": comparison_contract_sha256,
         "session_succeeded": session_succeeded,
         "thread_id": session["thread_id"],
         "session_id": session["session_id"],
@@ -1216,7 +1248,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         },
         "invocation": {
             "argv_without_prompt": cmd[:-1],
-            "prompt_sha256": _sha256_bytes(prompt.encode("utf-8")),
+            "prompt_sha256": _sha256_bytes(rendered_prompt),
             "workspace": str(workspace_path),
             "editable_files": list(editable_files),
             "max_turns": max_turns,
@@ -1244,6 +1276,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         raw_stdout=raw_stdout,
         raw_stderr=raw_stderr,
         transcript=output,
+        rendered_prompt=rendered_prompt,
         receipt=receipt,
         workspace_before=workspace_before,
         workspace_after=workspace_after,

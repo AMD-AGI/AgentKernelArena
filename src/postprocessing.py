@@ -2,20 +2,39 @@
 import yaml
 import logging
 import csv
+import hashlib
+import io
 import json
+import math
+import os
+import re
+import stat
 import sys
 import statistics
+import tempfile
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
 from collections import defaultdict
 try:
+    from src.campaign import _campaign_failure_reasons
     from src.score import resolve_speedup_ratio, task_result_scoring
+    from src.preprocessing import get_task_workspace_path
 except ModuleNotFoundError:
     # Allow direct execution: `python src/postprocessing.py`
     repo_root = Path(__file__).resolve().parents[1]
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
+    from src.campaign import _campaign_failure_reasons
     from src.score import resolve_speedup_ratio, task_result_scoring
+    from src.preprocessing import get_task_workspace_path
+
+
+_FORMAL_PRIMARY_FAILURE_REASONS = frozenset(
+    {
+        "descriptor_gpu_affinity_mismatch",
+        "formal_task_not_canonical",
+    }
+)
 
 
 def _build_general_report_lines(
@@ -24,6 +43,10 @@ def _build_general_report_lines(
     task_type_breakdown: Optional[Dict[str, Dict[str, Any]]] = None
 ) -> List[str]:
     """Build report lines shared by logger output and fallback txt output."""
+    formal_campaign = aggregate_result.get("formal_campaign") is True
+    speedup_population = (
+        "Canonical-success" if formal_campaign else "Correct-and-compiled"
+    )
     lines = [
         "=" * 80,
         "AgentKernelArena Task Results Report",
@@ -51,12 +74,30 @@ def _build_general_report_lines(
         "Performance:",
         f"  Speedup > 1.0 Count:   {aggregate_result['speedup_gt_1_count']}/{aggregate_result['total_tasks']}",
         f"  Speedup > 1.0 Rate:    {aggregate_result['speedup_gt_1_rate']:.1f}%",
-        f"  Average Speedup:       {aggregate_result['average_speedup']:.2f}x",
-        f"  Median Speedup:        {aggregate_result.get('median_speedup', 0.0):.2f}x",
-        f"  Std Dev Speedup:       {aggregate_result.get('std_dev_speedup', 0.0):.2f}x",
-        f"  P25/P75/P90 Speedup:   {aggregate_result.get('p25_speedup', 0.0):.2f}x / {aggregate_result.get('p75_speedup', 0.0):.2f}x / {aggregate_result.get('p90_speedup', 0.0):.2f}x",
-        f"  Valid Speedup Count:   {aggregate_result['valid_speedup_count']}",
+        f"  {speedup_population} Average Speedup: {aggregate_result['average_speedup']:.2f}x",
+        f"  {speedup_population} Median Speedup:  {aggregate_result.get('median_speedup', 0.0):.2f}x",
+        f"  {speedup_population} Std Dev Speedup: {aggregate_result.get('std_dev_speedup', 0.0):.2f}x",
+        f"  {speedup_population} Observed P25/P75/P90: {aggregate_result.get('p25_speedup', 0.0):.2f}x / {aggregate_result.get('p75_speedup', 0.0):.2f}x / {aggregate_result.get('p90_speedup', 0.0):.2f}x",
+        f"  {speedup_population} Speedup Count:   {aggregate_result['valid_speedup_count']}",
     ])
+
+    if aggregate_result.get("formal_campaign"):
+        lines.extend([
+            "Formal Campaign Cohort:",
+            f"  Campaign Manifest:    {aggregate_result['campaign_manifest_sha256']}",
+            f"  Comparison Contract:  {aggregate_result['comparison_contract_sha256']}",
+            f"  Ordered Cohort:        {aggregate_result['ordered_cohort_sha256']}",
+            f"  Manifest Tasks:        {aggregate_result['total_tasks']}",
+            f"  Canonical Successes:   {aggregate_result['canonical_success_count']}/{aggregate_result['total_tasks']}",
+            f"  Failed Tasks:          {aggregate_result['failed_task_count']}/{aggregate_result['total_tasks']}",
+            f"  Terminal Evidence:     {aggregate_result['terminal_task_count']}/{aggregate_result['total_tasks']}",
+            f"  Completion Verified:   {aggregate_result['formal_completion_verified']}",
+        ])
+        failure_counts = aggregate_result.get("failure_reason_counts", {})
+        if failure_counts:
+            lines.append("  Failure Reasons:")
+            for reason, count in sorted(failure_counts.items()):
+                lines.append(f"    {reason}: {count}")
     
     # Add task type breakdowns if available
     if task_type_breakdown:
@@ -69,10 +110,10 @@ def _build_general_report_lines(
         for task_type in sorted_types:
             stats = task_type_breakdown[task_type]
             lines.append(f"  {task_type} ({stats['count']} tasks):")
-            lines.append(f"    Average Speedup:     {stats['average_speedup']:.2f}x")
-            lines.append(f"    Median Speedup:      {stats.get('median_speedup', 0.0):.2f}x")
-            lines.append(f"    Std Dev Speedup:     {stats.get('std_dev_speedup', 0.0):.2f}x")
-            lines.append(f"    P25/P75/P90 Speedup: {stats.get('p25_speedup', 0.0):.2f}x / {stats.get('p75_speedup', 0.0):.2f}x / {stats.get('p90_speedup', 0.0):.2f}x")
+            lines.append(f"    {speedup_population} Average Speedup: {stats['average_speedup']:.2f}x")
+            lines.append(f"    {speedup_population} Median Speedup: {stats.get('median_speedup', 0.0):.2f}x")
+            lines.append(f"    {speedup_population} Std Dev Speedup: {stats.get('std_dev_speedup', 0.0):.2f}x")
+            lines.append(f"    {speedup_population} Observed P25/P75/P90: {stats.get('p25_speedup', 0.0):.2f}x / {stats.get('p75_speedup', 0.0):.2f}x / {stats.get('p90_speedup', 0.0):.2f}x")
             lines.append(f"    Compilation Pass:     {stats['compilation_pass_count']}/{stats['count']}")
             lines.append(f"    Compilation Pass Rate: {stats['compilation_pass_rate']:.1f}%")
             lines.append(f"    Correctness Pass:     {stats['correctness_pass_count']}/{stats['count']}")
@@ -84,7 +125,7 @@ def _build_general_report_lines(
     # Add total performance summary
     lines.extend([
         "TOTAL PERFORMANCE SUMMARY:",
-        f"  Overall Average Speedup:  {aggregate_result['average_speedup']:.2f}x",
+        f"  {speedup_population} Average Speedup: {aggregate_result['average_speedup']:.2f}x",
         f"  Tasks with Speedup > 1.0: {aggregate_result['speedup_gt_1_count']}/{aggregate_result['total_tasks']} ({aggregate_result['speedup_gt_1_rate']:.1f}%)",
     ])
     
@@ -109,12 +150,25 @@ def _build_general_report_lines(
     ])
 
     for task in aggregate_result["task_details"]:
-        status = "PASS" if task["pass_correctness"] else ("PARTIAL" if task["pass_compilation"] else "FAIL")
+        status = (
+            "FAILED"
+            if task.get("campaign_status") == "failed"
+            else (
+                "PASS"
+                if task["pass_correctness"]
+                else ("PARTIAL" if task["pass_compilation"] else "FAIL")
+            )
+        )
         lines.append(
             f"{status:<8} {task['task_name']:<40} Score: {task['score']:>6.1f}  Speedup: {task['speedup_ratio']:.2f}x"
         )
         if task["error"]:
             lines.append(f"         Error: {task['error']}")
+        if task.get("campaign_evidence_path"):
+            lines.append(
+                f"         Campaign evidence: {task['campaign_evidence_path']} "
+                f"(sha256={task.get('campaign_evidence_sha256')})"
+            )
 
     lines.append("=" * 80)
     return lines
@@ -178,7 +232,7 @@ def _extract_run_metadata(run_directory: Path) -> Dict[str, str]:
 
 def _compute_speedup_stats(speedup_values: List[float]) -> Dict[str, float]:
     """
-    Compute speedup statistics: average, median, std dev, and percentiles (P25, P75, P90).
+    Compute speedup statistics with bounded observed P25/P75/P90 quantiles.
 
     Args:
         speedup_values: List of valid speedup ratios (> 0).
@@ -209,17 +263,18 @@ def _compute_speedup_stats(speedup_values: List[float]) -> Dict[str, float]:
     except statistics.StatisticsError:
         std_dev = 0.0
 
-    if len(speedup_values) == 1:
-        p25 = p75 = p90 = speedup_values[0]
-    else:
-        try:
-            # statistics.quantiles with n=100 gives 99 cut points; index 24 = P25, etc.
-            quantile_cuts = statistics.quantiles(speedup_values, n=100)
-            p25 = quantile_cuts[24]
-            p75 = quantile_cuts[74]
-            p90 = quantile_cuts[89]
-        except (statistics.StatisticsError, IndexError, ValueError):
-            p25 = p75 = p90 = 0.0
+    ordered = sorted(speedup_values)
+
+    def observed_quantile(fraction: float) -> float:
+        # Nearest-rank selects an observed sample. Unlike the default exclusive
+        # estimator in statistics.quantiles(), it cannot extrapolate beyond the
+        # observed min/max when a formal campaign has only a few valid tasks.
+        index = max(0, min(len(ordered) - 1, math.ceil(fraction * len(ordered)) - 1))
+        return ordered[index]
+
+    p25 = observed_quantile(0.25)
+    p75 = observed_quantile(0.75)
+    p90 = observed_quantile(0.90)
 
     return {
         'average_speedup': average,
@@ -378,9 +433,623 @@ def _collect_all_tasks_from_run(run_directory: Path) -> List[str]:
     return sorted(task_paths)
 
 
+def _safe_read_only_file(path: Path) -> bool:
+    try:
+        metadata = path.lstat()
+    except OSError:
+        return False
+    return (
+        path.is_file()
+        and not path.is_symlink()
+        and metadata.st_nlink == 1
+        and not metadata.st_mode & 0o222
+    )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _load_formal_cohort(run_directory: Path) -> Dict[str, Any] | None:
+    manifest_path = run_directory / "campaign_manifest.yaml"
+    if not manifest_path.exists():
+        return None
+    if not _safe_read_only_file(manifest_path):
+        raise ValueError(f"formal campaign manifest is unsafe or mutable: {manifest_path}")
+    manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(manifest, dict) or manifest.get("schema") != "aka.matched-campaign/v1":
+        raise ValueError("formal campaign manifest has an unsupported schema")
+    configuration = manifest.get("configuration")
+    raw_tasks = configuration.get("tasks") if isinstance(configuration, dict) else None
+    if not isinstance(raw_tasks, list) or not raw_tasks:
+        raise ValueError("formal campaign manifest has no task cohort")
+    comparison = manifest.get("comparison_contract")
+    comparison_digest = manifest.get("comparison_contract_sha256")
+    if (
+        not isinstance(comparison, dict)
+        or not isinstance(comparison_digest, str)
+        or hashlib.sha256(
+            json.dumps(
+                comparison, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        ).hexdigest()
+        != comparison_digest
+        or comparison.get("tasks") != raw_tasks
+    ):
+        raise ValueError("formal campaign manifest task cohort is not digest-bound")
+    task_names: List[str] = []
+    task_entries: Dict[str, Dict[str, Any]] = {}
+    for expected_index, task in enumerate(raw_tasks, 1):
+        if (
+            not isinstance(task, dict)
+            or task.get("task_index") != expected_index
+            or not isinstance(task.get("task_name"), str)
+            or not task["task_name"]
+        ):
+            raise ValueError("formal campaign manifest task cohort is malformed")
+        task_names.append(task["task_name"])
+        task_entries[task["task_name"]] = task
+    if len(task_names) != len(set(task_names)):
+        raise ValueError("formal campaign manifest task cohort contains duplicates")
+    return {
+        "task_names": task_names,
+        "task_entries": task_entries,
+        "manifest": manifest,
+        "campaign_manifest_sha256": _sha256_file(manifest_path),
+        "comparison_contract_sha256": comparison_digest,
+        "ordered_cohort_sha256": hashlib.sha256(
+            json.dumps(raw_tasks, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        ).hexdigest(),
+    }
+
+
+def _formal_workspace_map(
+    run_directory: Path, task_names: List[str]
+) -> Dict[str, Path]:
+    match = re.match(r"^run_(\d{8}_\d{6})(?:_|$)", run_directory.name)
+    if match is None:
+        raise ValueError("formal run directory has no canonical timestamp")
+    timestamp = match.group(1)
+    expected = {
+        task_name: get_task_workspace_path(run_directory, task_name, timestamp)
+        for task_name in task_names
+    }
+    expected_paths = [path.resolve() for path in expected.values()]
+    if len(expected_paths) != len(set(expected_paths)):
+        raise ValueError("formal campaign task names collide on canonical workspace paths")
+    by_task: Dict[str, Path] = {}
+    for task_name, workspace in expected.items():
+        if not (workspace.is_dir() and not workspace.is_symlink()):
+            continue
+        result_path = workspace / "task_result.yaml"
+        if not result_path.exists():
+            continue
+        by_task[task_name] = workspace
+    return by_task
+
+
+def _require_regular_directory_chain(path: Path, root: Path, label: str) -> None:
+    """Reject symlinked/non-directory components between a run and evidence root."""
+    root_resolved = root.resolve(strict=True)
+    try:
+        relative = path.relative_to(root)
+    except ValueError as error:
+        raise ValueError(f"{label} escapes the run directory") from error
+    current = root
+    for part in relative.parts:
+        current = current / part
+        try:
+            metadata = current.lstat()
+        except OSError as error:
+            raise ValueError(f"{label} is missing: {current}") from error
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError(f"{label} has an unsafe directory component: {current}")
+    try:
+        path.resolve(strict=True).relative_to(root_resolved)
+    except (OSError, ValueError) as error:
+        raise ValueError(f"{label} escapes the resolved run directory") from error
+
+
+def _regular_tree_manifest(root: Path) -> Dict[str, str]:
+    if not root.is_dir() or root.is_symlink():
+        raise ValueError(f"canonical lineage workspace is unsafe: {root}")
+    manifest: Dict[str, str] = {}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        metadata = path.lstat()
+        if path.is_symlink():
+            raise ValueError(f"canonical lineage contains a symlink: {path}")
+        if path.is_dir():
+            continue
+        if not path.is_file() or metadata.st_nlink != 1:
+            raise ValueError(f"canonical lineage contains an unsafe file: {path}")
+        manifest[relative] = _sha256_file(path)
+    if not manifest:
+        raise ValueError(f"canonical lineage workspace is empty: {root}")
+    return manifest
+
+
+def _validate_canonical_lineage(
+    *,
+    run_directory: Path,
+    task_name: str,
+    canonical: Path,
+    formal: Dict[str, Any],
+) -> tuple[Dict[str, Any], Dict[str, str]]:
+    match = re.match(r"^run_(\d{8}_\d{6})(?:_|$)", run_directory.name)
+    if match is None:
+        raise ValueError("formal run directory has no canonical timestamp")
+    expected_canonical = get_task_workspace_path(
+        run_directory, task_name, match.group(1)
+    )
+    if canonical != expected_canonical:
+        raise ValueError("canonical task workspace path differs from manifest identity")
+    _require_regular_directory_chain(canonical, run_directory, "canonical workspace")
+    result_path = canonical / "task_result.yaml"
+    if not _safe_read_only_file(result_path):
+        raise ValueError(f"canonical task result is unsafe or mutable: {result_path}")
+    result = yaml.safe_load(result_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(result, dict) or result.get("task_name") != task_name:
+        raise ValueError("canonical task result identity differs from manifest")
+    campaign_evidence = result.get("campaign_evidence")
+    if not isinstance(campaign_evidence, dict):
+        raise ValueError("canonical task result lacks campaign lineage")
+
+    task_campaign_path = (
+        run_directory
+        / ".campaign_attempts"
+        / task_name.replace("/", "_")
+        / "task_campaign.yaml"
+    )
+    if not _safe_read_only_file(task_campaign_path):
+        raise ValueError("canonical task campaign lineage is unsafe or mutable")
+    task_campaign_sha256 = _sha256_file(task_campaign_path)
+    task_campaign = yaml.safe_load(
+        task_campaign_path.read_text(encoding="utf-8")
+    ) or {}
+    if not isinstance(task_campaign, dict):
+        raise ValueError("canonical task campaign lineage is unreadable")
+    selected_attempt = task_campaign.get("selected_attempt")
+    attempts = task_campaign.get("attempts")
+    selected_records = [
+        record
+        for record in attempts
+        if isinstance(record, dict) and record.get("attempt") == selected_attempt
+    ] if isinstance(attempts, list) else []
+    if (
+        task_campaign.get("schema") != "aka.matched-task-attempts/v1"
+        or task_campaign.get("task_name") != task_name
+        or task_campaign.get("campaign_manifest_sha256")
+        != formal["campaign_manifest_sha256"]
+        or task_campaign.get("comparison_contract_sha256")
+        != formal["comparison_contract_sha256"]
+        or task_campaign.get("campaign_manifest_unchanged") is not True
+        or task_campaign.get("all_attempts_centrally_evaluated") is not True
+        or task_campaign.get("all_agent_sessions_succeeded") is not True
+        or task_campaign.get("within_evaluator_allowance") is not True
+        or task_campaign.get("within_task_timeout") is not True
+        or task_campaign.get("failure_reasons") != []
+        or type(selected_attempt) is not int
+        or selected_attempt < 1
+        or len(selected_records) != 1
+        or selected_records[0].get("selection_eligible") is not True
+    ):
+        raise ValueError("canonical task campaign does not prove a completed task")
+    selected = selected_records[0]
+    relative_workspace = selected.get("workspace")
+    if not isinstance(relative_workspace, str):
+        raise ValueError("selected attempt has no workspace lineage")
+    if Path(relative_workspace).is_absolute():
+        raise ValueError("selected attempt workspace must be run-relative")
+    attempt_directory = task_campaign_path.parent / f"attempt_{selected_attempt:02d}"
+    expected_selected_workspace = get_task_workspace_path(
+        attempt_directory, task_name, match.group(1)
+    )
+    selected_workspace = run_directory / relative_workspace
+    if selected_workspace != expected_selected_workspace:
+        raise ValueError("selected attempt workspace path is not canonical")
+    _require_regular_directory_chain(
+        selected_workspace, run_directory, "selected attempt workspace"
+    )
+
+    selected_manifest = _regular_tree_manifest(selected_workspace)
+    selected_manifest_sha256 = hashlib.sha256(
+        json.dumps(
+            selected_manifest, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    if selected.get("workspace_manifest_sha256") != selected_manifest_sha256:
+        raise ValueError("selected attempt workspace digest changed")
+    selected_result_path = selected_workspace / "task_result.yaml"
+    expected_report_relative = str(selected_result_path.relative_to(run_directory))
+    selected_result_sha256 = _sha256_file(selected_result_path)
+    if (
+        selected.get("central_evaluator_report") != expected_report_relative
+        or selected.get("central_evaluator_report_sha256")
+        != selected_result_sha256
+        or selected_manifest.get("task_result.yaml") != selected_result_sha256
+    ):
+        raise ValueError("selected evaluator result lineage changed")
+
+    evidence_hashes = {
+        name: selected_manifest.get(name)
+        for name in ("baseline_perf.yaml", "optimized_perf.yaml")
+    }
+    if any(value is None for value in evidence_hashes.values()):
+        raise ValueError("selected attempt lacks performance evidence lineage")
+    expected_campaign_evidence = {
+        "schema": "aka.matched-task-attempts/v1",
+        "campaign_manifest_sha256": formal["campaign_manifest_sha256"],
+        "comparison_contract_sha256": formal["comparison_contract_sha256"],
+        "task_campaign_sha256": task_campaign_sha256,
+        "attempt_count": task_campaign.get("policy", {}).get("attempts"),
+        "selected_attempt": selected_attempt,
+        "selection_policy": task_campaign.get("policy", {}).get("selection_policy"),
+        "selected_measured_rate_per_ms": selected.get("measured_rate_per_ms"),
+        "attempt_manifest": str(task_campaign_path.relative_to(run_directory)),
+        "measurement_contract": task_campaign.get("measurement_contract"),
+        "is_apex_canonical_300_sample_grade": False,
+        "selected_central_evaluator_report_sha256": selected_result_sha256,
+        "selected_performance_evidence_sha256": evidence_hashes,
+        "selected_workspace_manifest_sha256": selected_manifest_sha256,
+    }
+    if campaign_evidence != expected_campaign_evidence:
+        raise ValueError("canonical task result campaign lineage is inconsistent")
+    selected_result = yaml.safe_load(
+        selected_result_path.read_text(encoding="utf-8")
+    ) or {}
+    if not isinstance(selected_result, dict):
+        raise ValueError("selected evaluator result is unreadable")
+    expected_result = dict(selected_result)
+    expected_result["campaign_evidence"] = expected_campaign_evidence
+    if result != expected_result:
+        raise ValueError("canonical task result differs from selected evaluator result")
+    for name, expected_sha256 in evidence_hashes.items():
+        canonical_evidence = canonical / name
+        if (
+            not _safe_read_only_file(canonical_evidence)
+            or _sha256_file(canonical_evidence) != expected_sha256
+        ):
+            raise ValueError(f"canonical performance evidence differs: {name}")
+
+    canonical_manifest = _regular_tree_manifest(canonical)
+    expected_canonical_manifest = dict(selected_manifest)
+    expected_canonical_manifest["task_result.yaml"] = _sha256_file(result_path)
+    if canonical_manifest != expected_canonical_manifest:
+        raise ValueError("canonical workspace tree differs from selected workspace")
+    canonical_manifest_sha256 = hashlib.sha256(
+        json.dumps(
+            canonical_manifest, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    return result, {
+        "canonical_workspace_manifest_sha256": canonical_manifest_sha256,
+        "selected_workspace_manifest_sha256": selected_manifest_sha256,
+    }
+
+
+def _validated_failure_binding(
+    run_directory: Path,
+    task_name: str,
+    formal: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Validate a single terminal failure marker against sealed campaign evidence."""
+    task_entry = formal["task_entries"][task_name]
+    expected_index = task_entry["task_index"]
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", task_name).strip("_")
+    expected_suffix = f"{expected_index:06d}_{safe_name or 'task'}.yaml"
+    expected_workspace = get_task_workspace_path(
+        run_directory,
+        task_name,
+        re.match(r"^run_(\d{8}_\d{6})(?:_|$)", run_directory.name).group(1),
+    )
+
+    marker_payloads: List[tuple[Path, Dict[str, Any]]] = []
+    marker_candidates: List[Path] = []
+    failed_dir = run_directory / ".parallel" / "failed"
+    if failed_dir.exists():
+        try:
+            failed_metadata = failed_dir.lstat()
+        except OSError:
+            failed_metadata = None
+        if (
+            failed_metadata is None
+            or stat.S_ISLNK(failed_metadata.st_mode)
+            or not stat.S_ISDIR(failed_metadata.st_mode)
+        ):
+            return {
+                "reason_codes": ["failed_marker_directory_unsafe"],
+                "campaign_evidence_path": None,
+                "campaign_evidence_sha256": None,
+                "terminal_binding_verified": False,
+            }
+        marker_name = re.compile(
+            rf"worker_[A-Za-z0-9._-]+__{re.escape(expected_suffix)}"
+        )
+        marker_candidates = sorted(
+            path
+            for path in failed_dir.iterdir()
+            if marker_name.fullmatch(path.name)
+        )
+        for descriptor in marker_candidates:
+            if not _safe_read_only_file(descriptor):
+                marker_payloads.append((descriptor, {}))
+                continue
+            try:
+                payload = yaml.safe_load(
+                    descriptor.read_text(encoding="utf-8")
+                ) or {}
+            except (OSError, UnicodeError, yaml.YAMLError):
+                marker_payloads.append((descriptor, {}))
+                continue
+            marker_payloads.append(
+                (descriptor, payload if isinstance(payload, dict) else {})
+            )
+
+    marker_errors: List[str] = []
+    descriptor_binding: Dict[str, Any] | None = None
+    if len(marker_candidates) != 1:
+        marker_errors.append(
+            "duplicate_failed_markers" if len(marker_candidates) > 1
+            else "failed_marker_missing"
+        )
+    else:
+        descriptor, payload = marker_payloads[0]
+        descriptor_match = re.fullmatch(
+            rf"worker_([A-Za-z0-9._-]+)__{re.escape(expected_suffix)}",
+            descriptor.name,
+        )
+        if (
+            descriptor_match is None
+            or payload.get("task_name") != task_name
+            or payload.get("index") != expected_index
+            or payload.get("total_tasks") != len(formal["task_names"])
+            or payload.get("status") != "failed"
+            or payload.get("workspace_path") != str(expected_workspace)
+            or payload.get("worker_id") != descriptor_match.group(1)
+        ):
+            marker_errors.append("failed_marker_identity_invalid")
+        raw_binding = payload.get("failure")
+        if (
+            not isinstance(raw_binding, dict)
+            or raw_binding.get("schema") != "aka.formal-task-failure/v1"
+            or raw_binding.get("task_name") != task_name
+        ):
+            marker_errors.append("failed_marker_binding_invalid")
+        else:
+            descriptor_binding = raw_binding
+
+    evidence_path = (
+        run_directory
+        / ".campaign_attempts"
+        / task_name.replace("/", "_")
+        / "task_campaign.yaml"
+    )
+    evidence_relative: str | None = None
+    evidence_sha256: str | None = None
+    evidence_reasons: List[str] = []
+    evidence_errors: List[str] = []
+    evidence: Dict[str, Any] | None = None
+    if _safe_read_only_file(evidence_path):
+        try:
+            loaded = yaml.safe_load(evidence_path.read_text(encoding="utf-8")) or {}
+        except (OSError, UnicodeError, yaml.YAMLError):
+            loaded = None
+        if isinstance(loaded, dict):
+            evidence = loaded
+            recomputed_reasons = _campaign_failure_reasons(evidence)
+            raw_reasons = evidence.get("failure_reasons")
+            if (
+                evidence.get("schema") != "aka.matched-task-attempts/v1"
+                or evidence.get("task_name") != task_name
+                or evidence.get("campaign_manifest_sha256")
+                != formal["campaign_manifest_sha256"]
+                or evidence.get("comparison_contract_sha256")
+                != formal["comparison_contract_sha256"]
+                or raw_reasons != recomputed_reasons
+                or not recomputed_reasons
+            ):
+                evidence_errors.append("task_campaign_evidence_contract_invalid")
+            else:
+                evidence_reasons = recomputed_reasons
+                evidence_relative = str(evidence_path.relative_to(run_directory))
+                evidence_sha256 = _sha256_file(evidence_path)
+        else:
+            evidence_errors.append("task_campaign_evidence_unreadable")
+    else:
+        evidence_errors.append("immutable_task_campaign_evidence_missing")
+
+    primary_reason: str | None = None
+    if descriptor_binding is not None and not evidence_errors and not marker_errors:
+        declared_primary = descriptor_binding.get("primary_reason")
+        expected_declared_reasons = sorted(
+            set(
+                evidence_reasons
+                + (
+                    [declared_primary]
+                    if declared_primary in _FORMAL_PRIMARY_FAILURE_REASONS
+                    else []
+                )
+            )
+        )
+        if (
+            declared_primary not in _FORMAL_PRIMARY_FAILURE_REASONS
+            or descriptor_binding.get("campaign_manifest_sha256")
+            != formal["campaign_manifest_sha256"]
+            or descriptor_binding.get("comparison_contract_sha256")
+            != formal["comparison_contract_sha256"]
+            or descriptor_binding.get("campaign_evidence_path") != evidence_relative
+            or descriptor_binding.get("campaign_evidence_sha256") != evidence_sha256
+            or descriptor_binding.get("reason_codes") != expected_declared_reasons
+        ):
+            marker_errors.append("failed_marker_full_binding_invalid")
+        else:
+            primary_reason = declared_primary
+
+    terminal_verified = not marker_errors and not evidence_errors
+    reason_codes = sorted(
+        set(
+            evidence_reasons
+            + marker_errors
+            + evidence_errors
+            + ([primary_reason] if primary_reason else [])
+        )
+    )
+    if not reason_codes:
+        reason_codes.append("formal_task_not_canonical")
+    return {
+        "reason_codes": reason_codes,
+        "campaign_evidence_path": evidence_relative,
+        "campaign_evidence_sha256": evidence_sha256,
+        "terminal_binding_verified": terminal_verified,
+    }
+
+
+def _read_immutable_file_no_follow(path: Path) -> bytes:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise ValueError(f"unsafe immutable evidence file: {path}") from error
+    try:
+        opened = os.fstat(descriptor)
+        lexical = path.lstat()
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or opened.st_mode & 0o222
+            or opened.st_dev != lexical.st_dev
+            or opened.st_ino != lexical.st_ino
+        ):
+            raise ValueError(f"unsafe immutable evidence file: {path}")
+        chunks: List[bytes] = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        os.close(descriptor)
+
+
+def _prepare_reports_directory(run_directory: Path) -> Path:
+    run_root = run_directory.resolve(strict=True)
+    run_metadata = run_directory.lstat()
+    if stat.S_ISLNK(run_metadata.st_mode) or not stat.S_ISDIR(run_metadata.st_mode):
+        raise ValueError(f"formal report run directory is unsafe: {run_directory}")
+    reports_directory = run_directory / "reports"
+    if not reports_directory.exists():
+        try:
+            os.mkdir(reports_directory, 0o755)
+        except FileExistsError:
+            pass
+    try:
+        reports_metadata = reports_directory.lstat()
+    except OSError as error:
+        raise ValueError("reports directory cannot be inspected") from error
+    if (
+        stat.S_ISLNK(reports_metadata.st_mode)
+        or not stat.S_ISDIR(reports_metadata.st_mode)
+    ):
+        raise ValueError(f"reports directory is unsafe: {reports_directory}")
+    resolved_reports = reports_directory.resolve(strict=True)
+    try:
+        resolved_reports.relative_to(run_root)
+    except ValueError as error:
+        raise ValueError("reports directory escapes the run directory") from error
+    if resolved_reports.parent != run_root:
+        raise ValueError("reports directory is not the run-local reports directory")
+    return reports_directory
+
+
+def _publish_report(path: Path, payload: str, *, immutable: bool) -> None:
+    """Publish a report without following target/temp symlinks or clobbering formal data."""
+    parent_metadata = path.parent.lstat()
+    if stat.S_ISLNK(parent_metadata.st_mode) or not stat.S_ISDIR(parent_metadata.st_mode):
+        raise ValueError(f"report parent directory is unsafe: {path.parent}")
+    encoded = payload.encode("utf-8")
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        exists = False
+    else:
+        exists = True
+    if immutable and exists:
+        if _read_immutable_file_no_follow(path) != encoded:
+            raise ValueError(f"sealed formal report differs from recomputed report: {path}")
+        return
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.tmp.", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        temporary_metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(temporary_metadata.st_mode) or temporary_metadata.st_nlink != 1:
+            raise ValueError(f"unsafe formal report temporary file: {temporary}")
+        written = 0
+        while written < len(encoded):
+            written += os.write(descriptor, encoded[written:])
+        os.fsync(descriptor)
+        os.fchmod(descriptor, 0o444 if immutable else 0o644)
+        os.close(descriptor)
+        descriptor = -1
+        if immutable:
+            try:
+                os.link(temporary, path, follow_symlinks=False)
+            except FileExistsError as error:
+                raise ValueError(f"formal report path already exists: {path}") from error
+        else:
+            os.replace(temporary, path)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _formal_queue_has_no_unfinished_work(run_directory: Path) -> bool:
+    queue_root = run_directory / ".parallel"
+    if not queue_root.exists():
+        return True
+    try:
+        metadata = queue_root.lstat()
+    except OSError:
+        return False
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+        return False
+    for state in ("pending", "running"):
+        state_dir = queue_root / state
+        if not state_dir.exists():
+            continue
+        try:
+            state_metadata = state_dir.lstat()
+        except OSError:
+            return False
+        if (
+            stat.S_ISLNK(state_metadata.st_mode)
+            or not stat.S_ISDIR(state_metadata.st_mode)
+            or any(state_dir.iterdir())
+        ):
+            return False
+    return True
+
+
 def general_post_processing(
-    workspace_paths: Union[str, List[str]], logger: Optional[logging.Logger]
-) -> None:
+    workspace_paths: Union[str, List[str]],
+    logger: Optional[logging.Logger],
+    *,
+    run_directory: Optional[Path] = None,
+) -> Dict[str, Any]:
     """
     Process all task results and generate a comprehensive report.
 
@@ -402,20 +1071,62 @@ def general_post_processing(
     """
     logger = _ensure_logger(logger)
     normalized_workspace_paths = _normalize_workspace_paths(workspace_paths)
-    
-    # If we have workspace paths, try to detect the run directory and collect ALL tasks
-    # This ensures that when resuming, we include previously completed tasks in the report
-    if normalized_workspace_paths:
+
+    resolved_run_directory = Path(run_directory).resolve() if run_directory else None
+    if resolved_run_directory is None and normalized_workspace_paths:
         try:
-            run_directory = _get_run_directory(normalized_workspace_paths)
-            # Collect all tasks from the run directory (including previously completed ones)
-            all_task_paths = _collect_all_tasks_from_run(run_directory)
-            if all_task_paths:
-                logger.info(f"Collected {len(all_task_paths)} total tasks from run directory (including previously completed)")
-                normalized_workspace_paths = all_task_paths
+            resolved_run_directory = _get_run_directory(normalized_workspace_paths)
         except Exception as e:
-            logger.warning(f"Could not collect all tasks from run directory: {e}. Using provided workspace paths only.")
-    total_tasks = len(normalized_workspace_paths)
+            logger.warning(f"Could not determine run directory: {e}")
+
+    formal_context = (
+        _load_formal_cohort(resolved_run_directory)
+        if resolved_run_directory is not None
+        else None
+    )
+    formal_campaign = formal_context is not None
+    formal_cohort = formal_context["task_names"] if formal_context else None
+    task_sources: List[tuple[str, Optional[Path], Dict[str, Any] | None]] = []
+    if formal_cohort is not None and resolved_run_directory is not None:
+        workspace_map = _formal_workspace_map(
+            resolved_run_directory, formal_cohort
+        )
+        for task_name in formal_cohort:
+            workspace = workspace_map.get(task_name)
+            failure = (
+                _validated_failure_binding(
+                    resolved_run_directory, task_name, formal_context
+                )
+                if workspace is None
+                else None
+            )
+            task_sources.append((task_name, workspace, failure))
+        normalized_workspace_paths = [
+            str(workspace)
+            for _, workspace, _ in task_sources
+            if workspace is not None
+        ]
+        logger.info(
+            "Loaded formal cohort from campaign manifest: tasks=%d canonical=%d failed=%d",
+            len(formal_cohort),
+            len(normalized_workspace_paths),
+            len(formal_cohort) - len(normalized_workspace_paths),
+        )
+    else:
+        if resolved_run_directory is not None:
+            all_task_paths = _collect_all_tasks_from_run(resolved_run_directory)
+            if all_task_paths:
+                logger.info(
+                    "Collected %d total tasks from run directory (including previously completed)",
+                    len(all_task_paths),
+                )
+                normalized_workspace_paths = all_task_paths
+        task_sources = [
+            (Path(workspace_path).name, Path(workspace_path), None)
+            for workspace_path in normalized_workspace_paths
+        ]
+
+    total_tasks = len(task_sources)
     total_score = 0.0
     compilation_pass_count = 0
     correctness_pass_count = 0
@@ -424,59 +1135,111 @@ def general_post_processing(
 
     task_details = []
 
-    for workspace_path in normalized_workspace_paths:
-        workspace = Path(workspace_path)
-        task_name = workspace.name  # Get task folder name
-
+    for task_name, workspace, failure in task_sources:
         task_info = {
             'task_name': task_name,
-            'workspace_path': str(workspace_path),
+            'workspace_path': str(workspace) if workspace is not None else None,
             'score': 0.0,
             'pass_compilation': False,
             'pass_correctness': False,
             'speedup_ratio': 0.0,
-            'error': None
+            'error': None,
+            'optimization_summary': '',
+            'campaign_status': (
+                'failed' if workspace is None else ('canonical' if formal_campaign else 'ordinary')
+            ),
+            'failure_reasons': [],
+            'campaign_evidence_path': None,
+            'campaign_evidence_sha256': None,
+            'canonical_workspace_manifest_sha256': None,
+            'selected_workspace_manifest_sha256': None,
+            'terminal_failure_binding_verified': False,
         }
 
+        if workspace is None:
+            failure = failure or {
+                'reason_codes': ['formal_task_not_canonical'],
+                'campaign_evidence_path': None,
+                'campaign_evidence_sha256': None,
+                'terminal_binding_verified': False,
+            }
+            task_info['failure_reasons'] = failure['reason_codes']
+            task_info['campaign_evidence_path'] = failure['campaign_evidence_path']
+            task_info['campaign_evidence_sha256'] = failure['campaign_evidence_sha256']
+            task_info['terminal_failure_binding_verified'] = failure[
+                'terminal_binding_verified'
+            ]
+            task_info['error'] = '; '.join(failure['reason_codes'])
+            task_details.append(task_info)
+            continue
+
         try:
-            # Try to calculate score (this will read task_result.yaml and update it with score)
-            calculated_score = task_result_scoring(str(workspace_path))
-            task_info['score'] = calculated_score
-
-            # Read the task_result.yaml to get detailed information
             result_file = workspace / "task_result.yaml"
-            with open(result_file, 'r') as f:
-                result_data = yaml.safe_load(f)
+            if formal_campaign:
+                result_data, lineage = _validate_canonical_lineage(
+                    run_directory=resolved_run_directory,
+                    task_name=task_name,
+                    canonical=workspace,
+                    formal=formal_context,
+                )
+                task_info.update(lineage)
+            else:
+                with open(result_file, 'r') as f:
+                    result_data = yaml.safe_load(f) or {}
+            if not isinstance(result_data, dict):
+                raise ValueError("task_result.yaml must contain a mapping")
 
-            # Extract information
             task_info['task_name'] = result_data.get('task_name', task_name)
-            task_info['pass_compilation'] = result_data.get('pass_compilation', False)
-            task_info['pass_correctness'] = result_data.get('pass_correctness', False)
+            if formal_campaign and task_info['task_name'] != task_name:
+                raise ValueError(
+                    f"canonical task result name differs from manifest: {task_info['task_name']!r}"
+                )
+            pass_compilation = result_data.get('pass_compilation', False)
+            pass_correctness = result_data.get('pass_correctness', False)
+            optimization_summary = result_data.get('optimization_summary', '') or ''
+            if formal_campaign and (
+                type(pass_compilation) is not bool
+                or type(pass_correctness) is not bool
+                or pass_compilation is not True
+                or pass_correctness is not True
+                or not isinstance(optimization_summary, str)
+            ):
+                raise ValueError("canonical task result has invalid success fields")
 
             base_execution_time = result_data.get('base_execution_time', 0.0)
             best_optimized_execution_time = result_data.get('best_optimized_execution_time', 0.0)
-            task_info['speedup_ratio'] = resolve_speedup_ratio(
+            speedup_ratio = resolve_speedup_ratio(
                 speedup_ratio=result_data.get('speedup_ratio', 0.0),
                 base_execution_time=base_execution_time,
                 best_optimized_execution_time=best_optimized_execution_time,
             )
+            if formal_campaign and (
+                not math.isfinite(speedup_ratio) or speedup_ratio <= 0
+            ):
+                raise ValueError("canonical task result has invalid speedup")
+            calculated_score = task_result_scoring(str(workspace))
 
-            # Update counters
+            # Commit the task and aggregate counters only after every field used
+            # by reports/CSV has passed validation. A malformed canonical result
+            # therefore remains a zero-score cohort failure.
+            task_info['score'] = calculated_score
+            task_info['pass_compilation'] = pass_compilation
+            task_info['pass_correctness'] = pass_correctness
+            task_info['optimization_summary'] = optimization_summary
+            task_info['speedup_ratio'] = speedup_ratio
             total_score += calculated_score
 
-            if task_info['pass_compilation']:
+            if pass_compilation:
                 compilation_pass_count += 1
 
-            if task_info['pass_correctness']:
+            if pass_correctness:
                 correctness_pass_count += 1
 
-            # Check speedup (only if both compilation and correctness passed)
-            if task_info['pass_compilation'] and task_info['pass_correctness']:
-                speedup = task_info['speedup_ratio']
-                if speedup > 1.0:
+            if pass_compilation and pass_correctness:
+                if speedup_ratio > 1.0:
                     speedup_gt_1_count += 1
-                if speedup > 0:  # Only include valid speedups
-                    speedup_values.append(speedup)
+                if speedup_ratio > 0:
+                    speedup_values.append(speedup_ratio)
 
         except FileNotFoundError as e:
             task_info['error'] = f"task_result.yaml not found: {e}"
@@ -490,6 +1253,11 @@ def general_post_processing(
             task_info['error'] = f"Unexpected error: {e}"
             task_info['score'] = 0.0
 
+        if formal_campaign and task_info['error']:
+            task_info['task_name'] = task_name
+            task_info['campaign_status'] = 'failed'
+            task_info['failure_reasons'] = ['canonical_result_invalid']
+
         task_details.append(task_info)
 
     # Calculate rates
@@ -500,7 +1268,35 @@ def general_post_processing(
     # Calculate speedup statistics using shared helper
     speed_stats = _compute_speedup_stats(speedup_values)
 
-    # Generate aggregate_result
+    canonical_success_count = sum(
+        task.get('campaign_status') == 'canonical' for task in task_details
+    )
+    failed_task_count = (
+        total_tasks - canonical_success_count if formal_campaign else 0
+    )
+    failure_reason_counts: Dict[str, int] = defaultdict(int)
+    for task in task_details:
+        for reason in task.get('failure_reasons', []):
+            failure_reason_counts[reason] += 1
+
+    terminal_task_count = sum(
+        task.get('campaign_status') == 'canonical'
+        or task.get('terminal_failure_binding_verified') is True
+        for task in task_details
+    )
+    formal_completion_verified = bool(
+        formal_campaign
+        and terminal_task_count == total_tasks
+        and resolved_run_directory is not None
+        and _formal_queue_has_no_unfinished_work(resolved_run_directory)
+    )
+    canonical_workspace_manifests = {
+        task['task_name']: task['canonical_workspace_manifest_sha256']
+        for task in task_details
+        if task.get('campaign_status') == 'canonical'
+        and isinstance(task.get('canonical_workspace_manifest_sha256'), str)
+    }
+
     aggregate_result = {
         'total_tasks': total_tasks,
         'total_score': total_score,
@@ -517,30 +1313,57 @@ def general_post_processing(
 
         **speed_stats,
         'valid_speedup_count': len(speedup_values),
+        'speedup_population': (
+            'canonical_compilation_and_correctness_successes_only'
+            if formal_campaign
+            else 'compilation_and_correctness_successes_only'
+        ),
 
-        'task_details': task_details
+        'task_details': task_details,
+        'formal_campaign': formal_campaign,
+        'canonical_success_count': canonical_success_count,
+        'failed_task_count': failed_task_count,
+        'failure_reason_counts': dict(sorted(failure_reason_counts.items())),
+        'terminal_task_count': terminal_task_count,
+        'formal_completion_verified': formal_completion_verified,
+        'canonical_workspace_manifests': canonical_workspace_manifests,
+        'campaign_manifest_sha256': (
+            formal_context['campaign_manifest_sha256'] if formal_context else None
+        ),
+        'comparison_contract_sha256': (
+            formal_context['comparison_contract_sha256'] if formal_context else None
+        ),
+        'ordered_cohort_sha256': (
+            formal_context['ordered_cohort_sha256'] if formal_context else None
+        ),
     }
 
     # Aggregate statistics by task type
     task_type_breakdown = _aggregate_by_task_type(task_details)
 
-    # Determine run directory and create reports subdirectory
-    try:
-        run_directory = _get_run_directory(normalized_workspace_paths)
-        run_metadata = _extract_run_metadata(run_directory)
-        
-        # Create reports subdirectory
-        reports_directory = run_directory / "reports"
-        reports_directory.mkdir(parents=True, exist_ok=True)
-        
-        # Write overall_report.txt to reports directory
-        report_lines = _build_general_report_lines(aggregate_result, run_metadata, task_type_breakdown)
+    # Formal reports are immutable evidence. Publishing a partial projection
+    # would permanently poison a long-running campaign because later terminal
+    # results necessarily produce different bytes and sealed reports cannot be
+    # overwritten. Fail before creating the reports directory or any report.
+    if formal_campaign and not formal_completion_verified:
+        raise ValueError(
+            "formal campaign is not terminal; refusing to publish immutable reports"
+        )
+
+    if resolved_run_directory is not None:
+        run_metadata = _extract_run_metadata(resolved_run_directory)
+        reports_directory = _prepare_reports_directory(resolved_run_directory)
+        report_lines = _build_general_report_lines(
+            aggregate_result, run_metadata, task_type_breakdown
+        )
         report_path = reports_directory / "overall_report.txt"
-        with open(report_path, "w") as f:
-            f.write("\n".join(report_lines) + "\n")
+        _publish_report(
+            report_path,
+            "\n".join(report_lines) + "\n",
+            immutable=formal_campaign,
+        )
         logger.info(f"Report written to: {report_path}")
-        
-        # Write task_type_breakdown.json
+
         json_data = {
             'run_timestamp': run_metadata.get('timestamp', 'unknown'),
             'agent': run_metadata.get('agent', 'unknown'),
@@ -561,33 +1384,68 @@ def general_post_processing(
                 'p25_speedup': aggregate_result.get('p25_speedup', 0.0),
                 'p75_speedup': aggregate_result.get('p75_speedup', 0.0),
                 'p90_speedup': aggregate_result.get('p90_speedup', 0.0),
-                'valid_speedup_count': aggregate_result['valid_speedup_count']
+                'valid_speedup_count': aggregate_result['valid_speedup_count'],
+                'speedup_population': aggregate_result['speedup_population'],
+                'formal_campaign': formal_campaign,
+                'canonical_success_count': canonical_success_count,
+                'failed_task_count': failed_task_count,
+                'failure_reason_counts': aggregate_result['failure_reason_counts'],
+                'campaign_manifest_sha256': aggregate_result['campaign_manifest_sha256'],
+                'comparison_contract_sha256': aggregate_result['comparison_contract_sha256'],
+                'ordered_cohort_sha256': aggregate_result['ordered_cohort_sha256'],
+                'terminal_task_count': terminal_task_count,
+                'formal_completion_verified': formal_completion_verified,
             },
-            'task_types': task_type_breakdown
+            'task_types': task_type_breakdown,
+            'formal_evidence': {
+                'schema': 'aka.formal-report-evidence/v1' if formal_campaign else None,
+                'campaign_manifest_sha256': aggregate_result['campaign_manifest_sha256'],
+                'comparison_contract_sha256': aggregate_result['comparison_contract_sha256'],
+                'ordered_cohort_sha256': aggregate_result['ordered_cohort_sha256'],
+                'completion_verified': formal_completion_verified,
+                'terminal_task_count': terminal_task_count,
+                'canonical_workspace_manifests': canonical_workspace_manifests,
+            },
+            'failed_tasks': [
+                {
+                    'task_name': task['task_name'],
+                    'reason_codes': task['failure_reasons'],
+                    'campaign_evidence_path': task['campaign_evidence_path'],
+                    'campaign_evidence_sha256': task['campaign_evidence_sha256'],
+                }
+                for task in task_details
+                if task.get('campaign_status') == 'failed'
+            ],
         }
         json_path = reports_directory / "task_type_breakdown.json"
-        with open(json_path, "w") as f:
-            json.dump(json_data, f, indent=2)
+        _publish_report(
+            json_path,
+            json.dumps(json_data, indent=2, sort_keys=True) + "\n",
+            immutable=formal_campaign,
+        )
         logger.info(f"Task type breakdown JSON written to: {json_path}")
-        
-    except Exception as e:
-        logger.warning(f"Could not determine run directory or create reports: {e}")
+    else:
         run_metadata = None
         reports_directory = None
-        task_type_breakdown = None
-    
-    # Log report
+
     general_log_report(aggregate_result, logger, run_metadata, task_type_breakdown)
-    
-    # Export CSV to reports directory
-    export_task_results_csv(task_details, normalized_workspace_paths, logger, reports_directory)
+    export_task_results_csv(
+        task_details,
+        normalized_workspace_paths,
+        logger,
+        reports_directory,
+        immutable=formal_campaign,
+    )
+    return aggregate_result
 
 
 def export_task_results_csv(
     task_details: List[Dict[str, Any]],
     workspace_paths: List[str],
     logger: logging.Logger,
-    reports_directory: Optional[Path] = None
+    reports_directory: Optional[Path] = None,
+    *,
+    immutable: bool = False,
 ) -> None:
     """
     Export per-task summary as CSV under the reports directory.
@@ -599,7 +1457,7 @@ def export_task_results_csv(
       - Speedup
       - Optimization_summary
     """
-    if not workspace_paths:
+    if not workspace_paths and reports_directory is None:
         logger.warning("CSV export skipped: empty workspace_paths")
         return
 
@@ -613,10 +1471,7 @@ def export_task_results_csv(
 
     rows: List[Dict[str, Any]] = []
     for task in task_details:
-        workspace = Path(task.get("workspace_path", ""))
-        result_file = workspace / "task_result.yaml"
-
-        task_name = task.get("task_name", workspace.name)
+        task_name = task.get("task_name", "")
         task_type = (
             task_name.split("/", 1)[0]
             if isinstance(task_name, str) and "/" in task_name
@@ -624,24 +1479,7 @@ def export_task_results_csv(
         )
         score = task.get("score", 0.0) if isinstance(task.get("score", 0.0), (int, float)) else 0.0
         speedup = task.get("speedup_ratio", 0.0) if isinstance(task.get("speedup_ratio", 0.0), (int, float)) else 0.0
-        optimization_summary = ""
-
-        # If task_result.yaml is missing or invalid, force score/speedup to 0.
-        if result_file.exists():
-            try:
-                with open(result_file, "r") as f:
-                    result_data = yaml.safe_load(f) or {}
-                optimization_summary = result_data.get("optimization_summary", "") or ""
-                task_name = result_data.get("task_name", task_name)
-                if "/" in task_name:
-                    task_type = task_name.split("/", 1)[0]
-            except Exception:
-                score = 0.0
-                speedup = 0.0
-                optimization_summary = ""
-        else:
-            score = 0.0
-            speedup = 0.0
+        optimization_summary = task.get("optimization_summary", "") or ""
 
         rows.append({
             "Task Name": task_name,
@@ -649,15 +1487,26 @@ def export_task_results_csv(
             "Score": f"{float(score):.4f}",
             "Speedup": f"{float(speedup):.4f}",
             "Optimization_summary": optimization_summary.strip(),
+            "Campaign Status": task.get("campaign_status", "ordinary"),
+            "Failure Reasons": ";".join(task.get("failure_reasons", [])),
+            "Campaign Evidence": task.get("campaign_evidence_path") or "",
         })
 
-    with open(csv_path, "w", newline="") as f:
-        writer = csv.DictWriter(
-            f,
-            fieldnames=["Task Name", "Task Type", "Score", "Speedup", "Optimization_summary"]
-        )
-        writer.writeheader()
-        writer.writerows(rows)
+    output = io.StringIO(newline="")
+    fieldnames = [
+        "Task Name",
+        "Task Type",
+        "Score",
+        "Speedup",
+        "Optimization_summary",
+        "Campaign Status",
+        "Failure Reasons",
+        "Campaign Evidence",
+    ]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(rows)
+    _publish_report(csv_path, output.getvalue(), immutable=immutable)
 
     logger.info(f"CSV report generated: {csv_path}")
 

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import json
+import hashlib
 import importlib
+import json
 import logging
 import os
 import signal
@@ -16,6 +17,7 @@ import yaml
 from src.agent_turn_budget import FORMAL_MATCHED_MAX_TURNS
 from src.campaign_isolation import WrappedAttemptCommand
 from src.module_registration import AgentType, load_agent_launcher
+from src.prompt_builder import prompt_builder as render_task_prompt
 
 apex_launcher = importlib.import_module("agents.apex.launch_agent")
 
@@ -238,6 +240,14 @@ def test_task_spec_maps_caller_contract_without_arena_scoring(tmp_path, monkeypa
     assert spec["workspace"] == str(workspace)
     assert spec["results_dir"] == str(artifact_root)
     assert spec["instructions"] == "BASE PROMPT"
+    adaptation = spec["instruction_adaptation"]
+    assert adaptation["strategy"] == "verbatim"
+    assert adaptation["boundary_marker"] is None
+    assert adaptation["original"] == adaptation["adapted"]
+    assert adaptation["adapted"]["characters"] == len("BASE PROMPT")
+    assert adaptation["adapted"]["sha256"] == hashlib.sha256(
+        b"BASE PROMPT"
+    ).hexdigest()
     assert spec["gpu_arch"] == "gfx950"
     assert spec["language"] == "triton"
     assert spec["editable_files"] == ["source/kernel.py"]
@@ -259,6 +269,143 @@ def test_task_spec_maps_caller_contract_without_arena_scoring(tmp_path, monkeypa
     }
     assert "score" not in spec
     assert "arena" not in json.dumps(spec).lower()
+
+
+def test_oversized_prompt_omits_only_known_generic_context(tmp_path) -> None:
+    task_contract = "TASK CONTRACT\n" + "x" * 4_000
+    generic_context = (
+        apex_launcher._APEX_GENERIC_CONTEXT_MARKER
+        + "\n"
+        + "generic architecture and Triton advice\n" * 300
+    )
+    prompt = task_contract + generic_context
+
+    instructions, provenance = apex_launcher._apex_task_instructions(
+        prompt,
+        workspace=tmp_path,
+        sources=["source/kernel.py"],
+        symbols=["sample_kernel"],
+    )
+
+    assert instructions.startswith(task_contract)
+    assert generic_context not in instructions
+    assert "Structured Apex handoff" in instructions
+    assert f"Scored workspace: `{tmp_path}`" in instructions
+    assert "- `source/kernel.py`" in instructions
+    assert "- `sample_kernel`" in instructions
+    assert len(instructions) <= apex_launcher._APEX_INSTRUCTION_LIMIT
+    assert provenance["strategy"] == "omit_known_generic_mi355x_triton_context_v1"
+    assert provenance["boundary_marker"] == (
+        "# AMD MI355X (CDNA 4) Kernel Optimization Context & Directives"
+    )
+    assert provenance["original"]["characters"] == len(prompt)
+    assert provenance["original"]["sha256"] == hashlib.sha256(
+        prompt.encode("utf-8")
+    ).hexdigest()
+    assert provenance["adapted"]["characters"] == len(instructions)
+    assert provenance["adapted"]["sha256"] == hashlib.sha256(
+        instructions.encode("utf-8")
+    ).hexdigest()
+
+
+def test_oversized_prompt_without_known_boundary_fails_closed(tmp_path) -> None:
+    prompt = "unrecognized prompt layout " + "x" * apex_launcher._APEX_INSTRUCTION_LIMIT
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="exactly one known generic context boundary",
+    ):
+        apex_launcher._apex_task_instructions(
+            prompt,
+            workspace=tmp_path,
+            sources=["source/kernel.py"],
+            symbols=["sample_kernel"],
+        )
+
+
+def test_oversized_prompt_with_ambiguous_boundary_fails_closed(tmp_path) -> None:
+    marker = apex_launcher._APEX_GENERIC_CONTEXT_MARKER
+    prompt = "task" + marker + ("x" * apex_launcher._APEX_INSTRUCTION_LIMIT) + marker
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="exactly one known generic context boundary; count=2",
+    ):
+        apex_launcher._apex_task_instructions(
+            prompt,
+            workspace=tmp_path,
+            sources=["source/kernel.py"],
+            symbols=["sample_kernel"],
+        )
+
+
+def test_oversized_prompt_that_remains_over_limit_fails_closed(tmp_path) -> None:
+    prompt = (
+        "x" * apex_launcher._APEX_INSTRUCTION_LIMIT
+        + apex_launcher._APEX_GENERIC_CONTEXT_MARKER
+        + "\ngeneric"
+    )
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="exceed the ContextPacket text limit after adaptation",
+    ):
+        apex_launcher._apex_task_instructions(
+            prompt,
+            workspace=tmp_path,
+            sources=["source/kernel.py"],
+            symbols=["sample_kernel"],
+        )
+
+
+def test_formal_mi355x_cohort_preserves_task_contract_and_omits_cheatsheets() -> None:
+    repository = Path(__file__).resolve().parents[1]
+    run_config = yaml.safe_load(
+        (repository / "example_configs/benchmark_apex_mi355x_10.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    workspace = Path("/arena/scored-workspace")
+
+    assert len(run_config["tasks"]) == 10
+    for task_name in run_config["tasks"]:
+        config_path = repository / "tasks" / task_name / "config.yaml"
+        task_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        prompt = render_task_prompt(
+            str(config_path),
+            workspace,
+            run_config,
+            logging.getLogger(__name__),
+        )
+        marker = apex_launcher._APEX_GENERIC_CONTEXT_MARKER
+        assert prompt.count(marker) == 1
+        task_contract = prompt[: prompt.index(marker)].rstrip()
+        task_instructions = task_config["prompt"]["instructions"]
+        assert task_instructions in task_contract
+
+        instructions, provenance = apex_launcher._apex_task_instructions(
+            prompt,
+            workspace=workspace,
+            sources=task_config["source_file_path"],
+            symbols=task_config["target_kernel_functions"],
+        )
+
+        assert instructions.startswith(task_contract + "\n\n")
+        assert task_instructions in instructions
+        assert marker.lstrip("\n") not in instructions
+        assert "MI355X has 304 Compute Units" not in instructions
+        assert f"Scored workspace: `{workspace}`" in instructions
+        for source in task_config["source_file_path"]:
+            assert f"- `{source}`" in instructions
+        for symbol in task_config["target_kernel_functions"]:
+            assert f"- `{symbol}`" in instructions
+        assert len(instructions) <= apex_launcher._APEX_INSTRUCTION_LIMIT
+        assert provenance["strategy"] == (
+            "omit_known_generic_mi355x_triton_context_v1"
+        )
+        assert provenance["original"]["sha256"] == hashlib.sha256(
+            prompt.encode("utf-8")
+        ).hexdigest()
 
 
 def test_task_spec_rejects_unsupported_type_before_subprocess(tmp_path) -> None:
@@ -725,7 +872,13 @@ def test_launch_agent_accepts_zero_exit_no_gain_outside_formal_campaign(
     assert (workspace / "source/kernel.py").read_text(encoding="utf-8") == "value = 1\n"
 
 
-def _formal_apex_launch_fixture(tmp_path, monkeypatch, *, mutate_workspace: bool):
+def _formal_apex_launch_fixture(
+    tmp_path,
+    monkeypatch,
+    *,
+    mutate_workspace: bool,
+    mutate_task_spec: bool = False,
+):
     workspace, config_path = _task(tmp_path)
     apex_root = tmp_path / "apex"
     apex_root.mkdir()
@@ -741,6 +894,7 @@ def _formal_apex_launch_fixture(tmp_path, monkeypatch, *, mutate_workspace: bool
         "campaign_attempt": {
             "fresh_session": True,
             "receipt_path": str(receipt_path),
+            "comparison_contract_sha256": "d" * 64,
         },
     }
     captured: dict[str, object] = {}
@@ -772,6 +926,13 @@ def _formal_apex_launch_fixture(tmp_path, monkeypatch, *, mutate_workspace: bool
         result_path = Path(command[command.index("--result-json") + 1])
         spec = json.loads(spec_path.read_text(encoding="utf-8"))
         captured["spec"] = spec
+        captured["task_spec_path"] = spec_path
+        if mutate_task_spec:
+            changed_spec = dict(spec)
+            changed_spec["instructions"] = "subprocess-forged instructions"
+            spec_path.chmod(0o644)
+            spec_path.write_text(json.dumps(changed_spec), encoding="utf-8")
+            spec_path.chmod(0o444)
         if mutate_workspace:
             (workspace / "undeclared-agent-file.txt").write_text(
                 "must never survive as a scoreable no_gain\n", encoding="utf-8"
@@ -810,6 +971,7 @@ def _formal_apex_launch_fixture(tmp_path, monkeypatch, *, mutate_workspace: bool
 
     def fake_receipt(**kwargs):
         captured["receipt"] = json.loads(json.dumps(kwargs["receipt"]))
+        captured["receipt_task_spec_bytes"] = kwargs["task_spec_bytes"]
 
     monkeypatch.setattr(apex_launcher, "prepare_attempt_home", fake_home)
     monkeypatch.setattr(apex_launcher, "wrap_attempt_command", fake_wrap)
@@ -831,14 +993,53 @@ def test_formal_apex_mount_contract_keeps_scored_workspace_read_only(
     spec = captured["spec"]
     artifact_root = Path(spec["results_dir"])
     attempt_home = receipt_path.parent / ".agent-home"
+    contract_root = Path(captured["task_spec_path"]).parent
     assert captured["writable_roots"] == (artifact_root, attempt_home)
-    assert captured["read_only_roots"] == (workspace,)
+    assert captured["read_only_roots"] == (workspace, contract_root)
+    assert contract_root.parent == artifact_root.parent
+    assert contract_root != artifact_root
+    assert contract_root.stat().st_mode & 0o777 == 0o555
+    assert Path(captured["task_spec_path"]).stat().st_mode & 0o777 == 0o444
     assert receipt_path.parent not in captured["writable_roots"]
     assert workspace not in captured["writable_roots"]
     integrity = captured["receipt"]["workspace_integrity"]
+    assert captured["receipt"]["comparison_contract_sha256"] == "d" * 64
     assert integrity["pre_apply_unchanged"] is True
     assert integrity["pre_apply_manifest_sha256"] == integrity["baseline_manifest_sha256"]
     assert '"status": "no_gain"' in output
+
+
+def test_formal_apex_rejects_task_spec_mutation_and_receipts_prelaunch_bytes(
+    tmp_path, monkeypatch
+) -> None:
+    workspace, config_path, _, eval_config, captured = _formal_apex_launch_fixture(
+        tmp_path,
+        monkeypatch,
+        mutate_workspace=False,
+        mutate_task_spec=True,
+    )
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="TaskSpec contract changed during subprocess execution",
+    ):
+        apex_launcher.launch_agent(eval_config, str(config_path), str(workspace))
+
+    receipt = captured["receipt"]
+    assert receipt["session_succeeded"] is False
+    assert receipt["task_spec_contract"]["postlaunch_unchanged"] is False
+    received_spec = json.loads(captured["receipt_task_spec_bytes"])
+    assert received_spec["instructions"] == "formal prompt"
+    on_disk_spec = json.loads(Path(captured["task_spec_path"]).read_text())
+    assert on_disk_spec["instructions"] == "subprocess-forged instructions"
+
+
+def test_formal_apex_rejects_missing_comparison_contract_digest() -> None:
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="lacks a valid comparison contract digest",
+    ):
+        apex_launcher._comparison_contract_sha256({}, formal_campaign=True)
 
 
 def test_formal_apex_rejects_no_gain_after_direct_workspace_mutation(

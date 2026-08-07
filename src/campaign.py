@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import sqlite3
+import stat
 import subprocess
 import time
 from dataclasses import asdict, dataclass
@@ -33,6 +34,8 @@ _CAMPAIGN_SCHEMA = "aka.matched-campaign/v1"
 _TASK_SCHEMA = "aka.matched-task-attempts/v1"
 _SELECTION_POLICY = "correctness_then_measured_rate_v1"
 _MEASUREMENT_CONTRACT = "aka_native_100_repetition_external_score"
+_OBJECTIVE_POLICY_ID = "aka.task-package-objective-and-protected-harness/v1"
+_PROMPT_POLICY_ID = "aka.shared-objective-backend-native-context-receipted/v1"
 _CODEX_RECEIPT_SCHEMA = "agentkernelarena.codex-attempt-receipt/v1"
 _APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v1"
 _SHA1 = re.compile(r"[0-9a-f]{40}")
@@ -75,6 +78,17 @@ def _atomic_yaml(path: Path, payload: dict[str, Any]) -> None:
     temporary = path.with_name(f".{path.name}.tmp.{os.getpid()}")
     temporary.write_text(encoded, encoding="utf-8")
     temporary.replace(path)
+
+
+def _seal_evidence_file(path: Path, label: str) -> None:
+    """Make a newly-published evidence file immutable to later pipeline stages."""
+    try:
+        metadata = path.lstat()
+    except OSError as error:
+        raise CampaignError(f"cannot inspect {label}: {path}: {error}") from error
+    if not path.is_file() or path.is_symlink() or metadata.st_nlink != 1:
+        raise CampaignError(f"cannot seal unsafe {label}: {path}")
+    path.chmod(0o444)
 
 
 def parse_campaign_policy(eval_config: dict[str, Any]) -> CampaignPolicy | None:
@@ -406,6 +420,7 @@ def _task_manifests(task_config_paths: dict[str, str]) -> list[dict[str, Any]]:
             {
                 "task_index": index,
                 "task_name": task_name,
+                "config_path": str(config_path),
                 "config_sha256": _sha256_file(config_path),
                 "package_files_sha256": files,
                 "package_manifest_sha256": _sha256_bytes(
@@ -414,6 +429,134 @@ def _task_manifests(task_config_paths: dict[str, str]) -> list[dict[str, Any]]:
             }
         )
     return manifests
+
+
+def _load_verified_campaign_manifest(run_directory: Path) -> dict[str, Any]:
+    """Load the sealed manifest and verify its self-contained comparison contract."""
+    manifest_path = run_directory / "campaign_manifest.yaml"
+    if not _safe_read_only_file(manifest_path):
+        raise CampaignError("formal execution requires an immutable campaign manifest")
+    manifest = _load_mapping(manifest_path, "campaign manifest")
+    comparison = manifest.get("comparison_contract")
+    comparison_digest = manifest.get("comparison_contract_sha256")
+    if (
+        manifest.get("schema") != _CAMPAIGN_SCHEMA
+        or not isinstance(comparison, dict)
+        or comparison.get("schema")
+        != "aka.apex-vs-codex-comparison-contract/v1"
+        or comparison.get("objective_policy_id") != _OBJECTIVE_POLICY_ID
+        or comparison.get("prompt_policy_id") != _PROMPT_POLICY_ID
+        or not isinstance(comparison_digest, str)
+        or not _SHA256.fullmatch(comparison_digest)
+        or comparison_digest
+        != _sha256_bytes(
+            json.dumps(comparison, sort_keys=True, separators=(",", ":")).encode()
+        )
+    ):
+        raise CampaignError("campaign manifest comparison contract is invalid")
+    return manifest
+
+
+def validate_formal_task_binding(
+    *,
+    run_directory: Path,
+    task_name: str,
+    task_index: int,
+    total_tasks: int,
+    task_config_path: str,
+    assigned_host_gpu_id: str,
+) -> dict[str, Any]:
+    """Bind one formal task invocation to the manifest and current package bytes."""
+    manifest = _load_verified_campaign_manifest(run_directory)
+    configuration = manifest.get("configuration")
+    tasks = configuration.get("tasks") if isinstance(configuration, dict) else None
+    runtime = manifest.get("runtime")
+    gpu = runtime.get("gpu") if isinstance(runtime, dict) else None
+    task_mapping = gpu.get("task_mapping") if isinstance(gpu, dict) else None
+    comparison = manifest["comparison_contract"]
+    comparison_runtime = comparison.get("runtime")
+    comparison_gpu = (
+        comparison_runtime.get("gpu")
+        if isinstance(comparison_runtime, dict)
+        else None
+    )
+    if (
+        not isinstance(tasks, list)
+        or not tasks
+        or not isinstance(task_mapping, list)
+        or len(task_mapping) != len(tasks)
+        or comparison.get("tasks") != tasks
+        or not isinstance(comparison_gpu, dict)
+        or comparison_gpu.get("task_mapping") != task_mapping
+    ):
+        raise CampaignError("campaign task or GPU mapping is malformed")
+    if total_tasks != len(tasks) or task_index < 1 or task_index > len(tasks):
+        raise CampaignError("descriptor task count or index differs from campaign manifest")
+
+    names: set[str] = set()
+    indices: set[int] = set()
+    for expected_index, (task, mapping) in enumerate(
+        zip(tasks, task_mapping), 1
+    ):
+        if not isinstance(task, dict) or not isinstance(mapping, dict):
+            raise CampaignError("campaign task mapping contains a non-mapping entry")
+        expected_name = task.get("task_name")
+        if (
+            task.get("task_index") != expected_index
+            or mapping.get("task_index") != expected_index
+            or not isinstance(expected_name, str)
+            or not expected_name
+            or mapping.get("task_name") != expected_name
+            or expected_name in names
+            or expected_index in indices
+            or not isinstance(mapping.get("assigned_host_gpu_id"), str)
+            or not mapping["assigned_host_gpu_id"].isdigit()
+        ):
+            raise CampaignError("campaign task ordering or GPU mapping is inconsistent")
+        names.add(expected_name)
+        indices.add(expected_index)
+
+    task = tasks[task_index - 1]
+    mapping = task_mapping[task_index - 1]
+    if task.get("task_name") != task_name or mapping.get("task_name") != task_name:
+        raise CampaignError("descriptor task name/index differs from campaign manifest")
+    if mapping.get("assigned_host_gpu_id") != assigned_host_gpu_id:
+        raise CampaignError("descriptor GPU differs from campaign task mapping")
+
+    expected_config = task.get("config_path")
+    try:
+        observed_config = Path(task_config_path).resolve(strict=True)
+        metadata = observed_config.lstat()
+    except OSError as error:
+        raise CampaignError(f"cannot inspect formal task config: {error}") from error
+    if (
+        not isinstance(expected_config, str)
+        or str(observed_config) != expected_config
+        or not observed_config.is_file()
+        or observed_config.is_symlink()
+        or metadata.st_nlink != 1
+        or _sha256_file(observed_config) != task.get("config_sha256")
+    ):
+        raise CampaignError("formal task config path or bytes differ from campaign manifest")
+
+    files = _regular_tree_manifest(observed_config.parent)
+    files_digest = _sha256_bytes(
+        json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
+    )
+    if (
+        files != task.get("package_files_sha256")
+        or files_digest != task.get("package_manifest_sha256")
+    ):
+        raise CampaignError("formal task package bytes differ from campaign manifest")
+    return {
+        "task_index": task_index,
+        "total_tasks": total_tasks,
+        "task_name": task_name,
+        "config_path": expected_config,
+        "config_sha256": task["config_sha256"],
+        "package_manifest_sha256": files_digest,
+        "assigned_host_gpu_id": assigned_host_gpu_id,
+    }
 
 
 def _image_manifest() -> dict[str, Any]:
@@ -494,6 +637,8 @@ def _comparison_contract(
         comparison_runtime["gpu"] = comparison_gpu
     return {
         "schema": "aka.apex-vs-codex-comparison-contract/v1",
+        "objective_policy_id": _OBJECTIVE_POLICY_ID,
+        "prompt_policy_id": _PROMPT_POLICY_ID,
         "policy": asdict(policy),
         "measurement": measurement,
         "repositories": repositories,
@@ -607,6 +752,7 @@ def _attempt_record(
     success: bool,
     receipt_path: Path,
     require_session_receipt: bool,
+    expected_task_name: str | None = None,
 ) -> dict[str, Any]:
     record: dict[str, Any] = {
         "attempt": attempt,
@@ -626,6 +772,7 @@ def _attempt_record(
             receipt_path=receipt_path,
             workspace=workspace,
             run_directory=run_directory,
+            expected_task_name=expected_task_name,
         )
         record["session_receipt"] = str(receipt_path.relative_to(run_directory))
         if receipt is not None:
@@ -633,6 +780,9 @@ def _attempt_record(
             record["session_succeeded"] = receipt.get("session_succeeded") is True
             binding = {
                 "schema": receipt.get("schema"),
+                "comparison_contract_sha256": receipt.get(
+                    "comparison_contract_sha256"
+                ),
                 "terminal_status": receipt.get("terminal_status"),
                 "codex": receipt.get("codex"),
                 "invocation_sha256": (
@@ -729,6 +879,39 @@ def _expected_codex_contract(run_directory: Path) -> dict[str, Any] | None:
     return codex if isinstance(codex, dict) else None
 
 
+def _expected_comparison_contract_sha256(run_directory: Path) -> str | None:
+    manifest_path = run_directory / "campaign_manifest.yaml"
+    if not _safe_read_only_file(manifest_path):
+        return None
+    try:
+        manifest = _load_mapping(manifest_path, "campaign manifest")
+    except (CampaignError, OSError, yaml.YAMLError):
+        return None
+    digest = manifest.get("comparison_contract_sha256")
+    comparison = manifest.get("comparison_contract")
+    if (
+        not isinstance(digest, str)
+        or not _SHA256.fullmatch(digest)
+        or not isinstance(comparison, dict)
+    ):
+        return None
+    observed = _sha256_bytes(
+        json.dumps(comparison, sort_keys=True, separators=(",", ":")).encode()
+    )
+    return digest if digest == observed else None
+
+
+def _comparison_contract_receipt_errors(
+    receipt: dict[str, Any], run_directory: Path, *, prefix: str
+) -> list[str]:
+    expected = _expected_comparison_contract_sha256(run_directory)
+    if expected is None:
+        return ["missing_immutable_campaign_comparison_contract"]
+    if receipt.get("comparison_contract_sha256") != expected:
+        return [f"{prefix}_comparison_contract_digest_mismatch"]
+    return []
+
+
 def _expected_gpu_contract(run_directory: Path) -> dict[str, Any] | None:
     manifest_path = run_directory / "campaign_manifest.yaml"
     if not _safe_read_only_file(manifest_path):
@@ -742,13 +925,33 @@ def _expected_gpu_contract(run_directory: Path) -> dict[str, Any] | None:
     return gpu if isinstance(gpu, dict) else None
 
 
-def _gpu_receipt_errors(receipt: dict[str, Any], run_directory: Path) -> list[str]:
+def _gpu_receipt_errors(
+    receipt: dict[str, Any],
+    run_directory: Path,
+    *,
+    expected_task_name: str | None = None,
+) -> list[str]:
     observed = receipt.get("gpu")
     expected = _expected_gpu_contract(run_directory)
     if not isinstance(expected, dict):
         return ["missing_immutable_campaign_gpu_contract"]
     if not isinstance(observed, dict):
         return ["missing_attempt_gpu_boundary_receipt"]
+    task_mapping = expected.get("task_mapping")
+    expected_task_gpu: str | None = None
+    if expected_task_name is not None:
+        matching_mappings = [
+            mapping
+            for mapping in task_mapping
+            if isinstance(mapping, dict)
+            and mapping.get("task_name") == expected_task_name
+        ] if isinstance(task_mapping, list) else []
+        if len(matching_mappings) != 1:
+            return ["campaign_task_gpu_mapping_missing_or_ambiguous"]
+        mapped_gpu = matching_mappings[0].get("assigned_host_gpu_id")
+        if not isinstance(mapped_gpu, str):
+            return ["campaign_task_gpu_mapping_missing_or_ambiguous"]
+        expected_task_gpu = mapped_gpu
     expected_exclusivity = expected.get("exclusivity")
     selected = [
         device
@@ -776,6 +979,10 @@ def _gpu_receipt_errors(receipt: dict[str, Any], run_directory: Path) -> list[st
         or observed.get("exclusivity_receipt_sha256")
         != expected_exclusivity.get("sha256")
         or observed.get("exclusivity_verified") is not True
+        or (
+            expected_task_gpu is not None
+            and observed.get("host_gpu_id") != expected_task_gpu
+        )
         or len(selected) != 1
         or observed.get("unique_id") != selected[0].get("unique_id")
         or observed.get("allowed_render_nodes") != expected_render
@@ -795,6 +1002,7 @@ def _validate_session_receipt(
     receipt_path: Path,
     workspace: Path | None,
     run_directory: Path,
+    expected_task_name: str | None = None,
 ) -> tuple[dict[str, Any] | None, list[str]]:
     """Recompute direct-Codex receipt evidence before it can affect selection."""
     errors: list[str] = []
@@ -811,11 +1019,23 @@ def _validate_session_receipt(
             receipt_path=receipt_path,
             workspace=workspace,
             run_directory=run_directory,
+            expected_task_name=expected_task_name,
         )
 
     if receipt.get("schema") != _CODEX_RECEIPT_SCHEMA:
         errors.append("direct_codex_receipt_schema_mismatch")
-    errors.extend(_gpu_receipt_errors(receipt, run_directory))
+    errors.extend(
+        _comparison_contract_receipt_errors(
+            receipt, run_directory, prefix="direct_codex"
+        )
+    )
+    errors.extend(
+        _gpu_receipt_errors(
+            receipt,
+            run_directory,
+            expected_task_name=expected_task_name,
+        )
+    )
     if not isinstance(receipt.get("session_succeeded"), bool):
         errors.append("direct_codex_receipt_invalid_session_status")
     if receipt.get("session_succeeded") is True:
@@ -968,6 +1188,7 @@ def _validate_session_receipt(
 
     artifacts = receipt.get("artifacts")
     expected_artifacts = {
+        "rendered_prompt": artifact_dir / "rendered_prompt.txt",
         "raw_stdout": artifact_dir / "raw_stdout.jsonl",
         "raw_stderr": artifact_dir / "raw_stderr.txt",
         "formatted_transcript": artifact_dir / "formatted_transcript.txt",
@@ -1012,6 +1233,15 @@ def _validate_session_receipt(
                 errors.append(f"direct_codex_{name}_hash_mismatch")
             if evidence.get("size_bytes") != resolved_path.stat().st_size:
                 errors.append(f"direct_codex_{name}_size_mismatch")
+
+        rendered_prompt = expected_artifacts["rendered_prompt"]
+        if _safe_read_only_file(rendered_prompt):
+            prompt_sha256 = _sha256_file(rendered_prompt)
+            if (
+                not isinstance(invocation, dict)
+                or invocation.get("prompt_sha256") != prompt_sha256
+            ):
+                errors.append("direct_codex_prompt_digest_mismatch")
 
         try:
             before_manifest = _load_mapping(
@@ -1247,9 +1477,19 @@ def _validate_apex_session_receipt(
     receipt_path: Path,
     workspace: Path | None,
     run_directory: Path,
+    expected_task_name: str | None = None,
 ) -> tuple[dict[str, Any] | None, list[str]]:
     errors: list[str] = []
-    errors.extend(_gpu_receipt_errors(receipt, run_directory))
+    errors.extend(
+        _comparison_contract_receipt_errors(receipt, run_directory, prefix="apex")
+    )
+    errors.extend(
+        _gpu_receipt_errors(
+            receipt,
+            run_directory,
+            expected_task_name=expected_task_name,
+        )
+    )
     if receipt.get("schema") != _APEX_RECEIPT_SCHEMA:
         errors.append("apex_receipt_schema_mismatch")
     if receipt.get("session_succeeded") is not True:
@@ -1324,6 +1564,45 @@ def _validate_apex_session_receipt(
     ):
         errors.append("apex_workspace_pre_apply_integrity_invalid")
 
+    task_spec_contract = receipt.get("task_spec_contract")
+    contract_path: Path | None = None
+    if (
+        not isinstance(task_spec_contract, dict)
+        or task_spec_contract.get("policy")
+        != "prelaunch_read_only_sibling_bind_v1"
+        or not isinstance(task_spec_contract.get("path"), str)
+        or not isinstance(task_spec_contract.get("sha256"), str)
+        or not _SHA256.fullmatch(task_spec_contract["sha256"])
+        or type(task_spec_contract.get("size_bytes")) is not int
+        or task_spec_contract["size_bytes"] <= 0
+        or task_spec_contract.get("file_mode") != "0444"
+        or task_spec_contract.get("directory_mode") != "0555"
+        or task_spec_contract.get("read_only_bind") is not True
+        or task_spec_contract.get("postlaunch_unchanged") is not True
+    ):
+        errors.append("apex_task_spec_prelaunch_contract_invalid")
+    else:
+        contract_path = Path(task_spec_contract["path"])
+        try:
+            contract_resolved = contract_path.resolve(strict=True)
+            contract_resolved.relative_to(receipt_path.parent.resolve(strict=True))
+            parent_metadata = contract_resolved.parent.lstat()
+            if (
+                contract_resolved.name != "task_spec.json"
+                or not contract_resolved.parent.name.endswith(".contract")
+                or not _safe_read_only_file(contract_resolved)
+                or contract_resolved.parent.is_symlink()
+                or not stat.S_ISDIR(parent_metadata.st_mode)
+                or stat.S_IMODE(parent_metadata.st_mode) != 0o555
+                or _sha256_file(contract_resolved)
+                != task_spec_contract["sha256"]
+                or contract_resolved.stat().st_size
+                != task_spec_contract["size_bytes"]
+            ):
+                errors.append("apex_task_spec_prelaunch_contract_invalid")
+        except (OSError, ValueError):
+            errors.append("apex_task_spec_prelaunch_contract_invalid")
+
     expected_artifacts = {
         "task_spec": "task_spec.json",
         "apex_stdout": "apex_stdout.txt",
@@ -1352,6 +1631,12 @@ def _validate_apex_session_receipt(
         return receipt, sorted(set(errors + ["apex_lineage_json_unreadable"]))
     if receipt.get("task_spec_sha256") != _sha256_file(artifacts["task_spec"]):
         errors.append("apex_task_spec_digest_mismatch")
+    if isinstance(task_spec_contract, dict) and (
+        task_spec_contract.get("sha256") != _sha256_file(artifacts["task_spec"])
+        or task_spec_contract.get("size_bytes")
+        != artifacts["task_spec"].stat().st_size
+    ):
+        errors.append("apex_task_spec_prelaunch_artifact_mismatch")
     task_budget = task_spec.get("budget")
     if (
         not isinstance(task_budget, dict)
@@ -1633,6 +1918,54 @@ def _select_attempt(records: list[dict[str, Any]]) -> dict[str, Any] | None:
     )
 
 
+def _campaign_failure_reasons(
+    task_evidence: dict[str, Any],
+) -> list[str]:
+    """Return stable reason codes explaining why a formal task is not canonical."""
+    reasons: list[str] = []
+    if task_evidence.get("campaign_manifest_unchanged") is not True:
+        reasons.append("campaign_manifest_changed")
+    if task_evidence.get("all_attempts_centrally_evaluated") is not True:
+        reasons.append("central_evaluation_incomplete")
+    if task_evidence.get("all_agent_sessions_succeeded") is not True:
+        reasons.append("agent_session_failed")
+    if task_evidence.get("within_evaluator_allowance") is not True:
+        reasons.append("evaluator_allowance_exceeded")
+    if task_evidence.get("within_task_timeout") is not True:
+        reasons.append("task_timeout_exceeded")
+
+    attempts = task_evidence.get("attempts")
+    if isinstance(attempts, list):
+        for record in attempts:
+            if not isinstance(record, dict):
+                continue
+            attempt = record.get("attempt")
+            prefix = f"attempt_{attempt}" if isinstance(attempt, int) else "attempt_unknown"
+            if record.get("attempt_completed") is not True:
+                reasons.append(f"{prefix}:session_incomplete")
+            if record.get("central_evaluator_report") is None:
+                reasons.append(f"{prefix}:central_evaluator_report_missing")
+            errors = record.get("eligibility_errors")
+            if isinstance(errors, list):
+                reasons.extend(
+                    f"{prefix}:{error}"
+                    for error in errors
+                    if isinstance(error, str) and error
+                )
+
+    selected_attempt = task_evidence.get("selected_attempt")
+    if selected_attempt is None:
+        reasons.append("no_centrally_evaluated_attempt")
+    elif isinstance(attempts, list) and not any(
+        isinstance(record, dict)
+        and record.get("attempt") == selected_attempt
+        and record.get("selection_eligible") is True
+        for record in attempts
+    ):
+        reasons.append("selected_attempt_ineligible")
+    return sorted(set(reasons))
+
+
 def _safe_copy_workspace(source: Path, destination: Path) -> dict[str, str]:
     if destination.exists():
         raise CampaignError(f"workspace projection already exists: {destination}")
@@ -1678,6 +2011,14 @@ def run_matched_task_campaign(
         raise CampaignError(
             f"task GPU affinity mismatch: assigned={assigned_gpu!r} worker={worker_gpu!r}"
         )
+    task_binding = validate_formal_task_binding(
+        run_directory=run_directory,
+        task_name=task_name,
+        task_index=task_index,
+        total_tasks=total_tasks,
+        task_config_path=task_config_dir,
+        assigned_host_gpu_id=assigned_gpu,
+    )
     gpu_contract = _expected_gpu_contract(run_directory)
     gpu_exclusivity_verified = (
         isinstance(gpu_contract, dict)
@@ -1716,6 +2057,16 @@ def run_matched_task_campaign(
     require_session_receipt = getattr(agent, "value", str(agent)) in {"apex", "codex"}
 
     for attempt in range(1, policy.attempts + 1):
+        # Re-hash the source package for every independent attempt. A descriptor
+        # or task tree changed after queue initialization must never be executed.
+        task_binding = validate_formal_task_binding(
+            run_directory=run_directory,
+            task_name=task_name,
+            task_index=task_index,
+            total_tasks=total_tasks,
+            task_config_path=task_config_dir,
+            assigned_host_gpu_id=assigned_gpu,
+        )
         remaining_attempts = policy.attempts - attempt + 1
         reserved_per_attempt = (
             policy.attempt_timeout_seconds + policy.apex_internal_allowance_seconds
@@ -1745,6 +2096,10 @@ def run_matched_task_campaign(
             "apex_internal_allowance_seconds": policy.apex_internal_allowance_seconds,
             "task_deadline_monotonic": deadline,
             "receipt_path": str(receipt_path),
+            "comparison_contract_sha256": comparison_contract_sha256,
+            "task_package_manifest_sha256": task_binding[
+                "package_manifest_sha256"
+            ],
         }
         success, workspace = single_attempt(
             eval_config=attempt_config,
@@ -1758,6 +2113,14 @@ def run_matched_task_campaign(
             task_index=task_index,
             total_tasks=total_tasks,
         )
+        validate_formal_task_binding(
+            run_directory=run_directory,
+            task_name=task_name,
+            task_index=task_index,
+            total_tasks=total_tasks,
+            task_config_path=task_config_dir,
+            assigned_host_gpu_id=assigned_gpu,
+        )
         records.append(
             _attempt_record(
                 attempt=attempt,
@@ -1766,6 +2129,7 @@ def run_matched_task_campaign(
                 success=success,
                 receipt_path=receipt_path,
                 require_session_receipt=require_session_receipt,
+                expected_task_name=task_name,
             )
         )
         evaluator_elapsed += float(
@@ -1796,6 +2160,7 @@ def run_matched_task_campaign(
                 / "session_receipt.json"
             ),
             require_session_receipt=require_session_receipt,
+            expected_task_name=task_name,
         )
         if (
             original.get("workspace_manifest_sha256")
@@ -1836,6 +2201,13 @@ def run_matched_task_campaign(
         "schema": _TASK_SCHEMA,
         "task_name": task_name,
         "assigned_host_gpu_id": assigned_gpu,
+        "task_index": task_index,
+        "total_tasks": total_tasks,
+        "task_config_path": task_binding["config_path"],
+        "task_config_sha256": task_binding["config_sha256"],
+        "task_package_manifest_sha256": task_binding[
+            "package_manifest_sha256"
+        ],
         "gpu_exclusivity_verified": gpu_exclusivity_verified,
         "campaign_manifest_sha256": campaign_manifest_sha256,
         "comparison_contract_sha256": comparison_contract_sha256,
@@ -1856,7 +2228,10 @@ def run_matched_task_campaign(
         "elapsed_seconds": clock() - started,
         "within_task_timeout": clock() <= deadline,
     }
-    _atomic_yaml(attempt_root / "task_campaign.yaml", task_evidence)
+    task_evidence["failure_reasons"] = _campaign_failure_reasons(task_evidence)
+    task_campaign_path = attempt_root / "task_campaign.yaml"
+    _atomic_yaml(task_campaign_path, task_evidence)
+    _seal_evidence_file(task_campaign_path, "matched task campaign evidence")
     completed = task_evidence["all_attempts_centrally_evaluated"]
     completed = completed and task_evidence["all_agent_sessions_succeeded"]
     completed = completed and task_evidence["within_evaluator_allowance"]
@@ -1874,6 +2249,9 @@ def run_matched_task_campaign(
     result = _load_mapping(result_path, "selected task result")
     result["campaign_evidence"] = {
         "schema": _TASK_SCHEMA,
+        "campaign_manifest_sha256": campaign_manifest_sha256,
+        "comparison_contract_sha256": comparison_contract_sha256,
+        "task_campaign_sha256": _sha256_file(task_campaign_path),
         "attempt_count": policy.attempts,
         "selected_attempt": selected["attempt"],
         "selection_policy": policy.selection_policy,
@@ -1883,11 +2261,31 @@ def run_matched_task_campaign(
         ),
         "measurement_contract": _MEASUREMENT_CONTRACT,
         "is_apex_canonical_300_sample_grade": False,
+        "selected_central_evaluator_report_sha256": selected[
+            "central_evaluator_report_sha256"
+        ],
+        "selected_performance_evidence_sha256": {
+            name: selected_manifest[name]
+            for name in ("baseline_perf.yaml", "optimized_perf.yaml")
+        },
         "selected_workspace_manifest_sha256": _sha256_bytes(
             json.dumps(selected_manifest, sort_keys=True, separators=(",", ":")).encode()
         ),
     }
     _atomic_yaml(result_path, result)
+    for evidence_name in (
+        "baseline_perf.yaml",
+        "optimized_perf.yaml",
+        "task_result.yaml",
+    ):
+        evidence_path = canonical / evidence_name
+        if not evidence_path.exists():
+            raise CampaignError(
+                f"canonical matched task lacks final evidence: {evidence_path}"
+            )
+        _seal_evidence_file(
+            evidence_path, f"canonical matched task {evidence_name}"
+        )
     return True, canonical
 
 
@@ -1900,4 +2298,5 @@ __all__ = [
     "ordered_gpu_pool",
     "parse_campaign_policy",
     "run_matched_task_campaign",
+    "validate_formal_task_binding",
 ]

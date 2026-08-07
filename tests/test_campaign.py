@@ -776,7 +776,10 @@ def test_formal_codex_home_copies_auth_only(tmp_path, monkeypatch) -> None:
     assert not (home / ".codex/config.toml").exists()
 
 
-def _write_campaign_codex_contract(run_directory: Path) -> dict:
+def _write_campaign_codex_contract(
+    run_directory: Path,
+    task_names: tuple[str, ...] = ("triton2triton/vllm/example",),
+) -> dict:
     codex = {
         "model": "gpt-5.5",
         "effort": "xhigh",
@@ -795,21 +798,64 @@ def _write_campaign_codex_contract(run_directory: Path) -> dict:
             "mount_scope": "attempt_only_bubblewrap",
         },
     }
+    pool = os.environ.get("AGENT_KERNEL_ARENA_GPU_POOL", "0").split(",")
+    package_root = run_directory.parent / "task_packages"
+    package_root.mkdir(exist_ok=True)
+    tasks = []
+    task_config_paths = {}
+    task_mapping = []
+    for index, task_name in enumerate(task_names, 1):
+        package = package_root / f"task_{index:02d}"
+        package.mkdir()
+        config_path = package / "config.yaml"
+        config_path.write_text(f"task_name: {task_name}\n", encoding="utf-8")
+        files = campaign._regular_tree_manifest(package)
+        tasks.append(
+            {
+                "task_index": index,
+                "task_name": task_name,
+                "config_path": str(config_path.resolve()),
+                "config_sha256": campaign._sha256_file(config_path),
+                "package_files_sha256": files,
+                "package_manifest_sha256": hashlib.sha256(
+                    json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest(),
+            }
+        )
+        task_config_paths[task_name] = str(config_path.resolve())
+        task_mapping.append(
+            {
+                "task_index": index,
+                "task_name": task_name,
+                "assigned_host_gpu_id": pool[(index - 1) % len(pool)],
+            }
+        )
     gpu = {
         "gpu_boundary_plan_sha256": "d" * 64,
         "devices": [
             {
-                "host_device_id": "0",
-                "unique_id": "0x0000000000000001",
-                "render_nodes": ["/dev/dri/renderD128"],
+                "host_device_id": host_gpu,
+                "unique_id": f"0x{int(host_gpu) + 1:016x}",
+                "render_nodes": [f"/dev/dri/renderD{128 + int(host_gpu)}"],
             }
+            for host_gpu in pool
         ],
         "exclusivity": {
             "sha256": "e" * 64,
             "exclusivity_verified": True,
         },
+        "task_mapping": task_mapping,
     }
-    comparison_contract = {"codex": codex, "runtime": {"gpu": gpu}}
+    comparison_contract = {
+        "schema": "aka.apex-vs-codex-comparison-contract/v1",
+        "objective_policy_id": "aka.task-package-objective-and-protected-harness/v1",
+        "prompt_policy_id": (
+            "aka.shared-objective-backend-native-context-receipted/v1"
+        ),
+        "codex": codex,
+        "runtime": {"gpu": gpu},
+        "tasks": tasks,
+    }
     comparison_digest = hashlib.sha256(
         json.dumps(
             comparison_contract, sort_keys=True, separators=(",", ":")
@@ -819,15 +865,20 @@ def _write_campaign_codex_contract(run_directory: Path) -> dict:
     path.write_text(
         yaml.safe_dump(
             {
+                "schema": "aka.matched-campaign/v1",
                 "comparison_contract_sha256": comparison_digest,
                 "comparison_contract": comparison_contract,
                 "runtime": {"gpu": gpu},
+                "configuration": {"tasks": tasks},
             }
         ),
         encoding="utf-8",
     )
     path.chmod(0o444)
-    return codex
+    return codex | {
+        "_comparison_contract_sha256": comparison_digest,
+        "_task_config_paths": task_config_paths,
+    }
 
 
 def _write_valid_codex_receipt(receipt_path: Path, codex_contract: dict) -> Path:
@@ -837,6 +888,10 @@ def _write_valid_codex_receipt(receipt_path: Path, codex_contract: dict) -> Path
     before_manifest = {"kernel.py": source_metadata}
     after_manifest = {"kernel.py": source_metadata}
     artifact_payloads = {
+        "rendered_prompt": (
+            artifact_dir / "rendered_prompt.txt",
+            b"rendered direct Codex prompt\n",
+        ),
         "raw_stdout": (artifact_dir / "raw_stdout.jsonl", b"{}\n"),
         "raw_stderr": (artifact_dir / "raw_stderr.txt", b""),
         "formatted_transcript": (
@@ -867,6 +922,9 @@ def _write_valid_codex_receipt(receipt_path: Path, codex_contract: dict) -> Path
     artifact_dir.chmod(0o555)
     receipt = {
         "schema": "agentkernelarena.codex-attempt-receipt/v1",
+        "comparison_contract_sha256": codex_contract[
+            "_comparison_contract_sha256"
+        ],
         "session_succeeded": True,
         "thread_id": "thread-test",
         "session_id": "session-test",
@@ -973,7 +1031,9 @@ def _write_valid_codex_receipt(receipt_path: Path, codex_contract: dict) -> Path
                 "--ignore-rules",
                 "--ephemeral",
             ],
-            "prompt_sha256": "b" * 64,
+            "prompt_sha256": hashlib.sha256(
+                artifact_payloads["rendered_prompt"][1]
+            ).hexdigest(),
             "workspace": str(receipt_path.parent / "workspace"),
             "editable_files": ["kernel.py"],
             "max_turns": 50,
@@ -1180,9 +1240,18 @@ def _write_valid_apex_receipt(
             "size_bytes": path.stat().st_size,
             "mode": "0444",
         }
+    task_spec_contract_root = receipt_path.parent / f".{receipt_path.stem}.contract"
+    task_spec_contract_root.mkdir()
+    task_spec_contract_path = task_spec_contract_root / "task_spec.json"
+    task_spec_contract_path.write_bytes(payloads["task_spec"][1])
+    task_spec_contract_path.chmod(0o444)
+    task_spec_contract_root.chmod(0o555)
     artifact_dir.chmod(0o555)
     receipt = {
         "schema": "agentkernelarena.apex-attempt-receipt/v1",
+        "comparison_contract_sha256": codex_contract[
+            "_comparison_contract_sha256"
+        ],
         "session_succeeded": True,
         "terminal_status": "no_gain",
         "exit_code": 0,
@@ -1216,6 +1285,16 @@ def _write_valid_apex_receipt(
         },
         "apex": {},
         "task_spec_sha256": artifacts["task_spec"]["sha256"],
+        "task_spec_contract": {
+            "policy": "prelaunch_read_only_sibling_bind_v1",
+            "path": str(task_spec_contract_path.resolve()),
+            "sha256": artifacts["task_spec"]["sha256"],
+            "size_bytes": len(payloads["task_spec"][1]),
+            "file_mode": "0444",
+            "directory_mode": "0555",
+            "read_only_bind": True,
+            "postlaunch_unchanged": True,
+        },
         "outer_isolation": codex_contract["isolation"],
         "workspace_integrity": {
             "policy": "read_only_until_adapter_bundle_apply_v1",
@@ -1247,13 +1326,20 @@ def _write_valid_apex_receipt(
     receipt_path.chmod(0o444)
 
 
+def _unlock_apex_receipt_directories(root: Path) -> None:
+    for directory in root.rglob(".session_receipt.artifacts"):
+        directory.chmod(0o700)
+    for directory in root.rglob(".session_receipt.contract"):
+        directory.chmod(0o700)
+
+
 def test_three_fresh_sessions_are_centrally_ranked_with_stable_tie_break(
     tmp_path, monkeypatch
 ) -> None:
     monkeypatch.setenv("AGENT_KERNEL_ARENA_HOST_GPU_ID", "0")
     run_directory = tmp_path / "run"
     run_directory.mkdir()
-    _write_campaign_codex_contract(run_directory)
+    codex_contract = _write_campaign_codex_contract(run_directory)
     observed: list[Path] = []
     times = [2.0, 1.0, 1.0]
 
@@ -1272,7 +1358,9 @@ def test_three_fresh_sessions_are_centrally_ranked_with_stable_tie_break(
         agent=object(),
         agent_launcher=object(),
         task_name="triton2triton/vllm/example",
-        task_config_dir=str(tmp_path / "config.yaml"),
+        task_config_dir=codex_contract["_task_config_paths"][
+            "triton2triton/vllm/example"
+        ],
         run_directory=run_directory,
         timestamp="20260807_000000",
         logger=logging.getLogger(__name__),
@@ -1289,12 +1377,22 @@ def test_three_fresh_sessions_are_centrally_ranked_with_stable_tie_break(
     selected = yaml.safe_load((canonical / "task_result.yaml").read_text())
     assert selected["campaign_evidence"]["selected_attempt"] == 2
     assert selected["campaign_evidence"]["is_apex_canonical_300_sample_grade"] is False
+    for evidence_name in (
+        "baseline_perf.yaml",
+        "optimized_perf.yaml",
+        "task_result.yaml",
+    ):
+        assert (canonical / evidence_name).stat().st_mode & 0o777 == 0o444
     attempts = yaml.safe_load(
         (
             run_directory
             / ".campaign_attempts/triton2triton_vllm_example/task_campaign.yaml"
         ).read_text()
     )
+    assert (
+        run_directory
+        / ".campaign_attempts/triton2triton_vllm_example/task_campaign.yaml"
+    ).stat().st_mode & 0o777 == 0o444
     assert attempts["all_attempts_centrally_evaluated"] is True
     assert [record["attempt"] for record in attempts["attempts"]] == [1, 2, 3]
 
@@ -1305,7 +1403,7 @@ def test_missing_central_report_is_retained_and_invalidates_campaign(
     monkeypatch.setenv("AGENT_KERNEL_ARENA_HOST_GPU_ID", "0")
     run_directory = tmp_path / "run"
     run_directory.mkdir()
-    _write_campaign_codex_contract(run_directory)
+    codex_contract = _write_campaign_codex_contract(run_directory)
 
     def single_attempt(**kwargs):
         attempt_run = Path(kwargs["run_directory"])
@@ -1322,7 +1420,9 @@ def test_missing_central_report_is_retained_and_invalidates_campaign(
         agent=object(),
         agent_launcher=object(),
         task_name="triton2triton/vllm/example",
-        task_config_dir=str(tmp_path / "config.yaml"),
+        task_config_dir=codex_contract["_task_config_paths"][
+            "triton2triton/vllm/example"
+        ],
         run_directory=run_directory,
         timestamp="20260807_000000",
         logger=logging.getLogger(__name__),
@@ -1422,6 +1522,12 @@ def test_manifest_names_native_100_repetition_score_not_apex_grade(
     assert manifest["measurement"]["is_apex_canonical_300_sample_grade"] is False
     assert manifest["configuration"]["tasks"][0]["config_sha256"]
     assert len(manifest["comparison_contract_sha256"]) == 64
+    assert manifest["comparison_contract"]["objective_policy_id"] == (
+        "aka.task-package-objective-and-protected-harness/v1"
+    )
+    assert manifest["comparison_contract"]["prompt_policy_id"] == (
+        "aka.shared-objective-backend-native-context-receipted/v1"
+    )
 
 
 def test_outer_timeout_must_cover_attempts_and_evaluator() -> None:
@@ -1532,7 +1638,9 @@ def test_deterministic_gpu_mapping_and_worker_affinity(tmp_path, monkeypatch) ->
     monkeypatch.setenv("AGENT_KERNEL_ARENA_GPU_POOL", "0,1,2,3,4,5,6,7")
     run = tmp_path / "run"
     run.mkdir()
-    tasks = {f"task/{index}": f"/task/{index}/config.yaml" for index in range(10)}
+    task_names = tuple(f"task/{index}" for index in range(10))
+    contract = _write_campaign_codex_contract(run, task_names)
+    tasks = contract["_task_config_paths"]
     context = {
         "run_directory": run,
         "task_config_dict": tasks,
@@ -1547,6 +1655,13 @@ def test_deterministic_gpu_mapping_and_worker_affinity(tmp_path, monkeypatch) ->
     pending = sorted((run / ".parallel/pending").glob("*.yaml"))
     assignments = [yaml.safe_load(path.read_text())["assigned_host_gpu_id"] for path in pending]
     assert assignments == ["0", "1", "2", "3", "4", "5", "6", "7", "0", "1"]
+    before = {path.name: path.read_bytes() for path in pending}
+    with pytest.raises(campaign.CampaignError, match="queue already exists"):
+        initialize_parallel_queue(context)
+    assert {
+        path.name: path.read_bytes()
+        for path in sorted((run / ".parallel/pending").glob("*.yaml"))
+    } == before
     claimed = claim_next_descriptor(run, "gpu7", logging.getLogger(__name__), "7")
     assert claimed is not None
     assert yaml.safe_load(claimed.read_text())["assigned_host_gpu_id"] == "7"
@@ -1756,7 +1871,7 @@ def test_fake_clock_enforces_remaining_session_reservation(tmp_path, monkeypatch
     now = [0.0]
     run = tmp_path / "run"
     run.mkdir()
-    _write_campaign_codex_contract(run)
+    codex_contract = _write_campaign_codex_contract(run)
 
     def single_attempt(**kwargs):
         attempt_run = Path(kwargs["run_directory"])
@@ -1771,7 +1886,9 @@ def test_fake_clock_enforces_remaining_session_reservation(tmp_path, monkeypatch
         agent=object(),
         agent_launcher=object(),
         task_name="triton2triton/vllm/example",
-        task_config_dir=str(tmp_path / "config.yaml"),
+        task_config_dir=codex_contract["_task_config_paths"][
+            "triton2triton/vllm/example"
+        ],
         run_directory=run,
         timestamp="20260807_000000",
         logger=logging.getLogger(__name__),
@@ -1796,7 +1913,7 @@ def test_cumulative_central_evaluator_allowance_is_enforced(
     monkeypatch.setenv("AGENT_KERNEL_ARENA_HOST_GPU_ID", "0")
     run = tmp_path / "run"
     run.mkdir()
-    _write_campaign_codex_contract(run)
+    codex_contract = _write_campaign_codex_contract(run)
 
     def single_attempt(**kwargs):
         attempt_run = Path(kwargs["run_directory"])
@@ -1811,7 +1928,9 @@ def test_cumulative_central_evaluator_allowance_is_enforced(
         agent=object(),
         agent_launcher=object(),
         task_name="triton2triton/vllm/example",
-        task_config_dir=str(tmp_path / "config.yaml"),
+        task_config_dir=codex_contract["_task_config_paths"][
+            "triton2triton/vllm/example"
+        ],
         run_directory=run,
         timestamp="20260807_000000",
         logger=logging.getLogger(__name__),
@@ -1902,7 +2021,7 @@ def test_direct_codex_receipt_artifacts_and_pinned_identity_are_recomputed(
     )
     assert receipt is not None
     assert errors == []
-    (receipt_path.parent / f".{receipt_path.stem}.artifacts").chmod(0o700)
+    _unlock_apex_receipt_directories(run)
 
     raw_stdout.chmod(0o644)
     raw_stdout.write_text("tampered\n", encoding="utf-8")
@@ -1915,6 +2034,46 @@ def test_direct_codex_receipt_artifacts_and_pinned_identity_are_recomputed(
     assert "direct_codex_raw_stdout_hash_mismatch" in errors
     assert "direct_codex_raw_stdout_size_mismatch" in errors
     raw_stdout.parent.chmod(0o700)
+
+
+def test_direct_codex_prompt_and_comparison_contract_are_independently_recomputed(
+    tmp_path,
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_codex_receipt(receipt_path, codex_contract)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    prompt_path = Path(receipt["artifacts"]["rendered_prompt"]["path"])
+
+    prompt_path.parent.chmod(0o700)
+    original = prompt_path.read_bytes()
+    prompt_path.chmod(0o644)
+    prompt_path.write_bytes(b"X" + original[1:])
+    prompt_path.chmod(0o444)
+    prompt_path.parent.chmod(0o555)
+    _, errors = campaign._validate_session_receipt(
+        receipt_path=receipt_path,
+        workspace=workspace,
+        run_directory=run,
+    )
+    assert "direct_codex_rendered_prompt_hash_mismatch" in errors
+    assert "direct_codex_prompt_digest_mismatch" in errors
+
+    receipt_path.chmod(0o644)
+    receipt["comparison_contract_sha256"] = "0" * 64
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    receipt_path.chmod(0o444)
+    _, errors = campaign._validate_session_receipt(
+        receipt_path=receipt_path,
+        workspace=workspace,
+        run_directory=run,
+    )
+    assert "direct_codex_comparison_contract_digest_mismatch" in errors
+    prompt_path.parent.chmod(0o700)
 
 
 def test_apex_receipt_recomputes_result_event_invocation_and_transcript_lineage(
@@ -1947,7 +2106,31 @@ def test_apex_receipt_recomputes_result_event_invocation_and_transcript_lineage(
         run_directory=run,
     )
     assert "apex_workspace_pre_apply_integrity_invalid" in errors
-    (receipt_path.parent / f".{receipt_path.stem}.artifacts").chmod(0o700)
+    _unlock_apex_receipt_directories(run)
+
+
+def test_apex_receipt_must_bind_immutable_comparison_contract(tmp_path) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    codex_contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(receipt_path, codex_contract)
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    payload["comparison_contract_sha256"] = "0" * 64
+    receipt_path.chmod(0o644)
+    receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+    receipt_path.chmod(0o444)
+
+    _, errors = campaign._validate_session_receipt(
+        receipt_path=receipt_path,
+        workspace=workspace,
+        run_directory=run,
+    )
+
+    assert "apex_comparison_contract_digest_mismatch" in errors
+    _unlock_apex_receipt_directories(run)
 
 
 def test_apex_receipt_rejects_turn_budget_drift_from_comparison_contract(
@@ -1969,7 +2152,7 @@ def test_apex_receipt_rejects_turn_budget_drift_from_comparison_contract(
 
     assert "apex_task_spec_budget_contract_mismatch" in errors
     assert "apex_inner_codex_invocation_contract_mismatch" in errors
-    (receipt_path.parent / f".{receipt_path.stem}.artifacts").chmod(0o700)
+    _unlock_apex_receipt_directories(run)
 
 
 @pytest.mark.parametrize("agent_name", ["apex", "codex"])
@@ -1979,7 +2162,7 @@ def test_formal_agents_missing_receipts_are_diagnostic_only_and_never_complete(
     monkeypatch.setenv("AGENT_KERNEL_ARENA_HOST_GPU_ID", "0")
     run = tmp_path / "run"
     run.mkdir()
-    _write_campaign_codex_contract(run)
+    codex_contract = _write_campaign_codex_contract(run)
 
     def single_attempt(**kwargs):
         attempt_run = Path(kwargs["run_directory"])
@@ -1993,7 +2176,9 @@ def test_formal_agents_missing_receipts_are_diagnostic_only_and_never_complete(
         agent=SimpleNamespace(value=agent_name),
         agent_launcher=object(),
         task_name="triton2triton/vllm/example",
-        task_config_dir=str(tmp_path / "config.yaml"),
+        task_config_dir=codex_contract["_task_config_paths"][
+            "triton2triton/vllm/example"
+        ],
         run_directory=run,
         timestamp="20260807_000000",
         logger=logging.getLogger(__name__),
@@ -2027,6 +2212,9 @@ def test_three_valid_direct_codex_receipts_allow_canonical_projection(
         workspace.mkdir()
         _write_result(workspace, 1.0)
         receipt_path = Path(kwargs["eval_config"]["campaign_attempt"]["receipt_path"])
+        assert kwargs["eval_config"]["campaign_attempt"][
+            "comparison_contract_sha256"
+        ] == codex_contract["_comparison_contract_sha256"]
         _write_valid_codex_receipt(receipt_path, codex_contract)
         return True, workspace
 
@@ -2036,7 +2224,9 @@ def test_three_valid_direct_codex_receipts_allow_canonical_projection(
             agent=SimpleNamespace(value="codex"),
             agent_launcher=object(),
             task_name="triton2triton/vllm/example",
-            task_config_dir=str(tmp_path / "config.yaml"),
+            task_config_dir=codex_contract["_task_config_paths"][
+                "triton2triton/vllm/example"
+            ],
             run_directory=run,
             timestamp="20260807_000000",
             logger=logging.getLogger(__name__),
@@ -2047,8 +2237,7 @@ def test_three_valid_direct_codex_receipts_allow_canonical_projection(
         assert completed is True
         assert canonical is not None
     finally:
-        for artifact_dir in run.rglob(".session_receipt.artifacts"):
-            artifact_dir.chmod(0o700)
+        _unlock_apex_receipt_directories(run)
 
 
 def test_three_valid_apex_receipts_allow_canonical_projection(
@@ -2065,6 +2254,9 @@ def test_three_valid_apex_receipts_allow_canonical_projection(
         workspace.mkdir()
         _write_result(workspace, 1.0)
         receipt_path = Path(kwargs["eval_config"]["campaign_attempt"]["receipt_path"])
+        assert kwargs["eval_config"]["campaign_attempt"][
+            "comparison_contract_sha256"
+        ] == codex_contract["_comparison_contract_sha256"]
         _write_valid_apex_receipt(receipt_path, codex_contract)
         return True, workspace
 
@@ -2074,7 +2266,9 @@ def test_three_valid_apex_receipts_allow_canonical_projection(
             agent=SimpleNamespace(value="apex"),
             agent_launcher=object(),
             task_name="triton2triton/vllm/example",
-            task_config_dir=str(tmp_path / "config.yaml"),
+            task_config_dir=codex_contract["_task_config_paths"][
+                "triton2triton/vllm/example"
+            ],
             run_directory=run,
             timestamp="20260807_000000",
             logger=logging.getLogger(__name__),
@@ -2095,9 +2289,13 @@ def test_three_valid_apex_receipts_allow_canonical_projection(
             == "agentkernelarena.apex-attempt-receipt/v1"
             for attempt in evidence["attempts"]
         )
+        assert all(
+            attempt["session_receipt_binding"]["comparison_contract_sha256"]
+            == codex_contract["_comparison_contract_sha256"]
+            for attempt in evidence["attempts"]
+        )
     finally:
-        for artifact_dir in run.rglob(".session_receipt.artifacts"):
-            artifact_dir.chmod(0o700)
+        _unlock_apex_receipt_directories(run)
 
 
 def test_failed_agent_session_still_gets_diagnostic_evaluation_but_returns_failure(

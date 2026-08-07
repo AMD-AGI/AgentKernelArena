@@ -59,6 +59,12 @@ and every property result. Init, workers, and postprocess must reproduce the sam
 receipt, and the Apex and direct-Codex comparison contracts must match before
 results are comparable.
 
+Every formal session receipt directly binds `comparison_contract_sha256`. The
+postprocessor recomputes that digest from the immutable campaign manifest and
+rejects any missing or mismatched binding. Direct Codex additionally publishes the
+exact UTF-8 rendered prompt as a read-only receipt artifact; the verifier hashes
+those bytes and requires the result to equal `invocation.prompt_sha256`.
+
 Do not treat Codex's legacy `sandbox: workspace-write` session label as proof of the
 effective policy. The pinned managed file and successful negative live probes are
 the authoritative evidence.

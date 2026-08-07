@@ -169,6 +169,7 @@ def test_success_receipt_binds_new_session_cli_usage_and_external_artifacts(
     receipt = _load_receipt(receipt_path)
     try:
         assert receipt["schema"] == "agentkernelarena.codex-attempt-receipt/v1"
+        assert receipt["comparison_contract_sha256"] is None
         assert receipt["session_succeeded"] is True
         assert receipt["timed_out"] is False
         assert receipt["exit_code"] == 0
@@ -215,6 +216,11 @@ def test_success_receipt_binds_new_session_cli_usage_and_external_artifacts(
         assert probe["pid"] == probe["pgid"], "Codex must start a new process session"
         assert _artifact_bytes(receipt, "raw_stderr") == b"raw warning\n"
         assert _artifact_bytes(receipt, "formatted_transcript").decode() == output
+        rendered_prompt = _artifact_bytes(receipt, "rendered_prompt")
+        assert rendered_prompt.startswith(b"test prompt")
+        assert receipt["invocation"]["prompt_sha256"] == hashlib.sha256(
+            rendered_prompt
+        ).hexdigest()
         assert "assistant: optimized" in output
         assert "=== STDERR ===\nraw warning" in output
 
@@ -285,6 +291,7 @@ def test_formal_session_uses_auth_only_home_and_cannot_see_sibling_attempt(
             "fresh_session": True,
             "receipt_path": str(receipt_path),
             "task_deadline_monotonic": launcher.time.monotonic() + 30,
+            "comparison_contract_sha256": "d" * 64,
         },
     }
 
@@ -319,7 +326,9 @@ def test_formal_session_uses_auth_only_home_and_cannot_see_sibling_attempt(
             "stop_reason": None,
         }
         assert receipt["workspace_integrity"]["passed"] is True
+        assert receipt["comparison_contract_sha256"] == "d" * 64
         assert set(receipt["artifacts"]) == {
+            "rendered_prompt",
             "raw_stdout",
             "raw_stderr",
             "formatted_transcript",
@@ -330,6 +339,14 @@ def test_formal_session_uses_auth_only_home_and_cannot_see_sibling_attempt(
         if receipt:
             _make_artifact_dir_removable(receipt)
         shutil.rmtree(binary_parent)
+
+
+def test_formal_session_rejects_missing_comparison_contract_digest() -> None:
+    with pytest.raises(
+        launcher.CodexSessionError,
+        match="lacks a valid comparison contract digest",
+    ):
+        launcher._comparison_contract_sha256({}, formal_campaign=True)
 
 
 def test_formal_workspace_is_sanitized_to_declared_source_only(
@@ -362,6 +379,7 @@ def test_formal_workspace_is_sanitized_to_declared_source_only(
             "fresh_session": True,
             "receipt_path": str(receipt_path),
             "task_deadline_monotonic": time.monotonic() + 30,
+            "comparison_contract_sha256": "d" * 64,
         },
     }
 
