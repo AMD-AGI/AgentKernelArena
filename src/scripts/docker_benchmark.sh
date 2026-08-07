@@ -1362,6 +1362,26 @@ safe_label() {
     printf '%s\n' "$value"
 }
 
+prepare_formal_container_home() {
+    local run_label="$1"
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+
+    local safe_run_label
+    safe_run_label="$(safe_label "$run_label")"
+    [[ -n "$safe_run_label" && "$safe_run_label" != "." && "$safe_run_label" != ".." ]] \
+        || die "formal container HOME label is unsafe"
+
+    # Formal containers mount the AKA checkout read-only, and the host HOME is
+    # intentionally not writable inside the container. Give every single-run
+    # entrypoint an ephemeral HOME so the read-only auth snapshot can be copied
+    # there without changing host state. Override any caller-provided CODEX_HOME
+    # as well so credentials and mutable session files cannot escape this HOME.
+    export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_label}"
+    export AKA_CODEX_HOME="${AKA_CONTAINER_HOME}/.codex"
+    export AKA_CACHE_SUFFIX="$safe_run_label"
+    export AGENT_HOME_ISOLATION=1
+}
+
 prepare_single_formal_gpu_runtime() {
     local run_label="$1"
     [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
@@ -1425,6 +1445,7 @@ run_parallel() {
         export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_name}-preflight"
         export AKA_CACHE_SUFFIX="${safe_run_name}-preflight"
         export AGENT_HOME_ISOLATION=1
+        prepare_formal_container_home "${safe_run_name}-preflight"
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
     )
 
@@ -1435,6 +1456,7 @@ run_parallel() {
         export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_name}-init"
         export AKA_CACHE_SUFFIX="${safe_run_name}-init"
         export AGENT_HOME_ISOLATION=1
+        prepare_formal_container_home "${safe_run_name}-init"
         docker_exec 0 python main.py "$@" --parallel-init --run-name "$run_name"
     )
 
@@ -1449,6 +1471,7 @@ run_parallel() {
             export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_name}-worker-${worker_id}"
             export AKA_CACHE_SUFFIX="${safe_run_name}-worker-${worker_id}"
             export AGENT_HOME_ISOLATION=1
+            prepare_formal_container_home "${safe_run_name}-worker-${worker_id}"
             docker_exec 0 python main.py "$@" --parallel-worker --worker-id "$worker_id" --run-name "$run_name"
         ) &
         pids+=("$!")
@@ -1470,6 +1493,7 @@ run_parallel() {
         export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_name}-postprocess"
         export AKA_CACHE_SUFFIX="${safe_run_name}-postprocess"
         export AGENT_HOME_ISOLATION=1
+        prepare_formal_container_home "${safe_run_name}-postprocess"
         docker_exec 0 python main.py "$@" --postprocess-only --run-name "$run_name"
     ); then
         postprocess_failed=1
@@ -1492,6 +1516,7 @@ case "${1:-}" in
         configure_geak_v4_runtime "$config_name"
         configure_apex_runtime "$config_name"
         configure_campaign_provenance "$config_name"
+        prepare_formal_container_home "single-run-$$"
         prepare_single_formal_gpu_runtime "single-run-$$"
         # Only the configured agent's CLI/auth is required for a run.
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
@@ -1510,6 +1535,7 @@ case "${1:-}" in
         configure_geak_v4_runtime "$config_name"
         configure_apex_runtime "$config_name"
         configure_campaign_provenance "$config_name"
+        prepare_formal_container_home "preflight-$$"
         prepare_single_formal_gpu_runtime "preflight-$$"
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
@@ -1534,6 +1560,7 @@ case "${1:-}" in
         configure_geak_v4_runtime "$config_name"
         configure_apex_runtime "$config_name"
         configure_campaign_provenance "$config_name"
+        prepare_formal_container_home "check-agents-$$"
         # By default, check only the CLI selected by CONFIG. AKA_AGENTS can
         # request one, several, or `all` explicitly.
         REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"

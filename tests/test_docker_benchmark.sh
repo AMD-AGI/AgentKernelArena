@@ -33,6 +33,19 @@ assert_not_has() {
     done
 }
 
+find_arg_with_prefix() {
+    local prefix="$1"
+    shift
+    local value
+    for value in "$@"; do
+        if [[ "$value" == "$prefix"* ]]; then
+            printf '%s\n' "$value"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Capture the exact argv that the runner would pass to Docker without requiring
 # a daemon, GPU devices, or the benchmark images on this host.
 docker() {
@@ -89,6 +102,30 @@ mkdir -p "$UNRELATED_GEAK_WORKFLOW_DIR"
 touch "$UNRELATED_GEAK_WORKFLOW_DIR/kernel_workflow.js"
 
 bash -n "$RUNNER"
+
+# Formal HOME preparation is fail-closed: it overrides every caller-provided
+# mutable path. The same helper must be a strict no-op outside a formal campaign.
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_PROVENANCE=0
+    AKA_CONTAINER_HOME="/caller/home"
+    AKA_CODEX_HOME="/caller/codex"
+    AKA_CACHE_SUFFIX="caller-cache"
+    AGENT_HOME_ISOLATION=0
+    prepare_formal_container_home "ignored/label"
+    [[ "$AKA_CONTAINER_HOME" == "/caller/home" ]]
+    [[ "$AKA_CODEX_HOME" == "/caller/codex" ]]
+    [[ "$AKA_CACHE_SUFFIX" == "caller-cache" ]]
+    [[ "$AGENT_HOME_ISOLATION" == "0" ]]
+
+    CAMPAIGN_PROVENANCE=1
+    prepare_formal_container_home "formal/worker"
+    [[ "$AKA_CONTAINER_HOME" == "/tmp/aka-home-formal_worker" ]]
+    [[ "$AKA_CODEX_HOME" == "/tmp/aka-home-formal_worker/.codex" ]]
+    [[ "$AKA_CACHE_SUFFIX" == "formal_worker" ]]
+    [[ "$AGENT_HOME_ISOLATION" == "1" ]]
+) || fail "formal container HOME preparation contract failed"
 
 # Exercise the formal lease/inventory path itself with CPU-only command fakes.
 # This catches shell-scope regressions such as passing an unset inventory path.
@@ -320,6 +357,12 @@ assert_not_has "$ROOT:/workspace" "${args[@]}"
 assert_has "$CODEX_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
 assert_not_has "$CODEX_HOME/.codex:$CODEX_HOME/.codex" "${args[@]}"
 assert_has "AGENT_KERNEL_ARENA_ISOLATED_HOME=1" "${args[@]}"
+formal_home_arg="$(find_arg_with_prefix "HOME=/tmp/aka-home-check-agents-" "${args[@]}")" \
+    || fail "formal check-agents did not receive an ephemeral HOME"
+formal_home="${formal_home_arg#HOME=}"
+assert_has "CODEX_HOME=$formal_home/.codex" "${args[@]}"
+formal_label="${formal_home#/tmp/aka-home-}"
+assert_has "XDG_CACHE_HOME=/tmp/agent-cache-$formal_label" "${args[@]}"
 assert_has "AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT=$CAMPAIGN_DATA_ROOT" "${args[@]}"
 assert_has "/usr/bin/bwrap:/usr/bin/bwrap:ro" "${args[@]}"
 assert_not_has "--privileged" "${args[@]}"
