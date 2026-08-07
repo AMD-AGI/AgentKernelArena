@@ -1,5 +1,14 @@
 max_iterations: 3
+# Matched campaigns own repetition across fresh workspaces/sessions and override
+# the normal prompt guidance with one trajectory inside each outer session.
+campaign_max_iterations: 1
+max_turns: 25
 timeout_seconds: 3600
+# Match Apex's inner Codex SubprocessSupervisor bound. This is the structured
+# agent stream, not Apex's separate outer transport receipt cap.
+max_process_output_bytes: 16777216
+structured_stream_output_limit_bytes: 16777216
+structured_stream_overflow_policy: fail_closed_after_bounded_drain
 python_path: null
 # Optional: set explicitly so logs show the exact model used.
 # (gpt-5.3-codex is deprecated; current valid ids: gpt-5.5 / gpt-5.4 / gpt-5.4-mini)
@@ -7,3 +16,4 @@ model: gpt-5.5
 # Reasoning effort maxed out. Passed as `-c model_reasoning_effort=...`.
 # Valid: minimal | low | medium | high | xhigh  (xhigh is the maximum).
 effort: xhigh
+permission_mode: workspace_write_isolated

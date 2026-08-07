@@ -140,7 +140,7 @@ def normalize_python_command(command: str, python_path: str) -> str:
 def run_command(
     command: str,
     workspace: Path,
-    timeout: int = 300,
+    timeout: float = 300,
     logger: Optional[logging.Logger] = None,
     docker_container: Optional[str] = None,
     extra_env: Optional[dict] = None,

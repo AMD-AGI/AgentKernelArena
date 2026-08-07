@@ -3,6 +3,7 @@ import argparse
 import logging
 import os
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,14 @@ from src.evaluator import (
 from src.runtime_env import apply_subprocess_python_path
 from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
 from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
+from src.campaign import (
+    CampaignError,
+    ensure_campaign_manifest,
+    parse_campaign_policy,
+    run_matched_task_campaign,
+    deterministic_task_gpu_mapping,
+    ordered_gpu_pool,
+)
 
 
 QUEUE_DIR_NAME = ".parallel"
@@ -398,7 +407,7 @@ def _build_context(
     logger.info(f"Found {len(task_config_dict)} runnable task(s) after platform preflight")
     logger.info(f"Tasks: {list(task_config_dict.keys())}")
 
-    return {
+    context = {
         "args": args,
         "config": config,
         "agent": agent,
@@ -411,6 +420,20 @@ def _build_context(
         "logger": logger,
         "task_config_dict": task_config_dict,
     }
+    try:
+        campaign_manifest = ensure_campaign_manifest(
+            run_directory=run_directory,
+            eval_config=config,
+            run_config_path=Path(args.config_name),
+            task_config_paths=task_config_dict,
+            agent_name=agent.value,
+        )
+    except CampaignError as error:
+        logger.error("Campaign preflight failed: %s", error)
+        return None
+    if campaign_manifest is not None:
+        logger.info("Pinned matched-campaign manifest: %s", campaign_manifest)
+    return context
 
 
 def _filter_completed_tasks(
@@ -439,7 +462,7 @@ def _filter_completed_tasks(
     return tasks_to_run
 
 
-def run_task(
+def _run_single_task(
     *,
     eval_config: dict[str, Any],
     agent: AgentType,
@@ -453,6 +476,14 @@ def run_task(
     total_tasks: int,
 ) -> tuple[bool, Path | None]:
     workspace_path: Path | None = None
+    campaign_attempt = eval_config.get("campaign_attempt")
+    deadline = (
+        float(campaign_attempt["task_deadline_monotonic"])
+        if isinstance(campaign_attempt, dict)
+        and campaign_attempt.get("task_deadline_monotonic") is not None
+        else None
+    )
+    evaluation_elapsed = 0.0
     logger.info("=" * 80)
     logger.info(f"Task {task_index}/{total_tasks}: {task_name}")
     logger.info("=" * 80)
@@ -483,31 +514,50 @@ def run_task(
                 logger.info("Removed copied stale validation_report.yaml before validation")
 
         baseline_cases = []
+        evaluation_started = time.monotonic()
         if is_validator:
             logger.info("task_validator run: skipping baseline/evaluation/perf-plot benchmark pipeline")
         elif task_type == "torch2hip":
             logger.info("torch2hip task: skipping baseline compilation, measuring PyTorch baseline directly...")
-            baseline_cases = measure_baseline(workspace_path, task_config, logger)
+            baseline_cases = measure_baseline(
+                workspace_path, task_config, logger, deadline_monotonic=deadline
+            )
         else:
             logger.info("Compiling original kernel for baseline measurement...")
-            pass_compilation, comp_error = evaluate_compilation(workspace_path, task_config, logger)
+            pass_compilation, comp_error = evaluate_compilation(
+                workspace_path, task_config, logger, deadline_monotonic=deadline
+            )
             if not pass_compilation:
                 logger.warning(f"Baseline compilation failed: {comp_error}")
                 logger.warning("Baseline measurement will be skipped")
                 baseline_cases = []
             else:
                 logger.info("Measuring baseline performance...")
-                baseline_cases = measure_baseline(workspace_path, task_config, logger)
+                baseline_cases = measure_baseline(
+                    workspace_path, task_config, logger, deadline_monotonic=deadline
+                )
+        evaluation_elapsed += time.monotonic() - evaluation_started
 
         harness_snapshot = snapshot_workspace_harness(workspace_path)
 
         logger.info(f"Launching agent: {agent.value}")
-        agent_launcher(
-            eval_config=eval_config,
-            task_config_dir=task_config_dir,
-            workspace=str(workspace_path),
-        )
-        logger.info("Agent execution completed")
+        agent_error: Exception | None = None
+        try:
+            agent_launcher(
+                eval_config=eval_config,
+                task_config_dir=task_config_dir,
+                workspace=str(workspace_path),
+            )
+            logger.info("Agent execution completed")
+        except Exception as error:
+            if not isinstance(campaign_attempt, dict):
+                raise
+            agent_error = error
+            logger.error(
+                "Campaign agent session failed; running diagnostic central evaluation: %s",
+                error,
+                exc_info=True,
+            )
 
         if not is_validator:
             # Agents work inside the task workspace and could accidentally modify
@@ -517,11 +567,13 @@ def run_task(
             verify_workspace_harness(harness_snapshot, logger=logger)
             materialize_perf_helpers_in_workspace(workspace_path, logger=logger)
             logger.info("Running centralized evaluation...")
+            evaluation_started = time.monotonic()
             evaluation_results = evaluate_kernel(
                 workspace_path,
                 task_config,
                 baseline_cases,
                 logger,
+                deadline_monotonic=deadline,
             )
             write_task_result(
                 workspace_path,
@@ -531,17 +583,83 @@ def run_task(
                 agent.value,
                 logger,
             )
+            evaluation_elapsed += time.monotonic() - evaluation_started
+            if isinstance(campaign_attempt, dict):
+                result_path = workspace_path / "task_result.yaml"
+                result = yaml.safe_load(result_path.read_text(encoding="utf-8")) or {}
+                result["agent_session_succeeded"] = agent_error is None
+                result["agent_session_error_type"] = (
+                    type(agent_error).__name__ if agent_error is not None else None
+                )
+                result_path.write_text(
+                    yaml.safe_dump(result, default_flow_style=False, sort_keys=False),
+                    encoding="utf-8",
+                )
+
+        if isinstance(campaign_attempt, dict):
+            campaign_attempt["evaluation_elapsed_seconds"] = evaluation_elapsed
 
         if not is_task_complete(run_directory, task_name, timestamp, agent.value):
             expected_report = "validation_report.yaml" if is_validator else "task_result.yaml"
             logger.error(f"Task {task_name} did not produce expected completion report: {expected_report}")
             return False, workspace_path
 
+        if agent_error is not None:
+            logger.error("Task %s has diagnostic evidence but its agent session failed", task_name)
+            return False, workspace_path
         logger.info(f"Task {task_name} completed successfully")
         return True, workspace_path
     except Exception as e:
+        if isinstance(campaign_attempt, dict):
+            campaign_attempt["evaluation_elapsed_seconds"] = evaluation_elapsed
         logger.error(f"Task {task_name} failed with error: {e}", exc_info=True)
         return False, workspace_path
+
+
+def run_task(
+    *,
+    eval_config: dict[str, Any],
+    agent: AgentType,
+    agent_launcher: Any,
+    task_name: str,
+    task_config_dir: str,
+    run_directory: Path,
+    timestamp: str,
+    logger: logging.Logger,
+    task_index: int,
+    total_tasks: int,
+) -> tuple[bool, Path | None]:
+    """Run one ordinary task or a three-session matched campaign task."""
+    if parse_campaign_policy(eval_config) is None:
+        return _run_single_task(
+            eval_config=eval_config,
+            agent=agent,
+            agent_launcher=agent_launcher,
+            task_name=task_name,
+            task_config_dir=task_config_dir,
+            run_directory=run_directory,
+            timestamp=timestamp,
+            logger=logger,
+            task_index=task_index,
+            total_tasks=total_tasks,
+        )
+    try:
+        return run_matched_task_campaign(
+            eval_config=eval_config,
+            agent=agent,
+            agent_launcher=agent_launcher,
+            task_name=task_name,
+            task_config_dir=task_config_dir,
+            run_directory=run_directory,
+            timestamp=timestamp,
+            logger=logger,
+            task_index=task_index,
+            total_tasks=total_tasks,
+            single_attempt=_run_single_task,
+        )
+    except CampaignError as error:
+        logger.error("Matched campaign task failed: %s", error, exc_info=True)
+        return False, None
 
 
 def run_post_processing(agent: AgentType, workspace_paths: list[str], logger: logging.Logger) -> None:
@@ -600,6 +718,10 @@ def initialize_parallel_queue(context: dict[str, Any]) -> None:
     total_tasks = len(task_config_dict)
     queued = 0
     completed = 0
+    assigned_gpu = {
+        item["task_name"]: item["assigned_host_gpu_id"]
+        for item in deterministic_task_gpu_mapping(list(task_config_dict))
+    } if parse_campaign_policy(context["config"]) is not None else {}
     for index, (task_name, task_config_dir) in enumerate(task_config_dict.items(), 1):
         workspace_path = get_task_workspace_path(run_directory, task_name, timestamp)
         payload = {
@@ -609,6 +731,8 @@ def initialize_parallel_queue(context: dict[str, Any]) -> None:
             "task_config_dir": task_config_dir,
             "workspace_path": str(workspace_path),
         }
+        if assigned_gpu:
+            payload["assigned_host_gpu_id"] = assigned_gpu[task_name]
         if is_task_complete(run_directory, task_name, timestamp, agent.value):
             payload["status"] = "already_complete"
             state = "done"
@@ -625,12 +749,21 @@ def initialize_parallel_queue(context: dict[str, Any]) -> None:
     )
 
 
-def claim_next_descriptor(run_directory: Path, worker_id: str, logger: logging.Logger) -> Path | None:
+def claim_next_descriptor(
+    run_directory: Path,
+    worker_id: str,
+    logger: logging.Logger,
+    host_gpu_id: str | None = None,
+) -> Path | None:
     pending_dir = _queue_state_dir(run_directory, "pending")
     running_dir = _queue_state_dir(run_directory, "running")
     running_dir.mkdir(parents=True, exist_ok=True)
 
     for descriptor in sorted(pending_dir.glob("*.yaml")):
+        payload = _read_descriptor(descriptor)
+        assigned = payload.get("assigned_host_gpu_id")
+        if assigned is not None and assigned != host_gpu_id:
+            continue
         claimed = running_dir / f"worker_{worker_id}__{descriptor.name}"
         try:
             descriptor.rename(claimed)
@@ -738,14 +871,39 @@ def run_parallel_worker(args: argparse.Namespace) -> int:
 
     failures = 0
     processed = 0
+    host_gpu_id = os.environ.get("AGENT_KERNEL_ARENA_HOST_GPU_ID")
+    if parse_campaign_policy(context["config"]) is not None:
+        pool = ordered_gpu_pool()
+        if host_gpu_id not in pool:
+            context["logger"].error(
+                "Worker host GPU %r is not in deterministic pool %s", host_gpu_id, pool
+            )
+            return 1
     while True:
-        descriptor = claim_next_descriptor(context["run_directory"], worker_id, context["logger"])
+        descriptor = claim_next_descriptor(
+            context["run_directory"], worker_id, context["logger"], host_gpu_id
+        )
         if descriptor is None:
             break
 
         payload = _read_descriptor(descriptor)
+        assigned_host_gpu_id = payload.get("assigned_host_gpu_id")
+        if assigned_host_gpu_id is not None and assigned_host_gpu_id != host_gpu_id:
+            context["logger"].error(
+                "Descriptor GPU affinity mismatch: assigned=%s worker=%s",
+                assigned_host_gpu_id,
+                host_gpu_id,
+            )
+            finish_descriptor(
+                descriptor, "failed", workspace_path=None, worker_id=worker_id
+            )
+            failures += 1
+            continue
+        task_eval_config = dict(context["config"])
+        if assigned_host_gpu_id is not None:
+            task_eval_config["assigned_host_gpu_id"] = assigned_host_gpu_id
         success, workspace_path = run_task(
-            eval_config=context["config"],
+            eval_config=task_eval_config,
             agent=context["agent"],
             agent_launcher=context["agent_launcher"],
             task_name=payload["task_name"],

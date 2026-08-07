@@ -5,6 +5,7 @@ Performance measurement and parsing for evaluator.
 import json
 import re
 import logging
+import time
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from .testcases import TestCaseResult, parse_test_cases_from_json, parse_test_cases_from_stdout
@@ -13,6 +14,12 @@ from .jit_rebuild import force_jit_rebuild
 
 # Default for performance_command subprocess (CMake benchmarks can be slow)
 _DEFAULT_PERFORMANCE_COMMAND_TIMEOUT_S = 3600
+
+
+def _deadline_timeout(configured_seconds, deadline_monotonic, clock) -> float:
+    if deadline_monotonic is None:
+        return float(configured_seconds)
+    return min(float(configured_seconds), max(0.0, deadline_monotonic - clock()))
 
 
 def performance_report_candidates(workspace: Path, task_type: Optional[str] = None) -> List[Path]:
@@ -275,7 +282,9 @@ def measure_performance(
     workspace: Path,
     task_config: Dict[str, Any],
     logger: Optional[logging.Logger] = None,
-    is_baseline: bool = False
+    is_baseline: bool = False,
+    deadline_monotonic: float | None = None,
+    clock=time.monotonic,
 ) -> List[TestCaseResult]:
     """
     Measure kernel execution time for all test cases.
@@ -298,7 +307,7 @@ def measure_performance(
         log.warning("No performance_command found in task config")
         return []
 
-    perf_timeout = int(
+    perf_timeout = float(
         task_config.get("performance_timeout", _DEFAULT_PERFORMANCE_COMMAND_TIMEOUT_S)
     )
 
@@ -307,7 +316,11 @@ def measure_performance(
             cmd = cmd + " --baseline_only"
 
         clear_performance_report_files(workspace, task_type, log)
-        success, stdout, stderr = run_command(cmd, workspace, timeout=perf_timeout, logger=log, extra_env=rebuild_env)
+        command_timeout = _deadline_timeout(perf_timeout, deadline_monotonic, clock)
+        if command_timeout <= 0:
+            log.error("Performance skipped because the hard task deadline expired")
+            return []
+        success, stdout, stderr = run_command(cmd, workspace, timeout=command_timeout, logger=log, extra_env=rebuild_env)
         
         # Combine stdout and stderr for parsing
         combined_output = stdout + stderr
@@ -330,7 +343,9 @@ def measure_performance(
 def measure_baseline(
     workspace: Path,
     task_config: Dict[str, Any],
-    logger: Optional[logging.Logger] = None
+    logger: Optional[logging.Logger] = None,
+    deadline_monotonic: float | None = None,
+    clock=time.monotonic,
 ) -> List[TestCaseResult]:
     """
     Measure baseline execution time for all test cases before optimization.
@@ -352,7 +367,14 @@ def measure_baseline(
     log = logger or logging.getLogger(__name__)
     log.info("Measuring baseline performance...")
     
-    baseline_cases = measure_performance(workspace, task_config, logger, is_baseline=True)
+    baseline_cases = measure_performance(
+        workspace,
+        task_config,
+        logger,
+        is_baseline=True,
+        deadline_monotonic=deadline_monotonic,
+        clock=clock,
+    )
     
     if baseline_cases:
         # Save baseline results

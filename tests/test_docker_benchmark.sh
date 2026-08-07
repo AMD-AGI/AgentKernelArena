@@ -5,6 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNNER="$ROOT/src/scripts/docker_benchmark.sh"
 cd "$ROOT"
 PINNED_GFX950_IMAGE="lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705"
+GFX950_V0514_DOCKER_IMAGE_ID="sha256:0a78d51f2f1db80a1abfe23350fc2e5733ac5acb1528d6dc7ce3679bdb099aff"
+export GFX950_V0514_DOCKER_IMAGE_ID
 OLD_GFX950_IMAGE="lmsysorg/sglang:v0.5.12-rocm720-mi35x"
 
 fail() {
@@ -34,6 +36,14 @@ assert_not_has() {
 # Capture the exact argv that the runner would pass to Docker without requiring
 # a daemon, GPU devices, or the benchmark images on this host.
 docker() {
+    if [[ "${1:-}" == image && "${2:-}" == inspect ]]; then
+        case "${4:-}" in
+            '{{.Id}}') printf '%s\n' "$GFX950_V0514_DOCKER_IMAGE_ID" ;;
+            '{{json .RepoDigests}}') printf '["example.invalid/runtime@sha256:%064d"]\n' 0 ;;
+            *) return 2 ;;
+        esac
+        return 0
+    fi
     printf '%s\n' "$@"
 }
 export -f docker
@@ -80,6 +90,71 @@ touch "$UNRELATED_GEAK_WORKFLOW_DIR/kernel_workflow.js"
 
 bash -n "$RUNNER"
 
+# Exercise the formal lease/inventory path itself with CPU-only command fakes.
+# This catches shell-scope regressions such as passing an unset inventory path.
+FORMAL_SHELL_ROOT="$TEST_HOME/formal-shell"
+FORMAL_INVENTORY_MARKER="$FORMAL_SHELL_ROOT/inventory-path"
+mkdir -p "$FORMAL_SHELL_ROOT/data"
+printf '{}\n' > "$FORMAL_SHELL_ROOT/gpu-plan.json"
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_PROVENANCE=1
+    CAMPAIGN_DATA_ROOT="$FORMAL_SHELL_ROOT/data"
+    CAMPAIGN_GPU_PLAN_HOST="$FORMAL_SHELL_ROOT/gpu-plan.json"
+    CAMPAIGN_GPU_PLAN_SHA256="$(printf '%064d' 0)"
+    CAMPAIGN_GPU_LEASE_FDS=()
+    AKA_GPU_LEASE_ROOT="$FORMAL_SHELL_ROOT/leases"
+
+    python3() {
+        local script="$1"
+        shift
+        case "$(basename "$script"):${1:-}" in
+            gpu_exclusivity.py:lease-keys)
+                printf '0x0000000000000001\n'
+                ;;
+            kfd_process_inventory.py:--output)
+                printf '{"cpu_only_fake_inventory":true}\n' > "$2"
+                ;;
+            gpu_exclusivity.py:create-receipt)
+                local inventory="" output=""
+                while [[ "$#" -gt 0 ]]; do
+                    case "$1" in
+                        --kfd-process-inventory)
+                            inventory="$2"
+                            shift 2
+                            ;;
+                        --output)
+                            output="$2"
+                            shift 2
+                            ;;
+                        *)
+                            shift
+                            ;;
+                    esac
+                done
+                [[ -n "$inventory" && -f "$inventory" && -s "$inventory" ]] || return 70
+                printf '%s\n' "$inventory" > "$FORMAL_INVENTORY_MARKER"
+                printf '{"cpu_only_fake_receipt":true}\n' > "$output"
+                ;;
+            gpu_exclusivity.py:verify-receipt)
+                printf '%064d\n' 0
+                ;;
+            *)
+                return 71
+                ;;
+        esac
+    }
+
+    acquire_campaign_gpu_exclusivity "cpu-only-formal-shell-test"
+    [[ -s "$FORMAL_INVENTORY_MARKER" ]]
+    inventory_path="$(<"$FORMAL_INVENTORY_MARKER")"
+    [[ "$inventory_path" == "$FORMAL_SHELL_ROOT/data/"* ]]
+    [[ -f "$inventory_path" && -s "$inventory_path" ]]
+    [[ "$(stat -c '%a' "$inventory_path")" == "444" ]]
+    [[ -f "$CAMPAIGN_GPU_EXCLUSIVITY_HOST" ]]
+) || fail "formal GPU acquire path did not pass a published KFD inventory artifact"
+
 # The internal container subcommand must forward the selected agent list instead
 # of falling back to its all-three default. A fake Python records the environment
 # without invoking any real agent CLI.
@@ -93,7 +168,18 @@ forwarded_agents="$(PATH="$FAKE_BIN:$PATH" bash "$RUNNER" _container_check_agent
 # The gfx950 default resolves to the pinned image and enables writable caches.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950)
 assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=$GFX950_V0514_DOCKER_IMAGE_ID" "${args[@]}"
+assert_has 'AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS=["example.invalid/runtime@sha256:0000000000000000000000000000000000000000000000000000000000000000"]' "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
+
+# A caller-supplied expected image ID is a check, never an unchecked override.
+if run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE_ID="sha256:$(printf '%064d' 9)" \
+    >/dev/null 2>&1; then
+    fail "mismatched AKA_DOCKER_IMAGE_ID was accepted"
+fi
+
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_GPU_POOL=0,1,2,3,4,5,6,7)
+assert_has "AGENT_KERNEL_ARENA_GPU_POOL=0,1,2,3,4,5,6,7" "${args[@]}"
 
 # A worker suffix must isolate both runtime cache directories.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_CACHE_SUFFIX=worker/3)
@@ -200,6 +286,46 @@ assert_has "codex" "${args[@]}"
 assert_not_has "$CODEX_HOME/.claude:$CODEX_HOME/.claude" "${args[@]}"
 assert_not_has "$CODEX_HOME/.local/share/cursor-agent:$CODEX_HOME/.local/share/cursor-agent:ro" "${args[@]}"
 assert_not_has "ANTHROPIC_API_KEY" "${args[@]}"
+
+# A matched direct-Codex campaign receives only the Apex Git receipt, not the
+# Apex source mount. This pins the treatment revision without letting the
+# baseline agent inspect the treatment implementation.
+CAMPAIGN_APEX_ROOT="$TEST_HOME/campaign-apex-checkout"
+CAMPAIGN_CODEX_CONFIG="$TEST_HOME/campaign-codex-config.yaml"
+mkdir -p "$CAMPAIGN_APEX_ROOT"
+git -C "$CAMPAIGN_APEX_ROOT" init -q
+touch "$CAMPAIGN_APEX_ROOT/main.py"
+git -C "$CAMPAIGN_APEX_ROOT" add main.py
+git -C "$CAMPAIGN_APEX_ROOT" \
+    -c user.name=AKA -c user.email=aka@example.invalid \
+    commit -q -m initial
+CAMPAIGN_APEX_COMMIT="$(git -C "$CAMPAIGN_APEX_ROOT" rev-parse HEAD)"
+CAMPAIGN_DATA_ROOT="$TEST_HOME/campaign-data"
+printf 'agent:\n  template: codex\ncampaign:\n  comparison: apex_vs_codex\nworkspace_directory_prefix: %s/workspace\n' \
+    "$CAMPAIGN_DATA_ROOT" > "$CAMPAIGN_CODEX_CONFIG"
+
+mapfile -t args < <(run_check_args \
+    "$CODEX_HOME" \
+    "$CAMPAIGN_CODEX_CONFIG" \
+    AKA_APEX_ROOT="$CAMPAIGN_APEX_ROOT" \
+    AKA_NODE_PREFIX="$CODEX_PREFIX")
+assert_has "AGENT_KERNEL_ARENA_APEX_COMMIT=$CAMPAIGN_APEX_COMMIT" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_APEX_DIRTY=false" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=$GFX950_V0514_DOCKER_IMAGE_ID" "${args[@]}"
+assert_not_has "$CAMPAIGN_APEX_ROOT:$CAMPAIGN_APEX_ROOT:ro" "${args[@]}"
+assert_not_has "APEX_ROOT=$CAMPAIGN_APEX_ROOT" "${args[@]}"
+assert_has "$CAMPAIGN_DATA_ROOT:$CAMPAIGN_DATA_ROOT" "${args[@]}"
+assert_has "$ROOT:/workspace:ro" "${args[@]}"
+assert_not_has "$ROOT:/workspace" "${args[@]}"
+assert_has "$CODEX_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+assert_not_has "$CODEX_HOME/.codex:$CODEX_HOME/.codex" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_ISOLATED_HOME=1" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT=$CAMPAIGN_DATA_ROOT" "${args[@]}"
+assert_has "/usr/bin/bwrap:/usr/bin/bwrap:ro" "${args[@]}"
+assert_not_has "--privileged" "${args[@]}"
+assert_not_has "--device=/dev/mem" "${args[@]}"
+assert_not_has "--device=/dev/dri" "${args[@]}"
+assert_not_has "--device=/dev/kfd" "${args[@]}"
 
 # A natively installed Claude CLI is a launcher in ~/.local/bin that resolves
 # into ~/.local/share/claude/versions. Both sides of that symlink must be

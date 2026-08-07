@@ -75,20 +75,92 @@ vLLM Triton cohort:
 ```bash
 export AKA_APEX_ROOT=/absolute/path/to/Apex
 
-make docker-run \
+make docker-parallel-run \
   CONFIG=example_configs/benchmark_codex_mi355x_10.yaml \
+  GPU_IDS=0,1,2,3,4,5,6,7 \
   RUN_ARGS="--run-suffix codex_baseline"
 
-make docker-run \
+make docker-parallel-run \
   CONFIG=example_configs/benchmark_apex_mi355x_10.yaml \
+  GPU_IDS=0,1,2,3,4,5,6,7 \
   RUN_ARGS="--run-suffix apex_treatment"
 ```
 
 The checked-in settings pin both paths to Codex `gpt-5.5`, `xhigh`, and a
-3600-second agent budget; Apex gets one outer attempt and its backend may iterate
-within that session. Also hold the Docker image, GPU, task order, timeout, and
-repetition policy constant. Compare only the resulting AgentKernelArena
-`task_result.yaml` files and aggregate reports.
+3600-second inner-agent budget. The campaign controller creates three fresh
+workspaces and invokes three independent Codex sessions per task on both paths;
+`max_iterations: 1` prevents an additional hidden inner campaign. Every attempt
+returns to AgentKernelArena for centralized compilation, correctness, and performance
+evaluation. Selection is deterministic: correctness-qualified attempts rank by their
+measured rate, with the lower attempt number breaking an exact tie.
+
+Use the exact same ordered `GPU_IDS` pool for both commands. Policy
+`deterministic_task_gpu_v1` maps ordered task index `i` to
+`GPU_IDS[(i - 1) % len(GPU_IDS)]`; queue descriptors carry that physical host ID and
+only the matching worker may claim them. This supports a single GPU or an ordered
+pool such as `0,1,2,3,4,5,6,7` without dynamic-scheduler drift between treatments.
+Each Apex attempt has a separate 3,600-second allowance for Apex-owned freeze,
+compile, correctness, safety, measurement, and bundle work after the inner Codex
+budget. The outer 25,200-second task budget therefore covers three
+`(3,600 agent + 3,600 Apex internal)` reservations plus a 3,600-second central
+evaluator allowance. Direct Codex does not consume the Apex allowance, but both
+treatments retain the same immutable outer policy and hard task deadline.
+
+Each run writes `campaign_manifest.yaml`, pinning the AgentKernelArena and Apex Git
+commits and clean-state digests, Codex binary hash/version/model/effort/permissions,
+the Docker reference plus its daemon-inspected content ID and repo digests, complete
+evaluator/task-package hashes, and every GPU's unique ID/serial/model/gfx plus task
+mapping. `comparison_contract_sha256` excludes the treatment template/config and
+run-specific GPU lease fields (run name, PID, timestamp, receipt hash, and lock path),
+while retaining the common lease policy, physical unique IDs, protected device paths,
+and GPU boundary-plan digest; it must match across the Apex and direct-Codex runs.
+Per-task attempt evidence remains
+under `.campaign_attempts/`. Both treatments retain a read-only session receipt
+with exact backend/model/effort and invocation identity, bounded process output,
+the same 25-turn structured-agent policy and 16 MiB inner Codex stream bound, and
+verified process-group cleanup. The Apex adapter separately caps its outer transport
+at 4 MiB. Apex receipts additionally snapshot the
+TaskSpec, TaskResult, checksummed event journal, canonical agent transcript, and
+terminal verdict lineage. A nonzero `no_gain` is invalid. Failed sessions and
+untrusted evidence remain diagnostic-only: they cannot create the ordinary task
+workspace or count as completion. Only a complete campaign gets a canonical
+copied projection of its selected attempt.
+
+The checked-in campaign workspaces and logs live under `/data/viouyang/apex/aka`, not
+the smaller home filesystem. Both repositories must be clean before formal campaign
+initialization. The runner fails closed if image inspection, repo digests, GPU identity,
+source manifests, or worker affinity cannot be proven. During a formal campaign the AKA
+checkout is mounted read-only. Bubblewrap hides the shared campaign result tree
+from each agent. Direct Codex receives only its current workspace and fresh auth-only
+home writable; its raw changes are receipted and then reduced to declared
+`source_file_path` content. Apex instead receives the scored Arena workspace through an
+explicit read-only bind: only its separate result/artifact root and fresh auth-only home
+are writable. The adapter verifies a full pre-apply workspace manifest before it may
+apply a validated Apex bundle, so `no_gain` cannot retain direct or undeclared edits.
+Both treatments use strict `approval_policy=never`, ignored user config and exec-policy
+rules, an ephemeral session, a private IPC namespace, and private `/dev/shm`. A missing
+or unusable `bwrap` fails campaign preflight.
+
+Formal GPU workers do not use `--privileged`, `/dev/mem`, or the complete `/dev/dri`
+tree. A host-resolved plan maps each physical `unique_id` through KFD topology to its
+exact (possibly non-contiguous) render nodes; Docker receives only `/dev/kfd` and those
+nodes. Container preflight requires ROCm, Torch, and KFD to agree that exactly the
+assigned physical GPU is usable. The host holds one nonblocking `flock` per physical
+unique ID for the entire runner lifetime. After acquiring those leases, it calls
+`rsmi_compute_process_info_get` directly through `librocm_smi64`, checks init, count,
+fetch, and shutdown return codes, and publishes an immutable structured KFD process
+inventory. Any reported KFD PID or any API uncertainty fails closed; `/proc/*/fd` is
+retained only as supplementary render/KFD evidence because host permissions can hide
+descriptors. It never terminates an unrelated GPU process. Boundary, process-inventory,
+and exclusivity receipts are bound into the run manifest and every attempt receipt.
+
+This comparison uses each task's AgentKernelArena-native 100-repetition timing and
+external score. It is **not** an `apex.kernel-measurement/v1` report, does not satisfy
+Apex's canonical 300-raw-sample p50/p99 grade, and must not be presented as one.
+Eligibility additionally requires identical testcase identities/counts, positive finite
+timings, 100 configured repetitions per testcase, consistent timing methods, and no
+speedup-calculation error. Compare selected results only when the two
+`comparison_contract_sha256` values match and all three sessions succeeded.
 
 ## Bundle contract
 

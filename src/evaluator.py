@@ -9,6 +9,7 @@ This module provides standardized evaluation of optimized kernels:
 - Baseline measurement for speedup calculation
 """
 import logging
+import time
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
@@ -23,6 +24,16 @@ _DEFAULT_COMPILE_TIMEOUT_S = 3600
 _DEFAULT_CORRECTNESS_TIMEOUT_S = 3600
 
 
+def _deadline_timeout(
+    configured_seconds: float,
+    deadline_monotonic: float | None,
+    clock,
+) -> float:
+    if deadline_monotonic is None:
+        return configured_seconds
+    return min(configured_seconds, max(0.0, deadline_monotonic - clock()))
+
+
 def _valid_perf_cases(cases: List[TestCaseResult]) -> List[TestCaseResult]:
     """Return only test cases with valid positive execution time."""
     valid_cases: List[TestCaseResult] = []
@@ -35,7 +46,9 @@ def _valid_perf_cases(cases: List[TestCaseResult]) -> List[TestCaseResult]:
 def evaluate_compilation(
     workspace: Path,
     task_config: Dict[str, Any],
-    logger: Optional[logging.Logger] = None
+    logger: Optional[logging.Logger] = None,
+    deadline_monotonic: float | None = None,
+    clock=time.monotonic,
 ) -> Tuple[bool, Optional[str]]:
     """
     Evaluate kernel compilation.
@@ -56,10 +69,13 @@ def evaluate_compilation(
         log.warning("No compile_command found in task config")
         return False, "No compile_command specified"
 
-    compile_timeout = int(task_config.get("compile_timeout", _DEFAULT_COMPILE_TIMEOUT_S))
+    compile_timeout = float(task_config.get("compile_timeout", _DEFAULT_COMPILE_TIMEOUT_S))
     
     for cmd in compile_commands:
-        success, stdout, stderr = run_command(cmd, workspace, timeout=compile_timeout, logger=log, extra_env=rebuild_env)
+        command_timeout = _deadline_timeout(compile_timeout, deadline_monotonic, clock)
+        if command_timeout <= 0:
+            return False, "Compilation skipped because the hard task deadline expired"
+        success, stdout, stderr = run_command(cmd, workspace, timeout=command_timeout, logger=log, extra_env=rebuild_env)
         if not success:
             error_msg = f"Compilation failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
             return False, error_msg
@@ -70,7 +86,9 @@ def evaluate_compilation(
 def evaluate_correctness(
     workspace: Path,
     task_config: Dict[str, Any],
-    logger: Optional[logging.Logger] = None
+    logger: Optional[logging.Logger] = None,
+    deadline_monotonic: float | None = None,
+    clock=time.monotonic,
 ) -> Tuple[bool, Optional[str]]:
     """
     Evaluate kernel correctness.
@@ -91,13 +109,16 @@ def evaluate_correctness(
         log.warning("No correctness_command found in task config")
         return False, "No correctness_command specified"
 
-    correctness_timeout = int(
+    correctness_timeout = float(
         task_config.get("correctness_timeout", _DEFAULT_CORRECTNESS_TIMEOUT_S)
     )
     
     for cmd in correctness_commands:
+        command_timeout = _deadline_timeout(correctness_timeout, deadline_monotonic, clock)
+        if command_timeout <= 0:
+            return False, "Correctness skipped because the hard task deadline expired"
         success, stdout, stderr = run_command(
-            cmd, workspace, timeout=correctness_timeout, logger=log, extra_env=rebuild_env
+            cmd, workspace, timeout=command_timeout, logger=log, extra_env=rebuild_env
         )
         if not success:
             error_msg = f"Correctness test failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
@@ -118,7 +139,9 @@ def evaluate_kernel(
     workspace: Path,
     task_config: Dict[str, Any],
     baseline_cases: List[TestCaseResult],
-    logger: Optional[logging.Logger] = None
+    logger: Optional[logging.Logger] = None,
+    deadline_monotonic: float | None = None,
+    clock=time.monotonic,
 ) -> Dict[str, Any]:
     """
     Standardized evaluation of optimized kernel.
@@ -157,7 +180,9 @@ def evaluate_kernel(
     
     # 1. Compilation check
     log.info("Step 1: Checking compilation...")
-    pass_compilation, comp_error = evaluate_compilation(workspace, task_config, logger)
+    pass_compilation, comp_error = evaluate_compilation(
+        workspace, task_config, logger, deadline_monotonic, clock
+    )
     results['pass_compilation'] = pass_compilation
     results['compilation_error_message'] = comp_error
     
@@ -192,7 +217,9 @@ def evaluate_kernel(
             log.warning(corr_error)
             return results
 
-    pass_correctness, corr_error = evaluate_correctness(workspace, task_config, logger)
+    pass_correctness, corr_error = evaluate_correctness(
+        workspace, task_config, logger, deadline_monotonic, clock
+    )
     results['pass_correctness'] = pass_correctness
     results['correctness_error_message'] = corr_error
     
@@ -202,7 +229,13 @@ def evaluate_kernel(
     
     # 3. Performance measurement (only if both compilation and correctness passed)
     log.info("Step 3: Measuring performance...")
-    optimized_cases = measure_performance(workspace, task_config, logger)
+    optimized_cases = measure_performance(
+        workspace,
+        task_config,
+        logger,
+        deadline_monotonic=deadline_monotonic,
+        clock=clock,
+    )
     
     if optimized_cases:
         # Save optimized results

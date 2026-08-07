@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import importlib
 import logging
+import signal
+import sys
 from pathlib import Path
 
 import pytest
@@ -18,6 +20,51 @@ apex_launcher = importlib.import_module("agents.apex.launch_agent")
 def _write_yaml(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(value, sort_keys=False), encoding="utf-8")
+
+
+def test_apex_supervisor_verifies_normal_process_group_exit(tmp_path) -> None:
+    outcome = apex_launcher._run_apex(
+        [sys.executable, "-c", "print('done')"],
+        cwd=tmp_path,
+        backend="codex",
+        timeout_seconds=5,
+        output_limit=1024,
+        logger=logging.getLogger(__name__),
+    )
+
+    assert outcome.exit_code == 0
+    assert outcome.timed_out is False
+    assert outcome.stdout == b"done\n"
+    assert outcome.cleanup["verification_performed"] is True
+    assert outcome.cleanup["verified_absent"] is True
+    assert outcome.readers_completed is True
+    assert outcome.capture_errors == ()
+
+
+def test_apex_supervisor_timeout_kills_and_verifies_process_namespace_group(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(apex_launcher, "_TERM_GRACE_SECONDS", 0.1)
+    monkeypatch.setattr(apex_launcher, "_KILL_GRACE_SECONDS", 2.0)
+    code = (
+        "import signal,time; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "time.sleep(30)"
+    )
+    outcome = apex_launcher._run_apex(
+        [sys.executable, "-c", code],
+        cwd=tmp_path,
+        backend="codex",
+        timeout_seconds=0.1,
+        output_limit=1024,
+        logger=logging.getLogger(__name__),
+    )
+
+    assert outcome.timed_out is True
+    assert outcome.exit_code == -int(signal.SIGKILL)
+    assert outcome.cleanup["sigterm_sent"] is True
+    assert outcome.cleanup["sigkill_sent"] is True
+    assert outcome.cleanup["verified_absent"] is True
 
 
 def _task(tmp_path: Path, *, task_type: str = "triton2triton") -> tuple[Path, Path]:
@@ -59,6 +106,7 @@ def _agent_config() -> dict[str, object]:
         "effort": "xhigh",
         "supported_task_types": ["triton2triton"],
         "max_iterations": 3,
+        "campaign_max_iterations": 1,
         "max_turns": 25,
         "timeout_seconds": 120,
         "compile_timeout_seconds": 10,
@@ -199,6 +247,27 @@ def test_task_spec_rejects_unsupported_type_before_subprocess(tmp_path) -> None:
             artifact_root=tmp_path / "artifacts",
             prompt="prompt",
         )
+
+
+def test_matched_campaign_forces_one_inner_apex_iteration(tmp_path) -> None:
+    workspace, config_path = _task(tmp_path)
+    task_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    artifact_root = workspace.parent / ".artifacts"
+    artifact_root.mkdir()
+    spec = apex_launcher._build_task_spec(
+        task_config_path=config_path,
+        task_config=task_config,
+        eval_config={
+            "target_gpu_model": "MI355X",
+            "campaign": {"comparison": "apex_vs_codex"},
+        },
+        agent_config=_agent_config(),
+        workspace=workspace,
+        artifact_root=artifact_root,
+        prompt="BASE PROMPT",
+    )
+
+    assert spec["budget"]["max_iterations"] == 1
 
 
 @pytest.mark.parametrize("source", ["../escape.py", "/absolute.py", "./source/kernel.py"])
@@ -495,7 +564,7 @@ def test_launch_agent_builds_spec_and_applies_candidate(tmp_path, monkeypatch) -
     assert not (workspace / "task_result.yaml").exists()
 
 
-def test_launch_agent_no_gain_leaves_workspace_at_baseline(tmp_path, monkeypatch) -> None:
+def test_launch_agent_rejects_nonzero_no_gain_and_leaves_baseline(tmp_path, monkeypatch) -> None:
     workspace, config_path = _task(tmp_path)
     apex_root = tmp_path / "apex"
     apex_root.mkdir()
@@ -530,12 +599,192 @@ def test_launch_agent_no_gain_leaves_workspace_at_baseline(tmp_path, monkeypatch
         return 4, "no gain"
 
     monkeypatch.setattr(apex_launcher, "_run_apex", fake_run)
+    with pytest.raises(apex_launcher.ApexAdapterError, match="process exit code 4"):
+        apex_launcher.launch_agent(
+            {"target_gpu_model": "MI355X"}, str(config_path), str(workspace)
+        )
+
+    assert (workspace / "source/kernel.py").read_text(encoding="utf-8") == "value = 1\n"
+
+
+def test_launch_agent_accepts_zero_exit_no_gain_outside_formal_campaign(
+    tmp_path, monkeypatch
+) -> None:
+    workspace, config_path = _task(tmp_path)
+    apex_root = tmp_path / "apex"
+    apex_root.mkdir()
+    (apex_root / "main.py").write_text("# fake entrypoint\n", encoding="utf-8")
+    monkeypatch.setenv("APEX_ROOT", str(apex_root))
+    monkeypatch.setattr(
+        apex_launcher,
+        "load_prompt_builder",
+        lambda *args, **kwargs: (lambda *a, **k: "prompt"),
+    )
+
+    def fake_run(command, *, cwd, backend, timeout_seconds, output_limit, logger):
+        del cwd, backend, timeout_seconds, output_limit, logger
+        spec_path = Path(command[command.index("--task-spec") + 1])
+        result_path = Path(command[command.index("--result-json") + 1])
+        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        result_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "task_id": spec["task_id"],
+                    "status": "no_gain",
+                    "reason_code": "baseline_is_best",
+                    "applied": False,
+                    "external_verification_required": True,
+                    "bundle_path": None,
+                    "bundle_digest": None,
+                    "changed_files": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return 0, "no gain"
+
+    monkeypatch.setattr(apex_launcher, "_run_apex", fake_run)
     output = apex_launcher.launch_agent(
         {"target_gpu_model": "MI355X"}, str(config_path), str(workspace)
     )
 
-    assert (workspace / "source/kernel.py").read_text(encoding="utf-8") == "value = 1\n"
     assert '"status": "no_gain"' in output
+    assert (workspace / "source/kernel.py").read_text(encoding="utf-8") == "value = 1\n"
+
+
+def _formal_apex_launch_fixture(tmp_path, monkeypatch, *, mutate_workspace: bool):
+    workspace, config_path = _task(tmp_path)
+    apex_root = tmp_path / "apex"
+    apex_root.mkdir()
+    (apex_root / "main.py").write_text("# fake entrypoint\n", encoding="utf-8")
+    attempt_root = workspace.parent
+    receipt_path = attempt_root / "session_receipt.json"
+    eval_config = {
+        "target_gpu_model": "MI355X",
+        "campaign": {
+            "comparison": "apex_vs_codex",
+            "apex_internal_allowance_seconds": 3600,
+        },
+        "campaign_attempt": {
+            "fresh_session": True,
+            "receipt_path": str(receipt_path),
+        },
+    }
+    captured: dict[str, object] = {}
+    monkeypatch.setenv("APEX_ROOT", str(apex_root))
+    monkeypatch.setattr(
+        apex_launcher,
+        "load_prompt_builder",
+        lambda *args, **kwargs: (lambda *a, **k: "formal prompt"),
+    )
+    monkeypatch.setattr(apex_launcher, "formal_gpu_evidence", lambda config: {})
+
+    def fake_home(config, *, backend):
+        del config, backend
+        home = attempt_root / ".agent-home"
+        home.mkdir()
+        return home
+
+    def fake_wrap(
+        command, *, eval_config, writable_roots, read_only_roots=()
+    ):
+        del eval_config
+        captured["writable_roots"] = tuple(Path(path) for path in writable_roots)
+        captured["read_only_roots"] = tuple(Path(path) for path in read_only_roots)
+        return command
+
+    def fake_run(command, **kwargs):
+        del kwargs
+        spec_path = Path(command[command.index("--task-spec") + 1])
+        result_path = Path(command[command.index("--result-json") + 1])
+        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        captured["spec"] = spec
+        if mutate_workspace:
+            (workspace / "undeclared-agent-file.txt").write_text(
+                "must never survive as a scoreable no_gain\n", encoding="utf-8"
+            )
+        result_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "task_id": spec["task_id"],
+                    "status": "no_gain",
+                    "reason_code": "baseline_is_best",
+                    "applied": False,
+                    "external_verification_required": True,
+                    "bundle_path": None,
+                    "bundle_digest": None,
+                    "changed_files": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return 0, "formal apex output"
+
+    def fake_lineage(**kwargs):
+        del kwargs
+        return {
+            "codex": {},
+            "invocation": {},
+            "journal_path": attempt_root / "unused.sqlite",
+            "journal_head_event_id": "event-1",
+            "journal_head_checksum": "a" * 64,
+            "event_count": 1,
+            "transcript_bytes": b"{}",
+            "transcript_digest": "b" * 64,
+            "event_artifact_digests": [],
+        }
+
+    def fake_receipt(**kwargs):
+        captured["receipt"] = json.loads(json.dumps(kwargs["receipt"]))
+
+    monkeypatch.setattr(apex_launcher, "prepare_attempt_home", fake_home)
+    monkeypatch.setattr(apex_launcher, "wrap_attempt_command", fake_wrap)
+    monkeypatch.setattr(apex_launcher, "_run_apex", fake_run)
+    monkeypatch.setattr(apex_launcher, "_validate_apex_lineage", fake_lineage)
+    monkeypatch.setattr(apex_launcher, "_write_apex_attempt_receipt", fake_receipt)
+    return workspace, config_path, receipt_path, eval_config, captured
+
+
+def test_formal_apex_mount_contract_keeps_scored_workspace_read_only(
+    tmp_path, monkeypatch
+) -> None:
+    workspace, config_path, receipt_path, eval_config, captured = (
+        _formal_apex_launch_fixture(tmp_path, monkeypatch, mutate_workspace=False)
+    )
+
+    output = apex_launcher.launch_agent(eval_config, str(config_path), str(workspace))
+
+    spec = captured["spec"]
+    artifact_root = Path(spec["results_dir"])
+    attempt_home = receipt_path.parent / ".agent-home"
+    assert captured["writable_roots"] == (artifact_root, attempt_home)
+    assert captured["read_only_roots"] == (workspace,)
+    assert receipt_path.parent not in captured["writable_roots"]
+    assert workspace not in captured["writable_roots"]
+    integrity = captured["receipt"]["workspace_integrity"]
+    assert integrity["pre_apply_unchanged"] is True
+    assert integrity["pre_apply_manifest_sha256"] == integrity["baseline_manifest_sha256"]
+    assert '"status": "no_gain"' in output
+
+
+def test_formal_apex_rejects_no_gain_after_direct_workspace_mutation(
+    tmp_path, monkeypatch
+) -> None:
+    workspace, config_path, _, eval_config, captured = _formal_apex_launch_fixture(
+        tmp_path, monkeypatch, mutate_workspace=True
+    )
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="scored workspace changed before adapter-owned bundle apply",
+    ):
+        apex_launcher.launch_agent(eval_config, str(config_path), str(workspace))
+
+    assert (workspace / "undeclared-agent-file.txt").is_file()
+    assert captured["receipt"]["session_succeeded"] is False
+    assert captured["receipt"]["workspace_integrity"]["pre_apply_unchanged"] is False
 
 
 def test_launch_agent_does_not_turn_infrastructure_error_into_baseline_score(
@@ -596,6 +845,13 @@ def test_matched_benchmark_configs_have_identical_ten_tasks() -> None:
     assert len(apex["tasks"]) == 10
     assert len(set(apex["tasks"])) == 10
     assert all(task.startswith("triton2triton/vllm/") for task in apex["tasks"])
+    assert apex["workspace_directory_prefix"] == "/data/viouyang/apex/aka/workspace"
+    assert Path(
+        f"{apex['workspace_directory_prefix']}_{apex['target_gpu_model']}_apex"
+    ).is_absolute()
+    assert Path(
+        f"{codex['workspace_directory_prefix']}_{codex['target_gpu_model']}_codex"
+    ).is_absolute()
     for task in apex["tasks"]:
         task_root = root / "tasks" / task
         task_config = yaml.safe_load(
@@ -616,8 +872,32 @@ def test_matched_benchmark_configs_have_identical_ten_tasks() -> None:
     )
     assert apex_agent["model"] == codex_agent["model"] == "gpt-5.5"
     assert apex_agent["effort"] == codex_agent["effort"] == "xhigh"
+    assert (
+        apex_agent["permission_mode"]
+        == codex_agent["permission_mode"]
+        == "workspace_write_isolated"
+    )
     assert apex_agent["timeout_seconds"] == codex_agent["timeout_seconds"] == 3600
-    assert apex_agent["max_iterations"] == 1
+    assert (
+        apex_agent["structured_stream_output_limit_bytes"]
+        == codex_agent["structured_stream_output_limit_bytes"]
+        == 16 * 1024 * 1024
+    )
+    assert apex_agent["campaign_max_iterations"] == 1
+    assert codex_agent["campaign_max_iterations"] == 1
+    assert apex["campaign"] == codex["campaign"]
+    assert apex["campaign"] == {
+        "comparison": "apex_vs_codex",
+        "attempts": 3,
+        "attempt_timeout_seconds": 3600,
+        "apex_internal_allowance_seconds": 3600,
+        "task_timeout_seconds": 25200,
+        "evaluator_allowance_seconds": 3600,
+        "selection_policy": "correctness_then_measured_rate_v1",
+        "workspace_policy": "fresh_per_attempt",
+        "gpu_policy": "deterministic_task_gpu_v1",
+        "require_clean_checkouts": True,
+    }
 
 
 def test_backend_environment_drops_unselected_credentials(monkeypatch) -> None:

@@ -17,13 +17,16 @@ import logging
 import os
 import re
 import shlex
+import shutil
 import signal
+import sqlite3
 import stat
 import subprocess
 import sys
 import threading
 import time
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
@@ -32,14 +35,26 @@ import yaml
 
 from agents import register_agent
 from src.module_registration import AgentType, load_prompt_builder
+from src.campaign_isolation import (
+    formal_gpu_evidence,
+    is_formal_campaign,
+    isolated_environment,
+    prepare_attempt_home,
+    wrap_attempt_command,
+)
 
 
 _SCHEMA_VERSION = 1
 _DEFAULT_RESULT_LIMIT = 8 * 1024 * 1024
 _DEFAULT_BUNDLE_LIMIT = 64 * 1024 * 1024
 _DEFAULT_OUTPUT_LIMIT = 4 * 1024 * 1024
+_MAX_WORKSPACE_FILES = 20_000
+_MAX_WORKSPACE_BYTES = 2 * 1024 * 1024 * 1024
 _NORMAL_NO_PATCH_STATUSES = {"no_gain"}
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v1"
+_TERM_GRACE_SECONDS = 10.0
+_KILL_GRACE_SECONDS = 5.0
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _SHELL_OPERATOR_TOKENS = {
     "|",
@@ -57,6 +72,28 @@ _SHELL_OPERATOR_TOKENS = {
 
 class ApexAdapterError(RuntimeError):
     """Raised when the Apex handoff or returned bundle violates the contract."""
+
+
+@dataclass(frozen=True)
+class ApexProcessOutcome:
+    exit_code: int | None
+    stdout: bytes
+    stderr: bytes
+    timed_out: bool
+    cleanup: dict[str, Any]
+    readers_completed: bool
+    capture_errors: tuple[str, ...]
+
+    @property
+    def output(self) -> str:
+        return "\n".join(
+            part
+            for part in (
+                self.stdout.decode("utf-8", "replace"),
+                self.stderr.decode("utf-8", "replace"),
+            )
+            if part
+        )
 
 
 def _reject_json_constant(value: str) -> None:
@@ -100,6 +137,36 @@ def _canonical_digest(value: Any) -> str:
         ensure_ascii=False,
     ).encode("utf-8")
     return _sha256_bytes(payload)
+
+
+def _workspace_manifest(workspace: Path) -> dict[str, dict[str, Any]]:
+    """Freeze the complete scored tree before an untrusted Apex subprocess."""
+    manifest: dict[str, dict[str, Any]] = {}
+    total_size = 0
+    try:
+        paths = sorted(workspace.rglob("*"))
+        for path in paths:
+            relative = path.relative_to(workspace).as_posix()
+            metadata = path.lstat()
+            if stat.S_ISLNK(metadata.st_mode):
+                raise ApexAdapterError(f"workspace contains a symlink: {relative}")
+            if stat.S_ISDIR(metadata.st_mode):
+                continue
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                raise ApexAdapterError(f"workspace contains an unsafe file: {relative}")
+            total_size += metadata.st_size
+            if len(manifest) >= _MAX_WORKSPACE_FILES or total_size > _MAX_WORKSPACE_BYTES:
+                raise ApexAdapterError("workspace manifest exceeds formal campaign limits")
+            manifest[relative] = {
+                "sha256": _sha256_file(path),
+                "size_bytes": metadata.st_size,
+                "mode": format(stat.S_IMODE(metadata.st_mode), "04o"),
+            }
+    except OSError as error:
+        raise ApexAdapterError(f"cannot freeze scored workspace: {error}") from error
+    if not manifest:
+        raise ApexAdapterError("formal Apex workspace is empty")
+    return manifest
 
 
 def _atomic_write_json(path: Path, value: Any) -> None:
@@ -317,6 +384,10 @@ def _build_task_spec(
             f"Apex backend must be codex, claude, or cursor; got {backend!r}"
         )
     task_id = _task_id(task_config_path)
+    campaign = eval_config.get("campaign") or {}
+    iteration_budget = int(agent_config.get("max_iterations", 1))
+    if campaign.get("comparison") == "apex_vs_codex":
+        iteration_budget = int(agent_config.get("campaign_max_iterations", 0))
     return {
         "schema_version": _SCHEMA_VERSION,
         "task_id": task_id,
@@ -335,7 +406,7 @@ def _build_task_spec(
             "effort": agent_config.get("effort"),
         },
         "budget": {
-            "max_iterations": int(agent_config.get("max_iterations", 1)),
+            "max_iterations": iteration_budget,
             "max_turns": int(agent_config.get("max_turns", 25)),
             "timeout_seconds": int(agent_config.get("timeout_seconds", 3600)),
         },
@@ -361,6 +432,9 @@ def _build_task_spec(
 
 
 def _process_group_exists(process_group_id: int) -> bool:
+    live_members = _linux_live_process_group_members(process_group_id)
+    if live_members is not None:
+        return live_members
     try:
         os.killpg(process_group_id, 0)
     except ProcessLookupError:
@@ -370,26 +444,83 @@ def _process_group_exists(process_group_id: int) -> bool:
     return True
 
 
-def _terminate_process_group(process: subprocess.Popen[bytes], logger: logging.Logger) -> None:
+def _linux_live_process_group_members(process_group_id: int) -> bool | None:
+    """Distinguish executable processes from harmless unreaped zombies on Linux."""
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return None
+    try:
+        entries = list(proc.iterdir())
+    except OSError:
+        return None
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            stat_line = (entry / "stat").read_text(encoding="utf-8")
+            fields = stat_line[stat_line.rfind(")") + 2 :].split()
+            state = fields[0]
+            observed_group = int(fields[2])
+        except (OSError, ValueError, IndexError):
+            continue
+        if observed_group == process_group_id and state != "Z":
+            return True
+    return False
+
+
+def _wait_for_process_group_exit(
+    process: subprocess.Popen[bytes], process_group_id: int, timeout: float
+) -> bool:
+    deadline = time.monotonic() + timeout
+    while True:
+        process.poll()
+        if not _process_group_exists(process_group_id):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+
+
+def _terminate_process_group(
+    process: subprocess.Popen[bytes],
+    logger: logging.Logger,
+    *,
+    reason: str,
+) -> dict[str, Any]:
     process_group_id = process.pid
+    cleanup: dict[str, Any] = {
+        "required": True,
+        "reason": reason,
+        "pgid": process_group_id,
+        "sigterm_sent": False,
+        "sigkill_sent": False,
+        "verification_performed": True,
+        "verified_absent": False,
+    }
     if not _process_group_exists(process_group_id):
         process.poll()
-        return
+        cleanup["verified_absent"] = True
+        return cleanup
     try:
         os.killpg(process_group_id, signal.SIGTERM)
+        cleanup["sigterm_sent"] = True
     except ProcessLookupError:
-        return
-    deadline = time.monotonic() + 10
-    while time.monotonic() < deadline and _process_group_exists(process_group_id):
-        process.poll()
-        time.sleep(0.1)
-    if not _process_group_exists(process_group_id):
-        return
+        cleanup["verified_absent"] = not _process_group_exists(process_group_id)
+        return cleanup
+    if _wait_for_process_group_exit(process, process_group_id, _TERM_GRACE_SECONDS):
+        cleanup["verified_absent"] = True
+        return cleanup
     logger.warning("Force killing Apex process group")
     try:
         os.killpg(process_group_id, signal.SIGKILL)
+        cleanup["sigkill_sent"] = True
     except ProcessLookupError:
-        return
+        cleanup["verified_absent"] = not _process_group_exists(process_group_id)
+        return cleanup
+    cleanup["verified_absent"] = _wait_for_process_group_exit(
+        process, process_group_id, _KILL_GRACE_SECONDS
+    )
+    return cleanup
 
 
 def _capture_stream(
@@ -398,6 +529,7 @@ def _capture_stream(
     label: str,
     limit: int,
     chunks: list[bytes],
+    errors: list[str],
     logger,
 ) -> None:
     captured = 0
@@ -418,8 +550,13 @@ def _capture_stream(
             if len(chunk) > max(remaining, 0) and not warned:
                 warned = True
                 logger(f"{label} output truncated at {limit} bytes")
+    except Exception as error:
+        errors.append(f"{label}: {type(error).__name__}: {error}")
     finally:
-        stream.close()
+        try:
+            stream.close()
+        except Exception as error:
+            errors.append(f"{label} close: {type(error).__name__}: {error}")
 
 
 def _subprocess_environment(backend: str) -> dict[str, str]:
@@ -443,23 +580,25 @@ def _run_apex(
     *,
     cwd: Path,
     backend: str,
-    timeout_seconds: int,
+    timeout_seconds: float,
     output_limit: int,
     logger: logging.Logger,
-) -> tuple[int, str]:
+    environment: dict[str, str] | None = None,
+) -> ApexProcessOutcome:
     process = subprocess.Popen(
         command,
         cwd=str(cwd),
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env=_subprocess_environment(backend),
+        env=environment or _subprocess_environment(backend),
         start_new_session=True,
     )
     assert process.stdout is not None
     assert process.stderr is not None
     stdout: list[bytes] = []
     stderr: list[bytes] = []
+    capture_errors: list[str] = []
     stdout_thread = threading.Thread(
         target=_capture_stream,
         kwargs={
@@ -467,6 +606,7 @@ def _run_apex(
             "label": "[APEX]",
             "limit": output_limit,
             "chunks": stdout,
+            "errors": capture_errors,
             "logger": logger.info,
         },
         daemon=True,
@@ -478,6 +618,7 @@ def _run_apex(
             "label": "[APEX STDERR]",
             "limit": output_limit,
             "chunks": stderr,
+            "errors": capture_errors,
             "logger": logger.warning,
         },
         daemon=True,
@@ -485,21 +626,75 @@ def _run_apex(
     stdout_thread.start()
     stderr_thread.start()
     timed_out = False
+    cleanup: dict[str, Any] = {
+        "required": False,
+        "reason": "normal_exit",
+        "pgid": process.pid,
+        "sigterm_sent": False,
+        "sigkill_sent": False,
+        "verification_performed": False,
+        "verified_absent": False,
+    }
     try:
         process.wait(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
         timed_out = True
-    finally:
-        _terminate_process_group(process, logger)
-        stdout_thread.join(timeout=2)
-        stderr_thread.join(timeout=2)
-    if timed_out:
-        raise TimeoutError(f"Apex timed out after {timeout_seconds} seconds")
-    output = b"".join(stdout).decode("utf-8", "replace")
-    error_output = b"".join(stderr).decode("utf-8", "replace")
-    return int(process.returncode or 0), "\n".join(
-        part for part in (output, error_output) if part
+        cleanup = _terminate_process_group(process, logger, reason="timeout")
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            cleanup["verified_absent"] = False
+    else:
+        cleanup["verification_performed"] = True
+        cleanup["verified_absent"] = not _process_group_exists(process.pid)
+        if not cleanup["verified_absent"]:
+            cleanup = _terminate_process_group(
+                process, logger, reason="post_exit_lingering_group"
+            )
+    stdout_thread.join(timeout=5)
+    stderr_thread.join(timeout=5)
+    readers_completed = not stdout_thread.is_alive() and not stderr_thread.is_alive()
+    if not readers_completed:
+        capture_errors.append("stream readers did not reach EOF")
+    return ApexProcessOutcome(
+        exit_code=process.returncode,
+        stdout=b"".join(stdout),
+        stderr=b"".join(stderr),
+        timed_out=timed_out,
+        cleanup=cleanup,
+        readers_completed=readers_completed,
+        capture_errors=tuple(capture_errors),
     )
+
+
+def _normalize_process_outcome(value: Any) -> ApexProcessOutcome:
+    """Keep ordinary adapter unit fixtures terse; production always returns evidence."""
+    if isinstance(value, ApexProcessOutcome):
+        return value
+    if (
+        isinstance(value, tuple)
+        and len(value) == 2
+        and isinstance(value[0], int)
+        and isinstance(value[1], str)
+    ):
+        return ApexProcessOutcome(
+            exit_code=value[0],
+            stdout=value[1].encode("utf-8"),
+            stderr=b"",
+            timed_out=False,
+            cleanup={
+                "required": False,
+                "reason": "test_fixture",
+                "pgid": None,
+                "sigterm_sent": False,
+                "sigkill_sent": False,
+                "verification_performed": True,
+                "verified_absent": True,
+            },
+            readers_completed=True,
+            capture_errors=(),
+        )
+    raise ApexAdapterError("Apex process supervisor returned an invalid outcome")
 
 
 def _read_regular_json(path: Path, *, size_limit: int, label: str) -> dict[str, Any]:
@@ -522,6 +717,387 @@ def _read_regular_json(path: Path, *, size_limit: int, label: str) -> dict[str, 
     if not isinstance(value, dict):
         raise ApexAdapterError(f"{label} must contain a JSON object: {path}")
     return value
+
+
+def _canonical_json_digest(value: Any) -> str:
+    return _sha256_bytes(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+
+
+def _regular_path_below(root: Path, raw: Any, *, label: str) -> Path:
+    if not isinstance(raw, str) or not Path(raw).is_absolute():
+        raise ApexAdapterError(f"{label} must be an absolute path")
+    root = root.resolve(strict=True)
+    try:
+        path = Path(raw).resolve(strict=True)
+        path.relative_to(root)
+        metadata = path.lstat()
+    except (OSError, ValueError) as error:
+        raise ApexAdapterError(f"{label} is outside the Apex artifact root") from error
+    if not stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+        raise ApexAdapterError(f"{label} must be a regular non-symlink file")
+    if metadata.st_nlink != 1:
+        raise ApexAdapterError(f"{label} must not be hard-linked")
+    return path
+
+
+def _verify_artifact_receipt(
+    *, artifact_store: Path, receipt: Any, label: str
+) -> tuple[Path, bytes]:
+    if not isinstance(receipt, dict):
+        raise ApexAdapterError(f"{label} artifact receipt is missing")
+    digest = receipt.get("digest")
+    size = receipt.get("size")
+    relative = receipt.get("relative_path")
+    if (
+        not isinstance(digest, str)
+        or not _SHA256.fullmatch(digest)
+        or isinstance(size, bool)
+        or not isinstance(size, int)
+        or size < 0
+        or relative != f"sha256/{digest[:2]}/{digest}"
+    ):
+        raise ApexAdapterError(f"{label} artifact receipt is malformed")
+    path = _regular_path_below(
+        artifact_store,
+        str(artifact_store / relative),
+        label=f"{label} artifact",
+    )
+    content = path.read_bytes()
+    if len(content) != size or _sha256_bytes(content) != digest:
+        raise ApexAdapterError(f"{label} artifact receipt does not match stored bytes")
+    return path, content
+
+
+def _validate_apex_lineage(
+    *, result: dict[str, Any], task_spec: dict[str, Any], artifact_root: Path
+) -> dict[str, Any]:
+    """Validate Apex's terminal result through its journal and transcript CAS."""
+    status = result.get("status")
+    expected_verdict = {"candidate_ready": "keep", "no_gain": "revert"}.get(status)
+    if expected_verdict is None:
+        raise ApexAdapterError("only terminal candidate_ready/no_gain lineage is scoreable")
+    if result.get("error") is not None:
+        raise ApexAdapterError("successful Apex terminal result must have error=null")
+    baseline = result.get("baseline_lock")
+    if not isinstance(baseline, dict) or baseline.get("file_hashes") != task_spec["baseline"]["file_hashes"]:
+        raise ApexAdapterError("Apex result baseline_lock does not match TaskSpec")
+    if result.get("internal_verdict") != expected_verdict:
+        raise ApexAdapterError(
+            f"Apex {status} requires internal_verdict={expected_verdict}"
+        )
+
+    journal_ref = result.get("event_journal_ref")
+    store_ref = result.get("artifact_store_ref")
+    if not isinstance(journal_ref, dict) or not isinstance(store_ref, dict):
+        raise ApexAdapterError("Apex result is missing journal/artifact lineage")
+    journal = _regular_path_below(
+        artifact_root, journal_ref.get("path"), label="event journal"
+    )
+    store_raw = store_ref.get("path")
+    if not isinstance(store_raw, str) or not Path(store_raw).is_absolute():
+        raise ApexAdapterError("artifact store reference must be absolute")
+    store = Path(store_raw).resolve(strict=True)
+    try:
+        store.relative_to(artifact_root.resolve(strict=True))
+        store_metadata = store.lstat()
+    except (OSError, ValueError) as error:
+        raise ApexAdapterError("artifact store is outside the Apex artifact root") from error
+    if not stat.S_ISDIR(store_metadata.st_mode) or stat.S_ISLNK(store_metadata.st_mode):
+        raise ApexAdapterError("artifact store must be a regular directory")
+
+    uri = f"file:{journal.as_posix()}?mode=ro&immutable=1"
+    try:
+        connection = sqlite3.connect(uri, uri=True)
+        connection.row_factory = sqlite3.Row
+        event_rows = connection.execute(
+            "SELECT * FROM events WHERE run_id = ? ORDER BY sequence",
+            (result.get("run_id"),),
+        ).fetchall()
+        transaction_rows = connection.execute(
+            "SELECT * FROM transactions ORDER BY first_sequence"
+        ).fetchall()
+    except sqlite3.Error as error:
+        raise ApexAdapterError(f"cannot read Apex event journal: {error}") from error
+    finally:
+        try:
+            connection.close()
+        except UnboundLocalError:
+            pass
+    if not event_rows:
+        raise ApexAdapterError("Apex event journal has no events for result run_id")
+
+    events: list[dict[str, Any]] = []
+    transaction_events: dict[str, list[dict[str, Any]]] = {}
+    previous_id: str | None = None
+    previous_sequence = 0
+    for row in event_rows:
+        try:
+            payload = json.loads(str(row["payload_json"]))
+        except (json.JSONDecodeError, TypeError) as error:
+            raise ApexAdapterError("Apex journal contains malformed payload JSON") from error
+        event = {
+            "sequence": int(row["sequence"]),
+            "event_id": str(row["event_id"]),
+            "run_id": str(row["run_id"]),
+            "event_type": str(row["event_type"]),
+            "payload": payload,
+            "parent_event_id": row["parent_event_id"],
+            "idempotency_key": str(row["idempotency_key"]),
+            "transaction_id": str(row["transaction_id"]),
+            "created_at_ns": int(row["created_at_ns"]),
+            "checksum": str(row["checksum"]),
+        }
+        checksum_material = {key: value for key, value in event.items() if key != "checksum"}
+        if event["checksum"] != _canonical_json_digest(checksum_material):
+            raise ApexAdapterError("Apex journal event checksum mismatch")
+        if event["sequence"] <= previous_sequence or event["parent_event_id"] != previous_id:
+            raise ApexAdapterError("Apex journal sequence/parent chain is invalid")
+        previous_sequence = event["sequence"]
+        previous_id = event["event_id"]
+        events.append(event)
+        transaction_events.setdefault(event["transaction_id"], []).append(event)
+
+    transactions = {str(row["transaction_id"]): row for row in transaction_rows}
+    if set(transactions) != set(transaction_events):
+        raise ApexAdapterError("Apex journal transaction set is inconsistent")
+    for transaction_id, tx_events in transaction_events.items():
+        row = transactions[transaction_id]
+        expected = _canonical_json_digest(
+            {
+                "transaction_id": transaction_id,
+                "event_checksums": [event["checksum"] for event in tx_events],
+            }
+        )
+        if (
+            int(row["first_sequence"]) != tx_events[0]["sequence"]
+            or int(row["last_sequence"]) != tx_events[-1]["sequence"]
+            or int(row["event_count"]) != len(tx_events)
+            or str(row["checksum"]) != expected
+        ):
+            raise ApexAdapterError("Apex journal transaction checksum/bounds mismatch")
+
+    head = events[-1]
+    if (
+        journal_ref.get("head_event_id") != head["event_id"]
+        or journal_ref.get("head_checksum") != head["checksum"]
+    ):
+        raise ApexAdapterError("Apex result journal head does not match verified journal")
+    verdict_ref = result.get("internal_verdict_ref")
+    verdict_events = [event for event in events if event["event_id"] == verdict_ref]
+    if len(verdict_events) != 1 or verdict_events[0]["event_type"] not in {
+        "decision",
+        "action.aborted",
+        "action.failed",
+    }:
+        raise ApexAdapterError("Apex internal_verdict_ref is not a terminal decision event")
+    verdict_payload = verdict_events[0]["payload"]
+    if verdict_payload.get("verdict", expected_verdict) != expected_verdict:
+        raise ApexAdapterError("Apex terminal decision disagrees with result verdict")
+
+    completed = [event for event in events if event["event_type"] == "agent_completed"]
+    failed = [event for event in events if event["event_type"] == "agent_failed"]
+    if len(completed) != 1 or failed:
+        raise ApexAdapterError("formal Apex attempt requires exactly one successful agent invocation")
+    payload = completed[0]["payload"]
+    expected_options = task_spec["agent_options"]
+    if (
+        payload.get("backend") != task_spec["agent_backend"]
+        or payload.get("model") != expected_options.get("model")
+        or payload.get("effort") != expected_options.get("effort")
+        or payload.get("exit_code") != 0
+        or payload.get("timed_out") is not False
+        or payload.get("budget_exceeded") is not False
+        or payload.get("budget_enforcement_failed") is not False
+    ):
+        raise ApexAdapterError("Apex agent_completed outcome/identity is inconsistent")
+    invocation = payload.get("invocation")
+    if not isinstance(invocation, dict) or invocation.get("schema") != "apex.agent-invocation/v1":
+        raise ApexAdapterError("Apex agent invocation receipt is missing")
+    expected_isolation = {
+        "approval": "never_via_strict_config",
+        "execpolicy_rules": "ignored",
+        "project_instructions": "backend_default_may_load",
+        "response_token_limit": "not_supported_context_advisory_only",
+        "sandbox": "workspace-write",
+        "session": "ephemeral",
+        "user_config": "ignored",
+    }
+    argv = invocation.get("argv")
+    if (
+        invocation.get("cli_name") != "codex"
+        or not isinstance(invocation.get("cli_version"), str)
+        or not invocation["cli_version"].strip()
+        or not isinstance(invocation.get("entrypoint_sha256"), str)
+        or not _SHA256.fullmatch(invocation["entrypoint_sha256"])
+        or invocation.get("max_turns") != task_spec["budget"]["max_turns"]
+        or invocation.get("isolation") != expected_isolation
+        or not isinstance(argv, list)
+        or "--strict-config" not in argv
+        or "--ignore-user-config" not in argv
+        or "--ignore-rules" not in argv
+        or "--ephemeral" not in argv
+    ):
+        raise ApexAdapterError("Apex Codex invocation does not meet the campaign contract")
+    executed = Path(str(invocation.get("resolved_executable_path", "")))
+    if not executed.is_absolute() or not executed.is_file() or _sha256_file(executed) != invocation["entrypoint_sha256"]:
+        raise ApexAdapterError("Apex Codex entrypoint identity is not reproducible")
+
+    bindings = payload.get("artifacts")
+    if not isinstance(bindings, list):
+        raise ApexAdapterError("Apex agent_completed artifacts are missing")
+    transcript_bindings = [
+        item
+        for item in bindings
+        if isinstance(item, dict) and item.get("role") == "agent_transcript"
+    ]
+    if len(transcript_bindings) != 1:
+        raise ApexAdapterError("Apex agent transcript binding is not unique")
+    transcript_path, transcript_bytes = _verify_artifact_receipt(
+        artifact_store=store,
+        receipt=transcript_bindings[0].get("receipt"),
+        label="agent transcript",
+    )
+    try:
+        transcript = json.loads(transcript_bytes)
+    except json.JSONDecodeError as error:
+        raise ApexAdapterError("Apex agent transcript is not valid JSON") from error
+    if (
+        not isinstance(transcript, dict)
+        or transcript.get("schema") != "apex.agent-transcript/v1"
+        or transcript.get("backend") != task_spec["agent_backend"]
+        or transcript.get("model") != expected_options.get("model")
+        or transcript.get("effort") != expected_options.get("effort")
+        or transcript.get("invocation") != invocation
+    ):
+        raise ApexAdapterError("Apex transcript does not bind the verified invocation")
+
+    declared_receipts = store_ref.get("receipt_digests")
+    if not isinstance(declared_receipts, list) or any(
+        not isinstance(value, str) or not _SHA256.fullmatch(value)
+        for value in declared_receipts
+    ):
+        raise ApexAdapterError("Apex result artifact receipt set is malformed")
+    for digest in declared_receipts:
+        artifact = store / "sha256" / digest[:2] / digest
+        _regular_path_below(store, str(artifact), label="declared result artifact")
+        if _sha256_file(artifact) != digest:
+            raise ApexAdapterError("Apex result artifact digest mismatch")
+
+    event_artifact_digests: set[str] = set()
+    for event in events:
+        raw_bindings = event["payload"].get("artifacts", [])
+        if not isinstance(raw_bindings, list):
+            raise ApexAdapterError("Apex event artifact bindings are malformed")
+        for index, binding in enumerate(raw_bindings):
+            if not isinstance(binding, dict):
+                raise ApexAdapterError("Apex event artifact binding is malformed")
+            _, _ = _verify_artifact_receipt(
+                artifact_store=store,
+                receipt=binding.get("receipt"),
+                label=f"event {event['event_id']} artifact {index}",
+            )
+            event_artifact_digests.add(binding["receipt"]["digest"])
+
+    return {
+        "journal_path": journal,
+        "journal_head_event_id": head["event_id"],
+        "journal_head_checksum": head["checksum"],
+        "event_count": len(events),
+        "transcript_path": transcript_path,
+        "transcript_bytes": transcript_bytes,
+        "transcript_digest": _sha256_bytes(transcript_bytes),
+        "event_artifact_digests": sorted(event_artifact_digests),
+        "invocation": invocation,
+        "codex": {
+            "binary_sha256": invocation["entrypoint_sha256"],
+            "version": invocation["cli_version"],
+            "model": transcript["model"],
+            "effort": transcript["effort"],
+        },
+    }
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _write_read_only_atomic(path: Path, payload: bytes) -> dict[str, Any]:
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("xb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.chmod(0o444)
+        os.link(temporary, path, follow_symlinks=False)
+        _fsync_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return {
+        "path": str(path.resolve()),
+        "sha256": _sha256_bytes(payload),
+        "size_bytes": len(payload),
+        "mode": "0444",
+    }
+
+
+def _write_apex_attempt_receipt(
+    *,
+    receipt_path: Path,
+    task_spec_path: Path,
+    result_path: Path,
+    outcome: ApexProcessOutcome,
+    receipt: dict[str, Any],
+    lineage: dict[str, Any] | None,
+) -> None:
+    if receipt_path.exists():
+        raise ApexAdapterError(f"Apex attempt receipt already exists: {receipt_path}")
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_dir = receipt_path.parent / f".{receipt_path.stem}.artifacts"
+    try:
+        artifact_dir.mkdir(mode=0o700)
+    except FileExistsError as error:
+        raise ApexAdapterError(f"Apex receipt artifact directory exists: {artifact_dir}") from error
+    artifacts = {
+        "task_spec": _write_read_only_atomic(
+            artifact_dir / "task_spec.json", task_spec_path.read_bytes()
+        ),
+        "apex_stdout": _write_read_only_atomic(
+            artifact_dir / "apex_stdout.txt", outcome.stdout
+        ),
+        "apex_stderr": _write_read_only_atomic(
+            artifact_dir / "apex_stderr.txt", outcome.stderr
+        ),
+    }
+    if result_path.is_file():
+        artifacts["apex_result"] = _write_read_only_atomic(
+            artifact_dir / "apex_result.json", result_path.read_bytes()
+        )
+    if lineage is not None:
+        artifacts["event_journal"] = _write_read_only_atomic(
+            artifact_dir / "event_journal.sqlite",
+            Path(lineage["journal_path"]).read_bytes(),
+        )
+        artifacts["agent_transcript"] = _write_read_only_atomic(
+            artifact_dir / "agent_transcript.json", lineage["transcript_bytes"]
+        )
+    receipt["artifacts"] = artifacts
+    payload = (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    _write_read_only_atomic(receipt_path, payload)
+    artifact_dir.chmod(0o555)
+    _fsync_directory(artifact_dir.parent)
 
 
 def _bundle_files(root: Path, *, size_limit: int) -> set[str]:
@@ -817,6 +1393,8 @@ def launch_agent(
     workspace_path = Path(workspace).resolve()
     if not workspace_path.is_dir():
         raise ApexAdapterError(f"Arena workspace does not exist: {workspace_path}")
+    formal_campaign = is_formal_campaign(eval_config)
+    workspace_before = _workspace_manifest(workspace_path) if formal_campaign else None
 
     run_id = (
         datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -852,7 +1430,44 @@ def launch_agent(
         str(result_path),
         "--non-interactive",
     ]
-    timeout_seconds = int(agent_config.get("timeout_seconds", 14400))
+    gpu_evidence = formal_gpu_evidence(eval_config) if formal_campaign else None
+    inner_agent_timeout = int(agent_config.get("timeout_seconds", 3600))
+    internal_allowance = 0
+    if formal_campaign:
+        campaign = eval_config.get("campaign") or {}
+        internal_allowance = int(campaign.get("apex_internal_allowance_seconds", 0))
+        if inner_agent_timeout != 3600 or internal_allowance != 3600:
+            raise ApexAdapterError(
+                "formal campaign requires independent 3600-second agent and Apex evaluator budgets"
+            )
+    outer_timeout_contract = float(inner_agent_timeout + internal_allowance)
+    timeout_seconds = outer_timeout_contract
+    campaign_attempt = eval_config.get("campaign_attempt") or {}
+    deadline = campaign_attempt.get("task_deadline_monotonic")
+    if deadline is not None:
+        remaining = float(deadline) - time.monotonic()
+        if remaining <= 0:
+            raise ApexAdapterError("hard task deadline expired before Apex launch")
+        timeout_seconds = min(timeout_seconds, remaining)
+    receipt_path: Path | None = None
+    attempt_home: Path | None = None
+    process_environment = _subprocess_environment(task_spec["agent_backend"])
+    isolated_command = command
+    if formal_campaign:
+        raw_receipt = campaign_attempt.get("receipt_path")
+        if not isinstance(raw_receipt, str) or not Path(raw_receipt).is_absolute():
+            raise ApexAdapterError("formal campaign requires an absolute attempt receipt path")
+        receipt_path = Path(raw_receipt)
+        attempt_home = prepare_attempt_home(eval_config, backend=task_spec["agent_backend"])
+        if attempt_home is None:
+            raise ApexAdapterError("formal campaign did not create an isolated agent home")
+        process_environment = isolated_environment(process_environment, attempt_home)
+        isolated_command = wrap_attempt_command(
+            command,
+            eval_config=eval_config,
+            writable_roots=(artifact_root, attempt_home),
+            read_only_roots=(workspace_path,),
+        )
     output_limit = int(agent_config.get("max_process_output_bytes", _DEFAULT_OUTPUT_LIMIT))
     backend = task_spec["agent_backend"]
     logger.info("Apex preflight")
@@ -862,60 +1477,187 @@ def launch_agent(
     logger.info("  backend: %s", backend)
     logger.info("  task: %s", task_spec["task_id"])
     logger.info("  editable files: %s", task_spec["editable_files"])
+    logger.info("  inner agent budget: %s", inner_agent_timeout)
+    logger.info("  Apex internal allowance: %s", internal_allowance)
+    logger.info("  outer process budget: %.3f", timeout_seconds)
 
-    return_code, process_output = _run_apex(
-        command,
-        cwd=artifact_root,
-        backend=backend,
-        timeout_seconds=timeout_seconds,
-        output_limit=output_limit,
-        logger=logger,
-    )
+    run_kwargs: dict[str, Any] = {
+        "cwd": artifact_root,
+        "backend": backend,
+        "timeout_seconds": timeout_seconds,
+        "output_limit": output_limit,
+        "logger": logger,
+    }
+    if formal_campaign:
+        run_kwargs["environment"] = process_environment
+    outcome = _normalize_process_outcome(_run_apex(isolated_command, **run_kwargs))
+    return_code = outcome.exit_code
+    process_output = outcome.output
     max_result_bytes = int(agent_config.get("max_result_bytes", _DEFAULT_RESULT_LIMIT))
-    result = _read_regular_json(
-        result_path,
-        size_limit=max_result_bytes,
-        label="Apex result",
-    )
-    if type(result.get("schema_version")) is not int or result["schema_version"] != _SCHEMA_VERSION:
-        raise ApexAdapterError("unsupported Apex result schema_version")
-    if result.get("task_id") != task_spec["task_id"]:
-        raise ApexAdapterError("Apex result task_id does not match request")
-    if result.get("applied") is not False:
-        raise ApexAdapterError("Apex external-evaluator result must have applied=false")
-    if result.get("external_verification_required") is not True:
-        raise ApexAdapterError(
-            "Apex result must acknowledge external_verification_required=true"
-        )
+    result: dict[str, Any] | None = None
+    lineage: dict[str, Any] | None = None
+    status = ""
+    receipt: dict[str, Any] = {
+        "schema": _APEX_RECEIPT_SCHEMA,
+        "session_succeeded": False,
+        "terminal_status": None,
+        "exit_code": return_code,
+        "timed_out": outcome.timed_out,
+        "budgets": {
+            "inner_agent_timeout_seconds": inner_agent_timeout,
+            "apex_internal_allowance_seconds": internal_allowance,
+            "outer_timeout_seconds": outer_timeout_contract,
+            "effective_outer_timeout_seconds": timeout_seconds,
+        },
+        "process_group_cleanup": outcome.cleanup,
+        "capture": {
+            "readers_completed": outcome.readers_completed,
+            "errors": list(outcome.capture_errors),
+        },
+        "gpu": gpu_evidence,
+        "apex": {
+            "entrypoint": str(entrypoint.resolve(strict=True)),
+            "entrypoint_sha256": _sha256_file(entrypoint.resolve(strict=True)),
+            "python": str(Path(python_path).resolve(strict=True)),
+            "python_sha256": _sha256_file(Path(python_path).resolve(strict=True)),
+        },
+        "task_spec_sha256": _sha256_file(task_spec_path),
+        "outer_isolation": (
+            {
+                "approval": "never_via_strict_config",
+                "execpolicy_rules": "ignored",
+                "project_instructions": "backend_default_may_load",
+                "sandbox": "workspace-write",
+                "session": "ephemeral",
+                "user_config": "ignored",
+                "mount_scope": "attempt_only_bubblewrap",
+            }
+            if formal_campaign
+            else None
+        ),
+        "workspace_integrity": (
+            {
+                "policy": "read_only_until_adapter_bundle_apply_v1",
+                "baseline_manifest_sha256": _canonical_digest(workspace_before),
+                "pre_apply_manifest_sha256": None,
+                "pre_apply_unchanged": False,
+            }
+            if workspace_before is not None
+            else None
+        ),
+        "codex": None,
+        "invocation": None,
+        "lineage": None,
+    }
+    try:
+        if outcome.timed_out:
+            raise ApexAdapterError(f"Apex timed out after {timeout_seconds:.3f} seconds")
+        if (
+            outcome.cleanup.get("verification_performed") is not True
+            or outcome.cleanup.get("verified_absent") is not True
+        ):
+            raise ApexAdapterError("Apex process group cleanup was not verified")
+        if not outcome.readers_completed or outcome.capture_errors:
+            raise ApexAdapterError("Apex process output capture was incomplete")
+        if workspace_before is not None:
+            pre_apply_manifest = _workspace_manifest(workspace_path)
+            pre_apply_digest = _canonical_digest(pre_apply_manifest)
+            workspace_integrity = receipt["workspace_integrity"]
+            assert isinstance(workspace_integrity, dict)
+            workspace_integrity["pre_apply_manifest_sha256"] = pre_apply_digest
+            workspace_integrity["pre_apply_unchanged"] = (
+                pre_apply_manifest == workspace_before
+            )
+            if pre_apply_manifest != workspace_before:
+                raise ApexAdapterError(
+                    "scored workspace changed before adapter-owned bundle apply"
+                )
 
-    status_value = result.get("status")
-    status = status_value if isinstance(status_value, str) else ""
-    if status == "candidate_ready":
+        result = _read_regular_json(
+            result_path,
+            size_limit=max_result_bytes,
+            label="Apex result",
+        )
+        if type(result.get("schema_version")) is not int or result["schema_version"] != _SCHEMA_VERSION:
+            raise ApexAdapterError("unsupported Apex result schema_version")
+        if result.get("task_id") != task_spec["task_id"]:
+            raise ApexAdapterError("Apex result task_id does not match request")
+        if result.get("applied") is not False:
+            raise ApexAdapterError("Apex external-evaluator result must have applied=false")
+        if result.get("external_verification_required") is not True:
+            raise ApexAdapterError(
+                "Apex result must acknowledge external_verification_required=true"
+            )
+
+        status_value = result.get("status")
+        status = status_value if isinstance(status_value, str) else ""
+        receipt["terminal_status"] = status
         if return_code != 0:
             raise ApexAdapterError(
-                f"Apex returned candidate_ready with process exit code {return_code}"
+                f"Apex returned {status or 'an invalid result'} with process exit code {return_code}"
             )
-        changed = _validate_and_apply_bundle(
-            result=result,
-            task_spec=task_spec,
-            workspace=workspace_path,
-            artifact_root=artifact_root,
-            max_result_bytes=max_result_bytes,
-            max_bundle_bytes=int(agent_config.get("max_bundle_bytes", _DEFAULT_BUNDLE_LIMIT)),
-        )
-        logger.info("Applied validated Apex source bundle: %s", changed)
-    elif status in _NORMAL_NO_PATCH_STATUSES:
-        if result.get("bundle_path") is not None or result.get("bundle_digest") is not None:
-            raise ApexAdapterError("no_gain result must not declare a bundle")
-        if result.get("changed_files") != []:
-            raise ApexAdapterError("no_gain result must have changed_files=[]")
-        logger.info("Apex produced no accepted gain; Arena workspace remains at baseline")
+        if formal_campaign:
+            lineage = _validate_apex_lineage(
+                result=result, task_spec=task_spec, artifact_root=artifact_root
+            )
+            receipt["codex"] = lineage["codex"]
+            receipt["invocation"] = lineage["invocation"]
+            receipt["lineage"] = {
+                "run_id": result.get("run_id"),
+                "result_sha256": _sha256_file(result_path),
+                "journal_head_event_id": lineage["journal_head_event_id"],
+                "journal_head_checksum": lineage["journal_head_checksum"],
+                "event_count": lineage["event_count"],
+                "transcript_sha256": lineage["transcript_digest"],
+                "event_artifact_digests": lineage["event_artifact_digests"],
+                "internal_verdict": result.get("internal_verdict"),
+                "internal_verdict_ref": result.get("internal_verdict_ref"),
+            }
+
+        if status == "candidate_ready":
+            changed = _validate_and_apply_bundle(
+                result=result,
+                task_spec=task_spec,
+                workspace=workspace_path,
+                artifact_root=artifact_root,
+                max_result_bytes=max_result_bytes,
+                max_bundle_bytes=int(agent_config.get("max_bundle_bytes", _DEFAULT_BUNDLE_LIMIT)),
+            )
+            logger.info("Applied validated Apex source bundle: %s", changed)
+        elif status in _NORMAL_NO_PATCH_STATUSES:
+            if result.get("bundle_path") is not None or result.get("bundle_digest") is not None:
+                raise ApexAdapterError("no_gain result must not declare a bundle")
+            if result.get("changed_files") != []:
+                raise ApexAdapterError("no_gain result must have changed_files=[]")
+            logger.info("Apex produced no accepted gain; Arena workspace remains at baseline")
+        else:
+            reason = result.get("reason_code") or result.get("error") or "unknown"
+            raise ApexAdapterError(
+                f"Apex did not produce a scoreable candidate: status={status!r} reason={reason} "
+                f"exit_code={return_code}"
+            )
+        receipt["session_succeeded"] = True
+    except Exception:
+        if receipt_path is not None:
+            _write_apex_attempt_receipt(
+                receipt_path=receipt_path,
+                task_spec_path=task_spec_path,
+                result_path=result_path,
+                outcome=outcome,
+                receipt=receipt,
+                lineage=lineage,
+            )
+        raise
     else:
-        reason = result.get("reason_code") or result.get("error") or "unknown"
-        raise ApexAdapterError(
-            f"Apex did not produce a scoreable candidate: status={status!r} reason={reason} "
-            f"exit_code={return_code}"
-        )
+        if receipt_path is not None:
+            _write_apex_attempt_receipt(
+                receipt_path=receipt_path,
+                task_spec_path=task_spec_path,
+                result_path=result_path,
+                outcome=outcome,
+                receipt=receipt,
+                lineage=lineage,
+            )
 
     public_result = {
         "schema_version": result.get("schema_version"),

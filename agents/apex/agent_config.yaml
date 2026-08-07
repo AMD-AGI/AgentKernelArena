@@ -3,6 +3,7 @@
 backend: codex
 model: gpt-5.5
 effort: xhigh
+permission_mode: workspace_write_isolated
 
 # APEX_ROOT is preferred at runtime. In the Docker runner the host checkout is
 # mounted read-only at /opt/apex and this value is forwarded automatically.
@@ -13,6 +14,9 @@ supported_task_types:
   - triton2triton
 
 max_iterations: 1
+# Matched campaigns own repetition across fresh workspaces/sessions. Keep one
+# Apex optimization attempt inside each outer session.
+campaign_max_iterations: 1
 max_turns: 25
 timeout_seconds: 3600
 compile_timeout_seconds: 3600
@@ -24,3 +28,7 @@ performance_timeout_seconds: 3600
 max_result_bytes: 8388608
 max_bundle_bytes: 67108864
 max_process_output_bytes: 4194304
+# Apex's inner Codex supervisor currently enforces this independent per-stream
+# bound; max_process_output_bytes above applies only to the outer Apex transport.
+structured_stream_output_limit_bytes: 16777216
+structured_stream_overflow_policy: apex_inner_supervisor_bounded_truncation

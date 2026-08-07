@@ -11,6 +11,8 @@ HOST_UID="$(id -u)"
 HOST_GID="$(id -g)"
 SELECTED_GPU_ARCH=""
 SELECTED_IMAGE=""
+SELECTED_IMAGE_ID=""
+SELECTED_IMAGE_REPO_DIGESTS=""
 AGENT_STATE_MOUNT_ROOT="${AKA_AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
 DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
 # Set by host-side commands after reading the selected run config. Keep this
@@ -20,6 +22,17 @@ GEAK_V4_RUNTIME=0
 APEX_RUNTIME=0
 APEX_HOST_ROOT=""
 APEX_CONTAINER_ROOT=""
+CAMPAIGN_PROVENANCE=0
+CAMPAIGN_APEX_COMMIT=""
+CAMPAIGN_APEX_DIRTY=""
+CAMPAIGN_APEX_STATUS_SHA256=""
+CAMPAIGN_DATA_ROOT=""
+CAMPAIGN_GPU_PLAN_HOST=""
+CAMPAIGN_GPU_PLAN_CONTAINER="/tmp/agentkernelarena-formal-gpu-boundary-plan.json"
+CAMPAIGN_GPU_PLAN_SHA256=""
+CAMPAIGN_GPU_EXCLUSIVITY_HOST=""
+CAMPAIGN_GPU_EXCLUSIVITY_SHA256=""
+declare -a CAMPAIGN_GPU_LEASE_FDS=()
 
 # /opt/venv/bin is placed before /usr/local/bin and /usr/bin so that a bare
 # `python3` / `pytest` resolves to the torch-enabled venv interpreter rather than
@@ -195,7 +208,18 @@ select_runtime() {
     else
         SELECTED_IMAGE="$(docker_image_for_arch "$SELECTED_GPU_ARCH")"
     fi
-    echo "Docker runtime: arch=${SELECTED_GPU_ARCH} image=${SELECTED_IMAGE}" >&2
+    SELECTED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$SELECTED_IMAGE")"
+    [[ "$SELECTED_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || die "Docker returned an invalid image ID for $SELECTED_IMAGE: $SELECTED_IMAGE_ID"
+    SELECTED_IMAGE_REPO_DIGESTS="$(
+        docker image inspect --format '{{json .RepoDigests}}' "$SELECTED_IMAGE"
+    )"
+    [[ "$SELECTED_IMAGE_REPO_DIGESTS" == \[*\] || "$SELECTED_IMAGE_REPO_DIGESTS" == "null" ]] \
+        || die "Docker returned invalid RepoDigests for $SELECTED_IMAGE"
+    if [[ -n "${AKA_DOCKER_IMAGE_ID:-}" && "$AKA_DOCKER_IMAGE_ID" != "$SELECTED_IMAGE_ID" ]]; then
+        die "AKA_DOCKER_IMAGE_ID=$AKA_DOCKER_IMAGE_ID does not match inspected ID $SELECTED_IMAGE_ID"
+    fi
+    echo "Docker runtime: arch=${SELECTED_GPU_ARCH} image=${SELECTED_IMAGE} id=${SELECTED_IMAGE_ID}" >&2
 }
 
 select_runtime_for_config() {
@@ -321,6 +345,187 @@ configure_apex_runtime() {
         || die "AKA_APEX_CONTAINER_ROOT must equal $APEX_HOST_ROOT so the pinned editable venv remains valid"
     [[ -x "$APEX_HOST_ROOT/.venv/bin/python" ]] \
         || die "Apex venv missing; run '$APEX_HOST_ROOT/scripts/bootstrap_dependencies.py install' first"
+}
+
+configure_campaign_provenance() {
+    local config="$1"
+    CAMPAIGN_PROVENANCE=0
+    CAMPAIGN_APEX_COMMIT=""
+    CAMPAIGN_APEX_DIRTY=""
+    CAMPAIGN_APEX_STATUS_SHA256=""
+    CAMPAIGN_DATA_ROOT=""
+    grep -Eq '^[[:space:]]+comparison:[[:space:]]*apex_vs_codex([[:space:]#]|$)' "$config" \
+        || return 0
+    CAMPAIGN_PROVENANCE=1
+    AGENT_HOME_ISOLATION=1
+
+    local workspace_prefix
+    workspace_prefix="$(read_workspace_prefix "$config")"
+    [[ "$workspace_prefix" == /* ]] \
+        || die "matched campaign workspace_directory_prefix must be absolute"
+    CAMPAIGN_DATA_ROOT="$(dirname "$workspace_prefix")"
+    mkdir -p "$CAMPAIGN_DATA_ROOT"
+    [[ -x /usr/bin/bwrap ]] \
+        || die "matched campaign requires /usr/bin/bwrap for per-attempt mount isolation"
+
+    local candidate="${AKA_APEX_ROOT:-}"
+    if [[ -z "$candidate" && -d "$HOST_ROOT/../Apex" ]]; then
+        candidate="$HOST_ROOT/../Apex"
+    fi
+    [[ -n "$candidate" ]] || die "matched campaign requires AKA_APEX_ROOT"
+    local apex_root status
+    apex_root="$(cd "$candidate" 2>/dev/null && pwd || true)"
+    [[ -n "$apex_root" && -d "$apex_root/.git" ]] \
+        || die "matched campaign Apex checkout is not a Git worktree: $candidate"
+    CAMPAIGN_APEX_COMMIT="$(git -C "$apex_root" rev-parse HEAD)"
+    status="$(git -C "$apex_root" status --porcelain=v1 --untracked-files=normal)"
+    if [[ -n "$status" ]]; then
+        CAMPAIGN_APEX_DIRTY="true"
+    else
+        CAMPAIGN_APEX_DIRTY="false"
+    fi
+    CAMPAIGN_APEX_STATUS_SHA256="$(printf '%s' "$status" | sha256sum | cut -d' ' -f1)"
+}
+
+prepare_campaign_gpu_boundary_plan() {
+    local gpu_pool_csv="$1"
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    [[ "$gpu_pool_csv" =~ ^[0-9]+(,[0-9]+)*$ ]] \
+        || die "formal GPU boundary requires an ordered numeric GPU pool"
+    command -v rocm-smi >/dev/null 2>&1 \
+        || die "formal GPU boundary requires rocm-smi on the host"
+    command -v python3 >/dev/null 2>&1 \
+        || die "formal GPU boundary requires python3 on the host"
+
+    local topology_root="${AKA_GPU_BOUNDARY_TOPOLOGY_ROOT:-/sys/class/kfd/kfd/topology/nodes}"
+    local dev_root="${AKA_GPU_BOUNDARY_DEV_ROOT:-/dev}"
+    local temporary digest final_path
+    temporary="$(mktemp --suffix=.json "${CAMPAIGN_DATA_ROOT}/.gpu-boundary-plan.XXXXXX")" \
+        || die "cannot allocate formal GPU boundary plan"
+    if ! rocm-smi --showuniqueid --showserial --showproductname --json \
+        | python3 "$HOST_ROOT/src/gpu_device_boundary.py" resolve \
+            --gpu-ids "$gpu_pool_csv" \
+            --rocm-smi-json - \
+            --topology-root "$topology_root" \
+            --dev-root "$dev_root" \
+            --output "$temporary"; then
+        rm -f -- "$temporary"
+        die "cannot prove the formal GPU boundary from rocm-smi and KFD topology"
+    fi
+    digest="$(python3 "$HOST_ROOT/src/gpu_device_boundary.py" plan-digest --plan "$temporary")" \
+        || { rm -f -- "$temporary"; die "cannot validate formal GPU boundary plan"; }
+    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] \
+        || { rm -f -- "$temporary"; die "formal GPU boundary plan digest is invalid"; }
+    final_path="${CAMPAIGN_DATA_ROOT}/gpu-boundary-plan-${digest}.json"
+    if [[ -e "$final_path" ]]; then
+        cmp -s -- "$temporary" "$final_path" \
+            || { rm -f -- "$temporary"; die "GPU boundary digest collision or stale plan"; }
+        rm -f -- "$temporary"
+    else
+        mv -- "$temporary" "$final_path"
+        chmod 0444 "$final_path"
+    fi
+    CAMPAIGN_GPU_PLAN_HOST="$final_path"
+    CAMPAIGN_GPU_PLAN_SHA256="$digest"
+}
+
+acquire_campaign_gpu_exclusivity() {
+    local run_name="$1"
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    [[ -n "$CAMPAIGN_GPU_PLAN_HOST" && -f "$CAMPAIGN_GPU_PLAN_HOST" ]] \
+        || die "formal GPU exclusivity requires a verified boundary plan"
+    command -v flock >/dev/null 2>&1 \
+        || die "formal GPU exclusivity requires flock on the host"
+
+    local lock_root="${AKA_GPU_LEASE_ROOT:-/tmp/agentkernelarena-gpu-leases}"
+    [[ "$lock_root" == /* && "$lock_root" != "/" ]] \
+        || die "formal GPU lease root must be a specific absolute path"
+    [[ ! -L "$lock_root" ]] \
+        || die "formal GPU lease root cannot be a symlink: $lock_root"
+    mkdir -p -- "$lock_root"
+    chmod 0700 "$lock_root"
+
+    local -a keys=() lock_arguments=()
+    local key lock_path lease_fd
+    while IFS= read -r key; do
+        [[ -n "$key" ]] || continue
+        [[ "$key" =~ ^0x[0-9a-f]+$ ]] \
+            || die "GPU boundary returned an unsafe physical unique ID"
+        keys+=("$key")
+    done < <(
+        python3 "$HOST_ROOT/src/gpu_exclusivity.py" lease-keys \
+            --plan "$CAMPAIGN_GPU_PLAN_HOST"
+    )
+    [[ "${#keys[@]}" -gt 0 ]] || die "formal GPU plan has no lease keys"
+
+    for key in "${keys[@]}"; do
+        lock_path="$lock_root/${key}.lock"
+        exec {lease_fd}>"$lock_path"
+        if ! flock -n "$lease_fd"; then
+            exec {lease_fd}>&-
+            die "physical GPU $key is leased by another formal run"
+        fi
+        CAMPAIGN_GPU_LEASE_FDS+=("$lease_fd")
+        lock_arguments+=(--lock "$key=$lock_path")
+    done
+
+    # Query the ROCm SMI library only after all physical-device leases are held.
+    # Unlike rocm-smi --showpids text, the helper checks every API return code.
+    local kfd_inventory_temp kfd_inventory_digest kfd_inventory_path
+    kfd_inventory_temp="$(
+        mktemp --suffix=.json "${CAMPAIGN_DATA_ROOT}/.kfd-process-inventory.XXXXXX"
+    )" || die "cannot allocate authoritative KFD process inventory"
+    if ! python3 "$HOST_ROOT/src/kfd_process_inventory.py" \
+        --output "$kfd_inventory_temp"; then
+        rm -f -- "$kfd_inventory_temp"
+        die "cannot query authoritative KFD process inventory"
+    fi
+    [[ -s "$kfd_inventory_temp" ]] \
+        || { rm -f -- "$kfd_inventory_temp"; die "KFD inventory artifact is empty"; }
+    kfd_inventory_digest="$(sha256sum "$kfd_inventory_temp" | cut -d' ' -f1)"
+    [[ "$kfd_inventory_digest" =~ ^[0-9a-f]{64}$ ]] \
+        || { rm -f -- "$kfd_inventory_temp"; die "KFD inventory digest is invalid"; }
+    kfd_inventory_path="${CAMPAIGN_DATA_ROOT}/kfd-process-inventory-${kfd_inventory_digest}.json"
+    if [[ -e "$kfd_inventory_path" ]]; then
+        cmp -s -- "$kfd_inventory_temp" "$kfd_inventory_path" \
+            || { rm -f -- "$kfd_inventory_temp"; die "KFD inventory digest collision"; }
+        rm -f -- "$kfd_inventory_temp"
+    else
+        mv -- "$kfd_inventory_temp" "$kfd_inventory_path"
+        chmod 0444 "$kfd_inventory_path"
+    fi
+
+    local temporary digest final_path
+    temporary="$(mktemp --suffix=.json "${CAMPAIGN_DATA_ROOT}/.gpu-exclusivity.XXXXXX")" \
+        || die "cannot allocate GPU exclusivity receipt"
+    if ! python3 "$HOST_ROOT/src/gpu_exclusivity.py" create-receipt \
+        --plan "$CAMPAIGN_GPU_PLAN_HOST" \
+        --run-name "$run_name" \
+        --runner-pid "$$" \
+        "${lock_arguments[@]}" \
+        --kfd-process-inventory "$kfd_inventory_path" \
+        --output "$temporary"; then
+        rm -f -- "$temporary"
+        die "selected GPU has a foreign KFD/render owner; refusing to terminate it"
+    fi
+    digest="$(
+        python3 "$HOST_ROOT/src/gpu_exclusivity.py" verify-receipt \
+            --receipt "$temporary" \
+            --plan-sha256 "$CAMPAIGN_GPU_PLAN_SHA256"
+    )" || { rm -f -- "$temporary"; die "cannot validate GPU exclusivity receipt"; }
+    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] \
+        || { rm -f -- "$temporary"; die "GPU exclusivity digest is invalid"; }
+    final_path="${CAMPAIGN_DATA_ROOT}/gpu-exclusivity-${digest}.json"
+    if [[ -e "$final_path" ]]; then
+        cmp -s -- "$temporary" "$final_path" \
+            || { rm -f -- "$temporary"; die "GPU exclusivity receipt collision"; }
+        rm -f -- "$temporary"
+    else
+        mv -- "$temporary" "$final_path"
+        chmod 0444 "$final_path"
+    fi
+    CAMPAIGN_GPU_EXCLUSIVITY_HOST="$final_path"
+    CAMPAIGN_GPU_EXCLUSIVITY_SHA256="$digest"
 }
 
 agent_list_contains() {
@@ -527,10 +732,6 @@ build_docker_args() {
     docker_args+=(
         --ipc=host
         --network=host
-        --privileged
-        --cap-add=SYS_ADMIN
-        --cap-add=SYS_PTRACE
-        --security-opt=seccomp=unconfined
         --user "${HOST_UID}:${HOST_GID}"
         -e "HOME=${container_home}"
         -e "CODEX_HOME=${codex_home}"
@@ -545,11 +746,40 @@ build_docker_args() {
         -e "AGENT_KERNEL_ARENA_DOCKER=1"
         -e "AGENT_KERNEL_ARENA_WORKDIR=${CONTAINER_WORKDIR}"
         -e "AGENT_KERNEL_ARENA_GPU_ARCH=${SELECTED_GPU_ARCH}"
+        -e "AGENT_KERNEL_ARENA_DOCKER_IMAGE=${SELECTED_IMAGE}"
+        -e "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=${SELECTED_IMAGE_ID}"
+        -e "AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS=${SELECTED_IMAGE_REPO_DIGESTS}"
         -e "PYTORCH_ROCM_ARCH=${SELECTED_GPU_ARCH}"
         -e "AGENT_STATE_MOUNT_ROOT=${AGENT_STATE_MOUNT_ROOT}"
         -e "PATH=${container_path}"
         -w "$CONTAINER_WORKDIR"
     )
+    if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+        # A formal worker must remain subject to Docker's device cgroup. In
+        # particular, --privileged would make an individual --device mapping
+        # meaningless by granting the container every host device.
+        docker_args+=(
+            --cap-add=SYS_ADMIN
+            --cap-add=SYS_PTRACE
+            --security-opt=seccomp=unconfined
+        )
+    else
+        docker_args+=(
+            --privileged
+            --cap-add=SYS_ADMIN
+            --cap-add=SYS_PTRACE
+            --security-opt=seccomp=unconfined
+        )
+    fi
+
+    if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+        docker_args+=(
+            -e "AGENT_KERNEL_ARENA_APEX_COMMIT=${CAMPAIGN_APEX_COMMIT}"
+            -e "AGENT_KERNEL_ARENA_APEX_DIRTY=${CAMPAIGN_APEX_DIRTY}"
+            -e "AGENT_KERNEL_ARENA_APEX_STATUS_SHA256=${CAMPAIGN_APEX_STATUS_SHA256}"
+            -e "AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT=${CAMPAIGN_DATA_ROOT}"
+        )
+    fi
 
     # geak_v4's claude-agent-sdk is installed with `pip install --target` into
     # this host-mounted dir (see container_setup_geak). Only put it on
@@ -573,16 +803,41 @@ build_docker_args() {
 
     if [[ -n "${AKA_VISIBLE_GPU:-}" ]]; then
         local logical_gpu="${AKA_LOGICAL_GPU:-0}"
-        docker_args+=(
-            -e "AGENT_KERNEL_ARENA_HOST_GPU_ID=${AKA_VISIBLE_GPU}"
-            -e "ROCR_VISIBLE_DEVICES=${AKA_VISIBLE_GPU}"
-            -e "HIP_VISIBLE_DEVICES=${logical_gpu}"
-            -e "CUDA_VISIBLE_DEVICES=${logical_gpu}"
-            -e "GPU_DEVICE_ORDINAL=${logical_gpu}"
-        )
+        if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+            [[ "$logical_gpu" == "0" ]] \
+                || die "formal GPU boundary requires AKA_LOGICAL_GPU=0"
+            [[ -n "$CAMPAIGN_GPU_PLAN_HOST" && -f "$CAMPAIGN_GPU_PLAN_HOST" ]] \
+                || die "formal worker has no verified GPU boundary plan"
+            [[ -n "$CAMPAIGN_GPU_EXCLUSIVITY_HOST" \
+                && -f "$CAMPAIGN_GPU_EXCLUSIVITY_HOST" \
+                && "$CAMPAIGN_GPU_EXCLUSIVITY_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+                || die "formal worker has no verified host GPU exclusivity receipt"
+            docker_args+=(
+                -e "AGENT_KERNEL_ARENA_HOST_GPU_ID=${AKA_VISIBLE_GPU}"
+                -e "ROCR_VISIBLE_DEVICES=0"
+                -e "HIP_VISIBLE_DEVICES=0"
+                -e "CUDA_VISIBLE_DEVICES=0"
+                -e "GPU_DEVICE_ORDINAL=0"
+                -e "AGENT_KERNEL_ARENA_GPU_BOUNDARY_PLAN=${CAMPAIGN_GPU_PLAN_CONTAINER}"
+                -e "AGENT_KERNEL_ARENA_GPU_BOUNDARY_PLAN_SHA256=${CAMPAIGN_GPU_PLAN_SHA256}"
+                -e "AGENT_KERNEL_ARENA_GPU_EXCLUSIVITY_RECEIPT=${CAMPAIGN_GPU_EXCLUSIVITY_HOST}"
+                -e "AGENT_KERNEL_ARENA_GPU_EXCLUSIVITY_RECEIPT_SHA256=${CAMPAIGN_GPU_EXCLUSIVITY_SHA256}"
+            )
+        else
+            docker_args+=(
+                -e "AGENT_KERNEL_ARENA_HOST_GPU_ID=${AKA_VISIBLE_GPU}"
+                -e "ROCR_VISIBLE_DEVICES=${AKA_VISIBLE_GPU}"
+                -e "HIP_VISIBLE_DEVICES=${logical_gpu}"
+                -e "CUDA_VISIBLE_DEVICES=${logical_gpu}"
+                -e "GPU_DEVICE_ORDINAL=${logical_gpu}"
+            )
+        fi
     fi
     if [[ -n "${AKA_WORKER_ID:-}" ]]; then
         docker_args+=(-e "AGENT_KERNEL_ARENA_WORKER_ID=${AKA_WORKER_ID}")
+    fi
+    if [[ -n "${AKA_GPU_POOL:-}" ]]; then
+        docker_args+=(-e "AGENT_KERNEL_ARENA_GPU_POOL=${AKA_GPU_POOL}")
     fi
     if [[ "${AGENT_HOME_ISOLATION:-0}" == "1" ]]; then
         docker_args+=(-e "AGENT_KERNEL_ARENA_ISOLATED_HOME=1")
@@ -622,11 +877,45 @@ build_docker_args() {
         fi
     done
 
-    add_device_if_present /dev/kfd
-    add_device_if_present /dev/dri
-    add_device_if_present /dev/mem
+    if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+        if [[ -n "$CAMPAIGN_GPU_PLAN_HOST" ]]; then
+            local gpu_device_output gpu_device_arg gpu_device_count=0
+            gpu_device_output="$(
+                python3 "$HOST_ROOT/src/gpu_device_boundary.py" docker-args \
+                    --plan "$CAMPAIGN_GPU_PLAN_HOST" \
+                    --host-gpu-id "${AKA_VISIBLE_GPU:?formal worker GPU is unset}" \
+                    --dev-root "${AKA_GPU_BOUNDARY_DEV_ROOT:-/dev}"
+            )" || die "formal GPU devices no longer match the verified boundary plan"
+            while IFS= read -r gpu_device_arg; do
+                [[ -n "$gpu_device_arg" ]] || continue
+                if [[ "$gpu_device_arg" != "--device=/dev/kfd:/dev/kfd:rw" \
+                    && ! "$gpu_device_arg" =~ ^--device=/dev/dri/renderD[0-9]+:/dev/dri/renderD[0-9]+:rw$ ]]; then
+                    die "GPU boundary resolver returned an unsafe Docker argument"
+                fi
+                docker_args+=("$gpu_device_arg")
+                gpu_device_count=$((gpu_device_count + 1))
+            done <<< "$gpu_device_output"
+            [[ "$gpu_device_count" -ge 2 ]] \
+                || die "formal GPU boundary must expose /dev/kfd and at least one render node"
+        fi
+    else
+        add_device_if_present /dev/kfd
+        add_device_if_present /dev/dri
+        add_device_if_present /dev/mem
+    fi
 
-    add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR"
+    if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+        # Formal campaign workers need only read evaluator/task sources. Results,
+        # logs, and attempt workspaces are on the separately mounted /data tree.
+        add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR" ro
+        add_mount "$CAMPAIGN_DATA_ROOT" "$CAMPAIGN_DATA_ROOT"
+        add_mount /usr/bin/bwrap /usr/bin/bwrap ro
+        if [[ -n "$CAMPAIGN_GPU_PLAN_HOST" ]]; then
+            add_mount "$CAMPAIGN_GPU_PLAN_HOST" "$CAMPAIGN_GPU_PLAN_CONTAINER" ro
+        fi
+    else
+        add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR"
+    fi
     if [[ "$APEX_RUNTIME" == "1" ]]; then
         add_mount "$APEX_HOST_ROOT" "$APEX_CONTAINER_ROOT" ro
         docker_args+=(
@@ -678,7 +967,32 @@ docker_exec() {
     local interactive="${1:-0}"
     shift
     build_docker_args "$interactive"
-    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@"
+    docker "${docker_args[@]}" -lc '
+        cd "$AGENT_KERNEL_ARENA_WORKDIR" || exit 1
+        if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then
+            bash src/scripts/docker_benchmark.sh _container_prepare_worker_home || exit 1
+        fi
+        if [[ -n "${AGENT_KERNEL_ARENA_GPU_BOUNDARY_PLAN:-}" ]]; then
+            receipt=/tmp/agentkernelarena-formal-gpu-boundary-receipt.json
+            runtime_inventory=/tmp/agentkernelarena-formal-rocm-inventory.json
+            torch_observation=/tmp/agentkernelarena-formal-torch-observation.json
+            command -v rocm-smi >/dev/null 2>&1 || exit 1
+            rocm-smi --showuniqueid --showserial --showproductname --json \
+                > "$runtime_inventory" || exit 1
+            python3 -c "import json, torch; count=torch.cuda.device_count(); props=torch.cuda.get_device_properties(0) if count else None; print(json.dumps({'device_count': count, 'device_name': getattr(props, 'name', ''), 'gcn_arch_name': getattr(props, 'gcnArchName', '')}))" \
+                > "$torch_observation" || exit 1
+            python3 src/gpu_device_boundary.py verify-runtime \
+                --plan "$AGENT_KERNEL_ARENA_GPU_BOUNDARY_PLAN" \
+                --host-gpu-id "$AGENT_KERNEL_ARENA_HOST_GPU_ID" \
+                --rocm-smi-json "$runtime_inventory" \
+                --torch-json "$torch_observation" \
+                --output "$receipt" || exit 1
+            rm -f -- "$runtime_inventory" "$torch_observation" || exit 1
+            chmod 0444 "$receipt" || exit 1
+            export AGENT_KERNEL_ARENA_GPU_BOUNDARY_RECEIPT="$receipt"
+        fi
+        exec "$@"
+    ' _ "$@"
 }
 
 extract_config_name() {
@@ -818,6 +1132,12 @@ container_preflight() {
     if [[ "$(read_agent_template "$config_name")" == geak_v4 ]]; then
         container_setup_geak
         container_check_geak
+    fi
+    if grep -Eq '^[[:space:]]+comparison:[[:space:]]*apex_vs_codex([[:space:]#]|$)' "$config_name"; then
+        command -v bwrap >/dev/null 2>&1 || die "bwrap is unavailable in campaign container"
+        bwrap --die-with-parent --unshare-pid --unshare-ipc --ro-bind / / \
+            --dev-bind /dev /dev --tmpfs /dev/shm --proc /proc -- /bin/true \
+            || die "bwrap cannot create the required per-attempt mount namespace"
     fi
 python - "$config_name" <<'PY'
 import pathlib
@@ -976,7 +1296,12 @@ resolve_workspace_dir_for_config() {
     [[ -n "$prefix" ]] || die "workspace_directory_prefix not found in $config"
     [[ -n "$model" ]] || die "target_gpu_model not found in $config"
     [[ -n "$agent" ]] || die "agent.template not found in $config"
-    printf '%s/%s_%s_%s\n' "$HOST_ROOT" "$prefix" "$model" "$agent"
+    local workspace_name="${prefix}_${model}_${agent}"
+    if [[ "$workspace_name" == /* ]]; then
+        printf '%s\n' "$workspace_name"
+    else
+        printf '%s/%s\n' "$HOST_ROOT" "$workspace_name"
+    fi
 }
 
 resolve_latest_run_name() {
@@ -1037,12 +1362,32 @@ safe_label() {
     printf '%s\n' "$value"
 }
 
+prepare_single_formal_gpu_runtime() {
+    local run_label="$1"
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    local -a gpu_ids=()
+    local gpu_id
+    while IFS= read -r gpu_id; do
+        [[ -n "$gpu_id" ]] || continue
+        [[ "$gpu_id" =~ ^[0-9]+$ ]] || die "GPU ID must be numeric: $gpu_id"
+        gpu_ids+=("$gpu_id")
+    done < <(resolve_gpu_ids)
+    [[ "${#gpu_ids[@]}" == "1" ]] \
+        || die "formal single run requires exactly one GPU ID; use parallel-run for a pool"
+    export AKA_VISIBLE_GPU="${gpu_ids[0]}"
+    export AKA_GPU_POOL="${gpu_ids[0]}"
+    export AKA_LOGICAL_GPU=0
+    prepare_campaign_gpu_boundary_plan "${gpu_ids[0]}"
+    acquire_campaign_gpu_exclusivity "$run_label"
+}
+
 run_parallel() {
     local config_name
     config_name="$(extract_config_name "$@")"
     select_runtime_for_config "$config_name"
     configure_geak_v4_runtime "$config_name"
     configure_apex_runtime "$config_name"
+    configure_campaign_provenance "$config_name"
 
     REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
     AGENTS_STRICT=1
@@ -1054,14 +1399,28 @@ run_parallel() {
     local -a gpu_ids=()
     local gpu_id
     while IFS= read -r gpu_id; do
-        [[ -n "$gpu_id" ]] && gpu_ids+=("$gpu_id")
+        [[ -n "$gpu_id" ]] || continue
+        [[ "$gpu_id" =~ ^[0-9]+$ ]] || die "GPU ID must be numeric: $gpu_id"
+        local existing
+        for existing in "${gpu_ids[@]}"; do
+            [[ "$existing" != "$gpu_id" ]] || die "GPU_IDS contains duplicate ID: $gpu_id"
+        done
+        gpu_ids+=("$gpu_id")
     done < <(resolve_gpu_ids)
     [[ "${#gpu_ids[@]}" -gt 0 ]] || die "No GPU IDs available; set GPU_IDS=0,1,..."
+
+    local gpu_pool_csv
+    gpu_pool_csv="$(IFS=,; printf '%s' "${gpu_ids[*]}")"
+    if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+        prepare_campaign_gpu_boundary_plan "$gpu_pool_csv"
+        acquire_campaign_gpu_exclusivity "$run_name"
+    fi
 
     echo "Parallel run: run_name=${run_name} workers=${#gpu_ids[@]} gpu_ids=${gpu_ids[*]}" >&2
 
     (
         export AKA_VISIBLE_GPU="${gpu_ids[0]}"
+        export AKA_GPU_POOL="$gpu_pool_csv"
         export AKA_WORKER_ID="preflight"
         export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_name}-preflight"
         export AKA_CACHE_SUFFIX="${safe_run_name}-preflight"
@@ -1071,6 +1430,7 @@ run_parallel() {
 
     (
         export AKA_VISIBLE_GPU="${gpu_ids[0]}"
+        export AKA_GPU_POOL="$gpu_pool_csv"
         export AKA_WORKER_ID="init"
         export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_name}-init"
         export AKA_CACHE_SUFFIX="${safe_run_name}-init"
@@ -1084,6 +1444,7 @@ run_parallel() {
         gpu_id="${gpu_ids[$worker_id]}"
         (
             export AKA_VISIBLE_GPU="$gpu_id"
+            export AKA_GPU_POOL="$gpu_pool_csv"
             export AKA_WORKER_ID="$worker_id"
             export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_name}-worker-${worker_id}"
             export AKA_CACHE_SUFFIX="${safe_run_name}-worker-${worker_id}"
@@ -1104,6 +1465,7 @@ run_parallel() {
     local postprocess_failed=0
     if ! (
         export AKA_VISIBLE_GPU="${gpu_ids[0]}"
+        export AKA_GPU_POOL="$gpu_pool_csv"
         export AKA_WORKER_ID="postprocess"
         export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_name}-postprocess"
         export AKA_CACHE_SUFFIX="${safe_run_name}-postprocess"
@@ -1118,6 +1480,10 @@ run_parallel() {
     fi
 }
 
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    return 0
+fi
+
 case "${1:-}" in
     run)
         shift
@@ -1125,6 +1491,8 @@ case "${1:-}" in
         select_runtime_for_config "$config_name"
         configure_geak_v4_runtime "$config_name"
         configure_apex_runtime "$config_name"
+        configure_campaign_provenance "$config_name"
+        prepare_single_formal_gpu_runtime "single-run-$$"
         # Only the configured agent's CLI/auth is required for a run.
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
@@ -1141,6 +1509,8 @@ case "${1:-}" in
         select_runtime_for_config "$config_name"
         configure_geak_v4_runtime "$config_name"
         configure_apex_runtime "$config_name"
+        configure_campaign_provenance "$config_name"
+        prepare_single_formal_gpu_runtime "preflight-$$"
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
@@ -1163,6 +1533,7 @@ case "${1:-}" in
         fi
         configure_geak_v4_runtime "$config_name"
         configure_apex_runtime "$config_name"
+        configure_campaign_provenance "$config_name"
         # By default, check only the CLI selected by CONFIG. AKA_AGENTS can
         # request one, several, or `all` explicitly.
         REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"
