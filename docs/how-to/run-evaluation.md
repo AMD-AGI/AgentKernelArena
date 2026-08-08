@@ -111,6 +111,14 @@ preflight and repeat it in every worker. The resulting stable security receipt i
 part of `campaign_manifest.yaml`; a worker with different UID/capability/NNP,
 seccomp/AppArmor/Yama, `bwrap`/Codex identity, managed-policy hash, namespace,
 system-path remasking, or managed Codex sandbox behavior cannot join the run.
+The two formal runs' normalized YAML documents may differ only in the exact
+`agent.template` treatment (`apex` versus `codex`); comments and formatting are
+not semantic differences. AKA removes that one mapping, binds every other normalized
+field into the comparison contract, and separately binds each raw YAML SHA-256. A
+difference in tasks or ordering, attempt policy, GPU target,
+workspace/output path, log path, or any other run setting makes the arms
+incomparable. Campaign execution, postprocessing, and comparison each re-read this
+evidence and fail closed if the original config was changed or removed.
 Each direct attempt creates a private PID namespace and private procfs, pins its
 namespace init with a pidfd, and proves the worker PID namespace is absent by inode
 identity rather than numeric PID. Parent root/fd probes compare secret bytes, so a

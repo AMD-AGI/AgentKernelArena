@@ -68,6 +68,8 @@ def _formal_v5_contract(
     tasks: list[dict[str, object]],
     mappings: list[dict[str, object]],
     devices: list[dict[str, object]],
+    run_config_path: Path,
+    run_config: dict[str, object],
 ) -> dict[str, object]:
     runtime_manifest_sha256 = "7" * 64
     aka_manifest_sha256 = "4" * 64
@@ -193,6 +195,7 @@ def _formal_v5_contract(
         "runtime": comparison_runtime,
         "evaluator_files_sha256": evaluator,
         "tasks": tasks,
+        "run_config": run_config,
     }
     return {
         "schema": "aka.matched-campaign/v1",
@@ -204,7 +207,12 @@ def _formal_v5_contract(
         "agent": agent,
         "runtime": runtime,
         "evaluator_files_sha256": evaluator,
-        "configuration": {"tasks": tasks},
+        "configuration": {
+            "run_config_path": str(run_config_path.resolve()),
+            "run_config_sha256": campaign._sha256_file(run_config_path),
+            "run_config_contract": run_config,
+            "tasks": tasks,
+        },
     }
 
 
@@ -250,10 +258,30 @@ def _make_formal_run(
                 "render_nodes": [f"/dev/dri/renderD{128 + index - 1}"],
             }
         )
+    run_config_path = tmp_path / "formal_run_config.yaml"
+    run_config_path.write_text(
+        yaml.safe_dump(
+            {
+                "agent": {"template": "apex"},
+                "campaign": _policy(),
+                "tasks": list(task_names),
+                "target_gpu_model": "MI355X",
+                "log_directory": "/test/logs",
+                "workspace_directory_prefix": "/test/workspace",
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    run_config = campaign._run_config_contract(
+        run_config_path, agent_name="apex"
+    )
     manifest = _formal_v5_contract(
         tasks=tasks,
         mappings=mappings,
         devices=devices,
+        run_config_path=run_config_path,
+        run_config=run_config,
     )
     manifest_path = run / "campaign_manifest.yaml"
     manifest_path.write_text(yaml.safe_dump(manifest), encoding="utf-8")

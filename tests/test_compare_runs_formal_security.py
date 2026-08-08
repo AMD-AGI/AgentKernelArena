@@ -18,6 +18,27 @@ TIMESTAMP = "20260807_000000"
 
 
 def _write_read_only_yaml(path: Path, payload: dict) -> None:
+    payload = copy.deepcopy(payload)
+    if path.name == "campaign_manifest.yaml" and payload.get("schema") == "aka.matched-campaign/v1":
+        run_config_contract = payload["comparison_contract"]["run_config"]
+        run_config = path.parent / "formal_run_config.yaml"
+        run_config.write_text(
+            yaml.safe_dump(
+                {
+                    "agent": {"template": payload["agent"]["template"]},
+                    **run_config_contract["effective_config"],
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        payload["configuration"].update(
+            {
+                "run_config_path": str(run_config.resolve()),
+                "run_config_sha256": postprocessing._sha256_file(run_config),
+                "run_config_contract": run_config_contract,
+            }
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(payload, sort_keys=True), encoding="utf-8")
     path.chmod(0o444)
@@ -495,6 +516,18 @@ def _manifest(task_names: list[str], arm: str) -> dict:
             "runtime_manifest_sha256"
         ],
     }
+    effective_run_config = {
+        "campaign": _policy(),
+        "tasks": task_names,
+        "target_gpu_model": "MI355X",
+        "log_directory": "/test/logs",
+        "workspace_directory_prefix": "/test/workspace",
+    }
+    run_config = {
+        "schema": "aka.formal-run-config/v1",
+        "effective_config": effective_run_config,
+        "effective_config_sha256": _digest(effective_run_config),
+    }
     comparison = {
         "schema": "aka.apex-vs-codex-comparison-contract/v5",
         "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
@@ -518,6 +551,7 @@ def _manifest(task_names: list[str], arm: str) -> dict:
         "runtime": comparison_runtime,
         "evaluator_files_sha256": evaluator,
         "tasks": tasks,
+        "run_config": run_config,
     }
     transport = campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS[arm]
     agent = {
@@ -552,6 +586,7 @@ def _manifest(task_names: list[str], arm: str) -> dict:
         "configuration": {
             "run_config_path": "/test/run_config.yaml",
             "run_config_sha256": "2" * 64,
+            "run_config_contract": run_config,
             "tasks": tasks,
         },
     }
@@ -1021,6 +1056,39 @@ def _assert_manifest_rejected(tmp_path: Path, manifest: dict) -> None:
     manifest_bytes = yaml.safe_dump(manifest, sort_keys=True).encode()
     with pytest.raises(ValueError, match="comparison/cohort/agent binding"):
         compare_runs._formal_manifest_context(run, manifest, manifest_bytes)
+
+
+@pytest.mark.parametrize("tamper", ["raw_config", "projection_digest"])
+def test_compare_rejects_run_config_tamper(tmp_path: Path, tamper: str) -> None:
+    run = (
+        tmp_path
+        / "workspace_MI355X_codex"
+        / f"run_{TIMESTAMP}_formal"
+    )
+    run.mkdir(parents=True)
+    manifest = _manifest([TASK], "codex")
+    if tamper == "projection_digest":
+        forged = copy.deepcopy(manifest["comparison_contract"]["run_config"])
+        forged["effective_config_sha256"] = "0" * 64
+        manifest["comparison_contract"]["run_config"] = copy.deepcopy(forged)
+        manifest["configuration"]["run_config_contract"] = copy.deepcopy(forged)
+        _refresh_comparison_digest(manifest)
+    manifest_path = run / "campaign_manifest.yaml"
+    _write_read_only_yaml(manifest_path, manifest)
+    manifest_bytes = manifest_path.read_bytes()
+    sealed_manifest = yaml.safe_load(manifest_bytes)
+    if tamper == "raw_config":
+        run_config = Path(sealed_manifest["configuration"]["run_config_path"])
+        run_config.write_text(
+            run_config.read_text(encoding="utf-8")
+            + "unexpected_output: /tmp/forged\n",
+            encoding="utf-8",
+        )
+
+    with pytest.raises(ValueError, match="comparison/cohort/agent binding"):
+        compare_runs._formal_manifest_context(
+            run, sealed_manifest, manifest_bytes
+        )
 
 
 def test_v5_manifest_rejects_forged_static_squashfs_receipt(

@@ -21,6 +21,7 @@ try:
         _campaign_failure_reasons,
         _evaluation_eligibility_errors,
         _select_attempt,
+        _run_config_contract,
         campaign_task_path_component,
     )
     from src.score import resolve_speedup_ratio, task_result_scoring
@@ -35,6 +36,7 @@ except ModuleNotFoundError:
         _campaign_failure_reasons,
         _evaluation_eligibility_errors,
         _select_attempt,
+        _run_config_contract,
         campaign_task_path_component,
     )
     from src.score import resolve_speedup_ratio, task_result_scoring
@@ -506,6 +508,24 @@ def _load_formal_cohort(run_directory: Path) -> Dict[str, Any] | None:
         raise ValueError("formal campaign manifest has no task cohort")
     comparison = manifest.get("comparison_contract")
     comparison_digest = manifest.get("comparison_contract_sha256")
+    agent = manifest.get("agent")
+    try:
+        run_config_path = Path(str(configuration.get("run_config_path") or ""))
+        expected_run_config = _run_config_contract(
+            run_config_path,
+            agent_name=str(agent.get("template") or "")
+            if isinstance(agent, dict)
+            else "",
+        )
+        run_config_valid = bool(
+            configuration.get("run_config_sha256")
+            == _sha256_file(run_config_path)
+            and configuration.get("run_config_contract") == expected_run_config
+            and isinstance(comparison, dict)
+            and comparison.get("run_config") == expected_run_config
+        )
+    except (CampaignError, OSError, TypeError, ValueError):
+        run_config_valid = False
     if (
         not isinstance(comparison, dict)
         or not isinstance(comparison_digest, str)
@@ -516,6 +536,7 @@ def _load_formal_cohort(run_directory: Path) -> Dict[str, Any] | None:
         ).hexdigest()
         != comparison_digest
         or comparison.get("tasks") != raw_tasks
+        or not run_config_valid
     ):
         raise ValueError("formal campaign manifest task cohort is not digest-bound")
     task_names: List[str] = []

@@ -37,6 +37,9 @@ try:
     )
     from src.campaign import (
         FORMAL_AGENT_TRANSPORT_TREATMENTS,
+        CampaignError,
+        _run_config_contract,
+        _sha256_file,
         campaign_task_path_component,
         comparison_runtime_projection as _campaign_runtime_projection,
     )
@@ -62,6 +65,9 @@ except (ModuleNotFoundError, ImportError):
     )
     from src.campaign import (
         FORMAL_AGENT_TRANSPORT_TREATMENTS,
+        CampaignError,
+        _run_config_contract,
+        _sha256_file,
         campaign_task_path_component,
         comparison_runtime_projection as _campaign_runtime_projection,
     )
@@ -1067,6 +1073,21 @@ def _formal_manifest_context(
     agent = manifest.get("agent")
     agent_template = agent.get("template") if isinstance(agent, dict) else None
     comparison_codex = comparison.get("codex") if isinstance(comparison, dict) else None
+    try:
+        run_config_path = Path(str(configuration.get("run_config_path") or ""))
+        expected_run_config = _run_config_contract(
+            run_config_path,
+            agent_name=str(agent_template or ""),
+        )
+        run_config_valid = bool(
+            configuration.get("run_config_sha256")
+            == _sha256_file(run_config_path)
+            and configuration.get("run_config_contract") == expected_run_config
+            and isinstance(comparison, dict)
+            and comparison.get("run_config") == expected_run_config
+        )
+    except (CampaignError, OSError, TypeError, ValueError):
+        run_config_valid = False
     if (
         not isinstance(tasks, list)
         or not tasks
@@ -1091,6 +1112,7 @@ def _formal_manifest_context(
         or not _SHA256.fullmatch(comparison_sha256)
         or _sha256_bytes(_canonical_json(comparison).encode()) != comparison_sha256
         or agent_template not in {"apex", "codex"}
+        or not run_config_valid
     ):
         raise ValueError("formal campaign comparison/cohort/agent binding is invalid")
 

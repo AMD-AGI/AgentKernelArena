@@ -208,6 +208,13 @@ The matched Apex-versus-Codex configurations are stricter: run each with
 `make docker-run ... GPU_IDS=<same-single-GPU>`. They write under
 `/data/viouyang/apex/aka`, execute the ten tasks sequentially in one Docker mount
 namespace, and require matching provenance-contract hashes before comparison.
+Their normalized run-configuration contracts may differ only at the exact
+`agent: {template: apex|codex}` treatment mapping. Tasks and order, campaign
+attempts and timeouts, target GPU, workspace/output paths, log paths, and every
+other run-config field are digest-bound and must match. AKA re-reads the original
+YAML and verifies both its raw SHA-256 and normalized projection during campaign
+execution, postprocessing, and comparison; deletion or later modification fails
+closed.
 Formal `parallel-run` is rejected because independent Docker namespaces have
 different live mount receipts.
 Formal attempts require `bwrap`, expose only the current attempt directory to

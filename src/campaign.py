@@ -80,6 +80,7 @@ from src.preprocessing import get_task_workspace_path
 _CAMPAIGN_SCHEMA = "aka.matched-campaign/v1"
 _TASK_SCHEMA = "aka.matched-task-attempts/v1"
 _CAMPAIGN_BINDING_SCHEMA = "aka.attempt-campaign-binding/v1"
+_RUN_CONFIG_CONTRACT_SCHEMA = "aka.formal-run-config/v1"
 _CAMPAIGN_BINDING_KEYS = frozenset(
     {
         "schema",
@@ -844,6 +845,34 @@ def _task_manifests(task_config_paths: dict[str, str]) -> list[dict[str, Any]]:
     return manifests
 
 
+def _run_config_contract(
+    run_config_path: Path, *, agent_name: str
+) -> dict[str, Any]:
+    """Bind every formal run option except the intentional agent treatment."""
+
+    try:
+        supplied = run_config_path.absolute()
+        metadata = supplied.lstat()
+        path = supplied.resolve(strict=True)
+    except OSError as error:
+        raise CampaignError("formal run config is unavailable") from error
+    if not path.is_file() or supplied.is_symlink() or metadata.st_nlink != 1:
+        raise CampaignError("formal run config is not a safe regular file")
+    document = _load_mapping(path, "formal run config")
+    if document.get("agent") != {"template": agent_name}:
+        raise CampaignError(
+            "formal run config agent must contain exactly the selected template"
+        )
+    projection = {key: value for key, value in document.items() if key != "agent"}
+    if not projection:
+        raise CampaignError("formal run config projection is empty")
+    return {
+        "schema": _RUN_CONFIG_CONTRACT_SCHEMA,
+        "effective_config": projection,
+        "effective_config_sha256": _canonical_json_digest(projection),
+    }
+
+
 def _v5_apex_treatment_contract(repositories: Any) -> dict[str, Any] | None:
     if not isinstance(repositories, dict):
         return None
@@ -925,6 +954,25 @@ def _v5_manifest_contract_valid(
         if isinstance(agent, dict) and isinstance(transport_treatments, dict)
         else None
     )
+    configuration = manifest.get("configuration")
+    run_config = comparison.get("run_config")
+    try:
+        expected_run_config = (
+            _run_config_contract(
+                Path(str(configuration.get("run_config_path") or "")),
+                agent_name=str(agent.get("template") or ""),
+            )
+            if isinstance(configuration, dict) and isinstance(agent, dict)
+            else None
+        )
+        run_config_file_valid = bool(
+            expected_run_config is not None
+            and configuration.get("run_config_sha256")
+            == _sha256_file(Path(str(configuration["run_config_path"])))
+        )
+    except (CampaignError, OSError, TypeError, ValueError):
+        expected_run_config = None
+        run_config_file_valid = False
     return bool(
         isinstance(repositories, dict)
         and comparison_repositories == repositories
@@ -969,6 +1017,9 @@ def _v5_manifest_contract_valid(
         and comparison.get("formal_execution") == _FORMAL_LIVE_COMMITMENT
         and comparison.get("formal_execution_sha256")
         == _FORMAL_LIVE_COMMITMENT_SHA256
+        and run_config_file_valid
+        and configuration.get("run_config_contract") == expected_run_config
+        and run_config == expected_run_config
         and _campaign_task_paths_valid(manifest)
         and _revalidate_aka_runtime(manifest)
     )
@@ -1298,6 +1349,7 @@ def _comparison_contract(
     runtime: dict[str, Any],
     evaluator: dict[str, Any],
     tasks: list[dict[str, Any]],
+    run_config: dict[str, Any],
 ) -> dict[str, Any]:
     apex_treatment = _v5_apex_treatment_contract(repositories)
     if (
@@ -1364,6 +1416,7 @@ def _comparison_contract(
         "runtime": comparison_runtime,
         "evaluator_files_sha256": evaluator,
         "tasks": tasks,
+        "run_config": run_config,
     }
 
 
@@ -1398,6 +1451,7 @@ def build_campaign_manifest(
         apex_runtime_manifest_sha256=apex_repository["runtime_manifest_sha256"],
     )
     task_manifests = _task_manifests(task_config_paths)
+    run_config = _run_config_contract(run_config_path, agent_name=agent_name)
     try:
         runtime_isolation = runtime_isolation_receipt()
     except CampaignIsolationError as error:
@@ -1417,6 +1471,7 @@ def build_campaign_manifest(
         runtime=runtime,
         evaluator=evaluator,
         tasks=task_manifests,
+        run_config=run_config,
     )
     return {
         "schema": _CAMPAIGN_SCHEMA,
@@ -1435,6 +1490,7 @@ def build_campaign_manifest(
         "configuration": {
             "run_config_path": str(run_config_path.resolve()),
             "run_config_sha256": _sha256_file(run_config_path),
+            "run_config_contract": run_config,
             "tasks": task_manifests,
         },
     }

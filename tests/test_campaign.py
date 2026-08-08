@@ -1128,6 +1128,24 @@ def _write_campaign_codex_contract(
 ) -> dict:
     turn_policy = campaign.CANDIDATE_PERSISTENCE_POLICY
     policy = {"attempts": 3}
+    run_config_path = run_directory.parent / f"run-config-{agent_template}.yaml"
+    run_config_path.write_text(
+        yaml.safe_dump(
+            {
+                "agent": {"template": agent_template},
+                "campaign": policy,
+                "tasks": list(task_names),
+                "target_gpu_model": "MI355X",
+                "log_directory": "/test/logs",
+                "workspace_directory_prefix": "/test/workspace",
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    run_config = campaign._run_config_contract(
+        run_config_path, agent_name=agent_template
+    )
     closure = _test_backend_closure()
     codex = {
         "backend": "codex",
@@ -1275,6 +1293,7 @@ def _write_campaign_codex_contract(
         "runtime": comparison_runtime,
         "evaluator_files_sha256": evaluator_files,
         "tasks": tasks,
+        "run_config": run_config,
     }
     comparison_digest = hashlib.sha256(
         json.dumps(
@@ -1295,7 +1314,12 @@ def _write_campaign_codex_contract(
                 "agent": agent,
                 "runtime": runtime,
                 "evaluator_files_sha256": evaluator_files,
-                "configuration": {"tasks": tasks},
+                "configuration": {
+                    "run_config_path": str(run_config_path.resolve()),
+                    "run_config_sha256": campaign._sha256_file(run_config_path),
+                    "run_config_contract": run_config,
+                    "tasks": tasks,
+                },
             }
         ),
         encoding="utf-8",
@@ -1375,6 +1399,90 @@ def test_formal_campaign_fixture_is_a_complete_live_v5_contract(
     assert comparison["apex_treatment"]["attempt_mount_receipt_schema"] == (
         campaign.ATTEMPT_MOUNT_RECEIPT_SCHEMA
     )
+
+
+def test_formal_run_config_agent_mapping_must_be_exact(tmp_path: Path) -> None:
+    run_config = tmp_path / "run.yaml"
+    run_config.write_text(
+        yaml.safe_dump(
+            {
+                "agent": {"template": "codex", "model": "attacker-override"},
+                "tasks": ["triton2triton/vllm/example"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        campaign.CampaignError,
+        match="agent must contain exactly the selected template",
+    ):
+        campaign._run_config_contract(run_config, agent_name="codex")
+
+
+def test_formal_run_config_rejects_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "target.yaml"
+    target.write_text(
+        yaml.safe_dump(
+            {
+                "agent": {"template": "codex"},
+                "tasks": ["triton2triton/vllm/example"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    linked = tmp_path / "run.yaml"
+    linked.symlink_to(target)
+
+    with pytest.raises(
+        campaign.CampaignError,
+        match="safe regular file",
+    ):
+        campaign._run_config_contract(linked, agent_name="codex")
+
+
+def test_formal_campaign_rejects_raw_run_config_rewrite(tmp_path: Path) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    _write_campaign_codex_contract(run, agent_template="codex")
+    manifest = yaml.safe_load((run / "campaign_manifest.yaml").read_text())
+    run_config = Path(manifest["configuration"]["run_config_path"])
+    run_config.write_text(
+        run_config.read_text(encoding="utf-8") + "unexpected_output: /tmp/forged\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        campaign.CampaignError,
+        match="campaign manifest comparison contract is invalid",
+    ):
+        campaign._load_verified_campaign_manifest(run)
+
+
+def test_formal_campaign_rejects_forged_run_config_projection_digest(
+    tmp_path: Path,
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    _write_campaign_codex_contract(run, agent_template="codex")
+    manifest_path = run / "campaign_manifest.yaml"
+    manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    forged = copy.deepcopy(manifest["configuration"]["run_config_contract"])
+    forged["effective_config_sha256"] = "0" * 64
+    manifest["configuration"]["run_config_contract"] = copy.deepcopy(forged)
+    manifest["comparison_contract"]["run_config"] = copy.deepcopy(forged)
+    manifest["comparison_contract_sha256"] = campaign._canonical_json_digest(
+        manifest["comparison_contract"]
+    )
+    manifest_path.chmod(0o644)
+    manifest_path.write_text(yaml.safe_dump(manifest), encoding="utf-8")
+    manifest_path.chmod(0o444)
+
+    with pytest.raises(
+        campaign.CampaignError,
+        match="campaign manifest comparison contract is invalid",
+    ):
+        campaign._load_verified_campaign_manifest(run)
 
 
 @pytest.mark.parametrize("synchronize_table", [False, True])
@@ -2669,7 +2777,9 @@ def test_manifest_names_native_100_repetition_score_not_apex_grade(
 ) -> None:
     run_config = tmp_path / "run.yaml"
     task_config = tmp_path / "task.yaml"
-    run_config.write_text("campaign: {}\n", encoding="utf-8")
+    run_config.write_text(
+        "agent:\n  template: codex\ncampaign: {}\n", encoding="utf-8"
+    )
     task_config.write_text("task_type: triton2triton\n", encoding="utf-8")
     monkeypatch.setenv(
         "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID", "sha256:" + "1" * 64
@@ -2935,8 +3045,27 @@ def test_comparison_contract_hash_ignores_treatment_template(tmp_path, monkeypat
     task_config.write_text("task_type: triton2triton\n", encoding="utf-8")
     apex_run = tmp_path / "apex-run.yaml"
     codex_run = tmp_path / "codex-run.yaml"
-    apex_run.write_text("agent: {template: apex}\n", encoding="utf-8")
-    codex_run.write_text("agent: {template: codex}\n", encoding="utf-8")
+    common_run_config = {
+        "campaign": {"comparison": "apex_vs_codex", "attempts": 3},
+        "tasks": ["example"],
+        "target_gpu_model": "MI355X",
+        "log_directory": "/test/logs",
+        "workspace_directory_prefix": "/test/workspace",
+    }
+    apex_run.write_text(
+        yaml.safe_dump(
+            {"agent": {"template": "apex"}, **common_run_config},
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    codex_run.write_text(
+        yaml.safe_dump(
+            {"agent": {"template": "codex"}, **common_run_config},
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setenv("AGENT_KERNEL_ARENA_DOCKER_IMAGE", "image:tag")
     monkeypatch.setenv("AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID", "sha256:" + "1" * 64)
     monkeypatch.setenv(
@@ -2997,6 +3126,38 @@ def test_comparison_contract_hash_ignores_treatment_template(tmp_path, monkeypat
     assert apex["comparison_contract"]["agent_transport_treatments"] == (
         campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS
     )
+    assert apex["comparison_contract"]["run_config"] == (
+        codex["comparison_contract"]["run_config"]
+    )
+
+    non_treatment_drifts = {
+        "tasks": {"tasks": ["different/task"]},
+        "attempts": {
+            "campaign": {"comparison": "apex_vs_codex", "attempts": 4}
+        },
+        "gpu": {"target_gpu_model": "MI300X"},
+        "output": {"workspace_directory_prefix": "/different/workspace"},
+        "log": {"log_directory": "/different/logs"},
+        "future_field": {"new_formal_option": {"enabled": True}},
+    }
+    for field, replacement in non_treatment_drifts.items():
+        drifted = copy.deepcopy(common_run_config)
+        drifted.update(replacement)
+        codex_run.write_text(
+            yaml.safe_dump(
+                {"agent": {"template": "codex"}, **drifted},
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        drifted_manifest = campaign.build_campaign_manifest(
+            **kwargs, run_config_path=codex_run, agent_name="codex"
+        )
+        assert drifted_manifest is not None
+        assert drifted_manifest["comparison_contract_sha256"] != (
+            apex["comparison_contract_sha256"]
+        ), field
+
     for manifest in (apex, codex):
         transport = campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS[
             manifest["agent"]["template"]
@@ -3071,6 +3232,13 @@ def test_comparison_contract_projects_run_specific_gpu_lease_receipts() -> None:
         "agent": agent,
         "evaluator": {},
         "tasks": [],
+        "run_config": {
+            "schema": "aka.formal-run-config/v1",
+            "effective_config": {"campaign": _policy()},
+            "effective_config_sha256": campaign._canonical_json_digest(
+                {"campaign": _policy()}
+            ),
+        },
     }
     first = campaign._comparison_contract(
         runtime=runtime("apex-run", 101, "a" * 64), **kwargs

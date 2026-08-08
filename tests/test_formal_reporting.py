@@ -19,6 +19,27 @@ from src.score import task_result_scoring
 
 
 def _write_read_only_yaml(path: Path, payload: dict) -> None:
+    payload = copy.deepcopy(payload)
+    if path.name == "campaign_manifest.yaml" and payload.get("schema") == "aka.matched-campaign/v1":
+        run_config_contract = payload["comparison_contract"]["run_config"]
+        run_config = path.parent / "formal_run_config.yaml"
+        run_config.write_text(
+            yaml.safe_dump(
+                {
+                    "agent": {"template": payload["agent"]["template"]},
+                    **run_config_contract["effective_config"],
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        payload["configuration"].update(
+            {
+                "run_config_path": str(run_config.resolve()),
+                "run_config_sha256": postprocessing._sha256_file(run_config),
+                "run_config_contract": run_config_contract,
+            }
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(payload, sort_keys=True), encoding="utf-8")
     path.chmod(0o444)
@@ -496,6 +517,18 @@ def _formal_manifest(task_names: list[str], arm: str = "codex") -> dict:
             "runtime_manifest_sha256"
         ],
     }
+    effective_run_config = {
+        "campaign": _policy(),
+        "tasks": task_names,
+        "target_gpu_model": "MI355X",
+        "log_directory": "/test/logs",
+        "workspace_directory_prefix": "/test/workspace",
+    }
+    run_config = {
+        "schema": "aka.formal-run-config/v1",
+        "effective_config": effective_run_config,
+        "effective_config_sha256": _digest(effective_run_config),
+    }
     comparison = {
         "schema": "aka.apex-vs-codex-comparison-contract/v5",
         "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
@@ -519,6 +552,7 @@ def _formal_manifest(task_names: list[str], arm: str = "codex") -> dict:
         "runtime": comparison_runtime,
         "evaluator_files_sha256": evaluator,
         "tasks": tasks,
+        "run_config": run_config,
     }
     transport = campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS[arm]
     agent = {
@@ -553,6 +587,7 @@ def _formal_manifest(task_names: list[str], arm: str = "codex") -> dict:
         "configuration": {
             "run_config_path": "/test/run_config.yaml",
             "run_config_sha256": "2" * 64,
+            "run_config_contract": run_config,
             "tasks": tasks,
         },
     }
@@ -1036,6 +1071,37 @@ def test_formal_report_uses_manifest_cohort_and_seals_outputs(tmp_path: Path) ->
     )
     assert second == aggregate
     assert {path: path.read_bytes() for path in report_paths} == before
+
+
+@pytest.mark.parametrize("tamper", ["raw_config", "projection_digest"])
+def test_formal_postprocessing_rejects_run_config_tamper(
+    tmp_path: Path, tamper: str
+) -> None:
+    run = tmp_path / "workspace_MI355X_codex" / "run_20260807_000000_formal"
+    run.mkdir(parents=True)
+    manifest = _formal_manifest(["triton2triton/example"])
+    if tamper == "projection_digest":
+        forged = copy.deepcopy(manifest["comparison_contract"]["run_config"])
+        forged["effective_config_sha256"] = "0" * 64
+        manifest["comparison_contract"]["run_config"] = copy.deepcopy(forged)
+        manifest["configuration"]["run_config_contract"] = copy.deepcopy(forged)
+        manifest["comparison_contract_sha256"] = _digest(
+            manifest["comparison_contract"]
+        )
+    _write_read_only_yaml(run / "campaign_manifest.yaml", manifest)
+    if tamper == "raw_config":
+        sealed_manifest = yaml.safe_load(
+            (run / "campaign_manifest.yaml").read_text(encoding="utf-8")
+        )
+        run_config = Path(sealed_manifest["configuration"]["run_config_path"])
+        run_config.write_text(
+            run_config.read_text(encoding="utf-8")
+            + "unexpected_output: /tmp/forged\n",
+            encoding="utf-8",
+        )
+
+    with pytest.raises(ValueError, match="task cohort is not digest-bound"):
+        postprocessing._load_formal_cohort(run)
 
 
 def test_invalid_canonical_result_contributes_no_passes_or_score(

@@ -45,6 +45,21 @@ def _backend_closure() -> dict:
     }
 
 
+def _run_config_contract() -> dict:
+    effective_config = {
+        "campaign": {"comparison": "apex_vs_codex", "attempts": 3},
+        "tasks": ["task"],
+        "target_gpu_model": "MI355X",
+        "log_directory": "/test/logs",
+        "workspace_directory_prefix": "/test/workspace",
+    }
+    return {
+        "schema": "aka.formal-run-config/v1",
+        "effective_config": effective_config,
+        "effective_config_sha256": _digest(effective_config),
+    }
+
+
 def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
     tasks = [{"task_index": 1, "task_name": "task"}]
     repositories = {
@@ -92,6 +107,7 @@ def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
     comparison_runtime = campaign.comparison_runtime_projection(runtime)
     assert comparison_runtime is not None
     evaluator = {"execution_manifest_sha256": "2" * 64}
+    run_config = _run_config_contract()
     comparison = {
         "schema": "aka.apex-vs-codex-comparison-contract/v5",
         "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
@@ -134,6 +150,7 @@ def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
         "runtime": comparison_runtime,
         "evaluator_files_sha256": evaluator,
         "tasks": tasks,
+        "run_config": run_config,
     }
     return {
         "schema": "aka.matched-campaign/v1",
@@ -143,13 +160,36 @@ def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
         "agent": agent,
         "runtime": runtime,
         "evaluator_files_sha256": evaluator,
-        "configuration": {"tasks": tasks},
+        "configuration": {
+            "run_config_contract": run_config,
+            "tasks": tasks,
+        },
         "comparison_contract": comparison,
         "comparison_contract_sha256": _digest(comparison),
     }
 
 
 def _write_manifest(run: Path, manifest: dict) -> Path:
+    run_config_contract = manifest["comparison_contract"].get("run_config")
+    if isinstance(run_config_contract, dict):
+        run_config_path = run / "formal_run_config.yaml"
+        run_config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "agent": {"template": manifest["agent"]["template"]},
+                    **run_config_contract["effective_config"],
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        manifest["configuration"].update(
+            {
+                "run_config_path": str(run_config_path.resolve()),
+                "run_config_sha256": campaign._sha256_file(run_config_path),
+                "run_config_contract": run_config_contract,
+            }
+        )
     path = run / "campaign_manifest.yaml"
     path.write_text(yaml.safe_dump(manifest), encoding="utf-8")
     path.chmod(0o444)
@@ -308,6 +348,7 @@ def test_comparison_v5_digest_is_identical_for_apex_and_codex_arms() -> None:
         "runtime": {},
         "evaluator": {},
         "tasks": [],
+        "run_config": _run_config_contract(),
     }
 
     apex_contract = campaign._comparison_contract(agent=apex, **arguments)

@@ -190,7 +190,12 @@ the immutable manifest. The comparison contract explicitly names
 `aka.shared-objective-backend-native-context-receipted/v1` as its prompt policy.
 The latter keeps the task objective and protected harness common while allowing the
 documented, receipt-bound Apex context adaptation. `comparison_contract_sha256`
-excludes the treatment template/config and
+excludes only the exact run-config treatment mapping
+`agent: {template: apex|codex}`. The normalized contract retains every other field,
+including task order, campaign attempts and timeouts, GPU target, output/workspace
+path, and log path. The manifest also binds the original YAML SHA-256; campaign
+execution, postprocess, and comparison independently re-read both forms and fail
+closed on drift. The comparison digest also excludes
 run-specific GPU lease fields (run name, PID, timestamp, receipt hash, and lock path),
 while retaining the common lease policy, physical unique IDs, protected device paths,
 and GPU boundary-plan digest; it must match across the Apex and direct-Codex runs.
