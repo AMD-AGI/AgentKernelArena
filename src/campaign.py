@@ -22,6 +22,17 @@ from typing import Any, Callable
 
 import yaml
 
+from src.aka_runtime import (
+    AkaRuntimeError,
+    BACKEND_CLOSURE_SCHEMA,
+    EXECUTION_MANIFEST_SCHEMA,
+    IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
+    capture_backend_closure,
+    capture_execution_manifest,
+    validate_immutable_mount_receipt,
+    verify_backend_closure,
+    verify_materialized_snapshot,
+)
 from src.apex_runtime import (
     ApexRuntimeError,
     RUNTIME_BOOTSTRAP_NAME,
@@ -101,6 +112,17 @@ _LEGACY_SESSION_RECEIPT_SCHEMAS = {
 }
 _SHA1 = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+_FORMAL_LIVE_COMMITMENT = {
+    "mode": "live_formal_scoring",
+    "comparison_generation": 5,
+    "historical_compatibility": False,
+    "policy_id": "aka.live-formal-v5-only/v1",
+}
+_FORMAL_LIVE_COMMITMENT_SHA256 = hashlib.sha256(
+    json.dumps(
+        _FORMAL_LIVE_COMMITMENT, sort_keys=True, separators=(",", ":")
+    ).encode()
+).hexdigest()
 
 
 class CampaignError(RuntimeError):
@@ -278,27 +300,214 @@ def _run_text(argv: list[str], *, cwd: Path | None = None) -> str:
 
 
 def _git_state(root: Path) -> dict[str, Any]:
-    commit = _run_text(["git", "rev-parse", "HEAD"], cwd=root)
-    if not _SHA1.fullmatch(commit):
-        raise CampaignError(f"invalid Git commit for {root}: {commit!r}")
-    status = _run_text(
-        [
-            "git",
-            "status",
-            "--porcelain=v1",
-            "--untracked-files=normal",
-            "--",
-            ".",
-            ":(exclude).eval-tool-artifacts",
-            ":(exclude)experiments",
-        ],
-        cwd=root,
-    )
+    """Prove exact committed bytes without trusting Git's mutable index."""
+
+    try:
+        manifest = capture_execution_manifest(root)
+    except AkaRuntimeError as error:
+        raise CampaignError(f"cannot prove exact AgentKernelArena checkout: {error}") from error
+    source = manifest["source"]
     return {
-        "commit": commit,
-        "dirty": bool(status),
-        "status_sha256": _sha256_bytes(status.encode("utf-8")),
+        "commit": source["commit"],
+        "tree": source["tree"],
+        "dirty": False,
+        "status_sha256": _sha256_bytes(b""),
+        "execution_manifest_schema": EXECUTION_MANIFEST_SCHEMA,
+        "execution_manifest_sha256": manifest["manifest_sha256"],
+        "git_evidence_policy_id": manifest["policy_id"],
     }
+
+
+def _load_json_object(path: Path, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise CampaignError(f"cannot read {label}: {path}: {error}") from error
+    if not isinstance(value, dict):
+        raise CampaignError(f"{label} must contain a JSON object")
+    return value
+
+
+def _runtime_evidence_path(environment_key: str, label: str) -> Path:
+    raw = os.environ.get(environment_key, "")
+    if not raw:
+        raise CampaignError(f"runner did not provide {label}")
+    path = Path(raw)
+    try:
+        metadata = path.lstat()
+        resolved = path.resolve(strict=True)
+    except OSError as error:
+        raise CampaignError(f"cannot inspect runner-provided {label}: {path}") from error
+    if (
+        not path.is_absolute()
+        or resolved != path
+        or path.is_symlink()
+        or not path.is_file()
+        or metadata.st_nlink != 1
+    ):
+        raise CampaignError(f"runner-provided {label} is unsafe")
+    return path
+
+
+def _aka_state_from_environment(repo_root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Verify the mounted AKA image and bind its host attestation."""
+
+    runtime_root_raw = os.environ.get("AGENT_KERNEL_ARENA_AKA_RUNTIME_ROOT", "")
+    try:
+        runtime_lexical = Path(runtime_root_raw)
+        runtime_metadata = runtime_lexical.lstat()
+        runtime_root = runtime_lexical.resolve(strict=True)
+        resolved_repo = repo_root.resolve(strict=True)
+    except OSError as error:
+        raise CampaignError("runner did not provide an available AKA runtime root") from error
+    if (
+        not runtime_root_raw
+        or not runtime_lexical.is_absolute()
+        or runtime_lexical != Path(os.path.abspath(runtime_lexical))
+        or runtime_lexical != runtime_root
+        or runtime_lexical.is_symlink()
+        or not stat.S_ISDIR(runtime_metadata.st_mode)
+        or runtime_root != resolved_repo
+    ):
+        raise CampaignError("AKA code is not executing from the attested runtime root")
+    manifest_path = _runtime_evidence_path(
+        "AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST", "AKA runtime manifest"
+    )
+    manifest_digest = os.environ.get(
+        "AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST_SHA256", ""
+    )
+    manifest_file_digest = os.environ.get(
+        "AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST_FILE_SHA256", ""
+    )
+    receipt_path = _runtime_evidence_path(
+        "AGENT_KERNEL_ARENA_AKA_RUNTIME_MOUNT_RECEIPT",
+        "AKA runtime mount receipt",
+    )
+    receipt_digest = os.environ.get(
+        "AGENT_KERNEL_ARENA_AKA_RUNTIME_MOUNT_RECEIPT_SHA256", ""
+    )
+    receipt_file_digest = os.environ.get(
+        "AGENT_KERNEL_ARENA_AKA_RUNTIME_MOUNT_RECEIPT_FILE_SHA256", ""
+    )
+    if any(
+        not _SHA256.fullmatch(value)
+        for value in (
+            manifest_digest,
+            manifest_file_digest,
+            receipt_digest,
+            receipt_file_digest,
+        )
+    ):
+        raise CampaignError("runner provided an invalid AKA runtime evidence digest")
+    if _sha256_file(manifest_path) != manifest_file_digest:
+        raise CampaignError("AKA runtime manifest file digest differs from runner evidence")
+    if _sha256_file(receipt_path) != receipt_file_digest:
+        raise CampaignError("AKA runtime mount receipt digest differs from runner evidence")
+    source_manifest = _load_json_object(manifest_path, "AKA runtime manifest")
+    mount_receipt = _load_json_object(receipt_path, "AKA runtime mount receipt")
+    try:
+        verify_materialized_snapshot(runtime_root, source_manifest, manifest_digest)
+        validate_immutable_mount_receipt(
+            mount_receipt, manifest_digest, expected_root=runtime_root
+        )
+    except AkaRuntimeError as error:
+        raise CampaignError(f"AKA runtime attestation is invalid: {error}") from error
+    source = source_manifest.get("source")
+    if not isinstance(source, dict):
+        raise CampaignError("AKA runtime manifest lacks source Git evidence")
+    if mount_receipt.get("sha256") != receipt_digest:
+        raise CampaignError("AKA mount receipt content digest differs from runner evidence")
+    state = {
+        "commit": source.get("commit"),
+        "tree": source.get("tree"),
+        "dirty": False,
+        "status_sha256": _sha256_bytes(b""),
+        "execution_manifest_schema": source_manifest.get("schema"),
+        "execution_manifest_sha256": manifest_digest,
+        "git_evidence_policy_id": source_manifest.get("policy_id"),
+    }
+    if not _SHA1.fullmatch(str(state["commit"])) or not _SHA1.fullmatch(
+        str(state["tree"])
+    ):
+        raise CampaignError("AKA runtime source Git identity is invalid")
+    runtime = {
+        "schema": "aka.execution-snapshot-runtime/v1",
+        "root": str(runtime_root),
+        "manifest_path": str(manifest_path),
+        "manifest_file_sha256": manifest_file_digest,
+        "manifest_sha256": manifest_digest,
+        "mount_receipt_path": str(receipt_path),
+        "mount_receipt_file_sha256": receipt_file_digest,
+        "mount_receipt_sha256": receipt_digest,
+        "mount_receipt_schema": IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
+        "mount_receipt": mount_receipt,
+    }
+    return state, runtime
+
+
+def _revalidate_aka_runtime(manifest: dict[str, Any]) -> bool:
+    runtime = manifest.get("runtime")
+    evidence = runtime.get("aka_execution_snapshot") if isinstance(runtime, dict) else None
+    if not isinstance(evidence, dict) or set(evidence) != {
+        "schema",
+        "root",
+        "manifest_path",
+        "manifest_file_sha256",
+        "manifest_sha256",
+        "mount_receipt_path",
+        "mount_receipt_file_sha256",
+        "mount_receipt_sha256",
+        "mount_receipt_schema",
+        "mount_receipt",
+    }:
+        return False
+    try:
+        root_lexical = Path(evidence["root"])
+        source_lexical = Path(evidence["manifest_path"])
+        receipt_lexical = Path(evidence["mount_receipt_path"])
+        root_metadata = root_lexical.lstat()
+        source_metadata = source_lexical.lstat()
+        receipt_metadata = receipt_lexical.lstat()
+        root = root_lexical.resolve(strict=True)
+        source_path = source_lexical.resolve(strict=True)
+        receipt_path = receipt_lexical.resolve(strict=True)
+        if (
+            evidence.get("schema") != "aka.execution-snapshot-runtime/v1"
+            or evidence.get("mount_receipt_schema")
+            != IMMUTABLE_MOUNT_RECEIPT_SCHEMA
+            or root != root_lexical
+            or source_path != source_lexical
+            or receipt_path != receipt_lexical
+            or root_lexical.is_symlink()
+            or source_lexical.is_symlink()
+            or receipt_lexical.is_symlink()
+            or not stat.S_ISDIR(root_metadata.st_mode)
+            or not stat.S_ISREG(source_metadata.st_mode)
+            or not stat.S_ISREG(receipt_metadata.st_mode)
+            or source_metadata.st_nlink != 1
+            or receipt_metadata.st_nlink != 1
+            or not _SHA256.fullmatch(str(evidence.get("manifest_sha256") or ""))
+            or not _SHA256.fullmatch(
+                str(evidence.get("mount_receipt_sha256") or "")
+            )
+            or _sha256_file(source_path) != evidence["manifest_file_sha256"]
+            or _sha256_file(receipt_path) != evidence["mount_receipt_file_sha256"]
+        ):
+            return False
+        source = _load_json_object(source_path, "AKA runtime manifest")
+        receipt = _load_json_object(receipt_path, "AKA runtime mount receipt")
+        verify_materialized_snapshot(root, source, evidence["manifest_sha256"])
+        validate_immutable_mount_receipt(receipt, evidence["manifest_sha256"], root)
+    except (AkaRuntimeError, CampaignError, KeyError, OSError, TypeError, ValueError):
+        return False
+    repositories = manifest.get("repositories")
+    aka = repositories.get("agent_kernel_arena") if isinstance(repositories, dict) else None
+    return bool(
+        isinstance(aka, dict)
+        and aka.get("execution_manifest_sha256") == evidence["manifest_sha256"]
+        and receipt.get("sha256") == evidence["mount_receipt_sha256"]
+        and receipt == evidence["mount_receipt"]
+    )
 
 
 def _apex_state_from_environment() -> dict[str, Any]:
@@ -429,6 +638,10 @@ def _agent_manifest(
     binary_path = Path(codex).resolve()
     if not binary_path.is_file():
         raise CampaignError("resolved codex binary is not a regular file")
+    try:
+        backend_closure = capture_backend_closure("codex", codex)
+    except AkaRuntimeError as error:
+        raise CampaignError(f"cannot capture complete Codex runtime: {error}") from error
     manifest = {
         "template": agent_name,
         "session_receipt_schema": (
@@ -458,6 +671,9 @@ def _agent_manifest(
         "codex_binary": str(binary_path),
         "codex_binary_sha256": _sha256_file(binary_path),
         "codex_version": _run_text([codex, "--version"]),
+        "backend_runtime_closure_schema": BACKEND_CLOSURE_SCHEMA,
+        "backend_runtime_closure_sha256": backend_closure["closure_sha256"],
+        "backend_runtime_closure": backend_closure,
         "isolation": {
             "approval": "never_via_strict_config",
             "execpolicy_rules": "ignored",
@@ -503,27 +719,20 @@ def _regular_tree_manifest(root: Path) -> dict[str, str]:
     return files
 
 
-def _evaluator_manifest(repo_root: Path) -> dict[str, str]:
-    relative_paths = (
-        "main.py",
-        "src/campaign.py",
-        "src/campaign_isolation.py",
-        "src/evaluator.py",
-        "src/evaluator_utils.py",
-        "src/harness_guard.py",
-        "src/performance.py",
-        "src/perf_helper_materialization.py",
-        "src/score.py",
-        "src/testcases.py",
-    )
-    manifest: dict[str, str] = {}
-    for relative in relative_paths:
-        path = repo_root / relative
-        metadata = path.lstat()
-        if not path.is_file() or path.is_symlink() or metadata.st_nlink != 1:
-            raise CampaignError(f"unsafe evaluator source file: {path}")
-        manifest[relative] = _sha256_file(path)
-    return manifest
+def _evaluator_manifest(aka_state: dict[str, Any]) -> dict[str, Any]:
+    """Bind evaluation to the complete AKA execution snapshot, never a file subset."""
+
+    digest = aka_state.get("execution_manifest_sha256")
+    if not isinstance(digest, str) or not _SHA256.fullmatch(digest):
+        raise CampaignError("complete AKA execution manifest is unavailable")
+    return {
+        "schema": "aka.evaluator-source-binding/v2",
+        "coverage": "all_committed_files",
+        "execution_manifest_schema": aka_state.get("execution_manifest_schema"),
+        "execution_manifest_sha256": digest,
+        "commit": aka_state.get("commit"),
+        "tree": aka_state.get("tree"),
+    }
 
 
 def _task_manifests(task_config_paths: dict[str, str]) -> list[dict[str, Any]]:
@@ -571,8 +780,24 @@ def _v5_top_level_agent_valid(
     if not isinstance(agent, dict):
         return False
     template = agent.get("template")
+    closure = agent.get("backend_runtime_closure")
+    try:
+        closure_valid = bool(
+            isinstance(closure, dict)
+            and agent.get("backend_runtime_closure_schema")
+            == BACKEND_CLOSURE_SCHEMA
+            and agent.get("backend_runtime_closure_sha256")
+            == closure.get("closure_sha256")
+            and verify_backend_closure(
+                closure, agent.get("backend_runtime_closure_sha256")
+            )
+        )
+    except (AkaRuntimeError, OSError, TypeError, ValueError):
+        closure_valid = False
     if template == "apex":
-        return all(agent.get(key) == value for key, value in apex_treatment.items())
+        return closure_valid and all(
+            agent.get(key) == value for key, value in apex_treatment.items()
+        )
     forbidden = {
         "apex_runtime_mount_policy_id",
         "attempt_mount_receipt_schema",
@@ -582,6 +807,7 @@ def _v5_top_level_agent_valid(
     return bool(
         template == "codex"
         and agent.get("session_receipt_schema") == _CODEX_RECEIPT_SCHEMA
+        and closure_valid
         and not forbidden.intersection(agent)
     )
 
@@ -593,14 +819,41 @@ def _v5_manifest_contract_valid(
     comparison_repositories = comparison.get("repositories")
     apex_treatment = _v5_apex_treatment_contract(repositories)
     apex = repositories.get("apex") if isinstance(repositories, dict) else None
+    aka = (
+        repositories.get("agent_kernel_arena")
+        if isinstance(repositories, dict)
+        else None
+    )
+    runtime = manifest.get("runtime")
+    comparison_runtime = comparison.get("runtime")
+    aka_runtime = (
+        runtime.get("aka_execution_snapshot") if isinstance(runtime, dict) else None
+    )
+    comparison_aka_runtime = (
+        comparison_runtime.get("aka_execution_snapshot")
+        if isinstance(comparison_runtime, dict)
+        else None
+    )
+    agent = manifest.get("agent")
+    comparison_codex = comparison.get("codex")
+    evaluator = manifest.get("evaluator_files_sha256")
     return bool(
         isinstance(repositories, dict)
         and comparison_repositories == repositories
         and apex_treatment is not None
         and comparison.get("apex_treatment") == apex_treatment
         and _v5_top_level_agent_valid(
-            manifest.get("agent"), apex_treatment
+            agent, apex_treatment
         )
+        and isinstance(agent, dict)
+        and isinstance(comparison_codex, dict)
+        and comparison_codex.get("backend_runtime_closure_sha256")
+        == agent.get("backend_runtime_closure_sha256")
+        and comparison_codex.get("backend_runtime_closure")
+        == agent.get("backend_runtime_closure")
+        and isinstance(aka_runtime, dict)
+        and comparison_aka_runtime == aka_runtime
+        and comparison.get("evaluator_files_sha256") == evaluator
         and isinstance(apex, dict)
         and _SHA1.fullmatch(str(apex.get("commit") or ""))
         and apex.get("dirty") is False
@@ -608,6 +861,19 @@ def _v5_manifest_contract_valid(
         and _SHA256.fullmatch(
             str(apex.get("runtime_manifest_sha256") or "")
         )
+        and isinstance(aka, dict)
+        and _SHA1.fullmatch(str(aka.get("commit") or ""))
+        and _SHA1.fullmatch(str(aka.get("tree") or ""))
+        and aka.get("dirty") is False
+        and aka.get("execution_manifest_schema") == EXECUTION_MANIFEST_SCHEMA
+        and _SHA256.fullmatch(str(aka.get("execution_manifest_sha256") or ""))
+        and manifest.get("formal_execution") == _FORMAL_LIVE_COMMITMENT
+        and manifest.get("formal_execution_sha256")
+        == _FORMAL_LIVE_COMMITMENT_SHA256
+        and comparison.get("formal_execution") == _FORMAL_LIVE_COMMITMENT
+        and comparison.get("formal_execution_sha256")
+        == _FORMAL_LIVE_COMMITMENT_SHA256
+        and _revalidate_aka_runtime(manifest)
     )
 
 
@@ -638,7 +904,7 @@ def _manifest_has_v5_marker(manifest: dict[str, Any]) -> bool:
 
 
 def _load_verified_campaign_manifest(run_directory: Path) -> dict[str, Any]:
-    """Load the sealed manifest and verify its self-contained comparison contract."""
+    """Load a live, scoreable v5 manifest; older generations always fail."""
     manifest_path = run_directory / "campaign_manifest.yaml"
     if not _safe_read_only_file(manifest_path):
         raise CampaignError("formal execution requires an immutable campaign manifest")
@@ -646,29 +912,7 @@ def _load_verified_campaign_manifest(run_directory: Path) -> dict[str, Any]:
     comparison = manifest.get("comparison_contract")
     comparison_digest = manifest.get("comparison_contract_sha256")
     comparison_schema = comparison.get("schema") if isinstance(comparison, dict) else None
-    persistence_contract_valid = (
-        comparison_schema == _COMPARISON_CONTRACT_SCHEMA_V1
-        and "candidate_persistence_policy_id" not in comparison
-    ) or (
-        comparison_schema == _COMPARISON_CONTRACT_SCHEMA_V2
-        and comparison.get("candidate_persistence_policy_id")
-        == CANDIDATE_PERSISTENCE_POLICY
-        and "boundary_quiescence_policy_id" not in comparison
-    ) or (
-        comparison_schema == _COMPARISON_CONTRACT_SCHEMA_V3
-        and comparison.get("candidate_persistence_policy_id")
-        == CANDIDATE_PERSISTENCE_POLICY
-        and comparison.get("boundary_quiescence_policy_id")
-        == BOUNDARY_QUIESCENCE_POLICY
-    ) or (
-        comparison_schema == _COMPARISON_CONTRACT_SCHEMA_V4
-        and comparison.get("candidate_persistence_policy_id")
-        == CANDIDATE_PERSISTENCE_POLICY
-        and comparison.get("agent_process_containment_policy_id")
-        == AGENT_PROCESS_CONTAINMENT_POLICY
-        and comparison.get("attempt_containment_policy_id")
-        == ATTEMPT_CONTAINMENT_POLICY
-    ) or (
+    live_contract_valid = (
         comparison_schema == _COMPARISON_CONTRACT_SCHEMA_V5
         and comparison.get("candidate_persistence_policy_id")
         == CANDIDATE_PERSISTENCE_POLICY
@@ -680,17 +924,12 @@ def _load_verified_campaign_manifest(run_directory: Path) -> dict[str, Any]:
         == ATTEMPT_CONTAINMENT_POLICY
         and _v5_manifest_contract_valid(manifest, comparison)
     )
-    v5_generation_marker = _manifest_has_v5_marker(manifest)
     if (
         manifest.get("schema") != _CAMPAIGN_SCHEMA
         or not isinstance(comparison, dict)
-        or not persistence_contract_valid
+        or not live_contract_valid
         or comparison.get("objective_policy_id") != _OBJECTIVE_POLICY_ID
         or comparison.get("prompt_policy_id") != _PROMPT_POLICY_ID
-        or (
-            v5_generation_marker
-            and comparison_schema != _COMPARISON_CONTRACT_SCHEMA_V5
-        )
         or not isinstance(comparison_digest, str)
         or not _SHA256.fullmatch(comparison_digest)
         or comparison_digest
@@ -700,6 +939,63 @@ def _load_verified_campaign_manifest(run_directory: Path) -> dict[str, Any]:
     ):
         raise CampaignError("campaign manifest comparison contract is invalid")
     return manifest
+
+
+def load_historical_campaign_manifest(run_directory: Path) -> dict[str, Any]:
+    """Read v1-v4 evidence for display only, explicitly classified non-scoreable."""
+
+    manifest_path = run_directory / "campaign_manifest.yaml"
+    if not _safe_read_only_file(manifest_path):
+        raise CampaignError("historical evidence requires a read-only campaign manifest")
+    manifest = _load_mapping(manifest_path, "historical campaign manifest")
+    comparison = manifest.get("comparison_contract")
+    digest = manifest.get("comparison_contract_sha256")
+    schema = comparison.get("schema") if isinstance(comparison, dict) else None
+    generation_contract_valid = bool(
+        isinstance(comparison, dict)
+        and (
+            (schema == _COMPARISON_CONTRACT_SCHEMA_V1)
+            or (
+                schema == _COMPARISON_CONTRACT_SCHEMA_V2
+                and comparison.get("candidate_persistence_policy_id")
+                == CANDIDATE_PERSISTENCE_POLICY
+            )
+            or (
+                schema == _COMPARISON_CONTRACT_SCHEMA_V3
+                and comparison.get("candidate_persistence_policy_id")
+                == CANDIDATE_PERSISTENCE_POLICY
+                and comparison.get("boundary_quiescence_policy_id")
+                == BOUNDARY_QUIESCENCE_POLICY
+            )
+            or (
+                schema == _COMPARISON_CONTRACT_SCHEMA_V4
+                and comparison.get("candidate_persistence_policy_id")
+                == CANDIDATE_PERSISTENCE_POLICY
+                and comparison.get("agent_process_containment_policy_id")
+                == AGENT_PROCESS_CONTAINMENT_POLICY
+                and comparison.get("attempt_containment_policy_id")
+                == ATTEMPT_CONTAINMENT_POLICY
+            )
+        )
+    )
+    if (
+        manifest.get("schema") != _CAMPAIGN_SCHEMA
+        or not generation_contract_valid
+        or not isinstance(digest, str)
+        or digest
+        != _sha256_bytes(
+            json.dumps(comparison, sort_keys=True, separators=(",", ":")).encode()
+        )
+        or comparison.get("objective_policy_id") != _OBJECTIVE_POLICY_ID
+        or comparison.get("prompt_policy_id") != _PROMPT_POLICY_ID
+    ):
+        raise CampaignError("historical campaign manifest is invalid")
+    return {
+        "classification": "historical_non_scoreable",
+        "scoreable": False,
+        "comparison_generation": int(str(schema).rsplit("v", 1)[1]),
+        "manifest": manifest,
+    }
 
 
 def validate_formal_task_binding(
@@ -794,6 +1090,7 @@ def validate_formal_task_binding(
     ):
         raise CampaignError("formal task package bytes differ from campaign manifest")
     return {
+        "formal_execution_sha256": _FORMAL_LIVE_COMMITMENT_SHA256,
         "task_index": task_index,
         "total_tasks": total_tasks,
         "task_name": task_name,
@@ -837,7 +1134,7 @@ def _comparison_contract(
     repositories: dict[str, Any],
     agent: dict[str, Any],
     runtime: dict[str, Any],
-    evaluator: dict[str, str],
+    evaluator: dict[str, Any],
     tasks: list[dict[str, Any]],
 ) -> dict[str, Any]:
     apex_treatment = _v5_apex_treatment_contract(repositories)
@@ -874,6 +1171,9 @@ def _comparison_contract(
             "structured_stream_output_limit_bytes",
             "codex_version",
             "codex_binary_sha256",
+            "backend_runtime_closure_schema",
+            "backend_runtime_closure_sha256",
+            "backend_runtime_closure",
             "isolation",
         )
     }
@@ -902,6 +1202,8 @@ def _comparison_contract(
         comparison_runtime["gpu"] = comparison_gpu
     return {
         "schema": _COMPARISON_CONTRACT_SCHEMA_V5,
+        "formal_execution": dict(_FORMAL_LIVE_COMMITMENT),
+        "formal_execution_sha256": _FORMAL_LIVE_COMMITMENT_SHA256,
         "objective_policy_id": _OBJECTIVE_POLICY_ID,
         "prompt_policy_id": _PROMPT_POLICY_ID,
         "candidate_persistence_policy_id": CANDIDATE_PERSISTENCE_POLICY,
@@ -930,9 +1232,7 @@ def build_campaign_manifest(
     if policy is None:
         return None
     repo_root = Path(__file__).resolve().parents[1]
-    aka_state = _git_state(repo_root)
-    if aka_state["dirty"]:
-        raise CampaignError("formal campaign requires a clean AgentKernelArena checkout")
+    aka_state, aka_runtime = _aka_state_from_environment(repo_root)
     repositories = {
         "agent_kernel_arena": aka_state,
         "apex": _apex_state_from_environment(),
@@ -960,8 +1260,9 @@ def build_campaign_manifest(
         "docker": _image_manifest(),
         "gpu": _gpu_inventory(eval_config, list(task_config_paths)),
         "isolation": runtime_isolation,
+        "aka_execution_snapshot": aka_runtime,
     }
-    evaluator = _evaluator_manifest(repo_root)
+    evaluator = _evaluator_manifest(aka_state)
     comparison = _comparison_contract(
         policy=policy,
         measurement=measurement,
@@ -973,6 +1274,8 @@ def build_campaign_manifest(
     )
     return {
         "schema": _CAMPAIGN_SCHEMA,
+        "formal_execution": dict(_FORMAL_LIVE_COMMITMENT),
+        "formal_execution_sha256": _FORMAL_LIVE_COMMITMENT_SHA256,
         "policy": asdict(policy),
         "comparison_contract_sha256": _sha256_bytes(
             json.dumps(comparison, sort_keys=True, separators=(",", ":")).encode()
@@ -1234,11 +1537,8 @@ def _safe_read_only_file(path: Path) -> bool:
 
 
 def _expected_codex_contract(run_directory: Path) -> dict[str, Any] | None:
-    manifest_path = run_directory / "campaign_manifest.yaml"
-    if not _safe_read_only_file(manifest_path):
-        return None
     try:
-        manifest = _load_mapping(manifest_path, "campaign manifest")
+        manifest = _load_verified_campaign_manifest(run_directory)
     except (CampaignError, OSError, yaml.YAMLError):
         return None
     comparison = manifest.get("comparison_contract")
@@ -1249,11 +1549,8 @@ def _expected_codex_contract(run_directory: Path) -> dict[str, Any] | None:
 
 
 def _expected_comparison_contract_sha256(run_directory: Path) -> str | None:
-    manifest_path = run_directory / "campaign_manifest.yaml"
-    if not _safe_read_only_file(manifest_path):
-        return None
     try:
-        manifest = _load_mapping(manifest_path, "campaign manifest")
+        manifest = _load_verified_campaign_manifest(run_directory)
     except (CampaignError, OSError, yaml.YAMLError):
         return None
     digest = manifest.get("comparison_contract_sha256")
@@ -1269,36 +1566,16 @@ def _expected_comparison_contract_sha256(run_directory: Path) -> str | None:
     )
     if digest != observed:
         return None
-    if (
-        comparison.get("schema") == _COMPARISON_CONTRACT_SCHEMA_V5
-        or _manifest_has_v5_marker(manifest)
-    ):
-        try:
-            _load_verified_campaign_manifest(run_directory)
-        except (CampaignError, OSError, yaml.YAMLError):
-            return None
     return digest
 
 
 def _expected_session_receipt_schema(run_directory: Path) -> str | None:
     """Resolve the only receipt schema allowed by the sealed agent manifest."""
 
-    manifest_path = run_directory / "campaign_manifest.yaml"
-    if not _safe_read_only_file(manifest_path):
-        return None
     try:
-        manifest = _load_mapping(manifest_path, "campaign manifest")
+        manifest = _load_verified_campaign_manifest(run_directory)
     except (CampaignError, OSError, yaml.YAMLError):
         return None
-    comparison = manifest.get("comparison_contract")
-    if (
-        isinstance(comparison, dict)
-        and comparison.get("schema") == _COMPARISON_CONTRACT_SCHEMA_V5
-    ) or _manifest_has_v5_marker(manifest):
-        try:
-            manifest = _load_verified_campaign_manifest(run_directory)
-        except (CampaignError, OSError, yaml.YAMLError):
-            return None
     agent = manifest.get("agent")
     if not isinstance(agent, dict):
         return None
@@ -1312,22 +1589,15 @@ def _expected_apex_runtime_mount(
 ) -> dict[str, Any] | None:
     """Return the sealed v5 Apex mount contract, or None for history."""
 
-    manifest_path = run_directory / "campaign_manifest.yaml"
-    if not _safe_read_only_file(manifest_path):
-        return None
     try:
-        manifest = _load_mapping(manifest_path, "campaign manifest")
+        manifest = _load_verified_campaign_manifest(run_directory)
     except (CampaignError, OSError, yaml.YAMLError):
-        return None
+        return {"invalid": True}
     comparison = manifest.get("comparison_contract")
     if (
         not isinstance(comparison, dict)
         or comparison.get("schema") != _COMPARISON_CONTRACT_SCHEMA_V5
     ):
-        return None
-    try:
-        manifest = _load_verified_campaign_manifest(run_directory)
-    except (CampaignError, OSError, yaml.YAMLError):
         return {"invalid": True}
     comparison = manifest["comparison_contract"]
     agent = manifest.get("agent")
@@ -1451,6 +1721,257 @@ def _paths_overlap(first: Path, second: Path) -> bool:
     return first == second or first.is_relative_to(second) or second.is_relative_to(first)
 
 
+def _mount_record_valid(value: Any, *, expected_path: Path | None = None) -> bool:
+    if not isinstance(value, dict) or set(value) != {
+        "mount_id",
+        "parent_id",
+        "major_minor",
+        "root",
+        "mount_point",
+    }:
+        return False
+    return bool(
+        type(value.get("mount_id")) is int
+        and value["mount_id"] > 0
+        and type(value.get("parent_id")) is int
+        and value["parent_id"] > 0
+        and isinstance(value.get("major_minor"), str)
+        and re.fullmatch(r"[0-9]+:[0-9]+", value["major_minor"])
+        and _absolute_receipt_path(value.get("root")) is not None
+        and _absolute_receipt_path(value.get("mount_point")) is not None
+        and (
+            expected_path is None
+            or Path(value["mount_point"]) == expected_path
+        )
+    )
+
+
+def _outer_bubblewrap_valid(value: Any) -> bool:
+    if not isinstance(value, dict) or set(value) != {
+        "policy",
+        "canonical_path",
+        "source",
+        "sealed_exec",
+    }:
+        return False
+    source = value.get("source")
+    sealed = value.get("sealed_exec")
+    canonical = Path("/usr/bin/bwrap")
+    if (
+        value.get("policy") != "canonical_source_to_sealed_memfd_exec_v1"
+        or value.get("canonical_path") != str(canonical)
+        or not isinstance(source, dict)
+        or set(source)
+        != {
+            "device",
+            "inode",
+            "mode",
+            "uid",
+            "gid",
+            "nlink",
+            "size_bytes",
+            "sha256",
+        }
+        or not isinstance(sealed, dict)
+        or set(sealed) != {"transport", "size_bytes", "sha256", "seals"}
+    ):
+        return False
+    try:
+        metadata = canonical.lstat()
+        digest = _sha256_file(canonical)
+    except OSError:
+        return False
+    return bool(
+        canonical.is_file()
+        and not canonical.is_symlink()
+        and source
+        == {
+            "device": metadata.st_dev,
+            "inode": metadata.st_ino,
+            "mode": stat.S_IMODE(metadata.st_mode),
+            "uid": metadata.st_uid,
+            "gid": metadata.st_gid,
+            "nlink": metadata.st_nlink,
+            "size_bytes": metadata.st_size,
+            "sha256": digest,
+        }
+        and sealed
+        == {
+            "transport": "sealed_memfd_proc_self_fd",
+            "size_bytes": metadata.st_size,
+            "sha256": digest,
+            "seals": [
+                "F_SEAL_WRITE",
+                "F_SEAL_SHRINK",
+                "F_SEAL_GROW",
+                "F_SEAL_SEAL",
+            ],
+        }
+    )
+
+
+def _namespace_private_mount_valid(value: Any, expected: Path) -> bool:
+    if not isinstance(value, dict) or set(value) != {
+        "path",
+        "device",
+        "inode",
+        "access",
+        "filesystem_type",
+        "mount",
+        "mount_options",
+        "covered_mount_ids",
+    }:
+        return False
+    options = value.get("mount_options")
+    covered = value.get("covered_mount_ids")
+    return bool(
+        value.get("path") == str(expected)
+        and type(value.get("device")) is int
+        and type(value.get("inode")) is int
+        and value.get("access") == "read_write"
+        and value.get("filesystem_type") == "tmpfs"
+        and _mount_record_valid(value.get("mount"), expected_path=expected)
+        and isinstance(options, list)
+        and "rw" in options
+        and "ro" not in options
+        and isinstance(covered, list)
+        and all(type(item) is int and item > 0 for item in covered)
+        and len(covered) == len(set(covered))
+    )
+
+
+def _namespace_role_mount_valid(
+    value: Any,
+    *,
+    expected: Path,
+    source_identity: dict[str, Any],
+    expected_access: str,
+) -> bool:
+    if not isinstance(value, dict) or set(value) != {"source", "target"}:
+        return False
+    source = value.get("source")
+    target = value.get("target")
+    if (
+        not isinstance(source, dict)
+        or set(source) != {"path", "device", "inode", "mount"}
+        or not isinstance(target, dict)
+        or set(target)
+        != {"path", "device", "inode", "access", "mount", "mount_options"}
+        or source.get("path") != str(expected)
+        or source.get("device") != source_identity.get("device")
+        or source.get("inode") != source_identity.get("inode")
+        or not _mount_record_valid(source.get("mount"))
+        or target.get("path") != str(expected)
+        or target.get("device") != source.get("device")
+        or target.get("inode") != source.get("inode")
+        or target.get("access") != expected_access
+        or not _mount_record_valid(target.get("mount"), expected_path=expected)
+        or source_identity.get("mount") != target.get("mount")
+    ):
+        return False
+    options = target.get("mount_options")
+    if not isinstance(options, list):
+        return False
+    expected_option = "ro" if expected_access == "read_only" else "rw"
+    forbidden_option = "rw" if expected_option == "ro" else "ro"
+    source_mount = source["mount"]
+    target_mount = target["mount"]
+    try:
+        relative = expected.relative_to(Path(source_mount["mount_point"]))
+    except ValueError:
+        return False
+    return bool(
+        expected_option in options
+        and forbidden_option not in options
+        and target_mount["major_minor"] == source_mount["major_minor"]
+        and Path(target_mount["root"]) == Path(source_mount["root"]) / relative
+    )
+
+
+def _namespace_mounts_valid(
+    value: Any,
+    *,
+    data_root: Path,
+    concrete: dict[str, Path],
+    identities: dict[str, Any],
+) -> bool:
+    if not isinstance(value, dict) or set(value) != {
+        "policy",
+        "namespace_init_pid",
+        "mount_namespace_id",
+        "root",
+        "campaign_data_root",
+        "private_tmpfs",
+        "roles",
+        "declared_mount_points",
+        "observed_mount_points_below_campaign_data",
+        "closed_set",
+        "aliases_absent",
+    }:
+        return False
+    root = value.get("root")
+    private = value.get("private_tmpfs")
+    roles = value.get("roles")
+    declared = sorted([str(data_root), *(str(path) for path in concrete.values())])
+    if (
+        value.get("policy") != "blocked_namespace_mount_attestation_v1"
+        or type(value.get("namespace_init_pid")) is not int
+        or value["namespace_init_pid"] <= 0
+        or type(value.get("mount_namespace_id")) is not int
+        or value["mount_namespace_id"] <= 0
+        or not isinstance(root, dict)
+        or set(root) != {"path", "device", "inode", "access", "mount", "mount_options"}
+        or root.get("path") != "/"
+        or root.get("access") != "read_only"
+        or not _mount_record_valid(root.get("mount"), expected_path=Path("/"))
+        or not isinstance(root.get("mount_options"), list)
+        or "ro" not in root["mount_options"]
+        or "rw" in root["mount_options"]
+        or not _namespace_private_mount_valid(value.get("campaign_data_root"), data_root)
+        or not isinstance(private, dict)
+        or set(private) != {"tmp", "dev_shm"}
+        or not _namespace_private_mount_valid(private.get("tmp"), Path("/tmp"))
+        or not _namespace_private_mount_valid(private.get("dev_shm"), Path("/dev/shm"))
+        or not isinstance(roles, dict)
+        or set(roles) != {"persistent_writable", "read_only"}
+        or value.get("declared_mount_points") != declared
+        or value.get("observed_mount_points_below_campaign_data") != declared
+        or value.get("closed_set") is not True
+        or value.get("aliases_absent") is not True
+    ):
+        return False
+    expected_groups = {
+        "persistent_writable": {"apex_artifacts", "backend_home"},
+        "read_only": {"scored_workspace", "sealed_task_contract", "apex_runtime"},
+    }
+    if any(
+        not isinstance(roles.get(group), dict)
+        or set(roles[group]) != names
+        for group, names in expected_groups.items()
+    ):
+        return False
+    for group, names in expected_groups.items():
+        access = "read_write" if group == "persistent_writable" else "read_only"
+        if any(
+            not _namespace_role_mount_valid(
+                roles[group][name],
+                expected=concrete[name],
+                source_identity=identities[name],
+                expected_access=access,
+            )
+            for name in names
+        ):
+            return False
+    targets = [
+        roles[group][name]["target"]
+        for group, names in expected_groups.items()
+        for name in names
+    ]
+    pairs = [(target["device"], target["inode"]) for target in targets]
+    mount_ids = [target["mount"]["mount_id"] for target in targets]
+    return len(pairs) == len(set(pairs)) and len(mount_ids) == len(set(mount_ids))
+
+
 def _apex_attempt_mount_role_errors(
     *,
     receipt: dict[str, Any],
@@ -1471,11 +1992,14 @@ def _apex_attempt_mount_role_errors(
             "campaign_data_root",
             "campaign_data_root_hidden",
             "campaign_data_identity",
+            "outer_bubblewrap",
+            "namespace_mounts",
             "roles",
             "sha256",
         }
         or mounts.get("schema") != ATTEMPT_MOUNT_RECEIPT_SCHEMA
         or mounts.get("campaign_data_root_hidden") is not True
+        or not _outer_bubblewrap_valid(mounts.get("outer_bubblewrap"))
         or not _receipt_digest_matches(mounts)
     ):
         return ["apex_attempt_mount_role_contract_mismatch"]
@@ -1599,6 +2123,13 @@ def _apex_attempt_mount_role_errors(
                 and _paths_overlap(mount_root, other_root)
             ):
                 return ["apex_attempt_mount_role_contract_mismatch"]
+    if not _namespace_mounts_valid(
+        mounts.get("namespace_mounts"),
+        data_root=data_root,
+        concrete=concrete,
+        identities=identities,
+    ):
+        return ["apex_attempt_mount_role_contract_mismatch"]
     return []
 
 
@@ -1880,11 +2411,8 @@ def _comparison_contract_receipt_errors(
 
 
 def _expected_gpu_contract(run_directory: Path) -> dict[str, Any] | None:
-    manifest_path = run_directory / "campaign_manifest.yaml"
-    if not _safe_read_only_file(manifest_path):
-        return None
     try:
-        manifest = _load_mapping(manifest_path, "campaign manifest")
+        manifest = _load_verified_campaign_manifest(run_directory)
     except (CampaignError, OSError, yaml.YAMLError):
         return None
     runtime = manifest.get("runtime")
@@ -2266,6 +2794,7 @@ def _validate_session_receipt(
     else:
         comparisons = {
             "binary_sha256": "codex_binary_sha256",
+            "runtime_closure_sha256": "backend_runtime_closure_sha256",
             "version": "codex_version",
             "model": "model",
             "effort": "effort",
@@ -3549,6 +4078,7 @@ def _validate_apex_session_receipt(
         observed_codex.get(receipt_key) != expected_codex.get(contract_key)
         for receipt_key, contract_key in {
             "binary_sha256": "codex_binary_sha256",
+            "runtime_closure_sha256": "backend_runtime_closure_sha256",
             "version": "codex_version",
             "model": "model",
             "effort": "effort",
@@ -3843,6 +4373,8 @@ def _validate_apex_session_receipt(
             != (expected_codex or {}).get("codex_version")
             or invocation.get("entrypoint_sha256")
             != (expected_codex or {}).get("codex_binary_sha256")
+            or invocation.get("runtime_closure_sha256")
+            != (expected_codex or {}).get("backend_runtime_closure_sha256")
             or invocation.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
             or invocation.get("turn_policy") != apex_expected_turn_policy
             or (
@@ -4318,6 +4850,7 @@ def run_matched_task_campaign(
         receipt_path = attempt_run / "session_receipt.json"
         attempt_config = dict(eval_config)
         attempt_config["campaign_attempt"] = {
+            "formal_execution_sha256": _FORMAL_LIVE_COMMITMENT_SHA256,
             "index": attempt,
             "count": policy.attempts,
             "fresh_session": True,
@@ -4430,6 +4963,7 @@ def run_matched_task_campaign(
     selected = _select_attempt(records)
     task_evidence = {
         "schema": _TASK_SCHEMA,
+        "formal_execution_sha256": _FORMAL_LIVE_COMMITMENT_SHA256,
         "task_name": task_name,
         "assigned_host_gpu_id": assigned_gpu,
         "task_index": task_index,

@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import stat
+import copy
 from pathlib import Path
 
 import pytest
@@ -27,12 +28,27 @@ def _repository(runtime_digest: str = "c" * 64) -> dict:
     }
 
 
+def _backend_closure() -> dict:
+    return {
+        "schema": "aka.backend-runtime-closure/v1",
+        "backend": "codex",
+        "launcher": {},
+        "interpreter": None,
+        "components": [],
+        "closure_sha256": "9" * 64,
+    }
+
+
 def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
     repositories = {
         "agent_kernel_arena": {
             "commit": "d" * 40,
+            "tree": "1" * 40,
             "dirty": False,
             "status_sha256": "e" * 64,
+            "execution_manifest_schema": "aka.execution-snapshot-manifest/v1",
+            "execution_manifest_sha256": "2" * 64,
+            "git_evidence_policy_id": "head_tree_direct_bytes_no_filters_v1",
         },
         "apex": _repository(runtime_digest),
     }
@@ -47,9 +63,16 @@ def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
         ),
         "apex_runtime_mount_schema": campaign_isolation.APEX_RUNTIME_MOUNT_SCHEMA,
         "runtime_manifest_sha256": runtime_digest,
+        "backend_runtime_closure_schema": "aka.backend-runtime-closure/v1",
+        "backend_runtime_closure_sha256": "9" * 64,
+        "backend_runtime_closure": _backend_closure(),
     }
+    aka_runtime = {"fixture": True}
+    evaluator = {"execution_manifest_sha256": "2" * 64}
     comparison = {
         "schema": "aka.apex-vs-codex-comparison-contract/v5",
+        "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
+        "formal_execution_sha256": campaign._FORMAL_LIVE_COMMITMENT_SHA256,
         "objective_policy_id": (
             "aka.task-package-objective-and-protected-harness/v1"
         ),
@@ -67,12 +90,32 @@ def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
             campaign_isolation.ATTEMPT_CONTAINMENT_POLICY
         ),
         "repositories": repositories,
-        "apex_treatment": dict(agent),
+        "apex_treatment": {
+            key: agent[key]
+            for key in (
+                "template",
+                "session_receipt_schema",
+                "apex_runtime_mount_policy_id",
+                "attempt_mount_receipt_schema",
+                "apex_runtime_mount_schema",
+                "runtime_manifest_sha256",
+            )
+        },
+        "codex": {
+            "backend_runtime_closure_sha256": "9" * 64,
+            "backend_runtime_closure": _backend_closure(),
+        },
+        "runtime": {"aka_execution_snapshot": aka_runtime},
+        "evaluator_files_sha256": evaluator,
     }
     return {
         "schema": "aka.matched-campaign/v1",
+        "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
+        "formal_execution_sha256": campaign._FORMAL_LIVE_COMMITMENT_SHA256,
         "repositories": repositories,
         "agent": agent,
+        "runtime": {"aka_execution_snapshot": aka_runtime},
+        "evaluator_files_sha256": evaluator,
         "comparison_contract": comparison,
         "comparison_contract_sha256": _digest(comparison),
     }
@@ -86,8 +129,12 @@ def _write_manifest(run: Path, manifest: dict) -> Path:
 
 
 def test_v5_comparison_binds_repository_mount_policy_and_runtime_digest(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(campaign, "_revalidate_aka_runtime", lambda _manifest: True)
+    monkeypatch.setattr(
+        campaign, "verify_backend_closure", lambda closure, _digest: closure
+    )
     manifest = _v5_manifest()
     _write_manifest(tmp_path, manifest)
 
@@ -115,6 +162,9 @@ def test_v5_comparison_binds_repository_mount_policy_and_runtime_digest(
     codex_manifest["agent"] = {
         "template": "codex",
         "session_receipt_schema": "agentkernelarena.codex-attempt-receipt/v4",
+        "backend_runtime_closure_schema": "aka.backend-runtime-closure/v1",
+        "backend_runtime_closure_sha256": "9" * 64,
+        "backend_runtime_closure": _backend_closure(),
     }
     codex_run = tmp_path / "codex"
     codex_run.mkdir()
@@ -177,6 +227,9 @@ def test_comparison_v5_digest_is_identical_for_apex_and_codex_arms() -> None:
         "structured_stream_output_limit_bytes": 16 * 1024 * 1024,
         "codex_version": "codex test",
         "codex_binary_sha256": "f" * 64,
+        "backend_runtime_closure_schema": "aka.backend-runtime-closure/v1",
+        "backend_runtime_closure_sha256": "9" * 64,
+        "backend_runtime_closure": _backend_closure(),
         "isolation": {},
     }
     apex = {
@@ -203,8 +256,11 @@ def test_comparison_v5_digest_is_identical_for_apex_and_codex_arms() -> None:
         "repositories": {
             "agent_kernel_arena": {
                 "commit": "d" * 40,
+                "tree": "1" * 40,
                 "dirty": False,
                 "status_sha256": "e" * 64,
+                "execution_manifest_schema": "aka.execution-snapshot-manifest/v1",
+                "execution_manifest_sha256": "2" * 64,
             },
             "apex": _repository(),
         },
@@ -320,30 +376,89 @@ def test_v1_through_v4_history_never_acquires_mount_semantics(
     }
     _write_manifest(tmp_path, manifest)
 
-    assert campaign._load_verified_campaign_manifest(tmp_path) == manifest
-    assert campaign._expected_apex_runtime_mount(tmp_path) is None
-    assert campaign._apex_runtime_mount_errors({}, tmp_path) == []
+    with pytest.raises(campaign.CampaignError, match="comparison contract"):
+        campaign._load_verified_campaign_manifest(tmp_path)
+    history = campaign.load_historical_campaign_manifest(tmp_path)
+    assert history["manifest"] == manifest
+    assert history["scoreable"] is False
+    assert history["comparison_generation"] == generation
+    assert campaign._expected_apex_runtime_mount(tmp_path) == {"invalid": True}
+    assert campaign._apex_runtime_mount_errors({}, tmp_path) == [
+        "apex_runtime_mount_contract_mismatch"
+    ]
     assert campaign.resolve_session_receipt_schema(
         "apex", "agentkernelarena.apex-attempt-receipt/v5"
     ) == "agentkernelarena.apex-attempt-receipt/v5"
 
 
-def _mount_identity(path: Path) -> dict:
+def _mount_record(path: Path, mount_id: int, *, root: Path | None = None) -> dict:
+    return {
+        "mount_id": mount_id,
+        "parent_id": 1,
+        "major_minor": "0:1",
+        "root": str(root or Path("/")),
+        "mount_point": str(path),
+    }
+
+
+def _mount_identity(path: Path, mount_id: int = 10, *, bound: bool = False) -> dict:
     metadata = path.lstat()
     return {
         "path": str(path),
         "device": metadata.st_dev,
         "inode": metadata.st_ino,
         "mode": stat.S_IMODE(metadata.st_mode),
-        "mount": {
-            "mount_id": 10,
-            "parent_id": 1,
-            "major_minor": "0:1",
-            "root": "/",
-            "mount_point": "/",
-        },
+        "mount": _mount_record(
+            path if bound else Path("/"),
+            mount_id,
+            root=path if bound else Path("/"),
+        ),
         "nested_mounts": [],
         "source": "o_path_nofollow_bind_fd",
+    }
+
+
+def _outer_bubblewrap() -> dict:
+    path = Path("/usr/bin/bwrap")
+    metadata = path.lstat()
+    digest = campaign._sha256_file(path)
+    return {
+        "policy": "canonical_source_to_sealed_memfd_exec_v1",
+        "canonical_path": str(path),
+        "source": {
+            "device": metadata.st_dev,
+            "inode": metadata.st_ino,
+            "mode": stat.S_IMODE(metadata.st_mode),
+            "uid": metadata.st_uid,
+            "gid": metadata.st_gid,
+            "nlink": metadata.st_nlink,
+            "size_bytes": metadata.st_size,
+            "sha256": digest,
+        },
+        "sealed_exec": {
+            "transport": "sealed_memfd_proc_self_fd",
+            "size_bytes": metadata.st_size,
+            "sha256": digest,
+            "seals": [
+                "F_SEAL_WRITE",
+                "F_SEAL_SHRINK",
+                "F_SEAL_GROW",
+                "F_SEAL_SEAL",
+            ],
+        },
+    }
+
+
+def _private_namespace_mount(path: Path, mount_id: int) -> dict:
+    return {
+        "path": str(path),
+        "device": mount_id,
+        "inode": mount_id + 100,
+        "access": "read_write",
+        "filesystem_type": "tmpfs",
+        "mount": _mount_record(path, mount_id),
+        "mount_options": ["rw"],
+        "covered_mount_ids": [],
     }
 
 
@@ -368,18 +483,76 @@ def _role_fixture(tmp_path: Path) -> tuple[dict, dict, Path, Path, Path]:
         "sealed_task_contract": contract,
         "apex_runtime": runtime,
     }
+    source_identities = {
+        role: _mount_identity(path, 20 + index)
+        for index, (role, path) in enumerate(paths.items())
+    }
+    target_identities = {
+        role: _mount_identity(path, 40 + index, bound=True)
+        for index, (role, path) in enumerate(paths.items())
+    }
+    namespace_roles = {"persistent_writable": {}, "read_only": {}}
+    for group, names in {
+        "persistent_writable": ("apex_artifacts", "backend_home"),
+        "read_only": ("scored_workspace", "sealed_task_contract", "apex_runtime"),
+    }.items():
+        for role in names:
+            source = source_identities[role]
+            target = target_identities[role]
+            namespace_roles[group][role] = {
+                "source": {
+                    key: source[key] for key in ("path", "device", "inode", "mount")
+                },
+                "target": {
+                    "path": target["path"],
+                    "device": target["device"],
+                    "inode": target["inode"],
+                    "access": (
+                        "read_write" if group == "persistent_writable" else "read_only"
+                    ),
+                    "mount": target["mount"],
+                    "mount_options": [
+                        "rw" if group == "persistent_writable" else "ro"
+                    ],
+                },
+            }
+    declared = sorted([str(data), *(str(path) for path in paths.values())])
     material = {
         "schema": campaign_isolation.ATTEMPT_MOUNT_RECEIPT_SCHEMA,
         "campaign_data_root": str(data),
         "campaign_data_root_hidden": True,
         "campaign_data_identity": _mount_identity(data),
+        "outer_bubblewrap": _outer_bubblewrap(),
+        "namespace_mounts": {
+            "policy": "blocked_namespace_mount_attestation_v1",
+            "namespace_init_pid": 123,
+            "mount_namespace_id": 456,
+            "root": {
+                "path": "/",
+                "device": 1,
+                "inode": 2,
+                "access": "read_only",
+                "mount": _mount_record(Path("/"), 2),
+                "mount_options": ["ro"],
+            },
+            "campaign_data_root": _private_namespace_mount(data, 3),
+            "private_tmpfs": {
+                "tmp": _private_namespace_mount(Path("/tmp"), 4),
+                "dev_shm": _private_namespace_mount(Path("/dev/shm"), 5),
+            },
+            "roles": namespace_roles,
+            "declared_mount_points": declared,
+            "observed_mount_points_below_campaign_data": declared,
+            "closed_set": True,
+            "aliases_absent": True,
+        },
         "roles": {
             "persistent_writable": {
-                role: _mount_identity(paths[role])
+                role: target_identities[role]
                 for role in ("apex_artifacts", "backend_home")
             },
             "read_only": {
-                role: _mount_identity(paths[role])
+                role: target_identities[role]
                 for role in (
                     "scored_workspace",
                     "sealed_task_contract",
@@ -446,6 +619,60 @@ def test_v5_mount_roles_reject_private_tmpfs_or_role_set_tampering(
     mounts = receipt["attempt_mounts"]
     mounts["roles"]["private_tmpfs"]["tmp"] = {"path": "/tmp"}
     material = dict(mounts)
+    material.pop("sha256")
+    mounts["sha256"] = _digest(material)
+
+    assert campaign._apex_attempt_mount_role_errors(
+        receipt=receipt,
+        receipt_path=receipt_path,
+        workspace=Path(task_spec["workspace"]),
+        task_spec=task_spec,
+        contract_path=contract_path,
+        runtime_root=runtime,
+    ) == ["apex_attempt_mount_role_contract_mismatch"]
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "outer_binary",
+        "missing_attestation",
+        "wrong_access",
+        "wrong_mount_root",
+        "undeclared_nested_mount",
+        "target_alias",
+    ],
+)
+def test_v5_mount_auditor_rejects_namespace_and_sealed_exec_tampering(
+    tmp_path: Path, tamper: str
+) -> None:
+    receipt, task_spec, receipt_path, contract_path, runtime = _role_fixture(tmp_path)
+    mounts = receipt["attempt_mounts"]
+    namespace = mounts["namespace_mounts"]
+    if tamper == "outer_binary":
+        mounts["outer_bubblewrap"]["source"]["sha256"] = "0" * 64
+    elif tamper == "missing_attestation":
+        mounts["namespace_mounts"] = None
+    elif tamper == "wrong_access":
+        namespace["roles"]["read_only"]["scored_workspace"]["target"][
+            "access"
+        ] = "read_write"
+    elif tamper == "wrong_mount_root":
+        namespace["roles"]["read_only"]["scored_workspace"]["target"][
+            "mount"
+        ]["root"] = "/"
+    elif tamper == "undeclared_nested_mount":
+        namespace["observed_mount_points_below_campaign_data"].append(
+            str(Path(task_spec["workspace"]) / "nested")
+        )
+    else:
+        source = namespace["roles"]["read_only"]["scored_workspace"]["target"]
+        alias = namespace["roles"]["persistent_writable"]["apex_artifacts"][
+            "target"
+        ]
+        alias["device"] = source["device"]
+        alias["inode"] = source["inode"]
+    material = copy.deepcopy(mounts)
     material.pop("sha256")
     mounts["sha256"] = _digest(material)
 
