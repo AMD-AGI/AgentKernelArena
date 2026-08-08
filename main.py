@@ -33,6 +33,7 @@ from src.perf_helper_materialization import materialize_perf_helpers_in_workspac
 from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
 from src.campaign import (
     CampaignError,
+    FORMAL_LIVE_EXECUTION_SHA256,
     ensure_campaign_manifest,
     parse_campaign_policy,
     resolve_session_receipt_schema,
@@ -675,9 +676,17 @@ def _campaign_evaluation_metadata(
             raise ValueError("unsafe or changed campaign manifest")
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
         sealed_agent = manifest.get("agent") if isinstance(manifest, dict) else None
+        sealed_comparison = (
+            manifest.get("comparison_contract") if isinstance(manifest, dict) else None
+        )
         if (
             not isinstance(manifest, dict)
             or manifest.get("schema") != "aka.matched-campaign/v1"
+            or manifest.get("formal_execution_sha256")
+            != FORMAL_LIVE_EXECUTION_SHA256
+            or not isinstance(sealed_comparison, dict)
+            or sealed_comparison.get("formal_execution_sha256")
+            != FORMAL_LIVE_EXECUTION_SHA256
             or not isinstance(sealed_agent, dict)
             or sealed_agent.get("template") != agent.value
         ):
@@ -1007,7 +1016,7 @@ def _validate_formal_descriptor_payload(
         name_matches = False
     if not name_matches:
         raise CampaignError("formal descriptor filename differs from task identity")
-    return validate_formal_task_binding(
+    binding = validate_formal_task_binding(
         run_directory=run_directory,
         task_name=task_name,
         task_index=index,
@@ -1015,6 +1024,9 @@ def _validate_formal_descriptor_payload(
         task_config_path=task_config_dir,
         assigned_host_gpu_id=assigned_gpu,
     )
+    if binding.get("formal_execution_sha256") != FORMAL_LIVE_EXECUTION_SHA256:
+        raise CampaignError("formal descriptor is not bound to live v5 execution")
+    return binding
 
 
 def _require_safe_queue_directory(path: Path) -> None:
@@ -1061,7 +1073,11 @@ def _formal_failure_binding(
     tasks = manifest.get("configuration", {}).get("tasks")
     if (
         manifest.get("schema") != "aka.matched-campaign/v1"
+        or manifest.get("formal_execution_sha256")
+        != FORMAL_LIVE_EXECUTION_SHA256
         or not isinstance(comparison, dict)
+        or comparison.get("formal_execution_sha256")
+        != FORMAL_LIVE_EXECUTION_SHA256
         or not isinstance(comparison_sha256, str)
         or not _SHA256.fullmatch(comparison_sha256)
         or hashlib.sha256(

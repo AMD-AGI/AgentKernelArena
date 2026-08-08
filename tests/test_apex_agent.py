@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from src import apex_runtime as apex_runtime_contract
 from src.agent_turn_budget import FORMAL_MATCHED_MAX_TURNS
 from src import campaign_isolation
 from src.campaign_isolation import WrappedAttemptCommand
@@ -25,6 +26,8 @@ from src.module_registration import AgentType, load_agent_launcher
 from src.prompt_builder import prompt_builder as render_task_prompt
 
 apex_launcher = importlib.import_module("agents.apex.launch_agent")
+
+_BACKEND_RUNTIME_CLOSURE_SHA256 = "e" * 64
 
 
 def _write_yaml(path: Path, value: object) -> None:
@@ -266,7 +269,11 @@ def test_task_spec_maps_caller_contract_without_arena_scoring(tmp_path, monkeypa
     assert len(spec["baseline"]["file_hashes"]["source/kernel.py"]) == 64
     assert spec["recipe"]["provenance"] == "external_evaluator"
     assert spec["agent_backend"] == "codex"
-    assert spec["agent_options"] == {"model": "gpt-5.5", "effort": "xhigh"}
+    assert spec["agent_options"] == {
+        "model": "gpt-5.5",
+        "effort": "xhigh",
+        "runtime_closure_sha256": None,
+    }
     assert spec["budget"] == {
         "max_iterations": 3,
         "max_turns": 50,
@@ -492,7 +499,12 @@ def test_formal_task_spec_binds_run_control_and_exact_python(
         eval_config={
             "target_gpu_model": "MI355X",
             "campaign": {"comparison": "apex_vs_codex"},
-            "campaign_attempt": {"fresh_session": True},
+            "campaign_attempt": {
+                "fresh_session": True,
+                "backend_runtime_closure_sha256": (
+                    _BACKEND_RUNTIME_CLOSURE_SHA256
+                ),
+            },
         },
         agent_config=_agent_config(),
         workspace=workspace,
@@ -506,6 +518,9 @@ def test_formal_task_spec_binds_run_control_and_exact_python(
     assert control["python_interpreter"]["path"] == sys.executable
     assert control["structured_turn_budget"]["policy"] == (
         "structured_agent_turn_checkpoint_v2"
+    )
+    assert spec["agent_options"]["runtime_closure_sha256"] == (
+        _BACKEND_RUNTIME_CLOSURE_SHA256
     )
     assert all(
         spec["commands"][phase]["argv"][0] == sys.executable
@@ -533,7 +548,12 @@ def test_formal_task_spec_requires_caller_python(tmp_path, monkeypatch) -> None:
             eval_config={
                 "target_gpu_model": "MI355X",
                 "campaign": {"comparison": "apex_vs_codex"},
-                "campaign_attempt": {"fresh_session": True},
+                "campaign_attempt": {
+                    "fresh_session": True,
+                    "backend_runtime_closure_sha256": (
+                        _BACKEND_RUNTIME_CLOSURE_SHA256
+                    ),
+                },
             },
             agent_config=_agent_config(),
             workspace=workspace,
@@ -1022,6 +1042,9 @@ def _formal_apex_launch_fixture(
     (apex_root / ".venv/lib/python3.10/site-packages/fixture.py").write_text(
         "VALUE = 1\n", encoding="utf-8"
     )
+    (apex_root / ".venv/pyvenv.cfg").write_text(
+        "include-system-site-packages = false\n", encoding="utf-8"
+    )
     system_python = Path("/usr/bin/python3").resolve(strict=True)
     apex_python.symlink_to(system_python)
     apex_commit = apex_launcher.subprocess.run(
@@ -1042,11 +1065,12 @@ def _formal_apex_launch_fixture(
             "fresh_session": True,
             "receipt_path": str(receipt_path),
             "comparison_contract_sha256": "d" * 64,
+            "backend_runtime_closure_sha256": (
+                _BACKEND_RUNTIME_CLOSURE_SHA256
+            ),
         },
     }
     captured: dict[str, object] = {}
-    monkeypatch.setenv("APEX_ROOT", str(apex_root))
-    monkeypatch.setenv("APEX_PYTHON", str(apex_python))
     monkeypatch.setenv("AGENT_KERNEL_ARENA_APEX_COMMIT", apex_commit)
     monkeypatch.setenv("AGENT_KERNEL_ARENA_APEX_DIRTY", "false")
     monkeypatch.setenv(
@@ -1064,6 +1088,37 @@ def _formal_apex_launch_fixture(
     runtime_snapshot = materialize_runtime(
         runtime_plan, attempt_root / "apex-shared.runtime"
     )
+    runtime_manifest = apex_runtime_contract.verify_runtime_snapshot(
+        runtime_snapshot, runtime_plan.sha256
+    )
+    immutable_mount = {
+        "mount_id": 91,
+        "device": "0:91",
+        "root": "/",
+        "mount_point": str(runtime_snapshot),
+        "filesystem": "fuse.squashfuse",
+        "mount_options": ["nodev", "ro"],
+        "super_options": ["ro"],
+        "read_only": True,
+    }
+    monkeypatch.setattr(
+        apex_runtime_contract,
+        "_observed_immutable_mount",
+        lambda _root: immutable_mount,
+    )
+    immutable_receipt = apex_runtime_contract.create_immutable_mount_receipt(
+        runtime_snapshot, runtime_manifest, "f" * 64
+    )
+    immutable_receipt_path = attempt_root / "apex-runtime-mount-receipt.json"
+    immutable_receipt_path.write_text(
+        json.dumps(immutable_receipt, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_APEX_SOURCE_ROOT", str(apex_root))
+    monkeypatch.setenv("APEX_ROOT", str(runtime_snapshot / "repo"))
+    monkeypatch.setenv(
+        "APEX_PYTHON", str(runtime_snapshot / "sealed-bin/python")
+    )
     monkeypatch.setenv(
         "AGENT_KERNEL_ARENA_APEX_RUNTIME_MANIFEST_SHA256",
         runtime_plan.sha256,
@@ -1071,6 +1126,18 @@ def _formal_apex_launch_fixture(
     monkeypatch.setenv(
         "AGENT_KERNEL_ARENA_APEX_RUNTIME_SNAPSHOT_ROOT",
         str(runtime_snapshot),
+    )
+    monkeypatch.setenv(
+        "AGENT_KERNEL_ARENA_APEX_RUNTIME_MOUNT_RECEIPT",
+        str(immutable_receipt_path),
+    )
+    monkeypatch.setenv(
+        "AGENT_KERNEL_ARENA_APEX_RUNTIME_MOUNT_RECEIPT_SHA256",
+        immutable_receipt["sha256"],
+    )
+    monkeypatch.setenv(
+        "AGENT_KERNEL_ARENA_APEX_RUNTIME_MOUNT_RECEIPT_FILE_SHA256",
+        apex_launcher._sha256_file(immutable_receipt_path),
     )
     monkeypatch.setenv("AGENT_KERNEL_ARENA_PYTHON", sys.executable)
     monkeypatch.setattr(
@@ -1129,10 +1196,15 @@ def _formal_apex_launch_fixture(
         )
         for descriptor in descriptors:
             os.close(descriptor)
+        captured["attempt_mount_receipt"] = mount_receipt
         return WrappedAttemptCommand(command, mount_receipt=mount_receipt)
 
     def fake_run(command, **kwargs):
         del kwargs
+        mount_receipt = captured["attempt_mount_receipt"]
+        mount_receipt["namespace_mounts"] = {"closed_set": True}
+        mount_receipt.pop("sha256", None)
+        mount_receipt["sha256"] = apex_launcher._canonical_digest(mount_receipt)
         spec_path = Path(command[command.index("--task-spec") + 1])
         result_path = Path(command[command.index("--result-json") + 1])
         spec = json.loads(spec_path.read_text(encoding="utf-8"))
@@ -1326,7 +1398,7 @@ def test_formal_apex_uses_sealed_snapshot_after_live_venv_replacement(
     workspace, config_path, _, eval_config, _ = _formal_apex_launch_fixture(
         tmp_path, monkeypatch, mutate_workspace=False
     )
-    apex_root = Path(os.environ["APEX_ROOT"])
+    apex_root = Path(os.environ["AGENT_KERNEL_ARENA_APEX_SOURCE_ROOT"])
     shutil.rmtree(apex_root / ".venv")
     external = tmp_path / "external-venv/bin"
     external.mkdir(parents=True)
@@ -1364,7 +1436,12 @@ def test_formal_apex_checkout_below_tmp_is_rebound_exactly_read_only(
     )
     eval_config = {
         "campaign": {"comparison": "apex_vs_codex"},
-        "campaign_attempt": {"fresh_session": True},
+        "campaign_attempt": {
+            "fresh_session": True,
+            "backend_runtime_closure_sha256": (
+                _BACKEND_RUNTIME_CLOSURE_SHA256
+            ),
+        },
     }
     system_python = str(Path("/usr/bin/python3").resolve(strict=True))
 
@@ -1442,7 +1519,12 @@ def test_formal_apex_outer_boundary_reaps_env_i_double_fork_late_writer(
         [sys.executable, "-c", launcher_code],
         eval_config={
             "campaign": {"comparison": "apex_vs_codex"},
-            "campaign_attempt": {"fresh_session": True},
+            "campaign_attempt": {
+                "fresh_session": True,
+                "backend_runtime_closure_sha256": (
+                    _BACKEND_RUNTIME_CLOSURE_SHA256
+                ),
+            },
         },
         writable_roots=(artifact_root,),
         private_proc=False,
@@ -1588,7 +1670,12 @@ def test_formal_apex_three_layer_pid_topology_is_live_and_non_escaping(
         inner,
         eval_config={
             "campaign": {"comparison": "apex_vs_codex"},
-            "campaign_attempt": {"fresh_session": True},
+            "campaign_attempt": {
+                "fresh_session": True,
+                "backend_runtime_closure_sha256": (
+                    _BACKEND_RUNTIME_CLOSURE_SHA256
+                ),
+            },
         },
         writable_roots=(artifact_root,),
         private_proc=False,
@@ -1856,6 +1943,9 @@ def _lineage_fixture(
         "cli_version": "codex-cli fixture",
         "executable_path": str(executable),
         "entrypoint_sha256": apex_launcher._sha256_file(executable),
+        "runtime_closure_sha256": spec["agent_options"][
+            "runtime_closure_sha256"
+        ],
         "resolved_executable_path": str(executable),
         "workspace": str(spec["workspace"]),
         "requested_allowed_files": list(spec["editable_files"]),

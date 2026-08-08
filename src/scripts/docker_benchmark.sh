@@ -32,8 +32,18 @@ CAMPAIGN_APEX_ROOT=""
 CAMPAIGN_APEX_VENV_ROOT=""
 CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256=""
 CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT=""
+CAMPAIGN_APEX_RUNTIME_IMAGE_SHA256=""
 CAMPAIGN_APEX_EXTERNAL_ROOTS_JSON="[]"
 declare -a CAMPAIGN_APEX_EXTERNAL_ROOTS=()
+CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST=""
+CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256=""
+CAMPAIGN_AKA_RUNTIME_MANIFEST_FILE_SHA256=""
+CAMPAIGN_AKA_RUNTIME_STAGING_ROOT=""
+CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT=""
+CAMPAIGN_AKA_RUNTIME_IMAGE_SHA256=""
+CAMPAIGN_RUNTIME_TEMP_ROOT=""
+declare -a CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+declare -A CAMPAIGN_RUNTIME_SERVICE_STARTTIMES=()
 CAMPAIGN_DATA_ROOT=""
 CAMPAIGN_GPU_PLAN_HOST=""
 CAMPAIGN_GPU_PLAN_CONTAINER="/tmp/agentkernelarena-formal-gpu-boundary-plan.json"
@@ -375,8 +385,17 @@ configure_campaign_provenance() {
     CAMPAIGN_APEX_VENV_ROOT=""
     CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256=""
     CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT=""
+    CAMPAIGN_APEX_RUNTIME_IMAGE_SHA256=""
     CAMPAIGN_APEX_EXTERNAL_ROOTS_JSON="[]"
     CAMPAIGN_APEX_EXTERNAL_ROOTS=()
+    CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST=""
+    CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256=""
+    CAMPAIGN_AKA_RUNTIME_MANIFEST_FILE_SHA256=""
+    CAMPAIGN_AKA_RUNTIME_STAGING_ROOT=""
+    CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT=""
+    CAMPAIGN_AKA_RUNTIME_IMAGE_SHA256=""
+    CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+    CAMPAIGN_RUNTIME_SERVICE_STARTTIMES=()
     CAMPAIGN_DATA_ROOT=""
     grep -Eq '^[[:space:]]+comparison:[[:space:]]*apex_vs_codex([[:space:]#]|$)' "$config" \
         || return 0
@@ -390,6 +409,9 @@ configure_campaign_provenance() {
     CAMPAIGN_DATA_ROOT="$(dirname "$workspace_prefix")"
     mkdir -p "$CAMPAIGN_DATA_ROOT"
     CAMPAIGN_DATA_ROOT="$(realpath -e -- "$CAMPAIGN_DATA_ROOT")"
+    CAMPAIGN_RUNTIME_TEMP_ROOT="$(
+        mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX
+    )" || die "cannot allocate formal runtime staging root"
     [[ -x /usr/bin/bwrap ]] \
         || die "matched campaign requires /usr/bin/bwrap for per-attempt mount isolation"
 
@@ -411,7 +433,46 @@ configure_campaign_provenance() {
     fi
     CAMPAIGN_APEX_STATUS_SHA256="$(printf '%s' "$status" | sha256sum | cut -d' ' -f1)"
     CAMPAIGN_APEX_ROOT="$apex_root"
+    prepare_campaign_aka_runtime_contract
     prepare_campaign_apex_runtime_contract
+    start_campaign_runtime_mounts
+}
+
+prepare_campaign_aka_runtime_contract() {
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    [[ -n "$CAMPAIGN_RUNTIME_TEMP_ROOT" && -d "$CAMPAIGN_RUNTIME_TEMP_ROOT" ]] \
+        || die "formal AKA runtime staging root is unavailable"
+    local runtime_tool="$HOST_ROOT/src/aka_runtime.py"
+    local manifest_parent="$CAMPAIGN_RUNTIME_TEMP_ROOT/aka-manifest"
+    local staging_parent="$CAMPAIGN_RUNTIME_TEMP_ROOT/aka-staging"
+    mkdir -m 0700 -- "$manifest_parent" "$staging_parent"
+    CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST="$manifest_parent/manifest.json"
+    CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256="$(
+        /usr/bin/python3 "$runtime_tool" discover \
+            --root "$HOST_ROOT" \
+            --output "$CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST"
+    )" || die "cannot capture the committed AKA runtime"
+    [[ "$CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || die "formal AKA runtime manifest digest is invalid"
+    CAMPAIGN_AKA_RUNTIME_STAGING_ROOT="${staging_parent}/${CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256}"
+    /usr/bin/python3 "$runtime_tool" materialize \
+        --root "$HOST_ROOT" \
+        --manifest "$CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST" \
+        --destination "$CAMPAIGN_AKA_RUNTIME_STAGING_ROOT" \
+        >/dev/null \
+        || die "cannot materialize the committed AKA runtime"
+    local persistent_manifest="${CAMPAIGN_DATA_ROOT}/aka-runtime-manifest-${CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256}.json"
+    if [[ -e "$persistent_manifest" ]]; then
+        cmp -s -- "$CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST" "$persistent_manifest" \
+            || die "formal AKA runtime manifest digest collision"
+    else
+        cp -- "$CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST" "$persistent_manifest"
+        chmod 0444 "$persistent_manifest"
+    fi
+    CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST="$persistent_manifest"
+    CAMPAIGN_AKA_RUNTIME_MANIFEST_FILE_SHA256="$(
+        sha256sum "$CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST" | cut -d' ' -f1
+    )"
 }
 
 prepare_campaign_apex_runtime_contract() {
@@ -454,7 +515,7 @@ prepare_campaign_apex_runtime_contract() {
         /usr/bin/python3 "$runtime_tool" materialize
         --root "$CAMPAIGN_APEX_ROOT"
         --python "$apex_python"
-        --snapshot-parent "$CAMPAIGN_DATA_ROOT/apex-shared.runtime"
+        --snapshot-parent "$CAMPAIGN_RUNTIME_TEMP_ROOT/apex-staging"
     )
     for root in "${CAMPAIGN_APEX_EXTERNAL_ROOTS[@]}"; do
         materialize+=(--declared-root "$root")
@@ -479,6 +540,182 @@ prepare_campaign_apex_runtime_contract() {
             'import json,os,sys; value=json.load(sys.stdin)["root"]; assert os.path.isabs(value); print(value)' \
             <<< "$evidence"
     )" || die "formal Apex runtime snapshot root is invalid"
+}
+
+wait_for_runtime_mount_service() {
+    local pid="$1" ready="$2" label="$3" log_path="$4"
+    local attempt
+    for attempt in $(seq 1 300); do
+        if [[ -f "$ready" ]]; then
+            /usr/bin/python3 - "$ready" "$pid" <<'PY'
+import json
+import pathlib
+import sys
+
+ready = pathlib.Path(sys.argv[1])
+pid = int(sys.argv[2])
+payload = json.loads(ready.read_text(encoding="utf-8"))
+service = payload.get("service")
+assert payload.get("schema") == "aka.immutable-runtime-mount-service-ready/v1"
+assert isinstance(service, dict) and service.get("pid") == pid
+stat = pathlib.Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+starttime = int(stat[stat.rfind(")") + 2:].split()[19])
+assert service.get("starttime") == starttime
+assert payload.get("mount_receipt", {}).get("sha256")
+assert payload.get("engine_evidence", {}).get("sha256")
+PY
+            return 0
+        fi
+        if ! kill -0 "$pid" 2>/dev/null; then
+            tail -100 "$log_path" >&2 || true
+            die "$label immutable runtime mount service exited before readiness"
+        fi
+        sleep 0.1
+    done
+    tail -100 "$log_path" >&2 || true
+    die "$label immutable runtime mount service did not become ready"
+}
+
+runtime_service_starttime() {
+    /usr/bin/python3 -c \
+        'import pathlib,sys; value=pathlib.Path(f"/proc/{int(sys.argv[1])}/stat").read_text(); print(int(value[value.rfind(")")+2:].split()[19]))' \
+        "$1"
+}
+
+persist_runtime_service_evidence() {
+    local ready="$1" label="$2"
+    local file_sha destination
+    file_sha="$(sha256sum "$ready" | cut -d' ' -f1)"
+    [[ "$file_sha" =~ ^[0-9a-f]{64}$ ]] \
+        || die "$label runtime service evidence digest is invalid"
+    destination="${CAMPAIGN_DATA_ROOT}/${label}-runtime-engine-${file_sha}.json"
+    if [[ -e "$destination" ]]; then
+        cmp -s -- "$ready" "$destination" \
+            || die "$label runtime service evidence digest collision"
+    else
+        cp -- "$ready" "$destination"
+        chmod 0444 "$destination"
+    fi
+}
+
+start_campaign_runtime_mounts() {
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    local engine="$CAMPAIGN_AKA_RUNTIME_STAGING_ROOT/src/immutable_runtime_mount.py"
+    local aka_tool="$CAMPAIGN_AKA_RUNTIME_STAGING_ROOT/src/aka_runtime.py"
+    local apex_tool="$CAMPAIGN_AKA_RUNTIME_STAGING_ROOT/src/apex_runtime.py"
+    [[ -f "$engine" && -f "$aka_tool" && -f "$apex_tool" ]] \
+        || die "sealed AKA runtime lacks immutable runtime tools"
+
+    local aka_inventory="$CAMPAIGN_RUNTIME_TEMP_ROOT/aka-image-input.json"
+    local apex_inventory="$CAMPAIGN_RUNTIME_TEMP_ROOT/apex-image-input.json"
+    /usr/bin/python3 "$aka_tool" image-input \
+        --root "$CAMPAIGN_AKA_RUNTIME_STAGING_ROOT" \
+        --manifest "$CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST" \
+        --sha256 "$CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256" \
+        --output "$aka_inventory" \
+        >/dev/null \
+        || die "cannot bind AKA SquashFS image inputs"
+    if [[ "$APEX_RUNTIME" == "1" ]]; then
+        /usr/bin/python3 "$apex_tool" image-input \
+            --snapshot "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" \
+            --sha256 "$CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256" \
+            --output "$apex_inventory" \
+            >/dev/null \
+            || die "cannot bind Apex SquashFS image inputs"
+    fi
+
+    local aka_mount_parent="$CAMPAIGN_RUNTIME_TEMP_ROOT/aka-mount"
+    local apex_mount_parent="$CAMPAIGN_RUNTIME_TEMP_ROOT/apex-mount"
+    mkdir -m 0700 -- "$aka_mount_parent"
+    CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT="${aka_mount_parent}/${CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256}"
+    mkdir -m 0700 -- "$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT"
+    local apex_staging_root="$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT"
+    if [[ "$APEX_RUNTIME" == "1" ]]; then
+        mkdir -m 0700 -- "$apex_mount_parent"
+        CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT="${apex_mount_parent}/${CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256}"
+        mkdir -m 0700 -- "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT"
+    fi
+
+    local aka_ready="$CAMPAIGN_RUNTIME_TEMP_ROOT/aka-service-ready.json"
+    local apex_ready="$CAMPAIGN_RUNTIME_TEMP_ROOT/apex-service-ready.json"
+    local aka_log="$CAMPAIGN_RUNTIME_TEMP_ROOT/aka-service.log"
+    local apex_log="$CAMPAIGN_RUNTIME_TEMP_ROOT/apex-service.log"
+    /usr/bin/python3 "$engine" serve \
+        --staging-root "$CAMPAIGN_AKA_RUNTIME_STAGING_ROOT" \
+        --inventory-json "$aka_inventory" \
+        --mountpoint "$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT" \
+        --ready-json "$aka_ready" \
+        >"$aka_log" 2>&1 &
+    local aka_pid=$!
+    CAMPAIGN_RUNTIME_SERVICE_PIDS+=("$aka_pid")
+    CAMPAIGN_RUNTIME_SERVICE_STARTTIMES["$aka_pid"]="$(
+        runtime_service_starttime "$aka_pid"
+    )" || die "cannot bind AKA runtime service process identity"
+    wait_for_runtime_mount_service "$aka_pid" "$aka_ready" "aka" "$aka_log"
+
+    CAMPAIGN_AKA_RUNTIME_IMAGE_SHA256="$(
+        /usr/bin/python3 -c \
+            'import json,sys; print(json.load(open(sys.argv[1]))["mount_receipt"]["image_sha256"])' \
+            "$aka_ready"
+    )"
+    [[ "$CAMPAIGN_AKA_RUNTIME_IMAGE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || die "immutable runtime service returned an invalid image digest"
+    persist_runtime_service_evidence "$aka_ready" "aka"
+    if [[ "$APEX_RUNTIME" == "1" ]]; then
+        /usr/bin/python3 "$engine" serve \
+            --staging-root "$apex_staging_root" \
+            --inventory-json "$apex_inventory" \
+            --mountpoint "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" \
+            --ready-json "$apex_ready" \
+            >"$apex_log" 2>&1 &
+        local apex_pid=$!
+        CAMPAIGN_RUNTIME_SERVICE_PIDS+=("$apex_pid")
+        CAMPAIGN_RUNTIME_SERVICE_STARTTIMES["$apex_pid"]="$(
+            runtime_service_starttime "$apex_pid"
+        )" || die "cannot bind Apex runtime service process identity"
+        wait_for_runtime_mount_service "$apex_pid" "$apex_ready" "apex" "$apex_log"
+        CAMPAIGN_APEX_RUNTIME_IMAGE_SHA256="$(
+            /usr/bin/python3 -c \
+                'import json,sys; print(json.load(open(sys.argv[1]))["mount_receipt"]["image_sha256"])' \
+                "$apex_ready"
+        )"
+        [[ "$CAMPAIGN_APEX_RUNTIME_IMAGE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+            || die "Apex immutable runtime service returned an invalid image digest"
+        persist_runtime_service_evidence "$apex_ready" "apex"
+    fi
+}
+
+cleanup_campaign_runtime_mounts() {
+    [[ -n "${CAMPAIGN_RUNTIME_OWNER_BASHPID:-}" \
+        && "$BASHPID" == "$CAMPAIGN_RUNTIME_OWNER_BASHPID" ]] || return 0
+    local failed=0 pid current_starttime expected_starttime
+    for pid in "${CAMPAIGN_RUNTIME_SERVICE_PIDS[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            current_starttime="$(runtime_service_starttime "$pid" 2>/dev/null || true)"
+            expected_starttime="${CAMPAIGN_RUNTIME_SERVICE_STARTTIMES[$pid]:-}"
+            if [[ -n "$expected_starttime" \
+                && "$current_starttime" == "$expected_starttime" ]]; then
+                kill -TERM "$pid" 2>/dev/null || failed=1
+            else
+                warn "runtime service PID identity changed; refusing to signal PID $pid"
+                failed=1
+            fi
+        fi
+    done
+    for pid in "${CAMPAIGN_RUNTIME_SERVICE_PIDS[@]}"; do
+        if ! wait "$pid" 2>/dev/null; then
+            failed=1
+        fi
+    done
+    if [[ "$failed" == "0" \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT" == /tmp/agentkernelarena-formal-runtime.* \
+        && -d "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+        && ! -L "$CAMPAIGN_RUNTIME_TEMP_ROOT" ]]; then
+        rm -rf -- "$CAMPAIGN_RUNTIME_TEMP_ROOT"
+    elif [[ -n "$CAMPAIGN_RUNTIME_TEMP_ROOT" ]]; then
+        warn "retaining formal runtime staging after cleanup failure: $CAMPAIGN_RUNTIME_TEMP_ROOT"
+    fi
+    return 0
 }
 
 prepare_campaign_gpu_boundary_plan() {
@@ -876,6 +1113,13 @@ build_docker_args() {
             -e "AGENT_KERNEL_ARENA_APEX_DIRTY=${CAMPAIGN_APEX_DIRTY}"
             -e "AGENT_KERNEL_ARENA_APEX_STATUS_SHA256=${CAMPAIGN_APEX_STATUS_SHA256}"
             -e "AGENT_KERNEL_ARENA_APEX_RUNTIME_MANIFEST_SHA256=${CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256}"
+            -e "AGENT_KERNEL_ARENA_APEX_SOURCE_ROOT=${CAMPAIGN_APEX_ROOT}"
+            -e "AGENT_KERNEL_ARENA_APEX_RUNTIME_IMAGE_SHA256=${CAMPAIGN_APEX_RUNTIME_IMAGE_SHA256}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_ROOT=${CONTAINER_WORKDIR}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST=${CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST_SHA256=${CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST_FILE_SHA256=${CAMPAIGN_AKA_RUNTIME_MANIFEST_FILE_SHA256}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_IMAGE_SHA256=${CAMPAIGN_AKA_RUNTIME_IMAGE_SHA256}"
             -e "AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT=${CAMPAIGN_DATA_ROOT}"
         )
     fi
@@ -1006,14 +1250,14 @@ build_docker_args() {
     if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
         # Formal campaign workers need only read evaluator/task sources. Results,
         # logs, and attempt workspaces are on the separately mounted /data tree.
-        add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR" ro
+        add_mount "$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT" "$CONTAINER_WORKDIR" ro
         add_mount "$CAMPAIGN_DATA_ROOT" "$CAMPAIGN_DATA_ROOT"
         add_mount /usr/bin/bwrap /usr/bin/bwrap ro
         need_path \
-            "$FORMAL_CODEX_REQUIREMENTS_HOST" \
+            "$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT/agents/codex/formal_requirements.toml" \
             "formal Codex requirements policy" 1
         add_mount \
-            "$FORMAL_CODEX_REQUIREMENTS_HOST" \
+            "$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT/agents/codex/formal_requirements.toml" \
             "$FORMAL_CODEX_REQUIREMENTS_CONTAINER" ro
         if [[ -n "$CAMPAIGN_GPU_PLAN_HOST" ]]; then
             add_mount "$CAMPAIGN_GPU_PLAN_HOST" "$CAMPAIGN_GPU_PLAN_CONTAINER" ro
@@ -1022,18 +1266,26 @@ build_docker_args() {
         add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR"
     fi
     if [[ "$APEX_RUNTIME" == "1" ]]; then
-        add_mount "$APEX_HOST_ROOT" "$APEX_CONTAINER_ROOT" ro
         if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
             [[ -n "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" \
                 && -d "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" ]] \
                 || die "formal Apex worker has no sealed runtime snapshot"
+            add_mount \
+                "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" \
+                "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" ro
             docker_args+=(
                 -e "AGENT_KERNEL_ARENA_APEX_RUNTIME_SNAPSHOT_ROOT=$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT"
+                -e "APEX_ROOT=$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT/repo"
+                -e "APEX_PYTHON=$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT/sealed-bin/python"
+            )
+        else
+            add_mount "$APEX_HOST_ROOT" "$APEX_CONTAINER_ROOT" ro
+            docker_args+=(
+                -e "APEX_ROOT=$APEX_CONTAINER_ROOT"
+                -e "APEX_PYTHON=$APEX_CONTAINER_ROOT/.venv/bin/python"
             )
         fi
         docker_args+=(
-            -e "APEX_ROOT=$APEX_CONTAINER_ROOT"
-            -e "APEX_PYTHON=$APEX_CONTAINER_ROOT/.venv/bin/python"
             -e "PYTHONDONTWRITEBYTECODE=1"
         )
     fi
@@ -1082,6 +1334,38 @@ docker_exec() {
     build_docker_args "$interactive"
     docker "${docker_args[@]}" -lc '
         cd "$AGENT_KERNEL_ARENA_WORKDIR" || exit 1
+        if [[ -n "${AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST_SHA256:-}" ]]; then
+            aka_mount_receipt=/tmp/agentkernelarena-aka-runtime-mount-receipt.json
+            aka_mount_receipt_sha256="$(
+                python3 src/aka_runtime.py mount-receipt \
+                    --root "$AGENT_KERNEL_ARENA_AKA_RUNTIME_ROOT" \
+                    --manifest-sha256 "$AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST_SHA256" \
+                    --image-sha256 "$AGENT_KERNEL_ARENA_AKA_RUNTIME_IMAGE_SHA256" \
+                    --output "$aka_mount_receipt"
+            )" || exit 1
+            chmod 0444 "$aka_mount_receipt" || exit 1
+            export AGENT_KERNEL_ARENA_AKA_RUNTIME_MOUNT_RECEIPT="$aka_mount_receipt"
+            export AGENT_KERNEL_ARENA_AKA_RUNTIME_MOUNT_RECEIPT_SHA256="$aka_mount_receipt_sha256"
+            export AGENT_KERNEL_ARENA_AKA_RUNTIME_MOUNT_RECEIPT_FILE_SHA256="$(
+                sha256sum "$aka_mount_receipt" | cut -d" " -f1
+            )"
+        fi
+        if [[ -n "${AGENT_KERNEL_ARENA_APEX_RUNTIME_SNAPSHOT_ROOT:-}" ]]; then
+            apex_mount_receipt=/tmp/agentkernelarena-apex-runtime-mount-receipt.json
+            apex_mount_receipt_sha256="$(
+                python3 src/apex_runtime.py mount-receipt \
+                    --snapshot "$AGENT_KERNEL_ARENA_APEX_RUNTIME_SNAPSHOT_ROOT" \
+                    --sha256 "$AGENT_KERNEL_ARENA_APEX_RUNTIME_MANIFEST_SHA256" \
+                    --image-sha256 "$AGENT_KERNEL_ARENA_APEX_RUNTIME_IMAGE_SHA256" \
+                    --output "$apex_mount_receipt"
+            )" || exit 1
+            chmod 0444 "$apex_mount_receipt" || exit 1
+            export AGENT_KERNEL_ARENA_APEX_RUNTIME_MOUNT_RECEIPT="$apex_mount_receipt"
+            export AGENT_KERNEL_ARENA_APEX_RUNTIME_MOUNT_RECEIPT_SHA256="$apex_mount_receipt_sha256"
+            export AGENT_KERNEL_ARENA_APEX_RUNTIME_MOUNT_RECEIPT_FILE_SHA256="$(
+                sha256sum "$apex_mount_receipt" | cut -d" " -f1
+            )"
+        fi
         if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then
             bash src/scripts/docker_benchmark.sh _container_prepare_worker_home || exit 1
         fi
@@ -1531,6 +1815,8 @@ run_parallel() {
     configure_geak_v4_runtime "$config_name"
     configure_apex_runtime "$config_name"
     configure_campaign_provenance "$config_name"
+    [[ "$CAMPAIGN_PROVENANCE" != "1" ]] \
+        || die "formal matched campaigns require single-container 'run'; parallel-run spans mount namespaces"
 
     REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
     AGENTS_STRICT=1
@@ -1630,6 +1916,12 @@ run_parallel() {
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
     return 0
 fi
+
+CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+trap cleanup_campaign_runtime_mounts EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 case "${1:-}" in
     run)

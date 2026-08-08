@@ -38,6 +38,15 @@ from src.apex_runtime import (
     RUNTIME_BOOTSTRAP_NAME,
     RUNTIME_BOOTSTRAP_POLICY_ID,
     RUNTIME_BOOTSTRAP_SHA256,
+    RUNTIME_IMAGE_INPUT_SCHEMA,
+    RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
+    RUNTIME_IMMUTABLE_MOUNT_SCHEMA,
+    RUNTIME_WRAPPER_ALIASES,
+    RUNTIME_WRAPPER_NAME,
+    RUNTIME_WRAPPER_POLICY_ID,
+    RUNTIME_WRAPPER_SHA256,
+    runtime_environment,
+    validate_immutable_mount_receipt as validate_apex_immutable_mount_receipt,
     verify_runtime_snapshot,
 )
 from src.agent_turn_budget import (
@@ -123,6 +132,10 @@ _FORMAL_LIVE_COMMITMENT_SHA256 = hashlib.sha256(
         _FORMAL_LIVE_COMMITMENT, sort_keys=True, separators=(",", ":")
     ).encode()
 ).hexdigest()
+
+# Public, immutable generation marker for queue/worker entrypoints that must
+# reject historical campaign artifacts before they perform any evaluation.
+FORMAL_LIVE_EXECUTION_SHA256 = _FORMAL_LIVE_COMMITMENT_SHA256
 
 
 class CampaignError(RuntimeError):
@@ -2213,20 +2226,27 @@ def _apex_runtime_mount_errors(
         "runtime_manifest_relative_path",
         "entrypoint",
         "python",
+        "immutability",
         "attempt_mounts_sha256",
         "sha256",
     }:
         return ["apex_runtime_mount_contract_mismatch"]
     root = _canonical_receipt_directory(runtime.get("root"), specific=True)
-    source_root = _canonical_receipt_directory(
+    source_root = _absolute_receipt_path(
         runtime.get("source_root"), specific=True
     )
-    configured_source = os.environ.get("APEX_ROOT")
-    expected_source = (
-        _canonical_receipt_directory(configured_source, specific=True)
-        if configured_source
-        else source_root
+    configured_source_raw = os.environ.get(
+        "AGENT_KERNEL_ARENA_APEX_SOURCE_ROOT"
     )
+    configured_source = _absolute_receipt_path(
+        configured_source_raw, specific=True
+    )
+    configured_execution_raw = os.environ.get("APEX_ROOT")
+    configured_execution = _canonical_receipt_directory(
+        configured_execution_raw, specific=True
+    )
+    configured_python_raw = os.environ.get("APEX_PYTHON")
+    configured_python = _canonical_receipt_file(configured_python_raw)
     manifest_path = _canonical_receipt_file(runtime.get("runtime_manifest_path"))
     expected_manifest_path = root / "runtime_manifest.json" if root else None
     verified_manifest = (
@@ -2237,12 +2257,20 @@ def _apex_runtime_mount_errors(
     if (
         root is None
         or source_root is None
-        or source_root != expected_source
+        or runtime.get("root") != str(root)
+        or runtime.get("source_root") != str(source_root)
+        or configured_source is None
+        or configured_source_raw != str(configured_source)
+        or source_root != configured_source
+        or configured_execution != root / "repo"
+        or configured_execution_raw != str(root / "repo")
+        or configured_python != root / RUNTIME_WRAPPER_NAME
+        or configured_python_raw != str(root / RUNTIME_WRAPPER_NAME)
         or _paths_overlap(root, source_root)
         or root.name != expected["runtime_manifest_sha256"]
-        or not root.parent.name.endswith(".runtime")
         or runtime.get("runtime_manifest_relative_path") != "runtime_manifest.json"
         or manifest_path != expected_manifest_path
+        or runtime.get("runtime_manifest_path") != str(expected_manifest_path)
         or verified_manifest is None
     ):
         return ["apex_runtime_mount_contract_mismatch"]
@@ -2256,6 +2284,7 @@ def _apex_runtime_mount_errors(
     )
     manifest_roots = verified_manifest.get("roots")
     execution = verified_manifest.get("execution")
+    manifest_immutability = verified_manifest.get("immutability")
     apex_roots = (
         [
             item
@@ -2268,6 +2297,17 @@ def _apex_runtime_mount_errors(
     apex_source = (
         apex_roots[0].get("source") if len(apex_roots) == 1 else None
     )
+    apex_files = apex_roots[0].get("files") if len(apex_roots) == 1 else None
+    main_entries = (
+        [
+            item
+            for item in apex_files
+            if isinstance(item, dict) and item.get("path") == "main.py"
+        ]
+        if isinstance(apex_files, list)
+        else []
+    )
+    main_entry = main_entries[0] if len(main_entries) == 1 else None
     expected_repository = expected.get("repository")
     if (
         not isinstance(manifest_git, dict)
@@ -2278,30 +2318,67 @@ def _apex_runtime_mount_errors(
         )
         or not isinstance(apex_source, dict)
         or apex_source.get("path") != str(source_root)
+        or apex_roots[0].get("destination") != "repo"
+        or not isinstance(main_entry, dict)
+        or main_entry.get("type") != "file"
+        or not isinstance(main_entry.get("sha256"), str)
+        or _SHA256.fullmatch(main_entry["sha256"]) is None
         or not isinstance(manifest_system_python, dict)
-        or set(manifest_system_python) != {"path", "binding"}
+        or set(manifest_system_python)
+        != {"path", "binding", "size", "sha256", "mode", "device", "inode"}
         or manifest_system_python.get("binding")
         != "formal_docker_image_plus_attempt_receipt_v1"
+        or not isinstance(manifest_system_python.get("sha256"), str)
+        or _SHA256.fullmatch(manifest_system_python["sha256"]) is None
+        or type(manifest_system_python.get("size")) is not int
+        or manifest_system_python["size"] <= 0
         or not isinstance(execution, dict)
         or set(execution)
         != {
             "interpreter",
+            "underlying_interpreter",
             "flags",
             "bootstrap",
             "bootstrap_policy_id",
             "bootstrap_sha256",
+            "wrapper_policy_id",
+            "wrapper_sha256",
+            "wrapper_aliases",
             "entrypoint",
             "pythonpath",
-            "pth_execution",
-            "sitecustomize_execution",
+            "site_hook_policy",
+            "no_live_interpreter_fallback",
         }
-        or execution.get("flags") != ["-I", "-S"]
+        or execution.get("interpreter") != RUNTIME_WRAPPER_NAME
+        or execution.get("underlying_interpreter") != "venv/bin/python"
+        or execution.get("flags") != ["-I", "-S", "-u"]
         or execution.get("bootstrap") != RUNTIME_BOOTSTRAP_NAME
         or execution.get("bootstrap_policy_id")
         != RUNTIME_BOOTSTRAP_POLICY_ID
         or execution.get("bootstrap_sha256") != RUNTIME_BOOTSTRAP_SHA256
-        or execution.get("pth_execution") is not False
-        or execution.get("sitecustomize_execution") is not False
+        or execution.get("wrapper_policy_id") != RUNTIME_WRAPPER_POLICY_ID
+        or execution.get("wrapper_sha256") != RUNTIME_WRAPPER_SHA256
+        or execution.get("wrapper_aliases")
+        != [f"sealed-bin/{alias}" for alias in RUNTIME_WRAPPER_ALIASES]
+        or execution.get("entrypoint") != "repo/main.py"
+        or execution.get("site_hook_policy")
+        != {
+            "primary_invocation": "forced_isolated_no_site",
+            "python_alias_children": "forced_isolated_no_site",
+            "sys_executable_rebound_to_wrapper": True,
+            "pth_execution_via_contract": False,
+            "sitecustomize_execution_via_contract": False,
+            "raw_interpreter_is_not_an_execution_contract": True,
+        }
+        or execution.get("no_live_interpreter_fallback") is not True
+        or manifest_immutability
+        != {
+            "required_for_execution": True,
+            "receipt_schema": RUNTIME_IMMUTABLE_MOUNT_SCHEMA,
+            "receipt_policy_id": RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
+            "image_input_schema": RUNTIME_IMAGE_INPUT_SCHEMA,
+            "host_mode_bits_are_evidence_only": True,
+        }
     ):
         return ["apex_runtime_mount_contract_mismatch"]
 
@@ -2314,45 +2391,77 @@ def _apex_runtime_mount_errors(
 
     entrypoint = runtime.get("entrypoint")
     python = runtime.get("python")
-    if not isinstance(entrypoint, dict) or not isinstance(python, dict):
+    immutability = runtime.get("immutability")
+    if (
+        not isinstance(entrypoint, dict)
+        or not isinstance(python, dict)
+        or not isinstance(immutability, dict)
+    ):
         return ["apex_runtime_mount_contract_mismatch"]
     entrypoint_relative = execution.get("entrypoint")
     interpreter_relative = execution.get("interpreter")
+    underlying_relative = execution.get("underlying_interpreter")
     manifest_pythonpath = execution.get("pythonpath")
     if not all(
         isinstance(value, str)
-        for value in (entrypoint_relative, interpreter_relative)
+        for value in (
+            entrypoint_relative,
+            interpreter_relative,
+            underlying_relative,
+        )
     ) or not isinstance(manifest_pythonpath, list):
         return ["apex_runtime_mount_contract_mismatch"]
     expected_launcher = root / str(interpreter_relative)
-    launcher = _absolute_receipt_path(python.get("launcher_path"))
-    resolved_python = _canonical_receipt_file(python.get("resolved_path"))
+    launcher = _canonical_receipt_file(python.get("launcher_path"))
+    expected_underlying = root / str(underlying_relative)
+    underlying = _absolute_receipt_path(python.get("underlying_path"))
     expected_entrypoint = root / str(entrypoint_relative)
-    source_entrypoint = source_root / "main.py"
     observed_entrypoint = _canonical_receipt_file(entrypoint.get("path"))
     pythonpath = python.get("pythonpath")
     try:
-        source_entrypoint_sha256 = _sha256_file(source_entrypoint)
-        resolved_launcher = launcher.resolve(strict=True) if launcher else None
-        expected_pythonpath = [root / str(value) for value in manifest_pythonpath]
+        environment = runtime_environment(root, verified_manifest)
+        expected_pythonpath = environment["PYTHONPATH"].split(os.pathsep)
+        underlying_metadata = underlying.lstat() if underlying else None
+        resolved_underlying = underlying.resolve(strict=True) if underlying else None
         pythonpath_roots = (
-            [_canonical_receipt_directory(value) for value in pythonpath]
+            [Path(value).resolve(strict=True) for value in pythonpath]
             if isinstance(pythonpath, list)
             else []
         )
-    except OSError:
+    except (ApexRuntimeError, KeyError, OSError, TypeError, ValueError):
         return ["apex_runtime_mount_contract_mismatch"]
+    expected_environment = {
+        key: environment[key]
+        for key in (
+            "PATH",
+            "APEX_RUNTIME_PYTHON",
+            "PYTHONNOUSERSITE",
+            "PYTHONSAFEPATH",
+            "PYTHONDONTWRITEBYTECODE",
+        )
+    }
     if (
         set(entrypoint) != {"path", "relative_path", "sha256"}
         or set(python)
         != {
             "source_launcher_relative_path",
             "launcher_path",
-            "resolved_path",
-            "resolved_sha256",
+            "launcher_sha256",
+            "underlying_path",
+            "underlying_sha256",
             "flags",
             "pythonpath",
             "environment",
+        }
+        or set(immutability)
+        != {
+            "schema",
+            "policy_id",
+            "receipt_sha256",
+            "runtime_image_input_sha256",
+            "image_sha256",
+            "backing",
+            "mount",
         }
         or observed_entrypoint != expected_entrypoint
         or entrypoint.get("path") != str(expected_entrypoint)
@@ -2360,34 +2469,66 @@ def _apex_runtime_mount_errors(
         or not isinstance(entrypoint.get("sha256"), str)
         or not _SHA256.fullmatch(entrypoint["sha256"])
         or _sha256_file(expected_entrypoint) != entrypoint["sha256"]
-        or source_entrypoint_sha256 != entrypoint["sha256"]
+        or main_entry.get("sha256") != entrypoint["sha256"]
         or apex.get("entrypoint") != str(expected_entrypoint)
         or apex.get("entrypoint_sha256") != entrypoint.get("sha256")
-        or python.get("source_launcher_relative_path") != ".venv/bin/python"
+        or python.get("source_launcher_relative_path") != underlying_relative
         or launcher != expected_launcher
-        or resolved_python is None
-        or resolved_launcher != resolved_python
-        or str(resolved_python) != manifest_system_python.get("path")
-        or not os.access(resolved_python, os.X_OK)
-        or not isinstance(python.get("resolved_sha256"), str)
-        or not _SHA256.fullmatch(python["resolved_sha256"])
-        or _sha256_file(resolved_python) != python["resolved_sha256"]
-        or python.get("flags") != ["-I", "-S"]
+        or python.get("launcher_path") != str(expected_launcher)
+        or not os.access(expected_launcher, os.X_OK)
+        or python.get("launcher_sha256") != RUNTIME_WRAPPER_SHA256
+        or _sha256_file(expected_launcher) != python.get("launcher_sha256")
+        or underlying != expected_underlying
+        or python.get("underlying_path") != str(expected_underlying)
+        or underlying_metadata is None
+        or not (
+            stat.S_ISREG(underlying_metadata.st_mode)
+            or stat.S_ISLNK(underlying_metadata.st_mode)
+        )
+        or resolved_underlying is None
+        or not resolved_underlying.is_file()
+        or not resolved_underlying.is_relative_to(root)
+        or not os.access(expected_underlying, os.X_OK)
+        or not isinstance(python.get("underlying_sha256"), str)
+        or _SHA256.fullmatch(python["underlying_sha256"]) is None
+        or _sha256_file(expected_underlying) != python["underlying_sha256"]
+        or manifest_system_python.get("sha256") != python["underlying_sha256"]
+        or python.get("flags") != ["-I", "-S", "-u"]
         or python.get("flags") != execution.get("flags")
-        or python.get("environment")
-        != {
-            "PYTHONNOUSERSITE": "1",
-            "PYTHONSAFEPATH": "1",
-            "PYTHONDONTWRITEBYTECODE": "1",
-        }
+        or python.get("environment") != expected_environment
         or not pythonpath_roots
-        or len(pythonpath_roots) != len(pythonpath)
-        or any(path is None or not path.is_relative_to(root) for path in pythonpath_roots)
-        or pythonpath_roots != expected_pythonpath
+        or pythonpath != expected_pythonpath
+        or len(pythonpath_roots) != len(expected_pythonpath)
+        or any(
+            not path.is_dir() or not path.is_relative_to(root)
+            for path in pythonpath_roots
+        )
         or len(set(pythonpath_roots)) != len(pythonpath_roots)
-        or apex.get("python") != str(resolved_python)
-        or apex.get("python_sha256") != python.get("resolved_sha256")
+        or set(apex)
+        != {"entrypoint", "entrypoint_sha256", "python", "python_sha256"}
+        or apex.get("python") != str(expected_launcher)
+        or apex.get("python_sha256") != python.get("launcher_sha256")
     ):
+        return ["apex_runtime_mount_contract_mismatch"]
+
+    immutable_mount_receipt = {
+        "schema": immutability.get("schema"),
+        "policy_id": immutability.get("policy_id"),
+        "root": str(root),
+        "runtime_manifest_sha256": runtime.get("runtime_manifest_sha256"),
+        "runtime_image_input_sha256": immutability.get(
+            "runtime_image_input_sha256"
+        ),
+        "image_sha256": immutability.get("image_sha256"),
+        "backing": immutability.get("backing"),
+        "mount": immutability.get("mount"),
+        "sha256": immutability.get("receipt_sha256"),
+    }
+    try:
+        validate_apex_immutable_mount_receipt(
+            root, verified_manifest, immutable_mount_receipt
+        )
+    except (ApexRuntimeError, OSError, TypeError, ValueError):
         return ["apex_runtime_mount_contract_mismatch"]
     return _apex_attempt_mount_role_errors(
         receipt=receipt,
@@ -4805,6 +4946,16 @@ def run_matched_task_campaign(
         ).encode()
     ):
         raise CampaignError("campaign comparison contract digest does not match its contents")
+    codex_contract = comparison_contract.get("codex")
+    backend_runtime_closure_sha256 = (
+        codex_contract.get("backend_runtime_closure_sha256")
+        if isinstance(codex_contract, dict)
+        else None
+    )
+    if not isinstance(backend_runtime_closure_sha256, str) or not _SHA256.fullmatch(
+        backend_runtime_closure_sha256
+    ):
+        raise CampaignError("campaign lacks a bound backend runtime closure")
     attempt_root = run_directory / ".campaign_attempts" / task_name.replace("/", "_")
     if attempt_root.exists():
         raise CampaignError(
@@ -4859,6 +5010,7 @@ def run_matched_task_campaign(
             "task_deadline_monotonic": deadline,
             "receipt_path": str(receipt_path),
             "comparison_contract_sha256": comparison_contract_sha256,
+            "backend_runtime_closure_sha256": backend_runtime_closure_sha256,
             "task_package_manifest_sha256": task_binding[
                 "package_manifest_sha256"
             ],
@@ -5057,6 +5209,7 @@ def run_matched_task_campaign(
 __all__ = [
     "CampaignError",
     "CampaignPolicy",
+    "FORMAL_LIVE_EXECUTION_SHA256",
     "build_campaign_manifest",
     "deterministic_task_gpu_mapping",
     "ensure_campaign_manifest",

@@ -124,6 +124,28 @@ def _comparison_contract_sha256(
     return digest
 
 
+def _runtime_closure_sha256(
+    eval_config: dict[str, Any], *, formal_campaign: bool
+) -> str | None:
+    if not formal_campaign:
+        return None
+    attempt = eval_config.get("campaign_attempt")
+    digest = (
+        attempt.get("backend_runtime_closure_sha256")
+        if isinstance(attempt, dict)
+        else None
+    )
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in _LOWER_HEX for character in digest)
+    ):
+        raise CodexSessionError(
+            "formal direct Codex attempt lacks a backend runtime closure digest"
+        )
+    return digest
+
+
 def _canonical_json_bytes(value: Any) -> bytes:
     return json.dumps(
         value,
@@ -1270,6 +1292,9 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     comparison_contract_sha256 = _comparison_contract_sha256(
         eval_config, formal_campaign=formal_campaign
     )
+    runtime_closure_sha256 = _runtime_closure_sha256(
+        eval_config, formal_campaign=formal_campaign
+    )
     configured_model = agent_config.get("model")
     configured_effort = agent_config.get("effort")
     try:
@@ -1966,6 +1991,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             "discovered_path": codex_bin,
             "executed_path": executed_codex_bin,
             "binary_sha256": codex_binary_sha256,
+            "runtime_closure_sha256": runtime_closure_sha256,
             "version": codex_version,
             "model": configured_model,
             "effort": configured_effort,

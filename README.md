@@ -205,14 +205,21 @@ Running `make docker-run` without `CONFIG` uses the MI300/MI300X Claude
 quickstart. On another GPU, pass the matching configuration explicitly; for
 example, use `CONFIG=example_configs/quickstart_claude_mi355x.yaml` on MI355X.
 The matched Apex-versus-Codex configurations are stricter: run each with
-`make docker-parallel-run ... GPU_IDS=<same-ordered-pool>`. They write under
-`/data/viouyang/apex/aka`, deterministically assign each task to a physical GPU,
-and require matching provenance-contract hashes before comparison.
+`make docker-run ... GPU_IDS=<same-single-GPU>`. They write under
+`/data/viouyang/apex/aka`, execute the ten tasks sequentially in one Docker mount
+namespace, and require matching provenance-contract hashes before comparison.
+Formal `parallel-run` is rejected because independent Docker namespaces have
+different live mount receipts.
 Formal attempts require `bwrap`, expose only the current attempt directory to
 the agent, and require immutable Apex or direct-Codex session receipts before
 an attempt can enter central selection. The Apex treatment sees the scored workspace
 read-only and writes proposals only to a separate artifact root; AgentKernelArena
 rechecks the full workspace manifest before applying a validated source bundle.
+The runner captures committed AKA bytes and the complete Apex Python/dependency
+closure, normalizes each into a deterministic SquashFS image, seals the image in
+a memfd, and mounts it read-only with `nodev,nosuid`. Docker receives those mounts,
+not either live checkout. Each container regenerates the mount receipt from its
+own `/proc/self/mountinfo`; host mount IDs are never reused as container evidence.
 The sealed comparison-contract v5 binds the common Apex runtime treatment, exact-turn
 persistence, and distinct outer
 `attempt_containment_policy_id` and backend

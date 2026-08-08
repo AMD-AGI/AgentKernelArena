@@ -27,6 +27,14 @@ BACKEND_CLOSURE_SCHEMA = "aka.backend-runtime-closure/v1"
 IMMUTABLE_MOUNT_RECEIPT_SCHEMA = "aka.execution-snapshot-mount-receipt/v1"
 IMMUTABLE_MOUNT_POLICY = "sealed_memfd_squashfs_read_only_v1"
 GIT_EVIDENCE_POLICY = "head_tree_direct_bytes_no_filters_v1"
+IMAGE_INPUT_SCHEMA = "aka.apex-runtime-image-input/v1"
+IMAGE_INPUT_POLICY = "deterministic_squashfs_inputs_v1"
+_MEMFD_SEALS = (
+    "F_SEAL_WRITE",
+    "F_SEAL_SHRINK",
+    "F_SEAL_GROW",
+    "F_SEAL_SEAL",
+)
 
 _GIT = Path("/usr/bin/git")
 _SHA1 = re.compile(r"[0-9a-f]{40}")
@@ -402,6 +410,58 @@ def materialization_inputs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def execution_image_inputs(root: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+    """Describe the exact normalized SquashFS inputs for one AKA snapshot."""
+
+    verified = verify_materialized_snapshot(
+        root, manifest, manifest.get("manifest_sha256")
+    )
+    directories = {
+        parent.as_posix()
+        for item in verified["files"]
+        for parent in PurePosixPath(item["path"]).parents
+        if parent != PurePosixPath(".")
+    }
+    entries: list[dict[str, Any]] = [
+        {"path": ".", "type": "directory", "mode": 0o555}
+    ]
+    entries.extend(
+        {"path": relative, "type": "directory", "mode": 0o555}
+        for relative in directories
+    )
+    entries.extend(
+        {
+            "path": item["path"],
+            "type": "file",
+            "mode": 0o555 if item["mode"] == "100755" else 0o444,
+            "size": item["size"],
+            "sha256": item["sha256"],
+        }
+        for item in verified["files"]
+    )
+    entries = [
+        entries[0],
+        *sorted(entries[1:], key=lambda item: os.fsencode(item["path"])),
+    ]
+    material = {
+        "schema": IMAGE_INPUT_SCHEMA,
+        "policy_id": IMAGE_INPUT_POLICY,
+        "runtime_manifest_sha256": verified["manifest_sha256"],
+        "entries": entries,
+        "entries_sha256": _digest(entries),
+        "normalization": {
+            "uid": 0,
+            "gid": 0,
+            "mtime_epoch": 0,
+            "xattrs": "none",
+            "ordering": "utf8_posix_path_ascending",
+            "format": "squashfs",
+            "compression": "caller_pinned_and_receipted",
+        },
+    }
+    return {**material, "sha256": _digest(material)}
+
+
 def materialize_execution_snapshot(
     root: Path, manifest: dict[str, Any], destination: Path
 ) -> Path:
@@ -428,11 +488,21 @@ def materialize_execution_snapshot(
                     os.write(descriptor, chunk)
         finally:
             os.close(descriptor)
+        target.chmod(0o555 if item["mode"] == "100755" else 0o444)
     if any(
         _sha256_file(destination / item["path"]) != item["sha256"]
         for item in verified["files"]
     ):
         raise AkaRuntimeError("materialized AKA snapshot differs from its source manifest")
+    directories = sorted(
+        (path for path in destination.rglob("*") if path.is_dir()),
+        key=lambda path: len(path.parts),
+        reverse=True,
+    )
+    for directory in directories:
+        directory.chmod(0o555)
+    destination.chmod(0o555)
+    execution_image_inputs(destination, verified)
     return destination
 
 
@@ -717,10 +787,39 @@ def validate_immutable_mount_receipt(
         or mount["mount_id"] <= 0
         or mount.get("nested_mounts") != []
         or mount != observed_mount
-        or seals != ["F_SEAL_WRITE", "F_SEAL_SHRINK", "F_SEAL_GROW", "F_SEAL_SEAL"]
+        or seals != list(_MEMFD_SEALS)
     ):
         raise AkaRuntimeError("AKA immutable mount receipt is invalid")
     return receipt
+
+
+def create_immutable_mount_receipt(
+    root: Path, manifest_sha256: str, image_sha256: str
+) -> dict[str, Any]:
+    """Attest the immutable AKA mount in the caller's current namespace."""
+
+    try:
+        resolved = root.resolve(strict=True)
+    except OSError as error:
+        raise AkaRuntimeError("AKA immutable mount root is unavailable") from error
+    if (
+        resolved != root.absolute()
+        or not _SHA256.fullmatch(manifest_sha256)
+        or not _SHA256.fullmatch(image_sha256)
+    ):
+        raise AkaRuntimeError("AKA immutable mount identity is invalid")
+    material = {
+        "schema": IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
+        "policy_id": IMMUTABLE_MOUNT_POLICY,
+        "manifest_sha256": manifest_sha256,
+        "image_sha256": image_sha256,
+        "memfd_seals": list(_MEMFD_SEALS),
+        "mount": _current_snapshot_mount(resolved),
+    }
+    receipt = {**material, "sha256": _digest(material)}
+    return validate_immutable_mount_receipt(
+        receipt, manifest_sha256, expected_root=resolved
+    )
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -754,6 +853,16 @@ def main(argv: Iterable[str] | None = None) -> int:
     materialize.add_argument("--root", required=True, type=Path)
     materialize.add_argument("--manifest", required=True, type=Path)
     materialize.add_argument("--destination", required=True, type=Path)
+    image_input = commands.add_parser("image-input")
+    image_input.add_argument("--root", required=True, type=Path)
+    image_input.add_argument("--manifest", required=True, type=Path)
+    image_input.add_argument("--sha256", required=True)
+    image_input.add_argument("--output", required=True, type=Path)
+    mount_receipt = commands.add_parser("mount-receipt")
+    mount_receipt.add_argument("--root", required=True, type=Path)
+    mount_receipt.add_argument("--manifest-sha256", required=True)
+    mount_receipt.add_argument("--image-sha256", required=True)
+    mount_receipt.add_argument("--output", required=True, type=Path)
     arguments = parser.parse_args(list(argv) if argv is not None else None)
     try:
         if arguments.command == "discover":
@@ -765,12 +874,28 @@ def main(argv: Iterable[str] | None = None) -> int:
                 arguments.root, _load_json(arguments.manifest), arguments.sha256
             )
             print(arguments.sha256)
-        else:
+        elif arguments.command == "materialize":
             manifest = _load_json(arguments.manifest)
             materialize_execution_snapshot(
                 arguments.root, manifest, arguments.destination
             )
             print(manifest["manifest_sha256"])
+        elif arguments.command == "image-input":
+            manifest = _load_json(arguments.manifest)
+            verify_materialized_snapshot(
+                arguments.root, manifest, arguments.sha256
+            )
+            payload = execution_image_inputs(arguments.root, manifest)
+            _write_json(arguments.output, payload)
+            print(payload["sha256"])
+        else:
+            payload = create_immutable_mount_receipt(
+                arguments.root,
+                arguments.manifest_sha256,
+                arguments.image_sha256,
+            )
+            _write_json(arguments.output, payload)
+            print(payload["sha256"])
     except AkaRuntimeError as error:
         parser.error(str(error))
     return 0

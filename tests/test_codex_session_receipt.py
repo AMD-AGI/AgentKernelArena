@@ -20,6 +20,9 @@ import pytest
 launcher = importlib.import_module("agents.codex.launch_agent")
 
 
+_BACKEND_RUNTIME_CLOSURE_SHA256 = "e" * 64
+
+
 _FAKE_CODEX = r'''#!/usr/bin/env python3
 import json
 import os
@@ -361,6 +364,7 @@ def test_formal_session_uses_auth_only_home_and_cannot_see_sibling_attempt(
             "receipt_path": str(receipt_path),
             "task_deadline_monotonic": launcher.time.monotonic() + 30,
             "comparison_contract_sha256": "d" * 64,
+            "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256,
         },
     }
 
@@ -398,6 +402,9 @@ def test_formal_session_uses_auth_only_home_and_cannot_see_sibling_attempt(
         }
         assert receipt["workspace_integrity"]["passed"] is True
         assert receipt["comparison_contract_sha256"] == "d" * 64
+        assert receipt["codex"]["runtime_closure_sha256"] == (
+            _BACKEND_RUNTIME_CLOSURE_SHA256
+        )
         assert set(receipt["artifacts"]) == {
             "rendered_prompt",
             "raw_stdout",
@@ -418,6 +425,14 @@ def test_formal_session_rejects_missing_comparison_contract_digest() -> None:
         match="lacks a valid comparison contract digest",
     ):
         launcher._comparison_contract_sha256({}, formal_campaign=True)
+
+
+def test_formal_session_rejects_missing_backend_runtime_closure_digest() -> None:
+    with pytest.raises(
+        launcher.CodexSessionError,
+        match="lacks a backend runtime closure digest",
+    ):
+        launcher._runtime_closure_sha256({}, formal_campaign=True)
 
 
 def test_formal_workspace_is_sanitized_to_declared_source_only(
@@ -451,6 +466,7 @@ def test_formal_workspace_is_sanitized_to_declared_source_only(
             "receipt_path": str(receipt_path),
             "task_deadline_monotonic": time.monotonic() + 30,
             "comparison_contract_sha256": "d" * 64,
+            "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256,
         },
     }
 
@@ -528,6 +544,7 @@ def test_formal_direct_codex_persists_exact_boundary_source_checkpoint(
             "receipt_path": str(receipt_path),
             "task_deadline_monotonic": time.monotonic() + 30,
             "comparison_contract_sha256": "d" * 64,
+            "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256,
         },
     }
 
@@ -537,6 +554,9 @@ def test_formal_direct_codex_persists_exact_boundary_source_checkpoint(
         receipt = _load_receipt(receipt_path)
         assert receipt["session_succeeded"] is True
         assert receipt["schema"] == "agentkernelarena.codex-attempt-receipt/v4"
+        assert receipt["codex"]["runtime_closure_sha256"] == (
+            _BACKEND_RUNTIME_CLOSURE_SHA256
+        )
         assert receipt["exit_code"] == 128 + int(signal.SIGKILL)
         assert receipt["turn_budget"] == {
             "policy": "structured_agent_turn_checkpoint_v2",
@@ -614,6 +634,7 @@ def test_exact_boundary_snapshot_excludes_deterministic_late_cleanup_write(
             "receipt_path": str(receipt_path),
             "task_deadline_monotonic": time.monotonic() + 30,
             "comparison_contract_sha256": "d" * 64,
+            "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256,
         },
     }
 
@@ -670,6 +691,9 @@ def _formal_boundary_fixture(
                 "receipt_path": str(receipt_path),
                 "task_deadline_monotonic": time.monotonic() + 30,
                 "comparison_contract_sha256": "d" * 64,
+                "backend_runtime_closure_sha256": (
+                    _BACKEND_RUNTIME_CLOSURE_SHA256
+                ),
             },
         },
         str(task_config),

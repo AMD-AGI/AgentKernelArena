@@ -105,10 +105,14 @@ make docker-run CONFIG=example_configs/quickstart_apex_mi355x.yaml
 
 For ordinary, non-campaign runs the runner retains the path-stable checkout workflow.
 For a formal campaign it first discovers external virtualenv/editable roots and copies
-their receipted bytes into the shared sealed snapshot; a symlinked `.venv` is therefore
-supported when its exact target is discoverable. Only the selected backend's CLI and
-login state are mounted. The other backend credentials and the live dependency trees
-remain unavailable to the attempt.
+their receipted bytes into a deterministic SquashFS snapshot backed by a sealed
+memfd; a symlinked `.venv` is therefore supported when its exact target is
+discoverable. AKA itself is captured from committed Git-object bytes into a second
+sealed SquashFS image. Docker executes those two read-only mounts and never mounts
+the live AKA or Apex checkout. Each container proves its own live mount IDs and
+read-only filesystem state before campaign initialization. Only the selected
+backend's CLI and login state are mounted. The other backend credentials and live
+dependency trees remain unavailable to the attempt.
 
 ## Supported tasks
 
@@ -128,14 +132,14 @@ vLLM Triton cohort:
 ```bash
 export AKA_APEX_ROOT=/absolute/path/to/Apex
 
-make docker-parallel-run \
+make docker-run \
   CONFIG=example_configs/benchmark_codex_mi355x_10.yaml \
-  GPU_IDS=0,1,2,3,4,5,6,7 \
+  GPU_IDS=0 \
   RUN_ARGS="--run-suffix codex_baseline"
 
-make docker-parallel-run \
+make docker-run \
   CONFIG=example_configs/benchmark_apex_mi355x_10.yaml \
-  GPU_IDS=0,1,2,3,4,5,6,7 \
+  GPU_IDS=0 \
   RUN_ARGS="--run-suffix apex_treatment"
 ```
 
@@ -148,11 +152,10 @@ returns to AgentKernelArena for centralized compilation, correctness, and perfor
 evaluation. Selection is deterministic: correctness-qualified attempts rank by their
 measured rate, with the lower attempt number breaking an exact tie.
 
-Use the exact same ordered `GPU_IDS` pool for both commands. Policy
-`deterministic_task_gpu_v1` maps ordered task index `i` to
-`GPU_IDS[(i - 1) % len(GPU_IDS)]`; queue descriptors carry that physical host ID and
-only the matching worker may claim them. This supports a single GPU or an ordered
-pool such as `0,1,2,3,4,5,6,7` without dynamic-scheduler drift between treatments.
+Use the exact same single physical GPU for both commands. Formal matched campaigns
+intentionally run all ten tasks in one Docker mount namespace; `parallel-run` is
+rejected because a mount receipt is namespace-local and must not be replayed by a
+different worker container.
 Each Apex attempt has a separate 3,600-second allowance for Apex-owned freeze,
 compile, correctness, safety, measurement, and bundle work after the inner Codex
 budget. The outer 25,200-second task budget therefore covers three
@@ -204,9 +207,9 @@ at 4 MiB. Apex receipts additionally snapshot the
 TaskSpec, TaskResult, checksummed event journal, canonical agent transcript, and
 terminal verdict lineage. The event-bound inner agent prompt is also copied into the
 outer immutable receipt, so later audits do not depend on a still-live Apex CAS path.
-New formal receipts use `agentkernelarena.apex-attempt-receipt/v4`; the campaign
+New formal receipts use `agentkernelarena.apex-attempt-receipt/v5`; the campaign
 manifest freezes that schema before any attempt starts. The auditor keeps explicit
-read-only support for sealed history, but a v4 receipt cannot drop these fields or
+read-only support for sealed history, but a v5 receipt cannot drop these fields or
 change its schema to select the legacy validation path. Receipt dispatch is selected
 from the sealed manifest's agent template and schema, never from the receipt's own
 type claim, so an Apex and direct-Codex receipt cannot be substituted for each other.

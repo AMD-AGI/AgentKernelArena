@@ -1,8 +1,11 @@
 import hashlib
+import importlib
 import json
 import os
 import stat
 import copy
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -11,6 +14,9 @@ import yaml
 from src import campaign
 from src import campaign_isolation
 from src import apex_runtime
+
+
+apex_launcher = importlib.import_module("agents.apex.launch_agent")
 
 
 def _digest(value: dict) -> str:
@@ -696,168 +702,173 @@ def test_v5_runtime_snapshot_binds_manifest_and_role_receipt(
     source_root.mkdir()
     source_main = source_root / "main.py"
     source_main.write_text("print('apex')\n", encoding="utf-8")
-    system_python = Path("/usr/bin/python3").resolve(strict=True)
-    source_identity = {
-        "path": str(source_root),
-        "device": source_root.stat().st_dev,
-        "inode": source_root.stat().st_ino,
-        "mode": stat.S_IMODE(source_root.stat().st_mode),
-    }
-    main_bytes = source_main.read_bytes()
-    apex_root_material = {
-        "role": "apex",
-        "source": source_identity,
-        "destination": "repo",
-        "files": [
-            {
-                "path": "main.py",
-                "type": "file",
-                "mode": "100644",
-                "size": len(main_bytes),
-                "sha256": hashlib.sha256(main_bytes).hexdigest(),
-            }
-        ],
-    }
-    python_target = str(system_python)
-    venv_root_material = {
-        "role": "venv",
-        "source": source_identity,
-        "destination": "venv",
-        "files": [
-            {"path": "bin", "type": "directory", "mode": 0o755},
-            {
-                "path": "bin/python",
-                "type": "symlink",
-                "mode": 0o777,
-                "target": python_target,
-                "sha256": hashlib.sha256(os.fsencode(python_target)).hexdigest(),
-                "resolved_target_class": "system_image",
-            },
-        ],
-    }
-    runtime_material_without_digest = {
-        "schema": apex_runtime.RUNTIME_MANIFEST_SCHEMA,
-        "policy_id": apex_runtime.RUNTIME_POLICY_ID,
-        "git": {
-            "commit": "a" * 40,
-            "dirty": False,
-            "status_sha256": "b" * 64,
-            "index_shortcuts_rejected": True,
-            "git_environment_sanitized": True,
-        },
-        "launcher": {
-            "system_python": {
-                "path": str(system_python),
-                "binding": "formal_docker_image_plus_attempt_receipt_v1",
-            }
-        },
-        "roots": [
-            {**apex_root_material, "sha256": _digest(apex_root_material)},
-            {**venv_root_material, "sha256": _digest(venv_root_material)},
-        ],
-        "execution": {
-            "interpreter": "venv/bin/python",
-            "flags": ["-I", "-S"],
-            "bootstrap": apex_runtime.RUNTIME_BOOTSTRAP_NAME,
-            "bootstrap_policy_id": apex_runtime.RUNTIME_BOOTSTRAP_POLICY_ID,
-            "bootstrap_sha256": apex_runtime.RUNTIME_BOOTSTRAP_SHA256,
-            "entrypoint": "repo/main.py",
-            "pythonpath": ["repo"],
-            "pth_execution": False,
-            "sitecustomize_execution": False,
-        },
-        "excluded_external_directories": [".git", ".hg", ".svn"],
-    }
-    runtime_digest = _digest(runtime_material_without_digest)
-    runtime_manifest = {
-        **runtime_material_without_digest,
-        "sha256": runtime_digest,
-    }
-    manifest_bytes = (
-        json.dumps(
-            runtime_manifest,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
+    source_module = source_root / "src/apex_probe.py"
+    source_module.parent.mkdir()
+    source_module.write_text("VALUE = 'sealed'\n", encoding="utf-8")
+    (source_root / ".gitignore").write_text(".venv\n", encoding="utf-8")
+    for arguments in (
+        ("init", "-q"),
+        ("config", "user.name", "test"),
+        ("config", "user.email", "test@example.invalid"),
+        ("add", "."),
+        ("commit", "-qm", "fixture"),
+    ):
+        subprocess.run(
+            ["/usr/bin/git", *arguments],
+            cwd=source_root,
+            check=True,
+            capture_output=True,
         )
-        + "\n"
-    ).encode()
-    runtime = runtime_parent / runtime_digest
-    entrypoint = runtime / "repo/main.py"
-    entrypoint.parent.mkdir(parents=True)
-    (runtime / "venv/bin").mkdir(parents=True)
-    entrypoint.write_bytes(main_bytes)
-    entrypoint.chmod(0o444)
-    os.symlink(python_target, runtime / "venv/bin/python")
-    (runtime / "venv/bin").chmod(0o555)
-    (runtime / "venv").chmod(0o555)
-    (runtime / "repo").chmod(0o555)
-    runtime_manifest_path = runtime / "runtime_manifest.json"
-    runtime_manifest_path.write_bytes(manifest_bytes)
-    runtime_manifest_path.chmod(0o444)
-    bootstrap_path = runtime / apex_runtime.RUNTIME_BOOTSTRAP_NAME
-    bootstrap_path.write_bytes(apex_runtime.RUNTIME_BOOTSTRAP)
-    bootstrap_path.chmod(0o444)
-    runtime.chmod(0o555)
-    assert apex_runtime.verify_runtime_snapshot(runtime, runtime_digest) == (
-        runtime_manifest
+    source_venv = source_root / ".venv"
+    source_venv_bin = source_venv / "bin"
+    source_venv_bin.mkdir(parents=True)
+    source_python = source_venv_bin / "python"
+    os.symlink("/usr/bin/python3", source_python)
+    (source_venv / "pyvenv.cfg").write_text(
+        "include-system-site-packages = false\n", encoding="utf-8"
     )
+    version = f"python{sys.version_info.major}.{sys.version_info.minor}"
+    (source_venv / "lib" / version / "site-packages").mkdir(parents=True)
+
+    plan = apex_runtime.plan_runtime(
+        source_root, source_python, declared_roots=[]
+    )
+    runtime = apex_runtime.materialize_runtime(plan, runtime_parent)
+    runtime_digest = plan.sha256
+    runtime_manifest = apex_runtime.verify_runtime_snapshot(
+        runtime, runtime_digest
+    )
+    system_python = plan.system_python
+    entrypoint = runtime / "repo/main.py"
+    underlying = runtime / "venv/bin/python"
+    runtime_manifest_path = runtime / "runtime_manifest.json"
+    bootstrap_path = runtime / apex_runtime.RUNTIME_BOOTSTRAP_NAME
+    assert runtime_manifest == plan.manifest
+
+    immutable_mount = {
+        "mount_id": 91,
+        "device": "0:91",
+        "root": "/",
+        "mount_point": str(runtime),
+        "filesystem": "fuse.squashfuse",
+        "mount_options": ["nodev", "ro"],
+        "super_options": ["ro"],
+        "read_only": True,
+    }
+    monkeypatch.setattr(
+        apex_runtime, "_observed_immutable_mount", lambda _root: immutable_mount
+    )
+    image_inputs = apex_runtime.runtime_image_inputs(runtime, runtime_manifest)
+    immutable_material = {
+        "schema": apex_runtime.RUNTIME_IMMUTABLE_MOUNT_SCHEMA,
+        "policy_id": apex_runtime.RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
+        "root": str(runtime),
+        "runtime_manifest_sha256": runtime_digest,
+        "runtime_image_input_sha256": image_inputs["sha256"],
+        "image_sha256": "f" * 64,
+        "backing": {
+            "kind": "sealed_memfd",
+            "seals": list(apex_runtime._REQUIRED_MEMFD_SEALS),
+        },
+        "mount": immutable_mount,
+    }
+    immutable_receipt = {
+        **immutable_material,
+        "sha256": _digest(immutable_material),
+    }
 
     mounts = receipt["attempt_mounts"]
-    mounts["roles"]["read_only"]["apex_runtime"] = _mount_identity(runtime)
+    runtime_source_mount = _mount_identity(runtime, 24)
+    runtime_target_mount = _mount_identity(runtime, 44, bound=True)
+    mounts["roles"]["read_only"]["apex_runtime"] = runtime_target_mount
+    mounts["namespace_mounts"]["roles"]["read_only"]["apex_runtime"] = {
+        "source": {
+            key: runtime_source_mount[key]
+            for key in ("path", "device", "inode", "mount")
+        },
+        "target": {
+            "path": runtime_target_mount["path"],
+            "device": runtime_target_mount["device"],
+            "inode": runtime_target_mount["inode"],
+            "access": "read_only",
+            "mount": runtime_target_mount["mount"],
+            "mount_options": ["ro"],
+        },
+    }
+    for key in ("declared_mount_points", "observed_mount_points_below_campaign_data"):
+        mounts["namespace_mounts"][key] = sorted(
+            str(runtime) if value == str(runtime_parent) else value
+            for value in mounts["namespace_mounts"][key]
+        )
     mount_material = dict(mounts)
     mount_material.pop("sha256")
     mounts["sha256"] = _digest(mount_material)
 
     run = tmp_path / "campaign-data/run"
-    _write_manifest(run, _v5_manifest(runtime_digest))
-    entrypoint_sha = hashlib.sha256(entrypoint.read_bytes()).hexdigest()
-    runtime_material = {
-        "schema": campaign_isolation.APEX_RUNTIME_MOUNT_SCHEMA,
-        "policy_id": campaign_isolation.APEX_RUNTIME_MOUNT_POLICY,
-        "mode": "read_only",
-        "source_root": str(source_root),
-        "root": str(runtime),
-        "repository": _repository(runtime_digest),
+    monkeypatch.setattr(campaign, "_revalidate_aka_runtime", lambda _manifest: True)
+    monkeypatch.setattr(
+        campaign, "verify_backend_closure", lambda closure, _digest: closure
+    )
+    campaign_manifest = _v5_manifest(runtime_digest)
+    runtime_repository = {
+        "commit": runtime_manifest["git"]["commit"],
+        "dirty": runtime_manifest["git"]["dirty"],
+        "status_sha256": runtime_manifest["git"]["status_sha256"],
         "runtime_manifest_sha256": runtime_digest,
-        "runtime_manifest_path": str(runtime_manifest_path),
-        "runtime_manifest_relative_path": "runtime_manifest.json",
-        "entrypoint": {
-            "path": str(entrypoint),
-            "relative_path": "repo/main.py",
-            "sha256": entrypoint_sha,
-        },
-        "python": {
-            "source_launcher_relative_path": ".venv/bin/python",
-            "launcher_path": str(runtime / "venv/bin/python"),
-            "resolved_path": str(system_python),
-            "resolved_sha256": hashlib.sha256(system_python.read_bytes()).hexdigest(),
-            "flags": ["-I", "-S"],
-            "pythonpath": [str(entrypoint.parent)],
-            "environment": {
-                "PYTHONNOUSERSITE": "1",
-                "PYTHONSAFEPATH": "1",
-                "PYTHONDONTWRITEBYTECODE": "1",
-            },
-        },
-        "attempt_mounts_sha256": mounts["sha256"],
     }
+    campaign_manifest["repositories"]["apex"] = runtime_repository
+    campaign_manifest["comparison_contract"]["repositories"][
+        "apex"
+    ] = runtime_repository
+    campaign_manifest["comparison_contract_sha256"] = _digest(
+        campaign_manifest["comparison_contract"]
+    )
+    _write_manifest(run, campaign_manifest)
+    entrypoint_sha = hashlib.sha256(entrypoint.read_bytes()).hexdigest()
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_APEX_SOURCE_ROOT", str(source_root))
+    runtime_receipt = apex_launcher._runtime_snapshot_receipt(
+        plan=apex_runtime.RuntimePlan(
+            manifest=runtime_manifest,
+            roots=(),
+            system_python=system_python,
+        ),
+        snapshot=runtime,
+        immutable_mount=immutable_receipt,
+        attempt_mounts_sha256=mounts["sha256"],
+    )
+    assert set(runtime_receipt["python"]) == {
+        "source_launcher_relative_path",
+        "launcher_path",
+        "launcher_sha256",
+        "underlying_path",
+        "underlying_sha256",
+        "flags",
+        "pythonpath",
+        "environment",
+    }
+    assert runtime_receipt["python"]["launcher_path"] == str(
+        runtime / apex_runtime.RUNTIME_WRAPPER_NAME
+    )
+    assert runtime_receipt["python"]["underlying_path"] == str(underlying)
+    assert runtime_receipt["immutability"]["receipt_sha256"] == (
+        immutable_receipt["sha256"]
+    )
     receipt.update(
         {
             "schema": "agentkernelarena.apex-attempt-receipt/v5",
-            "apex_runtime_mount": {
-                **runtime_material,
-                "sha256": _digest(runtime_material),
-            },
+            "apex_runtime_mount": runtime_receipt,
             "apex": {
                 "entrypoint": str(entrypoint),
                 "entrypoint_sha256": entrypoint_sha,
-                "python": str(system_python),
-                "python_sha256": hashlib.sha256(system_python.read_bytes()).hexdigest(),
+                "python": runtime_receipt["python"]["launcher_path"],
+                "python_sha256": runtime_receipt["python"]["launcher_sha256"],
             },
         }
     )
-    monkeypatch.setenv("APEX_ROOT", str(source_root))
+    monkeypatch.setenv("APEX_ROOT", str(runtime / "repo"))
+    monkeypatch.setenv(
+        "APEX_PYTHON", str(runtime / apex_runtime.RUNTIME_WRAPPER_NAME)
+    )
     monkeypatch.setenv(
         "AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT",
         str(tmp_path / "campaign-data"),
@@ -888,10 +899,37 @@ def test_v5_runtime_snapshot_binds_manifest_and_role_receipt(
     assert campaign._apex_runtime_mount_errors(**arguments) == [
         "apex_runtime_mount_contract_mismatch"
     ]
-    receipt["apex_runtime_mount"]["python"]["flags"] = ["-I", "-S"]
+    receipt["apex_runtime_mount"]["python"]["flags"] = ["-I", "-S", "-u"]
     current_policy_material = dict(receipt["apex_runtime_mount"])
     current_policy_material.pop("sha256")
     receipt["apex_runtime_mount"]["sha256"] = _digest(current_policy_material)
+    assert campaign._apex_runtime_mount_errors(**arguments) == []
+
+    receipt["apex_runtime_mount"]["immutability"]["receipt_sha256"] = "0" * 64
+    stale_mount_material = dict(receipt["apex_runtime_mount"])
+    stale_mount_material.pop("sha256")
+    receipt["apex_runtime_mount"]["sha256"] = _digest(stale_mount_material)
+    assert campaign._apex_runtime_mount_errors(**arguments) == [
+        "apex_runtime_mount_contract_mismatch"
+    ]
+    receipt["apex_runtime_mount"]["immutability"]["receipt_sha256"] = (
+        immutable_receipt["sha256"]
+    )
+    current_mount_material = dict(receipt["apex_runtime_mount"])
+    current_mount_material.pop("sha256")
+    receipt["apex_runtime_mount"]["sha256"] = _digest(current_mount_material)
+    assert campaign._apex_runtime_mount_errors(**arguments) == []
+
+    wrapper_path = runtime / apex_runtime.RUNTIME_WRAPPER_NAME
+    wrapper_path.chmod(0o755)
+    wrapper_path.write_bytes(b"#!/bin/sh\nexit 1\n")
+    wrapper_path.chmod(0o555)
+    assert campaign._apex_runtime_mount_errors(**arguments) == [
+        "apex_runtime_mount_contract_mismatch"
+    ]
+    wrapper_path.chmod(0o755)
+    wrapper_path.write_bytes(apex_runtime.RUNTIME_WRAPPER)
+    wrapper_path.chmod(0o555)
     assert campaign._apex_runtime_mount_errors(**arguments) == []
 
     bootstrap_path.chmod(0o644)

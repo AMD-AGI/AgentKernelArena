@@ -8,6 +8,7 @@ import yaml
 
 from src import aka_runtime
 from src import campaign
+from src import immutable_runtime_mount
 
 
 GIT = "/usr/bin/git"
@@ -48,6 +49,11 @@ def test_execution_manifest_covers_every_tracked_file_and_materializes(
     destination = tmp_path / manifest["manifest_sha256"]
     aka_runtime.materialize_execution_snapshot(root, manifest, destination)
     assert aka_runtime.verify_materialized_snapshot(destination, manifest) == manifest
+    assert destination.stat().st_mode & 0o777 == 0o555
+    assert (destination / "main.py").stat().st_mode & 0o777 == 0o444
+    image_inputs = aka_runtime.execution_image_inputs(destination, manifest)
+    immutable_runtime_mount.validate_image_inventory(image_inputs)
+    assert image_inputs["runtime_manifest_sha256"] == manifest["manifest_sha256"]
 
 
 def test_git_environment_is_sanitized_and_alternate_index_is_ignored(
@@ -227,6 +233,25 @@ def test_mount_receipt_binds_sealed_squashfs_manifest(
         aka_runtime.validate_immutable_mount_receipt(receipt, digest, tmp_path)
 
 
+def test_mount_receipt_is_created_from_current_namespace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    digest = "a" * 64
+    observation = _mount_observation(tmp_path)
+    monkeypatch.setattr(aka_runtime, "_current_snapshot_mount", lambda _root: observation)
+
+    receipt = aka_runtime.create_immutable_mount_receipt(
+        tmp_path, digest, "b" * 64
+    )
+
+    assert receipt["mount"] == observation
+    assert receipt["manifest_sha256"] == digest
+    assert receipt["image_sha256"] == "b" * 64
+    assert receipt["sha256"] == _digest(
+        {key: value for key, value in receipt.items() if key != "sha256"}
+    )
+
+
 def test_campaign_runtime_environment_revalidates_mounted_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -277,6 +302,8 @@ def test_campaign_runtime_environment_revalidates_mounted_bytes(
     assert state["execution_manifest_sha256"] == manifest["manifest_sha256"]
     assert runtime["mount_receipt_sha256"] == receipt["sha256"]
 
-    (runtime_root / "main.py").write_text("print('attacker')\n", encoding="utf-8")
+    runtime_main = runtime_root / "main.py"
+    runtime_main.chmod(0o644)
+    runtime_main.write_text("print('attacker')\n", encoding="utf-8")
     with pytest.raises(campaign.CampaignError, match="attestation is invalid"):
         campaign._aka_state_from_environment(runtime_root)

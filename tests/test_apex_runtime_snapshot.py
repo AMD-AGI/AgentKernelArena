@@ -13,6 +13,7 @@ import pytest
 from src import apex_runtime
 from src.apex_runtime import (
     ApexRuntimeError,
+    create_immutable_mount_receipt,
     materialize_runtime,
     plan_runtime,
     runtime_command,
@@ -186,6 +187,20 @@ def test_execution_requires_an_immutable_mount_receipt(tmp_path: Path) -> None:
     manifest = verify_runtime_snapshot(snapshot, plan.sha256)
     with pytest.raises(ApexRuntimeError, match="receipt is required"):
         runtime_command(snapshot, manifest, [])
+
+
+def test_mount_receipt_is_created_from_current_namespace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, python, external, _marker = _runtime_checkout(tmp_path)
+    plan = plan_runtime(root, python, declared_roots=[external])
+    snapshot = materialize_runtime(plan, tmp_path / "attempt.runtime")
+    manifest = verify_runtime_snapshot(snapshot, plan.sha256)
+    expected = _immutable_receipt(snapshot, manifest, monkeypatch)
+
+    receipt = create_immutable_mount_receipt(snapshot, manifest, "f" * 64)
+
+    assert receipt == expected
 
 
 @pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])

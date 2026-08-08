@@ -2151,6 +2151,35 @@ def validate_immutable_mount_receipt(
     return receipt
 
 
+def create_immutable_mount_receipt(
+    snapshot: str | Path,
+    manifest: dict[str, Any],
+    image_sha256: str,
+) -> dict[str, Any]:
+    """Attest the Apex SquashFS mount in the caller's current namespace."""
+
+    root = _canonical_directory(snapshot, label="immutable runtime mount")
+    verify_runtime_snapshot(root, manifest.get("sha256"))
+    if not _SHA256.fullmatch(image_sha256):
+        raise ApexRuntimeError("immutable runtime image digest is invalid")
+    image_inputs = runtime_image_inputs(root, manifest)
+    material = {
+        "schema": RUNTIME_IMMUTABLE_MOUNT_SCHEMA,
+        "policy_id": RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
+        "root": str(root),
+        "runtime_manifest_sha256": manifest["sha256"],
+        "runtime_image_input_sha256": image_inputs["sha256"],
+        "image_sha256": image_sha256,
+        "backing": {
+            "kind": "sealed_memfd",
+            "seals": list(_REQUIRED_MEMFD_SEALS),
+        },
+        "mount": _observed_immutable_mount(root),
+    }
+    receipt = {**material, "sha256": _canonical_digest(material)}
+    return validate_immutable_mount_receipt(root, manifest, receipt)
+
+
 def runtime_command(
     snapshot: str | Path,
     manifest: dict[str, Any],
@@ -2248,26 +2277,32 @@ def _main(arguments: Sequence[str] | None = None) -> int:
         "materialize",
         "verify",
         "image-input",
+        "mount-receipt",
     ):
         command = subparsers.add_parser(name)
-        if name not in {"verify", "image-input"}:
+        if name not in {"verify", "image-input", "mount-receipt"}:
             command.add_argument("--root", required=True)
             command.add_argument("--python", required=True)
             command.add_argument("--declared-root", action="append", default=[])
         if name == "materialize":
             command.add_argument("--snapshot-parent", required=True)
-        if name in {"verify", "image-input"}:
+        if name in {"verify", "image-input", "mount-receipt"}:
             command.add_argument("--snapshot", required=True)
             command.add_argument("--sha256", required=True)
+        if name == "mount-receipt":
+            command.add_argument("--image-sha256", required=True)
         command.add_argument("--output")
     options = parser.parse_args(arguments)
-    if options.command in {"verify", "image-input"}:
+    if options.command in {"verify", "image-input", "mount-receipt"}:
         manifest = verify_runtime_snapshot(options.snapshot, options.sha256)
-        value = (
-            manifest
-            if options.command == "verify"
-            else runtime_image_inputs(options.snapshot, manifest)
-        )
+        if options.command == "verify":
+            value = manifest
+        elif options.command == "image-input":
+            value = runtime_image_inputs(options.snapshot, manifest)
+        else:
+            value = create_immutable_mount_receipt(
+                options.snapshot, manifest, options.image_sha256
+            )
     else:
         if options.command == "discover":
             root = _canonical_directory(options.root, label="APEX_ROOT")

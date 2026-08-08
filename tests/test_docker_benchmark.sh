@@ -46,6 +46,19 @@ find_arg_with_prefix() {
     return 1
 }
 
+find_arg_with_suffix() {
+    local suffix="$1"
+    shift
+    local value
+    for value in "$@"; do
+        if [[ "$value" == *"$suffix" ]]; then
+            printf '%s\n' "$value"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Capture the exact argv that the runner would pass to Docker without requiring
 # a daemon, GPU devices, or the benchmark images on this host.
 docker() {
@@ -353,6 +366,7 @@ printf '.venv\n' > "$CAMPAIGN_APEX_ROOT/.gitignore"
 mkdir -p "$CAMPAIGN_APEX_ROOT/.venv/bin"
 mkdir -p "$CAMPAIGN_APEX_ROOT/.venv/lib/python3.10/site-packages"
 ln -s /usr/bin/python3 "$CAMPAIGN_APEX_ROOT/.venv/bin/python"
+printf 'include-system-site-packages = false\n' > "$CAMPAIGN_APEX_ROOT/.venv/pyvenv.cfg"
 git -C "$CAMPAIGN_APEX_ROOT" add main.py .gitignore
 git -C "$CAMPAIGN_APEX_ROOT" \
     -c user.name=AKA -c user.email=aka@example.invalid \
@@ -378,7 +392,11 @@ assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=$GFX950_V0514_DOCKER_IMAGE_ID" "$
 assert_not_has "$CAMPAIGN_APEX_ROOT:$CAMPAIGN_APEX_ROOT:ro" "${args[@]}"
 assert_not_has "APEX_ROOT=$CAMPAIGN_APEX_ROOT" "${args[@]}"
 assert_has "$CAMPAIGN_DATA_ROOT:$CAMPAIGN_DATA_ROOT" "${args[@]}"
-assert_has "$ROOT:/workspace:ro" "${args[@]}"
+aka_runtime_mount="$(find_arg_with_suffix ":/workspace:ro" "${args[@]}")" \
+    || fail "formal campaign did not mount a sealed AKA runtime"
+[[ "$aka_runtime_mount" == /tmp/agentkernelarena-formal-runtime.*:/workspace:ro ]] \
+    || fail "formal AKA runtime mount is not an isolated immutable mount: $aka_runtime_mount"
+assert_not_has "$ROOT:/workspace:ro" "${args[@]}"
 assert_not_has "$ROOT:/workspace" "${args[@]}"
 assert_has "$CODEX_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
 assert_not_has "$CODEX_HOME/.codex:$CODEX_HOME/.codex" "${args[@]}"
@@ -390,8 +408,23 @@ assert_has "CODEX_HOME=$formal_home/.codex" "${args[@]}"
 formal_label="${formal_home#/tmp/aka-home-}"
 assert_has "XDG_CACHE_HOME=/tmp/agent-cache-$formal_label" "${args[@]}"
 assert_has "AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT=$CAMPAIGN_DATA_ROOT" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_AKA_RUNTIME_ROOT=/workspace" "${args[@]}"
+aka_manifest_arg="$(
+    find_arg_with_prefix "AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST=" "${args[@]}"
+)" || fail "formal campaign did not mount an AKA execution manifest"
+[[ "${aka_manifest_arg#*=}" == "$CAMPAIGN_DATA_ROOT/aka-runtime-manifest-"*.json ]] \
+    || fail "formal AKA manifest is not a persistent campaign artifact"
+aka_image_arg="$(
+    find_arg_with_prefix "AGENT_KERNEL_ARENA_AKA_RUNTIME_IMAGE_SHA256=" "${args[@]}"
+)" || fail "formal campaign did not bind the AKA immutable image"
+[[ "${aka_image_arg#*=}" =~ ^[0-9a-f]{64}$ ]] \
+    || fail "formal AKA image digest is invalid"
 assert_has "/usr/bin/bwrap:/usr/bin/bwrap:ro" "${args[@]}"
-assert_has "$ROOT/agents/codex/formal_requirements.toml:/etc/codex/requirements.toml:ro" "${args[@]}"
+formal_requirements_mount="$(
+    find_arg_with_suffix "/agents/codex/formal_requirements.toml:/etc/codex/requirements.toml:ro" "${args[@]}"
+)" || fail "formal Codex requirements were not sourced from the sealed AKA runtime"
+[[ "$formal_requirements_mount" == /tmp/agentkernelarena-formal-runtime.* ]] \
+    || fail "formal Codex requirements came from a live checkout"
 assert_has "--security-opt=seccomp=unconfined" "${args[@]}"
 assert_has "--security-opt=apparmor=unconfined" "${args[@]}"
 assert_has "--security-opt=no-new-privileges:true" "${args[@]}"
@@ -404,6 +437,34 @@ assert_not_has "--pid=host" "${args[@]}"
 assert_not_has "--device=/dev/mem" "${args[@]}"
 assert_not_has "--device=/dev/dri" "${args[@]}"
 assert_not_has "--device=/dev/kfd" "${args[@]}"
+
+# The Apex arm executes only from its digest-addressed SquashFS snapshot. The
+# live treatment checkout remains provenance text and is not visible in Docker.
+CAMPAIGN_APEX_AGENT_CONFIG="$TEST_HOME/campaign-apex-agent-config.yaml"
+printf 'agent:\n  template: apex\ncampaign:\n  comparison: apex_vs_codex\nworkspace_directory_prefix: %s/workspace-apex\n' \
+    "$CAMPAIGN_DATA_ROOT" > "$CAMPAIGN_APEX_AGENT_CONFIG"
+mapfile -t apex_args < <(run_check_args \
+    "$CODEX_HOME" \
+    "$CAMPAIGN_APEX_AGENT_CONFIG" \
+    AKA_APEX_ROOT="$CAMPAIGN_APEX_ROOT" \
+    AKA_NODE_PREFIX="$CODEX_PREFIX")
+apex_snapshot_arg="$(
+    find_arg_with_prefix "AGENT_KERNEL_ARENA_APEX_RUNTIME_SNAPSHOT_ROOT=" "${apex_args[@]}"
+)" || fail "formal Apex arm did not receive its immutable runtime root"
+apex_snapshot="${apex_snapshot_arg#*=}"
+[[ "$apex_snapshot" == /tmp/agentkernelarena-formal-runtime.*/*/* \
+    && "$(basename "$apex_snapshot")" =~ ^[0-9a-f]{64}$ ]] \
+    || fail "formal Apex runtime root is not digest-addressed: $apex_snapshot"
+assert_has "$apex_snapshot:$apex_snapshot:ro" "${apex_args[@]}"
+assert_has "APEX_ROOT=$apex_snapshot/repo" "${apex_args[@]}"
+assert_has "APEX_PYTHON=$apex_snapshot/sealed-bin/python" "${apex_args[@]}"
+assert_has "AGENT_KERNEL_ARENA_APEX_SOURCE_ROOT=$CAMPAIGN_APEX_ROOT" "${apex_args[@]}"
+assert_not_has "$CAMPAIGN_APEX_ROOT:$CAMPAIGN_APEX_ROOT:ro" "${apex_args[@]}"
+apex_image_arg="$(
+    find_arg_with_prefix "AGENT_KERNEL_ARENA_APEX_RUNTIME_IMAGE_SHA256=" "${apex_args[@]}"
+)" || fail "formal Apex arm did not bind its immutable image"
+[[ "${apex_image_arg#*=}" =~ ^[0-9a-f]{64}$ ]] \
+    || fail "formal Apex immutable image digest is invalid"
 
 # A natively installed Claude CLI is a launcher in ~/.local/bin that resolves
 # into ~/.local/share/claude/versions. Both sides of that symlink must be
