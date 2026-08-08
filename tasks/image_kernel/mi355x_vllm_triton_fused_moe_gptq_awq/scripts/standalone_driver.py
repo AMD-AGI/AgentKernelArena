@@ -384,21 +384,14 @@ def _quant_pack_int4(w: "object", group_size: int):
     return packed, scale.to(torch.bfloat16).contiguous(), deq
 
 
-def _make(case: dict, correctness: bool = False) -> dict:
+def _make(case: dict) -> dict:
     torch = _torch()
     p = dict(case["params"])
-    if correctness:
-        tokens = min(p["tokens"], 16)
-        num_experts = min(p["num_experts"], 8)
-        topk = min(p["topk"], 2)
-        hidden = min(p["hidden"], 512)
-        inter = min(p["inter"], 128)
-    else:
-        tokens = p["tokens"]
-        num_experts = p["num_experts"]
-        topk = p["topk"]
-        hidden = p["hidden"]
-        inter = p["inter"]
+    tokens = p["tokens"]
+    num_experts = p["num_experts"]
+    topk = p["topk"]
+    hidden = p["hidden"]
+    inter = p["inter"]
     group_size = p["group_size"]
     assert hidden % group_size == 0 and inter % group_size == 0
 
@@ -437,8 +430,8 @@ def _make(case: dict, correctness: bool = False) -> dict:
         "w2": w2_packed,
         "w1_scale": w1_scale,
         "w2_scale": w2_scale,
-        "w1_deq": w1_deq if correctness else None,
-        "w2_deq": w2_deq if correctness else None,
+        "w1_deq": w1_deq,
+        "w2_deq": w2_deq,
         "topk_weights": topk_weights,
         "topk_ids": topk_ids,
         "num_experts": num_experts,
@@ -491,7 +484,7 @@ def _reference(inputs: dict):
 
 
 def run_compile() -> None:
-    inputs = _make(CASES[0], correctness=True)
+    inputs = _make(CASES[0])
     _run(inputs)
     _torch().cuda.synchronize()
     print(f"{OPERATOR} compile smoke: PASS")
@@ -500,7 +493,7 @@ def run_compile() -> None:
 def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
-        inputs = _make(case, correctness=True)
+        inputs = _make(case)
         got = _run(inputs)
         torch.cuda.synchronize()
         torch.testing.assert_close(
@@ -512,7 +505,7 @@ def run_correctness() -> None:
 def run_performance() -> None:
     rows = []
     for case in CASES:
-        inputs = _make(case, correctness=False)
+        inputs = _make(case)
         _run(inputs)
         _torch().cuda.synchronize()
         execution_time_ms, bench_meta = _benchmark_cuda_graph_or_events(
@@ -637,7 +630,7 @@ def _pick_profile_case(tr, case_id: str) -> dict:
 def _run_profile(tr, case_id: str) -> int:
     torch = tr._torch()
     case = _pick_profile_case(tr, case_id)
-    inputs = tr._make(case, correctness=False)
+    inputs = tr._make(case)
     for _ in range(5):          # settle Triton JIT / autotune selection
         tr._run(inputs)
     torch.cuda.synchronize()

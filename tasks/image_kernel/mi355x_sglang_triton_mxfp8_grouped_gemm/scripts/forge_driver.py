@@ -85,7 +85,7 @@ def _run_correctness(tr) -> int:
     torch = tr._torch()
     all_ok = True
     for case in tr.CASES:
-        inputs = tr._make(case, correctness=True)
+        inputs = tr._make(case)
         got = tr._fused_output(inputs)
         torch.cuda.synchronize()
         err = tr._relerr(got, tr._reference(inputs))
@@ -103,7 +103,7 @@ def _run_bench(tr, warmup: int, iters: int) -> int:
     torch = tr._torch()
     results = []
     for case in tr.CASES:
-        inputs = tr._make(case, correctness=False)
+        inputs = tr._make(case)
         tr._run_gemms(inputs)  # warm/JIT settle before capture
         torch.cuda.synchronize()
         ms, meta = tr._benchmark_cuda_graph(
@@ -132,7 +132,7 @@ def _run_profile(tr) -> int:
     """Kernel-only profiling for one case: warm, a few launches, sync, exit 0."""
     torch = tr._torch()
     case = max(tr.CASES, key=lambda c: int(c["params"]["tokens"]))
-    inputs = tr._make(case, correctness=False)
+    inputs = tr._make(case)
     for _ in range(5):          # settle Triton JIT / autotune selection
         tr._run_gemms(inputs)
     torch.cuda.synchronize()

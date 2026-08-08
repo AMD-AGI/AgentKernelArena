@@ -453,24 +453,72 @@ def run_correctness() -> None:
             assert tuple(got.shape) == tuple(expected.shape), (
                 case["id"], tuple(got.shape), tuple(expected.shape)
             )
-            g, e = got.float().flatten(), expected.float().flatten()
-            worst_cos = min(
-                worst_cos, torch.nn.functional.cosine_similarity(g, e, dim=0).item()
-            )
-            worst_err = max(worst_err, ((g - e).norm() / e.norm().clamp_min(1e-8)).item())
+            cos, err = _moe_deviation(got, expected)
+            worst_cos = min(worst_cos, cos)
+            worst_err = max(worst_err, err)
 
-        assert worst_cos > tol.get("min_cosine", 0.97), (
-            case["id"], f"worst-of-{_CORRECTNESS_REPEATS} cosine {worst_cos:.6f} "
-            f"vs torch reference too low"
-        )
-        assert worst_err < tol.get("max_rel_norm_err", 0.25), (
-            case["id"], f"worst-of-{_CORRECTNESS_REPEATS} relative norm error "
-            f"{worst_err:.4f} too high"
+        _assert_moe_within_tolerance(
+            case, worst_cos, worst_err, f"worst-of-{_CORRECTNESS_REPEATS}"
         )
         print(f"correctness PASS {case['id']:34s} token={token_used:<6d} "
               f"cos={worst_cos:.6f} rel_err={worst_err:.4f}")
-        del inputs, expected, got, g, e
+        del inputs, expected, got
         _free()
+
+
+def _moe_deviation(got, expected):
+    torch = _torch()
+    g, e = got.float().flatten(), expected.float().flatten()
+    cos = torch.nn.functional.cosine_similarity(g, e, dim=0).item()
+    err = ((g - e).norm() / e.norm().clamp_min(1e-8)).item()
+    return cos, err
+
+
+def _assert_moe_within_tolerance(case: dict, cos: float, err: float, label: str) -> None:
+    tol = case["params"]
+    assert cos > tol.get("min_cosine", 0.97), (
+        case["id"], f"{label} cosine {cos:.6f} vs torch reference too low"
+    )
+    assert err < tol.get("max_rel_norm_err", 0.25), (
+        case["id"], f"{label} relative norm error {err:.4f} too high"
+    )
+
+
+def _perturb_moe_inputs(inputs: dict) -> None:
+    """Refresh the activation in place with values no earlier launch has seen.
+
+    Only ``hidden`` is redrawn. The routing tensors are kernel inputs rather than
+    something the kernel derives, so leaving them fixed keeps the kernel and the
+    reference describing the same workload; the quantized weights have shuffled
+    runtime copies that would have to be rebuilt in lockstep, which buys nothing
+    here.
+    """
+    torch = _torch()
+    torch.manual_seed(43)
+    inputs["hidden"].normal_(0.0, 0.1)
+
+
+def _assert_timed_outputs(case: dict, inputs: dict, timed) -> None:
+    """Validate the invocation the benchmark actually timed.
+
+    ``run_correctness`` checks a separate call, which a kernel can tell apart
+    from the scored one. This re-runs the timed unit against a freshly perturbed
+    activation and checks the buffer it wrote, so work that the scored path skips
+    cannot hide behind a correctness call that took a different branch.
+    """
+    torch = _torch()
+    if not timed.bound:
+        raise RuntimeError("benchmark did not expose the timed invocation")
+
+    _perturb_moe_inputs(inputs)
+    if timed.outputs is not None:
+        timed.outputs.fill_(float("nan"))
+    got = timed.rerun()
+    expected = _reference(inputs)
+    assert torch.isfinite(got).all(), (case["id"], "timed run produced non-finite output")
+    cos, err = _moe_deviation(got, expected)
+    _assert_moe_within_tolerance(case, cos, err, "timed run")
+    del expected
 
 
 def run_performance() -> None:
@@ -486,13 +534,16 @@ def run_performance() -> None:
         kn1, kn2, blob = _dispatch_names(inputs)
         _assert_tuned_dispatch(case["id"], kn1, kn2, blob)
         bench = case.get("benchmark", {})
+        timed = _TimedRun()
         exec_ms, meta = _benchmark_cuda_graph_or_events(
             lambda: _run(inputs),
             warmup=bench.get("warmup", 3),
             repetition=bench.get("repetition", 20),
             target_ms=bench.get("target_ms", 1.0),
             max_graph_repeats=bench.get("max_graph_repeats", 100),
+            timed_run=timed,
         )
+        _assert_timed_outputs(case, inputs, timed)
         metadata = {
             **case["params"],
             "model": case.get("model"),

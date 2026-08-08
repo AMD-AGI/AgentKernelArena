@@ -349,16 +349,16 @@ def _load_kernel_module():
     return module
 
 
-def _make(case: dict, correctness: bool = False) -> dict:
+def _make(case: dict) -> dict:
     torch = _torch()
     params = dict(case["params"])
-    num_queries = min(params["num_queries"], 32) if correctness else params["num_queries"]
+    num_queries = params["num_queries"]
     num_heads = params["num_heads"]
     head_dim = params["head_dim"]
     nope_head_dim = params["nope_head_dim"]
     rope_head_dim = params["rope_head_dim"]
-    num_kv = min(params["num_kv"], 1024) if correctness else params["num_kv"]
-    topk = min(params["topk"], 128) if correctness else params["topk"]
+    num_kv = params["num_kv"]
+    topk = params["topk"]
     per_q = min(topk, num_kv)
     dtype = torch.bfloat16
     scale = head_dim**-0.5
@@ -426,7 +426,7 @@ def _reference(inputs: dict):
 
 
 def run_compile() -> None:
-    inputs = _make(CASES[0], correctness=True)
+    inputs = _make(CASES[0])
     _run(inputs)
     _torch().cuda.synchronize()
     print(f"{OPERATOR} compile smoke: PASS")
@@ -435,7 +435,7 @@ def run_compile() -> None:
 def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
-        inputs = _make(case, correctness=True)
+        inputs = _make(case)
         got = _run(inputs)
         torch.cuda.synchronize()
         torch.testing.assert_close(
@@ -447,7 +447,7 @@ def run_correctness() -> None:
 def run_performance() -> None:
     rows = []
     for case in CASES:
-        inputs = _make(case, correctness=False)
+        inputs = _make(case)
         _run(inputs)
         _torch().cuda.synchronize()
         execution_time_ms, bench_meta = _benchmark_cuda_graph_or_events(
@@ -572,7 +572,7 @@ def _pick_profile_case(tr, case_id: str) -> dict:
 def _run_profile(tr, case_id: str) -> int:
     torch = tr._torch()
     case = _pick_profile_case(tr, case_id)
-    inputs = tr._make(case, correctness=False)
+    inputs = tr._make(case)
     for _ in range(5):          # settle Triton JIT / autotune selection
         tr._run(inputs)
     torch.cuda.synchronize()

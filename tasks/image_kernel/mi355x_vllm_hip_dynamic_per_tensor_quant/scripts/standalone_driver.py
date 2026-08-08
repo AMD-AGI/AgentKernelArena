@@ -387,7 +387,7 @@ def _run_quant_correctness(inputs: dict) -> None:
 
 
 def run_compile() -> None:
-    inputs = _make(CASES[0], correctness=True)
+    inputs = _make(CASES[0])
     _run(inputs)
     _torch().cuda.synchronize()
     print(f"{OPERATOR} compile smoke: PASS")
@@ -396,7 +396,7 @@ def run_compile() -> None:
 def run_performance() -> None:
     rows = []
     for case in CASES:
-        inputs = _make(case, correctness=False)
+        inputs = _make(case)
         _run(inputs)
         _torch().cuda.synchronize()
         execution_time_ms, bench_meta = _benchmark_cuda_graph_or_events(
@@ -437,7 +437,7 @@ def run_performance() -> None:
     _write_report(rows)
 
 
-def _make(case: dict, correctness: bool = False) -> dict:
+def _make(case: dict) -> dict:
     return _make_quant(case)
 
 
@@ -447,7 +447,7 @@ def _run(inputs: dict):
 
 def run_correctness() -> None:
     for case in CASES:
-        inputs = _make(case, correctness=True)
+        inputs = _make(case)
         _run_quant_correctness(inputs)
         print("correctness PASS", case["id"])
 
@@ -521,7 +521,7 @@ def _pick_profile_case(tr, case_id: str) -> dict:
 def _run_profile(tr, case_id: str) -> int:
     torch = tr._torch()
     case = _pick_profile_case(tr, case_id)
-    inputs = tr._make(case, correctness=False)
+    inputs = tr._make(case)
     for _ in range(5):          # settle Triton JIT / autotune selection
         tr._run(inputs)
     torch.cuda.synchronize()

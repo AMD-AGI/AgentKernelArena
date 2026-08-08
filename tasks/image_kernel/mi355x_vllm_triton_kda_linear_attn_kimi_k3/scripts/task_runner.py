@@ -105,7 +105,15 @@ def _kda_ops():
 # --------------------------------------------------------------------------- #
 # Inputs
 # --------------------------------------------------------------------------- #
-def _prepare(case: dict, correctness: bool = False) -> dict:
+def _prepare(case: dict) -> dict:
+    """Build a case at its scored shape.
+
+    There is deliberately no correctness/performance switch here: a shape that is
+    timed must also be the shape that is validated, or the scored code path can
+    differ from the checked one. The golden is an O(T) float64 recurrence, but it
+    costs roughly 65 us per token, so even the 32768-token case stays a couple of
+    seconds.
+    """
     torch = _torch()
     p = dict(case["params"])
     H = p["num_heads"]          # per-rank heads (K3 num_heads=96, TP=8 -> 12)
@@ -113,11 +121,6 @@ def _prepare(case: dict, correctness: bool = False) -> dict:
     mode = p["mode"]            # "chunk" (prefill) | "packed_decode" (k007)
     num_seqs = p["num_seqs"]
     seq_len = p["seq_len"]
-    if correctness:
-        # The golden is an O(T) float64 recurrence, so cap the token count. 320
-        # still spans 5 chunks at chunk_size=64 and exercises the cross-chunk path.
-        seq_len = min(seq_len, 320)
-        num_seqs = min(num_seqs, 4)
     total_t = num_seqs * seq_len
 
     gen = torch.Generator(device="cuda").manual_seed(int(case.get("seed", 23)))
@@ -243,7 +246,7 @@ def _golden(inp: dict):
 # Modes
 # --------------------------------------------------------------------------- #
 def run_compile() -> None:
-    inp = _prepare(CASES[0], correctness=True)
+    inp = _prepare(CASES[0])
     out, _state = _run(inp)
     _torch().cuda.synchronize()
     print(f"{OPERATOR} compile smoke: PASS  out={tuple(out.shape)}")
@@ -252,7 +255,7 @@ def run_compile() -> None:
 def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
-        inp = _prepare(case, correctness=True)
+        inp = _prepare(case)
         ref = _golden(inp)          # BEFORE _run: the kernels mutate the state
         out, _state = _run(inp)
         torch.cuda.synchronize()
@@ -282,9 +285,16 @@ def run_correctness() -> None:
 
 
 def run_performance() -> None:
+    # Sibling tasks additionally validate the timed invocation itself (they pass a
+    # `timed_run` collector to the benchmark and assert on the buffers it wrote).
+    # That is not done here yet: KDA advances `inp["state"]` in place, and a
+    # captured graph chains `benchmark_effective_repeats` invocations, so the
+    # timed output corresponds to the recurrence applied that many times rather
+    # than once. Checking it needs a golden that carries state across repeats,
+    # which must be validated on a build that can run the operator.
     rows = []
     for case in CASES:
-        inp = _prepare(case, correctness=False)
+        inp = _prepare(case)
         _run(inp)
         _torch().cuda.synchronize()
         bench = case.get("benchmark", {})

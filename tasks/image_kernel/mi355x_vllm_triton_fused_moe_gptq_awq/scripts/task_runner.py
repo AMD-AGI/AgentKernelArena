@@ -103,21 +103,20 @@ def _quant_pack_int4(w: "object", group_size: int):
     return packed, scale.to(torch.bfloat16).contiguous(), deq
 
 
-def _make(case: dict, correctness: bool = False) -> dict:
+def _make(case: dict) -> dict:
+    """Build a case at its scored shape.
+
+    There is deliberately no correctness/performance switch here: a shape that is
+    timed must also be the shape that is validated, or the scored code path can
+    differ from the checked one.
+    """
     torch = _torch()
     p = dict(case["params"])
-    if correctness:
-        tokens = min(p["tokens"], 16)
-        num_experts = min(p["num_experts"], 8)
-        topk = min(p["topk"], 2)
-        hidden = min(p["hidden"], 512)
-        inter = min(p["inter"], 128)
-    else:
-        tokens = p["tokens"]
-        num_experts = p["num_experts"]
-        topk = p["topk"]
-        hidden = p["hidden"]
-        inter = p["inter"]
+    tokens = p["tokens"]
+    num_experts = p["num_experts"]
+    topk = p["topk"]
+    hidden = p["hidden"]
+    inter = p["inter"]
     group_size = p["group_size"]
     assert hidden % group_size == 0 and inter % group_size == 0
 
@@ -156,8 +155,10 @@ def _make(case: dict, correctness: bool = False) -> dict:
         "w2": w2_packed,
         "w1_scale": w1_scale,
         "w2_scale": w2_scale,
-        "w1_deq": w1_deq if correctness else None,
-        "w2_deq": w2_deq if correctness else None,
+        # The dequantized weights back the reference. They are kept for the
+        # performance run too, because the timed invocation is validated as well.
+        "w1_deq": w1_deq,
+        "w2_deq": w2_deq,
         "topk_weights": topk_weights,
         "topk_ids": topk_ids,
         "num_experts": num_experts,
@@ -185,32 +186,108 @@ def _run(inputs: dict):
 
 
 def _reference(inputs: dict):
+    """Dequantized torch reference for the int4 fused MoE.
+
+    Iterates experts rather than (token, slot) pairs: every token routed to an
+    expert is one batched matmul instead of a Python step. The loop this replaces
+    ran M*topk times and synchronised on ``topk_ids`` each step, which is what
+    made a full-shape correctness run impractical.
+
+    The dequantized weights stay bf16 and are cast per expert, so the reference
+    never materialises an fp32 copy of the whole expert bank.
+    """
     torch = _torch()
     import torch.nn.functional as F
 
     x = inputs["x"].float()  # [M, hidden]
-    w1d = inputs["w1_deq"].float()  # [E, 2*inter, hidden]
-    w2d = inputs["w2_deq"].float()  # [E, hidden, inter]
+    w1d = inputs["w1_deq"]  # [E, 2*inter, hidden] bf16
+    w2d = inputs["w2_deq"]  # [E, hidden, inter] bf16
     tw = inputs["topk_weights"].float()  # [M, topk]
-    tid = inputs["topk_ids"]  # [M, topk]
+    tid = inputs["topk_ids"].long()  # [M, topk]
     inter = inputs["inter"]
     M, hidden = x.shape
+    topk = tid.shape[1]
+
     out = torch.zeros((M, hidden), device="cuda", dtype=torch.float32)
-    for m in range(M):
-        acc = torch.zeros((hidden,), device="cuda", dtype=torch.float32)
-        for j in range(tid.shape[1]):
-            e = int(tid[m, j].item())
-            gu = x[m] @ w1d[e].t()  # [2*inter]
-            gate = gu[:inter]
-            up = gu[inter:]
-            act = F.silu(gate) * up  # [inter]
-            acc = acc + float(tw[m, j].item()) * (act @ w2d[e].t())
-        out[m] = acc
+    flat_expert = tid.reshape(-1)
+    flat_token = torch.arange(
+        M, device=x.device
+    ).unsqueeze(1).expand(M, topk).reshape(-1)
+    flat_weight = tw.reshape(-1)
+
+    order = torch.argsort(flat_expert)
+    sorted_expert = flat_expert[order]
+    # One boundary per expert, so slicing needs no per-pair host round trip.
+    counts = torch.bincount(sorted_expert, minlength=w1d.shape[0])
+    offsets = torch.cumsum(counts, dim=0).tolist()
+    start = 0
+    for expert, stop in enumerate(offsets):
+        if stop == start:
+            continue
+        rows = flat_token[order[start:stop]]
+        gate_up = x[rows] @ w1d[expert].float().t()  # [n, 2*inter]
+        act = F.silu(gate_up[:, :inter]) * gate_up[:, inter:]
+        contrib = (act @ w2d[expert].float().t()) * flat_weight[
+            order[start:stop]
+        ].unsqueeze(-1)
+        out.index_add_(0, rows, contrib)
+        start = stop
     return out.to(torch.bfloat16)
 
 
+def _assert_close(inputs: dict, got) -> None:
+    _torch().testing.assert_close(got, _reference(inputs), atol=0.02, rtol=0.02)
+
+
+def _perturb_inputs(inputs: dict) -> None:
+    """Refresh the activation in place with values no earlier launch has seen.
+
+    A replayed CUDA graph reads the captured input address, so writing through it
+    changes what the scored kernel consumes. Only ``x`` is redrawn: the routing
+    tensors are kernel inputs rather than something the kernel derives, and the
+    packed weights have a dequantized twin that would have to be rebuilt in
+    lockstep for no benefit here.
+    """
+    torch = _torch()
+    torch.manual_seed(53)
+    inputs["x"].normal_()
+
+
+def _compile_smoke_case(case: dict) -> dict:
+    """Shrink a case so the compile smoke test stays cheap.
+
+    Only ``compile`` may use this. Correctness and performance must share one
+    shape, otherwise the scored path is not the validated path.
+    """
+    params = dict(case["params"])
+    group_size = params["group_size"]
+    params["tokens"] = min(params["tokens"], 16)
+    params["num_experts"] = min(params["num_experts"], 8)
+    params["topk"] = min(params["topk"], 2)
+    # Both reductions must stay a whole number of quantization groups.
+    params["hidden"] = max(group_size, min(params["hidden"], 512))
+    params["inter"] = max(group_size, min(params["inter"], 128))
+    return {**case, "params": params}
+
+
+def _assert_timed_outputs(inputs: dict, timed) -> None:
+    """Validate the invocation the benchmark actually timed.
+
+    ``run_correctness`` checks a separate call, which a kernel can tell apart
+    from the scored one. This re-runs the timed unit against a freshly perturbed
+    activation and checks the buffer it wrote, so work that the scored path skips
+    cannot hide behind a correctness call that took a different branch.
+    """
+    if not timed.bound:
+        raise RuntimeError("benchmark did not expose the timed invocation")
+    _perturb_inputs(inputs)
+    if timed.outputs is not None:
+        timed.outputs.fill_(float("nan"))
+    _assert_close(inputs, timed.rerun())
+
+
 def run_compile() -> None:
-    inputs = _make(CASES[0], correctness=True)
+    inputs = _make(_compile_smoke_case(CASES[0]))
     _run(inputs)
     _torch().cuda.synchronize()
     print(f"{OPERATOR} compile smoke: PASS")
@@ -219,28 +296,29 @@ def run_compile() -> None:
 def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
-        inputs = _make(case, correctness=True)
+        inputs = _make(case)
         got = _run(inputs)
         torch.cuda.synchronize()
-        torch.testing.assert_close(
-            got, _reference(inputs), atol=0.02, rtol=0.02
-        )
+        _assert_close(inputs, got)
         print("correctness PASS", case["id"])
 
 
 def run_performance() -> None:
     rows = []
     for case in CASES:
-        inputs = _make(case, correctness=False)
+        inputs = _make(case)
         _run(inputs)
         _torch().cuda.synchronize()
+        timed = _TimedRun()
         execution_time_ms, bench_meta = _benchmark_cuda_graph_or_events(
             lambda: _run(inputs),
             warmup=10,
             repetition=100,
             target_ms=1.0,
             max_graph_repeats=1000,
+            timed_run=timed,
         )
+        _assert_timed_outputs(inputs, timed)
         metadata = {
             **case["params"],
             "model": case.get("model"),

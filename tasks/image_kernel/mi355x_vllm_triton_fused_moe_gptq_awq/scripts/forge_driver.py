@@ -17,7 +17,7 @@ entirely and no per-run driver authoring can fail.
 How it satisfies the contract without per-kernel reimplementation
 -----------------------------------------------------------------
 Every image_kernel ``scripts/task_runner.py`` in this suite exposes the same
-canonical entry points: ``_configure`` / ``_torch`` / ``_make(case, correctness)``
+canonical entry points: ``_configure`` / ``_torch`` / ``_make(case)``
 / ``_run(inputs)`` / ``run_correctness()`` / ``run_performance()`` (the latter
 writes ``build/performance_report.json`` and times under a CUDA/HIP graph via
 ``_benchmark_cuda_graph_or_events``). This driver REUSES those, so it measures
@@ -45,7 +45,7 @@ kernel_agents.loop.task_preparer.DRIVER_CONTRACT_SPEC):
         real CUDA/HIP-graph replays satisfy forge-loop's graph probe.
 
   * Profiling    ``--profile-run``
-        builds ONE case's inputs (``_make(case, correctness=False)``) and launches
+        builds ONE case's inputs (``_make(case)``) and launches
         ONLY the target region (``_run``): a few warmups to settle Triton JIT, a
         couple of profiled launches, one synchronize, exit 0. No timing printed.
 
@@ -150,7 +150,7 @@ def _pick_profile_case(tr) -> dict:
 def _run_profile(tr) -> int:
     torch = tr._torch()
     case = _pick_profile_case(tr)
-    inputs = tr._make(case, correctness=False)
+    inputs = tr._make(case)
     for _ in range(5):          # settle Triton JIT / autotune selection
         tr._run(inputs)
     torch.cuda.synchronize()

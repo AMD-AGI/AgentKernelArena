@@ -146,21 +146,9 @@ def _make(case: dict) -> dict:
     phys_block = block_table[seq_idx, pos // block_size].long()
     slot_mapping = (phys_block * block_size + (pos % block_size)).reshape(-1)
 
-    import vllm._custom_ops as ops
-
     one = torch.ones(1, device="cuda", dtype=torch.float32)
-    ops.reshape_and_cache(
-        key.reshape(-1, num_kv_heads, head_size),
-        value.reshape(-1, num_kv_heads, head_size),
-        key_cache,
-        value_cache,
-        slot_mapping,
-        "auto",
-        one,
-        one,
-    )
 
-    return {
+    inputs = {
         "cfg": case,
         "module": _load_kernel_module(),
         "query": query,
@@ -175,7 +163,50 @@ def _make(case: dict) -> dict:
         "max_seq_len": ctx_len,
         "scale": scale,
         "one": one,
+        "slot_mapping": slot_mapping,
+        "num_kv_heads": num_kv_heads,
+        "head_size": head_size,
     }
+    _fill_kv_cache(inputs)
+    return inputs
+
+
+def _fill_kv_cache(inputs: dict) -> None:
+    """Page the contiguous key/value into the cache the kernel reads.
+
+    The reference reads ``key``/``value`` while the kernel reads the paged cache,
+    so the two must be refreshed together or they stop describing the same
+    workload.
+    """
+    import vllm._custom_ops as ops
+
+    num_kv_heads = inputs["num_kv_heads"]
+    head_size = inputs["head_size"]
+    ops.reshape_and_cache(
+        inputs["key"].reshape(-1, num_kv_heads, head_size),
+        inputs["value"].reshape(-1, num_kv_heads, head_size),
+        inputs["key_cache"],
+        inputs["value_cache"],
+        inputs["slot_mapping"],
+        "auto",
+        inputs["one"],
+        inputs["one"],
+    )
+
+
+def _perturb_inputs(inputs: dict) -> None:
+    """Refresh the data inputs in place with values no earlier launch has seen.
+
+    A replayed CUDA graph reads the captured input addresses, so writing through
+    them changes what the scored kernel consumes. Fresh values stop an output
+    buffer that the kernel never wrote from matching the reference by accident.
+    """
+    torch = _torch()
+    torch.manual_seed(37)
+    inputs["query"].normal_()
+    inputs["key"].normal_()
+    inputs["value"].normal_()
+    _fill_kv_cache(inputs)
 
 
 def _run(inputs: dict):
@@ -217,6 +248,27 @@ def _reference(inputs: dict):
     return torch.stack(outputs).to(inputs["output"].dtype)
 
 
+def _assert_close(inputs: dict, got) -> None:
+    _torch().testing.assert_close(got, _reference(inputs), atol=0.08, rtol=0.08)
+
+
+def _assert_timed_outputs(inputs: dict, timed) -> None:
+    """Validate the invocation the benchmark actually timed.
+
+    ``run_correctness`` checks a separate call, which a kernel can tell apart
+    from the scored one. This re-runs the timed unit against freshly perturbed
+    inputs and checks the buffer it wrote, so work that the scored path skips
+    cannot hide behind a correctness call that took a different branch.
+    """
+    if not timed.bound:
+        raise RuntimeError("benchmark did not expose the timed invocation")
+    _perturb_inputs(inputs)
+    # The output is harness-owned, so poison it directly; a kernel that stops
+    # writing keeps the poison instead of a plausible stale result.
+    inputs["output"].fill_(float("nan"))
+    _assert_close(inputs, timed.rerun())
+
+
 def run_compile() -> None:
     inputs = _make(_compile_smoke_case(CASES[0]))
     _run(inputs)
@@ -230,9 +282,7 @@ def run_correctness() -> None:
         inputs = _make(case)
         got = _run(inputs)
         torch.cuda.synchronize()
-        torch.testing.assert_close(
-            got, _reference(inputs), atol=0.08, rtol=0.08
-        )
+        _assert_close(inputs, got)
         print("correctness PASS", case["id"])
 
 
@@ -242,13 +292,16 @@ def run_performance() -> None:
         inputs = _make(case)
         _run(inputs)
         _torch().cuda.synchronize()
+        timed = _TimedRun()
         execution_time_ms, bench_meta = _benchmark_cuda_graph_or_events(
             lambda: _run(inputs),
             warmup=10,
             repetition=100,
             target_ms=1.0,
             max_graph_repeats=1000,
+            timed_run=timed,
         )
+        _assert_timed_outputs(inputs, timed)
         metadata = {
             **case["params"],
             "model": case.get("model"),

@@ -72,8 +72,55 @@ def _measure_cuda_event(fn, repetition):
     return times_ms
 
 
-def _benchmark_cuda_graph(fn, warmup=10, repetition=100, target_ms=1.0, max_graph_repeats=200):
+class _TimedRun:
+    """Handle on the exact invocation the benchmark measured.
+
+    Timing and correctness are otherwise separate invocations, so a kernel can
+    tell them apart and do less work in the one that is scored. ``outputs``
+    aliases the buffers the timed unit last wrote, and ``rerun`` executes that
+    same unit again. Mirrors the shared helper in
+    src/tools/perf/vllm_cuda_graph_block.py; this task ships its own timer.
+    """
+
+    def __init__(self):
+        self._rerun = None
+        self.outputs = None
+
+    def _bind(self, rerun, outputs=None):
+        self._rerun = rerun
+        self.outputs = outputs
+
+    @property
+    def bound(self):
+        return self._rerun is not None
+
+    def rerun(self):
+        if self._rerun is None:
+            raise RuntimeError(
+                "timed run was never bound; the benchmark did not reach a "
+                "measurement path"
+            )
+        self.outputs = self._rerun()
+        return self.outputs
+
+
+def _benchmark_cuda_graph(
+    fn, warmup=10, repetition=100, target_ms=1.0, max_graph_repeats=200, timed_run=None
+):
     import torch
+
+    def _bind_direct_call():
+        # The fallback path allocates fresh outputs per call, so there is nothing
+        # to alias; the caller gets them by re-running the same unit once.
+        if timed_run is None:
+            return
+
+        def _call_once():
+            out = fn()
+            torch.cuda.synchronize()
+            return out
+
+        timed_run._bind(_call_once)
 
     for _ in range(max(0, int(warmup))):
         fn()
@@ -99,8 +146,9 @@ def _benchmark_cuda_graph(fn, warmup=10, repetition=100, target_ms=1.0, max_grap
 
             graph = torch.cuda.CUDAGraph()
             with torch.cuda.graph(graph):
+                captured_outputs = None
                 for _ in range(repeats):
-                    fn()
+                    captured_outputs = fn()
             torch.cuda.synchronize()
 
             times = []
@@ -115,6 +163,20 @@ def _benchmark_cuda_graph(fn, warmup=10, repetition=100, target_ms=1.0, max_grap
         if mean_ms < 1e-5:
             raise RuntimeError("empty_cuda_graph_capture")
         meta.update(benchmark_method="cuda_graph", benchmark_effective_repeats=int(repeats))
+        if timed_run is not None:
+
+            def _replay_once():
+                # Callers stage work on their own stream before re-running (they
+                # perturb inputs and poison outputs). The capture stream must be
+                # ordered after that, or the replay races the staged writes and
+                # they land on top of the kernel's results.
+                stream.wait_stream(torch.cuda.current_stream())
+                with torch.cuda.stream(stream):
+                    graph.replay()
+                torch.cuda.synchronize()
+                return captured_outputs
+
+            timed_run._bind(_replay_once, captured_outputs)
         return mean_ms, meta
     except Exception as exc:
         try:
@@ -127,6 +189,7 @@ def _benchmark_cuda_graph(fn, warmup=10, repetition=100, target_ms=1.0, max_grap
             benchmark_effective_repeats=int(repetition),
             benchmark_fallback_reason=f"{type(exc).__name__}: {str(exc)[:160]}",
         )
+        _bind_direct_call()
         return sum(times) / len(times), meta
 
 
@@ -184,6 +247,48 @@ def _reference(inputs: dict):
 # --------------------------------------------------------------------------- #
 # Modes
 # --------------------------------------------------------------------------- #
+def _assert_close(case: dict, inputs: dict, got, label: str = "") -> float:
+    err = _relerr(got, _reference(inputs))
+    tol = case["params"].get("max_relerr", 0.06)
+    assert err < tol, (case["id"], label, err, tol)
+    return err
+
+
+def _perturb_inputs(inputs: dict) -> None:
+    """Refresh the activation in place with values no earlier launch has seen.
+
+    A replayed CUDA graph reads the captured input addresses, so writing through
+    them changes what the scored kernel consumes. The activation is re-quantized
+    the same way ``_make`` built it, so the quantized tensor and its scale stay
+    consistent; the weight stays fixed.
+    """
+    torch = _torch()
+    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import mxfp8_e4m3_quantize
+
+    p = inputs["cfg"]["params"]
+    torch.manual_seed(59)
+    x_bf16 = torch.randn(p["m"], p["k"], device="cuda", dtype=torch.bfloat16) * 0.5
+    x_fp8, x_scale = mxfp8_e4m3_quantize(x_bf16)
+    inputs["x_fp8"].copy_(x_fp8)
+    inputs["x_scale"].copy_(x_scale)
+
+
+def _assert_timed_outputs(case: dict, inputs: dict, timed) -> None:
+    """Validate the invocation the benchmark actually timed.
+
+    ``run_correctness`` checks a separate call, which a kernel can tell apart
+    from the scored one. This re-runs the timed unit against a freshly perturbed
+    activation and checks the buffer it wrote, so work that the scored path skips
+    cannot hide behind a correctness call that took a different branch.
+    """
+    if not timed.bound:
+        raise RuntimeError("benchmark did not expose the timed invocation")
+    _perturb_inputs(inputs)
+    if timed.outputs is not None:
+        timed.outputs.fill_(float("nan"))
+    _assert_close(case, inputs, timed.rerun(), label="timed run")
+
+
 def run_compile() -> None:
     inputs = _make(CASES[0])
     _run(inputs)
@@ -197,9 +302,7 @@ def run_correctness() -> None:
         inputs = _make(case)
         got = _run(inputs)
         torch.cuda.synchronize()
-        err = _relerr(got, _reference(inputs))
-        tol = case["params"].get("max_relerr", 0.06)
-        assert err < tol, (case["id"], err, tol)
+        err = _assert_close(case, inputs, got)
         print("correctness PASS", case["id"], f"relerr={err:.4f}")
 
 
@@ -210,7 +313,9 @@ def run_performance() -> None:
         inputs = _make(case)
         _run(inputs)
         torch.cuda.synchronize()
-        ms, bmeta = _benchmark_cuda_graph(lambda: _run(inputs))
+        timed = _TimedRun()
+        ms, bmeta = _benchmark_cuda_graph(lambda: _run(inputs), timed_run=timed)
+        _assert_timed_outputs(case, inputs, timed)
         row = {
             "test_case_id": case["id"],
             "execution_time_ms": ms,
