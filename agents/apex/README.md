@@ -110,7 +110,13 @@ memfd; a symlinked `.venv` is therefore supported when its exact target is
 discoverable. AKA itself is captured from committed Git-object bytes into a second
 sealed SquashFS image. Docker executes those two read-only mounts and never mounts
 the live AKA or Apex checkout. Each container proves its own live mount IDs and
-read-only filesystem state before campaign initialization. Only the selected
+read-only filesystem state before campaign initialization. The v2 service evidence
+separately binds the Python controller PID/starttime/owner and accepted termination
+signals to the SquashFUSE engine PID/starttime. Its requested options include
+`default_permissions` and `allow_other`; the latter exposes the mount to the trusted
+root Docker daemon, while the mode-`0700` per-run ancestor prevents unrelated host
+users from traversing it. Docker socket/root access is therefore part of the formal
+host trust boundary, not an isolation claim. Only the selected
 backend's CLI and login state are mounted. The other backend credentials and live
 dependency trees remain unavailable to the attempt.
 
@@ -212,10 +218,9 @@ at 4 MiB. Apex receipts additionally snapshot the
 TaskSpec, TaskResult, checksummed event journal, canonical agent transcript, and
 terminal verdict lineage. The event-bound inner agent prompt is also copied into the
 outer immutable receipt, so later audits do not depend on a still-live Apex CAS path.
-New formal receipts use `agentkernelarena.apex-attempt-receipt/v5`; the campaign
-manifest freezes that schema before any attempt starts. The auditor keeps explicit
-read-only support for sealed history, but a v5 receipt cannot drop these fields or
-change its schema to select the legacy validation path. Receipt dispatch is selected
+Formal receipts use `agentkernelarena.apex-attempt-receipt/v6`; the campaign
+manifest freezes that sole supported schema before any attempt starts. Superseded
+formal artifacts are rejected rather than decoded. Receipt dispatch is selected
 from the sealed manifest's agent template and schema, never from the receipt's own
 type claim, so an Apex and direct-Codex receipt cannot be substituted for each other.
 The evaluator metadata gate and receipt auditor use the same campaign-owned schema
@@ -241,7 +246,7 @@ numeric exit cannot substitute for that proof. Formal lineage is validated befor
 outer Apex return code is rejected, so a failed session retains audit evidence while
 still raising and keeping `session_succeeded=false`. A nonzero `no_gain` is invalid.
 At the exact 50-turn boundary, both arms bind
-`private_pid_namespace_init_pidfd_v1` through comparison-contract v4, invocation,
+`private_pid_namespace_init_pidfd_v1` through comparison-contract v6, invocation,
 transcript, event, and attempt receipts. Each backend runs behind a gated private PID
 namespace with a private procfs. The trusted supervisor pins namespace PID 1 with a
 pidfd and freezes candidate bytes only after init exit, wrapper status/EOF, stream
@@ -254,8 +259,8 @@ then bound to AKA's separate outer namespace teardown. Its exact-boundary candid
 must additionally traverse the frozen-source, compile, correctness, safety,
 measurement, reward, decision, and immutable-bundle gate chain. A count of 49 is not
 an exact-boundary checkpoint, 51 is always an overrun, and timeout, truncation,
-unverified containment or cleanup failure is ineligible. Older schemas cannot claim
-this checkpoint path. These receipts only govern source persistence; AgentKernelArena's
+unverified containment or cleanup failure is ineligible. These receipts only govern
+source persistence; AgentKernelArena's
 outer evaluator remains the sole authority for scored correctness and performance.
 The AKA outer layer exposes writable inherited `/proc` only to the trusted Apex
 orchestrator so nested uid/gid maps can be established; Apex replaces and remasks

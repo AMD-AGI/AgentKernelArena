@@ -15,6 +15,7 @@ import signal
 import sqlite3
 import stat
 import subprocess
+import tempfile
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
@@ -26,9 +27,13 @@ from src.aka_runtime import (
     AkaRuntimeError,
     BACKEND_CLOSURE_SCHEMA,
     EXECUTION_MANIFEST_SCHEMA,
+    ENGINE_EVIDENCE_SCHEMA,
+    ENGINE_SERVICE_SCHEMA,
+    HOST_ACCESS_POLICY_SCHEMA,
     IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
     capture_backend_closure,
     capture_execution_manifest,
+    load_runtime_service_evidence,
     validate_immutable_mount_receipt,
     verify_backend_closure,
     verify_materialized_snapshot,
@@ -54,9 +59,7 @@ from src.agent_turn_budget import (
     BOUNDARY_QUIESCENCE_POLICY,
     CANDIDATE_PERSISTENCE_POLICY,
     FORMAL_MATCHED_MAX_TURNS,
-    LEGACY_TURN_POLICY,
     TURN_POLICY,
-    budget_stop_reason_matches,
     context_packet_objective_matches,
     render_apex_run_control,
 )
@@ -81,6 +84,9 @@ _CAMPAIGN_SCHEMA = "aka.matched-campaign/v1"
 _TASK_SCHEMA = "aka.matched-task-attempts/v1"
 _CAMPAIGN_BINDING_SCHEMA = "aka.attempt-campaign-binding/v1"
 _RUN_CONFIG_CONTRACT_SCHEMA = "aka.formal-run-config/v1"
+_DURABLE_RUN_CONFIG_DIRECTORY = ".formal-run-config"
+_DURABLE_RUN_CONFIG_NAME = "run_config.yaml"
+_MAX_RUN_CONFIG_BYTES = 1024 * 1024
 _CAMPAIGN_BINDING_KEYS = frozenset(
     {
         "schema",
@@ -103,49 +109,20 @@ _SELECTION_POLICY = "correctness_then_measured_rate_v1"
 _MEASUREMENT_CONTRACT = "aka_native_100_repetition_external_score"
 _OBJECTIVE_POLICY_ID = "aka.task-package-objective-and-protected-harness/v1"
 _PROMPT_POLICY_ID = "aka.shared-objective-backend-native-context-receipted/v1"
-_COMPARISON_CONTRACT_SCHEMA_V1 = "aka.apex-vs-codex-comparison-contract/v1"
-_COMPARISON_CONTRACT_SCHEMA_V2 = "aka.apex-vs-codex-comparison-contract/v2"
-_COMPARISON_CONTRACT_SCHEMA_V3 = "aka.apex-vs-codex-comparison-contract/v3"
-_COMPARISON_CONTRACT_SCHEMA_V4 = "aka.apex-vs-codex-comparison-contract/v4"
-_COMPARISON_CONTRACT_SCHEMA_V5 = "aka.apex-vs-codex-comparison-contract/v5"
-_CODEX_RECEIPT_SCHEMA_V1 = "agentkernelarena.codex-attempt-receipt/v1"
-_CODEX_RECEIPT_SCHEMA_V2 = "agentkernelarena.codex-attempt-receipt/v2"
-_CODEX_RECEIPT_SCHEMA_V3 = "agentkernelarena.codex-attempt-receipt/v3"
-_CODEX_RECEIPT_SCHEMA_V4 = "agentkernelarena.codex-attempt-receipt/v4"
-_CODEX_RECEIPT_SCHEMA = _CODEX_RECEIPT_SCHEMA_V4
-_CODEX_RECEIPT_SCHEMAS = frozenset({
-    _CODEX_RECEIPT_SCHEMA_V1,
-    _CODEX_RECEIPT_SCHEMA_V2,
-    _CODEX_RECEIPT_SCHEMA_V3,
-    _CODEX_RECEIPT_SCHEMA_V4,
-})
-_APEX_RECEIPT_SCHEMA_V1 = "agentkernelarena.apex-attempt-receipt/v1"
-_APEX_RECEIPT_SCHEMA_V2 = "agentkernelarena.apex-attempt-receipt/v2"
-_APEX_RECEIPT_SCHEMA_V3 = "agentkernelarena.apex-attempt-receipt/v3"
-_APEX_RECEIPT_SCHEMA_V4 = "agentkernelarena.apex-attempt-receipt/v4"
-_APEX_RECEIPT_SCHEMA_V5 = "agentkernelarena.apex-attempt-receipt/v5"
-_APEX_RECEIPT_SCHEMAS = frozenset({
-    _APEX_RECEIPT_SCHEMA_V1,
-    _APEX_RECEIPT_SCHEMA_V2,
-    _APEX_RECEIPT_SCHEMA_V3,
-    _APEX_RECEIPT_SCHEMA_V4,
-    _APEX_RECEIPT_SCHEMA_V5,
-})
-_SESSION_RECEIPT_SCHEMAS = {
-    "apex": _APEX_RECEIPT_SCHEMAS,
-    "codex": _CODEX_RECEIPT_SCHEMAS,
-}
-_LEGACY_SESSION_RECEIPT_SCHEMAS = {
-    "apex": _APEX_RECEIPT_SCHEMA_V1,
-    "codex": _CODEX_RECEIPT_SCHEMA_V1,
+_COMPARISON_CONTRACT_SCHEMA = "aka.apex-vs-codex-comparison-contract/v6"
+_CODEX_RECEIPT_SCHEMA = "agentkernelarena.codex-attempt-receipt/v6"
+_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v6"
+_SESSION_RECEIPT_SCHEMA_BY_AGENT = {
+    "apex": _APEX_RECEIPT_SCHEMA,
+    "codex": _CODEX_RECEIPT_SCHEMA,
 }
 _SHA1 = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _FORMAL_LIVE_COMMITMENT = {
     "mode": "live_formal_scoring",
-    "comparison_generation": 5,
+    "comparison_generation": 6,
     "historical_compatibility": False,
-    "policy_id": "aka.live-formal-v5-only/v1",
+    "policy_id": "aka.live-formal-v6-only/v1",
 }
 _FORMAL_LIVE_COMMITMENT_SHA256 = hashlib.sha256(
     json.dumps(
@@ -177,21 +154,10 @@ class CampaignError(RuntimeError):
 def resolve_session_receipt_schema(
     agent_name: str, declared_schema: object | None
 ) -> str | None:
-    """Resolve one manifest-declared schema from the campaign's sole registry.
+    """Resolve the one live receipt schema; all superseded artifacts fail closed."""
 
-    Marker-less sealed manifests predate explicit schema binding and retain their
-    v1 interpretation.  Unknown agents, non-string declarations, and unsupported
-    generations fail closed.
-    """
-
-    supported = _SESSION_RECEIPT_SCHEMAS.get(agent_name)
-    if supported is None:
-        return None
-    if declared_schema is None:
-        return _LEGACY_SESSION_RECEIPT_SCHEMAS[agent_name]
-    if not isinstance(declared_schema, str):
-        return None
-    return declared_schema if declared_schema in supported else None
+    supported = _SESSION_RECEIPT_SCHEMA_BY_AGENT.get(agent_name)
+    return supported if declared_schema == supported else None
 
 
 @dataclass(frozen=True)
@@ -469,6 +435,16 @@ def _aka_state_from_environment(repo_root: Path) -> tuple[dict[str, Any], dict[s
     receipt_file_digest = os.environ.get(
         "AGENT_KERNEL_ARENA_AKA_RUNTIME_MOUNT_RECEIPT_FILE_SHA256", ""
     )
+    service_path = _runtime_evidence_path(
+        "AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE",
+        "AKA runtime service evidence",
+    )
+    service_file_digest = os.environ.get(
+        "AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE_FILE_SHA256", ""
+    )
+    service_content_digest = os.environ.get(
+        "AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE_CONTENT_SHA256", ""
+    )
     if any(
         not _SHA256.fullmatch(value)
         for value in (
@@ -476,6 +452,8 @@ def _aka_state_from_environment(repo_root: Path) -> tuple[dict[str, Any], dict[s
             manifest_file_digest,
             receipt_digest,
             receipt_file_digest,
+            service_file_digest,
+            service_content_digest,
         )
     ):
         raise CampaignError("runner provided an invalid AKA runtime evidence digest")
@@ -486,6 +464,13 @@ def _aka_state_from_environment(repo_root: Path) -> tuple[dict[str, Any], dict[s
     source_manifest = _load_json_object(manifest_path, "AKA runtime manifest")
     mount_receipt = _load_json_object(receipt_path, "AKA runtime mount receipt")
     try:
+        service_evidence = load_runtime_service_evidence(
+            service_path,
+            file_sha256=service_file_digest,
+            content_sha256=service_content_digest,
+            manifest_sha256=manifest_digest,
+            image_sha256=str(mount_receipt.get("image_sha256") or ""),
+        )
         verify_materialized_snapshot(runtime_root, source_manifest, manifest_digest)
         validate_immutable_mount_receipt(
             mount_receipt, manifest_digest, expected_root=runtime_root
@@ -497,6 +482,15 @@ def _aka_state_from_environment(repo_root: Path) -> tuple[dict[str, Any], dict[s
         raise CampaignError("AKA runtime manifest lacks source Git evidence")
     if mount_receipt.get("sha256") != receipt_digest:
         raise CampaignError("AKA mount receipt content digest differs from runner evidence")
+    if (
+        mount_receipt.get("runtime_service_evidence_sha256")
+        != service_content_digest
+        or mount_receipt.get("runtime_engine_evidence_sha256")
+        != service_evidence["engine_evidence"]["sha256"]
+        or mount_receipt.get("host_access_policy")
+        != service_evidence["mount_receipt"]["host_access_policy"]
+    ):
+        raise CampaignError("AKA mount receipt is not bound to its host engine evidence")
     state = {
         "commit": source.get("commit"),
         "tree": source.get("tree"),
@@ -511,7 +505,7 @@ def _aka_state_from_environment(repo_root: Path) -> tuple[dict[str, Any], dict[s
     ):
         raise CampaignError("AKA runtime source Git identity is invalid")
     runtime = {
-        "schema": "aka.execution-snapshot-runtime/v1",
+        "schema": "aka.execution-snapshot-runtime/v2",
         "root": str(runtime_root),
         "manifest_path": str(manifest_path),
         "manifest_file_sha256": manifest_file_digest,
@@ -521,6 +515,13 @@ def _aka_state_from_environment(repo_root: Path) -> tuple[dict[str, Any], dict[s
         "mount_receipt_sha256": receipt_digest,
         "mount_receipt_schema": IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
         "mount_receipt": mount_receipt,
+        "runtime_service_evidence_path": str(service_path),
+        "runtime_service_evidence_file_sha256": service_file_digest,
+        "runtime_service_evidence_content_sha256": service_content_digest,
+        "runtime_engine_evidence_sha256": service_evidence["engine_evidence"][
+            "sha256"
+        ],
+        "runtime_service_evidence": service_evidence,
     }
     return state, runtime
 
@@ -539,43 +540,66 @@ def _revalidate_aka_runtime(manifest: dict[str, Any]) -> bool:
         "mount_receipt_sha256",
         "mount_receipt_schema",
         "mount_receipt",
+        "runtime_service_evidence_path",
+        "runtime_service_evidence_file_sha256",
+        "runtime_service_evidence_content_sha256",
+        "runtime_engine_evidence_sha256",
+        "runtime_service_evidence",
     }:
         return False
     try:
         root_lexical = Path(evidence["root"])
         source_lexical = Path(evidence["manifest_path"])
         receipt_lexical = Path(evidence["mount_receipt_path"])
+        service_lexical = Path(evidence["runtime_service_evidence_path"])
         root_metadata = root_lexical.lstat()
         source_metadata = source_lexical.lstat()
         receipt_metadata = receipt_lexical.lstat()
+        service_metadata = service_lexical.lstat()
         root = root_lexical.resolve(strict=True)
         source_path = source_lexical.resolve(strict=True)
         receipt_path = receipt_lexical.resolve(strict=True)
+        service_path = service_lexical.resolve(strict=True)
         if (
-            evidence.get("schema") != "aka.execution-snapshot-runtime/v1"
+            evidence.get("schema") != "aka.execution-snapshot-runtime/v2"
             or evidence.get("mount_receipt_schema")
             != IMMUTABLE_MOUNT_RECEIPT_SCHEMA
             or root != root_lexical
             or source_path != source_lexical
             or receipt_path != receipt_lexical
+            or service_path != service_lexical
             or root_lexical.is_symlink()
             or source_lexical.is_symlink()
             or receipt_lexical.is_symlink()
+            or service_lexical.is_symlink()
             or not stat.S_ISDIR(root_metadata.st_mode)
             or not stat.S_ISREG(source_metadata.st_mode)
             or not stat.S_ISREG(receipt_metadata.st_mode)
+            or not stat.S_ISREG(service_metadata.st_mode)
             or source_metadata.st_nlink != 1
             or receipt_metadata.st_nlink != 1
+            or service_metadata.st_nlink != 1
             or not _SHA256.fullmatch(str(evidence.get("manifest_sha256") or ""))
             or not _SHA256.fullmatch(
                 str(evidence.get("mount_receipt_sha256") or "")
             )
             or _sha256_file(source_path) != evidence["manifest_file_sha256"]
             or _sha256_file(receipt_path) != evidence["mount_receipt_file_sha256"]
+            or _sha256_file(service_path)
+            != evidence["runtime_service_evidence_file_sha256"]
         ):
             return False
         source = _load_json_object(source_path, "AKA runtime manifest")
         receipt = _load_json_object(receipt_path, "AKA runtime mount receipt")
+        service = load_runtime_service_evidence(
+            service_path,
+            file_sha256=evidence["runtime_service_evidence_file_sha256"],
+            content_sha256=evidence[
+                "runtime_service_evidence_content_sha256"
+            ],
+            manifest_sha256=evidence["manifest_sha256"],
+            image_sha256=str(receipt.get("image_sha256") or ""),
+        )
         verify_materialized_snapshot(root, source, evidence["manifest_sha256"])
         validate_immutable_mount_receipt(receipt, evidence["manifest_sha256"], root)
     except (AkaRuntimeError, CampaignError, KeyError, OSError, TypeError, ValueError):
@@ -587,6 +611,15 @@ def _revalidate_aka_runtime(manifest: dict[str, Any]) -> bool:
         and aka.get("execution_manifest_sha256") == evidence["manifest_sha256"]
         and receipt.get("sha256") == evidence["mount_receipt_sha256"]
         and receipt == evidence["mount_receipt"]
+        and service == evidence["runtime_service_evidence"]
+        and service.get("sha256")
+        == evidence["runtime_service_evidence_content_sha256"]
+        and service.get("engine_evidence", {}).get("sha256")
+        == evidence["runtime_engine_evidence_sha256"]
+        and receipt.get("runtime_service_evidence_sha256")
+        == service.get("sha256")
+        and receipt.get("runtime_engine_evidence_sha256")
+        == service.get("engine_evidence", {}).get("sha256")
     )
 
 
@@ -735,7 +768,7 @@ def _agent_manifest(
     manifest = {
         "template": agent_name,
         "session_receipt_schema": (
-            _APEX_RECEIPT_SCHEMA_V5
+            _APEX_RECEIPT_SCHEMA
             if agent_name == "apex"
             else _CODEX_RECEIPT_SCHEMA
         ),
@@ -873,7 +906,154 @@ def _run_config_contract(
     }
 
 
-def _v5_apex_treatment_contract(repositories: Any) -> dict[str, Any] | None:
+def _read_run_config_bytes(path: Path) -> tuple[bytes, Path]:
+    """Read one bounded regular config without following or racing a symlink."""
+
+    supplied = path.absolute()
+    descriptor = -1
+    try:
+        lexical = supplied.lstat()
+        resolved = supplied.resolve(strict=True)
+        descriptor = os.open(
+            supplied,
+            os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+        )
+        opened = os.fstat(descriptor)
+        if (
+            resolved != supplied
+            or stat.S_ISLNK(lexical.st_mode)
+            or not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or (opened.st_dev, opened.st_ino) != (lexical.st_dev, lexical.st_ino)
+            or opened.st_size <= 0
+            or opened.st_size > _MAX_RUN_CONFIG_BYTES
+        ):
+            raise CampaignError("formal run config is not a safe bounded regular file")
+        payload = bytearray()
+        while len(payload) <= opened.st_size:
+            chunk = os.read(descriptor, opened.st_size + 1 - len(payload))
+            if not chunk:
+                break
+            payload.extend(chunk)
+        rechecked = os.fstat(descriptor)
+        stable_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_nlink",
+            "st_uid",
+            "st_gid",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        if len(payload) != opened.st_size or any(
+            getattr(rechecked, field) != getattr(opened, field)
+            for field in stable_fields
+        ):
+            raise CampaignError("formal run config changed while it was read")
+        return bytes(payload), resolved
+    except CampaignError:
+        raise
+    except OSError as error:
+        raise CampaignError("formal run config is unavailable") from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _publish_durable_run_config(path: Path, payload: bytes) -> None:
+    """Publish exact config bytes once without replacing an existing artifact."""
+
+    temporary_fd = -1
+    temporary_path: Path | None = None
+    try:
+        temporary_fd, raw_temporary = tempfile.mkstemp(
+            prefix=f".{_DURABLE_RUN_CONFIG_NAME}.", dir=path.parent
+        )
+        temporary_path = Path(raw_temporary)
+        offset = 0
+        while offset < len(payload):
+            offset += os.write(temporary_fd, payload[offset:])
+        os.fchmod(temporary_fd, 0o444)
+        os.fsync(temporary_fd)
+        os.close(temporary_fd)
+        temporary_fd = -1
+        try:
+            os.link(temporary_path, path, follow_symlinks=False)
+        except FileExistsError:
+            pass
+        else:
+            temporary_path.unlink()
+            temporary_path = None
+            directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+    except OSError as error:
+        raise CampaignError("cannot publish durable formal run config") from error
+    finally:
+        if temporary_fd >= 0:
+            os.close(temporary_fd)
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def _materialize_durable_run_config(
+    run_directory: Path, source: Path
+) -> Path:
+    """Copy the ephemeral sealed-runtime config into durable run evidence."""
+
+    payload, _source = _read_run_config_bytes(source)
+    try:
+        run_metadata = run_directory.lstat()
+        run = run_directory.resolve(strict=True)
+    except OSError as error:
+        raise CampaignError("formal run directory is unavailable") from error
+    if (
+        run != run_directory.absolute()
+        or stat.S_ISLNK(run_metadata.st_mode)
+        or not stat.S_ISDIR(run_metadata.st_mode)
+    ):
+        raise CampaignError("formal run directory is unsafe")
+    evidence = run / _DURABLE_RUN_CONFIG_DIRECTORY
+    try:
+        evidence.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+    try:
+        metadata = evidence.lstat()
+        resolved = evidence.resolve(strict=True)
+    except OSError as error:
+        raise CampaignError("durable run-config directory is unavailable") from error
+    if (
+        resolved != evidence
+        or resolved.parent != run
+        or stat.S_ISLNK(metadata.st_mode)
+        or not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_IMODE(metadata.st_mode) not in {0o700, 0o555}
+    ):
+        raise CampaignError("durable run-config directory is unsafe")
+    destination = evidence / _DURABLE_RUN_CONFIG_NAME
+    if not destination.exists():
+        if stat.S_IMODE(metadata.st_mode) != 0o700:
+            raise CampaignError("sealed run-config directory lacks its config")
+        _publish_durable_run_config(destination, payload)
+    observed, resolved_destination = _read_run_config_bytes(destination)
+    destination_metadata = destination.lstat()
+    if (
+        resolved_destination != destination
+        or observed != payload
+        or destination_metadata.st_nlink != 1
+        or destination_metadata.st_mode & 0o222
+    ):
+        raise CampaignError("durable formal run config differs from its source")
+    evidence.chmod(0o555)
+    return destination
+
+
+def _v6_apex_treatment_contract(repositories: Any) -> dict[str, Any] | None:
     if not isinstance(repositories, dict):
         return None
     apex = repositories.get("apex")
@@ -884,7 +1064,7 @@ def _v5_apex_treatment_contract(repositories: Any) -> dict[str, Any] | None:
         return None
     return {
         "template": "apex",
-        "session_receipt_schema": _APEX_RECEIPT_SCHEMA_V5,
+        "session_receipt_schema": _APEX_RECEIPT_SCHEMA,
         "apex_runtime_mount_policy_id": APEX_RUNTIME_MOUNT_POLICY,
         "attempt_mount_receipt_schema": ATTEMPT_MOUNT_RECEIPT_SCHEMA,
         "apex_runtime_mount_schema": APEX_RUNTIME_MOUNT_SCHEMA,
@@ -892,7 +1072,7 @@ def _v5_apex_treatment_contract(repositories: Any) -> dict[str, Any] | None:
     }
 
 
-def _v5_top_level_agent_valid(
+def _v6_top_level_agent_valid(
     agent: Any, apex_treatment: dict[str, Any]
 ) -> bool:
     if not isinstance(agent, dict):
@@ -930,12 +1110,12 @@ def _v5_top_level_agent_valid(
     )
 
 
-def _v5_manifest_contract_valid(
+def _v6_manifest_contract_valid(
     manifest: dict[str, Any], comparison: dict[str, Any]
 ) -> bool:
     repositories = manifest.get("repositories")
     comparison_repositories = comparison.get("repositories")
-    apex_treatment = _v5_apex_treatment_contract(repositories)
+    apex_treatment = _v6_apex_treatment_contract(repositories)
     apex = repositories.get("apex") if isinstance(repositories, dict) else None
     aka = (
         repositories.get("agent_kernel_arena")
@@ -957,18 +1137,26 @@ def _v5_manifest_contract_valid(
     configuration = manifest.get("configuration")
     run_config = comparison.get("run_config")
     try:
+        run_config_path = Path(str(configuration.get("run_config_path") or ""))
         expected_run_config = (
             _run_config_contract(
-                Path(str(configuration.get("run_config_path") or "")),
+                run_config_path,
                 agent_name=str(agent.get("template") or ""),
             )
             if isinstance(configuration, dict) and isinstance(agent, dict)
             else None
         )
+        run_config_metadata = run_config_path.lstat()
+        declared_run_config_size = configuration.get("run_config_size_bytes")
+        durable_run_config_valid = bool(
+            type(declared_run_config_size) is int
+            and declared_run_config_size == run_config_metadata.st_size
+            and _safe_read_only_file(run_config_path)
+        )
         run_config_file_valid = bool(
             expected_run_config is not None
-            and configuration.get("run_config_sha256")
-            == _sha256_file(Path(str(configuration["run_config_path"])))
+            and durable_run_config_valid
+            and configuration.get("run_config_sha256") == _sha256_file(run_config_path)
         )
     except (CampaignError, OSError, TypeError, ValueError):
         expected_run_config = None
@@ -978,7 +1166,7 @@ def _v5_manifest_contract_valid(
         and comparison_repositories == repositories
         and apex_treatment is not None
         and comparison.get("apex_treatment") == apex_treatment
-        and _v5_top_level_agent_valid(
+        and _v6_top_level_agent_valid(
             agent, apex_treatment
         )
         and isinstance(agent, dict)
@@ -1025,34 +1213,8 @@ def _v5_manifest_contract_valid(
     )
 
 
-def _manifest_has_v5_marker(manifest: dict[str, Any]) -> bool:
-    agent = manifest.get("agent")
-    repositories = manifest.get("repositories")
-    apex = repositories.get("apex") if isinstance(repositories, dict) else None
-    comparison = manifest.get("comparison_contract")
-    return bool(
-        (
-            isinstance(agent, dict)
-            and (
-                agent.get("session_receipt_schema") == _APEX_RECEIPT_SCHEMA_V5
-                or "runtime_manifest_sha256" in agent
-                or "attempt_mount_receipt_schema" in agent
-                or "apex_runtime_mount_schema" in agent
-            )
-        )
-        or (isinstance(apex, dict) and "runtime_manifest_sha256" in apex)
-        or (
-            isinstance(comparison, dict)
-            and (
-                "apex_treatment" in comparison
-                or comparison.get("schema") == _COMPARISON_CONTRACT_SCHEMA_V5
-            )
-        )
-    )
-
-
 def _load_verified_campaign_manifest(run_directory: Path) -> dict[str, Any]:
-    """Load a live, scoreable v5 manifest; older generations always fail."""
+    """Load a live, scoreable v6 manifest; older generations always fail."""
     manifest_path = run_directory / "campaign_manifest.yaml"
     if not _safe_read_only_file(manifest_path):
         raise CampaignError("formal execution requires an immutable campaign manifest")
@@ -1061,7 +1223,7 @@ def _load_verified_campaign_manifest(run_directory: Path) -> dict[str, Any]:
     comparison_digest = manifest.get("comparison_contract_sha256")
     comparison_schema = comparison.get("schema") if isinstance(comparison, dict) else None
     live_contract_valid = (
-        comparison_schema == _COMPARISON_CONTRACT_SCHEMA_V5
+        comparison_schema == _COMPARISON_CONTRACT_SCHEMA
         and comparison.get("candidate_persistence_policy_id")
         == CANDIDATE_PERSISTENCE_POLICY
         and comparison.get("boundary_quiescence_policy_id")
@@ -1070,7 +1232,7 @@ def _load_verified_campaign_manifest(run_directory: Path) -> dict[str, Any]:
         == AGENT_PROCESS_CONTAINMENT_POLICY
         and comparison.get("attempt_containment_policy_id")
         == ATTEMPT_CONTAINMENT_POLICY
-        and _v5_manifest_contract_valid(manifest, comparison)
+        and _v6_manifest_contract_valid(manifest, comparison)
     )
     if (
         manifest.get("schema") != _CAMPAIGN_SCHEMA
@@ -1087,63 +1249,6 @@ def _load_verified_campaign_manifest(run_directory: Path) -> dict[str, Any]:
     ):
         raise CampaignError("campaign manifest comparison contract is invalid")
     return manifest
-
-
-def load_historical_campaign_manifest(run_directory: Path) -> dict[str, Any]:
-    """Read v1-v4 evidence for display only, explicitly classified non-scoreable."""
-
-    manifest_path = run_directory / "campaign_manifest.yaml"
-    if not _safe_read_only_file(manifest_path):
-        raise CampaignError("historical evidence requires a read-only campaign manifest")
-    manifest = _load_mapping(manifest_path, "historical campaign manifest")
-    comparison = manifest.get("comparison_contract")
-    digest = manifest.get("comparison_contract_sha256")
-    schema = comparison.get("schema") if isinstance(comparison, dict) else None
-    generation_contract_valid = bool(
-        isinstance(comparison, dict)
-        and (
-            (schema == _COMPARISON_CONTRACT_SCHEMA_V1)
-            or (
-                schema == _COMPARISON_CONTRACT_SCHEMA_V2
-                and comparison.get("candidate_persistence_policy_id")
-                == CANDIDATE_PERSISTENCE_POLICY
-            )
-            or (
-                schema == _COMPARISON_CONTRACT_SCHEMA_V3
-                and comparison.get("candidate_persistence_policy_id")
-                == CANDIDATE_PERSISTENCE_POLICY
-                and comparison.get("boundary_quiescence_policy_id")
-                == BOUNDARY_QUIESCENCE_POLICY
-            )
-            or (
-                schema == _COMPARISON_CONTRACT_SCHEMA_V4
-                and comparison.get("candidate_persistence_policy_id")
-                == CANDIDATE_PERSISTENCE_POLICY
-                and comparison.get("agent_process_containment_policy_id")
-                == AGENT_PROCESS_CONTAINMENT_POLICY
-                and comparison.get("attempt_containment_policy_id")
-                == ATTEMPT_CONTAINMENT_POLICY
-            )
-        )
-    )
-    if (
-        manifest.get("schema") != _CAMPAIGN_SCHEMA
-        or not generation_contract_valid
-        or not isinstance(digest, str)
-        or digest
-        != _sha256_bytes(
-            json.dumps(comparison, sort_keys=True, separators=(",", ":")).encode()
-        )
-        or comparison.get("objective_policy_id") != _OBJECTIVE_POLICY_ID
-        or comparison.get("prompt_policy_id") != _PROMPT_POLICY_ID
-    ):
-        raise CampaignError("historical campaign manifest is invalid")
-    return {
-        "classification": "historical_non_scoreable",
-        "scoreable": False,
-        "comparison_generation": int(str(schema).rsplit("v", 1)[1]),
-        "manifest": manifest,
-    }
 
 
 def validate_formal_task_binding(
@@ -1282,10 +1387,21 @@ def _comparison_aka_runtime_snapshot(snapshot: Any) -> dict[str, Any] | None:
         return None
     receipt = snapshot.get("mount_receipt")
     mount = receipt.get("mount") if isinstance(receipt, dict) else None
-    if not isinstance(receipt, dict) or not isinstance(mount, dict):
+    service = snapshot.get("runtime_service_evidence")
+    engine = service.get("engine_evidence") if isinstance(service, dict) else None
+    host_policy = receipt.get("host_access_policy") if isinstance(receipt, dict) else None
+    ancestor = (
+        host_policy.get("private_ancestor")
+        if isinstance(host_policy, dict)
+        else None
+    )
+    if not all(
+        isinstance(value, dict)
+        for value in (receipt, mount, service, engine, host_policy, ancestor)
+    ):
         return None
     return {
-        "schema": "aka.execution-snapshot-comparison/v1",
+        "schema": "aka.execution-snapshot-comparison/v2",
         "runtime_schema": snapshot.get("schema"),
         "manifest_sha256": snapshot.get("manifest_sha256"),
         "manifest_file_sha256": snapshot.get("manifest_file_sha256"),
@@ -1296,12 +1412,39 @@ def _comparison_aka_runtime_snapshot(snapshot: Any) -> dict[str, Any] | None:
             "manifest_sha256": receipt.get("manifest_sha256"),
             "image_sha256": receipt.get("image_sha256"),
             "memfd_seals": receipt.get("memfd_seals"),
+            "requested_mount_options": receipt.get(
+                "requested_mount_options"
+            ),
             "mount": {
                 "filesystem_type": mount.get("filesystem_type"),
                 "read_only": mount.get("read_only"),
                 "root": mount.get("root"),
                 "nested_mounts": mount.get("nested_mounts"),
             },
+        },
+        "host_access_contract": {
+            "schema": host_policy.get("schema"),
+            "policy_id": host_policy.get("policy_id"),
+            "requested_mount_options": host_policy.get(
+                "requested_mount_options"
+            ),
+            "private_ancestor": {
+                key: ancestor.get(key) for key in ("uid", "gid", "mode")
+            },
+            "fuse_config": host_policy.get("fuse_config"),
+            "mount_owner": host_policy.get("mount_owner"),
+            "worker": host_policy.get("worker"),
+            "docker_daemon": host_policy.get("docker_daemon"),
+        },
+        "engine_contract": {
+            "service_schema": service.get("schema"),
+            "service_policy_id": service.get("policy_id"),
+            "engine_schema": engine.get("schema"),
+            "engine_policy_id": engine.get("policy_id"),
+            "requested_mount_options": engine.get(
+                "requested_mount_options"
+            ),
+            "tools": engine.get("tools"),
         },
     }
 
@@ -1351,7 +1494,7 @@ def _comparison_contract(
     tasks: list[dict[str, Any]],
     run_config: dict[str, Any],
 ) -> dict[str, Any]:
-    apex_treatment = _v5_apex_treatment_contract(repositories)
+    apex_treatment = _v6_apex_treatment_contract(repositories)
     if (
         apex_treatment is None
         or (
@@ -1395,7 +1538,7 @@ def _comparison_contract(
     if comparison_runtime is None:
         raise CampaignError("comparison runtime evidence is malformed")
     return {
-        "schema": _COMPARISON_CONTRACT_SCHEMA_V5,
+        "schema": _COMPARISON_CONTRACT_SCHEMA,
         "formal_execution": dict(_FORMAL_LIVE_COMMITMENT),
         "formal_execution_sha256": _FORMAL_LIVE_COMMITMENT_SHA256,
         "objective_policy_id": _OBJECTIVE_POLICY_ID,
@@ -1452,6 +1595,9 @@ def build_campaign_manifest(
     )
     task_manifests = _task_manifests(task_config_paths)
     run_config = _run_config_contract(run_config_path, agent_name=agent_name)
+    run_config_payload, canonical_run_config_path = _read_run_config_bytes(
+        run_config_path
+    )
     try:
         runtime_isolation = runtime_isolation_receipt()
     except CampaignIsolationError as error:
@@ -1488,8 +1634,9 @@ def build_campaign_manifest(
         "runtime": runtime,
         "evaluator_files_sha256": evaluator,
         "configuration": {
-            "run_config_path": str(run_config_path.resolve()),
-            "run_config_sha256": _sha256_file(run_config_path),
+            "run_config_path": str(canonical_run_config_path),
+            "run_config_sha256": _sha256_bytes(run_config_payload),
+            "run_config_size_bytes": len(run_config_payload),
             "run_config_contract": run_config,
             "tasks": task_manifests,
         },
@@ -1504,9 +1651,14 @@ def ensure_campaign_manifest(
     task_config_paths: dict[str, str],
     agent_name: str,
 ) -> Path | None:
+    if parse_campaign_policy(eval_config) is None:
+        return None
+    durable_run_config = _materialize_durable_run_config(
+        run_directory, run_config_path
+    )
     manifest = build_campaign_manifest(
         eval_config=eval_config,
-        run_config_path=run_config_path,
+        run_config_path=durable_run_config,
         task_config_paths=task_config_paths,
         agent_name=agent_name,
     )
@@ -1559,7 +1711,7 @@ def _attempt_record(
         record["session_receipt"] = str(receipt_path.relative_to(run_directory))
         if receipt is not None:
             receipt_schema = receipt.get("schema")
-            if receipt_schema in _CODEX_RECEIPT_SCHEMAS:
+            if receipt_schema == _CODEX_RECEIPT_SCHEMA:
                 integrity = receipt.get("workspace_integrity")
                 final_changes = (
                     integrity.get("final_changes")
@@ -1600,7 +1752,7 @@ def _attempt_record(
                 "lineage": receipt.get("lineage"),
                 "source_delta_files": source_delta_files,
             }
-            if receipt.get("schema") in _APEX_RECEIPT_SCHEMAS:
+            if receipt.get("schema") == _APEX_RECEIPT_SCHEMA:
                 lineage = receipt.get("lineage")
                 prompt_event = (
                     lineage.get("prompt_event")
@@ -1645,7 +1797,7 @@ def _attempt_record(
     agent_session_succeeded = report.get("agent_session_succeeded")
     agent_session_terminal_status = report.get("agent_session_terminal_status")
     apex_receipt = (
-        receipt is not None and receipt.get("schema") in _APEX_RECEIPT_SCHEMAS
+        receipt is not None and receipt.get("schema") == _APEX_RECEIPT_SCHEMA
     )
     no_candidate_attempt = bool(
         receipt is not None
@@ -1653,29 +1805,25 @@ def _attempt_record(
         and (
             (apex_receipt and receipt.get("terminal_status") == "no_gain")
             or (
-                receipt.get("schema") in _CODEX_RECEIPT_SCHEMAS
+                receipt.get("schema") == _CODEX_RECEIPT_SCHEMA
                 and source_delta_files == []
             )
         )
     )
-    # The controller began writing these fields after diagnostic replays were
-    # made explicit. Keep older sealed campaigns readable, but when metadata is
-    # present require the complete candidate/no-candidate contract.
-    if evaluation_mode is not None or agent_session_score_eligible is not None:
-        if no_candidate_attempt:
-            if evaluation_mode != "no_candidate_baseline_replay_v1":
-                errors.append("no_candidate_evaluation_mode_mismatch")
-            if agent_session_score_eligible is not False:
-                errors.append("no_candidate_score_eligibility_mismatch")
-            if agent_session_succeeded is not True:
-                errors.append("no_candidate_session_success_mismatch")
-            if agent_session_terminal_status != "no_gain":
-                errors.append("no_candidate_terminal_status_mismatch")
-        else:
-            if evaluation_mode != "candidate_scoring_v1":
-                errors.append("diagnostic_evaluation_not_scoreable")
-            if agent_session_score_eligible is not True:
-                errors.append("agent_session_not_score_eligible")
+    if no_candidate_attempt:
+        if evaluation_mode != "no_candidate_baseline_replay_v1":
+            errors.append("no_candidate_evaluation_mode_mismatch")
+        if agent_session_score_eligible is not False:
+            errors.append("no_candidate_score_eligibility_mismatch")
+        if agent_session_succeeded is not True:
+            errors.append("no_candidate_session_success_mismatch")
+        if agent_session_terminal_status != "no_gain":
+            errors.append("no_candidate_terminal_status_mismatch")
+    else:
+        if evaluation_mode != "candidate_scoring_v1":
+            errors.append("diagnostic_evaluation_not_scoreable")
+        if agent_session_score_eligible is not True:
+            errors.append("agent_session_not_score_eligible")
     if apex_receipt:
         receipt_terminal_status = receipt.get("terminal_status")
         if (
@@ -1790,7 +1938,7 @@ def _expected_session_receipt_schema(run_directory: Path) -> str | None:
 def _expected_apex_runtime_mount(
     run_directory: Path,
 ) -> dict[str, Any] | None:
-    """Return the sealed v5 Apex mount contract, or None for history."""
+    """Return the sealed Apex mount contract for the sole live generation."""
 
     try:
         manifest = _load_verified_campaign_manifest(run_directory)
@@ -1799,7 +1947,7 @@ def _expected_apex_runtime_mount(
     comparison = manifest.get("comparison_contract")
     if (
         not isinstance(comparison, dict)
-        or comparison.get("schema") != _COMPARISON_CONTRACT_SCHEMA_V5
+        or comparison.get("schema") != _COMPARISON_CONTRACT_SCHEMA
     ):
         return {"invalid": True}
     comparison = manifest["comparison_contract"]
@@ -2184,7 +2332,7 @@ def _apex_attempt_mount_role_errors(
     contract_path: Path | None,
     runtime_root: Path,
 ) -> list[str]:
-    """Validate the closed set of v5 Apex outer-mount roles."""
+    """Validate the closed set of Apex outer-mount roles."""
 
     mounts = receipt.get("attempt_mounts")
     if (
@@ -2374,14 +2522,12 @@ def _apex_runtime_mount_errors(
 ) -> list[str]:
     expected = _expected_apex_runtime_mount(run_directory)
     if expected is None:
-        # v1-v4 receipts predate the role-complete snapshot contract.  A
-        # transitional marker must never retroactively upgrade that history.
-        return []
+        return ["apex_runtime_mount_contract_missing"]
     mounts = receipt.get("attempt_mounts")
     runtime = receipt.get("apex_runtime_mount")
     apex = receipt.get("apex")
     if (
-        receipt.get("schema") != _APEX_RECEIPT_SCHEMA_V5
+        receipt.get("schema") != _APEX_RECEIPT_SCHEMA
         or expected.get("mount_receipt_schema") != ATTEMPT_MOUNT_RECEIPT_SCHEMA
         or expected.get("runtime_mount_schema") != APEX_RUNTIME_MOUNT_SCHEMA
         or expected.get("policy_id") != APEX_RUNTIME_MOUNT_POLICY
@@ -2568,6 +2714,13 @@ def _apex_runtime_mount_errors(
             "receipt_policy_id": RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
             "image_input_schema": RUNTIME_IMAGE_INPUT_SCHEMA,
             "host_mode_bits_are_evidence_only": True,
+            "runtime_service_evidence_schema": ENGINE_SERVICE_SCHEMA,
+            "runtime_engine_evidence_schema": ENGINE_EVIDENCE_SCHEMA,
+            "host_access_policy_schema": HOST_ACCESS_POLICY_SCHEMA,
+            "requested_mount_options": [
+                "ro", "nodev", "nosuid", "default_permissions",
+                "allow_other", "subtype=squashfuse",
+            ],
         }
     ):
         return ["apex_runtime_mount_contract_mismatch"]
@@ -2651,6 +2804,10 @@ def _apex_runtime_mount_errors(
             "runtime_image_input_sha256",
             "image_sha256",
             "backing",
+            "requested_mount_options",
+            "runtime_service_evidence_sha256",
+            "runtime_engine_evidence_sha256",
+            "host_access_policy",
             "mount",
         }
         or observed_entrypoint != expected_entrypoint
@@ -2711,6 +2868,16 @@ def _apex_runtime_mount_errors(
         ),
         "image_sha256": immutability.get("image_sha256"),
         "backing": immutability.get("backing"),
+        "requested_mount_options": immutability.get(
+            "requested_mount_options"
+        ),
+        "runtime_service_evidence_sha256": immutability.get(
+            "runtime_service_evidence_sha256"
+        ),
+        "runtime_engine_evidence_sha256": immutability.get(
+            "runtime_engine_evidence_sha256"
+        ),
+        "host_access_policy": immutability.get("host_access_policy"),
         "mount": immutability.get("mount"),
         "sha256": immutability.get("receipt_sha256"),
     }
@@ -2973,7 +3140,7 @@ def _validate_session_receipt(
     if receipt.get("schema") != expected_schema:
         mismatch = (
             "apex_receipt_schema_generation_mismatch"
-            if expected_schema in _APEX_RECEIPT_SCHEMAS
+            if expected_schema == _APEX_RECEIPT_SCHEMA
             else "direct_codex_receipt_schema_generation_mismatch"
         )
         return receipt, [mismatch]
@@ -2987,7 +3154,7 @@ def _validate_session_receipt(
         )
     )
 
-    if expected_schema in _APEX_RECEIPT_SCHEMAS:
+    if expected_schema == _APEX_RECEIPT_SCHEMA:
         apex_receipt, apex_errors = _validate_apex_session_receipt(
             receipt=receipt,
             receipt_path=receipt_path,
@@ -3017,28 +3184,12 @@ def _validate_session_receipt(
     checkpoint_termination = (
         persistence.get("termination") == "exact_turn_boundary"
     )
-    cleanup = receipt.get(
-        "attempt_process_cleanup"
-        if expected_schema == _CODEX_RECEIPT_SCHEMA_V4
-        else "process_group_cleanup"
-    )
-    if expected_schema == _CODEX_RECEIPT_SCHEMA_V1 and (
-        candidate_persistence is not None
-        or isinstance(receipt.get("invocation"), dict)
-        and receipt["invocation"].get("candidate_persistence_policy_id") is not None
-    ):
-        errors.append("direct_codex_legacy_receipt_claims_checkpoint")
-    if (
-        expected_schema == _CODEX_RECEIPT_SCHEMA_V2
-        and checkpoint_termination
-    ):
-        errors.append("direct_codex_unquiesced_checkpoint_schema_rejected")
+    cleanup = receipt.get("attempt_process_cleanup")
     if not isinstance(receipt.get("session_succeeded"), bool):
         errors.append("direct_codex_receipt_invalid_session_status")
     if receipt.get("session_succeeded") is True:
         allowed_exit = receipt.get("exit_code") == 0 or (
-            expected_schema == _CODEX_RECEIPT_SCHEMA_V4
-            and checkpoint_termination
+            checkpoint_termination
             and receipt.get("exit_code") == 128 + int(signal.SIGKILL)
             and isinstance(cleanup, dict)
             and cleanup.get("reason") == "exact_turn_boundary"
@@ -3051,23 +3202,13 @@ def _validate_session_receipt(
         if not isinstance(thread_id, str) or not thread_id.strip():
             errors.append("direct_codex_receipt_missing_thread_id")
 
-    cleanup_valid = (
-        _pid_namespace_cleanup_valid(
-            cleanup,
-            exit_code=receipt.get("exit_code"),
-            allowed_reasons={"normal_exit", "exact_turn_boundary"},
-        )
-        if expected_schema == _CODEX_RECEIPT_SCHEMA_V4
-        else isinstance(cleanup, dict)
-        and cleanup.get("verification_performed") is True
-        and cleanup.get("verified_absent") is True
+    cleanup_valid = _pid_namespace_cleanup_valid(
+        cleanup,
+        exit_code=receipt.get("exit_code"),
+        allowed_reasons={"normal_exit", "exact_turn_boundary"},
     )
     if not cleanup_valid:
-        errors.append(
-            "direct_codex_attempt_namespace_not_verified_absent"
-            if expected_schema == _CODEX_RECEIPT_SCHEMA_V4
-            else "direct_codex_process_group_not_verified_absent"
-        )
+        errors.append("direct_codex_attempt_namespace_not_verified_absent")
     capture = receipt.get("capture")
     if (
         not isinstance(capture, dict)
@@ -3089,11 +3230,7 @@ def _validate_session_receipt(
                 errors.append(f"direct_codex_{stream_name}_capture_bound_invalid")
 
     turn_budget = receipt.get("turn_budget")
-    expected_turn_policy = (
-        LEGACY_TURN_POLICY
-        if expected_schema == _CODEX_RECEIPT_SCHEMA_V1
-        else TURN_POLICY
-    )
+    expected_turn_policy = TURN_POLICY
     normal_turn_budget = (
         isinstance(turn_budget, dict)
         and turn_budget.get("policy") == expected_turn_policy
@@ -3103,15 +3240,11 @@ def _validate_session_receipt(
         and turn_budget.get("budget_exceeded") is False
         and turn_budget.get("enforcement_failed") is False
         and turn_budget.get("stop_reason") is None
-        and (
-            expected_schema == _CODEX_RECEIPT_SCHEMA_V1
-            or turn_budget.get("exact_boundary_reached") is False
-            and turn_budget.get("post_boundary_turns") == 0
-        )
+        and turn_budget.get("exact_boundary_reached") is False
+        and turn_budget.get("post_boundary_turns") == 0
     )
     checkpoint_turn_budget = (
-        expected_schema in {_CODEX_RECEIPT_SCHEMA_V3, _CODEX_RECEIPT_SCHEMA_V4}
-        and isinstance(turn_budget, dict)
+        isinstance(turn_budget, dict)
         and turn_budget.get("policy") == TURN_POLICY
         and turn_budget.get("max_turns") == FORMAL_MATCHED_MAX_TURNS
         and turn_budget.get("observed_turns") == FORMAL_MATCHED_MAX_TURNS
@@ -3133,112 +3266,92 @@ def _validate_session_receipt(
         or workspace_integrity.get("errors") != []
     ):
         errors.append("direct_codex_workspace_integrity_invalid")
-    if expected_schema in {
-        _CODEX_RECEIPT_SCHEMA_V2,
-        _CODEX_RECEIPT_SCHEMA_V3,
-        _CODEX_RECEIPT_SCHEMA_V4,
-    }:
-        checkpoint = (
-            persistence.get("checkpoint")
+    checkpoint = persistence.get("checkpoint")
+    expected_termination = (
+        "exact_turn_boundary" if checkpoint_turn_budget else "completed"
+    )
+    if (
+        not isinstance(candidate_persistence, dict)
+        or persistence.get("schema") != "aka.candidate-persistence-receipt/v4"
+        or persistence.get("policy_id") != CANDIDATE_PERSISTENCE_POLICY
+        or persistence.get("attempt_contained") is not True
+        or persistence.get("termination") != expected_termination
+        or (checkpoint_turn_budget and not isinstance(checkpoint, dict))
+        or (not checkpoint_turn_budget and checkpoint is not None)
+    ):
+        errors.append("direct_codex_candidate_persistence_invalid")
+    if (
+        persistence.get("agent_process_containment_policy_id")
+        != AGENT_PROCESS_CONTAINMENT_POLICY
+        or persistence.get("attempt_containment_policy_id")
+        != ATTEMPT_CONTAINMENT_POLICY
+    ):
+        errors.append("direct_codex_attempt_containment_policy_mismatch")
+    if checkpoint_turn_budget:
+        boundary_snapshot = persistence.get("boundary_snapshot")
+        output_tail = persistence.get("output_tail")
+        persisted_cleanup = persistence.get("attempt_cleanup")
+        boundary_resolution = persistence.get("boundary_resolution")
+        namespace_route = (
+            boundary_resolution == "pid_namespace_destroyed_before_snapshot"
+            and persisted_cleanup == cleanup
+            and _pid_namespace_cleanup_valid(
+                cleanup,
+                exit_code=receipt.get("exit_code"),
+                allowed_reasons={"exact_turn_boundary"},
+            )
+            and isinstance(cleanup, dict)
+            and cleanup.get("boundary_signal")
+            == {
+                "attempted": True,
+                "stdout_character_offset": (
+                    output_tail.get("stdout_character_offset")
+                    if isinstance(output_tail, dict)
+                    else None
+                ),
+            }
         )
-        expected_termination = (
-            "exact_turn_boundary" if checkpoint_turn_budget else "completed"
-        )
+        if not namespace_route:
+            errors.append("direct_codex_checkpoint_suspension_invalid")
         if (
-            not isinstance(candidate_persistence, dict)
-            or persistence.get("schema")
-            != (
-                "aka.candidate-persistence-receipt/v4"
-                if expected_schema == _CODEX_RECEIPT_SCHEMA_V4
-                else "aka.candidate-persistence-receipt/v3"
-                if expected_schema == _CODEX_RECEIPT_SCHEMA_V3
-                else "aka.candidate-persistence-receipt/v2"
-            )
-            or persistence.get("policy_id")
-            != CANDIDATE_PERSISTENCE_POLICY
-            or persistence.get("termination") != expected_termination
-            or (checkpoint_turn_budget and not isinstance(checkpoint, dict))
-            or (not checkpoint_turn_budget and checkpoint is not None)
+            not isinstance(boundary_snapshot, dict)
+            or boundary_snapshot.get("policy_id") != ATTEMPT_CONTAINMENT_POLICY
+            or boundary_snapshot.get("complete") is not True
+            or boundary_snapshot.get("errors") != []
+            or not isinstance(boundary_snapshot.get("manifest_sha256"), str)
+            or not _SHA256.fullmatch(boundary_snapshot["manifest_sha256"])
+            or not isinstance(boundary_snapshot.get("files"), list)
+            or not boundary_snapshot["files"]
+            or boundary_snapshot.get("capture_mode")
+            != "post_namespace_teardown_checkpoint"
         ):
-            errors.append("direct_codex_candidate_persistence_invalid")
-        if expected_schema == _CODEX_RECEIPT_SCHEMA_V4 and (
-            persistence.get("agent_process_containment_policy_id")
-            != AGENT_PROCESS_CONTAINMENT_POLICY
-            or persistence.get("attempt_containment_policy_id")
-            != ATTEMPT_CONTAINMENT_POLICY
+            errors.append("direct_codex_boundary_snapshot_invalid")
+        if (
+            not isinstance(output_tail, dict)
+            or output_tail.get("policy") != "retained_and_digested_v1"
+            or not isinstance(output_tail.get("stdout_size_bytes"), int)
+            or output_tail["stdout_size_bytes"] < 0
+            or not isinstance(output_tail.get("stdout_sha256"), str)
+            or not _SHA256.fullmatch(output_tail["stdout_sha256"])
+            or output_tail.get("post_boundary_turns") != 0
+            or output_tail.get("capture_truncated") is not False
+            or output_tail.get("readers_completed") is not True
         ):
-            errors.append("direct_codex_attempt_containment_policy_mismatch")
-        if expected_schema == _CODEX_RECEIPT_SCHEMA_V3 and (
-            persistence.get("boundary_quiescence_policy_id")
-            != BOUNDARY_QUIESCENCE_POLICY
+            errors.append("direct_codex_boundary_output_tail_invalid")
+        if isinstance(checkpoint, dict) and all(
+            isinstance(value, dict)
+            for value in (boundary_snapshot, output_tail, cleanup)
         ):
-            errors.append("direct_codex_boundary_quiescence_policy_mismatch")
-        if expected_schema == _CODEX_RECEIPT_SCHEMA_V4 and checkpoint_turn_budget:
-            boundary_snapshot = persistence.get("boundary_snapshot")
-            output_tail = persistence.get("output_tail")
-            persisted_cleanup = persistence.get("attempt_cleanup")
-            boundary_resolution = persistence.get("boundary_resolution")
-            namespace_route = (
-                boundary_resolution == "pid_namespace_destroyed_before_snapshot"
-                and persisted_cleanup == cleanup
-                and _pid_namespace_cleanup_valid(
-                    cleanup,
-                    exit_code=receipt.get("exit_code"),
-                    allowed_reasons={"exact_turn_boundary"},
-                )
-                and isinstance(cleanup, dict)
-                and cleanup.get("boundary_signal")
-                == {
-                    "attempted": True,
-                    "stdout_character_offset": (
-                        output_tail.get("stdout_character_offset")
-                        if isinstance(output_tail, dict)
-                        else None
-                    ),
-                }
-            )
-            if not namespace_route:
-                errors.append("direct_codex_checkpoint_suspension_invalid")
-            if (
-                not isinstance(boundary_snapshot, dict)
-                or boundary_snapshot.get("policy_id")
-                != ATTEMPT_CONTAINMENT_POLICY
-                or boundary_snapshot.get("complete") is not True
-                or boundary_snapshot.get("errors") != []
-                or not isinstance(boundary_snapshot.get("manifest_sha256"), str)
-                or not _SHA256.fullmatch(boundary_snapshot["manifest_sha256"])
-                or not isinstance(boundary_snapshot.get("files"), list)
-                or not boundary_snapshot["files"]
-                or boundary_snapshot.get("capture_mode")
-                != "post_namespace_teardown_checkpoint"
+            digest_fields = {
+                "boundary_snapshot_sha256": boundary_snapshot,
+                "output_tail_sha256": output_tail,
+                "attempt_cleanup_sha256": cleanup,
+            }
+            if any(
+                checkpoint.get(field) != _canonical_json_digest(value)
+                for field, value in digest_fields.items()
             ):
-                errors.append("direct_codex_boundary_snapshot_invalid")
-            if (
-                not isinstance(output_tail, dict)
-                or output_tail.get("policy") != "retained_and_digested_v1"
-                or not isinstance(output_tail.get("stdout_size_bytes"), int)
-                or output_tail["stdout_size_bytes"] < 0
-                or not isinstance(output_tail.get("stdout_sha256"), str)
-                or not _SHA256.fullmatch(output_tail["stdout_sha256"])
-                or output_tail.get("post_boundary_turns") != 0
-                or output_tail.get("capture_truncated") is not False
-                or output_tail.get("readers_completed") is not True
-            ):
-                errors.append("direct_codex_boundary_output_tail_invalid")
-            if isinstance(checkpoint, dict) and all(
-                isinstance(value, dict)
-                for value in (boundary_snapshot, output_tail, cleanup)
-            ):
-                digest_fields = {
-                    "boundary_snapshot_sha256": boundary_snapshot,
-                    "output_tail_sha256": output_tail,
-                    "attempt_cleanup_sha256": cleanup,
-                }
-                if any(
-                    checkpoint.get(field) != _canonical_json_digest(value)
-                    for field, value in digest_fields.items()
-                ):
-                    errors.append("direct_codex_checkpoint_evidence_digest_mismatch")
+                errors.append("direct_codex_checkpoint_evidence_digest_mismatch")
 
     try:
         effective_timeout = float(receipt.get("effective_timeout_seconds"))
@@ -3276,15 +3389,10 @@ def _validate_session_receipt(
         if (
             expected_codex.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
             or expected_codex.get("turn_policy") != expected_turn_policy
-            or (
-                expected_schema == _CODEX_RECEIPT_SCHEMA_V4
-                and (
-                    expected_codex.get("agent_process_containment_policy_id")
-                    != AGENT_PROCESS_CONTAINMENT_POLICY
-                    or expected_codex.get("attempt_containment_policy_id")
-                    != ATTEMPT_CONTAINMENT_POLICY
-                )
-            )
+            or expected_codex.get("agent_process_containment_policy_id")
+            != AGENT_PROCESS_CONTAINMENT_POLICY
+            or expected_codex.get("attempt_containment_policy_id")
+            != ATTEMPT_CONTAINMENT_POLICY
             or expected_codex.get("structured_stream_output_limit_bytes")
             != 16 * 1024 * 1024
         ):
@@ -3317,30 +3425,17 @@ def _validate_session_receipt(
             or invocation.get("turn_policy") != expected_turn_policy
             or invocation.get("structured_stream_output_limit_bytes")
             != 16 * 1024 * 1024
+            or invocation.get("candidate_persistence_policy_id")
+            != CANDIDATE_PERSISTENCE_POLICY
             or (
-                expected_schema
-                in {
-                    _CODEX_RECEIPT_SCHEMA_V2,
-                    _CODEX_RECEIPT_SCHEMA_V3,
-                    _CODEX_RECEIPT_SCHEMA_V4,
-                }
-                and invocation.get("candidate_persistence_policy_id")
-                != CANDIDATE_PERSISTENCE_POLICY
-            )
-            or (
-                expected_schema == _CODEX_RECEIPT_SCHEMA_V4
-                and (
-                    invocation.get("agent_process_containment_policy_id")
-                    != AGENT_PROCESS_CONTAINMENT_POLICY
-                    or invocation.get("attempt_containment_policy_id")
-                    != ATTEMPT_CONTAINMENT_POLICY
-                    or not isinstance(
-                        invocation.get("attempt_process_boundary"), dict
-                    )
-                    or not isinstance(cleanup, dict)
-                    or invocation.get("attempt_process_boundary")
-                    != cleanup.get("boundary")
-                )
+                invocation.get("agent_process_containment_policy_id")
+                != AGENT_PROCESS_CONTAINMENT_POLICY
+                or invocation.get("attempt_containment_policy_id")
+                != ATTEMPT_CONTAINMENT_POLICY
+                or not isinstance(invocation.get("attempt_process_boundary"), dict)
+                or not isinstance(cleanup, dict)
+                or invocation.get("attempt_process_boundary")
+                != cleanup.get("boundary")
             )
         ):
             errors.append("direct_codex_budget_invocation_mismatch")
@@ -3556,20 +3651,19 @@ def _validate_session_receipt(
                     else None,
                     "editable_files": workspace_integrity.get("editable_files"),
                 }
-                if expected_schema == _CODEX_RECEIPT_SCHEMA_V4:
-                    expected_checkpoint.update(
-                        {
-                            "boundary_snapshot_sha256": _canonical_json_digest(
-                                persistence.get("boundary_snapshot")
-                            ),
-                            "output_tail_sha256": _canonical_json_digest(
-                                persistence.get("output_tail")
-                            ),
-                            "attempt_cleanup_sha256": _canonical_json_digest(
-                                persistence.get("attempt_cleanup")
-                            ),
-                        }
-                    )
+                expected_checkpoint.update(
+                    {
+                        "boundary_snapshot_sha256": _canonical_json_digest(
+                            persistence.get("boundary_snapshot")
+                        ),
+                        "output_tail_sha256": _canonical_json_digest(
+                            persistence.get("output_tail")
+                        ),
+                        "attempt_cleanup_sha256": _canonical_json_digest(
+                            persistence.get("attempt_cleanup")
+                        ),
+                    }
+                )
                 if checkpoint != expected_checkpoint:
                     errors.append("direct_codex_checkpoint_manifest_mismatch")
 
@@ -4096,10 +4190,7 @@ def _apex_run_control_errors(
     interpreter = control.get("python_interpreter")
     verifier_argv = control.get("verifier_argv")
     persistence_valid = (
-        control.get("candidate_persistence")
-        == "leave_best_source_before_budget_boundary"
-        if expected_turn_policy == LEGACY_TURN_POLICY
-        else control.get("candidate_persistence_policy_id")
+        control.get("candidate_persistence_policy_id")
         == CANDIDATE_PERSISTENCE_POLICY
         and "candidate_persistence" not in control
     )
@@ -4143,53 +4234,6 @@ def _apex_run_control_errors(
     expected_suffix = f"\n\n{render_apex_run_control(control)}"
     if not isinstance(instructions, str) or not instructions.endswith(expected_suffix):
         return ["apex_caller_run_control_invalid"]
-    return []
-
-
-def _apex_turn_evidence_errors(
-    *,
-    transcript: dict[str, Any],
-    payload: dict[str, Any],
-    task_spec: dict[str, Any],
-    budget_exceeded: bool,
-    expected_turn_policy: str,
-) -> list[str]:
-    semantic_events = transcript.get("semantic_events")
-    budget = transcript.get("budget")
-    if not isinstance(semantic_events, list) or not isinstance(budget, dict):
-        return ["apex_agent_turn_evidence_invalid"]
-    message_count = sum(
-        1
-        for event in semantic_events
-        if isinstance(event, dict) and event.get("kind") == "agent_message"
-    )
-    tool_call_count = sum(
-        1
-        for event in semantic_events
-        if isinstance(event, dict) and event.get("kind") == "tool_called"
-    )
-    observed_turns = message_count + tool_call_count
-    max_turns = task_spec.get("budget", {}).get("max_turns")
-    if (
-        payload.get("observed_turns") != observed_turns
-        or payload.get("message_event_count") != message_count
-        or payload.get("tool_call_event_count") != tool_call_count
-        or payload.get("semantic_event_count") != len(semantic_events)
-        or budget.get("turn_policy") != expected_turn_policy
-        or budget.get("max_turns") != max_turns
-        or budget.get("observed_turns") != observed_turns
-        or budget.get("exceeded") is not budget_exceeded
-        or budget.get("enforcement_failed") is not False
-        or budget.get("reason") != payload.get("budget_reason")
-        or (
-            not budget_exceeded
-            and (
-                type(max_turns) is not int
-                or not 1 <= observed_turns <= max_turns
-            )
-        )
-    ):
-        return ["apex_agent_turn_evidence_invalid"]
     return []
 
 
@@ -4435,26 +4479,12 @@ def _validate_apex_session_receipt(
         )
     )
     receipt_schema = receipt.get("schema")
-    checkpoint_receipt = expected_receipt_schema in {
-        _APEX_RECEIPT_SCHEMA_V4,
-        _APEX_RECEIPT_SCHEMA_V5,
-    }
-    budget_failure_reason = (
-        "agent_turn_budget_overrun"
-        if checkpoint_receipt
-        else "agent_turn_budget_exceeded"
-    )
-    if receipt_schema not in _APEX_RECEIPT_SCHEMAS:
+    budget_failure_reason = "agent_turn_budget_overrun"
+    if receipt_schema != _APEX_RECEIPT_SCHEMA:
         errors.append("apex_receipt_schema_mismatch")
     if receipt_schema != expected_receipt_schema:
         errors.append("apex_receipt_schema_generation_mismatch")
     candidate_persistence = receipt.get("candidate_persistence")
-    if (
-        expected_receipt_schema
-        in {_APEX_RECEIPT_SCHEMA_V1, _APEX_RECEIPT_SCHEMA_V2}
-        and candidate_persistence is not None
-    ):
-        errors.append("apex_legacy_receipt_claims_checkpoint")
     terminal_status = receipt.get("terminal_status")
     session_succeeded = receipt.get("session_succeeded")
     budget_exhausted = (
@@ -4480,36 +4510,22 @@ def _validate_apex_session_receipt(
     )
     if not status_consistent:
         errors.append("apex_receipt_success_status_inconsistent")
-    cleanup = receipt.get(
-        "attempt_process_cleanup"
-        if checkpoint_receipt
-        else "process_group_cleanup"
-    )
-    if checkpoint_receipt and (
+    cleanup = receipt.get("attempt_process_cleanup")
+    if (
         receipt.get("agent_process_containment_policy_id")
         != AGENT_PROCESS_CONTAINMENT_POLICY
         or receipt.get("attempt_containment_policy_id")
         != ATTEMPT_CONTAINMENT_POLICY
     ):
         errors.append("apex_attempt_containment_policy_mismatch")
-    cleanup_valid = (
-        _pid_namespace_cleanup_valid(
-            cleanup,
-            exit_code=receipt.get("exit_code"),
-            allowed_reasons={"normal_exit"},
-            required_procfs="trusted_orchestrator_inherited_procfs",
-        )
-        if checkpoint_receipt
-        else isinstance(cleanup, dict)
-        and cleanup.get("verification_performed") is True
-        and cleanup.get("verified_absent") is True
+    cleanup_valid = _pid_namespace_cleanup_valid(
+        cleanup,
+        exit_code=receipt.get("exit_code"),
+        allowed_reasons={"normal_exit"},
+        required_procfs="trusted_orchestrator_inherited_procfs",
     )
     if not cleanup_valid:
-        errors.append(
-            "apex_outer_attempt_namespace_not_verified_absent"
-            if checkpoint_receipt
-            else "apex_process_group_not_verified_absent"
-        )
+        errors.append("apex_outer_attempt_namespace_not_verified_absent")
     capture = receipt.get("capture")
     if (
         not isinstance(capture, dict)
@@ -4556,16 +4572,9 @@ def _validate_apex_session_receipt(
         errors.append("apex_codex_identity_contract_mismatch")
     if isinstance(expected_codex, dict) and (
         expected_codex.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
-        or expected_codex.get("turn_policy")
-        not in {LEGACY_TURN_POLICY, TURN_POLICY}
-        or (
-            checkpoint_receipt
-            and (
-                expected_codex.get("turn_policy") != TURN_POLICY
-                or expected_codex.get("agent_process_containment_policy_id")
-                != AGENT_PROCESS_CONTAINMENT_POLICY
-            )
-        )
+        or expected_codex.get("turn_policy") != TURN_POLICY
+        or expected_codex.get("agent_process_containment_policy_id")
+        != AGENT_PROCESS_CONTAINMENT_POLICY
     ):
         errors.append("apex_immutable_budget_contract_mismatch")
     if (
@@ -4625,12 +4634,6 @@ def _validate_apex_session_receipt(
         except (OSError, ValueError):
             errors.append("apex_task_spec_prelaunch_contract_invalid")
 
-    new_prompt_receipt = expected_receipt_schema in {
-        _APEX_RECEIPT_SCHEMA_V2,
-        _APEX_RECEIPT_SCHEMA_V3,
-        _APEX_RECEIPT_SCHEMA_V4,
-        _APEX_RECEIPT_SCHEMA_V5,
-    }
     expected_artifacts = {
         "task_spec": "task_spec.json",
         "apex_stdout": "apex_stdout.txt",
@@ -4638,11 +4641,10 @@ def _validate_apex_session_receipt(
         "apex_result": "apex_result.json",
         "event_journal": "event_journal.sqlite",
         "agent_transcript": "agent_transcript.json",
+        "original_arena_prompt": "original_arena_prompt.txt",
+        "agent_prompt": "agent_prompt.txt",
     }
-    if new_prompt_receipt:
-        expected_artifacts["original_arena_prompt"] = "original_arena_prompt.txt"
-        expected_artifacts["agent_prompt"] = "agent_prompt.txt"
-    if checkpoint_receipt and terminal_status == "candidate_ready":
+    if terminal_status == "candidate_ready":
         expected_artifacts["source_bundle"] = "source_bundle_snapshot.json"
     artifacts, artifact_errors = _validate_receipt_artifacts(
         receipt=receipt,
@@ -4662,34 +4664,32 @@ def _validate_apex_session_receipt(
         )
     except CampaignError:
         return receipt, sorted(set(errors + ["apex_lineage_json_unreadable"]))
-    if expected_receipt_schema == _APEX_RECEIPT_SCHEMA_V5:
-        campaign_binding = receipt.get("campaign_binding")
-        if task_spec.get("campaign_binding") != campaign_binding:
-            errors.append("apex_task_spec_campaign_binding_mismatch")
-        errors.extend(
-            _apex_runtime_mount_errors(
-                receipt,
-                run_directory,
-                receipt_path=receipt_path,
-                workspace=workspace,
-                task_spec=task_spec,
-                contract_path=contract_path,
-            )
+    campaign_binding = receipt.get("campaign_binding")
+    if task_spec.get("campaign_binding") != campaign_binding:
+        errors.append("apex_task_spec_campaign_binding_mismatch")
+    errors.extend(
+        _apex_runtime_mount_errors(
+            receipt,
+            run_directory,
+            receipt_path=receipt_path,
+            workspace=workspace,
+            task_spec=task_spec,
+            contract_path=contract_path,
         )
-    if new_prompt_receipt:
-        errors.extend(
-            _apex_instruction_adaptation_errors(
-                receipt=receipt,
-                task_spec=task_spec,
-                original_prompt_path=artifacts["original_arena_prompt"],
-            )
+    )
+    errors.extend(
+        _apex_instruction_adaptation_errors(
+            receipt=receipt,
+            task_spec=task_spec,
+            original_prompt_path=artifacts["original_arena_prompt"],
         )
-        errors.extend(
-            _apex_run_control_errors(
-                task_spec,
-                expected_turn_policy=str(apex_expected_turn_policy),
-            )
+    )
+    errors.extend(
+        _apex_run_control_errors(
+            task_spec,
+            expected_turn_policy=str(apex_expected_turn_policy),
         )
+    )
     if receipt.get("task_spec_sha256") != _sha256_file(artifacts["task_spec"]):
         errors.append("apex_task_spec_digest_mismatch")
     if isinstance(task_spec_contract, dict) and (
@@ -4707,7 +4707,7 @@ def _validate_apex_session_receipt(
     ):
         errors.append("apex_task_spec_budget_contract_mismatch")
     lineage = receipt.get("lineage")
-    if expected_receipt_schema == _APEX_RECEIPT_SCHEMA_V5 and (
+    if (
         not isinstance(lineage, dict)
         or lineage.get("campaign_binding_sha256")
         != _canonical_json_digest(receipt.get("campaign_binding"))
@@ -4774,44 +4774,19 @@ def _validate_apex_session_receipt(
             or payload.get("timed_out") is not False
             or invocation != receipt.get("invocation")
         )
-        if checkpoint_receipt:
-            errors.extend(
-                _apex_checkpoint_evidence_errors(
-                    transcript=transcript,
-                    payload=payload,
-                    persistence=candidate_persistence,
-                    attempt_cleanup=cleanup,
-                    status=status,
-                )
+        errors.extend(
+            _apex_checkpoint_evidence_errors(
+                transcript=transcript,
+                payload=payload,
+                persistence=candidate_persistence,
+                attempt_cleanup=cleanup,
+                status=status,
             )
-        elif failed_terminal:
-            observed_turns = payload.get("observed_turns")
-            outcome_invalid = outcome_invalid or (
-                type(payload.get("exit_code")) is not int
-                or payload.get("budget_enforcement_failed") is not False
-                or payload.get("budget_exceeded") is not True
-                or not budget_stop_reason_matches(
-                    reason=payload.get("budget_reason"),
-                    observed_turns=observed_turns,
-                    max_turns=FORMAL_MATCHED_MAX_TURNS,
-                )
-            )
-        else:
-            outcome_invalid = outcome_invalid or (
-                payload.get("exit_code") != 0
-                or payload.get("budget_enforcement_failed") is not False
-                or payload.get("budget_exceeded") is not False
-                or (new_prompt_receipt and payload.get("budget_reason") is not None)
-            )
+        )
         if outcome_invalid:
             errors.append("apex_agent_completion_receipt_mismatch")
-        expected_transcript_schema = (
-            "apex.agent-transcript/v3"
-            if checkpoint_receipt
-            else "apex.agent-transcript/v1"
-        )
         if (
-            transcript.get("schema") != expected_transcript_schema
+            transcript.get("schema") != "apex.agent-transcript/v3"
             or transcript.get("backend") != "codex"
             or transcript.get("model") != payload.get("model")
             or transcript.get("effort") != payload.get("effort")
@@ -4840,12 +4815,7 @@ def _validate_apex_session_receipt(
         argv = invocation.get("argv") if isinstance(invocation, dict) else None
         if (
             not isinstance(invocation, dict)
-            or invocation.get("schema")
-            != (
-                "apex.agent-invocation/v3"
-                if checkpoint_receipt
-                else "apex.agent-invocation/v1"
-            )
+            or invocation.get("schema") != "apex.agent-invocation/v3"
             or invocation.get("cli_name") != "codex"
             or invocation.get("cli_version")
             != (expected_codex or {}).get("codex_version")
@@ -4855,11 +4825,8 @@ def _validate_apex_session_receipt(
             != (expected_codex or {}).get("backend_runtime_closure_sha256")
             or invocation.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
             or invocation.get("turn_policy") != apex_expected_turn_policy
-            or (
-                checkpoint_receipt
-                and invocation.get("process_containment_policy_id")
-                != AGENT_PROCESS_CONTAINMENT_POLICY
-            )
+            or invocation.get("process_containment_policy_id")
+            != AGENT_PROCESS_CONTAINMENT_POLICY
             or not isinstance(argv, list)
             or not {
                 "--strict-config",
@@ -4869,47 +4836,36 @@ def _validate_apex_session_receipt(
             }.issubset(set(argv or []))
         ):
             errors.append("apex_inner_codex_invocation_contract_mismatch")
-        if new_prompt_receipt:
-            agent_bindings = payload.get("artifacts")
-            transcript_bindings = [
-                binding
-                for binding in agent_bindings
-                if isinstance(binding, dict)
-                and binding.get("role") == "agent_transcript"
-            ] if isinstance(agent_bindings, list) else []
-            transcript_event_receipt = (
-                transcript_bindings[0].get("receipt")
-                if len(transcript_bindings) == 1
-                else None
+        agent_bindings = payload.get("artifacts")
+        transcript_bindings = [
+            binding
+            for binding in agent_bindings
+            if isinstance(binding, dict)
+            and binding.get("role") == "agent_transcript"
+        ] if isinstance(agent_bindings, list) else []
+        transcript_event_receipt = (
+            transcript_bindings[0].get("receipt")
+            if len(transcript_bindings) == 1
+            else None
+        )
+        if (
+            not isinstance(transcript_event_receipt, dict)
+            or transcript_event_receipt.get("digest")
+            != _sha256_file(artifacts["agent_transcript"])
+            or transcript_event_receipt.get("size")
+            != artifacts["agent_transcript"].stat().st_size
+        ):
+            errors.append("apex_agent_transcript_event_binding_mismatch")
+        errors.extend(
+            _apex_prompt_event_errors(
+                events=events,
+                agent_event=agent_event,
+                lineage=lineage if isinstance(lineage, dict) else None,
+                invocation=invocation if isinstance(invocation, dict) else None,
+                agent_prompt_path=artifacts["agent_prompt"],
+                expected_objective=task_spec.get("instructions"),
             )
-            if (
-                not isinstance(transcript_event_receipt, dict)
-                or transcript_event_receipt.get("digest")
-                != _sha256_file(artifacts["agent_transcript"])
-                or transcript_event_receipt.get("size")
-                != artifacts["agent_transcript"].stat().st_size
-            ):
-                errors.append("apex_agent_transcript_event_binding_mismatch")
-            if not checkpoint_receipt:
-                errors.extend(
-                    _apex_turn_evidence_errors(
-                        transcript=transcript,
-                        payload=payload,
-                        task_spec=task_spec,
-                        budget_exceeded=failed_terminal,
-                        expected_turn_policy=str(apex_expected_turn_policy),
-                    )
-                )
-            errors.extend(
-                _apex_prompt_event_errors(
-                    events=events,
-                    agent_event=agent_event,
-                    lineage=lineage if isinstance(lineage, dict) else None,
-                    invocation=invocation if isinstance(invocation, dict) else None,
-                    agent_prompt_path=artifacts["agent_prompt"],
-                    expected_objective=task_spec.get("instructions"),
-                )
-            )
+        )
     verdict_ref = result.get("internal_verdict_ref")
     matching_verdicts = [event for event in events if event["event_id"] == verdict_ref]
     if len(matching_verdicts) != 1 or matching_verdicts[0]["event_type"] not in {
@@ -4930,7 +4886,7 @@ def _validate_apex_session_receipt(
         or matching_verdicts[0]["payload"].get("verdict") != "keep"
     ):
         errors.append("apex_internal_verdict_ref_invalid")
-    if new_prompt_receipt and events:
+    if events:
         expected_head_type = "run.failed" if failed_terminal else "run.succeeded"
         expected_head_reason = (
             budget_failure_reason
@@ -4966,22 +4922,21 @@ def _validate_apex_session_receipt(
         event_artifact_digests
     ):
         errors.append("apex_event_artifact_summary_mismatch")
-    if new_prompt_receipt:
-        store_ref = result.get("artifact_store_ref")
-        declared_digests = (
-            store_ref.get("receipt_digests") if isinstance(store_ref, dict) else None
+    store_ref = result.get("artifact_store_ref")
+    declared_digests = (
+        store_ref.get("receipt_digests") if isinstance(store_ref, dict) else None
+    )
+    if (
+        not isinstance(declared_digests, list)
+        or any(
+            not isinstance(digest, str) or not _SHA256.fullmatch(digest)
+            for digest in declared_digests
         )
-        if (
-            not isinstance(declared_digests, list)
-            or any(
-                not isinstance(digest, str) or not _SHA256.fullmatch(digest)
-                for digest in declared_digests
-            )
-            or len(declared_digests) != len(set(declared_digests))
-            or not set(declared_digests).issubset(event_artifact_digests)
-        ):
-            errors.append("apex_artifact_store_receipt_set_mismatch")
-    if checkpoint_receipt and status == "candidate_ready":
+        or len(declared_digests) != len(set(declared_digests))
+        or not set(declared_digests).issubset(event_artifact_digests)
+    ):
+        errors.append("apex_artifact_store_receipt_set_mismatch")
+    if status == "candidate_ready":
         bundle_path = artifacts.get("source_bundle")
         if not isinstance(bundle_path, Path):
             errors.append("apex_checkpoint_bundle_snapshot_missing")

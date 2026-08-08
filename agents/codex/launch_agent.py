@@ -44,7 +44,7 @@ from src.campaign_isolation import (
 )
 
 
-_RECEIPT_SCHEMA = "agentkernelarena.codex-attempt-receipt/v4"
+_RECEIPT_SCHEMA = "agentkernelarena.codex-attempt-receipt/v6"
 _TERM_GRACE_SECONDS = 10.0
 _KILL_GRACE_SECONDS = 5.0
 _SUSPEND_GRACE_SECONDS = 2.0
@@ -811,7 +811,6 @@ def _candidate_persistence_receipt(
     workspace_integrity: dict[str, Any] | None,
     evidence_complete: bool,
     attempt_contained: bool,
-    suspension: dict[str, Any] | None,
     boundary_snapshot: dict[str, Any] | None,
     output_tail: dict[str, Any] | None,
     boundary_resolution: str | None,
@@ -822,7 +821,12 @@ def _candidate_persistence_receipt(
     integrity = workspace_integrity if isinstance(workspace_integrity, dict) else {}
     final_changes = integrity.get("final_changes")
     checkpoint = None
-    if exact_boundary and evidence_complete and integrity.get("passed") is True:
+    if (
+        exact_boundary
+        and evidence_complete
+        and attempt_contained
+        and integrity.get("passed") is True
+    ):
         checkpoint = {
             "before_manifest_sha256": (final_changes or {}).get(
                 "before_manifest_sha256"
@@ -842,46 +846,31 @@ def _candidate_persistence_receipt(
                 _canonical_json_bytes(attempt_cleanup)
             ),
         }
-        if not attempt_contained:
-            checkpoint["suspension_sha256"] = _sha256_bytes(
-                _canonical_json_bytes(suspension)
-            )
-            checkpoint["process_tree_cleanup_sha256"] = checkpoint.pop(
-                "attempt_cleanup_sha256"
-            )
-    if not attempt_contained:
-        return {
-            "schema": "aka.candidate-persistence-receipt/v3",
-            "policy_id": CANDIDATE_PERSISTENCE_POLICY,
-            "boundary_quiescence_policy_id": BOUNDARY_QUIESCENCE_POLICY,
-            "termination": (
-                "exact_turn_boundary"
-                if exact_boundary
-                else "completed" if evidence_complete else "rejected"
-            ),
-            "checkpoint": checkpoint,
-            "suspension": suspension if exact_boundary else None,
-            "boundary_snapshot": boundary_snapshot if exact_boundary else None,
-            "output_tail": output_tail if exact_boundary else None,
-            "boundary_resolution": boundary_resolution if exact_boundary else None,
-            "process_tree_cleanup": attempt_cleanup if exact_boundary else None,
-        }
     return {
         "schema": "aka.candidate-persistence-receipt/v4",
         "policy_id": CANDIDATE_PERSISTENCE_POLICY,
+        "attempt_contained": attempt_contained,
         "agent_process_containment_policy_id": AGENT_PROCESS_CONTAINMENT_POLICY,
         "attempt_containment_policy_id": ATTEMPT_CONTAINMENT_POLICY,
         "termination": (
             "exact_turn_boundary"
+            if exact_boundary and attempt_contained
+            else "rejected"
             if exact_boundary
-            else "completed" if evidence_complete else "rejected"
+            else "completed"
+            if evidence_complete
+            else "rejected"
         ),
         "checkpoint": checkpoint,
-        "boundary_snapshot": boundary_snapshot if exact_boundary else None,
-        "output_tail": output_tail if exact_boundary else None,
-        "boundary_resolution": boundary_resolution if exact_boundary else None,
+        "boundary_snapshot": (
+            boundary_snapshot if exact_boundary and attempt_contained else None
+        ),
+        "output_tail": output_tail if exact_boundary and attempt_contained else None,
+        "boundary_resolution": (
+            boundary_resolution if exact_boundary and attempt_contained else None
+        ),
         "attempt_cleanup": (
-            attempt_cleanup if exact_boundary else None
+            attempt_cleanup if exact_boundary and attempt_contained else None
         ),
     }
 
@@ -1648,6 +1637,8 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         baseline_snapshot = artifact_dir / ".workspace-baseline"
         _copy_workspace_snapshot(workspace_path, baseline_snapshot)
     attempt_home = prepare_attempt_home(eval_config, backend="codex")
+    if formal_campaign and attempt_home is None:
+        raise CodexSessionError("formal direct Codex requires attempt containment")
     process_env = isolated_environment(process_env, attempt_home)
     attempt_process_token = f"AKA_ATTEMPT_PROCESS_TOKEN={uuid.uuid4().hex}"
     process_env["AKA_ATTEMPT_PROCESS_TOKEN"] = attempt_process_token.split("=", 1)[1]
@@ -2273,7 +2264,6 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         workspace_integrity=workspace_integrity,
         evidence_complete=persistence_evidence_complete,
         attempt_contained=formal_campaign,
-        suspension=process_group_suspension,
         boundary_snapshot=boundary_snapshot_receipt,
         output_tail=boundary_output_tail,
         boundary_resolution=boundary_resolution,
@@ -2281,11 +2271,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     )
     session_succeeded = persistence_evidence_complete
     receipt = {
-        "schema": (
-            _RECEIPT_SCHEMA
-            if formal_campaign
-            else "agentkernelarena.codex-attempt-receipt/v3"
-        ),
+        "schema": _RECEIPT_SCHEMA,
         "campaign_binding": campaign_binding,
         "comparison_contract_sha256": comparison_contract_sha256,
         "session_succeeded": session_succeeded,

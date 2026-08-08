@@ -353,7 +353,7 @@ def test_success_receipt_binds_new_session_cli_usage_and_external_artifacts(
 
     receipt = _load_receipt(receipt_path)
     try:
-        assert receipt["schema"] == "agentkernelarena.codex-attempt-receipt/v3"
+        assert receipt["schema"] == "agentkernelarena.codex-attempt-receipt/v6"
         assert receipt["comparison_contract_sha256"] is None
         assert receipt["session_succeeded"] is True
         assert receipt["timed_out"] is False
@@ -365,6 +365,10 @@ def test_success_receipt_binds_new_session_cli_usage_and_external_artifacts(
         assert receipt["codex"]["version"] == "codex-cli 9.9.9-test"
         assert receipt["codex"]["model"] == "gpt-5.5"
         assert receipt["codex"]["effort"] == "xhigh"
+        assert receipt["candidate_persistence"]["schema"] == (
+            "aka.candidate-persistence-receipt/v4"
+        )
+        assert receipt["candidate_persistence"]["attempt_contained"] is False
         assert receipt["codex"]["binary_sha256"] == hashlib.sha256(
             binary.read_bytes()
         ).hexdigest()
@@ -752,7 +756,7 @@ def test_formal_direct_codex_persists_exact_boundary_source_checkpoint(
         launcher.launch_agent(eval_config, str(task_config), str(workspace))
         receipt = _load_receipt(receipt_path)
         assert receipt["session_succeeded"] is True
-        assert receipt["schema"] == "agentkernelarena.codex-attempt-receipt/v4"
+        assert receipt["schema"] == "agentkernelarena.codex-attempt-receipt/v6"
         assert receipt["codex"]["runtime_closure_sha256"] == (
             _BACKEND_RUNTIME_CLOSURE_SHA256
         )
@@ -770,6 +774,7 @@ def test_formal_direct_codex_persists_exact_boundary_source_checkpoint(
         persistence = receipt["candidate_persistence"]
         assert persistence["policy_id"] == "structured_agent_turn_checkpoint_v2"
         assert persistence["schema"] == "aka.candidate-persistence-receipt/v4"
+        assert persistence["attempt_contained"] is True
         assert persistence["attempt_containment_policy_id"] == (
             "private_pid_namespace_init_pidfd_v1"
         )

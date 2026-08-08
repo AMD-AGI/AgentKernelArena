@@ -10,7 +10,9 @@ from pathlib import Path
 
 import pytest
 
+from src import aka_runtime
 from src import apex_runtime
+from src import immutable_runtime_mount
 from src.apex_runtime import (
     ApexRuntimeError,
     create_immutable_mount_receipt,
@@ -25,6 +27,19 @@ from src.apex_runtime import (
 
 def _run(*arguments: str, cwd: Path) -> None:
     subprocess.run(arguments, cwd=cwd, check=True, capture_output=True)
+
+
+def test_apex_runtime_cli_imports_from_its_script_path() -> None:
+    completed = subprocess.run(
+        [sys.executable, str(Path(apex_runtime.__file__).resolve()), "--help"],
+        cwd="/",
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "mount-receipt" in completed.stdout
 
 
 def _runtime_checkout(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
@@ -91,22 +106,154 @@ def _digest(value: object) -> str:
     ).hexdigest()
 
 
-def _immutable_receipt(
-    snapshot: Path,
-    manifest: dict[str, object],
-    monkeypatch: pytest.MonkeyPatch,
-) -> dict[str, object]:
-    mount = {
+_REQUESTED_MOUNT_OPTIONS = [
+    "ro",
+    "nodev",
+    "nosuid",
+    "default_permissions",
+    "allow_other",
+    "subtype=squashfuse",
+]
+
+
+def _host_access_policy(private_ancestor: Path) -> dict[str, object]:
+    owner = {"uid": os.getuid(), "gid": os.getgid()}
+    material = {
+        "schema": aka_runtime.HOST_ACCESS_POLICY_SCHEMA,
+        "policy_id": aka_runtime.HOST_ACCESS_POLICY_ID,
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "private_ancestor": {
+            "path": str(private_ancestor),
+            "device": 7,
+            "inode": 11,
+            "uid": owner["uid"],
+            "gid": owner["gid"],
+            "mode": 0o700,
+        },
+        "fuse_config": {
+            "path": "/etc/fuse.conf",
+            "device": 8,
+            "inode": 12,
+            "uid": 0,
+            "gid": 0,
+            "mode": 0o644,
+            "nlink": 1,
+            "size_bytes": 17,
+            "sha256": "c" * 64,
+            "user_allow_other": True,
+        },
+        "mount_owner": owner,
+        "worker": dict(owner),
+        "docker_daemon": {
+            "uid": 0,
+            "trusted_boundary": True,
+            "access_via": "fuse_allow_other_with_private_ancestor_v1",
+        },
+    }
+    return {**material, "sha256": _digest(material)}
+
+
+def _observed_mount(snapshot: Path) -> dict[str, object]:
+    return {
         "mount_id": 91,
         "device": "0:91",
         "root": "/",
         "mount_point": str(snapshot),
         "filesystem": "fuse.squashfuse",
-        "mount_options": ["nodev", "ro"],
-        "super_options": ["ro"],
+        "mount_options": ["nodev", "nosuid", "ro"],
+        "super_options": [
+            "allow_other",
+            "default_permissions",
+            f"group_id={os.getgid()}",
+            "ro",
+            f"user_id={os.getuid()}",
+        ],
         "read_only": True,
     }
+
+
+def _runtime_service_evidence(
+    snapshot: Path,
+    manifest: dict[str, object],
+    image_sha256: str = "f" * 64,
+) -> dict[str, object]:
+    host_policy = _host_access_policy(snapshot.parent)
+    mount = _observed_mount(snapshot)
+    image_input_sha256 = runtime_image_inputs(snapshot, manifest)["sha256"]
+    receipt_material = {
+        "schema": immutable_runtime_mount.MOUNT_RECEIPT_SCHEMA,
+        "policy_id": apex_runtime.RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
+        "root": str(snapshot),
+        "runtime_manifest_sha256": manifest["sha256"],
+        "runtime_image_input_sha256": image_input_sha256,
+        "image_sha256": image_sha256,
+        "backing": {
+            "kind": "sealed_memfd",
+            "seals": list(immutable_runtime_mount._SEAL_NAMES),
+        },
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "host_access_policy": host_policy,
+        "mount": mount,
+    }
+    host_receipt = {**receipt_material, "sha256": _digest(receipt_material)}
+    engine_material = {
+        "schema": aka_runtime.ENGINE_EVIDENCE_SCHEMA,
+        "policy_id": apex_runtime.RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
+        "receipt_sha256": host_receipt["sha256"],
+        "runtime_image_input_sha256": image_input_sha256,
+        "image": {
+            "size_bytes": 4096,
+            "sha256": image_sha256,
+            "memfd_seals": list(immutable_runtime_mount._SEAL_NAMES),
+        },
+        "tools": {
+            "mksquashfs": {"path": "/usr/bin/mksquashfs", "sha256": "e" * 64},
+            "squashfuse": {"path": "/usr/bin/squashfuse", "sha256": "f" * 64},
+        },
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "host_access_policy_sha256": host_policy["sha256"],
+        "process": {"pid": 101, "starttime": 202, "foreground": True},
+        "mountpoint_source": {
+            "path": str(snapshot),
+            "device": 7,
+            "inode": 13,
+            "uid": os.getuid(),
+            "gid": os.getgid(),
+            "mode": 0o555,
+        },
+        "mount": mount,
+        "inventory_verification": {
+            "entry_count": 2,
+            "inventory_sha256": image_input_sha256,
+        },
+        "write_probe_errno": 30,
+    }
+    engine_evidence = {**engine_material, "sha256": _digest(engine_material)}
+    service_material = {
+        "schema": aka_runtime.ENGINE_SERVICE_SCHEMA,
+        "policy_id": aka_runtime.ENGINE_SERVICE_POLICY,
+        "ready_path": str(snapshot.parent / "runtime-service-ready.json"),
+        "service": {
+            "pid": 303,
+            "starttime": 404,
+            "owner": dict(host_policy["mount_owner"]),
+            "accepted_signals": ["SIGINT", "SIGTERM"],
+            "engine_process": {"pid": 101, "starttime": 202},
+        },
+        "mount_receipt": host_receipt,
+        "engine_evidence": engine_evidence,
+    }
+    return {**service_material, "sha256": _digest(service_material)}
+
+
+def _immutable_receipt(
+    snapshot: Path,
+    manifest: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, object]:
+    mount = _observed_mount(snapshot)
     monkeypatch.setattr(apex_runtime, "_observed_immutable_mount", lambda _root: mount)
+    service = _runtime_service_evidence(snapshot, manifest)
     material = {
         "schema": apex_runtime.RUNTIME_IMMUTABLE_MOUNT_SCHEMA,
         "policy_id": apex_runtime.RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
@@ -118,6 +265,10 @@ def _immutable_receipt(
             "kind": "sealed_memfd",
             "seals": list(apex_runtime._REQUIRED_MEMFD_SEALS),
         },
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "runtime_service_evidence_sha256": service["sha256"],
+        "runtime_engine_evidence_sha256": service["engine_evidence"]["sha256"],
+        "host_access_policy": service["mount_receipt"]["host_access_policy"],
         "mount": mount,
     }
     return {**material, "sha256": _digest(material)}
@@ -197,10 +348,56 @@ def test_mount_receipt_is_created_from_current_namespace(
     snapshot = materialize_runtime(plan, tmp_path / "attempt.runtime")
     manifest = verify_runtime_snapshot(snapshot, plan.sha256)
     expected = _immutable_receipt(snapshot, manifest, monkeypatch)
+    service = _runtime_service_evidence(snapshot, manifest)
 
-    receipt = create_immutable_mount_receipt(snapshot, manifest, "f" * 64)
+    receipt = create_immutable_mount_receipt(
+        snapshot,
+        manifest,
+        "f" * 64,
+        service,
+    )
 
     assert receipt == expected
+
+
+def test_apex_mount_receipt_rejects_host_schema_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, python, external, _marker = _runtime_checkout(tmp_path)
+    plan = plan_runtime(root, python, declared_roots=[external])
+    snapshot = materialize_runtime(plan, tmp_path / "attempt.runtime")
+    manifest = verify_runtime_snapshot(snapshot, plan.sha256)
+    receipt = _immutable_receipt(snapshot, manifest, monkeypatch)
+    receipt["schema"] = immutable_runtime_mount.MOUNT_RECEIPT_SCHEMA
+    receipt["sha256"] = _digest(
+        {key: value for key, value in receipt.items() if key != "sha256"}
+    )
+
+    with pytest.raises(ApexRuntimeError, match="invalid"):
+        apex_runtime.validate_immutable_mount_receipt(snapshot, manifest, receipt)
+
+
+def test_apex_mount_receipt_rejects_self_consistent_requested_option_tampering(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, python, external, _marker = _runtime_checkout(tmp_path)
+    plan = plan_runtime(root, python, declared_roots=[external])
+    snapshot = materialize_runtime(plan, tmp_path / "attempt.runtime")
+    manifest = verify_runtime_snapshot(snapshot, plan.sha256)
+    receipt = _immutable_receipt(snapshot, manifest, monkeypatch)
+    receipt["requested_mount_options"] = [
+        option
+        for option in _REQUESTED_MOUNT_OPTIONS
+        if option != "default_permissions"
+    ]
+    receipt["sha256"] = _digest(
+        {key: value for key, value in receipt.items() if key != "sha256"}
+    )
+
+    with pytest.raises(ApexRuntimeError, match="invalid"):
+        apex_runtime.validate_immutable_mount_receipt(snapshot, manifest, receipt)
 
 
 @pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])

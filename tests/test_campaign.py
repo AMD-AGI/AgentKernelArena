@@ -37,8 +37,8 @@ def _use_sealed_v5_runtime_test_evidence(monkeypatch) -> None:
 
     The concrete AKA snapshot, backend-closure, and Apex mount revalidators have
     dedicated security tests.  Campaign behavior tests still carry and compare
-    all v5 evidence, while these test-only seams stand in for a real SquashFS
-    mount and installed backend closure.
+    the independent runtime-isolation v5 evidence, while these test-only seams
+    stand in for a real SquashFS mount and installed backend closure.
     """
 
     monkeypatch.setattr(campaign, "_revalidate_aka_runtime", lambda _manifest: True)
@@ -253,22 +253,112 @@ def _test_aka_binding() -> tuple[dict, dict]:
         "execution_manifest_sha256": "4" * 64,
         "git_evidence_policy_id": "head_tree_direct_bytes_no_filters_v1",
     }
+    requested_mount_options = [
+        "ro",
+        "nodev",
+        "nosuid",
+        "default_permissions",
+        "allow_other",
+        "subtype=squashfuse",
+    ]
+    owner = {"uid": os.getuid(), "gid": os.getgid()}
+    host_access_policy = {
+        "schema": "aka.immutable-runtime-host-access-policy/v1",
+        "policy_id": "private_ancestor_docker_daemon_fuse_v1",
+        "requested_mount_options": requested_mount_options,
+        "private_ancestor": {
+            "path": "/test",
+            "device": 7,
+            "inode": 11,
+            **owner,
+            "mode": 0o700,
+        },
+        "fuse_config": {
+            "path": "/etc/fuse.conf",
+            "device": 8,
+            "inode": 12,
+            "uid": 0,
+            "gid": 0,
+            "mode": 0o644,
+            "nlink": 1,
+            "size_bytes": 17,
+            "sha256": "b" * 64,
+            "user_allow_other": True,
+        },
+        "mount_owner": owner,
+        "worker": dict(owner),
+        "docker_daemon": {
+            "uid": 0,
+            "trusted_boundary": True,
+            "access_via": "fuse_allow_other_with_private_ancestor_v1",
+        },
+    }
+    host_access_policy["sha256"] = campaign._canonical_json_digest(
+        host_access_policy
+    )
+    observed_mount = {
+        "filesystem_type": "fuse.squashfuse",
+        "read_only": True,
+        "root": "/",
+        "nested_mounts": [],
+    }
+    engine_evidence = {
+        "schema": "aka.immutable-runtime-mount-engine/v2",
+        "policy_id": "sealed_memfd_squashfs_docker_bindable_read_only_v2",
+        "requested_mount_options": requested_mount_options,
+        "host_access_policy_sha256": host_access_policy["sha256"],
+        "tools": {
+            "mksquashfs": {"path": "/usr/bin/mksquashfs", "sha256": "c" * 64},
+            "squashfuse": {"path": "/usr/bin/squashfuse", "sha256": "d" * 64},
+        },
+    }
+    engine_evidence["sha256"] = campaign._canonical_json_digest(engine_evidence)
+    service_mount_receipt = {"host_access_policy": host_access_policy}
+    runtime_service_evidence = {
+        "schema": "aka.immutable-runtime-mount-service-ready/v2",
+        "policy_id": "single_docker_bindable_snapshot_signal_lifetime_v2",
+        "mount_receipt": service_mount_receipt,
+        "engine_evidence": engine_evidence,
+    }
+    runtime_service_evidence["sha256"] = campaign._canonical_json_digest(
+        runtime_service_evidence
+    )
+    mount_receipt = {
+        "schema": campaign.IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
+        "policy_id": "sealed_memfd_squashfs_docker_bindable_read_only_v2",
+        "manifest_sha256": state["execution_manifest_sha256"],
+        "image_sha256": "e" * 64,
+        "memfd_seals": [
+            "F_SEAL_WRITE",
+            "F_SEAL_SHRINK",
+            "F_SEAL_GROW",
+            "F_SEAL_SEAL",
+        ],
+        "requested_mount_options": requested_mount_options,
+        "mount": observed_mount,
+        "host_access_policy": host_access_policy,
+        "runtime_service_evidence_sha256": runtime_service_evidence["sha256"],
+        "runtime_engine_evidence_sha256": engine_evidence["sha256"],
+    }
+    mount_receipt["sha256"] = campaign._canonical_json_digest(mount_receipt)
     runtime = {
-        "schema": "aka.execution-snapshot-runtime/v1",
+        "schema": "aka.execution-snapshot-runtime/v2",
         "root": "/test/aka-runtime",
         "manifest_path": "/test/aka-runtime-manifest.json",
         "manifest_file_sha256": "8" * 64,
         "manifest_sha256": state["execution_manifest_sha256"],
         "mount_receipt_path": "/test/aka-runtime-mount-receipt.json",
         "mount_receipt_file_sha256": "9" * 64,
-        "mount_receipt_sha256": "a" * 64,
+        "mount_receipt_sha256": mount_receipt["sha256"],
         "mount_receipt_schema": campaign.IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
-        "mount_receipt": {
-            "schema": campaign.IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
-            "manifest_sha256": state["execution_manifest_sha256"],
-            "mount_point": "/test/aka-runtime",
-            "sha256": "a" * 64,
-        },
+        "mount_receipt": mount_receipt,
+        "runtime_service_evidence_path": "/test/runtime-service-ready.json",
+        "runtime_service_evidence_file_sha256": "f" * 64,
+        "runtime_service_evidence_content_sha256": runtime_service_evidence[
+            "sha256"
+        ],
+        "runtime_engine_evidence_sha256": engine_evidence["sha256"],
+        "runtime_service_evidence": runtime_service_evidence,
     }
     return state, runtime
 
@@ -279,9 +369,9 @@ def _test_agent_manifest(name: str) -> dict:
     manifest = {
         "template": name,
         "session_receipt_schema": (
-            "agentkernelarena.apex-attempt-receipt/v5"
+            "agentkernelarena.apex-attempt-receipt/v6"
             if name == "apex"
-            else "agentkernelarena.codex-attempt-receipt/v4"
+            else "agentkernelarena.codex-attempt-receipt/v6"
         ),
         "backend": "codex",
         "model": "gpt-5.5",
@@ -909,6 +999,11 @@ def _write_result(workspace: Path, optimized_ms: float, *, correct: bool = True)
         "optimized_benchmark_methods": ["cuda_event"],
         "benchmark_method_consistent": True,
         "speedup_calculation_error_message": None,
+        "evaluation_mode": "candidate_scoring_v1",
+        "agent_session_score_eligible": True,
+        "agent_session_succeeded": True,
+        "agent_session_error_type": None,
+        "agent_session_terminal_status": "candidate_ready",
     }
     (workspace / "task_result.yaml").write_text(
         yaml.safe_dump(payload, sort_keys=False), encoding="utf-8"
@@ -1143,6 +1238,7 @@ def _write_campaign_codex_contract(
         ),
         encoding="utf-8",
     )
+    run_config_path.chmod(0o444)
     run_config = campaign._run_config_contract(
         run_config_path, agent_name=agent_template
     )
@@ -1247,7 +1343,7 @@ def _write_campaign_codex_contract(
     }
     apex_treatment = {
         "template": "apex",
-        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v5",
+        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v6",
         "apex_runtime_mount_policy_id": campaign.APEX_RUNTIME_MOUNT_POLICY,
         "attempt_mount_receipt_schema": campaign.ATTEMPT_MOUNT_RECEIPT_SCHEMA,
         "apex_runtime_mount_schema": campaign.APEX_RUNTIME_MOUNT_SCHEMA,
@@ -1261,9 +1357,9 @@ def _write_campaign_codex_contract(
         "max_process_output_bytes": transport["max_process_output_bytes"],
         "structured_stream_overflow_policy": transport["overflow_policy"],
         "session_receipt_schema": (
-            "agentkernelarena.codex-attempt-receipt/v4"
+            "agentkernelarena.codex-attempt-receipt/v6"
             if agent_template == "codex"
-            else "agentkernelarena.apex-attempt-receipt/v5"
+            else "agentkernelarena.apex-attempt-receipt/v6"
         ),
     }
     if agent_template == "apex":
@@ -1272,7 +1368,7 @@ def _write_campaign_codex_contract(
     comparison_runtime = campaign.comparison_runtime_projection(runtime)
     assert comparison_runtime is not None
     comparison_contract = {
-        "schema": "aka.apex-vs-codex-comparison-contract/v5",
+        "schema": "aka.apex-vs-codex-comparison-contract/v6",
         "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
         "formal_execution_sha256": campaign.FORMAL_LIVE_EXECUTION_SHA256,
         "policy": policy,
@@ -1317,6 +1413,7 @@ def _write_campaign_codex_contract(
                 "configuration": {
                     "run_config_path": str(run_config_path.resolve()),
                     "run_config_sha256": campaign._sha256_file(run_config_path),
+                    "run_config_size_bytes": run_config_path.stat().st_size,
                     "run_config_contract": run_config,
                     "tasks": tasks,
                 },
@@ -1330,7 +1427,7 @@ def _write_campaign_codex_contract(
         "_task_config_paths": task_config_paths,
         "_run_directory": str(run_directory.resolve()),
         "_checkpoint_policy": True,
-        "_apex_receipt_schema": "agentkernelarena.apex-attempt-receipt/v5",
+        "_apex_receipt_schema": "agentkernelarena.apex-attempt-receipt/v6",
     }
 
 
@@ -1368,11 +1465,11 @@ def _fixture_campaign_binding(
 @pytest.mark.parametrize(
     ("template", "receipt_schema"),
     [
-        ("apex", "agentkernelarena.apex-attempt-receipt/v5"),
-        ("codex", "agentkernelarena.codex-attempt-receipt/v4"),
+        ("apex", "agentkernelarena.apex-attempt-receipt/v6"),
+        ("codex", "agentkernelarena.codex-attempt-receipt/v6"),
     ],
 )
-def test_formal_campaign_fixture_is_a_complete_live_v5_contract(
+def test_formal_campaign_fixture_is_a_complete_live_v6_contract(
     tmp_path, template, receipt_schema
 ) -> None:
     run = tmp_path / template
@@ -1382,7 +1479,7 @@ def test_formal_campaign_fixture_is_a_complete_live_v5_contract(
     manifest = campaign._load_verified_campaign_manifest(run)
     comparison = manifest["comparison_contract"]
 
-    assert comparison["schema"] == "aka.apex-vs-codex-comparison-contract/v5"
+    assert comparison["schema"] == "aka.apex-vs-codex-comparison-contract/v6"
     assert manifest["formal_execution_sha256"] == (
         campaign.FORMAL_LIVE_EXECUTION_SHA256
     )
@@ -1447,6 +1544,7 @@ def test_formal_campaign_rejects_raw_run_config_rewrite(tmp_path: Path) -> None:
     _write_campaign_codex_contract(run, agent_template="codex")
     manifest = yaml.safe_load((run / "campaign_manifest.yaml").read_text())
     run_config = Path(manifest["configuration"]["run_config_path"])
+    run_config.chmod(0o644)
     run_config.write_text(
         run_config.read_text(encoding="utf-8") + "unexpected_output: /tmp/forged\n",
         encoding="utf-8",
@@ -1644,7 +1742,7 @@ def _write_valid_codex_receipt(
             "stdout_character_offset": 3,
         }
     receipt = {
-        "schema": "agentkernelarena.codex-attempt-receipt/v4",
+        "schema": "agentkernelarena.codex-attempt-receipt/v6",
         "campaign_binding": _fixture_campaign_binding(
             receipt_path, codex_contract
         ),
@@ -1792,6 +1890,7 @@ def _write_valid_codex_receipt(
         receipt["candidate_persistence"] = {
             "schema": "aka.candidate-persistence-receipt/v4",
             "policy_id": "structured_agent_turn_checkpoint_v2",
+            "attempt_contained": True,
             "agent_process_containment_policy_id": (
                 "private_pid_namespace_init_pidfd_v1"
             ),
@@ -1870,7 +1969,6 @@ def _write_valid_apex_receipt(
     *,
     max_turns: int = 50,
     status: str = "no_gain",
-    new_prompt_receipt: bool = True,
     run_control_turns: int | None = None,
     omit_run_control_suffix: bool = False,
     budget_turn_count: int | None = None,
@@ -1883,10 +1981,8 @@ def _write_valid_apex_receipt(
     assert status in {"candidate_ready", "no_gain", "budget_exhausted"}
     assert (
         codex_contract.get("_apex_receipt_schema")
-        == "agentkernelarena.apex-attempt-receipt/v5"
+        == "agentkernelarena.apex-attempt-receipt/v6"
     )
-    assert new_prompt_receipt
-    checkpoint_receipt = True
     turn_policy = "structured_agent_turn_checkpoint_v2"
     failed = status == "budget_exhausted"
     candidate_ready = status == "candidate_ready"
@@ -1909,56 +2005,42 @@ def _write_valid_apex_receipt(
             "sha256": hashlib.sha256(adapted_instructions.encode()).hexdigest(),
         },
     }
-    caller_run_control = None
-    verifier_argv = None
-    if new_prompt_receipt:
-        interpreter_path = "/opt/venv/bin/python"
-        verifier_argv = {
-            phase: [interpreter_path, "scripts/task_runner.py", phase]
-            for phase in ("compile", "correctness", "performance")
-        }
-        caller_run_control = {
-            "schema": "aka.apex-caller-run-control/v1",
-            "deliverable_versions": 1,
-            "structured_turn_budget": {
-                "policy": turn_policy,
-                "max_turns": (
-                    max_turns if run_control_turns is None else run_control_turns
-                ),
-                "counting": (
-                    "assistant_message_and_tool_call_start_each_count_once"
-                ),
-            },
-            "process_containment_policy_id": (
-                "private_pid_namespace_init_pidfd_v1"
+    interpreter_path = "/opt/venv/bin/python"
+    verifier_argv = {
+        phase: [interpreter_path, "scripts/task_runner.py", phase]
+        for phase in ("compile", "correctness", "performance")
+    }
+    caller_run_control = {
+        "schema": "aka.apex-caller-run-control/v1",
+        "deliverable_versions": 1,
+        "structured_turn_budget": {
+            "policy": turn_policy,
+            "max_turns": (
+                max_turns if run_control_turns is None else run_control_turns
             ),
-            "python_interpreter": {
-                "environment_variable": "AGENT_KERNEL_ARENA_PYTHON",
-                "path": interpreter_path,
-                "resolved_path": interpreter_path,
-                "sha256": "a" * 64,
-            },
-            "verifier_argv": verifier_argv,
-        }
-        if checkpoint_receipt:
-            caller_run_control["candidate_persistence_policy_id"] = (
-                "structured_agent_turn_checkpoint_v2"
-            )
-        else:
-            caller_run_control["candidate_persistence"] = (
-                "leave_best_source_before_budget_boundary"
-            )
-        if not omit_run_control_suffix:
-            adapted_instructions = (
-                f"{adapted_instructions}\n\n"
-                f"{campaign.render_apex_run_control(caller_run_control)}"
-            )
-        adapted_bytes = adapted_instructions.encode()
-        instruction_adaptation["adapted"] = {
-            "characters": len(adapted_instructions),
-            "bytes": len(adapted_bytes),
-            "sha256": hashlib.sha256(adapted_bytes).hexdigest(),
-        }
+            "counting": "assistant_message_and_tool_call_start_each_count_once",
+        },
+        "process_containment_policy_id": "private_pid_namespace_init_pidfd_v1",
+        "python_interpreter": {
+            "environment_variable": "AGENT_KERNEL_ARENA_PYTHON",
+            "path": interpreter_path,
+            "resolved_path": interpreter_path,
+            "sha256": "a" * 64,
+        },
+        "verifier_argv": verifier_argv,
+        "candidate_persistence_policy_id": "structured_agent_turn_checkpoint_v2",
+    }
+    if not omit_run_control_suffix:
+        adapted_instructions = (
+            f"{adapted_instructions}\n\n"
+            f"{campaign.render_apex_run_control(caller_run_control)}"
+        )
+    adapted_bytes = adapted_instructions.encode()
+    instruction_adaptation["adapted"] = {
+        "characters": len(adapted_instructions),
+        "bytes": len(adapted_bytes),
+        "sha256": hashlib.sha256(adapted_bytes).hexdigest(),
+    }
     invocation = {
         "schema": "apex.agent-invocation/v3",
         "cli_name": "codex",
@@ -1990,22 +2072,13 @@ def _write_valid_apex_receipt(
         }
         | {"response_token_limit": "not_supported_context_advisory_only"},
     }
-    if checkpoint_receipt:
-        invocation["process_containment_policy_id"] = (
-            "private_pid_namespace_init_pidfd_v1"
-        )
+    invocation["process_containment_policy_id"] = (
+        "private_pid_namespace_init_pidfd_v1"
+    )
     selected_turn_count = (
-        (
-            max_turns + 1
-            if checkpoint_receipt
-            else max_turns
-        )
-        if budget_turn_count is None
-        else budget_turn_count
+        max_turns + 1 if budget_turn_count is None else budget_turn_count
     ) if failed else (
         (1 if successful_turn_count is None else successful_turn_count)
-        if new_prompt_receipt
-        else 0
     )
     semantic_events = [
         {"kind": "agent_message", "index": index}
@@ -2014,7 +2087,7 @@ def _write_valid_apex_receipt(
     observed_turns = len(semantic_events)
     effective_inner_exit_code = (
         128 + signal.SIGKILL
-        if checkpoint_receipt and failed and inner_exit_code == 0
+        if failed and inner_exit_code == 0
         else inner_exit_code
     )
     bwrap = Path(shutil.which("bwrap") or "/usr/bin/bwrap").resolve()
@@ -2032,23 +2105,18 @@ def _write_valid_apex_receipt(
         "user_namespace_inode": 2004,
         "private_procfs_verified": True,
         "pidfd_opened": True,
-        "termination_reason": (
-            "stdout_budget_boundary"
-            if checkpoint_receipt and failed
-            else "natural_exit"
-        ),
+        "termination_reason": "stdout_budget_boundary" if failed else "natural_exit",
         "teardown_mode": (
-            "pidfd_sigkill" if checkpoint_receipt and failed else "natural_exit"
+            "pidfd_sigkill" if failed else "natural_exit"
         ),
-        "pidfd_sigkill_sent": checkpoint_receipt and failed,
+        "pidfd_sigkill_sent": failed,
         "namespace_init_exit_verified": True,
         "wrapper_exit_verified": True,
         "wrapper_force_killed": False,
         "terminal_status_verified": (
-            not (checkpoint_receipt and failed)
-            or containment_terminal_overlap
+            not failed or containment_terminal_overlap
         ),
-        "terminal_status_absent_after_sigkill": checkpoint_receipt and failed,
+        "terminal_status_absent_after_sigkill": failed,
         "status_eof_verified": True,
         "namespace_membership_scan_complete": True,
         "live_namespace_members_after": [],
@@ -2056,38 +2124,18 @@ def _write_valid_apex_receipt(
     }
     budget_reason = None
     if failed:
-        budget_reason = budget_reason_override or (
-            "max_turns_overrun"
-            if checkpoint_receipt
-            else (
-                "max_turns_exceeded"
-                if observed_turns > max_turns
-                else "max_turns_exhausted_before_follow_up"
-            )
-        )
-    transcript_budget = {"exceeded": failed, "enforcement_failed": False}
-    if new_prompt_receipt:
-        transcript_budget |= {
-            "turn_policy": "structured_agent_turn_v1",
-            "max_turns": max_turns,
-            "observed_turns": observed_turns,
-            "reason": budget_reason,
-        }
+        budget_reason = budget_reason_override or "max_turns_overrun"
     transcript = {
         "schema": "apex.agent-transcript/v3",
         "backend": "codex",
         "model": codex_contract["model"],
         "effort": codex_contract["effort"],
         "invocation": invocation,
-        "budget": transcript_budget,
         "events": [],
         "semantic_events": semantic_events,
         "usage": None,
         "cost": None,
-    }
-    if checkpoint_receipt:
-        transcript.pop("budget")
-        transcript["termination"] = {
+        "termination": {
             "kind": "turn_overrun" if failed else "completed",
             "reason": budget_reason,
             "capture_status": "complete",
@@ -2102,7 +2150,8 @@ def _write_valid_apex_receipt(
             "observed_turns": observed_turns,
             "max_turns": max_turns,
             "turn_policy": turn_policy,
-        }
+        },
+    }
     transcript_content = json.dumps(transcript).encode()
     transcript_digest = hashlib.sha256(transcript_content).hexdigest()
     agent_payload = {
@@ -2114,113 +2163,84 @@ def _write_valid_apex_receipt(
         "budget_exceeded": failed,
         "budget_enforcement_failed": False,
         "invocation": invocation,
-        "artifacts": (
-            [
-                {
-                    "role": "agent_transcript",
-                    "receipt": {
-                        "digest": transcript_digest,
-                        "size": len(transcript_content),
-                    },
-                }
-            ]
-            if new_prompt_receipt
-            else []
-        ),
-    }
-    if new_prompt_receipt:
-        agent_payload |= {
-            "budget_reason": budget_reason,
-            "observed_turns": observed_turns,
-            "message_event_count": observed_turns,
-            "tool_call_event_count": 0,
-            "semantic_event_count": observed_turns,
-            "attempt_id": "attempt-test",
-        }
-        if checkpoint_receipt:
-            agent_payload |= {
-                "termination_kind": "turn_overrun" if failed else "completed",
-                "termination_reason": budget_reason,
-                "capture_status": "complete",
-                "candidate_capture_allowed": not failed,
-                "observer_stop_sent": failed,
-                "process_containment_policy_id": (
-                    "private_pid_namespace_init_pidfd_v1"
-                ),
-                "process_containment": process_containment,
-                "discarded_stdout_lines": 0,
-                "discarded_stdout_bytes": 0,
-                "discarded_stdout_sha256": None,
+        "artifacts": [
+            {
+                "role": "agent_transcript",
+                "receipt": {
+                    "digest": transcript_digest,
+                    "size": len(transcript_content),
+                },
             }
-        prompt_objective = (
-            "Adapted Apex task instructions."
-            if omit_run_control_from_agent_prompt
-            else adapted_instructions
-        )
-        rendered_prompt = _context_packet_prompt(prompt_objective)
-        rendered_prompt_digest = hashlib.sha256(rendered_prompt).hexdigest()
-        prompt_payload = {
-            "attempt_id": "attempt-test",
-            "artifacts": [
-                {
-                    "role": "prompt",
-                    "receipt": {
-                        "digest": rendered_prompt_digest,
-                        "size": len(rendered_prompt),
-                    },
-                }
-            ],
-        }
-        verdict = "reject" if failed else "keep" if candidate_ready else "revert"
-        reason = (
-            (
-                "agent_turn_budget_overrun"
-                if checkpoint_receipt
-                else "agent_turn_budget_exceeded"
-            )
-            if failed
-            else "candidate_ready" if candidate_ready else "baseline_is_best"
-        )
-        event_values = [
-            (1, "evt-prompt", "prompt_sent", prompt_payload, None, "txn-prompt"),
-            (
-                2,
-                "evt-agent",
-                "agent_failed" if failed else "agent_completed",
-                agent_payload,
-                "evt-prompt",
-                "txn-agent",
-            ),
-            (
-                3,
-                "evt-decision",
-                "decision",
-                {"verdict": verdict, "reason": reason},
-                "evt-agent",
-                "txn-decision",
-            ),
-            (
-                4,
-                "evt-run",
-                "run.failed" if failed else "run.succeeded",
-                {"reason": reason},
-                "evt-decision",
-                "txn-run",
-            ),
-        ]
-    else:
-        rendered_prompt_digest = None
-        event_values = [
-            (1, "evt-agent", "agent_completed", agent_payload, None, "txn-agent"),
-            (
-                2,
-                "evt-decision",
-                "decision",
-                {"verdict": "keep" if candidate_ready else "revert"},
-                "evt-agent",
-                "txn-decision",
-            ),
-        ]
+        ],
+        "budget_reason": budget_reason,
+        "observed_turns": observed_turns,
+        "message_event_count": observed_turns,
+        "tool_call_event_count": 0,
+        "semantic_event_count": observed_turns,
+        "attempt_id": "attempt-test",
+        "termination_kind": "turn_overrun" if failed else "completed",
+        "termination_reason": budget_reason,
+        "capture_status": "complete",
+        "candidate_capture_allowed": not failed,
+        "observer_stop_sent": failed,
+        "process_containment_policy_id": "private_pid_namespace_init_pidfd_v1",
+        "process_containment": process_containment,
+        "discarded_stdout_lines": 0,
+        "discarded_stdout_bytes": 0,
+        "discarded_stdout_sha256": None,
+    }
+    prompt_objective = (
+        "Adapted Apex task instructions."
+        if omit_run_control_from_agent_prompt
+        else adapted_instructions
+    )
+    rendered_prompt = _context_packet_prompt(prompt_objective)
+    rendered_prompt_digest = hashlib.sha256(rendered_prompt).hexdigest()
+    prompt_payload = {
+        "attempt_id": "attempt-test",
+        "artifacts": [
+            {
+                "role": "prompt",
+                "receipt": {
+                    "digest": rendered_prompt_digest,
+                    "size": len(rendered_prompt),
+                },
+            }
+        ],
+    }
+    verdict = "reject" if failed else "keep" if candidate_ready else "revert"
+    reason = (
+        "agent_turn_budget_overrun"
+        if failed
+        else "candidate_ready" if candidate_ready else "baseline_is_best"
+    )
+    event_values = [
+        (1, "evt-prompt", "prompt_sent", prompt_payload, None, "txn-prompt"),
+        (
+            2,
+            "evt-agent",
+            "agent_failed" if failed else "agent_completed",
+            agent_payload,
+            "evt-prompt",
+            "txn-agent",
+        ),
+        (
+            3,
+            "evt-decision",
+            "decision",
+            {"verdict": verdict, "reason": reason},
+            "evt-agent",
+            "txn-decision",
+        ),
+        (
+            4,
+            "evt-run",
+            "run.failed" if failed else "run.succeeded",
+            {"reason": reason},
+            "evt-decision",
+            "txn-run",
+        ),
+    ]
     events = []
     for sequence, event_id, event_type, payload, parent, transaction_id in event_values:
         material = {
@@ -2305,19 +2325,14 @@ def _write_valid_apex_receipt(
             "timeout_seconds": 3600,
         },
         "baseline": {"file_hashes": baseline_hashes},
+        "instructions": adapted_instructions,
+        "instruction_adaptation": instruction_adaptation,
+        "commands": {
+            phase: {"argv": argv, "timeout_seconds": 3600}
+            for phase, argv in verifier_argv.items()
+        },
+        "caller_run_control": caller_run_control,
     }
-    if new_prompt_receipt:
-        assert caller_run_control is not None
-        assert verifier_argv is not None
-        task_spec |= {
-            "instructions": adapted_instructions,
-            "instruction_adaptation": instruction_adaptation,
-            "commands": {
-                phase: {"argv": argv, "timeout_seconds": 3600}
-                for phase, argv in verifier_argv.items()
-            },
-            "caller_run_control": caller_run_control,
-        }
     event_artifact_digests = sorted(
         {
             binding["receipt"]["digest"]
@@ -2325,13 +2340,9 @@ def _write_valid_apex_receipt(
             for binding in event["payload"].get("artifacts", [])
         }
     )
-    declared_result_digests = [transcript_digest] if new_prompt_receipt else []
+    declared_result_digests = [transcript_digest]
     reason_code = (
-        (
-            "agent_turn_budget_overrun"
-            if checkpoint_receipt
-            else "agent_turn_budget_exceeded"
-        )
+        "agent_turn_budget_overrun"
         if failed
         else (
             "candidate_verified_for_external_evaluation"
@@ -2371,7 +2382,7 @@ def _write_valid_apex_receipt(
     }
     source_bundle_snapshot: bytes | None = None
     bundle_summary: dict[str, object] | None = None
-    if checkpoint_receipt and candidate_ready:
+    if candidate_ready:
         patch_content = (
             b"--- a/source/kernel.py\n"
             b"+++ b/source/kernel.py\n"
@@ -2447,15 +2458,14 @@ def _write_valid_apex_receipt(
             "source_bundle_snapshot.json",
             source_bundle_snapshot,
         )
-    if new_prompt_receipt:
-        payloads["original_arena_prompt"] = (
-            "original_arena_prompt.txt",
-            original_prompt,
-        )
-        payloads["agent_prompt"] = (
-            "agent_prompt.txt",
-            rendered_prompt,
-        )
+    payloads["original_arena_prompt"] = (
+        "original_arena_prompt.txt",
+        original_prompt,
+    )
+    payloads["agent_prompt"] = (
+        "agent_prompt.txt",
+        rendered_prompt,
+    )
     artifacts = {}
     for name, (filename, content) in payloads.items():
         path = artifact_dir / filename
@@ -2490,20 +2500,19 @@ def _write_valid_apex_receipt(
             "reject" if failed else "keep" if candidate_ready else "revert"
         ),
         "internal_verdict_ref": "evt-decision",
-    }
-    if new_prompt_receipt:
-        lineage["prompt_event"] = {
+        "prompt_event": {
             "binding": "apex.prompt_sent_event_cas/v1",
             "event_id": "evt-prompt",
             "sha256": rendered_prompt_digest,
             "size_bytes": len(rendered_prompt),
             "artifact_path": "/attempt/artifacts/rendered_prompt.txt",
             "stdin_transport_attested": False,
-        }
+        },
+    }
     if bundle_summary is not None:
         lineage["bundle"] = bundle_summary
     receipt = {
-        "schema": "agentkernelarena.apex-attempt-receipt/v5",
+        "schema": "agentkernelarena.apex-attempt-receipt/v6",
         "campaign_binding": task_spec["campaign_binding"],
         "comparison_contract_sha256": codex_contract[
             "_comparison_contract_sha256"
@@ -2607,42 +2616,36 @@ def _write_valid_apex_receipt(
         "invocation": invocation,
         "lineage": lineage,
         "artifacts": artifacts,
+        "instruction_adaptation": instruction_adaptation,
     }
-    if new_prompt_receipt:
-        receipt["instruction_adaptation"] = instruction_adaptation
-    if not checkpoint_receipt:
-        receipt["process_group_cleanup"] = receipt.pop("attempt_process_cleanup")
-        receipt.pop("agent_process_containment_policy_id")
-        receipt.pop("attempt_containment_policy_id")
-    if checkpoint_receipt:
-        receipt["candidate_persistence"] = {
-            "schema": "aka.candidate-persistence-receipt/v4",
-            "policy_id": "structured_agent_turn_checkpoint_v2",
-            "agent_process_containment_policy_id": (
-                "private_pid_namespace_init_pidfd_v1"
-            ),
-            "agent_process_containment_sha256": (
-                campaign._canonical_json_digest(process_containment)
-            ),
-            "attempt_containment_policy_id": (
-                "private_pid_namespace_init_pidfd_v1"
-            ),
-            "attempt_process_cleanup_sha256": campaign._canonical_json_digest(
-                receipt["attempt_process_cleanup"]
-            ),
-            "termination_kind": "turn_overrun" if failed else "completed",
-            "termination_reason": budget_reason,
-            "capture_status": "complete",
-            "candidate_capture_allowed": not failed,
-            "observer_stop_sent": failed,
-            "discarded_stdout_tail": {
-                "lines": 0,
-                "bytes": 0,
-                "sha256": None,
-            },
-            "observed_turns": observed_turns,
-            "checkpoint": None,
-        }
+    receipt["candidate_persistence"] = {
+        "schema": "aka.candidate-persistence-receipt/v4",
+        "policy_id": "structured_agent_turn_checkpoint_v2",
+        "agent_process_containment_policy_id": (
+            "private_pid_namespace_init_pidfd_v1"
+        ),
+        "agent_process_containment_sha256": (
+            campaign._canonical_json_digest(process_containment)
+        ),
+        "attempt_containment_policy_id": (
+            "private_pid_namespace_init_pidfd_v1"
+        ),
+        "attempt_process_cleanup_sha256": campaign._canonical_json_digest(
+            receipt["attempt_process_cleanup"]
+        ),
+        "termination_kind": "turn_overrun" if failed else "completed",
+        "termination_reason": budget_reason,
+        "capture_status": "complete",
+        "candidate_capture_allowed": not failed,
+        "observer_stop_sent": failed,
+        "discarded_stdout_tail": {
+            "lines": 0,
+            "bytes": 0,
+            "sha256": None,
+        },
+        "observed_turns": observed_turns,
+        "checkpoint": None,
+    }
     receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
     receipt_path.chmod(0o444)
 
@@ -3728,39 +3731,6 @@ def test_direct_codex_checkpoint_rejects_incomplete_boundary_evidence(
     assert expected_error in errors
 
 
-def test_historical_v1_campaign_is_explicitly_non_scoreable(tmp_path) -> None:
-    run = tmp_path / "run"
-    run.mkdir()
-    comparison = {
-        "schema": "aka.apex-vs-codex-comparison-contract/v1",
-        "objective_policy_id": (
-            "aka.task-package-objective-and-protected-harness/v1"
-        ),
-        "prompt_policy_id": (
-            "aka.shared-objective-backend-native-context-receipted/v1"
-        ),
-    }
-    manifest = {
-        "schema": "aka.matched-campaign/v1",
-        "comparison_contract": comparison,
-        "comparison_contract_sha256": campaign._canonical_json_digest(comparison),
-    }
-    path = run / "campaign_manifest.yaml"
-    path.write_text(yaml.safe_dump(manifest), encoding="utf-8")
-    path.chmod(0o444)
-
-    historical = campaign.load_historical_campaign_manifest(run)
-
-    assert historical["classification"] == "historical_non_scoreable"
-    assert historical["scoreable"] is False
-    assert historical["comparison_generation"] == 1
-    with pytest.raises(
-        campaign.CampaignError,
-        match="campaign manifest comparison contract is invalid",
-    ):
-        campaign._load_verified_campaign_manifest(run)
-
-
 def test_apex_manifest_rejects_substituted_direct_codex_receipt(tmp_path) -> None:
     run = tmp_path / "run"
     run.mkdir()
@@ -3807,7 +3777,6 @@ def test_direct_codex_manifest_rejects_substituted_apex_receipt(tmp_path) -> Non
     _write_valid_apex_receipt(
         receipt_path,
         codex_contract,
-        new_prompt_receipt=True,
     )
 
     try:
@@ -3822,7 +3791,7 @@ def test_direct_codex_manifest_rejects_substituted_apex_receipt(tmp_path) -> Non
         _unlock_apex_receipt_directories(run)
 
 
-def test_apex_v5_receipt_recomputes_result_event_invocation_and_transcript_lineage(
+def test_apex_v6_receipt_recomputes_result_event_invocation_and_transcript_lineage(
     tmp_path,
 ) -> None:
     run = tmp_path / "run"
@@ -3834,7 +3803,6 @@ def test_apex_v5_receipt_recomputes_result_event_invocation_and_transcript_linea
     _write_valid_apex_receipt(
         receipt_path,
         codex_contract,
-        new_prompt_receipt=True,
     )
 
     receipt, errors = campaign._validate_session_receipt(
@@ -3859,7 +3827,7 @@ def test_apex_v5_receipt_recomputes_result_event_invocation_and_transcript_linea
     _unlock_apex_receipt_directories(run)
 
 
-def test_apex_v5_receipt_rejects_campaign_binding_tamper_across_all_lineage(
+def test_apex_v6_receipt_rejects_campaign_binding_tamper_across_all_lineage(
     tmp_path: Path,
 ) -> None:
     run = tmp_path / "run"
@@ -3955,7 +3923,6 @@ def test_budget_exhausted_apex_receipt_has_verified_lineage_but_is_never_eligibl
         receipt_path,
         codex_contract,
         status="budget_exhausted",
-        new_prompt_receipt=True,
     )
 
     try:
@@ -3994,7 +3961,7 @@ def test_budget_exhausted_apex_receipt_has_verified_lineage_but_is_never_eligibl
         _unlock_apex_receipt_directories(run)
 
 
-def test_v5_budget_overrun_binds_inner_pidfd_containment(tmp_path) -> None:
+def test_v6_budget_overrun_binds_inner_pidfd_containment(tmp_path) -> None:
     run = tmp_path / "run"
     workspace = run / ".campaign_attempts/task/attempt_01/workspace"
     workspace.mkdir(parents=True)
@@ -4004,7 +3971,6 @@ def test_v5_budget_overrun_binds_inner_pidfd_containment(tmp_path) -> None:
         receipt_path,
         contract,
         status="budget_exhausted",
-        new_prompt_receipt=True,
     )
 
     try:
@@ -4022,7 +3988,7 @@ def test_v5_budget_overrun_binds_inner_pidfd_containment(tmp_path) -> None:
         _unlock_apex_receipt_directories(run)
 
 
-def test_v5_budget_overrun_rejects_overlapping_inner_terminal_evidence(
+def test_v6_budget_overrun_rejects_overlapping_inner_terminal_evidence(
     tmp_path,
 ) -> None:
     run = tmp_path / "run"
@@ -4034,7 +4000,6 @@ def test_v5_budget_overrun_rejects_overlapping_inner_terminal_evidence(
         receipt_path,
         contract,
         status="budget_exhausted",
-        new_prompt_receipt=True,
         containment_terminal_overlap=True,
     )
 
@@ -4050,7 +4015,7 @@ def test_v5_budget_overrun_rejects_overlapping_inner_terminal_evidence(
         _unlock_apex_receipt_directories(run)
 
 
-def test_v5_budget_overrun_rejects_sigterm_in_place_of_pidfd_exit(tmp_path) -> None:
+def test_v6_budget_overrun_rejects_sigterm_in_place_of_pidfd_exit(tmp_path) -> None:
     run = tmp_path / "run"
     workspace = run / ".campaign_attempts/task/attempt_01/workspace"
     workspace.mkdir(parents=True)
@@ -4060,7 +4025,6 @@ def test_v5_budget_overrun_rejects_sigterm_in_place_of_pidfd_exit(tmp_path) -> N
         receipt_path,
         contract,
         status="budget_exhausted",
-        new_prompt_receipt=True,
         inner_exit_code=-signal.SIGTERM,
     )
 
@@ -4097,7 +4061,6 @@ def test_no_gain_apex_receipt_is_audited_but_never_selection_eligible(
         receipt_path,
         codex_contract,
         status="no_gain",
-        new_prompt_receipt=True,
     )
 
     try:
@@ -4124,7 +4087,7 @@ def test_no_gain_apex_receipt_is_audited_but_never_selection_eligible(
         _unlock_apex_receipt_directories(run)
 
 
-def test_new_apex_receipt_rejects_run_control_drift(tmp_path) -> None:
+def test_apex_v6_receipt_rejects_run_control_drift(tmp_path) -> None:
     run = tmp_path / "run"
     workspace = run / ".campaign_attempts/task/attempt_01/workspace"
     workspace.mkdir(parents=True)
@@ -4133,7 +4096,6 @@ def test_new_apex_receipt_rejects_run_control_drift(tmp_path) -> None:
     _write_valid_apex_receipt(
         receipt_path,
         codex_contract,
-        new_prompt_receipt=True,
         run_control_turns=49,
     )
 
@@ -4148,7 +4110,7 @@ def test_new_apex_receipt_rejects_run_control_drift(tmp_path) -> None:
         _unlock_apex_receipt_directories(run)
 
 
-def test_new_apex_receipt_rejects_run_control_missing_from_instructions(
+def test_apex_v6_receipt_rejects_run_control_missing_from_instructions(
     tmp_path,
 ) -> None:
     run = tmp_path / "run"
@@ -4159,7 +4121,6 @@ def test_new_apex_receipt_rejects_run_control_missing_from_instructions(
     _write_valid_apex_receipt(
         receipt_path,
         codex_contract,
-        new_prompt_receipt=True,
         omit_run_control_suffix=True,
     )
 
@@ -4175,7 +4136,7 @@ def test_new_apex_receipt_rejects_run_control_missing_from_instructions(
         _unlock_apex_receipt_directories(run)
 
 
-def test_new_apex_receipt_rejects_event_prompt_missing_run_control(tmp_path) -> None:
+def test_apex_v6_receipt_rejects_event_prompt_missing_run_control(tmp_path) -> None:
     run = tmp_path / "run"
     workspace = run / ".campaign_attempts/task/attempt_01/workspace"
     workspace.mkdir(parents=True)
@@ -4184,7 +4145,6 @@ def test_new_apex_receipt_rejects_event_prompt_missing_run_control(tmp_path) -> 
     _write_valid_apex_receipt(
         receipt_path,
         codex_contract,
-        new_prompt_receipt=True,
         omit_run_control_from_agent_prompt=True,
     )
 
@@ -4215,7 +4175,6 @@ def test_successful_apex_receipt_rejects_turn_count_outside_budget(
         receipt_path,
         codex_contract,
         status=status,
-        new_prompt_receipt=True,
         successful_turn_count=turn_count,
     )
 
@@ -4239,7 +4198,6 @@ def test_live_apex_receipt_cannot_downgrade_to_historical_validation(tmp_path) -
     _write_valid_apex_receipt(
         receipt_path,
         codex_contract,
-        new_prompt_receipt=True,
     )
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     receipt["schema"] = "agentkernelarena.apex-attempt-receipt/v1"
@@ -4280,7 +4238,6 @@ def test_budget_exhausted_receipt_rejects_reason_count_mismatch(
         receipt_path,
         codex_contract,
         status="budget_exhausted",
-        new_prompt_receipt=True,
         budget_turn_count=turn_count,
         budget_reason_override=budget_reason,
     )
@@ -4316,7 +4273,6 @@ def test_budget_exhausted_apex_receipt_detects_lineage_corruption(
         receipt_path,
         codex_contract,
         status="budget_exhausted",
-        new_prompt_receipt=True,
     )
     payload = json.loads(receipt_path.read_text(encoding="utf-8"))
     if tamper in {"journal", "transcript"}:
@@ -4464,7 +4420,6 @@ def test_all_no_gain_attempts_complete_without_becoming_canonical(
                 receipt_path,
                 codex_contract,
                 status="no_gain",
-                new_prompt_receipt=True,
             )
         else:
             _write_valid_codex_receipt(
@@ -4552,7 +4507,6 @@ def test_mixed_no_gain_and_candidate_attempts_select_a_candidate_symmetrically(
                 receipt_path,
                 contract,
                 status="candidate_ready" if candidate_ready else "no_gain",
-                new_prompt_receipt=True,
             )
         else:
             _write_valid_codex_receipt(
@@ -4623,7 +4577,6 @@ def test_three_valid_apex_receipts_allow_canonical_projection(
             receipt_path,
             codex_contract,
             status="candidate_ready",
-            new_prompt_receipt=True,
         )
         return True, workspace
 
@@ -4655,7 +4608,7 @@ def test_three_valid_apex_receipts_allow_canonical_projection(
         )
         assert all(
             attempt["session_receipt_binding"]["schema"]
-            == "agentkernelarena.apex-attempt-receipt/v5"
+            == "agentkernelarena.apex-attempt-receipt/v6"
             for attempt in evidence["attempts"]
         )
         assert all(
@@ -4739,8 +4692,8 @@ def _metadata_campaign_attempt(
     _write_campaign_codex_contract(run, agent_template=template)
     manifest_path = run / "campaign_manifest.yaml"
     live_schema = {
-        "apex": "agentkernelarena.apex-attempt-receipt/v5",
-        "codex": "agentkernelarena.codex-attempt-receipt/v4",
+        "apex": "agentkernelarena.apex-attempt-receipt/v6",
+        "codex": "agentkernelarena.codex-attempt-receipt/v6",
     }[template]
     if receipt_schema != live_schema:
         manifest_path.chmod(0o644)
@@ -4762,13 +4715,13 @@ def _metadata_campaign_attempt(
     [
         (
             "apex",
-            "agentkernelarena.apex-attempt-receipt/v5",
-            "agentkernelarena.apex-attempt-receipt/v5",
+            "agentkernelarena.apex-attempt-receipt/v6",
+            "agentkernelarena.apex-attempt-receipt/v6",
         ),
         (
             "codex",
-            "agentkernelarena.codex-attempt-receipt/v4",
-            "agentkernelarena.codex-attempt-receipt/v4",
+            "agentkernelarena.codex-attempt-receipt/v6",
+            "agentkernelarena.codex-attempt-receipt/v6",
         ),
         ("unknown", None, None),
         ("apex", 4, None),
@@ -4789,7 +4742,7 @@ def test_apex_no_gain_metadata_never_marks_baseline_as_scoreable(tmp_path) -> No
     receipt_path.write_text(
         json.dumps(
             {
-                "schema": "agentkernelarena.apex-attempt-receipt/v5",
+                "schema": "agentkernelarena.apex-attempt-receipt/v6",
                 "session_succeeded": True,
                 "terminal_status": "no_gain",
             }
@@ -4804,7 +4757,7 @@ def test_apex_no_gain_metadata_never_marks_baseline_as_scoreable(tmp_path) -> No
             tmp_path,
             receipt_path=receipt_path,
             template="apex",
-            receipt_schema="agentkernelarena.apex-attempt-receipt/v5",
+            receipt_schema="agentkernelarena.apex-attempt-receipt/v6",
         ),
         agent_error=None,
     )
@@ -4823,7 +4776,7 @@ def test_apex_candidate_ready_metadata_is_scoreable(tmp_path) -> None:
     receipt_path.write_text(
         json.dumps(
             {
-                "schema": "agentkernelarena.apex-attempt-receipt/v5",
+                "schema": "agentkernelarena.apex-attempt-receipt/v6",
                 "session_succeeded": True,
                 "terminal_status": "candidate_ready",
             }
@@ -4838,7 +4791,7 @@ def test_apex_candidate_ready_metadata_is_scoreable(tmp_path) -> None:
             tmp_path,
             receipt_path=receipt_path,
             template="apex",
-            receipt_schema="agentkernelarena.apex-attempt-receipt/v5",
+            receipt_schema="agentkernelarena.apex-attempt-receipt/v6",
         ),
         agent_error=None,
     )
@@ -4863,7 +4816,7 @@ def test_direct_codex_metadata_requires_a_source_delta(
     receipt_path.write_text(
         json.dumps(
             {
-                "schema": "agentkernelarena.codex-attempt-receipt/v4",
+                "schema": "agentkernelarena.codex-attempt-receipt/v6",
                 "session_succeeded": True,
                 "workspace_integrity": {
                     "final_changes": {"changed_files": changed_files}
@@ -4880,7 +4833,7 @@ def test_direct_codex_metadata_requires_a_source_delta(
             tmp_path,
             receipt_path=receipt_path,
             template="codex",
-            receipt_schema="agentkernelarena.codex-attempt-receipt/v4",
+            receipt_schema="agentkernelarena.codex-attempt-receipt/v6",
         ),
         agent_error=None,
     )
@@ -4928,12 +4881,12 @@ def test_direct_codex_metadata_requires_a_source_delta(
         ),
     ],
 )
-def test_live_v5_campaign_metadata_is_symmetric_for_apex_and_direct_codex(
+def test_live_v6_campaign_metadata_is_symmetric_for_apex_and_direct_codex(
     tmp_path, agent, template, receipt_fields, mode, eligible, terminal
 ) -> None:
     schema = {
-        "apex": "agentkernelarena.apex-attempt-receipt/v5",
-        "codex": "agentkernelarena.codex-attempt-receipt/v4",
+        "apex": "agentkernelarena.apex-attempt-receipt/v6",
+        "codex": "agentkernelarena.codex-attempt-receipt/v6",
     }[template]
     receipt_path = tmp_path / f"{template}_live_session_receipt.json"
     receipt_path.write_text(
@@ -4975,10 +4928,10 @@ def test_live_v5_campaign_metadata_is_symmetric_for_apex_and_direct_codex(
         (aka_main.AgentType.CODEX, "codex"),
     ],
 )
-def test_campaign_metadata_rejects_unsupported_sealed_schema(
+def test_campaign_metadata_rejects_old_sealed_schema(
     tmp_path, agent, template
 ) -> None:
-    schema = f"agentkernelarena.{template}-attempt-receipt/v{'6' if template == 'apex' else '5'}"
+    schema = f"agentkernelarena.{template}-attempt-receipt/v5"
     receipt_path = tmp_path / f"{template}_unsupported_receipt.json"
     receipt_path.write_text(
         json.dumps({"schema": schema, "session_succeeded": True}),
@@ -5014,8 +4967,8 @@ def test_campaign_metadata_rejects_cross_arm_live_receipt_substitution(
     tmp_path, agent, template, other_template
 ) -> None:
     live_schemas = {
-        "apex": "agentkernelarena.apex-attempt-receipt/v5",
-        "codex": "agentkernelarena.codex-attempt-receipt/v4",
+        "apex": "agentkernelarena.apex-attempt-receipt/v6",
+        "codex": "agentkernelarena.codex-attempt-receipt/v6",
     }
     expected_schema = live_schemas[template]
     receipt_path = tmp_path / f"{template}_substituted_receipt.json"
@@ -5069,7 +5022,7 @@ def test_metadata_rejects_receipt_schema_not_selected_by_sealed_manifest(
             tmp_path,
             receipt_path=receipt_path,
             template="apex",
-            receipt_schema="agentkernelarena.apex-attempt-receipt/v5",
+            receipt_schema="agentkernelarena.apex-attempt-receipt/v6",
         ),
         agent_error=None,
     )

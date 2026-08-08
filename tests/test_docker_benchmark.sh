@@ -133,6 +133,161 @@ grep -Fq -- '--unshare-pid --unshare-ipc' "$RUNNER" \
 grep -Fq -- '--proc /proc' "$RUNNER" \
     || fail "rootless bwrap preflight must mount the attempt-private procfs"
 
+# Docker's root daemon cannot traverse an owner-only FUSE mount. Formal mode
+# therefore fails before materialization unless fuse.conf explicitly permits
+# allow_other; comments and symlinks do not satisfy the prerequisite.
+FUSE_CONFIG_ENABLED="$TEST_HOME/fuse-enabled.conf"
+FUSE_CONFIG_DISABLED="$TEST_HOME/fuse-disabled.conf"
+FUSE_CONFIG_LINK="$TEST_HOME/fuse-link.conf"
+printf '#user_allow_other\n' > "$FUSE_CONFIG_DISABLED"
+printf 'user_allow_other\n' > "$FUSE_CONFIG_ENABLED"
+ln -s "$FUSE_CONFIG_ENABLED" "$FUSE_CONFIG_LINK"
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    fuse_config_enables_allow_other "$FUSE_CONFIG_ENABLED"
+) || fail "enabled FUSE allow_other prerequisite was rejected"
+if (
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    fuse_config_enables_allow_other "$FUSE_CONFIG_DISABLED"
+) >/dev/null 2>&1; then
+    fail "commented FUSE allow_other prerequisite was accepted"
+fi
+if (
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    fuse_config_enables_allow_other "$FUSE_CONFIG_LINK"
+) >/dev/null 2>&1; then
+    fail "symlink FUSE config prerequisite was accepted"
+fi
+
+# Content-addressed staging is deliberately 0555 while live. Successful exact
+# service cleanup must make only those directories owner-removable before rm.
+SEALED_CLEANUP_ROOT="$(mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX)"
+mkdir -p "$SEALED_CLEANUP_ROOT/aka-staging/digest/nested" \
+    "$SEALED_CLEANUP_ROOT/apex-staging/digest/nested"
+touch "$SEALED_CLEANUP_ROOT/aka-staging/digest/nested/file" \
+    "$SEALED_CLEANUP_ROOT/apex-staging/digest/nested/file"
+chmod 0555 "$SEALED_CLEANUP_ROOT/aka-staging/digest/nested" \
+    "$SEALED_CLEANUP_ROOT/aka-staging/digest" \
+    "$SEALED_CLEANUP_ROOT/apex-staging/digest/nested" \
+    "$SEALED_CLEANUP_ROOT/apex-staging/digest"
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    CAMPAIGN_RUNTIME_TEMP_ROOT="$SEALED_CLEANUP_ROOT"
+    bind_campaign_runtime_temp_root_identity
+    CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+    cleanup_campaign_runtime_mounts
+)
+[[ ! -e "$SEALED_CLEANUP_ROOT" ]] \
+    || fail "successful formal cleanup retained sealed staging directories"
+
+# A stale or substituted root identity must stop cleanup before chmod or rm.
+UNTRUSTED_CLEANUP_ROOT="$(mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX)"
+mkdir -p "$UNTRUSTED_CLEANUP_ROOT/aka-staging/digest"
+chmod 0555 "$UNTRUSTED_CLEANUP_ROOT/aka-staging/digest"
+if (
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    CAMPAIGN_RUNTIME_TEMP_ROOT="$UNTRUSTED_CLEANUP_ROOT"
+    bind_campaign_runtime_temp_root_identity
+    CAMPAIGN_RUNTIME_TEMP_ROOT_INODE="$((CAMPAIGN_RUNTIME_TEMP_ROOT_INODE + 1))"
+    CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+    cleanup_campaign_runtime_mounts
+) >/dev/null 2>&1; then
+    fail "untrusted formal cleanup target reported success"
+fi
+[[ -d "$UNTRUSTED_CLEANUP_ROOT" \
+    && "$(stat -c '%a' "$UNTRUSTED_CLEANUP_ROOT/aka-staging/digest")" == "555" ]] \
+    || fail "untrusted formal cleanup target was modified"
+chmod -R u+rwx "$UNTRUSTED_CLEANUP_ROOT"
+rm -rf -- "$UNTRUSTED_CLEANUP_ROOT"
+
+# A staging-root symlink is never traversed or chmodded, even inside a valid root.
+SYMLINK_CLEANUP_ROOT="$(mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX)"
+SYMLINK_CLEANUP_TARGET="$TEST_HOME/cleanup-symlink-target"
+mkdir -p "$SYMLINK_CLEANUP_TARGET/nested"
+chmod 0555 "$SYMLINK_CLEANUP_TARGET/nested"
+ln -s "$SYMLINK_CLEANUP_TARGET" "$SYMLINK_CLEANUP_ROOT/aka-staging"
+if (
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    CAMPAIGN_RUNTIME_TEMP_ROOT="$SYMLINK_CLEANUP_ROOT"
+    bind_campaign_runtime_temp_root_identity
+    CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+    cleanup_campaign_runtime_mounts
+) >/dev/null 2>&1; then
+    fail "staging-symlink cleanup reported success"
+fi
+[[ -L "$SYMLINK_CLEANUP_ROOT/aka-staging" \
+    && "$(stat -c '%a' "$SYMLINK_CLEANUP_TARGET/nested")" == "555" ]] \
+    || fail "formal cleanup traversed an untrusted staging symlink"
+rm -- "$SYMLINK_CLEANUP_ROOT/aka-staging"
+rmdir -- "$SYMLINK_CLEANUP_ROOT"
+
+# EXIT cleanup preserves an existing failure, but promotes an otherwise
+# successful formal run to EX_SOFTWARE when exact cleanup fails.
+PRESERVED_STATUS_ROOT="$(mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX)"
+set +e
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    set +e
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    CAMPAIGN_RUNTIME_TEMP_ROOT="$PRESERVED_STATUS_ROOT"
+    bind_campaign_runtime_temp_root_identity
+    CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+    /bin/sh -c 'exit 23'
+    finish_with_campaign_runtime_cleanup
+)
+PRESERVED_STATUS=$?
+set -e
+[[ "$PRESERVED_STATUS" == "23" && ! -e "$PRESERVED_STATUS_ROOT" ]] \
+    || fail "successful exact cleanup changed the original exit status"
+
+PROMOTED_STATUS_ROOT="$(mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX)"
+set +e
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    CAMPAIGN_RUNTIME_TEMP_ROOT="$PROMOTED_STATUS_ROOT"
+    bind_campaign_runtime_temp_root_identity
+    CAMPAIGN_RUNTIME_TEMP_ROOT_INODE="$((CAMPAIGN_RUNTIME_TEMP_ROOT_INODE + 1))"
+    CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+    finish_with_campaign_runtime_cleanup
+) >/dev/null 2>&1
+PROMOTED_STATUS=$?
+set -e
+[[ "$PROMOTED_STATUS" == "70" && -d "$PROMOTED_STATUS_ROOT" ]] \
+    || fail "cleanup failure did not promote a successful formal exit to 70"
+rmdir -- "$PROMOTED_STATUS_ROOT"
+
+ORIGINAL_FAILURE_ROOT="$(mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX)"
+set +e
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    set +e
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    CAMPAIGN_RUNTIME_TEMP_ROOT="$ORIGINAL_FAILURE_ROOT"
+    bind_campaign_runtime_temp_root_identity
+    CAMPAIGN_RUNTIME_TEMP_ROOT_INODE="$((CAMPAIGN_RUNTIME_TEMP_ROOT_INODE + 1))"
+    CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+    /bin/sh -c 'exit 29'
+    finish_with_campaign_runtime_cleanup
+) >/dev/null 2>&1
+ORIGINAL_FAILURE_STATUS=$?
+set -e
+[[ "$ORIGINAL_FAILURE_STATUS" == "29" && -d "$ORIGINAL_FAILURE_ROOT" ]] \
+    || fail "cleanup failure masked the original formal failure"
+rmdir -- "$ORIGINAL_FAILURE_ROOT"
+
 # Formal HOME preparation is fail-closed: it overrides every caller-provided
 # mutable path. The same helper must be a strict no-op outside a formal campaign.
 (
@@ -381,6 +536,43 @@ mapfile -t args < <(run_check_args \
     "$CAMPAIGN_CODEX_CONFIG" \
     AKA_APEX_ROOT="$CAMPAIGN_APEX_ROOT" \
     AKA_NODE_PREFIX="$CODEX_PREFIX")
+mapfile -t aka_service_receipts < <(
+    find "$CAMPAIGN_DATA_ROOT" -maxdepth 1 -type f \
+        -name 'aka-runtime-service-*.json' -print | sort
+)
+mapfile -t aka_cleanup_receipts < <(
+    find "$CAMPAIGN_DATA_ROOT" -maxdepth 1 -type f \
+        -name 'aka-runtime-cleanup-*.json' -print | sort
+)
+[[ "${#aka_service_receipts[@]}" == "1" \
+    && "${#aka_cleanup_receipts[@]}" == "1" \
+    && "$(stat -c '%a' "${aka_service_receipts[0]}")" == "444" \
+    && "$(stat -c '%a' "${aka_cleanup_receipts[0]}")" == "444" ]] \
+    || fail "formal mount service cleanup evidence was not persisted exactly"
+if find "$CAMPAIGN_DATA_ROOT" -maxdepth 1 -name 'aka-runtime-engine-*.json' \
+    -print -quit | grep -q .; then
+    fail "legacy runtime-engine evidence filename survived the clean cut"
+fi
+python3 - "${aka_service_receipts[0]}" "${aka_cleanup_receipts[0]}" <<'PY'
+import hashlib
+import json
+import sys
+
+service = json.load(open(sys.argv[1], encoding="utf-8"))
+cleanup = json.load(open(sys.argv[2], encoding="utf-8"))
+material = dict(cleanup)
+observed = material.pop("sha256")
+canonical = json.dumps(material, sort_keys=True, separators=(",", ":")).encode()
+assert cleanup["runtime_service_evidence_sha256"] == service["sha256"]
+assert cleanup["runtime_engine_evidence_sha256"] == service["engine_evidence"]["sha256"]
+assert cleanup["host_mount_receipt_sha256"] == service["mount_receipt"]["sha256"]
+assert cleanup["controller"]["pid"] == service["service"]["pid"]
+assert cleanup["controller"]["starttime"] == service["service"]["starttime"]
+assert cleanup["engine"]["pid"] == service["engine_evidence"]["process"]["pid"]
+assert cleanup["engine"]["starttime"] == service["engine_evidence"]["process"]["starttime"]
+assert cleanup["mount_absent"] is cleanup["mountpoint_empty"] is True
+assert observed == hashlib.sha256(canonical).hexdigest()
+PY
 assert_has "AGENT_KERNEL_ARENA_APEX_COMMIT=$CAMPAIGN_APEX_COMMIT" "${args[@]}"
 assert_has "AGENT_KERNEL_ARENA_APEX_DIRTY=false" "${args[@]}"
 apex_runtime_digest_arg="$(

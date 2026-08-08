@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import pytest
 import yaml
 
 from src import aka_runtime
+from src import apex_runtime
 from src import campaign
 from src import immutable_runtime_mount
 
@@ -148,7 +150,177 @@ def _digest(value: dict) -> str:
     ).hexdigest()
 
 
-def test_complete_v5_marker_deletion_cannot_create_a_live_formal_v4_run(
+_REQUESTED_MOUNT_OPTIONS = [
+    "ro",
+    "nodev",
+    "nosuid",
+    "default_permissions",
+    "allow_other",
+    "subtype=squashfuse",
+]
+
+
+def _host_access_policy(private_ancestor: Path) -> dict:
+    owner = {"uid": os.getuid(), "gid": os.getgid()}
+    material = {
+        "schema": aka_runtime.HOST_ACCESS_POLICY_SCHEMA,
+        "policy_id": aka_runtime.HOST_ACCESS_POLICY_ID,
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "private_ancestor": {
+            "path": str(private_ancestor),
+            "device": 7,
+            "inode": 11,
+            "uid": owner["uid"],
+            "gid": owner["gid"],
+            "mode": 0o700,
+        },
+        "fuse_config": {
+            "path": "/etc/fuse.conf",
+            "device": 8,
+            "inode": 12,
+            "uid": 0,
+            "gid": 0,
+            "mode": 0o644,
+            "nlink": 1,
+            "size_bytes": 17,
+            "sha256": "c" * 64,
+            "user_allow_other": True,
+        },
+        "mount_owner": owner,
+        "worker": dict(owner),
+        "docker_daemon": {
+            "uid": 0,
+            "trusted_boundary": True,
+            "access_via": "fuse_allow_other_with_private_ancestor_v1",
+        },
+    }
+    return {**material, "sha256": _digest(material)}
+
+
+def _engine_mount(path: Path) -> dict:
+    return {
+        "mount_id": 41,
+        "device": "0:41",
+        "root": "/",
+        "mount_point": str(path),
+        "filesystem": "fuse.squashfuse",
+        "mount_options": ["nodev", "nosuid", "ro"],
+        "super_options": [
+            "allow_other",
+            "default_permissions",
+            f"group_id={os.getgid()}",
+            "ro",
+            f"user_id={os.getuid()}",
+        ],
+        "read_only": True,
+    }
+
+
+def _runtime_service_evidence(
+    root: Path,
+    manifest_sha256: str,
+    image_sha256: str,
+) -> dict:
+    host_policy = _host_access_policy(root.parent)
+    engine_mount = _engine_mount(root)
+    image_input_sha256 = "d" * 64
+    receipt_material = {
+        "schema": immutable_runtime_mount.MOUNT_RECEIPT_SCHEMA,
+        "policy_id": aka_runtime.IMMUTABLE_MOUNT_POLICY,
+        "root": str(root),
+        "runtime_manifest_sha256": manifest_sha256,
+        "runtime_image_input_sha256": image_input_sha256,
+        "image_sha256": image_sha256,
+        "backing": {
+            "kind": "sealed_memfd",
+            "seals": list(immutable_runtime_mount._SEAL_NAMES),
+        },
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "host_access_policy": host_policy,
+        "mount": engine_mount,
+    }
+    host_receipt = {**receipt_material, "sha256": _digest(receipt_material)}
+    engine_material = {
+        "schema": aka_runtime.ENGINE_EVIDENCE_SCHEMA,
+        "policy_id": aka_runtime.IMMUTABLE_MOUNT_POLICY,
+        "receipt_sha256": host_receipt["sha256"],
+        "runtime_image_input_sha256": image_input_sha256,
+        "image": {
+            "size_bytes": 4096,
+            "sha256": image_sha256,
+            "memfd_seals": list(immutable_runtime_mount._SEAL_NAMES),
+        },
+        "tools": {
+            "mksquashfs": {"path": "/usr/bin/mksquashfs", "sha256": "e" * 64},
+            "squashfuse": {"path": "/usr/bin/squashfuse", "sha256": "f" * 64},
+        },
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "host_access_policy_sha256": host_policy["sha256"],
+        "process": {"pid": 101, "starttime": 202, "foreground": True},
+        "mountpoint_source": {
+            "path": str(root),
+            "device": 7,
+            "inode": 13,
+            "uid": os.getuid(),
+            "gid": os.getgid(),
+            "mode": 0o555,
+        },
+        "mount": engine_mount,
+        "inventory_verification": {
+            "entry_count": 2,
+            "inventory_sha256": image_input_sha256,
+        },
+        "write_probe_errno": 30,
+    }
+    engine_evidence = {**engine_material, "sha256": _digest(engine_material)}
+    service_material = {
+        "schema": aka_runtime.ENGINE_SERVICE_SCHEMA,
+        "policy_id": aka_runtime.ENGINE_SERVICE_POLICY,
+        "ready_path": str(root.parent / "runtime-service-ready.json"),
+        "service": {
+            "pid": 303,
+            "starttime": 404,
+            "owner": dict(host_policy["mount_owner"]),
+            "accepted_signals": ["SIGINT", "SIGTERM"],
+            "engine_process": {"pid": 101, "starttime": 202},
+        },
+        "mount_receipt": host_receipt,
+        "engine_evidence": engine_evidence,
+    }
+    return {**service_material, "sha256": _digest(service_material)}
+
+
+def _redigest_runtime_service(service: dict) -> None:
+    host_policy = service["mount_receipt"]["host_access_policy"]
+    policy_material = dict(host_policy)
+    policy_material.pop("sha256", None)
+    host_policy["sha256"] = _digest(policy_material)
+
+    host_receipt = service["mount_receipt"]
+    receipt_material = dict(host_receipt)
+    receipt_material.pop("sha256", None)
+    host_receipt["sha256"] = _digest(receipt_material)
+
+    engine = service["engine_evidence"]
+    engine["receipt_sha256"] = host_receipt["sha256"]
+    engine["host_access_policy_sha256"] = host_policy["sha256"]
+    engine_material = dict(engine)
+    engine_material.pop("sha256", None)
+    engine["sha256"] = _digest(engine_material)
+
+    service_material = dict(service)
+    service_material.pop("sha256", None)
+    service["sha256"] = _digest(service_material)
+
+
+def _write_runtime_service(path: Path, service: dict) -> tuple[str, str]:
+    payload = (json.dumps(service, indent=2, sort_keys=True) + "\n").encode()
+    path.write_bytes(payload)
+    path.chmod(0o444)
+    return hashlib.sha256(payload).hexdigest(), service["sha256"]
+
+
+def test_historical_v4_artifact_cannot_enter_the_live_formal_path(
     tmp_path: Path,
 ) -> None:
     comparison = {
@@ -176,13 +348,6 @@ def test_complete_v5_marker_deletion_cannot_create_a_live_formal_v4_run(
 
     with pytest.raises(campaign.CampaignError, match="comparison contract"):
         campaign._load_verified_campaign_manifest(tmp_path)
-    historical = campaign.load_historical_campaign_manifest(tmp_path)
-    assert historical == {
-        "classification": "historical_non_scoreable",
-        "scoreable": False,
-        "comparison_generation": 4,
-        "manifest": manifest,
-    }
     assert campaign._expected_comparison_contract_sha256(tmp_path) is None
     assert campaign._expected_session_receipt_schema(tmp_path) is None
 
@@ -198,7 +363,13 @@ def _mount_observation(path: Path) -> dict:
         "mount_options": ["ro", "nosuid", "nodev"],
         "filesystem_type": "fuse.squashfuse",
         "source": "squashfuse",
-        "super_options": ["ro"],
+        "super_options": [
+            "allow_other",
+            "default_permissions",
+            f"group_id={os.getgid()}",
+            "ro",
+            f"user_id={os.getuid()}",
+        ],
         "read_only": True,
         "nested_mounts": [],
     }
@@ -210,9 +381,14 @@ def test_mount_receipt_binds_sealed_squashfs_manifest(
     digest = "a" * 64
     observation = _mount_observation(tmp_path)
     monkeypatch.setattr(aka_runtime, "_current_snapshot_mount", lambda _root: observation)
+    service = _runtime_service_evidence(tmp_path, digest, "b" * 64)
     material = {
         "schema": aka_runtime.IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
         "policy_id": aka_runtime.IMMUTABLE_MOUNT_POLICY,
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "runtime_service_evidence_sha256": service["sha256"],
+        "runtime_engine_evidence_sha256": service["engine_evidence"]["sha256"],
+        "host_access_policy": service["mount_receipt"]["host_access_policy"],
         "manifest_sha256": digest,
         "image_sha256": "b" * 64,
         "memfd_seals": [
@@ -239,9 +415,10 @@ def test_mount_receipt_is_created_from_current_namespace(
     digest = "a" * 64
     observation = _mount_observation(tmp_path)
     monkeypatch.setattr(aka_runtime, "_current_snapshot_mount", lambda _root: observation)
+    service = _runtime_service_evidence(tmp_path, digest, "b" * 64)
 
     receipt = aka_runtime.create_immutable_mount_receipt(
-        tmp_path, digest, "b" * 64
+        tmp_path, digest, "b" * 64, service
     )
 
     assert receipt["mount"] == observation
@@ -264,9 +441,18 @@ def test_campaign_runtime_environment_revalidates_mounted_bytes(
 
     observation = _mount_observation(runtime_root)
     monkeypatch.setattr(aka_runtime, "_current_snapshot_mount", lambda _root: observation)
+    service = _runtime_service_evidence(
+        runtime_root,
+        manifest["manifest_sha256"],
+        "b" * 64,
+    )
     receipt_material = {
         "schema": aka_runtime.IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
         "policy_id": aka_runtime.IMMUTABLE_MOUNT_POLICY,
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "runtime_service_evidence_sha256": service["sha256"],
+        "runtime_engine_evidence_sha256": service["engine_evidence"]["sha256"],
+        "host_access_policy": service["mount_receipt"]["host_access_policy"],
         "manifest_sha256": manifest["manifest_sha256"],
         "image_sha256": "b" * 64,
         "memfd_seals": [
@@ -280,6 +466,11 @@ def test_campaign_runtime_environment_revalidates_mounted_bytes(
     receipt = {**receipt_material, "sha256": _digest(receipt_material)}
     receipt_path = tmp_path / "mount-receipt.json"
     receipt_path.write_text(json.dumps(receipt, sort_keys=True), encoding="utf-8")
+    service_path = tmp_path / "runtime-service-evidence.json"
+    service_file_digest, service_content_digest = _write_runtime_service(
+        service_path,
+        service,
+    )
     environment = {
         "AGENT_KERNEL_ARENA_AKA_RUNTIME_ROOT": str(runtime_root),
         "AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST": str(manifest_path),
@@ -294,6 +485,13 @@ def test_campaign_runtime_environment_revalidates_mounted_bytes(
         "AGENT_KERNEL_ARENA_AKA_RUNTIME_MOUNT_RECEIPT_FILE_SHA256": hashlib.sha256(
             receipt_path.read_bytes()
         ).hexdigest(),
+        "AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE": str(service_path),
+        "AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE_FILE_SHA256": (
+            service_file_digest
+        ),
+        "AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE_CONTENT_SHA256": (
+            service_content_digest
+        ),
     }
     for key, value in environment.items():
         monkeypatch.setenv(key, value)
@@ -307,3 +505,97 @@ def test_campaign_runtime_environment_revalidates_mounted_bytes(
     runtime_main.write_text("print('attacker')\n", encoding="utf-8")
     with pytest.raises(campaign.CampaignError, match="attestation is invalid"):
         campaign._aka_state_from_environment(runtime_root)
+
+
+def test_runtime_service_evidence_rejects_symlink_path(tmp_path: Path) -> None:
+    manifest_sha256 = "a" * 64
+    image_sha256 = "b" * 64
+    service = _runtime_service_evidence(tmp_path, manifest_sha256, image_sha256)
+    target = tmp_path / "service-target.json"
+    file_sha256, content_sha256 = _write_runtime_service(target, service)
+    symlink = tmp_path / "service-link.json"
+    symlink.symlink_to(target.name)
+
+    with pytest.raises(aka_runtime.AkaRuntimeError, match="unsafe"):
+        aka_runtime.load_runtime_service_evidence(
+            symlink,
+            file_sha256=file_sha256,
+            content_sha256=content_sha256,
+            manifest_sha256=manifest_sha256,
+            image_sha256=image_sha256,
+        )
+
+
+def test_runtime_service_rejects_apex_receipt_schema_substitution(
+    tmp_path: Path,
+) -> None:
+    manifest_sha256 = "a" * 64
+    image_sha256 = "b" * 64
+    service = _runtime_service_evidence(tmp_path, manifest_sha256, image_sha256)
+    service["mount_receipt"]["schema"] = apex_runtime.RUNTIME_IMMUTABLE_MOUNT_SCHEMA
+    _redigest_runtime_service(service)
+    path = tmp_path / "schema-substitution.json"
+    file_sha256, content_sha256 = _write_runtime_service(path, service)
+
+    with pytest.raises(aka_runtime.AkaRuntimeError, match="invalid"):
+        aka_runtime.load_runtime_service_evidence(
+            path,
+            file_sha256=file_sha256,
+            content_sha256=content_sha256,
+            manifest_sha256=manifest_sha256,
+            image_sha256=image_sha256,
+        )
+
+
+def test_runtime_service_rejects_self_consistent_requested_option_tampering(
+    tmp_path: Path,
+) -> None:
+    manifest_sha256 = "a" * 64
+    image_sha256 = "b" * 64
+    service = _runtime_service_evidence(tmp_path, manifest_sha256, image_sha256)
+    tampered = [
+        option
+        for option in _REQUESTED_MOUNT_OPTIONS
+        if option != "default_permissions"
+    ]
+    service["mount_receipt"]["requested_mount_options"] = list(tampered)
+    service["mount_receipt"]["host_access_policy"][
+        "requested_mount_options"
+    ] = list(tampered)
+    service["engine_evidence"]["requested_mount_options"] = list(tampered)
+    _redigest_runtime_service(service)
+    path = tmp_path / "option-tampering.json"
+    file_sha256, content_sha256 = _write_runtime_service(path, service)
+
+    with pytest.raises(aka_runtime.AkaRuntimeError, match="invalid"):
+        aka_runtime.load_runtime_service_evidence(
+            path,
+            file_sha256=file_sha256,
+            content_sha256=content_sha256,
+            manifest_sha256=manifest_sha256,
+            image_sha256=image_sha256,
+        )
+
+
+def test_runtime_service_rejects_controller_engine_identity_alias(
+    tmp_path: Path,
+) -> None:
+    manifest_sha256 = "a" * 64
+    image_sha256 = "b" * 64
+    service = _runtime_service_evidence(tmp_path, manifest_sha256, image_sha256)
+    service["service"]["pid"] = service["engine_evidence"]["process"]["pid"]
+    service["service"]["starttime"] = service["engine_evidence"]["process"][
+        "starttime"
+    ]
+    _redigest_runtime_service(service)
+    path = tmp_path / "aliased-processes.json"
+    file_sha256, content_sha256 = _write_runtime_service(path, service)
+
+    with pytest.raises(aka_runtime.AkaRuntimeError, match="invalid"):
+        aka_runtime.load_runtime_service_evidence(
+            path,
+            file_sha256=file_sha256,
+            content_sha256=content_sha256,
+            manifest_sha256=manifest_sha256,
+            image_sha256=image_sha256,
+        )

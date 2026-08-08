@@ -33,6 +33,23 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Sequence
 from urllib.parse import unquote, urlparse
 
+if __package__:
+    from .aka_runtime import (
+        ENGINE_EVIDENCE_SCHEMA,
+        ENGINE_SERVICE_SCHEMA,
+        HOST_ACCESS_POLICY_SCHEMA,
+        _host_access_policy_valid,
+        load_runtime_service_evidence,
+    )
+else:
+    from aka_runtime import (
+        ENGINE_EVIDENCE_SCHEMA,
+        ENGINE_SERVICE_SCHEMA,
+        HOST_ACCESS_POLICY_SCHEMA,
+        _host_access_policy_valid,
+        load_runtime_service_evidence,
+    )
+
 
 RUNTIME_MANIFEST_SCHEMA = "aka.apex-runtime-manifest/v2"
 RUNTIME_SNAPSHOT_SCHEMA = "aka.apex-runtime-snapshot/v2"
@@ -44,8 +61,10 @@ RUNTIME_WRAPPER_ALIASES = ("python", "python3")
 RUNTIME_WRAPPER_POLICY_ID = "posix_wrapper_forced_isolated_no_site_v1"
 RUNTIME_IMAGE_INPUT_SCHEMA = "aka.apex-runtime-image-input/v1"
 RUNTIME_IMAGE_INPUT_POLICY_ID = "deterministic_squashfs_inputs_v1"
-RUNTIME_IMMUTABLE_MOUNT_SCHEMA = "aka.apex-runtime-immutable-mount/v1"
-RUNTIME_IMMUTABLE_MOUNT_POLICY_ID = "sealed_memfd_squashfs_read_only_v1"
+RUNTIME_IMMUTABLE_MOUNT_SCHEMA = "aka.apex-runtime-immutable-mount/v2"
+RUNTIME_IMMUTABLE_MOUNT_POLICY_ID = (
+    "sealed_memfd_squashfs_docker_bindable_read_only_v2"
+)
 _REQUIRED_MEMFD_SEALS = (
     "F_SEAL_GROW",
     "F_SEAL_SEAL",
@@ -1297,6 +1316,13 @@ def plan_runtime(
             "receipt_policy_id": RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
             "image_input_schema": RUNTIME_IMAGE_INPUT_SCHEMA,
             "host_mode_bits_are_evidence_only": True,
+            "runtime_service_evidence_schema": ENGINE_SERVICE_SCHEMA,
+            "runtime_engine_evidence_schema": ENGINE_EVIDENCE_SCHEMA,
+            "host_access_policy_schema": HOST_ACCESS_POLICY_SCHEMA,
+            "requested_mount_options": [
+                "ro", "nodev", "nosuid", "default_permissions",
+                "allow_other", "subtype=squashfuse",
+            ],
         },
         "excluded_external_directories": sorted(_IGNORED_EXTERNAL_PARTS),
     }
@@ -2113,6 +2139,10 @@ def validate_immutable_mount_receipt(
         "runtime_image_input_sha256",
         "image_sha256",
         "backing",
+        "requested_mount_options",
+        "runtime_service_evidence_sha256",
+        "runtime_engine_evidence_sha256",
+        "host_access_policy",
         "mount",
         "sha256",
     }
@@ -2122,6 +2152,7 @@ def validate_immutable_mount_receipt(
     observed_digest = material.pop("sha256")
     backing = receipt.get("backing")
     mount = receipt.get("mount")
+    host_policy = receipt.get("host_access_policy")
     image_inputs = runtime_image_inputs(root, manifest)
     if (
         receipt.get("schema") != RUNTIME_IMMUTABLE_MOUNT_SCHEMA
@@ -2129,6 +2160,18 @@ def validate_immutable_mount_receipt(
         or receipt.get("root") != str(root)
         or receipt.get("runtime_manifest_sha256") != manifest.get("sha256")
         or receipt.get("runtime_image_input_sha256") != image_inputs["sha256"]
+        or receipt.get("requested_mount_options")
+        != [
+            "ro", "nodev", "nosuid", "default_permissions", "allow_other",
+            "subtype=squashfuse",
+        ]
+        or not _SHA256.fullmatch(
+            str(receipt.get("runtime_service_evidence_sha256") or "")
+        )
+        or not _SHA256.fullmatch(
+            str(receipt.get("runtime_engine_evidence_sha256") or "")
+        )
+        or not _host_access_policy_valid(host_policy)
         or not isinstance(receipt.get("image_sha256"), str)
         or not _SHA256.fullmatch(receipt["image_sha256"])
         or not isinstance(observed_digest, str)
@@ -2144,6 +2187,11 @@ def validate_immutable_mount_receipt(
         or mount.get("filesystem")
         not in {"squashfs", "fuse.squashfuse", "fuse.squashfuse_ll"}
         or mount.get("read_only") is not True
+        or "allow_other" not in mount.get("super_options", [])
+        or f"user_id={host_policy['mount_owner']['uid']}"
+        not in mount.get("super_options", [])
+        or f"group_id={host_policy['mount_owner']['gid']}"
+        not in mount.get("super_options", [])
         or type(mount.get("mount_id")) is not int
         or mount["mount_id"] <= 0
     ):
@@ -2155,6 +2203,7 @@ def create_immutable_mount_receipt(
     snapshot: str | Path,
     manifest: dict[str, Any],
     image_sha256: str,
+    runtime_service_evidence: dict[str, Any],
 ) -> dict[str, Any]:
     """Attest the Apex SquashFS mount in the caller's current namespace."""
 
@@ -2163,6 +2212,8 @@ def create_immutable_mount_receipt(
     if not _SHA256.fullmatch(image_sha256):
         raise ApexRuntimeError("immutable runtime image digest is invalid")
     image_inputs = runtime_image_inputs(root, manifest)
+    engine_evidence = runtime_service_evidence["engine_evidence"]
+    host_policy = runtime_service_evidence["mount_receipt"]["host_access_policy"]
     material = {
         "schema": RUNTIME_IMMUTABLE_MOUNT_SCHEMA,
         "policy_id": RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
@@ -2174,6 +2225,13 @@ def create_immutable_mount_receipt(
             "kind": "sealed_memfd",
             "seals": list(_REQUIRED_MEMFD_SEALS),
         },
+        "requested_mount_options": [
+            "ro", "nodev", "nosuid", "default_permissions", "allow_other",
+            "subtype=squashfuse",
+        ],
+        "runtime_service_evidence_sha256": runtime_service_evidence["sha256"],
+        "runtime_engine_evidence_sha256": engine_evidence["sha256"],
+        "host_access_policy": host_policy,
         "mount": _observed_immutable_mount(root),
     }
     receipt = {**material, "sha256": _canonical_digest(material)}
@@ -2291,6 +2349,9 @@ def _main(arguments: Sequence[str] | None = None) -> int:
             command.add_argument("--sha256", required=True)
         if name == "mount-receipt":
             command.add_argument("--image-sha256", required=True)
+            command.add_argument("--service-evidence", required=True)
+            command.add_argument("--service-file-sha256", required=True)
+            command.add_argument("--service-content-sha256", required=True)
         command.add_argument("--output")
     options = parser.parse_args(arguments)
     if options.command in {"verify", "image-input", "mount-receipt"}:
@@ -2300,8 +2361,15 @@ def _main(arguments: Sequence[str] | None = None) -> int:
         elif options.command == "image-input":
             value = runtime_image_inputs(options.snapshot, manifest)
         else:
+            service = load_runtime_service_evidence(
+                options.service_evidence,
+                file_sha256=options.service_file_sha256,
+                content_sha256=options.service_content_sha256,
+                manifest_sha256=options.sha256,
+                image_sha256=options.image_sha256,
+            )
             value = create_immutable_mount_receipt(
-                options.snapshot, manifest, options.image_sha256
+                options.snapshot, manifest, options.image_sha256, service
             )
     else:
         if options.command == "discover":

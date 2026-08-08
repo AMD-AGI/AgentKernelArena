@@ -8,7 +8,9 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import secrets
+import select
 import signal
 import stat
 import subprocess
@@ -27,11 +29,13 @@ class ImmutableRuntimeMountError(RuntimeError):
 
 IMAGE_INPUT_SCHEMA = "aka.apex-runtime-image-input/v1"
 IMAGE_INPUT_POLICY_ID = "deterministic_squashfs_inputs_v1"
-MOUNT_RECEIPT_SCHEMA = "aka.apex-runtime-immutable-mount/v1"
-MOUNT_POLICY_ID = "sealed_memfd_squashfs_read_only_v1"
-ENGINE_EVIDENCE_SCHEMA = "aka.immutable-runtime-mount-engine/v1"
-SERVICE_READY_SCHEMA = "aka.immutable-runtime-mount-service-ready/v1"
-SERVICE_POLICY_ID = "single_snapshot_signal_lifetime_v1"
+MOUNT_RECEIPT_SCHEMA = "aka.host-runtime-immutable-mount/v2"
+MOUNT_POLICY_ID = "sealed_memfd_squashfs_docker_bindable_read_only_v2"
+ENGINE_EVIDENCE_SCHEMA = "aka.immutable-runtime-mount-engine/v2"
+SERVICE_READY_SCHEMA = "aka.immutable-runtime-mount-service-ready/v2"
+SERVICE_POLICY_ID = "single_docker_bindable_snapshot_signal_lifetime_v2"
+HOST_ACCESS_POLICY_SCHEMA = "aka.immutable-runtime-host-access-policy/v1"
+HOST_ACCESS_POLICY_ID = "private_ancestor_docker_daemon_fuse_v1"
 _MKSQUASHFS = Path("/usr/bin/mksquashfs")
 _MKSQUASHFS_SHA256 = "403080bcd98ea7be2cbb261a10e99a89571e3a3beed6ab6cc3b88e01a0b51053"
 _MKSQUASHFS_SIZE = 260_792
@@ -57,6 +61,15 @@ _SEAL_MASK = (
 )
 _SHA256 = frozenset("0123456789abcdef")
 _MAX_INVENTORY_BYTES = 64 * 1024 * 1024
+_MOUNT_OPTIONS = (
+    "ro",
+    "nodev",
+    "nosuid",
+    "default_permissions",
+    "allow_other",
+    "subtype=squashfuse",
+)
+_USER_ALLOW_OTHER = re.compile(rb"(?m)^[ \t]*user_allow_other[ \t]*$")
 
 
 def _canonical_digest(value: Any) -> str:
@@ -64,6 +77,112 @@ def _canonical_digest(value: Any) -> str:
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _capture_host_access_policy(
+    private_ancestor: str | Path,
+    fuse_config: str | Path,
+    *,
+    worker_uid: int,
+    worker_gid: int,
+) -> dict[str, Any]:
+    """Bind the cross-principal FUSE/Docker access boundary to host identities."""
+
+    ancestor_raw = Path(private_ancestor)
+    config_raw = Path(fuse_config)
+    if not ancestor_raw.is_absolute() or not config_raw.is_absolute():
+        raise ImmutableRuntimeMountError("host access policy paths must be absolute")
+    ancestor = Path(os.path.abspath(ancestor_raw))
+    config = Path(os.path.abspath(config_raw))
+    config_fd = -1
+    try:
+        ancestor_metadata = ancestor.lstat()
+        config_metadata = config.lstat()
+        if (
+            ancestor_raw != ancestor
+            or ancestor.resolve(strict=True) != ancestor
+            or stat.S_ISLNK(ancestor_metadata.st_mode)
+            or not stat.S_ISDIR(ancestor_metadata.st_mode)
+            or stat.S_IMODE(ancestor_metadata.st_mode) != 0o700
+            or ancestor_metadata.st_uid != os.geteuid()
+            or ancestor_metadata.st_gid != os.getegid()
+            or worker_uid != ancestor_metadata.st_uid
+            or worker_gid != ancestor_metadata.st_gid
+        ):
+            raise ImmutableRuntimeMountError(
+                "runtime private ancestor identity is unsafe"
+            )
+        if (
+            config_raw != config
+            or config.resolve(strict=True) != config
+            or stat.S_ISLNK(config_metadata.st_mode)
+            or not stat.S_ISREG(config_metadata.st_mode)
+            or config_metadata.st_uid != 0
+            or config_metadata.st_gid != 0
+            or stat.S_IMODE(config_metadata.st_mode) & 0o022
+            or config_metadata.st_nlink != 1
+            or config_metadata.st_size <= 0
+            or config_metadata.st_size > 1024 * 1024
+        ):
+            raise ImmutableRuntimeMountError("FUSE config identity is unsafe")
+        config_fd = os.open(
+            config,
+            os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+        )
+        opened = os.fstat(config_fd)
+        payload = _descriptor_bytes(config_fd, config_metadata.st_size)
+        if (
+            (opened.st_dev, opened.st_ino)
+            != (config_metadata.st_dev, config_metadata.st_ino)
+            or opened.st_size != config_metadata.st_size
+            or len(payload) != config_metadata.st_size
+            or _USER_ALLOW_OTHER.search(payload) is None
+        ):
+            raise ImmutableRuntimeMountError(
+                "FUSE config changed or lacks user_allow_other"
+            )
+        material = {
+            "schema": HOST_ACCESS_POLICY_SCHEMA,
+            "policy_id": HOST_ACCESS_POLICY_ID,
+            "requested_mount_options": list(_MOUNT_OPTIONS),
+            "private_ancestor": {
+                "path": str(ancestor),
+                "device": ancestor_metadata.st_dev,
+                "inode": ancestor_metadata.st_ino,
+                "uid": ancestor_metadata.st_uid,
+                "gid": ancestor_metadata.st_gid,
+                "mode": stat.S_IMODE(ancestor_metadata.st_mode),
+            },
+            "fuse_config": {
+                "path": str(config),
+                "device": config_metadata.st_dev,
+                "inode": config_metadata.st_ino,
+                "uid": config_metadata.st_uid,
+                "gid": config_metadata.st_gid,
+                "mode": stat.S_IMODE(config_metadata.st_mode),
+                "nlink": config_metadata.st_nlink,
+                "size_bytes": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "user_allow_other": True,
+            },
+            "mount_owner": {"uid": os.geteuid(), "gid": os.getegid()},
+            "worker": {"uid": worker_uid, "gid": worker_gid},
+            "docker_daemon": {
+                "uid": 0,
+                "trusted_boundary": True,
+                "access_via": "fuse_allow_other_with_private_ancestor_v1",
+            },
+        }
+        return {**material, "sha256": _canonical_digest(material)}
+    except ImmutableRuntimeMountError:
+        raise
+    except OSError as error:
+        raise ImmutableRuntimeMountError(
+            "cannot capture host access policy"
+        ) from error
+    finally:
+        if config_fd >= 0:
+            os.close(config_fd)
 
 
 def _valid_sha256(value: Any) -> bool:
@@ -560,8 +679,11 @@ def _wait_for_mount(
                 or mount["read_only"] is not True
                 or "ro" not in mount["mount_options"]
                 or not {"nodev", "nosuid"}.issubset(mount["mount_options"])
+                or "allow_other" not in mount["super_options"]
             ):
-                raise ImmutableRuntimeMountError("runtime SquashFS mount is not read-only")
+                raise ImmutableRuntimeMountError(
+                    "runtime SquashFS mount lacks the required read-only access policy"
+                )
             return mount
         if process.poll() is not None:
             stderr = process.stderr.read().decode("utf-8", "replace") if process.stderr else ""
@@ -590,8 +712,273 @@ def _process_starttime(pid: int) -> int:
         raise ImmutableRuntimeMountError("cannot bind squashfuse process identity") from error
 
 
+def _open_exact_pidfd(pid: int, starttime: int, label: str) -> int:
+    if (
+        type(pid) is not int
+        or pid <= 1
+        or type(starttime) is not int
+        or starttime <= 0
+    ):
+        raise ImmutableRuntimeMountError(f"{label} process identity is invalid")
+    try:
+        descriptor = os.pidfd_open(pid, 0)
+    except ProcessLookupError:
+        return -1
+    except OSError as error:
+        raise ImmutableRuntimeMountError(f"cannot open {label} process identity") from error
+    try:
+        try:
+            observed = _process_starttime(pid)
+        except ImmutableRuntimeMountError:
+            if _pidfd_exited(descriptor, 0):
+                return descriptor
+            raise
+        if observed != starttime:
+            raise ImmutableRuntimeMountError(
+                f"{label} PID was reused; refusing to signal it"
+            )
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _pidfd_exited(descriptor: int, timeout_seconds: float) -> bool:
+    poller = select.poll()
+    poller.register(descriptor, select.POLLIN | select.POLLHUP | select.POLLERR)
+    return bool(poller.poll(max(0, int(timeout_seconds * 1000))))
+
+
+def _stop_exact_pidfd(
+    descriptor: int,
+    *,
+    pid: int,
+    starttime: int,
+    label: str,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    identity = {"pid": pid, "starttime": starttime}
+    if descriptor < 0:
+        return {
+            "label": label,
+            **identity,
+            "absent_before_cleanup": True,
+            "signals": [],
+            "verified_exited": True,
+        }
+    signals: list[str] = []
+    if not _pidfd_exited(descriptor, 0):
+        try:
+            signal.pidfd_send_signal(descriptor, signal.SIGTERM)
+            signals.append("SIGTERM")
+        except ProcessLookupError:
+            if not _pidfd_exited(descriptor, 0):
+                raise ImmutableRuntimeMountError(
+                    f"{label} disappeared without an exited pidfd"
+                )
+        except OSError as error:
+            raise ImmutableRuntimeMountError(
+                f"cannot signal {label} process"
+            ) from error
+        if not _pidfd_exited(descriptor, timeout_seconds):
+            try:
+                signal.pidfd_send_signal(descriptor, signal.SIGKILL)
+                signals.append("SIGKILL")
+            except ProcessLookupError:
+                if not _pidfd_exited(descriptor, 0):
+                    raise ImmutableRuntimeMountError(
+                        f"{label} disappeared without an exited pidfd"
+                    )
+            except OSError as error:
+                raise ImmutableRuntimeMountError(
+                    f"cannot force-stop {label} process"
+                ) from error
+            if not _pidfd_exited(descriptor, min(2.0, timeout_seconds)):
+                raise ImmutableRuntimeMountError(
+                    f"{label} process survived exact cleanup"
+                )
+    return {
+        "label": label,
+        **identity,
+        "absent_before_cleanup": False,
+        "signals": signals,
+        "verified_exited": True,
+    }
+
+
+def _run_exact_unmount(root: Path, *, lazy: bool, timeout_seconds: float) -> int:
+    descriptor, _identity = _open_pinned_tool(
+        _FUSERMOUNT,
+        expected_sha256=_FUSERMOUNT_SHA256,
+        expected_size=_FUSERMOUNT_SIZE,
+        expected_mode=0o4755,
+    )
+    os.close(descriptor)
+    arguments = [str(_FUSERMOUNT), "-uz" if lazy else "-u", str(root)]
+    try:
+        completed = subprocess.run(
+            arguments,
+            capture_output=True,
+            check=False,
+            timeout=timeout_seconds,
+            env={"LC_ALL": "C", "PATH": "/usr/bin:/bin"},
+        )
+    except subprocess.TimeoutExpired as error:
+        raise ImmutableRuntimeMountError("exact runtime unmount timed out") from error
+    return completed.returncode
+
+
+def _verified_recovery_boundary(
+    evidence: Mapping[str, Any], mountpoint: Path, private_ancestor: Path
+) -> tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]]:
+    service = evidence.get("service")
+    receipt = evidence.get("mount_receipt")
+    engine = evidence.get("engine_evidence")
+    if not all(isinstance(value, Mapping) for value in (service, receipt, engine)):
+        raise ImmutableRuntimeMountError("runtime service evidence is incomplete")
+    engine_process = engine.get("process")
+    if not isinstance(engine_process, Mapping):
+        raise ImmutableRuntimeMountError("runtime engine identity is incomplete")
+    policy = receipt.get("host_access_policy")
+    ancestor = policy.get("private_ancestor") if isinstance(policy, Mapping) else None
+    metadata = private_ancestor.lstat()
+    expected_ancestor = {
+        "path": str(private_ancestor),
+        "device": metadata.st_dev,
+        "inode": metadata.st_ino,
+        "uid": metadata.st_uid,
+        "gid": metadata.st_gid,
+        "mode": stat.S_IMODE(metadata.st_mode),
+    }
+    if (
+        private_ancestor.resolve(strict=True) != private_ancestor
+        or stat.S_ISLNK(metadata.st_mode)
+        or not stat.S_ISDIR(metadata.st_mode)
+        or ancestor != expected_ancestor
+        or metadata.st_uid != os.geteuid()
+        or metadata.st_gid != os.getegid()
+        or receipt.get("root") != str(mountpoint)
+        or mountpoint == private_ancestor
+        or not mountpoint.is_relative_to(private_ancestor)
+        or service.get("engine_process")
+        != {
+            "pid": engine_process.get("pid"),
+            "starttime": engine_process.get("starttime"),
+        }
+    ):
+        raise ImmutableRuntimeMountError("runtime recovery boundary changed")
+    return service, receipt, engine
+
+
+def recover_immutable_runtime_service(
+    evidence: Mapping[str, Any],
+    *,
+    controller_pid: int,
+    controller_starttime: int,
+    mountpoint: str | Path,
+    private_ancestor: str | Path,
+    timeout_seconds: float = 10.0,
+) -> dict[str, Any]:
+    """Stop a service and its engine from validated, persisted evidence."""
+
+    raw_root = Path(mountpoint)
+    raw_ancestor = Path(private_ancestor)
+    root = Path(os.path.abspath(raw_root))
+    ancestor_root = Path(os.path.abspath(raw_ancestor))
+    if (
+        not raw_root.is_absolute()
+        or raw_root != root
+        or not raw_ancestor.is_absolute()
+        or raw_ancestor != ancestor_root
+        or type(timeout_seconds) not in {int, float}
+        or not 0.0 < timeout_seconds <= 300.0
+    ):
+        raise ImmutableRuntimeMountError("runtime recovery arguments are unsafe")
+    service, receipt, engine = _verified_recovery_boundary(
+        evidence, root, ancestor_root
+    )
+    engine_process = engine["process"]
+    if (
+        service.get("pid") != controller_pid
+        or service.get("starttime") != controller_starttime
+        or engine_process.get("pid") == controller_pid
+    ):
+        raise ImmutableRuntimeMountError("runtime controller identity changed")
+    controller_fd = engine_fd = -1
+    unmount_returncodes: list[int] = []
+    try:
+        controller_fd = _open_exact_pidfd(
+            controller_pid, controller_starttime, "runtime controller"
+        )
+        engine_fd = _open_exact_pidfd(
+            engine_process["pid"], engine_process["starttime"], "runtime engine"
+        )
+        controller = _stop_exact_pidfd(
+            controller_fd,
+            pid=controller_pid,
+            starttime=controller_starttime,
+            label="runtime controller",
+            timeout_seconds=timeout_seconds,
+        )
+        observed, nested = _mountinfo(root)
+        if nested or (observed is not None and observed != receipt.get("mount")):
+            raise ImmutableRuntimeMountError("runtime mount changed before recovery")
+        if observed is not None:
+            unmount_returncodes.append(
+                _run_exact_unmount(root, lazy=False, timeout_seconds=timeout_seconds)
+            )
+        engine_cleanup = _stop_exact_pidfd(
+            engine_fd,
+            pid=engine_process["pid"],
+            starttime=engine_process["starttime"],
+            label="runtime engine",
+            timeout_seconds=min(2.0, timeout_seconds),
+        )
+        remaining, nested = _mountinfo(root)
+        if nested or (remaining is not None and remaining != receipt.get("mount")):
+            raise ImmutableRuntimeMountError("runtime mount changed during recovery")
+        if remaining is not None:
+            unmount_returncodes.append(
+                _run_exact_unmount(root, lazy=True, timeout_seconds=timeout_seconds)
+            )
+        remaining, nested = _mountinfo(root)
+        if remaining is not None or nested:
+            raise ImmutableRuntimeMountError("runtime mount survived exact recovery")
+        source = engine.get("mountpoint_source")
+        metadata = root.lstat()
+        if (
+            not isinstance(source, Mapping)
+            or (metadata.st_dev, metadata.st_ino)
+            != (source.get("device"), source.get("inode"))
+            or any(root.iterdir())
+        ):
+            raise ImmutableRuntimeMountError("runtime mountpoint changed after recovery")
+        material = {
+            "schema": "aka.immutable-runtime-mount-recovery/v1",
+            "runtime_service_evidence_sha256": evidence.get("sha256"),
+            "runtime_engine_evidence_sha256": engine.get("sha256"),
+            "host_mount_receipt_sha256": receipt.get("sha256"),
+            "controller": controller,
+            "engine": engine_cleanup,
+            "mountpoint": str(root),
+            "unmount_returncodes": unmount_returncodes,
+            "mount_absent": True,
+            "mountpoint_empty": True,
+        }
+        return {**material, "sha256": _canonical_digest(material)}
+    finally:
+        for descriptor in (controller_fd, engine_fd):
+            if descriptor >= 0:
+                os.close(descriptor)
+
+
 def _receipt(
-    *, root: Path, inventory: Mapping[str, Any], image: bytes, mount: dict[str, Any]
+    *,
+    root: Path,
+    inventory: Mapping[str, Any],
+    image: bytes,
+    mount: dict[str, Any],
+    host_access_policy: Mapping[str, Any],
 ) -> dict[str, Any]:
     material = {
         "schema": MOUNT_RECEIPT_SCHEMA,
@@ -601,6 +988,8 @@ def _receipt(
         "runtime_image_input_sha256": inventory["sha256"],
         "image_sha256": hashlib.sha256(image).hexdigest(),
         "backing": {"kind": "sealed_memfd", "seals": list(_SEAL_NAMES)},
+        "requested_mount_options": list(_MOUNT_OPTIONS),
+        "host_access_policy": dict(host_access_policy),
         "mount": mount,
     }
     return {**material, "sha256": _canonical_digest(material)}
@@ -723,6 +1112,10 @@ def mount_immutable_runtime(
     mountpoint: str | Path,
     inventory: Mapping[str, Any],
     *,
+    private_ancestor: str | Path,
+    fuse_config: str | Path = "/etc/fuse.conf",
+    worker_uid: int,
+    worker_gid: int,
     timeout_seconds: float = 10.0,
 ) -> ImmutableRuntimeMount:
     """Build, seal, mount, and fully verify one immutable runtime tree."""
@@ -745,6 +1138,22 @@ def mount_immutable_runtime(
     entries = validate_image_inventory(inventory)
     _verify_tree(staging, entries, mounted=False)
     root = _canonical_empty_mountpoint(mountpoint, staging)
+    host_access_policy = _capture_host_access_policy(
+        private_ancestor,
+        fuse_config,
+        worker_uid=worker_uid,
+        worker_gid=worker_gid,
+    )
+    ancestor = Path(host_access_policy["private_ancestor"]["path"])
+    if (
+        root == ancestor
+        or staging == ancestor
+        or not root.is_relative_to(ancestor)
+        or not staging.is_relative_to(ancestor)
+    ):
+        raise ImmutableRuntimeMountError(
+            "runtime trees escape the private host ancestor"
+        )
     image, builder = _build_image(staging, entries)
     _verify_tree(staging, entries, mounted=False)
     image_fd = squashfuse_fd = mountpoint_fd = -1
@@ -778,7 +1187,7 @@ def mount_immutable_runtime(
                 "-f",
                 "-s",
                 "-o",
-                "ro,nodev,nosuid,subtype=squashfuse",
+                ",".join(_MOUNT_OPTIONS),
                 f"/proc/self/fd/{image_fd}",
                 f"/proc/self/fd/{mountpoint_fd}",
             ],
@@ -796,7 +1205,13 @@ def mount_immutable_runtime(
         mount = _wait_for_mount(root, process, timeout_seconds)
         verification = _verify_tree(root, entries, mounted=True)
         write_errno = _read_only_probe(root)
-        receipt = _receipt(root=root, inventory=inventory, image=image, mount=mount)
+        receipt = _receipt(
+            root=root,
+            inventory=inventory,
+            image=image,
+            mount=mount,
+            host_access_policy=host_access_policy,
+        )
         evidence_material = {
             "schema": ENGINE_EVIDENCE_SCHEMA,
             "policy_id": MOUNT_POLICY_ID,
@@ -808,6 +1223,8 @@ def mount_immutable_runtime(
                 "memfd_seals": list(_SEAL_NAMES),
             },
             "tools": {"mksquashfs": builder, "squashfuse": squashfuse},
+            "requested_mount_options": list(_MOUNT_OPTIONS),
+            "host_access_policy_sha256": host_access_policy["sha256"],
             "process": {
                 "pid": process.pid,
                 "starttime": _process_starttime(process.pid),
@@ -1160,7 +1577,12 @@ def _service_ready_evidence(
         "service": {
             "pid": os.getpid(),
             "starttime": _process_starttime(os.getpid()),
+            "owner": {"uid": os.geteuid(), "gid": os.getegid()},
             "accepted_signals": ["SIGINT", "SIGTERM"],
+            "engine_process": {
+                "pid": handle.evidence["process"]["pid"],
+                "starttime": handle.evidence["process"]["starttime"],
+            },
         },
         "mount_receipt": handle.receipt,
         "engine_evidence": handle.evidence,
@@ -1174,6 +1596,10 @@ def serve_immutable_runtime(
     inventory: Mapping[str, Any],
     ready_path: str | Path,
     *,
+    private_ancestor: str | Path,
+    fuse_config: str | Path,
+    worker_uid: int,
+    worker_gid: int,
     timeout_seconds: float = 10.0,
 ) -> dict[str, Any]:
     """Keep one verified mount alive until SIGTERM or SIGINT, then clean it."""
@@ -1203,6 +1629,10 @@ def serve_immutable_runtime(
             staging_root,
             mountpoint,
             inventory,
+            private_ancestor=private_ancestor,
+            fuse_config=fuse_config,
+            worker_uid=worker_uid,
+            worker_gid=worker_gid,
             timeout_seconds=timeout_seconds,
         )
         if stopped.is_set():
@@ -1265,6 +1695,10 @@ def _argument_parser() -> argparse.ArgumentParser:
     serve.add_argument("--inventory-json", required=True)
     serve.add_argument("--mountpoint", required=True)
     serve.add_argument("--ready-json", required=True)
+    serve.add_argument("--private-ancestor", required=True)
+    serve.add_argument("--fuse-config", default="/etc/fuse.conf")
+    serve.add_argument("--worker-uid", type=int, required=True)
+    serve.add_argument("--worker-gid", type=int, required=True)
     serve.add_argument("--timeout-seconds", type=float, default=10.0)
     return parser
 
@@ -1283,6 +1717,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             arguments.mountpoint,
             inventory,
             arguments.ready_json,
+            private_ancestor=arguments.private_ancestor,
+            fuse_config=arguments.fuse_config,
+            worker_uid=arguments.worker_uid,
+            worker_gid=arguments.worker_gid,
             timeout_seconds=arguments.timeout_seconds,
         )
     except (ImmutableRuntimeMountError, OSError, ValueError) as error:
@@ -1293,6 +1731,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 __all__ = [
     "ENGINE_EVIDENCE_SCHEMA",
+    "HOST_ACCESS_POLICY_ID",
+    "HOST_ACCESS_POLICY_SCHEMA",
     "IMAGE_INPUT_POLICY_ID",
     "IMAGE_INPUT_SCHEMA",
     "ImmutableRuntimeMount",
@@ -1303,6 +1743,7 @@ __all__ = [
     "SERVICE_READY_SCHEMA",
     "main",
     "mount_immutable_runtime",
+    "recover_immutable_runtime_service",
     "serve_immutable_runtime",
     "validate_image_inventory",
 ]

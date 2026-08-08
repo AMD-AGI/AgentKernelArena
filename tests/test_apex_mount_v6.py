@@ -14,6 +14,8 @@ import yaml
 from src import campaign
 from src import campaign_isolation
 from src import apex_runtime
+from src import aka_runtime
+from src import immutable_runtime_mount
 
 
 apex_launcher = importlib.import_module("agents.apex.launch_agent")
@@ -23,6 +25,129 @@ def _digest(value: dict) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+
+
+_REQUESTED_MOUNT_OPTIONS = [
+    "ro",
+    "nodev",
+    "nosuid",
+    "default_permissions",
+    "allow_other",
+    "subtype=squashfuse",
+]
+
+
+def _host_access_policy(private_ancestor: Path) -> dict:
+    owner = {"uid": os.getuid(), "gid": os.getgid()}
+    material = {
+        "schema": aka_runtime.HOST_ACCESS_POLICY_SCHEMA,
+        "policy_id": aka_runtime.HOST_ACCESS_POLICY_ID,
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "private_ancestor": {
+            "path": str(private_ancestor),
+            "device": 7,
+            "inode": 11,
+            "uid": owner["uid"],
+            "gid": owner["gid"],
+            "mode": 0o700,
+        },
+        "fuse_config": {
+            "path": "/etc/fuse.conf",
+            "device": 8,
+            "inode": 12,
+            "uid": 0,
+            "gid": 0,
+            "mode": 0o644,
+            "nlink": 1,
+            "size_bytes": 17,
+            "sha256": "c" * 64,
+            "user_allow_other": True,
+        },
+        "mount_owner": owner,
+        "worker": dict(owner),
+        "docker_daemon": {
+            "uid": 0,
+            "trusted_boundary": True,
+            "access_via": "fuse_allow_other_with_private_ancestor_v1",
+        },
+    }
+    return {**material, "sha256": _digest(material)}
+
+
+def _runtime_service_evidence(
+    snapshot: Path,
+    manifest: dict,
+    mount: dict,
+    image_sha256: str = "f" * 64,
+) -> dict:
+    host_policy = _host_access_policy(snapshot.parent)
+    image_input_sha256 = apex_runtime.runtime_image_inputs(
+        snapshot, manifest
+    )["sha256"]
+    receipt_material = {
+        "schema": immutable_runtime_mount.MOUNT_RECEIPT_SCHEMA,
+        "policy_id": apex_runtime.RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
+        "root": str(snapshot),
+        "runtime_manifest_sha256": manifest["sha256"],
+        "runtime_image_input_sha256": image_input_sha256,
+        "image_sha256": image_sha256,
+        "backing": {
+            "kind": "sealed_memfd",
+            "seals": list(immutable_runtime_mount._SEAL_NAMES),
+        },
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "host_access_policy": host_policy,
+        "mount": mount,
+    }
+    host_receipt = {**receipt_material, "sha256": _digest(receipt_material)}
+    engine_material = {
+        "schema": aka_runtime.ENGINE_EVIDENCE_SCHEMA,
+        "policy_id": apex_runtime.RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
+        "receipt_sha256": host_receipt["sha256"],
+        "runtime_image_input_sha256": image_input_sha256,
+        "image": {
+            "size_bytes": 4096,
+            "sha256": image_sha256,
+            "memfd_seals": list(immutable_runtime_mount._SEAL_NAMES),
+        },
+        "tools": {
+            "mksquashfs": {"path": "/usr/bin/mksquashfs", "sha256": "e" * 64},
+            "squashfuse": {"path": "/usr/bin/squashfuse", "sha256": "f" * 64},
+        },
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "host_access_policy_sha256": host_policy["sha256"],
+        "process": {"pid": 101, "starttime": 202, "foreground": True},
+        "mountpoint_source": {
+            "path": str(snapshot),
+            "device": 7,
+            "inode": 13,
+            "uid": os.getuid(),
+            "gid": os.getgid(),
+            "mode": 0o555,
+        },
+        "mount": mount,
+        "inventory_verification": {
+            "entry_count": 2,
+            "inventory_sha256": image_input_sha256,
+        },
+        "write_probe_errno": 30,
+    }
+    engine = {**engine_material, "sha256": _digest(engine_material)}
+    service_material = {
+        "schema": aka_runtime.ENGINE_SERVICE_SCHEMA,
+        "policy_id": aka_runtime.ENGINE_SERVICE_POLICY,
+        "ready_path": str(snapshot.parent / "runtime-service-ready.json"),
+        "service": {
+            "pid": 303,
+            "starttime": 404,
+            "owner": dict(host_policy["mount_owner"]),
+            "accepted_signals": ["SIGINT", "SIGTERM"],
+            "engine_process": {"pid": 101, "starttime": 202},
+        },
+        "mount_receipt": host_receipt,
+        "engine_evidence": engine,
+    }
+    return {**service_material, "sha256": _digest(service_material)}
 
 
 def _repository(runtime_digest: str = "c" * 64) -> dict:
@@ -60,7 +185,7 @@ def _run_config_contract() -> dict:
     }
 
 
-def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
+def _v6_manifest(runtime_digest: str = "c" * 64) -> dict:
     tasks = [{"task_index": 1, "task_name": "task"}]
     repositories = {
         "agent_kernel_arena": {
@@ -76,7 +201,7 @@ def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
     }
     agent = {
         "template": "apex",
-        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v5",
+        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v6",
         "apex_runtime_mount_policy_id": (
             campaign_isolation.APEX_RUNTIME_MOUNT_POLICY
         ),
@@ -109,7 +234,7 @@ def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
     evaluator = {"execution_manifest_sha256": "2" * 64}
     run_config = _run_config_contract()
     comparison = {
-        "schema": "aka.apex-vs-codex-comparison-contract/v5",
+        "schema": "aka.apex-vs-codex-comparison-contract/v6",
         "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
         "formal_execution_sha256": campaign._FORMAL_LIVE_COMMITMENT_SHA256,
         "objective_policy_id": (
@@ -172,7 +297,9 @@ def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
 def _write_manifest(run: Path, manifest: dict) -> Path:
     run_config_contract = manifest["comparison_contract"].get("run_config")
     if isinstance(run_config_contract, dict):
-        run_config_path = run / "formal_run_config.yaml"
+        run_config_directory = run / ".formal-run-config"
+        run_config_directory.mkdir(parents=True, exist_ok=True)
+        run_config_path = run_config_directory / "run_config.yaml"
         run_config_path.write_text(
             yaml.safe_dump(
                 {
@@ -183,10 +310,13 @@ def _write_manifest(run: Path, manifest: dict) -> Path:
             ),
             encoding="utf-8",
         )
+        run_config_path.chmod(0o444)
+        run_config_directory.chmod(0o555)
         manifest["configuration"].update(
             {
                 "run_config_path": str(run_config_path.resolve()),
                 "run_config_sha256": campaign._sha256_file(run_config_path),
+                "run_config_size_bytes": run_config_path.stat().st_size,
                 "run_config_contract": run_config_contract,
             }
         )
@@ -196,26 +326,26 @@ def _write_manifest(run: Path, manifest: dict) -> Path:
     return path
 
 
-def test_v5_comparison_binds_repository_mount_policy_and_runtime_digest(
+def test_v6_comparison_binds_repository_mount_policy_and_runtime_digest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(campaign, "_revalidate_aka_runtime", lambda _manifest: True)
     monkeypatch.setattr(
         campaign, "verify_backend_closure", lambda closure, _digest: closure
     )
-    manifest = _v5_manifest()
+    manifest = _v6_manifest()
     _write_manifest(tmp_path, manifest)
 
     loaded = campaign._load_verified_campaign_manifest(tmp_path)
 
     comparison = loaded["comparison_contract"]
     assert campaign._expected_session_receipt_schema(tmp_path) == (
-        "agentkernelarena.apex-attempt-receipt/v5"
+        "agentkernelarena.apex-attempt-receipt/v6"
     )
     assert comparison["repositories"] == loaded["repositories"]
     assert comparison["apex_treatment"] == {
         "template": "apex",
-        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v5",
+        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v6",
         "apex_runtime_mount_policy_id": (
             campaign_isolation.APEX_RUNTIME_MOUNT_POLICY
         ),
@@ -226,10 +356,10 @@ def test_v5_comparison_binds_repository_mount_policy_and_runtime_digest(
         "runtime_manifest_sha256": "c" * 64,
     }
 
-    codex_manifest = _v5_manifest()
+    codex_manifest = _v6_manifest()
     codex_manifest["agent"] = {
         "template": "codex",
-        "session_receipt_schema": "agentkernelarena.codex-attempt-receipt/v4",
+        "session_receipt_schema": "agentkernelarena.codex-attempt-receipt/v6",
         "backend_runtime_closure_schema": "aka.backend-runtime-closure/v1",
         "backend_runtime_closure_sha256": "9" * 64,
         "backend_runtime_closure": _backend_closure(),
@@ -252,7 +382,7 @@ def test_v5_comparison_binds_repository_mount_policy_and_runtime_digest(
     _write_manifest(codex_run, codex_manifest)
     loaded_codex = campaign._load_verified_campaign_manifest(codex_run)
     assert campaign._expected_session_receipt_schema(codex_run) == (
-        "agentkernelarena.codex-attempt-receipt/v4"
+        "agentkernelarena.codex-attempt-receipt/v6"
     )
     assert (
         loaded_codex["comparison_contract_sha256"]
@@ -277,7 +407,7 @@ def test_apex_repository_requires_runner_runtime_manifest_digest(
         campaign._apex_state_from_environment()
 
 
-def test_comparison_v5_digest_is_identical_for_apex_and_codex_arms() -> None:
+def test_comparison_v6_digest_is_identical_for_apex_and_codex_arms() -> None:
     policy = campaign.CampaignPolicy(
         comparison="apex_vs_codex",
         attempts=3,
@@ -316,7 +446,7 @@ def test_comparison_v5_digest_is_identical_for_apex_and_codex_arms() -> None:
     apex = {
         **common,
         "template": "apex",
-        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v5",
+        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v6",
         "apex_runtime_mount_policy_id": (
             campaign_isolation.APEX_RUNTIME_MOUNT_POLICY
         ),
@@ -329,7 +459,7 @@ def test_comparison_v5_digest_is_identical_for_apex_and_codex_arms() -> None:
     codex = {
         **common,
         "template": "codex",
-        "session_receipt_schema": "agentkernelarena.codex-attempt-receipt/v4",
+        "session_receipt_schema": "agentkernelarena.codex-attempt-receipt/v6",
     }
     arguments = {
         "policy": policy,
@@ -361,10 +491,10 @@ def test_comparison_v5_digest_is_identical_for_apex_and_codex_arms() -> None:
 @pytest.mark.parametrize(
     "tamper", ["repository", "marker", "receipt", "schema", "combined"]
 )
-def test_v5_manifest_divergence_and_downgrade_fail_closed(
+def test_v6_manifest_divergence_and_downgrade_fail_closed(
     tmp_path: Path, tamper: str
 ) -> None:
-    manifest = _v5_manifest()
+    manifest = _v6_manifest()
     if tamper == "repository":
         manifest["repositories"] = {
             **manifest["repositories"],
@@ -397,80 +527,6 @@ def test_v5_manifest_divergence_and_downgrade_fail_closed(
         campaign._load_verified_campaign_manifest(tmp_path)
     assert campaign._expected_session_receipt_schema(tmp_path) is None
     assert campaign._expected_comparison_contract_sha256(tmp_path) is None
-
-
-@pytest.mark.parametrize("generation", [1, 2, 3, 4])
-def test_v1_through_v4_history_never_acquires_mount_semantics(
-    tmp_path: Path, generation: int
-) -> None:
-    comparison = {
-        "schema": f"aka.apex-vs-codex-comparison-contract/v{generation}",
-        "objective_policy_id": (
-            "aka.task-package-objective-and-protected-harness/v1"
-        ),
-        "prompt_policy_id": (
-            "aka.shared-objective-backend-native-context-receipted/v1"
-        ),
-    }
-    if generation >= 2:
-        comparison["candidate_persistence_policy_id"] = (
-            campaign.CANDIDATE_PERSISTENCE_POLICY
-        )
-    if generation == 3:
-        comparison["boundary_quiescence_policy_id"] = (
-            campaign.BOUNDARY_QUIESCENCE_POLICY
-        )
-    if generation == 4:
-        comparison.update(
-            {
-                "agent_process_containment_policy_id": (
-                    campaign.AGENT_PROCESS_CONTAINMENT_POLICY
-                ),
-                "attempt_containment_policy_id": (
-                    campaign_isolation.ATTEMPT_CONTAINMENT_POLICY
-                ),
-            }
-        )
-    agent = {
-        "template": "apex",
-        "session_receipt_schema": (
-            f"agentkernelarena.apex-attempt-receipt/v{generation}"
-        ),
-    }
-    if generation == 4:
-        # This transitional marker existed briefly, but v4 never promised
-        # role-complete mount evidence.
-        agent["apex_runtime_mount_policy_id"] = (
-            campaign_isolation.APEX_RUNTIME_MOUNT_POLICY
-        )
-    manifest = {
-        "schema": "aka.matched-campaign/v1",
-        "agent": agent,
-        "repositories": {
-            "apex": {
-                "commit": "a" * 40,
-                "dirty": False,
-                "status_sha256": "b" * 64,
-            }
-        },
-        "comparison_contract": comparison,
-        "comparison_contract_sha256": _digest(comparison),
-    }
-    _write_manifest(tmp_path, manifest)
-
-    with pytest.raises(campaign.CampaignError, match="comparison contract"):
-        campaign._load_verified_campaign_manifest(tmp_path)
-    history = campaign.load_historical_campaign_manifest(tmp_path)
-    assert history["manifest"] == manifest
-    assert history["scoreable"] is False
-    assert history["comparison_generation"] == generation
-    assert campaign._expected_apex_runtime_mount(tmp_path) == {"invalid": True}
-    assert campaign._apex_runtime_mount_errors({}, tmp_path) == [
-        "apex_runtime_mount_contract_mismatch"
-    ]
-    assert campaign.resolve_session_receipt_schema(
-        "apex", "agentkernelarena.apex-attempt-receipt/v5"
-    ) == "agentkernelarena.apex-attempt-receipt/v5"
 
 
 def _mount_record(path: Path, mount_id: int, *, root: Path | None = None) -> dict:
@@ -652,7 +708,7 @@ def _role_fixture(tmp_path: Path) -> tuple[dict, dict, Path, Path, Path]:
     return receipt, task_spec, receipt_path, contract_path, runtime
 
 
-def test_v5_mount_roles_are_closed_canonical_and_non_overlapping(
+def test_v6_mount_roles_are_closed_canonical_and_non_overlapping(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     receipt, task_spec, receipt_path, contract_path, runtime = _role_fixture(
@@ -692,7 +748,7 @@ def test_v5_mount_roles_are_closed_canonical_and_non_overlapping(
     ) == ["apex_attempt_mount_role_contract_mismatch"]
 
 
-def test_v5_mount_roles_reject_private_tmpfs_or_role_set_tampering(
+def test_v6_mount_roles_reject_private_tmpfs_or_role_set_tampering(
     tmp_path: Path,
 ) -> None:
     receipt, task_spec, receipt_path, contract_path, runtime = _role_fixture(
@@ -725,7 +781,7 @@ def test_v5_mount_roles_reject_private_tmpfs_or_role_set_tampering(
         "target_alias",
     ],
 )
-def test_v5_mount_auditor_rejects_namespace_and_sealed_exec_tampering(
+def test_v6_mount_auditor_rejects_namespace_and_sealed_exec_tampering(
     tmp_path: Path, tamper: str
 ) -> None:
     receipt, task_spec, receipt_path, contract_path, runtime = _role_fixture(tmp_path)
@@ -768,7 +824,7 @@ def test_v5_mount_auditor_rejects_namespace_and_sealed_exec_tampering(
     ) == ["apex_attempt_mount_role_contract_mismatch"]
 
 
-def test_v5_runtime_snapshot_binds_manifest_and_role_receipt(
+def test_v6_runtime_snapshot_binds_manifest_and_role_receipt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     receipt, task_spec, receipt_path, contract_path, runtime_parent = (
@@ -827,31 +883,28 @@ def test_v5_runtime_snapshot_binds_manifest_and_role_receipt(
         "root": "/",
         "mount_point": str(runtime),
         "filesystem": "fuse.squashfuse",
-        "mount_options": ["nodev", "ro"],
-        "super_options": ["ro"],
+        "mount_options": ["nodev", "nosuid", "ro"],
+        "super_options": [
+            "allow_other",
+            "default_permissions",
+            f"group_id={os.getgid()}",
+            "ro",
+            f"user_id={os.getuid()}",
+        ],
         "read_only": True,
     }
     monkeypatch.setattr(
         apex_runtime, "_observed_immutable_mount", lambda _root: immutable_mount
     )
-    image_inputs = apex_runtime.runtime_image_inputs(runtime, runtime_manifest)
-    immutable_material = {
-        "schema": apex_runtime.RUNTIME_IMMUTABLE_MOUNT_SCHEMA,
-        "policy_id": apex_runtime.RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
-        "root": str(runtime),
-        "runtime_manifest_sha256": runtime_digest,
-        "runtime_image_input_sha256": image_inputs["sha256"],
-        "image_sha256": "f" * 64,
-        "backing": {
-            "kind": "sealed_memfd",
-            "seals": list(apex_runtime._REQUIRED_MEMFD_SEALS),
-        },
-        "mount": immutable_mount,
-    }
-    immutable_receipt = {
-        **immutable_material,
-        "sha256": _digest(immutable_material),
-    }
+    runtime_service_evidence = _runtime_service_evidence(
+        runtime, runtime_manifest, immutable_mount
+    )
+    immutable_receipt = apex_runtime.create_immutable_mount_receipt(
+        runtime,
+        runtime_manifest,
+        "f" * 64,
+        runtime_service_evidence,
+    )
 
     mounts = receipt["attempt_mounts"]
     runtime_source_mount = _mount_identity(runtime, 24)
@@ -885,7 +938,7 @@ def test_v5_runtime_snapshot_binds_manifest_and_role_receipt(
     monkeypatch.setattr(
         campaign, "verify_backend_closure", lambda closure, _digest: closure
     )
-    campaign_manifest = _v5_manifest(runtime_digest)
+    campaign_manifest = _v6_manifest(runtime_digest)
     runtime_repository = {
         "commit": runtime_manifest["git"]["commit"],
         "dirty": runtime_manifest["git"]["dirty"],
@@ -931,7 +984,7 @@ def test_v5_runtime_snapshot_binds_manifest_and_role_receipt(
     )
     receipt.update(
         {
-            "schema": "agentkernelarena.apex-attempt-receipt/v5",
+            "schema": "agentkernelarena.apex-attempt-receipt/v6",
             "apex_runtime_mount": runtime_receipt,
             "apex": {
                 "entrypoint": str(entrypoint),

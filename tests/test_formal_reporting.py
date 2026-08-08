@@ -22,7 +22,9 @@ def _write_read_only_yaml(path: Path, payload: dict) -> None:
     payload = copy.deepcopy(payload)
     if path.name == "campaign_manifest.yaml" and payload.get("schema") == "aka.matched-campaign/v1":
         run_config_contract = payload["comparison_contract"]["run_config"]
-        run_config = path.parent / "formal_run_config.yaml"
+        run_config_directory = path.parent / ".formal-run-config"
+        run_config_directory.mkdir(parents=True, exist_ok=True)
+        run_config = run_config_directory / "run_config.yaml"
         run_config.write_text(
             yaml.safe_dump(
                 {
@@ -33,10 +35,13 @@ def _write_read_only_yaml(path: Path, payload: dict) -> None:
             ),
             encoding="utf-8",
         )
+        run_config.chmod(0o444)
+        run_config_directory.chmod(0o555)
         payload["configuration"].update(
             {
                 "run_config_path": str(run_config.resolve()),
                 "run_config_sha256": postprocessing._sha256_file(run_config),
+                "run_config_size_bytes": run_config.stat().st_size,
                 "run_config_contract": run_config_contract,
             }
         )
@@ -46,7 +51,7 @@ def _write_read_only_yaml(path: Path, payload: dict) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _use_sealed_v5_runtime_test_evidence(
+def _use_sealed_runtime_test_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Keep reporting tests independent of host-only mount/runtime probes."""
@@ -56,6 +61,11 @@ def _use_sealed_v5_runtime_test_evidence(
         campaign,
         "verify_backend_closure",
         lambda closure, _expected_digest: closure,
+    )
+    monkeypatch.setattr(
+        compare_runs,
+        "load_runtime_service_evidence",
+        lambda *_args, **_kwargs: _aka_runtime_service(),
     )
 
 
@@ -285,6 +295,145 @@ def _backend_closure() -> dict:
     return {**material, "closure_sha256": _digest(material)}
 
 
+_REQUESTED_MOUNT_OPTIONS = [
+    "ro",
+    "nodev",
+    "nosuid",
+    "default_permissions",
+    "allow_other",
+    "subtype=squashfuse",
+]
+
+
+def _host_access_policy() -> dict:
+    owner = {"uid": os.getuid(), "gid": os.getgid()}
+    material = {
+        "schema": "aka.immutable-runtime-host-access-policy/v1",
+        "policy_id": "private_ancestor_docker_daemon_fuse_v1",
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "private_ancestor": {
+            "path": "/test",
+            "device": 7,
+            "inode": 11,
+            "uid": owner["uid"],
+            "gid": owner["gid"],
+            "mode": 0o700,
+        },
+        "fuse_config": {
+            "path": "/etc/fuse.conf",
+            "device": 8,
+            "inode": 12,
+            "uid": 0,
+            "gid": 0,
+            "mode": 0o644,
+            "nlink": 1,
+            "size_bytes": 17,
+            "sha256": "c" * 64,
+            "user_allow_other": True,
+        },
+        "mount_owner": owner,
+        "worker": dict(owner),
+        "docker_daemon": {
+            "uid": 0,
+            "trusted_boundary": True,
+            "access_via": "fuse_allow_other_with_private_ancestor_v1",
+        },
+    }
+    return {**material, "sha256": _digest(material)}
+
+
+def _aka_runtime_service() -> dict:
+    runtime_root = "/test/aka-runtime"
+    manifest_sha256 = "4" * 64
+    image_sha256 = "5" * 64
+    host_policy = _host_access_policy()
+    engine_mount = {
+        "mount_id": 41,
+        "device": "0:41",
+        "root": "/",
+        "mount_point": runtime_root,
+        "filesystem": "fuse.squashfuse",
+        "mount_options": ["nodev", "nosuid", "ro"],
+        "super_options": [
+            "allow_other",
+            "default_permissions",
+            f"group_id={os.getgid()}",
+            "ro",
+            f"user_id={os.getuid()}",
+        ],
+        "read_only": True,
+    }
+    host_material = {
+        "schema": "aka.host-runtime-immutable-mount/v2",
+        "policy_id": "sealed_memfd_squashfs_docker_bindable_read_only_v2",
+        "root": runtime_root,
+        "runtime_manifest_sha256": manifest_sha256,
+        "runtime_image_input_sha256": "d" * 64,
+        "image_sha256": image_sha256,
+        "backing": {
+            "kind": "sealed_memfd",
+            "seals": [
+                "F_SEAL_GROW",
+                "F_SEAL_SEAL",
+                "F_SEAL_SHRINK",
+                "F_SEAL_WRITE",
+            ],
+        },
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "host_access_policy": host_policy,
+        "mount": engine_mount,
+    }
+    host_receipt = {**host_material, "sha256": _digest(host_material)}
+    engine_material = {
+        "schema": "aka.immutable-runtime-mount-engine/v2",
+        "policy_id": "sealed_memfd_squashfs_docker_bindable_read_only_v2",
+        "receipt_sha256": host_receipt["sha256"],
+        "runtime_image_input_sha256": "d" * 64,
+        "image": {
+            "size_bytes": 4096,
+            "sha256": image_sha256,
+            "memfd_seals": host_material["backing"]["seals"],
+        },
+        "tools": {
+            "mksquashfs": {"path": "/usr/bin/mksquashfs", "sha256": "e" * 64},
+            "squashfuse": {"path": "/usr/bin/squashfuse", "sha256": "f" * 64},
+        },
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "host_access_policy_sha256": host_policy["sha256"],
+        "process": {"pid": 101, "starttime": 202, "foreground": True},
+        "mountpoint_source": {
+            "path": runtime_root,
+            "device": 7,
+            "inode": 13,
+            "uid": os.getuid(),
+            "gid": os.getgid(),
+            "mode": 0o555,
+        },
+        "mount": engine_mount,
+        "inventory_verification": {
+            "entry_count": 2,
+            "inventory_sha256": "d" * 64,
+        },
+        "write_probe_errno": 30,
+    }
+    engine = {**engine_material, "sha256": _digest(engine_material)}
+    service_material = {
+        "schema": "aka.immutable-runtime-mount-service-ready/v2",
+        "policy_id": "single_docker_bindable_snapshot_signal_lifetime_v2",
+        "ready_path": "/test/evidence/runtime-service-ready.json",
+        "service": {
+            "pid": 303,
+            "starttime": 404,
+            "owner": dict(host_policy["mount_owner"]),
+            "accepted_signals": ["SIGINT", "SIGTERM"],
+            "engine_process": {"pid": 101, "starttime": 202},
+        },
+        "mount_receipt": host_receipt,
+        "engine_evidence": engine,
+    }
+    return {**service_material, "sha256": _digest(service_material)}
+
+
 def _aka_runtime_snapshot() -> dict:
     runtime_root = "/test/aka-runtime"
     manifest_sha256 = "4" * 64
@@ -298,13 +447,14 @@ def _aka_runtime_snapshot() -> dict:
         "mount_options": ["ro", "nosuid", "nodev"],
         "filesystem_type": "fuse.squashfuse",
         "source": "squashfuse",
-        "super_options": ["ro"],
+        "super_options": ["allow_other", "default_permissions", "ro"],
         "read_only": True,
         "nested_mounts": [],
     }
+    service = _aka_runtime_service()
     receipt_material = {
         "schema": campaign.IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
-        "policy_id": "sealed_memfd_squashfs_read_only_v1",
+        "policy_id": "sealed_memfd_squashfs_docker_bindable_read_only_v2",
         "manifest_sha256": manifest_sha256,
         "image_sha256": "5" * 64,
         "memfd_seals": [
@@ -313,12 +463,16 @@ def _aka_runtime_snapshot() -> dict:
             "F_SEAL_GROW",
             "F_SEAL_SEAL",
         ],
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "runtime_service_evidence_sha256": service["sha256"],
+        "runtime_engine_evidence_sha256": service["engine_evidence"]["sha256"],
+        "host_access_policy": service["mount_receipt"]["host_access_policy"],
         "mount": mount,
     }
     receipt = {**receipt_material, "sha256": _digest(receipt_material)}
     receipt_file = json.dumps(receipt, indent=2, sort_keys=True) + "\n"
     return {
-        "schema": "aka.execution-snapshot-runtime/v1",
+        "schema": "aka.execution-snapshot-runtime/v2",
         "root": runtime_root,
         "manifest_path": "/test/evidence/aka-runtime-manifest.json",
         "manifest_file_sha256": "8" * 64,
@@ -330,6 +484,13 @@ def _aka_runtime_snapshot() -> dict:
         "mount_receipt_sha256": receipt["sha256"],
         "mount_receipt_schema": campaign.IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
         "mount_receipt": receipt,
+        "runtime_service_evidence_path": "/test/evidence/runtime-service-ready.json",
+        "runtime_service_evidence_file_sha256": hashlib.sha256(
+            (json.dumps(service, indent=2, sort_keys=True) + "\n").encode()
+        ).hexdigest(),
+        "runtime_service_evidence_content_sha256": service["sha256"],
+        "runtime_engine_evidence_sha256": service["engine_evidence"]["sha256"],
+        "runtime_service_evidence": service,
     }
 
 
@@ -509,7 +670,7 @@ def _formal_manifest(task_names: list[str], arm: str = "codex") -> dict:
     }
     apex_treatment = {
         "template": "apex",
-        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v5",
+        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v6",
         "apex_runtime_mount_policy_id": campaign.APEX_RUNTIME_MOUNT_POLICY,
         "attempt_mount_receipt_schema": campaign.ATTEMPT_MOUNT_RECEIPT_SCHEMA,
         "apex_runtime_mount_schema": campaign.APEX_RUNTIME_MOUNT_SCHEMA,
@@ -530,7 +691,7 @@ def _formal_manifest(task_names: list[str], arm: str = "codex") -> dict:
         "effective_config_sha256": _digest(effective_run_config),
     }
     comparison = {
-        "schema": "aka.apex-vs-codex-comparison-contract/v5",
+        "schema": "aka.apex-vs-codex-comparison-contract/v6",
         "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
         "formal_execution_sha256": campaign.FORMAL_LIVE_EXECUTION_SHA256,
         "objective_policy_id": "aka.task-package-objective-and-protected-harness/v1",
@@ -563,9 +724,9 @@ def _formal_manifest(task_names: list[str], arm: str = "codex") -> dict:
         "agent_config_sha256": "1" * 64,
         "template": arm,
         "session_receipt_schema": (
-            "agentkernelarena.apex-attempt-receipt/v5"
+            "agentkernelarena.apex-attempt-receipt/v6"
             if arm == "apex"
-            else "agentkernelarena.codex-attempt-receipt/v4"
+            else "agentkernelarena.codex-attempt-receipt/v6"
         ),
     }
     if arm == "apex":
@@ -1094,6 +1255,7 @@ def test_formal_postprocessing_rejects_run_config_tamper(
             (run / "campaign_manifest.yaml").read_text(encoding="utf-8")
         )
         run_config = Path(sealed_manifest["configuration"]["run_config_path"])
+        run_config.chmod(0o644)
         run_config.write_text(
             run_config.read_text(encoding="utf-8")
             + "unexpected_output: /tmp/forged\n",

@@ -36,8 +36,10 @@ ATTEMPT_CONTAINMENT_POLICY = "private_pid_namespace_init_pidfd_v1"
 ATTEMPT_MOUNT_RECEIPT_SCHEMA_V1 = "aka.attempt-mounts/v1"
 ATTEMPT_MOUNT_RECEIPT_SCHEMA_V2 = "aka.attempt-mounts/v2"
 ATTEMPT_MOUNT_RECEIPT_SCHEMA = ATTEMPT_MOUNT_RECEIPT_SCHEMA_V2
-APEX_RUNTIME_MOUNT_POLICY = "content_addressed_apex_runtime_snapshot_read_only_v1"
-APEX_RUNTIME_MOUNT_SCHEMA = "aka.apex-runtime-snapshot-receipt/v1"
+APEX_RUNTIME_MOUNT_POLICY = (
+    "content_addressed_apex_runtime_snapshot_docker_bindable_read_only_v2"
+)
+APEX_RUNTIME_MOUNT_SCHEMA = "aka.apex-runtime-snapshot-receipt/v2"
 _BROAD_EXTERNAL_ROOTS = frozenset(
     {Path("/tmp"), Path("/var/tmp"), Path("/dev/shm")}
 )

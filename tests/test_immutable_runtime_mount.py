@@ -9,9 +9,11 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from src import aka_runtime
 from src import immutable_runtime_mount as immutable
 
 
@@ -36,6 +38,7 @@ def _inventory(entries: list[dict[str, object]]) -> dict[str, object]:
 
 
 def _runtime_tree(tmp_path: Path) -> tuple[Path, Path, dict[str, object]]:
+    tmp_path.chmod(0o700)
     staging = tmp_path / "staging"
     mountpoint = tmp_path / ("a" * 64)
     data = staging / "data"
@@ -82,6 +85,15 @@ def _runtime_tree(tmp_path: Path) -> tuple[Path, Path, dict[str, object]]:
     return staging, mountpoint, _inventory(entries)
 
 
+def _mount_kwargs(tmp_path: Path) -> dict[str, object]:
+    return {
+        "private_ancestor": tmp_path,
+        "fuse_config": Path("/etc/fuse.conf"),
+        "worker_uid": os.getuid(),
+        "worker_gid": os.getgid(),
+    }
+
+
 def _make_staging_removable(staging: Path) -> None:
     for path in sorted(staging.rglob("*"), reverse=True):
         if path.is_dir() and not path.is_symlink():
@@ -115,7 +127,11 @@ def test_real_mount_is_deterministic_sealed_verified_and_exactly_cleaned(
 
         try:
             handle = immutable.mount_immutable_runtime(
-                staging, mountpoint, inventory, timeout_seconds=5
+                staging,
+                mountpoint,
+                inventory,
+                timeout_seconds=5,
+                **_mount_kwargs(tmp_path),
             )
         except immutable.ImmutableRuntimeMountError as error:
             if "permission denied" in str(error).lower() or "/dev/fuse" in str(error):
@@ -133,6 +149,26 @@ def test_real_mount_is_deterministic_sealed_verified_and_exactly_cleaned(
             assert {"ro", "nodev", "nosuid"}.issubset(
                 handle.receipt["mount"]["mount_options"]
             )
+            assert "allow_other" in handle.receipt["mount"]["super_options"]
+            assert handle.receipt["requested_mount_options"] == list(
+                immutable._MOUNT_OPTIONS
+            )
+            policy = handle.receipt["host_access_policy"]
+            assert policy["mount_owner"] == {
+                "uid": os.getuid(),
+                "gid": os.getgid(),
+            }
+            assert policy["worker"] == policy["mount_owner"]
+            assert policy["private_ancestor"]["mode"] == 0o700
+            assert policy["fuse_config"]["path"] == "/etc/fuse.conf"
+            assert policy["fuse_config"]["uid"] == 0
+            assert policy["fuse_config"]["gid"] == 0
+            assert policy["fuse_config"]["mode"] & 0o022 == 0
+            assert policy["fuse_config"]["nlink"] == 1
+            assert policy["fuse_config"]["user_allow_other"] is True
+            assert handle.evidence["host_access_policy_sha256"] == policy[
+                "sha256"
+            ]
             assert "noexec" not in handle.receipt["mount"]["mount_options"]
             assert mountpoint.name == inventory["runtime_manifest_sha256"]
             assert fcntl.fcntl(handle.image_fd, fcntl.F_GET_SEALS) == (
@@ -176,6 +212,92 @@ def test_real_mount_is_deterministic_sealed_verified_and_exactly_cleaned(
         _make_staging_removable(staging)
 
 
+@pytest.mark.skipif(
+    os.environ.get("AKA_RUN_DOCKER_FUSE_INTEGRATION") != "1",
+    reason="requires the trusted host Docker daemon and passwordless root probe",
+)
+def test_real_mount_is_owner_root_and_docker_readable_but_host_private(
+    tmp_path: Path,
+) -> None:
+    """Exercise the exact cross-principal boundary used by formal Docker runs."""
+
+    if subprocess.run(
+        ["sudo", "-n", "/usr/bin/true"],
+        check=False,
+        capture_output=True,
+    ).returncode != 0:
+        pytest.skip("passwordless sudo is unavailable")
+    if subprocess.run(
+        ["docker", "image", "inspect", "busybox:latest"],
+        check=False,
+        capture_output=True,
+    ).returncode != 0:
+        pytest.skip("the pinned local busybox probe image is unavailable")
+
+    staging, mountpoint, inventory = _runtime_tree(tmp_path)
+    try:
+        try:
+            handle = immutable.mount_immutable_runtime(
+                staging,
+                mountpoint,
+                inventory,
+                timeout_seconds=5,
+                **_mount_kwargs(tmp_path),
+            )
+        except immutable.ImmutableRuntimeMountError as error:
+            _skip_if_fuse_unavailable(str(error))
+            raise
+        with handle:
+            payload = mountpoint / "data/payload.bin"
+            assert payload.read_bytes() == b"immutable-runtime\n"
+            root_probe = subprocess.run(
+                ["sudo", "-n", "/usr/bin/stat", "--", str(payload)],
+                check=False,
+                capture_output=True,
+            )
+            assert root_probe.returncode == 0, root_probe.stderr.decode(
+                "utf-8", "replace"
+            )
+            third_user_probe = subprocess.run(
+                [
+                    "sudo",
+                    "-n",
+                    "-u",
+                    "nobody",
+                    "/usr/bin/stat",
+                    "--",
+                    str(payload),
+                ],
+                check=False,
+                capture_output=True,
+            )
+            assert third_user_probe.returncode != 0
+            docker_probe = subprocess.run(
+                [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "--pull=never",
+                    "--network=none",
+                    "--read-only",
+                    "--volume",
+                    f"{mountpoint}:/runtime:ro",
+                    "busybox:latest",
+                    "cat",
+                    "/runtime/data/payload.bin",
+                ],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            assert docker_probe.returncode == 0, docker_probe.stderr.decode(
+                "utf-8", "replace"
+            )
+            assert docker_probe.stdout == b"immutable-runtime\n"
+    finally:
+        _make_staging_removable(staging)
+
+
 @pytest.mark.parametrize("attack", ["bytes", "extra", "inventory_digest"])
 def test_preverified_staging_and_inventory_fail_closed(
     tmp_path: Path, attack: str
@@ -195,7 +317,9 @@ def test_preverified_staging_and_inventory_fail_closed(
         else:
             inventory["sha256"] = "0" * 64
         with pytest.raises(immutable.ImmutableRuntimeMountError):
-            immutable.mount_immutable_runtime(staging, mountpoint, inventory)
+            immutable.mount_immutable_runtime(
+                staging, mountpoint, inventory, **_mount_kwargs(tmp_path)
+            )
         assert not immutable._mountinfo(mountpoint)[0]
     finally:
         _make_staging_removable(staging)
@@ -259,6 +383,50 @@ def test_mountinfo_reports_nested_mounts_for_rejection(
     assert nested_mounts == [str(nested)]
 
 
+def test_mount_command_requires_daemon_readable_default_permissions() -> None:
+    assert immutable._MOUNT_OPTIONS == (
+        "ro",
+        "nodev",
+        "nosuid",
+        "default_permissions",
+        "allow_other",
+        "subtype=squashfuse",
+    )
+
+
+def test_wait_for_mount_rejects_owner_only_fuse_mount(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "runtime"
+    root.mkdir()
+    process = subprocess.Popen(
+        ["/bin/sh", "-c", "sleep 30"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    owner_only = {
+        "mount_id": 1,
+        "device": "0:1",
+        "root": "/",
+        "mount_point": str(root),
+        "filesystem": "fuse.squashfuse",
+        "mount_options": ["nodev", "nosuid", "ro"],
+        "super_options": ["ro", "user_id=1000"],
+        "read_only": True,
+    }
+    monkeypatch.setattr(immutable, "_mountinfo", lambda _root: (owner_only, []))
+    try:
+        with pytest.raises(
+            immutable.ImmutableRuntimeMountError,
+            match="lacks the required read-only access policy",
+        ):
+            immutable._wait_for_mount(root, process, 1)
+    finally:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=5)
+
+
 def test_mounted_inventory_verifier_rejects_content_substitution(
     tmp_path: Path,
 ) -> None:
@@ -293,7 +461,11 @@ def test_post_mount_verification_failure_unmounts_before_returning(
             immutable.ImmutableRuntimeMountError, match="adversarial mounted bytes"
         ):
             immutable.mount_immutable_runtime(
-                staging, mountpoint, inventory, timeout_seconds=5
+                staging,
+                mountpoint,
+                inventory,
+                timeout_seconds=5,
+                **_mount_kwargs(tmp_path),
             )
         mount, nested = immutable._mountinfo(mountpoint)
         assert mount is None
@@ -338,6 +510,14 @@ def test_mount_service_publishes_ready_and_signal_cleans_exactly(
             str(mountpoint),
             "--ready-json",
             str(ready_path),
+            "--private-ancestor",
+            str(tmp_path),
+            "--fuse-config",
+            "/etc/fuse.conf",
+            "--worker-uid",
+            str(os.getuid()),
+            "--worker-gid",
+            str(os.getgid()),
             "--timeout-seconds",
             "5",
         ],
@@ -367,6 +547,26 @@ def test_mount_service_publishes_ready_and_signal_cleans_exactly(
         assert ready["schema"] == immutable.SERVICE_READY_SCHEMA
         assert ready["policy_id"] == immutable.SERVICE_POLICY_ID
         assert ready["service"]["pid"] == process.pid
+        assert ready["service"]["owner"] == {
+            "uid": os.getuid(),
+            "gid": os.getgid(),
+        }
+        assert ready["service"]["accepted_signals"] == ["SIGINT", "SIGTERM"]
+        assert ready["service"]["engine_process"] == {
+            "pid": ready["engine_evidence"]["process"]["pid"],
+            "starttime": ready["engine_evidence"]["process"]["starttime"],
+        }
+        assert ready["service"]["engine_process"]["pid"] != process.pid
+        persisted_service = tmp_path / "persisted-service-evidence.json"
+        persisted_service.write_bytes(ready_path.read_bytes())
+        persisted_service.chmod(0o444)
+        assert aka_runtime.load_runtime_service_evidence(
+            persisted_service,
+            file_sha256=hashlib.sha256(persisted_service.read_bytes()).hexdigest(),
+            content_sha256=ready["sha256"],
+            manifest_sha256=inventory["runtime_manifest_sha256"],
+            image_sha256=ready["mount_receipt"]["image_sha256"],
+        ) == ready
         assert ready["mount_receipt"]["sha256"] == ready["engine_evidence"][
             "receipt_sha256"
         ]
@@ -384,9 +584,212 @@ def test_mount_service_publishes_ready_and_signal_cleans_exactly(
         assert list(mountpoint.iterdir()) == []
     finally:
         if process.poll() is None:
-            process.kill()
-            process.wait(timeout=5)
+            process.send_signal(signal.SIGTERM)
+            try:
+                process.communicate(timeout=20)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate(timeout=5)
         _make_staging_removable(staging)
+
+
+def test_persisted_service_evidence_recovers_sigkill_orphan_exactly(
+    tmp_path: Path,
+) -> None:
+    staging, mountpoint, inventory = _runtime_tree(tmp_path)
+    inventory_path = _inventory_file(tmp_path, inventory)
+    ready_path = tmp_path / "service-ready.json"
+    persisted = tmp_path / "persisted-service-evidence.json"
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            str(Path(immutable.__file__).resolve()),
+            "serve",
+            "--staging-root",
+            str(staging),
+            "--inventory-json",
+            str(inventory_path),
+            "--mountpoint",
+            str(mountpoint),
+            "--ready-json",
+            str(ready_path),
+            "--private-ancestor",
+            str(tmp_path),
+            "--fuse-config",
+            "/etc/fuse.conf",
+            "--worker-uid",
+            str(os.getuid()),
+            "--worker-gid",
+            str(os.getgid()),
+            "--timeout-seconds",
+            "5",
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    recovered = False
+    ready: dict[str, Any] | None = None
+    try:
+        deadline = time.monotonic() + 20
+        while not ready_path.exists() and process.poll() is None:
+            if time.monotonic() >= deadline:
+                pytest.fail("mount service readiness timed out")
+            time.sleep(0.05)
+        if process.poll() is not None:
+            _stdout, stderr = process.communicate(timeout=5)
+            _skip_if_fuse_unavailable(stderr)
+            pytest.fail(f"mount service failed before readiness: {stderr}")
+        ready = json.loads(ready_path.read_text(encoding="utf-8"))
+        persisted.write_bytes(ready_path.read_bytes())
+        persisted.chmod(0o444)
+        file_sha256 = hashlib.sha256(persisted.read_bytes()).hexdigest()
+        controller_starttime = ready["service"]["starttime"]
+        engine_process = ready["service"]["engine_process"]
+
+        process.kill()
+        process.communicate(timeout=5)
+        assert process.returncode == -signal.SIGKILL
+        cleanup = aka_runtime.recover_runtime_service(
+            persisted,
+            file_sha256=file_sha256,
+            content_sha256=ready["sha256"],
+            manifest_sha256=inventory["runtime_manifest_sha256"],
+            image_sha256=ready["mount_receipt"]["image_sha256"],
+            controller_pid=process.pid,
+            controller_starttime=controller_starttime,
+            mountpoint=mountpoint,
+            private_ancestor=tmp_path,
+            timeout_seconds=5,
+        )
+        recovered = True
+        assert cleanup["schema"] == "aka.immutable-runtime-mount-recovery/v1"
+        assert cleanup["controller"]["verified_exited"] is True
+        assert cleanup["engine"]["verified_exited"] is True
+        assert cleanup["controller"]["pid"] == process.pid
+        assert cleanup["controller"]["starttime"] == controller_starttime
+        assert cleanup["engine"]["pid"] == engine_process["pid"]
+        assert cleanup["engine"]["starttime"] == engine_process["starttime"]
+        assert cleanup["runtime_service_evidence_sha256"] == ready["sha256"]
+        assert cleanup["runtime_engine_evidence_sha256"] == ready[
+            "engine_evidence"
+        ]["sha256"]
+        assert cleanup["host_mount_receipt_sha256"] == ready["mount_receipt"][
+            "sha256"
+        ]
+        assert cleanup["mount_absent"] is True
+        assert cleanup["mountpoint_empty"] is True
+        assert immutable._mountinfo(mountpoint) == (None, [])
+        try:
+            observed_starttime = immutable._process_starttime(engine_process["pid"])
+        except immutable.ImmutableRuntimeMountError:
+            observed_starttime = None
+        assert observed_starttime != engine_process["starttime"]
+    finally:
+        if process.poll() is None:
+            process.send_signal(signal.SIGTERM)
+            try:
+                process.communicate(timeout=20)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate(timeout=5)
+        if not recovered and ready is not None:
+            persisted.chmod(0o444)
+            try:
+                aka_runtime.recover_runtime_service(
+                    persisted,
+                    file_sha256=hashlib.sha256(persisted.read_bytes()).hexdigest(),
+                    content_sha256=ready["sha256"],
+                    manifest_sha256=inventory["runtime_manifest_sha256"],
+                    image_sha256=ready["mount_receipt"]["image_sha256"],
+                    controller_pid=process.pid,
+                    controller_starttime=ready["service"]["starttime"],
+                    mountpoint=mountpoint,
+                    private_ancestor=tmp_path,
+                    timeout_seconds=5,
+                )
+            except (aka_runtime.AkaRuntimeError, OSError):
+                pass
+        _make_staging_removable(staging)
+
+
+def test_exact_pidfd_accepts_exit_between_open_and_starttime_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    descriptor, writable = os.pipe()
+
+    def exited_during_identity_read(_pid: int) -> int:
+        raise immutable.ImmutableRuntimeMountError("process exited")
+
+    monkeypatch.setattr(os, "pidfd_open", lambda _pid, _flags: descriptor)
+    monkeypatch.setattr(immutable, "_process_starttime", exited_during_identity_read)
+    monkeypatch.setattr(immutable, "_pidfd_exited", lambda _fd, _timeout: True)
+    try:
+        assert immutable._open_exact_pidfd(123, 456, "test") == descriptor
+    finally:
+        os.close(descriptor)
+        os.close(writable)
+
+
+@pytest.mark.parametrize("disappear_on", [signal.SIGTERM, signal.SIGKILL])
+def test_exact_pidfd_signal_esrch_is_success_only_after_verified_exit(
+    monkeypatch: pytest.MonkeyPatch, disappear_on: signal.Signals
+) -> None:
+    exited = False
+    sent: list[signal.Signals] = []
+
+    def pidfd_exited(_descriptor: int, timeout_seconds: float) -> bool:
+        if exited:
+            return True
+        return disappear_on == signal.SIGKILL and timeout_seconds == 0 and bool(sent)
+
+    def send(_descriptor: int, signum: int) -> None:
+        nonlocal exited
+        selected = signal.Signals(signum)
+        sent.append(selected)
+        if selected == disappear_on:
+            exited = True
+            raise ProcessLookupError
+
+    monkeypatch.setattr(immutable, "_pidfd_exited", pidfd_exited)
+    monkeypatch.setattr(signal, "pidfd_send_signal", send)
+
+    result = immutable._stop_exact_pidfd(
+        77,
+        pid=123,
+        starttime=456,
+        label="test",
+        timeout_seconds=0.01,
+    )
+
+    assert result["pid"] == 123
+    assert result["starttime"] == 456
+    assert result["verified_exited"] is True
+    assert sent[-1] == disappear_on
+
+
+def test_exact_pidfd_signal_esrch_fails_when_pidfd_is_not_exited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(immutable, "_pidfd_exited", lambda _fd, _timeout: False)
+
+    def disappeared(_descriptor: int, _signum: int) -> None:
+        raise ProcessLookupError
+
+    monkeypatch.setattr(signal, "pidfd_send_signal", disappeared)
+
+    with pytest.raises(
+        immutable.ImmutableRuntimeMountError,
+        match="without an exited pidfd",
+    ):
+        immutable._stop_exact_pidfd(
+            77,
+            pid=123,
+            starttime=456,
+            label="test",
+            timeout_seconds=0.01,
+        )
 
 
 def test_mount_service_publication_failure_unmounts_before_returning(
@@ -406,6 +809,7 @@ def test_mount_service_publication_failure_unmounts_before_returning(
                 mountpoint,
                 inventory,
                 ready_path,
+                **_mount_kwargs(tmp_path),
                 timeout_seconds=5,
             )
         _skip_if_fuse_unavailable(str(raised.value))
@@ -440,6 +844,7 @@ def test_mount_service_rejects_unsafe_ready_target_without_mounting(
                 mountpoint,
                 inventory,
                 ready_path,
+                **_mount_kwargs(tmp_path),
                 timeout_seconds=5,
             )
         mount, nested = immutable._mountinfo(mountpoint)

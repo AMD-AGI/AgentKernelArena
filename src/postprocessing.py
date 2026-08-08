@@ -70,8 +70,8 @@ _ATTEMPT_CAMPAIGN_BINDING_KEYS = frozenset(
     }
 )
 _FORMAL_RECEIPT_SCHEMAS = {
-    "apex": "agentkernelarena.apex-attempt-receipt/v5",
-    "codex": "agentkernelarena.codex-attempt-receipt/v4",
+    "apex": "agentkernelarena.apex-attempt-receipt/v6",
+    "codex": "agentkernelarena.codex-attempt-receipt/v6",
 }
 
 
@@ -511,14 +511,22 @@ def _load_formal_cohort(run_directory: Path) -> Dict[str, Any] | None:
     agent = manifest.get("agent")
     try:
         run_config_path = Path(str(configuration.get("run_config_path") or ""))
+        run_config_metadata = run_config_path.lstat()
         expected_run_config = _run_config_contract(
             run_config_path,
             agent_name=str(agent.get("template") or "")
             if isinstance(agent, dict)
             else "",
         )
+        declared_run_config_size = configuration.get("run_config_size_bytes")
+        durable_run_config_valid = bool(
+            type(declared_run_config_size) is int
+            and declared_run_config_size == run_config_metadata.st_size
+            and _safe_read_only_file(run_config_path)
+        )
         run_config_valid = bool(
-            configuration.get("run_config_sha256")
+            durable_run_config_valid
+            and configuration.get("run_config_sha256")
             == _sha256_file(run_config_path)
             and configuration.get("run_config_contract") == expected_run_config
             and isinstance(comparison, dict)

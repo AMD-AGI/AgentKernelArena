@@ -36,8 +36,8 @@ def _digest(value: object) -> str:
 
 
 @pytest.fixture(autouse=True)
-def _use_sealed_v5_runtime_test_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Use complete v5 contracts while isolating host-only runtime probes.
+def _use_sealed_runtime_test_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Use complete gen6 contracts while isolating host-only runtime probes.
 
     Mount topology and installed-backend revalidation have dedicated tests.  The
     descriptor tests need the same sealed contract fields, but do not need a
@@ -63,7 +63,7 @@ def _backend_closure() -> dict[str, object]:
     }
 
 
-def _formal_v5_contract(
+def _formal_v6_contract(
     *,
     tasks: list[dict[str, object]],
     mappings: list[dict[str, object]],
@@ -130,7 +130,7 @@ def _formal_v5_contract(
     }
     apex_treatment = {
         "template": "apex",
-        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v5",
+        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v6",
         "apex_runtime_mount_policy_id": campaign.APEX_RUNTIME_MOUNT_POLICY,
         "attempt_mount_receipt_schema": campaign.ATTEMPT_MOUNT_RECEIPT_SCHEMA,
         "apex_runtime_mount_schema": campaign.APEX_RUNTIME_MOUNT_SCHEMA,
@@ -173,7 +173,7 @@ def _formal_v5_contract(
     }
     formal_execution = dict(campaign._FORMAL_LIVE_COMMITMENT)
     comparison = {
-        "schema": "aka.apex-vs-codex-comparison-contract/v5",
+        "schema": "aka.apex-vs-codex-comparison-contract/v6",
         "formal_execution": formal_execution,
         "formal_execution_sha256": campaign.FORMAL_LIVE_EXECUTION_SHA256,
         "objective_policy_id": "aka.task-package-objective-and-protected-harness/v1",
@@ -210,6 +210,7 @@ def _formal_v5_contract(
         "configuration": {
             "run_config_path": str(run_config_path.resolve()),
             "run_config_sha256": campaign._sha256_file(run_config_path),
+            "run_config_size_bytes": run_config_path.stat().st_size,
             "run_config_contract": run_config,
             "tasks": tasks,
         },
@@ -273,14 +274,17 @@ def _make_formal_run(
         ),
         encoding="utf-8",
     )
-    run_config = campaign._run_config_contract(
-        run_config_path, agent_name="apex"
+    durable_run_config_path = campaign._materialize_durable_run_config(
+        run, run_config_path
     )
-    manifest = _formal_v5_contract(
+    run_config = campaign._run_config_contract(
+        durable_run_config_path, agent_name="apex"
+    )
+    manifest = _formal_v6_contract(
         tasks=tasks,
         mappings=mappings,
         devices=devices,
-        run_config_path=run_config_path,
+        run_config_path=durable_run_config_path,
         run_config=run_config,
     )
     manifest_path = run / "campaign_manifest.yaml"

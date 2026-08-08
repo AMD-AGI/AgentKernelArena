@@ -41,9 +41,20 @@ CAMPAIGN_AKA_RUNTIME_MANIFEST_FILE_SHA256=""
 CAMPAIGN_AKA_RUNTIME_STAGING_ROOT=""
 CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT=""
 CAMPAIGN_AKA_RUNTIME_IMAGE_SHA256=""
+CAMPAIGN_AKA_RUNTIME_SERVICE_HOST=""
+CAMPAIGN_AKA_RUNTIME_SERVICE_FILE_SHA256=""
+CAMPAIGN_AKA_RUNTIME_SERVICE_CONTENT_SHA256=""
+CAMPAIGN_APEX_RUNTIME_SERVICE_HOST=""
+CAMPAIGN_APEX_RUNTIME_SERVICE_FILE_SHA256=""
+CAMPAIGN_APEX_RUNTIME_SERVICE_CONTENT_SHA256=""
 CAMPAIGN_RUNTIME_TEMP_ROOT=""
+CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE=""
+CAMPAIGN_RUNTIME_TEMP_ROOT_INODE=""
+CAMPAIGN_RUNTIME_TEMP_ROOT_UID=""
+CAMPAIGN_RUNTIME_TEMP_ROOT_GID=""
 declare -a CAMPAIGN_RUNTIME_SERVICE_PIDS=()
 declare -A CAMPAIGN_RUNTIME_SERVICE_STARTTIMES=()
+declare -A CAMPAIGN_RUNTIME_SERVICE_LABELS=()
 CAMPAIGN_DATA_ROOT=""
 CAMPAIGN_GPU_PLAN_HOST=""
 CAMPAIGN_GPU_PLAN_CONTAINER="/tmp/agentkernelarena-formal-gpu-boundary-plan.json"
@@ -394,13 +405,27 @@ configure_campaign_provenance() {
     CAMPAIGN_AKA_RUNTIME_STAGING_ROOT=""
     CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT=""
     CAMPAIGN_AKA_RUNTIME_IMAGE_SHA256=""
+    CAMPAIGN_AKA_RUNTIME_SERVICE_HOST=""
+    CAMPAIGN_AKA_RUNTIME_SERVICE_FILE_SHA256=""
+    CAMPAIGN_AKA_RUNTIME_SERVICE_CONTENT_SHA256=""
+    CAMPAIGN_APEX_RUNTIME_SERVICE_HOST=""
+    CAMPAIGN_APEX_RUNTIME_SERVICE_FILE_SHA256=""
+    CAMPAIGN_APEX_RUNTIME_SERVICE_CONTENT_SHA256=""
+    CAMPAIGN_RUNTIME_TEMP_ROOT=""
+    CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE=""
+    CAMPAIGN_RUNTIME_TEMP_ROOT_INODE=""
+    CAMPAIGN_RUNTIME_TEMP_ROOT_UID=""
+    CAMPAIGN_RUNTIME_TEMP_ROOT_GID=""
     CAMPAIGN_RUNTIME_SERVICE_PIDS=()
     CAMPAIGN_RUNTIME_SERVICE_STARTTIMES=()
+    CAMPAIGN_RUNTIME_SERVICE_LABELS=()
     CAMPAIGN_DATA_ROOT=""
     grep -Eq '^[[:space:]]+comparison:[[:space:]]*apex_vs_codex([[:space:]#]|$)' "$config" \
         || return 0
     CAMPAIGN_PROVENANCE=1
     AGENT_HOME_ISOLATION=1
+
+    require_fuse_allow_other
 
     local workspace_prefix
     workspace_prefix="$(read_workspace_prefix "$config")"
@@ -412,6 +437,7 @@ configure_campaign_provenance() {
     CAMPAIGN_RUNTIME_TEMP_ROOT="$(
         mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX
     )" || die "cannot allocate formal runtime staging root"
+    bind_campaign_runtime_temp_root_identity
     [[ -x /usr/bin/bwrap ]] \
         || die "matched campaign requires /usr/bin/bwrap for per-attempt mount isolation"
 
@@ -436,6 +462,70 @@ configure_campaign_provenance() {
     prepare_campaign_aka_runtime_contract
     prepare_campaign_apex_runtime_contract
     start_campaign_runtime_mounts
+}
+
+fuse_config_enables_allow_other() {
+    local config="$1"
+    [[ "$config" == /* && -f "$config" && ! -L "$config" ]] \
+        && grep -Eq '^[[:space:]]*user_allow_other[[:space:]]*$' "$config"
+}
+
+require_fuse_allow_other() {
+    local config="/etc/fuse.conf" identity mode numeric_mode
+    identity="$(/usr/bin/stat -c '%u:%g:%a:%F' -- "$config" 2>/dev/null || true)"
+    mode="$(cut -d: -f3 <<< "$identity")"
+    if [[ "$identity" == 0:0:*:* \
+        && "$(cut -d: -f4- <<< "$identity")" == "regular file" \
+        && "$mode" =~ ^[0-7]{3,4}$ ]]; then
+        numeric_mode=$((8#$mode))
+        if (( (numeric_mode & 0022) == 0 )) \
+            && fuse_config_enables_allow_other "$config"; then
+            return 0
+        fi
+    fi
+    die "formal Docker runtime requires a root-owned, non-writable $config with user_allow_other so dockerd can bind the sealed SquashFUSE roots"
+}
+
+bind_campaign_runtime_temp_root_identity() {
+    local identity kind mode
+    [[ "$CAMPAIGN_RUNTIME_TEMP_ROOT" =~ ^/tmp/agentkernelarena-formal-runtime\.[[:alnum:]]{6}$ \
+        && -d "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+        && ! -L "$CAMPAIGN_RUNTIME_TEMP_ROOT" ]] \
+        || die "formal runtime staging root identity is unsafe"
+    identity="$(
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%F' -- "$CAMPAIGN_RUNTIME_TEMP_ROOT"
+    )" || die "cannot bind formal runtime staging root identity"
+    IFS=: read -r \
+        CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE \
+        CAMPAIGN_RUNTIME_TEMP_ROOT_INODE \
+        CAMPAIGN_RUNTIME_TEMP_ROOT_UID \
+        CAMPAIGN_RUNTIME_TEMP_ROOT_GID \
+        mode kind <<< "$identity"
+    [[ "$CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE" =~ ^[0-9]+$ \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT_INODE" =~ ^[0-9]+$ \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT_UID" == "$HOST_UID" \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT_GID" == "$HOST_GID" \
+        && "$mode" == "700" \
+        && "$kind" == "directory" ]] \
+        || die "formal runtime staging root has an unsafe identity"
+}
+
+campaign_runtime_temp_root_identity_valid() {
+    local identity
+    [[ "$CAMPAIGN_RUNTIME_TEMP_ROOT" =~ ^/tmp/agentkernelarena-formal-runtime\.[[:alnum:]]{6}$ \
+        && -d "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+        && ! -L "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE" =~ ^[0-9]+$ \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT_INODE" =~ ^[0-9]+$ \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT_UID" == "$HOST_UID" \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT_GID" == "$HOST_GID" ]] \
+        || return 1
+    identity="$(
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%F' -- "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+            2>/dev/null
+    )" || return 1
+    [[ "$identity" == \
+        "$CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE:$CAMPAIGN_RUNTIME_TEMP_ROOT_INODE:$CAMPAIGN_RUNTIME_TEMP_ROOT_UID:$CAMPAIGN_RUNTIME_TEMP_ROOT_GID:700:directory" ]]
 }
 
 prepare_campaign_aka_runtime_contract() {
@@ -547,8 +637,15 @@ wait_for_runtime_mount_service() {
     local attempt
     for attempt in $(seq 1 300); do
         if [[ -f "$ready" ]]; then
-            /usr/bin/python3 - "$ready" "$pid" <<'PY'
+            /usr/bin/python3 - \
+                "$ready" "$pid" \
+                "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+                "$CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE" \
+                "$CAMPAIGN_RUNTIME_TEMP_ROOT_INODE" \
+                "$CAMPAIGN_RUNTIME_TEMP_ROOT_UID" \
+                "$CAMPAIGN_RUNTIME_TEMP_ROOT_GID" <<'PY'
 import json
+import hashlib
 import pathlib
 import sys
 
@@ -556,13 +653,75 @@ ready = pathlib.Path(sys.argv[1])
 pid = int(sys.argv[2])
 payload = json.loads(ready.read_text(encoding="utf-8"))
 service = payload.get("service")
-assert payload.get("schema") == "aka.immutable-runtime-mount-service-ready/v1"
-assert isinstance(service, dict) and service.get("pid") == pid
+assert payload.get("schema") == "aka.immutable-runtime-mount-service-ready/v2"
+assert set(payload) == {
+    "schema", "policy_id", "ready_path", "service", "mount_receipt",
+    "engine_evidence", "sha256",
+}
+material = dict(payload)
+observed_digest = material.pop("sha256")
+canonical = json.dumps(material, sort_keys=True, separators=(",", ":")).encode()
+assert observed_digest == hashlib.sha256(canonical).hexdigest()
+assert payload.get("policy_id") == (
+    "single_docker_bindable_snapshot_signal_lifetime_v2"
+)
+assert isinstance(service, dict) and set(service) == {
+    "pid", "starttime", "owner", "accepted_signals", "engine_process",
+}
+assert service.get("pid") == pid
 stat = pathlib.Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
 starttime = int(stat[stat.rfind(")") + 2:].split()[19])
 assert service.get("starttime") == starttime
 assert payload.get("mount_receipt", {}).get("sha256")
 assert payload.get("engine_evidence", {}).get("sha256")
+receipt = payload["mount_receipt"]
+engine = payload["engine_evidence"]
+policy = receipt.get("host_access_policy")
+engine_process = engine.get("process")
+requested = [
+    "ro", "nodev", "nosuid", "default_permissions", "allow_other",
+    "subtype=squashfuse",
+]
+assert receipt.get("schema") == "aka.host-runtime-immutable-mount/v2"
+assert receipt.get("policy_id") == "sealed_memfd_squashfs_docker_bindable_read_only_v2"
+assert receipt.get("requested_mount_options") == requested
+assert engine.get("schema") == "aka.immutable-runtime-mount-engine/v2"
+assert engine.get("requested_mount_options") == requested
+assert engine.get("host_access_policy_sha256") == policy.get("sha256")
+assert isinstance(engine_process, dict) and set(engine_process) == {
+    "pid", "starttime", "foreground",
+}
+assert service.get("engine_process") == {
+    "pid": engine_process["pid"], "starttime": engine_process["starttime"],
+}
+engine_stat = pathlib.Path(
+    f"/proc/{engine_process['pid']}/stat"
+).read_text(encoding="utf-8")
+engine_starttime = int(engine_stat[engine_stat.rfind(")") + 2:].split()[19])
+assert engine_process.get("starttime") == engine_starttime
+assert engine_process.get("foreground") is True
+assert "allow_other" in receipt.get("mount", {}).get("super_options", [])
+assert policy.get("private_ancestor") == {
+    "path": sys.argv[3],
+    "device": int(sys.argv[4]),
+    "inode": int(sys.argv[5]),
+    "uid": int(sys.argv[6]),
+    "gid": int(sys.argv[7]),
+    "mode": 0o700,
+}
+assert policy.get("mount_owner") == {
+    "uid": int(sys.argv[6]), "gid": int(sys.argv[7])
+}
+assert policy.get("worker") == policy["mount_owner"]
+assert service.get("owner") == policy["mount_owner"]
+assert service.get("accepted_signals") == ["SIGINT", "SIGTERM"]
+fuse = policy.get("fuse_config", {})
+assert fuse.get("path") == "/etc/fuse.conf"
+assert fuse.get("uid") == 0 and fuse.get("gid") == 0
+assert isinstance(fuse.get("mode"), int) and fuse["mode"] & 0o022 == 0
+assert fuse.get("nlink") == 1
+assert fuse.get("user_allow_other") is True
+assert isinstance(fuse.get("sha256"), str) and len(fuse["sha256"]) == 64
 PY
             return 0
         fi
@@ -584,11 +743,11 @@ runtime_service_starttime() {
 
 persist_runtime_service_evidence() {
     local ready="$1" label="$2"
-    local file_sha destination
+    local file_sha destination content_sha
     file_sha="$(sha256sum "$ready" | cut -d' ' -f1)"
     [[ "$file_sha" =~ ^[0-9a-f]{64}$ ]] \
         || die "$label runtime service evidence digest is invalid"
-    destination="${CAMPAIGN_DATA_ROOT}/${label}-runtime-engine-${file_sha}.json"
+    destination="${CAMPAIGN_DATA_ROOT}/${label}-runtime-service-${file_sha}.json"
     if [[ -e "$destination" ]]; then
         cmp -s -- "$ready" "$destination" \
             || die "$label runtime service evidence digest collision"
@@ -596,6 +755,24 @@ persist_runtime_service_evidence() {
         cp -- "$ready" "$destination"
         chmod 0444 "$destination"
     fi
+    content_sha="$(
+        /usr/bin/python3 -c \
+            'import json,re,sys; value=json.load(open(sys.argv[1])); digest=value.get("sha256",""); assert re.fullmatch(r"[0-9a-f]{64}",digest); print(digest)' \
+            "$destination"
+    )" || die "$label runtime service content digest is invalid"
+    case "$label" in
+        aka)
+            CAMPAIGN_AKA_RUNTIME_SERVICE_HOST="$destination"
+            CAMPAIGN_AKA_RUNTIME_SERVICE_FILE_SHA256="$file_sha"
+            CAMPAIGN_AKA_RUNTIME_SERVICE_CONTENT_SHA256="$content_sha"
+            ;;
+        apex)
+            CAMPAIGN_APEX_RUNTIME_SERVICE_HOST="$destination"
+            CAMPAIGN_APEX_RUNTIME_SERVICE_FILE_SHA256="$file_sha"
+            CAMPAIGN_APEX_RUNTIME_SERVICE_CONTENT_SHA256="$content_sha"
+            ;;
+        *) die "unknown runtime service evidence label: $label" ;;
+    esac
 }
 
 start_campaign_runtime_mounts() {
@@ -645,9 +822,14 @@ start_campaign_runtime_mounts() {
         --inventory-json "$aka_inventory" \
         --mountpoint "$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT" \
         --ready-json "$aka_ready" \
+        --private-ancestor "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+        --fuse-config /etc/fuse.conf \
+        --worker-uid "$HOST_UID" \
+        --worker-gid "$HOST_GID" \
         >"$aka_log" 2>&1 &
     local aka_pid=$!
     CAMPAIGN_RUNTIME_SERVICE_PIDS+=("$aka_pid")
+    CAMPAIGN_RUNTIME_SERVICE_LABELS["$aka_pid"]="aka"
     CAMPAIGN_RUNTIME_SERVICE_STARTTIMES["$aka_pid"]="$(
         runtime_service_starttime "$aka_pid"
     )" || die "cannot bind AKA runtime service process identity"
@@ -667,9 +849,14 @@ start_campaign_runtime_mounts() {
             --inventory-json "$apex_inventory" \
             --mountpoint "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" \
             --ready-json "$apex_ready" \
+            --private-ancestor "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+            --fuse-config /etc/fuse.conf \
+            --worker-uid "$HOST_UID" \
+            --worker-gid "$HOST_GID" \
             >"$apex_log" 2>&1 &
         local apex_pid=$!
         CAMPAIGN_RUNTIME_SERVICE_PIDS+=("$apex_pid")
+        CAMPAIGN_RUNTIME_SERVICE_LABELS["$apex_pid"]="apex"
         CAMPAIGN_RUNTIME_SERVICE_STARTTIMES["$apex_pid"]="$(
             runtime_service_starttime "$apex_pid"
         )" || die "cannot bind Apex runtime service process identity"
@@ -685,37 +872,221 @@ start_campaign_runtime_mounts() {
     fi
 }
 
+recover_campaign_runtime_service() {
+    local pid="$1" label="$2" expected_starttime="$3"
+    local evidence file_sha content_sha manifest_sha image_sha mountpoint
+    case "$label" in
+        aka)
+            evidence="$CAMPAIGN_AKA_RUNTIME_SERVICE_HOST"
+            file_sha="$CAMPAIGN_AKA_RUNTIME_SERVICE_FILE_SHA256"
+            content_sha="$CAMPAIGN_AKA_RUNTIME_SERVICE_CONTENT_SHA256"
+            manifest_sha="$CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256"
+            image_sha="$CAMPAIGN_AKA_RUNTIME_IMAGE_SHA256"
+            mountpoint="$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT"
+            ;;
+        apex)
+            evidence="$CAMPAIGN_APEX_RUNTIME_SERVICE_HOST"
+            file_sha="$CAMPAIGN_APEX_RUNTIME_SERVICE_FILE_SHA256"
+            content_sha="$CAMPAIGN_APEX_RUNTIME_SERVICE_CONTENT_SHA256"
+            manifest_sha="$CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256"
+            image_sha="$CAMPAIGN_APEX_RUNTIME_IMAGE_SHA256"
+            mountpoint="$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT"
+            ;;
+        *)
+            warn "unknown runtime service label during cleanup: $label"
+            return 1
+            ;;
+    esac
+    [[ -f "$evidence" && ! -L "$evidence" \
+        && "$file_sha" =~ ^[0-9a-f]{64}$ \
+        && "$content_sha" =~ ^[0-9a-f]{64}$ \
+        && "$manifest_sha" =~ ^[0-9a-f]{64}$ \
+        && "$image_sha" =~ ^[0-9a-f]{64}$ \
+        && "$mountpoint" == "$CAMPAIGN_RUNTIME_TEMP_ROOT"/* ]] \
+        || return 2
+
+    local recovery="$CAMPAIGN_RUNTIME_TEMP_ROOT/${label}-runtime-recovery.json"
+    local destination="${CAMPAIGN_DATA_ROOT}/${label}-runtime-cleanup-${content_sha}.json"
+    local tool="$CAMPAIGN_AKA_RUNTIME_STAGING_ROOT/src/aka_runtime.py"
+    if ! /usr/bin/python3 "$tool" recover-service \
+        --service-evidence "$evidence" \
+        --service-file-sha256 "$file_sha" \
+        --service-content-sha256 "$content_sha" \
+        --manifest-sha256 "$manifest_sha" \
+        --image-sha256 "$image_sha" \
+        --controller-pid "$pid" \
+        --controller-starttime "$expected_starttime" \
+        --mountpoint "$mountpoint" \
+        --private-ancestor "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+        --timeout-seconds 20 >"$recovery"; then
+        return 1
+    fi
+    /usr/bin/python3 - \
+        "$recovery" "$evidence" "$pid" "$expected_starttime" "$mountpoint" <<'PY' \
+        || return 1
+import hashlib
+import json
+import sys
+
+cleanup = json.load(open(sys.argv[1], encoding="utf-8"))
+service = json.load(open(sys.argv[2], encoding="utf-8"))
+material = dict(cleanup)
+observed = material.pop("sha256")
+canonical = json.dumps(material, sort_keys=True, separators=(",", ":")).encode()
+engine = service["engine_evidence"]
+receipt = service["mount_receipt"]
+expected_process_keys = {
+    "label", "pid", "starttime", "absent_before_cleanup", "signals",
+    "verified_exited",
+}
+assert set(cleanup) == {
+    "schema", "runtime_service_evidence_sha256",
+    "runtime_engine_evidence_sha256", "host_mount_receipt_sha256",
+    "controller", "engine", "mountpoint", "unmount_returncodes",
+    "mount_absent", "mountpoint_empty", "sha256",
+}
+assert set(cleanup.get("controller", {})) == expected_process_keys
+assert set(cleanup.get("engine", {})) == expected_process_keys
+assert cleanup.get("schema") == "aka.immutable-runtime-mount-recovery/v1"
+assert cleanup.get("runtime_service_evidence_sha256") == service["sha256"]
+assert cleanup.get("runtime_engine_evidence_sha256") == engine["sha256"]
+assert cleanup.get("host_mount_receipt_sha256") == receipt["sha256"]
+assert cleanup.get("controller", {}).get("pid") == int(sys.argv[3])
+assert cleanup.get("controller", {}).get("starttime") == int(sys.argv[4])
+assert cleanup.get("engine", {}).get("pid") == engine["process"]["pid"]
+assert cleanup.get("engine", {}).get("starttime") == engine["process"]["starttime"]
+assert cleanup["controller"]["label"] == "runtime controller"
+assert cleanup["engine"]["label"] == "runtime engine"
+assert cleanup["controller"]["verified_exited"] is True
+assert cleanup["engine"]["verified_exited"] is True
+assert all(
+    signal in {"SIGTERM", "SIGKILL"}
+    for process in (cleanup["controller"], cleanup["engine"])
+    for signal in process["signals"]
+)
+assert all(type(value) is int for value in cleanup["unmount_returncodes"])
+assert cleanup.get("mountpoint") == sys.argv[5] == receipt["root"]
+assert cleanup.get("mount_absent") is True
+assert cleanup.get("mountpoint_empty") is True
+assert observed == hashlib.sha256(canonical).hexdigest()
+PY
+    if [[ -e "$destination" ]]; then
+        cmp -s -- "$recovery" "$destination" || return 1
+    else
+        cp -- "$recovery" "$destination" || return 1
+        chmod 0444 "$destination" || return 1
+    fi
+}
+
+stop_unpublished_runtime_service() {
+    local pid="$1" expected_starttime="$2" mountpoint="$3"
+    local current_starttime state attempt
+    if kill -0 "$pid" 2>/dev/null; then
+        current_starttime="$(runtime_service_starttime "$pid" 2>/dev/null || true)"
+        [[ "$current_starttime" == "$expected_starttime" ]] || return 1
+        kill -TERM "$pid" 2>/dev/null || return 1
+        for attempt in $(seq 1 200); do
+            state="$(/usr/bin/python3 -c \
+                'import pathlib,sys; value=pathlib.Path(f"/proc/{int(sys.argv[1])}/stat").read_text(); print(value[value.rfind(")")+2:].split()[0])' \
+                "$pid" 2>/dev/null || true)"
+            [[ -z "$state" || "$state" == "Z" ]] && break
+            sleep 0.05
+        done
+        if [[ -n "$state" && "$state" != "Z" ]]; then
+            current_starttime="$(runtime_service_starttime "$pid" 2>/dev/null || true)"
+            [[ "$current_starttime" == "$expected_starttime" ]] || return 1
+            kill -KILL "$pid" 2>/dev/null || return 1
+        fi
+    fi
+    wait "$pid" 2>/dev/null || true
+    if [[ -n "$mountpoint" ]] && /usr/bin/mountpoint -q -- "$mountpoint"; then
+        warn "unpublished runtime service left a mount; retaining its staging root"
+        return 1
+    fi
+}
+
 cleanup_campaign_runtime_mounts() {
     [[ -n "${CAMPAIGN_RUNTIME_OWNER_BASHPID:-}" \
         && "$BASHPID" == "$CAMPAIGN_RUNTIME_OWNER_BASHPID" ]] || return 0
-    local failed=0 pid current_starttime expected_starttime
+    [[ -n "$CAMPAIGN_RUNTIME_TEMP_ROOT" ]] || return 0
+    local failed=0 pid expected_starttime label mountpoint recovery_status
     for pid in "${CAMPAIGN_RUNTIME_SERVICE_PIDS[@]}"; do
-        if kill -0 "$pid" 2>/dev/null; then
-            current_starttime="$(runtime_service_starttime "$pid" 2>/dev/null || true)"
-            expected_starttime="${CAMPAIGN_RUNTIME_SERVICE_STARTTIMES[$pid]:-}"
-            if [[ -n "$expected_starttime" \
-                && "$current_starttime" == "$expected_starttime" ]]; then
-                kill -TERM "$pid" 2>/dev/null || failed=1
-            else
-                warn "runtime service PID identity changed; refusing to signal PID $pid"
+        expected_starttime="${CAMPAIGN_RUNTIME_SERVICE_STARTTIMES[$pid]:-}"
+        label="${CAMPAIGN_RUNTIME_SERVICE_LABELS[$pid]:-}"
+        [[ "$expected_starttime" =~ ^[0-9]+$ && -n "$label" ]] || {
+            failed=1
+            continue
+        }
+        recovery_status=0
+        recover_campaign_runtime_service \
+            "$pid" "$label" "$expected_starttime" || recovery_status=$?
+        if [[ "$recovery_status" == "2" ]]; then
+            failed=1
+            case "$label" in
+                aka) mountpoint="$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT" ;;
+                apex) mountpoint="$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" ;;
+                *) mountpoint="" ;;
+            esac
+            stop_unpublished_runtime_service \
+                "$pid" "$expected_starttime" "$mountpoint" || failed=1
+        elif [[ "$recovery_status" != "0" ]]; then
+            failed=1
+            case "$label" in
+                aka) mountpoint="$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT" ;;
+                apex) mountpoint="$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" ;;
+                *) mountpoint="" ;;
+            esac
+            stop_unpublished_runtime_service \
+                "$pid" "$expected_starttime" "$mountpoint" || true
+        fi
+        wait "$pid" 2>/dev/null || true
+    done
+    if [[ "$failed" == "0" ]] \
+        && ! campaign_runtime_temp_root_identity_valid; then
+        warn "formal runtime staging root identity changed; refusing cleanup"
+        failed=1
+    fi
+    if [[ "$failed" == "0" ]]; then
+        local staging_root staging_identity
+        for staging_root in \
+            "$CAMPAIGN_RUNTIME_TEMP_ROOT/aka-staging" \
+            "$CAMPAIGN_RUNTIME_TEMP_ROOT/apex-staging"; do
+            [[ -e "$staging_root" ]] || continue
+            staging_identity="$(
+                /usr/bin/stat -c '%d:%u:%g:%F' -- "$staging_root" 2>/dev/null \
+                    || true
+            )"
+            if [[ -L "$staging_root" || ! -d "$staging_root" \
+                || "$staging_identity" != \
+                    "$CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE:$HOST_UID:$HOST_GID:directory" ]] \
+                || ! find -P "$staging_root" -xdev -depth -type d \
+                    -exec chmod u+rwx -- {} +; then
                 failed=1
             fi
-        fi
-    done
-    for pid in "${CAMPAIGN_RUNTIME_SERVICE_PIDS[@]}"; do
-        if ! wait "$pid" 2>/dev/null; then
-            failed=1
-        fi
-    done
+        done
+    fi
     if [[ "$failed" == "0" \
-        && "$CAMPAIGN_RUNTIME_TEMP_ROOT" == /tmp/agentkernelarena-formal-runtime.* \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT" =~ ^/tmp/agentkernelarena-formal-runtime\.[[:alnum:]]{6}$ \
         && -d "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
         && ! -L "$CAMPAIGN_RUNTIME_TEMP_ROOT" ]]; then
-        rm -rf -- "$CAMPAIGN_RUNTIME_TEMP_ROOT"
-    elif [[ -n "$CAMPAIGN_RUNTIME_TEMP_ROOT" ]]; then
+        if ! campaign_runtime_temp_root_identity_valid \
+            || ! rm -rf -- "$CAMPAIGN_RUNTIME_TEMP_ROOT"; then
+            failed=1
+        fi
+    fi
+    if [[ "$failed" != "0" && -n "$CAMPAIGN_RUNTIME_TEMP_ROOT" ]]; then
         warn "retaining formal runtime staging after cleanup failure: $CAMPAIGN_RUNTIME_TEMP_ROOT"
     fi
-    return 0
+    return "$failed"
+}
+
+finish_with_campaign_runtime_cleanup() {
+    local original_status=$?
+    trap - EXIT
+    if ! cleanup_campaign_runtime_mounts && [[ "$original_status" == "0" ]]; then
+        original_status=70
+    fi
+    exit "$original_status"
 }
 
 prepare_campaign_gpu_boundary_plan() {
@@ -1120,8 +1491,18 @@ build_docker_args() {
             -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST_SHA256=${CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256}"
             -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST_FILE_SHA256=${CAMPAIGN_AKA_RUNTIME_MANIFEST_FILE_SHA256}"
             -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_IMAGE_SHA256=${CAMPAIGN_AKA_RUNTIME_IMAGE_SHA256}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE=${CAMPAIGN_AKA_RUNTIME_SERVICE_HOST}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE_FILE_SHA256=${CAMPAIGN_AKA_RUNTIME_SERVICE_FILE_SHA256}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE_CONTENT_SHA256=${CAMPAIGN_AKA_RUNTIME_SERVICE_CONTENT_SHA256}"
             -e "AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT=${CAMPAIGN_DATA_ROOT}"
         )
+        if [[ "$APEX_RUNTIME" == "1" ]]; then
+            docker_args+=(
+                -e "AGENT_KERNEL_ARENA_APEX_RUNTIME_SERVICE_EVIDENCE=${CAMPAIGN_APEX_RUNTIME_SERVICE_HOST}"
+                -e "AGENT_KERNEL_ARENA_APEX_RUNTIME_SERVICE_EVIDENCE_FILE_SHA256=${CAMPAIGN_APEX_RUNTIME_SERVICE_FILE_SHA256}"
+                -e "AGENT_KERNEL_ARENA_APEX_RUNTIME_SERVICE_EVIDENCE_CONTENT_SHA256=${CAMPAIGN_APEX_RUNTIME_SERVICE_CONTENT_SHA256}"
+            )
+        fi
     fi
 
     # geak_v4's claude-agent-sdk is installed with `pip install --target` into
@@ -1341,6 +1722,9 @@ docker_exec() {
                     --root "$AGENT_KERNEL_ARENA_AKA_RUNTIME_ROOT" \
                     --manifest-sha256 "$AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST_SHA256" \
                     --image-sha256 "$AGENT_KERNEL_ARENA_AKA_RUNTIME_IMAGE_SHA256" \
+                    --service-evidence "$AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE" \
+                    --service-file-sha256 "$AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE_FILE_SHA256" \
+                    --service-content-sha256 "$AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE_CONTENT_SHA256" \
                     --output "$aka_mount_receipt"
             )" || exit 1
             chmod 0444 "$aka_mount_receipt" || exit 1
@@ -1357,6 +1741,9 @@ docker_exec() {
                     --snapshot "$AGENT_KERNEL_ARENA_APEX_RUNTIME_SNAPSHOT_ROOT" \
                     --sha256 "$AGENT_KERNEL_ARENA_APEX_RUNTIME_MANIFEST_SHA256" \
                     --image-sha256 "$AGENT_KERNEL_ARENA_APEX_RUNTIME_IMAGE_SHA256" \
+                    --service-evidence "$AGENT_KERNEL_ARENA_APEX_RUNTIME_SERVICE_EVIDENCE" \
+                    --service-file-sha256 "$AGENT_KERNEL_ARENA_APEX_RUNTIME_SERVICE_EVIDENCE_FILE_SHA256" \
+                    --service-content-sha256 "$AGENT_KERNEL_ARENA_APEX_RUNTIME_SERVICE_EVIDENCE_CONTENT_SHA256" \
                     --output "$apex_mount_receipt"
             )" || exit 1
             chmod 0444 "$apex_mount_receipt" || exit 1
@@ -1918,7 +2305,7 @@ if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
 fi
 
 CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
-trap cleanup_campaign_runtime_mounts EXIT
+trap finish_with_campaign_runtime_cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM

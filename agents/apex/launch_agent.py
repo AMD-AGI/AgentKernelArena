@@ -40,7 +40,6 @@ from src.agent_turn_budget import (
     AGENT_PROCESS_CONTAINMENT_POLICY,
     CANDIDATE_PERSISTENCE_POLICY,
     FORMAL_MATCHED_MAX_TURNS,
-    LEGACY_TURN_POLICY,
     TURN_POLICY,
     budget_stop_reason_matches,
     context_packet_objective_matches,
@@ -89,7 +88,7 @@ _APEX_GENERIC_CONTEXT_MARKER = (
 )
 _NORMAL_NO_PATCH_STATUSES = {"no_gain"}
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v5"
+_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v6"
 _CAMPAIGN_BINDING_SCHEMA = "aka.attempt-campaign-binding/v1"
 _CAMPAIGN_BINDING_KEYS = frozenset(
     {
@@ -1698,113 +1697,96 @@ def _validate_apex_lineage(
         or payload.get("timed_out") is not False
     )
     typed_termination = payload.get("termination_kind")
+    if typed_termination is None:
+        raise ApexAdapterError("formal Apex agent event lacks typed termination")
     exact_checkpoint = typed_termination == "exact_turn_boundary"
     budget_overrun = (
         failure_reason is not None and typed_termination == "turn_overrun"
     )
-    if typed_termination is not None:
-        process_containment = payload.get("process_containment")
-        discarded_lines = payload.get("discarded_stdout_lines")
-        discarded_bytes = payload.get("discarded_stdout_bytes")
-        discarded_sha256 = payload.get("discarded_stdout_sha256")
-        has_discarded_tail = (
-            isinstance(discarded_lines, int)
-            and not isinstance(discarded_lines, bool)
-            and discarded_lines > 0
-        ) or (
-            isinstance(discarded_bytes, int)
-            and not isinstance(discarded_bytes, bool)
-            and discarded_bytes > 0
-        )
-        discarded_tail_invalid = (
-            isinstance(discarded_lines, bool)
-            or not isinstance(discarded_lines, int)
-            or discarded_lines < 0
-            or isinstance(discarded_bytes, bool)
-            or not isinstance(discarded_bytes, int)
-            or discarded_bytes < 0
-            or (
-                has_discarded_tail
-                and (
-                    discarded_lines == 0
-                    or discarded_bytes == 0
-                    or not isinstance(discarded_sha256, str)
-                    or not _SHA256.fullmatch(discarded_sha256)
-                )
-            )
-            or (not has_discarded_tail and discarded_sha256 is not None)
-        )
-        outcome_mismatch = (
-            payload.get("capture_status") != "complete"
-            or payload.get("timed_out") is not False
-            or not isinstance(payload.get("observer_stop_sent"), bool)
-            or payload.get("process_containment_policy_id")
-            != AGENT_PROCESS_CONTAINMENT_POLICY
-            or not _inner_agent_containment_valid(
-                process_containment,
-                forced_stop=exact_checkpoint or budget_overrun,
-            )
-            or discarded_tail_invalid
-            or (
-                failure_reason is None
-                and (
-                    typed_termination
-                    not in {"completed", "exact_turn_boundary"}
-                    or payload.get("candidate_capture_allowed") is not True
-                )
-            )
-            or (
-                failure_reason is not None
-                and (
-                    not budget_overrun
-                    or payload.get("candidate_capture_allowed") is not False
-                    or payload.get("termination_reason") != "max_turns_overrun"
-                    or type(payload.get("observed_turns")) is not int
-                    or payload["observed_turns"]
-                    <= task_spec["budget"]["max_turns"]
-                    or payload.get("observer_stop_sent") is not True
-                    or type(payload.get("exit_code")) is not int
-                    or payload["exit_code"] != 128 + signal.SIGKILL
-                )
-            )
-            or (
-                failure_reason is None
-                and exact_checkpoint
-                and (
-                    payload.get("termination_reason")
-                    != "max_turns_exact_boundary"
-                    or payload.get("observed_turns")
-                    != task_spec["budget"]["max_turns"]
-                    or payload.get("observer_stop_sent") is not True
-                    or payload.get("exit_code") != 128 + signal.SIGKILL
-                )
-            )
-            or (
-                failure_reason is None
-                and not exact_checkpoint
-                and (
-                    payload.get("termination_reason") is not None
-                    or payload.get("exit_code") != 0
-                )
+    process_containment = payload.get("process_containment")
+    discarded_lines = payload.get("discarded_stdout_lines")
+    discarded_bytes = payload.get("discarded_stdout_bytes")
+    discarded_sha256 = payload.get("discarded_stdout_sha256")
+    has_discarded_tail = (
+        isinstance(discarded_lines, int)
+        and not isinstance(discarded_lines, bool)
+        and discarded_lines > 0
+    ) or (
+        isinstance(discarded_bytes, int)
+        and not isinstance(discarded_bytes, bool)
+        and discarded_bytes > 0
+    )
+    discarded_tail_invalid = (
+        isinstance(discarded_lines, bool)
+        or not isinstance(discarded_lines, int)
+        or discarded_lines < 0
+        or isinstance(discarded_bytes, bool)
+        or not isinstance(discarded_bytes, int)
+        or discarded_bytes < 0
+        or (
+            has_discarded_tail
+            and (
+                discarded_lines == 0
+                or discarded_bytes == 0
+                or not isinstance(discarded_sha256, str)
+                or not _SHA256.fullmatch(discarded_sha256)
             )
         )
-    elif failure_reason is None:
-        outcome_mismatch = (
-            payload.get("exit_code") != 0
-            or payload.get("budget_exceeded") is not False
-            or payload.get("budget_reason") is not None
+        or (not has_discarded_tail and discarded_sha256 is not None)
+    )
+    outcome_mismatch = (
+        payload.get("capture_status") != "complete"
+        or payload.get("timed_out") is not False
+        or not isinstance(payload.get("observer_stop_sent"), bool)
+        or payload.get("process_containment_policy_id")
+        != AGENT_PROCESS_CONTAINMENT_POLICY
+        or not _inner_agent_containment_valid(
+            process_containment,
+            forced_stop=exact_checkpoint or budget_overrun,
         )
-    else:
-        observed_turns = payload.get("observed_turns")
-        outcome_mismatch = (
-            type(payload.get("exit_code")) is not int
-            or payload.get("budget_exceeded") is not True
-            or not budget_stop_reason_matches(
-                reason=payload.get("budget_reason"),
-                observed_turns=observed_turns,
-                max_turns=task_spec["budget"]["max_turns"],
+        or discarded_tail_invalid
+        or (
+            failure_reason is None
+            and (
+                typed_termination not in {"completed", "exact_turn_boundary"}
+                or payload.get("candidate_capture_allowed") is not True
             )
         )
+        or (
+            failure_reason is not None
+            and (
+                not budget_overrun
+                or payload.get("candidate_capture_allowed") is not False
+                or payload.get("termination_reason") != "max_turns_overrun"
+                or type(payload.get("observed_turns")) is not int
+                or payload["observed_turns"]
+                <= task_spec["budget"]["max_turns"]
+                or payload.get("observer_stop_sent") is not True
+                or type(payload.get("exit_code")) is not int
+                or payload["exit_code"] != 128 + signal.SIGKILL
+            )
+        )
+        or (
+            failure_reason is None
+            and exact_checkpoint
+            and (
+                payload.get("termination_reason")
+                != "max_turns_exact_boundary"
+                or payload.get("observed_turns")
+                != task_spec["budget"]["max_turns"]
+                or payload.get("observer_stop_sent") is not True
+                or payload.get("exit_code") != 128 + signal.SIGKILL
+            )
+        )
+        or (
+            failure_reason is None
+            and not exact_checkpoint
+            and (
+                payload.get("termination_reason") is not None
+                or payload.get("exit_code") != 0
+            )
+        )
+    )
     if common_agent_mismatch or outcome_mismatch:
         raise ApexAdapterError(
             f"Apex {contract['agent_event']} outcome/identity is inconsistent"
@@ -1835,8 +1817,7 @@ def _validate_apex_lineage(
         or invocation.get("runtime_closure_sha256")
         != expected_options.get("runtime_closure_sha256")
         or invocation.get("max_turns") != task_spec["budget"]["max_turns"]
-        or invocation.get("turn_policy")
-        != (TURN_POLICY if typed_termination is not None else LEGACY_TURN_POLICY)
+        or invocation.get("turn_policy") != TURN_POLICY
         or invocation.get("process_containment_policy_id")
         != AGENT_PROCESS_CONTAINMENT_POLICY
         or invocation.get("isolation") != expected_isolation
@@ -1928,8 +1909,7 @@ def _validate_apex_lineage(
     expected_budget_exceeded = failure_reason is not None
     common_turn_mismatch = (
         payload.get("observed_turns") != observed_turns
-        or budget.get("turn_policy")
-        != (TURN_POLICY if typed_termination is not None else LEGACY_TURN_POLICY)
+        or budget.get("turn_policy") != TURN_POLICY
         or budget.get("max_turns") != max_turns
         or budget.get("observed_turns") != observed_turns
     )
@@ -2037,32 +2017,18 @@ def _validate_apex_lineage(
         "transcript_digest": _sha256_bytes(transcript_bytes),
         "event_artifact_digests": sorted(event_artifact_digests),
         "invocation": invocation,
-        "termination_kind": typed_termination or (
-            "budget_exhausted" if failure_reason else "completed"
-        ),
-        "termination_reason": payload.get("termination_reason")
-        if typed_termination is not None
-        else payload.get("budget_reason"),
-        "capture_status": payload.get("capture_status")
-        if typed_termination is not None
-        else "complete",
-        "candidate_capture_allowed": payload.get("candidate_capture_allowed")
-        if typed_termination is not None
-        else failure_reason is None,
+        "termination_kind": typed_termination,
+        "termination_reason": payload.get("termination_reason"),
+        "capture_status": payload.get("capture_status"),
+        "candidate_capture_allowed": payload.get("candidate_capture_allowed"),
         "observed_turns": observed_turns,
-        "observer_stop_sent": payload.get("observer_stop_sent")
-        if typed_termination is not None
-        else False,
-        "process_containment": payload.get("process_containment")
-        if typed_termination is not None
-        else None,
+        "observer_stop_sent": payload.get("observer_stop_sent"),
+        "process_containment": payload.get("process_containment"),
         "discarded_stdout_tail": {
             "lines": payload.get("discarded_stdout_lines"),
             "bytes": payload.get("discarded_stdout_bytes"),
             "sha256": payload.get("discarded_stdout_sha256"),
-        }
-        if typed_termination is not None
-        else {"lines": 0, "bytes": 0, "sha256": None},
+        },
         "agent_event_id": agent_event["event_id"],
         "checkpoint_gate_chain": checkpoint_gate_chain,
         "prompt_bytes": prompt_bytes,
@@ -2804,6 +2770,18 @@ def _runtime_snapshot_receipt(
                 "runtime_image_input_sha256": image_inputs["sha256"],
                 "image_sha256": immutable_mount["image_sha256"],
                 "backing": immutable_mount["backing"],
+                "requested_mount_options": immutable_mount[
+                    "requested_mount_options"
+                ],
+                "runtime_service_evidence_sha256": immutable_mount[
+                    "runtime_service_evidence_sha256"
+                ],
+                "runtime_engine_evidence_sha256": immutable_mount[
+                    "runtime_engine_evidence_sha256"
+                ],
+                "host_access_policy": immutable_mount[
+                    "host_access_policy"
+                ],
                 "mount": immutable_mount["mount"],
             },
             "attempt_mounts_sha256": attempt_mounts_sha256,

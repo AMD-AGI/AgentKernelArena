@@ -18,6 +18,17 @@ Matched Apex-versus-Codex campaigns mount `formal_requirements.toml` read-only a
 - managed and project hooks disabled;
 - no web-search mode allowed.
 
+The committed AKA runtime that supplies this file is a sealed-memfd-backed,
+read-only SquashFS mount. Its v2 mount receipt requires the observed
+`allow_other` FUSE option so the root Docker daemon can bind it; the enclosing
+host staging directory remains mode `0700`. `/etc/fuse.conf` must therefore
+contain an uncommented `user_allow_other` line before a formal campaign starts.
+The persisted v2 service evidence distinguishes the signal-handling Python
+controller PID/starttime from the SquashFUSE engine PID/starttime and binds both,
+along with controller ownership and its exact signal policy. Docker socket/root
+access is an explicit trusted host boundary; `allow_other` does not protect the
+mount from that daemon, while the private ancestor blocks unrelated host users.
+
 The outer attempt boundary is a gated rootless bubblewrap mount/PID/IPC namespace.
 It hides all other campaign data and gives the attempt private `/tmp`, `/dev/shm`,
 and `/proc`. Bubblewrap reports namespace PID 1 over a status pipe before the gate
@@ -67,7 +78,7 @@ rejects any missing or mismatched binding. Direct Codex additionally publishes t
 exact UTF-8 rendered prompt as a read-only receipt artifact; the verifier hashes
 those bytes and requires the result to equal `invocation.prompt_sha256`.
 
-Receipt v4 enforces exact-turn source persistence with
+Receipt v6 enforces exact-turn source persistence with
 `private_pid_namespace_init_pidfd_v1`. At turn 50, the reader immediately signals the
 namespace init through its pidfd. Linux destroys every member, including descendants
 that call `setsid()`, double-fork, clear their environment, close stdio, or immediately

@@ -18,6 +18,8 @@ import pytest
 import yaml
 
 from src import apex_runtime as apex_runtime_contract
+from src import aka_runtime
+from src import immutable_runtime_mount
 from src.agent_turn_budget import FORMAL_MATCHED_MAX_TURNS
 from src import campaign_isolation
 from src.campaign_isolation import WrappedAttemptCommand
@@ -29,6 +31,134 @@ apex_launcher = importlib.import_module("agents.apex.launch_agent")
 
 _BACKEND_RUNTIME_CLOSURE_SHA256 = "e" * 64
 _FORMAL_TASK_COMPONENT = apex_launcher.campaign_task_path_component("task")
+
+_REQUESTED_MOUNT_OPTIONS = [
+    "ro",
+    "nodev",
+    "nosuid",
+    "default_permissions",
+    "allow_other",
+    "subtype=squashfuse",
+]
+
+
+def _digest(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _host_access_policy(private_ancestor: Path) -> dict[str, object]:
+    owner = {"uid": os.getuid(), "gid": os.getgid()}
+    material = {
+        "schema": aka_runtime.HOST_ACCESS_POLICY_SCHEMA,
+        "policy_id": aka_runtime.HOST_ACCESS_POLICY_ID,
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "private_ancestor": {
+            "path": str(private_ancestor),
+            "device": 7,
+            "inode": 11,
+            "uid": owner["uid"],
+            "gid": owner["gid"],
+            "mode": 0o700,
+        },
+        "fuse_config": {
+            "path": "/etc/fuse.conf",
+            "device": 8,
+            "inode": 12,
+            "uid": 0,
+            "gid": 0,
+            "mode": 0o644,
+            "nlink": 1,
+            "size_bytes": 17,
+            "sha256": "c" * 64,
+            "user_allow_other": True,
+        },
+        "mount_owner": owner,
+        "worker": dict(owner),
+        "docker_daemon": {
+            "uid": 0,
+            "trusted_boundary": True,
+            "access_via": "fuse_allow_other_with_private_ancestor_v1",
+        },
+    }
+    return {**material, "sha256": _digest(material)}
+
+
+def _runtime_service_evidence(
+    snapshot: Path,
+    manifest: dict[str, object],
+    mount: dict[str, object],
+    image_sha256: str = "f" * 64,
+) -> dict[str, object]:
+    host_policy = _host_access_policy(snapshot.parent)
+    image_input_sha256 = apex_runtime_contract.runtime_image_inputs(
+        snapshot, manifest
+    )["sha256"]
+    receipt_material = {
+        "schema": immutable_runtime_mount.MOUNT_RECEIPT_SCHEMA,
+        "policy_id": apex_runtime_contract.RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
+        "root": str(snapshot),
+        "runtime_manifest_sha256": manifest["sha256"],
+        "runtime_image_input_sha256": image_input_sha256,
+        "image_sha256": image_sha256,
+        "backing": {
+            "kind": "sealed_memfd",
+            "seals": list(immutable_runtime_mount._SEAL_NAMES),
+        },
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "host_access_policy": host_policy,
+        "mount": mount,
+    }
+    host_receipt = {**receipt_material, "sha256": _digest(receipt_material)}
+    engine_material = {
+        "schema": aka_runtime.ENGINE_EVIDENCE_SCHEMA,
+        "policy_id": apex_runtime_contract.RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
+        "receipt_sha256": host_receipt["sha256"],
+        "runtime_image_input_sha256": image_input_sha256,
+        "image": {
+            "size_bytes": 4096,
+            "sha256": image_sha256,
+            "memfd_seals": list(immutable_runtime_mount._SEAL_NAMES),
+        },
+        "tools": {
+            "mksquashfs": {"path": "/usr/bin/mksquashfs", "sha256": "e" * 64},
+            "squashfuse": {"path": "/usr/bin/squashfuse", "sha256": "f" * 64},
+        },
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "host_access_policy_sha256": host_policy["sha256"],
+        "process": {"pid": 101, "starttime": 202, "foreground": True},
+        "mountpoint_source": {
+            "path": str(snapshot),
+            "device": 7,
+            "inode": 13,
+            "uid": os.getuid(),
+            "gid": os.getgid(),
+            "mode": 0o555,
+        },
+        "mount": mount,
+        "inventory_verification": {
+            "entry_count": 2,
+            "inventory_sha256": image_input_sha256,
+        },
+        "write_probe_errno": 30,
+    }
+    engine = {**engine_material, "sha256": _digest(engine_material)}
+    service_material = {
+        "schema": aka_runtime.ENGINE_SERVICE_SCHEMA,
+        "policy_id": aka_runtime.ENGINE_SERVICE_POLICY,
+        "ready_path": str(snapshot.parent / "runtime-service-ready.json"),
+        "service": {
+            "pid": 303,
+            "starttime": 404,
+            "owner": dict(host_policy["mount_owner"]),
+            "accepted_signals": ["SIGINT", "SIGTERM"],
+            "engine_process": {"pid": 101, "starttime": 202},
+        },
+        "mount_receipt": host_receipt,
+        "engine_evidence": engine,
+    }
+    return {**service_material, "sha256": _digest(service_material)}
 
 
 def _campaign_binding_stub() -> dict[str, object]:
@@ -1311,8 +1441,14 @@ def _formal_apex_launch_fixture(
         "root": "/",
         "mount_point": str(runtime_snapshot),
         "filesystem": "fuse.squashfuse",
-        "mount_options": ["nodev", "ro"],
-        "super_options": ["ro"],
+        "mount_options": ["nodev", "nosuid", "ro"],
+        "super_options": [
+            "allow_other",
+            "default_permissions",
+            f"group_id={os.getgid()}",
+            "ro",
+            f"user_id={os.getuid()}",
+        ],
         "read_only": True,
     }
     monkeypatch.setattr(
@@ -1320,8 +1456,14 @@ def _formal_apex_launch_fixture(
         "_observed_immutable_mount",
         lambda _root: immutable_mount,
     )
+    runtime_service_evidence = _runtime_service_evidence(
+        runtime_snapshot, runtime_manifest, immutable_mount
+    )
     immutable_receipt = apex_runtime_contract.create_immutable_mount_receipt(
-        runtime_snapshot, runtime_manifest, "f" * 64
+        runtime_snapshot,
+        runtime_manifest,
+        "f" * 64,
+        runtime_service_evidence,
     )
     immutable_receipt_path = attempt_root / "apex-runtime-mount-receipt.json"
     immutable_receipt_path.write_text(
@@ -1935,7 +2077,7 @@ def test_formal_apex_rejects_task_spec_mutation_and_receipts_prelaunch_bytes(
         apex_launcher.launch_agent(eval_config, str(config_path), str(workspace))
 
     receipt = captured["receipt"]
-    assert receipt["schema"] == "agentkernelarena.apex-attempt-receipt/v5"
+    assert receipt["schema"] == "agentkernelarena.apex-attempt-receipt/v6"
     assert receipt["session_succeeded"] is False
     assert receipt["task_spec_contract"]["postlaunch_unchanged"] is False
     received_spec = json.loads(captured["receipt_task_spec_bytes"])

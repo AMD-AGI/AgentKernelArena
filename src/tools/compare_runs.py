@@ -25,10 +25,13 @@ try:
     from src import postprocessing
     from src.aka_runtime import (
         BACKEND_CLOSURE_SCHEMA,
+        AkaRuntimeError,
         EXECUTION_MANIFEST_SCHEMA,
         GIT_EVIDENCE_POLICY,
         IMMUTABLE_MOUNT_POLICY,
         IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
+        _host_access_policy_valid,
+        load_runtime_service_evidence,
     )
     from src.campaign_isolation import (
         APEX_RUNTIME_MOUNT_POLICY,
@@ -53,10 +56,13 @@ except (ModuleNotFoundError, ImportError):
     from src import postprocessing
     from src.aka_runtime import (
         BACKEND_CLOSURE_SCHEMA,
+        AkaRuntimeError,
         EXECUTION_MANIFEST_SCHEMA,
         GIT_EVIDENCE_POLICY,
         IMMUTABLE_MOUNT_POLICY,
         IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
+        _host_access_policy_valid,
+        load_runtime_service_evidence,
     )
     from src.campaign_isolation import (
         APEX_RUNTIME_MOUNT_POLICY,
@@ -77,7 +83,7 @@ except (ModuleNotFoundError, ImportError):
 
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-_COMPARISON_SCHEMA = "aka.apex-vs-codex-comparison-contract/v5"
+_COMPARISON_SCHEMA = "aka.apex-vs-codex-comparison-contract/v6"
 _CANDIDATE_PERSISTENCE_POLICY = "structured_agent_turn_checkpoint_v2"
 _BOUNDARY_QUIESCENCE_POLICY = "sigstop_process_group_snapshot_v1"
 _ATTEMPT_CONTAINMENT_POLICY = "private_pid_namespace_init_pidfd_v1"
@@ -86,9 +92,9 @@ _OBJECTIVE_POLICY = "aka.task-package-objective-and-protected-harness/v1"
 _PROMPT_POLICY = "aka.shared-objective-backend-native-context-receipted/v1"
 _FORMAL_LIVE_EXECUTION = {
     "mode": "live_formal_scoring",
-    "comparison_generation": 5,
+    "comparison_generation": 6,
     "historical_compatibility": False,
-    "policy_id": "aka.live-formal-v5-only/v1",
+    "policy_id": "aka.live-formal-v6-only/v1",
 }
 _FORMAL_LIVE_EXECUTION_SHA256 = hashlib.sha256(
     json.dumps(
@@ -114,8 +120,8 @@ _CODEX_IDENTITY_FIELDS = (
     "backend_runtime_closure_sha256",
     "backend_runtime_closure",
 )
-_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v5"
-_CODEX_RECEIPT_SCHEMA = "agentkernelarena.codex-attempt-receipt/v4"
+_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v6"
+_CODEX_RECEIPT_SCHEMA = "agentkernelarena.codex-attempt-receipt/v6"
 _CLEAN_STATUS_SHA256 = hashlib.sha256(b"").hexdigest()
 _MOUNT_SEALS = ["F_SEAL_WRITE", "F_SEAL_SHRINK", "F_SEAL_GROW", "F_SEAL_SEAL"]
 _RUNTIME_ISOLATION_SCHEMA = "aka.runtime-isolation-receipt/v5"
@@ -420,6 +426,7 @@ def _static_mount_record_valid(mount: Any, expected_root: Any) -> bool:
         and isinstance(mount.get("mount_options"), list)
         and "ro" in mount["mount_options"]
         and isinstance(mount.get("super_options"), list)
+        and "allow_other" in mount["super_options"]
         and mount.get("read_only") is True
         and mount.get("nested_mounts") == []
     )
@@ -430,7 +437,8 @@ def _static_mount_receipt_valid(
 ) -> bool:
     if not isinstance(receipt, dict) or set(receipt) != {
         "schema", "policy_id", "manifest_sha256", "image_sha256", "memfd_seals",
-        "mount", "sha256",
+        "requested_mount_options", "runtime_service_evidence_sha256",
+        "runtime_engine_evidence_sha256", "host_access_policy", "mount", "sha256",
     }:
         return False
     material = dict(receipt)
@@ -441,6 +449,17 @@ def _static_mount_receipt_valid(
         and receipt.get("manifest_sha256") == expected_manifest_sha256
         and _SHA256.fullmatch(str(receipt.get("image_sha256") or ""))
         and receipt.get("memfd_seals") == _MOUNT_SEALS
+        and receipt.get("requested_mount_options") == [
+            "ro", "nodev", "nosuid", "default_permissions", "allow_other",
+            "subtype=squashfuse",
+        ]
+        and _SHA256.fullmatch(
+            str(receipt.get("runtime_service_evidence_sha256") or "")
+        )
+        and _SHA256.fullmatch(
+            str(receipt.get("runtime_engine_evidence_sha256") or "")
+        )
+        and _host_access_policy_valid(receipt.get("host_access_policy"))
         and _static_mount_record_valid(receipt.get("mount"), expected_root)
         and isinstance(observed, str)
         and _SHA256.fullmatch(observed)
@@ -469,10 +488,27 @@ def _runtime_snapshot_binding_valid(
         "schema", "root", "manifest_path", "manifest_file_sha256", "manifest_sha256",
         "mount_receipt_path", "mount_receipt_file_sha256", "mount_receipt_sha256",
         "mount_receipt_schema", "mount_receipt",
+        "runtime_service_evidence_path",
+        "runtime_service_evidence_file_sha256",
+        "runtime_service_evidence_content_sha256",
+        "runtime_engine_evidence_sha256",
+        "runtime_service_evidence",
     }:
         return False
     receipt = snapshot.get("mount_receipt")
     expected_digest = aka.get("execution_manifest_sha256")
+    try:
+        service = load_runtime_service_evidence(
+            snapshot.get("runtime_service_evidence_path"),
+            file_sha256=snapshot.get("runtime_service_evidence_file_sha256"),
+            content_sha256=snapshot.get(
+                "runtime_service_evidence_content_sha256"
+            ),
+            manifest_sha256=expected_digest,
+            image_sha256=str(receipt.get("image_sha256") or ""),
+        )
+    except (AkaRuntimeError, OSError, TypeError, ValueError):
+        return False
     receipt_file = (
         json.dumps(receipt, indent=2, sort_keys=True) + "\n"
         if isinstance(receipt, dict)
@@ -480,10 +516,13 @@ def _runtime_snapshot_binding_valid(
     )
     return bool(
         comparison_snapshot == projected_snapshot
-        and snapshot.get("schema") == "aka.execution-snapshot-runtime/v1"
+        and snapshot.get("schema") == "aka.execution-snapshot-runtime/v2"
         and _absolute_path_string(snapshot.get("root"))
         and _absolute_path_string(snapshot.get("manifest_path"))
         and _absolute_path_string(snapshot.get("mount_receipt_path"))
+        and _absolute_path_string(
+            snapshot.get("runtime_service_evidence_path")
+        )
         and _SHA256.fullmatch(str(snapshot.get("manifest_file_sha256") or ""))
         and snapshot.get("mount_receipt_file_sha256")
         == _sha256_bytes(receipt_file.encode())
@@ -491,6 +530,15 @@ def _runtime_snapshot_binding_valid(
         and snapshot.get("mount_receipt_schema") == IMMUTABLE_MOUNT_RECEIPT_SCHEMA
         and _static_mount_receipt_valid(receipt, expected_digest, snapshot.get("root"))
         and snapshot.get("mount_receipt_sha256") == receipt.get("sha256")
+        and snapshot.get("runtime_service_evidence") == service
+        and snapshot.get("runtime_service_evidence_content_sha256")
+        == service.get("sha256")
+        and snapshot.get("runtime_engine_evidence_sha256")
+        == service.get("engine_evidence", {}).get("sha256")
+        and receipt.get("runtime_service_evidence_sha256")
+        == service.get("sha256")
+        and receipt.get("runtime_engine_evidence_sha256")
+        == service.get("engine_evidence", {}).get("sha256")
     )
 
 
@@ -1005,7 +1053,7 @@ def _runtime_binding_valid(
     )
 
 
-def _v5_manifest_bindings_valid(
+def _v6_manifest_bindings_valid(
     manifest: Dict[str, Any], comparison: Dict[str, Any], tasks: Any
 ) -> bool:
     repositories = manifest.get("repositories")
@@ -1075,12 +1123,23 @@ def _formal_manifest_context(
     comparison_codex = comparison.get("codex") if isinstance(comparison, dict) else None
     try:
         run_config_path = Path(str(configuration.get("run_config_path") or ""))
+        run_config_metadata = run_config_path.lstat()
+        resolved_run_config = run_config_path.resolve(strict=True)
         expected_run_config = _run_config_contract(
             run_config_path,
             agent_name=str(agent_template or ""),
         )
         run_config_valid = bool(
-            configuration.get("run_config_sha256")
+            run_config_path.is_absolute()
+            and resolved_run_config == run_config_path
+            and not run_config_path.is_symlink()
+            and stat.S_ISREG(run_config_metadata.st_mode)
+            and run_config_metadata.st_nlink == 1
+            and run_config_metadata.st_mode & 0o222 == 0
+            and type(configuration.get("run_config_size_bytes")) is int
+            and configuration.get("run_config_size_bytes")
+            == run_config_metadata.st_size
+            and configuration.get("run_config_sha256")
             == _sha256_file(run_config_path)
             and configuration.get("run_config_contract") == expected_run_config
             and isinstance(comparison, dict)
@@ -1093,7 +1152,7 @@ def _formal_manifest_context(
         or not tasks
         or not isinstance(comparison, dict)
         or comparison.get("schema") != _COMPARISON_SCHEMA
-        or not _v5_manifest_bindings_valid(manifest, comparison, tasks)
+        or not _v6_manifest_bindings_valid(manifest, comparison, tasks)
         or comparison.get("objective_policy_id") != _OBJECTIVE_POLICY
         or comparison.get("prompt_policy_id") != _PROMPT_POLICY
         or comparison.get("tasks") != tasks

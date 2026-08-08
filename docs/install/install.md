@@ -20,6 +20,12 @@ The following prerequisites are required before running AgentKernelArena.
   `/dev/dri` must be present. The runner also mounts `/dev/mem` when present.
 - **Docker Engine:** the current user must be able to access the Docker daemon
   without `sudo`.
+- **FUSE support for formal matched campaigns:** install the pinned host tools
+  `/usr/bin/squashfuse`, `/usr/bin/fusermount3`, and `/usr/bin/mksquashfs`, and
+  enable `user_allow_other` as an uncommented line in `/etc/fuse.conf`. Formal
+  mode keeps its staging ancestor private at mode `0700`, but this FUSE setting
+  is required so the root Docker daemon can bind the verified read-only
+  SquashFS roots. The runner fails before materialization when it is absent.
 - **SGLang runtime image:** `gfx942` uses
   `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses
   `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705`. The runner selects from

@@ -24,8 +24,13 @@ from typing import Any, Iterable
 
 EXECUTION_MANIFEST_SCHEMA = "aka.execution-snapshot-manifest/v1"
 BACKEND_CLOSURE_SCHEMA = "aka.backend-runtime-closure/v1"
-IMMUTABLE_MOUNT_RECEIPT_SCHEMA = "aka.execution-snapshot-mount-receipt/v1"
-IMMUTABLE_MOUNT_POLICY = "sealed_memfd_squashfs_read_only_v1"
+IMMUTABLE_MOUNT_RECEIPT_SCHEMA = "aka.execution-snapshot-mount-receipt/v2"
+IMMUTABLE_MOUNT_POLICY = "sealed_memfd_squashfs_docker_bindable_read_only_v2"
+ENGINE_SERVICE_SCHEMA = "aka.immutable-runtime-mount-service-ready/v2"
+ENGINE_SERVICE_POLICY = "single_docker_bindable_snapshot_signal_lifetime_v2"
+ENGINE_EVIDENCE_SCHEMA = "aka.immutable-runtime-mount-engine/v2"
+HOST_ACCESS_POLICY_SCHEMA = "aka.immutable-runtime-host-access-policy/v1"
+HOST_ACCESS_POLICY_ID = "private_ancestor_docker_daemon_fuse_v1"
 GIT_EVIDENCE_POLICY = "head_tree_direct_bytes_no_filters_v1"
 IMAGE_INPUT_SCHEMA = "aka.apex-runtime-image-input/v1"
 IMAGE_INPUT_POLICY = "deterministic_squashfs_inputs_v1"
@@ -35,11 +40,25 @@ _MEMFD_SEALS = (
     "F_SEAL_GROW",
     "F_SEAL_SEAL",
 )
+_HOST_MEMFD_SEALS = (
+    "F_SEAL_GROW",
+    "F_SEAL_SEAL",
+    "F_SEAL_SHRINK",
+    "F_SEAL_WRITE",
+)
 
 _GIT = Path("/usr/bin/git")
 _SHA1 = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _TRACKED_MODES = {"100644", "100755"}
+_REQUESTED_MOUNT_OPTIONS = [
+    "ro",
+    "nodev",
+    "nosuid",
+    "default_permissions",
+    "allow_other",
+    "subtype=squashfuse",
+]
 _DANGEROUS_CONFIG_KEYS = {
     "core.attributesfile",
     "core.fsmonitor",
@@ -752,17 +771,343 @@ def _current_snapshot_mount(root: Path) -> dict[str, Any]:
     }
 
 
+def _host_access_policy_valid(policy: Any) -> bool:
+    if not isinstance(policy, dict) or set(policy) != {
+        "schema",
+        "policy_id",
+        "requested_mount_options",
+        "private_ancestor",
+        "fuse_config",
+        "mount_owner",
+        "worker",
+        "docker_daemon",
+        "sha256",
+    }:
+        return False
+    material = dict(policy)
+    observed = material.pop("sha256", None)
+    ancestor = policy.get("private_ancestor")
+    config = policy.get("fuse_config")
+    owner = policy.get("mount_owner")
+    worker = policy.get("worker")
+    daemon = policy.get("docker_daemon")
+    return bool(
+        policy.get("schema") == HOST_ACCESS_POLICY_SCHEMA
+        and policy.get("policy_id") == HOST_ACCESS_POLICY_ID
+        and policy.get("requested_mount_options") == _REQUESTED_MOUNT_OPTIONS
+        and isinstance(observed, str)
+        and observed == _digest(material)
+        and isinstance(ancestor, dict)
+        and set(ancestor) == {"path", "device", "inode", "uid", "gid", "mode"}
+        and Path(str(ancestor.get("path") or "")).is_absolute()
+        and Path(str(ancestor["path"]))
+        == Path(os.path.abspath(str(ancestor["path"])))
+        and all(type(ancestor.get(key)) is int for key in ("device", "inode", "uid", "gid", "mode"))
+        and ancestor["device"] >= 0
+        and ancestor["inode"] > 0
+        and ancestor["mode"] == 0o700
+        and isinstance(config, dict)
+        and set(config) == {
+            "path", "device", "inode", "uid", "gid", "mode", "nlink",
+            "size_bytes", "sha256", "user_allow_other",
+        }
+        and config.get("path") == "/etc/fuse.conf"
+        and config.get("uid") == 0
+        and config.get("gid") == 0
+        and type(config.get("mode")) is int
+        and config["mode"] & 0o022 == 0
+        and config.get("nlink") == 1
+        and type(config.get("device")) is int
+        and config["device"] >= 0
+        and type(config.get("inode")) is int
+        and config["inode"] > 0
+        and type(config.get("size_bytes")) is int
+        and config["size_bytes"] > 0
+        and _SHA256.fullmatch(str(config.get("sha256") or "")) is not None
+        and config.get("user_allow_other") is True
+        and isinstance(owner, dict)
+        and set(owner) == {"uid", "gid"}
+        and owner == worker
+        and owner == {"uid": ancestor["uid"], "gid": ancestor["gid"]}
+        and daemon == {
+            "uid": 0,
+            "trusted_boundary": True,
+            "access_via": "fuse_allow_other_with_private_ancestor_v1",
+        }
+    )
+
+
+def load_runtime_service_evidence(
+    path: str | Path,
+    *,
+    file_sha256: str,
+    content_sha256: str,
+    manifest_sha256: str,
+    image_sha256: str,
+) -> dict[str, Any]:
+    """Load and validate the host mount engine evidence persisted by the runner."""
+
+    source = Path(path)
+    parent_fd = descriptor = -1
+    try:
+        if not source.is_absolute() or source != Path(os.path.abspath(source)):
+            raise AkaRuntimeError("runtime service evidence path must be canonical")
+        parent_metadata = source.parent.lstat()
+        metadata = source.lstat()
+        if (
+            source.parent.resolve(strict=True) != source.parent
+            or stat.S_ISLNK(parent_metadata.st_mode)
+            or not stat.S_ISDIR(parent_metadata.st_mode)
+            or source.is_symlink()
+            or not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
+            or stat.S_IMODE(metadata.st_mode) != 0o444
+            or metadata.st_size <= 0
+            or metadata.st_size > 16 * 1024 * 1024
+        ):
+            raise AkaRuntimeError("immutable runtime service evidence file is unsafe")
+        parent_fd = os.open(
+            source.parent,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        opened_parent = os.fstat(parent_fd)
+        if (opened_parent.st_dev, opened_parent.st_ino) != (
+            parent_metadata.st_dev,
+            parent_metadata.st_ino,
+        ):
+            raise AkaRuntimeError("runtime service evidence parent changed")
+        descriptor = os.open(
+            source.name,
+            os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=parent_fd,
+        )
+        before = os.fstat(descriptor)
+        chunks: list[bytes] = []
+        remaining = before.st_size + 1
+        while remaining > 0:
+            chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        payload = b"".join(chunks)
+        after = os.fstat(descriptor)
+        stable = (
+            before.st_dev, before.st_ino, before.st_size,
+            before.st_mtime_ns, before.st_ctime_ns,
+        ) == (
+            after.st_dev, after.st_ino, after.st_size,
+            after.st_mtime_ns, after.st_ctime_ns,
+        )
+        if (
+            not stable
+            or (before.st_dev, before.st_ino) != (metadata.st_dev, metadata.st_ino)
+            or len(payload) != before.st_size
+        ):
+            raise AkaRuntimeError("immutable runtime service evidence changed")
+        evidence = json.loads(payload.decode("utf-8"))
+    except AkaRuntimeError:
+        raise
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise AkaRuntimeError("cannot read immutable runtime engine evidence") from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if parent_fd >= 0:
+            os.close(parent_fd)
+    if (
+        hashlib.sha256(payload).hexdigest() != file_sha256
+        or not isinstance(evidence, dict)
+    ):
+        raise AkaRuntimeError("immutable runtime engine evidence file is unsafe")
+    service_material = dict(evidence)
+    service_digest = service_material.pop("sha256", None)
+    receipt = evidence.get("mount_receipt")
+    engine = evidence.get("engine_evidence")
+    if not isinstance(receipt, dict) or not isinstance(engine, dict):
+        raise AkaRuntimeError("immutable runtime engine evidence is incomplete")
+    receipt_material = dict(receipt)
+    receipt_digest = receipt_material.pop("sha256", None)
+    engine_material = dict(engine)
+    engine_digest = engine_material.pop("sha256", None)
+    service = evidence.get("service")
+    service_process = engine.get("process")
+    policy = receipt.get("host_access_policy")
+    mount = receipt.get("mount")
+    ready_path = evidence.get("ready_path")
+    image = engine.get("image")
+    backing = receipt.get("backing")
+    if (
+        set(evidence) != {
+            "schema", "policy_id", "ready_path", "service", "mount_receipt",
+            "engine_evidence", "sha256",
+        }
+        or set(engine) != {
+            "schema", "policy_id", "receipt_sha256",
+            "runtime_image_input_sha256", "image", "tools",
+            "requested_mount_options", "host_access_policy_sha256", "process",
+            "mountpoint_source", "mount", "inventory_verification",
+            "write_probe_errno", "sha256",
+        }
+        or not isinstance(service, dict)
+        or set(service) != {
+            "pid", "starttime", "owner", "accepted_signals", "engine_process",
+        }
+        or type(service.get("pid")) is not int
+        or service["pid"] <= 1
+        or type(service.get("starttime")) is not int
+        or service["starttime"] <= 0
+        or not _host_access_policy_valid(policy)
+        or service.get("owner") != policy.get("mount_owner")
+        or service.get("accepted_signals") != ["SIGINT", "SIGTERM"]
+        or service.get("engine_process")
+        != {
+            "pid": service_process.get("pid")
+            if isinstance(service_process, dict)
+            else None,
+            "starttime": service_process.get("starttime")
+            if isinstance(service_process, dict)
+            else None,
+        }
+        or not isinstance(service_process, dict)
+        or set(service_process) != {"pid", "starttime", "foreground"}
+        or type(service_process.get("pid")) is not int
+        or service_process["pid"] <= 1
+        or type(service_process.get("starttime")) is not int
+        or service_process["starttime"] <= 0
+        or service_process["pid"] == service["pid"]
+        or service_process.get("foreground") is not True
+        or not isinstance(ready_path, str)
+        or not Path(ready_path).is_absolute()
+        or Path(ready_path) != Path(os.path.abspath(ready_path))
+        or Path(ready_path).parent
+        != Path(policy["private_ancestor"]["path"])
+        or evidence.get("schema") != ENGINE_SERVICE_SCHEMA
+        or evidence.get("policy_id") != ENGINE_SERVICE_POLICY
+        or service_digest != content_sha256
+        or service_digest != _digest(service_material)
+        or set(receipt) != {
+            "schema", "policy_id", "root", "runtime_manifest_sha256",
+            "runtime_image_input_sha256", "image_sha256", "backing",
+            "requested_mount_options", "host_access_policy", "mount", "sha256",
+        }
+        or receipt.get("schema") != "aka.host-runtime-immutable-mount/v2"
+        or receipt.get("policy_id") != IMMUTABLE_MOUNT_POLICY
+        or receipt.get("runtime_manifest_sha256") != manifest_sha256
+        or receipt.get("image_sha256") != image_sha256
+        or receipt.get("requested_mount_options") != _REQUESTED_MOUNT_OPTIONS
+        or receipt_digest != _digest(receipt_material)
+        or not isinstance(mount, dict)
+        or set(mount) != {
+            "mount_id", "device", "root", "mount_point", "filesystem",
+            "mount_options", "super_options", "read_only",
+        }
+        or type(mount.get("mount_id")) is not int
+        or mount["mount_id"] <= 0
+        or not isinstance(mount.get("mount_point"), str)
+        or Path(mount["mount_point"]) != Path(receipt.get("root", ""))
+        or not Path(mount["mount_point"]).is_absolute()
+        or Path(mount["mount_point"])
+        != Path(os.path.abspath(mount["mount_point"]))
+        or mount.get("root") != "/"
+        or mount.get("filesystem")
+        not in {"squashfs", "fuse.squashfuse", "fuse.squashfuse_ll"}
+        or mount.get("read_only") is not True
+        or not {"ro", "nodev", "nosuid"}.issubset(
+            set(mount.get("mount_options", []))
+        )
+        or "allow_other" not in mount.get("super_options", [])
+        or f"user_id={policy['mount_owner']['uid']}"
+        not in mount.get("super_options", [])
+        or f"group_id={policy['mount_owner']['gid']}"
+        not in mount.get("super_options", [])
+        or backing != {
+            "kind": "sealed_memfd", "seals": list(_HOST_MEMFD_SEALS),
+        }
+        or engine.get("schema") != ENGINE_EVIDENCE_SCHEMA
+        or engine.get("policy_id") != IMMUTABLE_MOUNT_POLICY
+        or engine.get("receipt_sha256") != receipt_digest
+        or engine.get("runtime_image_input_sha256")
+        != receipt.get("runtime_image_input_sha256")
+        or engine.get("requested_mount_options") != _REQUESTED_MOUNT_OPTIONS
+        or engine.get("host_access_policy_sha256") != policy.get("sha256")
+        or engine.get("mount") != mount
+        or not isinstance(image, dict)
+        or set(image) != {"size_bytes", "sha256", "memfd_seals"}
+        or type(image.get("size_bytes")) is not int
+        or image["size_bytes"] <= 0
+        or image.get("sha256") != receipt.get("image_sha256")
+        or image.get("memfd_seals") != list(_HOST_MEMFD_SEALS)
+        or engine_digest != _digest(engine_material)
+    ):
+        raise AkaRuntimeError("immutable runtime engine evidence is invalid")
+    return evidence
+
+
+def recover_runtime_service(
+    path: str | Path,
+    *,
+    file_sha256: str,
+    content_sha256: str,
+    manifest_sha256: str,
+    image_sha256: str,
+    controller_pid: int,
+    controller_starttime: int,
+    mountpoint: str | Path,
+    private_ancestor: str | Path,
+    timeout_seconds: float = 10.0,
+) -> dict[str, Any]:
+    """Recover an abnormal mount service from its exact persisted evidence."""
+
+    if __package__:
+        from .immutable_runtime_mount import (
+            ImmutableRuntimeMountError,
+            recover_immutable_runtime_service,
+        )
+    else:
+        from immutable_runtime_mount import (
+            ImmutableRuntimeMountError,
+            recover_immutable_runtime_service,
+        )
+
+    evidence = load_runtime_service_evidence(
+        path,
+        file_sha256=file_sha256,
+        content_sha256=content_sha256,
+        manifest_sha256=manifest_sha256,
+        image_sha256=image_sha256,
+    )
+    try:
+        return recover_immutable_runtime_service(
+            evidence,
+            controller_pid=controller_pid,
+            controller_starttime=controller_starttime,
+            mountpoint=mountpoint,
+            private_ancestor=private_ancestor,
+            timeout_seconds=timeout_seconds,
+        )
+    except (ImmutableRuntimeMountError, OSError, ValueError) as error:
+        raise AkaRuntimeError(str(error)) from error
+
+
 def validate_immutable_mount_receipt(
     receipt: dict[str, Any], expected_manifest_sha256: str, expected_root: Path
 ) -> dict[str, Any]:
     """Validate the host-produced receipt for a sealed SquashFS execution mount."""
 
-    if not isinstance(receipt, dict):
+    if not isinstance(receipt, dict) or set(receipt) != {
+        "schema", "policy_id", "requested_mount_options",
+        "runtime_service_evidence_sha256", "runtime_engine_evidence_sha256",
+        "host_access_policy", "manifest_sha256", "image_sha256",
+        "memfd_seals", "mount", "sha256",
+    }:
         raise AkaRuntimeError("AKA immutable mount receipt must be an object")
     material = dict(receipt)
     observed = material.pop("sha256", None)
     mount = receipt.get("mount")
     seals = receipt.get("memfd_seals")
+    host_policy = receipt.get("host_access_policy")
     try:
         root = expected_root.resolve(strict=True)
         observed_mount = _current_snapshot_mount(root)
@@ -771,6 +1116,14 @@ def validate_immutable_mount_receipt(
     if (
         receipt.get("schema") != IMMUTABLE_MOUNT_RECEIPT_SCHEMA
         or receipt.get("policy_id") != IMMUTABLE_MOUNT_POLICY
+        or receipt.get("requested_mount_options") != _REQUESTED_MOUNT_OPTIONS
+        or not _SHA256.fullmatch(
+            str(receipt.get("runtime_service_evidence_sha256") or "")
+        )
+        or not _SHA256.fullmatch(
+            str(receipt.get("runtime_engine_evidence_sha256") or "")
+        )
+        or not _host_access_policy_valid(host_policy)
         or receipt.get("manifest_sha256") != expected_manifest_sha256
         or not _SHA256.fullmatch(str(receipt.get("image_sha256") or ""))
         or not isinstance(observed, str)
@@ -782,6 +1135,11 @@ def validate_immutable_mount_receipt(
         or mount.get("filesystem_type")
         not in {"squashfs", "fuse.squashfuse", "fuse.squashfuse_ll"}
         or mount.get("read_only") is not True
+        or "allow_other" not in mount.get("super_options", [])
+        or f"user_id={host_policy['mount_owner']['uid']}"
+        not in mount.get("super_options", [])
+        or f"group_id={host_policy['mount_owner']['gid']}"
+        not in mount.get("super_options", [])
         or mount.get("root") != "/"
         or not isinstance(mount.get("mount_id"), int)
         or mount["mount_id"] <= 0
@@ -794,7 +1152,10 @@ def validate_immutable_mount_receipt(
 
 
 def create_immutable_mount_receipt(
-    root: Path, manifest_sha256: str, image_sha256: str
+    root: Path,
+    manifest_sha256: str,
+    image_sha256: str,
+    runtime_service_evidence: dict[str, Any],
 ) -> dict[str, Any]:
     """Attest the immutable AKA mount in the caller's current namespace."""
 
@@ -808,9 +1169,15 @@ def create_immutable_mount_receipt(
         or not _SHA256.fullmatch(image_sha256)
     ):
         raise AkaRuntimeError("AKA immutable mount identity is invalid")
+    engine_evidence = runtime_service_evidence["engine_evidence"]
+    host_policy = runtime_service_evidence["mount_receipt"]["host_access_policy"]
     material = {
         "schema": IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
         "policy_id": IMMUTABLE_MOUNT_POLICY,
+        "requested_mount_options": list(_REQUESTED_MOUNT_OPTIONS),
+        "runtime_service_evidence_sha256": runtime_service_evidence["sha256"],
+        "runtime_engine_evidence_sha256": engine_evidence["sha256"],
+        "host_access_policy": host_policy,
         "manifest_sha256": manifest_sha256,
         "image_sha256": image_sha256,
         "memfd_seals": list(_MEMFD_SEALS),
@@ -862,7 +1229,21 @@ def main(argv: Iterable[str] | None = None) -> int:
     mount_receipt.add_argument("--root", required=True, type=Path)
     mount_receipt.add_argument("--manifest-sha256", required=True)
     mount_receipt.add_argument("--image-sha256", required=True)
+    mount_receipt.add_argument("--service-evidence", required=True, type=Path)
+    mount_receipt.add_argument("--service-file-sha256", required=True)
+    mount_receipt.add_argument("--service-content-sha256", required=True)
     mount_receipt.add_argument("--output", required=True, type=Path)
+    recover_service = commands.add_parser("recover-service")
+    recover_service.add_argument("--service-evidence", required=True, type=Path)
+    recover_service.add_argument("--service-file-sha256", required=True)
+    recover_service.add_argument("--service-content-sha256", required=True)
+    recover_service.add_argument("--manifest-sha256", required=True)
+    recover_service.add_argument("--image-sha256", required=True)
+    recover_service.add_argument("--controller-pid", required=True, type=int)
+    recover_service.add_argument("--controller-starttime", required=True, type=int)
+    recover_service.add_argument("--mountpoint", required=True, type=Path)
+    recover_service.add_argument("--private-ancestor", required=True, type=Path)
+    recover_service.add_argument("--timeout-seconds", type=float, default=10.0)
     arguments = parser.parse_args(list(argv) if argv is not None else None)
     try:
         if arguments.command == "discover":
@@ -888,14 +1269,38 @@ def main(argv: Iterable[str] | None = None) -> int:
             payload = execution_image_inputs(arguments.root, manifest)
             _write_json(arguments.output, payload)
             print(payload["sha256"])
-        else:
+        elif arguments.command == "mount-receipt":
+            service = load_runtime_service_evidence(
+                arguments.service_evidence,
+                file_sha256=arguments.service_file_sha256,
+                content_sha256=arguments.service_content_sha256,
+                manifest_sha256=arguments.manifest_sha256,
+                image_sha256=arguments.image_sha256,
+            )
             payload = create_immutable_mount_receipt(
                 arguments.root,
                 arguments.manifest_sha256,
                 arguments.image_sha256,
+                service,
             )
             _write_json(arguments.output, payload)
             print(payload["sha256"])
+        else:
+            if not 0.0 < arguments.timeout_seconds <= 300.0:
+                raise AkaRuntimeError("recovery timeout must be in (0, 300]")
+            payload = recover_runtime_service(
+                arguments.service_evidence,
+                file_sha256=arguments.service_file_sha256,
+                content_sha256=arguments.service_content_sha256,
+                manifest_sha256=arguments.manifest_sha256,
+                image_sha256=arguments.image_sha256,
+                controller_pid=arguments.controller_pid,
+                controller_starttime=arguments.controller_starttime,
+                mountpoint=arguments.mountpoint,
+                private_ancestor=arguments.private_ancestor,
+                timeout_seconds=arguments.timeout_seconds,
+            )
+            print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
     except AkaRuntimeError as error:
         parser.error(str(error))
     return 0
