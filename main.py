@@ -1154,6 +1154,30 @@ def _formal_failure_binding(
     return binding
 
 
+def _validated_formal_task_bindings(
+    run_directory: Path,
+    task_config_dict: dict[str, str],
+) -> dict[str, dict[str, Any]]:
+    """Resolve every task through the immutable campaign GPU binding."""
+
+    assignments = deterministic_task_gpu_mapping(list(task_config_dict))
+    bindings: dict[str, dict[str, Any]] = {}
+    for index, (task_name, task_config_dir) in enumerate(
+        task_config_dict.items(), 1
+    ):
+        bindings[task_name] = validate_formal_task_binding(
+            run_directory=run_directory,
+            task_name=task_name,
+            task_index=index,
+            total_tasks=len(task_config_dict),
+            task_config_path=task_config_dir,
+            assigned_host_gpu_id=assignments[index - 1][
+                "assigned_host_gpu_id"
+            ],
+        )
+    return bindings
+
+
 def initialize_parallel_queue(context: dict[str, Any]) -> None:
     run_directory: Path = context["run_directory"]
     task_config_dict: dict[str, str] = context["task_config_dict"]
@@ -1162,20 +1186,11 @@ def initialize_parallel_queue(context: dict[str, Any]) -> None:
     logger: logging.Logger = context["logger"]
 
     formal = parse_campaign_policy(context["config"]) is not None
-    formal_bindings: dict[str, dict[str, Any]] = {}
-    if formal:
-        assigned = deterministic_task_gpu_mapping(list(task_config_dict))
-        for index, (task_name, task_config_dir) in enumerate(
-            task_config_dict.items(), 1
-        ):
-            formal_bindings[task_name] = validate_formal_task_binding(
-                run_directory=run_directory,
-                task_name=task_name,
-                task_index=index,
-                total_tasks=len(task_config_dict),
-                task_config_path=task_config_dir,
-                assigned_host_gpu_id=assigned[index - 1]["assigned_host_gpu_id"],
-            )
+    formal_bindings = (
+        _validated_formal_task_bindings(run_directory, task_config_dict)
+        if formal
+        else {}
+    )
 
     queue_root = _queue_root(run_directory)
     if formal:
@@ -1367,6 +1382,20 @@ def run_serial(args: argparse.Namespace) -> int:
         return 1
 
     task_config_dict = context["task_config_dict"]
+    try:
+        formal_bindings = (
+            _validated_formal_task_bindings(
+                context["run_directory"], task_config_dict
+            )
+            if parse_campaign_policy(context["config"]) is not None
+            else {}
+        )
+    except CampaignError as error:
+        context["logger"].error(
+            "Formal serial task binding failed: %s", error
+        )
+        return 1
+
     if context["resume_mode"]:
         task_config_dict = _filter_completed_tasks(
             task_config_dict,
@@ -1383,8 +1412,20 @@ def run_serial(args: argparse.Namespace) -> int:
     workspace_paths: list[str] = []
     total_tasks = len(task_config_dict)
     for index, (task_name, task_config_dir) in enumerate(task_config_dict.items(), 1):
+        binding = formal_bindings.get(task_name)
+        task_eval_config = context["config"]
+        task_index = index
+        task_total = total_tasks
+        if binding is not None:
+            task_eval_config = dict(context["config"])
+            task_eval_config["assigned_host_gpu_id"] = binding[
+                "assigned_host_gpu_id"
+            ]
+            task_config_dir = binding["config_path"]
+            task_index = binding["task_index"]
+            task_total = binding["total_tasks"]
         _, workspace_path = run_task(
-            eval_config=context["config"],
+            eval_config=task_eval_config,
             agent=context["agent"],
             agent_launcher=context["agent_launcher"],
             task_name=task_name,
@@ -1392,8 +1433,8 @@ def run_serial(args: argparse.Namespace) -> int:
             run_directory=context["run_directory"],
             timestamp=context["timestamp"],
             logger=context["logger"],
-            task_index=index,
-            total_tasks=total_tasks,
+            task_index=task_index,
+            total_tasks=task_total,
         )
         if workspace_path is not None:
             workspace_paths.append(str(workspace_path))
