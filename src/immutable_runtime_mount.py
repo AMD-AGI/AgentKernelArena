@@ -40,6 +40,8 @@ _MKSQUASHFS = Path("/usr/bin/mksquashfs")
 _MKSQUASHFS_SHA256 = "403080bcd98ea7be2cbb261a10e99a89571e3a3beed6ab6cc3b88e01a0b51053"
 _MKSQUASHFS_SIZE = 260_792
 _MKSQUASHFS_VERSION = "mksquashfs version 4.5 (2021/07/22)"
+_MKSQUASHFS_MIN_SORT_PRIORITY = -32_768
+_MKSQUASHFS_MAX_SORT_PRIORITY = 32_767
 _SQUASHFUSE = Path("/usr/bin/squashfuse")
 _SQUASHFUSE_SHA256 = "6b2efeca3df43609c93859daebd6426c9e53f17613e76a034bde63b18dd01fd0"
 _SQUASHFUSE_SIZE = 14_488
@@ -545,6 +547,29 @@ def _canonical_empty_mountpoint(path: str | Path, staging: Path) -> Path:
     return root
 
 
+def _mksquashfs_sort_priority(index: int, total: int) -> int:
+    """Map canonical ranks deterministically into mksquashfs 4.5's range."""
+
+    if total <= 0 or index < 0 or index >= total:
+        raise ImmutableRuntimeMountError("runtime sort index is invalid")
+    if total <= _MKSQUASHFS_MAX_SORT_PRIORITY:
+        return total - index
+    # Large inventories cannot have a unique 16-bit priority per entry.  Map
+    # adjacent canonical paths into monotonic buckets instead of wrapping.
+    span = _MKSQUASHFS_MAX_SORT_PRIORITY - _MKSQUASHFS_MIN_SORT_PRIORITY
+    return _MKSQUASHFS_MAX_SORT_PRIORITY - (index * span // (total - 1))
+
+
+def _mksquashfs_sort_path(path: str) -> str:
+    """Escape one already-validated path for mksquashfs 4.5's sort syntax."""
+
+    return (
+        path.replace("\\", "\\\\")
+        .replace(" ", "\\ ")
+        .replace("#", "\\#")
+    )
+
+
 def _build_image(
     staging: Path, entries: Mapping[str, Mapping[str, Any]]
 ) -> tuple[bytes, dict[str, Any]]:
@@ -565,7 +590,8 @@ def _build_image(
             sortable = [path for path in entries if path != "."]
             sort_file.write_text(
                 "".join(
-                    f"{path} {len(sortable) - index}\n"
+                    f"{_mksquashfs_sort_path(path)} "
+                    f"{_mksquashfs_sort_priority(index, len(sortable))}\n"
                     for index, path in enumerate(sortable)
                 ),
                 encoding="utf-8",

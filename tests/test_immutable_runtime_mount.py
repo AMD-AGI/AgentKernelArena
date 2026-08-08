@@ -103,6 +103,81 @@ def _make_staging_removable(staging: Path) -> None:
     staging.chmod(0o755)
 
 
+def test_mksquashfs_sort_priorities_cover_large_runtime_without_overflow() -> None:
+    assert [immutable._mksquashfs_sort_priority(index, 5) for index in range(5)] == [
+        5,
+        4,
+        3,
+        2,
+        1,
+    ]
+    assert immutable._mksquashfs_sort_priority(0, 32_767) == 32_767
+    assert immutable._mksquashfs_sort_priority(32_766, 32_767) == 1
+    assert immutable._mksquashfs_sort_priority(0, 32_768) == 32_767
+    assert immutable._mksquashfs_sort_priority(32_767, 32_768) == -32_768
+    with pytest.raises(immutable.ImmutableRuntimeMountError):
+        immutable._mksquashfs_sort_priority(0, 0)
+    with pytest.raises(immutable.ImmutableRuntimeMountError):
+        immutable._mksquashfs_sort_priority(-1, 1)
+    with pytest.raises(immutable.ImmutableRuntimeMountError):
+        immutable._mksquashfs_sort_priority(1, 1)
+
+    total = 91_725
+    priorities = [
+        immutable._mksquashfs_sort_priority(index, total)
+        for index in range(total)
+    ]
+    assert priorities[0] == immutable._MKSQUASHFS_MAX_SORT_PRIORITY
+    assert priorities[-1] == immutable._MKSQUASHFS_MIN_SORT_PRIORITY
+    assert len(set(priorities)) == 65_536
+    assert all(
+        left >= right for left, right in zip(priorities, priorities[1:])
+    )
+    assert all(
+        not (first == second == third)
+        for first, second, third in zip(
+            priorities, priorities[1:], priorities[2:]
+        )
+    )
+    assert all(
+        immutable._MKSQUASHFS_MIN_SORT_PRIORITY
+        <= priority
+        <= immutable._MKSQUASHFS_MAX_SORT_PRIORITY
+        for priority in priorities
+    )
+    assert immutable._mksquashfs_sort_path(r"#with space/back\slash") == (
+        r"\#with\ space/back\\slash"
+    )
+
+
+def test_real_image_sort_file_accepts_escaped_safe_paths(tmp_path: Path) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    names = ("#leading", "back\\slash", "with space")
+    entries: dict[str, dict[str, object]] = {
+        ".": {"path": ".", "type": "directory", "mode": 0o555}
+    }
+    for name in sorted(names, key=str.encode):
+        payload = name.encode()
+        path = staging / name
+        path.write_bytes(payload)
+        path.chmod(0o444)
+        entries[name] = {
+            "path": name,
+            "type": "file",
+            "mode": 0o444,
+            "size": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        }
+    staging.chmod(0o555)
+
+    try:
+        image, _tool = immutable._build_image(staging, entries)
+        assert image
+    finally:
+        _make_staging_removable(staging)
+
+
 def test_real_mount_is_deterministic_sealed_verified_and_exactly_cleaned(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
