@@ -1,6 +1,143 @@
+import ast
 import json
+from pathlib import Path
 
 import pytest
+
+
+def test_fused_moe_harness_uses_dynamic_routing_and_matched_eager_timing():
+    runner = (
+        Path(__file__).resolve().parents[1]
+        / "tasks/triton2triton/vllm/triton_fused_moe/scripts/task_runner.py"
+    )
+    tree = ast.parse(runner.read_text(encoding="utf-8"))
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+
+    correctness = functions["run_correctness"]
+    performance = functions["run_performance"]
+    for function in (correctness, performance):
+        calls = [node for node in ast.walk(function) if isinstance(node, ast.Call)]
+        assert any(
+            isinstance(call.func, ast.Name)
+            and call.func.id == "_make_routing_variants"
+            for call in calls
+        )
+        assert any(
+            isinstance(call.func, ast.Attribute)
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id == "topk_ids"
+            and call.func.attr == "copy_"
+            for call in calls
+        )
+
+    correctness_routing_calls = [
+        node
+        for node in ast.walk(correctness)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_make_routing_variants"
+    ]
+    assert len(correctness_routing_calls) == 1
+    correctness_routing_keywords = {
+        keyword.arg: keyword.value
+        for keyword in correctness_routing_calls[0].keywords
+    }
+    assert ast.literal_eval(correctness_routing_keywords["count"]) == 3
+    correctness_loops = [
+        node
+        for node in ast.walk(correctness)
+        if isinstance(node, ast.For)
+        and isinstance(node.iter, ast.Call)
+        and isinstance(node.iter.func, ast.Name)
+        and node.iter.func.id == "enumerate"
+        and isinstance(node.iter.args[0], ast.Name)
+        and node.iter.args[0].id == "routing_variants"
+    ]
+    assert len(correctness_loops) == 1
+    correctness_loop_calls = [
+        node for node in ast.walk(correctness_loops[0]) if isinstance(node, ast.Call)
+    ]
+    correctness_candidate_call = next(
+        call
+        for call in correctness_loop_calls
+        if isinstance(call.func, ast.Attribute)
+        and isinstance(call.func.value, ast.Name)
+        and call.func.value.id == "mod"
+        and call.func.attr == "fused_moe"
+    )
+    correctness_reference_call = next(
+        call
+        for call in correctness_loop_calls
+        if isinstance(call.func, ast.Name)
+        and call.func.id == "reference_fused_moe"
+    )
+    assert correctness_reference_call.lineno < correctness_candidate_call.lineno
+    assert any(
+        isinstance(call.func, ast.Attribute)
+        and isinstance(call.func.value, ast.Name)
+        and call.func.value.id == "torch"
+        and call.func.attr == "equal"
+        for call in correctness_loop_calls
+    )
+
+    benchmark_calls = [
+        node
+        for node in ast.walk(performance)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_benchmark_cuda_graph_or_events"
+    ]
+    assert len(benchmark_calls) == 1
+    benchmark_keywords = {
+        keyword.arg: keyword.value for keyword in benchmark_calls[0].keywords
+    }
+    assert ast.literal_eval(benchmark_keywords["use_cuda_graph"]) is False
+    assert ast.literal_eval(benchmark_keywords["fallback_reason"]) == (
+        "dynamic_host_routing_requires_eager_execution"
+    )
+
+    routing_calls = [
+        node
+        for node in ast.walk(performance)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_make_routing_variants"
+    ]
+    assert len(routing_calls) == 1
+    routing_keywords = {
+        keyword.arg: keyword.value for keyword in routing_calls[0].keywords
+    }
+    assert ast.unparse(routing_keywords["count"]) == (
+        "WARMUP_ITERATIONS + BENCHMARK_ITERATIONS"
+    )
+    bench_functions = [
+        node
+        for node in ast.walk(performance)
+        if isinstance(node, ast.FunctionDef) and node.name == "_bench_fn"
+    ]
+    assert len(bench_functions) == 1
+    bench_calls = [
+        node for node in ast.walk(bench_functions[0]) if isinstance(node, ast.Call)
+    ]
+    copy_call = next(
+        call
+        for call in bench_calls
+        if isinstance(call.func, ast.Attribute)
+        and isinstance(call.func.value, ast.Name)
+        and call.func.value.id == "topk_ids"
+        and call.func.attr == "copy_"
+    )
+    fused_call = next(
+        call
+        for call in bench_calls
+        if isinstance(call.func, ast.Attribute)
+        and isinstance(call.func.value, ast.Name)
+        and call.func.value.id == "mod"
+        and call.func.attr == "fused_moe"
+    )
+    assert copy_call.lineno < fused_call.lineno
 
 
 def test_device_timing_preferred_over_host_time(tmp_path):

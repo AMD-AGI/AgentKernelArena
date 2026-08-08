@@ -2725,6 +2725,82 @@ def test_three_fresh_sessions_are_centrally_ranked_with_stable_tie_break(
     assert [record["attempt"] for record in attempts["attempts"]] == [1, 2, 3]
 
 
+def test_any_ineligible_attempt_prevents_canonical_campaign_projection(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_HOST_GPU_ID", "0")
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+    contract = _write_campaign_codex_contract(run_directory)
+    times = [0.01, 1.0, 0.5]
+
+    def single_attempt(**kwargs):
+        attempt_run = Path(kwargs["run_directory"])
+        workspace = attempt_run / "triton2triton_vllm_example_20260807_000000"
+        workspace.mkdir()
+        attempt = int(kwargs["eval_config"]["campaign_attempt"]["index"])
+        _write_result(workspace, times[attempt - 1])
+        if attempt == 1:
+            optimized_path = workspace / "optimized_perf.yaml"
+            optimized = yaml.safe_load(optimized_path.read_text(encoding="utf-8"))
+            optimized["test_cases"][0]["benchmark_method"] = "cuda_graph"
+            optimized_path.write_text(
+                yaml.safe_dump(optimized, sort_keys=False), encoding="utf-8"
+            )
+            report_path = workspace / "task_result.yaml"
+            report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
+            report["optimized_benchmark_methods"] = ["cuda_graph"]
+            report["benchmark_method_consistent"] = False
+            report_path.write_text(
+                yaml.safe_dump(report, sort_keys=False), encoding="utf-8"
+            )
+        return True, workspace
+
+    completed, canonical = campaign.run_matched_task_campaign(
+        eval_config={"campaign": _policy(), "assigned_host_gpu_id": "0"},
+        agent=object(),
+        agent_launcher=object(),
+        task_name="triton2triton/vllm/example",
+        task_config_dir=contract["_task_config_paths"][
+            "triton2triton/vllm/example"
+        ],
+        run_directory=run_directory,
+        timestamp="20260807_000000",
+        logger=logging.getLogger(__name__),
+        task_index=1,
+        total_tasks=1,
+        single_attempt=single_attempt,
+    )
+
+    assert completed is False
+    assert canonical is None
+    evidence = yaml.safe_load(
+        (
+            run_directory
+            / ".campaign_attempts"
+            / _DEFAULT_TASK_COMPONENT
+            / "task_campaign.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    assert evidence["selected_attempt"] == 3
+    assert evidence["attempts"][0]["selection_eligible"] is False
+    assert "benchmark_method_inconsistent" in evidence["attempts"][0][
+        "eligibility_errors"
+    ]
+    assert "per_testcase_benchmark_method_mismatch" in evidence["attempts"][0][
+        "eligibility_errors"
+    ]
+    assert all(
+        attempt["selection_eligible"] is True for attempt in evidence["attempts"][1:]
+    )
+    assert evidence["all_attempts_centrally_evaluated"] is True
+    assert evidence["all_agent_sessions_succeeded"] is True
+    assert evidence["failure_reasons"] == [
+        "attempt_1:benchmark_method_inconsistent",
+        "attempt_1:per_testcase_benchmark_method_mismatch",
+    ]
+
+
 def test_missing_central_report_is_retained_and_invalidates_campaign(
     tmp_path, monkeypatch
 ) -> None:

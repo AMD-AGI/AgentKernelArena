@@ -5454,6 +5454,10 @@ def run_matched_task_campaign(
     completed = completed and task_evidence["all_agent_sessions_succeeded"]
     completed = completed and task_evidence["within_evaluator_allowance"]
     completed = completed and task_evidence["within_task_timeout"]
+    # Formal postprocessing requires an entirely clean three-attempt campaign.
+    # Fail here too, rather than publishing a canonical projection that the
+    # strict validator is guaranteed to reject later.
+    completed = completed and task_evidence["failure_reasons"] == []
     completed = completed and bool(selected and selected["selection_eligible"])
     if not completed or selected is None:
         return False, None
