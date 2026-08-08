@@ -13,10 +13,44 @@ OPERATOR = SPEC["operator"]
 CASES = SPEC["cases"]
 
 
+def _sources_edited() -> bool:
+    """True unless every editable source still matches its in-image original.
+
+    Fails safe: anything we cannot positively verify counts as edited. Serving a
+    prebuilt .so for an edited kernel would silently benchmark the ORIGINAL, so
+    a false "unedited" is far worse than a redundant rebuild.
+    """
+    try:
+        import yaml
+
+        cfg = yaml.safe_load((WORKSPACE / "config.yaml").read_text()) or {}
+        image_root = Path(str(cfg["image_repo_path"]))
+        repo_subdir = str(cfg.get("repo_subdir") or "")
+        sources = cfg["source_file_path"] or []
+        if isinstance(sources, str):
+            sources = [sources]
+        if not sources or not image_root.is_dir():
+            return True
+        for rel in sources:
+            ours = WORKSPACE / repo_subdir / str(rel)
+            if ours.read_bytes() != (image_root / str(rel)).read_bytes():
+                return True
+        return False
+    except Exception:  # noqa: BLE001 - unverifiable means "assume edited"
+        return True
+
+
 def _configure() -> None:
     for key in ("GPU_ARCHS", "PYTORCH_ROCM_ARCH", "AMDGPU_TARGETS", "GPU_TARGETS"):
         os.environ.setdefault(key, "gfx950")
-    os.environ.setdefault("AITER_REBUILD", "2")  # incremental ninja rebuild: keep object cache, recompile only edited sources (avoids full CK re-compile on every agent edit)
+    # Incremental ninja rebuild: keep the object cache, recompile only edited
+    # sources. Only force it once something has actually been edited -- aiter
+    # treats any non-zero AITER_REBUILD as "rebuild this module on first use"
+    # without checking the source, and the profiler re-spawns this driver once
+    # per counter pass, so an unedited baseline would re-enter the rebuild path
+    # hundreds of times for a kernel that never changed.
+    if _sources_edited():
+        os.environ.setdefault("AITER_REBUILD", "2")
     os.environ.setdefault("AITER_JIT_DIR", str(WORKSPACE / "build" / "jit"))
     if (WORKSPACE / "aiter_meta").is_dir():
         os.environ["AITER_META_DIR"] = str(WORKSPACE / "aiter_meta")
