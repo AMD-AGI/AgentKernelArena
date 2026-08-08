@@ -62,21 +62,29 @@ _CODEX_RECEIPT_SCHEMA_V2 = "agentkernelarena.codex-attempt-receipt/v2"
 _CODEX_RECEIPT_SCHEMA_V3 = "agentkernelarena.codex-attempt-receipt/v3"
 _CODEX_RECEIPT_SCHEMA_V4 = "agentkernelarena.codex-attempt-receipt/v4"
 _CODEX_RECEIPT_SCHEMA = _CODEX_RECEIPT_SCHEMA_V4
-_CODEX_RECEIPT_SCHEMAS = {
+_CODEX_RECEIPT_SCHEMAS = frozenset({
     _CODEX_RECEIPT_SCHEMA_V1,
     _CODEX_RECEIPT_SCHEMA_V2,
     _CODEX_RECEIPT_SCHEMA_V3,
     _CODEX_RECEIPT_SCHEMA_V4,
-}
+})
 _APEX_RECEIPT_SCHEMA_V1 = "agentkernelarena.apex-attempt-receipt/v1"
 _APEX_RECEIPT_SCHEMA_V2 = "agentkernelarena.apex-attempt-receipt/v2"
 _APEX_RECEIPT_SCHEMA_V3 = "agentkernelarena.apex-attempt-receipt/v3"
 _APEX_RECEIPT_SCHEMA_V4 = "agentkernelarena.apex-attempt-receipt/v4"
-_APEX_RECEIPT_SCHEMAS = {
+_APEX_RECEIPT_SCHEMAS = frozenset({
     _APEX_RECEIPT_SCHEMA_V1,
     _APEX_RECEIPT_SCHEMA_V2,
     _APEX_RECEIPT_SCHEMA_V3,
     _APEX_RECEIPT_SCHEMA_V4,
+})
+_SESSION_RECEIPT_SCHEMAS = {
+    "apex": _APEX_RECEIPT_SCHEMAS,
+    "codex": _CODEX_RECEIPT_SCHEMAS,
+}
+_LEGACY_SESSION_RECEIPT_SCHEMAS = {
+    "apex": _APEX_RECEIPT_SCHEMA_V1,
+    "codex": _CODEX_RECEIPT_SCHEMA_V1,
 }
 _SHA1 = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -84,6 +92,26 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 class CampaignError(RuntimeError):
     """Raised when a matched campaign cannot preserve its fairness contract."""
+
+
+def resolve_session_receipt_schema(
+    agent_name: str, declared_schema: object | None
+) -> str | None:
+    """Resolve one manifest-declared schema from the campaign's sole registry.
+
+    Marker-less sealed manifests predate explicit schema binding and retain their
+    v1 interpretation.  Unknown agents, non-string declarations, and unsupported
+    generations fail closed.
+    """
+
+    supported = _SESSION_RECEIPT_SCHEMAS.get(agent_name)
+    if supported is None:
+        return None
+    if declared_schema is None:
+        return _LEGACY_SESSION_RECEIPT_SCHEMAS[agent_name]
+    if not isinstance(declared_schema, str):
+        return None
+    return declared_schema if declared_schema in supported else None
 
 
 @dataclass(frozen=True)
@@ -851,6 +879,7 @@ def _attempt_record(
         "eligibility_errors": [],
     }
     receipt: dict[str, Any] | None = None
+    source_delta_files: list[str] | None = None
     if receipt_path.exists():
         receipt, receipt_errors = _validate_session_receipt(
             receipt_path=receipt_path,
@@ -861,7 +890,6 @@ def _attempt_record(
         record["session_receipt"] = str(receipt_path.relative_to(run_directory))
         if receipt is not None:
             receipt_schema = receipt.get("schema")
-            source_delta_files: list[str] | None = None
             if receipt_schema in _CODEX_RECEIPT_SCHEMAS:
                 integrity = receipt.get("workspace_integrity")
                 final_changes = (
@@ -878,8 +906,6 @@ def _attempt_record(
                     isinstance(path, str) and path for path in changed_files
                 ):
                     source_delta_files = changed_files
-                    if not changed_files:
-                        receipt_errors.append("no_source_delta_candidate")
             record["session_receipt_sha256"] = _sha256_file(receipt_path)
             record["session_succeeded"] = receipt.get("session_succeeded") is True
             binding = {
@@ -946,19 +972,42 @@ def _attempt_record(
     errors = _evaluation_eligibility_errors(workspace, report)
     evaluation_mode = report.get("evaluation_mode")
     agent_session_score_eligible = report.get("agent_session_score_eligible")
+    agent_session_succeeded = report.get("agent_session_succeeded")
     agent_session_terminal_status = report.get("agent_session_terminal_status")
+    apex_receipt = (
+        receipt is not None and receipt.get("schema") in _APEX_RECEIPT_SCHEMAS
+    )
+    no_candidate_attempt = bool(
+        receipt is not None
+        and not record["eligibility_errors"]
+        and (
+            (apex_receipt and receipt.get("terminal_status") == "no_gain")
+            or (
+                receipt.get("schema") in _CODEX_RECEIPT_SCHEMAS
+                and source_delta_files == []
+            )
+        )
+    )
     # The controller began writing these fields after diagnostic replays were
-    # made explicit. Keep older sealed campaigns readable, but when either
-    # field is present require the complete candidate-scoring contract.
+    # made explicit. Keep older sealed campaigns readable, but when metadata is
+    # present require the complete candidate/no-candidate contract.
     if evaluation_mode is not None or agent_session_score_eligible is not None:
-        if evaluation_mode != "candidate_scoring_v1":
-            errors.append("diagnostic_evaluation_not_scoreable")
-        if agent_session_score_eligible is not True:
-            errors.append("agent_session_not_score_eligible")
-    if receipt is not None and receipt.get("schema") in _APEX_RECEIPT_SCHEMAS:
+        if no_candidate_attempt:
+            if evaluation_mode != "no_candidate_baseline_replay_v1":
+                errors.append("no_candidate_evaluation_mode_mismatch")
+            if agent_session_score_eligible is not False:
+                errors.append("no_candidate_score_eligibility_mismatch")
+            if agent_session_succeeded is not True:
+                errors.append("no_candidate_session_success_mismatch")
+            if agent_session_terminal_status != "no_gain":
+                errors.append("no_candidate_terminal_status_mismatch")
+        else:
+            if evaluation_mode != "candidate_scoring_v1":
+                errors.append("diagnostic_evaluation_not_scoreable")
+            if agent_session_score_eligible is not True:
+                errors.append("agent_session_not_score_eligible")
+    if apex_receipt:
         receipt_terminal_status = receipt.get("terminal_status")
-        if receipt_terminal_status != "candidate_ready":
-            errors.append("apex_terminal_status_not_candidate_ready")
         if (
             agent_session_terminal_status is not None
             and agent_session_terminal_status != receipt_terminal_status
@@ -986,7 +1035,7 @@ def _attempt_record(
     correctness = report.get("pass_correctness") is True
     compilation = report.get("pass_compilation") is True
     consistent = report.get("benchmark_method_consistent") is True
-    eligible = not errors
+    eligible = not errors and not no_candidate_attempt
     record.update(
         {
             "central_evaluator_report": str(report_path.relative_to(run_directory)),
@@ -1072,17 +1121,7 @@ def _expected_session_receipt_schema(run_directory: Path) -> str | None:
         return None
     template = agent.get("template")
     expected = agent.get("session_receipt_schema")
-    if template == "apex":
-        # Sealed Apex manifests created before receipt v2 had no marker.
-        if expected is None:
-            return _APEX_RECEIPT_SCHEMA_V1
-        return expected if expected in _APEX_RECEIPT_SCHEMAS else None
-    if template == "codex":
-        # Marker-less sealed history predates exact-boundary checkpoints.
-        if expected is None:
-            return _CODEX_RECEIPT_SCHEMA_V1
-        return expected if expected in _CODEX_RECEIPT_SCHEMAS else None
-    return None
+    return resolve_session_receipt_schema(template, expected)
 
 
 def _comparison_contract_receipt_errors(
@@ -1756,8 +1795,6 @@ def _validate_session_receipt(
                 or not set(recomputed_changed).issubset(editable)
             ):
                 errors.append("direct_codex_sanitized_manifest_contract_mismatch")
-            if receipt.get("session_succeeded") is True and not recomputed_changed:
-                errors.append("direct_codex_zero_source_delta")
             if (
                 not isinstance(sanitization, dict)
                 or sanitization.get("performed") is not True
@@ -3732,6 +3769,7 @@ __all__ = [
     "ensure_campaign_manifest",
     "ordered_gpu_pool",
     "parse_campaign_policy",
+    "resolve_session_receipt_schema",
     "run_matched_task_campaign",
     "validate_formal_task_binding",
 ]

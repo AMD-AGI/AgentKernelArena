@@ -194,6 +194,8 @@ read-only support for sealed history, but a v4 receipt cannot drop these fields 
 change its schema to select the legacy validation path. Receipt dispatch is selected
 from the sealed manifest's agent template and schema, never from the receipt's own
 type claim, so an Apex and direct-Codex receipt cannot be substituted for each other.
+The evaluator metadata gate and receipt auditor use the same campaign-owned schema
+registry; adding a generation in one place cannot leave a stale evaluator allowlist.
 The adapter requires
 exactly one `prompt_sent` CAS binding
 and a direct journal parent edge from that event to the sole `agent_completed` or
@@ -242,10 +244,13 @@ is typed `max_turns_overrun` and cannot persist candidate bytes. A valid `no_gai
 an audited successful session but its central baseline replay is marked
 `no_candidate_baseline_replay_v1` and can never enter campaign selection. Direct
 Codex receives the same treatment when its verified final declared-source delta is
-empty, so neither arm can score the unchanged baseline. Failed sessions and untrusted
-evidence remain diagnostic-only: they cannot create the ordinary task workspace or
-count as completion. Only a complete campaign gets a canonical copied projection of
-its selected attempt.
+empty: both arms keep `attempt_completed=true`, keep the session receipt valid, and
+set `selection_eligible=false`, so neither can score the unchanged baseline. Three
+`no_gain` sessions produce no canonical projection; a mixed task may still select a
+valid candidate session. Failed sessions and untrusted evidence remain
+diagnostic-only: they cannot create the ordinary task workspace or count as
+completion. Only a complete campaign gets a canonical copied projection of its
+selected attempt.
 
 The checked-in campaign workspaces and logs live under `/data/viouyang/apex/aka`, not
 the smaller home filesystem. Both repositories must be clean before formal campaign

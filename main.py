@@ -35,6 +35,7 @@ from src.campaign import (
     CampaignError,
     ensure_campaign_manifest,
     parse_campaign_policy,
+    resolve_session_receipt_schema,
     run_matched_task_campaign,
     deterministic_task_gpu_mapping,
     ordered_gpu_pool,
@@ -681,26 +682,10 @@ def _campaign_evaluation_metadata(
             or sealed_agent.get("template") != agent.value
         ):
             raise ValueError("campaign agent template mismatch")
-        expected_receipt_schema = sealed_agent.get("session_receipt_schema")
+        expected_receipt_schema = resolve_session_receipt_schema(
+            agent.value, sealed_agent.get("session_receipt_schema")
+        )
         if expected_receipt_schema is None:
-            expected_receipt_schema = (
-                "agentkernelarena.apex-attempt-receipt/v1"
-                if agent is AgentType.APEX
-                else "agentkernelarena.codex-attempt-receipt/v1"
-            )
-        allowed_schemas = {
-            AgentType.APEX: {
-                "agentkernelarena.apex-attempt-receipt/v1",
-                "agentkernelarena.apex-attempt-receipt/v2",
-                "agentkernelarena.apex-attempt-receipt/v3",
-            },
-            AgentType.CODEX: {
-                "agentkernelarena.codex-attempt-receipt/v1",
-                "agentkernelarena.codex-attempt-receipt/v2",
-                "agentkernelarena.codex-attempt-receipt/v3",
-            },
-        }
-        if expected_receipt_schema not in allowed_schemas[agent]:
             raise ValueError("unsupported sealed receipt schema")
     except (KeyError, OSError, TypeError, ValueError, yaml.YAMLError, UnicodeDecodeError):
         metadata["evaluation_mode"] = "diagnostic_unbound_session_replay_v1"

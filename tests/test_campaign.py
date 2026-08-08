@@ -3057,7 +3057,7 @@ def test_direct_codex_recomputes_delta_and_rejects_contradictory_receipt(
     )
 
     assert "direct_codex_sanitized_manifest_contract_mismatch" in errors
-    assert "direct_codex_zero_source_delta" in errors
+    assert "direct_codex_zero_source_delta" not in errors
 
 
 def test_direct_codex_exact_boundary_accepts_proven_natural_exit_with_hidden_siblings(
@@ -3609,11 +3609,9 @@ def test_no_gain_apex_receipt_is_audited_but_never_selection_eligible(
             receipt_path=receipt_path,
             require_session_receipt=True,
         )
+        assert record["attempt_completed"] is True
         assert record["selection_eligible"] is False
-        assert "apex_terminal_status_not_candidate_ready" in record[
-            "eligibility_errors"
-        ]
-        assert "agent_session_not_score_eligible" in record["eligibility_errors"]
+        assert record["eligibility_errors"] == []
         assert record["agent_session_terminal_status"] == "no_gain"
     finally:
         _unlock_apex_receipt_directories(run)
@@ -3927,31 +3925,54 @@ def test_three_valid_direct_codex_receipts_allow_canonical_projection(
         _unlock_apex_receipt_directories(run)
 
 
-def test_zero_delta_direct_codex_receipts_cannot_be_scored_or_canonical(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize("agent_name", ["apex", "codex"])
+def test_all_no_gain_attempts_complete_without_becoming_canonical(
+    tmp_path, monkeypatch, agent_name
 ) -> None:
     monkeypatch.setenv("AGENT_KERNEL_ARENA_HOST_GPU_ID", "0")
     run = tmp_path / "run"
     run.mkdir()
-    codex_contract = _write_campaign_codex_contract(run, agent_template="codex")
+    codex_contract = _write_campaign_codex_contract(
+        run,
+        agent_template=agent_name,
+        apex_receipt_schema="agentkernelarena.apex-attempt-receipt/v4",
+        checkpoint_policy=True,
+    )
 
     def single_attempt(**kwargs):
         attempt_run = Path(kwargs["run_directory"])
         workspace = attempt_run / "triton2triton_vllm_example_20260807_000000"
         workspace.mkdir()
         _write_result(workspace, 0.5)
+        report_path = workspace / "task_result.yaml"
+        report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
+        report |= {
+            "evaluation_mode": "no_candidate_baseline_replay_v1",
+            "agent_session_score_eligible": False,
+            "agent_session_succeeded": True,
+            "agent_session_terminal_status": "no_gain",
+        }
+        report_path.write_text(yaml.safe_dump(report), encoding="utf-8")
         receipt_path = Path(kwargs["eval_config"]["campaign_attempt"]["receipt_path"])
-        _write_valid_codex_receipt(
-            receipt_path,
-            codex_contract,
-            source_changed=False,
-        )
+        if agent_name == "apex":
+            _write_valid_apex_receipt(
+                receipt_path,
+                codex_contract,
+                status="no_gain",
+                new_prompt_receipt=True,
+            )
+        else:
+            _write_valid_codex_receipt(
+                receipt_path,
+                codex_contract,
+                source_changed=False,
+            )
         return True, workspace
 
     try:
         completed, canonical = campaign.run_matched_task_campaign(
             eval_config={"campaign": _policy(), "assigned_host_gpu_id": "0"},
-            agent=SimpleNamespace(value="codex"),
+            agent=SimpleNamespace(value=agent_name),
             agent_launcher=object(),
             task_name="triton2triton/vllm/example",
             task_config_dir=codex_contract["_task_config_paths"][
@@ -3972,10 +3993,103 @@ def test_zero_delta_direct_codex_receipts_cannot_be_scored_or_canonical(
                 / ".campaign_attempts/triton2triton_vllm_example/task_campaign.yaml"
             ).read_text()
         )
+        assert evidence["all_agent_sessions_succeeded"] is True
         assert all(
-            "no_source_delta_candidate" in attempt["eligibility_errors"]
+            attempt["attempt_completed"] is True
             and attempt["selection_eligible"] is False
+            and attempt["eligibility_errors"] == []
             for attempt in evidence["attempts"]
+        )
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
+@pytest.mark.parametrize("agent_name", ["apex", "codex"])
+def test_mixed_no_gain_and_candidate_attempts_select_a_candidate_symmetrically(
+    tmp_path, monkeypatch, agent_name
+) -> None:
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_HOST_GPU_ID", "0")
+    run = tmp_path / "run"
+    run.mkdir()
+    contract = _write_campaign_codex_contract(
+        run,
+        agent_template=agent_name,
+        apex_receipt_schema="agentkernelarena.apex-attempt-receipt/v4",
+        checkpoint_policy=True,
+    )
+
+    def single_attempt(**kwargs):
+        attempt = int(kwargs["eval_config"]["campaign_attempt"]["index"])
+        candidate_ready = attempt > 1
+        optimized_ms = {1: 0.25, 2: 1.0, 3: 0.5}[attempt]
+        attempt_run = Path(kwargs["run_directory"])
+        workspace = attempt_run / "triton2triton_vllm_example_20260807_000000"
+        workspace.mkdir()
+        _write_result(workspace, optimized_ms)
+        report_path = workspace / "task_result.yaml"
+        report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
+        report |= {
+            "evaluation_mode": (
+                "candidate_scoring_v1"
+                if candidate_ready
+                else "no_candidate_baseline_replay_v1"
+            ),
+            "agent_session_score_eligible": candidate_ready,
+            "agent_session_succeeded": True,
+            "agent_session_terminal_status": (
+                "candidate_ready" if candidate_ready else "no_gain"
+            ),
+        }
+        report_path.write_text(yaml.safe_dump(report), encoding="utf-8")
+        receipt_path = Path(kwargs["eval_config"]["campaign_attempt"]["receipt_path"])
+        if agent_name == "apex":
+            _write_valid_apex_receipt(
+                receipt_path,
+                contract,
+                status="candidate_ready" if candidate_ready else "no_gain",
+                new_prompt_receipt=True,
+            )
+        else:
+            _write_valid_codex_receipt(
+                receipt_path,
+                contract,
+                source_changed=candidate_ready,
+            )
+        return True, workspace
+
+    try:
+        completed, canonical = campaign.run_matched_task_campaign(
+            eval_config={"campaign": _policy(), "assigned_host_gpu_id": "0"},
+            agent=SimpleNamespace(value=agent_name),
+            agent_launcher=object(),
+            task_name="triton2triton/vllm/example",
+            task_config_dir=contract["_task_config_paths"][
+                "triton2triton/vllm/example"
+            ],
+            run_directory=run,
+            timestamp="20260807_000000",
+            logger=logging.getLogger(__name__),
+            task_index=1,
+            total_tasks=1,
+            single_attempt=single_attempt,
+        )
+        assert completed is True
+        assert canonical is not None
+        result = yaml.safe_load((canonical / "task_result.yaml").read_text())
+        assert result["campaign_evidence"]["selected_attempt"] == 3
+        evidence = yaml.safe_load(
+            (
+                run
+                / ".campaign_attempts/triton2triton_vllm_example/task_campaign.yaml"
+            ).read_text()
+        )
+        assert evidence["all_agent_sessions_succeeded"] is True
+        assert evidence["attempts"][0]["attempt_completed"] is True
+        assert evidence["attempts"][0]["selection_eligible"] is False
+        assert evidence["attempts"][0]["eligibility_errors"] == []
+        assert all(
+            attempt["selection_eligible"] is True
+            for attempt in evidence["attempts"][1:]
         )
     finally:
         _unlock_apex_receipt_directories(run)
@@ -4138,6 +4252,35 @@ def _metadata_campaign_attempt(
     }
 
 
+@pytest.mark.parametrize(
+    ("agent_name", "declared_schema", "expected"),
+    [
+        ("apex", None, "agentkernelarena.apex-attempt-receipt/v1"),
+        ("codex", None, "agentkernelarena.codex-attempt-receipt/v1"),
+        (
+            "apex",
+            "agentkernelarena.apex-attempt-receipt/v4",
+            "agentkernelarena.apex-attempt-receipt/v4",
+        ),
+        (
+            "codex",
+            "agentkernelarena.codex-attempt-receipt/v4",
+            "agentkernelarena.codex-attempt-receipt/v4",
+        ),
+        ("unknown", None, None),
+        ("apex", 4, None),
+        ("codex", "agentkernelarena.codex-attempt-receipt/v5", None),
+    ],
+)
+def test_session_receipt_schema_registry_fails_closed_and_preserves_v1_history(
+    agent_name, declared_schema, expected
+) -> None:
+    assert (
+        campaign.resolve_session_receipt_schema(agent_name, declared_schema)
+        == expected
+    )
+
+
 def test_apex_no_gain_metadata_never_marks_baseline_as_scoreable(tmp_path) -> None:
     receipt_path = tmp_path / "session_receipt.json"
     receipt_path.write_text(
@@ -4243,6 +4386,155 @@ def test_direct_codex_metadata_requires_a_source_delta(
     assert metadata["agent_session_score_eligible"] is eligible
     assert metadata["agent_session_succeeded"] is True
     assert metadata["agent_session_terminal_status"] == terminal
+
+
+@pytest.mark.parametrize(
+    ("agent", "template", "receipt_fields", "mode", "eligible", "terminal"),
+    [
+        (
+            aka_main.AgentType.APEX,
+            "apex",
+            {"terminal_status": "candidate_ready"},
+            "candidate_scoring_v1",
+            True,
+            "candidate_ready",
+        ),
+        (
+            aka_main.AgentType.APEX,
+            "apex",
+            {"terminal_status": "no_gain"},
+            "no_candidate_baseline_replay_v1",
+            False,
+            "no_gain",
+        ),
+        (
+            aka_main.AgentType.CODEX,
+            "codex",
+            {"workspace_integrity": {"final_changes": {"changed_files": ["kernel.py"]}}},
+            "candidate_scoring_v1",
+            True,
+            "candidate_ready",
+        ),
+        (
+            aka_main.AgentType.CODEX,
+            "codex",
+            {"workspace_integrity": {"final_changes": {"changed_files": []}}},
+            "no_candidate_baseline_replay_v1",
+            False,
+            "no_gain",
+        ),
+    ],
+)
+def test_v4_campaign_metadata_is_symmetric_for_apex_and_direct_codex(
+    tmp_path, agent, template, receipt_fields, mode, eligible, terminal
+) -> None:
+    schema = f"agentkernelarena.{template}-attempt-receipt/v4"
+    receipt_path = tmp_path / f"{template}_v4_session_receipt.json"
+    receipt_path.write_text(
+        json.dumps(
+            {
+                "schema": schema,
+                "session_succeeded": True,
+                **receipt_fields,
+            }
+        ),
+        encoding="utf-8",
+    )
+    receipt_path.chmod(0o444)
+
+    metadata = aka_main._campaign_evaluation_metadata(
+        agent=agent,
+        campaign_attempt=_metadata_campaign_attempt(
+            tmp_path,
+            receipt_path=receipt_path,
+            template=template,
+            receipt_schema=schema,
+        ),
+        agent_error=None,
+    )
+
+    assert metadata == {
+        "evaluation_mode": mode,
+        "agent_session_score_eligible": eligible,
+        "agent_session_succeeded": True,
+        "agent_session_error_type": None,
+        "agent_session_terminal_status": terminal,
+    }
+
+
+@pytest.mark.parametrize(
+    ("agent", "template"),
+    [
+        (aka_main.AgentType.APEX, "apex"),
+        (aka_main.AgentType.CODEX, "codex"),
+    ],
+)
+def test_campaign_metadata_rejects_unsupported_sealed_schema(
+    tmp_path, agent, template
+) -> None:
+    schema = f"agentkernelarena.{template}-attempt-receipt/v5"
+    receipt_path = tmp_path / f"{template}_unsupported_receipt.json"
+    receipt_path.write_text(
+        json.dumps({"schema": schema, "session_succeeded": True}),
+        encoding="utf-8",
+    )
+    receipt_path.chmod(0o444)
+
+    metadata = aka_main._campaign_evaluation_metadata(
+        agent=agent,
+        campaign_attempt=_metadata_campaign_attempt(
+            tmp_path,
+            receipt_path=receipt_path,
+            template=template,
+            receipt_schema=schema,
+        ),
+        agent_error=None,
+    )
+
+    assert metadata["evaluation_mode"] == "diagnostic_unbound_session_replay_v1"
+    assert metadata["agent_session_score_eligible"] is False
+    assert metadata["agent_session_succeeded"] is False
+    assert metadata["agent_session_error_type"] == "CampaignManifestMetadataError"
+
+
+@pytest.mark.parametrize(
+    ("agent", "template", "other_template"),
+    [
+        (aka_main.AgentType.APEX, "apex", "codex"),
+        (aka_main.AgentType.CODEX, "codex", "apex"),
+    ],
+)
+def test_campaign_metadata_rejects_cross_arm_v4_receipt_substitution(
+    tmp_path, agent, template, other_template
+) -> None:
+    expected_schema = f"agentkernelarena.{template}-attempt-receipt/v4"
+    receipt_path = tmp_path / f"{template}_substituted_receipt.json"
+    receipt_path.write_text(
+        json.dumps(
+            {
+                "schema": f"agentkernelarena.{other_template}-attempt-receipt/v4",
+                "session_succeeded": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    receipt_path.chmod(0o444)
+
+    metadata = aka_main._campaign_evaluation_metadata(
+        agent=agent,
+        campaign_attempt=_metadata_campaign_attempt(
+            tmp_path,
+            receipt_path=receipt_path,
+            template=template,
+            receipt_schema=expected_schema,
+        ),
+        agent_error=None,
+    )
+
+    assert metadata["evaluation_mode"] == "diagnostic_unbound_session_replay_v1"
+    assert metadata["agent_session_score_eligible"] is False
+    assert metadata["agent_session_succeeded"] is False
+    assert metadata["agent_session_error_type"] == "ApexReceiptMetadataError"
 
 
 def test_metadata_rejects_receipt_schema_not_selected_by_sealed_manifest(

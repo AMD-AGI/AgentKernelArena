@@ -79,8 +79,12 @@ namespace-init pidfd exit and Linux PID-namespace teardown semantics remain the
 authority. The natural-exit race must establish the same proof. The post-teardown
 checkpoint and retained output tail are digested into the candidate-persistence
 receipt. The verifier independently recomputes the source
-delta from sealed before/after manifests; a contradictory receipt or zero delta is
-not a candidate.
+delta from sealed before/after manifests. A contradictory delta invalidates the
+receipt. A valid empty delta is instead an audited `no_gain`: the attempt remains
+completed, but its baseline replay is selection-ineligible and contributes no
+canonical workspace. If all three sessions are `no_gain`, the task has no canonical
+result; if another session produced a valid candidate, selection considers only the
+candidate sessions.
 
 Do not treat Codex's legacy `sandbox: workspace-write` session label as proof of the
 effective policy. The pinned managed file and successful negative live probes are
