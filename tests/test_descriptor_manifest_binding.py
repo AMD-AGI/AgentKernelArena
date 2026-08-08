@@ -34,6 +34,170 @@ def _digest(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+@pytest.fixture(autouse=True)
+def _use_sealed_v5_runtime_test_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Use complete v5 contracts while isolating host-only runtime probes.
+
+    Mount topology and installed-backend revalidation have dedicated tests.  The
+    descriptor tests need the same sealed contract fields, but do not need a
+    live SquashFS mount or Codex installation merely to exercise queue races.
+    """
+
+    monkeypatch.setattr(campaign, "_revalidate_aka_runtime", lambda _manifest: True)
+    monkeypatch.setattr(
+        campaign,
+        "verify_backend_closure",
+        lambda closure, _expected_digest: closure,
+    )
+
+
+def _backend_closure() -> dict[str, object]:
+    return {
+        "schema": campaign.BACKEND_CLOSURE_SCHEMA,
+        "backend": "codex",
+        "launcher": {"path": "/opt/node/bin/codex", "sha256": "c" * 64},
+        "interpreter": {"path": "/opt/node/bin/node", "sha256": "d" * 64},
+        "components": [],
+        "closure_sha256": "e" * 64,
+    }
+
+
+def _formal_v5_contract(
+    *,
+    tasks: list[dict[str, object]],
+    mappings: list[dict[str, object]],
+    devices: list[dict[str, object]],
+) -> dict[str, object]:
+    runtime_manifest_sha256 = "7" * 64
+    aka_manifest_sha256 = "4" * 64
+    closure = _backend_closure()
+    repositories = {
+        "agent_kernel_arena": {
+            "commit": "1" * 40,
+            "tree": "2" * 40,
+            "dirty": False,
+            "status_sha256": "3" * 64,
+            "execution_manifest_schema": campaign.EXECUTION_MANIFEST_SCHEMA,
+            "execution_manifest_sha256": aka_manifest_sha256,
+            "git_evidence_policy_id": "head_tree_direct_bytes_no_filters_v1",
+        },
+        "apex": {
+            "commit": "5" * 40,
+            "dirty": False,
+            "status_sha256": "6" * 64,
+            "runtime_manifest_sha256": runtime_manifest_sha256,
+        },
+    }
+    aka_runtime = {
+        "schema": "aka.execution-snapshot-runtime/v1",
+        "root": "/test/aka-runtime",
+        "manifest_path": "/test/aka-runtime-manifest.json",
+        "manifest_file_sha256": "8" * 64,
+        "manifest_sha256": aka_manifest_sha256,
+        "mount_receipt_path": "/test/aka-runtime-mount-receipt.json",
+        "mount_receipt_file_sha256": "9" * 64,
+        "mount_receipt_sha256": "a" * 64,
+        "mount_receipt_schema": campaign.IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
+        "mount_receipt": {
+            "schema": campaign.IMMUTABLE_MOUNT_RECEIPT_SCHEMA,
+            "manifest_sha256": aka_manifest_sha256,
+            "mount_point": "/test/aka-runtime",
+            "sha256": "a" * 64,
+        },
+    }
+    gpu = {
+        "gpu_boundary_plan_sha256": "a" * 64,
+        "exclusivity": {
+            "sha256": "b" * 64,
+            "exclusivity_verified": True,
+        },
+        "devices": devices,
+        "task_mapping": mappings,
+    }
+    runtime = {"gpu": gpu, "aka_execution_snapshot": aka_runtime}
+    evaluator = {
+        "schema": "aka.evaluator-source-binding/v2",
+        "coverage": "all_committed_files",
+        "execution_manifest_schema": campaign.EXECUTION_MANIFEST_SCHEMA,
+        "execution_manifest_sha256": aka_manifest_sha256,
+        "commit": "1" * 40,
+        "tree": "2" * 40,
+    }
+    apex_treatment = {
+        "template": "apex",
+        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v5",
+        "apex_runtime_mount_policy_id": campaign.APEX_RUNTIME_MOUNT_POLICY,
+        "attempt_mount_receipt_schema": campaign.ATTEMPT_MOUNT_RECEIPT_SCHEMA,
+        "apex_runtime_mount_schema": campaign.APEX_RUNTIME_MOUNT_SCHEMA,
+        "runtime_manifest_sha256": runtime_manifest_sha256,
+    }
+    codex = {
+        "backend": "codex",
+        "model": "gpt-5.5",
+        "effort": "xhigh",
+        "permission_mode": "workspace_write_isolated",
+        "inner_max_iterations": 1,
+        "attempt_timeout_seconds": 3600,
+        "max_turns": 50,
+        "turn_policy": campaign.CANDIDATE_PERSISTENCE_POLICY,
+        "agent_process_containment_policy_id": (
+            campaign.AGENT_PROCESS_CONTAINMENT_POLICY
+        ),
+        "attempt_containment_policy_id": campaign.ATTEMPT_CONTAINMENT_POLICY,
+        "structured_stream_output_limit_bytes": 16 * 1024 * 1024,
+        "codex_version": "codex-cli test",
+        "codex_binary_sha256": "f" * 64,
+        "backend_runtime_closure_schema": campaign.BACKEND_CLOSURE_SCHEMA,
+        "backend_runtime_closure_sha256": closure["closure_sha256"],
+        "backend_runtime_closure": closure,
+        "isolation": {
+            "approval": "never_via_strict_config",
+            "execpolicy_rules": "ignored",
+            "project_instructions": "backend_default_may_load",
+            "sandbox": "workspace-write",
+            "session": "ephemeral",
+            "user_config": "ignored",
+            "mount_scope": "attempt_only_bubblewrap",
+            "attempt_containment_policy_id": campaign.ATTEMPT_CONTAINMENT_POLICY,
+        },
+    }
+    agent = codex | apex_treatment
+    formal_execution = dict(campaign._FORMAL_LIVE_COMMITMENT)
+    comparison = {
+        "schema": "aka.apex-vs-codex-comparison-contract/v5",
+        "formal_execution": formal_execution,
+        "formal_execution_sha256": campaign.FORMAL_LIVE_EXECUTION_SHA256,
+        "objective_policy_id": "aka.task-package-objective-and-protected-harness/v1",
+        "prompt_policy_id": (
+            "aka.shared-objective-backend-native-context-receipted/v1"
+        ),
+        "candidate_persistence_policy_id": campaign.CANDIDATE_PERSISTENCE_POLICY,
+        "boundary_quiescence_policy_id": campaign.BOUNDARY_QUIESCENCE_POLICY,
+        "agent_process_containment_policy_id": (
+            campaign.AGENT_PROCESS_CONTAINMENT_POLICY
+        ),
+        "attempt_containment_policy_id": campaign.ATTEMPT_CONTAINMENT_POLICY,
+        "repositories": repositories,
+        "apex_treatment": apex_treatment,
+        "codex": codex,
+        "runtime": runtime,
+        "evaluator_files_sha256": evaluator,
+        "tasks": tasks,
+    }
+    return {
+        "schema": "aka.matched-campaign/v1",
+        "formal_execution": formal_execution,
+        "formal_execution_sha256": campaign.FORMAL_LIVE_EXECUTION_SHA256,
+        "comparison_contract_sha256": _digest(comparison),
+        "comparison_contract": comparison,
+        "repositories": repositories,
+        "agent": agent,
+        "runtime": runtime,
+        "evaluator_files_sha256": evaluator,
+        "configuration": {"tasks": tasks},
+    }
+
+
 def _make_formal_run(
     tmp_path: Path, task_names: tuple[str, ...] = ("task_a", "task_b")
 ) -> tuple[Path, list[dict[str, object]], list[dict[str, object]]]:
@@ -76,32 +240,11 @@ def _make_formal_run(
                 "render_nodes": [f"/dev/dri/renderD{128 + index - 1}"],
             }
         )
-    comparison = {
-        "schema": "aka.apex-vs-codex-comparison-contract/v1",
-        "objective_policy_id": "aka.task-package-objective-and-protected-harness/v1",
-        "prompt_policy_id": (
-            "aka.shared-objective-backend-native-context-receipted/v1"
-        ),
-        "tasks": tasks,
-        "runtime": {"gpu": {"task_mapping": mappings}},
-    }
-    manifest = {
-        "schema": "aka.matched-campaign/v1",
-        "comparison_contract_sha256": _digest(comparison),
-        "comparison_contract": comparison,
-        "configuration": {"tasks": tasks},
-        "runtime": {
-            "gpu": {
-                "gpu_boundary_plan_sha256": "a" * 64,
-                "exclusivity": {
-                    "sha256": "b" * 64,
-                    "exclusivity_verified": True,
-                },
-                "devices": devices,
-                "task_mapping": mappings,
-            }
-        },
-    }
+    manifest = _formal_v5_contract(
+        tasks=tasks,
+        mappings=mappings,
+        devices=devices,
+    )
     manifest_path = run / "campaign_manifest.yaml"
     manifest_path.write_text(yaml.safe_dump(manifest), encoding="utf-8")
     manifest_path.chmod(0o444)
