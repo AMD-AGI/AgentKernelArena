@@ -10,12 +10,14 @@ from pathlib import Path
 
 import pytest
 
+from src import apex_runtime
 from src.apex_runtime import (
     ApexRuntimeError,
     materialize_runtime,
     plan_runtime,
     runtime_command,
     runtime_environment,
+    runtime_image_inputs,
     verify_runtime_snapshot,
 )
 
@@ -29,13 +31,19 @@ def _runtime_checkout(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     root.mkdir()
     (root / "src").mkdir()
     (root / "main.py").write_text(
-        "import json, pathlib, sys\n"
+        "import json, pathlib, subprocess, sys\n"
         "import apex_probe\n"
-        "print(json.dumps({'no_site': sys.flags.no_site, 'probe': apex_probe.VALUE}))\n",
+        "child = subprocess.check_output([sys.executable, '-c', "
+        "'import json,sys; print(json.dumps({\"no_site\":sys.flags.no_site,' "
+        "'\"executable\":sys.executable}))'], text=True)\n"
+        "alias = subprocess.check_output(['python3', '-c', "
+        "'import sys; print(sys.flags.no_site)'], text=True)\n"
+        "print(json.dumps({'no_site': sys.flags.no_site, 'probe': apex_probe.VALUE, "
+        "'child': json.loads(child), 'alias_no_site': int(alias)}))\n",
         encoding="utf-8",
     )
     (root / "src" / "apex_probe.py").write_text("VALUE = 'sealed'\n", encoding="utf-8")
-    (root / ".gitignore").write_text(".venv\n", encoding="utf-8")
+    (root / ".gitignore").write_text(".venv\n.cache\n", encoding="utf-8")
     _run("/usr/bin/git", "init", "-q", cwd=root)
     _run("/usr/bin/git", "config", "user.name", "test", cwd=root)
     _run("/usr/bin/git", "config", "user.email", "test@example.invalid", cwd=root)
@@ -69,15 +77,67 @@ def _runtime_checkout(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     return root, venv / "bin" / "python", external, marker
 
 
+def _digest(value: object) -> str:
+    import hashlib
+
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode()
+    ).hexdigest()
+
+
+def _immutable_receipt(
+    snapshot: Path,
+    manifest: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, object]:
+    mount = {
+        "mount_id": 91,
+        "device": "0:91",
+        "root": "/",
+        "mount_point": str(snapshot),
+        "filesystem": "fuse.squashfuse",
+        "mount_options": ["nodev", "ro"],
+        "super_options": ["ro"],
+        "read_only": True,
+    }
+    monkeypatch.setattr(apex_runtime, "_observed_immutable_mount", lambda _root: mount)
+    material = {
+        "schema": apex_runtime.RUNTIME_IMMUTABLE_MOUNT_SCHEMA,
+        "policy_id": apex_runtime.RUNTIME_IMMUTABLE_MOUNT_POLICY_ID,
+        "root": str(snapshot),
+        "runtime_manifest_sha256": manifest["sha256"],
+        "runtime_image_input_sha256": runtime_image_inputs(snapshot, manifest)["sha256"],
+        "image_sha256": "f" * 64,
+        "backing": {
+            "kind": "sealed_memfd",
+            "seals": list(apex_runtime._REQUIRED_MEMFD_SEALS),
+        },
+        "mount": mount,
+    }
+    return {**material, "sha256": _digest(material)}
+
+
 def test_snapshot_is_complete_sealed_and_executes_without_site_hooks(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root, python, external, marker = _runtime_checkout(tmp_path)
     plan = plan_runtime(root, python, declared_roots=[external])
 
     snapshot = materialize_runtime(plan, tmp_path / "attempt.runtime")
     manifest = verify_runtime_snapshot(snapshot, plan.sha256)
-    command = runtime_command(snapshot, manifest, [])
+    receipt = _immutable_receipt(snapshot, manifest, monkeypatch)
+    command = runtime_command(
+        snapshot,
+        manifest,
+        [],
+        immutable_mount_receipt=receipt,
+    )
     environment = {
         "PATH": "/usr/bin:/bin",
         "LC_ALL": "C",
@@ -92,11 +152,18 @@ def test_snapshot_is_complete_sealed_and_executes_without_site_hooks(
         check=True,
     )
 
-    assert json.loads(completed.stdout) == {"no_site": 1, "probe": "sealed"}
+    output = json.loads(completed.stdout)
+    assert output["no_site"] == 1
+    assert output["probe"] == "sealed"
+    assert output["child"]["no_site"] == 1
+    assert output["child"]["executable"].endswith("/sealed-bin/python")
+    assert output["alias_no_site"] == 1
     assert not marker.exists()
     assert (snapshot / "external/000/native.so").read_bytes() == b"native-runtime-bytes"
     assert stat.S_IMODE((snapshot / "repo/main.py").stat().st_mode) == 0o444
     assert stat.S_IMODE(snapshot.stat().st_mode) == 0o555
+    assert (snapshot / "venv/bin/python").is_file()
+    assert not (snapshot / "venv/bin/python").is_symlink()
 
     (root / "main.py").write_text("raise SystemExit('mutable checkout')\n")
     (external / "native.so").write_bytes(b"mutable")
@@ -110,6 +177,15 @@ def test_snapshot_is_complete_sealed_and_executes_without_site_hooks(
         check=True,
     )
     assert json.loads(repeated.stdout)["probe"] == "sealed"
+
+
+def test_execution_requires_an_immutable_mount_receipt(tmp_path: Path) -> None:
+    root, python, external, _marker = _runtime_checkout(tmp_path)
+    plan = plan_runtime(root, python, declared_roots=[external])
+    snapshot = materialize_runtime(plan, tmp_path / "attempt.runtime")
+    manifest = verify_runtime_snapshot(snapshot, plan.sha256)
+    with pytest.raises(ApexRuntimeError, match="receipt is required"):
+        runtime_command(snapshot, manifest, [])
 
 
 @pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])
@@ -176,3 +252,120 @@ def test_snapshot_verifier_rejects_tampering(tmp_path: Path) -> None:
     target.chmod(0o444)
     with pytest.raises(ApexRuntimeError, match="snapshot file changed"):
         verify_runtime_snapshot(snapshot, plan.sha256)
+
+
+def test_git_filter_is_never_executed(tmp_path: Path) -> None:
+    root, python, external, _marker = _runtime_checkout(tmp_path)
+    filter_marker = tmp_path / "filter-executed"
+    filter_script = tmp_path / "hostile-filter"
+    filter_script.write_text(
+        "#!/bin/sh\nprintf executed > \"$1\"\ncat\n",
+        encoding="utf-8",
+    )
+    filter_script.chmod(0o755)
+    (root / ".gitattributes").write_text("main.py filter=hostile\n", encoding="utf-8")
+    _run("/usr/bin/git", "add", ".gitattributes", cwd=root)
+    _run("/usr/bin/git", "commit", "-qm", "attributes", cwd=root)
+    _run(
+        "/usr/bin/git",
+        "config",
+        "filter.hostile.smudge",
+        f"{filter_script} {filter_marker}",
+        cwd=root,
+    )
+    _run(
+        "/usr/bin/git",
+        "config",
+        "filter.hostile.clean",
+        f"{filter_script} {filter_marker}",
+        cwd=root,
+    )
+
+    plan_runtime(root, python, declared_roots=[external])
+    assert not filter_marker.exists()
+
+
+def test_head_change_during_object_reads_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, python, external, _marker = _runtime_checkout(tmp_path)
+    original = apex_runtime._tracked_file_entry
+    changed = False
+
+    def racing_entry(binding: object, entry: dict[str, str]) -> dict[str, object]:
+        nonlocal changed
+        value = original(binding, entry)
+        if not changed:
+            changed = True
+            _run(
+                "/usr/bin/git",
+                "commit",
+                "--allow-empty",
+                "-qm",
+                "raced head",
+                cwd=root,
+            )
+        return value
+
+    monkeypatch.setattr(apex_runtime, "_tracked_file_entry", racing_entry)
+    with pytest.raises(ApexRuntimeError, match="HEAD changed"):
+        plan_runtime(root, python, declared_roots=[external])
+
+
+def test_absolute_symlinks_are_rejected_but_relative_links_stay_inside(
+    tmp_path: Path,
+) -> None:
+    root, python, external, _marker = _runtime_checkout(tmp_path)
+    os.symlink("native.so", external / "relative-native.so")
+    plan = plan_runtime(root, python, declared_roots=[external])
+    snapshot = materialize_runtime(plan, tmp_path / "relative.runtime")
+    copied = snapshot / "external/000/relative-native.so"
+    assert copied.is_symlink()
+    assert copied.resolve(strict=True).is_relative_to(snapshot / "external/000")
+
+    (external / "relative-native.so").unlink()
+    os.symlink("/tmp", external / "absolute")
+    with pytest.raises(ApexRuntimeError, match="absolute runtime symlink"):
+        plan_runtime(root, python, declared_roots=[external])
+
+
+def test_managed_magpie_and_inferencex_are_in_runtime_closure(
+    tmp_path: Path,
+) -> None:
+    root, python, external, _marker = _runtime_checkout(tmp_path)
+    managed = root / ".cache/apex-dependencies"
+    magpie = managed / "magpie"
+    inferencex = managed / "inferencex"
+    (magpie / "Magpie").mkdir(parents=True)
+    (inferencex / "runners").mkdir(parents=True)
+    (magpie / "Magpie/__init__.py").write_text("LOCKED = True\n", encoding="utf-8")
+    (inferencex / "runners/run.py").write_text("LOCKED = True\n", encoding="utf-8")
+    (root / "scripts").mkdir()
+    (root / "scripts/dependencies.lock.json").write_text(
+        json.dumps(
+            {
+                "dependencies": {
+                    "magpie": {"managed_checkout": "magpie"},
+                    "inferencex": {"managed_checkout": "inferencex"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    _run("/usr/bin/git", "add", "scripts/dependencies.lock.json", cwd=root)
+    _run("/usr/bin/git", "commit", "-qm", "dependency lock", cwd=root)
+    expected = sorted((external, magpie, inferencex), key=str)
+
+    plan = plan_runtime(root, python, declared_roots=expected)
+    assert list(plan.external_roots) == expected
+    snapshot = materialize_runtime(plan, tmp_path / "managed.runtime")
+    destinations = {
+        item["source"]["path"]: item["destination"]
+        for item in plan.manifest["roots"]
+    }
+    assert (
+        snapshot / destinations[str(magpie)] / "Magpie/__init__.py"
+    ).read_text(encoding="utf-8") == "LOCKED = True\n"
+    assert (
+        snapshot / destinations[str(inferencex)] / "runners/run.py"
+    ).read_text(encoding="utf-8") == "LOCKED = True\n"
