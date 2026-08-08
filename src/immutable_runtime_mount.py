@@ -3,18 +3,22 @@
 
 from __future__ import annotations
 
+import argparse
 import fcntl
 import hashlib
 import json
 import os
+import secrets
 import signal
 import stat
 import subprocess
+import sys
 import tempfile
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 
 class ImmutableRuntimeMountError(RuntimeError):
@@ -26,6 +30,8 @@ IMAGE_INPUT_POLICY_ID = "deterministic_squashfs_inputs_v1"
 MOUNT_RECEIPT_SCHEMA = "aka.apex-runtime-immutable-mount/v1"
 MOUNT_POLICY_ID = "sealed_memfd_squashfs_read_only_v1"
 ENGINE_EVIDENCE_SCHEMA = "aka.immutable-runtime-mount-engine/v1"
+SERVICE_READY_SCHEMA = "aka.immutable-runtime-mount-service-ready/v1"
+SERVICE_POLICY_ID = "single_snapshot_signal_lifetime_v1"
 _MKSQUASHFS = Path("/usr/bin/mksquashfs")
 _MKSQUASHFS_SHA256 = "403080bcd98ea7be2cbb261a10e99a89571e3a3beed6ab6cc3b88e01a0b51053"
 _MKSQUASHFS_SIZE = 260_792
@@ -50,6 +56,7 @@ _SEAL_MASK = (
     | fcntl.F_SEAL_WRITE
 )
 _SHA256 = frozenset("0123456789abcdef")
+_MAX_INVENTORY_BYTES = 64 * 1024 * 1024
 
 
 def _canonical_digest(value: Any) -> str:
@@ -875,6 +882,415 @@ def mount_immutable_runtime(
             os.close(image_fd)
 
 
+@dataclass
+class _ReadyTarget:
+    path: Path
+    parent_fd: int
+    parent_identity: tuple[int, int]
+
+    @classmethod
+    def open(cls, path: str | Path) -> "_ReadyTarget":
+        raw = Path(path)
+        if not raw.is_absolute():
+            raise ImmutableRuntimeMountError("service ready path must be absolute")
+        lexical = Path(os.path.abspath(raw))
+        if raw != lexical or lexical.name in {"", ".", ".."}:
+            raise ImmutableRuntimeMountError("service ready path is unsafe")
+        parent = lexical.parent
+        descriptor = -1
+        try:
+            parent_metadata = parent.lstat()
+            resolved_parent = parent.resolve(strict=True)
+            if (
+                parent != resolved_parent
+                or stat.S_ISLNK(parent_metadata.st_mode)
+                or not stat.S_ISDIR(parent_metadata.st_mode)
+            ):
+                raise ImmutableRuntimeMountError("service ready parent is unsafe")
+            descriptor = os.open(
+                parent,
+                os.O_RDONLY
+                | os.O_DIRECTORY
+                | os.O_CLOEXEC
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            opened = os.fstat(descriptor)
+            if (opened.st_dev, opened.st_ino) != (
+                parent_metadata.st_dev,
+                parent_metadata.st_ino,
+            ):
+                raise ImmutableRuntimeMountError("service ready parent changed")
+            try:
+                os.stat(lexical.name, dir_fd=descriptor, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                raise ImmutableRuntimeMountError(
+                    "service ready target already exists"
+                )
+            result = cls(
+                lexical,
+                descriptor,
+                (opened.st_dev, opened.st_ino),
+            )
+            descriptor = -1
+            return result
+        except ImmutableRuntimeMountError:
+            raise
+        except OSError as error:
+            raise ImmutableRuntimeMountError(
+                "service ready target is unavailable"
+            ) from error
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+
+    def _verify_parent(self) -> None:
+        try:
+            lexical = self.path.parent.lstat()
+            opened = os.fstat(self.parent_fd)
+            resolved = self.path.parent.resolve(strict=True)
+        except OSError as error:
+            raise ImmutableRuntimeMountError("service ready parent changed") from error
+        expected = self.parent_identity
+        if (
+            resolved != self.path.parent
+            or stat.S_ISLNK(lexical.st_mode)
+            or (lexical.st_dev, lexical.st_ino) != expected
+            or (opened.st_dev, opened.st_ino) != expected
+        ):
+            raise ImmutableRuntimeMountError("service ready parent changed")
+
+    def publish(self, evidence: Mapping[str, Any]) -> dict[str, Any]:
+        self._verify_parent()
+        payload = (
+            json.dumps(
+                evidence,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            )
+            + "\n"
+        ).encode("utf-8")
+        temporary = (
+            f".{self.path.name}.tmp-{os.getpid()}-{secrets.token_hex(12)}"
+        )
+        descriptor = -1
+        published = False
+        succeeded = False
+        identity: dict[str, Any] | None = None
+        try:
+            descriptor = os.open(
+                temporary,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | os.O_CLOEXEC
+                | getattr(os, "O_NOFOLLOW", 0),
+                0o400,
+                dir_fd=self.parent_fd,
+            )
+            view = memoryview(payload)
+            while view:
+                written = os.write(descriptor, view)
+                if written <= 0:
+                    raise ImmutableRuntimeMountError(
+                        "cannot write service ready evidence"
+                    )
+                view = view[written:]
+            os.fsync(descriptor)
+            metadata = os.fstat(descriptor)
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                raise ImmutableRuntimeMountError(
+                    "service ready temporary file is unsafe"
+                )
+            identity = {
+                "device": metadata.st_dev,
+                "inode": metadata.st_ino,
+                "size_bytes": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+            self._verify_parent()
+            os.link(
+                temporary,
+                self.path.name,
+                src_dir_fd=self.parent_fd,
+                dst_dir_fd=self.parent_fd,
+                follow_symlinks=False,
+            )
+            published = True
+            os.unlink(temporary, dir_fd=self.parent_fd)
+            temporary = ""
+            os.fsync(self.parent_fd)
+            self._verify_parent()
+            observed = os.stat(
+                self.path.name,
+                dir_fd=self.parent_fd,
+                follow_symlinks=False,
+            )
+            if (
+                not stat.S_ISREG(observed.st_mode)
+                or observed.st_nlink != 1
+                or (observed.st_dev, observed.st_ino)
+                != (identity["device"], identity["inode"])
+                or observed.st_size != len(payload)
+            ):
+                raise ImmutableRuntimeMountError(
+                    "service ready publication identity changed"
+                )
+            succeeded = True
+            return identity
+        except ImmutableRuntimeMountError:
+            raise
+        except FileExistsError as error:
+            raise ImmutableRuntimeMountError(
+                "service ready target already exists"
+            ) from error
+        except OSError as error:
+            raise ImmutableRuntimeMountError(
+                "cannot atomically publish service ready evidence"
+            ) from error
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+            if temporary:
+                try:
+                    os.unlink(temporary, dir_fd=self.parent_fd)
+                except FileNotFoundError:
+                    pass
+            if published and identity is not None and not succeeded:
+                try:
+                    observed = os.stat(
+                        self.path.name,
+                        dir_fd=self.parent_fd,
+                        follow_symlinks=False,
+                    )
+                    if (observed.st_dev, observed.st_ino) != (
+                        identity["device"],
+                        identity["inode"],
+                    ):
+                        raise ImmutableRuntimeMountError(
+                            "service ready target was replaced"
+                        )
+                    os.unlink(self.path.name, dir_fd=self.parent_fd)
+                    os.fsync(self.parent_fd)
+                except FileNotFoundError:
+                    pass
+
+    def remove(self, identity: Mapping[str, Any]) -> None:
+        try:
+            observed = os.stat(
+                self.path.name,
+                dir_fd=self.parent_fd,
+                follow_symlinks=False,
+            )
+            if (
+                not stat.S_ISREG(observed.st_mode)
+                or (observed.st_dev, observed.st_ino)
+                != (identity.get("device"), identity.get("inode"))
+            ):
+                raise ImmutableRuntimeMountError(
+                    "service ready target was replaced"
+                )
+            os.unlink(self.path.name, dir_fd=self.parent_fd)
+            os.fsync(self.parent_fd)
+        except ImmutableRuntimeMountError:
+            raise
+        except OSError as error:
+            raise ImmutableRuntimeMountError(
+                "cannot remove service ready evidence"
+            ) from error
+
+    def close(self) -> None:
+        if self.parent_fd >= 0:
+            descriptor, self.parent_fd = self.parent_fd, -1
+            os.close(descriptor)
+
+
+def _load_inventory_file(path: str | Path) -> dict[str, Any]:
+    raw = Path(path)
+    if not raw.is_absolute():
+        raise ImmutableRuntimeMountError("runtime inventory path must be absolute")
+    lexical = Path(os.path.abspath(raw))
+    descriptor = -1
+    try:
+        metadata = lexical.lstat()
+        resolved = lexical.resolve(strict=True)
+        if (
+            raw != lexical
+            or resolved != lexical
+            or stat.S_ISLNK(metadata.st_mode)
+            or not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_size <= 0
+            or metadata.st_size > _MAX_INVENTORY_BYTES
+        ):
+            raise ImmutableRuntimeMountError("runtime inventory file is unsafe")
+        descriptor = os.open(
+            lexical,
+            os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+        )
+        opened = os.fstat(descriptor)
+        payload = _descriptor_bytes(descriptor, metadata.st_size)
+        if (
+            (opened.st_dev, opened.st_ino) != (metadata.st_dev, metadata.st_ino)
+            or opened.st_size != metadata.st_size
+            or len(payload) != metadata.st_size
+        ):
+            raise ImmutableRuntimeMountError("runtime inventory file changed")
+        decoded = json.loads(payload.decode("utf-8"))
+        if not isinstance(decoded, dict):
+            raise ImmutableRuntimeMountError("runtime inventory is not an object")
+        return decoded
+    except ImmutableRuntimeMountError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ImmutableRuntimeMountError("cannot read runtime inventory") from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _service_ready_evidence(
+    handle: ImmutableRuntimeMount, ready_path: Path
+) -> dict[str, Any]:
+    material = {
+        "schema": SERVICE_READY_SCHEMA,
+        "policy_id": SERVICE_POLICY_ID,
+        "ready_path": str(ready_path),
+        "service": {
+            "pid": os.getpid(),
+            "starttime": _process_starttime(os.getpid()),
+            "accepted_signals": ["SIGINT", "SIGTERM"],
+        },
+        "mount_receipt": handle.receipt,
+        "engine_evidence": handle.evidence,
+    }
+    return {**material, "sha256": _canonical_digest(material)}
+
+
+def serve_immutable_runtime(
+    staging_root: str | Path,
+    mountpoint: str | Path,
+    inventory: Mapping[str, Any],
+    ready_path: str | Path,
+    *,
+    timeout_seconds: float = 10.0,
+) -> dict[str, Any]:
+    """Keep one verified mount alive until SIGTERM or SIGINT, then clean it."""
+
+    target = _ReadyTarget.open(ready_path)
+    stopped = threading.Event()
+    prior_handlers: dict[int, Any] = {}
+    handle: ImmutableRuntimeMount | None = None
+    published: dict[str, Any] | None = None
+    cleanup: dict[str, Any] | None = None
+    failure: BaseException | None = None
+    cleanup_failures: list[BaseException] = []
+
+    def request_stop(_signum: int, _frame: Any) -> None:
+        stopped.set()
+
+    try:
+        try:
+            for signum in (signal.SIGTERM, signal.SIGINT):
+                prior_handlers[signum] = signal.getsignal(signum)
+                signal.signal(signum, request_stop)
+        except (OSError, ValueError) as error:
+            raise ImmutableRuntimeMountError(
+                "mount service must run in the main process thread"
+            ) from error
+        handle = mount_immutable_runtime(
+            staging_root,
+            mountpoint,
+            inventory,
+            timeout_seconds=timeout_seconds,
+        )
+        if stopped.is_set():
+            raise ImmutableRuntimeMountError(
+                "mount service stopped before readiness"
+            )
+        ready = _service_ready_evidence(handle, target.path)
+        published = target.publish(ready)
+        while not stopped.wait(timeout=1.0):
+            observed, nested = _mountinfo(handle.root)
+            if (
+                handle.process.poll() is not None
+                or nested
+                or observed != handle.receipt["mount"]
+            ):
+                raise ImmutableRuntimeMountError(
+                    "immutable runtime mount changed while service was ready"
+                )
+    except BaseException as error:
+        failure = error
+    finally:
+        if published is not None:
+            try:
+                target.remove(published)
+            except BaseException as error:
+                cleanup_failures.append(error)
+        if handle is not None:
+            try:
+                cleanup = handle.close(timeout_seconds=timeout_seconds)
+            except BaseException as error:
+                cleanup_failures.append(error)
+        for signum, prior in prior_handlers.items():
+            try:
+                signal.signal(signum, prior)
+            except (OSError, ValueError) as error:
+                cleanup_failures.append(error)
+        target.close()
+    if cleanup_failures:
+        combined = ImmutableRuntimeMountError(
+            "mount service cleanup failed: "
+            + "; ".join(str(error) for error in cleanup_failures)
+        )
+        if failure is not None:
+            raise combined from failure
+        raise combined
+    if failure is not None:
+        raise failure
+    if cleanup is None:
+        raise ImmutableRuntimeMountError("mount service produced no cleanup evidence")
+    return cleanup
+
+
+def _argument_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Serve one immutable runtime mount until SIGTERM or SIGINT."
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    serve = subparsers.add_parser("serve")
+    serve.add_argument("--staging-root", required=True)
+    serve.add_argument("--inventory-json", required=True)
+    serve.add_argument("--mountpoint", required=True)
+    serve.add_argument("--ready-json", required=True)
+    serve.add_argument("--timeout-seconds", type=float, default=10.0)
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the immutable mount service CLI."""
+
+    parser = _argument_parser()
+    arguments = parser.parse_args(argv)
+    if not (0.0 < arguments.timeout_seconds <= 300.0):
+        parser.error("--timeout-seconds must be in (0, 300]")
+    try:
+        inventory = _load_inventory_file(arguments.inventory_json)
+        serve_immutable_runtime(
+            arguments.staging_root,
+            arguments.mountpoint,
+            inventory,
+            arguments.ready_json,
+            timeout_seconds=arguments.timeout_seconds,
+        )
+    except (ImmutableRuntimeMountError, OSError, ValueError) as error:
+        print(f"immutable runtime mount service failed: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
 __all__ = [
     "ENGINE_EVIDENCE_SCHEMA",
     "IMAGE_INPUT_POLICY_ID",
@@ -883,6 +1299,14 @@ __all__ = [
     "ImmutableRuntimeMountError",
     "MOUNT_POLICY_ID",
     "MOUNT_RECEIPT_SCHEMA",
+    "SERVICE_POLICY_ID",
+    "SERVICE_READY_SCHEMA",
+    "main",
     "mount_immutable_runtime",
+    "serve_immutable_runtime",
     "validate_image_inventory",
 ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import fcntl
 import hashlib
+import json
 import os
+import signal
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -297,3 +301,170 @@ def test_post_mount_verification_failure_unmounts_before_returning(
         assert list(mountpoint.iterdir()) == []
     finally:
         _make_staging_removable(staging)
+
+
+def _inventory_file(tmp_path: Path, inventory: dict[str, object]) -> Path:
+    path = tmp_path / "inventory.json"
+    path.write_text(
+        json.dumps(inventory, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _skip_if_fuse_unavailable(detail: str) -> None:
+    lowered = detail.lower()
+    if "permission denied" in lowered or "/dev/fuse" in lowered:
+        pytest.skip(f"FUSE is unavailable in this environment: {detail}")
+
+
+@pytest.mark.parametrize("stop_signal", [signal.SIGTERM, signal.SIGINT])
+def test_mount_service_publishes_ready_and_signal_cleans_exactly(
+    tmp_path: Path, stop_signal: signal.Signals
+) -> None:
+    staging, mountpoint, inventory = _runtime_tree(tmp_path)
+    inventory_path = _inventory_file(tmp_path, inventory)
+    ready_path = tmp_path / "service-ready.json"
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            str(Path(immutable.__file__).resolve()),
+            "serve",
+            "--staging-root",
+            str(staging),
+            "--inventory-json",
+            str(inventory_path),
+            "--mountpoint",
+            str(mountpoint),
+            "--ready-json",
+            str(ready_path),
+            "--timeout-seconds",
+            "5",
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 20
+        while not ready_path.exists() and process.poll() is None:
+            if time.monotonic() >= deadline:
+                process.kill()
+                stdout, stderr = process.communicate(timeout=5)
+                pytest.fail(f"mount service readiness timed out: {stdout} {stderr}")
+            time.sleep(0.05)
+        if process.poll() is not None:
+            stdout, stderr = process.communicate(timeout=5)
+            _skip_if_fuse_unavailable(stderr)
+            pytest.fail(
+                f"mount service failed before readiness: {stdout} {stderr}"
+            )
+        ready = json.loads(ready_path.read_text(encoding="utf-8"))
+        material = dict(ready)
+        digest = material.pop("sha256")
+        assert digest == immutable._canonical_digest(material)
+        assert ready["schema"] == immutable.SERVICE_READY_SCHEMA
+        assert ready["policy_id"] == immutable.SERVICE_POLICY_ID
+        assert ready["service"]["pid"] == process.pid
+        assert ready["mount_receipt"]["sha256"] == ready["engine_evidence"][
+            "receipt_sha256"
+        ]
+        assert ready["mount_receipt"]["root"] == str(mountpoint)
+        mount, nested = immutable._mountinfo(mountpoint)
+        assert mount == ready["mount_receipt"]["mount"]
+        assert nested == []
+        process.send_signal(stop_signal)
+        stdout, stderr = process.communicate(timeout=20)
+        assert process.returncode == 0, f"{stdout} {stderr}"
+        assert not ready_path.exists()
+        mount, nested = immutable._mountinfo(mountpoint)
+        assert mount is None
+        assert nested == []
+        assert list(mountpoint.iterdir()) == []
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        _make_staging_removable(staging)
+
+
+def test_mount_service_publication_failure_unmounts_before_returning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    staging, mountpoint, inventory = _runtime_tree(tmp_path)
+    ready_path = tmp_path / "service-ready.json"
+
+    def fail_publication(_target, _evidence):
+        raise immutable.ImmutableRuntimeMountError("injected ready failure")
+
+    monkeypatch.setattr(immutable._ReadyTarget, "publish", fail_publication)
+    try:
+        with pytest.raises(immutable.ImmutableRuntimeMountError) as raised:
+            immutable.serve_immutable_runtime(
+                staging,
+                mountpoint,
+                inventory,
+                ready_path,
+                timeout_seconds=5,
+            )
+        _skip_if_fuse_unavailable(str(raised.value))
+        assert "injected ready failure" in str(raised.value)
+        assert not ready_path.exists()
+        mount, nested = immutable._mountinfo(mountpoint)
+        assert mount is None
+        assert nested == []
+        assert list(mountpoint.iterdir()) == []
+    finally:
+        _make_staging_removable(staging)
+
+
+@pytest.mark.parametrize("kind", ["existing", "symlink", "relative"])
+def test_mount_service_rejects_unsafe_ready_target_without_mounting(
+    tmp_path: Path, kind: str
+) -> None:
+    staging, mountpoint, inventory = _runtime_tree(tmp_path)
+    ready_path: Path
+    if kind == "relative":
+        ready_path = Path("relative-ready.json")
+    else:
+        ready_path = tmp_path / "service-ready.json"
+        if kind == "existing":
+            ready_path.write_text("do-not-overwrite\n", encoding="utf-8")
+        else:
+            ready_path.symlink_to(tmp_path / "missing-target")
+    try:
+        with pytest.raises(immutable.ImmutableRuntimeMountError):
+            immutable.serve_immutable_runtime(
+                staging,
+                mountpoint,
+                inventory,
+                ready_path,
+                timeout_seconds=5,
+            )
+        mount, nested = immutable._mountinfo(mountpoint)
+        assert mount is None
+        assert nested == []
+        if kind == "existing":
+            assert ready_path.read_text(encoding="utf-8") == "do-not-overwrite\n"
+        elif kind == "symlink":
+            assert ready_path.is_symlink()
+    finally:
+        _make_staging_removable(staging)
+
+
+def test_ready_publication_never_overwrites_a_racing_target(
+    tmp_path: Path,
+) -> None:
+    ready_path = tmp_path / "service-ready.json"
+    target = immutable._ReadyTarget.open(ready_path)
+    try:
+        ready_path.write_text("racing-owner\n", encoding="utf-8")
+        with pytest.raises(
+            immutable.ImmutableRuntimeMountError, match="already exists"
+        ):
+            target.publish({"schema": "test-ready/v1"})
+        assert ready_path.read_text(encoding="utf-8") == "racing-owner\n"
+        assert not list(tmp_path.glob(".service-ready.json.tmp-*"))
+    finally:
+        target.close()
