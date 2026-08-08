@@ -1017,9 +1017,9 @@ def test_apex_runtime_mount_receipt_is_bound_to_sealed_manifest(tmp_path) -> Non
         **tampered_mount_material,
         "sha256": campaign._canonical_json_digest(tampered_mount_material),
     }
-    assert campaign._apex_runtime_mount_errors(receipt, tmp_path) == [
-        "apex_runtime_mount_contract_mismatch"
-    ]
+    # The fixture has no v5 marker. Historical v1-v4 receipts are never
+    # retroactively promoted to the v5 snapshot/mount proof contract.
+    assert campaign._apex_runtime_mount_errors(receipt, tmp_path) == []
 
 
 def test_formal_codex_home_copies_auth_only(tmp_path, monkeypatch) -> None:
@@ -2476,12 +2476,17 @@ def test_manifest_names_native_100_repetition_score_not_apex_grade(
     monkeypatch.setattr(
         campaign,
         "_apex_state_from_environment",
-        lambda: {"commit": "c" * 40, "dirty": False, "status_sha256": "d" * 64},
+        lambda: {
+            "commit": "c" * 40,
+            "dirty": False,
+            "status_sha256": "d" * 64,
+            "runtime_manifest_sha256": "9" * 64,
+        },
     )
     monkeypatch.setattr(
         campaign,
         "_agent_manifest",
-        lambda _root, agent, _policy_value: {
+        lambda _root, agent, _policy_value, **_kwargs: {
             "template": agent,
             "backend": "codex",
             "model": "gpt-5.5",
@@ -2751,12 +2756,17 @@ def test_comparison_contract_hash_ignores_treatment_template(tmp_path, monkeypat
     monkeypatch.setattr(
         campaign,
         "_apex_state_from_environment",
-        lambda: {"commit": "c" * 40, "dirty": False, "status_sha256": "d" * 64},
+        lambda: {
+            "commit": "c" * 40,
+            "dirty": False,
+            "status_sha256": "d" * 64,
+            "runtime_manifest_sha256": "9" * 64,
+        },
     )
     monkeypatch.setattr(
         campaign,
         "_agent_manifest",
-        lambda _root, name, _policy_value: {
+        lambda _root, name, _policy_value, **_kwargs: {
             "template": name,
             "backend": "codex",
             "model": "gpt-5.5",
@@ -2779,6 +2789,17 @@ def test_comparison_contract_hash_ignores_treatment_template(tmp_path, monkeypat
                 "mount_scope": "attempt_only_bubblewrap",
             },
             "agent_config_sha256": ("1" if name == "apex" else "2") * 64,
+            **(
+                {
+                    "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v5",
+                    "apex_runtime_mount_policy_id": campaign_isolation.APEX_RUNTIME_MOUNT_POLICY,
+                    "attempt_mount_receipt_schema": campaign_isolation.ATTEMPT_MOUNT_RECEIPT_SCHEMA,
+                    "apex_runtime_mount_schema": campaign_isolation.APEX_RUNTIME_MOUNT_SCHEMA,
+                    "runtime_manifest_sha256": "9" * 64,
+                }
+                if name == "apex"
+                else {}
+            ),
         },
     )
     monkeypatch.setattr(campaign, "_evaluator_manifest", lambda _root: {"main.py": "f" * 64})
@@ -2851,7 +2872,14 @@ def test_comparison_contract_projects_run_specific_gpu_lease_receipts() -> None:
     kwargs = {
         "policy": policy,
         "measurement": {},
-        "repositories": {},
+        "repositories": {
+            "apex": {
+                "commit": "4" * 40,
+                "dirty": False,
+                "status_sha256": "5" * 64,
+                "runtime_manifest_sha256": "6" * 64,
+            }
+        },
         "agent": agent,
         "evaluator": {},
         "tasks": [],
@@ -4597,7 +4625,7 @@ def test_v4_campaign_metadata_is_symmetric_for_apex_and_direct_codex(
 def test_campaign_metadata_rejects_unsupported_sealed_schema(
     tmp_path, agent, template
 ) -> None:
-    schema = f"agentkernelarena.{template}-attempt-receipt/v5"
+    schema = f"agentkernelarena.{template}-attempt-receipt/v{'6' if template == 'apex' else '5'}"
     receipt_path = tmp_path / f"{template}_unsupported_receipt.json"
     receipt_path.write_text(
         json.dumps({"schema": schema, "session_succeeded": True}),

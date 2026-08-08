@@ -213,7 +213,8 @@ the agent, and require immutable Apex or direct-Codex session receipts before
 an attempt can enter central selection. The Apex treatment sees the scored workspace
 read-only and writes proposals only to a separate artifact root; AgentKernelArena
 rechecks the full workspace manifest before applying a validated source bundle.
-The sealed comparison-contract v4 binds exact-turn persistence plus distinct outer
+The sealed comparison-contract v5 binds the common Apex runtime treatment, exact-turn
+persistence, and distinct outer
 `attempt_containment_policy_id` and backend
 `agent_process_containment_policy_id` fields; both currently require
 `private_pid_namespace_init_pidfd_v1`. Direct Codex starts behind

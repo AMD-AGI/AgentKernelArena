@@ -63,6 +63,13 @@ from src.campaign_isolation import (
     release_attempt_command_fds,
     wrap_attempt_command,
 )
+from src.apex_runtime import (
+    ApexRuntimeError,
+    RuntimePlan,
+    runtime_command,
+    runtime_environment,
+    verify_runtime_snapshot,
+)
 
 
 _SCHEMA_VERSION = 1
@@ -77,7 +84,7 @@ _APEX_GENERIC_CONTEXT_MARKER = (
 )
 _NORMAL_NO_PATCH_STATUSES = {"no_gain"}
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v4"
+_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v5"
 _CALLER_RUN_CONTROL_SCHEMA = "aka.apex-caller-run-control/v1"
 _INSTRUCTION_ADAPTATION_SCHEMA = "aka.apex-instruction-adaptation/v1"
 _ARENA_PYTHON_ENV = "AGENT_KERNEL_ARENA_PYTHON"
@@ -2318,172 +2325,144 @@ def _resolve_apex_command(agent_config: dict[str, Any]) -> tuple[Path, str]:
     return entrypoint, python_path
 
 
-def _git_output(apex_root: Path, *arguments: str) -> str:
-    environment = os.environ.copy()
-    environment["GIT_OPTIONAL_LOCKS"] = "0"
-    try:
-        completed = subprocess.run(
-            ["git", "-C", str(apex_root), *arguments],
-            capture_output=True,
-            text=True,
-            check=False,
-            env=environment,
-            timeout=30,
-        )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise ApexAdapterError(f"cannot inspect Apex checkout: {error}") from error
-    if completed.returncode != 0:
-        detail = (completed.stderr or completed.stdout).strip()[-1000:]
-        raise ApexAdapterError(f"cannot inspect Apex checkout: {detail}")
-    return completed.stdout.rstrip("\r\n")
-
-
-def _validated_apex_repository_state(apex_root: Path) -> dict[str, Any]:
-    commit = _git_output(apex_root, "rev-parse", "HEAD")
-    top_level = Path(
-        _git_output(apex_root, "rev-parse", "--show-toplevel")
-    ).resolve(strict=True)
-    status = _git_output(
-        apex_root,
-        "status",
-        "--porcelain=v1",
-        "--untracked-files=normal",
-    )
-    actual = {
-        "commit": commit,
-        "dirty": bool(status),
-        "status_sha256": _sha256_bytes(status.encode("utf-8")),
-    }
-    expected_dirty = os.environ.get("AGENT_KERNEL_ARENA_APEX_DIRTY")
-    expected = {
-        "commit": os.environ.get("AGENT_KERNEL_ARENA_APEX_COMMIT"),
-        "dirty": (
-            expected_dirty == "true"
-            if expected_dirty in {"true", "false"}
-            else None
-        ),
-        "status_sha256": os.environ.get(
-            "AGENT_KERNEL_ARENA_APEX_STATUS_SHA256"
-        ),
-    }
-    if (
-        not re.fullmatch(r"[0-9a-f]{40}", commit)
-        or top_level != apex_root
-        or not isinstance(expected["commit"], str)
-        or not re.fullmatch(r"[0-9a-f]{40}", expected["commit"])
-        or expected["dirty"] is not False
-        or not isinstance(expected["status_sha256"], str)
-        or not _SHA256.fullmatch(expected["status_sha256"])
-        or actual != expected
-    ):
-        raise ApexAdapterError(
-            "formal Apex checkout differs from the runner provenance contract"
-        )
-    return actual
-
-
-def _validated_formal_apex_python(root: Path, python_path: str) -> tuple[Path, Path]:
-    configured = os.environ.get("APEX_PYTHON")
-    if not isinstance(configured, str) or configured != python_path:
-        raise ApexAdapterError("formal campaign requires an explicit APEX_PYTHON")
-    raw_launcher = Path(python_path).expanduser()
-    if not raw_launcher.is_absolute():
-        raise ApexAdapterError("formal APEX_PYTHON must be absolute")
-    launcher = Path(os.path.abspath(raw_launcher))
-    try:
-        relative_launcher = launcher.relative_to(root)
-    except ValueError as error:
-        raise ApexAdapterError(
-            "formal APEX_PYTHON launcher must be inside APEX_ROOT"
-        ) from error
-    current = root
-    try:
-        for part in relative_launcher.parts[:-1]:
-            current /= part
-            metadata = current.lstat()
-            if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
-                raise ApexAdapterError(
-                    "formal APEX_PYTHON parent path must not contain symlinks"
-                )
-        resolved_python = launcher.resolve(strict=True)
-    except OSError as error:
-        raise ApexAdapterError(f"formal APEX_PYTHON is unavailable: {error}") from error
-    if not resolved_python.is_file() or not os.access(resolved_python, os.X_OK):
-        raise ApexAdapterError("formal APEX_PYTHON must resolve to an executable file")
-    if resolved_python.is_relative_to(
-        Path("/tmp")
-    ) and not resolved_python.is_relative_to(root):
-        raise ApexAdapterError(
-            "formal APEX_PYTHON resolves into hidden /tmp outside APEX_ROOT"
-        )
-    data_root_value = os.environ.get("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT")
-    if data_root_value:
-        data_root = Path(os.path.abspath(data_root_value))
-        if resolved_python.is_relative_to(
-            data_root
-        ) and not resolved_python.is_relative_to(root):
-            raise ApexAdapterError(
-                "formal APEX_PYTHON resolves into hidden campaign data"
-            )
-    return launcher, resolved_python
-
-
-def _formal_apex_runtime_mount(
-    entrypoint: Path, python_path: str
-) -> dict[str, Any]:
+def _formal_runtime_plan(entrypoint: Path, python_path: str) -> RuntimePlan:
     raw_root = os.environ.get("APEX_ROOT")
-    if not isinstance(raw_root, str) or not raw_root:
-        raise ApexAdapterError("formal campaign requires an explicit APEX_ROOT")
-    root = entrypoint.parent
-    lexical_root = Path(os.path.abspath(Path(raw_root).expanduser()))
-    try:
-        root_metadata = lexical_root.lstat()
-        canonical_root = lexical_root.resolve(strict=True)
-        entrypoint_metadata = entrypoint.lstat()
-    except OSError as error:
-        raise ApexAdapterError(f"formal Apex runtime is unavailable: {error}") from error
+    configured_python = os.environ.get("APEX_PYTHON")
+    raw_snapshot = os.environ.get(
+        "AGENT_KERNEL_ARENA_APEX_RUNTIME_SNAPSHOT_ROOT"
+    )
+    expected_digest = os.environ.get(
+        "AGENT_KERNEL_ARENA_APEX_RUNTIME_MANIFEST_SHA256"
+    )
     if (
-        canonical_root != lexical_root
-        or canonical_root != root
-        or stat.S_ISLNK(root_metadata.st_mode)
-        or not stat.S_ISDIR(root_metadata.st_mode)
-        or entrypoint.name != "main.py"
-        or stat.S_ISLNK(entrypoint_metadata.st_mode)
-        or not stat.S_ISREG(entrypoint_metadata.st_mode)
+        not isinstance(raw_root, str)
+        or not isinstance(configured_python, str)
+        or configured_python != python_path
+        or not isinstance(raw_snapshot, str)
+        or not isinstance(expected_digest, str)
+        or _SHA256.fullmatch(expected_digest) is None
     ):
-        raise ApexAdapterError(
-            "formal APEX_ROOT must be a canonical checkout with a regular main.py"
-        )
-    launcher, resolved_python = _validated_formal_apex_python(root, python_path)
-
-    material: dict[str, Any] = {
-        "schema": APEX_RUNTIME_MOUNT_SCHEMA,
-        "policy_id": APEX_RUNTIME_MOUNT_POLICY,
-        "mode": "read_only",
-        "root": str(root),
-        "repository": _validated_apex_repository_state(root),
-        "entrypoint": {
-            "path": str(entrypoint),
-            "relative_path": "main.py",
-            "sha256": _sha256_file(entrypoint),
-        },
-        "python": {
-            "launcher_path": str(launcher),
-            "resolved_path": str(resolved_python),
-            "resolved_sha256": _sha256_file(resolved_python),
-        },
+        raise ApexAdapterError("formal Apex runtime contract is incomplete")
+    root = Path(os.path.abspath(Path(raw_root).expanduser()))
+    if entrypoint != root / "main.py":
+        raise ApexAdapterError("formal Apex entrypoint differs from APEX_ROOT")
+    try:
+        snapshot = Path(os.path.abspath(Path(raw_snapshot).expanduser()))
+        manifest = verify_runtime_snapshot(snapshot, expected_digest)
+    except ApexRuntimeError as error:
+        raise ApexAdapterError(f"formal Apex runtime is invalid: {error}") from error
+    roots = manifest.get("roots")
+    apex_source = (
+        roots[0].get("source")
+        if isinstance(roots, list) and roots and isinstance(roots[0], dict)
+        else None
+    )
+    if (
+        not isinstance(apex_source, dict)
+        or apex_source.get("path") != str(root)
+    ):
+        raise ApexAdapterError("formal Apex snapshot source differs from APEX_ROOT")
+    repository = manifest.get("git")
+    expected_dirty = os.environ.get("AGENT_KERNEL_ARENA_APEX_DIRTY")
+    expected_repository = {
+        "commit": os.environ.get("AGENT_KERNEL_ARENA_APEX_COMMIT"),
+        "dirty": expected_dirty == "true" if expected_dirty in {"true", "false"} else None,
+        "status_sha256": os.environ.get("AGENT_KERNEL_ARENA_APEX_STATUS_SHA256"),
     }
-    return material
+    actual_repository = (
+        {
+            "commit": repository.get("commit"),
+            "dirty": repository.get("dirty"),
+            "status_sha256": repository.get("status_sha256"),
+        }
+        if isinstance(repository, dict)
+        else None
+    )
+    if manifest.get("sha256") != expected_digest or actual_repository != expected_repository:
+        raise ApexAdapterError(
+            "formal Apex runtime differs from the comparison contract"
+        )
+    launcher = manifest.get("launcher")
+    system_python = (
+        launcher.get("system_python", {}).get("path")
+        if isinstance(launcher, dict)
+        else None
+    )
+    if not isinstance(system_python, str) or not Path(system_python).is_absolute():
+        raise ApexAdapterError("formal Apex system interpreter contract is invalid")
+    return RuntimePlan(
+        manifest=manifest,
+        roots=(),
+        system_python=Path(system_python),
+    )
 
 
-def _attempt_mount_receipt_valid(receipt: Any, *, apex_root: str) -> bool:
+def _runtime_snapshot_receipt(
+    *, plan: RuntimePlan, snapshot: Path, attempt_mounts_sha256: str | None = None
+) -> dict[str, Any]:
+    try:
+        manifest = verify_runtime_snapshot(snapshot, plan.sha256)
+        environment = runtime_environment(snapshot, manifest)
+        execution = manifest["execution"]
+        entrypoint = snapshot / execution["entrypoint"]
+        launcher = snapshot / execution["interpreter"]
+        resolved_python = launcher.resolve(strict=True)
+        repository = manifest["git"]
+        material: dict[str, Any] = {
+            "schema": APEX_RUNTIME_MOUNT_SCHEMA,
+            "policy_id": APEX_RUNTIME_MOUNT_POLICY,
+            "mode": "read_only",
+            "source_root": str(Path(os.environ["APEX_ROOT"])),
+            "root": str(snapshot),
+            "repository": {
+                "commit": repository["commit"],
+                "dirty": repository["dirty"],
+                "status_sha256": repository["status_sha256"],
+                "runtime_manifest_sha256": plan.sha256,
+            },
+            "runtime_manifest_sha256": plan.sha256,
+            "runtime_manifest_path": str(snapshot / "runtime_manifest.json"),
+            "runtime_manifest_relative_path": "runtime_manifest.json",
+            "entrypoint": {
+                "path": str(entrypoint),
+                "relative_path": execution["entrypoint"],
+                "sha256": _sha256_file(entrypoint),
+            },
+            "python": {
+                "source_launcher_relative_path": ".venv/bin/python",
+                "launcher_path": str(launcher),
+                "resolved_path": str(resolved_python),
+                "resolved_sha256": _sha256_file(resolved_python),
+                "flags": execution["flags"],
+                "pythonpath": environment["PYTHONPATH"].split(os.pathsep),
+                "environment": {
+                    "PYTHONNOUSERSITE": environment["PYTHONNOUSERSITE"],
+                    "PYTHONSAFEPATH": environment["PYTHONSAFEPATH"],
+                    "PYTHONDONTWRITEBYTECODE": environment[
+                        "PYTHONDONTWRITEBYTECODE"
+                    ],
+                },
+            },
+            "attempt_mounts_sha256": attempt_mounts_sha256,
+        }
+    except (ApexRuntimeError, KeyError, OSError) as error:
+        raise ApexAdapterError(f"formal Apex runtime snapshot is invalid: {error}") from error
+    return {**material, "sha256": _canonical_digest(material)}
+
+
+def _attempt_mount_receipt_valid(receipt: Any, *, runtime_root: Path) -> bool:
     if not isinstance(receipt, dict):
         return False
     material = dict(receipt)
     digest = material.pop("sha256", None)
+    roles = receipt.get("roles")
+    read_only = roles.get("read_only") if isinstance(roles, dict) else None
     return (
         receipt.get("schema") == ATTEMPT_MOUNT_RECEIPT_SCHEMA
-        and receipt.get("trusted_external_read_only_roots") == [apex_root]
+        and receipt.get("campaign_data_root_hidden") is True
+        and isinstance(read_only, dict)
+        and isinstance(read_only.get("apex_runtime"), dict)
+        and read_only["apex_runtime"].get("path") == str(runtime_root)
         and isinstance(digest, str)
         and _SHA256.fullmatch(digest) is not None
         and digest == _canonical_digest(material)
@@ -2557,14 +2536,10 @@ def launch_agent(
     task_spec_sha256 = _sha256_bytes(task_spec_bytes)
 
     entrypoint, python_path = _resolve_apex_command(agent_config)
-    apex_runtime_mount = (
-        _formal_apex_runtime_mount(entrypoint, python_path)
-        if formal_campaign
-        else None
-    )
-    command = [
-        python_path,
-        str(entrypoint),
+    runtime_plan: RuntimePlan | None = None
+    runtime_root: Path | None = None
+    apex_runtime_mount: dict[str, Any] | None = None
+    apex_arguments = [
         "optimize",
         "kernel",
         "--task-spec",
@@ -2573,6 +2548,21 @@ def launch_agent(
         str(result_path),
         "--non-interactive",
     ]
+    if formal_campaign:
+        runtime_plan = _formal_runtime_plan(entrypoint, python_path)
+        runtime_root = Path(
+            os.environ["AGENT_KERNEL_ARENA_APEX_RUNTIME_SNAPSHOT_ROOT"]
+        )
+        try:
+            command = runtime_command(
+                runtime_root, runtime_plan.manifest, apex_arguments
+            )
+        except ApexRuntimeError as error:
+            raise ApexAdapterError(
+                f"formal Apex runtime snapshot failed: {error}"
+            ) from error
+    else:
+        command = [python_path, str(entrypoint), *apex_arguments]
     gpu_evidence = formal_gpu_evidence(eval_config) if formal_campaign else None
     inner_agent_timeout = int(agent_config.get("timeout_seconds", 3600))
     internal_allowance = 0
@@ -2598,7 +2588,7 @@ def launch_agent(
     isolated_command = command
     attempt_mounts: dict[str, Any] | None = None
     if formal_campaign:
-        assert apex_runtime_mount is not None
+        assert runtime_plan is not None and runtime_root is not None
         raw_receipt = campaign_attempt.get("receipt_path")
         if not isinstance(raw_receipt, str) or not Path(raw_receipt).is_absolute():
             raise ApexAdapterError("formal campaign requires an absolute attempt receipt path")
@@ -2607,6 +2597,9 @@ def launch_agent(
         if attempt_home is None:
             raise ApexAdapterError("formal campaign did not create an isolated agent home")
         process_environment = isolated_environment(process_environment, attempt_home)
+        process_environment.update(
+            runtime_environment(runtime_root, runtime_plan.manifest)
+        )
     output_limit = int(agent_config.get("max_process_output_bytes", _DEFAULT_OUTPUT_LIMIT))
     backend = task_spec["agent_backend"]
     logger.info("Apex preflight")
@@ -2628,15 +2621,21 @@ def launch_agent(
         "logger": logger,
     }
     if formal_campaign:
+        assert runtime_plan is not None and runtime_root is not None
         run_kwargs["environment"] = process_environment
         isolated_command = wrap_attempt_command(
             command,
             eval_config=eval_config,
             writable_roots=(artifact_root, attempt_home),
-            read_only_roots=(workspace_path, contract_root),
-            trusted_read_only_roots=(
-                Path(apex_runtime_mount["root"]),
-            ),
+            read_only_roots=(workspace_path, contract_root, runtime_root),
+            trusted_read_only_roots=(),
+            mount_roles={
+                "apex_artifacts": artifact_root,
+                "backend_home": attempt_home,
+                "scored_workspace": workspace_path,
+                "sealed_task_contract": contract_root,
+                "apex_runtime": runtime_root,
+            },
             # Apex is the trusted inner containment owner.  Its supervisor
             # creates the agent-visible private procfs; mounting another procfs
             # here breaks the required Apex -> Codex nested user namespace.
@@ -2644,16 +2643,27 @@ def launch_agent(
         )
         attempt_mounts = attempt_mount_receipt(isolated_command)
         if not _attempt_mount_receipt_valid(
-            attempt_mounts, apex_root=apex_runtime_mount["root"]
+            attempt_mounts, runtime_root=runtime_root
         ):
             release_attempt_command_fds(isolated_command)
             raise ApexAdapterError(
                 "formal Apex isolation did not receipt the exact read-only runtime mount"
             )
         assert attempt_mounts is not None
-        apex_runtime_mount["attempt_mounts_sha256"] = attempt_mounts["sha256"]
-        apex_runtime_mount["sha256"] = _canonical_digest(apex_runtime_mount)
+        apex_runtime_mount = _runtime_snapshot_receipt(
+            plan=runtime_plan,
+            snapshot=runtime_root,
+            attempt_mounts_sha256=attempt_mounts["sha256"],
+        )
     outcome = _normalize_process_outcome(_run_apex(isolated_command, **run_kwargs))
+    if formal_campaign:
+        assert runtime_plan is not None and runtime_root is not None
+        try:
+            verify_runtime_snapshot(runtime_root, runtime_plan.sha256)
+        except ApexRuntimeError as error:
+            raise ApexAdapterError(
+                f"formal Apex runtime changed during execution: {error}"
+            ) from error
     task_spec_postlaunch_unchanged = (
         _sealed_task_spec_matches(task_spec_path, task_spec_bytes)
         if formal_campaign
@@ -2691,10 +2701,26 @@ def launch_agent(
         "attempt_mounts": attempt_mounts,
         "apex_runtime_mount": apex_runtime_mount,
         "apex": {
-            "entrypoint": str(entrypoint.resolve(strict=True)),
-            "entrypoint_sha256": _sha256_file(entrypoint.resolve(strict=True)),
-            "python": str(Path(python_path).resolve(strict=True)),
-            "python_sha256": _sha256_file(Path(python_path).resolve(strict=True)),
+            "entrypoint": (
+                apex_runtime_mount["entrypoint"]["path"]
+                if apex_runtime_mount is not None
+                else str(entrypoint.resolve(strict=True))
+            ),
+            "entrypoint_sha256": (
+                apex_runtime_mount["entrypoint"]["sha256"]
+                if apex_runtime_mount is not None
+                else _sha256_file(entrypoint.resolve(strict=True))
+            ),
+            "python": (
+                apex_runtime_mount["python"]["resolved_path"]
+                if apex_runtime_mount is not None
+                else str(Path(python_path).resolve(strict=True))
+            ),
+            "python_sha256": (
+                apex_runtime_mount["python"]["resolved_sha256"]
+                if apex_runtime_mount is not None
+                else _sha256_file(Path(python_path).resolve(strict=True))
+            ),
         },
         "task_spec_sha256": task_spec_sha256,
         "instruction_adaptation": instruction_adaptation,

@@ -20,6 +20,7 @@ import yaml
 from src.agent_turn_budget import FORMAL_MATCHED_MAX_TURNS
 from src import campaign_isolation
 from src.campaign_isolation import WrappedAttemptCommand
+from src.apex_runtime import materialize_runtime, plan_runtime
 from src.module_registration import AgentType, load_agent_launcher
 from src.prompt_builder import prompt_builder as render_task_prompt
 
@@ -1017,6 +1018,10 @@ def _formal_apex_launch_fixture(
         apex_launcher.subprocess.run(arguments, check=True)
     apex_python = apex_root / ".venv/bin/python"
     apex_python.parent.mkdir(parents=True)
+    (apex_root / ".venv/lib/python3.10/site-packages").mkdir(parents=True)
+    (apex_root / ".venv/lib/python3.10/site-packages/fixture.py").write_text(
+        "VALUE = 1\n", encoding="utf-8"
+    )
     system_python = Path("/usr/bin/python3").resolve(strict=True)
     apex_python.symlink_to(system_python)
     apex_commit = apex_launcher.subprocess.run(
@@ -1050,6 +1055,23 @@ def _formal_apex_launch_fixture(
     monkeypatch.setenv(
         "AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(attempt_root)
     )
+    monkeypatch.setenv(
+        "AGENT_KERNEL_ARENA_APEX_RUNTIME_EXTERNAL_ROOTS_JSON", "[]"
+    )
+    runtime_plan = plan_runtime(
+        apex_root, apex_python, declared_roots=[]
+    )
+    runtime_snapshot = materialize_runtime(
+        runtime_plan, attempt_root / "apex-shared.runtime"
+    )
+    monkeypatch.setenv(
+        "AGENT_KERNEL_ARENA_APEX_RUNTIME_MANIFEST_SHA256",
+        runtime_plan.sha256,
+    )
+    monkeypatch.setenv(
+        "AGENT_KERNEL_ARENA_APEX_RUNTIME_SNAPSHOT_ROOT",
+        str(runtime_snapshot),
+    )
     monkeypatch.setenv("AGENT_KERNEL_ARENA_PYTHON", sys.executable)
     monkeypatch.setattr(
         apex_launcher,
@@ -1071,6 +1093,7 @@ def _formal_apex_launch_fixture(
         writable_roots,
         read_only_roots=(),
         trusted_read_only_roots=(),
+        mount_roles=None,
         private_proc=True,
     ):
         del eval_config
@@ -1080,13 +1103,32 @@ def _formal_apex_launch_fixture(
         captured["writable_roots"] = tuple(writable)
         captured["read_only_roots"] = tuple(read_only)
         captured["trusted_read_only_roots"] = tuple(trusted)
+        captured["mount_roles"] = mount_roles
         captured["private_proc"] = private_proc
+        table = campaign_isolation._mountinfo_table()
+        identities = {}
+        descriptors = []
+        data_descriptor, data_identity = campaign_isolation._open_mount_root(
+            attempt_root, table=table
+        )
+        descriptors.append(data_descriptor)
+        for root in (*writable, *read_only, *trusted):
+            descriptor, identity = campaign_isolation._open_mount_root(
+                root, table=table
+            )
+            descriptors.append(descriptor)
+            identities[root] = identity
         mount_receipt = campaign_isolation._build_attempt_mount_receipt(
             data_root=attempt_root,
             writable=writable,
             read_only=read_only,
             trusted_read_only=trusted,
+            identities=identities,
+            roles=mount_roles,
+            data_identity=data_identity,
         )
+        for descriptor in descriptors:
+            os.close(descriptor)
         return WrappedAttemptCommand(command, mount_receipt=mount_receipt)
 
     def fake_run(command, **kwargs):
@@ -1242,11 +1284,18 @@ def test_formal_apex_mount_contract_keeps_scored_workspace_read_only(
     artifact_root = Path(spec["results_dir"])
     attempt_home = receipt_path.parent / ".agent-home"
     contract_root = Path(captured["task_spec_path"]).parent
+    runtime_mount = captured["receipt"]["apex_runtime_mount"]
+    runtime_root = Path(runtime_mount["root"])
     assert captured["writable_roots"] == (artifact_root, attempt_home)
-    assert captured["read_only_roots"] == (workspace, contract_root)
-    assert captured["trusted_read_only_roots"] == (
-        Path(os.environ["APEX_ROOT"]),
-    )
+    assert captured["read_only_roots"] == (workspace, contract_root, runtime_root)
+    assert captured["trusted_read_only_roots"] == ()
+    assert captured["mount_roles"] == {
+        "apex_artifacts": artifact_root,
+        "backend_home": attempt_home,
+        "scored_workspace": workspace,
+        "sealed_task_contract": contract_root,
+        "apex_runtime": runtime_root,
+    }
     assert captured["private_proc"] is False
     assert contract_root.parent == artifact_root.parent
     assert contract_root != artifact_root
@@ -1256,40 +1305,38 @@ def test_formal_apex_mount_contract_keeps_scored_workspace_read_only(
     assert workspace not in captured["writable_roots"]
     integrity = captured["receipt"]["workspace_integrity"]
     assert captured["receipt"]["comparison_contract_sha256"] == "d" * 64
-    runtime_mount = captured["receipt"]["apex_runtime_mount"]
     attempt_mounts = captured["receipt"]["attempt_mounts"]
     assert runtime_mount["policy_id"] == (
         campaign_isolation.APEX_RUNTIME_MOUNT_POLICY
     )
     assert runtime_mount["attempt_mounts_sha256"] == attempt_mounts["sha256"]
-    assert attempt_mounts["trusted_external_read_only_roots"] == [
-        os.environ["APEX_ROOT"]
-    ]
+    assert attempt_mounts["roles"]["read_only"]["apex_runtime"]["path"] == str(
+        runtime_root
+    )
+    assert runtime_root.parent.name.endswith(".runtime")
+    assert runtime_root.name == runtime_mount["runtime_manifest_sha256"]
     assert integrity["pre_apply_unchanged"] is True
     assert integrity["pre_apply_manifest_sha256"] == integrity["baseline_manifest_sha256"]
     assert '"status": "no_gain"' in output
 
 
-def test_formal_apex_rejects_venv_parent_symlink_outside_checkout(
+def test_formal_apex_uses_sealed_snapshot_after_live_venv_replacement(
     tmp_path, monkeypatch
 ) -> None:
     workspace, config_path, _, eval_config, _ = _formal_apex_launch_fixture(
         tmp_path, monkeypatch, mutate_workspace=False
     )
     apex_root = Path(os.environ["APEX_ROOT"])
-    (apex_root / ".venv/bin/python").unlink()
-    (apex_root / ".venv/bin").rmdir()
-    (apex_root / ".venv").rmdir()
+    shutil.rmtree(apex_root / ".venv")
     external = tmp_path / "external-venv/bin"
     external.mkdir(parents=True)
     (external / "python").symlink_to(Path("/usr/bin/python3").resolve(strict=True))
     (apex_root / ".venv").symlink_to(external.parent, target_is_directory=True)
 
-    with pytest.raises(
-        apex_launcher.ApexAdapterError,
-        match="parent path must not contain symlinks",
-    ):
-        apex_launcher.launch_agent(eval_config, str(config_path), str(workspace))
+    output = apex_launcher.launch_agent(
+        eval_config, str(config_path), str(workspace)
+    )
+    assert '"status": "no_gain"' in output
 
 
 def test_formal_apex_checkout_below_tmp_is_rebound_exactly_read_only(
@@ -1580,7 +1627,7 @@ def test_formal_apex_rejects_task_spec_mutation_and_receipts_prelaunch_bytes(
         apex_launcher.launch_agent(eval_config, str(config_path), str(workspace))
 
     receipt = captured["receipt"]
-    assert receipt["schema"] == "agentkernelarena.apex-attempt-receipt/v4"
+    assert receipt["schema"] == "agentkernelarena.apex-attempt-receipt/v5"
     assert receipt["session_succeeded"] is False
     assert receipt["task_spec_contract"]["postlaunch_unchanged"] is False
     received_spec = json.loads(captured["receipt_task_spec_bytes"])

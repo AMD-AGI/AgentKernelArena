@@ -28,6 +28,12 @@ CAMPAIGN_PROVENANCE=0
 CAMPAIGN_APEX_COMMIT=""
 CAMPAIGN_APEX_DIRTY=""
 CAMPAIGN_APEX_STATUS_SHA256=""
+CAMPAIGN_APEX_ROOT=""
+CAMPAIGN_APEX_VENV_ROOT=""
+CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256=""
+CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT=""
+CAMPAIGN_APEX_EXTERNAL_ROOTS_JSON="[]"
+declare -a CAMPAIGN_APEX_EXTERNAL_ROOTS=()
 CAMPAIGN_DATA_ROOT=""
 CAMPAIGN_GPU_PLAN_HOST=""
 CAMPAIGN_GPU_PLAN_CONTAINER="/tmp/agentkernelarena-formal-gpu-boundary-plan.json"
@@ -327,6 +333,16 @@ configure_geak_v4_runtime() {
     fi
 }
 
+trusted_git() {
+    env -i \
+        PATH=/usr/bin:/bin \
+        LC_ALL=C \
+        HOME=/nonexistent \
+        XDG_CONFIG_HOME=/nonexistent \
+        GIT_CONFIG_NOSYSTEM=1 \
+        git -c core.fsmonitor=false "$@"
+}
+
 configure_apex_runtime() {
     local config="$1"
     APEX_RUNTIME=0
@@ -339,7 +355,7 @@ configure_apex_runtime() {
         candidate="$HOST_ROOT/../Apex"
     fi
     [[ -n "$candidate" ]] || die "Apex checkout not found; set AKA_APEX_ROOT"
-    APEX_HOST_ROOT="$(cd "$candidate" 2>/dev/null && pwd || true)"
+    APEX_HOST_ROOT="$(realpath -e -- "$candidate" 2>/dev/null || true)"
     [[ -n "$APEX_HOST_ROOT" && -f "$APEX_HOST_ROOT/main.py" ]] \
         || die "Apex entrypoint not found below AKA_APEX_ROOT: $candidate/main.py"
     APEX_CONTAINER_ROOT="${AKA_APEX_CONTAINER_ROOT:-$APEX_HOST_ROOT}"
@@ -355,6 +371,12 @@ configure_campaign_provenance() {
     CAMPAIGN_APEX_COMMIT=""
     CAMPAIGN_APEX_DIRTY=""
     CAMPAIGN_APEX_STATUS_SHA256=""
+    CAMPAIGN_APEX_ROOT=""
+    CAMPAIGN_APEX_VENV_ROOT=""
+    CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256=""
+    CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT=""
+    CAMPAIGN_APEX_EXTERNAL_ROOTS_JSON="[]"
+    CAMPAIGN_APEX_EXTERNAL_ROOTS=()
     CAMPAIGN_DATA_ROOT=""
     grep -Eq '^[[:space:]]+comparison:[[:space:]]*apex_vs_codex([[:space:]#]|$)' "$config" \
         || return 0
@@ -367,6 +389,7 @@ configure_campaign_provenance() {
         || die "matched campaign workspace_directory_prefix must be absolute"
     CAMPAIGN_DATA_ROOT="$(dirname "$workspace_prefix")"
     mkdir -p "$CAMPAIGN_DATA_ROOT"
+    CAMPAIGN_DATA_ROOT="$(realpath -e -- "$CAMPAIGN_DATA_ROOT")"
     [[ -x /usr/bin/bwrap ]] \
         || die "matched campaign requires /usr/bin/bwrap for per-attempt mount isolation"
 
@@ -376,17 +399,86 @@ configure_campaign_provenance() {
     fi
     [[ -n "$candidate" ]] || die "matched campaign requires AKA_APEX_ROOT"
     local apex_root status
-    apex_root="$(cd "$candidate" 2>/dev/null && pwd || true)"
+    apex_root="$(realpath -e -- "$candidate" 2>/dev/null || true)"
     [[ -n "$apex_root" && -d "$apex_root/.git" ]] \
         || die "matched campaign Apex checkout is not a Git worktree: $candidate"
-    CAMPAIGN_APEX_COMMIT="$(git -C "$apex_root" rev-parse HEAD)"
-    status="$(git -C "$apex_root" status --porcelain=v1 --untracked-files=normal)"
+    CAMPAIGN_APEX_COMMIT="$(trusted_git -C "$apex_root" rev-parse HEAD)"
+    status="$(trusted_git -C "$apex_root" status --porcelain=v1 --untracked-files=normal)"
     if [[ -n "$status" ]]; then
         CAMPAIGN_APEX_DIRTY="true"
     else
         CAMPAIGN_APEX_DIRTY="false"
     fi
     CAMPAIGN_APEX_STATUS_SHA256="$(printf '%s' "$status" | sha256sum | cut -d' ' -f1)"
+    CAMPAIGN_APEX_ROOT="$apex_root"
+    prepare_campaign_apex_runtime_contract
+}
+
+prepare_campaign_apex_runtime_contract() {
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    [[ -n "$SELECTED_IMAGE" && -n "$CAMPAIGN_APEX_ROOT" ]] \
+        || die "formal Apex runtime preflight is missing its image or source root"
+    local runtime_tool="$HOST_ROOT/src/apex_runtime.py"
+    local apex_python="$CAMPAIGN_APEX_ROOT/.venv/bin/python"
+    [[ -f "$runtime_tool" && -x "$apex_python" ]] \
+        || die "formal Apex runtime preflight requires the locked Apex virtualenv"
+
+    local discovery
+    discovery="$(
+        /usr/bin/python3 "$runtime_tool" discover \
+            --root "$CAMPAIGN_APEX_ROOT" \
+            --python "$apex_python"
+    )" || die "cannot discover the formal Apex runtime closure"
+    CAMPAIGN_APEX_VENV_ROOT="$(
+        /usr/bin/python3 -c \
+            'import json,sys; value=json.load(sys.stdin); print(value["venv_root"])' \
+            <<< "$discovery"
+    )" || die "formal Apex virtualenv discovery is invalid"
+    CAMPAIGN_APEX_EXTERNAL_ROOTS_JSON="$(
+        /usr/bin/python3 -c \
+            'import json,sys; value=json.load(sys.stdin); print(json.dumps(value["external_roots"],separators=(",",":")))' \
+            <<< "$discovery"
+    )" || die "formal Apex editable-root discovery is invalid"
+    mapfile -t CAMPAIGN_APEX_EXTERNAL_ROOTS < <(
+        /usr/bin/python3 -c \
+            'import json,sys; [print(value) for value in json.loads(sys.argv[1])]' \
+            "$CAMPAIGN_APEX_EXTERNAL_ROOTS_JSON"
+    )
+
+    local root
+    for root in "$CAMPAIGN_APEX_VENV_ROOT" "${CAMPAIGN_APEX_EXTERNAL_ROOTS[@]}"; do
+        [[ "$root" == /* && -d "$root" && "$root" != *:* && "$root" != *,* ]] \
+            || die "formal Apex runtime source root is unsafe: $root"
+    done
+    local -a materialize=(
+        /usr/bin/python3 "$runtime_tool" materialize
+        --root "$CAMPAIGN_APEX_ROOT"
+        --python "$apex_python"
+        --snapshot-parent "$CAMPAIGN_DATA_ROOT/apex-shared.runtime"
+    )
+    for root in "${CAMPAIGN_APEX_EXTERNAL_ROOTS[@]}"; do
+        materialize+=(--declared-root "$root")
+    done
+    local evidence
+    evidence="$("${materialize[@]}")" \
+        || die "formal Apex runtime snapshot materialization failed"
+    /usr/bin/python3 -c \
+        'import json,sys; value=json.load(sys.stdin)["repository"]; expected={"commit":sys.argv[1],"dirty":sys.argv[2]=="true","status_sha256":sys.argv[3]}; assert value==expected' \
+        "$CAMPAIGN_APEX_COMMIT" \
+        "$CAMPAIGN_APEX_DIRTY" \
+        "$CAMPAIGN_APEX_STATUS_SHA256" \
+        <<< "$evidence" \
+        || die "formal Apex snapshot repository differs from the runner receipt"
+    CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256="$(
+        /usr/bin/python3 -c \
+            'import json,re,sys; value=json.load(sys.stdin)["runtime_manifest_sha256"]; assert re.fullmatch(r"[0-9a-f]{64}",value); print(value)' \
+            <<< "$evidence"
+    )" || die "formal Apex runtime manifest evidence is invalid"
+    CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT="$(
+        /usr/bin/python3 -c \
+            'import json,os,sys; value=json.load(sys.stdin)["root"]; assert os.path.isabs(value); print(value)' \
+            <<< "$evidence"
+    )" || die "formal Apex runtime snapshot root is invalid"
 }
 
 prepare_campaign_gpu_boundary_plan() {
@@ -783,6 +875,7 @@ build_docker_args() {
             -e "AGENT_KERNEL_ARENA_APEX_COMMIT=${CAMPAIGN_APEX_COMMIT}"
             -e "AGENT_KERNEL_ARENA_APEX_DIRTY=${CAMPAIGN_APEX_DIRTY}"
             -e "AGENT_KERNEL_ARENA_APEX_STATUS_SHA256=${CAMPAIGN_APEX_STATUS_SHA256}"
+            -e "AGENT_KERNEL_ARENA_APEX_RUNTIME_MANIFEST_SHA256=${CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256}"
             -e "AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT=${CAMPAIGN_DATA_ROOT}"
         )
     fi
@@ -930,6 +1023,14 @@ build_docker_args() {
     fi
     if [[ "$APEX_RUNTIME" == "1" ]]; then
         add_mount "$APEX_HOST_ROOT" "$APEX_CONTAINER_ROOT" ro
+        if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+            [[ -n "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" \
+                && -d "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" ]] \
+                || die "formal Apex worker has no sealed runtime snapshot"
+            docker_args+=(
+                -e "AGENT_KERNEL_ARENA_APEX_RUNTIME_SNAPSHOT_ROOT=$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT"
+            )
+        fi
         docker_args+=(
             -e "APEX_ROOT=$APEX_CONTAINER_ROOT"
             -e "APEX_PYTHON=$APEX_CONTAINER_ROOT/.venv/bin/python"

@@ -16,7 +16,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from src.gpu_device_boundary import (
     GpuBoundaryError,
@@ -33,11 +33,22 @@ class CampaignIsolationError(RuntimeError):
 
 
 ATTEMPT_CONTAINMENT_POLICY = "private_pid_namespace_init_pidfd_v1"
-ATTEMPT_MOUNT_RECEIPT_SCHEMA = "aka.attempt-mounts/v1"
-APEX_RUNTIME_MOUNT_POLICY = "validated_exact_apex_root_read_only_v1"
-APEX_RUNTIME_MOUNT_SCHEMA = "aka.apex-runtime-mount/v1"
+ATTEMPT_MOUNT_RECEIPT_SCHEMA_V1 = "aka.attempt-mounts/v1"
+ATTEMPT_MOUNT_RECEIPT_SCHEMA_V2 = "aka.attempt-mounts/v2"
+ATTEMPT_MOUNT_RECEIPT_SCHEMA = ATTEMPT_MOUNT_RECEIPT_SCHEMA_V2
+APEX_RUNTIME_MOUNT_POLICY = "content_addressed_apex_runtime_snapshot_read_only_v1"
+APEX_RUNTIME_MOUNT_SCHEMA = "aka.apex-runtime-snapshot-receipt/v1"
 _BROAD_EXTERNAL_ROOTS = frozenset(
     {Path("/tmp"), Path("/var/tmp"), Path("/dev/shm")}
+)
+_APEX_MOUNT_ROLES = frozenset(
+    {
+        "scored_workspace",
+        "sealed_task_contract",
+        "apex_runtime",
+        "apex_artifacts",
+        "backend_home",
+    }
 )
 
 
@@ -1350,6 +1361,7 @@ def wrap_attempt_command(
     writable_roots: Iterable[Path],
     read_only_roots: Iterable[Path] = (),
     trusted_read_only_roots: Iterable[Path] = (),
+    mount_roles: Mapping[str, Path] | None = None,
     private_proc: bool = True,
 ) -> list[str]:
     """Hide campaign data and expose attempt roots plus pre-authenticated roots.
@@ -1366,10 +1378,16 @@ def wrap_attempt_command(
     _codex_requirements_identity()
     gpu_bubblewrap, _gpu_bubblewrap_identity = _codex_gpu_bwrap_identity()
     data_root_raw = os.environ.get("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", "")
-    data_root = Path(data_root_raw)
-    if not data_root.is_absolute() or not data_root.is_dir():
+    raw_data_root = Path(data_root_raw).expanduser()
+    if not raw_data_root.is_absolute():
         raise CampaignIsolationError("formal campaign data root is unavailable")
-    data_root = data_root.resolve(strict=True)
+    lexical_data_root = Path(os.path.abspath(raw_data_root))
+    try:
+        data_root = lexical_data_root.resolve(strict=True)
+    except OSError as error:
+        raise CampaignIsolationError("formal campaign data root is unavailable") from error
+    if data_root != lexical_data_root or not data_root.is_dir():
+        raise CampaignIsolationError("formal campaign data root is not canonical")
 
     writable = _validated_attempt_roots(
         writable_roots, data_root=data_root, label="writable"
@@ -1383,6 +1401,13 @@ def wrap_attempt_command(
     if not writable:
         raise CampaignIsolationError("formal campaign has no attempt writable root")
     _reject_overlapping_roots((*writable, *read_only, *trusted_read_only))
+    roles = _validated_apex_mount_roles(
+        mount_roles,
+        data_root=data_root,
+        writable=writable,
+        read_only=read_only,
+        trusted_read_only=trusted_read_only,
+    )
 
     wrapped = _bubblewrap_base_command(
         binary, data_root, private_proc=private_proc
@@ -1412,16 +1437,6 @@ def wrap_attempt_command(
                 if current not in created:
                     wrapped.extend(["--dir", str(current)])
                     created.add(current)
-    # bubblewrap opens bind sources in its parent namespace before applying the
-    # destination mounts, so these still refer to host roots after data_root is
-    # hidden by the tmpfs above.
-    for root in read_only:
-        wrapped.extend(["--ro-bind", str(root), str(root)])
-    for root in trusted_read_only:
-        wrapped.extend(["--ro-bind", str(root), str(root)])
-    for root in writable:
-        wrapped.extend(["--bind", str(root), str(root)])
-
     # These are user-owned trees and are intentionally excluded from the formal
     # Git-clean check. Hide them rather than exposing unmanifested observations.
     workdir = Path(os.environ.get("AGENT_KERNEL_ARENA_WORKDIR", "/workspace"))
@@ -1429,9 +1444,37 @@ def wrap_attempt_command(
         path = workdir / relative
         if path.is_dir():
             wrapped.extend(["--tmpfs", str(path)])
-    gpu_bwrap_descriptor = _sealed_codex_gpu_bwrap(gpu_bubblewrap)
+    mount_descriptors: dict[Path, int] = {}
+    mount_identities: dict[Path, dict[str, Any]] = {}
+    data_descriptor = -1
+    data_identity: dict[str, Any] | None = None
+    gpu_bwrap_descriptor = -1
     status_read = status_write = gate_read = gate_write = -1
     try:
+        table = _mountinfo_table()
+        data_descriptor, data_identity = _open_mount_root(data_root, table=table)
+        for root in (*read_only, *trusted_read_only, *writable):
+            descriptor, identity = _open_mount_root(root, table=table)
+            mount_descriptors[root] = descriptor
+            mount_identities[root] = identity
+        _reject_mount_aliases({data_root: data_identity, **mount_identities})
+        os.close(data_descriptor)
+        data_descriptor = -1
+        # Bind from pinned O_PATH descriptors. A rename/replacement of any host
+        # pathname after validation therefore cannot change the mounted inode.
+        for root in read_only:
+            wrapped.extend(
+                ["--ro-bind-fd", str(mount_descriptors[root]), str(root)]
+            )
+        for root in trusted_read_only:
+            wrapped.extend(
+                ["--ro-bind-fd", str(mount_descriptors[root]), str(root)]
+            )
+        for root in writable:
+            wrapped.extend(
+                ["--bind-fd", str(mount_descriptors[root]), str(root)]
+            )
+        gpu_bwrap_descriptor = _sealed_codex_gpu_bwrap(gpu_bubblewrap)
         status_read, status_write = os.pipe2(os.O_CLOEXEC)
         gate_read, gate_write = os.pipe2(os.O_CLOEXEC)
         _mount_codex_gpu_bwrap(wrapped, gpu_bwrap_descriptor)
@@ -1446,7 +1489,12 @@ def wrap_attempt_command(
         wrapped.extend(["--", *command])
         result = WrappedAttemptCommand(
             wrapped,
-            pass_fds=(gpu_bwrap_descriptor, status_write, gate_read),
+            pass_fds=(
+                *mount_descriptors.values(),
+                gpu_bwrap_descriptor,
+                status_write,
+                gate_read,
+            ),
             boundary_status_fd=status_read,
             boundary_gate_fd=gate_write,
             boundary_procfs=(
@@ -1459,14 +1507,21 @@ def wrap_attempt_command(
                 writable=writable,
                 read_only=read_only,
                 trusted_read_only=trusted_read_only,
+                identities=mount_identities,
+                roles=roles,
+                data_identity=data_identity,
             ),
         )
+        data_descriptor = -1
+        mount_descriptors = {}
         gpu_bwrap_descriptor = status_write = gate_read = status_read = gate_write = -1
         return result
     except Exception:
         raise
     finally:
         for descriptor in (
+            data_descriptor,
+            *mount_descriptors.values(),
             gpu_bwrap_descriptor,
             status_read,
             status_write,
@@ -1861,6 +1916,156 @@ def attempt_cleanup_verified(
     )
 
 
+@dataclass(frozen=True)
+class _MountInfo:
+    mount_id: int
+    parent_id: int
+    major_minor: str
+    root: Path
+    mount_point: Path
+
+    def receipt(self) -> dict[str, Any]:
+        return {
+            "mount_id": self.mount_id,
+            "parent_id": self.parent_id,
+            "major_minor": self.major_minor,
+            "root": str(self.root),
+            "mount_point": str(self.mount_point),
+        }
+
+
+def _decode_mountinfo_path(value: str) -> Path:
+    decoded = value
+    for escaped, plain in (
+        (r"\040", " "),
+        (r"\011", "\t"),
+        (r"\012", "\n"),
+        (r"\134", "\\"),
+    ):
+        decoded = decoded.replace(escaped, plain)
+    return Path(decoded)
+
+
+def _mountinfo_table() -> dict[int, _MountInfo]:
+    try:
+        lines = Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as error:
+        raise CampaignIsolationError("cannot read /proc/self/mountinfo") from error
+    table: dict[int, _MountInfo] = {}
+    for line in lines:
+        fields = line.split()
+        try:
+            separator = fields.index("-")
+            mount_id = int(fields[0])
+            parent_id = int(fields[1])
+        except (ValueError, IndexError) as error:
+            raise CampaignIsolationError("malformed /proc/self/mountinfo") from error
+        if separator < 6 or mount_id in table:
+            raise CampaignIsolationError("ambiguous /proc/self/mountinfo")
+        table[mount_id] = _MountInfo(
+            mount_id=mount_id,
+            parent_id=parent_id,
+            major_minor=fields[2],
+            root=_decode_mountinfo_path(fields[3]),
+            mount_point=_decode_mountinfo_path(fields[4]),
+        )
+    if not table:
+        raise CampaignIsolationError("empty /proc/self/mountinfo")
+    return table
+
+
+def _descriptor_mount_id(descriptor: int) -> int:
+    try:
+        lines = Path(f"/proc/self/fdinfo/{descriptor}").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    except (OSError, UnicodeError) as error:
+        raise CampaignIsolationError("cannot read mount descriptor identity") from error
+    values = [line.partition(":")[2].strip() for line in lines if line.startswith("mnt_id:")]
+    if len(values) != 1 or not values[0].isdigit():
+        raise CampaignIsolationError("mount descriptor has no unique mount id")
+    return int(values[0])
+
+
+def _path_is_below(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _open_mount_root(
+    root: Path, *, table: dict[int, _MountInfo]
+) -> tuple[int, dict[str, Any]]:
+    flags = os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    flags |= getattr(os, "O_PATH", os.O_RDONLY)
+    try:
+        descriptor = os.open(root, flags)
+    except OSError as error:
+        raise CampaignIsolationError(f"cannot pin attempt mount root: {root}") from error
+    try:
+        metadata = os.fstat(descriptor)
+        lexical = root.lstat()
+        if (
+            metadata.st_dev != lexical.st_dev
+            or metadata.st_ino != lexical.st_ino
+            or not stat.S_ISDIR(metadata.st_mode)
+            or stat.S_ISLNK(lexical.st_mode)
+        ):
+            raise CampaignIsolationError(f"attempt mount root changed: {root}")
+        mount_id = _descriptor_mount_id(descriptor)
+        mount = table.get(mount_id)
+        if mount is None:
+            raise CampaignIsolationError(f"mount id is absent for root: {root}")
+        nested = sorted(
+            str(entry.mount_point)
+            for entry in table.values()
+            if entry.mount_point != root
+            and _path_is_below(entry.mount_point, root)
+        )
+        if nested:
+            raise CampaignIsolationError(
+                f"attempt mount root contains undeclared nested mounts: {root}"
+            )
+        identity = {
+            "path": str(root),
+            "device": metadata.st_dev,
+            "inode": metadata.st_ino,
+            "mode": stat.S_IMODE(metadata.st_mode),
+            "mount": mount.receipt(),
+            "nested_mounts": nested,
+            "source": "o_path_nofollow_bind_fd",
+        }
+        return descriptor, identity
+    except Exception:
+        os.close(descriptor)
+        raise
+
+
+def _reject_mount_aliases(identities: Mapping[Path, dict[str, Any]]) -> None:
+    items = list(identities.items())
+    for index, (path, identity) in enumerate(items):
+        mount = identity["mount"]
+        for other_path, other_identity in items[index + 1 :]:
+            other_mount = other_identity["mount"]
+            same_inode = (
+                identity["device"], identity["inode"]
+            ) == (other_identity["device"], other_identity["inode"])
+            roots_alias = (
+                mount["mount_id"] != other_mount["mount_id"]
+                and mount["major_minor"] == other_mount["major_minor"]
+                and (
+                    _path_is_below(Path(mount["root"]), Path(other_mount["root"]))
+                    or _path_is_below(Path(other_mount["root"]), Path(mount["root"]))
+                )
+            )
+            if same_inode or roots_alias:
+                raise CampaignIsolationError(
+                    f"attempt mount roots are filesystem aliases: {path} and {other_path}"
+                )
+
+
 def _validated_attempt_roots(
     raw_roots: Iterable[Path], *, data_root: Path, label: str
 ) -> list[Path]:
@@ -1938,15 +2143,101 @@ def _validated_trusted_read_only_roots(
     return roots
 
 
+def _validated_apex_mount_roles(
+    raw_roles: Mapping[str, Path] | None,
+    *,
+    data_root: Path,
+    writable: list[Path],
+    read_only: list[Path],
+    trusted_read_only: list[Path],
+) -> dict[str, Path] | None:
+    if raw_roles is None:
+        return None
+    if set(raw_roles) != _APEX_MOUNT_ROLES:
+        raise CampaignIsolationError("formal Apex mount roles are incomplete")
+    roles: dict[str, Path] = {}
+    for role, raw in raw_roles.items():
+        candidate = Path(raw).expanduser()
+        if not candidate.is_absolute():
+            raise CampaignIsolationError(f"Apex mount role is not absolute: {role}")
+        lexical = Path(os.path.abspath(candidate))
+        try:
+            canonical = lexical.resolve(strict=True)
+        except OSError as error:
+            raise CampaignIsolationError(
+                f"Apex mount role is unavailable: {role}"
+            ) from error
+        if canonical != lexical:
+            raise CampaignIsolationError(f"Apex mount role is not canonical: {role}")
+        try:
+            relative = canonical.relative_to(data_root)
+        except ValueError as error:
+            raise CampaignIsolationError(
+                f"Apex mount role is outside campaign data: {role}"
+            ) from error
+        if not relative.parts:
+            raise CampaignIsolationError(f"Apex mount role is too broad: {role}")
+        roles[role] = canonical
+    expected_writable = {roles["apex_artifacts"], roles["backend_home"]}
+    expected_read_only = {
+        roles["scored_workspace"],
+        roles["sealed_task_contract"],
+        roles["apex_runtime"],
+    }
+    if (
+        set(writable) != expected_writable
+        or set(read_only) != expected_read_only
+        or trusted_read_only
+    ):
+        raise CampaignIsolationError(
+            "formal Apex role classes differ from requested mount roots"
+        )
+    return roles
+
+
 def _build_attempt_mount_receipt(
     *,
     data_root: Path,
     writable: list[Path],
     read_only: list[Path],
     trusted_read_only: list[Path],
+    identities: Mapping[Path, dict[str, Any]] | None = None,
+    roles: Mapping[str, Path] | None = None,
+    data_identity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if roles is not None:
+        if identities is None or data_identity is None:
+            raise CampaignIsolationError("role receipt is missing mount identities")
+        material = {
+            "schema": ATTEMPT_MOUNT_RECEIPT_SCHEMA_V2,
+            "campaign_data_root": str(data_root),
+            "campaign_data_root_hidden": True,
+            "campaign_data_identity": data_identity,
+            "roles": {
+                "persistent_writable": {
+                    role: identities[roles[role]]
+                    for role in ("apex_artifacts", "backend_home")
+                },
+                "read_only": {
+                    role: identities[roles[role]]
+                    for role in (
+                        "scored_workspace",
+                        "sealed_task_contract",
+                        "apex_runtime",
+                    )
+                },
+                "private_tmpfs": {
+                    "tmp": {"path": "/tmp", "persistence": "private"},
+                    "dev_shm": {
+                        "path": "/dev/shm",
+                        "persistence": "private",
+                    },
+                },
+            },
+        }
+        return {**material, "sha256": canonical_digest(material)}
     material: dict[str, Any] = {
-        "schema": ATTEMPT_MOUNT_RECEIPT_SCHEMA,
+        "schema": ATTEMPT_MOUNT_RECEIPT_SCHEMA_V1,
         "campaign_data_root": str(data_root),
         "campaign_data_root_hidden": True,
         "writable_roots": [str(path) for path in writable],
@@ -2008,6 +2299,8 @@ __all__ = [
     "APEX_RUNTIME_MOUNT_SCHEMA",
     "ATTEMPT_CONTAINMENT_POLICY",
     "ATTEMPT_MOUNT_RECEIPT_SCHEMA",
+    "ATTEMPT_MOUNT_RECEIPT_SCHEMA_V1",
+    "ATTEMPT_MOUNT_RECEIPT_SCHEMA_V2",
     "CampaignIsolationError",
     "AttemptBoundary",
     "WrappedAttemptCommand",

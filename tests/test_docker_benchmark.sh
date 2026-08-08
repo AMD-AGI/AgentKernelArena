@@ -57,6 +57,13 @@ docker() {
         esac
         return 0
     fi
+    local argument
+    for argument in "$@"; do
+        if [[ "$argument" == "com.amd.aka.apex-runtime-preflight=1" ]]; then
+            printf '{"runtime_manifest_sha256":"%064d","schema":"aka.apex-runtime-snapshot/v1"}\n' 0
+            return 0
+        fi
+    done
     printf '%s\n' "$@"
 }
 export -f docker
@@ -95,7 +102,11 @@ assert_cache_args_absent() {
 }
 
 TEST_HOME="$(mktemp -d)"
-trap 'rm -rf "$TEST_HOME"' EXIT
+cleanup_test_home() {
+    chmod -R u+w "$TEST_HOME" 2>/dev/null || true
+    rm -rf "$TEST_HOME"
+}
+trap cleanup_test_home EXIT
 UNRELATED_GEAK_WORKFLOW_DIR="$TEST_HOME/unrelated-geak-workflow"
 GEAK_SDK_PYTHONPATH="PYTHONPATH=/workspace/.aka-pyuserbase/geak-sdk"
 mkdir -p "$UNRELATED_GEAK_WORKFLOW_DIR"
@@ -338,7 +349,11 @@ CAMPAIGN_CODEX_CONFIG="$TEST_HOME/campaign-codex-config.yaml"
 mkdir -p "$CAMPAIGN_APEX_ROOT"
 git -C "$CAMPAIGN_APEX_ROOT" init -q
 touch "$CAMPAIGN_APEX_ROOT/main.py"
-git -C "$CAMPAIGN_APEX_ROOT" add main.py
+printf '.venv\n' > "$CAMPAIGN_APEX_ROOT/.gitignore"
+mkdir -p "$CAMPAIGN_APEX_ROOT/.venv/bin"
+mkdir -p "$CAMPAIGN_APEX_ROOT/.venv/lib/python3.10/site-packages"
+ln -s /usr/bin/python3 "$CAMPAIGN_APEX_ROOT/.venv/bin/python"
+git -C "$CAMPAIGN_APEX_ROOT" add main.py .gitignore
 git -C "$CAMPAIGN_APEX_ROOT" \
     -c user.name=AKA -c user.email=aka@example.invalid \
     commit -q -m initial
@@ -354,6 +369,11 @@ mapfile -t args < <(run_check_args \
     AKA_NODE_PREFIX="$CODEX_PREFIX")
 assert_has "AGENT_KERNEL_ARENA_APEX_COMMIT=$CAMPAIGN_APEX_COMMIT" "${args[@]}"
 assert_has "AGENT_KERNEL_ARENA_APEX_DIRTY=false" "${args[@]}"
+apex_runtime_digest_arg="$(
+    find_arg_with_prefix "AGENT_KERNEL_ARENA_APEX_RUNTIME_MANIFEST_SHA256=" "${args[@]}"
+)" || fail "formal campaign did not bind the Apex runtime manifest"
+[[ "${apex_runtime_digest_arg#*=}" =~ ^[0-9a-f]{64}$ ]] \
+    || fail "formal Apex runtime manifest digest is invalid"
 assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=$GFX950_V0514_DOCKER_IMAGE_ID" "${args[@]}"
 assert_not_has "$CAMPAIGN_APEX_ROOT:$CAMPAIGN_APEX_ROOT:ro" "${args[@]}"
 assert_not_has "APEX_ROOT=$CAMPAIGN_APEX_ROOT" "${args[@]}"

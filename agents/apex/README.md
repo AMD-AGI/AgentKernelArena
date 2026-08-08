@@ -63,17 +63,20 @@ also copied into a separate `0444` `original_arena_prompt.txt` receipt artifact.
 bytes and digest are recomputed against `instruction_adaptation.original`; a mismatch
 invalidates the receipt rather than leaving an unbound transformation claim.
 
-The outer attempt namespace replaces `/tmp` and the complete campaign data root with
-private filesystems. Before launch, the adapter therefore revalidates the exact
-`APEX_ROOT` Git commit, clean-status digest, regular `main.py`, and in-checkout
-`APEX_PYTHON` launcher against the runner's sealed campaign provenance. It then
-read-only rebinds that one canonical Apex checkout after `/tmp` is hidden. The mount
-API rejects `/tmp`, `/var/tmp`, `/dev/shm`, symlinked roots, overlapping roots, and
-paths inside campaign data; it never exposes an entire temporary directory. Both the
-exact bind list and Apex runtime identity are content-digested into the attempt
-receipt, and the campaign auditor binds them back to `repositories.apex` in
-`campaign_manifest.yaml`. The scored workspace remains a separate read-only bind,
-and only the attempt artifact and fresh backend-home roots remain writable.
+The formal runner validates exact Git bytes and modes, rejects index shortcuts and
+host Git configuration, inventories the complete virtualenv plus every `.pth`,
+editable/direct-url/RECORD root and native artifact, and materializes one sealed,
+content-addressed runtime below the campaign data directory. Attempts execute that
+snapshot through an isolated `-I -S` bootstrap; they never execute the mutable Apex
+checkout. The image digest and attempt receipt bind the actual system-interpreter
+bytes. A changed, deleted, or downgraded snapshot fails closed.
+
+The outer namespace exposes exactly three read-only roles (scored workspace, sealed
+TaskSpec contract, and Apex runtime snapshot), two persistent host-backed writable
+roles (Apex artifacts and the fresh backend home), and two private ephemeral writable
+tmpfs filesystems (`/tmp` and `/dev/shm`). Canonical mount IDs, device/inode identity,
+nested mounts, aliases, role closure, and pairwise overlap are audited. No live Apex,
+virtualenv, Magpie, or TraceLens tree is mounted into the attempt.
 
 Run artifacts are written beside, never inside, the scored workspace under
 `.<task-workspace>_apex/<run-id>/`.
@@ -100,15 +103,12 @@ make docker-check-agents CONFIG=example_configs/quickstart_apex_mi355x.yaml
 make docker-run CONFIG=example_configs/quickstart_apex_mi355x.yaml
 ```
 
-The runner bind-mounts the Apex checkout read-only at the same absolute path it
-has on the host and executes its bootstrapped `.venv/bin/python`. Keeping the
-path identical preserves the editable-install receipt without a `PYTHONPATH`
-override. It mounts only the selected backend's CLI and login state; it does not
-expose all three backend credentials to one run. For a formal campaign, `.venv`
-must be a real directory inside the checkout; a symlinked `.venv` parent is rejected
-because its target would not be covered by the exact read-only runtime bind. A normal
-venv's final `bin/python` symlink to a system interpreter is accepted because system
-paths remain visible read-only.
+For ordinary, non-campaign runs the runner retains the path-stable checkout workflow.
+For a formal campaign it first discovers external virtualenv/editable roots and copies
+their receipted bytes into the shared sealed snapshot; a symlinked `.venv` is therefore
+supported when its exact target is discoverable. Only the selected backend's CLI and
+login state are mounted. The other backend credentials and the live dependency trees
+remain unavailable to the attempt.
 
 ## Supported tasks
 
