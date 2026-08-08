@@ -1,4 +1,5 @@
 import base64
+import copy
 import fcntl
 import logging
 import importlib
@@ -25,6 +26,9 @@ from main import claim_next_descriptor, initialize_parallel_queue
 
 
 codex_launcher = importlib.import_module("agents.codex.launch_agent")
+_DEFAULT_TASK_COMPONENT = campaign.campaign_task_path_component(
+    "triton2triton/vllm/example"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -63,6 +67,38 @@ def _policy() -> dict:
         "gpu_policy": "deterministic_task_gpu_v1",
         "require_clean_checkouts": True,
     }
+
+
+def test_campaign_task_path_component_blocks_escape_and_legacy_aliases(
+    tmp_path: Path,
+) -> None:
+    attempt_root = (tmp_path / ".campaign_attempts").resolve()
+    names = ["..", ".", "/", "a/b", "a_b", "a\\b", "任务/一"]
+    components = [campaign.campaign_task_path_component(name) for name in names]
+
+    assert len(components) == len(set(components))
+    assert all(component not in {".", ".."} for component in components)
+    assert all("/" not in component and "\\" not in component for component in components)
+    assert all((attempt_root / component).parent == attempt_root for component in components)
+
+
+def test_campaign_manifest_task_path_mapping_must_be_injective(monkeypatch) -> None:
+    manifest = {
+        "configuration": {
+            "tasks": [
+                {"task_name": "a/b"},
+                {"task_name": "a_b"},
+            ]
+        }
+    }
+    assert campaign._campaign_task_paths_valid(manifest) is True
+
+    monkeypatch.setattr(
+        campaign,
+        "campaign_task_path_component",
+        lambda _name: "colliding-component",
+    )
+    assert campaign._campaign_task_paths_valid(manifest) is False
 
 
 def _runtime_isolation_receipt(*, yama_ptrace_scope: int = 1) -> dict:
@@ -239,6 +275,7 @@ def _test_aka_binding() -> tuple[dict, dict]:
 
 def _test_agent_manifest(name: str) -> dict:
     closure = _test_backend_closure()
+    transport = campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS[name]
     manifest = {
         "template": name,
         "session_receipt_schema": (
@@ -258,7 +295,9 @@ def _test_agent_manifest(name: str) -> dict:
             campaign.AGENT_PROCESS_CONTAINMENT_POLICY
         ),
         "attempt_containment_policy_id": campaign.ATTEMPT_CONTAINMENT_POLICY,
+        "max_process_output_bytes": transport["max_process_output_bytes"],
         "structured_stream_output_limit_bytes": 16 * 1024 * 1024,
+        "structured_stream_overflow_policy": transport["overflow_policy"],
         "codex_version": "codex 1.0",
         "codex_binary_sha256": "e" * 64,
         "backend_runtime_closure_schema": campaign.BACKEND_CLOSURE_SCHEMA,
@@ -1088,6 +1127,7 @@ def _write_campaign_codex_contract(
     agent_template: str = "apex",
 ) -> dict:
     turn_policy = campaign.CANDIDATE_PERSISTENCE_POLICY
+    policy = {"attempts": 3}
     closure = _test_backend_closure()
     codex = {
         "backend": "codex",
@@ -1197,8 +1237,11 @@ def _write_campaign_codex_contract(
             "runtime_manifest_sha256"
         ],
     }
+    transport = campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS[agent_template]
     agent = codex | {
         "template": agent_template,
+        "max_process_output_bytes": transport["max_process_output_bytes"],
+        "structured_stream_overflow_policy": transport["overflow_policy"],
         "session_receipt_schema": (
             "agentkernelarena.codex-attempt-receipt/v4"
             if agent_template == "codex"
@@ -1208,10 +1251,13 @@ def _write_campaign_codex_contract(
     if agent_template == "apex":
         agent |= apex_treatment
     runtime = {"gpu": gpu, "aka_execution_snapshot": aka_runtime}
+    comparison_runtime = campaign.comparison_runtime_projection(runtime)
+    assert comparison_runtime is not None
     comparison_contract = {
         "schema": "aka.apex-vs-codex-comparison-contract/v5",
         "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
         "formal_execution_sha256": campaign.FORMAL_LIVE_EXECUTION_SHA256,
+        "policy": policy,
         "objective_policy_id": "aka.task-package-objective-and-protected-harness/v1",
         "prompt_policy_id": "aka.shared-objective-backend-native-context-receipted/v1",
         "candidate_persistence_policy_id": campaign.CANDIDATE_PERSISTENCE_POLICY,
@@ -1222,8 +1268,11 @@ def _write_campaign_codex_contract(
         "attempt_containment_policy_id": campaign.ATTEMPT_CONTAINMENT_POLICY,
         "repositories": repositories,
         "apex_treatment": apex_treatment,
+        "agent_transport_treatments": copy.deepcopy(
+            campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS
+        ),
         "codex": codex,
-        "runtime": runtime,
+        "runtime": comparison_runtime,
         "evaluator_files_sha256": evaluator_files,
         "tasks": tasks,
     }
@@ -1239,6 +1288,7 @@ def _write_campaign_codex_contract(
                 "schema": "aka.matched-campaign/v1",
                 "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
                 "formal_execution_sha256": campaign.FORMAL_LIVE_EXECUTION_SHA256,
+                "policy": policy,
                 "comparison_contract_sha256": comparison_digest,
                 "comparison_contract": comparison_contract,
                 "repositories": repositories,
@@ -1254,8 +1304,40 @@ def _write_campaign_codex_contract(
     return codex | {
         "_comparison_contract_sha256": comparison_digest,
         "_task_config_paths": task_config_paths,
+        "_run_directory": str(run_directory.resolve()),
         "_checkpoint_policy": True,
         "_apex_receipt_schema": "agentkernelarena.apex-attempt-receipt/v5",
+    }
+
+
+def _fixture_campaign_binding(
+    receipt_path: Path, codex_contract: dict, *, attempt_index: int | None = None
+) -> dict:
+    run = Path(codex_contract["_run_directory"])
+    manifest_path = (run / "campaign_manifest.yaml").resolve(strict=True)
+    manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    task = manifest["configuration"]["tasks"][0]
+    mapping = manifest["runtime"]["gpu"]["task_mapping"][0]
+    assert receipt_path.name == "session_receipt.json"
+    if attempt_index is None:
+        attempt_index = int(receipt_path.parent.name.removeprefix("attempt_"))
+    return {
+        "schema": "aka.attempt-campaign-binding/v1",
+        "formal_execution_sha256": manifest["formal_execution_sha256"],
+        "campaign_manifest_path": str(manifest_path),
+        "campaign_manifest_sha256": campaign._sha256_file(manifest_path),
+        "comparison_contract_sha256": manifest["comparison_contract_sha256"],
+        "backend_runtime_closure_sha256": codex_contract[
+            "backend_runtime_closure_sha256"
+        ],
+        "task_package_manifest_sha256": task["package_manifest_sha256"],
+        "task_config_sha256": task["config_sha256"],
+        "task_name": task["task_name"],
+        "task_index": task["task_index"],
+        "total_tasks": len(manifest["configuration"]["tasks"]),
+        "attempt_index": attempt_index,
+        "attempt_count": manifest["policy"]["attempts"],
+        "assigned_host_gpu_id": mapping["assigned_host_gpu_id"],
     }
 
 
@@ -1293,6 +1375,35 @@ def test_formal_campaign_fixture_is_a_complete_live_v5_contract(
     assert comparison["apex_treatment"]["attempt_mount_receipt_schema"] == (
         campaign.ATTEMPT_MOUNT_RECEIPT_SCHEMA
     )
+
+
+@pytest.mark.parametrize("synchronize_table", [False, True])
+def test_formal_campaign_rejects_transport_treatment_drift(
+    tmp_path: Path, synchronize_table: bool
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    _write_campaign_codex_contract(run, agent_template="apex")
+    path = run / "campaign_manifest.yaml"
+    manifest = yaml.safe_load(path.read_text(encoding="utf-8"))
+    manifest["agent"]["max_process_output_bytes"] = -1
+    if synchronize_table:
+        manifest["comparison_contract"]["agent_transport_treatments"]["apex"][
+            "max_process_output_bytes"
+        ] = -1
+    manifest["comparison_contract_sha256"] = hashlib.sha256(
+        json.dumps(
+            manifest["comparison_contract"],
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    path.chmod(0o644)
+    path.write_text(yaml.safe_dump(manifest, sort_keys=True), encoding="utf-8")
+    path.chmod(0o444)
+
+    with pytest.raises(campaign.CampaignError, match="comparison contract is invalid"):
+        campaign._load_verified_campaign_manifest(run)
 
 
 def _write_valid_codex_receipt(
@@ -1426,6 +1537,9 @@ def _write_valid_codex_receipt(
         }
     receipt = {
         "schema": "agentkernelarena.codex-attempt-receipt/v4",
+        "campaign_binding": _fixture_campaign_binding(
+            receipt_path, codex_contract
+        ),
         "comparison_contract_sha256": codex_contract[
             "_comparison_contract_sha256"
         ],
@@ -2069,6 +2183,9 @@ def _write_valid_apex_receipt(
         connection.close()
     task_spec = {
         "task_id": "task-test",
+        "campaign_binding": _fixture_campaign_binding(
+            receipt_path, codex_contract
+        ),
         "agent_backend": "codex",
         "agent_options": {
             "model": codex_contract["model"],
@@ -2253,6 +2370,9 @@ def _write_valid_apex_receipt(
     lineage = {
         "run_id": "run-test",
         "result_sha256": artifacts["apex_result"]["sha256"],
+        "campaign_binding_sha256": campaign._canonical_json_digest(
+            task_spec["campaign_binding"]
+        ),
         "journal_head_event_id": events[-1]["event_id"],
         "journal_head_checksum": events[-1]["checksum"],
         "event_count": len(events),
@@ -2276,6 +2396,7 @@ def _write_valid_apex_receipt(
         lineage["bundle"] = bundle_summary
     receipt = {
         "schema": "agentkernelarena.apex-attempt-receipt/v5",
+        "campaign_binding": task_spec["campaign_binding"],
         "comparison_contract_sha256": codex_contract[
             "_comparison_contract_sha256"
         ],
@@ -2478,12 +2599,16 @@ def test_three_fresh_sessions_are_centrally_ranked_with_stable_tie_break(
     attempts = yaml.safe_load(
         (
             run_directory
-            / ".campaign_attempts/triton2triton_vllm_example/task_campaign.yaml"
+            / ".campaign_attempts"
+            / _DEFAULT_TASK_COMPONENT
+            / "task_campaign.yaml"
         ).read_text()
     )
     assert (
         run_directory
-        / ".campaign_attempts/triton2triton_vllm_example/task_campaign.yaml"
+        / ".campaign_attempts"
+        / _DEFAULT_TASK_COMPONENT
+        / "task_campaign.yaml"
     ).stat().st_mode & 0o777 == 0o444
     assert attempts["all_attempts_centrally_evaluated"] is True
     assert [record["attempt"] for record in attempts["attempts"]] == [1, 2, 3]
@@ -2528,7 +2653,9 @@ def test_missing_central_report_is_retained_and_invalidates_campaign(
     evidence = yaml.safe_load(
         (
             run_directory
-            / ".campaign_attempts/triton2triton_vllm_example/task_campaign.yaml"
+            / ".campaign_attempts"
+            / _DEFAULT_TASK_COMPONENT
+            / "task_campaign.yaml"
         ).read_text()
     )
     assert evidence["attempts"][1]["central_evaluator_report"] is None
@@ -2867,6 +2994,19 @@ def test_comparison_contract_hash_ignores_treatment_template(tmp_path, monkeypat
     assert apex is not None and codex is not None
     assert apex["comparison_contract_sha256"] == codex["comparison_contract_sha256"]
     assert apex["agent"]["template"] != codex["agent"]["template"]
+    assert apex["comparison_contract"]["agent_transport_treatments"] == (
+        campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS
+    )
+    for manifest in (apex, codex):
+        transport = campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS[
+            manifest["agent"]["template"]
+        ]
+        assert manifest["agent"]["max_process_output_bytes"] == (
+            transport["max_process_output_bytes"]
+        )
+        assert manifest["agent"]["structured_stream_overflow_policy"] == (
+            transport["overflow_policy"]
+        )
 
 
 def test_comparison_contract_projects_run_specific_gpu_lease_receipts() -> None:
@@ -2984,7 +3124,7 @@ def test_fake_clock_enforces_remaining_session_reservation(tmp_path, monkeypatch
     assert completed is False
     assert canonical is None
     evidence = yaml.safe_load(
-        (run / ".campaign_attempts/triton2triton_vllm_example/task_campaign.yaml").read_text()
+        (run / ".campaign_attempts" / _DEFAULT_TASK_COMPONENT / "task_campaign.yaml").read_text()
     )
     assert evidence["attempts"][1]["eligibility_errors"] == [
         "outer_task_deadline_cannot_cover_remaining_sessions"
@@ -3027,7 +3167,7 @@ def test_cumulative_central_evaluator_allowance_is_enforced(
     assert completed is False
     assert canonical is None
     evidence = yaml.safe_load(
-        (run / ".campaign_attempts/triton2triton_vllm_example/task_campaign.yaml").read_text()
+        (run / ".campaign_attempts" / _DEFAULT_TASK_COMPONENT / "task_campaign.yaml").read_text()
     )
     assert evidence["evaluator_elapsed_seconds"] == 3603.0
     assert evidence["within_evaluator_allowance"] is False
@@ -3158,6 +3298,32 @@ def test_direct_codex_prompt_and_comparison_contract_are_independently_recompute
     )
     assert "direct_codex_comparison_contract_digest_mismatch" in errors
     prompt_path.parent.chmod(0o700)
+
+
+def test_direct_codex_receipt_rejects_cross_task_campaign_binding_transplant(
+    tmp_path: Path,
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    contract = _write_campaign_codex_contract(run, agent_template="codex")
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_codex_receipt(receipt_path, contract)
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    payload["campaign_binding"]["task_name"] = "other-task"
+    receipt_path.chmod(0o644)
+    receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+    receipt_path.chmod(0o444)
+
+    _, errors = campaign._validate_session_receipt(
+        receipt_path=receipt_path,
+        workspace=workspace,
+        run_directory=run,
+    )
+
+    assert "attempt_campaign_binding_mismatch" in errors
+    _unlock_apex_receipt_directories(run)
 
 
 def test_direct_codex_exact_boundary_checkpoint_is_formally_eligible(tmp_path) -> None:
@@ -3523,6 +3689,35 @@ def test_apex_v5_receipt_recomputes_result_event_invocation_and_transcript_linea
     )
     assert "apex_workspace_pre_apply_integrity_invalid" in errors
     _unlock_apex_receipt_directories(run)
+
+
+def test_apex_v5_receipt_rejects_campaign_binding_tamper_across_all_lineage(
+    tmp_path: Path,
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(receipt_path, contract)
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    payload["campaign_binding"]["assigned_host_gpu_id"] = "1"
+    receipt_path.chmod(0o644)
+    receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+    receipt_path.chmod(0o444)
+
+    try:
+        _, errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert "attempt_campaign_binding_mismatch" in errors
+        assert "apex_task_spec_campaign_binding_mismatch" in errors
+        assert "apex_lineage_campaign_binding_mismatch" in errors
+    finally:
+        _unlock_apex_receipt_directories(run)
 
 
 def test_apex_receipt_must_bind_immutable_comparison_contract(tmp_path) -> None:
@@ -4019,7 +4214,7 @@ def test_formal_agents_missing_receipts_are_diagnostic_only_and_never_complete(
     assert completed is False
     assert canonical is None
     evidence = yaml.safe_load(
-        (run / ".campaign_attempts/triton2triton_vllm_example/task_campaign.yaml").read_text()
+        (run / ".campaign_attempts" / _DEFAULT_TASK_COMPONENT / "task_campaign.yaml").read_text()
     )
     assert all(
         "missing_agent_session_receipt" in attempt["eligibility_errors"]
@@ -4132,7 +4327,9 @@ def test_all_no_gain_attempts_complete_without_becoming_canonical(
         evidence = yaml.safe_load(
             (
                 run
-                / ".campaign_attempts/triton2triton_vllm_example/task_campaign.yaml"
+                / ".campaign_attempts"
+                / _DEFAULT_TASK_COMPONENT
+                / "task_campaign.yaml"
             ).read_text()
         )
         assert evidence["all_agent_sessions_succeeded"] is True
@@ -4220,7 +4417,9 @@ def test_mixed_no_gain_and_candidate_attempts_select_a_candidate_symmetrically(
         evidence = yaml.safe_load(
             (
                 run
-                / ".campaign_attempts/triton2triton_vllm_example/task_campaign.yaml"
+                / ".campaign_attempts"
+                / _DEFAULT_TASK_COMPONENT
+                / "task_campaign.yaml"
             ).read_text()
         )
         assert evidence["all_agent_sessions_succeeded"] is True
@@ -4281,7 +4480,9 @@ def test_three_valid_apex_receipts_allow_canonical_projection(
         evidence = yaml.safe_load(
             (
                 run
-                / ".campaign_attempts/triton2triton_vllm_example/task_campaign.yaml"
+                / ".campaign_attempts"
+                / _DEFAULT_TASK_COMPONENT
+                / "task_campaign.yaml"
             ).read_text()
         )
         assert all(

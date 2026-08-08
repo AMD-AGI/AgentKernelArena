@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import json
 import logging
@@ -115,6 +116,8 @@ def _formal_v5_contract(
         "task_mapping": mappings,
     }
     runtime = {"gpu": gpu, "aka_execution_snapshot": aka_runtime}
+    comparison_runtime = campaign.comparison_runtime_projection(runtime)
+    assert comparison_runtime is not None
     evaluator = {
         "schema": "aka.evaluator-source-binding/v2",
         "coverage": "all_committed_files",
@@ -161,7 +164,11 @@ def _formal_v5_contract(
             "attempt_containment_policy_id": campaign.ATTEMPT_CONTAINMENT_POLICY,
         },
     }
-    agent = codex | apex_treatment
+    apex_transport = campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS["apex"]
+    agent = codex | apex_treatment | {
+        "max_process_output_bytes": apex_transport["max_process_output_bytes"],
+        "structured_stream_overflow_policy": apex_transport["overflow_policy"],
+    }
     formal_execution = dict(campaign._FORMAL_LIVE_COMMITMENT)
     comparison = {
         "schema": "aka.apex-vs-codex-comparison-contract/v5",
@@ -179,8 +186,11 @@ def _formal_v5_contract(
         "attempt_containment_policy_id": campaign.ATTEMPT_CONTAINMENT_POLICY,
         "repositories": repositories,
         "apex_treatment": apex_treatment,
+        "agent_transport_treatments": copy.deepcopy(
+            campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS
+        ),
         "codex": codex,
-        "runtime": runtime,
+        "runtime": comparison_runtime,
         "evaluator_files_sha256": evaluator,
         "tasks": tasks,
     }
@@ -532,7 +542,12 @@ def test_failed_descriptor_roundtrip_preserves_parser_worker_identity(
     task_evidence["failure_reasons"] = campaign._campaign_failure_reasons(
         task_evidence
     )
-    evidence_path = run / ".campaign_attempts" / "task_a" / "task_campaign.yaml"
+    evidence_path = (
+        run
+        / ".campaign_attempts"
+        / campaign.campaign_task_path_component("task_a")
+        / "task_campaign.yaml"
+    )
     evidence_path.parent.mkdir(parents=True)
     evidence_path.write_text(yaml.safe_dump(task_evidence), encoding="utf-8")
     evidence_path.chmod(0o444)

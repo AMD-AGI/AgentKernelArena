@@ -21,6 +21,7 @@ launcher = importlib.import_module("agents.codex.launch_agent")
 
 
 _BACKEND_RUNTIME_CLOSURE_SHA256 = "e" * 64
+_FORMAL_TASK_COMPONENT = launcher.campaign_task_path_component("task")
 
 
 _FAKE_CODEX = r'''#!/usr/bin/env python3
@@ -213,6 +214,118 @@ def _attempt_config(receipt: Path, timeout_seconds: float = 30.0) -> dict:
     }
 
 
+def _write_formal_task_config(tmp_path: Path) -> Path:
+    package = tmp_path / "task-package"
+    package.mkdir()
+    config = package / "config.yaml"
+    config.write_text("source_file_path: kernel.py\n", encoding="utf-8")
+    return config
+
+
+def _install_formal_campaign_binding(
+    *,
+    eval_config: dict,
+    task_config: Path,
+    manifest_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict:
+    package_files = {
+        path.relative_to(task_config.parent).as_posix(): hashlib.sha256(
+            path.read_bytes()
+        ).hexdigest()
+        for path in sorted(task_config.parent.rglob("*"))
+        if path.is_file()
+    }
+    package_digest = hashlib.sha256(
+        json.dumps(package_files, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    config_digest = hashlib.sha256(task_config.read_bytes()).hexdigest()
+    policy = {"attempts": 3}
+    comparison = {
+        "policy": policy,
+        "codex": {
+            "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256
+        },
+    }
+    comparison_digest = hashlib.sha256(
+        json.dumps(comparison, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    manifest = {
+        "schema": "aka.matched-campaign/v1",
+        "formal_execution_sha256": "a" * 64,
+        "policy": policy,
+        "comparison_contract": comparison,
+        "comparison_contract_sha256": comparison_digest,
+        "agent": {
+            "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256
+        },
+        "configuration": {
+            "tasks": [
+                {
+                    "task_index": 1,
+                    "task_name": "task",
+                    "config_path": str(task_config.resolve(strict=True)),
+                    "config_sha256": config_digest,
+                    "package_files_sha256": package_files,
+                    "package_manifest_sha256": package_digest,
+                }
+            ]
+        },
+        "runtime": {
+            "gpu": {
+                "task_mapping": [
+                    {
+                        "task_index": 1,
+                        "task_name": "task",
+                        "assigned_host_gpu_id": "0",
+                    }
+                ]
+            }
+        },
+    }
+    manifest_root.mkdir(parents=True, exist_ok=True)
+    manifest_path = (manifest_root / "campaign_manifest.yaml").resolve()
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
+    manifest_path.chmod(0o444)
+    manifest_digest = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    attempt = eval_config["campaign_attempt"]
+    attempt.update(
+        {
+            "formal_execution_sha256": manifest["formal_execution_sha256"],
+            "campaign_manifest_path": str(manifest_path),
+            "campaign_manifest_sha256": manifest_digest,
+            "comparison_contract_sha256": comparison_digest,
+            "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256,
+            "task_package_manifest_sha256": package_digest,
+            "task_config_sha256": config_digest,
+            "task_name": "task",
+            "task_index": 1,
+            "total_tasks": 1,
+            "index": 1,
+            "count": 3,
+            "assigned_host_gpu_id": "0",
+        }
+    )
+    eval_config["assigned_host_gpu_id"] = "0"
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_HOST_GPU_ID", "0")
+    return {
+        "schema": "aka.attempt-campaign-binding/v1",
+        "formal_execution_sha256": manifest["formal_execution_sha256"],
+        "campaign_manifest_path": str(manifest_path),
+        "campaign_manifest_sha256": manifest_digest,
+        "comparison_contract_sha256": comparison_digest,
+        "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256,
+        "task_package_manifest_sha256": package_digest,
+        "task_config_sha256": config_digest,
+        "task_name": "task",
+        "task_index": 1,
+        "total_tasks": 1,
+        "attempt_index": 1,
+        "attempt_count": 3,
+        "assigned_host_gpu_id": "0",
+    }
+
+
 def _load_receipt(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -339,13 +452,12 @@ def test_formal_session_uses_auth_only_home_and_cannot_see_sibling_attempt(
     binary_parent = Path(tempfile.mkdtemp(prefix="aka-codex-test-", dir="/var/tmp"))
     _install_fake_codex(binary_parent, monkeypatch)
     data_root = tmp_path / "campaign"
-    attempt = data_root / "run/task/attempt_01"
+    attempt = data_root / "run/.campaign_attempts" / _FORMAL_TASK_COMPONENT / "attempt_01"
     workspace = attempt / "workspace"
-    sibling = data_root / "run/task/attempt_02"
+    sibling = data_root / "run/.campaign_attempts" / _FORMAL_TASK_COMPONENT / "attempt_02"
     workspace.mkdir(parents=True)
     (workspace / "kernel.py").write_text("baseline = True\n", encoding="utf-8")
-    task_config = tmp_path / "task.yaml"
-    task_config.write_text("source_file_path: kernel.py\n", encoding="utf-8")
+    task_config = _write_formal_task_config(tmp_path)
     sibling.mkdir(parents=True)
     forbidden = sibling / "prior-result.json"
     forbidden.write_text("{}\n", encoding="utf-8")
@@ -367,6 +479,12 @@ def test_formal_session_uses_auth_only_home_and_cannot_see_sibling_attempt(
             "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256,
         },
     }
+    expected_binding = _install_formal_campaign_binding(
+        eval_config=eval_config,
+        task_config=task_config,
+        manifest_root=data_root / "run",
+        monkeypatch=monkeypatch,
+    )
 
     receipt: dict = {}
     try:
@@ -401,7 +519,10 @@ def test_formal_session_uses_auth_only_home_and_cannot_see_sibling_attempt(
             "stop_reason": None,
         }
         assert receipt["workspace_integrity"]["passed"] is True
-        assert receipt["comparison_contract_sha256"] == "d" * 64
+        assert receipt["comparison_contract_sha256"] == expected_binding[
+            "comparison_contract_sha256"
+        ]
+        assert receipt["campaign_binding"] == expected_binding
         assert receipt["codex"]["runtime_closure_sha256"] == (
             _BACKEND_RUNTIME_CLOSURE_SHA256
         )
@@ -435,6 +556,74 @@ def test_formal_session_rejects_missing_backend_runtime_closure_digest() -> None
         launcher._runtime_closure_sha256({}, formal_campaign=True)
 
 
+def test_formal_campaign_binding_rejects_cross_task_transplant_before_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task_config = _write_formal_task_config(tmp_path)
+    receipt_path = (
+        tmp_path
+        / "run/.campaign_attempts"
+        / _FORMAL_TASK_COMPONENT
+        / "attempt_01/session_receipt.json"
+    )
+    eval_config = {
+        "campaign": {"comparison": "apex_vs_codex"},
+        "campaign_attempt": {
+            "fresh_session": True,
+            "receipt_path": str(receipt_path),
+        },
+    }
+    _install_formal_campaign_binding(
+        eval_config=eval_config,
+        task_config=task_config,
+        manifest_root=tmp_path / "run",
+        monkeypatch=monkeypatch,
+    )
+    eval_config["campaign_attempt"]["task_name"] = "other-task"
+
+    with pytest.raises(
+        launcher.CodexSessionError,
+        match="task or GPU mapping differs",
+    ):
+        launcher._campaign_binding(
+            eval_config, task_config, formal_campaign=True
+        )
+
+
+def test_formal_campaign_binding_rejects_mutable_manifest_before_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task_config = _write_formal_task_config(tmp_path)
+    receipt_path = (
+        tmp_path
+        / "run/.campaign_attempts"
+        / _FORMAL_TASK_COMPONENT
+        / "attempt_01/session_receipt.json"
+    )
+    eval_config = {
+        "campaign": {"comparison": "apex_vs_codex"},
+        "campaign_attempt": {
+            "fresh_session": True,
+            "receipt_path": str(receipt_path),
+        },
+    }
+    binding = _install_formal_campaign_binding(
+        eval_config=eval_config,
+        task_config=task_config,
+        manifest_root=tmp_path / "run",
+        monkeypatch=monkeypatch,
+    )
+    Path(binding["campaign_manifest_path"]).chmod(0o644)
+
+    with pytest.raises(
+        launcher.CodexSessionError,
+        match="single-link read-only regular file",
+    ):
+        launcher._campaign_binding(
+            eval_config, task_config, formal_campaign=True
+        )
+
+
 def test_formal_workspace_is_sanitized_to_declared_source_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -442,7 +631,7 @@ def test_formal_workspace_is_sanitized_to_declared_source_only(
     _install_fake_codex(binary_parent, monkeypatch)
     monkeypatch.setenv("FAKE_CODEX_MODE", "temporary_workspace_changes")
     data_root = tmp_path / "campaign"
-    attempt = data_root / "run/task/attempt_01"
+    attempt = data_root / "run/.campaign_attempts" / _FORMAL_TASK_COMPONENT / "attempt_01"
     workspace = attempt / "workspace"
     workspace.mkdir(parents=True)
     source = workspace / "kernel.py"
@@ -451,8 +640,7 @@ def test_formal_workspace_is_sanitized_to_declared_source_only(
     build.mkdir()
     report = build / "compile_report.json"
     report.write_text('{"baseline":true}\n', encoding="utf-8")
-    task_config = tmp_path / "task.yaml"
-    task_config.write_text("source_file_path: kernel.py\n", encoding="utf-8")
+    task_config = _write_formal_task_config(tmp_path)
     state_root = tmp_path / "agent-state/.codex"
     state_root.mkdir(parents=True)
     (state_root / "auth.json").write_text('{}\n', encoding="utf-8")
@@ -469,6 +657,12 @@ def test_formal_workspace_is_sanitized_to_declared_source_only(
             "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256,
         },
     }
+    _install_formal_campaign_binding(
+        eval_config=eval_config,
+        task_config=task_config,
+        manifest_root=data_root / "run",
+        monkeypatch=monkeypatch,
+    )
 
     receipt: dict = {}
     try:
@@ -524,13 +718,12 @@ def test_formal_direct_codex_persists_exact_boundary_source_checkpoint(
     monkeypatch.setenv("FAKE_CODEX_MODE", "exact_boundary")
     monkeypatch.setattr(launcher, "_TERM_GRACE_SECONDS", 0.1)
     data_root = tmp_path / "campaign"
-    attempt = data_root / "run/task/attempt_01"
+    attempt = data_root / "run/.campaign_attempts" / _FORMAL_TASK_COMPONENT / "attempt_01"
     workspace = attempt / "workspace"
     workspace.mkdir(parents=True)
     source = workspace / "kernel.py"
     source.write_text("baseline = True\n", encoding="utf-8")
-    task_config = tmp_path / "task.yaml"
-    task_config.write_text("source_file_path: kernel.py\n", encoding="utf-8")
+    task_config = _write_formal_task_config(tmp_path)
     state_root = tmp_path / "agent-state/.codex"
     state_root.mkdir(parents=True)
     (state_root / "auth.json").write_text("{}\n", encoding="utf-8")
@@ -547,6 +740,12 @@ def test_formal_direct_codex_persists_exact_boundary_source_checkpoint(
             "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256,
         },
     }
+    _install_formal_campaign_binding(
+        eval_config=eval_config,
+        task_config=task_config,
+        manifest_root=data_root / "run",
+        monkeypatch=monkeypatch,
+    )
 
     receipt: dict = {}
     try:
@@ -614,13 +813,12 @@ def test_exact_boundary_snapshot_excludes_deterministic_late_cleanup_write(
     monkeypatch.setenv("FAKE_CODEX_MODE", "exact_boundary_late_write")
     monkeypatch.setattr(launcher, "_TERM_GRACE_SECONDS", 0.2)
     data_root = tmp_path / "campaign"
-    attempt = data_root / "run/task/attempt_01"
+    attempt = data_root / "run/.campaign_attempts" / _FORMAL_TASK_COMPONENT / "attempt_01"
     workspace = attempt / "workspace"
     workspace.mkdir(parents=True)
     source = workspace / "kernel.py"
     source.write_text("baseline = True\n", encoding="utf-8")
-    task_config = tmp_path / "task.yaml"
-    task_config.write_text("source_file_path: kernel.py\n", encoding="utf-8")
+    task_config = _write_formal_task_config(tmp_path)
     state_root = tmp_path / "agent-state/.codex"
     state_root.mkdir(parents=True)
     (state_root / "auth.json").write_text("{}\n", encoding="utf-8")
@@ -637,6 +835,12 @@ def test_exact_boundary_snapshot_excludes_deterministic_late_cleanup_write(
             "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256,
         },
     }
+    _install_formal_campaign_binding(
+        eval_config=eval_config,
+        task_config=task_config,
+        manifest_root=data_root / "run",
+        monkeypatch=monkeypatch,
+    )
 
     receipt: dict = {}
     try:
@@ -670,32 +874,36 @@ def _formal_boundary_fixture(
     monkeypatch.setattr(launcher, "_TERM_GRACE_SECONDS", 0.2)
     monkeypatch.setattr(launcher, "_KILL_GRACE_SECONDS", 2.0)
     data_root = tmp_path / "campaign"
-    attempt = data_root / "run/task/attempt_01"
+    attempt = data_root / "run/.campaign_attempts" / _FORMAL_TASK_COMPONENT / "attempt_01"
     workspace = attempt / "workspace"
     workspace.mkdir(parents=True)
     source = workspace / "kernel.py"
     source.write_text("baseline = True\n", encoding="utf-8")
-    task_config = tmp_path / "task.yaml"
-    task_config.write_text("source_file_path: kernel.py\n", encoding="utf-8")
+    task_config = _write_formal_task_config(tmp_path)
     state_root = tmp_path / "agent-state/.codex"
     state_root.mkdir(parents=True)
     (state_root / "auth.json").write_text("{}\n", encoding="utf-8")
     monkeypatch.setenv("AGENT_STATE_MOUNT_ROOT", str(state_root.parent))
     monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
     receipt_path = attempt / "session_receipt.json"
-    launcher.launch_agent(
-        {
-            "campaign": {"comparison": "apex_vs_codex"},
-            "campaign_attempt": {
-                "fresh_session": True,
-                "receipt_path": str(receipt_path),
-                "task_deadline_monotonic": time.monotonic() + 30,
-                "comparison_contract_sha256": "d" * 64,
-                "backend_runtime_closure_sha256": (
-                    _BACKEND_RUNTIME_CLOSURE_SHA256
-                ),
-            },
+    eval_config = {
+        "campaign": {"comparison": "apex_vs_codex"},
+        "campaign_attempt": {
+            "fresh_session": True,
+            "receipt_path": str(receipt_path),
+            "task_deadline_monotonic": time.monotonic() + 30,
+            "comparison_contract_sha256": "d" * 64,
+            "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256,
         },
+    }
+    _install_formal_campaign_binding(
+        eval_config=eval_config,
+        task_config=task_config,
+        manifest_root=data_root / "run",
+        monkeypatch=monkeypatch,
+    )
+    launcher.launch_agent(
+        eval_config,
         str(task_config),
         str(workspace),
     )

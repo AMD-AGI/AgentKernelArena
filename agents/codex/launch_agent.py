@@ -18,6 +18,7 @@ from typing import Any
 import yaml
 
 from agents import register_agent
+from src.campaign import CampaignError, campaign_task_path_component
 from src.module_registration import AgentType, load_prompt_builder
 from src.runtime_env import build_subprocess_env
 from src.agent_turn_budget import (
@@ -53,6 +54,25 @@ _MAX_EVENT_LINE_CHARS = 1024 * 1024
 _MAX_WORKSPACE_FILES = 20_000
 _MAX_WORKSPACE_BYTES = 2 * 1024 * 1024 * 1024
 _LOWER_HEX = frozenset("0123456789abcdef")
+_CAMPAIGN_BINDING_SCHEMA = "aka.attempt-campaign-binding/v1"
+_CAMPAIGN_BINDING_KEYS = frozenset(
+    {
+        "schema",
+        "formal_execution_sha256",
+        "campaign_manifest_path",
+        "campaign_manifest_sha256",
+        "comparison_contract_sha256",
+        "backend_runtime_closure_sha256",
+        "task_package_manifest_sha256",
+        "task_config_sha256",
+        "task_name",
+        "task_index",
+        "total_tasks",
+        "attempt_index",
+        "attempt_count",
+        "assigned_host_gpu_id",
+    }
+)
 
 
 class CodexSessionError(RuntimeError):
@@ -144,6 +164,297 @@ def _runtime_closure_sha256(
             "formal direct Codex attempt lacks a backend runtime closure digest"
         )
     return digest
+
+
+def _valid_sha256(value: Any) -> bool:
+    return bool(
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in _LOWER_HEX for character in value)
+    )
+
+
+def _read_immutable_campaign_manifest(path: Path) -> tuple[dict[str, Any], str]:
+    """Read canonical manifest bytes without following the final path component."""
+
+    if not path.is_absolute():
+        raise CodexSessionError("campaign manifest path must be absolute")
+    try:
+        canonical = path.resolve(strict=True)
+        if canonical != path:
+            raise CodexSessionError("campaign manifest path must be canonical")
+        descriptor = os.open(
+            canonical,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            metadata = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_nlink != 1
+                or metadata.st_mode & 0o222
+            ):
+                raise CodexSessionError(
+                    "campaign manifest must be a single-link read-only regular file"
+                )
+            with os.fdopen(descriptor, "rb", closefd=False) as stream:
+                payload = stream.read()
+        finally:
+            os.close(descriptor)
+        manifest = yaml.safe_load(payload.decode("utf-8")) or {}
+    except CodexSessionError:
+        raise
+    except (OSError, UnicodeError, yaml.YAMLError) as error:
+        raise CodexSessionError(
+            f"cannot read immutable campaign manifest: {error}"
+        ) from error
+    if not isinstance(manifest, dict):
+        raise CodexSessionError("campaign manifest must contain a mapping")
+    return manifest, _sha256_bytes(payload)
+
+
+def _task_package_manifest(root: Path) -> tuple[dict[str, str], str]:
+    if not root.is_dir() or root.is_symlink():
+        raise CodexSessionError("campaign task package root is unsafe")
+    files: dict[str, str] = {}
+    try:
+        for path in sorted(root.rglob("*")):
+            relative = path.relative_to(root).as_posix()
+            metadata = path.lstat()
+            if stat.S_ISLNK(metadata.st_mode):
+                raise CodexSessionError(
+                    f"campaign task package contains a symlink: {relative}"
+                )
+            if stat.S_ISDIR(metadata.st_mode):
+                continue
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                raise CodexSessionError(
+                    f"campaign task package contains an unsafe file: {relative}"
+                )
+            files[relative] = _sha256_file(path)
+    except OSError as error:
+        raise CodexSessionError(
+            f"cannot hash campaign task package: {error}"
+        ) from error
+    if not files:
+        raise CodexSessionError("campaign task package contains no files")
+    digest = _sha256_bytes(_canonical_json_bytes(files))
+    return files, digest
+
+
+def _campaign_binding(
+    eval_config: dict[str, Any],
+    task_config_path: Path,
+    *,
+    formal_campaign: bool,
+) -> dict[str, Any] | None:
+    """Validate and normalize the runner-owned attempt binding before spawn."""
+
+    if not formal_campaign:
+        return None
+    attempt = eval_config.get("campaign_attempt")
+    if not isinstance(attempt, dict):
+        raise CodexSessionError("formal direct Codex attempt binding is missing")
+    raw_manifest_path = attempt.get("campaign_manifest_path")
+    if not isinstance(raw_manifest_path, str):
+        raise CodexSessionError("formal direct Codex campaign manifest path is missing")
+    manifest_path = Path(raw_manifest_path)
+    manifest, manifest_digest = _read_immutable_campaign_manifest(manifest_path)
+    comparison = manifest.get("comparison_contract")
+    comparison_digest = (
+        _sha256_bytes(_canonical_json_bytes(comparison))
+        if isinstance(comparison, dict)
+        else None
+    )
+    configuration = manifest.get("configuration")
+    tasks = configuration.get("tasks") if isinstance(configuration, dict) else None
+    runtime = manifest.get("runtime")
+    gpu = runtime.get("gpu") if isinstance(runtime, dict) else None
+    mappings = gpu.get("task_mapping") if isinstance(gpu, dict) else None
+    policy = manifest.get("policy")
+    agent = manifest.get("agent")
+    comparison_codex = (
+        comparison.get("codex") if isinstance(comparison, dict) else None
+    )
+    if (
+        manifest.get("schema") != "aka.matched-campaign/v1"
+        or not isinstance(tasks, list)
+        or not tasks
+        or not isinstance(mappings, list)
+        or len(mappings) != len(tasks)
+        or not isinstance(policy, dict)
+        or not isinstance(agent, dict)
+        or not isinstance(comparison_codex, dict)
+        or comparison.get("policy") != policy
+        or manifest.get("comparison_contract_sha256") != comparison_digest
+        or agent.get("backend_runtime_closure_sha256")
+        != comparison_codex.get("backend_runtime_closure_sha256")
+    ):
+        raise CodexSessionError("formal direct Codex campaign manifest is malformed")
+    try:
+        task_names: list[str] = []
+        task_components: list[str] = []
+        for expected_index, (manifest_task, manifest_mapping) in enumerate(
+            zip(tasks, mappings), 1
+        ):
+            if not isinstance(manifest_task, dict) or not isinstance(
+                manifest_mapping, dict
+            ):
+                raise CodexSessionError(
+                    "formal direct Codex campaign task mapping is malformed"
+                )
+            manifest_name = manifest_task.get("task_name")
+            if (
+                not isinstance(manifest_name, str)
+                or not manifest_name
+                or manifest_task.get("task_index") != expected_index
+                or manifest_mapping.get("task_index") != expected_index
+                or manifest_mapping.get("task_name") != manifest_name
+                or not isinstance(
+                    manifest_mapping.get("assigned_host_gpu_id"), str
+                )
+            ):
+                raise CodexSessionError(
+                    "formal direct Codex campaign task mapping is malformed"
+                )
+            task_names.append(manifest_name)
+            task_components.append(campaign_task_path_component(manifest_name))
+    except CampaignError as error:
+        raise CodexSessionError(
+            f"formal direct Codex campaign task path is unsafe: {error}"
+        ) from error
+    if (
+        len(task_names) != len(set(task_names))
+        or len(task_components) != len(set(task_components))
+    ):
+        raise CodexSessionError(
+            "formal direct Codex campaign task paths are not injective"
+        )
+    task_index = attempt.get("task_index")
+    total_tasks = attempt.get("total_tasks")
+    attempt_index = attempt.get("index")
+    attempt_count = attempt.get("count")
+    if (
+        type(task_index) is not int
+        or not 1 <= task_index <= len(tasks)
+        or total_tasks != len(tasks)
+        or type(attempt_index) is not int
+        or type(attempt_count) is not int
+        or attempt_count != policy.get("attempts")
+        or not 1 <= attempt_index <= attempt_count
+    ):
+        raise CodexSessionError("formal direct Codex campaign indices are invalid")
+    task = tasks[task_index - 1]
+    mapping = mappings[task_index - 1]
+    if not isinstance(task, dict) or not isinstance(mapping, dict):
+        raise CodexSessionError("formal direct Codex campaign task is malformed")
+    task_name = attempt.get("task_name")
+    assigned_gpu = attempt.get("assigned_host_gpu_id")
+    if (
+        task.get("task_index") != task_index
+        or task.get("task_name") != task_name
+        or mapping.get("task_index") != task_index
+        or mapping.get("task_name") != task_name
+        or mapping.get("assigned_host_gpu_id") != assigned_gpu
+        or eval_config.get("assigned_host_gpu_id") != assigned_gpu
+        or os.environ.get("AGENT_KERNEL_ARENA_HOST_GPU_ID") != assigned_gpu
+    ):
+        raise CodexSessionError(
+            "formal direct Codex task or GPU mapping differs from campaign"
+        )
+    raw_receipt_path = attempt.get("receipt_path")
+    if not isinstance(raw_receipt_path, str) or not Path(
+        raw_receipt_path
+    ).is_absolute():
+        raise CodexSessionError("formal direct Codex receipt path is missing")
+    receipt_path = Path(raw_receipt_path).resolve(strict=False)
+    expected_receipt_path = (
+        manifest_path.parent
+        / ".campaign_attempts"
+        / campaign_task_path_component(str(task_name))
+        / f"attempt_{attempt_index:02d}"
+        / "session_receipt.json"
+    )
+    if receipt_path != expected_receipt_path:
+        raise CodexSessionError(
+            "formal direct Codex receipt is outside its bound campaign attempt"
+        )
+    try:
+        canonical_config = task_config_path.resolve(strict=True)
+        config_metadata = canonical_config.lstat()
+    except OSError as error:
+        raise CodexSessionError(
+            f"cannot inspect formal direct Codex task config: {error}"
+        ) from error
+    if (
+        str(canonical_config) != task.get("config_path")
+        or not canonical_config.is_file()
+        or canonical_config.is_symlink()
+        or config_metadata.st_nlink != 1
+    ):
+        raise CodexSessionError(
+            "formal direct Codex task config path is not campaign-bound"
+        )
+    config_digest = _sha256_file(canonical_config)
+    package_files, package_digest = _task_package_manifest(canonical_config.parent)
+    if (
+        config_digest != task.get("config_sha256")
+        or package_files != task.get("package_files_sha256")
+        or package_digest != task.get("package_manifest_sha256")
+    ):
+        raise CodexSessionError(
+            "formal direct Codex task package differs from campaign"
+        )
+    binding = {
+        "schema": _CAMPAIGN_BINDING_SCHEMA,
+        "formal_execution_sha256": attempt.get("formal_execution_sha256"),
+        "campaign_manifest_path": str(manifest_path),
+        "campaign_manifest_sha256": attempt.get("campaign_manifest_sha256"),
+        "comparison_contract_sha256": attempt.get(
+            "comparison_contract_sha256"
+        ),
+        "backend_runtime_closure_sha256": attempt.get(
+            "backend_runtime_closure_sha256"
+        ),
+        "task_package_manifest_sha256": attempt.get(
+            "task_package_manifest_sha256"
+        ),
+        "task_config_sha256": attempt.get("task_config_sha256"),
+        "task_name": task_name,
+        "task_index": task_index,
+        "total_tasks": total_tasks,
+        "attempt_index": attempt_index,
+        "attempt_count": attempt_count,
+        "assigned_host_gpu_id": assigned_gpu,
+    }
+    expected = {
+        **binding,
+        "formal_execution_sha256": manifest.get("formal_execution_sha256"),
+        "campaign_manifest_sha256": manifest_digest,
+        "comparison_contract_sha256": comparison_digest,
+        "backend_runtime_closure_sha256": agent.get(
+            "backend_runtime_closure_sha256"
+        ),
+        "task_package_manifest_sha256": package_digest,
+        "task_config_sha256": config_digest,
+    }
+    if set(binding) != _CAMPAIGN_BINDING_KEYS or binding != expected or any(
+        not _valid_sha256(binding[key])
+        for key in (
+            "formal_execution_sha256",
+            "campaign_manifest_sha256",
+            "comparison_contract_sha256",
+            "backend_runtime_closure_sha256",
+            "task_package_manifest_sha256",
+            "task_config_sha256",
+        )
+    ):
+        raise CodexSessionError(
+            "formal direct Codex attempt binding differs from immutable campaign"
+        )
+    return binding
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -1279,6 +1590,12 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     if not workspace_path.is_dir() or workspace_path.is_symlink():
         raise CodexSessionError(f"unsafe Codex workspace: {workspace_path}")
     formal_campaign = is_formal_campaign(eval_config)
+    task_config_path = Path(task_config_dir).resolve(strict=formal_campaign)
+    campaign_binding = _campaign_binding(
+        eval_config,
+        task_config_path,
+        formal_campaign=formal_campaign,
+    )
     process_env = build_subprocess_env(agent_config.get("python_path"))
     prompt_builder = load_prompt_builder(AgentType.CODEX, logger)
     prompt = prompt_builder(task_config_dir, workspace, eval_config, logger)
@@ -1319,7 +1636,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     workspace_before: dict[str, dict[str, Any]] | None = None
     gpu_evidence: dict[str, Any] | None = None
     if formal_campaign:
-        editable_files = _editable_files(Path(task_config_dir).resolve(), workspace_path)
+        editable_files = _editable_files(task_config_path, workspace_path)
         workspace_before = _workspace_manifest(workspace_path)
         gpu_evidence = formal_gpu_evidence(eval_config)
     effective_timeout = _effective_timeout_seconds(agent_config, eval_config)
@@ -1969,6 +2286,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             if formal_campaign
             else "agentkernelarena.codex-attempt-receipt/v3"
         ),
+        "campaign_binding": campaign_binding,
         "comparison_contract_sha256": comparison_contract_sha256,
         "session_succeeded": session_succeeded,
         "thread_id": session["thread_id"],

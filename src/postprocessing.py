@@ -16,7 +16,13 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
 from collections import defaultdict
 try:
-    from src.campaign import _campaign_failure_reasons
+    from src.campaign import (
+        CampaignError,
+        _campaign_failure_reasons,
+        _evaluation_eligibility_errors,
+        _select_attempt,
+        campaign_task_path_component,
+    )
     from src.score import resolve_speedup_ratio, task_result_scoring
     from src.preprocessing import get_task_workspace_path
 except ModuleNotFoundError:
@@ -24,7 +30,13 @@ except ModuleNotFoundError:
     repo_root = Path(__file__).resolve().parents[1]
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
-    from src.campaign import _campaign_failure_reasons
+    from src.campaign import (
+        CampaignError,
+        _campaign_failure_reasons,
+        _evaluation_eligibility_errors,
+        _select_attempt,
+        campaign_task_path_component,
+    )
     from src.score import resolve_speedup_ratio, task_result_scoring
     from src.preprocessing import get_task_workspace_path
 
@@ -35,6 +47,30 @@ _FORMAL_PRIMARY_FAILURE_REASONS = frozenset(
         "formal_task_not_canonical",
     }
 )
+
+_ATTEMPT_CAMPAIGN_BINDING_SCHEMA = "aka.attempt-campaign-binding/v1"
+_ATTEMPT_CAMPAIGN_BINDING_KEYS = frozenset(
+    {
+        "schema",
+        "formal_execution_sha256",
+        "campaign_manifest_path",
+        "campaign_manifest_sha256",
+        "comparison_contract_sha256",
+        "backend_runtime_closure_sha256",
+        "task_package_manifest_sha256",
+        "task_config_sha256",
+        "task_name",
+        "task_index",
+        "total_tasks",
+        "attempt_index",
+        "attempt_count",
+        "assigned_host_gpu_id",
+    }
+)
+_FORMAL_RECEIPT_SCHEMAS = {
+    "apex": "agentkernelarena.apex-attempt-receipt/v5",
+    "codex": "agentkernelarena.codex-attempt-receipt/v4",
+}
 
 
 def _build_general_report_lines(
@@ -460,7 +496,8 @@ def _load_formal_cohort(run_directory: Path) -> Dict[str, Any] | None:
         return None
     if not _safe_read_only_file(manifest_path):
         raise ValueError(f"formal campaign manifest is unsafe or mutable: {manifest_path}")
-    manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+    manifest_bytes = _read_immutable_file_no_follow(manifest_path)
+    manifest = yaml.safe_load(manifest_bytes) or {}
     if not isinstance(manifest, dict) or manifest.get("schema") != "aka.matched-campaign/v1":
         raise ValueError("formal campaign manifest has an unsupported schema")
     configuration = manifest.get("configuration")
@@ -499,7 +536,7 @@ def _load_formal_cohort(run_directory: Path) -> Dict[str, Any] | None:
         "task_names": task_names,
         "task_entries": task_entries,
         "manifest": manifest,
-        "campaign_manifest_sha256": _sha256_file(manifest_path),
+        "campaign_manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
         "comparison_contract_sha256": comparison_digest,
         "ordered_cohort_sha256": hashlib.sha256(
             json.dumps(raw_tasks, sort_keys=True, separators=(",", ":")).encode(
@@ -575,6 +612,664 @@ def _regular_tree_manifest(root: Path) -> Dict[str, str]:
     return manifest
 
 
+def _canonical_json_digest(value: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _json_object_without_duplicate_keys(
+    pairs: List[tuple[str, Any]],
+) -> Dict[str, Any]:
+    value: Dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        value[key] = item
+    return value
+
+
+def _formal_task_identity(
+    *,
+    run_directory: Path,
+    task_name: str,
+    formal: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Project the manifest fields that every attempt must independently bind."""
+    manifest = formal.get("manifest")
+    task = formal.get("task_entries", {}).get(task_name)
+    policy = manifest.get("policy") if isinstance(manifest, dict) else None
+    measurement = manifest.get("measurement") if isinstance(manifest, dict) else None
+    comparison = (
+        manifest.get("comparison_contract") if isinstance(manifest, dict) else None
+    )
+    codex = comparison.get("codex") if isinstance(comparison, dict) else None
+    agent = manifest.get("agent") if isinstance(manifest, dict) else None
+    runtime = manifest.get("runtime") if isinstance(manifest, dict) else None
+    gpu = runtime.get("gpu") if isinstance(runtime, dict) else None
+    mappings = gpu.get("task_mapping") if isinstance(gpu, dict) else None
+    exclusivity = gpu.get("exclusivity") if isinstance(gpu, dict) else None
+    if (
+        not isinstance(manifest, dict)
+        or not isinstance(task, dict)
+        or not isinstance(policy, dict)
+        or policy.get("attempts") != 3
+        or not isinstance(measurement, dict)
+        or not isinstance(comparison, dict)
+        or not isinstance(codex, dict)
+        or not isinstance(agent, dict)
+        or agent.get("backend_runtime_closure_sha256")
+        != codex.get("backend_runtime_closure_sha256")
+        or agent.get("template") not in _FORMAL_RECEIPT_SCHEMAS
+        or agent.get("session_receipt_schema")
+        != _FORMAL_RECEIPT_SCHEMAS[agent["template"]]
+        or not isinstance(mappings, list)
+        or not isinstance(exclusivity, dict)
+        or exclusivity.get("exclusivity_verified") is not True
+    ):
+        raise ValueError("formal manifest lacks a complete attempt identity")
+    try:
+        attempt_components = [
+            campaign_task_path_component(name) for name in formal["task_names"]
+        ]
+        attempt_component = campaign_task_path_component(task_name)
+    except (CampaignError, TypeError, UnicodeError) as error:
+        raise ValueError("formal manifest has an unsafe task name") from error
+    if len(attempt_components) != len(set(attempt_components)):
+        raise ValueError("formal manifest task names collide on attempt roots")
+    task_index = task.get("task_index")
+    if type(task_index) is not int or task_index < 1:
+        raise ValueError("formal manifest task index is invalid")
+    matches = [
+        mapping
+        for mapping in mappings
+        if isinstance(mapping, dict)
+        and mapping.get("task_name") == task_name
+        and mapping.get("task_index") == task_index
+    ]
+    if len(matches) != 1:
+        raise ValueError("formal manifest task/GPU mapping is ambiguous")
+    assigned_gpu = matches[0].get("assigned_host_gpu_id")
+    manifest_path = run_directory / "campaign_manifest.yaml"
+    if (
+        not isinstance(assigned_gpu, str)
+        or re.fullmatch(r"0|[1-9][0-9]*", assigned_gpu) is None
+        or not _safe_read_only_file(manifest_path)
+    ):
+        raise ValueError("formal manifest task/GPU binding is incomplete")
+    resolved_manifest = manifest_path.resolve(strict=True)
+    return {
+        "manifest": manifest,
+        "task": task,
+        "policy": policy,
+        "measurement": measurement,
+        "agent_template": agent["template"],
+        "receipt_schema": agent["session_receipt_schema"],
+        "assigned_host_gpu_id": assigned_gpu,
+        "attempt_component": attempt_component,
+        "gpu": gpu,
+        "manifest_path": resolved_manifest,
+        "backend_runtime_closure_sha256": codex.get(
+            "backend_runtime_closure_sha256"
+        ),
+    }
+
+
+def _expected_attempt_campaign_binding(
+    *,
+    identity: Dict[str, Any],
+    formal: Dict[str, Any],
+    task_name: str,
+    attempt: int,
+) -> Dict[str, Any]:
+    task = identity["task"]
+    binding = {
+        "schema": _ATTEMPT_CAMPAIGN_BINDING_SCHEMA,
+        "formal_execution_sha256": identity["manifest"].get(
+            "formal_execution_sha256"
+        ),
+        "campaign_manifest_path": str(identity["manifest_path"]),
+        "campaign_manifest_sha256": formal["campaign_manifest_sha256"],
+        "comparison_contract_sha256": formal[
+            "comparison_contract_sha256"
+        ],
+        "backend_runtime_closure_sha256": identity[
+            "backend_runtime_closure_sha256"
+        ],
+        "task_package_manifest_sha256": task.get("package_manifest_sha256"),
+        "task_config_sha256": task.get("config_sha256"),
+        "task_name": task_name,
+        "task_index": task.get("task_index"),
+        "total_tasks": len(formal["task_names"]),
+        "attempt_index": attempt,
+        "attempt_count": 3,
+        "assigned_host_gpu_id": identity["assigned_host_gpu_id"],
+    }
+    if set(binding) != _ATTEMPT_CAMPAIGN_BINDING_KEYS or any(
+        value is None for value in binding.values()
+    ):
+        raise ValueError("formal attempt campaign binding is incomplete")
+    return binding
+
+
+def _receipt_source_delta_files(receipt: Dict[str, Any]) -> List[str] | None:
+    integrity = receipt.get("workspace_integrity")
+    final_changes = (
+        integrity.get("final_changes") if isinstance(integrity, dict) else None
+    )
+    changed_files = (
+        final_changes.get("changed_files")
+        if isinstance(final_changes, dict)
+        else None
+    )
+    if isinstance(changed_files, list) and all(
+        isinstance(path, str) and path for path in changed_files
+    ):
+        return changed_files
+    return None
+
+
+def _static_session_receipt_binding(
+    receipt: Dict[str, Any], *, agent_template: str
+) -> Dict[str, Any]:
+    """Rebuild receipt fields whose truth is directly recoverable from its bytes."""
+    invocation = receipt.get("invocation")
+    binding: Dict[str, Any] = {
+        "schema": receipt.get("schema"),
+        "comparison_contract_sha256": receipt.get(
+            "comparison_contract_sha256"
+        ),
+        "terminal_status": receipt.get("terminal_status"),
+        "codex": receipt.get("codex"),
+        "invocation_sha256": (
+            _canonical_json_digest(invocation)
+            if isinstance(invocation, dict)
+            else None
+        ),
+        "attempt_process_cleanup": receipt.get("attempt_process_cleanup"),
+        "budgets": receipt.get("budgets"),
+        "turn_budget": receipt.get("turn_budget"),
+        "workspace_integrity": receipt.get("workspace_integrity"),
+        "gpu": receipt.get("gpu"),
+        "lineage": receipt.get("lineage"),
+        "source_delta_files": (
+            _receipt_source_delta_files(receipt)
+            if agent_template == "codex"
+            else None
+        ),
+        "campaign_binding": receipt.get("campaign_binding"),
+    }
+    if agent_template == "apex":
+        lineage = receipt.get("lineage")
+        prompt_event = (
+            lineage.get("prompt_event") if isinstance(lineage, dict) else None
+        )
+        binding["lineage_verified"] = isinstance(lineage, dict)
+        binding["event_bound_prompt"] = (
+            {
+                "binding": prompt_event.get("binding"),
+                "event_id": prompt_event.get("event_id"),
+                "sha256": prompt_event.get("sha256"),
+                "size_bytes": prompt_event.get("size_bytes"),
+                "stdin_transport_attested": prompt_event.get(
+                    "stdin_transport_attested"
+                ),
+            }
+            if isinstance(prompt_event, dict)
+            else None
+        )
+    return binding
+
+
+def _receipt_gpu_binding_valid(
+    receipt: Dict[str, Any], *, identity: Dict[str, Any]
+) -> bool:
+    observed = receipt.get("gpu")
+    expected = identity["gpu"]
+    exclusivity = expected.get("exclusivity")
+    devices = expected.get("devices")
+    selected = [
+        device
+        for device in devices
+        if isinstance(device, dict)
+        and device.get("host_device_id")
+        == identity["assigned_host_gpu_id"]
+    ] if isinstance(devices, list) else []
+    device = selected[0] if len(selected) == 1 else None
+    runtime_identity = (
+        observed.get("runtime_identity") if isinstance(observed, dict) else None
+    )
+    rocm_identity = (
+        runtime_identity.get("rocm_smi_identity")
+        if isinstance(runtime_identity, dict)
+        else None
+    )
+    torch_identity = (
+        runtime_identity.get("torch")
+        if isinstance(runtime_identity, dict)
+        else None
+    )
+    return bool(
+        isinstance(observed, dict)
+        and isinstance(exclusivity, dict)
+        and isinstance(device, dict)
+        and observed.get("policy")
+        == "physical_device_boundary_with_host_exclusivity_v1"
+        and observed.get("plan_sha256")
+        == expected.get("gpu_boundary_plan_sha256")
+        and isinstance(observed.get("boundary_receipt_sha256"), str)
+        and re.fullmatch(r"[0-9a-f]{64}", observed["boundary_receipt_sha256"])
+        is not None
+        and observed.get("exclusivity_receipt_sha256")
+        == exclusivity.get("sha256")
+        and observed.get("exclusivity_verified") is True
+        and observed.get("host_gpu_id") == identity["assigned_host_gpu_id"]
+        and observed.get("unique_id") == device.get("unique_id")
+        and observed.get("allowed_render_nodes") == device.get("render_nodes")
+        and isinstance(runtime_identity, dict)
+        and runtime_identity.get("visible_physical_gpu_count") == 1
+        and isinstance(rocm_identity, dict)
+        and rocm_identity.get("unique_id") == device.get("unique_id")
+        and isinstance(torch_identity, dict)
+        and torch_identity.get("device_count") == 1
+    )
+
+
+def _load_bound_attempt_receipt(
+    *,
+    run_directory: Path,
+    attempt_root: Path,
+    task_name: str,
+    attempt: int,
+    record: Dict[str, Any],
+    formal: Dict[str, Any],
+    identity: Dict[str, Any],
+    require_complete: bool,
+) -> Dict[str, Any]:
+    receipt_path = attempt_root / f"attempt_{attempt:02d}" / "session_receipt.json"
+    expected_relative = str(receipt_path.relative_to(run_directory))
+    if record.get("session_receipt") != expected_relative:
+        raise ValueError(f"attempt {attempt} receipt path is not canonical")
+    _require_regular_directory_chain(
+        receipt_path.parent, run_directory, f"attempt {attempt} receipt parent"
+    )
+    if not _safe_read_only_file(receipt_path):
+        raise ValueError(f"attempt {attempt} receipt is unsafe or mutable")
+    try:
+        receipt_bytes = _read_immutable_file_no_follow(receipt_path)
+        receipt = json.loads(
+            receipt_bytes,
+            object_pairs_hook=_json_object_without_duplicate_keys,
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as error:
+        raise ValueError(f"attempt {attempt} receipt is unreadable") from error
+    if not isinstance(receipt, dict):
+        raise ValueError(f"attempt {attempt} receipt is not a JSON object")
+    if (
+        receipt.get("schema") != identity["receipt_schema"]
+        or record.get("session_receipt_sha256")
+        != hashlib.sha256(receipt_bytes).hexdigest()
+    ):
+        raise ValueError(f"attempt {attempt} receipt schema or digest differs")
+    if not _receipt_gpu_binding_valid(receipt, identity=identity):
+        raise ValueError(f"attempt {attempt} receipt GPU binding differs")
+    expected_campaign_binding = _expected_attempt_campaign_binding(
+        identity=identity,
+        formal=formal,
+        task_name=task_name,
+        attempt=attempt,
+    )
+    observed_campaign_binding = receipt.get("campaign_binding")
+    if (
+        not isinstance(observed_campaign_binding, dict)
+        or set(observed_campaign_binding) != _ATTEMPT_CAMPAIGN_BINDING_KEYS
+        or observed_campaign_binding != expected_campaign_binding
+    ):
+        raise ValueError(f"attempt {attempt} receipt campaign binding differs")
+    observed_binding = record.get("session_receipt_binding")
+    expected_binding = _static_session_receipt_binding(
+        receipt, agent_template=identity["agent_template"]
+    )
+    if (
+        identity["agent_template"] == "apex"
+        and not require_complete
+        and isinstance(observed_binding, dict)
+        and observed_binding.get("lineage_verified") is False
+    ):
+        # The producer's full Apex artifact validator may conservatively clear
+        # these two derived fields on a failed session. All directly copied
+        # fields, including campaign_binding, remain independently checkable.
+        expected_binding["lineage_verified"] = False
+        expected_binding["event_bound_prompt"] = None
+    if (
+        not isinstance(observed_binding, dict)
+        or observed_binding != expected_binding
+        or record.get("session_receipt_binding_sha256")
+        != _canonical_json_digest(expected_binding)
+    ):
+        raise ValueError(f"attempt {attempt} static receipt binding differs")
+    if record.get("session_succeeded") is not (
+        receipt.get("session_succeeded") is True
+    ):
+        raise ValueError(f"attempt {attempt} receipt success projection differs")
+    return receipt
+
+
+def _float_matches(observed: Any, expected: float) -> bool:
+    if isinstance(observed, bool):
+        return False
+    try:
+        parsed = float(observed)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(parsed) and math.isclose(
+        parsed, expected, rel_tol=1e-12, abs_tol=1e-12
+    )
+
+
+def _revalidate_attempt_record(
+    *,
+    run_directory: Path,
+    attempt_root: Path,
+    task_name: str,
+    timestamp: str,
+    attempt: int,
+    record: Dict[str, Any],
+    formal: Dict[str, Any],
+    identity: Dict[str, Any],
+    require_complete: bool,
+) -> Dict[str, Any]:
+    if record.get("session") != f"fresh-{attempt:02d}":
+        raise ValueError(f"attempt {attempt} session identity differs")
+    relative_workspace = record.get("workspace")
+    if relative_workspace is None:
+        if require_complete:
+            raise ValueError(f"attempt {attempt} has no evaluator workspace")
+        if "session_receipt" in record:
+            _load_bound_attempt_receipt(
+                run_directory=run_directory,
+                attempt_root=attempt_root,
+                task_name=task_name,
+                attempt=attempt,
+                record=record,
+                formal=formal,
+                identity=identity,
+                require_complete=False,
+            )
+        if (
+            record.get("central_evaluator_report") is not None
+            or record.get("selection_eligible") is not False
+            or not _float_matches(record.get("measured_rate_per_ms"), 0.0)
+            or record.get("attempt_completed") is not False
+            or not isinstance(record.get("eligibility_errors"), list)
+            or not record["eligibility_errors"]
+        ):
+            raise ValueError(f"attempt {attempt} incomplete record is inconsistent")
+        return {
+            **record,
+            "central_evaluator_report": None,
+            "selection_eligible": False,
+            "measured_rate_per_ms": 0.0,
+        }
+    if not isinstance(relative_workspace, str) or Path(relative_workspace).is_absolute():
+        raise ValueError(f"attempt {attempt} workspace path is invalid")
+    expected_workspace = get_task_workspace_path(
+        attempt_root / f"attempt_{attempt:02d}", task_name, timestamp
+    )
+    workspace = run_directory / relative_workspace
+    if workspace != expected_workspace:
+        raise ValueError(f"attempt {attempt} workspace path is not canonical")
+    _require_regular_directory_chain(
+        workspace, run_directory, f"attempt {attempt} workspace"
+    )
+    receipt = _load_bound_attempt_receipt(
+        run_directory=run_directory,
+        attempt_root=attempt_root,
+        task_name=task_name,
+        attempt=attempt,
+        record=record,
+        formal=formal,
+        identity=identity,
+        require_complete=require_complete,
+    )
+    manifest = _regular_tree_manifest(workspace)
+    manifest_sha256 = _canonical_json_digest(manifest)
+    report_path = workspace / "task_result.yaml"
+    expected_report = str(report_path.relative_to(run_directory))
+    if (
+        record.get("workspace_manifest_sha256") != manifest_sha256
+        or record.get("central_evaluator_report") != expected_report
+        or record.get("central_evaluator_report_sha256")
+        != manifest.get("task_result.yaml")
+    ):
+        raise ValueError(f"attempt {attempt} evaluator lineage differs")
+    try:
+        report = yaml.safe_load(report_path.read_text(encoding="utf-8")) or {}
+    except (OSError, UnicodeError, yaml.YAMLError) as error:
+        raise ValueError(f"attempt {attempt} evaluator result is unreadable") from error
+    if not isinstance(report, dict) or report.get("task_name") != task_name:
+        raise ValueError(f"attempt {attempt} evaluator task identity differs")
+
+    errors = _evaluation_eligibility_errors(workspace, report)
+    source_delta_files = _receipt_source_delta_files(receipt)
+    no_candidate = (
+        identity["agent_template"] == "apex"
+        and receipt.get("terminal_status") == "no_gain"
+    ) or (
+        identity["agent_template"] == "codex" and source_delta_files == []
+    )
+    evaluation_mode = report.get("evaluation_mode")
+    score_eligible = report.get("agent_session_score_eligible")
+    session_succeeded = report.get("agent_session_succeeded")
+    terminal_status = report.get("agent_session_terminal_status")
+    if evaluation_mode is not None or score_eligible is not None:
+        if no_candidate:
+            if evaluation_mode != "no_candidate_baseline_replay_v1":
+                errors.append("no_candidate_evaluation_mode_mismatch")
+            if score_eligible is not False:
+                errors.append("no_candidate_score_eligibility_mismatch")
+            if session_succeeded is not True:
+                errors.append("no_candidate_session_success_mismatch")
+            if terminal_status != "no_gain":
+                errors.append("no_candidate_terminal_status_mismatch")
+        else:
+            if evaluation_mode != "candidate_scoring_v1":
+                errors.append("diagnostic_evaluation_not_scoreable")
+            if score_eligible is not True:
+                errors.append("agent_session_not_score_eligible")
+    if identity["agent_template"] == "apex" and (
+        terminal_status is not None
+        and terminal_status != receipt.get("terminal_status")
+    ):
+        errors.append("apex_report_terminal_status_mismatch")
+    if record.get("attempt_completed") is not True:
+        errors.append("agent_session_or_attempt_failed")
+    if receipt.get("session_succeeded") is not True:
+        errors.append("agent_session_receipt_not_successful")
+    errors = sorted(set(errors))
+    declared_errors = record.get("eligibility_errors")
+    if (
+        not isinstance(declared_errors, list)
+        or declared_errors != sorted(set(declared_errors))
+        or (
+            require_complete
+            and declared_errors != errors
+        )
+        or (
+            not require_complete
+            and not set(errors).issubset(declared_errors)
+        )
+    ):
+        raise ValueError(f"attempt {attempt} eligibility errors differ")
+    optimized = report.get("best_optimized_execution_time")
+    try:
+        optimized_ms = 0.0 if isinstance(optimized, bool) else float(optimized)
+    except (TypeError, ValueError):
+        optimized_ms = 0.0
+    if not math.isfinite(optimized_ms) or optimized_ms <= 0:
+        optimized_ms = 0.0
+    try:
+        raw_speedup = report.get("speedup_ratio") or 0.0
+        speedup = 0.0 if isinstance(raw_speedup, bool) else float(raw_speedup)
+    except (TypeError, ValueError):
+        speedup = 0.0
+    effective_errors = errors if require_complete else declared_errors
+    eligible = not effective_errors and not no_candidate
+    measured_rate = 1.0 / optimized_ms if eligible else 0.0
+    exact_fields = {
+        "pass_compilation": report.get("pass_compilation") is True,
+        "pass_correctness": report.get("pass_correctness") is True,
+        "benchmark_method_consistent": (
+            report.get("benchmark_method_consistent") is True
+        ),
+        "evaluation_mode": evaluation_mode,
+        "agent_session_score_eligible": score_eligible,
+        "agent_session_terminal_status": terminal_status,
+        "selection_eligible": eligible,
+    }
+    if any(record.get(key) != value for key, value in exact_fields.items()):
+        raise ValueError(f"attempt {attempt} evaluator projection differs")
+    if (
+        not _float_matches(record.get("optimized_execution_time_ms"), optimized_ms)
+        or not _float_matches(record.get("speedup_ratio"), speedup)
+        or not _float_matches(record.get("measured_rate_per_ms"), measured_rate)
+    ):
+        raise ValueError(f"attempt {attempt} measured result projection differs")
+    return {
+        **record,
+        "selection_eligible": eligible,
+        "measured_rate_per_ms": measured_rate,
+    }
+
+
+def _revalidate_task_campaign(
+    *,
+    run_directory: Path,
+    task_name: str,
+    formal: Dict[str, Any],
+    require_complete: bool,
+) -> Dict[str, Any]:
+    match = re.match(r"^run_(\d{8}_\d{6})(?:_|$)", run_directory.name)
+    if match is None:
+        raise ValueError("formal run directory has no canonical timestamp")
+    identity = _formal_task_identity(
+        run_directory=run_directory, task_name=task_name, formal=formal
+    )
+    attempt_root = (
+        run_directory / ".campaign_attempts" / identity["attempt_component"]
+    )
+    _require_regular_directory_chain(
+        attempt_root, run_directory, "formal task attempt root"
+    )
+    task_campaign_path = attempt_root / "task_campaign.yaml"
+    if not _safe_read_only_file(task_campaign_path):
+        raise ValueError("task campaign lineage is unsafe or mutable")
+    try:
+        task_campaign_bytes = _read_immutable_file_no_follow(task_campaign_path)
+        task_campaign = yaml.safe_load(task_campaign_bytes) or {}
+    except (OSError, UnicodeError, yaml.YAMLError) as error:
+        raise ValueError("task campaign lineage is unreadable") from error
+    task = identity["task"]
+    expected_top_level = {
+        "schema": "aka.matched-task-attempts/v1",
+        "formal_execution_sha256": identity["manifest"].get(
+            "formal_execution_sha256"
+        ),
+        "task_name": task_name,
+        "assigned_host_gpu_id": identity["assigned_host_gpu_id"],
+        "task_index": task.get("task_index"),
+        "total_tasks": len(formal["task_names"]),
+        "task_config_path": task.get("config_path"),
+        "task_config_sha256": task.get("config_sha256"),
+        "task_package_manifest_sha256": task.get("package_manifest_sha256"),
+        "gpu_exclusivity_verified": True,
+        "campaign_manifest_sha256": formal["campaign_manifest_sha256"],
+        "comparison_contract_sha256": formal[
+            "comparison_contract_sha256"
+        ],
+        "policy": identity["policy"],
+        "measurement_contract": identity["measurement"].get("contract"),
+        "is_apex_canonical_300_sample_grade": identity["measurement"].get(
+            "is_apex_canonical_300_sample_grade"
+        ),
+    }
+    if not isinstance(task_campaign, dict) or any(
+        task_campaign.get(key) != value for key, value in expected_top_level.items()
+    ):
+        raise ValueError("task campaign top-level manifest binding differs")
+    attempts = task_campaign.get("attempts")
+    if not isinstance(attempts, list) or not attempts:
+        raise ValueError("task campaign has no attempt records")
+    if any(not isinstance(record, dict) for record in attempts):
+        raise ValueError("task campaign contains a malformed attempt record")
+    indices = [record.get("attempt") for record in attempts]
+    expected_indices = list(range(1, len(attempts) + 1))
+    if (
+        any(type(index) is not int for index in indices)
+        or indices != expected_indices
+        or len(attempts) > 3
+    ):
+        raise ValueError("task campaign attempt identities are missing or duplicated")
+    if require_complete and indices != [1, 2, 3]:
+        raise ValueError("completed formal task requires attempts exactly 1..3")
+    refreshed = [
+        _revalidate_attempt_record(
+            run_directory=run_directory,
+            attempt_root=attempt_root,
+            task_name=task_name,
+            timestamp=match.group(1),
+            attempt=index,
+            record=record,
+            formal=formal,
+            identity=identity,
+            require_complete=require_complete,
+        )
+        for index, record in enumerate(attempts, 1)
+    ]
+    selected = _select_attempt(refreshed)
+    selected_attempt = selected.get("attempt") if selected is not None else None
+    declared_selected = task_campaign.get("selected_attempt")
+    if declared_selected is not None and type(declared_selected) is not int:
+        raise ValueError("task campaign selected attempt identity is invalid")
+    all_evaluated = len(refreshed) == 3 and all(
+        record.get("central_evaluator_report") is not None for record in refreshed
+    )
+    all_sessions = len(refreshed) == 3 and all(
+        record.get("attempt_completed") is True for record in refreshed
+    )
+    if (
+        declared_selected != selected_attempt
+        or task_campaign.get("all_attempts_centrally_evaluated") is not all_evaluated
+        or task_campaign.get("all_agent_sessions_succeeded") is not all_sessions
+        or task_campaign.get("failure_reasons")
+        != _campaign_failure_reasons(task_campaign)
+    ):
+        raise ValueError("task campaign derived selection or completion differs")
+    if require_complete and (
+        task_campaign.get("campaign_manifest_unchanged") is not True
+        or task_campaign.get("within_evaluator_allowance") is not True
+        or task_campaign.get("within_task_timeout") is not True
+        or task_campaign.get("failure_reasons") != []
+        or selected is None
+        or selected.get("selection_eligible") is not True
+    ):
+        raise ValueError("task campaign does not prove a completed task")
+    return {
+        "task_campaign": task_campaign,
+        "task_campaign_path": task_campaign_path,
+        "task_campaign_sha256": hashlib.sha256(task_campaign_bytes).hexdigest(),
+        "selected": selected,
+        "attempt_root": attempt_root,
+        "timestamp": match.group(1),
+    }
+
+
 def _validate_canonical_lineage(
     *,
     run_directory: Path,
@@ -601,55 +1296,25 @@ def _validate_canonical_lineage(
     if not isinstance(campaign_evidence, dict):
         raise ValueError("canonical task result lacks campaign lineage")
 
-    task_campaign_path = (
-        run_directory
-        / ".campaign_attempts"
-        / task_name.replace("/", "_")
-        / "task_campaign.yaml"
+    validation = _revalidate_task_campaign(
+        run_directory=run_directory,
+        task_name=task_name,
+        formal=formal,
+        require_complete=True,
     )
-    if not _safe_read_only_file(task_campaign_path):
-        raise ValueError("canonical task campaign lineage is unsafe or mutable")
-    task_campaign_sha256 = _sha256_file(task_campaign_path)
-    task_campaign = yaml.safe_load(
-        task_campaign_path.read_text(encoding="utf-8")
-    ) or {}
-    if not isinstance(task_campaign, dict):
-        raise ValueError("canonical task campaign lineage is unreadable")
-    selected_attempt = task_campaign.get("selected_attempt")
-    attempts = task_campaign.get("attempts")
-    selected_records = [
-        record
-        for record in attempts
-        if isinstance(record, dict) and record.get("attempt") == selected_attempt
-    ] if isinstance(attempts, list) else []
-    if (
-        task_campaign.get("schema") != "aka.matched-task-attempts/v1"
-        or task_campaign.get("task_name") != task_name
-        or task_campaign.get("campaign_manifest_sha256")
-        != formal["campaign_manifest_sha256"]
-        or task_campaign.get("comparison_contract_sha256")
-        != formal["comparison_contract_sha256"]
-        or task_campaign.get("campaign_manifest_unchanged") is not True
-        or task_campaign.get("all_attempts_centrally_evaluated") is not True
-        or task_campaign.get("all_agent_sessions_succeeded") is not True
-        or task_campaign.get("within_evaluator_allowance") is not True
-        or task_campaign.get("within_task_timeout") is not True
-        or task_campaign.get("failure_reasons") != []
-        or type(selected_attempt) is not int
-        or selected_attempt < 1
-        or len(selected_records) != 1
-        or selected_records[0].get("selection_eligible") is not True
-    ):
-        raise ValueError("canonical task campaign does not prove a completed task")
-    selected = selected_records[0]
+    task_campaign_path = validation["task_campaign_path"]
+    task_campaign_sha256 = validation["task_campaign_sha256"]
+    task_campaign = validation["task_campaign"]
+    selected = validation["selected"]
+    selected_attempt = selected["attempt"]
     relative_workspace = selected.get("workspace")
     if not isinstance(relative_workspace, str):
         raise ValueError("selected attempt has no workspace lineage")
     if Path(relative_workspace).is_absolute():
         raise ValueError("selected attempt workspace must be run-relative")
-    attempt_directory = task_campaign_path.parent / f"attempt_{selected_attempt:02d}"
+    attempt_directory = validation["attempt_root"] / f"attempt_{selected_attempt:02d}"
     expected_selected_workspace = get_task_workspace_path(
-        attempt_directory, task_name, match.group(1)
+        attempt_directory, task_name, validation["timestamp"]
     )
     selected_workspace = run_directory / relative_workspace
     if selected_workspace != expected_selected_workspace:
@@ -783,7 +1448,7 @@ def _validated_failure_binding(
                 continue
             try:
                 payload = yaml.safe_load(
-                    descriptor.read_text(encoding="utf-8")
+                    _read_immutable_file_no_follow(descriptor)
                 ) or {}
             except (OSError, UnicodeError, yaml.YAMLError):
                 marker_payloads.append((descriptor, {}))
@@ -828,7 +1493,7 @@ def _validated_failure_binding(
     evidence_path = (
         run_directory
         / ".campaign_attempts"
-        / task_name.replace("/", "_")
+        / campaign_task_path_component(task_name)
         / "task_campaign.yaml"
     )
     evidence_relative: str | None = None
@@ -838,20 +1503,28 @@ def _validated_failure_binding(
     evidence: Dict[str, Any] | None = None
     if _safe_read_only_file(evidence_path):
         try:
-            loaded = yaml.safe_load(evidence_path.read_text(encoding="utf-8")) or {}
+            loaded = yaml.safe_load(
+                _read_immutable_file_no_follow(evidence_path)
+            ) or {}
         except (OSError, UnicodeError, yaml.YAMLError):
             loaded = None
         if isinstance(loaded, dict):
             evidence = loaded
             recomputed_reasons = _campaign_failure_reasons(evidence)
             raw_reasons = evidence.get("failure_reasons")
+            try:
+                _revalidate_task_campaign(
+                    run_directory=run_directory,
+                    task_name=task_name,
+                    formal=formal,
+                    require_complete=False,
+                )
+            except (OSError, UnicodeError, ValueError, yaml.YAMLError):
+                posthoc_valid = False
+            else:
+                posthoc_valid = True
             if (
-                evidence.get("schema") != "aka.matched-task-attempts/v1"
-                or evidence.get("task_name") != task_name
-                or evidence.get("campaign_manifest_sha256")
-                != formal["campaign_manifest_sha256"]
-                or evidence.get("comparison_contract_sha256")
-                != formal["comparison_contract_sha256"]
+                not posthoc_valid
                 or raw_reasons != recomputed_reasons
                 or not recomputed_reasons
             ):

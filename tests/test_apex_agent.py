@@ -28,6 +28,136 @@ from src.prompt_builder import prompt_builder as render_task_prompt
 apex_launcher = importlib.import_module("agents.apex.launch_agent")
 
 _BACKEND_RUNTIME_CLOSURE_SHA256 = "e" * 64
+_FORMAL_TASK_COMPONENT = apex_launcher.campaign_task_path_component("task")
+
+
+def _campaign_binding_stub() -> dict[str, object]:
+    return {
+        "schema": "aka.attempt-campaign-binding/v1",
+        "formal_execution_sha256": "a" * 64,
+        "campaign_manifest_path": "/campaign/campaign_manifest.yaml",
+        "campaign_manifest_sha256": "b" * 64,
+        "comparison_contract_sha256": "c" * 64,
+        "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256,
+        "task_package_manifest_sha256": "d" * 64,
+        "task_config_sha256": "f" * 64,
+        "task_name": "task",
+        "task_index": 1,
+        "total_tasks": 1,
+        "attempt_index": 1,
+        "attempt_count": 3,
+        "assigned_host_gpu_id": "0",
+    }
+
+
+def _install_campaign_binding(
+    *,
+    eval_config: dict[str, object],
+    task_config_path: Path,
+    manifest_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, object]:
+    package_files = {
+        path.relative_to(task_config_path.parent).as_posix(): hashlib.sha256(
+            path.read_bytes()
+        ).hexdigest()
+        for path in sorted(task_config_path.parent.rglob("*"))
+        if path.is_file()
+    }
+    package_digest = apex_launcher._canonical_digest(package_files)
+    config_digest = hashlib.sha256(task_config_path.read_bytes()).hexdigest()
+    policy = {"attempts": 3}
+    comparison = {
+        "policy": policy,
+        "codex": {
+            "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256
+        },
+    }
+    manifest = {
+        "schema": "aka.matched-campaign/v1",
+        "formal_execution_sha256": "a" * 64,
+        "policy": policy,
+        "comparison_contract": comparison,
+        "comparison_contract_sha256": apex_launcher._canonical_digest(comparison),
+        "agent": {
+            "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256
+        },
+        "configuration": {
+            "tasks": [
+                {
+                    "task_index": 1,
+                    "task_name": "task",
+                    "config_path": str(task_config_path.resolve(strict=True)),
+                    "config_sha256": config_digest,
+                    "package_files_sha256": package_files,
+                    "package_manifest_sha256": package_digest,
+                }
+            ]
+        },
+        "runtime": {
+            "gpu": {
+                "task_mapping": [
+                    {
+                        "task_index": 1,
+                        "task_name": "task",
+                        "assigned_host_gpu_id": "0",
+                    }
+                ]
+            }
+        },
+    }
+    manifest_root.mkdir(parents=True, exist_ok=True)
+    manifest_path = (manifest_root / "campaign_manifest.yaml").resolve()
+    manifest_path.write_text(
+        yaml.safe_dump(manifest, sort_keys=True), encoding="utf-8"
+    )
+    manifest_path.chmod(0o444)
+    binding = {
+        "schema": "aka.attempt-campaign-binding/v1",
+        "formal_execution_sha256": manifest["formal_execution_sha256"],
+        "campaign_manifest_path": str(manifest_path),
+        "campaign_manifest_sha256": hashlib.sha256(
+            manifest_path.read_bytes()
+        ).hexdigest(),
+        "comparison_contract_sha256": manifest["comparison_contract_sha256"],
+        "backend_runtime_closure_sha256": _BACKEND_RUNTIME_CLOSURE_SHA256,
+        "task_package_manifest_sha256": package_digest,
+        "task_config_sha256": config_digest,
+        "task_name": "task",
+        "task_index": 1,
+        "total_tasks": 1,
+        "attempt_index": 1,
+        "attempt_count": 3,
+        "assigned_host_gpu_id": "0",
+    }
+    attempt = eval_config.setdefault("campaign_attempt", {})
+    assert isinstance(attempt, dict)
+    attempt.update(
+        {
+            "formal_execution_sha256": binding["formal_execution_sha256"],
+            "campaign_manifest_path": binding["campaign_manifest_path"],
+            "campaign_manifest_sha256": binding["campaign_manifest_sha256"],
+            "comparison_contract_sha256": binding[
+                "comparison_contract_sha256"
+            ],
+            "backend_runtime_closure_sha256": binding[
+                "backend_runtime_closure_sha256"
+            ],
+            "task_package_manifest_sha256": binding[
+                "task_package_manifest_sha256"
+            ],
+            "task_config_sha256": binding["task_config_sha256"],
+            "task_name": "task",
+            "task_index": 1,
+            "total_tasks": 1,
+            "index": 1,
+            "count": 3,
+            "assigned_host_gpu_id": "0",
+        }
+    )
+    eval_config["assigned_host_gpu_id"] = "0"
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_HOST_GPU_ID", "0")
+    return binding
 
 
 def _write_yaml(path: Path, value: object) -> None:
@@ -510,6 +640,7 @@ def test_formal_task_spec_binds_run_control_and_exact_python(
         workspace=workspace,
         artifact_root=artifact_root,
         prompt="BASE PROMPT",
+        campaign_binding=_campaign_binding_stub(),
     )
 
     control = spec["caller_run_control"]
@@ -559,6 +690,77 @@ def test_formal_task_spec_requires_caller_python(tmp_path, monkeypatch) -> None:
             workspace=workspace,
             artifact_root=artifact_root,
             prompt="BASE PROMPT",
+            campaign_binding=_campaign_binding_stub(),
+        )
+
+
+def test_formal_apex_campaign_binding_rejects_cross_task_transplant_before_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace, config_path = _task(tmp_path)
+    receipt_path = (
+        workspace.parent
+        / ".campaign_attempts"
+        / _FORMAL_TASK_COMPONENT
+        / "attempt_01/session_receipt.json"
+    )
+    eval_config: dict[str, object] = {
+        "campaign": {"comparison": "apex_vs_codex"},
+        "campaign_attempt": {
+            "fresh_session": True,
+            "receipt_path": str(receipt_path),
+        },
+    }
+    _install_campaign_binding(
+        eval_config=eval_config,
+        task_config_path=config_path,
+        manifest_root=workspace.parent,
+        monkeypatch=monkeypatch,
+    )
+    attempt = eval_config["campaign_attempt"]
+    assert isinstance(attempt, dict)
+    attempt["task_name"] = "other-task"
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="task or GPU mapping differs",
+    ):
+        apex_launcher._campaign_binding(
+            eval_config, config_path, formal_campaign=True
+        )
+
+
+def test_formal_apex_campaign_binding_rejects_mutable_manifest_before_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace, config_path = _task(tmp_path)
+    receipt_path = (
+        workspace.parent
+        / ".campaign_attempts"
+        / _FORMAL_TASK_COMPONENT
+        / "attempt_01/session_receipt.json"
+    )
+    eval_config: dict[str, object] = {
+        "campaign": {"comparison": "apex_vs_codex"},
+        "campaign_attempt": {
+            "fresh_session": True,
+            "receipt_path": str(receipt_path),
+        },
+    }
+    binding = _install_campaign_binding(
+        eval_config=eval_config,
+        task_config_path=config_path,
+        manifest_root=workspace.parent,
+        monkeypatch=monkeypatch,
+    )
+    Path(str(binding["campaign_manifest_path"])).chmod(0o644)
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="single-link read-only regular file",
+    ):
+        apex_launcher._campaign_binding(
+            eval_config, config_path, formal_campaign=True
         )
 
 
@@ -1054,7 +1256,13 @@ def _formal_apex_launch_fixture(
         text=True,
     ).stdout.strip()
     attempt_root = workspace.parent
-    receipt_path = attempt_root / "session_receipt.json"
+    receipt_path = (
+        attempt_root
+        / ".campaign_attempts"
+        / _FORMAL_TASK_COMPONENT
+        / "attempt_01"
+        / "session_receipt.json"
+    )
     eval_config = {
         "target_gpu_model": "MI355X",
         "campaign": {
@@ -1071,6 +1279,12 @@ def _formal_apex_launch_fixture(
         },
     }
     captured: dict[str, object] = {}
+    captured["campaign_binding"] = _install_campaign_binding(
+        eval_config=eval_config,
+        task_config_path=config_path,
+        manifest_root=attempt_root,
+        monkeypatch=monkeypatch,
+    )
     monkeypatch.setenv("AGENT_KERNEL_ARENA_APEX_COMMIT", apex_commit)
     monkeypatch.setenv("AGENT_KERNEL_ARENA_APEX_DIRTY", "false")
     monkeypatch.setenv(
@@ -1149,8 +1363,8 @@ def _formal_apex_launch_fixture(
 
     def fake_home(config, *, backend):
         del config, backend
-        home = attempt_root / ".agent-home"
-        home.mkdir()
+        home = receipt_path.parent / ".agent-home"
+        home.mkdir(parents=True)
         return home
 
     def fake_wrap(
@@ -1376,7 +1590,14 @@ def test_formal_apex_mount_contract_keeps_scored_workspace_read_only(
     assert receipt_path.parent not in captured["writable_roots"]
     assert workspace not in captured["writable_roots"]
     integrity = captured["receipt"]["workspace_integrity"]
-    assert captured["receipt"]["comparison_contract_sha256"] == "d" * 64
+    assert captured["receipt"]["comparison_contract_sha256"] == captured[
+        "campaign_binding"
+    ]["comparison_contract_sha256"]
+    assert captured["receipt"]["campaign_binding"] == captured["campaign_binding"]
+    assert spec["campaign_binding"] == captured["campaign_binding"]
+    assert captured["receipt"]["lineage"][
+        "campaign_binding_sha256"
+    ] == apex_launcher._canonical_digest(captured["campaign_binding"])
     attempt_mounts = captured["receipt"]["attempt_mounts"]
     assert runtime_mount["policy_id"] == (
         campaign_isolation.APEX_RUNTIME_MOUNT_POLICY
@@ -1871,6 +2092,8 @@ def _lineage_fixture(
     prompt_objective: str | None = None,
     containment_terminal_overlap: bool = False,
 ) -> tuple[dict[str, object], Path]:
+    if not isinstance(spec.get("campaign_binding"), dict):
+        spec["campaign_binding"] = _campaign_binding_stub()
     run_id = "run-fixture"
     attempt_id = "attempt-fixture"
     run_root = artifact_root / "runs" / run_id

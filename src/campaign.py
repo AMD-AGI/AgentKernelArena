@@ -79,6 +79,25 @@ from src.preprocessing import get_task_workspace_path
 
 _CAMPAIGN_SCHEMA = "aka.matched-campaign/v1"
 _TASK_SCHEMA = "aka.matched-task-attempts/v1"
+_CAMPAIGN_BINDING_SCHEMA = "aka.attempt-campaign-binding/v1"
+_CAMPAIGN_BINDING_KEYS = frozenset(
+    {
+        "schema",
+        "formal_execution_sha256",
+        "campaign_manifest_path",
+        "campaign_manifest_sha256",
+        "comparison_contract_sha256",
+        "backend_runtime_closure_sha256",
+        "task_package_manifest_sha256",
+        "task_config_sha256",
+        "task_name",
+        "task_index",
+        "total_tasks",
+        "attempt_index",
+        "attempt_count",
+        "assigned_host_gpu_id",
+    }
+)
 _SELECTION_POLICY = "correctness_then_measured_rate_v1"
 _MEASUREMENT_CONTRACT = "aka_native_100_repetition_external_score"
 _OBJECTIVE_POLICY_ID = "aka.task-package-objective-and-protected-harness/v1"
@@ -136,6 +155,18 @@ _FORMAL_LIVE_COMMITMENT_SHA256 = hashlib.sha256(
 # Public, immutable generation marker for queue/worker entrypoints that must
 # reject historical campaign artifacts before they perform any evaluation.
 FORMAL_LIVE_EXECUTION_SHA256 = _FORMAL_LIVE_COMMITMENT_SHA256
+FORMAL_AGENT_TRANSPORT_TREATMENTS = {
+    "apex": {
+        "max_process_output_bytes": 4 * 1024 * 1024,
+        "structured_stream_output_limit_bytes": 16 * 1024 * 1024,
+        "overflow_policy": "apex_inner_supervisor_bounded_truncation",
+    },
+    "codex": {
+        "max_process_output_bytes": 16 * 1024 * 1024,
+        "structured_stream_output_limit_bytes": 16 * 1024 * 1024,
+        "overflow_policy": "fail_closed_after_bounded_drain",
+    },
+}
 
 
 class CampaignError(RuntimeError):
@@ -282,6 +313,41 @@ def deterministic_task_gpu_mapping(task_names: list[str]) -> list[dict[str, Any]
         }
         for index, task_name in enumerate(task_names, 1)
     ]
+
+
+def campaign_task_path_component(task_name: str) -> str:
+    """Map an untrusted task name to one collision-resistant path component."""
+
+    if not isinstance(task_name, str) or not task_name or "\x00" in task_name:
+        raise CampaignError("campaign task name must be non-empty UTF-8 text")
+    try:
+        encoded = task_name.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise CampaignError("campaign task name is not valid UTF-8 text") from error
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "_", task_name).strip("._-")
+    slug = (slug[:80] or "task").rstrip("._-") or "task"
+    digest = _sha256_bytes(encoded)
+    component = f"{slug}--{digest}"
+    if component in {".", ".."} or "/" in component or "\\" in component:
+        raise CampaignError("campaign task path component is unsafe")
+    return component
+
+
+def _campaign_task_paths_valid(manifest: dict[str, Any]) -> bool:
+    configuration = manifest.get("configuration")
+    tasks = configuration.get("tasks") if isinstance(configuration, dict) else None
+    if not isinstance(tasks, list) or not tasks:
+        return False
+    try:
+        names = [task.get("task_name") for task in tasks if isinstance(task, dict)]
+        components = [campaign_task_path_component(name) for name in names]
+    except (CampaignError, TypeError):
+        return False
+    return bool(
+        len(names) == len(tasks)
+        and len(names) == len(set(names))
+        and len(components) == len(set(components))
+    )
 
 
 def _load_mapping(path: Path, label: str) -> dict[str, Any]:
@@ -643,8 +709,18 @@ def _agent_manifest(
         raise CampaignError(
             f"matched campaign requires max_turns={FORMAL_MATCHED_MAX_TURNS}"
         )
-    if int(config.get("structured_stream_output_limit_bytes", 0)) != 16 * 1024 * 1024:
-        raise CampaignError("matched campaign requires a 16 MiB inner Codex stream bound")
+    transport = FORMAL_AGENT_TRANSPORT_TREATMENTS.get(agent_name)
+    if transport is None or (
+        int(config.get("max_process_output_bytes", 0))
+        != transport["max_process_output_bytes"]
+        or int(config.get("structured_stream_output_limit_bytes", 0))
+        != transport["structured_stream_output_limit_bytes"]
+        or config.get("structured_stream_overflow_policy")
+        != transport["overflow_policy"]
+    ):
+        raise CampaignError(
+            f"matched campaign {agent_name} transport policy violates its pin"
+        )
     codex = shutil.which("codex")
     if not codex:
         raise CampaignError("codex CLI is unavailable for campaign provenance")
@@ -839,17 +915,16 @@ def _v5_manifest_contract_valid(
     )
     runtime = manifest.get("runtime")
     comparison_runtime = comparison.get("runtime")
-    aka_runtime = (
-        runtime.get("aka_execution_snapshot") if isinstance(runtime, dict) else None
-    )
-    comparison_aka_runtime = (
-        comparison_runtime.get("aka_execution_snapshot")
-        if isinstance(comparison_runtime, dict)
-        else None
-    )
+    projected_runtime = comparison_runtime_projection(runtime)
     agent = manifest.get("agent")
     comparison_codex = comparison.get("codex")
+    transport_treatments = comparison.get("agent_transport_treatments")
     evaluator = manifest.get("evaluator_files_sha256")
+    agent_transport = (
+        transport_treatments.get(agent.get("template"))
+        if isinstance(agent, dict) and isinstance(transport_treatments, dict)
+        else None
+    )
     return bool(
         isinstance(repositories, dict)
         and comparison_repositories == repositories
@@ -864,8 +939,16 @@ def _v5_manifest_contract_valid(
         == agent.get("backend_runtime_closure_sha256")
         and comparison_codex.get("backend_runtime_closure")
         == agent.get("backend_runtime_closure")
-        and isinstance(aka_runtime, dict)
-        and comparison_aka_runtime == aka_runtime
+        and transport_treatments == FORMAL_AGENT_TRANSPORT_TREATMENTS
+        and isinstance(agent_transport, dict)
+        and agent.get("max_process_output_bytes")
+        == agent_transport.get("max_process_output_bytes")
+        and agent.get("structured_stream_output_limit_bytes")
+        == agent_transport.get("structured_stream_output_limit_bytes")
+        and agent.get("structured_stream_overflow_policy")
+        == agent_transport.get("overflow_policy")
+        and projected_runtime is not None
+        and comparison_runtime == projected_runtime
         and comparison.get("evaluator_files_sha256") == evaluator
         and isinstance(apex, dict)
         and _SHA1.fullmatch(str(apex.get("commit") or ""))
@@ -886,6 +969,7 @@ def _v5_manifest_contract_valid(
         and comparison.get("formal_execution") == _FORMAL_LIVE_COMMITMENT
         and comparison.get("formal_execution_sha256")
         == _FORMAL_LIVE_COMMITMENT_SHA256
+        and _campaign_task_paths_valid(manifest)
         and _revalidate_aka_runtime(manifest)
     )
 
@@ -1140,6 +1224,71 @@ def _image_manifest() -> dict[str, Any]:
     }
 
 
+def _comparison_aka_runtime_snapshot(snapshot: Any) -> dict[str, Any] | None:
+    """Project one per-run mount receipt into stable A/B contract evidence."""
+
+    if not isinstance(snapshot, dict):
+        return None
+    receipt = snapshot.get("mount_receipt")
+    mount = receipt.get("mount") if isinstance(receipt, dict) else None
+    if not isinstance(receipt, dict) or not isinstance(mount, dict):
+        return None
+    return {
+        "schema": "aka.execution-snapshot-comparison/v1",
+        "runtime_schema": snapshot.get("schema"),
+        "manifest_sha256": snapshot.get("manifest_sha256"),
+        "manifest_file_sha256": snapshot.get("manifest_file_sha256"),
+        "mount_receipt_schema": snapshot.get("mount_receipt_schema"),
+        "mount_contract": {
+            "schema": receipt.get("schema"),
+            "policy_id": receipt.get("policy_id"),
+            "manifest_sha256": receipt.get("manifest_sha256"),
+            "image_sha256": receipt.get("image_sha256"),
+            "memfd_seals": receipt.get("memfd_seals"),
+            "mount": {
+                "filesystem_type": mount.get("filesystem_type"),
+                "read_only": mount.get("read_only"),
+                "root": mount.get("root"),
+                "nested_mounts": mount.get("nested_mounts"),
+            },
+        },
+    }
+
+
+def comparison_runtime_projection(runtime: Any) -> dict[str, Any] | None:
+    """Return stable runtime evidence shared by matched formal campaign arms."""
+
+    if not isinstance(runtime, dict):
+        return None
+    comparison_runtime = dict(runtime)
+    runtime_gpu = runtime.get("gpu")
+    if isinstance(runtime_gpu, dict):
+        comparison_gpu = dict(runtime_gpu)
+        exclusivity = comparison_gpu.pop("exclusivity", None)
+        if isinstance(exclusivity, dict):
+            leases = exclusivity.get("leases")
+            comparison_gpu["exclusivity_contract"] = {
+                "policy": exclusivity.get("policy"),
+                "gpu_boundary_plan_sha256": exclusivity.get(
+                    "gpu_boundary_plan_sha256"
+                ),
+                "protected_device_paths": exclusivity.get("protected_device_paths"),
+                "leased_unique_ids": sorted(
+                    lease.get("unique_id")
+                    for lease in leases
+                    if isinstance(lease, dict)
+                    and isinstance(lease.get("unique_id"), str)
+                )
+                if isinstance(leases, list)
+                else None,
+            }
+        comparison_runtime["gpu"] = comparison_gpu
+    comparison_runtime["aka_execution_snapshot"] = (
+        _comparison_aka_runtime_snapshot(runtime.get("aka_execution_snapshot"))
+    )
+    return comparison_runtime
+
+
 def _comparison_contract(
     *,
     policy: CampaignPolicy,
@@ -1190,29 +1339,9 @@ def _comparison_contract(
             "isolation",
         )
     }
-    comparison_runtime = dict(runtime)
-    runtime_gpu = runtime.get("gpu")
-    if isinstance(runtime_gpu, dict):
-        comparison_gpu = dict(runtime_gpu)
-        exclusivity = comparison_gpu.pop("exclusivity", None)
-        if isinstance(exclusivity, dict):
-            leases = exclusivity.get("leases")
-            comparison_gpu["exclusivity_contract"] = {
-                "policy": exclusivity.get("policy"),
-                "gpu_boundary_plan_sha256": exclusivity.get(
-                    "gpu_boundary_plan_sha256"
-                ),
-                "protected_device_paths": exclusivity.get("protected_device_paths"),
-                "leased_unique_ids": sorted(
-                    lease.get("unique_id")
-                    for lease in leases
-                    if isinstance(lease, dict)
-                    and isinstance(lease.get("unique_id"), str)
-                )
-                if isinstance(leases, list)
-                else None,
-            }
-        comparison_runtime["gpu"] = comparison_gpu
+    comparison_runtime = comparison_runtime_projection(runtime)
+    if comparison_runtime is None:
+        raise CampaignError("comparison runtime evidence is malformed")
     return {
         "schema": _COMPARISON_CONTRACT_SCHEMA_V5,
         "formal_execution": dict(_FORMAL_LIVE_COMMITMENT),
@@ -1227,6 +1356,10 @@ def _comparison_contract(
         "measurement": measurement,
         "repositories": repositories,
         "apex_treatment": apex_treatment,
+        "agent_transport_treatments": {
+            key: dict(value)
+            for key, value in FORMAL_AGENT_TRANSPORT_TREATMENTS.items()
+        },
         "codex": effective_codex,
         "runtime": comparison_runtime,
         "evaluator_files_sha256": evaluator,
@@ -1390,6 +1523,7 @@ def _attempt_record(
             record["session_succeeded"] = receipt.get("session_succeeded") is True
             binding = {
                 "schema": receipt.get("schema"),
+                "campaign_binding": receipt.get("campaign_binding"),
                 "comparison_contract_sha256": receipt.get(
                     "comparison_contract_sha256"
                 ),
@@ -2551,6 +2685,134 @@ def _comparison_contract_receipt_errors(
     return []
 
 
+def _campaign_binding_receipt_errors(
+    receipt: dict[str, Any],
+    *,
+    receipt_path: Path,
+    run_directory: Path,
+    expected_task_name: str | None,
+) -> list[str]:
+    """Rebuild the exact attempt-to-campaign binding from immutable evidence."""
+
+    binding = receipt.get("campaign_binding")
+    if not isinstance(binding, dict):
+        return ["missing_attempt_campaign_binding"]
+    if set(binding) != _CAMPAIGN_BINDING_KEYS:
+        return ["attempt_campaign_binding_key_set_mismatch"]
+    try:
+        manifest = _load_verified_campaign_manifest(run_directory)
+        manifest_path = (run_directory / "campaign_manifest.yaml").resolve(strict=True)
+        if not _safe_read_only_file(manifest_path):
+            raise CampaignError("campaign manifest is not immutable")
+        configuration = manifest.get("configuration")
+        tasks = configuration.get("tasks") if isinstance(configuration, dict) else None
+        runtime = manifest.get("runtime")
+        gpu = runtime.get("gpu") if isinstance(runtime, dict) else None
+        mappings = gpu.get("task_mapping") if isinstance(gpu, dict) else None
+        policy = manifest.get("policy")
+        comparison = manifest.get("comparison_contract")
+        comparison_policy = (
+            comparison.get("policy") if isinstance(comparison, dict) else None
+        )
+        agent = manifest.get("agent")
+        if (
+            not isinstance(tasks, list)
+            or not tasks
+            or not isinstance(mappings, list)
+            or len(mappings) != len(tasks)
+            or not isinstance(policy, dict)
+            or comparison_policy != policy
+            or not isinstance(agent, dict)
+        ):
+            raise CampaignError("campaign binding source is malformed")
+        task_index = binding.get("task_index")
+        attempt_index = binding.get("attempt_index")
+        attempt_count = binding.get("attempt_count")
+        if (
+            type(task_index) is not int
+            or not 1 <= task_index <= len(tasks)
+            or type(attempt_index) is not int
+            or type(attempt_count) is not int
+            or attempt_count != policy.get("attempts")
+            or not 1 <= attempt_index <= attempt_count
+        ):
+            raise CampaignError("campaign binding indices are invalid")
+        task = tasks[task_index - 1]
+        mapping = mappings[task_index - 1]
+        if not isinstance(task, dict) or not isinstance(mapping, dict):
+            raise CampaignError("campaign binding task entry is malformed")
+        task_name = task.get("task_name")
+        if (
+            not isinstance(task_name, str)
+            or not task_name
+            or task.get("task_index") != task_index
+            or mapping.get("task_index") != task_index
+            or mapping.get("task_name") != task_name
+            or (
+                expected_task_name is not None
+                and task_name != expected_task_name
+            )
+        ):
+            raise CampaignError("campaign binding task identity is invalid")
+        task_config_path = Path(str(task.get("config_path") or "")).resolve(
+            strict=True
+        )
+        task_config_metadata = task_config_path.lstat()
+        if (
+            not task_config_path.is_file()
+            or task_config_path.is_symlink()
+            or task_config_metadata.st_nlink != 1
+            or _sha256_file(task_config_path) != task.get("config_sha256")
+        ):
+            raise CampaignError("campaign binding task config changed")
+        package_files = _regular_tree_manifest(task_config_path.parent)
+        package_digest = _sha256_bytes(
+            json.dumps(
+                package_files, sort_keys=True, separators=(",", ":")
+            ).encode()
+        )
+        if (
+            package_files != task.get("package_files_sha256")
+            or package_digest != task.get("package_manifest_sha256")
+        ):
+            raise CampaignError("campaign binding task package changed")
+        if expected_task_name is not None:
+            expected_receipt_path = (
+                run_directory
+                / ".campaign_attempts"
+                / campaign_task_path_component(task_name)
+                / f"attempt_{attempt_index:02d}"
+                / "session_receipt.json"
+            ).resolve(strict=True)
+            if receipt_path.resolve(strict=True) != expected_receipt_path:
+                raise CampaignError("campaign binding receipt path is noncanonical")
+        expected = {
+            "schema": _CAMPAIGN_BINDING_SCHEMA,
+            "formal_execution_sha256": manifest.get(
+                "formal_execution_sha256"
+            ),
+            "campaign_manifest_path": str(manifest_path),
+            "campaign_manifest_sha256": _sha256_file(manifest_path),
+            "comparison_contract_sha256": manifest.get(
+                "comparison_contract_sha256"
+            ),
+            "backend_runtime_closure_sha256": agent.get(
+                "backend_runtime_closure_sha256"
+            ),
+            "task_package_manifest_sha256": package_digest,
+            "task_config_sha256": task.get("config_sha256"),
+            "task_name": task_name,
+            "task_index": task_index,
+            "total_tasks": len(tasks),
+            "attempt_index": attempt_index,
+            "attempt_count": attempt_count,
+            "assigned_host_gpu_id": mapping.get("assigned_host_gpu_id"),
+        }
+    except (CampaignError, OSError, TypeError, ValueError):
+        return ["attempt_campaign_binding_source_invalid"]
+    return [] if binding == expected else ["attempt_campaign_binding_mismatch"]
+
+
 def _expected_gpu_contract(run_directory: Path) -> dict[str, Any] | None:
     try:
         manifest = _load_verified_campaign_manifest(run_directory)
@@ -2660,8 +2922,17 @@ def _validate_session_receipt(
         )
         return receipt, [mismatch]
 
+    errors.extend(
+        _campaign_binding_receipt_errors(
+            receipt,
+            receipt_path=receipt_path,
+            run_directory=run_directory,
+            expected_task_name=expected_task_name,
+        )
+    )
+
     if expected_schema in _APEX_RECEIPT_SCHEMAS:
-        return _validate_apex_session_receipt(
+        apex_receipt, apex_errors = _validate_apex_session_receipt(
             receipt=receipt,
             receipt_path=receipt_path,
             workspace=workspace,
@@ -2669,6 +2940,7 @@ def _validate_session_receipt(
             expected_task_name=expected_task_name,
             expected_receipt_schema=expected_schema,
         )
+        return apex_receipt, sorted(set(errors + apex_errors))
 
     errors.extend(
         _comparison_contract_receipt_errors(
@@ -4335,6 +4607,9 @@ def _validate_apex_session_receipt(
     except CampaignError:
         return receipt, sorted(set(errors + ["apex_lineage_json_unreadable"]))
     if expected_receipt_schema == _APEX_RECEIPT_SCHEMA_V5:
+        campaign_binding = receipt.get("campaign_binding")
+        if task_spec.get("campaign_binding") != campaign_binding:
+            errors.append("apex_task_spec_campaign_binding_mismatch")
         errors.extend(
             _apex_runtime_mount_errors(
                 receipt,
@@ -4376,6 +4651,12 @@ def _validate_apex_session_receipt(
     ):
         errors.append("apex_task_spec_budget_contract_mismatch")
     lineage = receipt.get("lineage")
+    if expected_receipt_schema == _APEX_RECEIPT_SCHEMA_V5 and (
+        not isinstance(lineage, dict)
+        or lineage.get("campaign_binding_sha256")
+        != _canonical_json_digest(receipt.get("campaign_binding"))
+    ):
+        errors.append("apex_lineage_campaign_binding_mismatch")
     if not isinstance(lineage, dict) or lineage.get("result_sha256") != _sha256_file(
         artifacts["apex_result"]
     ):
@@ -4956,7 +5237,11 @@ def run_matched_task_campaign(
         backend_runtime_closure_sha256
     ):
         raise CampaignError("campaign lacks a bound backend runtime closure")
-    attempt_root = run_directory / ".campaign_attempts" / task_name.replace("/", "_")
+    attempt_root = (
+        run_directory
+        / ".campaign_attempts"
+        / campaign_task_path_component(task_name)
+    )
     if attempt_root.exists():
         raise CampaignError(
             f"attempt root already exists; use a new run for fresh sessions: {attempt_root}"
@@ -5014,6 +5299,11 @@ def run_matched_task_campaign(
             "task_package_manifest_sha256": task_binding[
                 "package_manifest_sha256"
             ],
+            "task_config_sha256": task_binding["config_sha256"],
+            "task_name": task_name,
+            "task_index": task_index,
+            "total_tasks": total_tasks,
+            "assigned_host_gpu_id": assigned_gpu,
             "campaign_manifest_path": str(campaign_manifest_path.resolve()),
             "campaign_manifest_sha256": campaign_manifest_sha256,
         }
@@ -5209,8 +5499,11 @@ def run_matched_task_campaign(
 __all__ = [
     "CampaignError",
     "CampaignPolicy",
+    "FORMAL_AGENT_TRANSPORT_TREATMENTS",
     "FORMAL_LIVE_EXECUTION_SHA256",
     "build_campaign_manifest",
+    "campaign_task_path_component",
+    "comparison_runtime_projection",
     "deterministic_task_gpu_mapping",
     "ensure_campaign_manifest",
     "ordered_gpu_pool",

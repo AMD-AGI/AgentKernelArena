@@ -34,6 +34,7 @@ from src.harness_guard import snapshot_workspace_harness, verify_workspace_harne
 from src.campaign import (
     CampaignError,
     FORMAL_LIVE_EXECUTION_SHA256,
+    campaign_task_path_component,
     ensure_campaign_manifest,
     parse_campaign_policy,
     resolve_session_receipt_schema,
@@ -1096,7 +1097,7 @@ def _formal_failure_binding(
     evidence_path = (
         run_directory
         / ".campaign_attempts"
-        / task_name.replace("/", "_")
+        / campaign_task_path_component(task_name)
         / "task_campaign.yaml"
     )
     binding: dict[str, Any] = {

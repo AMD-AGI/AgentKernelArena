@@ -35,6 +35,7 @@ from typing import Any, Iterable
 import yaml
 
 from agents import register_agent
+from src.campaign import CampaignError, campaign_task_path_component
 from src.agent_turn_budget import (
     AGENT_PROCESS_CONTAINMENT_POLICY,
     CANDIDATE_PERSISTENCE_POLICY,
@@ -89,6 +90,25 @@ _APEX_GENERIC_CONTEXT_MARKER = (
 _NORMAL_NO_PATCH_STATUSES = {"no_gain"}
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v5"
+_CAMPAIGN_BINDING_SCHEMA = "aka.attempt-campaign-binding/v1"
+_CAMPAIGN_BINDING_KEYS = frozenset(
+    {
+        "schema",
+        "formal_execution_sha256",
+        "campaign_manifest_path",
+        "campaign_manifest_sha256",
+        "comparison_contract_sha256",
+        "backend_runtime_closure_sha256",
+        "task_package_manifest_sha256",
+        "task_config_sha256",
+        "task_name",
+        "task_index",
+        "total_tasks",
+        "attempt_index",
+        "attempt_count",
+        "assigned_host_gpu_id",
+    }
+)
 _CALLER_RUN_CONTROL_SCHEMA = "aka.apex-caller-run-control/v1"
 _INSTRUCTION_ADAPTATION_SCHEMA = "aka.apex-instruction-adaptation/v1"
 _ARENA_PYTHON_ENV = "AGENT_KERNEL_ARENA_PYTHON"
@@ -287,6 +307,279 @@ def _runtime_closure_sha256(
             "formal Apex attempt lacks a backend runtime closure digest"
         )
     return digest
+
+
+def _read_immutable_campaign_manifest(path: Path) -> tuple[dict[str, Any], str]:
+    """Read canonical manifest bytes without following the final path component."""
+
+    if not path.is_absolute():
+        raise ApexAdapterError("campaign manifest path must be absolute")
+    try:
+        canonical = path.resolve(strict=True)
+        if canonical != path:
+            raise ApexAdapterError("campaign manifest path must be canonical")
+        descriptor = os.open(
+            canonical,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            metadata = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_nlink != 1
+                or metadata.st_mode & 0o222
+            ):
+                raise ApexAdapterError(
+                    "campaign manifest must be a single-link read-only regular file"
+                )
+            with os.fdopen(descriptor, "rb", closefd=False) as stream:
+                payload = stream.read()
+        finally:
+            os.close(descriptor)
+        manifest = yaml.safe_load(payload.decode("utf-8")) or {}
+    except ApexAdapterError:
+        raise
+    except (OSError, UnicodeError, yaml.YAMLError) as error:
+        raise ApexAdapterError(
+            f"cannot read immutable campaign manifest: {error}"
+        ) from error
+    if not isinstance(manifest, dict):
+        raise ApexAdapterError("campaign manifest must contain a mapping")
+    return manifest, _sha256_bytes(payload)
+
+
+def _task_package_manifest(root: Path) -> tuple[dict[str, str], str]:
+    if not root.is_dir() or root.is_symlink():
+        raise ApexAdapterError("campaign task package root is unsafe")
+    files: dict[str, str] = {}
+    try:
+        for path in sorted(root.rglob("*")):
+            relative = path.relative_to(root).as_posix()
+            metadata = path.lstat()
+            if stat.S_ISLNK(metadata.st_mode):
+                raise ApexAdapterError(
+                    f"campaign task package contains a symlink: {relative}"
+                )
+            if stat.S_ISDIR(metadata.st_mode):
+                continue
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                raise ApexAdapterError(
+                    f"campaign task package contains an unsafe file: {relative}"
+                )
+            files[relative] = _sha256_file(path)
+    except OSError as error:
+        raise ApexAdapterError(
+            f"cannot hash campaign task package: {error}"
+        ) from error
+    if not files:
+        raise ApexAdapterError("campaign task package contains no files")
+    return files, _canonical_digest(files)
+
+
+def _campaign_binding(
+    eval_config: dict[str, Any],
+    task_config_path: Path,
+    *,
+    formal_campaign: bool,
+) -> dict[str, Any] | None:
+    """Validate and normalize the runner-owned attempt binding before spawn."""
+
+    if not formal_campaign:
+        return None
+    attempt = eval_config.get("campaign_attempt")
+    if not isinstance(attempt, dict):
+        raise ApexAdapterError("formal Apex attempt binding is missing")
+    raw_manifest_path = attempt.get("campaign_manifest_path")
+    if not isinstance(raw_manifest_path, str):
+        raise ApexAdapterError("formal Apex campaign manifest path is missing")
+    manifest_path = Path(raw_manifest_path)
+    manifest, manifest_digest = _read_immutable_campaign_manifest(manifest_path)
+    comparison = manifest.get("comparison_contract")
+    comparison_digest = (
+        _canonical_digest(comparison) if isinstance(comparison, dict) else None
+    )
+    configuration = manifest.get("configuration")
+    tasks = configuration.get("tasks") if isinstance(configuration, dict) else None
+    runtime = manifest.get("runtime")
+    gpu = runtime.get("gpu") if isinstance(runtime, dict) else None
+    mappings = gpu.get("task_mapping") if isinstance(gpu, dict) else None
+    policy = manifest.get("policy")
+    agent = manifest.get("agent")
+    comparison_codex = (
+        comparison.get("codex") if isinstance(comparison, dict) else None
+    )
+    if (
+        manifest.get("schema") != "aka.matched-campaign/v1"
+        or not isinstance(tasks, list)
+        or not tasks
+        or not isinstance(mappings, list)
+        or len(mappings) != len(tasks)
+        or not isinstance(policy, dict)
+        or not isinstance(agent, dict)
+        or not isinstance(comparison_codex, dict)
+        or comparison.get("policy") != policy
+        or manifest.get("comparison_contract_sha256") != comparison_digest
+        or agent.get("backend_runtime_closure_sha256")
+        != comparison_codex.get("backend_runtime_closure_sha256")
+    ):
+        raise ApexAdapterError("formal Apex campaign manifest is malformed")
+    try:
+        task_names: list[str] = []
+        task_components: list[str] = []
+        for expected_index, (manifest_task, manifest_mapping) in enumerate(
+            zip(tasks, mappings), 1
+        ):
+            if not isinstance(manifest_task, dict) or not isinstance(
+                manifest_mapping, dict
+            ):
+                raise ApexAdapterError("formal Apex campaign task mapping is malformed")
+            manifest_name = manifest_task.get("task_name")
+            if (
+                not isinstance(manifest_name, str)
+                or not manifest_name
+                or manifest_task.get("task_index") != expected_index
+                or manifest_mapping.get("task_index") != expected_index
+                or manifest_mapping.get("task_name") != manifest_name
+                or not isinstance(
+                    manifest_mapping.get("assigned_host_gpu_id"), str
+                )
+            ):
+                raise ApexAdapterError("formal Apex campaign task mapping is malformed")
+            task_names.append(manifest_name)
+            task_components.append(campaign_task_path_component(manifest_name))
+    except CampaignError as error:
+        raise ApexAdapterError(
+            f"formal Apex campaign task path is unsafe: {error}"
+        ) from error
+    if (
+        len(task_names) != len(set(task_names))
+        or len(task_components) != len(set(task_components))
+    ):
+        raise ApexAdapterError("formal Apex campaign task paths are not injective")
+    task_index = attempt.get("task_index")
+    total_tasks = attempt.get("total_tasks")
+    attempt_index = attempt.get("index")
+    attempt_count = attempt.get("count")
+    if (
+        type(task_index) is not int
+        or not 1 <= task_index <= len(tasks)
+        or total_tasks != len(tasks)
+        or type(attempt_index) is not int
+        or type(attempt_count) is not int
+        or attempt_count != policy.get("attempts")
+        or not 1 <= attempt_index <= attempt_count
+    ):
+        raise ApexAdapterError("formal Apex campaign indices are invalid")
+    task = tasks[task_index - 1]
+    mapping = mappings[task_index - 1]
+    if not isinstance(task, dict) or not isinstance(mapping, dict):
+        raise ApexAdapterError("formal Apex campaign task is malformed")
+    task_name = attempt.get("task_name")
+    assigned_gpu = attempt.get("assigned_host_gpu_id")
+    if (
+        task.get("task_index") != task_index
+        or task.get("task_name") != task_name
+        or mapping.get("task_index") != task_index
+        or mapping.get("task_name") != task_name
+        or mapping.get("assigned_host_gpu_id") != assigned_gpu
+        or eval_config.get("assigned_host_gpu_id") != assigned_gpu
+        or os.environ.get("AGENT_KERNEL_ARENA_HOST_GPU_ID") != assigned_gpu
+    ):
+        raise ApexAdapterError("formal Apex task or GPU mapping differs from campaign")
+    raw_receipt_path = attempt.get("receipt_path")
+    if not isinstance(raw_receipt_path, str) or not Path(
+        raw_receipt_path
+    ).is_absolute():
+        raise ApexAdapterError("formal Apex receipt path is missing")
+    receipt_path = Path(raw_receipt_path).resolve(strict=False)
+    expected_receipt_path = (
+        manifest_path.parent
+        / ".campaign_attempts"
+        / campaign_task_path_component(str(task_name))
+        / f"attempt_{attempt_index:02d}"
+        / "session_receipt.json"
+    )
+    if receipt_path != expected_receipt_path:
+        raise ApexAdapterError(
+            "formal Apex receipt is outside its bound campaign attempt"
+        )
+    try:
+        canonical_config = task_config_path.resolve(strict=True)
+        config_metadata = canonical_config.lstat()
+    except OSError as error:
+        raise ApexAdapterError(
+            f"cannot inspect formal Apex task config: {error}"
+        ) from error
+    if (
+        str(canonical_config) != task.get("config_path")
+        or not canonical_config.is_file()
+        or canonical_config.is_symlink()
+        or config_metadata.st_nlink != 1
+    ):
+        raise ApexAdapterError("formal Apex task config path is not campaign-bound")
+    config_digest = _sha256_file(canonical_config)
+    package_files, package_digest = _task_package_manifest(canonical_config.parent)
+    if (
+        config_digest != task.get("config_sha256")
+        or package_files != task.get("package_files_sha256")
+        or package_digest != task.get("package_manifest_sha256")
+    ):
+        raise ApexAdapterError("formal Apex task package differs from campaign")
+    binding = {
+        "schema": _CAMPAIGN_BINDING_SCHEMA,
+        "formal_execution_sha256": attempt.get("formal_execution_sha256"),
+        "campaign_manifest_path": str(manifest_path),
+        "campaign_manifest_sha256": attempt.get("campaign_manifest_sha256"),
+        "comparison_contract_sha256": attempt.get(
+            "comparison_contract_sha256"
+        ),
+        "backend_runtime_closure_sha256": attempt.get(
+            "backend_runtime_closure_sha256"
+        ),
+        "task_package_manifest_sha256": attempt.get(
+            "task_package_manifest_sha256"
+        ),
+        "task_config_sha256": attempt.get("task_config_sha256"),
+        "task_name": task_name,
+        "task_index": task_index,
+        "total_tasks": total_tasks,
+        "attempt_index": attempt_index,
+        "attempt_count": attempt_count,
+        "assigned_host_gpu_id": assigned_gpu,
+    }
+    expected = {
+        **binding,
+        "formal_execution_sha256": manifest.get("formal_execution_sha256"),
+        "campaign_manifest_sha256": manifest_digest,
+        "comparison_contract_sha256": comparison_digest,
+        "backend_runtime_closure_sha256": agent.get(
+            "backend_runtime_closure_sha256"
+        ),
+        "task_package_manifest_sha256": package_digest,
+        "task_config_sha256": config_digest,
+    }
+    if (
+        set(binding) != _CAMPAIGN_BINDING_KEYS
+        or binding != expected
+        or any(
+            not isinstance(binding[key], str)
+            or not _SHA256.fullmatch(binding[key])
+            for key in (
+                "formal_execution_sha256",
+                "campaign_manifest_sha256",
+                "comparison_contract_sha256",
+                "backend_runtime_closure_sha256",
+                "task_package_manifest_sha256",
+                "task_config_sha256",
+            )
+        )
+    ):
+        raise ApexAdapterError(
+            "formal Apex attempt binding differs from immutable campaign"
+        )
+    return binding
 
 
 def _apex_task_instructions(
@@ -645,12 +938,21 @@ def _build_task_spec(
     artifact_root: Path,
     prompt: str,
     formal_campaign: bool | None = None,
+    campaign_binding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     formal_campaign = (
         is_formal_campaign(eval_config)
         if formal_campaign is None
         else formal_campaign
     )
+    if formal_campaign and (
+        not isinstance(campaign_binding, dict)
+        or set(campaign_binding) != _CAMPAIGN_BINDING_KEYS
+        or campaign_binding.get("schema") != _CAMPAIGN_BINDING_SCHEMA
+    ):
+        raise ApexAdapterError("formal Apex TaskSpec requires an exact campaign binding")
+    if not formal_campaign and campaign_binding is not None:
+        raise ApexAdapterError("ordinary Apex TaskSpec cannot claim a campaign binding")
     task_type = str(task_config.get("task_type") or "").strip()
     supported = set(_string_list(
         agent_config.get("supported_task_types", []),
@@ -747,6 +1049,7 @@ def _build_task_spec(
         # the transform immutable without expanding Apex's caller-neutral V1 API.
         "instruction_adaptation": instruction_adaptation,
         "caller_run_control": caller_run_control,
+        "campaign_binding": campaign_binding,
         "language": "triton",
         "editable_files": sources,
         "target_functions": symbols,
@@ -1198,6 +1501,13 @@ def _validate_apex_lineage(
     *, result: dict[str, Any], task_spec: dict[str, Any], artifact_root: Path
 ) -> dict[str, Any]:
     """Validate Apex's terminal result through its journal and transcript CAS."""
+    campaign_binding = task_spec.get("campaign_binding")
+    if (
+        not isinstance(campaign_binding, dict)
+        or set(campaign_binding) != _CAMPAIGN_BINDING_KEYS
+        or campaign_binding.get("schema") != _CAMPAIGN_BINDING_SCHEMA
+    ):
+        raise ApexAdapterError("formal Apex lineage lacks the sealed campaign binding")
     status = result.get("status")
     terminal_contracts = {
         "candidate_ready": {
@@ -2575,6 +2885,11 @@ def launch_agent(
     if not workspace_path.is_dir():
         raise ApexAdapterError(f"Arena workspace does not exist: {workspace_path}")
     formal_campaign = is_formal_campaign(eval_config)
+    campaign_binding = _campaign_binding(
+        eval_config,
+        task_config_path,
+        formal_campaign=formal_campaign,
+    )
     comparison_contract_sha256 = _comparison_contract_sha256(
         eval_config, formal_campaign=formal_campaign
     )
@@ -2607,6 +2922,7 @@ def launch_agent(
         artifact_root=artifact_root,
         prompt=prompt,
         formal_campaign=formal_campaign,
+        campaign_binding=campaign_binding,
     )
     original_prompt_bytes = prompt.encode("utf-8")
     instruction_adaptation = _validate_instruction_adaptation(
@@ -2788,6 +3104,7 @@ def launch_agent(
     status = ""
     receipt: dict[str, Any] = {
         "schema": _APEX_RECEIPT_SCHEMA,
+        "campaign_binding": campaign_binding,
         "comparison_contract_sha256": comparison_contract_sha256,
         "session_succeeded": False,
         "terminal_status": None,
@@ -2942,6 +3259,9 @@ def launch_agent(
             receipt["lineage"] = {
                 "run_id": result.get("run_id"),
                 "result_sha256": _sha256_file(result_path),
+                "campaign_binding_sha256": _canonical_digest(
+                    campaign_binding
+                ),
                 "journal_head_event_id": lineage["journal_head_event_id"],
                 "journal_head_checksum": lineage["journal_head_checksum"],
                 "event_count": lineage["event_count"],

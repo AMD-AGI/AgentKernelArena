@@ -46,6 +46,7 @@ def _backend_closure() -> dict:
 
 
 def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
+    tasks = [{"task_index": 1, "task_name": "task"}]
     repositories = {
         "agent_kernel_arena": {
             "commit": "d" * 40,
@@ -72,8 +73,24 @@ def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
         "backend_runtime_closure_schema": "aka.backend-runtime-closure/v1",
         "backend_runtime_closure_sha256": "9" * 64,
         "backend_runtime_closure": _backend_closure(),
+        "max_process_output_bytes": campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS[
+            "apex"
+        ]["max_process_output_bytes"],
+        "structured_stream_output_limit_bytes": (
+            campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS["apex"][
+                "structured_stream_output_limit_bytes"
+            ]
+        ),
+        "structured_stream_overflow_policy": (
+            campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS["apex"][
+                "overflow_policy"
+            ]
+        ),
     }
     aka_runtime = {"fixture": True}
+    runtime = {"aka_execution_snapshot": aka_runtime}
+    comparison_runtime = campaign.comparison_runtime_projection(runtime)
+    assert comparison_runtime is not None
     evaluator = {"execution_manifest_sha256": "2" * 64}
     comparison = {
         "schema": "aka.apex-vs-codex-comparison-contract/v5",
@@ -96,6 +113,9 @@ def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
             campaign_isolation.ATTEMPT_CONTAINMENT_POLICY
         ),
         "repositories": repositories,
+        "agent_transport_treatments": copy.deepcopy(
+            campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS
+        ),
         "apex_treatment": {
             key: agent[key]
             for key in (
@@ -111,8 +131,9 @@ def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
             "backend_runtime_closure_sha256": "9" * 64,
             "backend_runtime_closure": _backend_closure(),
         },
-        "runtime": {"aka_execution_snapshot": aka_runtime},
+        "runtime": comparison_runtime,
         "evaluator_files_sha256": evaluator,
+        "tasks": tasks,
     }
     return {
         "schema": "aka.matched-campaign/v1",
@@ -120,8 +141,9 @@ def _v5_manifest(runtime_digest: str = "c" * 64) -> dict:
         "formal_execution_sha256": campaign._FORMAL_LIVE_COMMITMENT_SHA256,
         "repositories": repositories,
         "agent": agent,
-        "runtime": {"aka_execution_snapshot": aka_runtime},
+        "runtime": runtime,
         "evaluator_files_sha256": evaluator,
+        "configuration": {"tasks": tasks},
         "comparison_contract": comparison,
         "comparison_contract_sha256": _digest(comparison),
     }
@@ -171,6 +193,19 @@ def test_v5_comparison_binds_repository_mount_policy_and_runtime_digest(
         "backend_runtime_closure_schema": "aka.backend-runtime-closure/v1",
         "backend_runtime_closure_sha256": "9" * 64,
         "backend_runtime_closure": _backend_closure(),
+        "max_process_output_bytes": campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS[
+            "codex"
+        ]["max_process_output_bytes"],
+        "structured_stream_output_limit_bytes": (
+            campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS["codex"][
+                "structured_stream_output_limit_bytes"
+            ]
+        ),
+        "structured_stream_overflow_policy": (
+            campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS["codex"][
+                "overflow_policy"
+            ]
+        ),
     }
     codex_run = tmp_path / "codex"
     codex_run.mkdir()
