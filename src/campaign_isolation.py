@@ -62,15 +62,21 @@ class WrappedAttemptCommand(list[str]):
         pass_fds: Iterable[int] = (),
         boundary_status_fd: int | None = None,
         boundary_gate_fd: int | None = None,
+        mount_status_fd: int | None = None,
+        mount_gate_fd: int | None = None,
         boundary_procfs: str = "private_attempt_procfs",
         mount_receipt: dict[str, Any] | None = None,
+        mount_contract: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(argv)
         self.pass_fds = tuple(pass_fds)
         self.boundary_status_fd = boundary_status_fd
         self.boundary_gate_fd = boundary_gate_fd
+        self.mount_status_fd = mount_status_fd
+        self.mount_gate_fd = mount_gate_fd
         self.boundary_procfs = boundary_procfs
         self.mount_receipt = mount_receipt
+        self.mount_contract = mount_contract
 
     def release_pass_fds(self) -> None:
         descriptors, self.pass_fds = self.pass_fds, ()
@@ -95,6 +101,16 @@ class WrappedAttemptCommand(list[str]):
                 os.close(descriptor)
             except OSError:
                 pass
+
+    def close_mount_gate_fds(self) -> None:
+        for attribute in ("mount_status_fd", "mount_gate_fd"):
+            descriptor = getattr(self, attribute)
+            setattr(self, attribute, None)
+            if descriptor is not None:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
 
 
 @dataclass
@@ -167,6 +183,17 @@ _CODEX_GPU_BWRAP_SHA256 = "9271bd346d1ea5f878c8f345537e8464a56156b82f956942b66b8
 _CODEX_GPU_BWRAP_SIZE_BYTES = 2381
 _CODEX_GPU_REAL_BWRAP_PATH = Path("/usr/bin/bwrap")
 _CODEX_GPU_REAL_BWRAP_SHA256 = "d78807229d616606e339c5988392b9e0ab4a6a6998fa51e4590837f426a12fca"
+_OUTER_BWRAP_PATH = Path("/usr/bin/bwrap")
+_OUTER_BWRAP_SHA256 = "d78807229d616606e339c5988392b9e0ab4a6a6998fa51e4590837f426a12fca"
+_OUTER_BWRAP_SIZE_BYTES = 72_160
+_OUTER_BWRAP_VERSION = "bubblewrap 0.6.1"
+_MOUNT_GATE_PYTHON = Path("/usr/bin/python3")
+_OUTER_BWRAP_SEALS = (
+    "F_SEAL_WRITE",
+    "F_SEAL_SHRINK",
+    "F_SEAL_GROW",
+    "F_SEAL_SEAL",
+)
 _CODEX_GPU_BWRAP_TRUSTED_DIR = Path("/tmp/aka-codex-gpu-bwrap")
 _CODEX_GPU_BWRAP_TRUSTED_PATH = _CODEX_GPU_BWRAP_TRUSTED_DIR / "bwrap"
 _DOCKER_MASKED_DIRECTORIES = (
@@ -192,6 +219,33 @@ _DOCKER_READONLY_PATHS = (
     "/proc/sys",
     "/proc/sysrq-trigger",
 )
+
+_MOUNT_GATE_WRAPPER = r"""
+import os
+import sys
+
+status_fd = int(sys.argv[1])
+gate_fd = int(sys.argv[2])
+if sys.argv[3] != "--" or len(sys.argv) < 5:
+    raise SystemExit(72)
+keep = {status_fd, gate_fd}
+for value in os.listdir("/proc/self/fd"):
+    try:
+        descriptor = int(value)
+    except ValueError:
+        continue
+    if descriptor > 2 and descriptor not in keep:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+os.write(status_fd, b"mounts-ready\n")
+os.close(status_fd)
+if os.read(gate_fd, 2) != b"1":
+    raise SystemExit(73)
+os.close(gate_fd)
+os.execvpe(sys.argv[4], sys.argv[4:], os.environ)
+"""
 
 
 def _proc_status() -> dict[str, str]:
@@ -802,28 +856,125 @@ raise SystemExit(0 if all(result.values()) else 74)
 """
 
 
-def _bubblewrap_identity() -> tuple[Path, dict[str, str]]:
-    discovered = shutil.which("bwrap")
-    if not discovered:
-        raise CampaignIsolationError("formal campaign requires bubblewrap (bwrap)")
+def _descriptor_payload(descriptor: int, expected_size: int) -> bytes:
+    payload = bytearray()
+    offset = 0
+    while len(payload) <= expected_size:
+        chunk = os.pread(descriptor, expected_size + 1 - len(payload), offset)
+        if not chunk:
+            break
+        payload.extend(chunk)
+        offset += len(chunk)
+    return bytes(payload)
+
+
+def _sealed_outer_bwrap() -> tuple[int, dict[str, Any]]:
+    """Return a sealed exact-byte executable copied from canonical bwrap."""
+
+    source_fd = sealed_fd = -1
+    flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
     try:
-        binary = Path(discovered).resolve(strict=True)
+        source_fd = os.open(_OUTER_BWRAP_PATH, flags)
+        source = os.fstat(source_fd)
+        lexical = _OUTER_BWRAP_PATH.lstat()
+        payload = _descriptor_payload(source_fd, _OUTER_BWRAP_SIZE_BYTES)
+        digest = hashlib.sha256(payload).hexdigest()
+        if (
+            not stat.S_ISREG(source.st_mode)
+            or stat.S_ISLNK(lexical.st_mode)
+            or (source.st_dev, source.st_ino) != (lexical.st_dev, lexical.st_ino)
+            or source.st_uid != 0
+            or source.st_gid != 0
+            or source.st_nlink != 1
+            or not source.st_mode & stat.S_IXUSR
+            or source.st_size != _OUTER_BWRAP_SIZE_BYTES
+            or len(payload) != _OUTER_BWRAP_SIZE_BYTES
+            or digest != _OUTER_BWRAP_SHA256
+        ):
+            raise CampaignIsolationError("canonical outer bubblewrap violates its pin")
+        sealed_fd = os.memfd_create(
+            "aka-outer-bwrap", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING
+        )
+        remaining = memoryview(payload)
+        while remaining:
+            written = os.write(sealed_fd, remaining)
+            if written <= 0:
+                raise CampaignIsolationError("cannot materialize sealed outer bubblewrap")
+            remaining = remaining[written:]
+        os.fchmod(sealed_fd, 0o555)
+        seals = (
+            fcntl.F_SEAL_WRITE
+            | fcntl.F_SEAL_SHRINK
+            | fcntl.F_SEAL_GROW
+            | fcntl.F_SEAL_SEAL
+        )
+        fcntl.fcntl(sealed_fd, fcntl.F_ADD_SEALS, seals)
+        sealed = os.fstat(sealed_fd)
+        if (
+            fcntl.fcntl(sealed_fd, fcntl.F_GET_SEALS) != seals
+            or sealed.st_size != source.st_size
+            or hashlib.sha256(
+                _descriptor_payload(sealed_fd, _OUTER_BWRAP_SIZE_BYTES)
+            ).hexdigest()
+            != digest
+        ):
+            raise CampaignIsolationError("sealed outer bubblewrap identity changed")
+        identity = {
+            "policy": "canonical_source_to_sealed_memfd_exec_v1",
+            "canonical_path": str(_OUTER_BWRAP_PATH),
+            "source": {
+                "device": source.st_dev,
+                "inode": source.st_ino,
+                "mode": stat.S_IMODE(source.st_mode),
+                "uid": source.st_uid,
+                "gid": source.st_gid,
+                "nlink": source.st_nlink,
+                "size_bytes": source.st_size,
+                "sha256": digest,
+            },
+            "sealed_exec": {
+                "transport": "sealed_memfd_proc_self_fd",
+                "size_bytes": sealed.st_size,
+                "sha256": digest,
+                "seals": list(_OUTER_BWRAP_SEALS),
+            },
+        }
+        result, sealed_fd = sealed_fd, -1
+        return result, identity
+    except (AttributeError, OSError) as error:
+        raise CampaignIsolationError("cannot seal canonical outer bubblewrap") from error
+    finally:
+        if source_fd >= 0:
+            os.close(source_fd)
+        if sealed_fd >= 0:
+            os.close(sealed_fd)
+
+
+def _bubblewrap_identity() -> tuple[Path, dict[str, Any]]:
+    descriptor = -1
+    try:
+        descriptor, sealed = _sealed_outer_bwrap()
         completed = subprocess.run(
-            [str(binary), "--version"],
+            [f"/proc/self/fd/{descriptor}", "--version"],
             capture_output=True,
             text=True,
             check=False,
             timeout=5,
+            pass_fds=(descriptor,),
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise CampaignIsolationError("cannot identify bubblewrap") from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
     version = (completed.stdout or completed.stderr).strip()
-    if completed.returncode != 0 or not version:
-        raise CampaignIsolationError("bubblewrap version is unavailable")
-    return binary, {
-        "resolved_path": str(binary),
-        "sha256": _sha256_regular_file(binary),
+    if completed.returncode != 0 or version != _OUTER_BWRAP_VERSION:
+        raise CampaignIsolationError("bubblewrap version violates its pin")
+    return _OUTER_BWRAP_PATH, {
+        "resolved_path": str(_OUTER_BWRAP_PATH),
+        "sha256": sealed["source"]["sha256"],
         "version": version,
+        "execution_transport": sealed["sealed_exec"]["transport"],
     }
 
 
@@ -929,13 +1080,19 @@ def _codex_sandbox_probe(
     home = probe_dir / "home"
     workspace = probe_dir / "workspace"
     credential = home / ".codex" / "auth.json"
+    outer_bwrap_descriptor = -1
     gpu_bwrap_descriptor = -1
     try:
+        if bubblewrap_binary.resolve(strict=True) != _OUTER_BWRAP_PATH:
+            raise CampaignIsolationError("Codex probe received unpinned outer bubblewrap")
+        outer_bwrap_descriptor, _outer_identity = _sealed_outer_bwrap()
         credential.parent.mkdir(parents=True)
         workspace.mkdir()
         credential.write_text('{"fixture":"must-not-be-readable"}\n', encoding="utf-8")
         outer_pid_namespace = os.readlink("/proc/self/ns/pid")
-        command = _bubblewrap_base_command(bubblewrap_binary, data_root)
+        command = _bubblewrap_base_command(
+            f"/proc/self/fd/{outer_bwrap_descriptor}", data_root
+        )
         gpu_bwrap_descriptor = _sealed_codex_gpu_bwrap(gpu_bubblewrap_binary)
         _mount_codex_gpu_bwrap(command, gpu_bwrap_descriptor)
         current = data_root
@@ -987,7 +1144,7 @@ def _codex_sandbox_probe(
                 check=False,
                 timeout=30,
                 env=environment,
-                pass_fds=(gpu_bwrap_descriptor,),
+                pass_fds=(outer_bwrap_descriptor, gpu_bwrap_descriptor),
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             raise CampaignIsolationError("Codex managed sandbox probe failed to run") from error
@@ -1026,6 +1183,8 @@ def _codex_sandbox_probe(
             )
         return result
     finally:
+        if outer_bwrap_descriptor >= 0:
+            os.close(outer_bwrap_descriptor)
         if gpu_bwrap_descriptor >= 0:
             os.close(gpu_bwrap_descriptor)
         shutil.rmtree(probe_dir, ignore_errors=False)
@@ -1046,8 +1205,11 @@ def _attempt_escape_probe(
 
     probe_dir = Path(tempfile.mkdtemp(prefix=".aka-isolation-probe-", dir=data_root))
     sentinel = probe_dir / "sentinel"
-    descriptor = -1
+    descriptor = outer_bwrap_descriptor = -1
     try:
+        if binary.resolve(strict=True) != _OUTER_BWRAP_PATH:
+            raise CampaignIsolationError("isolation probe received unpinned bubblewrap")
+        outer_bwrap_descriptor, _outer_identity = _sealed_outer_bwrap()
         nonce = os.urandom(32)
         sentinel.write_bytes(nonce)
         descriptor = os.open(sentinel, os.O_RDONLY | os.O_CLOEXEC)
@@ -1062,7 +1224,9 @@ def _attempt_escape_probe(
             ) from error
         if root_bytes != nonce or fd_bytes != nonce:
             raise CampaignIsolationError("outer parent /proc aliases do not bind the sentinel")
-        command = _bubblewrap_base_command(binary, data_root) + [
+        command = _bubblewrap_base_command(
+            f"/proc/self/fd/{outer_bwrap_descriptor}", data_root
+        ) + [
             "--",
             sys.executable,
             "-c",
@@ -1081,6 +1245,7 @@ def _attempt_escape_probe(
                 text=True,
                 check=False,
                 timeout=20,
+                pass_fds=(outer_bwrap_descriptor,),
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             raise CampaignIsolationError("bubblewrap isolation probe failed to run") from error
@@ -1119,6 +1284,8 @@ def _attempt_escape_probe(
             raise CampaignIsolationError("bubblewrap isolation proof is incomplete")
         return result
     finally:
+        if outer_bwrap_descriptor >= 0:
+            os.close(outer_bwrap_descriptor)
         if descriptor >= 0:
             os.close(descriptor)
         sentinel.unlink(missing_ok=True)
@@ -1374,7 +1541,7 @@ def wrap_attempt_command(
         return command
     # Re-resolve, hash, and version-check the read-only mounted executable at
     # attempt construction time instead of trusting a prior PATH lookup.
-    binary, _identity = _bubblewrap_identity()
+    _binary, _identity = _bubblewrap_identity()
     _codex_requirements_identity()
     gpu_bubblewrap, _gpu_bubblewrap_identity = _codex_gpu_bwrap_identity()
     data_root_raw = os.environ.get("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", "")
@@ -1409,9 +1576,7 @@ def wrap_attempt_command(
         trusted_read_only=trusted_read_only,
     )
 
-    wrapped = _bubblewrap_base_command(
-        binary, data_root, private_proc=private_proc
-    )
+    mount_arguments: list[str] = []
     state_root = Path(
         os.environ.get("AGENT_STATE_MOUNT_ROOT", "/opt/aka-agent-state")
     )
@@ -1419,7 +1584,7 @@ def wrap_attempt_command(
         # Authentication was copied into the fresh attempt home. Hide the
         # original read-only mount so prior history, memories, rules, caches,
         # and user configuration cannot be recovered through its old path.
-        wrapped.extend(["--tmpfs", str(state_root.resolve(strict=True))])
+        mount_arguments.extend(["--tmpfs", str(state_root.resolve(strict=True))])
     created: set[Path] = set()
     for root in (*read_only, *writable):
         relative = root.relative_to(data_root)
@@ -1427,7 +1592,7 @@ def wrap_attempt_command(
         for part in relative.parts:
             current /= part
             if current not in created:
-                wrapped.extend(["--dir", str(current)])
+                mount_arguments.extend(["--dir", str(current)])
                 created.add(current)
     for root in trusted_read_only:
         if root.is_relative_to(Path("/tmp")):
@@ -1435,7 +1600,7 @@ def wrap_attempt_command(
             for part in root.relative_to(current).parts:
                 current /= part
                 if current not in created:
-                    wrapped.extend(["--dir", str(current)])
+                    mount_arguments.extend(["--dir", str(current)])
                     created.add(current)
     # These are user-owned trees and are intentionally excluded from the formal
     # Git-clean check. Hide them rather than exposing unmanifested observations.
@@ -1443,14 +1608,23 @@ def wrap_attempt_command(
     for relative in (".eval-tool-artifacts", "experiments"):
         path = workdir / relative
         if path.is_dir():
-            wrapped.extend(["--tmpfs", str(path)])
+            mount_arguments.extend(["--tmpfs", str(path)])
     mount_descriptors: dict[Path, int] = {}
     mount_identities: dict[Path, dict[str, Any]] = {}
     data_descriptor = -1
     data_identity: dict[str, Any] | None = None
+    outer_bwrap_descriptor = -1
     gpu_bwrap_descriptor = -1
     status_read = status_write = gate_read = gate_write = -1
+    mount_status_read = mount_status_write = mount_gate_read = mount_gate_write = -1
     try:
+        outer_bwrap_descriptor, outer_bwrap_identity = _sealed_outer_bwrap()
+        wrapped = _bubblewrap_base_command(
+            f"/proc/self/fd/{outer_bwrap_descriptor}",
+            data_root,
+            private_proc=private_proc,
+        )
+        wrapped.extend(mount_arguments)
         table = _mountinfo_table()
         data_descriptor, data_identity = _open_mount_root(data_root, table=table)
         for root in (*read_only, *trusted_read_only, *writable):
@@ -1477,6 +1651,9 @@ def wrap_attempt_command(
         gpu_bwrap_descriptor = _sealed_codex_gpu_bwrap(gpu_bubblewrap)
         status_read, status_write = os.pipe2(os.O_CLOEXEC)
         gate_read, gate_write = os.pipe2(os.O_CLOEXEC)
+        if roles is not None:
+            mount_status_read, mount_status_write = os.pipe2(os.O_CLOEXEC)
+            mount_gate_read, mount_gate_write = os.pipe2(os.O_CLOEXEC)
         _mount_codex_gpu_bwrap(wrapped, gpu_bwrap_descriptor)
         wrapped.extend(
             [
@@ -1486,17 +1663,47 @@ def wrap_attempt_command(
                 str(gate_read),
             ]
         )
-        wrapped.extend(["--", *command])
+        inner_command = command
+        if roles is not None:
+            inner_command = [
+                str(_MOUNT_GATE_PYTHON),
+                "-I",
+                "-S",
+                "-c",
+                _MOUNT_GATE_WRAPPER,
+                str(mount_status_write),
+                str(mount_gate_read),
+                "--",
+                *command,
+            ]
+        wrapped.extend(["--", *inner_command])
+        mount_contract = (
+            {
+                "data_root": data_root,
+                "roles": dict(roles),
+                "identities": mount_identities,
+            }
+            if roles is not None
+            else None
+        )
         result = WrappedAttemptCommand(
             wrapped,
             pass_fds=(
+                outer_bwrap_descriptor,
                 *mount_descriptors.values(),
                 gpu_bwrap_descriptor,
                 status_write,
                 gate_read,
+                *(
+                    (mount_status_write, mount_gate_read)
+                    if roles is not None
+                    else ()
+                ),
             ),
             boundary_status_fd=status_read,
             boundary_gate_fd=gate_write,
+            mount_status_fd=(mount_status_read if roles is not None else None),
+            mount_gate_fd=(mount_gate_write if roles is not None else None),
             boundary_procfs=(
                 "private_attempt_procfs"
                 if private_proc
@@ -1510,11 +1717,16 @@ def wrap_attempt_command(
                 identities=mount_identities,
                 roles=roles,
                 data_identity=data_identity,
+                outer_bubblewrap=outer_bwrap_identity,
             ),
+            mount_contract=mount_contract,
         )
         data_descriptor = -1
         mount_descriptors = {}
-        gpu_bwrap_descriptor = status_write = gate_read = status_read = gate_write = -1
+        outer_bwrap_descriptor = gpu_bwrap_descriptor = -1
+        status_write = gate_read = status_read = gate_write = -1
+        mount_status_write = mount_gate_read = -1
+        mount_status_read = mount_gate_write = -1
         return result
     except Exception:
         raise
@@ -1522,11 +1734,16 @@ def wrap_attempt_command(
         for descriptor in (
             data_descriptor,
             *mount_descriptors.values(),
+            outer_bwrap_descriptor,
             gpu_bwrap_descriptor,
             status_read,
             status_write,
             gate_read,
             gate_write,
+            mount_status_read,
+            mount_status_write,
+            mount_gate_read,
+            mount_gate_write,
         ):
             if descriptor >= 0:
                 os.close(descriptor)
@@ -1577,6 +1794,230 @@ def _process_namespace_identity(pid: int) -> tuple[int, int]:
     except (OSError, KeyError, ValueError, IndexError) as error:
         raise CampaignIsolationError("cannot bind attempt namespace process identity") from error
     return parent, namespace_pid
+
+
+def _exact_namespace_mount(
+    table: Mapping[int, _MountInfo], target: Path
+) -> _MountInfo:
+    matches = [entry for entry in table.values() if entry.mount_point == target]
+    if len(matches) != 1:
+        raise CampaignIsolationError(
+            f"blocked namespace lacks one exact mount target: {target}"
+        )
+    return matches[0]
+
+
+def _mount_access(entry: _MountInfo) -> str:
+    read_only = "ro" in entry.mount_options
+    read_write = "rw" in entry.mount_options
+    if read_only == read_write:
+        raise CampaignIsolationError(
+            f"blocked namespace mount access is ambiguous: {entry.mount_point}"
+        )
+    return "read_only" if read_only else "read_write"
+
+
+def _expected_bind_root(identity: Mapping[str, Any]) -> Path:
+    source_mount = identity.get("mount")
+    source_path = Path(str(identity.get("path")))
+    if not isinstance(source_mount, dict):
+        raise CampaignIsolationError("attempt source mount identity is malformed")
+    mount_point = Path(str(source_mount.get("mount_point")))
+    mount_root = Path(str(source_mount.get("root")))
+    try:
+        relative = source_path.relative_to(mount_point)
+    except ValueError as error:
+        raise CampaignIsolationError(
+            "attempt source is outside its pinned mount"
+        ) from error
+    return mount_root / relative
+
+
+def _namespace_target_stat(pid: int, target: Path) -> os.stat_result:
+    root = Path(f"/proc/{pid}/root")
+    path = root.joinpath(*target.parts[1:]) if target != Path("/") else root
+    try:
+        return path.stat()
+    except OSError as error:
+        raise CampaignIsolationError(
+            f"cannot inspect blocked namespace target: {target}"
+        ) from error
+
+
+def _attest_role_mount(
+    *,
+    pid: int,
+    path: Path,
+    expected_access: str,
+    source_identity: dict[str, Any],
+    table: Mapping[int, _MountInfo],
+) -> dict[str, Any]:
+    mount = _exact_namespace_mount(table, path)
+    metadata = _namespace_target_stat(pid, path)
+    access = _mount_access(mount)
+    source_mount = source_identity["mount"]
+    if (
+        access != expected_access
+        or mount.major_minor != source_mount["major_minor"]
+        or mount.root != _expected_bind_root(source_identity)
+        or metadata.st_dev != source_identity["device"]
+        or metadata.st_ino != source_identity["inode"]
+        or f"{os.major(metadata.st_dev)}:{os.minor(metadata.st_dev)}"
+        != mount.major_minor
+    ):
+        raise CampaignIsolationError(
+            f"blocked namespace mount differs from pinned source: {path}"
+        )
+    nested = sorted(
+        str(entry.mount_point)
+        for entry in table.values()
+        if entry.mount_point != path and _path_is_below(entry.mount_point, path)
+    )
+    if nested:
+        raise CampaignIsolationError(
+            f"blocked namespace role contains undeclared mounts: {path}"
+        )
+    return {
+        "source": {
+            "path": str(path),
+            "device": source_identity["device"],
+            "inode": source_identity["inode"],
+            "mount": dict(source_mount),
+        },
+        "target": {
+            "path": str(path),
+            "device": metadata.st_dev,
+            "inode": metadata.st_ino,
+            "access": access,
+            "mount": mount.receipt(),
+            "mount_options": list(mount.mount_options),
+        },
+    }
+
+
+def _attest_private_mount(
+    *, pid: int, path: Path, table: Mapping[int, _MountInfo]
+) -> dict[str, Any]:
+    metadata = _namespace_target_stat(pid, path)
+    device = f"{os.major(metadata.st_dev)}:{os.minor(metadata.st_dev)}"
+    exact = [entry for entry in table.values() if entry.mount_point == path]
+    visible = [entry for entry in exact if entry.major_minor == device]
+    if len(visible) != 1:
+        raise CampaignIsolationError(
+            f"blocked namespace lacks one visible private mount: {path}"
+        )
+    mount = visible[0]
+    if _mount_access(mount) != "read_write" or mount.filesystem_type != "tmpfs":
+        raise CampaignIsolationError(
+            f"blocked namespace private mount is not writable tmpfs: {path}"
+        )
+    return {
+        "path": str(path),
+        "device": metadata.st_dev,
+        "inode": metadata.st_ino,
+        "access": "read_write",
+        "filesystem_type": mount.filesystem_type,
+        "mount": mount.receipt(),
+        "mount_options": list(mount.mount_options),
+        "covered_mount_ids": sorted(
+            entry.mount_id for entry in exact if entry.mount_id != mount.mount_id
+        ),
+    }
+
+
+def _namespace_mount_attestation(
+    command: WrappedAttemptCommand, *, pid: int, mount_namespace_id: int
+) -> dict[str, Any]:
+    contract = command.mount_contract
+    if not isinstance(contract, dict):
+        raise CampaignIsolationError("formal mount attestation contract is missing")
+    data_root = contract["data_root"]
+    roles = contract["roles"]
+    identities = contract["identities"]
+    table = _namespace_mountinfo_table(pid)
+    if os.stat(f"/proc/{pid}/ns/mnt").st_ino != mount_namespace_id:
+        raise CampaignIsolationError("attempt mount namespace changed during attestation")
+    root_mount = _exact_namespace_mount(table, Path("/"))
+    root_stat = _namespace_target_stat(pid, Path("/"))
+    if _mount_access(root_mount) != "read_only":
+        raise CampaignIsolationError("blocked namespace root is not read-only")
+    data = _attest_private_mount(pid=pid, path=data_root, table=table)
+    declared = {data_root, *roles.values()}
+    observed = {
+        entry.mount_point
+        for entry in table.values()
+        if entry.mount_point == data_root
+        or _path_is_below(entry.mount_point, data_root)
+    }
+    if observed != declared:
+        raise CampaignIsolationError(
+            "blocked namespace campaign mounts are not a closed declared set"
+        )
+    role_receipts = {"read_only": {}, "persistent_writable": {}}
+    for role, path in roles.items():
+        access_group = (
+            "persistent_writable"
+            if role in {"apex_artifacts", "backend_home"}
+            else "read_only"
+        )
+        role_receipts[access_group][role] = _attest_role_mount(
+            pid=pid,
+            path=path,
+            expected_access=(
+                "read_write" if access_group == "persistent_writable" else "read_only"
+            ),
+            source_identity=identities[path],
+            table=table,
+        )
+    target_pairs = [
+        (entry["target"]["device"], entry["target"]["inode"])
+        for group in role_receipts.values()
+        for entry in group.values()
+    ]
+    if len(target_pairs) != len(set(target_pairs)):
+        raise CampaignIsolationError("blocked namespace role mounts contain aliases")
+    return {
+        "policy": "blocked_namespace_mount_attestation_v1",
+        "namespace_init_pid": pid,
+        "mount_namespace_id": mount_namespace_id,
+        "root": {
+            "path": "/",
+            "device": root_stat.st_dev,
+            "inode": root_stat.st_ino,
+            "access": "read_only",
+            "mount": root_mount.receipt(),
+            "mount_options": list(root_mount.mount_options),
+        },
+        "campaign_data_root": data,
+        "private_tmpfs": {
+            "tmp": _attest_private_mount(pid=pid, path=Path("/tmp"), table=table),
+            "dev_shm": _attest_private_mount(
+                pid=pid, path=Path("/dev/shm"), table=table
+            ),
+        },
+        "roles": role_receipts,
+        "declared_mount_points": sorted(str(path) for path in declared),
+        "observed_mount_points_below_campaign_data": sorted(
+            str(path) for path in observed
+        ),
+        "closed_set": True,
+        "aliases_absent": True,
+    }
+
+
+def _commit_namespace_mount_attestation(
+    command: WrappedAttemptCommand, attestation: dict[str, Any]
+) -> None:
+    receipt = command.mount_receipt
+    if not isinstance(receipt, dict) or receipt.get("schema") != ATTEMPT_MOUNT_RECEIPT_SCHEMA_V2:
+        raise CampaignIsolationError("formal mount receipt cannot bind attestation")
+    roles = receipt["roles"]
+    for group in ("read_only", "persistent_writable"):
+        for role, observed in attestation["roles"][group].items():
+            roles[group][role]["mount"] = observed["target"]["mount"]
+    receipt["namespace_mounts"] = attestation
+    receipt.pop("sha256", None)
+    receipt["sha256"] = canonical_digest(receipt)
 
 
 def _pid_namespace_membership_scan(
@@ -1706,9 +2147,29 @@ def establish_attempt_boundary(
         ):
             raise CampaignIsolationError("attempt namespace init identity changed")
         os.write(gate_fd, b"1")
+        if command.mount_contract is not None:
+            mount_status_fd = command.mount_status_fd
+            mount_gate_fd = command.mount_gate_fd
+            if mount_status_fd is None or mount_gate_fd is None:
+                raise CampaignIsolationError(
+                    "formal attempt mount gate descriptors are missing"
+                )
+            ready, _, _ = select.select([mount_status_fd], [], [], timeout_seconds)
+            if not ready or os.read(mount_status_fd, 64) != b"mounts-ready\n":
+                raise CampaignIsolationError(
+                    "formal attempt mount attestation gate timed out"
+                )
+            attestation = _namespace_mount_attestation(
+                command,
+                pid=init_pid,
+                mount_namespace_id=status["mnt-namespace"],
+            )
+            _commit_namespace_mount_attestation(command, attestation)
+            os.write(mount_gate_fd, b"1")
         return boundary
     except Exception:
         if boundary is not None:
+            boundary.terminate_now()
             boundary.close()
         try:
             process.kill()
@@ -1722,6 +2183,7 @@ def establish_attempt_boundary(
     finally:
         command.close_boundary_status_fd()
         command.close_boundary_gate_fd()
+        command.close_mount_gate_fds()
 
 
 def finalize_attempt_boundary(
@@ -1923,6 +2385,11 @@ class _MountInfo:
     major_minor: str
     root: Path
     mount_point: Path
+    mount_options: tuple[str, ...] = ()
+    optional_fields: tuple[str, ...] = ()
+    filesystem_type: str = ""
+    source: str = ""
+    super_options: tuple[str, ...] = ()
 
     def receipt(self) -> dict[str, Any]:
         return {
@@ -1946,11 +2413,7 @@ def _decode_mountinfo_path(value: str) -> Path:
     return Path(decoded)
 
 
-def _mountinfo_table() -> dict[int, _MountInfo]:
-    try:
-        lines = Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeError) as error:
-        raise CampaignIsolationError("cannot read /proc/self/mountinfo") from error
+def _parse_mountinfo(lines: Iterable[str]) -> dict[int, _MountInfo]:
     table: dict[int, _MountInfo] = {}
     for line in lines:
         fields = line.split()
@@ -1958,20 +2421,48 @@ def _mountinfo_table() -> dict[int, _MountInfo]:
             separator = fields.index("-")
             mount_id = int(fields[0])
             parent_id = int(fields[1])
+            filesystem_type = fields[separator + 1]
+            source = fields[separator + 2]
+            super_options = tuple(fields[separator + 3].split(","))
         except (ValueError, IndexError) as error:
-            raise CampaignIsolationError("malformed /proc/self/mountinfo") from error
+            raise CampaignIsolationError("malformed /proc mountinfo") from error
         if separator < 6 or mount_id in table:
-            raise CampaignIsolationError("ambiguous /proc/self/mountinfo")
+            raise CampaignIsolationError("ambiguous /proc mountinfo")
         table[mount_id] = _MountInfo(
             mount_id=mount_id,
             parent_id=parent_id,
             major_minor=fields[2],
             root=_decode_mountinfo_path(fields[3]),
             mount_point=_decode_mountinfo_path(fields[4]),
+            mount_options=tuple(fields[5].split(",")),
+            optional_fields=tuple(fields[6:separator]),
+            filesystem_type=filesystem_type,
+            source=source,
+            super_options=super_options,
         )
     if not table:
-        raise CampaignIsolationError("empty /proc/self/mountinfo")
+        raise CampaignIsolationError("empty /proc mountinfo")
     return table
+
+
+def _mountinfo_table() -> dict[int, _MountInfo]:
+    try:
+        lines = Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as error:
+        raise CampaignIsolationError("cannot read /proc/self/mountinfo") from error
+    return _parse_mountinfo(lines)
+
+
+def _namespace_mountinfo_table(pid: int) -> dict[int, _MountInfo]:
+    try:
+        lines = Path(f"/proc/{pid}/mountinfo").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    except (OSError, UnicodeError) as error:
+        raise CampaignIsolationError(
+            "cannot inspect blocked attempt mount namespace"
+        ) from error
+    return _parse_mountinfo(lines)
 
 
 def _descriptor_mount_id(descriptor: int) -> int:
@@ -2204,6 +2695,7 @@ def _build_attempt_mount_receipt(
     identities: Mapping[Path, dict[str, Any]] | None = None,
     roles: Mapping[str, Path] | None = None,
     data_identity: dict[str, Any] | None = None,
+    outer_bubblewrap: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if roles is not None:
         if identities is None or data_identity is None:
@@ -2213,6 +2705,8 @@ def _build_attempt_mount_receipt(
             "campaign_data_root": str(data_root),
             "campaign_data_root_hidden": True,
             "campaign_data_identity": data_identity,
+            "outer_bubblewrap": outer_bubblewrap,
+            "namespace_mounts": None,
             "roles": {
                 "persistent_writable": {
                     role: identities[roles[role]]
@@ -2250,14 +2744,19 @@ def _build_attempt_mount_receipt(
 
 
 def attempt_mount_receipt(command: list[str]) -> dict[str, Any] | None:
-    """Return a detached copy of the mount receipt carried by a wrapped argv."""
+    """Return the receipt that gate-time attestation finalizes in place.
+
+    Callers may retain this object before spawning the attempt.  Its digest and
+    namespace fields become final only after :func:`establish_attempt_boundary`
+    verifies the blocked namespace and releases the inner mount gate.
+    """
 
     if not isinstance(command, WrappedAttemptCommand):
         return None
     receipt = command.mount_receipt
     if not isinstance(receipt, dict):
         return None
-    return json.loads(json.dumps(receipt, sort_keys=True))
+    return receipt
 
 
 def _reject_overlapping_roots(roots: tuple[Path, ...]) -> None:

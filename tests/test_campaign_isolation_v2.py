@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import importlib
 import json
 import logging
 import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -129,6 +132,35 @@ def test_role_mount_real_bwrap_preserves_exact_access_classes(
             "apex_artifacts",
             "backend_home",
         }
+        assert receipt["outer_bubblewrap"]["canonical_path"] == "/usr/bin/bwrap"
+        assert receipt["outer_bubblewrap"]["source"]["sha256"] == (
+            campaign_isolation._OUTER_BWRAP_SHA256
+        )
+        assert receipt["outer_bubblewrap"]["sealed_exec"] == {
+            "transport": "sealed_memfd_proc_self_fd",
+            "size_bytes": campaign_isolation._OUTER_BWRAP_SIZE_BYTES,
+            "sha256": campaign_isolation._OUTER_BWRAP_SHA256,
+            "seals": list(campaign_isolation._OUTER_BWRAP_SEALS),
+        }
+        namespace = receipt["namespace_mounts"]
+        assert namespace["policy"] == "blocked_namespace_mount_attestation_v1"
+        assert namespace["root"]["access"] == "read_only"
+        assert namespace["campaign_data_root"]["access"] == "read_write"
+        assert namespace["closed_set"] is True
+        assert namespace["aliases_absent"] is True
+        for role in ("scored_workspace", "sealed_task_contract", "apex_runtime"):
+            observed = namespace["roles"]["read_only"][role]
+            assert observed["target"]["access"] == "read_only"
+            assert observed["target"]["device"] == observed["source"]["device"]
+            assert observed["target"]["inode"] == observed["source"]["inode"]
+        for role in ("apex_artifacts", "backend_home"):
+            observed = namespace["roles"]["persistent_writable"][role]
+            assert observed["target"]["access"] == "read_write"
+            assert observed["target"]["device"] == observed["source"]["device"]
+            assert observed["target"]["inode"] == observed["source"]["inode"]
+        material = dict(receipt)
+        digest = material.pop("sha256")
+        assert digest == campaign_isolation.canonical_digest(material)
         assert workspace_file.read_text(encoding="utf-8") == "baseline\n"
         assert contract_file.read_text(encoding="utf-8") == "{}\n"
         assert runtime_file.read_text(encoding="utf-8") == "runtime\n"
@@ -242,3 +274,124 @@ def test_pinned_mount_fd_defeats_validation_to_exec_path_replacement(
     )
     assert outcome.exit_code == 0, outcome.output
     assert outcome.stdout == b"trusted\n"
+
+
+def test_outer_bwrap_exec_ignores_adversarial_path_and_is_sealed(
+    tmp_path, monkeypatch
+) -> None:
+    data_root, roles = _role_tree(tmp_path)
+    fake_bin = tmp_path / "fake-bin"
+    marker = tmp_path / "fake-bwrap-executed"
+    fake_bin.mkdir()
+    fake = fake_bin / "bwrap"
+    fake.write_text(
+        f"#!/bin/sh\nprintf bad > {marker}\nexit 91\n", encoding="utf-8"
+    )
+    fake.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+    monkeypatch.setenv("PATH", str(fake_bin))
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
+    _disable_requirements_probe(monkeypatch)
+
+    command = campaign_isolation.wrap_attempt_command(
+        ["/bin/true"],
+        eval_config=_formal_config(),
+        writable_roots=(roles["apex_artifacts"], roles["backend_home"]),
+        read_only_roots=(
+            roles["scored_workspace"],
+            roles["sealed_task_contract"],
+            roles["apex_runtime"],
+        ),
+        mount_roles=roles,
+        private_proc=False,
+    )
+    assert command[0].startswith("/proc/self/fd/")
+    receipt = campaign_isolation.attempt_mount_receipt(command)
+    outcome = apex_launcher._run_apex(
+        command,
+        cwd=roles["apex_artifacts"],
+        backend="codex",
+        timeout_seconds=10,
+        output_limit=1024,
+        logger=logging.getLogger(__name__),
+    )
+
+    assert outcome.exit_code == 0
+    assert not marker.exists()
+    assert receipt["outer_bubblewrap"]["canonical_path"] == "/usr/bin/bwrap"
+    assert receipt["outer_bubblewrap"]["sealed_exec"]["sha256"] == (
+        campaign_isolation._OUTER_BWRAP_SHA256
+    )
+    assert receipt["namespace_mounts"]["closed_set"] is True
+
+
+def test_outer_bwrap_memfd_has_exact_bytes_and_irrevocable_seals() -> None:
+    descriptor, identity = campaign_isolation._sealed_outer_bwrap()
+    try:
+        expected_seals = (
+            fcntl.F_SEAL_WRITE
+            | fcntl.F_SEAL_SHRINK
+            | fcntl.F_SEAL_GROW
+            | fcntl.F_SEAL_SEAL
+        )
+        payload = os.pread(
+            descriptor, campaign_isolation._OUTER_BWRAP_SIZE_BYTES + 1, 0
+        )
+        assert fcntl.fcntl(descriptor, fcntl.F_GET_SEALS) == expected_seals
+        assert len(payload) == campaign_isolation._OUTER_BWRAP_SIZE_BYTES
+        assert hashlib.sha256(payload).hexdigest() == (
+            campaign_isolation._OUTER_BWRAP_SHA256
+        )
+        assert identity["source"]["sha256"] == identity["sealed_exec"]["sha256"]
+    finally:
+        os.close(descriptor)
+
+
+@pytest.mark.parametrize("attack", ["writable_workspace", "nested_mount"])
+def test_mount_attestation_fails_before_untrusted_exec(
+    tmp_path, monkeypatch, attack
+) -> None:
+    data_root, roles = _role_tree(tmp_path)
+    executed = roles["apex_artifacts"] / "untrusted-executed"
+    nested = roles["scored_workspace"] / "nested"
+    nested.mkdir()
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
+    _disable_requirements_probe(monkeypatch)
+    command = campaign_isolation.wrap_attempt_command(
+        ["/bin/sh", "-c", f"printf bad > {executed}"],
+        eval_config=_formal_config(),
+        writable_roots=(roles["apex_artifacts"], roles["backend_home"]),
+        read_only_roots=(
+            roles["scored_workspace"],
+            roles["sealed_task_contract"],
+            roles["apex_runtime"],
+        ),
+        mount_roles=roles,
+        private_proc=False,
+    )
+    if attack == "writable_workspace":
+        for index, value in enumerate(command):
+            if (
+                value == str(roles["scored_workspace"])
+                and index >= 2
+                and command[index - 2] == "--ro-bind-fd"
+            ):
+                command[index - 2] = "--bind-fd"
+                break
+        else:
+            raise AssertionError("workspace bind was not found")
+        error = "differs from pinned source"
+    else:
+        insertion = command.index("--json-status-fd")
+        command[insertion:insertion] = ["--tmpfs", str(nested)]
+        error = "closed declared set|undeclared mounts"
+
+    with pytest.raises(campaign_isolation.CampaignIsolationError, match=error):
+        apex_launcher._run_apex(
+            command,
+            cwd=roles["apex_artifacts"],
+            backend="codex",
+            timeout_seconds=10,
+            output_limit=1024,
+            logger=logging.getLogger(__name__),
+        )
+    assert not executed.exists()
