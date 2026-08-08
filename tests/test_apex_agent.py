@@ -996,6 +996,35 @@ def _formal_apex_launch_fixture(
     apex_root = tmp_path / "apex"
     apex_root.mkdir()
     (apex_root / "main.py").write_text("# fake entrypoint\n", encoding="utf-8")
+    (apex_root / ".gitignore").write_text(".venv/\n", encoding="utf-8")
+    for arguments in (
+        ["git", "init", "-q", str(apex_root)],
+        ["git", "-C", str(apex_root), "add", "main.py", ".gitignore"],
+        [
+            "git",
+            "-C",
+            str(apex_root),
+            "-c",
+            "user.name=AKA Test",
+            "-c",
+            "user.email=aka@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "fixture",
+        ],
+    ):
+        apex_launcher.subprocess.run(arguments, check=True)
+    apex_python = apex_root / ".venv/bin/python"
+    apex_python.parent.mkdir(parents=True)
+    system_python = Path("/usr/bin/python3").resolve(strict=True)
+    apex_python.symlink_to(system_python)
+    apex_commit = apex_launcher.subprocess.run(
+        ["git", "-C", str(apex_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
     attempt_root = workspace.parent
     receipt_path = attempt_root / "session_receipt.json"
     eval_config = {
@@ -1012,6 +1041,15 @@ def _formal_apex_launch_fixture(
     }
     captured: dict[str, object] = {}
     monkeypatch.setenv("APEX_ROOT", str(apex_root))
+    monkeypatch.setenv("APEX_PYTHON", str(apex_python))
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_APEX_COMMIT", apex_commit)
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_APEX_DIRTY", "false")
+    monkeypatch.setenv(
+        "AGENT_KERNEL_ARENA_APEX_STATUS_SHA256", hashlib.sha256(b"").hexdigest()
+    )
+    monkeypatch.setenv(
+        "AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(attempt_root)
+    )
     monkeypatch.setenv("AGENT_KERNEL_ARENA_PYTHON", sys.executable)
     monkeypatch.setattr(
         apex_launcher,
@@ -1027,13 +1065,29 @@ def _formal_apex_launch_fixture(
         return home
 
     def fake_wrap(
-        command, *, eval_config, writable_roots, read_only_roots=(), private_proc=True
+        command,
+        *,
+        eval_config,
+        writable_roots,
+        read_only_roots=(),
+        trusted_read_only_roots=(),
+        private_proc=True,
     ):
         del eval_config
-        captured["writable_roots"] = tuple(Path(path) for path in writable_roots)
-        captured["read_only_roots"] = tuple(Path(path) for path in read_only_roots)
+        writable = [Path(path) for path in writable_roots]
+        read_only = [Path(path) for path in read_only_roots]
+        trusted = [Path(path) for path in trusted_read_only_roots]
+        captured["writable_roots"] = tuple(writable)
+        captured["read_only_roots"] = tuple(read_only)
+        captured["trusted_read_only_roots"] = tuple(trusted)
         captured["private_proc"] = private_proc
-        return command
+        mount_receipt = campaign_isolation._build_attempt_mount_receipt(
+            data_root=attempt_root,
+            writable=writable,
+            read_only=read_only,
+            trusted_read_only=trusted,
+        )
+        return WrappedAttemptCommand(command, mount_receipt=mount_receipt)
 
     def fake_run(command, **kwargs):
         del kwargs
@@ -1190,6 +1244,9 @@ def test_formal_apex_mount_contract_keeps_scored_workspace_read_only(
     contract_root = Path(captured["task_spec_path"]).parent
     assert captured["writable_roots"] == (artifact_root, attempt_home)
     assert captured["read_only_roots"] == (workspace, contract_root)
+    assert captured["trusted_read_only_roots"] == (
+        Path(os.environ["APEX_ROOT"]),
+    )
     assert captured["private_proc"] is False
     assert contract_root.parent == artifact_root.parent
     assert contract_root != artifact_root
@@ -1199,9 +1256,109 @@ def test_formal_apex_mount_contract_keeps_scored_workspace_read_only(
     assert workspace not in captured["writable_roots"]
     integrity = captured["receipt"]["workspace_integrity"]
     assert captured["receipt"]["comparison_contract_sha256"] == "d" * 64
+    runtime_mount = captured["receipt"]["apex_runtime_mount"]
+    attempt_mounts = captured["receipt"]["attempt_mounts"]
+    assert runtime_mount["policy_id"] == (
+        campaign_isolation.APEX_RUNTIME_MOUNT_POLICY
+    )
+    assert runtime_mount["attempt_mounts_sha256"] == attempt_mounts["sha256"]
+    assert attempt_mounts["trusted_external_read_only_roots"] == [
+        os.environ["APEX_ROOT"]
+    ]
     assert integrity["pre_apply_unchanged"] is True
     assert integrity["pre_apply_manifest_sha256"] == integrity["baseline_manifest_sha256"]
     assert '"status": "no_gain"' in output
+
+
+def test_formal_apex_rejects_venv_parent_symlink_outside_checkout(
+    tmp_path, monkeypatch
+) -> None:
+    workspace, config_path, _, eval_config, _ = _formal_apex_launch_fixture(
+        tmp_path, monkeypatch, mutate_workspace=False
+    )
+    apex_root = Path(os.environ["APEX_ROOT"])
+    (apex_root / ".venv/bin/python").unlink()
+    (apex_root / ".venv/bin").rmdir()
+    (apex_root / ".venv").rmdir()
+    external = tmp_path / "external-venv/bin"
+    external.mkdir(parents=True)
+    (external / "python").symlink_to(Path("/usr/bin/python3").resolve(strict=True))
+    (apex_root / ".venv").symlink_to(external.parent, target_is_directory=True)
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="parent path must not contain symlinks",
+    ):
+        apex_launcher.launch_agent(eval_config, str(config_path), str(workspace))
+
+
+def test_formal_apex_checkout_below_tmp_is_rebound_exactly_read_only(
+    tmp_path, monkeypatch
+) -> None:
+    data_root = tmp_path / "campaign"
+    artifact_root = data_root / "run/task/attempt_01/apex-artifacts"
+    apex_root = tmp_path / "apex-runtime"
+    artifact_root.mkdir(parents=True)
+    apex_root.mkdir()
+    entrypoint = apex_root / "main.py"
+    entrypoint.write_text(
+        "import pathlib\n"
+        "root = pathlib.Path(__file__).parent\n"
+        "try:\n"
+        "    (root / 'forbidden').write_text('bad')\n"
+        "except OSError:\n"
+        "    print('apex-visible-read-only')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
+    monkeypatch.setattr(
+        "src.campaign_isolation._codex_requirements_identity",
+        lambda: (Path("/etc/codex/requirements.toml"), {"sha256": "f" * 64}),
+    )
+    eval_config = {
+        "campaign": {"comparison": "apex_vs_codex"},
+        "campaign_attempt": {"fresh_session": True},
+    }
+    system_python = str(Path("/usr/bin/python3").resolve(strict=True))
+
+    hidden_command = apex_launcher.wrap_attempt_command(
+        [system_python, str(entrypoint)],
+        eval_config=eval_config,
+        writable_roots=(artifact_root,),
+        private_proc=False,
+    )
+    hidden_outcome = apex_launcher._run_apex(
+        hidden_command,
+        cwd=artifact_root,
+        backend="codex",
+        timeout_seconds=10,
+        output_limit=1024 * 1024,
+        logger=logging.getLogger(__name__),
+    )
+    assert hidden_outcome.exit_code != 0
+    assert "No such file or directory" in hidden_outcome.output
+
+    visible_command = apex_launcher.wrap_attempt_command(
+        [system_python, str(entrypoint)],
+        eval_config=eval_config,
+        writable_roots=(artifact_root,),
+        trusted_read_only_roots=(apex_root,),
+        private_proc=False,
+    )
+    mount_receipt = campaign_isolation.attempt_mount_receipt(visible_command)
+    visible_outcome = apex_launcher._run_apex(
+        visible_command,
+        cwd=artifact_root,
+        backend="codex",
+        timeout_seconds=10,
+        output_limit=1024 * 1024,
+        logger=logging.getLogger(__name__),
+    )
+
+    assert visible_outcome.exit_code == 0
+    assert visible_outcome.stdout == b"apex-visible-read-only\n"
+    assert not (apex_root / "forbidden").exists()
+    assert mount_receipt["trusted_external_read_only_roots"] == [str(apex_root)]
 
 
 def test_formal_apex_outer_boundary_reaps_env_i_double_fork_late_writer(

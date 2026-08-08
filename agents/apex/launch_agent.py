@@ -47,9 +47,13 @@ from src.agent_turn_budget import (
 )
 from src.module_registration import AgentType, load_prompt_builder
 from src.campaign_isolation import (
+    APEX_RUNTIME_MOUNT_POLICY,
+    APEX_RUNTIME_MOUNT_SCHEMA,
+    ATTEMPT_MOUNT_RECEIPT_SCHEMA,
     ATTEMPT_CONTAINMENT_POLICY,
     attempt_cleanup_verified,
     attempt_command_pass_fds,
+    attempt_mount_receipt,
     establish_attempt_boundary,
     finalize_attempt_boundary,
     formal_gpu_evidence,
@@ -2314,6 +2318,178 @@ def _resolve_apex_command(agent_config: dict[str, Any]) -> tuple[Path, str]:
     return entrypoint, python_path
 
 
+def _git_output(apex_root: Path, *arguments: str) -> str:
+    environment = os.environ.copy()
+    environment["GIT_OPTIONAL_LOCKS"] = "0"
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(apex_root), *arguments],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=environment,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ApexAdapterError(f"cannot inspect Apex checkout: {error}") from error
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip()[-1000:]
+        raise ApexAdapterError(f"cannot inspect Apex checkout: {detail}")
+    return completed.stdout.rstrip("\r\n")
+
+
+def _validated_apex_repository_state(apex_root: Path) -> dict[str, Any]:
+    commit = _git_output(apex_root, "rev-parse", "HEAD")
+    top_level = Path(
+        _git_output(apex_root, "rev-parse", "--show-toplevel")
+    ).resolve(strict=True)
+    status = _git_output(
+        apex_root,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=normal",
+    )
+    actual = {
+        "commit": commit,
+        "dirty": bool(status),
+        "status_sha256": _sha256_bytes(status.encode("utf-8")),
+    }
+    expected_dirty = os.environ.get("AGENT_KERNEL_ARENA_APEX_DIRTY")
+    expected = {
+        "commit": os.environ.get("AGENT_KERNEL_ARENA_APEX_COMMIT"),
+        "dirty": (
+            expected_dirty == "true"
+            if expected_dirty in {"true", "false"}
+            else None
+        ),
+        "status_sha256": os.environ.get(
+            "AGENT_KERNEL_ARENA_APEX_STATUS_SHA256"
+        ),
+    }
+    if (
+        not re.fullmatch(r"[0-9a-f]{40}", commit)
+        or top_level != apex_root
+        or not isinstance(expected["commit"], str)
+        or not re.fullmatch(r"[0-9a-f]{40}", expected["commit"])
+        or expected["dirty"] is not False
+        or not isinstance(expected["status_sha256"], str)
+        or not _SHA256.fullmatch(expected["status_sha256"])
+        or actual != expected
+    ):
+        raise ApexAdapterError(
+            "formal Apex checkout differs from the runner provenance contract"
+        )
+    return actual
+
+
+def _validated_formal_apex_python(root: Path, python_path: str) -> tuple[Path, Path]:
+    configured = os.environ.get("APEX_PYTHON")
+    if not isinstance(configured, str) or configured != python_path:
+        raise ApexAdapterError("formal campaign requires an explicit APEX_PYTHON")
+    raw_launcher = Path(python_path).expanduser()
+    if not raw_launcher.is_absolute():
+        raise ApexAdapterError("formal APEX_PYTHON must be absolute")
+    launcher = Path(os.path.abspath(raw_launcher))
+    try:
+        relative_launcher = launcher.relative_to(root)
+    except ValueError as error:
+        raise ApexAdapterError(
+            "formal APEX_PYTHON launcher must be inside APEX_ROOT"
+        ) from error
+    current = root
+    try:
+        for part in relative_launcher.parts[:-1]:
+            current /= part
+            metadata = current.lstat()
+            if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+                raise ApexAdapterError(
+                    "formal APEX_PYTHON parent path must not contain symlinks"
+                )
+        resolved_python = launcher.resolve(strict=True)
+    except OSError as error:
+        raise ApexAdapterError(f"formal APEX_PYTHON is unavailable: {error}") from error
+    if not resolved_python.is_file() or not os.access(resolved_python, os.X_OK):
+        raise ApexAdapterError("formal APEX_PYTHON must resolve to an executable file")
+    if resolved_python.is_relative_to(
+        Path("/tmp")
+    ) and not resolved_python.is_relative_to(root):
+        raise ApexAdapterError(
+            "formal APEX_PYTHON resolves into hidden /tmp outside APEX_ROOT"
+        )
+    data_root_value = os.environ.get("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT")
+    if data_root_value:
+        data_root = Path(os.path.abspath(data_root_value))
+        if resolved_python.is_relative_to(
+            data_root
+        ) and not resolved_python.is_relative_to(root):
+            raise ApexAdapterError(
+                "formal APEX_PYTHON resolves into hidden campaign data"
+            )
+    return launcher, resolved_python
+
+
+def _formal_apex_runtime_mount(
+    entrypoint: Path, python_path: str
+) -> dict[str, Any]:
+    raw_root = os.environ.get("APEX_ROOT")
+    if not isinstance(raw_root, str) or not raw_root:
+        raise ApexAdapterError("formal campaign requires an explicit APEX_ROOT")
+    root = entrypoint.parent
+    lexical_root = Path(os.path.abspath(Path(raw_root).expanduser()))
+    try:
+        root_metadata = lexical_root.lstat()
+        canonical_root = lexical_root.resolve(strict=True)
+        entrypoint_metadata = entrypoint.lstat()
+    except OSError as error:
+        raise ApexAdapterError(f"formal Apex runtime is unavailable: {error}") from error
+    if (
+        canonical_root != lexical_root
+        or canonical_root != root
+        or stat.S_ISLNK(root_metadata.st_mode)
+        or not stat.S_ISDIR(root_metadata.st_mode)
+        or entrypoint.name != "main.py"
+        or stat.S_ISLNK(entrypoint_metadata.st_mode)
+        or not stat.S_ISREG(entrypoint_metadata.st_mode)
+    ):
+        raise ApexAdapterError(
+            "formal APEX_ROOT must be a canonical checkout with a regular main.py"
+        )
+    launcher, resolved_python = _validated_formal_apex_python(root, python_path)
+
+    material: dict[str, Any] = {
+        "schema": APEX_RUNTIME_MOUNT_SCHEMA,
+        "policy_id": APEX_RUNTIME_MOUNT_POLICY,
+        "mode": "read_only",
+        "root": str(root),
+        "repository": _validated_apex_repository_state(root),
+        "entrypoint": {
+            "path": str(entrypoint),
+            "relative_path": "main.py",
+            "sha256": _sha256_file(entrypoint),
+        },
+        "python": {
+            "launcher_path": str(launcher),
+            "resolved_path": str(resolved_python),
+            "resolved_sha256": _sha256_file(resolved_python),
+        },
+    }
+    return material
+
+
+def _attempt_mount_receipt_valid(receipt: Any, *, apex_root: str) -> bool:
+    if not isinstance(receipt, dict):
+        return False
+    material = dict(receipt)
+    digest = material.pop("sha256", None)
+    return (
+        receipt.get("schema") == ATTEMPT_MOUNT_RECEIPT_SCHEMA
+        and receipt.get("trusted_external_read_only_roots") == [apex_root]
+        and isinstance(digest, str)
+        and _SHA256.fullmatch(digest) is not None
+        and digest == _canonical_digest(material)
+    )
+
+
 @register_agent("apex")
 def launch_agent(
     eval_config: dict[str, Any],
@@ -2381,6 +2557,11 @@ def launch_agent(
     task_spec_sha256 = _sha256_bytes(task_spec_bytes)
 
     entrypoint, python_path = _resolve_apex_command(agent_config)
+    apex_runtime_mount = (
+        _formal_apex_runtime_mount(entrypoint, python_path)
+        if formal_campaign
+        else None
+    )
     command = [
         python_path,
         str(entrypoint),
@@ -2415,7 +2596,9 @@ def launch_agent(
     attempt_home: Path | None = None
     process_environment = _subprocess_environment(task_spec["agent_backend"])
     isolated_command = command
+    attempt_mounts: dict[str, Any] | None = None
     if formal_campaign:
+        assert apex_runtime_mount is not None
         raw_receipt = campaign_attempt.get("receipt_path")
         if not isinstance(raw_receipt, str) or not Path(raw_receipt).is_absolute():
             raise ApexAdapterError("formal campaign requires an absolute attempt receipt path")
@@ -2451,11 +2634,25 @@ def launch_agent(
             eval_config=eval_config,
             writable_roots=(artifact_root, attempt_home),
             read_only_roots=(workspace_path, contract_root),
+            trusted_read_only_roots=(
+                Path(apex_runtime_mount["root"]),
+            ),
             # Apex is the trusted inner containment owner.  Its supervisor
             # creates the agent-visible private procfs; mounting another procfs
             # here breaks the required Apex -> Codex nested user namespace.
             private_proc=False,
         )
+        attempt_mounts = attempt_mount_receipt(isolated_command)
+        if not _attempt_mount_receipt_valid(
+            attempt_mounts, apex_root=apex_runtime_mount["root"]
+        ):
+            release_attempt_command_fds(isolated_command)
+            raise ApexAdapterError(
+                "formal Apex isolation did not receipt the exact read-only runtime mount"
+            )
+        assert attempt_mounts is not None
+        apex_runtime_mount["attempt_mounts_sha256"] = attempt_mounts["sha256"]
+        apex_runtime_mount["sha256"] = _canonical_digest(apex_runtime_mount)
     outcome = _normalize_process_outcome(_run_apex(isolated_command, **run_kwargs))
     task_spec_postlaunch_unchanged = (
         _sealed_task_spec_matches(task_spec_path, task_spec_bytes)
@@ -2491,6 +2688,8 @@ def launch_agent(
             "errors": list(outcome.capture_errors),
         },
         "gpu": gpu_evidence,
+        "attempt_mounts": attempt_mounts,
+        "apex_runtime_mount": apex_runtime_mount,
         "apex": {
             "entrypoint": str(entrypoint.resolve(strict=True)),
             "entrypoint_sha256": _sha256_file(entrypoint.resolve(strict=True)),

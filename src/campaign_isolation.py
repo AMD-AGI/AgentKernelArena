@@ -33,6 +33,12 @@ class CampaignIsolationError(RuntimeError):
 
 
 ATTEMPT_CONTAINMENT_POLICY = "private_pid_namespace_init_pidfd_v1"
+ATTEMPT_MOUNT_RECEIPT_SCHEMA = "aka.attempt-mounts/v1"
+APEX_RUNTIME_MOUNT_POLICY = "validated_exact_apex_root_read_only_v1"
+APEX_RUNTIME_MOUNT_SCHEMA = "aka.apex-runtime-mount/v1"
+_BROAD_EXTERNAL_ROOTS = frozenset(
+    {Path("/tmp"), Path("/var/tmp"), Path("/dev/shm")}
+)
 
 
 class WrappedAttemptCommand(list[str]):
@@ -46,12 +52,14 @@ class WrappedAttemptCommand(list[str]):
         boundary_status_fd: int | None = None,
         boundary_gate_fd: int | None = None,
         boundary_procfs: str = "private_attempt_procfs",
+        mount_receipt: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(argv)
         self.pass_fds = tuple(pass_fds)
         self.boundary_status_fd = boundary_status_fd
         self.boundary_gate_fd = boundary_gate_fd
         self.boundary_procfs = boundary_procfs
+        self.mount_receipt = mount_receipt
 
     def release_pass_fds(self) -> None:
         descriptors, self.pass_fds = self.pass_fds, ()
@@ -1341,9 +1349,15 @@ def wrap_attempt_command(
     eval_config: dict[str, Any],
     writable_roots: Iterable[Path],
     read_only_roots: Iterable[Path] = (),
+    trusted_read_only_roots: Iterable[Path] = (),
     private_proc: bool = True,
 ) -> list[str]:
-    """Hide other campaign data and expose only explicitly scoped roots."""
+    """Hide campaign data and expose attempt roots plus pre-authenticated roots.
+
+    ``trusted_read_only_roots`` is intentionally not a general escape hatch: its
+    caller must bind each root to an independent identity contract and persist the
+    returned mount receipt.
+    """
     if not is_formal_campaign(eval_config):
         return command
     # Re-resolve, hash, and version-check the read-only mounted executable at
@@ -1363,9 +1377,12 @@ def wrap_attempt_command(
     read_only = _validated_attempt_roots(
         read_only_roots, data_root=data_root, label="read-only"
     )
+    trusted_read_only = _validated_trusted_read_only_roots(
+        trusted_read_only_roots, data_root=data_root
+    )
     if not writable:
         raise CampaignIsolationError("formal campaign has no attempt writable root")
-    _reject_overlapping_roots((*writable, *read_only))
+    _reject_overlapping_roots((*writable, *read_only, *trusted_read_only))
 
     wrapped = _bubblewrap_base_command(
         binary, data_root, private_proc=private_proc
@@ -1387,10 +1404,20 @@ def wrap_attempt_command(
             if current not in created:
                 wrapped.extend(["--dir", str(current)])
                 created.add(current)
+    for root in trusted_read_only:
+        if root.is_relative_to(Path("/tmp")):
+            current = Path("/tmp")
+            for part in root.relative_to(current).parts:
+                current /= part
+                if current not in created:
+                    wrapped.extend(["--dir", str(current)])
+                    created.add(current)
     # bubblewrap opens bind sources in its parent namespace before applying the
     # destination mounts, so these still refer to host roots after data_root is
     # hidden by the tmpfs above.
     for root in read_only:
+        wrapped.extend(["--ro-bind", str(root), str(root)])
+    for root in trusted_read_only:
         wrapped.extend(["--ro-bind", str(root), str(root)])
     for root in writable:
         wrapped.extend(["--bind", str(root), str(root)])
@@ -1426,6 +1453,12 @@ def wrap_attempt_command(
                 "private_attempt_procfs"
                 if private_proc
                 else "trusted_orchestrator_inherited_procfs"
+            ),
+            mount_receipt=_build_attempt_mount_receipt(
+                data_root=data_root,
+                writable=writable,
+                read_only=read_only,
+                trusted_read_only=trusted_read_only,
             ),
         )
         gpu_bwrap_descriptor = status_write = gate_read = status_read = gate_write = -1
@@ -1854,6 +1887,88 @@ def _validated_attempt_roots(
     return roots
 
 
+def _validated_trusted_read_only_roots(
+    raw_roots: Iterable[Path], *, data_root: Path
+) -> list[Path]:
+    """Resolve exact external roots that the caller already authenticated.
+
+    Formal attempts hide both ``/tmp`` and the complete campaign data root.
+    Apex may itself live below ``/tmp``, so its already provenance-bound checkout
+    needs one explicit read-only rebind.  This path class is deliberately separate
+    from attempt-owned roots: it must be canonical, external to campaign data, and
+    narrower than a top-level filesystem directory.
+    """
+
+    roots: list[Path] = []
+    for raw in raw_roots:
+        candidate = Path(raw).expanduser()
+        if not candidate.is_absolute():
+            raise CampaignIsolationError(
+                f"trusted read-only root must be absolute: {raw}"
+            )
+        lexical = Path(os.path.abspath(candidate))
+        try:
+            metadata = lexical.lstat()
+            root = lexical.resolve(strict=True)
+        except OSError as error:
+            raise CampaignIsolationError(
+                f"trusted read-only root is unavailable: {raw}"
+            ) from error
+        if (
+            root != lexical
+            or stat.S_ISLNK(metadata.st_mode)
+            or not stat.S_ISDIR(metadata.st_mode)
+            or len(root.parts) < 3
+            or root in _BROAD_EXTERNAL_ROOTS
+        ):
+            raise CampaignIsolationError(
+                f"trusted read-only root must be a specific canonical directory: {root}"
+            )
+        try:
+            root.relative_to(data_root)
+        except ValueError:
+            pass
+        else:
+            raise CampaignIsolationError(
+                "trusted read-only root must be outside campaign data root: "
+                f"{root}"
+            )
+        if root not in roots:
+            roots.append(root)
+    return roots
+
+
+def _build_attempt_mount_receipt(
+    *,
+    data_root: Path,
+    writable: list[Path],
+    read_only: list[Path],
+    trusted_read_only: list[Path],
+) -> dict[str, Any]:
+    material: dict[str, Any] = {
+        "schema": ATTEMPT_MOUNT_RECEIPT_SCHEMA,
+        "campaign_data_root": str(data_root),
+        "campaign_data_root_hidden": True,
+        "writable_roots": [str(path) for path in writable],
+        "read_only_roots": [str(path) for path in read_only],
+        "trusted_external_read_only_roots": [
+            str(path) for path in trusted_read_only
+        ],
+    }
+    return {**material, "sha256": canonical_digest(material)}
+
+
+def attempt_mount_receipt(command: list[str]) -> dict[str, Any] | None:
+    """Return a detached copy of the mount receipt carried by a wrapped argv."""
+
+    if not isinstance(command, WrappedAttemptCommand):
+        return None
+    receipt = command.mount_receipt
+    if not isinstance(receipt, dict):
+        return None
+    return json.loads(json.dumps(receipt, sort_keys=True))
+
+
 def _reject_overlapping_roots(roots: tuple[Path, ...]) -> None:
     for index, root in enumerate(roots):
         for other in roots[index + 1 :]:
@@ -1889,12 +2004,16 @@ def _make_owner_writable(root: Path) -> None:
 
 
 __all__ = [
+    "APEX_RUNTIME_MOUNT_POLICY",
+    "APEX_RUNTIME_MOUNT_SCHEMA",
     "ATTEMPT_CONTAINMENT_POLICY",
+    "ATTEMPT_MOUNT_RECEIPT_SCHEMA",
     "CampaignIsolationError",
     "AttemptBoundary",
     "WrappedAttemptCommand",
     "attempt_cleanup_verified",
     "attempt_command_pass_fds",
+    "attempt_mount_receipt",
     "establish_attempt_boundary",
     "finalize_attempt_boundary",
     "is_formal_campaign",

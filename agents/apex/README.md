@@ -63,6 +63,18 @@ also copied into a separate `0444` `original_arena_prompt.txt` receipt artifact.
 bytes and digest are recomputed against `instruction_adaptation.original`; a mismatch
 invalidates the receipt rather than leaving an unbound transformation claim.
 
+The outer attempt namespace replaces `/tmp` and the complete campaign data root with
+private filesystems. Before launch, the adapter therefore revalidates the exact
+`APEX_ROOT` Git commit, clean-status digest, regular `main.py`, and in-checkout
+`APEX_PYTHON` launcher against the runner's sealed campaign provenance. It then
+read-only rebinds that one canonical Apex checkout after `/tmp` is hidden. The mount
+API rejects `/tmp`, `/var/tmp`, `/dev/shm`, symlinked roots, overlapping roots, and
+paths inside campaign data; it never exposes an entire temporary directory. Both the
+exact bind list and Apex runtime identity are content-digested into the attempt
+receipt, and the campaign auditor binds them back to `repositories.apex` in
+`campaign_manifest.yaml`. The scored workspace remains a separate read-only bind,
+and only the attempt artifact and fresh backend-home roots remain writable.
+
 Run artifacts are written beside, never inside, the scored workspace under
 `.<task-workspace>_apex/<run-id>/`.
 
@@ -92,7 +104,11 @@ The runner bind-mounts the Apex checkout read-only at the same absolute path it
 has on the host and executes its bootstrapped `.venv/bin/python`. Keeping the
 path identical preserves the editable-install receipt without a `PYTHONPATH`
 override. It mounts only the selected backend's CLI and login state; it does not
-expose all three backend credentials to one run.
+expose all three backend credentials to one run. For a formal campaign, `.venv`
+must be a real directory inside the checkout; a symlinked `.venv` parent is rejected
+because its target would not be covered by the exact read-only runtime bind. A normal
+venv's final `bin/python` symlink to a system interpreter is accepted because system
+paths remain visible read-only.
 
 ## Supported tasks
 

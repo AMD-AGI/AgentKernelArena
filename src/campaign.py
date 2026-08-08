@@ -34,6 +34,9 @@ from src.agent_turn_budget import (
     render_apex_run_control,
 )
 from src.campaign_isolation import (
+    APEX_RUNTIME_MOUNT_POLICY,
+    APEX_RUNTIME_MOUNT_SCHEMA,
+    ATTEMPT_MOUNT_RECEIPT_SCHEMA,
     ATTEMPT_CONTAINMENT_POLICY,
     CampaignIsolationError,
     attempt_cleanup_verified,
@@ -404,7 +407,7 @@ def _agent_manifest(repo_root: Path, agent_name: str, policy: CampaignPolicy) ->
     binary_path = Path(codex).resolve()
     if not binary_path.is_file():
         raise CampaignError("resolved codex binary is not a regular file")
-    return {
+    manifest = {
         "template": agent_name,
         "session_receipt_schema": (
             _APEX_RECEIPT_SCHEMA_V4
@@ -445,6 +448,9 @@ def _agent_manifest(repo_root: Path, agent_name: str, policy: CampaignPolicy) ->
         },
         "agent_config_sha256": _sha256_file(config_path),
     }
+    if agent_name == "apex":
+        manifest["apex_runtime_mount_policy_id"] = APEX_RUNTIME_MOUNT_POLICY
+    return manifest
 
 
 def _regular_tree_manifest(root: Path) -> dict[str, str]:
@@ -1122,6 +1128,140 @@ def _expected_session_receipt_schema(run_directory: Path) -> str | None:
     template = agent.get("template")
     expected = agent.get("session_receipt_schema")
     return resolve_session_receipt_schema(template, expected)
+
+
+def _expected_apex_runtime_mount(
+    run_directory: Path,
+) -> dict[str, Any] | None:
+    """Return the sealed Apex mount contract, or None for legacy manifests."""
+
+    manifest_path = run_directory / "campaign_manifest.yaml"
+    if not _safe_read_only_file(manifest_path):
+        return None
+    try:
+        manifest = _load_mapping(manifest_path, "campaign manifest")
+    except (CampaignError, OSError, yaml.YAMLError):
+        return None
+    agent = manifest.get("agent")
+    repositories = manifest.get("repositories")
+    apex = repositories.get("apex") if isinstance(repositories, dict) else None
+    if not isinstance(agent, dict) or "apex_runtime_mount_policy_id" not in agent:
+        return None
+    return {
+        "policy_id": agent.get("apex_runtime_mount_policy_id"),
+        "repository": apex,
+    }
+
+
+def _receipt_digest_matches(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    material = dict(value)
+    observed = material.pop("sha256", None)
+    return (
+        isinstance(observed, str)
+        and _SHA256.fullmatch(observed) is not None
+        and observed == _canonical_json_digest(material)
+    )
+
+
+def _absolute_receipt_path(value: Any, *, specific: bool = False) -> Path | None:
+    if not isinstance(value, str):
+        return None
+    path = Path(value)
+    if (
+        not path.is_absolute()
+        or path != Path(os.path.abspath(path))
+        or ".." in path.parts
+        or (
+            specific
+            and (
+                len(path.parts) < 3
+                or path in {Path("/tmp"), Path("/var/tmp"), Path("/dev/shm")}
+            )
+        )
+    ):
+        return None
+    return path
+
+
+def _apex_runtime_mount_errors(
+    receipt: dict[str, Any], run_directory: Path
+) -> list[str]:
+    expected = _expected_apex_runtime_mount(run_directory)
+    if expected is None:
+        # Manifests sealed before this policy remain auditable under their
+        # original v4 receipt contract.
+        return []
+    mounts = receipt.get("attempt_mounts")
+    runtime = receipt.get("apex_runtime_mount")
+    apex = receipt.get("apex")
+    if (
+        expected.get("policy_id") != APEX_RUNTIME_MOUNT_POLICY
+        or not isinstance(mounts, dict)
+        or mounts.get("schema") != ATTEMPT_MOUNT_RECEIPT_SCHEMA
+        or mounts.get("campaign_data_root_hidden") is not True
+        or not _receipt_digest_matches(mounts)
+        or not isinstance(runtime, dict)
+        or runtime.get("schema") != APEX_RUNTIME_MOUNT_SCHEMA
+        or runtime.get("policy_id") != APEX_RUNTIME_MOUNT_POLICY
+        or runtime.get("mode") != "read_only"
+        or runtime.get("repository") != expected.get("repository")
+        or runtime.get("attempt_mounts_sha256") != mounts.get("sha256")
+        or not _receipt_digest_matches(runtime)
+        or not isinstance(apex, dict)
+    ):
+        return ["apex_runtime_mount_contract_mismatch"]
+
+    root = _absolute_receipt_path(runtime.get("root"), specific=True)
+    data_root = _absolute_receipt_path(mounts.get("campaign_data_root"))
+    trusted = mounts.get("trusted_external_read_only_roots")
+    writable = mounts.get("writable_roots")
+    read_only = mounts.get("read_only_roots")
+    if (
+        root is None
+        or data_root is None
+        or trusted != [str(root)]
+        or not isinstance(writable, list)
+        or not isinstance(read_only, list)
+        or any(_absolute_receipt_path(path) is None for path in writable + read_only)
+        or root == data_root
+        or root.is_relative_to(data_root)
+        or data_root.is_relative_to(root)
+    ):
+        return ["apex_runtime_mount_contract_mismatch"]
+    for other_value in writable + read_only:
+        other = Path(other_value)
+        if root.is_relative_to(other) or other.is_relative_to(root):
+            return ["apex_runtime_mount_contract_mismatch"]
+
+    entrypoint = runtime.get("entrypoint")
+    python = runtime.get("python")
+    if not isinstance(entrypoint, dict) or not isinstance(python, dict):
+        return ["apex_runtime_mount_contract_mismatch"]
+    launcher = _absolute_receipt_path(python.get("launcher_path"))
+    resolved_python = _absolute_receipt_path(python.get("resolved_path"))
+    expected_entrypoint = root / "main.py"
+    try:
+        launcher_below_root = launcher is not None and launcher.is_relative_to(root)
+    except ValueError:
+        launcher_below_root = False
+    if (
+        entrypoint.get("path") != str(expected_entrypoint)
+        or entrypoint.get("relative_path") != "main.py"
+        or not isinstance(entrypoint.get("sha256"), str)
+        or not _SHA256.fullmatch(entrypoint["sha256"])
+        or apex.get("entrypoint") != str(expected_entrypoint)
+        or apex.get("entrypoint_sha256") != entrypoint.get("sha256")
+        or not launcher_below_root
+        or resolved_python is None
+        or not isinstance(python.get("resolved_sha256"), str)
+        or not _SHA256.fullmatch(python["resolved_sha256"])
+        or apex.get("python") != str(resolved_python)
+        or apex.get("python_sha256") != python.get("resolved_sha256")
+    ):
+        return ["apex_runtime_mount_contract_mismatch"]
+    return []
 
 
 def _comparison_contract_receipt_errors(
@@ -2682,6 +2822,7 @@ def _validate_apex_session_receipt(
     expected_task_name: str | None = None,
 ) -> tuple[dict[str, Any] | None, list[str]]:
     errors: list[str] = []
+    errors.extend(_apex_runtime_mount_errors(receipt, run_directory))
     errors.extend(
         _comparison_contract_receipt_errors(receipt, run_directory, prefix="apex")
     )

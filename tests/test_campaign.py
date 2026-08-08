@@ -897,6 +897,131 @@ def test_formal_attempt_mount_keeps_workspace_read_only_and_artifacts_private(
         shm_sentinel.unlink(missing_ok=True)
 
 
+def test_formal_attempt_rejects_broad_and_overlapping_trusted_roots(
+    tmp_path, monkeypatch
+) -> None:
+    data_root = tmp_path / "campaign-data"
+    writable = data_root / "run/task/attempt_01/artifacts"
+    trusted = tmp_path / "runtime/apex"
+    nested = trusted / "dependency"
+    writable.mkdir(parents=True)
+    nested.mkdir(parents=True)
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
+    monkeypatch.setattr(
+        campaign_isolation,
+        "_codex_requirements_identity",
+        lambda: (
+            Path("/etc/codex/requirements.toml"),
+            _runtime_isolation_receipt()["codex_requirements"],
+        ),
+    )
+    eval_config = {
+        "campaign": {"comparison": "apex_vs_codex"},
+        "campaign_attempt": {"fresh_session": True},
+    }
+
+    with pytest.raises(
+        campaign_isolation.CampaignIsolationError,
+        match="specific canonical directory",
+    ):
+        campaign_isolation.wrap_attempt_command(
+            ["/bin/true"],
+            eval_config=eval_config,
+            writable_roots=(writable,),
+            trusted_read_only_roots=(Path("/tmp"),),
+        )
+
+    with pytest.raises(
+        campaign_isolation.CampaignIsolationError,
+        match="overlap",
+    ):
+        campaign_isolation.wrap_attempt_command(
+            ["/bin/true"],
+            eval_config=eval_config,
+            writable_roots=(writable,),
+            trusted_read_only_roots=(trusted, nested),
+        )
+
+
+def test_apex_runtime_mount_receipt_is_bound_to_sealed_manifest(tmp_path) -> None:
+    repository = {
+        "commit": "a" * 40,
+        "dirty": False,
+        "status_sha256": hashlib.sha256(b"").hexdigest(),
+    }
+    manifest_path = tmp_path / "campaign_manifest.yaml"
+    manifest_path.write_text(
+        yaml.safe_dump(
+            {
+                "agent": {
+                    "apex_runtime_mount_policy_id": (
+                        campaign_isolation.APEX_RUNTIME_MOUNT_POLICY
+                    )
+                },
+                "repositories": {"apex": repository},
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest_path.chmod(0o444)
+    root = "/tmp/pinned/apex"
+    mount_material = {
+        "schema": campaign_isolation.ATTEMPT_MOUNT_RECEIPT_SCHEMA,
+        "campaign_data_root": "/data",
+        "campaign_data_root_hidden": True,
+        "writable_roots": ["/data/run/attempt/artifacts"],
+        "read_only_roots": ["/data/run/attempt/workspace"],
+        "trusted_external_read_only_roots": [root],
+    }
+    mounts = {
+        **mount_material,
+        "sha256": campaign._canonical_json_digest(mount_material),
+    }
+    runtime_material = {
+        "schema": campaign_isolation.APEX_RUNTIME_MOUNT_SCHEMA,
+        "policy_id": campaign_isolation.APEX_RUNTIME_MOUNT_POLICY,
+        "mode": "read_only",
+        "root": root,
+        "repository": repository,
+        "entrypoint": {
+            "path": f"{root}/main.py",
+            "relative_path": "main.py",
+            "sha256": "b" * 64,
+        },
+        "python": {
+            "launcher_path": f"{root}/.venv/bin/python",
+            "resolved_path": "/usr/bin/python3",
+            "resolved_sha256": "c" * 64,
+        },
+        "attempt_mounts_sha256": mounts["sha256"],
+    }
+    runtime = {
+        **runtime_material,
+        "sha256": campaign._canonical_json_digest(runtime_material),
+    }
+    receipt = {
+        "attempt_mounts": mounts,
+        "apex_runtime_mount": runtime,
+        "apex": {
+            "entrypoint": f"{root}/main.py",
+            "entrypoint_sha256": "b" * 64,
+            "python": "/usr/bin/python3",
+            "python_sha256": "c" * 64,
+        },
+    }
+    assert campaign._apex_runtime_mount_errors(receipt, tmp_path) == []
+
+    tampered_mount_material = dict(mount_material)
+    tampered_mount_material["trusted_external_read_only_roots"] = ["/tmp"]
+    receipt["attempt_mounts"] = {
+        **tampered_mount_material,
+        "sha256": campaign._canonical_json_digest(tampered_mount_material),
+    }
+    assert campaign._apex_runtime_mount_errors(receipt, tmp_path) == [
+        "apex_runtime_mount_contract_mismatch"
+    ]
+
+
 def test_formal_codex_home_copies_auth_only(tmp_path, monkeypatch) -> None:
     state = tmp_path / "agent-state/.codex"
     state.mkdir(parents=True)
