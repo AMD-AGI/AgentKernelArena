@@ -1,0 +1,46 @@
+task_type: image_kernel
+image_repo_path: /usr/local/lib/python3.12/dist-packages/aiter_meta
+repo_subdir: aiter_meta
+repository_language: hip
+source_file_path:
+- csrc/cpp_itfs/pa/pa_kernels.cuh
+- csrc/cpp_itfs/pa/pa.cuh
+- csrc/cpp_itfs/pa/pa_common.cuh
+- csrc/cpp_itfs/pa/pa.cpp.jinja
+target_kernel_functions:
+- paged_attention_ll4mi_QKV_mfma16_kernel
+- paged_attention_ll4mi_reduce_kernel
+kernel_identity:
+  logical_operator: paged_attention_rocm
+  kernel_kind: hip
+  source_owner: aiter
+  workload:
+    source: session_cases.json
+    primary_case: llama3_1-8b-decode-m64-ctx1024
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: 'Optimize the ROCm custom paged-attention decode kernels on MI355X/gfx950.
+    The device kernels are paged_attention_ll4mi_QKV_mfma16_kernel (partial attention
+    per KV partition) and paged_attention_ll4mi_reduce_kernel (cross-partition
+    softmax reduction), reached through aiter.paged_attention_rocm. Both are JIT
+    specialized per (gqa_ratio, head_size, npar_loops, dtype, block_size, ...) from
+    csrc/cpp_itfs/pa/pa.cpp.jinja, whose device code lives in pa.cuh / pa_kernels.cuh
+    / pa_common.cuh - all four files are editable and every edit is recompiled before
+    each scoring step. The workload is BF16 decode with 64 sequences, head_size 128,
+    block_size 16 and 1024-2048 tokens of KV context, across the three head
+    geometries these models produce: GQA 2:1 (16 q / 8 kv), 4:1 (32 q / 8 kv) and
+    5:1 (40 q / 8 kv). That is three JIT specializations for the seven cases, so a
+    rebuild costs three compiles. Do not tune one gqa_ratio at the expense of
+    another. Cases come from four MI355X Hyperloom 2026-08-01 sessions
+    (Llama-3.1-8B-Instruct, Qwen3-8B, Qwen3-0.6B, Qwen3-14B-FP8) and are stored in
+    session_cases.json. Preserve all correctness cases and improve CUDA-graph
+    measured performance. Do not change the signature of aiter.paged_attention_rocm
+    or the launch contract in pa.cpp.jinja.'
+  cheatsheet: null

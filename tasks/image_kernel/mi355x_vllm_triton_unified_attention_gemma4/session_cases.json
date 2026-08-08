@@ -1,0 +1,127 @@
+{
+  "source_day": "2026-08-01",
+  "date_field": "session_started_at",
+  "platform": "MI355X/gfx950",
+  "framework": "vllm 0.24.0",
+  "base_image": "harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0",
+  "selection": "vLLM's own Triton kernel_unified_attention, the largest single leaf in the gemma-4-26B-A4B-it roofline trace (27.59% across all shapes). Cases cover the two head geometries Gemma4 drives through this one kernel: sliding layers at head_dim 256 with a 1024-token window, and full layers at head_dim 512 with no window.",
+  "task_name": "mi355x-gemma4-26b-vllm-triton-unified-attention-20260801",
+  "operator": "unified_attention",
+  "profile_case": "gemma4-sliding-decode-m64-ctx1024",
+  "provenance": {
+    "model": "gemma-4-26B-A4B-it",
+    "session_dir": "/shared_nfs/hyperloom-k8s/safe-opt-claw-top-models-forge-google-ge-45b22e20-a1/45b22e20-cd68-4916-918d-48936ecacc00/gemma-4-26B-A4B-it/20260801T162014Z",
+    "tracelens_snapshot": "kernel-agent/runs/20260801T162014Z/20260801T173050Z_tl-c549cffd/tracelens",
+    "trace": "runs/roofline/32dab7b3267b41b691f2d060d8af1ec4/benchmark_vllm_20260801_171753/torch_trace/dp0_pp0_tp0_dcp0_ep0_rank0.1785605122621332807.pt.trace.json.gz",
+    "device_kernel": "kernel_unified_attention",
+    "entry": "vllm/v1/attention/ops/triton_unified_attention.py:179 @triton.jit kernel_unified_attention",
+    "call_chain": "vllm::unified_attention_with_output (vllm/model_executor/layers/attention/attention.py:755) -> vllm/v1/attention/backends/triton_attn.py:530 TritonAttentionImpl.forward -> :642 -> vllm/v1/attention/ops/triton_unified_attention.py:780 unified_attention -> grid launch at :1019 -> kernel_unified_attention",
+    "kernel_ownership": "This is vLLM's kernel, NOT AITER's. AITER's aiter/ops/triton/_triton_kernels/attention/unified_attention.py defines only kernel_unified_attention_2d and kernel_unified_attention_3d; the trace records the unsuffixed kernel_unified_attention, which exists only in the vLLM file. AITER's variant is reachable only from the ROCM_AITER_UNIFIED_ATTN backend, while this trace ran TRITON_ATTN. The sibling task mi355x_vllm_triton_unified_attention covers the AITER implementation and is a different kernel.",
+    "why_triton": "Gemma4 on ROCm has no hand-written paged-attention path: use_rocm_custom_paged_attention accepts head_size 64/128 on gfx9, and this model uses 256 (sliding layers) and 512 (full layers), so all attention falls back to the Triton kernel. One kernel therefore serves both head_dim values, and the 256 decode shape alone is the single largest entry in the trace.",
+    "workload": "TP=2, EP=1, concurrency=64, ISL=1024, OSL=1024, max_model_len=6144, NUM_PROMPTS=776. Decode steps carry 64 tokens, i.e. 64 sequences with one query token each.",
+    "dtypes": "BF16 throughout. server.log reports dtype=torch.bfloat16, quantization=None and kv_cache_dtype=auto; the model is a BF16 checkpoint with no quantization_config. The session workload label precision: fp8 is inaccurate - TraceLens metadata/model_info.json also records BF16.",
+    "geometry": "config.json gives 16 q heads, 8 kv heads and head_dim 256 for sliding layers, plus global_head_dim 512 with num_global_key_value_heads 2 for full layers; layer_types is 5x sliding + 1x full repeated 5 times (25 sliding, 5 full) with sliding_window 1024 and attn_logit_softcapping null. Under TP=2 the per-rank slice is 8 q heads with 4 kv heads at head_dim 256 (sliding) and 8 q heads with 1 kv head at head_dim 512 (full), matching the Q/O and K/V shapes recorded in the trace.",
+    "sliding_window_convention": "TritonAttentionImpl maps a causal SWA layer to window_size=(sliding_window-1, 0), so 1024 becomes (1023, 0) and the kernel's SLIDING_WINDOW constexpr is 1+window_size[0]=1024. A decode query at position ctx-1 therefore attends to the last 1024 context tokens. Full layers use (-1, -1).",
+    "trace_shapes": [
+      "k002 Q/O (64,8,256) K/V (64,4,256) sliding decode, 750 calls = 25 layers x 30 steps, 19.550%, 120958 us",
+      "k009 Q/O (64,8,512) K/V (64,1,512) full decode, 150 calls = 5 layers x 30 steps, 3.965%, 24531 us",
+      "k007 Q/O (7218,8,256) sliding prefill step, 25 calls, 2.464%",
+      "k001 Q/O (1080,8,256) sliding prefill step, 25 calls, 0.828%",
+      "k006 Q/O (7218,8,512) full prefill step, 5 calls, 0.598%",
+      "k008 Q/O (1080,8,512) full prefill step, 5 calls, 0.188%"
+    ],
+    "prefill_not_covered": "Only the two decode shapes are turned into cases. They are exactly determined (64 tokens = 64 sequences x 1 query token at concurrency 64) and account for 23.5% of the trace. The four prefill entries are chunked-prefill steps whose per-sequence query-length composition is not recorded in the trace, so any case would be guesswork about the batch mix rather than a reconstruction; the aggregate slice label is mixed_steady_state_prefill_0_prefilldecode_2_decode_30_bs319_conc63.",
+    "ctx_len_note": "ctx_len is reconstructed from the decode regime (ISL=1024, OSL=1024, so per-sequence context grows across 1024..2048). The trace records query/output/step shapes but not the per-sequence KV context length. ctx 2048 is the case where the 1024-token sliding window actually clips.",
+    "path_3d": "seq_threshold_3D / num_par_softmax_segments / softmax_segm_* are left unset so unified_attention takes the 2D path (use_3d False at triton_unified_attention.py:969). That matches the trace, which records kernel_unified_attention with no reduce_segments companion."
+  },
+  "cases": [
+    {
+      "id": "gemma4-sliding-decode-m64-ctx1024",
+      "model": "gemma-4-26B-A4B-it",
+      "kernel_ids": ["k002"],
+      "gpu_pct": 19.55,
+      "params": {
+        "layer_type": "sliding_attention",
+        "num_seqs": 64,
+        "num_query_heads": 8,
+        "num_kv_heads": 4,
+        "head_size": 256,
+        "block_size": 16,
+        "ctx_len": 1024,
+        "sliding_window": 1024,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "Q/O (64,8,256) bf16",
+        "K/V step (64,4,256) bf16"
+      ]
+    },
+    {
+      "id": "gemma4-sliding-decode-m64-ctx2048",
+      "model": "gemma-4-26B-A4B-it",
+      "kernel_ids": ["k002"],
+      "gpu_pct": null,
+      "params": {
+        "layer_type": "sliding_attention",
+        "num_seqs": 64,
+        "num_query_heads": 8,
+        "num_kv_heads": 4,
+        "head_size": 256,
+        "block_size": 16,
+        "ctx_len": 2048,
+        "sliding_window": 1024,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "Q/O (64,8,256) bf16",
+        "K/V step (64,4,256) bf16"
+      ]
+    },
+    {
+      "id": "gemma4-full-decode-m64-ctx1024",
+      "model": "gemma-4-26B-A4B-it",
+      "kernel_ids": ["k009"],
+      "gpu_pct": 3.965,
+      "params": {
+        "layer_type": "full_attention",
+        "num_seqs": 64,
+        "num_query_heads": 8,
+        "num_kv_heads": 1,
+        "head_size": 512,
+        "block_size": 16,
+        "ctx_len": 1024,
+        "sliding_window": 0,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "Q/O (64,8,512) bf16",
+        "K/V step (64,1,512) bf16"
+      ]
+    },
+    {
+      "id": "gemma4-full-decode-m64-ctx2048",
+      "model": "gemma-4-26B-A4B-it",
+      "kernel_ids": ["k009"],
+      "gpu_pct": null,
+      "params": {
+        "layer_type": "full_attention",
+        "num_seqs": 64,
+        "num_query_heads": 8,
+        "num_kv_heads": 1,
+        "head_size": 512,
+        "block_size": 16,
+        "ctx_len": 2048,
+        "sliding_window": 0,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "Q/O (64,8,512) bf16",
+        "K/V step (64,1,512) bf16"
+      ]
+    }
+  ]
+}

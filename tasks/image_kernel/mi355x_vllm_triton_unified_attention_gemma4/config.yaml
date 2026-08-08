@@ -1,0 +1,42 @@
+task_type: image_kernel
+image_repo_path: /usr/local/lib/python3.12/dist-packages/vllm/v1/attention/ops
+repo_subdir: vllm_v1_attention_ops
+image_repo_exclude:
+- __pycache__
+repository_language: triton
+source_file_path:
+- triton_unified_attention.py
+target_kernel_functions:
+- kernel_unified_attention
+kernel_identity:
+  logical_operator: unified_attention_with_output
+  kernel_kind: triton
+  source_owner: vllm
+  workload:
+    source: session_cases.json
+    primary_case: gemma4-sliding-decode-m64-ctx1024
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: 'Optimize the vLLM Triton attention kernel kernel_unified_attention
+    (in triton_unified_attention.py) on MI355X/gfx950. This is vLLM''s own kernel,
+    not AITER''s kernel_unified_attention_2d/_3d. Gemma4 on ROCm has no hand-written
+    paged-attention path - use_rocm_custom_paged_attention only accepts head_size
+    64/128 on gfx9 - so every attention layer falls back to this Triton kernel and it
+    becomes the largest single leaf in the trace. One kernel serves two geometries:
+    sliding layers at head_size 256 with a 1024-token window (8 query heads over 4 KV
+    heads) and full layers at head_size 512 with no window (8 query heads over 1 KV
+    head), both BF16 decode with 64 sequences and 1024-2048 tokens of KV context. Note
+    the very different queries-per-KV ratios (2 vs 8), which drive BLOCK_M/BLOCK_Q, and
+    that _get_tile_size already has a Gemma-specific branch. Do not tune one geometry
+    at the expense of the other. Cases come from the gemma-4-26B-A4B-it Hyperloom
+    2026-08-01 MI355X session and are stored in session_cases.json. Preserve all
+    correctness cases and improve CUDA-graph measured performance. Do not change the
+    public signature of unified_attention.'
+  cheatsheet: null

@@ -1,0 +1,211 @@
+{
+  "source_day": "2026-08-01",
+  "date_field": "session_started_at",
+  "platform": "MI355X/gfx950",
+  "framework": "vllm 0.24.0",
+  "base_image": "harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0",
+  "selection": "ROCm custom paged-attention decode, the largest decode leaf in four MI355X Hyperloom sessions. Cases cover the three distinct head geometries those models produce (GQA 2:1 / 4:1 / 5:1) at head_size=128, block_size=16, BF16 Q/KV/O.",
+  "task_name": "mi355x-rocm-paged-attention-decode-20260801",
+  "operator": "paged_attention_rocm",
+  "profile_case": "llama3_1-8b-decode-m64-ctx1024",
+  "provenance": {
+    "entry": "aiter.paged_attention_rocm -> csrc/cpp_itfs/pa/pa.py -> compile_template_op(csrc/cpp_itfs/pa/pa.cpp.jinja)",
+    "call_chain_in_session": "vllm::unified_attention_with_output -> v1/attention/backends/rocm_attn.py:360 -> v1/attention/ops/chunked_prefill_paged_decode.py:392 -> vllm/_custom_ops.py:208 paged_attention_rocm -> torch.ops._rocm_C.paged_attention",
+    "shared_workload": "All four sessions ran the same harness: TP=1, EP=1, concurrency=64, ISL=1024, OSL=1024, max_model_len=6144, NUM_PROMPTS=776. Decode batch is therefore 64 sequences and per-sequence KV context grows across 1024..2048 tokens. num_seqs and ctx_len are reconstructed from that regime: the graph-captured decode launches carry no recorded tensor shapes in the trace.",
+    "shared_dtypes": "Every session reported kv_cache_dtype=auto, i.e. BF16 Q / KV cache / output, cross-checked against the kernels' own (vllm::Fp8KVCacheDataType)0 = kAuto template argument. Qwen3-14B-FP8 quantizes weights, not the KV cache.",
+    "head_geometry_source": "Head counts read from each model's config.json under /shared_nfs/hyperloom/models and cross-checked against the GQA_RATIO template argument recorded in each trace.",
+    "models": [
+      {
+        "model": "Llama-3.1-8B-Instruct",
+        "session_id": "Llama-3.1-8B-Instruct_20260801T062921Z_b5aa24f5",
+        "session_dir": "/shared_nfs/hyperloom-claw/Llama-3.1-8B-Instruct/20260801T062920Z",
+        "trace": "runs/roofline/0d44af26d4a748adbb023cb713ee1aea/benchmark_vllm_20260801_070113/torch_trace",
+        "geometry": "32 q heads / 8 kv heads / head_dim 128, 32 layers -> gqa_ratio 4",
+        "device_kernel_in_session": "paged_attention_ll4mi_QKV_mfma4_kernel<__hip_bfloat16, __hip_bfloat16, (vllm::Fp8KVCacheDataType)0, __hip_bfloat16, 16, 128, 256, false, 4>",
+        "gpu_pct": 26.85,
+        "vllm_source": "csrc/rocm/attention.cu:2874"
+      },
+      {
+        "model": "Qwen3-8B",
+        "session_id": "Qwen3-8B_20260801T032923Z_54d41b49",
+        "session_dir": "/shared_nfs/hyperloom-claw/Qwen3-8B/20260801T032923Z",
+        "geometry": "32 q heads / 8 kv heads / head_dim 128, 36 layers -> gqa_ratio 4",
+        "device_kernel_in_session": "paged_attention_ll4mi_QKV_mfma4_kernel<__hip_bfloat16, __hip_bfloat16, (vllm::Fp8KVCacheDataType)0, __hip_bfloat16, 16, 128, 256, false, 4>",
+        "gpu_pct": 25.041,
+        "vllm_source": "csrc/rocm/attention.cu",
+        "no_dedicated_cases": "Geometry, dtypes and workload are identical to Llama-3.1-8B-Instruct (32/8/128, block_size 16, BF16, concurrency 64, ISL/OSL 1024), so the llama3_1-8b-* cases cover this model exactly. Adding duplicate case ids would only double suite runtime."
+      },
+      {
+        "model": "Qwen3-0.6B",
+        "session_id": "Qwen3-0.6B_20260801T185902Z_a2ce5c46",
+        "session_dir": "/shared_nfs/hyperloom-k8s/safe-opt-claw-top-models-forge-qwen-qwen-da0e48bb-a1/da0e48bb-9d3c-4365-9cbc-52f8f1a15709/Qwen3-0.6B/20260801T185902Z",
+        "geometry": "16 q heads / 8 kv heads / head_dim 128, 28 layers -> gqa_ratio 2",
+        "device_kernel_in_session": "paged_attention_ll4mi_QKV_mfma4_kernel<bf16, bf16, kAuto, bf16, 16, 128, 256, false, 2>",
+        "gpu_pct": 35.778,
+        "vllm_source": "csrc/rocm/attention.cu:922"
+      },
+      {
+        "model": "Qwen3-14B-FP8",
+        "session_id": "Qwen3-14B-FP8_20260801T155323Z_537c1f91",
+        "session_dir": "/shared_nfs/hyperloom-k8s/safe-opt-claw-top-models-forge-qwen-qwen-b700704f-a1/b700704f-a714-46f4-b309-7ce4f9622a5d/Qwen3-14B-FP8/20260801T155323Z",
+        "geometry": "40 q heads / 8 kv heads / head_dim 128, 40 layers -> gqa_ratio 5",
+        "device_kernel_in_session": "paged_attention_ll4mi_QKV_mfma16_kernel<bf16, bf16, kAuto, bf16, 16, 128, 256, false, 5, MFMAType=0>",
+        "gpu_pct": 10.544,
+        "vllm_source": "csrc/rocm/attention.cu:321",
+        "note": "The only one of the four whose session already ran the MFMA16 variant (gqa_ratio 5 > 4), so it is the closest match to what this task actually measures."
+      }
+    ],
+    "mfma_variant_caveat": "Three of the four sessions (Llama-3.1-8B, Qwen3-8B, Qwen3-0.6B) ran vLLM's MFMA4 variant, selected because gqa_ratio <= 4 (see the 'mfma4 kernel is faster than mfma16 for gqa_ratio <= 4' switch in csrc/rocm/attention.cu). vLLM ships no csrc in the runtime image (wheel-only install; /app/vllm holds only benchmarks/docker/examples), so there is no in-image vLLM source to seed and edit. AITER ships the same paged_attention_ll4mi family with full source, but dispatches MFMA16 for every gqa_ratio - the MFMA4 launches are commented out in both csrc/kernels/attention.cu and csrc/cpp_itfs/pa/pa.cpp.jinja. This task therefore measures AITER's MFMA16 implementation of the same logical operator at each session's exact shapes and dtypes. Only the Qwen3-14B-FP8 cases match the session's MFMA variant as well. Verified: mfma4 symbols exist only in vllm/_rocm_C.abi3.so; aiter/jit/module_pa*.so carry mfma16 only.",
+    "specializations": "compile_template_op keys on (gqa_ratio, head_size, npar_loops, dtype, kv_dtype, out_dtype, block_size, alibi, mtp, quant_method, v_shuffle). All cases give max_num_partitions = ceil(ctx_len/256) <= 8 with warpSize 64, hence npar_loops=1 - matching the sessions' paged_attention_ll4mi_reduce_kernel<..., 128, 128, 256, 1>. The suite therefore builds exactly three specializations, one per gqa_ratio (2, 4, 5).",
+    "case_density": "The primary model (Llama-3.1-8B-Instruct, the largest single hot kernel across these sessions) is sampled at three context lengths to expose the memory-bound scaling; the coverage models are sampled at the two endpoints of their decode regime."
+  },
+  "cases": [
+    {
+      "id": "llama3_1-8b-decode-m64-ctx1024",
+      "model": "Llama-3.1-8B-Instruct",
+      "session_id": "Llama-3.1-8B-Instruct_20260801T062921Z_b5aa24f5",
+      "kernel_ids": ["k001"],
+      "gpu_pct": 26.85,
+      "params": {
+        "num_seqs": 64,
+        "num_query_heads": 32,
+        "num_kv_heads": 8,
+        "head_size": 128,
+        "block_size": 16,
+        "ctx_len": 1024,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "Q/O (64,32,128) bf16",
+        "K/V cache pages (num_blocks,8,128) bf16, block_size=16"
+      ]
+    },
+    {
+      "id": "llama3_1-8b-decode-m64-ctx1536",
+      "model": "Llama-3.1-8B-Instruct",
+      "session_id": "Llama-3.1-8B-Instruct_20260801T062921Z_b5aa24f5",
+      "kernel_ids": ["k001"],
+      "gpu_pct": null,
+      "params": {
+        "num_seqs": 64,
+        "num_query_heads": 32,
+        "num_kv_heads": 8,
+        "head_size": 128,
+        "block_size": 16,
+        "ctx_len": 1536,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "Q/O (64,32,128) bf16",
+        "K/V cache pages (num_blocks,8,128) bf16, block_size=16"
+      ]
+    },
+    {
+      "id": "llama3_1-8b-decode-m64-ctx2048",
+      "model": "Llama-3.1-8B-Instruct",
+      "session_id": "Llama-3.1-8B-Instruct_20260801T062921Z_b5aa24f5",
+      "kernel_ids": ["k001"],
+      "gpu_pct": null,
+      "params": {
+        "num_seqs": 64,
+        "num_query_heads": 32,
+        "num_kv_heads": 8,
+        "head_size": 128,
+        "block_size": 16,
+        "ctx_len": 2048,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "Q/O (64,32,128) bf16",
+        "K/V cache pages (num_blocks,8,128) bf16, block_size=16"
+      ]
+    },
+    {
+      "id": "qwen3-0_6b-decode-m64-ctx1024",
+      "model": "Qwen3-0.6B",
+      "session_id": "Qwen3-0.6B_20260801T185902Z_a2ce5c46",
+      "kernel_ids": ["k001"],
+      "gpu_pct": 35.778,
+      "params": {
+        "num_seqs": 64,
+        "num_query_heads": 16,
+        "num_kv_heads": 8,
+        "head_size": 128,
+        "block_size": 16,
+        "ctx_len": 1024,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "Q/O (64,16,128) bf16",
+        "K/V cache pages (num_blocks,8,128) bf16, block_size=16"
+      ]
+    },
+    {
+      "id": "qwen3-0_6b-decode-m64-ctx2048",
+      "model": "Qwen3-0.6B",
+      "session_id": "Qwen3-0.6B_20260801T185902Z_a2ce5c46",
+      "kernel_ids": ["k001"],
+      "gpu_pct": null,
+      "params": {
+        "num_seqs": 64,
+        "num_query_heads": 16,
+        "num_kv_heads": 8,
+        "head_size": 128,
+        "block_size": 16,
+        "ctx_len": 2048,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "Q/O (64,16,128) bf16",
+        "K/V cache pages (num_blocks,8,128) bf16, block_size=16"
+      ]
+    },
+    {
+      "id": "qwen3-14b-fp8-decode-m64-ctx1024",
+      "model": "Qwen3-14B-FP8",
+      "session_id": "Qwen3-14B-FP8_20260801T155323Z_537c1f91",
+      "kernel_ids": [],
+      "gpu_pct": 10.544,
+      "params": {
+        "num_seqs": 64,
+        "num_query_heads": 40,
+        "num_kv_heads": 8,
+        "head_size": 128,
+        "block_size": 16,
+        "ctx_len": 1024,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "Q/O (64,40,128) bf16",
+        "K/V cache pages (num_blocks,8,128) bf16, block_size=16"
+      ]
+    },
+    {
+      "id": "qwen3-14b-fp8-decode-m64-ctx2048",
+      "model": "Qwen3-14B-FP8",
+      "session_id": "Qwen3-14B-FP8_20260801T155323Z_537c1f91",
+      "kernel_ids": [],
+      "gpu_pct": null,
+      "params": {
+        "num_seqs": 64,
+        "num_query_heads": 40,
+        "num_kv_heads": 8,
+        "head_size": 128,
+        "block_size": 16,
+        "ctx_len": 2048,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "Q/O (64,40,128) bf16",
+        "K/V cache pages (num_blocks,8,128) bf16, block_size=16"
+      ]
+    }
+  ]
+}

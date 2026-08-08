@@ -1,0 +1,46 @@
+task_type: image_kernel
+image_repo_path: /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe
+repo_subdir: vllm_fused_moe
+image_repo_exclude:
+- __pycache__
+repository_language: triton
+source_file_path:
+- fused_moe.py
+target_kernel_functions:
+- fused_moe_kernel
+kernel_identity:
+  logical_operator: fused_moe
+  kernel_kind: triton
+  source_owner: vllm
+  workload:
+    source: session_cases.json
+    primary_case: gemma4-moe-decode-m64
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: 'Optimize the unquantized Triton fused-MoE expert GEMM kernel
+    fused_moe_kernel (in fused_moe.py) on MI355X/gfx950. This is the BF16 path, not
+    the int4 fused_moe_kernel_gptq_awq that the sibling task
+    mi355x_vllm_triton_fused_moe_gptq_awq targets. Gemma4 lands here because the ROCm
+    AITER unquantized MoE backend rejects its GELU_TANH activation, so the oracle
+    falls back to Triton. The workload is the session''s per-rank geometry under TP=2
+    with EP=1: 128 experts, top-8, hidden 2816, intermediate 352, activation
+    gelu_tanh, BF16, at 64 (decode), 1080 and 7218 (chunked-prefill) tokens. One
+    harness call covers both per-layer launches, the w13 gate_up GEMM and the w2 down
+    GEMM. Worth knowing: the session ran with vLLM''s fallback MoE config because
+    configs/E=128,N=352,device_name=AMD_Instinct_MI355_OAM.json does not exist, and
+    the harness reproduces that; configs/ is part of the editable tree, so adding a
+    tuned config for this shape is a legitimate optimization alongside changing the
+    kernel itself. The decode (M=64) and prefill (M=7218) regimes want very different
+    tiling, so do not tune one at the expense of the other. Cases come from the
+    gemma-4-26B-A4B-it Hyperloom 2026-08-01 MI355X session and are stored in
+    session_cases.json. Preserve all correctness cases and improve CUDA-graph measured
+    performance. Do not change the signature of fused_moe_kernel,
+    invoke_fused_moe_kernel or fused_experts_impl.'
+  cheatsheet: null
