@@ -5,8 +5,9 @@ model: gpt-5.5
 effort: xhigh
 permission_mode: workspace_write_isolated
 
-# APEX_ROOT is preferred at runtime. In the Docker runner the host checkout is
-# mounted read-only at /opt/apex and this value is forwarded automatically.
+# APEX_ROOT is preferred at runtime. Formal Docker campaigns replace it with
+# the digest-addressed `repo` inside the sealed SquashFS runtime; non-campaign
+# runs may still use a caller-selected read-only checkout.
 apex_root: null
 python_path: null
 
