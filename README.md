@@ -213,37 +213,49 @@ the agent, and require immutable Apex or direct-Codex session receipts before
 an attempt can enter central selection. The Apex treatment sees the scored workspace
 read-only and writes proposals only to a separate artifact root; AgentKernelArena
 rechecks the full workspace manifest before applying a validated source bundle.
-The sealed comparison-contract v3 also binds exact-turn candidate persistence.
-Direct Codex continuously tracks the attempt process tree through Linux parent
-lineage plus an inherited per-attempt token, including descendants that call
-`setsid()` or become reparented. At turn 50 it normally stops and verifies that
-whole tree before source capture, then cleans up every tracked member and digests
-the output tail. A process that exits naturally at the boundary uses a separate
-path: exit code zero, complete stdout/stderr EOF, untruncated capture, and absence
-of the entire tracked tree must all be proven before source bytes are frozen. Turn
-51, timeout, truncated capture, an untracked live descendant, failed suspension,
-or failed cleanup cannot produce a candidate. The resulting source still returns
-to AgentKernelArena's centralized compile, correctness, and performance evaluator.
+The sealed comparison-contract v4 binds exact-turn persistence plus distinct outer
+`attempt_containment_policy_id` and backend
+`agent_process_containment_policy_id` fields; both currently require
+`private_pid_namespace_init_pidfd_v1`. Direct Codex starts behind
+a gated private PID namespace whose namespace PID 1 is identified by bubblewrap's
+status pipe and pinned with a pidfd before the backend can execute. At turn 50 the
+launcher kills that exact namespace init; Linux then kills every member, including
+`setsid()`, double-fork, reparented, clean-environment, and closed-stdio descendants.
+Source is frozen only after pidfd exit, wrapper status/EOF, stream EOF, and a
+completed scan showing no supervisor-visible member of that namespace. Namespace
+init exit is the authoritative Linux teardown proof; inaccessible sibling `/proc`
+entries are counted and force `namespace_membership_scan_complete=false` instead of
+being misreported as a full scan. A natural-exit race must establish the same proof.
+Turn 51, timeout, truncated capture, an incomplete enumeration/status channel, a
+visible live namespace member, or any outer fallback cannot produce a candidate.
+The retained source still returns to AgentKernelArena's centralized evaluator.
+The Apex arm has two boundaries: AKA's outer PID namespace contains the trusted
+orchestrator, and Apex owns the private procfs/PID namespace around its backend.
+AKA intentionally leaves `/proc` inherited and writable only for that trusted outer
+Apex process: nested user-namespace setup needs its uid/gid maps, while a second
+procfs or locked outer mask submounts prevent the required Apex-to-Codex nesting.
+The backend never receives that view; Apex must prove its own private procfs is
+Docker-remasked and empty before it freezes a bundle, and AKA must then prove the
+outer namespace-init teardown plus its visible-membership corroboration before
+reading that bundle.
 Formal Docker workers stay non-root, drop every capability, and enable Docker
 `no-new-privileges`. Rootless `bwrap` needs unconfined Docker seccomp/AppArmor
-profiles on this runtime. The outer per-attempt `bwrap` creates mount and IPC
-namespaces plus private `/tmp` and `/dev/shm`, but deliberately preserves the
-Docker worker's already-private PID namespace and writable `/proc`; nested Codex
-needs that procfs to construct its own command sandbox. Preflight and every
-init/worker/postprocess container require Yama `ptrace_scope >= 1` and run a live
-sentinel probe: the inherited parent `/proc` entry must remain visible, while
-`/proc/<parent>/{root,fd,environ,mem}` escape paths must fail specifically with
-`EACCES`/`EPERM`. A content-pinned managed Codex permission profile separately
+profiles plus `systempaths=unconfined` on this runtime. The last option is used only
+so rootless bubblewrap can mount a new per-attempt procfs; the outer boundary
+immediately rebuilds Docker's exact masked and read-only system paths. A live probe
+compares PID-namespace identities rather than numeric PIDs, verifies that no worker
+process exists in the attempt procfs, and tests parent root/fd aliases against secret
+bytes so PID-number collisions cannot create false evidence. A content-pinned
+managed Codex permission profile separately
 proves workspace writes, denies command network and credential reads, and
 disables hooks. The content-pinned `bwrap` shim is copied into a sealed memfd and
 mounted from that exact descriptor beneath a dedicated read-only mountpoint. Live
 rename/unlink/replace/write attacks must fail. The shim restores only the `/dev/kfd`
 and render nodes already admitted by Docker after Codex creates its private `/dev`.
-The worker remains non-root and capability-free. The same live probe
-requires Codex's inner PID namespace to differ from the worker's, exactly one ROCm
-device to be visible, and a Torch allocation plus reduction to succeed on that
-device. Codex inherits the worker-private procfs, so the outer status entry remains
-visible, but its root/fd/environ/mem aliases must all be unreadable.
+The worker remains non-root and capability-free. The same live probe requires the
+managed command to remain outside the worker PID namespace, blocks PID-1
+root/environ/mem credential aliases, exposes exactly one ROCm device, and completes
+a Torch allocation plus reduction on that device.
 The stable UID/capability/NNP/seccomp/AppArmor/Yama, exact outer `bwrap`, Codex
 GPU-shim and Codex identities, managed-policy hash, and both live probe results are
 bound into the immutable comparison contract; any drift fails the worker before an

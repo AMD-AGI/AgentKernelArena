@@ -9,6 +9,11 @@ from collections.abc import Mapping
 
 LEGACY_TURN_POLICY = "structured_agent_turn_v1"
 CANDIDATE_PERSISTENCE_POLICY = "structured_agent_turn_checkpoint_v2"
+# The backend process must be stopped through a kernel-backed lifetime boundary
+# before any candidate bytes are frozen.  The legacy SIGSTOP/process-group
+# policy remains below only so historical, non-formal receipts can be decoded;
+# current formal receipts never claim it as proof.
+AGENT_PROCESS_CONTAINMENT_POLICY = "private_pid_namespace_init_pidfd_v1"
 BOUNDARY_QUIESCENCE_POLICY = "sigstop_process_group_snapshot_v1"
 TURN_POLICY = CANDIDATE_PERSISTENCE_POLICY
 FORMAL_MATCHED_MAX_TURNS = 50

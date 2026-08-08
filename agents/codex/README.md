@@ -18,13 +18,16 @@ Matched Apex-versus-Codex campaigns mount `formal_requirements.toml` read-only a
 - managed and project hooks disabled;
 - no web-search mode allowed.
 
-The outer attempt boundary is a rootless bubblewrap mount/IPC namespace. It hides
-all other campaign data and gives the attempt private `/tmp` and `/dev/shm`. It
-preserves the Docker worker's private PID namespace and bind-mounts that private
-`/proc` read-write because nested Codex bubblewrap needs procfs to create its own
-user-namespace sandbox. Docker still runs the worker as non-root with every
-capability dropped and `no-new-privileges`; Yama plus live probes must deny access
-to the outer process's root, file descriptors, environment, and memory.
+The outer attempt boundary is a gated rootless bubblewrap mount/PID/IPC namespace.
+It hides all other campaign data and gives the attempt private `/tmp`, `/dev/shm`,
+and `/proc`. Bubblewrap reports namespace PID 1 over a status pipe before the gate
+opens; the launcher binds that exact process with a pidfd and verifies its starttime,
+parent, inner PID, and namespace inodes. Docker still runs the worker as non-root
+with every capability dropped and `no-new-privileges`. Because formal Docker enables
+`systempaths=unconfined` to permit the procfs mount, bubblewrap immediately rebuilds
+Docker's exact masked and read-only system paths. Live probes verify mount identities,
+prove the worker PID namespace is absent, and compare parent root/fd aliases against
+secret bytes rather than trusting numeric PID errno results.
 
 Campaign preflight executes the real Codex binary through this exact two-layer
 boundary. `codex sandbox` requires an explicit profile selector, so this live probe
@@ -52,8 +55,7 @@ unchanged to the independently content-pinned `/usr/bin/bwrap`; real sandbox
 invocations must set the shim activation marker that the same probe verifies.
 The fixed `/usr/bin/python3 -I` shebang disables user-site and `PYTHON*` startup
 injection before any shim code runs.
-Its inherited procfs can expose the outer status entry, but the probe requires the
-outer root/fd/environ/mem aliases to remain unreadable. The receipt records the
+The managed probe also blocks PID-1 root/environ/mem credential aliases. The receipt records the
 Codex, outer bubblewrap, and GPU-shim identities, the managed requirements hash,
 and every property result. Init, workers, and postprocess must reproduce the same
 receipt, and the Apex and direct-Codex comparison contracts must match before
@@ -65,17 +67,20 @@ rejects any missing or mismatched binding. Direct Codex additionally publishes t
 exact UTF-8 rendered prompt as a read-only receipt artifact; the verifier hashes
 those bytes and requires the result to equal `invocation.prompt_sha256`.
 
-Receipt v3 enforces exact-turn source persistence independently of the Codex process
-group. The launcher continuously tracks Linux `/proc` parent lineage and an inherited
-per-attempt token, stops both the root group and escaped `setsid()`/reparented
-descendants, and requires two stable all-stopped scans before taking the turn-50
-source snapshot. Cleanup addresses every tracked PID as well as the root group and
-cannot be verified while any live tracked member remains. If the leader naturally
-exits before suspension can be proven, source capture is allowed only after exit code
-zero, complete stdout/stderr EOF, untruncated capture, and an empty tracked process
-tree. The receipt binds which of these two routes established the checkpoint. A
-successful receipt whose final declared-source delta is empty is retained as a
-non-scoreable baseline replay, not a candidate.
+Receipt v4 enforces exact-turn source persistence with
+`private_pid_namespace_init_pidfd_v1`. At turn 50, the reader immediately signals the
+namespace init through its pidfd. Linux destroys every member, including descendants
+that call `setsid()`, double-fork, clear their environment, close stdio, or immediately
+`exec`. Source capture occurs only after init exit, wrapper terminal status or the
+explicit SIGKILL-status absence case, status EOF, complete stdout/stderr EOF, and an
+enumeration with no supervisor-visible namespace member. Inaccessible sibling
+`/proc` entries are counted and make the scan explicitly incomplete; the exact
+namespace-init pidfd exit and Linux PID-namespace teardown semantics remain the
+authority. The natural-exit race must establish the same proof. The post-teardown
+checkpoint and retained output tail are digested into the candidate-persistence
+receipt. The verifier independently recomputes the source
+delta from sealed before/after manifests; a contradictory receipt or zero delta is
+not a candidate.
 
 Do not treat Codex's legacy `sandbox: workspace-write` session label as proof of the
 effective policy. The pinned managed file and successful negative live probes are

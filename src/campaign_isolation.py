@@ -7,11 +7,14 @@ import fcntl
 import hashlib
 import json
 import os
+import select
 import shutil
+import signal
 import stat
 import subprocess
 import sys
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -29,12 +32,26 @@ class CampaignIsolationError(RuntimeError):
     """Raised when a formal attempt cannot be given a private filesystem view."""
 
 
+ATTEMPT_CONTAINMENT_POLICY = "private_pid_namespace_init_pidfd_v1"
+
+
 class WrappedAttemptCommand(list[str]):
     """Command argv plus narrowly scoped descriptors required by its mounts."""
 
-    def __init__(self, argv: Iterable[str], *, pass_fds: Iterable[int] = ()) -> None:
+    def __init__(
+        self,
+        argv: Iterable[str],
+        *,
+        pass_fds: Iterable[int] = (),
+        boundary_status_fd: int | None = None,
+        boundary_gate_fd: int | None = None,
+        boundary_procfs: str = "private_attempt_procfs",
+    ) -> None:
         super().__init__(argv)
         self.pass_fds = tuple(pass_fds)
+        self.boundary_status_fd = boundary_status_fd
+        self.boundary_gate_fd = boundary_gate_fd
+        self.boundary_procfs = boundary_procfs
 
     def release_pass_fds(self) -> None:
         descriptors, self.pass_fds = self.pass_fds, ()
@@ -44,8 +61,82 @@ class WrappedAttemptCommand(list[str]):
             except OSError:
                 pass
 
+    def close_boundary_status_fd(self) -> None:
+        descriptor, self.boundary_status_fd = self.boundary_status_fd, None
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
 
-_RUNTIME_ISOLATION_SCHEMA = "aka.runtime-isolation-receipt/v4"
+    def close_boundary_gate_fd(self) -> None:
+        descriptor, self.boundary_gate_fd = self.boundary_gate_fd, None
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+@dataclass
+class AttemptBoundary:
+    """Exact pidfd identity for a formal attempt's private PID namespace init."""
+
+    init_pidfd: int
+    status_fd: int
+    status: dict[str, int]
+    init_starttime: int
+    init_parent_pid: int
+    procfs: str
+    sigkill_sent: bool = False
+
+    def receipt(self) -> dict[str, Any]:
+        return {
+            "schema": "aka.attempt-process-boundary/v1",
+            "policy": ATTEMPT_CONTAINMENT_POLICY,
+            "pid_namespace_unshared": True,
+            "procfs": self.procfs,
+            "namespace_init_pid": self.status["child-pid"],
+            "namespace_init_starttime": self.init_starttime,
+            "namespace_init_parent_pid": self.init_parent_pid,
+            "namespace_init_inner_pid": 1,
+            "pid_namespace_id": self.status["pid-namespace"],
+            "mount_namespace_id": self.status["mnt-namespace"],
+            "ipc_namespace_id": self.status["ipc-namespace"],
+            "pidfd_opened": self.init_pidfd >= 0,
+            "identity_source": "pinned_bubblewrap_json_status_fd",
+        }
+
+    def close(self) -> None:
+        descriptor, self.init_pidfd = self.init_pidfd, -1
+        if descriptor >= 0:
+            os.close(descriptor)
+        descriptor, self.status_fd = self.status_fd, -1
+        if descriptor >= 0:
+            os.close(descriptor)
+
+    def terminate_now(self) -> None:
+        """Synchronously target the exact namespace init without numeric PID reuse."""
+        if self.init_pidfd < 0 or _pidfd_ready(self.init_pidfd, 0):
+            return
+        signal.pidfd_send_signal(self.init_pidfd, signal.SIGKILL)
+        self.sigkill_sent = True
+
+
+@dataclass(frozen=True)
+class _NamespaceMembershipScan:
+    """Visible `/proc` corroboration for authoritative pidfd teardown."""
+
+    enumeration_completed: bool
+    inaccessible_entries_count: int
+    live_visible_members: tuple[dict[str, Any], ...]
+
+    @property
+    def complete(self) -> bool:
+        return self.enumeration_completed and self.inaccessible_entries_count == 0
+
+
+_RUNTIME_ISOLATION_SCHEMA = "aka.runtime-isolation-receipt/v5"
 _ZERO_CAPABILITY_FIELDS = ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb")
 _CODEX_REQUIREMENTS_PATH = Path("/etc/codex/requirements.toml")
 _CODEX_PERMISSION_PROFILE = "aka_formal_kernel_v1"
@@ -59,6 +150,29 @@ _CODEX_GPU_REAL_BWRAP_PATH = Path("/usr/bin/bwrap")
 _CODEX_GPU_REAL_BWRAP_SHA256 = "d78807229d616606e339c5988392b9e0ab4a6a6998fa51e4590837f426a12fca"
 _CODEX_GPU_BWRAP_TRUSTED_DIR = Path("/tmp/aka-codex-gpu-bwrap")
 _CODEX_GPU_BWRAP_TRUSTED_PATH = _CODEX_GPU_BWRAP_TRUSTED_DIR / "bwrap"
+_DOCKER_MASKED_DIRECTORIES = (
+    "/proc/acpi",
+    "/proc/asound",
+    "/proc/scsi",
+    "/sys/devices/virtual/powercap",
+    "/sys/firmware",
+)
+_DOCKER_MASKED_FILES = (
+    "/proc/interrupts",
+    "/proc/kcore",
+    "/proc/keys",
+    "/proc/latency_stats",
+    "/proc/sched_debug",
+    "/proc/timer_list",
+    "/proc/timer_stats",
+)
+_DOCKER_READONLY_PATHS = (
+    "/proc/bus",
+    "/proc/fs",
+    "/proc/irq",
+    "/proc/sys",
+    "/proc/sysrq-trigger",
+)
 
 
 def _proc_status() -> dict[str, str]:
@@ -159,6 +273,7 @@ outer_fd = int(sys.argv[2])
 sentinel = pathlib.Path(sys.argv[3])
 outer_pid_namespace = sys.argv[4]
 outer_ipc_namespace = sys.argv[5]
+nonce = bytes.fromhex(sys.argv[6])
 
 def read_error(path):
     try:
@@ -167,6 +282,12 @@ def read_error(path):
         return None
     except OSError as error:
         return error.errno
+
+def read_bytes(path):
+    try:
+        return pathlib.Path(path).read_bytes()
+    except OSError:
+        return None
 
 def status_value(name):
     for line in pathlib.Path("/proc/self/status").read_text(encoding="utf-8").splitlines():
@@ -183,23 +304,78 @@ def mount_options(path):
             matches.append(fields[5].split(","))
     return matches
 
+def mount_identity(path):
+    matches = []
+    for line in pathlib.Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if len(fields) < 10 or fields[4] != path or "-" not in fields:
+            continue
+        separator = fields.index("-")
+        matches.append({
+            "root": fields[3],
+            "options": fields[5].split(","),
+            "filesystem": fields[separator + 1],
+            "source": fields[separator + 2],
+        })
+    return matches[-1] if matches else None
+
+def masked_directory(path):
+    identity = mount_identity(path)
+    if identity is None:
+        return not pathlib.Path(path).exists()
+    try:
+        empty = pathlib.Path(path).is_dir() and not any(pathlib.Path(path).iterdir())
+    except OSError:
+        return False
+    return (
+        empty
+        and identity["filesystem"] == "tmpfs"
+        and identity["root"] == "/"
+        and "ro" in identity["options"]
+    )
+
+def masked_file(path):
+    identity = mount_identity(path)
+    if identity is None:
+        return not pathlib.Path(path).exists()
+    return (
+        identity["root"] == "/null"
+        and identity["filesystem"] in {"tmpfs", "devtmpfs"}
+        and "ro" in identity["options"]
+    )
+
+def mount_read_only(path):
+    try:
+        return bool(os.statvfs(path).f_flag & os.ST_RDONLY)
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+
 parent_root = f"/proc/{outer_pid}/root{sentinel}"
 parent_fd = f"/proc/{outer_pid}/fd/{outer_fd}"
-parent_environ = f"/proc/{outer_pid}/environ"
-parent_mem = f"/proc/{outer_pid}/mem"
 proc_options = mount_options("/proc")
 direct_error = read_error(sentinel)
-parent_root_error = read_error(parent_root)
-parent_fd_error = read_error(parent_fd)
+visible_pid_namespaces = set()
+for entry in pathlib.Path("/proc").iterdir():
+    if not entry.name.isdigit():
+        continue
+    try:
+        visible_pid_namespaces.add(os.readlink(entry / "ns/pid"))
+    except OSError:
+        pass
 result = {
     "campaign_data_hidden": direct_error == errno.ENOENT,
-    "parent_process_visible_in_inherited_proc": read_error(f"/proc/{outer_pid}/status") is None,
-    "parent_root_escape_blocked": parent_root_error in {errno.EACCES, errno.EPERM},
-    "parent_fd_escape_blocked": parent_fd_error in {errno.EACCES, errno.EPERM},
-    "parent_environ_escape_blocked": read_error(parent_environ) in {errno.EACCES, errno.EPERM},
-    "parent_mem_escape_blocked": read_error(parent_mem) in {errno.EACCES, errno.EPERM},
+    "outer_pid_namespace_absent_from_private_proc": (
+        outer_pid_namespace not in visible_pid_namespaces
+    ),
+    # Numeric PIDs can collide across nested namespaces.  Compare the secret
+    # bytes, not errno, so a same-number attempt process cannot create a false
+    # isolation proof.
+    "parent_root_sentinel_unreachable": read_bytes(parent_root) != nonce,
+    "parent_fd_sentinel_unreachable": read_bytes(parent_fd) != nonce,
     "proc_mount_read_write": bool(proc_options) and "rw" in proc_options[-1],
-    "pid_namespace_preserved": os.readlink("/proc/self/ns/pid") == outer_pid_namespace,
+    "pid_namespace_unshared": os.readlink("/proc/self/ns/pid") != outer_pid_namespace,
     "ipc_namespace_unshared": os.readlink("/proc/self/ns/ipc") != outer_ipc_namespace,
     "private_shm": any(
         len(fields) > 6 and fields[4] == "/dev/shm" and "tmpfs" in fields
@@ -208,6 +384,27 @@ result = {
             for line in pathlib.Path("/proc/self/mountinfo")
             .read_text(encoding="utf-8")
             .splitlines()
+        )
+    ),
+    "docker_system_paths_remasked": all(
+        masked_directory(path)
+        for path in (
+            "/proc/acpi", "/proc/asound", "/proc/scsi",
+            "/sys/devices/virtual/powercap", "/sys/firmware",
+        )
+    ) and all(
+        masked_file(path)
+        for path in (
+            "/proc/interrupts", "/proc/kcore", "/proc/keys",
+            "/proc/latency_stats", "/proc/sched_debug", "/proc/timer_list",
+            "/proc/timer_stats",
+        )
+    ),
+    "private_proc_control_writes_blocked": all(
+        mount_read_only(path)
+        for path in (
+            "/proc/bus", "/proc/fs", "/proc/irq", "/proc/sys",
+            "/proc/sysrq-trigger",
         )
     ),
     "no_new_privileges": status_value("NoNewPrivs") == "1",
@@ -399,9 +596,7 @@ import sys
 workspace = pathlib.Path(sys.argv[1])
 credential = pathlib.Path(sys.argv[2])
 outer_pid_namespace = sys.argv[3]
-outer_pid = int(sys.argv[4])
-outer_credential_fd = int(sys.argv[5])
-trusted_gpu_bwrap = pathlib.Path(sys.argv[6])
+trusted_gpu_bwrap = pathlib.Path(sys.argv[4])
 marker = workspace / "managed-sandbox-write-probe"
 
 def read_error(path):
@@ -504,7 +699,6 @@ except Exception as error:
     single_gpu_runtime_visible = False
     gpu_compute_probe_passed = False
 
-outer_proc = f"/proc/{outer_pid}"
 blocked_proc_errors = {errno.EACCES, errno.EPERM, errno.ENOENT}
 result = {
     "workspace_write_enforced": workspace_write,
@@ -516,22 +710,19 @@ result = {
         errno.ENETUNREACH,
         errno.EHOSTUNREACH,
     },
-    "inner_pid_namespace_unshared": (
+    "command_not_in_worker_pid_namespace": (
         os.readlink("/proc/self/ns/pid") != outer_pid_namespace
     ),
-    "outer_process_visible_in_inherited_proc": (
-        read_error(f"{outer_proc}/status") is None
+    # /proc/1 is the closest PID-namespace init visible to the managed command.
+    # These probes close the common /proc/<pid>/root credential-bypass route
+    # without assuming host and namespace PID numbers cannot collide.
+    "pid1_root_alias_credential_blocked": (
+        read_error(f"/proc/1/root{credential}") in blocked_proc_errors
     ),
-    "outer_root_alias_blocked": (
-        read_error(f"{outer_proc}/root{credential}") in blocked_proc_errors
+    "pid1_environ_blocked": (
+        read_error("/proc/1/environ") in blocked_proc_errors
     ),
-    "outer_fd_alias_blocked": (
-        read_error(f"{outer_proc}/fd/{outer_credential_fd}") in blocked_proc_errors
-    ),
-    "outer_environ_alias_blocked": (
-        read_error(f"{outer_proc}/environ") in blocked_proc_errors
-    ),
-    "outer_mem_alias_blocked": read_error(f"{outer_proc}/mem") in blocked_proc_errors,
+    "pid1_mem_blocked": read_error("/proc/1/mem") in blocked_proc_errors,
     "pinned_gpu_bwrap_active": os.environ.get("AKA_CODEX_GPU_BWRAP_ACTIVE") == "1",
     "gpu_bwrap_directory_immutable": (
         trusted_dir_rename_errno in mutation_denied_errors
@@ -617,12 +808,18 @@ def _bubblewrap_identity() -> tuple[Path, dict[str, str]]:
     }
 
 
-def _bubblewrap_base_command(binary: str | Path, data_root: Path) -> list[str]:
+def _bubblewrap_base_command(
+    binary: str | Path,
+    data_root: Path,
+    *,
+    private_proc: bool = True,
+) -> list[str]:
     """Pinned mount/namespace boundary shared by probes and real attempts."""
-    return [
+    command = [
         str(binary),
         "--die-with-parent",
         "--unshare-ipc",
+        "--unshare-pid",
         "--ro-bind",
         "/",
         "/",
@@ -631,14 +828,28 @@ def _bubblewrap_base_command(binary: str | Path, data_root: Path) -> list[str]:
         "/dev",
         "--tmpfs",
         "/dev/shm",
-        "--bind",
-        "/proc",
-        "/proc",
-        "--tmpfs",
-        "/tmp",
-        "--tmpfs",
-        str(data_root),
     ]
+    if private_proc:
+        command.extend(["--proc", "/proc"])
+        # A replaced procfs no longer carries Docker's protected submounts.
+        # Recreate them before the untrusted direct backend can execute.
+        for path in _DOCKER_MASKED_DIRECTORIES:
+            if Path(path).is_dir():
+                command.extend(["--tmpfs", path, "--remount-ro", path])
+        for path in _DOCKER_MASKED_FILES:
+            if Path(path).exists():
+                command.extend(["--ro-bind", "/dev/null", path])
+        for path in _DOCKER_READONLY_PATHS:
+            if Path(path).exists():
+                command.extend(["--ro-bind", path, path])
+    else:
+        # Apex is trusted at this layer and must create a nested user namespace
+        # around its untrusted backend.  The recursive read-only root bind above
+        # otherwise makes /proc/<pid>/uid_map unwritable and causes inner bwrap
+        # to fail before it can establish that stronger boundary.
+        command.extend(["--bind", "/proc", "/proc"])
+    command.extend(["--tmpfs", "/tmp", "--tmpfs", str(data_root)])
+    return command
 
 
 def _mount_codex_gpu_bwrap(command: list[str], descriptor: int) -> None:
@@ -699,16 +910,12 @@ def _codex_sandbox_probe(
     home = probe_dir / "home"
     workspace = probe_dir / "workspace"
     credential = home / ".codex" / "auth.json"
-    credential_descriptor = -1
     gpu_bwrap_descriptor = -1
     try:
         credential.parent.mkdir(parents=True)
         workspace.mkdir()
         credential.write_text('{"fixture":"must-not-be-readable"}\n', encoding="utf-8")
-        credential_descriptor = os.open(credential, os.O_RDONLY)
         outer_pid_namespace = os.readlink("/proc/self/ns/pid")
-        outer_pid = os.getpid()
-
         command = _bubblewrap_base_command(bubblewrap_binary, data_root)
         gpu_bwrap_descriptor = _sealed_codex_gpu_bwrap(gpu_bubblewrap_binary)
         _mount_codex_gpu_bwrap(command, gpu_bwrap_descriptor)
@@ -736,8 +943,6 @@ def _codex_sandbox_probe(
                 str(workspace),
                 str(credential),
                 outer_pid_namespace,
-                str(outer_pid),
-                str(credential_descriptor),
                 str(_CODEX_GPU_BWRAP_TRUSTED_PATH),
             ]
         )
@@ -778,12 +983,10 @@ def _codex_sandbox_probe(
             "workspace_write_enforced",
             "credential_read_denied",
             "command_network_denied",
-            "inner_pid_namespace_unshared",
-            "outer_process_visible_in_inherited_proc",
-            "outer_root_alias_blocked",
-            "outer_fd_alias_blocked",
-            "outer_environ_alias_blocked",
-            "outer_mem_alias_blocked",
+            "command_not_in_worker_pid_namespace",
+            "pid1_root_alias_credential_blocked",
+            "pid1_environ_blocked",
+            "pid1_mem_blocked",
             "pinned_gpu_bwrap_active",
             "gpu_bwrap_directory_immutable",
             "gpu_bwrap_path_immutable",
@@ -804,8 +1007,6 @@ def _codex_sandbox_probe(
             )
         return result
     finally:
-        if credential_descriptor >= 0:
-            os.close(credential_descriptor)
         if gpu_bwrap_descriptor >= 0:
             os.close(gpu_bwrap_descriptor)
         shutil.rmtree(probe_dir, ignore_errors=False)
@@ -852,6 +1053,7 @@ def _attempt_escape_probe(
             str(sentinel),
             str(outer["pid_namespace"]),
             str(outer["ipc_namespace"]),
+            nonce.hex(),
         ]
         try:
             completed = subprocess.run(
@@ -875,15 +1077,15 @@ def _attempt_escape_probe(
             )
         expected_keys = {
             "campaign_data_hidden",
-            "parent_process_visible_in_inherited_proc",
-            "parent_root_escape_blocked",
-            "parent_fd_escape_blocked",
-            "parent_environ_escape_blocked",
-            "parent_mem_escape_blocked",
+            "outer_pid_namespace_absent_from_private_proc",
+            "parent_root_sentinel_unreachable",
+            "parent_fd_sentinel_unreachable",
             "proc_mount_read_write",
-            "pid_namespace_preserved",
+            "pid_namespace_unshared",
             "ipc_namespace_unshared",
             "private_shm",
+            "docker_system_paths_remasked",
+            "private_proc_control_writes_blocked",
             "no_new_privileges",
             "effective_capabilities_zero",
             "bounding_capabilities_zero",
@@ -929,7 +1131,7 @@ def runtime_isolation_receipt() -> dict[str, Any]:
     # Namespace inode identifiers are deliberately used only by the live probe:
     # they differ for every Docker worker and would make the Apex/Codex
     # comparison contract run-specific. The manifest records only the verified
-    # relationships (attempt PID preserved, attempt IPC unshared).
+    # relationships (attempt PID/IPC unshared and private procfs active).
     recorded_outer = {
         key: value
         for key, value in outer.items()
@@ -943,17 +1145,27 @@ def runtime_isolation_receipt() -> dict[str, Any]:
             "docker_no_new_privileges": True,
             "docker_apparmor": "unconfined_for_rootless_userns",
             "docker_seccomp": "unconfined_for_rootless_userns",
+            "docker_systempaths": "unconfined_for_private_attempt_procfs",
+            "docker_masked_paths_rebuilt": [
+                *_DOCKER_MASKED_DIRECTORIES,
+                *_DOCKER_MASKED_FILES,
+            ],
+            "docker_readonly_paths_rebuilt": list(_DOCKER_READONLY_PATHS),
             "docker_pid_namespace": "private_default",
             "attempt_mount_namespace": "bubblewrap",
-            "attempt_pid_namespace": "docker_worker_shared_for_nested_codex_userns",
+            "attempt_pid_namespace": "private_per_attempt_with_bwrap_reaper_pid1",
             "attempt_ipc_namespace": "unshared",
-            "attempt_proc": "read_write_bind_of_docker_private_procfs",
-            "proc_escape_guard": (
-                "yama_ptrace_scope_and_live_parent_root_fd_environ_mem_probe_v2"
+            "attempt_proc": "private_procfs_for_attempt_pid_namespace",
+            "direct_agent_proc": "aka_outer_private_attempt_procfs",
+            "apex_outer_proc": (
+                "trusted_orchestrator_inherited_worker_procfs_nested_userns_writable"
             ),
+            "apex_backend_proc": "apex_inner_private_attempt_procfs_required",
+            "process_lifetime_boundary": "namespace_init_pidfd_v1",
+            "proc_escape_guard": "outer_process_absent_from_private_procfs_v1",
             "command_sandbox": "codex_managed_permission_profile_bwrap",
             "command_pid_namespace": (
-                "nested_codex_unshared_with_inherited_proc_guard_v1"
+                "nested_codex_unshared_inside_private_attempt_pidns_v1"
             ),
             "command_network": "managed_profile_denied_live_probe_v1",
             "command_gpu_access": (
@@ -1129,6 +1341,7 @@ def wrap_attempt_command(
     eval_config: dict[str, Any],
     writable_roots: Iterable[Path],
     read_only_roots: Iterable[Path] = (),
+    private_proc: bool = True,
 ) -> list[str]:
     """Hide other campaign data and expose only explicitly scoped roots."""
     if not is_formal_campaign(eval_config):
@@ -1154,7 +1367,9 @@ def wrap_attempt_command(
         raise CampaignIsolationError("formal campaign has no attempt writable root")
     _reject_overlapping_roots((*writable, *read_only))
 
-    wrapped = _bubblewrap_base_command(binary, data_root)
+    wrapped = _bubblewrap_base_command(
+        binary, data_root, private_proc=private_proc
+    )
     state_root = Path(
         os.environ.get("AGENT_STATE_MOUNT_ROOT", "/opt/aka-agent-state")
     )
@@ -1188,13 +1403,45 @@ def wrap_attempt_command(
         if path.is_dir():
             wrapped.extend(["--tmpfs", str(path)])
     gpu_bwrap_descriptor = _sealed_codex_gpu_bwrap(gpu_bubblewrap)
+    status_read = status_write = gate_read = gate_write = -1
     try:
+        status_read, status_write = os.pipe2(os.O_CLOEXEC)
+        gate_read, gate_write = os.pipe2(os.O_CLOEXEC)
         _mount_codex_gpu_bwrap(wrapped, gpu_bwrap_descriptor)
+        wrapped.extend(
+            [
+                "--json-status-fd",
+                str(status_write),
+                "--block-fd",
+                str(gate_read),
+            ]
+        )
         wrapped.extend(["--", *command])
-        return WrappedAttemptCommand(wrapped, pass_fds=(gpu_bwrap_descriptor,))
+        result = WrappedAttemptCommand(
+            wrapped,
+            pass_fds=(gpu_bwrap_descriptor, status_write, gate_read),
+            boundary_status_fd=status_read,
+            boundary_gate_fd=gate_write,
+            boundary_procfs=(
+                "private_attempt_procfs"
+                if private_proc
+                else "trusted_orchestrator_inherited_procfs"
+            ),
+        )
+        gpu_bwrap_descriptor = status_write = gate_read = status_read = gate_write = -1
+        return result
     except Exception:
-        os.close(gpu_bwrap_descriptor)
         raise
+    finally:
+        for descriptor in (
+            gpu_bwrap_descriptor,
+            status_read,
+            status_write,
+            gate_read,
+            gate_write,
+        ):
+            if descriptor >= 0:
+                os.close(descriptor)
 
 
 def attempt_command_pass_fds(command: list[str]) -> tuple[int, ...]:
@@ -1208,6 +1455,377 @@ def release_attempt_command_fds(command: list[str]) -> None:
     """Release parent copies after subprocess creation; safe to call repeatedly."""
     if isinstance(command, WrappedAttemptCommand):
         command.release_pass_fds()
+
+
+def _pidfd_ready(descriptor: int, timeout_seconds: float) -> bool:
+    poller = select.poll()
+    poller.register(descriptor, select.POLLIN | select.POLLHUP | select.POLLERR)
+    return bool(poller.poll(max(0, int(timeout_seconds * 1000))))
+
+
+def _process_starttime(pid: int) -> int:
+    try:
+        stat_line = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        fields = stat_line[stat_line.rfind(")") + 2 :].split()
+        value = int(fields[19])
+    except (OSError, ValueError, IndexError) as error:
+        raise CampaignIsolationError("cannot bind attempt namespace init starttime") from error
+    if value <= 0:
+        raise CampaignIsolationError("attempt namespace init starttime is invalid")
+    return value
+
+
+def _process_namespace_identity(pid: int) -> tuple[int, int]:
+    try:
+        lines = Path(f"/proc/{pid}/status").read_text(encoding="utf-8").splitlines()
+        values = {
+            key: value.strip()
+            for line in lines
+            for key, separator, value in [line.partition(":")]
+            if separator and key in {"PPid", "NSpid"}
+        }
+        parent = int(values["PPid"])
+        namespace_pid = int(values["NSpid"].split()[-1])
+    except (OSError, KeyError, ValueError, IndexError) as error:
+        raise CampaignIsolationError("cannot bind attempt namespace process identity") from error
+    return parent, namespace_pid
+
+
+def _pid_namespace_membership_scan(
+    namespace_inode: int,
+) -> _NamespaceMembershipScan:
+    """Corroborate pidfd teardown across every supervisor-visible `/proc` entry."""
+    try:
+        entries = list(Path("/proc").iterdir())
+    except OSError:
+        return _NamespaceMembershipScan(False, 0, ())
+    members: list[dict[str, Any]] = []
+    inaccessible_entries = 0
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            if (entry / "ns/pid").stat().st_ino != namespace_inode:
+                continue
+        except FileNotFoundError:
+            # A process may exit between enumerating /proc and inspecting it.
+            continue
+        except PermissionError:
+            # Yama and sibling user namespaces can conceal otherwise visible
+            # entries, including entries owned by the same host uid. Never call
+            # that a complete scan: namespace-init pidfd exit is the authority,
+            # while this scan only corroborates supervisor-visible membership.
+            inaccessible_entries += 1
+            continue
+        except OSError:
+            return _NamespaceMembershipScan(
+                False, inaccessible_entries, tuple(members)
+            )
+        try:
+            stat_line = (entry / "stat").read_text(encoding="utf-8")
+            fields = stat_line[stat_line.rfind(")") + 2 :].split()
+            if fields[0] != "Z":
+                members.append(
+                    {
+                        "pid": int(entry.name),
+                        "state": fields[0],
+                        "starttime": int(fields[19]),
+                    }
+                )
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError, IndexError):
+            return _NamespaceMembershipScan(
+                False, inaccessible_entries, tuple(members)
+            )
+    return _NamespaceMembershipScan(
+        True,
+        inaccessible_entries,
+        tuple(sorted(members, key=lambda item: item["pid"])),
+    )
+
+
+def establish_attempt_boundary(
+    command: list[str],
+    process: subprocess.Popen[Any],
+    *,
+    timeout_seconds: float = 5.0,
+) -> AttemptBoundary | None:
+    """Bind a formal bwrap PID namespace before allowing its command to exec."""
+    if not isinstance(command, WrappedAttemptCommand):
+        return None
+    status_fd = command.boundary_status_fd
+    gate_fd = command.boundary_gate_fd
+    if status_fd is None or gate_fd is None:
+        raise CampaignIsolationError("formal attempt boundary descriptors are missing")
+    boundary: AttemptBoundary | None = None
+    try:
+        ready, _, _ = select.select([status_fd], [], [], timeout_seconds)
+        if not ready:
+            raise CampaignIsolationError("formal attempt boundary status timed out")
+        payload = os.read(status_fd, 4097)
+        if len(payload) > 4096 or not payload.endswith(b"\n"):
+            raise CampaignIsolationError("formal attempt boundary status is malformed")
+        try:
+            status = json.loads(payload)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise CampaignIsolationError(
+                "formal attempt boundary status is not canonical JSON"
+            ) from error
+        expected = {
+            "child-pid",
+            "ipc-namespace",
+            "mnt-namespace",
+            "pid-namespace",
+        }
+        if (
+            not isinstance(status, dict)
+            or set(status) != expected
+            or any(type(status.get(key)) is not int or status[key] <= 0 for key in expected)
+        ):
+            raise CampaignIsolationError("formal attempt boundary status is invalid")
+        init_pid = status["child-pid"]
+        try:
+            init_pidfd = os.pidfd_open(init_pid, 0)
+        except OSError as error:
+            raise CampaignIsolationError("cannot open attempt namespace init pidfd") from error
+        parent_pid, namespace_pid = _process_namespace_identity(init_pid)
+        boundary = AttemptBoundary(
+            init_pidfd=init_pidfd,
+            status_fd=status_fd,
+            status=status,
+            init_starttime=_process_starttime(init_pid),
+            init_parent_pid=parent_pid,
+            procfs=command.boundary_procfs,
+        )
+        command.boundary_status_fd = None
+        try:
+            namespace_inode = os.stat(f"/proc/{init_pid}/ns/pid").st_ino
+            mount_inode = os.stat(f"/proc/{init_pid}/ns/mnt").st_ino
+            ipc_inode = os.stat(f"/proc/{init_pid}/ns/ipc").st_ino
+        except OSError as error:
+            raise CampaignIsolationError(
+                "cannot bind attempt namespace identity"
+            ) from error
+        if (
+            namespace_inode != status["pid-namespace"]
+            or mount_inode != status["mnt-namespace"]
+            or ipc_inode != status["ipc-namespace"]
+            or parent_pid != process.pid
+            or namespace_pid != 1
+            or _pidfd_ready(init_pidfd, 0)
+            or _process_starttime(init_pid) != boundary.init_starttime
+        ):
+            raise CampaignIsolationError("attempt namespace init identity changed")
+        os.write(gate_fd, b"1")
+        return boundary
+    except Exception:
+        if boundary is not None:
+            boundary.close()
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        raise
+    finally:
+        command.close_boundary_status_fd()
+        command.close_boundary_gate_fd()
+
+
+def finalize_attempt_boundary(
+    process: subprocess.Popen[Any],
+    boundary: AttemptBoundary,
+    *,
+    reason: str,
+    terminate: bool,
+    timeout_seconds: float = 5.0,
+) -> dict[str, Any]:
+    """End or verify a PID namespace through its exact, non-reusable pidfd."""
+    evidence = {
+        "required": terminate,
+        "reason": reason,
+        "scope": "private_pid_namespace",
+        "method": "namespace_init_pidfd_v1",
+        "boundary": boundary.receipt(),
+        "sigkill_sent": False,
+        "outer_supervisor_force_killed": False,
+        "verification_performed": True,
+        "namespace_init_exit_verified": False,
+        "verified_absent": False,
+        "kernel_semantics": (
+            "linux_pid_namespace_init_exit_sigkill_all_members"
+        ),
+        "bubblewrap_terminal_status_verified": False,
+        "bubblewrap_status_eof_verified": False,
+    }
+    try:
+        if terminate:
+            boundary.terminate_now()
+        evidence["sigkill_sent"] = boundary.sigkill_sent
+        try:
+            process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            evidence["outer_supervisor_force_killed"] = True
+            try:
+                process.wait(timeout=timeout_seconds)
+            except subprocess.TimeoutExpired:
+                pass
+        evidence["namespace_init_exit_verified"] = _pidfd_ready(
+            boundary.init_pidfd, timeout_seconds
+        )
+        evidence["outer_supervisor_exit_code"] = process.poll()
+        terminal_payload = os.read(boundary.status_fd, 4097)
+        terminal_absent = terminal_payload == b""
+        if len(terminal_payload) <= 4096 and terminal_payload.endswith(b"\n"):
+            lines = terminal_payload.splitlines()
+            try:
+                terminal = json.loads(lines[0]) if len(lines) == 1 else None
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                terminal = None
+            expected_exit = process.poll()
+            if (
+                isinstance(terminal, dict)
+                and set(terminal) == {"exit-code"}
+                and type(terminal.get("exit-code")) is int
+                and terminal["exit-code"] == expected_exit
+            ):
+                evidence["bubblewrap_terminal_status_verified"] = True
+                evidence["bubblewrap_terminal_status"] = terminal
+        evidence["bubblewrap_status_eof_verified"] = (
+            os.read(boundary.status_fd, 1) == b""
+        )
+        evidence["bubblewrap_terminal_status_absent_after_sigkill"] = (
+            terminal_absent and boundary.sigkill_sent
+        )
+        evidence["teardown_mode"] = (
+            "pidfd_sigkill" if boundary.sigkill_sent else "natural_exit"
+        )
+        membership_scan = _pid_namespace_membership_scan(
+            boundary.status["pid-namespace"]
+        )
+        evidence["namespace_membership_enumeration_completed"] = (
+            membership_scan.enumeration_completed
+        )
+        evidence["namespace_membership_scan_complete"] = membership_scan.complete
+        evidence["namespace_membership_inaccessible_entries_count"] = (
+            membership_scan.inaccessible_entries_count
+        )
+        evidence["live_visible_namespace_members_after"] = list(
+            membership_scan.live_visible_members
+        )
+        terminal_evidence_valid = (
+            evidence["bubblewrap_terminal_status_verified"] is True
+            or evidence["bubblewrap_terminal_status_absent_after_sigkill"] is True
+        )
+        evidence["verified_absent"] = (
+            evidence["namespace_init_exit_verified"] is True
+            and process.poll() is not None
+            and evidence["outer_supervisor_force_killed"] is False
+            and terminal_evidence_valid
+            and evidence["bubblewrap_status_eof_verified"] is True
+            and membership_scan.enumeration_completed
+            and not membership_scan.live_visible_members
+        )
+        return evidence
+    except (OSError, ProcessLookupError) as error:
+        evidence["error"] = f"{type(error).__name__}: {error}"
+        evidence["outer_supervisor_exit_code"] = process.poll()
+        return evidence
+    finally:
+        boundary.close()
+
+
+def attempt_cleanup_verified(
+    cleanup: Any,
+    *,
+    exit_code: Any,
+    allowed_reasons: set[str],
+    required_procfs: str,
+) -> bool:
+    """Fail-closed verifier for a serialized formal attempt boundary."""
+    if not isinstance(cleanup, dict):
+        return False
+    boundary = cleanup.get("boundary")
+    inaccessible_entries = cleanup.get(
+        "namespace_membership_inaccessible_entries_count"
+    )
+    scan_complete = cleanup.get("namespace_membership_scan_complete")
+    reason = cleanup.get("reason")
+    common = (
+        reason in allowed_reasons
+        and cleanup.get("required") is (reason != "normal_exit")
+        and cleanup.get("scope") == "private_pid_namespace"
+        and cleanup.get("method") == "namespace_init_pidfd_v1"
+        and cleanup.get("verification_performed") is True
+        and cleanup.get("namespace_init_exit_verified") is True
+        and cleanup.get("namespace_membership_enumeration_completed") is True
+        and type(scan_complete) is bool
+        and type(inaccessible_entries) is int
+        and inaccessible_entries >= 0
+        and scan_complete == (inaccessible_entries == 0)
+        and cleanup.get("live_visible_namespace_members_after") == []
+        and cleanup.get("verified_absent") is True
+        and cleanup.get("outer_supervisor_force_killed") is False
+        and cleanup.get("bubblewrap_status_eof_verified") is True
+        and cleanup.get("outer_supervisor_exit_code") == exit_code
+        and cleanup.get("kernel_semantics")
+        == "linux_pid_namespace_init_exit_sigkill_all_members"
+        and isinstance(boundary, dict)
+        and boundary.get("schema") == "aka.attempt-process-boundary/v1"
+        and boundary.get("policy") == ATTEMPT_CONTAINMENT_POLICY
+        and boundary.get("pid_namespace_unshared") is True
+        and boundary.get("procfs") == required_procfs
+        and boundary.get("pidfd_opened") is True
+        and boundary.get("identity_source")
+        == "pinned_bubblewrap_json_status_fd"
+        and all(
+            type(boundary.get(field)) is int and boundary[field] > 0
+            for field in (
+                "namespace_init_pid",
+                "namespace_init_starttime",
+                "namespace_init_parent_pid",
+                "pid_namespace_id",
+                "mount_namespace_id",
+                "ipc_namespace_id",
+            )
+        )
+        and boundary.get("namespace_init_inner_pid") == 1
+    )
+    if not common:
+        return False
+    if cleanup.get("teardown_mode") == "pidfd_sigkill":
+        terminal_status_valid = (
+            cleanup.get("bubblewrap_terminal_status_verified") is True
+            and cleanup.get("bubblewrap_terminal_status")
+            == {"exit-code": exit_code}
+            and cleanup.get("bubblewrap_terminal_status_absent_after_sigkill")
+            is False
+        )
+        terminal_status_absent = (
+            cleanup.get("bubblewrap_terminal_status_verified") is False
+            and cleanup.get("bubblewrap_terminal_status") is None
+            and cleanup.get("bubblewrap_terminal_status_absent_after_sigkill")
+            is True
+        )
+        return (
+            cleanup.get("sigkill_sent") is True
+            and exit_code == 128 + int(signal.SIGKILL)
+            and reason in {"exact_turn_boundary", "timeout"}
+            and (terminal_status_valid or terminal_status_absent)
+        )
+    return (
+        cleanup.get("teardown_mode") == "natural_exit"
+        and cleanup.get("sigkill_sent") is False
+        and type(exit_code) is int
+        and cleanup.get("bubblewrap_terminal_status_verified") is True
+        and cleanup.get("bubblewrap_terminal_status") == {"exit-code": exit_code}
+        and cleanup.get("bubblewrap_terminal_status_absent_after_sigkill") is False
+    )
 
 
 def _validated_attempt_roots(
@@ -1271,9 +1889,14 @@ def _make_owner_writable(root: Path) -> None:
 
 
 __all__ = [
+    "ATTEMPT_CONTAINMENT_POLICY",
     "CampaignIsolationError",
+    "AttemptBoundary",
     "WrappedAttemptCommand",
+    "attempt_cleanup_verified",
     "attempt_command_pass_fds",
+    "establish_attempt_boundary",
+    "finalize_attempt_boundary",
     "is_formal_campaign",
     "formal_gpu_evidence",
     "isolated_environment",

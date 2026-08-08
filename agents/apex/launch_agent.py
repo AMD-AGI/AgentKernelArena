@@ -36,7 +36,7 @@ import yaml
 
 from agents import register_agent
 from src.agent_turn_budget import (
-    BOUNDARY_QUIESCENCE_POLICY,
+    AGENT_PROCESS_CONTAINMENT_POLICY,
     CANDIDATE_PERSISTENCE_POLICY,
     FORMAL_MATCHED_MAX_TURNS,
     LEGACY_TURN_POLICY,
@@ -47,7 +47,11 @@ from src.agent_turn_budget import (
 )
 from src.module_registration import AgentType, load_prompt_builder
 from src.campaign_isolation import (
+    ATTEMPT_CONTAINMENT_POLICY,
+    attempt_cleanup_verified,
     attempt_command_pass_fds,
+    establish_attempt_boundary,
+    finalize_attempt_boundary,
     formal_gpu_evidence,
     is_formal_campaign,
     isolated_environment,
@@ -69,7 +73,7 @@ _APEX_GENERIC_CONTEXT_MARKER = (
 )
 _NORMAL_NO_PATCH_STATUSES = {"no_gain"}
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v3"
+_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v4"
 _CALLER_RUN_CONTROL_SCHEMA = "aka.apex-caller-run-control/v1"
 _INSTRUCTION_ADAPTATION_SCHEMA = "aka.apex-instruction-adaptation/v1"
 _ARENA_PYTHON_ENV = "AGENT_KERNEL_ARENA_PYTHON"
@@ -157,6 +161,81 @@ def _canonical_digest(value: Any) -> str:
         ensure_ascii=False,
     ).encode("utf-8")
     return _sha256_bytes(payload)
+
+
+def _inner_agent_containment_valid(
+    receipt: Any, *, forced_stop: bool
+) -> bool:
+    """Recompute Apex's backend PID-namespace proof before accepting bytes."""
+    if not isinstance(receipt, dict):
+        return False
+    launcher = receipt.get("launcher_path")
+    try:
+        launcher_path = Path(launcher) if isinstance(launcher, str) else None
+        launcher_valid = (
+            launcher_path is not None
+            and launcher_path.is_absolute()
+            and launcher_path.is_file()
+            and not launcher_path.is_symlink()
+            and _sha256_file(launcher_path) == receipt.get("launcher_sha256")
+        )
+    except OSError:
+        launcher_valid = False
+    positive = (
+        "namespace_init_host_pid",
+        "namespace_init_starttime",
+        "namespace_init_inner_pid",
+        "pid_namespace_inode",
+        "mount_namespace_inode",
+        "ipc_namespace_inode",
+        "user_namespace_inode",
+    )
+    terminal_verified = receipt.get("terminal_status_verified") is True
+    terminal_absent = (
+        receipt.get("terminal_status_absent_after_sigkill") is True
+    )
+    terminal = terminal_verified != terminal_absent
+    terminal_fields_typed = (
+        type(receipt.get("terminal_status_verified")) is bool
+        and type(receipt.get("terminal_status_absent_after_sigkill")) is bool
+    )
+    common = (
+        receipt.get("schema") == "apex.agent-process-containment/v1"
+        and receipt.get("policy_id") == AGENT_PROCESS_CONTAINMENT_POLICY
+        and launcher_valid
+        and all(
+            type(receipt.get(field)) is int and receipt[field] > 0
+            for field in positive
+        )
+        and receipt.get("namespace_init_inner_pid") == 1
+        and receipt.get("private_procfs_verified") is True
+        and receipt.get("pidfd_opened") is True
+        and receipt.get("namespace_init_exit_verified") is True
+        and receipt.get("wrapper_exit_verified") is True
+        and receipt.get("wrapper_force_killed") is False
+        and terminal_fields_typed
+        and terminal
+        and receipt.get("status_eof_verified") is True
+        and receipt.get("namespace_membership_scan_complete") is True
+        and receipt.get("live_namespace_members_after") == []
+        and receipt.get("namespace_empty_verified") is True
+    )
+    if not common:
+        return False
+    if forced_stop:
+        return (
+            receipt.get("termination_reason") == "stdout_budget_boundary"
+            and receipt.get("teardown_mode") == "pidfd_sigkill"
+            and receipt.get("pidfd_sigkill_sent") is True
+            and terminal
+        )
+    return (
+        receipt.get("termination_reason") == "natural_exit"
+        and receipt.get("teardown_mode") == "natural_exit"
+        and receipt.get("pidfd_sigkill_sent") is False
+        and terminal_verified
+        and not terminal_absent
+    )
 
 
 def _comparison_contract_sha256(
@@ -335,6 +414,7 @@ def _caller_run_control(
             "counting": "assistant_message_and_tool_call_start_each_count_once",
         },
         "candidate_persistence_policy_id": CANDIDATE_PERSISTENCE_POLICY,
+        "process_containment_policy_id": AGENT_PROCESS_CONTAINMENT_POLICY,
         "python_interpreter": interpreter,
         "verifier_argv": {
             phase: list(bound_commands[phase]["argv"])
@@ -839,6 +919,7 @@ def _run_apex(
         )
     finally:
         release_attempt_command_fds(command)
+    attempt_boundary = establish_attempt_boundary(command, process)
     assert process.stdout is not None
     assert process.stderr is not None
     stdout: list[bytes] = []
@@ -884,18 +965,34 @@ def _run_apex(
         process.wait(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
         timed_out = True
-        cleanup = _terminate_process_group(process, logger, reason="timeout")
-        try:
-            process.wait(timeout=1)
-        except subprocess.TimeoutExpired:
-            cleanup["verified_absent"] = False
-    else:
-        cleanup["verification_performed"] = True
-        cleanup["verified_absent"] = not _process_group_exists(process.pid)
-        if not cleanup["verified_absent"]:
-            cleanup = _terminate_process_group(
-                process, logger, reason="post_exit_lingering_group"
+        if attempt_boundary is not None:
+            cleanup = finalize_attempt_boundary(
+                process,
+                attempt_boundary,
+                reason="timeout",
+                terminate=True,
             )
+        else:
+            cleanup = _terminate_process_group(process, logger, reason="timeout")
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                cleanup["verified_absent"] = False
+    else:
+        if attempt_boundary is not None:
+            cleanup = finalize_attempt_boundary(
+                process,
+                attempt_boundary,
+                reason="normal_exit",
+                terminate=False,
+            )
+        else:
+            cleanup["verification_performed"] = True
+            cleanup["verified_absent"] = not _process_group_exists(process.pid)
+            if not cleanup["verified_absent"]:
+                cleanup = _terminate_process_group(
+                    process, logger, reason="post_exit_lingering_group"
+                )
     stdout_thread.join(timeout=5)
     stderr_thread.join(timeout=5)
     readers_completed = not stdout_thread.is_alive() and not stderr_thread.is_alive()
@@ -1082,8 +1179,8 @@ def _validate_apex_lineage(
         "budget_exhausted": {
             "verdict": "reject",
             "agent_event": "agent_failed",
-            "reason": "agent_turn_budget_exceeded",
-            "run_reason": "agent_turn_budget_exceeded",
+            "reason": "agent_turn_budget_overrun",
+            "run_reason": "agent_turn_budget_overrun",
         },
     }
     contract = terminal_contracts.get(status)
@@ -1256,7 +1353,11 @@ def _validate_apex_lineage(
     )
     typed_termination = payload.get("termination_kind")
     exact_checkpoint = typed_termination == "exact_turn_boundary"
+    budget_overrun = (
+        failure_reason is not None and typed_termination == "turn_overrun"
+    )
     if typed_termination is not None:
+        process_containment = payload.get("process_containment")
         discarded_lines = payload.get("discarded_stdout_lines")
         discarded_bytes = payload.get("discarded_stdout_bytes")
         discarded_sha256 = payload.get("discarded_stdout_sha256")
@@ -1288,38 +1389,56 @@ def _validate_apex_lineage(
             or (not has_discarded_tail and discarded_sha256 is not None)
         )
         outcome_mismatch = (
-            typed_termination not in {"completed", "exact_turn_boundary"}
-            or payload.get("capture_status") != "complete"
-            or payload.get("candidate_capture_allowed") is not True
+            payload.get("capture_status") != "complete"
             or payload.get("timed_out") is not False
             or not isinstance(payload.get("observer_stop_sent"), bool)
-            or not isinstance(payload.get("observer_suspend_sent"), bool)
-            or not isinstance(payload.get("suspension_verified"), bool)
+            or payload.get("process_containment_policy_id")
+            != AGENT_PROCESS_CONTAINMENT_POLICY
+            or not _inner_agent_containment_valid(
+                process_containment,
+                forced_stop=exact_checkpoint or budget_overrun,
+            )
             or discarded_tail_invalid
             or (
-                exact_checkpoint
+                failure_reason is None
+                and (
+                    typed_termination
+                    not in {"completed", "exact_turn_boundary"}
+                    or payload.get("candidate_capture_allowed") is not True
+                )
+            )
+            or (
+                failure_reason is not None
+                and (
+                    not budget_overrun
+                    or payload.get("candidate_capture_allowed") is not False
+                    or payload.get("termination_reason") != "max_turns_overrun"
+                    or type(payload.get("observed_turns")) is not int
+                    or payload["observed_turns"]
+                    <= task_spec["budget"]["max_turns"]
+                    or payload.get("observer_stop_sent") is not True
+                    or type(payload.get("exit_code")) is not int
+                    or payload["exit_code"] != 128 + signal.SIGKILL
+                )
+            )
+            or (
+                failure_reason is None
+                and exact_checkpoint
                 and (
                     payload.get("termination_reason")
                     != "max_turns_exact_boundary"
                     or payload.get("observed_turns")
                     != task_spec["budget"]["max_turns"]
-                    or payload.get("observer_suspend_sent") is not True
-                    or payload.get("suspension_verified") is not True
-                    or payload.get("boundary_quiescence_policy_id")
-                    != BOUNDARY_QUIESCENCE_POLICY
-                    or (
-                        payload.get("exit_code") != 0
-                        and payload.get("observer_stop_sent") is not True
-                    )
+                    or payload.get("observer_stop_sent") is not True
+                    or payload.get("exit_code") != 128 + signal.SIGKILL
                 )
             )
             or (
-                not exact_checkpoint
+                failure_reason is None
+                and not exact_checkpoint
                 and (
                     payload.get("termination_reason") is not None
                     or payload.get("exit_code") != 0
-                    or payload.get("observer_suspend_sent") is not False
-                    or payload.get("suspension_verified") is not False
                 )
             )
         )
@@ -1345,11 +1464,7 @@ def _validate_apex_lineage(
             f"Apex {contract['agent_event']} outcome/identity is inconsistent"
         )
     invocation = payload.get("invocation")
-    expected_invocation_schema = (
-        "apex.agent-invocation/v2"
-        if typed_termination is not None
-        else "apex.agent-invocation/v1"
-    )
+    expected_invocation_schema = "apex.agent-invocation/v3"
     if (
         not isinstance(invocation, dict)
         or invocation.get("schema") != expected_invocation_schema
@@ -1374,11 +1489,8 @@ def _validate_apex_lineage(
         or invocation.get("max_turns") != task_spec["budget"]["max_turns"]
         or invocation.get("turn_policy")
         != (TURN_POLICY if typed_termination is not None else LEGACY_TURN_POLICY)
-        or (
-            typed_termination is not None
-            and invocation.get("boundary_quiescence_policy_id")
-            != BOUNDARY_QUIESCENCE_POLICY
-        )
+        or invocation.get("process_containment_policy_id")
+        != AGENT_PROCESS_CONTAINMENT_POLICY
         or invocation.get("isolation") != expected_isolation
         or not isinstance(argv, list)
         or "--strict-config" not in argv
@@ -1442,8 +1554,7 @@ def _validate_apex_lineage(
         raise ApexAdapterError("Apex agent transcript is not valid JSON") from error
     if (
         not isinstance(transcript, dict)
-        or transcript.get("schema")
-        not in {"apex.agent-transcript/v1", "apex.agent-transcript/v2"}
+        or transcript.get("schema") != "apex.agent-transcript/v3"
         or transcript.get("backend") != task_spec["agent_backend"]
         or transcript.get("model") != expected_options.get("model")
         or transcript.get("effort") != expected_options.get("effort")
@@ -1451,11 +1562,7 @@ def _validate_apex_lineage(
     ):
         raise ApexAdapterError("Apex transcript does not bind the verified invocation")
     semantic_events = transcript.get("semantic_events")
-    budget = (
-        transcript.get("termination")
-        if transcript.get("schema") == "apex.agent-transcript/v2"
-        else transcript.get("budget")
-    )
+    budget = transcript.get("termination")
     if not isinstance(semantic_events, list) or not isinstance(budget, dict):
         raise ApexAdapterError("Apex transcript lacks semantic turn evidence")
     message_count = sum(
@@ -1478,7 +1585,7 @@ def _validate_apex_lineage(
         or budget.get("max_turns") != max_turns
         or budget.get("observed_turns") != observed_turns
     )
-    if transcript.get("schema") == "apex.agent-transcript/v2":
+    if transcript.get("schema") == "apex.agent-transcript/v3":
         turn_mismatch = common_turn_mismatch or any(
             budget.get(transcript_key) != payload.get(payload_key)
             for transcript_key, payload_key in {
@@ -1489,16 +1596,10 @@ def _validate_apex_lineage(
                 "observer_stop_sent": "observer_stop_sent",
             }.items()
         )
-        suspension = budget.get("suspension")
         discarded_tail = budget.get("discarded_stdout_tail")
         turn_mismatch = turn_mismatch or (
-            not isinstance(suspension, dict)
-            or suspension
-            != {
-                "policy_id": BOUNDARY_QUIESCENCE_POLICY,
-                "sent": payload.get("observer_suspend_sent"),
-                "verified": payload.get("suspension_verified"),
-            }
+            budget.get("process_containment")
+            != payload.get("process_containment")
             or not isinstance(discarded_tail, dict)
             or discarded_tail
             != {
@@ -1507,10 +1608,15 @@ def _validate_apex_lineage(
                 "sha256": payload.get("discarded_stdout_sha256"),
             }
         )
-        turn_mismatch = turn_mismatch or (
-            exact_checkpoint and observed_turns != max_turns
-        ) or (
-            not exact_checkpoint and not 1 <= observed_turns <= max_turns
+        turn_mismatch = (
+            turn_mismatch
+            or (exact_checkpoint and observed_turns != max_turns)
+            or (budget_overrun and observed_turns <= max_turns)
+            or (
+                not exact_checkpoint
+                and not budget_overrun
+                and not 1 <= observed_turns <= max_turns
+            )
         )
     else:
         turn_mismatch = (
@@ -1599,12 +1705,9 @@ def _validate_apex_lineage(
         "observer_stop_sent": payload.get("observer_stop_sent")
         if typed_termination is not None
         else False,
-        "observer_suspend_sent": payload.get("observer_suspend_sent")
+        "process_containment": payload.get("process_containment")
         if typed_termination is not None
-        else False,
-        "suspension_verified": payload.get("suspension_verified")
-        if typed_termination is not None
-        else False,
+        else None,
         "discarded_stdout_tail": {
             "lines": payload.get("discarded_stdout_lines"),
             "bytes": payload.get("discarded_stdout_bytes"),
@@ -2348,6 +2451,10 @@ def launch_agent(
             eval_config=eval_config,
             writable_roots=(artifact_root, attempt_home),
             read_only_roots=(workspace_path, contract_root),
+            # Apex is the trusted inner containment owner.  Its supervisor
+            # creates the agent-visible private procfs; mounting another procfs
+            # here breaks the required Apex -> Codex nested user namespace.
+            private_proc=False,
         )
     outcome = _normalize_process_outcome(_run_apex(isolated_command, **run_kwargs))
     task_spec_postlaunch_unchanged = (
@@ -2374,7 +2481,11 @@ def launch_agent(
             "outer_timeout_seconds": outer_timeout_contract,
             "effective_outer_timeout_seconds": timeout_seconds,
         },
-        "process_group_cleanup": outcome.cleanup,
+        "attempt_containment_policy_id": ATTEMPT_CONTAINMENT_POLICY,
+        "agent_process_containment_policy_id": (
+            AGENT_PROCESS_CONTAINMENT_POLICY
+        ),
+        "attempt_process_cleanup": outcome.cleanup,
         "capture": {
             "readers_completed": outcome.readers_completed,
             "errors": list(outcome.capture_errors),
@@ -2411,6 +2522,7 @@ def launch_agent(
                 "session": "ephemeral",
                 "user_config": "ignored",
                 "mount_scope": "attempt_only_bubblewrap",
+                "attempt_containment_policy_id": ATTEMPT_CONTAINMENT_POLICY,
             }
             if formal_campaign
             else None
@@ -2437,11 +2549,19 @@ def launch_agent(
             )
         if outcome.timed_out:
             raise ApexAdapterError(f"Apex timed out after {timeout_seconds:.3f} seconds")
-        if (
-            outcome.cleanup.get("verification_performed") is not True
-            or outcome.cleanup.get("verified_absent") is not True
-        ):
-            raise ApexAdapterError("Apex process group cleanup was not verified")
+        cleanup_verified = (
+            attempt_cleanup_verified(
+                outcome.cleanup,
+                exit_code=return_code,
+                allowed_reasons={"normal_exit"},
+                required_procfs="trusted_orchestrator_inherited_procfs",
+            )
+            if formal_campaign
+            else outcome.cleanup.get("verification_performed") is True
+            and outcome.cleanup.get("verified_absent") is True
+        )
+        if not cleanup_verified:
+            raise ApexAdapterError("Apex attempt cleanup was not verified")
         if not outcome.readers_completed or outcome.capture_errors:
             raise ApexAdapterError("Apex process output capture was incomplete")
         if workspace_before is not None:
@@ -2496,9 +2616,18 @@ def launch_agent(
                 "internal_verdict_ref": result.get("internal_verdict_ref"),
             }
             receipt["candidate_persistence"] = {
-                "schema": "aka.candidate-persistence-receipt/v3",
+                "schema": "aka.candidate-persistence-receipt/v4",
                 "policy_id": CANDIDATE_PERSISTENCE_POLICY,
-                "boundary_quiescence_policy_id": BOUNDARY_QUIESCENCE_POLICY,
+                "agent_process_containment_policy_id": (
+                    AGENT_PROCESS_CONTAINMENT_POLICY
+                ),
+                "agent_process_containment_sha256": _canonical_digest(
+                    lineage["process_containment"]
+                ),
+                "attempt_containment_policy_id": ATTEMPT_CONTAINMENT_POLICY,
+                "attempt_process_cleanup_sha256": _canonical_digest(
+                    outcome.cleanup
+                ),
                 "termination_kind": lineage["termination_kind"],
                 "termination_reason": lineage["termination_reason"],
                 "capture_status": lineage["capture_status"],
@@ -2506,8 +2635,6 @@ def launch_agent(
                     "candidate_capture_allowed"
                 ],
                 "observer_stop_sent": lineage["observer_stop_sent"],
-                "observer_suspend_sent": lineage["observer_suspend_sent"],
-                "suspension_verified": lineage["suspension_verified"],
                 "discarded_stdout_tail": lineage["discarded_stdout_tail"],
                 "observed_turns": lineage["observed_turns"],
                 "checkpoint": None,

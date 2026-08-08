@@ -37,9 +37,12 @@ _COMPARISON_SCHEMAS = {
     "aka.apex-vs-codex-comparison-contract/v1",
     "aka.apex-vs-codex-comparison-contract/v2",
     "aka.apex-vs-codex-comparison-contract/v3",
+    "aka.apex-vs-codex-comparison-contract/v4",
 }
 _CANDIDATE_PERSISTENCE_POLICY = "structured_agent_turn_checkpoint_v2"
 _BOUNDARY_QUIESCENCE_POLICY = "sigstop_process_group_snapshot_v1"
+_ATTEMPT_CONTAINMENT_POLICY = "private_pid_namespace_init_pidfd_v1"
+_AGENT_PROCESS_CONTAINMENT_POLICY = "private_pid_namespace_init_pidfd_v1"
 _OBJECTIVE_POLICY = "aka.task-package-objective-and-protected-harness/v1"
 _PROMPT_POLICY = "aka.shared-objective-backend-native-context-receipted/v1"
 _CODEX_IDENTITY_FIELDS = (
@@ -114,6 +117,28 @@ def _formal_manifest_context(
             == "aka.apex-vs-codex-comparison-contract/v2"
             and comparison.get("candidate_persistence_policy_id")
             != _CANDIDATE_PERSISTENCE_POLICY
+        )
+        or (
+            comparison.get("schema")
+            == "aka.apex-vs-codex-comparison-contract/v4"
+            and (
+                comparison.get("candidate_persistence_policy_id")
+                != _CANDIDATE_PERSISTENCE_POLICY
+                or comparison.get("agent_process_containment_policy_id")
+                != _AGENT_PROCESS_CONTAINMENT_POLICY
+                or comparison.get("attempt_containment_policy_id")
+                != _ATTEMPT_CONTAINMENT_POLICY
+                or not isinstance(comparison_codex, dict)
+                or comparison_codex.get("agent_process_containment_policy_id")
+                != _AGENT_PROCESS_CONTAINMENT_POLICY
+                or comparison_codex.get("attempt_containment_policy_id")
+                != _ATTEMPT_CONTAINMENT_POLICY
+                or not isinstance(agent, dict)
+                or agent.get("agent_process_containment_policy_id")
+                != _AGENT_PROCESS_CONTAINMENT_POLICY
+                or agent.get("attempt_containment_policy_id")
+                != _ATTEMPT_CONTAINMENT_POLICY
+            )
         )
         or (
             comparison.get("schema")

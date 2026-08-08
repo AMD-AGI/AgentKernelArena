@@ -8,14 +8,17 @@ import json
 import logging
 import os
 import signal
+import shutil
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 import pytest
 import yaml
 
 from src.agent_turn_budget import FORMAL_MATCHED_MAX_TURNS
+from src import campaign_isolation
 from src.campaign_isolation import WrappedAttemptCommand
 from src.module_registration import AgentType, load_agent_launcher
 from src.prompt_builder import prompt_builder as render_task_prompt
@@ -1024,11 +1027,12 @@ def _formal_apex_launch_fixture(
         return home
 
     def fake_wrap(
-        command, *, eval_config, writable_roots, read_only_roots=()
+        command, *, eval_config, writable_roots, read_only_roots=(), private_proc=True
     ):
         del eval_config
         captured["writable_roots"] = tuple(Path(path) for path in writable_roots)
         captured["read_only_roots"] = tuple(Path(path) for path in read_only_roots)
+        captured["private_proc"] = private_proc
         return command
 
     def fake_run(command, **kwargs):
@@ -1049,7 +1053,7 @@ def _formal_apex_launch_fixture(
                 "must never survive as a scoreable no_gain\n", encoding="utf-8"
             )
         reason = (
-            "agent_turn_budget_exceeded"
+            "agent_turn_budget_overrun"
             if result_status == "budget_exhausted"
             else "baseline_is_best"
         )
@@ -1077,7 +1081,53 @@ def _formal_apex_launch_fixture(
             ),
             encoding="utf-8",
         )
-        return return_code, "formal apex output"
+        return apex_launcher.ApexProcessOutcome(
+            exit_code=return_code,
+            stdout=b"formal apex output",
+            stderr=b"",
+            timed_out=False,
+            cleanup={
+                "required": False,
+                "reason": "normal_exit",
+                "scope": "private_pid_namespace",
+                "method": "namespace_init_pidfd_v1",
+                "boundary": {
+                    "schema": "aka.attempt-process-boundary/v1",
+                    "policy": "private_pid_namespace_init_pidfd_v1",
+                    "pid_namespace_unshared": True,
+                    "procfs": "trusted_orchestrator_inherited_procfs",
+                    "namespace_init_pid": 1234,
+                    "namespace_init_starttime": 99,
+                    "namespace_init_parent_pid": 1200,
+                    "namespace_init_inner_pid": 1,
+                    "pid_namespace_id": 1001,
+                    "mount_namespace_id": 1002,
+                    "ipc_namespace_id": 1003,
+                    "pidfd_opened": True,
+                    "identity_source": "pinned_bubblewrap_json_status_fd",
+                },
+                "verification_performed": True,
+                "namespace_init_exit_verified": True,
+                "namespace_membership_enumeration_completed": True,
+                "namespace_membership_scan_complete": True,
+                "namespace_membership_inaccessible_entries_count": 0,
+                "live_visible_namespace_members_after": [],
+                "verified_absent": True,
+                "sigkill_sent": False,
+                "outer_supervisor_force_killed": False,
+                "outer_supervisor_exit_code": return_code,
+                "kernel_semantics": (
+                    "linux_pid_namespace_init_exit_sigkill_all_members"
+                ),
+                "bubblewrap_terminal_status_verified": True,
+                "bubblewrap_terminal_status": {"exit-code": return_code},
+                "bubblewrap_terminal_status_absent_after_sigkill": False,
+                "bubblewrap_status_eof_verified": True,
+                "teardown_mode": "natural_exit",
+            },
+            readers_completed=True,
+            capture_errors=(),
+        )
 
     def fake_lineage(**kwargs):
         del kwargs
@@ -1097,8 +1147,7 @@ def _formal_apex_launch_fixture(
             "candidate_capture_allowed": True,
             "observed_turns": 1,
             "observer_stop_sent": False,
-            "observer_suspend_sent": False,
-            "suspension_verified": False,
+            "process_containment": {},
             "discarded_stdout_tail": {
                 "lines": 0,
                 "bytes": 0,
@@ -1141,6 +1190,7 @@ def test_formal_apex_mount_contract_keeps_scored_workspace_read_only(
     contract_root = Path(captured["task_spec_path"]).parent
     assert captured["writable_roots"] == (artifact_root, attempt_home)
     assert captured["read_only_roots"] == (workspace, contract_root)
+    assert captured["private_proc"] is False
     assert contract_root.parent == artifact_root.parent
     assert contract_root != artifact_root
     assert contract_root.stat().st_mode & 0o777 == 0o555
@@ -1152,6 +1202,208 @@ def test_formal_apex_mount_contract_keeps_scored_workspace_read_only(
     assert integrity["pre_apply_unchanged"] is True
     assert integrity["pre_apply_manifest_sha256"] == integrity["baseline_manifest_sha256"]
     assert '"status": "no_gain"' in output
+
+
+def test_formal_apex_outer_boundary_reaps_env_i_double_fork_late_writer(
+    tmp_path, monkeypatch
+) -> None:
+    data_root = tmp_path / "campaign"
+    artifact_root = data_root / "run/task/attempt_01/apex-artifacts"
+    artifact_root.mkdir(parents=True)
+    marker = artifact_root / "escaped-writer"
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
+    monkeypatch.setattr(
+        "src.campaign_isolation._codex_requirements_identity",
+        lambda: (Path("/etc/codex/requirements.toml"), {"sha256": "f" * 64}),
+    )
+    late_code = (
+        "import os,signal,sys,time\n"
+        "for fd in (0,1,2):\n"
+        "    try: os.close(fd)\n"
+        "    except OSError: pass\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "time.sleep(0.5)\n"
+        "open(sys.argv[1], 'w', encoding='utf-8').write('escaped')\n"
+    )
+    launcher_code = (
+        "import os,sys,time\n"
+        "child=os.fork()\n"
+        "if child==0:\n"
+        " os.setsid(); grand=os.fork()\n"
+        " if grand: os._exit(0)\n"
+        f" os.execve(sys.executable,[sys.executable,'-c',{late_code!r},{str(marker)!r}],{{}})\n"
+        "time.sleep(0.05)\n"
+    )
+    command = apex_launcher.wrap_attempt_command(
+        [sys.executable, "-c", launcher_code],
+        eval_config={
+            "campaign": {"comparison": "apex_vs_codex"},
+            "campaign_attempt": {"fresh_session": True},
+        },
+        writable_roots=(artifact_root,),
+        private_proc=False,
+    )
+    outcome = apex_launcher._run_apex(
+        command,
+        cwd=artifact_root,
+        backend="codex",
+        timeout_seconds=10,
+        output_limit=1024 * 1024,
+        logger=logging.getLogger(__name__),
+    )
+
+    assert outcome.exit_code == 0
+    assert outcome.cleanup["boundary"]["procfs"] == (
+        "trusted_orchestrator_inherited_procfs"
+    )
+    assert outcome.cleanup["namespace_init_exit_verified"] is True
+    assert outcome.cleanup["namespace_membership_enumeration_completed"] is True
+    assert outcome.cleanup["namespace_membership_inaccessible_entries_count"] >= 0
+    assert outcome.cleanup["namespace_membership_scan_complete"] is (
+        outcome.cleanup["namespace_membership_inaccessible_entries_count"] == 0
+    )
+    assert outcome.cleanup["live_visible_namespace_members_after"] == []
+    assert outcome.cleanup["verified_absent"] is True
+    time.sleep(0.7)
+    assert not marker.exists()
+
+
+def test_formal_apex_three_layer_pid_topology_is_live_and_non_escaping(
+    tmp_path, monkeypatch
+) -> None:
+    """Exercise AKA outer -> Apex inner -> managed-command PID nesting."""
+    data_root = tmp_path / "campaign"
+    artifact_root = data_root / "run/task/attempt_01/apex-artifacts"
+    home = artifact_root / "home"
+    credential = home / ".codex/auth.json"
+    artifact_root.mkdir(parents=True)
+    credential.parent.mkdir(parents=True)
+    credential.write_text("secret", encoding="utf-8")
+    marker = artifact_root / "escaped-third-layer-writer"
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
+    monkeypatch.setattr(
+        "src.campaign_isolation._codex_requirements_identity",
+        lambda: (Path("/etc/codex/requirements.toml"), {"sha256": "f" * 64}),
+    )
+    bwrap = str(Path(shutil.which("bwrap") or "/usr/bin/bwrap").resolve())
+    outer_namespace = os.readlink("/proc/self/ns/pid")
+    probe = (
+        "import errno,json,os,pathlib,socket,stat,sys,time\n"
+        "root=pathlib.Path(sys.argv[1]); cred=pathlib.Path(sys.argv[2]); marker=pathlib.Path(sys.argv[3]); outer=sys.argv[4]\n"
+        "visible=set()\n"
+        "for p in pathlib.Path('/proc').iterdir():\n"
+        " if p.name.isdigit():\n"
+        "  try: visible.add(os.readlink(p/'ns/pid'))\n"
+        "  except OSError: pass\n"
+        "def denied(p):\n"
+        " fd=None\n"
+        " try:\n"
+        "  fd=os.open(p,os.O_RDONLY); os.read(fd,1); return False\n"
+        " except OSError as e: return e.errno in {errno.ENOENT,errno.EACCES,errno.EPERM,errno.EIO}\n"
+        " finally:\n"
+        "  if fd is not None: os.close(fd)\n"
+        "credential_denied=denied(cred)\n"
+        "s=socket.socket(); network_denied=s.connect_ex(('1.1.1.1',443)) in {errno.ENETUNREACH,errno.EHOSTUNREACH,errno.EPERM,errno.EACCES}; s.close()\n"
+        "masked_dirs=['/proc/acpi','/proc/asound','/proc/scsi','/sys/devices/virtual/powercap','/sys/firmware']; masked_files=['/proc/interrupts','/proc/kcore','/proc/keys','/proc/latency_stats','/proc/sched_debug','/proc/timer_list','/proc/timer_stats']; readonly=['/proc/bus','/proc/fs','/proc/irq','/proc/sys','/proc/sysrq-trigger']\n"
+        "def ro(p):\n"
+        " try: return bool(os.statvfs(p).f_flag & os.ST_RDONLY)\n"
+        " except FileNotFoundError: return True\n"
+        "def md(p):\n"
+        " q=pathlib.Path(p)\n"
+        " try: return (not q.exists()) or (q.is_dir() and not any(q.iterdir()) and ro(p))\n"
+        " except OSError: return False\n"
+        "def mf(p):\n"
+        " try: return stat.S_ISCHR(os.stat(p).st_mode) and os.stat(p).st_rdev==os.stat('/dev/null').st_rdev and ro(p)\n"
+        " except FileNotFoundError: return True\n"
+        "result={'outer_pid_namespace_absent':outer not in visible,'credential_denied':credential_denied,'pid1_root_credential_denied':denied('/proc/1/root'+str(cred)),'pid1_environ_denied':denied('/proc/1/environ'),'pid1_mem_denied':denied('/proc/1/mem'),'network_denied':network_denied,'docker_system_paths_remasked':all(map(md,masked_dirs)) and all(map(mf,masked_files)) and all(map(ro,readonly)),'gpu_device_view_preserved':pathlib.Path('/dev/kfd').exists()==bool(int(sys.argv[5]))}\n"
+        "print(json.dumps(result,sort_keys=True),flush=True)\n"
+        "child=os.fork()\n"
+        "if child==0:\n"
+        " os.setsid(); grand=os.fork()\n"
+        " if grand: os._exit(0)\n"
+        " for fd in (0,1,2):\n"
+        "  try: os.close(fd)\n"
+        "  except OSError: pass\n"
+        " time.sleep(.5); marker.write_text('escaped',encoding='utf-8'); os._exit(0)\n"
+    )
+    third = [
+        bwrap,
+        "--die-with-parent",
+        "--unshare-user",
+        "--unshare-pid",
+        "--unshare-net",
+        "--ro-bind",
+        "/",
+        "/",
+        "--dev-bind",
+        "/dev",
+        "/dev",
+        "--bind",
+        str(artifact_root),
+        str(artifact_root),
+        "--tmpfs",
+        str(credential.parent),
+        "--",
+        sys.executable,
+        "-c",
+        probe,
+        str(artifact_root),
+        str(credential),
+        str(marker),
+        outer_namespace,
+        "1" if Path("/dev/kfd").exists() else "0",
+    ]
+    inner = [
+        bwrap,
+        "--die-with-parent",
+        "--unshare-user",
+        "--unshare-ipc",
+        "--unshare-pid",
+        "--bind",
+        "/",
+        "/",
+        "--dev-bind",
+        "/dev",
+        "/dev",
+        "--tmpfs",
+        "/dev/shm",
+        "--proc",
+        "/proc",
+    ]
+    for path in campaign_isolation._DOCKER_MASKED_DIRECTORIES:
+        if Path(path).is_dir():
+            inner.extend(["--tmpfs", path, "--remount-ro", path])
+    for path in campaign_isolation._DOCKER_MASKED_FILES:
+        if Path(path).exists():
+            inner.extend(["--ro-bind", "/dev/null", path])
+    for path in campaign_isolation._DOCKER_READONLY_PATHS:
+        if Path(path).exists():
+            inner.extend(["--ro-bind", path, path])
+    inner.extend(["--", *third])
+    command = apex_launcher.wrap_attempt_command(
+        inner,
+        eval_config={
+            "campaign": {"comparison": "apex_vs_codex"},
+            "campaign_attempt": {"fresh_session": True},
+        },
+        writable_roots=(artifact_root,),
+        private_proc=False,
+    )
+    outcome = apex_launcher._run_apex(
+        command,
+        cwd=artifact_root,
+        backend="codex",
+        timeout_seconds=10,
+        output_limit=1024 * 1024,
+        logger=logging.getLogger(__name__),
+    )
+
+    evidence = json.loads(outcome.stdout.decode().splitlines()[-1])
+    assert outcome.exit_code == 0
+    assert all(evidence.values())
+    assert outcome.cleanup["verified_absent"] is True
+    time.sleep(0.7)
+    assert not marker.exists()
 
 
 def test_formal_apex_rejects_task_spec_mutation_and_receipts_prelaunch_bytes(
@@ -1171,7 +1423,7 @@ def test_formal_apex_rejects_task_spec_mutation_and_receipts_prelaunch_bytes(
         apex_launcher.launch_agent(eval_config, str(config_path), str(workspace))
 
     receipt = captured["receipt"]
-    assert receipt["schema"] == "agentkernelarena.apex-attempt-receipt/v3"
+    assert receipt["schema"] == "agentkernelarena.apex-attempt-receipt/v4"
     assert receipt["session_succeeded"] is False
     assert receipt["task_spec_contract"]["postlaunch_unchanged"] is False
     received_spec = json.loads(captured["receipt_task_spec_bytes"])
@@ -1320,12 +1572,13 @@ def _lineage_fixture(
     spec: dict[str, object],
     *,
     status: str,
-    budget_flag: bool = True,
+    containment_verified: bool = True,
     intervening_prompt_event: bool = False,
     turn_count: int | None = None,
     budget_reason_override: str | None = None,
     inner_exit_code: int = 0,
     prompt_objective: str | None = None,
+    containment_terminal_overlap: bool = False,
 ) -> tuple[dict[str, object], Path]:
     run_id = "run-fixture"
     attempt_id = "attempt-fixture"
@@ -1340,7 +1593,7 @@ def _lineage_fixture(
     prompt_receipt = _store_artifact(store, prompt_bytes, "text/plain")
     failure = status == "budget_exhausted"
     selected_turn_count = (
-        spec["budget"]["max_turns"] if failure else 1
+        spec["budget"]["max_turns"] + 1 if failure else 1
     ) if turn_count is None else turn_count
     semantic_events = (
         [
@@ -1353,22 +1606,61 @@ def _lineage_fixture(
         ]
     )
     observed_turns = len(semantic_events)
-    budget_reason = None
-    if failure:
-        budget_reason = budget_reason_override or (
-            "max_turns_exceeded"
-            if observed_turns > spec["budget"]["max_turns"]
-            else "max_turns_exhausted_before_follow_up"
-        )
+    budget_reason = (
+        budget_reason_override or "max_turns_overrun" if failure else None
+    )
     executable = Path(sys.executable).resolve(strict=True)
+    bwrap = Path(shutil.which("bwrap") or "/usr/bin/bwrap").resolve(strict=True)
+    forced_stop = failure
+    effective_exit_code = (
+        128 + signal.SIGKILL
+        if failure and inner_exit_code == 0
+        else inner_exit_code
+    )
+    process_containment = {
+        "schema": "apex.agent-process-containment/v1",
+        "policy_id": "private_pid_namespace_init_pidfd_v1",
+        "launcher_path": str(bwrap),
+        "launcher_sha256": apex_launcher._sha256_file(bwrap),
+        "namespace_init_host_pid": 4321,
+        "namespace_init_starttime": 100,
+        "namespace_init_inner_pid": 1,
+        "pid_namespace_inode": 2001,
+        "mount_namespace_inode": 2002,
+        "ipc_namespace_inode": 2003,
+        "user_namespace_inode": 2004,
+        "private_procfs_verified": True,
+        "pidfd_opened": True,
+        "termination_reason": (
+            "stdout_budget_boundary" if forced_stop else "natural_exit"
+        ),
+        "teardown_mode": "pidfd_sigkill" if forced_stop else "natural_exit",
+        "pidfd_sigkill_sent": forced_stop,
+        "namespace_init_exit_verified": True,
+        "wrapper_exit_verified": True,
+        "wrapper_force_killed": False,
+        "terminal_status_verified": not forced_stop or containment_terminal_overlap,
+        "terminal_status_absent_after_sigkill": forced_stop,
+        "status_eof_verified": True,
+        "namespace_membership_scan_complete": True,
+        "live_namespace_members_after": [],
+        "namespace_empty_verified": containment_verified,
+    }
     invocation = {
-        "schema": "apex.agent-invocation/v1",
+        "schema": "apex.agent-invocation/v3",
         "cli_name": "codex",
         "cli_version": "codex-cli fixture",
+        "executable_path": str(executable),
         "entrypoint_sha256": apex_launcher._sha256_file(executable),
         "resolved_executable_path": str(executable),
+        "workspace": str(spec["workspace"]),
+        "requested_allowed_files": list(spec["editable_files"]),
+        "allowed_files_enforced_by_cli": False,
         "max_turns": spec["budget"]["max_turns"],
-        "turn_policy": "structured_agent_turn_v1",
+        "turn_policy": "structured_agent_turn_checkpoint_v2",
+        "process_containment_policy_id": (
+            "private_pid_namespace_init_pidfd_v1"
+        ),
         "prompt_transport": "stdin",
         "argv": [
             str(executable),
@@ -1390,19 +1682,27 @@ def _lineage_fixture(
         },
     }
     transcript = {
-        "schema": "apex.agent-transcript/v1",
+        "schema": "apex.agent-transcript/v3",
         "backend": spec["agent_backend"],
         "model": spec["agent_options"]["model"],
         "effort": spec["agent_options"]["effort"],
         "invocation": invocation,
         "semantic_events": semantic_events,
-        "budget": {
-            "turn_policy": "structured_agent_turn_v1",
+        "termination": {
+            "kind": "turn_overrun" if failure else "completed",
+            "reason": budget_reason,
+            "capture_status": "complete",
+            "candidate_capture_allowed": not failure,
+            "observer_stop_sent": failure,
+            "process_containment": process_containment,
+            "discarded_stdout_tail": {
+                "lines": 0,
+                "bytes": 0,
+                "sha256": None,
+            },
+            "turn_policy": "structured_agent_turn_checkpoint_v2",
             "max_turns": spec["budget"]["max_turns"],
             "observed_turns": observed_turns,
-            "exceeded": budget_flag if failure else False,
-            "enforcement_failed": False,
-            "reason": budget_reason,
         },
     }
     transcript_bytes = json.dumps(transcript, sort_keys=True).encode()
@@ -1414,15 +1714,24 @@ def _lineage_fixture(
         "backend": spec["agent_backend"],
         "model": spec["agent_options"]["model"],
         "effort": spec["agent_options"]["effort"],
-        "exit_code": inner_exit_code,
+        "exit_code": effective_exit_code,
         "timed_out": False,
-        "budget_exceeded": budget_flag if failure else False,
-        "budget_enforcement_failed": False,
-        "budget_reason": budget_reason,
         "observed_turns": observed_turns,
         "message_event_count": observed_turns,
         "tool_call_event_count": 0,
         "semantic_event_count": observed_turns,
+        "termination_kind": "turn_overrun" if failure else "completed",
+        "termination_reason": budget_reason,
+        "capture_status": "complete",
+        "candidate_capture_allowed": not failure,
+        "observer_stop_sent": failure,
+        "process_containment_policy_id": (
+            "private_pid_namespace_init_pidfd_v1"
+        ),
+        "process_containment": process_containment,
+        "discarded_stdout_lines": 0,
+        "discarded_stdout_bytes": 0,
+        "discarded_stdout_sha256": None,
         "invocation": invocation,
         "artifacts": [
             {"role": "agent_transcript", "receipt": transcript_receipt}
@@ -1430,7 +1739,7 @@ def _lineage_fixture(
     }
     candidate_ready = status == "candidate_ready"
     reason = (
-        "agent_turn_budget_exceeded"
+        "agent_turn_budget_overrun"
         if failure
         else "candidate_ready" if candidate_ready else "baseline_is_best"
     )
@@ -1615,11 +1924,13 @@ def test_formal_lineage_validates_budget_exhausted_agent_failure(tmp_path) -> No
         result=result, task_spec=spec, artifact_root=artifact_root
     )
 
-    assert lineage["invocation"]["turn_policy"] == "structured_agent_turn_v1"
+    assert lineage["invocation"]["turn_policy"] == (
+        "structured_agent_turn_checkpoint_v2"
+    )
     assert lineage["prompt_event"]["binding"] == "apex.prompt_sent_event_cas/v1"
 
 
-def test_formal_lineage_accepts_sigterm_exit_on_budget_exhaustion(tmp_path) -> None:
+def test_formal_lineage_rejects_non_pidfd_exit_on_budget_exhaustion(tmp_path) -> None:
     _, artifact_root, spec = _spec(tmp_path)
     result, _ = _lineage_fixture(
         artifact_root,
@@ -1628,11 +1939,13 @@ def test_formal_lineage_accepts_sigterm_exit_on_budget_exhaustion(tmp_path) -> N
         inner_exit_code=-15,
     )
 
-    lineage = apex_launcher._validate_apex_lineage(
-        result=result, task_spec=spec, artifact_root=artifact_root
-    )
-
-    assert lineage["invocation"]["turn_policy"] == "structured_agent_turn_v1"
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="agent_failed outcome/identity is inconsistent",
+    ):
+        apex_launcher._validate_apex_lineage(
+            result=result, task_spec=spec, artifact_root=artifact_root
+        )
 
 
 def test_formal_lineage_validates_exceeded_budget_reason_at_turn_51(tmp_path) -> None:
@@ -1648,14 +1961,16 @@ def test_formal_lineage_validates_exceeded_budget_reason_at_turn_51(tmp_path) ->
         result=result, task_spec=spec, artifact_root=artifact_root
     )
 
-    assert lineage["invocation"]["turn_policy"] == "structured_agent_turn_v1"
+    assert lineage["invocation"]["turn_policy"] == (
+        "structured_agent_turn_checkpoint_v2"
+    )
 
 
 @pytest.mark.parametrize(
     ("turn_count", "budget_reason"),
     [
-        (50, "max_turns_exceeded"),
-        (51, "max_turns_exhausted_before_follow_up"),
+        (50, "max_turns_overrun"),
+        (51, "max_turns_exact_boundary"),
     ],
 )
 def test_formal_lineage_rejects_budget_reason_count_mismatch(
@@ -1679,13 +1994,31 @@ def test_formal_lineage_rejects_budget_reason_count_mismatch(
         )
 
 
-def test_formal_lineage_rejects_budget_failure_flag_tampering(tmp_path) -> None:
+def test_formal_lineage_rejects_containment_claim_tampering(tmp_path) -> None:
     _, artifact_root, spec = _spec(tmp_path)
     result, _ = _lineage_fixture(
         artifact_root,
         spec,
         status="budget_exhausted",
-        budget_flag=False,
+        containment_verified=False,
+    )
+
+    with pytest.raises(
+        apex_launcher.ApexAdapterError,
+        match="agent_failed outcome/identity is inconsistent",
+    ):
+        apex_launcher._validate_apex_lineage(
+            result=result, task_spec=spec, artifact_root=artifact_root
+        )
+
+
+def test_formal_lineage_rejects_overlapping_terminal_evidence(tmp_path) -> None:
+    _, artifact_root, spec = _spec(tmp_path)
+    result, _ = _lineage_fixture(
+        artifact_root,
+        spec,
+        status="budget_exhausted",
+        containment_terminal_overlap=True,
     )
 
     with pytest.raises(

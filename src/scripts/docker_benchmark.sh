@@ -767,6 +767,7 @@ build_docker_args() {
             --security-opt=seccomp=unconfined
             --security-opt=apparmor=unconfined
             --security-opt=no-new-privileges:true
+            --security-opt=systempaths=unconfined
         )
     else
         docker_args+=(
@@ -1146,9 +1147,9 @@ container_preflight() {
     fi
     if grep -Eq '^[[:space:]]+comparison:[[:space:]]*apex_vs_codex([[:space:]#]|$)' "$config_name"; then
         command -v bwrap >/dev/null 2>&1 || die "bwrap is unavailable in campaign container"
-        bwrap --die-with-parent --unshare-ipc --ro-bind / / \
-            --dev-bind /dev /dev --tmpfs /dev/shm --bind /proc /proc -- /bin/true \
-            || die "bwrap cannot create the required per-attempt mount namespace"
+        bwrap --die-with-parent --unshare-pid --unshare-ipc --ro-bind / / \
+            --dev-bind /dev /dev --tmpfs /dev/shm --proc /proc -- /bin/true \
+            || die "bwrap cannot create the required per-attempt PID boundary"
         python3 - <<'PY'
 import json
 

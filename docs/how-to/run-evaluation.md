@@ -110,33 +110,39 @@ Matched Apex-versus-Codex runs also execute a fail-closed runtime-isolation
 preflight and repeat it in every worker. The resulting stable security receipt is
 part of `campaign_manifest.yaml`; a worker with different UID/capability/NNP,
 seccomp/AppArmor/Yama, `bwrap`/Codex identity, managed-policy hash, namespace,
-parent-process escape evidence, or managed Codex sandbox behavior cannot join the
-run. The outer attempt keeps Docker's private PID namespace and writable `/proc`
-for nested Codex user namespaces, while live probes require parent
-root/fd/environ/mem access to remain blocked. The managed Codex profile is tested
+system-path remasking, or managed Codex sandbox behavior cannot join the run.
+Each direct attempt creates a private PID namespace and private procfs, pins its
+namespace init with a pidfd, and proves the worker PID namespace is absent by inode
+identity rather than numeric PID. Parent root/fd probes compare secret bytes, so a
+PID-number collision cannot pass. The managed Codex profile is tested
 separately for workspace write access, credential-read denial, and command-network
 denial. A content-pinned bubblewrap shim is transported through a sealed memfd and
 mounted beneath a dedicated read-only mountpoint before it restores only
 Docker-approved KFD/render devices inside Codex's private `/dev`. The probe
 requires rename/unlink/replace/write attacks against that path to fail and
-requires a distinct inner PID namespace, exactly one visible ROCm device, and a
-successful Torch allocation plus reduction on that GPU. The inherited procfs can
-show the outer status entry, but root/fd/environ/mem aliases must remain unreadable.
+requires the command to remain outside the worker PID namespace, blocks PID-1
+root/environ/mem credential aliases, exposes exactly one ROCm device, and completes
+a Torch allocation plus reduction on that GPU.
 
-Their comparison-contract v3 fixes the exact-turn checkpoint policy as well. Direct
-Codex continuously discovers the attempt tree from `/proc` parent lineage and an
-inherited attempt token, so `setsid()` and double-fork/reparent descendants remain in
-scope. A candidate stopped at turn 50 is eligible only after that tree is
-`SIGSTOP`-suspended and stable, source bytes are captured from the quiescent state,
-every tracked process is absent after cleanup, and the remaining stdout tail is
-drained and digested. If the process naturally exits before suspension completes,
-the independent natural-exit path instead requires exit code zero, complete stream
-EOF, no truncation or reader error, and a wholly absent tracked tree before capture.
-Turn 49 is not an exact checkpoint; turn 51, timeout, output truncation, a live
-descendant, suspension failure, and cleanup failure are rejected. Apex and direct
-Codex use distinct v3 attempt receipts carrying equivalent evidence, while central
-Arena evaluation remains the scoring authority. A successful session with no source
-delta is a non-scoreable baseline replay in either treatment.
+Comparison-contract v4 fixes both the outer attempt and backend-agent policy fields
+to `private_pid_namespace_init_pidfd_v1`. At turn 50,
+Direct Codex kills the pidfd-pinned namespace init and freezes source only after the
+kernel teardown, wrapper status/EOF, stream EOF, and a completed scan with no
+supervisor-visible namespace member. The receipt separately records inaccessible
+sibling `/proc` entries and never calls such a scan complete; pidfd-pinned namespace
+init exit remains the authoritative teardown proof. This contains `setsid`,
+double-fork, clear-environment, immediate-exec, and
+late-writer descendants without trusting PGIDs or `/proc` polling identities. The
+Apex arm uses an AKA outer namespace around its trusted orchestrator and a separate
+Apex-owned private procfs/namespace around the backend; both teardown receipts are
+required before a bundle is read. The outer inherited procfs is writable only so
+Apex can create the nested user namespace; the backend sees only Apex's remasked
+private procfs. Apex's `apex.agent-invocation/v3`,
+`apex.agent-transcript/v3`, event payload, and candidate-persistence digest must all
+bind the same `apex.agent-process-containment/v1` receipt. Turn 49 is not an exact checkpoint; turn 51,
+timeout, output truncation, a live namespace member, or fallback cleanup is rejected.
+Central Arena evaluation remains the scoring authority, and a successful session
+with no independently recomputed source delta is a non-scoreable baseline replay.
 
 ## Run across multiple GPUs
 

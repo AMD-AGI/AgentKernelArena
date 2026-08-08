@@ -101,14 +101,24 @@ if mode == "exact_boundary_natural_exit":
 
 if mode == "exact_boundary_setsid_double_fork":
     child_code = r"""
-import json, os, signal, time
+import os, sys
 os.setsid()
 child = os.fork()
 if child:
     os._exit(0)
-signal.signal(signal.SIGTERM, signal.SIG_IGN)
-print(json.dumps({"type": "escaped.child", "pid": os.getpid(), "pgid": os.getpgrp()}), flush=True)
-time.sleep(30)
+late_code = (
+    "import os, signal, sys, time\n"
+    "for descriptor in (0, 1, 2):\n"
+    "    try:\n"
+    "        os.close(descriptor)\n"
+    "    except OSError:\n"
+    "        pass\n"
+    "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+    "time.sleep(0.5)\n"
+    "with open(sys.argv[1], 'w', encoding='utf-8') as stream:\n"
+    "    stream.write('poisoned_by_env_i_double_fork = True\\\\n')\n"
+)
+os.execve(sys.executable, [sys.executable, "-c", late_code, os.path.abspath("kernel.py")], {})
 """
     subprocess.Popen([sys.executable, "-c", child_code])
     time.sleep(0.1)
@@ -526,7 +536,8 @@ def test_formal_direct_codex_persists_exact_boundary_source_checkpoint(
         launcher.launch_agent(eval_config, str(task_config), str(workspace))
         receipt = _load_receipt(receipt_path)
         assert receipt["session_succeeded"] is True
-        assert receipt["exit_code"] == -int(signal.SIGTERM)
+        assert receipt["schema"] == "agentkernelarena.codex-attempt-receipt/v4"
+        assert receipt["exit_code"] == 128 + int(signal.SIGKILL)
         assert receipt["turn_budget"] == {
             "policy": "structured_agent_turn_checkpoint_v2",
             "max_turns": 50,
@@ -539,9 +550,9 @@ def test_formal_direct_codex_persists_exact_boundary_source_checkpoint(
         }
         persistence = receipt["candidate_persistence"]
         assert persistence["policy_id"] == "structured_agent_turn_checkpoint_v2"
-        assert persistence["schema"] == "aka.candidate-persistence-receipt/v3"
-        assert persistence["boundary_quiescence_policy_id"] == (
-            "sigstop_process_group_snapshot_v1"
+        assert persistence["schema"] == "aka.candidate-persistence-receipt/v4"
+        assert persistence["attempt_containment_policy_id"] == (
+            "private_pid_namespace_init_pidfd_v1"
         )
         assert persistence["termination"] == "exact_turn_boundary"
         checkpoint = persistence["checkpoint"]
@@ -553,15 +564,20 @@ def test_formal_direct_codex_persists_exact_boundary_source_checkpoint(
         ]["final_changes"]["after_manifest_sha256"]
         assert checkpoint["changed_files"] == ["kernel.py"]
         assert checkpoint["editable_files"] == ["kernel.py"]
-        assert len(checkpoint["suspension_sha256"]) == 64
+        assert len(checkpoint["attempt_cleanup_sha256"]) == 64
         assert len(checkpoint["boundary_snapshot_sha256"]) == 64
         assert len(checkpoint["output_tail_sha256"]) == 64
-        suspension = receipt["process_group_suspension"]
-        assert suspension["sent"] is True
-        assert suspension["verified"] is True
-        assert suspension["members"]
-        assert receipt["process_group_cleanup"]["verified_absent"] is True
-        assert receipt["process_group_cleanup"]["sigcont_sent"] is True
+        cleanup = receipt["attempt_process_cleanup"]
+        assert cleanup["teardown_mode"] == "pidfd_sigkill"
+        assert cleanup["sigkill_sent"] is True
+        assert cleanup["namespace_init_exit_verified"] is True
+        assert cleanup["namespace_membership_enumeration_completed"] is True
+        assert cleanup["namespace_membership_inaccessible_entries_count"] >= 0
+        assert cleanup["namespace_membership_scan_complete"] is (
+            cleanup["namespace_membership_inaccessible_entries_count"] == 0
+        )
+        assert cleanup["live_visible_namespace_members_after"] == []
+        assert cleanup["verified_absent"] is True
         assert receipt["capture"]["readers_completed"] is True
         assert source.read_text(encoding="utf-8") == "optimized_at_boundary = True\n"
     finally:
@@ -577,11 +593,6 @@ def test_exact_boundary_snapshot_excludes_deterministic_late_cleanup_write(
     _install_fake_codex(binary_parent, monkeypatch)
     monkeypatch.setenv("FAKE_CODEX_MODE", "exact_boundary_late_write")
     monkeypatch.setattr(launcher, "_TERM_GRACE_SECONDS", 0.2)
-    monkeypatch.setattr(
-        launcher,
-        "wrap_attempt_command",
-        lambda command, **_kwargs: command,
-    )
     data_root = tmp_path / "campaign"
     attempt = data_root / "run/task/attempt_01"
     workspace = attempt / "workspace"
@@ -610,9 +621,9 @@ def test_exact_boundary_snapshot_excludes_deterministic_late_cleanup_write(
     try:
         launcher.launch_agent(eval_config, str(task_config), str(workspace))
         receipt = _load_receipt(receipt_path)
-        assert receipt["exit_code"] == 0
-        assert receipt["process_group_suspension"]["verified"] is True
-        assert receipt["process_group_cleanup"]["sigcont_sent"] is True
+        assert receipt["exit_code"] == 128 + int(signal.SIGKILL)
+        assert receipt["attempt_process_cleanup"]["sigkill_sent"] is True
+        assert receipt["attempt_process_cleanup"]["verified_absent"] is True
         assert receipt["candidate_persistence"]["boundary_snapshot"][
             "complete"
         ] is True
@@ -667,16 +678,9 @@ def _formal_boundary_fixture(
     return _load_receipt(receipt_path), source, binary_parent
 
 
-def test_exact_boundary_accepts_only_fully_reaped_natural_exit(
+def test_exact_boundary_accepts_only_fully_reaped_exit_race(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    original_suspend = launcher._suspend_process_group
-
-    def suspend_after_exit(process, logger, tracker):
-        process.wait(timeout=2)
-        return original_suspend(process, logger, tracker)
-
-    monkeypatch.setattr(launcher, "_suspend_process_group", suspend_after_exit)
     receipt: dict = {}
     binary_parent: Path | None = None
     try:
@@ -685,18 +689,18 @@ def test_exact_boundary_accepts_only_fully_reaped_natural_exit(
             monkeypatch,
             mode="exact_boundary_natural_exit",
         )
-        assert receipt["exit_code"] == 0
-        assert receipt["process_group_cleanup"]["reason"] == (
-            "natural_exact_boundary_exit"
-        )
-        assert receipt["process_group_cleanup"]["verified_absent"] is True
+        cleanup = receipt["attempt_process_cleanup"]
+        assert receipt["exit_code"] in {0, 128 + int(signal.SIGKILL)}
+        assert cleanup["reason"] == "exact_turn_boundary"
+        assert cleanup["teardown_mode"] in {"natural_exit", "pidfd_sigkill"}
+        assert cleanup["verified_absent"] is True
         assert receipt["capture"]["readers_completed"] is True
         persistence = receipt["candidate_persistence"]
         assert persistence["boundary_resolution"] == (
-            "complete_natural_exit_process_tree_absent"
+            "pid_namespace_destroyed_before_snapshot"
         )
         assert persistence["boundary_snapshot"]["capture_mode"] == (
-            "complete_natural_exit_process_tree_absent"
+            "post_namespace_teardown_checkpoint"
         )
         assert source.read_text(encoding="utf-8") == (
             "optimized_natural_exit = True\n"
@@ -719,29 +723,18 @@ def test_exact_boundary_tracks_and_reaps_setsid_double_fork_descendant(
             monkeypatch,
             mode="exact_boundary_setsid_double_fork",
         )
-        suspension = receipt["process_group_suspension"]
-        assert suspension["method"] == "sigstop_process_tree"
-        assert suspension["verified"] is True
-        assert any(
-            member["pgrp"] != suspension["pgid"]
-            for member in suspension["members"]
-        )
-        cleanup = receipt["process_group_cleanup"]
-        assert cleanup["scope"] == "process_tree"
+        cleanup = receipt["attempt_process_cleanup"]
+        assert cleanup["scope"] == "private_pid_namespace"
+        assert cleanup["method"] == "namespace_init_pidfd_v1"
+        assert cleanup["sigkill_sent"] is True
         assert cleanup["verified_absent"] is True
-        assert cleanup["tracked_members_after_cleanup"] == []
-        events = [
-            json.loads(line)
-            for line in _artifact_bytes(receipt, "raw_stdout").decode().splitlines()
-        ]
-        escaped_pid = next(
-            event["pid"] for event in events if event.get("type") == "escaped.child"
+        assert cleanup["namespace_membership_enumeration_completed"] is True
+        assert cleanup["namespace_membership_inaccessible_entries_count"] >= 0
+        assert cleanup["namespace_membership_scan_complete"] is (
+            cleanup["namespace_membership_inaccessible_entries_count"] == 0
         )
-        try:
-            stat_line = Path(f"/proc/{escaped_pid}/stat").read_text(encoding="utf-8")
-        except OSError:
-            stat_line = ""
-        assert not stat_line or stat_line[stat_line.rfind(")") + 2] == "Z"
+        assert cleanup["live_visible_namespace_members_after"] == []
+        time.sleep(0.7)
         assert source.read_text(encoding="utf-8") == (
             "optimized_with_descendant = True\n"
         )

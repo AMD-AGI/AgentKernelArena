@@ -8,6 +8,7 @@ import os
 import re
 import runpy
 import signal
+import shutil
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -43,13 +44,42 @@ def _policy() -> dict:
 
 def _runtime_isolation_receipt(*, yama_ptrace_scope: int = 1) -> dict:
     return {
-        "schema": "aka.runtime-isolation-receipt/v4",
+        "schema": "aka.runtime-isolation-receipt/v5",
         "policy": {
+            "docker_user": "non_root",
             "docker_capabilities": "drop_all",
             "docker_no_new_privileges": True,
-            "proc_escape_guard": (
-                "yama_ptrace_scope_and_live_parent_root_fd_environ_mem_probe_v2"
+            "docker_apparmor": "unconfined_for_rootless_userns",
+            "docker_seccomp": "unconfined_for_rootless_userns",
+            "docker_systempaths": "unconfined_for_private_attempt_procfs",
+            "docker_masked_paths_rebuilt": [
+                "/proc/acpi", "/proc/asound", "/proc/scsi",
+                "/sys/devices/virtual/powercap", "/sys/firmware",
+                "/proc/interrupts", "/proc/kcore", "/proc/keys",
+                "/proc/latency_stats", "/proc/sched_debug",
+                "/proc/timer_list", "/proc/timer_stats",
+            ],
+            "docker_readonly_paths_rebuilt": [
+                "/proc/bus", "/proc/fs", "/proc/irq", "/proc/sys",
+                "/proc/sysrq-trigger",
+            ],
+            "docker_pid_namespace": "private_default",
+            "attempt_mount_namespace": "bubblewrap",
+            "attempt_pid_namespace": "private_per_attempt_with_bwrap_reaper_pid1",
+            "attempt_ipc_namespace": "unshared",
+            "attempt_proc": "private_procfs_for_attempt_pid_namespace",
+            "direct_agent_proc": "aka_outer_private_attempt_procfs",
+            "apex_outer_proc": (
+                "trusted_orchestrator_inherited_worker_procfs_nested_userns_writable"
             ),
+            "apex_backend_proc": "apex_inner_private_attempt_procfs_required",
+            "process_lifetime_boundary": "namespace_init_pidfd_v1",
+            "proc_escape_guard": "outer_process_absent_from_private_procfs_v1",
+            "command_sandbox": "codex_managed_permission_profile_bwrap",
+            "command_pid_namespace": "nested_codex_unshared_inside_private_attempt_pidns_v1",
+            "command_network": "managed_profile_denied_live_probe_v1",
+            "command_gpu_access": "sealed_memfd_immutable_path_bwrap_and_single_gpu_probe_v1",
+            "credential_read": "denied_by_managed_permission_profile",
         },
         "outer_runtime": {
             "effective_uid": 1000,
@@ -109,15 +139,15 @@ def _runtime_isolation_receipt(*, yama_ptrace_scope: int = 1) -> dict:
         },
         "attempt_probe": {
             "campaign_data_hidden": True,
-            "parent_process_visible_in_inherited_proc": True,
-            "parent_root_escape_blocked": True,
-            "parent_fd_escape_blocked": True,
-            "parent_environ_escape_blocked": True,
-            "parent_mem_escape_blocked": True,
+            "outer_pid_namespace_absent_from_private_proc": True,
+            "parent_root_sentinel_unreachable": True,
+            "parent_fd_sentinel_unreachable": True,
             "proc_mount_read_write": True,
-            "pid_namespace_preserved": True,
+            "pid_namespace_unshared": True,
             "ipc_namespace_unshared": True,
             "private_shm": True,
+            "docker_system_paths_remasked": True,
+            "private_proc_control_writes_blocked": True,
             "no_new_privileges": True,
             "effective_capabilities_zero": True,
             "bounding_capabilities_zero": True,
@@ -128,12 +158,10 @@ def _runtime_isolation_receipt(*, yama_ptrace_scope: int = 1) -> dict:
             "workspace_write_enforced": True,
             "credential_read_denied": True,
             "command_network_denied": True,
-            "inner_pid_namespace_unshared": True,
-            "outer_process_visible_in_inherited_proc": True,
-            "outer_root_alias_blocked": True,
-            "outer_fd_alias_blocked": True,
-            "outer_environ_alias_blocked": True,
-            "outer_mem_alias_blocked": True,
+            "command_not_in_worker_pid_namespace": True,
+            "pid1_root_alias_credential_blocked": True,
+            "pid1_environ_blocked": True,
+            "pid1_mem_blocked": True,
             "pinned_gpu_bwrap_active": True,
             "gpu_bwrap_directory_immutable": True,
             "gpu_bwrap_path_immutable": True,
@@ -209,7 +237,7 @@ def test_runtime_isolation_receipt_records_only_stable_namespace_evidence(
     assert "pid_namespace" not in receipt["outer_runtime"]
     assert "ipc_namespace" not in receipt["outer_runtime"]
     assert observed["outer"] is outer
-    assert receipt["attempt_probe"]["parent_root_escape_blocked"] is True
+    assert receipt["attempt_probe"]["parent_root_sentinel_unreachable"] is True
     assert receipt["policy"]["command_gpu_access"] == (
         "sealed_memfd_immutable_path_bwrap_and_single_gpu_probe_v1"
     )
@@ -228,7 +256,7 @@ def test_attempt_escape_probe_rejects_non_policy_proc_errors(tmp_path, monkeypat
         stdout = json.dumps(
             {
                 **_runtime_isolation_receipt()["attempt_probe"],
-                "parent_fd_escape_blocked": False,
+                "parent_fd_sentinel_unreachable": False,
             }
         )
 
@@ -285,12 +313,10 @@ def test_codex_sandbox_probe_uses_managed_profile(tmp_path, monkeypatch) -> None
                 "workspace_write_enforced": True,
                 "credential_read_denied": True,
                 "command_network_denied": True,
-                "inner_pid_namespace_unshared": True,
-                "outer_process_visible_in_inherited_proc": True,
-                "outer_root_alias_blocked": True,
-                "outer_fd_alias_blocked": True,
-                "outer_environ_alias_blocked": True,
-                "outer_mem_alias_blocked": True,
+                "command_not_in_worker_pid_namespace": True,
+                "pid1_root_alias_credential_blocked": True,
+                "pid1_environ_blocked": True,
+                "pid1_mem_blocked": True,
                 "pinned_gpu_bwrap_active": True,
                 "gpu_bwrap_directory_immutable": True,
                 "gpu_bwrap_path_immutable": True,
@@ -321,7 +347,7 @@ def test_codex_sandbox_probe_uses_managed_profile(tmp_path, monkeypatch) -> None
 
     command = observed["command"]
     assert result["credential_read_denied"] is True
-    assert result["inner_pid_namespace_unshared"] is True
+    assert result["command_not_in_worker_pid_namespace"] is True
     assert result["pinned_gpu_bwrap_active"] is True
     assert result["gpu_bwrap_directory_immutable"] is True
     assert result["gpu_bwrap_path_immutable"] is True
@@ -332,7 +358,7 @@ def test_codex_sandbox_probe_uses_managed_profile(tmp_path, monkeypatch) -> None
     assert "--include-managed-config" in command
     profile_index = command.index("--permission-profile")
     assert command[profile_index + 1] == "aka_formal_kernel_v1"
-    assert "--unshare-pid" not in command[: command.index("--")]
+    assert "--unshare-pid" in command[: command.index("--")]
     environment = observed["environment"]
     assert environment["CODEX_HOME"].endswith("/home/.codex")
     assert environment["PYTHONDONTWRITEBYTECODE"] == "1"
@@ -528,6 +554,71 @@ def test_wrapped_attempt_command_releases_owned_descriptors_idempotently() -> No
     assert campaign_isolation.attempt_command_pass_fds(command) == ()
     with pytest.raises(OSError):
         os.fstat(descriptor)
+
+
+def test_pid_namespace_scan_fails_closed_for_unreadable_same_uid_entry(
+    tmp_path, monkeypatch
+) -> None:
+    entry = tmp_path / "424242"
+    entry.mkdir()
+    real_iterdir = Path.iterdir
+    real_stat = Path.stat
+
+    def fake_iterdir(path):
+        if path == Path("/proc"):
+            return iter((entry,))
+        return real_iterdir(path)
+
+    def fake_stat(path, *args, **kwargs):
+        if path == entry / "ns/pid":
+            raise PermissionError("hidden namespace identity")
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "iterdir", fake_iterdir)
+    monkeypatch.setattr(Path, "stat", fake_stat)
+
+    scan = campaign_isolation._pid_namespace_membership_scan(12345)
+
+    assert scan.enumeration_completed is True
+    assert scan.complete is False
+    assert scan.inaccessible_entries_count == 1
+    assert scan.live_visible_members == ()
+
+
+def test_pid_namespace_scan_fails_closed_for_malformed_visible_member(
+    tmp_path, monkeypatch
+) -> None:
+    entry = tmp_path / "424243"
+    entry.mkdir()
+    real_iterdir = Path.iterdir
+    real_stat = Path.stat
+    real_read_text = Path.read_text
+
+    def fake_iterdir(path):
+        if path == Path("/proc"):
+            return iter((entry,))
+        return real_iterdir(path)
+
+    def fake_stat(path, *args, **kwargs):
+        if path == entry / "ns/pid":
+            return SimpleNamespace(st_ino=12345)
+        return real_stat(path, *args, **kwargs)
+
+    def fake_read_text(path, *args, **kwargs):
+        if path == entry / "stat":
+            return "malformed"
+        return real_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "iterdir", fake_iterdir)
+    monkeypatch.setattr(Path, "stat", fake_stat)
+    monkeypatch.setattr(Path, "read_text", fake_read_text)
+
+    scan = campaign_isolation._pid_namespace_membership_scan(12345)
+
+    assert scan.enumeration_completed is False
+    assert scan.complete is False
+    assert scan.inaccessible_entries_count == 0
+    assert scan.live_visible_members == ()
 
 
 def test_codex_gpu_bwrap_is_content_pinned(tmp_path, monkeypatch) -> None:
@@ -762,19 +853,40 @@ def test_formal_attempt_mount_keeps_workspace_read_only_and_artifacts_private(
         read_only_roots=(workspace,),
     )
     proc_index = command.index("/proc")
-    assert command[proc_index - 1] == "--bind"
-    assert "--unshare-pid" not in command
-    assert "--proc" not in command
+    assert command[proc_index - 1] == "--proc"
+    assert "--unshare-pid" in command
+    assert "--json-status-fd" in command
+    assert "--block-fd" in command
 
     try:
-        completed = campaign.subprocess.run(
+        process = campaign.subprocess.Popen(
             command,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             pass_fds=campaign_isolation.attempt_command_pass_fds(command),
         )
+        campaign_isolation.release_attempt_command_fds(command)
+        boundary = campaign_isolation.establish_attempt_boundary(command, process)
+        assert boundary is not None
+        stdout, stderr = process.communicate(timeout=10)
+        cleanup = campaign_isolation.finalize_attempt_boundary(
+            process,
+            boundary,
+            reason="normal_exit",
+            terminate=False,
+        )
 
-        assert completed.returncode == 0, completed.stderr
+        assert process.returncode == 0, stderr
+        assert stdout == ""
+        assert cleanup["verified_absent"] is True
+        assert cleanup["teardown_mode"] == "natural_exit"
+        assert cleanup["namespace_membership_enumeration_completed"] is True
+        assert cleanup["namespace_membership_inaccessible_entries_count"] >= 0
+        assert cleanup["namespace_membership_scan_complete"] is (
+            cleanup["namespace_membership_inaccessible_entries_count"] == 0
+        )
+        assert cleanup["live_visible_namespace_members_after"] == []
         assert source.read_text(encoding="utf-8") == "baseline\n"
         assert (artifact_root / "probe.txt").read_text(encoding="utf-8") == "artifact"
         assert (attempt_home / "probe.txt").read_text(encoding="utf-8") == "home"
@@ -839,6 +951,9 @@ def _write_campaign_codex_contract(
             "session": "ephemeral",
             "user_config": "ignored",
             "mount_scope": "attempt_only_bubblewrap",
+            "attempt_containment_policy_id": (
+                "private_pid_namespace_init_pidfd_v1"
+            ),
         },
     }
     pool = os.environ.get("AGENT_KERNEL_ARENA_GPU_POOL", "0").split(",")
@@ -891,7 +1006,7 @@ def _write_campaign_codex_contract(
     }
     comparison_contract = {
         "schema": (
-            "aka.apex-vs-codex-comparison-contract/v3"
+            "aka.apex-vs-codex-comparison-contract/v4"
             if checkpoint_policy
             else "aka.apex-vs-codex-comparison-contract/v1"
         ),
@@ -904,12 +1019,18 @@ def _write_campaign_codex_contract(
         "tasks": tasks,
     }
     if checkpoint_policy:
-        codex["boundary_quiescence_policy_id"] = (
-            "sigstop_process_group_snapshot_v1"
+        codex["agent_process_containment_policy_id"] = (
+            "private_pid_namespace_init_pidfd_v1"
+        )
+        codex["attempt_containment_policy_id"] = (
+            "private_pid_namespace_init_pidfd_v1"
         )
         comparison_contract["candidate_persistence_policy_id"] = turn_policy
-        comparison_contract["boundary_quiescence_policy_id"] = (
-            "sigstop_process_group_snapshot_v1"
+        comparison_contract["agent_process_containment_policy_id"] = (
+            "private_pid_namespace_init_pidfd_v1"
+        )
+        comparison_contract["attempt_containment_policy_id"] = (
+            "private_pid_namespace_init_pidfd_v1"
         )
     comparison_digest = hashlib.sha256(
         json.dumps(
@@ -927,7 +1048,7 @@ def _write_campaign_codex_contract(
                     "template": agent_template,
                     "session_receipt_schema": (
                         (
-                            "agentkernelarena.codex-attempt-receipt/v3"
+                            "agentkernelarena.codex-attempt-receipt/v4"
                             if checkpoint_policy
                             else "agentkernelarena.codex-attempt-receipt/v1"
                         )
@@ -1002,32 +1123,10 @@ def _write_valid_codex_receipt(
             "mode": "0444",
         }
     artifact_dir.chmod(0o555)
-    suspension = (
-        {
-            "policy_id": "sigstop_process_group_snapshot_v1",
-            "method": "sigstop_process_tree",
-            "scope": "proc_descendant_lineage_and_inherited_attempt_token_v1",
-            "pgid": 1234,
-            "sent": True,
-            "root_group_signal_sent": True,
-            "individually_signaled_pids": [1234],
-            "verification_performed": True,
-            "verified": True,
-            "verification_polls": 2,
-            "stable_polls": 2,
-            "members": [{"pid": 1234, "state": "T"}],
-            "members_sha256": campaign._canonical_json_digest(
-                [{"pid": 1234, "state": "T"}]
-            ),
-            "error": None,
-        }
-        if exact_boundary
-        else None
-    )
     boundary_snapshot = (
         {
-            "policy_id": "sigstop_process_group_snapshot_v1",
-            "capture_mode": "verified_process_tree_suspension",
+            "policy_id": "private_pid_namespace_init_pidfd_v1",
+            "capture_mode": "post_namespace_teardown_checkpoint",
             "manifest_sha256": campaign._canonical_json_digest(after_manifest),
             "files": [
                 {
@@ -1055,21 +1154,54 @@ def _write_valid_codex_receipt(
         if exact_boundary
         else None
     )
-    process_cleanup = {
-        "reason": "exact_turn_boundary" if exact_boundary else "normal_exit",
-        "verification_performed": True,
-        "verified_absent": True,
-        "sigterm_sent": exact_boundary,
-        "sigcont_sent": exact_boundary,
-        "sigkill_sent": False,
-        "scope": "process_tree",
-        "tracked_members_before_cleanup": [],
-        "tracked_members_after_cleanup": [],
-        "process_tracker_errors": [],
+    boundary = {
+        "schema": "aka.attempt-process-boundary/v1",
+        "policy": "private_pid_namespace_init_pidfd_v1",
+        "pid_namespace_unshared": True,
+        "procfs": "private_attempt_procfs",
+        "namespace_init_pid": 1234,
+        "namespace_init_starttime": 99,
+        "namespace_init_parent_pid": 1200,
+        "namespace_init_inner_pid": 1,
+        "pid_namespace_id": 1001,
+        "mount_namespace_id": 1002,
+        "ipc_namespace_id": 1003,
+        "pidfd_opened": True,
+        "identity_source": "pinned_bubblewrap_json_status_fd",
     }
+    process_cleanup = {
+        "required": exact_boundary,
+        "reason": "exact_turn_boundary" if exact_boundary else "normal_exit",
+        "scope": "private_pid_namespace",
+        "method": "namespace_init_pidfd_v1",
+        "boundary": boundary,
+        "verification_performed": True,
+        "namespace_init_exit_verified": True,
+        "namespace_membership_enumeration_completed": True,
+        "namespace_membership_scan_complete": True,
+        "namespace_membership_inaccessible_entries_count": 0,
+        "live_visible_namespace_members_after": [],
+        "verified_absent": True,
+        "sigkill_sent": exact_boundary,
+        "outer_supervisor_force_killed": False,
+        "outer_supervisor_exit_code": (
+            128 + int(signal.SIGKILL) if exact_boundary else 0
+        ),
+        "kernel_semantics": "linux_pid_namespace_init_exit_sigkill_all_members",
+        "bubblewrap_terminal_status_verified": not exact_boundary,
+        "bubblewrap_terminal_status": None if exact_boundary else {"exit-code": 0},
+        "bubblewrap_terminal_status_absent_after_sigkill": exact_boundary,
+        "bubblewrap_status_eof_verified": True,
+        "teardown_mode": "pidfd_sigkill" if exact_boundary else "natural_exit",
+    }
+    if exact_boundary:
+        process_cleanup["boundary_signal"] = {
+            "attempted": True,
+            "stdout_character_offset": 3,
+        }
     receipt = {
         "schema": (
-            "agentkernelarena.codex-attempt-receipt/v3"
+            "agentkernelarena.codex-attempt-receipt/v4"
             if checkpoint_policy
             else "agentkernelarena.codex-attempt-receipt/v1"
         ),
@@ -1079,11 +1211,10 @@ def _write_valid_codex_receipt(
         "session_succeeded": True,
         "thread_id": "thread-test",
         "session_id": "session-test",
-        "exit_code": -int(signal.SIGTERM) if exact_boundary else 0,
+        "exit_code": 128 + int(signal.SIGKILL) if exact_boundary else 0,
         "timed_out": False,
         "effective_timeout_seconds": 3599.0,
-        "process_group_cleanup": process_cleanup,
-        "process_group_suspension": suspension,
+        "attempt_process_cleanup": process_cleanup,
         "capture": {
             "readers_completed": True,
             "errors": [],
@@ -1205,18 +1336,21 @@ def _write_valid_codex_receipt(
         receipt["invocation"]["candidate_persistence_policy_id"] = (
             "structured_agent_turn_checkpoint_v2"
         )
-        receipt["invocation"]["boundary_quiescence_policy_id"] = (
-            "sigstop_process_group_snapshot_v1"
+        receipt["invocation"]["agent_process_containment_policy_id"] = (
+            "private_pid_namespace_init_pidfd_v1"
         )
-        receipt["invocation"]["process_tree_tracking"] = {
-            "policy": "proc_descendant_lineage_and_inherited_attempt_token_v1",
-            "token_sha256": "a" * 64,
-        }
+        receipt["invocation"]["attempt_containment_policy_id"] = (
+            "private_pid_namespace_init_pidfd_v1"
+        )
+        receipt["invocation"]["attempt_process_boundary"] = boundary
         receipt["candidate_persistence"] = {
-            "schema": "aka.candidate-persistence-receipt/v3",
+            "schema": "aka.candidate-persistence-receipt/v4",
             "policy_id": "structured_agent_turn_checkpoint_v2",
-            "boundary_quiescence_policy_id": (
-                "sigstop_process_group_snapshot_v1"
+            "agent_process_containment_policy_id": (
+                "private_pid_namespace_init_pidfd_v1"
+            ),
+            "attempt_containment_policy_id": (
+                "private_pid_namespace_init_pidfd_v1"
             ),
             "termination": (
                 "exact_turn_boundary" if exact_boundary else "completed"
@@ -1235,30 +1369,30 @@ def _write_valid_codex_receipt(
                     ).hexdigest(),
                     "changed_files": ["kernel.py"],
                     "editable_files": ["kernel.py"],
-                    "suspension_sha256": campaign._canonical_json_digest(
-                        suspension
-                    ),
                     "boundary_snapshot_sha256": campaign._canonical_json_digest(
                         boundary_snapshot
                     ),
                     "output_tail_sha256": campaign._canonical_json_digest(
                         output_tail
                     ),
-                    "process_tree_cleanup_sha256": campaign._canonical_json_digest(
+                    "attempt_cleanup_sha256": campaign._canonical_json_digest(
                         process_cleanup
                     ),
                 }
                 if exact_boundary
                 else None
             ),
-            "suspension": suspension,
             "boundary_snapshot": boundary_snapshot,
             "output_tail": output_tail,
             "boundary_resolution": (
-                "verified_process_tree_suspension" if exact_boundary else None
+                "pid_namespace_destroyed_before_snapshot"
+                if exact_boundary
+                else None
             ),
-            "process_tree_cleanup": process_cleanup if exact_boundary else None,
+            "attempt_cleanup": process_cleanup if exact_boundary else None,
         }
+    else:
+        receipt["process_group_cleanup"] = receipt.pop("attempt_process_cleanup")
     receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
     receipt_path.chmod(0o444)
     return artifact_payloads["raw_stdout"][0]
@@ -1300,11 +1434,12 @@ def _write_valid_apex_receipt(
     inner_exit_code: int = 0,
     omit_run_control_from_agent_prompt: bool = False,
     successful_turn_count: int | None = None,
+    containment_terminal_overlap: bool = False,
 ) -> None:
     assert status in {"candidate_ready", "no_gain", "budget_exhausted"}
     checkpoint_receipt = (
         codex_contract.get("_apex_receipt_schema")
-        == "agentkernelarena.apex-attempt-receipt/v3"
+        == "agentkernelarena.apex-attempt-receipt/v4"
     )
     assert not checkpoint_receipt or new_prompt_receipt
     turn_policy = (
@@ -1353,6 +1488,9 @@ def _write_valid_apex_receipt(
                     "assistant_message_and_tool_call_start_each_count_once"
                 ),
             },
+            "process_containment_policy_id": (
+                "private_pid_namespace_init_pidfd_v1"
+            ),
             "python_interpreter": {
                 "environment_variable": "AGENT_KERNEL_ARENA_PYTHON",
                 "path": interpreter_path,
@@ -1382,7 +1520,7 @@ def _write_valid_apex_receipt(
         }
     invocation = {
         "schema": (
-            "apex.agent-invocation/v2"
+            "apex.agent-invocation/v3"
             if checkpoint_receipt
             else "apex.agent-invocation/v1"
         ),
@@ -1413,11 +1551,17 @@ def _write_valid_apex_receipt(
         | {"response_token_limit": "not_supported_context_advisory_only"},
     }
     if checkpoint_receipt:
-        invocation["boundary_quiescence_policy_id"] = (
-            "sigstop_process_group_snapshot_v1"
+        invocation["process_containment_policy_id"] = (
+            "private_pid_namespace_init_pidfd_v1"
         )
     selected_turn_count = (
-        max_turns if budget_turn_count is None else budget_turn_count
+        (
+            max_turns + 1
+            if checkpoint_receipt
+            else max_turns
+        )
+        if budget_turn_count is None
+        else budget_turn_count
     ) if failed else (
         (1 if successful_turn_count is None else successful_turn_count)
         if new_prompt_receipt
@@ -1428,12 +1572,58 @@ def _write_valid_apex_receipt(
         for index in range(selected_turn_count)
     ]
     observed_turns = len(semantic_events)
+    effective_inner_exit_code = (
+        128 + signal.SIGKILL
+        if checkpoint_receipt and failed and inner_exit_code == 0
+        else inner_exit_code
+    )
+    bwrap = Path(shutil.which("bwrap") or "/usr/bin/bwrap").resolve()
+    process_containment = {
+        "schema": "apex.agent-process-containment/v1",
+        "policy_id": "private_pid_namespace_init_pidfd_v1",
+        "launcher_path": str(bwrap),
+        "launcher_sha256": campaign._sha256_file(bwrap),
+        "namespace_init_host_pid": 4321,
+        "namespace_init_starttime": 100,
+        "namespace_init_inner_pid": 1,
+        "pid_namespace_inode": 2001,
+        "mount_namespace_inode": 2002,
+        "ipc_namespace_inode": 2003,
+        "user_namespace_inode": 2004,
+        "private_procfs_verified": True,
+        "pidfd_opened": True,
+        "termination_reason": (
+            "stdout_budget_boundary"
+            if checkpoint_receipt and failed
+            else "natural_exit"
+        ),
+        "teardown_mode": (
+            "pidfd_sigkill" if checkpoint_receipt and failed else "natural_exit"
+        ),
+        "pidfd_sigkill_sent": checkpoint_receipt and failed,
+        "namespace_init_exit_verified": True,
+        "wrapper_exit_verified": True,
+        "wrapper_force_killed": False,
+        "terminal_status_verified": (
+            not (checkpoint_receipt and failed)
+            or containment_terminal_overlap
+        ),
+        "terminal_status_absent_after_sigkill": checkpoint_receipt and failed,
+        "status_eof_verified": True,
+        "namespace_membership_scan_complete": True,
+        "live_namespace_members_after": [],
+        "namespace_empty_verified": True,
+    }
     budget_reason = None
     if failed:
         budget_reason = budget_reason_override or (
-            "max_turns_exceeded"
-            if observed_turns > max_turns
-            else "max_turns_exhausted_before_follow_up"
+            "max_turns_overrun"
+            if checkpoint_receipt
+            else (
+                "max_turns_exceeded"
+                if observed_turns > max_turns
+                else "max_turns_exhausted_before_follow_up"
+            )
         )
     transcript_budget = {"exceeded": failed, "enforcement_failed": False}
     if new_prompt_receipt:
@@ -1445,7 +1635,7 @@ def _write_valid_apex_receipt(
         }
     transcript = {
         "schema": (
-            "apex.agent-transcript/v2"
+            "apex.agent-transcript/v3"
             if checkpoint_receipt
             else "apex.agent-transcript/v1"
         ),
@@ -1462,16 +1652,12 @@ def _write_valid_apex_receipt(
     if checkpoint_receipt:
         transcript.pop("budget")
         transcript["termination"] = {
-            "kind": "completed",
-            "reason": None,
+            "kind": "turn_overrun" if failed else "completed",
+            "reason": budget_reason,
             "capture_status": "complete",
-            "candidate_capture_allowed": True,
-            "observer_stop_sent": False,
-            "suspension": {
-                "policy_id": "sigstop_process_group_snapshot_v1",
-                "sent": False,
-                "verified": False,
-            },
+            "candidate_capture_allowed": not failed,
+            "observer_stop_sent": failed,
+            "process_containment": process_containment,
             "discarded_stdout_tail": {
                 "lines": 0,
                 "bytes": 0,
@@ -1487,7 +1673,7 @@ def _write_valid_apex_receipt(
         "backend": "codex",
         "model": codex_contract["model"],
         "effort": codex_contract["effort"],
-        "exit_code": inner_exit_code,
+        "exit_code": effective_inner_exit_code,
         "timed_out": False,
         "budget_exceeded": failed,
         "budget_enforcement_failed": False,
@@ -1517,16 +1703,15 @@ def _write_valid_apex_receipt(
         }
         if checkpoint_receipt:
             agent_payload |= {
-                "termination_kind": "completed",
-                "termination_reason": None,
+                "termination_kind": "turn_overrun" if failed else "completed",
+                "termination_reason": budget_reason,
                 "capture_status": "complete",
-                "candidate_capture_allowed": True,
-                "observer_stop_sent": False,
-                "observer_suspend_sent": False,
-                "suspension_verified": False,
-                "boundary_quiescence_policy_id": (
-                    "sigstop_process_group_snapshot_v1"
+                "candidate_capture_allowed": not failed,
+                "observer_stop_sent": failed,
+                "process_containment_policy_id": (
+                    "private_pid_namespace_init_pidfd_v1"
                 ),
+                "process_containment": process_containment,
                 "discarded_stdout_lines": 0,
                 "discarded_stdout_bytes": 0,
                 "discarded_stdout_sha256": None,
@@ -1552,7 +1737,11 @@ def _write_valid_apex_receipt(
         }
         verdict = "reject" if failed else "keep" if candidate_ready else "revert"
         reason = (
-            "agent_turn_budget_exceeded"
+            (
+                "agent_turn_budget_overrun"
+                if checkpoint_receipt
+                else "agent_turn_budget_exceeded"
+            )
             if failed
             else "candidate_ready" if candidate_ready else "baseline_is_best"
         )
@@ -1699,7 +1888,11 @@ def _write_valid_apex_receipt(
     )
     declared_result_digests = [transcript_digest] if new_prompt_receipt else []
     reason_code = (
-        "agent_turn_budget_exceeded"
+        (
+            "agent_turn_budget_overrun"
+            if checkpoint_receipt
+            else "agent_turn_budget_exceeded"
+        )
         if failed
         else (
             "candidate_verified_for_external_evaluation"
@@ -1890,9 +2083,46 @@ def _write_valid_apex_receipt(
             "outer_timeout_seconds": 7200.0,
             "effective_outer_timeout_seconds": 7200.0,
         },
-        "process_group_cleanup": {
+        "agent_process_containment_policy_id": (
+            "private_pid_namespace_init_pidfd_v1"
+        ),
+        "attempt_containment_policy_id": "private_pid_namespace_init_pidfd_v1",
+        "attempt_process_cleanup": {
+            "required": False,
+            "reason": "normal_exit",
+            "scope": "private_pid_namespace",
+            "method": "namespace_init_pidfd_v1",
+            "boundary": {
+                "schema": "aka.attempt-process-boundary/v1",
+                "policy": "private_pid_namespace_init_pidfd_v1",
+                "pid_namespace_unshared": True,
+                "procfs": "trusted_orchestrator_inherited_procfs",
+                "namespace_init_pid": 1234,
+                "namespace_init_starttime": 99,
+                "namespace_init_parent_pid": 1200,
+                "namespace_init_inner_pid": 1,
+                "pid_namespace_id": 1001,
+                "mount_namespace_id": 1002,
+                "ipc_namespace_id": 1003,
+                "pidfd_opened": True,
+                "identity_source": "pinned_bubblewrap_json_status_fd",
+            },
             "verification_performed": True,
+            "namespace_init_exit_verified": True,
+            "namespace_membership_enumeration_completed": True,
+            "namespace_membership_scan_complete": True,
+            "namespace_membership_inaccessible_entries_count": 0,
+            "live_visible_namespace_members_after": [],
             "verified_absent": True,
+            "sigkill_sent": False,
+            "outer_supervisor_force_killed": False,
+            "outer_supervisor_exit_code": 1 if failed else 0,
+            "kernel_semantics": "linux_pid_namespace_init_exit_sigkill_all_members",
+            "bubblewrap_terminal_status_verified": True,
+            "bubblewrap_terminal_status": {"exit-code": 1 if failed else 0},
+            "bubblewrap_terminal_status_absent_after_sigkill": False,
+            "bubblewrap_status_eof_verified": True,
+            "teardown_mode": "natural_exit",
         },
         "capture": {"readers_completed": True, "errors": []},
         "gpu": {
@@ -1942,20 +2172,31 @@ def _write_valid_apex_receipt(
     }
     if new_prompt_receipt:
         receipt["instruction_adaptation"] = instruction_adaptation
+    if not checkpoint_receipt:
+        receipt["process_group_cleanup"] = receipt.pop("attempt_process_cleanup")
+        receipt.pop("agent_process_containment_policy_id")
+        receipt.pop("attempt_containment_policy_id")
     if checkpoint_receipt:
         receipt["candidate_persistence"] = {
-            "schema": "aka.candidate-persistence-receipt/v3",
+            "schema": "aka.candidate-persistence-receipt/v4",
             "policy_id": "structured_agent_turn_checkpoint_v2",
-            "boundary_quiescence_policy_id": (
-                "sigstop_process_group_snapshot_v1"
+            "agent_process_containment_policy_id": (
+                "private_pid_namespace_init_pidfd_v1"
             ),
-            "termination_kind": "completed",
-            "termination_reason": None,
+            "agent_process_containment_sha256": (
+                campaign._canonical_json_digest(process_containment)
+            ),
+            "attempt_containment_policy_id": (
+                "private_pid_namespace_init_pidfd_v1"
+            ),
+            "attempt_process_cleanup_sha256": campaign._canonical_json_digest(
+                receipt["attempt_process_cleanup"]
+            ),
+            "termination_kind": "turn_overrun" if failed else "completed",
+            "termination_reason": budget_reason,
             "capture_status": "complete",
-            "candidate_capture_allowed": True,
-            "observer_stop_sent": False,
-            "observer_suspend_sent": False,
-            "suspension_verified": False,
+            "candidate_capture_allowed": not failed,
+            "observer_stop_sent": failed,
             "discarded_stdout_tail": {
                 "lines": 0,
                 "bytes": 0,
@@ -2747,7 +2988,81 @@ def test_direct_codex_exact_boundary_checkpoint_is_formally_eligible(tmp_path) -
     )
 
 
-def test_direct_codex_exact_boundary_accepts_proven_natural_exit(tmp_path) -> None:
+def test_direct_codex_malformed_candidate_persistence_fails_closed(tmp_path) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    contract = _write_campaign_codex_contract(
+        run, agent_template="codex", checkpoint_policy=True
+    )
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_codex_receipt(receipt_path, contract, exact_boundary=True)
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    payload["candidate_persistence"] = None
+    receipt_path.chmod(0o644)
+    receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+    receipt_path.chmod(0o444)
+
+    _receipt, errors = campaign._validate_session_receipt(
+        receipt_path=receipt_path,
+        workspace=workspace,
+        run_directory=run,
+    )
+
+    assert "direct_codex_candidate_persistence_invalid" in errors
+    assert "direct_codex_turn_budget_invalid" in errors
+
+
+def test_direct_codex_recomputes_delta_and_rejects_contradictory_receipt(
+    tmp_path,
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    contract = _write_campaign_codex_contract(
+        run, agent_template="codex", checkpoint_policy=True
+    )
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_codex_receipt(receipt_path, contract, exact_boundary=True)
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    before_path = Path(payload["artifacts"]["workspace_before_manifest"]["path"])
+    after_path = Path(payload["artifacts"]["workspace_after_manifest"]["path"])
+    after_path.parent.chmod(0o755)
+    after_path.chmod(0o644)
+    after_bytes = before_path.read_bytes()
+    after_path.write_bytes(after_bytes)
+    after_path.chmod(0o444)
+    after_path.parent.chmod(0o555)
+    payload["artifacts"]["workspace_after_manifest"] |= {
+        "sha256": hashlib.sha256(after_bytes).hexdigest(),
+        "size_bytes": len(after_bytes),
+    }
+    same_digest = campaign._canonical_json_digest(
+        json.loads(after_bytes.decode("utf-8"))
+    )
+    final_changes = payload["workspace_integrity"]["final_changes"]
+    final_changes["after_manifest_sha256"] = same_digest
+    checkpoint = payload["candidate_persistence"]["checkpoint"]
+    checkpoint["after_manifest_sha256"] = same_digest
+    receipt_path.chmod(0o644)
+    receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+    receipt_path.chmod(0o444)
+
+    _receipt, errors = campaign._validate_session_receipt(
+        receipt_path=receipt_path,
+        workspace=workspace,
+        run_directory=run,
+    )
+
+    assert "direct_codex_sanitized_manifest_contract_mismatch" in errors
+    assert "direct_codex_zero_source_delta" in errors
+
+
+def test_direct_codex_exact_boundary_accepts_proven_natural_exit_with_hidden_siblings(
+    tmp_path,
+) -> None:
     run = tmp_path / "run"
     run.mkdir()
     workspace = run / ".campaign_attempts/task/attempt_01/workspace"
@@ -2762,32 +3077,24 @@ def test_direct_codex_exact_boundary_accepts_proven_natural_exit(tmp_path) -> No
         receipt_path, codex_contract, exact_boundary=True
     )
     payload = json.loads(receipt_path.read_text(encoding="utf-8"))
-    cleanup = payload["process_group_cleanup"]
+    cleanup = payload["attempt_process_cleanup"]
     cleanup |= {
-        "reason": "natural_exact_boundary_exit",
-        "sigterm_sent": False,
-        "sigcont_sent": False,
-        "tracked_members_before_cleanup": [],
-        "tracked_members_after_cleanup": [],
-        "process_tracker_errors": [],
+        "reason": "exact_turn_boundary",
+        "required": True,
+        "sigkill_sent": False,
+        "outer_supervisor_exit_code": 0,
+        "bubblewrap_terminal_status_verified": True,
+        "bubblewrap_terminal_status": {"exit-code": 0},
+        "bubblewrap_terminal_status_absent_after_sigkill": False,
+        "teardown_mode": "natural_exit",
+        "namespace_membership_scan_complete": False,
+        "namespace_membership_inaccessible_entries_count": 2,
     }
     payload["exit_code"] = 0
-    payload["process_group_suspension"] = None
     persistence = payload["candidate_persistence"]
-    persistence["suspension"] = None
-    persistence["boundary_resolution"] = (
-        "complete_natural_exit_process_tree_absent"
-    )
-    persistence["process_tree_cleanup"] = cleanup
-    persistence["boundary_snapshot"]["capture_mode"] = (
-        "complete_natural_exit_process_tree_absent"
-    )
+    persistence["attempt_cleanup"] = cleanup
     checkpoint = persistence["checkpoint"]
-    checkpoint["suspension_sha256"] = campaign._canonical_json_digest(None)
-    checkpoint["boundary_snapshot_sha256"] = campaign._canonical_json_digest(
-        persistence["boundary_snapshot"]
-    )
-    checkpoint["process_tree_cleanup_sha256"] = campaign._canonical_json_digest(
+    checkpoint["attempt_cleanup_sha256"] = campaign._canonical_json_digest(
         cleanup
     )
     receipt_path.chmod(0o644)
@@ -2811,10 +3118,12 @@ def test_direct_codex_exact_boundary_accepts_proven_natural_exit(tmp_path) -> No
         ("turn_51", "direct_codex_turn_budget_invalid"),
         ("timeout", "direct_codex_receipt_success_status_inconsistent"),
         ("truncation", "direct_codex_stdout_capture_bound_invalid"),
-        ("cleanup", "direct_codex_process_group_not_verified_absent"),
-        ("escaped_descendant", "direct_codex_process_group_not_verified_absent"),
-        ("suspension", "direct_codex_checkpoint_suspension_invalid"),
-        ("resume", "direct_codex_checkpoint_resume_cleanup_invalid"),
+        ("cleanup", "direct_codex_attempt_namespace_not_verified_absent"),
+        ("escaped_descendant", "direct_codex_attempt_namespace_not_verified_absent"),
+        ("false_complete_scan", "direct_codex_attempt_namespace_not_verified_absent"),
+        ("boundary_identity", "direct_codex_checkpoint_suspension_invalid"),
+        ("terminal_evidence", "direct_codex_attempt_namespace_not_verified_absent"),
+        ("forged_terminal_status", "direct_codex_attempt_namespace_not_verified_absent"),
         ("tail_digest", "direct_codex_boundary_output_tail_digest_mismatch"),
     ],
 )
@@ -2845,9 +3154,11 @@ def test_direct_codex_checkpoint_rejects_incomplete_boundary_evidence(
         payload["capture"]["stdout"]["truncated"] = True
         payload["capture"]["stdout"]["discarded_bytes"] = 1
     elif mutation == "cleanup":
-        payload["process_group_cleanup"]["verified_absent"] = False
+        payload["attempt_process_cleanup"]["verified_absent"] = False
     elif mutation == "escaped_descendant":
-        payload["process_group_cleanup"]["tracked_members_after_cleanup"] = [
+        payload["attempt_process_cleanup"][
+            "live_visible_namespace_members_after"
+        ] = [
             {
                 "pid": 4321,
                 "state": "S",
@@ -2857,10 +3168,21 @@ def test_direct_codex_checkpoint_rejects_incomplete_boundary_evidence(
                 "starttime": 99,
             }
         ]
-    elif mutation == "suspension":
-        payload["process_group_suspension"]["verified"] = False
-    elif mutation == "resume":
-        payload["process_group_cleanup"]["sigcont_sent"] = False
+    elif mutation == "false_complete_scan":
+        payload["attempt_process_cleanup"][
+            "namespace_membership_inaccessible_entries_count"
+        ] = 1
+    elif mutation == "boundary_identity":
+        payload["attempt_process_cleanup"]["boundary"]["namespace_init_inner_pid"] = 2
+    elif mutation == "terminal_evidence":
+        payload["attempt_process_cleanup"][
+            "bubblewrap_terminal_status_absent_after_sigkill"
+        ] = False
+    elif mutation == "forged_terminal_status":
+        cleanup = payload["attempt_process_cleanup"]
+        cleanup["bubblewrap_terminal_status_verified"] = True
+        cleanup["bubblewrap_terminal_status_absent_after_sigkill"] = False
+        cleanup["bubblewrap_terminal_status"] = {"exit-code": 0}
     else:
         payload["candidate_persistence"]["output_tail"]["stdout_sha256"] = (
             "0" * 64
@@ -3149,6 +3471,99 @@ def test_budget_exhausted_apex_receipt_accepts_inner_sigterm_exit(tmp_path) -> N
         )
         assert receipt is not None
         assert errors == ["apex_session_not_successful"]
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
+def test_v4_budget_overrun_binds_inner_pidfd_containment(tmp_path) -> None:
+    run = tmp_path / "run"
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    contract = _write_campaign_codex_contract(
+        run,
+        apex_receipt_schema="agentkernelarena.apex-attempt-receipt/v4",
+        checkpoint_policy=True,
+    )
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(
+        receipt_path,
+        contract,
+        status="budget_exhausted",
+        new_prompt_receipt=True,
+    )
+
+    try:
+        receipt, errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert receipt is not None
+        assert errors == ["apex_session_not_successful"]
+        assert receipt["candidate_persistence"][
+            "agent_process_containment_policy_id"
+        ] == "private_pid_namespace_init_pidfd_v1"
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
+def test_v4_budget_overrun_rejects_overlapping_inner_terminal_evidence(
+    tmp_path,
+) -> None:
+    run = tmp_path / "run"
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    contract = _write_campaign_codex_contract(
+        run,
+        apex_receipt_schema="agentkernelarena.apex-attempt-receipt/v4",
+        checkpoint_policy=True,
+    )
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(
+        receipt_path,
+        contract,
+        status="budget_exhausted",
+        new_prompt_receipt=True,
+        containment_terminal_overlap=True,
+    )
+
+    try:
+        receipt, errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert receipt is not None
+        assert "apex_checkpoint_termination_evidence_invalid" in errors
+    finally:
+        _unlock_apex_receipt_directories(run)
+
+
+def test_v4_budget_overrun_rejects_sigterm_in_place_of_pidfd_exit(tmp_path) -> None:
+    run = tmp_path / "run"
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    contract = _write_campaign_codex_contract(
+        run,
+        apex_receipt_schema="agentkernelarena.apex-attempt-receipt/v4",
+        checkpoint_policy=True,
+    )
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(
+        receipt_path,
+        contract,
+        status="budget_exhausted",
+        new_prompt_receipt=True,
+        inner_exit_code=-signal.SIGTERM,
+    )
+
+    try:
+        _receipt, errors = campaign._validate_session_receipt(
+            receipt_path=receipt_path,
+            workspace=workspace,
+            run_directory=run,
+        )
+        assert "apex_checkpoint_termination_evidence_invalid" in errors
     finally:
         _unlock_apex_receipt_directories(run)
 
@@ -3574,7 +3989,7 @@ def test_three_valid_apex_receipts_allow_canonical_projection(
     run.mkdir()
     codex_contract = _write_campaign_codex_contract(
         run,
-        apex_receipt_schema="agentkernelarena.apex-attempt-receipt/v3",
+        apex_receipt_schema="agentkernelarena.apex-attempt-receipt/v4",
         checkpoint_policy=True,
     )
 
@@ -3621,7 +4036,7 @@ def test_three_valid_apex_receipts_allow_canonical_projection(
         )
         assert all(
             attempt["session_receipt_binding"]["schema"]
-            == "agentkernelarena.apex-attempt-receipt/v3"
+            == "agentkernelarena.apex-attempt-receipt/v4"
             for attempt in evidence["attempts"]
         )
         assert all(

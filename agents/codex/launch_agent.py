@@ -21,6 +21,7 @@ from agents import register_agent
 from src.module_registration import AgentType, load_prompt_builder
 from src.runtime_env import build_subprocess_env
 from src.agent_turn_budget import (
+    AGENT_PROCESS_CONTAINMENT_POLICY,
     BOUNDARY_QUIESCENCE_POLICY,
     CANDIDATE_PERSISTENCE_POLICY,
     FORMAL_MATCHED_MAX_TURNS,
@@ -28,7 +29,11 @@ from src.agent_turn_budget import (
     TURN_POLICY,
 )
 from src.campaign_isolation import (
+    ATTEMPT_CONTAINMENT_POLICY,
+    attempt_cleanup_verified,
     attempt_command_pass_fds,
+    establish_attempt_boundary,
+    finalize_attempt_boundary,
     formal_gpu_evidence,
     is_formal_campaign,
     isolated_environment,
@@ -38,7 +43,7 @@ from src.campaign_isolation import (
 )
 
 
-_RECEIPT_SCHEMA = "agentkernelarena.codex-attempt-receipt/v3"
+_RECEIPT_SCHEMA = "agentkernelarena.codex-attempt-receipt/v4"
 _TERM_GRACE_SECONDS = 10.0
 _KILL_GRACE_SECONDS = 5.0
 _SUSPEND_GRACE_SECONDS = 2.0
@@ -408,7 +413,7 @@ def _sanitize_formal_workspace(
     return after, integrity
 
 
-def _capture_suspended_workspace(
+def _capture_workspace_checkpoint(
     *,
     workspace: Path,
     editable_files: tuple[str, ...],
@@ -451,7 +456,11 @@ def _capture_suspended_workspace(
         )
 
     receipt = {
-        "policy_id": BOUNDARY_QUIESCENCE_POLICY,
+        "policy_id": (
+            ATTEMPT_CONTAINMENT_POLICY
+            if capture_mode == "post_namespace_teardown_checkpoint"
+            else BOUNDARY_QUIESCENCE_POLICY
+        ),
         "capture_mode": capture_mode,
         "manifest_sha256": (
             _sha256_bytes(_canonical_json_bytes(manifest)) if manifest else None
@@ -468,11 +477,12 @@ def _candidate_persistence_receipt(
     turn_budget: AgentTurnBudget,
     workspace_integrity: dict[str, Any] | None,
     evidence_complete: bool,
+    attempt_contained: bool,
     suspension: dict[str, Any] | None,
     boundary_snapshot: dict[str, Any] | None,
     output_tail: dict[str, Any] | None,
     boundary_resolution: str | None,
-    process_tree_cleanup: dict[str, Any],
+    attempt_cleanup: dict[str, Any],
 ) -> dict[str, Any]:
     """Bind retained source bytes to the shared matched-campaign policy."""
     exact_boundary = turn_budget.exact_boundary_reached
@@ -489,35 +499,56 @@ def _candidate_persistence_receipt(
             ),
             "changed_files": (final_changes or {}).get("changed_files"),
             "editable_files": integrity.get("editable_files"),
-            "suspension_sha256": _sha256_bytes(
-                _canonical_json_bytes(suspension)
-            ),
             "boundary_snapshot_sha256": _sha256_bytes(
                 _canonical_json_bytes(boundary_snapshot)
             ),
             "output_tail_sha256": _sha256_bytes(
                 _canonical_json_bytes(output_tail)
             ),
-            "process_tree_cleanup_sha256": _sha256_bytes(
-                _canonical_json_bytes(process_tree_cleanup)
+            "attempt_cleanup_sha256": _sha256_bytes(
+                _canonical_json_bytes(attempt_cleanup)
             ),
         }
+        if not attempt_contained:
+            checkpoint["suspension_sha256"] = _sha256_bytes(
+                _canonical_json_bytes(suspension)
+            )
+            checkpoint["process_tree_cleanup_sha256"] = checkpoint.pop(
+                "attempt_cleanup_sha256"
+            )
+    if not attempt_contained:
+        return {
+            "schema": "aka.candidate-persistence-receipt/v3",
+            "policy_id": CANDIDATE_PERSISTENCE_POLICY,
+            "boundary_quiescence_policy_id": BOUNDARY_QUIESCENCE_POLICY,
+            "termination": (
+                "exact_turn_boundary"
+                if exact_boundary
+                else "completed" if evidence_complete else "rejected"
+            ),
+            "checkpoint": checkpoint,
+            "suspension": suspension if exact_boundary else None,
+            "boundary_snapshot": boundary_snapshot if exact_boundary else None,
+            "output_tail": output_tail if exact_boundary else None,
+            "boundary_resolution": boundary_resolution if exact_boundary else None,
+            "process_tree_cleanup": attempt_cleanup if exact_boundary else None,
+        }
     return {
-        "schema": "aka.candidate-persistence-receipt/v3",
+        "schema": "aka.candidate-persistence-receipt/v4",
         "policy_id": CANDIDATE_PERSISTENCE_POLICY,
-        "boundary_quiescence_policy_id": BOUNDARY_QUIESCENCE_POLICY,
+        "agent_process_containment_policy_id": AGENT_PROCESS_CONTAINMENT_POLICY,
+        "attempt_containment_policy_id": ATTEMPT_CONTAINMENT_POLICY,
         "termination": (
             "exact_turn_boundary"
             if exact_boundary
             else "completed" if evidence_complete else "rejected"
         ),
         "checkpoint": checkpoint,
-        "suspension": suspension if exact_boundary else None,
         "boundary_snapshot": boundary_snapshot if exact_boundary else None,
         "output_tail": output_tail if exact_boundary else None,
         "boundary_resolution": boundary_resolution if exact_boundary else None,
-        "process_tree_cleanup": (
-            process_tree_cleanup if exact_boundary else None
+        "attempt_cleanup": (
+            attempt_cleanup if exact_boundary else None
         ),
     }
 
@@ -1354,16 +1385,26 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         )
     finally:
         release_attempt_command_fds(isolated_cmd)
+    attempt_boundary = establish_attempt_boundary(isolated_cmd, process)
+    attempt_boundary_receipt = (
+        attempt_boundary.receipt() if attempt_boundary is not None else None
+    )
     if process.stdin:
         process.stdin.close()
-    process_tracker = _AttemptProcessTracker(process.pid, attempt_process_token)
-    process_tracker_stop = threading.Event()
-    process_tracker_thread = threading.Thread(
-        target=_track_attempt_processes,
-        args=(process_tracker, process_tracker_stop),
-        daemon=True,
+    process_tracker = (
+        None
+        if attempt_boundary is not None
+        else _AttemptProcessTracker(process.pid, attempt_process_token)
     )
-    process_tracker_thread.start()
+    process_tracker_stop = threading.Event() if process_tracker is not None else None
+    process_tracker_thread = None
+    if process_tracker is not None and process_tracker_stop is not None:
+        process_tracker_thread = threading.Thread(
+            target=_track_attempt_processes,
+            args=(process_tracker, process_tracker_stop),
+            daemon=True,
+        )
+        process_tracker_thread.start()
 
     raw_stdout_chunks: list[str] = []
     raw_stderr_chunks: list[str] = []
@@ -1450,10 +1491,24 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
                             len(chunk) for chunk in raw_stdout_chunks
                         )
                         turn_stop_event.set()
-                        suspension = _suspend_process_group(
-                            process, logger, process_tracker
-                        )
-                        boundary_signal["suspension"] = suspension
+                        if attempt_boundary is not None:
+                            try:
+                                attempt_boundary.terminate_now()
+                                boundary_signal["namespace_sigkill_sent"] = (
+                                    attempt_boundary.sigkill_sent
+                                )
+                            except OSError as error:
+                                turn_budget.stop_for_observer_error(
+                                    "pid_namespace_termination_failed"
+                                )
+                                reader_errors.append(
+                                    f"boundary: {type(error).__name__}: {error}"
+                                )
+                        elif process_tracker is not None:
+                            suspension = _suspend_process_group(
+                                process, logger, process_tracker
+                            )
+                            boundary_signal["suspension"] = suspension
                         suspension_complete_event.set()
                     else:
                         turn_stop_event.set()
@@ -1508,6 +1563,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         "verified_absent": False,
         "verification_performed": False,
     }
+    boundary_end_reason = "normal_exit"
     boundary_raw_after: dict[str, dict[str, Any]] | None = None
     boundary_capture_errors: tuple[str, ...] = ()
     boundary_snapshot_receipt: dict[str, Any] | None = None
@@ -1522,31 +1578,18 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
                 process_group_suspension = (
                     candidate if isinstance(candidate, dict) else None
                 )
-                if (
-                    formal_campaign
-                    and isinstance(process_group_suspension, dict)
-                    and process_group_suspension.get("verified") is True
-                ):
-                    boundary_candidate_snapshot = artifact_dir / ".boundary-candidates"
-                    (
-                        boundary_raw_after,
-                        boundary_capture_errors,
-                        boundary_snapshot_receipt,
-                    ) = _capture_suspended_workspace(
-                        workspace=workspace_path,
-                        editable_files=editable_files,
-                        destination=boundary_candidate_snapshot,
-                    )
-            cleanup = _terminate_process_group(
-                process,
-                logger,
-                reason="exact_turn_boundary",
-                resume_stopped_group=(
-                    isinstance(process_group_suspension, dict)
-                    and process_group_suspension.get("sent") is True
-                ),
-                tracker=process_tracker,
-            )
+            boundary_end_reason = "exact_turn_boundary"
+            if attempt_boundary is None:
+                cleanup = _terminate_process_group(
+                    process,
+                    logger,
+                    reason=boundary_end_reason,
+                    resume_stopped_group=(
+                        isinstance(process_group_suspension, dict)
+                        and process_group_suspension.get("sent") is True
+                    ),
+                    tracker=process_tracker,
+                )
             break
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -1555,22 +1598,42 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
                 "Codex agent timed out after %.3fs; terminating attempt process tree",
                 effective_timeout,
             )
-            cleanup = _terminate_process_group(
-                process, logger, reason="timeout", tracker=process_tracker
-            )
+            boundary_end_reason = "timeout"
+            if attempt_boundary is None:
+                cleanup = _terminate_process_group(
+                    process, logger, reason="timeout", tracker=process_tracker
+                )
             break
         try:
             process.wait(timeout=min(0.1, remaining))
         except subprocess.TimeoutExpired:
             continue
-    try:
-        process.wait(timeout=1)
-    except subprocess.TimeoutExpired:
-        cleanup["verified_absent"] = False
+    if attempt_boundary is not None:
+        if boundary_signal["attempted"] and turn_budget.exact_boundary_reached:
+            boundary_end_reason = "exact_turn_boundary"
+        cleanup = finalize_attempt_boundary(
+            process,
+            attempt_boundary,
+            reason=boundary_end_reason,
+            terminate=boundary_end_reason != "normal_exit",
+        )
+        if boundary_signal["attempted"]:
+            cleanup["boundary_signal"] = {
+                "attempted": True,
+                "stdout_character_offset": boundary_signal[
+                    "stdout_character_offset"
+                ],
+            }
+    else:
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            cleanup["verified_absent"] = False
 
-    if cleanup["reason"] == "normal_exit":
+    if attempt_boundary is None and cleanup["reason"] == "normal_exit":
         cleanup["verification_performed"] = True
         cleanup["scope"] = "process_tree"
+        assert process_tracker is not None
         cleanup["tracked_members_before_cleanup"] = process_tracker.scan()
         cleanup["verified_absent"] = (
             not process_tracker.errors()
@@ -1602,18 +1665,38 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             ],
         }
 
-    process_tracker_stop.set()
-    process_tracker_thread.join(timeout=1)
-    cleanup["process_tracker_errors"] = process_tracker.errors()
-    cleanup["tracked_members_after_cleanup"] = process_tracker.scan()
-    if cleanup["process_tracker_errors"] or cleanup["tracked_members_after_cleanup"]:
-        cleanup["verified_absent"] = False
+    if process_tracker is not None and process_tracker_stop is not None:
+        process_tracker_stop.set()
+        assert process_tracker_thread is not None
+        process_tracker_thread.join(timeout=1)
+        cleanup["process_tracker_errors"] = process_tracker.errors()
+        cleanup["tracked_members_after_cleanup"] = process_tracker.scan()
+        if cleanup["process_tracker_errors"] or cleanup["tracked_members_after_cleanup"]:
+            cleanup["verified_absent"] = False
 
     stdout_thread.join(timeout=5)
     stderr_thread.join(timeout=5)
     readers_completed = not stdout_thread.is_alive() and not stderr_thread.is_alive()
     if not readers_completed:
         reader_errors.append("stream readers did not reach EOF")
+    if (
+        formal_campaign
+        and turn_budget.exact_boundary_reached
+        and cleanup.get("scope") == "private_pid_namespace"
+        and cleanup.get("verified_absent") is True
+        and readers_completed
+    ):
+        boundary_candidate_snapshot = artifact_dir / ".boundary-candidates"
+        (
+            boundary_raw_after,
+            boundary_capture_errors,
+            boundary_snapshot_receipt,
+        ) = _capture_workspace_checkpoint(
+            workspace=workspace_path,
+            editable_files=editable_files,
+            destination=boundary_candidate_snapshot,
+            capture_mode="post_namespace_teardown_checkpoint",
+        )
 
     if stderr_lines:
         logger.warning("=" * 80)
@@ -1700,7 +1783,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
                 boundary_raw_after,
                 boundary_capture_errors,
                 boundary_snapshot_receipt,
-            ) = _capture_suspended_workspace(
+            ) = _capture_workspace_checkpoint(
                 workspace=workspace_path,
                 editable_files=editable_files,
                 destination=boundary_candidate_snapshot,
@@ -1709,9 +1792,20 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 
     workspace_after: dict[str, dict[str, Any]] | None = None
     workspace_integrity: dict[str, Any] | None = None
+    formal_cleanup_verified = (
+        attempt_cleanup_verified(
+            cleanup,
+            exit_code=exit_code,
+            allowed_reasons={"normal_exit", "exact_turn_boundary"},
+            required_procfs="private_attempt_procfs",
+        )
+        if formal_campaign
+        else True
+    )
     complete_capture_and_cleanup = (
         not timed_out
         and cleanup["verified_absent"]
+        and formal_cleanup_verified
         and readers_completed
         and not reader_errors
         and not capture_truncated
@@ -1748,11 +1842,28 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             and not boundary_capture_errors
         )
     )
+    namespace_boundary_evidence = (
+        formal_campaign
+        and formal_cleanup_verified
+        and cleanup.get("reason") == "exact_turn_boundary"
+        and isinstance(boundary_output_tail, dict)
+        and boundary_output_tail.get("capture_truncated") is False
+        and boundary_output_tail.get("readers_completed") is True
+        and isinstance(boundary_snapshot_receipt, dict)
+        and boundary_snapshot_receipt.get("capture_mode")
+        == "post_namespace_teardown_checkpoint"
+        and boundary_snapshot_receipt.get("complete") is True
+        and not boundary_capture_errors
+    )
     exact_boundary_evidence = (
-        suspended_boundary_evidence or natural_boundary_evidence
+        namespace_boundary_evidence
+        or suspended_boundary_evidence
+        or natural_boundary_evidence
     )
     boundary_resolution = (
-        "verified_process_tree_suspension"
+        "pid_namespace_destroyed_before_snapshot"
+        if namespace_boundary_evidence
+        else "verified_process_tree_suspension"
         if suspended_boundary_evidence
         else "complete_natural_exit_process_tree_absent"
         if natural_boundary_evidence
@@ -1769,7 +1880,11 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             and isinstance(exit_code, int)
             and not isinstance(exit_code, bool)
             and exit_code
-            in {0, -int(signal.SIGTERM), -int(signal.SIGKILL)}
+            in (
+                {0, 128 + int(signal.SIGKILL)}
+                if formal_campaign
+                else {0, -int(signal.SIGTERM), -int(signal.SIGKILL)}
+            )
         )
     )
     if formal_campaign:
@@ -1815,15 +1930,20 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         turn_budget=turn_budget,
         workspace_integrity=workspace_integrity,
         evidence_complete=persistence_evidence_complete,
+        attempt_contained=formal_campaign,
         suspension=process_group_suspension,
         boundary_snapshot=boundary_snapshot_receipt,
         output_tail=boundary_output_tail,
         boundary_resolution=boundary_resolution,
-        process_tree_cleanup=cleanup,
+        attempt_cleanup=cleanup,
     )
     session_succeeded = persistence_evidence_complete
     receipt = {
-        "schema": _RECEIPT_SCHEMA,
+        "schema": (
+            _RECEIPT_SCHEMA
+            if formal_campaign
+            else "agentkernelarena.codex-attempt-receipt/v3"
+        ),
         "comparison_contract_sha256": comparison_contract_sha256,
         "session_succeeded": session_succeeded,
         "thread_id": session["thread_id"],
@@ -1832,8 +1952,6 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         "exit_code": exit_code,
         "timed_out": timed_out,
         "effective_timeout_seconds": effective_timeout,
-        "process_group_cleanup": cleanup,
-        "process_group_suspension": process_group_suspension,
         "capture": {
             "readers_completed": readers_completed,
             "errors": reader_errors,
@@ -1860,11 +1978,11 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             "max_turns": max_turns,
             "turn_policy": TURN_POLICY,
             "candidate_persistence_policy_id": CANDIDATE_PERSISTENCE_POLICY,
-            "boundary_quiescence_policy_id": BOUNDARY_QUIESCENCE_POLICY,
-            "process_tree_tracking": {
-                "policy": "proc_descendant_lineage_and_inherited_attempt_token_v1",
-                "token_sha256": _sha256_bytes(attempt_process_token.encode("utf-8")),
-            },
+            "agent_process_containment_policy_id": (
+                AGENT_PROCESS_CONTAINMENT_POLICY
+            ),
+            "attempt_containment_policy_id": ATTEMPT_CONTAINMENT_POLICY,
+            "attempt_process_boundary": attempt_boundary_receipt,
             "structured_stream_output_limit_bytes": output_limit,
             "isolation": {
                 "approval": "never_via_strict_config",
@@ -1878,10 +1996,20 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
                     if attempt_home is not None
                     else "ordinary_run"
                 ),
+                **(
+                    {"attempt_containment_policy_id": ATTEMPT_CONTAINMENT_POLICY}
+                    if attempt_home is not None
+                    else {}
+                ),
             },
         },
         "aggregated_usage": aggregated_usage,
     }
+    if formal_campaign:
+        receipt["attempt_process_cleanup"] = cleanup
+    else:
+        receipt["process_group_cleanup"] = cleanup
+        receipt["process_group_suspension"] = process_group_suspension
     _write_attempt_receipt(
         receipt_path=receipt_path,
         artifact_dir=artifact_dir,
@@ -1897,7 +2025,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     if timed_out:
         verification = cleanup["verified_absent"]
         raise CodexSessionTimeout(
-            "Codex session timed out; process-tree cleanup "
+            "Codex session timed out; attempt cleanup "
             f"verified_absent={verification}; receipt={receipt_path}"
         )
     if capture_truncated:

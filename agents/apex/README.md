@@ -13,7 +13,8 @@ before calling Apex. The adapter then:
 1. maps the declared source, symbols, GPU architecture, prompt, backend options,
    phase commands, and budget into Apex's flat `task_spec.json` contract;
 2. invokes `Apex/main.py optimize kernel --task-spec ... --result-json ...
-   --non-interactive` in a separate process group;
+   --non-interactive` inside an outer per-attempt PID namespace; Apex creates the
+   second private PID/proc boundary around its backend;
 3. validates the result and bundle schema, sizes, paths, symlinks, source hashes,
    changed-file allowlist, patch hashes, and bundle digest;
 4. runs `git apply --check` before applying only the declared source patch; and
@@ -150,10 +151,11 @@ evaluator/task-package hashes, every GPU's unique ID/serial/model/gfx plus task
 mapping, and a live runtime-isolation receipt. The receipt proves a non-root UID,
 zero inheritable/permitted/effective/bounding/ambient capabilities, NNP, the pinned
 seccomp/AppArmor/Yama state, the exact `bwrap` and Codex binaries, the managed
-Codex policy hash, an outer mount/IPC namespace with private shared memory, and
-blocked parent root/fd/environ/mem escape probes. The attempt intentionally keeps
-the Docker worker's private PID namespace and writable `/proc` so nested Codex can
-create its own command sandbox. A separate live Codex probe must prove that the
+Codex policy hash, private PID/IPC namespaces, private shared memory, rebuilt Docker
+system-path masks, and pidfd-bound teardown. Direct Codex receives AKA's private
+procfs. The Apex arm instead leaves procfs inherited only around the trusted outer
+orchestrator, because Apex owns the private procfs around its backend and an earlier
+procfs layer prevents the Apex-to-Codex nesting. A separate live probe must prove that the
 managed profile permits workspace writes while denying credential reads and
 command network. A content-pinned bubblewrap compatibility shim is copied into a
 sealed memfd and mounted from that exact descriptor before restoring only the
@@ -161,8 +163,8 @@ sealed memfd and mounted from that exact descriptor before restoring only the
 private `/dev`. Its parent is a dedicated read-only mountpoint, and live
 rename/unlink/replace/write attacks must fail; the same probe sees exactly one ROCm
 device and completes a Torch allocation plus reduction on it. It also
-proves the inner PID namespace differs; the inherited procfs may expose the outer
-status entry, but root/fd/environ/mem aliases must all remain unreadable. Init,
+proves the backend command is outside the worker PID namespace and blocks PID-1
+root/environ/mem credential aliases. Init,
 every worker, and postprocess independently reproduce this receipt before accepting
 the immutable manifest. The comparison contract explicitly names
 `aka.task-package-objective-and-protected-harness/v1` as its objective policy and
@@ -177,7 +179,7 @@ Per-task attempt evidence remains
 under `.campaign_attempts/`. Both treatments retain a read-only session receipt
 with exact backend/model/effort and invocation identity, bounded process output,
 the same 50-turn structured-agent policy and 16 MiB inner Codex stream bound, and
-verified process-group cleanup. Each receipt directly carries the comparison-contract
+verified namespace teardown. Each receipt directly carries the comparison-contract
 digest; postprocess recomputes the immutable manifest contract and rejects a missing
 or different attempt binding. The direct-Codex receipt also freezes the exact rendered
 prompt bytes, so its invocation prompt hash is independently reproducible rather than
@@ -186,9 +188,9 @@ at 4 MiB. Apex receipts additionally snapshot the
 TaskSpec, TaskResult, checksummed event journal, canonical agent transcript, and
 terminal verdict lineage. The event-bound inner agent prompt is also copied into the
 outer immutable receipt, so later audits do not depend on a still-live Apex CAS path.
-New formal receipts use `agentkernelarena.apex-attempt-receipt/v3`; the campaign
+New formal receipts use `agentkernelarena.apex-attempt-receipt/v4`; the campaign
 manifest freezes that schema before any attempt starts. The auditor keeps explicit
-read-only support for sealed v1/v2 history, but a v3 receipt cannot drop these fields or
+read-only support for sealed history, but a v4 receipt cannot drop these fields or
 change its schema to select the legacy validation path. Receipt dispatch is selected
 from the sealed manifest's agent template and schema, never from the receipt's own
 type claim, so an Apex and direct-Codex receipt cannot be substituted for each other.
@@ -205,37 +207,39 @@ run-control suffix.
 Successful `candidate_ready` and `no_gain` results require one `agent_completed` and
 no `agent_failed`, plus one through 50 recomputed structured turns. A
 `budget_exhausted` result instead requires exactly one
-`agent_failed`, an `agent_turn_budget_exceeded` result/error/decision chain, and
-matching transcript flags, reason, observed assistant-message count, tool-call-start
-count, invocation policy, and 50-turn bound. The inner process exit code may be zero
-when it races the observer or `-15` after normal SIGTERM cleanup; it is evidence, not
-the budget verdict. Formal lineage is validated before the
+`agent_failed`, an `agent_turn_budget_overrun` result/error/decision chain, typed
+`turn_overrun` termination above the 50-turn bound, and matching invocation,
+transcript, event, and private-PID-namespace receipts. The observer destroys the
+pidfd-pinned namespace init, so the bound process exit is 137; SIGTERM or another
+numeric exit cannot substitute for that proof. Formal lineage is validated before the
 outer Apex return code is rejected, so a failed session retains audit evidence while
 still raising and keeping `session_succeeded=false`. A nonzero `no_gain` is invalid.
-At the exact 50-turn boundary, both arms bind policy
-`sigstop_process_group_snapshot_v1` through comparison-contract v3, the invocation,
-transcript, event, and attempt receipt. Direct Codex strengthens that named policy by
-continuously tracking the complete attempt tree through `/proc` parent lineage and an
-inherited token. It stops the root group plus escaped `setsid()` or reparented
-descendants and verifies a stable all-stopped tree before capturing candidate bytes.
-It then sends TERM plus CONT to the tracked tree, verifies every member is absent,
-drains and digests the post-boundary stdout tail, restores the baseline, and reapplies
-only the stopped-state snapshot. If Codex naturally exits before suspension can be
-proven, an independent route requires exit code zero, complete stream EOF, no
-truncation, and an absent tracked tree before source capture. A cleanup handler, late
-tool write, or escaped descendant therefore cannot alter the retained candidate.
-Apex emits the same suspension proof and discarded-tail digest; its exact-boundary
-candidate must additionally traverse the frozen-source, compile, correctness, safety,
+At the exact 50-turn boundary, both arms bind
+`private_pid_namespace_init_pidfd_v1` through comparison-contract v4, invocation,
+transcript, event, and attempt receipts. Each backend runs behind a gated private PID
+namespace with a private procfs. The trusted supervisor pins namespace PID 1 with a
+pidfd and freezes candidate bytes only after init exit, wrapper status/EOF, stream
+EOF, and visible-membership corroboration. The receipt counts inaccessible sibling
+`/proc` entries instead of claiming a complete scan; exact namespace-init pidfd exit
+remains the authoritative Linux teardown proof. Killing namespace PID 1 contains
+`setsid`, double-fork, clear-environment, closed-stdio, immediate-exec, and late-write
+descendants without trusting PGIDs or reusable numeric PIDs. Apex's inner receipt is
+then bound to AKA's separate outer namespace teardown. Its exact-boundary candidate
+must additionally traverse the frozen-source, compile, correctness, safety,
 measurement, reward, decision, and immutable-bundle gate chain. A count of 49 is not
 an exact-boundary checkpoint, 51 is always an overrun, and timeout, truncation,
-unverified suspension, or cleanup failure is ineligible. Older schemas cannot claim
+unverified containment or cleanup failure is ineligible. Older schemas cannot claim
 this checkpoint path. These receipts only govern source persistence; AgentKernelArena's
 outer evaluator remains the sole authority for scored correctness and performance.
+The AKA outer layer exposes writable inherited `/proc` only to the trusted Apex
+orchestrator so nested uid/gid maps can be established; Apex replaces and remasks
+that procfs before the Codex backend starts. A live three-layer CPU test exercises
+AKA outer, Apex inner, and a nested managed-command namespace together, including
+direct credentials and `/proc/1/{root,environ,mem}` alias attacks.
 
-The historical observer stop reasons remain exact:
-`max_turns_exhausted_before_follow_up` requires exactly 50 turns, while
-`max_turns_exceeded` requires more than 50. A valid
-`no_gain` is an audited successful session but its central baseline replay is marked
+An exact 50-turn stop is a candidate checkpoint; a provider event beyond that bound
+is typed `max_turns_overrun` and cannot persist candidate bytes. A valid `no_gain` is
+an audited successful session but its central baseline replay is marked
 `no_candidate_baseline_replay_v1` and can never enter campaign selection. Direct
 Codex receives the same treatment when its verified final declared-source delta is
 empty, so neither arm can score the unchanged baseline. Failed sessions and untrusted
@@ -263,8 +267,10 @@ before launching those commands. A missing or unusable outer `bwrap`, changed GP
 shim, different requirements
 file, or any failed live property probe aborts campaign preflight. Formal Docker
 workers remain non-root and receive no added Linux capabilities. The outer attempt
-boundary bind-mounts Docker's already-private `/proc` read-write and preserves its PID
-namespace solely so Codex can create the nested user-namespace sandbox.
+boundary always creates a private PID namespace. For the Apex arm only, that outer
+trusted-orchestrator layer inherits the worker procfs; Apex's inner supervisor creates
+and remasks the backend-visible private procfs before Codex starts. Direct Codex never
+receives the inherited worker procfs.
 
 Formal GPU workers do not use `--privileged`, `/dev/mem`, or the complete `/dev/dri`
 tree. A host-resolved plan maps each physical `unique_id` through KFD topology to its

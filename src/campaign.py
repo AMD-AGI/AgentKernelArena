@@ -23,6 +23,7 @@ from typing import Any, Callable
 import yaml
 
 from src.agent_turn_budget import (
+    AGENT_PROCESS_CONTAINMENT_POLICY,
     BOUNDARY_QUIESCENCE_POLICY,
     CANDIDATE_PERSISTENCE_POLICY,
     FORMAL_MATCHED_MAX_TURNS,
@@ -32,7 +33,12 @@ from src.agent_turn_budget import (
     context_packet_objective_matches,
     render_apex_run_control,
 )
-from src.campaign_isolation import CampaignIsolationError, runtime_isolation_receipt
+from src.campaign_isolation import (
+    ATTEMPT_CONTAINMENT_POLICY,
+    CampaignIsolationError,
+    attempt_cleanup_verified,
+    runtime_isolation_receipt,
+)
 from src.gpu_device_boundary import GpuBoundaryError, load_plan
 from src.gpu_exclusivity import (
     GpuExclusivityError,
@@ -50,22 +56,27 @@ _PROMPT_POLICY_ID = "aka.shared-objective-backend-native-context-receipted/v1"
 _COMPARISON_CONTRACT_SCHEMA_V1 = "aka.apex-vs-codex-comparison-contract/v1"
 _COMPARISON_CONTRACT_SCHEMA_V2 = "aka.apex-vs-codex-comparison-contract/v2"
 _COMPARISON_CONTRACT_SCHEMA_V3 = "aka.apex-vs-codex-comparison-contract/v3"
+_COMPARISON_CONTRACT_SCHEMA_V4 = "aka.apex-vs-codex-comparison-contract/v4"
 _CODEX_RECEIPT_SCHEMA_V1 = "agentkernelarena.codex-attempt-receipt/v1"
 _CODEX_RECEIPT_SCHEMA_V2 = "agentkernelarena.codex-attempt-receipt/v2"
 _CODEX_RECEIPT_SCHEMA_V3 = "agentkernelarena.codex-attempt-receipt/v3"
-_CODEX_RECEIPT_SCHEMA = _CODEX_RECEIPT_SCHEMA_V3
+_CODEX_RECEIPT_SCHEMA_V4 = "agentkernelarena.codex-attempt-receipt/v4"
+_CODEX_RECEIPT_SCHEMA = _CODEX_RECEIPT_SCHEMA_V4
 _CODEX_RECEIPT_SCHEMAS = {
     _CODEX_RECEIPT_SCHEMA_V1,
     _CODEX_RECEIPT_SCHEMA_V2,
     _CODEX_RECEIPT_SCHEMA_V3,
+    _CODEX_RECEIPT_SCHEMA_V4,
 }
 _APEX_RECEIPT_SCHEMA_V1 = "agentkernelarena.apex-attempt-receipt/v1"
 _APEX_RECEIPT_SCHEMA_V2 = "agentkernelarena.apex-attempt-receipt/v2"
 _APEX_RECEIPT_SCHEMA_V3 = "agentkernelarena.apex-attempt-receipt/v3"
+_APEX_RECEIPT_SCHEMA_V4 = "agentkernelarena.apex-attempt-receipt/v4"
 _APEX_RECEIPT_SCHEMAS = {
     _APEX_RECEIPT_SCHEMA_V1,
     _APEX_RECEIPT_SCHEMA_V2,
     _APEX_RECEIPT_SCHEMA_V3,
+    _APEX_RECEIPT_SCHEMA_V4,
 }
 _SHA1 = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -368,7 +379,7 @@ def _agent_manifest(repo_root: Path, agent_name: str, policy: CampaignPolicy) ->
     return {
         "template": agent_name,
         "session_receipt_schema": (
-            _APEX_RECEIPT_SCHEMA_V3
+            _APEX_RECEIPT_SCHEMA_V4
             if agent_name == "apex"
             else _CODEX_RECEIPT_SCHEMA
         ),
@@ -380,7 +391,10 @@ def _agent_manifest(repo_root: Path, agent_name: str, policy: CampaignPolicy) ->
         "attempt_timeout_seconds": config["timeout_seconds"],
         "max_turns": config["max_turns"],
         "turn_policy": TURN_POLICY,
-        "boundary_quiescence_policy_id": BOUNDARY_QUIESCENCE_POLICY,
+        "agent_process_containment_policy_id": (
+            AGENT_PROCESS_CONTAINMENT_POLICY
+        ),
+        "attempt_containment_policy_id": ATTEMPT_CONTAINMENT_POLICY,
         "max_process_output_bytes": config["max_process_output_bytes"],
         "structured_stream_output_limit_bytes": config[
             "structured_stream_output_limit_bytes"
@@ -399,6 +413,7 @@ def _agent_manifest(repo_root: Path, agent_name: str, policy: CampaignPolicy) ->
             "session": "ephemeral",
             "user_config": "ignored",
             "mount_scope": "attempt_only_bubblewrap",
+            "attempt_containment_policy_id": ATTEMPT_CONTAINMENT_POLICY,
         },
         "agent_config_sha256": _sha256_file(config_path),
     }
@@ -489,6 +504,14 @@ def _load_verified_campaign_manifest(run_directory: Path) -> dict[str, Any]:
         == CANDIDATE_PERSISTENCE_POLICY
         and comparison.get("boundary_quiescence_policy_id")
         == BOUNDARY_QUIESCENCE_POLICY
+    ) or (
+        comparison_schema == _COMPARISON_CONTRACT_SCHEMA_V4
+        and comparison.get("candidate_persistence_policy_id")
+        == CANDIDATE_PERSISTENCE_POLICY
+        and comparison.get("agent_process_containment_policy_id")
+        == AGENT_PROCESS_CONTAINMENT_POLICY
+        and comparison.get("attempt_containment_policy_id")
+        == ATTEMPT_CONTAINMENT_POLICY
     )
     if (
         manifest.get("schema") != _CAMPAIGN_SCHEMA
@@ -647,8 +670,10 @@ def _comparison_contract(
 ) -> dict[str, Any]:
     effective_codex = {
         key: (
-            agent.get(key, BOUNDARY_QUIESCENCE_POLICY)
-            if key == "boundary_quiescence_policy_id"
+            agent.get(key, AGENT_PROCESS_CONTAINMENT_POLICY)
+            if key == "agent_process_containment_policy_id"
+            else agent.get(key, ATTEMPT_CONTAINMENT_POLICY)
+            if key == "attempt_containment_policy_id"
             else agent[key]
         )
         for key in (
@@ -660,7 +685,8 @@ def _comparison_contract(
             "attempt_timeout_seconds",
             "max_turns",
             "turn_policy",
-            "boundary_quiescence_policy_id",
+            "agent_process_containment_policy_id",
+            "attempt_containment_policy_id",
             "structured_stream_output_limit_bytes",
             "codex_version",
             "codex_binary_sha256",
@@ -691,11 +717,12 @@ def _comparison_contract(
             }
         comparison_runtime["gpu"] = comparison_gpu
     return {
-        "schema": _COMPARISON_CONTRACT_SCHEMA_V3,
+        "schema": _COMPARISON_CONTRACT_SCHEMA_V4,
         "objective_policy_id": _OBJECTIVE_POLICY_ID,
         "prompt_policy_id": _PROMPT_POLICY_ID,
         "candidate_persistence_policy_id": CANDIDATE_PERSISTENCE_POLICY,
-        "boundary_quiescence_policy_id": BOUNDARY_QUIESCENCE_POLICY,
+        "agent_process_containment_policy_id": AGENT_PROCESS_CONTAINMENT_POLICY,
+        "attempt_containment_policy_id": ATTEMPT_CONTAINMENT_POLICY,
         "policy": asdict(policy),
         "measurement": measurement,
         "repositories": repositories,
@@ -867,7 +894,9 @@ def _attempt_record(
                     if isinstance(receipt.get("invocation"), dict)
                     else None
                 ),
-                "process_group_cleanup": receipt.get("process_group_cleanup"),
+                "attempt_process_cleanup": receipt.get(
+                    "attempt_process_cleanup"
+                ),
                 "budgets": receipt.get("budgets"),
                 "turn_budget": receipt.get("turn_budget"),
                 "workspace_integrity": receipt.get("workspace_integrity"),
@@ -1202,10 +1231,16 @@ def _validate_session_receipt(
         )
     )
     candidate_persistence = receipt.get("candidate_persistence")
+    persistence = (
+        candidate_persistence if isinstance(candidate_persistence, dict) else {}
+    )
     checkpoint_termination = (
-        candidate_persistence.get("termination") == "exact_turn_boundary"
-        if isinstance(candidate_persistence, dict)
-        else False
+        persistence.get("termination") == "exact_turn_boundary"
+    )
+    cleanup = receipt.get(
+        "attempt_process_cleanup"
+        if expected_schema == _CODEX_RECEIPT_SCHEMA_V4
+        else "process_group_cleanup"
     )
     if expected_schema == _CODEX_RECEIPT_SCHEMA_V1 and (
         candidate_persistence is not None
@@ -1222,10 +1257,13 @@ def _validate_session_receipt(
         errors.append("direct_codex_receipt_invalid_session_status")
     if receipt.get("session_succeeded") is True:
         allowed_exit = receipt.get("exit_code") == 0 or (
-            expected_schema == _CODEX_RECEIPT_SCHEMA_V3
+            expected_schema == _CODEX_RECEIPT_SCHEMA_V4
             and checkpoint_termination
-            and receipt.get("exit_code")
-            in {-int(signal.SIGTERM), -int(signal.SIGKILL)}
+            and receipt.get("exit_code") == 128 + int(signal.SIGKILL)
+            and isinstance(cleanup, dict)
+            and cleanup.get("reason") == "exact_turn_boundary"
+            and cleanup.get("teardown_mode") == "pidfd_sigkill"
+            and cleanup.get("sigkill_sent") is True
         )
         if receipt.get("timed_out") is not False or not allowed_exit:
             errors.append("direct_codex_receipt_success_status_inconsistent")
@@ -1233,21 +1271,23 @@ def _validate_session_receipt(
         if not isinstance(thread_id, str) or not thread_id.strip():
             errors.append("direct_codex_receipt_missing_thread_id")
 
-    cleanup = receipt.get("process_group_cleanup")
-    if (
-        not isinstance(cleanup, dict)
-        or cleanup.get("verification_performed") is not True
-        or cleanup.get("verified_absent") is not True
-        or (
-            expected_schema == _CODEX_RECEIPT_SCHEMA_V3
-            and (
-                cleanup.get("scope") != "process_tree"
-                or cleanup.get("process_tracker_errors") != []
-                or cleanup.get("tracked_members_after_cleanup") != []
-            )
+    cleanup_valid = (
+        _pid_namespace_cleanup_valid(
+            cleanup,
+            exit_code=receipt.get("exit_code"),
+            allowed_reasons={"normal_exit", "exact_turn_boundary"},
         )
-    ):
-        errors.append("direct_codex_process_group_not_verified_absent")
+        if expected_schema == _CODEX_RECEIPT_SCHEMA_V4
+        else isinstance(cleanup, dict)
+        and cleanup.get("verification_performed") is True
+        and cleanup.get("verified_absent") is True
+    )
+    if not cleanup_valid:
+        errors.append(
+            "direct_codex_attempt_namespace_not_verified_absent"
+            if expected_schema == _CODEX_RECEIPT_SCHEMA_V4
+            else "direct_codex_process_group_not_verified_absent"
+        )
     capture = receipt.get("capture")
     if (
         not isinstance(capture, dict)
@@ -1290,7 +1330,7 @@ def _validate_session_receipt(
         )
     )
     checkpoint_turn_budget = (
-        expected_schema == _CODEX_RECEIPT_SCHEMA_V3
+        expected_schema in {_CODEX_RECEIPT_SCHEMA_V3, _CODEX_RECEIPT_SCHEMA_V4}
         and isinstance(turn_budget, dict)
         and turn_budget.get("policy") == TURN_POLICY
         and turn_budget.get("max_turns") == FORMAL_MATCHED_MAX_TURNS
@@ -1313,107 +1353,76 @@ def _validate_session_receipt(
         or workspace_integrity.get("errors") != []
     ):
         errors.append("direct_codex_workspace_integrity_invalid")
-    if expected_schema in {_CODEX_RECEIPT_SCHEMA_V2, _CODEX_RECEIPT_SCHEMA_V3}:
+    if expected_schema in {
+        _CODEX_RECEIPT_SCHEMA_V2,
+        _CODEX_RECEIPT_SCHEMA_V3,
+        _CODEX_RECEIPT_SCHEMA_V4,
+    }:
         checkpoint = (
-            candidate_persistence.get("checkpoint")
-            if isinstance(candidate_persistence, dict)
-            else None
+            persistence.get("checkpoint")
         )
         expected_termination = (
             "exact_turn_boundary" if checkpoint_turn_budget else "completed"
         )
         if (
             not isinstance(candidate_persistence, dict)
-            or candidate_persistence.get("schema")
+            or persistence.get("schema")
             != (
-                "aka.candidate-persistence-receipt/v3"
+                "aka.candidate-persistence-receipt/v4"
+                if expected_schema == _CODEX_RECEIPT_SCHEMA_V4
+                else "aka.candidate-persistence-receipt/v3"
                 if expected_schema == _CODEX_RECEIPT_SCHEMA_V3
                 else "aka.candidate-persistence-receipt/v2"
             )
-            or candidate_persistence.get("policy_id")
+            or persistence.get("policy_id")
             != CANDIDATE_PERSISTENCE_POLICY
-            or candidate_persistence.get("termination") != expected_termination
+            or persistence.get("termination") != expected_termination
             or (checkpoint_turn_budget and not isinstance(checkpoint, dict))
             or (not checkpoint_turn_budget and checkpoint is not None)
         ):
             errors.append("direct_codex_candidate_persistence_invalid")
+        if expected_schema == _CODEX_RECEIPT_SCHEMA_V4 and (
+            persistence.get("agent_process_containment_policy_id")
+            != AGENT_PROCESS_CONTAINMENT_POLICY
+            or persistence.get("attempt_containment_policy_id")
+            != ATTEMPT_CONTAINMENT_POLICY
+        ):
+            errors.append("direct_codex_attempt_containment_policy_mismatch")
         if expected_schema == _CODEX_RECEIPT_SCHEMA_V3 and (
-            candidate_persistence.get("boundary_quiescence_policy_id")
+            persistence.get("boundary_quiescence_policy_id")
             != BOUNDARY_QUIESCENCE_POLICY
         ):
             errors.append("direct_codex_boundary_quiescence_policy_mismatch")
-        if expected_schema == _CODEX_RECEIPT_SCHEMA_V3 and checkpoint_turn_budget:
-            suspension = receipt.get("process_group_suspension")
-            persisted_suspension = candidate_persistence.get("suspension")
-            boundary_snapshot = candidate_persistence.get("boundary_snapshot")
-            output_tail = candidate_persistence.get("output_tail")
-            persisted_cleanup = candidate_persistence.get("process_tree_cleanup")
-            boundary_resolution = candidate_persistence.get("boundary_resolution")
-            suspension_route = (
-                isinstance(suspension, dict)
-                and suspension.get("policy_id") == BOUNDARY_QUIESCENCE_POLICY
-                and suspension.get("method") == "sigstop_process_tree"
-                and suspension.get("scope")
-                == "proc_descendant_lineage_and_inherited_attempt_token_v1"
-                and suspension.get("sent") is True
-                and suspension.get("verification_performed") is True
-                and suspension.get("verified") is True
-                and isinstance(suspension.get("members"), list)
-                and bool(suspension["members"])
-                and not any(
-                    not isinstance(member, dict)
-                    or isinstance(member.get("pid"), bool)
-                    or not isinstance(member.get("pid"), int)
-                    or member.get("pid") <= 0
-                    or member.get("state") not in {"T", "t", "Z"}
-                    for member in suspension.get("members", [])
+        if expected_schema == _CODEX_RECEIPT_SCHEMA_V4 and checkpoint_turn_budget:
+            boundary_snapshot = persistence.get("boundary_snapshot")
+            output_tail = persistence.get("output_tail")
+            persisted_cleanup = persistence.get("attempt_cleanup")
+            boundary_resolution = persistence.get("boundary_resolution")
+            namespace_route = (
+                boundary_resolution == "pid_namespace_destroyed_before_snapshot"
+                and persisted_cleanup == cleanup
+                and _pid_namespace_cleanup_valid(
+                    cleanup,
+                    exit_code=receipt.get("exit_code"),
+                    allowed_reasons={"exact_turn_boundary"},
                 )
-                and isinstance(suspension.get("members_sha256"), str)
-                and suspension.get("members_sha256")
-                == _canonical_json_digest(suspension["members"])
-                and boundary_resolution == "verified_process_tree_suspension"
                 and isinstance(cleanup, dict)
-                and cleanup.get("reason") == "exact_turn_boundary"
-                and cleanup.get("sigterm_sent") is True
-                and cleanup.get("sigcont_sent") is True
+                and cleanup.get("boundary_signal")
+                == {
+                    "attempted": True,
+                    "stdout_character_offset": (
+                        output_tail.get("stdout_character_offset")
+                        if isinstance(output_tail, dict)
+                        else None
+                    ),
+                }
             )
-            natural_exit_route = (
-                receipt.get("exit_code") == 0
-                and isinstance(cleanup, dict)
-                and cleanup.get("reason") == "natural_exact_boundary_exit"
-                and cleanup.get("scope") == "process_tree"
-                and cleanup.get("verified_absent") is True
-                and cleanup.get("sigterm_sent") is False
-                and cleanup.get("sigcont_sent") is False
-                and cleanup.get("sigkill_sent") is False
-                and cleanup.get("tracked_members_before_cleanup") == []
-                and cleanup.get("process_tracker_errors") == []
-                and cleanup.get("tracked_members_after_cleanup") == []
-                and boundary_resolution
-                == "complete_natural_exit_process_tree_absent"
-                and (
-                    not isinstance(suspension, dict)
-                    or suspension.get("verified") is not True
-                )
-            )
-            if not (suspension_route or natural_exit_route) or (
-                persisted_suspension != suspension
-                or persisted_cleanup != cleanup
-            ):
+            if not namespace_route:
                 errors.append("direct_codex_checkpoint_suspension_invalid")
-            if (
-                boundary_resolution == "verified_process_tree_suspension"
-                and (
-                    not isinstance(cleanup, dict)
-                    or cleanup.get("sigterm_sent") is not True
-                    or cleanup.get("sigcont_sent") is not True
-                )
-            ):
-                errors.append("direct_codex_checkpoint_resume_cleanup_invalid")
             if (
                 not isinstance(boundary_snapshot, dict)
                 or boundary_snapshot.get("policy_id")
-                != BOUNDARY_QUIESCENCE_POLICY
+                != ATTEMPT_CONTAINMENT_POLICY
                 or boundary_snapshot.get("complete") is not True
                 or boundary_snapshot.get("errors") != []
                 or not isinstance(boundary_snapshot.get("manifest_sha256"), str)
@@ -1421,11 +1430,7 @@ def _validate_session_receipt(
                 or not isinstance(boundary_snapshot.get("files"), list)
                 or not boundary_snapshot["files"]
                 or boundary_snapshot.get("capture_mode")
-                != (
-                    "verified_process_tree_suspension"
-                    if suspension_route
-                    else "complete_natural_exit_process_tree_absent"
-                )
+                != "post_namespace_teardown_checkpoint"
             ):
                 errors.append("direct_codex_boundary_snapshot_invalid")
             if (
@@ -1445,10 +1450,9 @@ def _validate_session_receipt(
                 for value in (boundary_snapshot, output_tail, cleanup)
             ):
                 digest_fields = {
-                    "suspension_sha256": suspension,
                     "boundary_snapshot_sha256": boundary_snapshot,
                     "output_tail_sha256": output_tail,
-                    "process_tree_cleanup_sha256": cleanup,
+                    "attempt_cleanup_sha256": cleanup,
                 }
                 if any(
                     checkpoint.get(field) != _canonical_json_digest(value)
@@ -1492,9 +1496,13 @@ def _validate_session_receipt(
             expected_codex.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
             or expected_codex.get("turn_policy") != expected_turn_policy
             or (
-                expected_schema == _CODEX_RECEIPT_SCHEMA_V3
-                and expected_codex.get("boundary_quiescence_policy_id")
-                != BOUNDARY_QUIESCENCE_POLICY
+                expected_schema == _CODEX_RECEIPT_SCHEMA_V4
+                and (
+                    expected_codex.get("agent_process_containment_policy_id")
+                    != AGENT_PROCESS_CONTAINMENT_POLICY
+                    or expected_codex.get("attempt_containment_policy_id")
+                    != ATTEMPT_CONTAINMENT_POLICY
+                )
             )
             or expected_codex.get("structured_stream_output_limit_bytes")
             != 16 * 1024 * 1024
@@ -1530,24 +1538,27 @@ def _validate_session_receipt(
             != 16 * 1024 * 1024
             or (
                 expected_schema
-                in {_CODEX_RECEIPT_SCHEMA_V2, _CODEX_RECEIPT_SCHEMA_V3}
+                in {
+                    _CODEX_RECEIPT_SCHEMA_V2,
+                    _CODEX_RECEIPT_SCHEMA_V3,
+                    _CODEX_RECEIPT_SCHEMA_V4,
+                }
                 and invocation.get("candidate_persistence_policy_id")
                 != CANDIDATE_PERSISTENCE_POLICY
             )
             or (
-                expected_schema == _CODEX_RECEIPT_SCHEMA_V3
+                expected_schema == _CODEX_RECEIPT_SCHEMA_V4
                 and (
-                    invocation.get("boundary_quiescence_policy_id")
-                    != BOUNDARY_QUIESCENCE_POLICY
-                    or not isinstance(invocation.get("process_tree_tracking"), dict)
-                    or invocation["process_tree_tracking"].get("policy")
-                    != "proc_descendant_lineage_and_inherited_attempt_token_v1"
+                    invocation.get("agent_process_containment_policy_id")
+                    != AGENT_PROCESS_CONTAINMENT_POLICY
+                    or invocation.get("attempt_containment_policy_id")
+                    != ATTEMPT_CONTAINMENT_POLICY
                     or not isinstance(
-                        invocation["process_tree_tracking"].get("token_sha256"), str
+                        invocation.get("attempt_process_boundary"), dict
                     )
-                    or not _SHA256.fullmatch(
-                        invocation["process_tree_tracking"]["token_sha256"]
-                    )
+                    or not isinstance(cleanup, dict)
+                    or invocation.get("attempt_process_boundary")
+                    != cleanup.get("boundary")
                 )
             )
         ):
@@ -1624,7 +1635,7 @@ def _validate_session_receipt(
                 errors.append(f"direct_codex_{name}_size_mismatch")
 
         if checkpoint_turn_budget and isinstance(candidate_persistence, dict):
-            output_tail = candidate_persistence.get("output_tail")
+            output_tail = persistence.get("output_tail")
             try:
                 raw_stdout_text = expected_artifacts["raw_stdout"].read_text(
                     encoding="utf-8"
@@ -1695,6 +1706,27 @@ def _validate_session_receipt(
                 if isinstance(workspace_integrity, dict)
                 else None
             )
+            before_paths = set(before_manifest)
+            after_paths = set(after_manifest)
+            recomputed_created = sorted(after_paths - before_paths)
+            recomputed_deleted = sorted(before_paths - after_paths)
+            recomputed_changed = sorted(
+                path
+                for path in before_paths & after_paths
+                if before_manifest[path] != after_manifest[path]
+            )
+            recomputed_unauthorized = sorted(
+                path for path in recomputed_changed if path not in editable
+            )
+            recomputed_mode_changes = sorted(
+                path
+                for path in recomputed_changed
+                if path in editable
+                and isinstance(before_manifest.get(path), dict)
+                and isinstance(after_manifest.get(path), dict)
+                and before_manifest[path].get("mode")
+                != after_manifest[path].get("mode")
+            )
             if (
                 not isinstance(raw_changes, dict)
                 or workspace_integrity.get("raw_manifest_error") is not None
@@ -1710,13 +1742,22 @@ def _validate_session_receipt(
                 not isinstance(final_changes, dict)
                 or final_changes.get("before_manifest_sha256") != before_digest
                 or final_changes.get("after_manifest_sha256") != after_digest
-                or final_changes.get("created_files") != []
-                or final_changes.get("deleted_files") != []
-                or final_changes.get("unauthorized_changed_files") != []
-                or final_changes.get("editable_mode_changes") != []
-                or not set(final_changes.get("changed_files", [])).issubset(editable)
+                or final_changes.get("created_files") != recomputed_created
+                or final_changes.get("deleted_files") != recomputed_deleted
+                or final_changes.get("changed_files") != recomputed_changed
+                or final_changes.get("unauthorized_changed_files")
+                != recomputed_unauthorized
+                or final_changes.get("editable_mode_changes")
+                != recomputed_mode_changes
+                or bool(recomputed_created)
+                or bool(recomputed_deleted)
+                or bool(recomputed_unauthorized)
+                or bool(recomputed_mode_changes)
+                or not set(recomputed_changed).issubset(editable)
             ):
                 errors.append("direct_codex_sanitized_manifest_contract_mismatch")
+            if receipt.get("session_succeeded") is True and not recomputed_changed:
+                errors.append("direct_codex_zero_source_delta")
             if (
                 not isinstance(sanitization, dict)
                 or sanitization.get("performed") is not True
@@ -1726,9 +1767,7 @@ def _validate_session_receipt(
                 errors.append("direct_codex_workspace_sanitization_unverified")
             if checkpoint_turn_budget:
                 checkpoint = (
-                    candidate_persistence.get("checkpoint")
-                    if isinstance(candidate_persistence, dict)
-                    else None
+                    persistence.get("checkpoint")
                 )
                 expected_checkpoint = {
                     "before_manifest_sha256": before_digest,
@@ -1738,20 +1777,17 @@ def _validate_session_receipt(
                     else None,
                     "editable_files": workspace_integrity.get("editable_files"),
                 }
-                if expected_schema == _CODEX_RECEIPT_SCHEMA_V3:
+                if expected_schema == _CODEX_RECEIPT_SCHEMA_V4:
                     expected_checkpoint.update(
                         {
-                            "suspension_sha256": _canonical_json_digest(
-                                candidate_persistence.get("suspension")
-                            ),
                             "boundary_snapshot_sha256": _canonical_json_digest(
-                                candidate_persistence.get("boundary_snapshot")
+                                persistence.get("boundary_snapshot")
                             ),
                             "output_tail_sha256": _canonical_json_digest(
-                                candidate_persistence.get("output_tail")
+                                persistence.get("output_tail")
                             ),
-                            "process_tree_cleanup_sha256": _canonical_json_digest(
-                                candidate_persistence.get("process_tree_cleanup")
+                            "attempt_cleanup_sha256": _canonical_json_digest(
+                                persistence.get("attempt_cleanup")
                             ),
                         }
                     )
@@ -1759,6 +1795,97 @@ def _validate_session_receipt(
                     errors.append("direct_codex_checkpoint_manifest_mismatch")
 
     return receipt, sorted(set(errors))
+
+
+def _pid_namespace_cleanup_valid(
+    cleanup: Any,
+    *,
+    exit_code: Any,
+    allowed_reasons: set[str],
+    required_procfs: str = "private_attempt_procfs",
+) -> bool:
+    """Validate the common direct/Apex per-attempt containment proof."""
+    return attempt_cleanup_verified(
+        cleanup,
+        exit_code=exit_code,
+        allowed_reasons=allowed_reasons,
+        required_procfs=required_procfs,
+    )
+
+
+def _apex_agent_containment_valid(
+    receipt: Any, *, forced_stop: bool
+) -> bool:
+    """Recompute Apex's inner backend PID-namespace proof from typed fields."""
+    if not isinstance(receipt, dict):
+        return False
+    positive_fields = (
+        "namespace_init_host_pid",
+        "namespace_init_starttime",
+        "namespace_init_inner_pid",
+        "pid_namespace_inode",
+        "mount_namespace_inode",
+        "ipc_namespace_inode",
+        "user_namespace_inode",
+    )
+    launcher = receipt.get("launcher_path")
+    try:
+        launcher_path = Path(launcher) if isinstance(launcher, str) else None
+        launcher_valid = (
+            launcher_path is not None
+            and launcher_path.is_absolute()
+            and launcher_path.is_file()
+            and not launcher_path.is_symlink()
+            and _sha256_file(launcher_path) == receipt.get("launcher_sha256")
+        )
+    except OSError:
+        launcher_valid = False
+    terminal_verified = receipt.get("terminal_status_verified") is True
+    terminal_absent = (
+        receipt.get("terminal_status_absent_after_sigkill") is True
+    )
+    terminal_route = terminal_verified != terminal_absent
+    terminal_fields_typed = (
+        type(receipt.get("terminal_status_verified")) is bool
+        and type(receipt.get("terminal_status_absent_after_sigkill")) is bool
+    )
+    common = (
+        receipt.get("schema") == "apex.agent-process-containment/v1"
+        and receipt.get("policy_id") == AGENT_PROCESS_CONTAINMENT_POLICY
+        and launcher_valid
+        and all(
+            type(receipt.get(field)) is int and receipt[field] > 0
+            for field in positive_fields
+        )
+        and receipt.get("namespace_init_inner_pid") == 1
+        and receipt.get("private_procfs_verified") is True
+        and receipt.get("pidfd_opened") is True
+        and receipt.get("namespace_init_exit_verified") is True
+        and receipt.get("wrapper_exit_verified") is True
+        and receipt.get("wrapper_force_killed") is False
+        and terminal_fields_typed
+        and terminal_route
+        and receipt.get("status_eof_verified") is True
+        and receipt.get("namespace_membership_scan_complete") is True
+        and receipt.get("live_namespace_members_after") == []
+        and receipt.get("namespace_empty_verified") is True
+    )
+    if not common:
+        return False
+    if forced_stop:
+        return (
+            receipt.get("termination_reason") == "stdout_budget_boundary"
+            and receipt.get("teardown_mode") == "pidfd_sigkill"
+            and receipt.get("pidfd_sigkill_sent") is True
+            and terminal_route
+        )
+    return (
+        receipt.get("termination_reason") == "natural_exit"
+        and receipt.get("teardown_mode") == "natural_exit"
+        and receipt.get("pidfd_sigkill_sent") is False
+        and terminal_verified
+        and not terminal_absent
+    )
 
 
 def _canonical_json_digest(value: Any) -> str:
@@ -2201,6 +2328,8 @@ def _apex_run_control_errors(
         control.get("schema") != "aka.apex-caller-run-control/v1"
         or control.get("deliverable_versions") != 1
         or not persistence_valid
+        or control.get("process_containment_policy_id")
+        != AGENT_PROCESS_CONTAINMENT_POLICY
         or turn_budget
         != {
             "policy": expected_turn_policy,
@@ -2290,9 +2419,10 @@ def _apex_checkpoint_evidence_errors(
     transcript: dict[str, Any],
     payload: dict[str, Any],
     persistence: Any,
+    attempt_cleanup: Any,
     status: str,
 ) -> list[str]:
-    """Validate v3 typed termination before source can be treated as persistent."""
+    """Validate typed inner containment before source may become persistent."""
     termination = transcript.get("termination")
     semantic_events = transcript.get("semantic_events")
     if not isinstance(termination, dict) or not isinstance(semantic_events, list):
@@ -2305,6 +2435,7 @@ def _apex_checkpoint_evidence_errors(
     )
     kind = payload.get("termination_kind")
     exact = kind == "exact_turn_boundary"
+    budget_overrun = status == "budget_exhausted" and kind == "turn_overrun"
     expected_fields = {
         "kind": "termination_kind",
         "reason": "termination_reason",
@@ -2313,11 +2444,7 @@ def _apex_checkpoint_evidence_errors(
         "observer_stop_sent": "observer_stop_sent",
         "observed_turns": "observed_turns",
     }
-    expected_suspension = {
-        "policy_id": BOUNDARY_QUIESCENCE_POLICY,
-        "sent": payload.get("observer_suspend_sent"),
-        "verified": payload.get("suspension_verified"),
-    }
+    process_containment = payload.get("process_containment")
     expected_discarded_tail = {
         "lines": payload.get("discarded_stdout_lines"),
         "bytes": payload.get("discarded_stdout_bytes"),
@@ -2354,66 +2481,86 @@ def _apex_checkpoint_evidence_errors(
         or (not tail_present and tail_sha256 is not None)
     )
     invalid = (
-        transcript.get("schema") != "apex.agent-transcript/v2"
+        transcript.get("schema") != "apex.agent-transcript/v3"
         or any(
             termination.get(transcript_key) != payload.get(payload_key)
             for transcript_key, payload_key in expected_fields.items()
         )
         or termination.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
         or termination.get("turn_policy") != TURN_POLICY
-        or termination.get("suspension") != expected_suspension
+        or termination.get("process_containment") != process_containment
         or termination.get("discarded_stdout_tail")
         != expected_discarded_tail
         or tail_invalid
         or payload.get("observed_turns") != observed
         or payload.get("capture_status") != "complete"
-        or payload.get("candidate_capture_allowed") is not True
         or payload.get("timed_out") is not False
         or not isinstance(payload.get("observer_stop_sent"), bool)
-        or not isinstance(payload.get("observer_suspend_sent"), bool)
-        or not isinstance(payload.get("suspension_verified"), bool)
-        or payload.get("boundary_quiescence_policy_id")
-        != BOUNDARY_QUIESCENCE_POLICY
-        or kind not in {"completed", "exact_turn_boundary"}
+        or payload.get("process_containment_policy_id")
+        != AGENT_PROCESS_CONTAINMENT_POLICY
+        or not _apex_agent_containment_valid(
+            process_containment, forced_stop=exact or budget_overrun
+        )
         or (
-            exact
+            status != "budget_exhausted"
+            and (
+                kind not in {"completed", "exact_turn_boundary"}
+                or payload.get("candidate_capture_allowed") is not True
+            )
+        )
+        or (
+            status == "budget_exhausted"
+            and (
+                not budget_overrun
+                or payload.get("candidate_capture_allowed") is not False
+                or payload.get("termination_reason") != "max_turns_overrun"
+                or observed <= FORMAL_MATCHED_MAX_TURNS
+                or payload.get("observer_stop_sent") is not True
+                or payload.get("exit_code") != 128 + int(signal.SIGKILL)
+            )
+        )
+        or (
+            status != "budget_exhausted"
+            and exact
             and (
                 observed != FORMAL_MATCHED_MAX_TURNS
                 or payload.get("termination_reason")
                 != "max_turns_exact_boundary"
-                or payload.get("observer_suspend_sent") is not True
-                or payload.get("suspension_verified") is not True
-                or (
-                    payload.get("exit_code") != 0
-                    and payload.get("observer_stop_sent") is not True
-                )
+                or payload.get("observer_stop_sent") is not True
+                or payload.get("exit_code") != 128 + int(signal.SIGKILL)
             )
         )
         or (
-            not exact
+            status != "budget_exhausted"
+            and not exact
             and (
                 not 1 <= observed <= FORMAL_MATCHED_MAX_TURNS
                 or payload.get("termination_reason") is not None
                 or payload.get("exit_code") != 0
                 or payload.get("observer_stop_sent") is not False
-                or payload.get("observer_suspend_sent") is not False
-                or payload.get("suspension_verified") is not False
             )
         )
     )
     if invalid:
         return ["apex_checkpoint_termination_evidence_invalid"]
     expected_persistence = {
-        "schema": "aka.candidate-persistence-receipt/v3",
+        "schema": "aka.candidate-persistence-receipt/v4",
         "policy_id": CANDIDATE_PERSISTENCE_POLICY,
-        "boundary_quiescence_policy_id": BOUNDARY_QUIESCENCE_POLICY,
+        "agent_process_containment_policy_id": (
+            AGENT_PROCESS_CONTAINMENT_POLICY
+        ),
+        "agent_process_containment_sha256": _canonical_json_digest(
+            process_containment
+        ),
+        "attempt_containment_policy_id": ATTEMPT_CONTAINMENT_POLICY,
+        "attempt_process_cleanup_sha256": _canonical_json_digest(
+            attempt_cleanup
+        ),
         "termination_kind": kind,
         "termination_reason": payload.get("termination_reason"),
         "capture_status": "complete",
-        "candidate_capture_allowed": True,
+        "candidate_capture_allowed": payload.get("candidate_capture_allowed"),
         "observer_stop_sent": payload.get("observer_stop_sent"),
-        "observer_suspend_sent": payload.get("observer_suspend_sent"),
-        "suspension_verified": payload.get("suspension_verified"),
         "discarded_stdout_tail": expected_discarded_tail,
         "observed_turns": observed,
     }
@@ -2509,7 +2656,12 @@ def _validate_apex_session_receipt(
         )
     )
     receipt_schema = receipt.get("schema")
-    checkpoint_receipt = expected_receipt_schema == _APEX_RECEIPT_SCHEMA_V3
+    checkpoint_receipt = expected_receipt_schema == _APEX_RECEIPT_SCHEMA_V4
+    budget_failure_reason = (
+        "agent_turn_budget_overrun"
+        if checkpoint_receipt
+        else "agent_turn_budget_exceeded"
+    )
     if receipt_schema not in _APEX_RECEIPT_SCHEMAS:
         errors.append("apex_receipt_schema_mismatch")
     if receipt_schema != expected_receipt_schema:
@@ -2546,13 +2698,36 @@ def _validate_apex_session_receipt(
     )
     if not status_consistent:
         errors.append("apex_receipt_success_status_inconsistent")
-    cleanup = receipt.get("process_group_cleanup")
-    if (
-        not isinstance(cleanup, dict)
-        or cleanup.get("verification_performed") is not True
-        or cleanup.get("verified_absent") is not True
+    cleanup = receipt.get(
+        "attempt_process_cleanup"
+        if checkpoint_receipt
+        else "process_group_cleanup"
+    )
+    if checkpoint_receipt and (
+        receipt.get("agent_process_containment_policy_id")
+        != AGENT_PROCESS_CONTAINMENT_POLICY
+        or receipt.get("attempt_containment_policy_id")
+        != ATTEMPT_CONTAINMENT_POLICY
     ):
-        errors.append("apex_process_group_not_verified_absent")
+        errors.append("apex_attempt_containment_policy_mismatch")
+    cleanup_valid = (
+        _pid_namespace_cleanup_valid(
+            cleanup,
+            exit_code=receipt.get("exit_code"),
+            allowed_reasons={"normal_exit"},
+            required_procfs="trusted_orchestrator_inherited_procfs",
+        )
+        if checkpoint_receipt
+        else isinstance(cleanup, dict)
+        and cleanup.get("verification_performed") is True
+        and cleanup.get("verified_absent") is True
+    )
+    if not cleanup_valid:
+        errors.append(
+            "apex_outer_attempt_namespace_not_verified_absent"
+            if checkpoint_receipt
+            else "apex_process_group_not_verified_absent"
+        )
     capture = receipt.get("capture")
     if (
         not isinstance(capture, dict)
@@ -2602,7 +2777,11 @@ def _validate_apex_session_receipt(
         not in {LEGACY_TURN_POLICY, TURN_POLICY}
         or (
             checkpoint_receipt
-            and expected_codex.get("turn_policy") != TURN_POLICY
+            and (
+                expected_codex.get("turn_policy") != TURN_POLICY
+                or expected_codex.get("agent_process_containment_policy_id")
+                != AGENT_PROCESS_CONTAINMENT_POLICY
+            )
         )
     ):
         errors.append("apex_immutable_budget_contract_mismatch")
@@ -2666,6 +2845,7 @@ def _validate_apex_session_receipt(
     new_prompt_receipt = expected_receipt_schema in {
         _APEX_RECEIPT_SCHEMA_V2,
         _APEX_RECEIPT_SCHEMA_V3,
+        _APEX_RECEIPT_SCHEMA_V4,
     }
     expected_artifacts = {
         "task_spec": "task_spec.json",
@@ -2751,9 +2931,9 @@ def _validate_apex_session_receipt(
     if failed_terminal:
         result_error = result.get("error")
         result_contract_invalid = result_contract_invalid or (
-            result.get("reason_code") != "agent_turn_budget_exceeded"
+            result.get("reason_code") != budget_failure_reason
             or not isinstance(result_error, dict)
-            or result_error.get("reason_code") != "agent_turn_budget_exceeded"
+            or result_error.get("reason_code") != budget_failure_reason
         )
     else:
         result_contract_invalid = result_contract_invalid or result.get("error") is not None
@@ -2796,6 +2976,7 @@ def _validate_apex_session_receipt(
                     transcript=transcript,
                     payload=payload,
                     persistence=candidate_persistence,
+                    attempt_cleanup=cleanup,
                     status=status,
                 )
             )
@@ -2821,7 +3002,7 @@ def _validate_apex_session_receipt(
         if outcome_invalid:
             errors.append("apex_agent_completion_receipt_mismatch")
         expected_transcript_schema = (
-            "apex.agent-transcript/v2"
+            "apex.agent-transcript/v3"
             if checkpoint_receipt
             else "apex.agent-transcript/v1"
         )
@@ -2857,7 +3038,7 @@ def _validate_apex_session_receipt(
             not isinstance(invocation, dict)
             or invocation.get("schema")
             != (
-                "apex.agent-invocation/v2"
+                "apex.agent-invocation/v3"
                 if checkpoint_receipt
                 else "apex.agent-invocation/v1"
             )
@@ -2870,8 +3051,8 @@ def _validate_apex_session_receipt(
             or invocation.get("turn_policy") != apex_expected_turn_policy
             or (
                 checkpoint_receipt
-                and invocation.get("boundary_quiescence_policy_id")
-                != BOUNDARY_QUIESCENCE_POLICY
+                and invocation.get("process_containment_policy_id")
+                != AGENT_PROCESS_CONTAINMENT_POLICY
             )
             or not isinstance(argv, list)
             or not {
@@ -2935,7 +3116,7 @@ def _validate_apex_session_receipt(
         matching_verdicts[0]["event_type"] != "decision"
         or matching_verdicts[0]["payload"].get("verdict") != "reject"
         or matching_verdicts[0]["payload"].get("reason")
-        != "agent_turn_budget_exceeded"
+        != budget_failure_reason
     ):
         errors.append("apex_internal_verdict_ref_invalid")
     elif status == "candidate_ready" and (
@@ -2946,7 +3127,7 @@ def _validate_apex_session_receipt(
     if new_prompt_receipt and events:
         expected_head_type = "run.failed" if failed_terminal else "run.succeeded"
         expected_head_reason = (
-            "agent_turn_budget_exceeded"
+            budget_failure_reason
             if failed_terminal
             else "candidate_ready" if status == "candidate_ready" else result.get("reason_code")
         )

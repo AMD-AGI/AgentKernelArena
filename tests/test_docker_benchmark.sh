@@ -104,8 +104,10 @@ touch "$UNRELATED_GEAK_WORKFLOW_DIR/kernel_workflow.js"
 bash -n "$RUNNER"
 grep -Fq 'json.dumps(dict(device_count=count' "$RUNNER" \
     || fail "runtime GPU observation must avoid nested single-quote corruption"
-grep -Fq -- '--bind /proc /proc' "$RUNNER" \
-    || fail "rootless bwrap preflight must expose writable Docker-private procfs for nested Codex userns"
+grep -Fq -- '--unshare-pid --unshare-ipc' "$RUNNER" \
+    || fail "rootless bwrap preflight must create a private attempt PID namespace"
+grep -Fq -- '--proc /proc' "$RUNNER" \
+    || fail "rootless bwrap preflight must mount the attempt-private procfs"
 
 # Formal HOME preparation is fail-closed: it overrides every caller-provided
 # mutable path. The same helper must be a strict no-op outside a formal campaign.
@@ -373,6 +375,7 @@ assert_has "$ROOT/agents/codex/formal_requirements.toml:/etc/codex/requirements.
 assert_has "--security-opt=seccomp=unconfined" "${args[@]}"
 assert_has "--security-opt=apparmor=unconfined" "${args[@]}"
 assert_has "--security-opt=no-new-privileges:true" "${args[@]}"
+assert_has "--security-opt=systempaths=unconfined" "${args[@]}"
 assert_has "--cap-drop=ALL" "${args[@]}"
 assert_not_has "--privileged" "${args[@]}"
 assert_not_has "--cap-add=SYS_ADMIN" "${args[@]}"
