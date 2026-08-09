@@ -7,6 +7,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TASK_ROOT = REPO_ROOT / "tasks" / "triton2triton" / "vllm"
+TOPK_TASK_ROOT = TASK_ROOT / "triton_topk_log_softmax"
 
 RUNNER_PATHS = {
     name: TASK_ROOT / name / "scripts" / "task_runner.py"
@@ -215,6 +216,18 @@ class VllmPublicContractHardeningTests(unittest.TestCase):
         cases = _literal_assignment(tree, "CORRECTNESS_CASES")
         by_name = {case["name"]: case for case in cases}
 
+        self.assertEqual(
+            set(by_name),
+            {
+                "padded_stride_fp16_nonpower_duplicates",
+                "large_vocab_batch1_bfloat16_int32_duplicates",
+                "negative_inf_in_every_row",
+                "all_negative_inf_small_row_matches_reference",
+                "full_negative_inf_chunk_with_finite_neighbors",
+                "all_negative_inf_row_matches_reference",
+            },
+        )
+
         fp16_case = by_name["padded_stride_fp16_nonpower_duplicates"]
         self.assertEqual(fp16_case["logits_dtype"], "float16")
         self.assertNotEqual(fp16_case["vocab"] & (fp16_case["vocab"] - 1), 0)
@@ -226,28 +239,107 @@ class VllmPublicContractHardeningTests(unittest.TestCase):
         self.assertEqual(large_case["token_ids_dtype"], "int32")
         self.assertGreater(large_case["vocab"], 32768)
 
+        every_row_case = by_name["negative_inf_in_every_row"]
+        self.assertEqual(every_row_case["data"], "negative_inf_each_row")
+
+        small_empty_row_case = by_name[
+            "all_negative_inf_small_row_matches_reference"
+        ]
+        self.assertEqual(small_empty_row_case["data"], "all_negative_inf_row")
+        self.assertEqual(small_empty_row_case["expected_nan_rows"], (0,))
+        self.assertLess(small_empty_row_case["vocab"], 8192)
+
+        empty_chunk_case = by_name[
+            "full_negative_inf_chunk_with_finite_neighbors"
+        ]
+        self.assertEqual(empty_chunk_case["data"], "negative_inf_full_chunk")
+        self.assertEqual(empty_chunk_case["negative_inf_chunk_size"], 1024)
+        chunk_start = empty_chunk_case["negative_inf_chunk_start"]
+        self.assertEqual(chunk_start % 1024, 0)
+        self.assertGreater(chunk_start, 0)
+        self.assertGreater(
+            empty_chunk_case["vocab"],
+            chunk_start + empty_chunk_case["negative_inf_chunk_size"],
+        )
+        self.assertGreaterEqual(empty_chunk_case["vocab"], 8192)
+
+        all_empty_row_case = by_name[
+            "all_negative_inf_row_matches_reference"
+        ]
+        self.assertEqual(all_empty_row_case["data"], "all_negative_inf_row")
+        self.assertEqual(all_empty_row_case["expected_nan_rows"], (0,))
+        self.assertGreaterEqual(all_empty_row_case["vocab"], 8192)
+
         factory_ast = ast.unparse(
             _function(tree, "_make_topk_correctness_inputs")
         )
         self.assertIn("logits_storage[:, :vocab]", factory_ast)
         self.assertIn("duplicate_unsorted_ids", factory_ast)
+        self.assertIn(
+            "logits[:, chunk_start:chunk_start + chunk_size] = float('-inf')",
+            factory_ast,
+        )
+        self.assertIn(
+            "logits[all_negative_inf_row, :] = float('-inf')",
+            factory_ast,
+        )
 
         factory = _function(tree, "_make_topk_correctness_inputs")
-        ids = None
-        for node in factory.body:
+        id_lists = []
+        for node in ast.walk(factory):
             if (
                 isinstance(node, ast.Assign)
                 and isinstance(node.targets[0], ast.Name)
                 and node.targets[0].id == "duplicate_unsorted_ids"
             ):
-                ids = [ast.unparse(element) for element in node.value.elts]
-        self.assertIsNotNone(ids)
-        self.assertNotEqual(ids, sorted(ids))
-        self.assertLess(len(set(ids)), len(ids))
+                id_lists.append(
+                    [ast.unparse(element) for element in node.value.elts]
+                )
+        self.assertEqual(len(id_lists), 2)
+        for ids in id_lists:
+            self.assertNotEqual(ids, sorted(ids))
+            self.assertLess(len(set(ids)), len(ids))
+        chunk_ids = next(ids for ids in id_lists if "chunk_start" in ids)
+        self.assertIn("chunk_start + chunk_size - 1", chunk_ids)
+        self.assertIn("chunk_start + 11", chunk_ids)
+        self.assertIn("3", chunk_ids)
+        self.assertIn("vocab - 7", chunk_ids)
 
         correctness_ast = ast.unparse(_function(tree, "run_correctness"))
-        self.assertIn("original_logits_storage", correctness_ast)
-        self.assertIn("token_ids.untyped_storage().data_ptr()", correctness_ast)
+        checker_ast = ast.unparse(_function(tree, "_check_topk_case"))
+        self.assertIn("_check_topk_case", correctness_ast)
+        self.assertIn("frozen_inputs", checker_ast)
+        self.assertIn("tensor.untyped_storage().data_ptr()", checker_ast)
+        self.assertIn("expected_nan_rows", checker_ast)
+        self.assertIn("equal_nan=True", checker_ast)
+        self.assertIn("for invocation in range(1, 3)", checker_ast)
+
+    def test_topk_baseline_remains_monolithic(self) -> None:
+        source_path = TOPK_TASK_ROOT / "source" / "triton_topk_log_softmax.py"
+        _, tree = _parse(source_path)
+
+        monolithic = ast.unparse(_function(tree, "_topk_log_softmax_kernel"))
+        wrapper = ast.unparse(_function(tree, "compute_token_logprobs"))
+
+        self.assertEqual(monolithic.count("for i in range(0, vocab_size, BLOCK_SIZE)"), 2)
+        self.assertIn("max_val = tl.max(tl.maximum(logits, max_val))", monolithic)
+        self.assertIn("e = tl.where(block < vocab_size, e, 0.0)", monolithic)
+        self.assertEqual(wrapper.count("_topk_log_softmax_kernel"), 1)
+        self.assertNotIn("chunk", wrapper)
+        function_names = {
+            node.name for node in tree.body if isinstance(node, ast.FunctionDef)
+        }
+        self.assertEqual(
+            function_names,
+            {"_topk_log_softmax_kernel", "compute_token_logprobs"},
+        )
+
+    def test_topk_config_states_complete_nonfinite_policy(self) -> None:
+        config = (TOPK_TASK_ROOT / "config.yaml").read_text()
+        self.assertIn("finite logits and `-inf` logits are supported", config)
+        self.assertIn("If an entire row is `-inf`", config)
+        self.assertIn("Any row containing `+inf` or NaN", config)
+        self.assertIn("outside the supported input domain", config)
 
 
 if __name__ == "__main__":

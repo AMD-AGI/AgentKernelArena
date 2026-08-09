@@ -12,6 +12,7 @@ import signal
 import shutil
 import sqlite3
 import subprocess
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -22,6 +23,7 @@ import main as aka_main
 from src import campaign
 from src import campaign_isolation
 from src import evaluator
+from src.evaluator_utils import inspect_formal_source_anti_tamper
 from main import claim_next_descriptor, initialize_parallel_queue
 
 
@@ -393,6 +395,15 @@ def _test_agent_manifest(name: str) -> dict:
         "backend_runtime_closure_schema": campaign.BACKEND_CLOSURE_SCHEMA,
         "backend_runtime_closure_sha256": closure["closure_sha256"],
         "backend_runtime_closure": closure,
+        "cloud_config_bootstrap_schema": (
+            campaign.CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA
+        ),
+        "cloud_config_bootstrap_policy": (
+            campaign.CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY
+        ),
+        "cloud_config_bundle_sha256": "c" * 64,
+        "cloud_config_host_runtime_closure_sha256": "d" * 64,
+        "cloud_config_initial_refresh_receipt_sha256": "e" * 64,
         "isolation": {
             "approval": "never_via_strict_config",
             "execpolicy_rules": "ignored",
@@ -971,6 +982,17 @@ def test_outer_runtime_isolation_fails_closed_on_yama_or_capabilities(monkeypatc
 
 
 def _write_result(workspace: Path, optimized_ms: float, *, correct: bool = True) -> None:
+    source_path = workspace / "source/candidate.py"
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    if not source_path.exists():
+        source_path.write_text("import torch\n", encoding="utf-8")
+    config_path = workspace / "config.yaml"
+    if not config_path.exists():
+        config_path.write_text(
+            yaml.safe_dump({"source_file_path": ["source/candidate.py"]}),
+            encoding="utf-8",
+        )
+    task_config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     case = {
         "test_case_id": "case-1",
         "params": {"n": 64},
@@ -1005,6 +1027,12 @@ def _write_result(workspace: Path, optimized_ms: float, *, correct: bool = True)
         "agent_session_error_type": None,
         "agent_session_terminal_status": "candidate_ready",
     }
+    initial_guard = inspect_formal_source_anti_tamper(workspace, task_config)
+    payload["source_anti_tamper"] = inspect_formal_source_anti_tamper(
+        workspace,
+        task_config,
+        expected_source_manifest_sha256=initial_guard["source_manifest_sha256"],
+    )
     (workspace / "task_result.yaml").write_text(
         yaml.safe_dump(payload, sort_keys=False), encoding="utf-8"
     )
@@ -1040,6 +1068,65 @@ def test_diagnostic_replay_is_never_selection_eligible(tmp_path) -> None:
     assert record["agent_session_score_eligible"] is False
     assert "diagnostic_evaluation_not_scoreable" in record["eligibility_errors"]
     assert "agent_session_not_score_eligible" in record["eligibility_errors"]
+
+
+def test_formal_eligibility_rejects_deleted_or_forged_guard_report(tmp_path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _write_result(workspace, 1.0)
+    report_path = workspace / "task_result.yaml"
+    original = yaml.safe_load(report_path.read_text(encoding="utf-8"))
+
+    deleted = copy.deepcopy(original)
+    deleted.pop("source_anti_tamper")
+    assert "missing_formal_source_anti_tamper_report" in (
+        campaign._evaluation_eligibility_errors(workspace, deleted)
+    )
+
+    forged = copy.deepcopy(original)
+    forged["source_anti_tamper"]["verdict"] = "PASS"
+    forged["source_anti_tamper"]["rules_sha256"] = "f" * 64
+    errors = campaign._evaluation_eligibility_errors(workspace, forged)
+    assert "formal_source_anti_tamper_rules_mismatch" in errors
+    assert "formal_source_anti_tamper_report_mismatch" in errors
+
+
+def test_formal_eligibility_rejects_source_changed_after_guard_receipt(tmp_path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _write_result(workspace, 1.0)
+    report = yaml.safe_load(
+        (workspace / "task_result.yaml").read_text(encoding="utf-8")
+    )
+    (workspace / "source/candidate.py").write_text(
+        "import torch\nVALUE = 2\n", encoding="utf-8"
+    )
+
+    errors = campaign._evaluation_eligibility_errors(workspace, report)
+
+    assert "formal_source_anti_tamper_report_mismatch" in errors
+
+
+def test_formal_eligibility_rejects_cross_attempt_guard_substitution(tmp_path) -> None:
+    first = tmp_path / "attempt_01"
+    second = tmp_path / "attempt_02"
+    for workspace, value in ((first, 1), (second, 2)):
+        (workspace / "source").mkdir(parents=True)
+        (workspace / "source/candidate.py").write_text(
+            f"import torch\nVALUE = {value}\n", encoding="utf-8"
+        )
+        _write_result(workspace, 1.0)
+    first_report = yaml.safe_load(
+        (first / "task_result.yaml").read_text(encoding="utf-8")
+    )
+    second_report = yaml.safe_load(
+        (second / "task_result.yaml").read_text(encoding="utf-8")
+    )
+    first_report["source_anti_tamper"] = second_report["source_anti_tamper"]
+
+    errors = campaign._evaluation_eligibility_errors(first, first_report)
+
+    assert "formal_source_anti_tamper_report_mismatch" in errors
 
 
 def test_formal_attempt_mount_keeps_workspace_read_only_and_artifacts_private(
@@ -1190,10 +1277,43 @@ def test_formal_attempt_rejects_broad_and_overlapping_trusted_roots(
         )
 
 
-def test_formal_codex_home_copies_auth_only(tmp_path, monkeypatch) -> None:
+def test_formal_codex_home_copies_only_auth_and_signed_cloud_config(
+    tmp_path, monkeypatch
+) -> None:
     state = tmp_path / "agent-state/.codex"
     state.mkdir(parents=True)
-    (state / "auth.json").write_text('{"token":"fixture"}\n', encoding="utf-8")
+    account_id = "00000000-0000-0000-0000-000000000001"
+    (state / "auth.json").write_text(
+        json.dumps(
+            {
+                "auth_mode": "chatgpt",
+                "tokens": {"account_id": account_id},
+            }
+        ),
+        encoding="utf-8",
+    )
+    now = datetime.now(timezone.utc)
+    cache_bytes = json.dumps(
+        {
+            "signature": base64.b64encode(b"s" * 32).decode("ascii"),
+            "signed_payload": {
+                "version": 1,
+                "cached_at": now.isoformat().replace("+00:00", "Z"),
+                "expires_at": (now + timedelta(hours=1)).isoformat().replace(
+                    "+00:00", "Z"
+                ),
+                "chatgpt_user_id": "fixture-user",
+                "account_id": account_id,
+                "bundle": {
+                    "config_toml": {"enterprise_managed": []},
+                    "requirements_toml": {"enterprise_managed": []},
+                },
+            },
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    (state / "cloud-config-bundle-cache.json").write_bytes(cache_bytes)
     (state / "history.jsonl").write_text("prior context\n", encoding="utf-8")
     (state / "config.toml").write_text("model = 'wrong'\n", encoding="utf-8")
     attempt = tmp_path / "campaign/run/attempt_01"
@@ -1212,6 +1332,9 @@ def test_formal_codex_home_copies_auth_only(tmp_path, monkeypatch) -> None:
 
     assert home is not None
     assert (home / ".codex/auth.json").is_file()
+    assert (home / ".codex/cloud-config-bundle-cache.json").read_bytes() == (
+        cache_bytes
+    )
     assert not (home / ".codex/history.jsonl").exists()
     assert not (home / ".codex/config.toml").exists()
 
@@ -1262,6 +1385,15 @@ def _write_campaign_codex_contract(
         "backend_runtime_closure_schema": campaign.BACKEND_CLOSURE_SCHEMA,
         "backend_runtime_closure_sha256": closure["closure_sha256"],
         "backend_runtime_closure": closure,
+        "cloud_config_bootstrap_schema": (
+            campaign.CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA
+        ),
+        "cloud_config_bootstrap_policy": (
+            campaign.CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY
+        ),
+        "cloud_config_bundle_sha256": "c" * 64,
+        "cloud_config_host_runtime_closure_sha256": "d" * 64,
+        "cloud_config_initial_refresh_receipt_sha256": "e" * 64,
         "isolation": {
             "approval": "never_via_strict_config",
             "execpolicy_rules": "ignored",
@@ -1459,6 +1591,20 @@ def _fixture_campaign_binding(
         "attempt_index": attempt_index,
         "attempt_count": manifest["policy"]["attempts"],
         "assigned_host_gpu_id": mapping["assigned_host_gpu_id"],
+    }
+
+
+def _fixture_cloud_config_bootstrap(codex_contract: dict) -> dict:
+    return {
+        "schema": campaign.CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA,
+        "policy": campaign.CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY,
+        "relative_path": ".codex/cloud-config-bundle-cache.json",
+        "present": True,
+        "sha256": "b" * 64,
+        "size_bytes": 1024,
+        "bundle_sha256": codex_contract["cloud_config_bundle_sha256"],
+        "signed_envelope_shape_validated": True,
+        "payload_recorded": False,
     }
 
 
@@ -1849,6 +1995,9 @@ def _write_valid_codex_receipt(
             "version": codex_contract["codex_version"],
             "model": codex_contract["model"],
             "effort": codex_contract["effort"],
+            "cloud_config_bootstrap": _fixture_cloud_config_bootstrap(
+                codex_contract
+            ),
         },
         "invocation": {
             "argv_without_prompt": [
@@ -2612,6 +2761,9 @@ def _write_valid_apex_receipt(
             "version": codex_contract["codex_version"],
             "model": codex_contract["model"],
             "effort": codex_contract["effort"],
+            "cloud_config_bootstrap": _fixture_cloud_config_bootstrap(
+                codex_contract
+            ),
         },
         "invocation": invocation,
         "lineage": lineage,
@@ -3269,9 +3421,18 @@ def test_comparison_contract_projects_run_specific_gpu_lease_receipts() -> None:
         "codex_version": "codex test",
         "codex_binary_sha256": "1" * 64,
         "backend_runtime_closure_schema": campaign.BACKEND_CLOSURE_SCHEMA,
-        "backend_runtime_closure_sha256": closure["closure_sha256"],
-        "backend_runtime_closure": closure,
-        "isolation": {},
+            "backend_runtime_closure_sha256": closure["closure_sha256"],
+            "backend_runtime_closure": closure,
+            "cloud_config_bootstrap_schema": (
+                campaign.CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA
+            ),
+            "cloud_config_bootstrap_policy": (
+                campaign.CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY
+            ),
+            "cloud_config_bundle_sha256": "c" * 64,
+            "cloud_config_host_runtime_closure_sha256": "d" * 64,
+            "cloud_config_initial_refresh_receipt_sha256": "e" * 64,
+            "isolation": {},
     }
 
     def runtime(run_name: str, runner_pid: int, receipt_digest: str) -> dict:
@@ -3505,6 +3666,30 @@ def test_direct_codex_receipt_artifacts_and_pinned_identity_are_recomputed(
     assert "direct_codex_raw_stdout_hash_mismatch" in errors
     assert "direct_codex_raw_stdout_size_mismatch" in errors
     raw_stdout.parent.chmod(0o700)
+
+
+def test_direct_codex_receipt_rejects_cloud_config_bundle_drift(tmp_path) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    contract = _write_campaign_codex_contract(run, agent_template="codex")
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_codex_receipt(receipt_path, contract)
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    payload["codex"]["cloud_config_bootstrap"]["bundle_sha256"] = "d" * 64
+    receipt_path.chmod(0o644)
+    receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+    receipt_path.chmod(0o444)
+
+    _, errors = campaign._validate_session_receipt(
+        receipt_path=receipt_path,
+        workspace=workspace,
+        run_directory=run,
+    )
+
+    assert "direct_codex_cloud_config_bootstrap_invalid" in errors
+    _unlock_apex_receipt_directories(run)
 
 
 def test_direct_codex_prompt_and_comparison_contract_are_independently_recomputed(
@@ -3953,6 +4138,30 @@ def test_apex_receipt_must_bind_immutable_comparison_contract(tmp_path) -> None:
     )
 
     assert "apex_comparison_contract_digest_mismatch" in errors
+    _unlock_apex_receipt_directories(run)
+
+
+def test_apex_receipt_rejects_cloud_config_bundle_drift(tmp_path) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    workspace = run / ".campaign_attempts/task/attempt_01/workspace"
+    workspace.mkdir(parents=True)
+    contract = _write_campaign_codex_contract(run)
+    receipt_path = workspace.parent / "session_receipt.json"
+    _write_valid_apex_receipt(receipt_path, contract)
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    payload["codex"]["cloud_config_bootstrap"]["bundle_sha256"] = "d" * 64
+    receipt_path.chmod(0o644)
+    receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+    receipt_path.chmod(0o444)
+
+    _, errors = campaign._validate_session_receipt(
+        receipt_path=receipt_path,
+        workspace=workspace,
+        run_directory=run,
+    )
+
+    assert "apex_codex_cloud_config_bootstrap_invalid" in errors
     _unlock_apex_receipt_directories(run)
 
 

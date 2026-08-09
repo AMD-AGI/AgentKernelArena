@@ -78,6 +78,43 @@ rejects any missing or mismatched binding. Direct Codex additionally publishes t
 exact UTF-8 rendered prompt as a read-only receipt artifact; the verifier hashes
 those bytes and requires the result to equal `invocation.prompt_sha256`.
 
+Formal `run` and `preflight` first perform a synchronous, model-free host refresh
+with the exact command `codex app-server --listen stdio://`. The supervisor creates
+a private `0700` root, stable-reads the host `auth.json` through non-symlink file
+descriptors, deletes its staging cache before every generation, and invokes the
+pinned Codex/Node closure in a bounded clean environment. It never reads or mutates
+the user's host cloud-config cache. `docker-check-agents` performs the same refresh
+in a disposable diagnostic root; its receipt is diagnostic evidence, not a reusable
+campaign anchor.
+
+AKA accepts only the expected signed-envelope shape and account, a cache timestamp
+within the permitted clock skew, at least 630 seconds of remaining lifetime, and no
+more than two hours between issue and expiry. This is an identity/lifetime check,
+not a claim that AKA verified the signature; cryptographic verification remains the
+responsibility of the pinned Codex CLI. The first valid refresh anchors the canonical
+SHA-256 of `signed_payload.bundle`, and the complete host Codex/Node/package closure
+is pinned and rechecked around every later refresh. The supervisor atomically
+publishes exactly `auth.json` and `cloud-config-bundle-cache.json` into the formal
+home. History, model caches, user configuration, rules, and memory are never copied.
+
+At expiry minus ten minutes, the supervisor forces another cache miss and may
+publish the new envelope only if its canonical bundle SHA-256 still matches the
+campaign anchor. Bundle or host-runtime drift never replaces the last good cache;
+it terminates the exact owner process and makes the formal command fail with status
+71. If policy changes, stop both arms and initialize a new matched campaign rather
+than refreshing or restarting only one arm.
+
+Every generation writes an immutable receipt named
+`codex-cloud-config-refresh-<sequence>-<digest>.json` under the campaign data root.
+Receipts contain status, timing, policy, envelope/bundle/closure hashes and bounded
+stdout/stderr hashes and sizes, but no account ID, token, signature, or configuration
+payload. The initial receipt digest is bound into the campaign manifest. Later
+scheduled receipts form supervisor evidence but are not currently linked into each
+attempt receipt. Supervisor cleanup is independent of FUSE/runtime-mount cleanup and
+removes the private credential root on verified shell exit paths; an identity or
+cleanup validation failure retains it and fails the command instead of deleting an
+unverified path.
+
 Receipt v6 enforces exact-turn source persistence with
 `private_pid_namespace_init_pidfd_v1`. At turn 50, the reader immediately signals the
 namespace init through its pidfd. Linux destroys every member, including descendants

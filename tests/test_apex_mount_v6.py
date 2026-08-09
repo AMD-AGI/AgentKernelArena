@@ -213,6 +213,15 @@ def _v6_manifest(runtime_digest: str = "c" * 64) -> dict:
         "backend_runtime_closure_schema": "aka.backend-runtime-closure/v1",
         "backend_runtime_closure_sha256": "9" * 64,
         "backend_runtime_closure": _backend_closure(),
+        "cloud_config_bootstrap_schema": (
+            campaign_isolation.CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA
+        ),
+        "cloud_config_bootstrap_policy": (
+            campaign_isolation.CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY
+        ),
+        "cloud_config_bundle_sha256": "8" * 64,
+        "cloud_config_host_runtime_closure_sha256": "7" * 64,
+        "cloud_config_initial_refresh_receipt_sha256": "6" * 64,
         "max_process_output_bytes": campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS[
             "apex"
         ]["max_process_output_bytes"],
@@ -271,6 +280,14 @@ def _v6_manifest(runtime_digest: str = "c" * 64) -> dict:
         "codex": {
             "backend_runtime_closure_sha256": "9" * 64,
             "backend_runtime_closure": _backend_closure(),
+            "cloud_config_bootstrap_schema": (
+                campaign_isolation.CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA
+            ),
+            "cloud_config_bootstrap_policy": (
+                campaign_isolation.CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY
+            ),
+            "cloud_config_bundle_sha256": "8" * 64,
+            "cloud_config_host_runtime_closure_sha256": "7" * 64,
         },
         "runtime": comparison_runtime,
         "evaluator_files_sha256": evaluator,
@@ -363,6 +380,15 @@ def test_v6_comparison_binds_repository_mount_policy_and_runtime_digest(
         "backend_runtime_closure_schema": "aka.backend-runtime-closure/v1",
         "backend_runtime_closure_sha256": "9" * 64,
         "backend_runtime_closure": _backend_closure(),
+        "cloud_config_bootstrap_schema": (
+            campaign_isolation.CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA
+        ),
+        "cloud_config_bootstrap_policy": (
+            campaign_isolation.CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY
+        ),
+        "cloud_config_bundle_sha256": "8" * 64,
+        "cloud_config_host_runtime_closure_sha256": "7" * 64,
+        "cloud_config_initial_refresh_receipt_sha256": "6" * 64,
         "max_process_output_bytes": campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS[
             "codex"
         ]["max_process_output_bytes"],
@@ -441,6 +467,15 @@ def test_comparison_v6_digest_is_identical_for_apex_and_codex_arms() -> None:
         "backend_runtime_closure_schema": "aka.backend-runtime-closure/v1",
         "backend_runtime_closure_sha256": "9" * 64,
         "backend_runtime_closure": _backend_closure(),
+        "cloud_config_bootstrap_schema": (
+            campaign_isolation.CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA
+        ),
+        "cloud_config_bootstrap_policy": (
+            campaign_isolation.CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY
+        ),
+        "cloud_config_bundle_sha256": "8" * 64,
+        "cloud_config_host_runtime_closure_sha256": "7" * 64,
+        "cloud_config_initial_refresh_receipt_sha256": "6" * 64,
         "isolation": {},
     }
     apex = {

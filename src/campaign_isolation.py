@@ -3,10 +3,13 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import fcntl
 import hashlib
 import json
 import os
+import re
 import select
 import shutil
 import signal
@@ -15,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -220,6 +224,22 @@ _DOCKER_READONLY_PATHS = (
     "/proc/irq",
     "/proc/sys",
     "/proc/sysrq-trigger",
+)
+_CODEX_AUTH_RELATIVE_PATH = Path(".codex/auth.json")
+_CODEX_CLOUD_CONFIG_RELATIVE_PATH = Path(
+    ".codex/cloud-config-bundle-cache.json"
+)
+_CODEX_CLOUD_CONFIG_MAX_BYTES = 1024 * 1024
+_CODEX_CLOUD_CONFIG_MIN_TTL = timedelta(seconds=630)
+_CODEX_CLOUD_CONFIG_MAX_LIFETIME = timedelta(hours=2)
+_CODEX_CLOUD_CONFIG_CLOCK_SKEW = timedelta(minutes=5)
+_CODEX_CLOUD_CONFIG_TIMESTAMP = re.compile(
+    r"^(?P<seconds>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})"
+    r"(?:\.(?P<fraction>[0-9]{1,9}))?Z$"
+)
+CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA = "aka.codex-cloud-config-bootstrap/v2"
+CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY = (
+    "campaign_refreshed_minimal_home_identity_bound_signed_cache_v2"
 )
 
 _MOUNT_GATE_WRAPPER = r"""
@@ -1451,7 +1471,7 @@ def prepare_attempt_home(
     *,
     backend: str,
 ) -> Path | None:
-    """Copy only the selected backend login state into a fresh attempt home."""
+    """Copy only the selected backend bootstrap state into a fresh home."""
     if not is_formal_campaign(eval_config):
         return None
     attempt = eval_config["campaign_attempt"]
@@ -1461,34 +1481,331 @@ def prepare_attempt_home(
     home = receipt_path.parent / ".agent-home"
     if home.exists():
         raise CampaignIsolationError(f"attempt home already exists: {home}")
-    home.mkdir(mode=0o700)
 
     state_root = Path(os.environ.get("AGENT_STATE_MOUNT_ROOT", "/opt/aka-agent-state"))
+    codex_material: tuple[bytes, bytes, str] | None = None
+    if backend == "codex":
+        codex_material = _validated_codex_bootstrap_material(state_root)
+
+    home.mkdir(mode=0o700)
     selected = {
-        # A formal session receives authentication only. Copying the complete
-        # Codex home would expose prior transcripts, memories, caches, rules,
-        # and user configuration even when the CLI is asked not to load them.
-        "codex": (".codex/auth.json",),
+        # Codex authentication and its signed cloud-config envelope are copied
+        # separately from stable descriptors. Copying the complete Codex home
+        # would expose prior transcripts, memories, model caches, rules, and
+        # user configuration even when the CLI is asked not to load them.
+        "codex": (),
         "claude": (".claude", ".claude.json"),
         "cursor": (".cursor", ".config/cursor"),
     }.get(backend)
     if selected is None:
         raise CampaignIsolationError(f"unsupported isolated backend: {backend}")
-    for relative in selected:
-        source = state_root / relative
-        if not source.exists():
-            continue
-        _assert_safe_source(source)
-        destination = home / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if source.is_dir():
-            shutil.copytree(source, destination, symlinks=False)
-        elif source.is_file() and not source.is_symlink():
-            shutil.copy2(source, destination, follow_symlinks=False)
-        else:
-            raise CampaignIsolationError(f"unsafe backend state path: {source}")
-    _make_owner_writable(home)
+    try:
+        if codex_material is not None:
+            auth_bytes, cache_bytes, _ = codex_material
+            _write_private_regular(home / _CODEX_AUTH_RELATIVE_PATH, auth_bytes)
+            _write_private_regular(
+                home / _CODEX_CLOUD_CONFIG_RELATIVE_PATH, cache_bytes
+            )
+        for relative in selected:
+            source = state_root / relative
+            if not source.exists():
+                continue
+            _assert_safe_source(source)
+            destination = home / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if source.is_dir():
+                shutil.copytree(source, destination, symlinks=False)
+            elif source.is_file() and not source.is_symlink():
+                shutil.copy2(source, destination, follow_symlinks=False)
+            else:
+                raise CampaignIsolationError(f"unsafe backend state path: {source}")
+        _make_owner_writable(home)
+    except Exception:
+        shutil.rmtree(home, ignore_errors=True)
+        raise
     return home
+
+
+def _read_stable_regular(
+    path: Path,
+    *,
+    label: str,
+    maximum_bytes: int,
+) -> bytes:
+    """Read one bounded non-symlink file from a descriptor-stable identity."""
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+        )
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_size <= 0
+            or before.st_size > maximum_bytes
+        ):
+            raise CampaignIsolationError(f"formal {label} is not a safe regular file")
+        chunks = []
+        observed = 0
+        while observed <= maximum_bytes:
+            chunk = os.read(descriptor, min(64 * 1024, maximum_bytes + 1 - observed))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            observed += len(chunk)
+        after = os.fstat(descriptor)
+    except OSError as error:
+        raise CampaignIsolationError(f"formal {label} is unavailable") from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    identity_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+    if (
+        observed > maximum_bytes
+        or observed != before.st_size
+        or any(getattr(before, field) != getattr(after, field) for field in identity_fields)
+    ):
+        raise CampaignIsolationError(f"formal {label} changed while it was read")
+    return b"".join(chunks)
+
+
+def _json_object_without_duplicate_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _load_private_json(raw: bytes, *, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_json_object_without_duplicate_keys,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as error:
+        raise CampaignIsolationError(f"formal {label} is malformed") from error
+    if not isinstance(value, dict):
+        raise CampaignIsolationError(f"formal {label} must be a JSON object")
+    return value
+
+
+def _cloud_config_timestamp(value: Any, *, field: str) -> datetime:
+    if not isinstance(value, str):
+        raise CampaignIsolationError(
+            f"formal Codex cloud-config cache has an invalid {field}"
+        )
+    match = _CODEX_CLOUD_CONFIG_TIMESTAMP.fullmatch(value)
+    if match is None:
+        raise CampaignIsolationError(
+            f"formal Codex cloud-config cache has an invalid {field}"
+        )
+    fraction = (match.group("fraction") or "").ljust(6, "0")[:6]
+    try:
+        parsed = datetime.strptime(
+            match.group("seconds"), "%Y-%m-%dT%H:%M:%S"
+        ).replace(
+            microsecond=int(fraction or "0"),
+            tzinfo=timezone.utc,
+        )
+    except ValueError as error:
+        raise CampaignIsolationError(
+            f"formal Codex cloud-config cache has an invalid {field}"
+        ) from error
+    return parsed
+
+
+def _validate_codex_cloud_config_cache(
+    raw: bytes,
+    *,
+    expected_account_id: str,
+) -> str:
+    cache = _load_private_json(raw, label="Codex cloud-config cache")
+    if set(cache) != {"signature", "signed_payload"}:
+        raise CampaignIsolationError(
+            "formal Codex cloud-config cache is not a signed envelope"
+        )
+    signature = cache.get("signature")
+    try:
+        decoded_signature = base64.b64decode(signature, validate=True)
+    except (TypeError, ValueError, binascii.Error) as error:
+        raise CampaignIsolationError(
+            "formal Codex cloud-config cache signature is malformed"
+        ) from error
+    payload = cache.get("signed_payload")
+    if (
+        len(decoded_signature) != 32
+        or not isinstance(payload, dict)
+        or payload.get("version") != 1
+        or payload.get("account_id") != expected_account_id
+        or not isinstance(payload.get("chatgpt_user_id"), str)
+        or not payload["chatgpt_user_id"]
+    ):
+        raise CampaignIsolationError(
+            "formal Codex cloud-config cache identity or version is invalid"
+        )
+    bundle = payload.get("bundle")
+    if (
+        not isinstance(bundle, dict)
+        or set(bundle) != {"config_toml", "requirements_toml"}
+        or not all(isinstance(value, dict) for value in bundle.values())
+    ):
+        raise CampaignIsolationError(
+            "formal Codex cloud-config cache bundle shape is invalid"
+        )
+    cached_at = _cloud_config_timestamp(payload.get("cached_at"), field="cached_at")
+    expires_at = _cloud_config_timestamp(
+        payload.get("expires_at"), field="expires_at"
+    )
+    now = datetime.now(timezone.utc)
+    if (
+        cached_at > now + _CODEX_CLOUD_CONFIG_CLOCK_SKEW
+        or expires_at <= cached_at
+        or expires_at - cached_at > _CODEX_CLOUD_CONFIG_MAX_LIFETIME
+        or expires_at <= now + _CODEX_CLOUD_CONFIG_MIN_TTL
+    ):
+        raise CampaignIsolationError(
+            "formal Codex cloud-config cache is expired or too close to expiry"
+        )
+    return hashlib.sha256(
+        json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _validated_codex_bootstrap_material(
+    state_root: Path,
+) -> tuple[bytes, bytes, str]:
+    if not state_root.is_absolute() or state_root.is_symlink() or not state_root.is_dir():
+        raise CampaignIsolationError("formal Codex state mount root is unavailable")
+    codex_root = state_root / _CODEX_AUTH_RELATIVE_PATH.parent
+    try:
+        codex_root_metadata = codex_root.lstat()
+    except OSError as error:
+        raise CampaignIsolationError(
+            "formal Codex state directory is unavailable"
+        ) from error
+    if stat.S_ISLNK(codex_root_metadata.st_mode) or not stat.S_ISDIR(
+        codex_root_metadata.st_mode
+    ):
+        raise CampaignIsolationError("formal Codex state directory is unsafe")
+    auth_bytes = _read_stable_regular(
+        state_root / _CODEX_AUTH_RELATIVE_PATH,
+        label="Codex authentication state",
+        maximum_bytes=1024 * 1024,
+    )
+    auth = _load_private_json(auth_bytes, label="Codex authentication state")
+    tokens = auth.get("tokens")
+    account_id = tokens.get("account_id") if isinstance(tokens, dict) else None
+    if auth.get("auth_mode") != "chatgpt" or not isinstance(account_id, str) or not account_id:
+        raise CampaignIsolationError(
+            "formal Codex authentication lacks a ChatGPT account identity"
+        )
+    cache_bytes = _read_stable_regular(
+        state_root / _CODEX_CLOUD_CONFIG_RELATIVE_PATH,
+        label="Codex cloud-config cache",
+        maximum_bytes=_CODEX_CLOUD_CONFIG_MAX_BYTES,
+    )
+    bundle_sha256 = _validate_codex_cloud_config_cache(
+        cache_bytes,
+        expected_account_id=account_id,
+    )
+    return auth_bytes, cache_bytes, bundle_sha256
+
+
+def codex_cloud_config_contract(
+    state_root: Path | None = None,
+) -> dict[str, str]:
+    """Bind both formal arms to the same signed cloud-config bundle semantics."""
+    selected_root = state_root or Path(
+        os.environ.get("AGENT_STATE_MOUNT_ROOT", "/opt/aka-agent-state")
+    )
+    _, _, bundle_sha256 = _validated_codex_bootstrap_material(selected_root)
+    host_closure_sha256 = os.environ.get(
+        "AGENT_KERNEL_ARENA_CODEX_HOST_RUNTIME_CLOSURE_SHA256", ""
+    )
+    if re.fullmatch(r"[0-9a-f]{64}", host_closure_sha256) is None:
+        raise CampaignIsolationError(
+            "formal Codex host runtime closure digest is unavailable"
+        )
+    initial_receipt_sha256 = os.environ.get(
+        "AGENT_KERNEL_ARENA_CODEX_INITIAL_REFRESH_RECEIPT_SHA256", ""
+    )
+    if re.fullmatch(r"[0-9a-f]{64}", initial_receipt_sha256) is None:
+        raise CampaignIsolationError(
+            "formal Codex initial refresh receipt digest is unavailable"
+        )
+    return {
+        "cloud_config_bootstrap_schema": CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA,
+        "cloud_config_bootstrap_policy": CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY,
+        "cloud_config_bundle_sha256": bundle_sha256,
+        "cloud_config_host_runtime_closure_sha256": host_closure_sha256,
+        "cloud_config_initial_refresh_receipt_sha256": initial_receipt_sha256,
+    }
+
+
+def _write_private_regular(path: Path, value: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW,
+            0o600,
+        )
+        remaining = memoryview(value)
+        while remaining:
+            written = os.write(descriptor, remaining)
+            if written <= 0:
+                raise OSError("short write")
+            remaining = remaining[written:]
+        os.fsync(descriptor)
+        os.fchmod(descriptor, 0o600)
+    except OSError as error:
+        raise CampaignIsolationError(
+            "cannot materialize formal Codex bootstrap state"
+        ) from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def codex_cloud_config_bootstrap_receipt(home: Path) -> dict[str, Any]:
+    """Attest the cache bytes copied before a formal Codex process starts."""
+    auth_bytes = _read_stable_regular(
+        home / _CODEX_AUTH_RELATIVE_PATH,
+        label="attempt Codex authentication state",
+        maximum_bytes=1024 * 1024,
+    )
+    auth = _load_private_json(auth_bytes, label="attempt Codex authentication state")
+    tokens = auth.get("tokens")
+    account_id = tokens.get("account_id") if isinstance(tokens, dict) else None
+    if not isinstance(account_id, str) or not account_id:
+        raise CampaignIsolationError(
+            "attempt Codex authentication lacks an account identity"
+        )
+    cache_bytes = _read_stable_regular(
+        home / _CODEX_CLOUD_CONFIG_RELATIVE_PATH,
+        label="attempt Codex cloud-config cache",
+        maximum_bytes=_CODEX_CLOUD_CONFIG_MAX_BYTES,
+    )
+    bundle_sha256 = _validate_codex_cloud_config_cache(
+        cache_bytes,
+        expected_account_id=account_id,
+    )
+    return {
+        "schema": CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA,
+        "policy": CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY,
+        "relative_path": _CODEX_CLOUD_CONFIG_RELATIVE_PATH.as_posix(),
+        "present": True,
+        "sha256": hashlib.sha256(cache_bytes).hexdigest(),
+        "size_bytes": len(cache_bytes),
+        "bundle_sha256": bundle_sha256,
+        "signed_envelope_shape_validated": True,
+        "payload_recorded": False,
+    }
 
 
 def _assert_safe_source(source: Path) -> None:
@@ -2813,11 +3130,15 @@ __all__ = [
     "ATTEMPT_MOUNT_RECEIPT_SCHEMA_V1",
     "ATTEMPT_MOUNT_RECEIPT_SCHEMA_V2",
     "CampaignIsolationError",
+    "CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY",
+    "CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA",
     "AttemptBoundary",
     "WrappedAttemptCommand",
     "attempt_cleanup_verified",
     "attempt_command_pass_fds",
     "attempt_mount_receipt",
+    "codex_cloud_config_contract",
+    "codex_cloud_config_bootstrap_receipt",
     "establish_attempt_boundary",
     "finalize_attempt_boundary",
     "is_formal_campaign",

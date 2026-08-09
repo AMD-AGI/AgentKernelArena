@@ -114,6 +114,58 @@ assert_cache_args_absent() {
     assert_not_has "/tmp/aiter_configs:rw,uid=$(id -u),gid=$(id -g),mode=1777" "$@"
 }
 
+write_fake_codex_refresh_cli() {
+    local prefix="$1"
+    mkdir -p "$prefix/bin"
+    ln -s /bin/true "$prefix/bin/node"
+    cat > "$prefix/bin/codex" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == "app-server --listen stdio://" ]] || exit 64
+mode="normal"
+[[ ! -f "$CODEX_HOME/test-mode" ]] || mode="$(cat "$CODEX_HOME/test-mode")"
+case "$mode" in
+    timeout) sleep 60; exit 0 ;;
+    flood) yes x ;;
+    nonzero) exit 23 ;;
+esac
+bundle="fixture-a"
+[[ ! -f "$CODEX_HOME/test-bundle" ]] \
+    || bundle="$(cat "$CODEX_HOME/test-bundle")"
+/usr/bin/python3 - "$CODEX_HOME" "$bundle" <<'PY'
+import base64
+import datetime
+import json
+import os
+import sys
+
+root, marker = sys.argv[1:]
+auth = json.load(open(os.path.join(root, "auth.json"), encoding="utf-8"))
+now = datetime.datetime.now(datetime.timezone.utc)
+cache = {
+    "signature": base64.b64encode(b"s" * 32).decode(),
+    "signed_payload": {
+        "version": 1,
+        "cached_at": now.isoformat().replace("+00:00", "Z"),
+        "expires_at": (now + datetime.timedelta(hours=1)).isoformat().replace(
+            "+00:00", "Z"
+        ),
+        "chatgpt_user_id": "private-user-must-not-enter-receipt",
+        "account_id": auth["tokens"]["account_id"],
+        "bundle": {
+            "config_toml": {"marker": marker},
+            "requirements_toml": {"enterprise_managed": []},
+        },
+    },
+}
+path = os.path.join(root, "cloud-config-bundle-cache.json")
+with open(path, "w", encoding="utf-8") as output:
+    json.dump(cache, output, sort_keys=True, separators=(",", ":"))
+PY
+SH
+    chmod +x "$prefix/bin/codex"
+}
+
 TEST_HOME="$(mktemp -d)"
 cleanup_test_home() {
     chmod -R u+w "$TEST_HOME" 2>/dev/null || true
@@ -219,6 +271,94 @@ chmod 0555 "$SEALED_CLEANUP_ROOT/aka-staging/digest/nested" \
 )
 [[ ! -e "$SEALED_CLEANUP_ROOT" ]] \
     || fail "successful formal cleanup retained sealed staging directories"
+
+# A scheduled refresh failure TERM-signals the runner, so the EXIT trap first
+# observes 143. Refresh fatal evidence must still normalize the final status to
+# the dedicated release-defined code 71.
+set +e
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    cleanup_campaign_codex_refresh_supervisor() {
+        CAMPAIGN_CODEX_REFRESH_FATAL=1
+        return 0
+    }
+    cleanup_campaign_runtime_mounts() { return 0; }
+    set +e
+    (exit 143)
+    finish_with_campaign_runtime_cleanup
+) >/dev/null 2>&1
+refresh_fatal_status=$?
+set -e
+[[ "$refresh_fatal_status" == "71" ]] \
+    || fail "scheduled Codex refresh fatal did not normalize TERM status to 71"
+
+# Formal Codex refresh uses an auth-only private home, promotes only auth/cache,
+# and supervises refreshes without mutating the user's real Codex directory.
+REFRESH_HOST_HOME="$TEST_HOME/refresh-host-home"
+REFRESH_PREFIX="$TEST_HOME/refresh-node"
+REFRESH_DATA="$TEST_HOME/refresh-data"
+mkdir -p "$REFRESH_HOST_HOME/.codex" "$REFRESH_DATA"
+printf '%s\n' '{"auth_mode":"chatgpt","tokens":{"account_id":"00000000-0000-0000-0000-000000000001","access_token":"secret-token-must-not-enter-receipt"}}' \
+    > "$REFRESH_HOST_HOME/.codex/auth.json"
+write_fake_codex_refresh_cli "$REFRESH_PREFIX"
+if (
+    export HOME="$REFRESH_HOST_HOME"
+    export AKA_NODE_PREFIX="$REFRESH_PREFIX"
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_PROVENANCE=1
+    AGENT_HOME_ISOLATION=1
+    docker_args=()
+    unset _MOUNTED_TARGETS
+    declare -gA _MOUNTED_TARGETS=()
+    mount_agent codex 1
+) >/dev/null 2>&1; then
+    fail "formal Codex mount fell back to the user's complete state directory"
+fi
+(
+    export HOME="$REFRESH_HOST_HOME"
+    export AKA_NODE_PREFIX="$REFRESH_PREFIX"
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_PROVENANCE=1
+    CAMPAIGN_DATA_ROOT="$REFRESH_DATA"
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    start_campaign_codex_refresh_supervisor
+    private_root="$CAMPAIGN_CODEX_REFRESH_ROOT"
+    supervisor_pid="$CAMPAIGN_CODEX_REFRESH_PID"
+    published="$CAMPAIGN_CODEX_REFRESH_PUBLISHED_ROOT/.codex"
+    [[ "$(find "$published" -mindepth 1 -maxdepth 1 -printf '%f\n' \
+        | sort | tr '\n' ' ')" == \
+        "auth.json cloud-config-bundle-cache.json " ]] \
+        || fail "formal Codex published state was not minimal"
+    docker_args=()
+    unset _MOUNTED_TARGETS
+    declare -gA _MOUNTED_TARGETS=()
+    AGENT_HOME_ISOLATION=1
+    mount_agent codex 1
+    assert_has \
+        "$published:/opt/aka-agent-state/.codex:ro" \
+        "${docker_args[@]}"
+    assert_not_has \
+        "$REFRESH_HOST_HOME/.codex:/opt/aka-agent-state/.codex:ro" \
+        "${docker_args[@]}"
+    receipt_count="$(find "$REFRESH_DATA" -maxdepth 1 -type f \
+        -name 'codex-cloud-config-refresh-*.json' | wc -l)"
+    (( receipt_count == 1 )) \
+        || fail "formal Codex bootstrap did not emit exactly one initial receipt"
+    if grep -R -E \
+        'secret-token-must-not-enter-receipt|private-user-must-not-enter-receipt|00000000-0000-0000-0000-000000000001' \
+        "$REFRESH_DATA"; then
+        fail "formal Codex refresh receipt leaked private payload"
+    fi
+    cleanup_campaign_codex_refresh_supervisor
+    [[ ! -e "$private_root" ]] \
+        || fail "formal Codex sensitive private state survived cleanup"
+    [[ -z "$(runtime_service_starttime "$supervisor_pid" 2>/dev/null || true)" ]] \
+        || fail "formal Codex refresh supervisor survived cleanup"
+)
 
 # A stale or substituted root identity must stop cleanup before chmod or rm.
 UNTRUSTED_CLEANUP_ROOT="$(mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX)"
@@ -496,8 +636,10 @@ assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
 CODEX_HOME="$TEST_HOME/codex-home"
 CODEX_PREFIX="$TEST_HOME/codex-node"
 CODEX_CONFIG="$TEST_HOME/codex-config.yaml"
-mkdir -p "$CODEX_HOME/.codex" "$CODEX_PREFIX/bin"
-touch "$CODEX_PREFIX/bin/node" "$CODEX_PREFIX/bin/codex"
+mkdir -p "$CODEX_HOME/.codex"
+printf '%s\n' '{"auth_mode":"chatgpt","tokens":{"account_id":"00000000-0000-0000-0000-000000000002","access_token":"formal-test-secret"}}' \
+    > "$CODEX_HOME/.codex/auth.json"
+write_fake_codex_refresh_cli "$CODEX_PREFIX"
 printf 'agent:\n  template: codex\n' > "$CODEX_CONFIG"
 
 mapfile -t args < <(run_check_args \
@@ -625,7 +767,13 @@ aka_runtime_mount="$(find_arg_with_suffix ":/workspace:ro" "${args[@]}")" \
     || fail "formal AKA runtime mount is not an isolated immutable mount: $aka_runtime_mount"
 assert_not_has "$ROOT:/workspace:ro" "${args[@]}"
 assert_not_has "$ROOT:/workspace" "${args[@]}"
-assert_has "$CODEX_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+formal_codex_state_mount="$(
+    find_arg_with_suffix ":/opt/aka-agent-state/.codex:ro" "${args[@]}"
+)" || fail "formal campaign did not mount its refreshed minimal Codex state"
+[[ "$formal_codex_state_mount" == \
+    /tmp/agentkernelarena-formal-codex.*/published/.codex:/opt/aka-agent-state/.codex:ro ]] \
+    || fail "formal Codex state was not mounted from campaign-private publication: $formal_codex_state_mount"
+assert_not_has "$CODEX_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
 assert_not_has "$CODEX_HOME/.codex:$CODEX_HOME/.codex" "${args[@]}"
 assert_has "AGENT_KERNEL_ARENA_ISOLATED_HOME=1" "${args[@]}"
 formal_home_arg="$(find_arg_with_prefix "HOME=/tmp/aka-home-check-agents-" "${args[@]}")" \

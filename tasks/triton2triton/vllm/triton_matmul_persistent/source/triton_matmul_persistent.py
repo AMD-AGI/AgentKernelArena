@@ -4,6 +4,30 @@ import triton
 import triton.language as tl
 
 
+_SIGNED_INT32_MAX = 2**31 - 1
+
+
+def _max_relative_element_offset(shape, strides):
+    """Return the largest positive-stride element offset from tensor.data_ptr."""
+    if len(shape) != len(strides):
+        raise ValueError("shape and strides must have the same rank")
+    if any(int(size) <= 0 for size in shape):
+        raise ValueError("tensor dimensions must be positive")
+    if any(int(stride) <= 0 for stride in strides):
+        raise ValueError("tensor strides must be positive")
+    return sum(
+        (int(size) - 1) * int(stride)
+        for size, stride in zip(shape, strides)
+    )
+
+
+def _requires_int64_index(tensor):
+    """Select int64 when any relative element offset exceeds signed int32."""
+    return _max_relative_element_offset(tensor.shape, tensor.stride()) > (
+        _SIGNED_INT32_MAX
+    )
+
+
 @triton.jit
 def _compute_pid(tile_id, num_pid_in_group, num_pid_m, GROUP_SIZE_M, NUM_SMS):
     group_id = tile_id // num_pid_in_group
@@ -111,14 +135,27 @@ def matmul_persistent(
     a: torch.Tensor, b: torch.Tensor, bias: torch.Tensor | None = None
 ):
     """Wrapper for the persistent matmul kernel."""
-    assert a.shape[1] == b.shape[0], "Incompatible dimensions"
-    assert a.dtype == b.dtype, "Incompatible dtypes"
-    assert bias is None or bias.dim() == 1, "Bias must be 1D"
-    NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count
+    assert a.dim() == 2 and b.dim() == 2, "Inputs must be 2D"
     M, K = a.shape
-    K, N = b.shape
+    b_k, N = b.shape
+    assert M > 0 and N > 0 and K > 0, "Dimensions must be positive"
+    assert K == b_k, "Incompatible dimensions"
+    assert a.dtype == b.dtype, "Incompatible dtypes"
+    assert a.device == b.device, "Inputs must be on the same device"
+    assert a.is_cuda and b.is_cuda, "Inputs must be CUDA tensors"
+    assert all(stride > 0 for stride in a.stride()), "A strides must be positive"
+    assert all(stride > 0 for stride in b.stride()), "B strides must be positive"
+    if bias is not None:
+        assert bias.dim() == 1 and bias.shape[0] == N, "Bias must have shape [N]"
+        assert bias.dtype == a.dtype, "Bias dtype must match inputs"
+        assert bias.device == a.device, "Bias device must match inputs"
+        assert bias.is_cuda, "Bias must be a CUDA tensor"
+        assert bias.stride(0) > 0, "Bias stride must be positive"
+        if not bias.is_contiguous():
+            bias = bias.contiguous()
+
+    NUM_SMS = torch.cuda.get_device_properties(a.device).multi_processor_count
     dtype = a.dtype
-    c = torch.empty((M, N), device=a.device, dtype=dtype)
 
     def grid(META):
         return (
@@ -146,15 +183,10 @@ def matmul_persistent(
             "num_stages": 3,
             "num_warps": 8,
         },
-        torch.float32: {
-            "BLOCK_SIZE_M": 128,
-            "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 32,
-            "GROUP_SIZE_M": 8,
-            "num_stages": 3,
-            "num_warps": 8,
-        },
     }
+    assert dtype in configs, "Supported dtypes are float16 and bfloat16"
+    c = torch.empty((M, N), device=a.device, dtype=dtype)
+
     matmul_kernel_persistent[grid](
         a,
         b,
@@ -170,9 +202,9 @@ def matmul_persistent(
         c.stride(0),
         c.stride(1),
         NUM_SMS=NUM_SMS,
-        A_LARGE=a.numel() > 2**31,
-        B_LARGE=b.numel() > 2**31,
-        C_LARGE=c.numel() > 2**31,
+        A_LARGE=_requires_int64_index(a),
+        B_LARGE=_requires_int64_index(b),
+        C_LARGE=_requires_int64_index(c),
         HAS_BIAS=bias is not None,
         **configs[dtype],
     )

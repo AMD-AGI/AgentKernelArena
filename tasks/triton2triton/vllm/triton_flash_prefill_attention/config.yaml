@@ -26,8 +26,8 @@ prompt:
     The kernel implements memory-efficient flash attention for the prefill stage of
     LLM inference. It processes variable-length packed sequences with support for:
     - Grouped-query attention (GQA) and multi-query attention (MQA)
-    - Causal masking
-    - Bidirectional sliding window masking
+    - Causal and non-causal masking
+    - Independent backward/forward sliding-window masking
     - Online softmax with exp2 for numerical stability
 
     Key optimization opportunities:
@@ -40,5 +40,28 @@ prompt:
     Constraints:
     - Must maintain the same function signature for `context_attention_fwd`
     - Output must match reference within atol=1e-2, rtol=1e-2 for float16
-    - The kernel must handle arbitrary sequence lengths and head dimensions
+    - Q, K, V, and O are dense contiguous float16 CUDA tensors on one device.
+      Q/O have shape `[T, Hq, D]`; K/V have shape `[T, Hkv, D]`; `Hq` is
+      divisible by `Hkv`. Inputs are finite and must not be mutated
+    - The packed batch uses positive int32 sequence lengths and exact exclusive
+      prefix-sum start locations, with `T=sum(sequence_lengths)` and
+      `max_input_len=max(sequence_lengths)`. Valid batches have 1 through 8
+      sequences, each of length 1 through 1024; lengths need not be equal or
+      Triton-tile multiples
+    - Supported head dimensions are 32, 64, 96, and 128. Correctness cases cover
+      MHA, GQA, and MQA, including non-power-of-two head counts
+    - `softmax_scale` is `None` or a finite positive scalar. A window value of
+      `None` or zero disables that side; a positive `sliding_window_q` includes
+      keys with `query_pos-key_pos <= window_q`, and a positive
+      `sliding_window_k` includes keys with `key_pos-query_pos <= window_k`.
+      Causal masking is intersected with these masks
+    - Every call must overwrite O with a finite deterministic result; its return
+      value must be `None`. Q, K, V, start locations, and sequence lengths remain
+      unchanged. Each wrapper invocation makes exactly one `_fwd_kernel` launch
+      bound to those exact tensors and O, with the resolved packed-batch grid,
+      strides, scale, masking parameters, and head metadata. The evaluator
+      poisons O immediately before the launch and snapshots it immediately
+      afterward; that target-only snapshot must equal the returned O
+    - The additional ragged/window cases are correctness-only. `TEST_SHAPES`,
+      `perf1`...`perf5`, warmup=10, repetitions=100, and scoring are unchanged
   cheatsheet: null

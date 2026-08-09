@@ -54,6 +54,7 @@ from src.campaign_isolation import (
     attempt_cleanup_verified,
     attempt_command_pass_fds,
     attempt_mount_receipt,
+    codex_cloud_config_bootstrap_receipt,
     establish_attempt_boundary,
     finalize_attempt_boundary,
     formal_gpu_evidence,
@@ -2976,6 +2977,7 @@ def launch_agent(
         timeout_seconds = min(timeout_seconds, remaining)
     receipt_path: Path | None = None
     attempt_home: Path | None = None
+    cloud_config_bootstrap: dict[str, Any] | None = None
     process_environment = _subprocess_environment(task_spec["agent_backend"])
     isolated_command = command
     attempt_mounts: dict[str, Any] | None = None
@@ -2988,6 +2990,7 @@ def launch_agent(
         attempt_home = prepare_attempt_home(eval_config, backend=task_spec["agent_backend"])
         if attempt_home is None:
             raise ApexAdapterError("formal campaign did not create an isolated agent home")
+        cloud_config_bootstrap = codex_cloud_config_bootstrap_receipt(attempt_home)
         process_environment = isolated_environment(process_environment, attempt_home)
         process_environment.update(
             runtime_environment(runtime_root, runtime_plan.manifest)
@@ -3232,7 +3235,10 @@ def launch_agent(
             lineage = _validate_apex_lineage(
                 result=result, task_spec=task_spec, artifact_root=artifact_root
             )
-            receipt["codex"] = lineage["codex"]
+            receipt["codex"] = {
+                **lineage["codex"],
+                "cloud_config_bootstrap": cloud_config_bootstrap,
+            }
             receipt["invocation"] = lineage["invocation"]
             receipt["lineage"] = {
                 "run_id": result.get("run_id"),

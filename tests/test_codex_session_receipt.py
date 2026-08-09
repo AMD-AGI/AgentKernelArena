@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import importlib
 import json
@@ -12,9 +13,12 @@ import signal
 import stat
 import tempfile
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+
+from src import campaign_isolation
 
 
 launcher = importlib.import_module("agents.codex.launch_agent")
@@ -22,6 +26,8 @@ launcher = importlib.import_module("agents.codex.launch_agent")
 
 _BACKEND_RUNTIME_CLOSURE_SHA256 = "e" * 64
 _FORMAL_TASK_COMPONENT = launcher.campaign_task_path_component("task")
+_TEST_CODEX_ACCOUNT_ID = "00000000-0000-0000-0000-000000000001"
+_TEST_CODEX_USER_ID = "user-fixture-not-for-receipt"
 
 
 _FAKE_CODEX = r'''#!/usr/bin/env python3
@@ -212,6 +218,54 @@ def _attempt_config(receipt: Path, timeout_seconds: float = 30.0) -> dict:
             "task_deadline_monotonic": launcher.time.monotonic() + timeout_seconds,
         }
     }
+
+
+def _write_codex_bootstrap_state(
+    codex_state: Path,
+    *,
+    account_id: str = _TEST_CODEX_ACCOUNT_ID,
+    cache_account_id: str | None = None,
+    cached_at: str | None = None,
+    expires_at: str | None = None,
+    signature: str | None = None,
+) -> bytes:
+    codex_state.mkdir(parents=True, exist_ok=True)
+    auth = {
+        "auth_mode": "chatgpt",
+        "tokens": {
+            "account_id": account_id,
+            "access_token": "fixture-access-token",
+            "refresh_token": "fixture-refresh-token",
+            "id_token": "fixture-id-token",
+        },
+    }
+    (codex_state / "auth.json").write_text(
+        json.dumps(auth, sort_keys=True), encoding="utf-8"
+    )
+    now = datetime.now(timezone.utc)
+    cached_at = cached_at or now.isoformat().replace("+00:00", "Z")
+    expires_at = expires_at or (now + timedelta(hours=1)).isoformat().replace(
+        "+00:00", "Z"
+    )
+    cache = {
+        "signature": signature or base64.b64encode(b"s" * 32).decode("ascii"),
+        "signed_payload": {
+            "version": 1,
+            "cached_at": cached_at,
+            "expires_at": expires_at,
+            "chatgpt_user_id": _TEST_CODEX_USER_ID,
+            "account_id": cache_account_id or account_id,
+            "bundle": {
+                "config_toml": {"enterprise_managed": []},
+                "requirements_toml": {"enterprise_managed": []},
+            },
+        },
+    }
+    cache_bytes = json.dumps(
+        cache, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    (codex_state / "cloud-config-bundle-cache.json").write_bytes(cache_bytes)
+    return cache_bytes
 
 
 def _write_formal_task_config(tmp_path: Path) -> Path:
@@ -450,7 +504,7 @@ def test_nonzero_exit_writes_failure_receipt_then_raises(
         _make_artifact_dir_removable(receipt)
 
 
-def test_formal_session_uses_auth_only_home_and_cannot_see_sibling_attempt(
+def test_formal_session_uses_minimal_bootstrap_home_and_cannot_see_sibling_attempt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     binary_parent = Path(tempfile.mkdtemp(prefix="aka-codex-test-", dir="/var/tmp"))
@@ -466,9 +520,14 @@ def test_formal_session_uses_auth_only_home_and_cannot_see_sibling_attempt(
     forbidden = sibling / "prior-result.json"
     forbidden.write_text("{}\n", encoding="utf-8")
     state_root = tmp_path / "agent-state/.codex"
-    state_root.mkdir(parents=True)
-    (state_root / "auth.json").write_text('{"token":"fixture"}\n', encoding="utf-8")
+    cache_bytes = _write_codex_bootstrap_state(state_root)
     (state_root / "history.jsonl").write_text("prior context\n", encoding="utf-8")
+    (state_root / "models_cache.json").write_text("{}\n", encoding="utf-8")
+    (state_root / "config.toml").write_text("model = 'forbidden'\n", encoding="utf-8")
+    (state_root / "rules").mkdir()
+    (state_root / "rules/default.rules").write_text("allow *\n", encoding="utf-8")
+    (state_root / "memories").mkdir()
+    (state_root / "memories/prior.md").write_text("prior memory\n", encoding="utf-8")
     monkeypatch.setenv("AGENT_STATE_MOUNT_ROOT", str(state_root.parent))
     monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
     monkeypatch.setenv("FAKE_FORBIDDEN_PATH", str(forbidden))
@@ -508,7 +567,41 @@ def test_formal_session_uses_auth_only_home_and_cannot_see_sibling_attempt(
             "forbidden_exists": False,
         }
         assert (attempt_home / ".codex/auth.json").is_file()
+        copied_cache = attempt_home / ".codex/cloud-config-bundle-cache.json"
+        assert copied_cache.read_bytes() == cache_bytes
         assert not (attempt_home / ".codex/history.jsonl").exists()
+        assert not (attempt_home / ".codex/models_cache.json").exists()
+        assert not (attempt_home / ".codex/config.toml").exists()
+        assert not (attempt_home / ".codex/rules").exists()
+        assert not (attempt_home / ".codex/memories").exists()
+        assert set(path.name for path in (attempt_home / ".codex").iterdir()) == {
+            "auth.json",
+            "cloud-config-bundle-cache.json",
+        }
+        assert receipt["codex"]["cloud_config_bootstrap"] == {
+            "schema": "aka.codex-cloud-config-bootstrap/v2",
+            "policy": "campaign_refreshed_minimal_home_identity_bound_signed_cache_v2",
+            "relative_path": ".codex/cloud-config-bundle-cache.json",
+            "present": True,
+            "sha256": hashlib.sha256(cache_bytes).hexdigest(),
+            "size_bytes": len(cache_bytes),
+            "bundle_sha256": hashlib.sha256(
+                json.dumps(
+                    {
+                        "config_toml": {"enterprise_managed": []},
+                        "requirements_toml": {"enterprise_managed": []},
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest(),
+            "signed_envelope_shape_validated": True,
+            "payload_recorded": False,
+        }
+        receipt_text = json.dumps(receipt, sort_keys=True)
+        assert _TEST_CODEX_ACCOUNT_ID not in receipt_text
+        assert _TEST_CODEX_USER_ID not in receipt_text
+        assert "fixture-access-token" not in receipt_text
         assert receipt["invocation"]["isolation"]["mount_scope"] == (
             "attempt_only_bubblewrap"
         )
@@ -542,6 +635,93 @@ def test_formal_session_uses_auth_only_home_and_cannot_see_sibling_attempt(
         if receipt:
             _make_artifact_dir_removable(receipt)
         shutil.rmtree(binary_parent)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("missing", "cloud-config cache is unavailable"),
+        ("bad_signature", "signature is malformed"),
+        ("wrong_account", "identity or version is invalid"),
+        ("expired", "expired or too close to expiry"),
+        ("excessive_lifetime", "expired or too close to expiry"),
+    ],
+)
+def test_formal_codex_bootstrap_cache_fails_closed_before_home_creation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    message: str,
+) -> None:
+    state_root = tmp_path / "agent-state/.codex"
+    if mutation == "bad_signature":
+        _write_codex_bootstrap_state(state_root, signature="not-base64!")
+    elif mutation == "wrong_account":
+        _write_codex_bootstrap_state(
+            state_root,
+            cache_account_id="00000000-0000-0000-0000-000000000099",
+        )
+    elif mutation == "expired":
+        _write_codex_bootstrap_state(
+            state_root,
+            expires_at="2026-08-09T00:00:01.000000000Z",
+        )
+    elif mutation == "excessive_lifetime":
+        now = datetime.now(timezone.utc)
+        _write_codex_bootstrap_state(
+            state_root,
+            cached_at=now.isoformat().replace("+00:00", "Z"),
+            expires_at=(now + timedelta(hours=3)).isoformat().replace(
+                "+00:00", "Z"
+            ),
+        )
+    else:
+        _write_codex_bootstrap_state(state_root)
+        (state_root / "cloud-config-bundle-cache.json").unlink()
+    monkeypatch.setenv("AGENT_STATE_MOUNT_ROOT", str(state_root.parent))
+    receipt = tmp_path / "run/attempt_01/session_receipt.json"
+    receipt.parent.mkdir(parents=True)
+    config = {
+        "campaign": {"comparison": "apex_vs_codex"},
+        "campaign_attempt": {
+            "fresh_session": True,
+            "receipt_path": str(receipt),
+        },
+    }
+
+    with pytest.raises(campaign_isolation.CampaignIsolationError, match=message):
+        launcher.prepare_attempt_home(config, backend="codex")
+
+    assert not (receipt.parent / ".agent-home").exists()
+
+
+def test_formal_codex_bootstrap_rejects_symlinked_state_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_parent = tmp_path / "agent-state"
+    real_codex_state = tmp_path / "real-codex-state"
+    _write_codex_bootstrap_state(real_codex_state)
+    state_parent.mkdir()
+    (state_parent / ".codex").symlink_to(real_codex_state, target_is_directory=True)
+    monkeypatch.setenv("AGENT_STATE_MOUNT_ROOT", str(state_parent))
+    receipt = tmp_path / "run/attempt_01/session_receipt.json"
+    receipt.parent.mkdir(parents=True)
+    config = {
+        "campaign": {"comparison": "apex_vs_codex"},
+        "campaign_attempt": {
+            "fresh_session": True,
+            "receipt_path": str(receipt),
+        },
+    }
+
+    with pytest.raises(
+        campaign_isolation.CampaignIsolationError,
+        match="state directory is unsafe",
+    ):
+        launcher.prepare_attempt_home(config, backend="codex")
+
+    assert not (receipt.parent / ".agent-home").exists()
 
 
 def test_formal_session_rejects_missing_comparison_contract_digest() -> None:
@@ -646,8 +826,7 @@ def test_formal_workspace_is_sanitized_to_declared_source_only(
     report.write_text('{"baseline":true}\n', encoding="utf-8")
     task_config = _write_formal_task_config(tmp_path)
     state_root = tmp_path / "agent-state/.codex"
-    state_root.mkdir(parents=True)
-    (state_root / "auth.json").write_text('{}\n', encoding="utf-8")
+    _write_codex_bootstrap_state(state_root)
     monkeypatch.setenv("AGENT_STATE_MOUNT_ROOT", str(state_root.parent))
     monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
     receipt_path = attempt / "session_receipt.json"
@@ -729,8 +908,7 @@ def test_formal_direct_codex_persists_exact_boundary_source_checkpoint(
     source.write_text("baseline = True\n", encoding="utf-8")
     task_config = _write_formal_task_config(tmp_path)
     state_root = tmp_path / "agent-state/.codex"
-    state_root.mkdir(parents=True)
-    (state_root / "auth.json").write_text("{}\n", encoding="utf-8")
+    _write_codex_bootstrap_state(state_root)
     monkeypatch.setenv("AGENT_STATE_MOUNT_ROOT", str(state_root.parent))
     monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
     receipt_path = attempt / "session_receipt.json"
@@ -825,8 +1003,7 @@ def test_exact_boundary_snapshot_excludes_deterministic_late_cleanup_write(
     source.write_text("baseline = True\n", encoding="utf-8")
     task_config = _write_formal_task_config(tmp_path)
     state_root = tmp_path / "agent-state/.codex"
-    state_root.mkdir(parents=True)
-    (state_root / "auth.json").write_text("{}\n", encoding="utf-8")
+    _write_codex_bootstrap_state(state_root)
     monkeypatch.setenv("AGENT_STATE_MOUNT_ROOT", str(state_root.parent))
     monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
     receipt_path = attempt / "session_receipt.json"
@@ -886,8 +1063,7 @@ def _formal_boundary_fixture(
     source.write_text("baseline = True\n", encoding="utf-8")
     task_config = _write_formal_task_config(tmp_path)
     state_root = tmp_path / "agent-state/.codex"
-    state_root.mkdir(parents=True)
-    (state_root / "auth.json").write_text("{}\n", encoding="utf-8")
+    _write_codex_bootstrap_state(state_root)
     monkeypatch.setenv("AGENT_STATE_MOUNT_ROOT", str(state_root.parent))
     monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
     receipt_path = attempt / "session_receipt.json"

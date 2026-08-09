@@ -12,6 +12,7 @@ import yaml
 import main as aka_main
 from src import campaign, postprocessing
 from src.tools import compare_runs
+from src.evaluator_utils import canonical_json_sha256, inspect_formal_source_anti_tamper
 
 
 TASK = "triton2triton/formal_compare"
@@ -641,6 +642,14 @@ def _manifest(task_names: list[str], arm: str) -> dict:
         "backend_runtime_closure_schema": campaign.BACKEND_CLOSURE_SCHEMA,
         "backend_runtime_closure_sha256": closure["closure_sha256"],
         "backend_runtime_closure": closure,
+        "cloud_config_bootstrap_schema": (
+            campaign.CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA
+        ),
+        "cloud_config_bootstrap_policy": (
+            campaign.CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY
+        ),
+        "cloud_config_bundle_sha256": "c" * 64,
+        "cloud_config_host_runtime_closure_sha256": "d" * 64,
     }
     repositories = {
         "agent_kernel_arena": {
@@ -718,6 +727,7 @@ def _manifest(task_names: list[str], arm: str) -> dict:
     transport = campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS[arm]
     agent = {
         **codex,
+        "cloud_config_initial_refresh_receipt_sha256": "e" * 64,
         "max_process_output_bytes": transport["max_process_output_bytes"],
         "structured_stream_overflow_policy": transport["overflow_policy"],
         "codex_binary": "/opt/node/bin/codex",
@@ -903,6 +913,23 @@ def _attempt_result(
     return result
 
 
+def _attach_formal_source_guard(workspace: Path, result: dict) -> dict:
+    source_path = workspace / "source/candidate.py"
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_path.write_text("import torch\n", encoding="utf-8")
+    config = {"source_file_path": ["source/candidate.py"]}
+    (workspace / "config.yaml").write_text(
+        yaml.safe_dump(config, sort_keys=True), encoding="utf-8"
+    )
+    initial = inspect_formal_source_anti_tamper(workspace, config)
+    result["source_anti_tamper"] = inspect_formal_source_anti_tamper(
+        workspace,
+        config,
+        expected_source_manifest_sha256=initial["source_manifest_sha256"],
+    )
+    return result
+
+
 def _write_canonical_workspace(
     run: Path, task_name: str, speedup: float = 2.0
 ) -> Path:
@@ -928,6 +955,7 @@ def _write_canonical_workspace(
         result = _attempt_result(
             task_name, baseline_ms=speedup, optimized_ms=optimized_ms
         )
+        _attach_formal_source_guard(workspace, result)
         _write_read_only_yaml(workspace / "task_result.yaml", result)
         _write_read_only_yaml(
             workspace / "baseline_perf.yaml",
@@ -963,6 +991,15 @@ def _write_canonical_workspace(
                 "central_evaluator_report_sha256": workspace_manifest[
                     "task_result.yaml"
                 ],
+                "source_anti_tamper_sha256": canonical_json_sha256(
+                    result["source_anti_tamper"]
+                ),
+                "source_anti_tamper_source_manifest_sha256": result[
+                    "source_anti_tamper"
+                ]["source_manifest_sha256"],
+                "source_anti_tamper_rules_sha256": result[
+                    "source_anti_tamper"
+                ]["rules_sha256"],
                 "workspace_manifest_sha256": postprocessing._canonical_json_digest(
                     workspace_manifest
                 ),
@@ -1036,6 +1073,15 @@ def _write_canonical_workspace(
         "selected_central_evaluator_report_sha256": selected_manifest[
             "task_result.yaml"
         ],
+        "selected_source_anti_tamper_sha256": canonical_json_sha256(
+            result["source_anti_tamper"]
+        ),
+        "selected_source_manifest_sha256": result["source_anti_tamper"][
+            "source_manifest_sha256"
+        ],
+        "source_anti_tamper_rules_sha256": result["source_anti_tamper"][
+            "rules_sha256"
+        ],
         "selected_performance_evidence_sha256": {
             name: selected_manifest[name]
             for name in ("baseline_perf.yaml", "optimized_perf.yaml")
@@ -1044,6 +1090,7 @@ def _write_canonical_workspace(
     }
     canonical = run / f"{safe_name}_{TIMESTAMP}"
     canonical.mkdir()
+    _attach_formal_source_guard(canonical, result)
     result["campaign_evidence"] = campaign_evidence
     _write_read_only_yaml(canonical / "task_result.yaml", result)
     _write_read_only_yaml(
@@ -1316,6 +1363,46 @@ def test_v6_manifest_rejects_launcher_component_identity_drift(
     _refresh_comparison_digest(manifest)
 
     _assert_manifest_rejected(tmp_path, manifest)
+
+
+def test_v6_manifest_rejects_cloud_config_host_closure_binding_drift(
+    tmp_path: Path,
+) -> None:
+    manifest = _manifest([TASK], "codex")
+    manifest["agent"]["cloud_config_host_runtime_closure_sha256"] = "e" * 64
+    _refresh_comparison_digest(manifest)
+
+    _assert_manifest_rejected(tmp_path, manifest)
+
+
+def test_formal_pair_rejects_cloud_config_host_closure_mismatch() -> None:
+    apex_manifest = _manifest([TASK], "apex")
+    codex_manifest = _manifest([TASK], "codex")
+    for agent in (
+        codex_manifest["agent"],
+        codex_manifest["comparison_contract"]["codex"],
+    ):
+        agent["cloud_config_host_runtime_closure_sha256"] = "e" * 64
+    _refresh_comparison_digest(codex_manifest)
+
+    def run_data(manifest: dict, path: str) -> dict:
+        return {
+            "overall": {"formal_campaign": True},
+            "_formal_contract": {
+                "comparison_contract_sha256": manifest[
+                    "comparison_contract_sha256"
+                ],
+                "ordered_cohort_sha256": "f" * 64,
+                "resolved_run_path": path,
+                "agent_template": manifest["agent"]["template"],
+            },
+        }
+
+    with pytest.raises(ValueError, match="comparison contracts differ"):
+        compare_runs._validate_comparable_formal_runs(
+            run_data(apex_manifest, "/test/apex"),
+            run_data(codex_manifest, "/test/codex"),
+        )
 
 
 @pytest.mark.parametrize(

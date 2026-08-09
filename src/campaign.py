@@ -68,14 +68,24 @@ from src.campaign_isolation import (
     APEX_RUNTIME_MOUNT_SCHEMA,
     ATTEMPT_MOUNT_RECEIPT_SCHEMA,
     ATTEMPT_CONTAINMENT_POLICY,
+    CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY,
+    CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA,
     CampaignIsolationError,
     attempt_cleanup_verified,
+    codex_cloud_config_contract,
     runtime_isolation_receipt,
 )
 from src.gpu_device_boundary import GpuBoundaryError, load_plan
 from src.gpu_exclusivity import (
     GpuExclusivityError,
     load_receipt as load_gpu_lease_receipt,
+)
+from src.evaluator_utils import (
+    FORMAL_SOURCE_ANTI_TAMPER_POLICY,
+    FORMAL_SOURCE_ANTI_TAMPER_RULES_SHA256,
+    FORMAL_SOURCE_ANTI_TAMPER_SCHEMA,
+    canonical_json_sha256,
+    inspect_formal_source_anti_tamper,
 )
 from src.preprocessing import get_task_workspace_path
 
@@ -765,6 +775,12 @@ def _agent_manifest(
         backend_closure = capture_backend_closure("codex", codex)
     except AkaRuntimeError as error:
         raise CampaignError(f"cannot capture complete Codex runtime: {error}") from error
+    try:
+        cloud_config_contract = codex_cloud_config_contract()
+    except CampaignIsolationError as error:
+        raise CampaignError(
+            f"cannot bind formal Codex cloud-config bootstrap: {error}"
+        ) from error
     manifest = {
         "template": agent_name,
         "session_receipt_schema": (
@@ -809,6 +825,7 @@ def _agent_manifest(
         },
         "agent_config_sha256": _sha256_file(config_path),
     }
+    manifest.update(cloud_config_contract)
     if agent_name == "apex":
         if not _SHA256.fullmatch(apex_runtime_manifest_sha256):
             raise CampaignError("Apex runtime manifest digest is unavailable")
@@ -1092,8 +1109,28 @@ def _v6_top_level_agent_valid(
         )
     except (AkaRuntimeError, OSError, TypeError, ValueError):
         closure_valid = False
+    cloud_config_valid = bool(
+        agent.get("cloud_config_bootstrap_schema")
+        == CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA
+        and agent.get("cloud_config_bootstrap_policy")
+        == CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY
+        and isinstance(agent.get("cloud_config_bundle_sha256"), str)
+        and _SHA256.fullmatch(agent["cloud_config_bundle_sha256"])
+        and isinstance(
+            agent.get("cloud_config_host_runtime_closure_sha256"), str
+        )
+        and _SHA256.fullmatch(
+            agent["cloud_config_host_runtime_closure_sha256"]
+        )
+        and isinstance(
+            agent.get("cloud_config_initial_refresh_receipt_sha256"), str
+        )
+        and _SHA256.fullmatch(
+            agent["cloud_config_initial_refresh_receipt_sha256"]
+        )
+    )
     if template == "apex":
-        return closure_valid and all(
+        return cloud_config_valid and closure_valid and all(
             agent.get(key) == value for key, value in apex_treatment.items()
         )
     forbidden = {
@@ -1105,6 +1142,7 @@ def _v6_top_level_agent_valid(
     return bool(
         template == "codex"
         and agent.get("session_receipt_schema") == _CODEX_RECEIPT_SCHEMA
+        and cloud_config_valid
         and closure_valid
         and not forbidden.intersection(agent)
     )
@@ -1175,6 +1213,14 @@ def _v6_manifest_contract_valid(
         == agent.get("backend_runtime_closure_sha256")
         and comparison_codex.get("backend_runtime_closure")
         == agent.get("backend_runtime_closure")
+        and comparison_codex.get("cloud_config_bootstrap_schema")
+        == agent.get("cloud_config_bootstrap_schema")
+        and comparison_codex.get("cloud_config_bootstrap_policy")
+        == agent.get("cloud_config_bootstrap_policy")
+        and comparison_codex.get("cloud_config_bundle_sha256")
+        == agent.get("cloud_config_bundle_sha256")
+        and comparison_codex.get("cloud_config_host_runtime_closure_sha256")
+        == agent.get("cloud_config_host_runtime_closure_sha256")
         and transport_treatments == FORMAL_AGENT_TRANSPORT_TREATMENTS
         and isinstance(agent_transport, dict)
         and agent.get("max_process_output_bytes")
@@ -1531,6 +1577,10 @@ def _comparison_contract(
             "backend_runtime_closure_schema",
             "backend_runtime_closure_sha256",
             "backend_runtime_closure",
+            "cloud_config_bootstrap_schema",
+            "cloud_config_bootstrap_policy",
+            "cloud_config_bundle_sha256",
+            "cloud_config_host_runtime_closure_sha256",
             "isolation",
         )
     }
@@ -1695,6 +1745,9 @@ def _attempt_record(
             str(workspace.relative_to(run_directory)) if workspace is not None else None
         ),
         "central_evaluator_report": None,
+        "source_anti_tamper_sha256": None,
+        "source_anti_tamper_source_manifest_sha256": None,
+        "source_anti_tamper_rules_sha256": None,
         "selection_eligible": False,
         "measured_rate_per_ms": 0.0,
         "eligibility_errors": [],
@@ -1792,6 +1845,17 @@ def _attempt_record(
         return record
     report = _load_mapping(report_path, "attempt task result")
     errors = _evaluation_eligibility_errors(workspace, report)
+    source_anti_tamper = report.get("source_anti_tamper")
+    if isinstance(source_anti_tamper, dict):
+        record["source_anti_tamper_sha256"] = canonical_json_sha256(
+            source_anti_tamper
+        )
+        record["source_anti_tamper_source_manifest_sha256"] = (
+            source_anti_tamper.get("source_manifest_sha256")
+        )
+        record["source_anti_tamper_rules_sha256"] = source_anti_tamper.get(
+            "rules_sha256"
+        )
     evaluation_mode = report.get("evaluation_mode")
     agent_session_score_eligible = report.get("agent_session_score_eligible")
     agent_session_succeeded = report.get("agent_session_succeeded")
@@ -3119,6 +3183,47 @@ def _gpu_receipt_errors(
     return []
 
 
+def _codex_cloud_config_bootstrap_valid(
+    observed_codex: dict[str, Any],
+    expected_codex: dict[str, Any],
+) -> bool:
+    bootstrap = observed_codex.get("cloud_config_bootstrap")
+    expected_keys = {
+        "schema",
+        "policy",
+        "relative_path",
+        "present",
+        "sha256",
+        "size_bytes",
+        "bundle_sha256",
+        "signed_envelope_shape_validated",
+        "payload_recorded",
+    }
+    return bool(
+        isinstance(bootstrap, dict)
+        and set(bootstrap) == expected_keys
+        and bootstrap.get("schema") == CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA
+        and bootstrap.get("schema")
+        == expected_codex.get("cloud_config_bootstrap_schema")
+        and bootstrap.get("policy") == CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY
+        and bootstrap.get("policy")
+        == expected_codex.get("cloud_config_bootstrap_policy")
+        and bootstrap.get("relative_path")
+        == ".codex/cloud-config-bundle-cache.json"
+        and bootstrap.get("present") is True
+        and isinstance(bootstrap.get("sha256"), str)
+        and _SHA256.fullmatch(bootstrap["sha256"])
+        and type(bootstrap.get("size_bytes")) is int
+        and 0 < bootstrap["size_bytes"] <= 1024 * 1024
+        and isinstance(bootstrap.get("bundle_sha256"), str)
+        and _SHA256.fullmatch(bootstrap["bundle_sha256"])
+        and bootstrap.get("bundle_sha256")
+        == expected_codex.get("cloud_config_bundle_sha256")
+        and bootstrap.get("signed_envelope_shape_validated") is True
+        and bootstrap.get("payload_recorded") is False
+    )
+
+
 def _validate_session_receipt(
     *,
     receipt_path: Path,
@@ -3387,6 +3492,10 @@ def _validate_session_receipt(
             for receipt_key, contract_key in comparisons.items()
         ):
             errors.append("direct_codex_identity_contract_mismatch")
+        if not _codex_cloud_config_bootstrap_valid(
+            observed_codex, expected_codex
+        ):
+            errors.append("direct_codex_cloud_config_bootstrap_invalid")
         if (
             expected_codex.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
             or expected_codex.get("turn_policy") != expected_turn_policy
@@ -4560,17 +4669,24 @@ def _validate_apex_session_receipt(
     observed_codex = receipt.get("codex")
     if not isinstance(expected_codex, dict):
         errors.append("missing_immutable_campaign_codex_contract")
-    elif not isinstance(observed_codex, dict) or any(
-        observed_codex.get(receipt_key) != expected_codex.get(contract_key)
-        for receipt_key, contract_key in {
-            "binary_sha256": "codex_binary_sha256",
-            "runtime_closure_sha256": "backend_runtime_closure_sha256",
-            "version": "codex_version",
-            "model": "model",
-            "effort": "effort",
-        }.items()
-    ):
+    elif not isinstance(observed_codex, dict):
         errors.append("apex_codex_identity_contract_mismatch")
+    else:
+        if any(
+            observed_codex.get(receipt_key) != expected_codex.get(contract_key)
+            for receipt_key, contract_key in {
+                "binary_sha256": "codex_binary_sha256",
+                "runtime_closure_sha256": "backend_runtime_closure_sha256",
+                "version": "codex_version",
+                "model": "model",
+                "effort": "effort",
+            }.items()
+        ):
+            errors.append("apex_codex_identity_contract_mismatch")
+        if not _codex_cloud_config_bootstrap_valid(
+            observed_codex, expected_codex
+        ):
+            errors.append("apex_codex_cloud_config_bootstrap_invalid")
     if isinstance(expected_codex, dict) and (
         expected_codex.get("max_turns") != FORMAL_MATCHED_MAX_TURNS
         or expected_codex.get("turn_policy") != TURN_POLICY
@@ -4999,10 +5115,49 @@ def _case_identity(case: dict[str, Any]) -> str:
     return json.dumps(material, sort_keys=True, separators=(",", ":"))
 
 
+def _formal_source_anti_tamper_errors(
+    workspace: Path,
+    report: dict[str, Any],
+) -> list[str]:
+    evidence = report.get("source_anti_tamper")
+    if not isinstance(evidence, dict):
+        return ["missing_formal_source_anti_tamper_report"]
+    errors: list[str] = []
+    if evidence.get("schema") != FORMAL_SOURCE_ANTI_TAMPER_SCHEMA:
+        errors.append("formal_source_anti_tamper_schema_mismatch")
+    if evidence.get("policy") != FORMAL_SOURCE_ANTI_TAMPER_POLICY:
+        errors.append("formal_source_anti_tamper_policy_mismatch")
+    if evidence.get("rules_sha256") != FORMAL_SOURCE_ANTI_TAMPER_RULES_SHA256:
+        errors.append("formal_source_anti_tamper_rules_mismatch")
+    if evidence.get("verdict") != "PASS":
+        errors.append("formal_source_anti_tamper_not_passed")
+    source_manifest_sha256 = evidence.get("source_manifest_sha256")
+    if (
+        not isinstance(source_manifest_sha256, str)
+        or len(source_manifest_sha256) != 64
+        or evidence.get("expected_source_manifest_sha256")
+        != source_manifest_sha256
+    ):
+        errors.append("formal_source_manifest_anchor_mismatch")
+    try:
+        task_config = _load_mapping(workspace / "config.yaml", "attempt task config")
+        recomputed = inspect_formal_source_anti_tamper(
+            workspace,
+            task_config,
+            expected_source_manifest_sha256=source_manifest_sha256,
+        )
+    except (CampaignError, OSError, ValueError, TypeError):
+        errors.append("formal_source_anti_tamper_recomputation_failed")
+    else:
+        if recomputed != evidence:
+            errors.append("formal_source_anti_tamper_report_mismatch")
+    return sorted(set(errors))
+
+
 def _evaluation_eligibility_errors(
     workspace: Path, report: dict[str, Any]
 ) -> list[str]:
-    errors: list[str] = []
+    errors: list[str] = _formal_source_anti_tamper_errors(workspace, report)
     if report.get("pass_compilation") is not True:
         errors.append("central_compilation_failed")
     if report.get("pass_correctness") is not True:
@@ -5486,6 +5641,15 @@ def run_matched_task_campaign(
         "is_apex_canonical_300_sample_grade": False,
         "selected_central_evaluator_report_sha256": selected[
             "central_evaluator_report_sha256"
+        ],
+        "selected_source_anti_tamper_sha256": selected[
+            "source_anti_tamper_sha256"
+        ],
+        "selected_source_manifest_sha256": selected[
+            "source_anti_tamper_source_manifest_sha256"
+        ],
+        "source_anti_tamper_rules_sha256": selected[
+            "source_anti_tamper_rules_sha256"
         ],
         "selected_performance_evidence_sha256": {
             name: selected_manifest[name]

@@ -111,6 +111,28 @@ preflight and repeat it in every worker. The resulting stable security receipt i
 part of `campaign_manifest.yaml`; a worker with different UID/capability/NNP,
 seccomp/AppArmor/Yama, `bwrap`/Codex identity, managed-policy hash, namespace,
 system-path remasking, or managed Codex sandbox behavior cannot join the run.
+Formal `run` and `preflight` synchronously invoke the exact model-free command
+`codex app-server --listen stdio://` in a private host-side root before starting a
+model-bearing attempt. AKA stable-reads host authentication, forces a cache miss,
+and never reads or mutates the user's host cloud-config cache. It validates envelope
+shape, account identity, cache time, at least 630 seconds of remaining lifetime, and
+a maximum two-hour issue-to-expiry lifetime; the pinned Codex CLI still owns
+cryptographic signature verification. The complete host Codex/Node/package closure
+is pinned and rechecked around generation.
+
+The supervisor publishes only private `auth.json` and
+`cloud-config-bundle-cache.json`, then refreshes at expiry minus ten minutes. The
+comparison contract binds the canonical `signed_payload.bundle` SHA-256 across both
+arms. A scheduled envelope is published only when that digest remains unchanged;
+bundle or host-runtime drift preserves the last good cache, terminates the formal
+owner, and produces exit status 71. Immutable refresh receipts expose only policy,
+status, timing, hashes, and byte sizes—not account, token, signature, or config
+payloads. The campaign manifest binds the initial receipt; the later scheduled
+receipt chain is supervisor evidence and is not yet linked into every attempt.
+
+`docker-check-agents` performs a private diagnostic refresh, but that disposable
+receipt does not establish a campaign anchor. If the bundle changes, stop both arms
+and initialize a new matched campaign.
 The two formal runs' normalized YAML documents may differ only in the exact
 `agent.template` treatment (`apex` versus `codex`); comments and formatting are
 not semantic differences. AKA removes that one mapping, binds every other normalized
@@ -221,6 +243,11 @@ Run the same configuration again with one agent capability changed and a new
 ## Resume an interrupted run
 
 Long runs can be resumed; completed tasks are skipped.
+
+For a formal Codex resume, AKA creates a fresh private supervisor, performs a new
+model-free refresh, and admits the resume only when the refreshed canonical bundle
+matches the sealed campaign anchor. Bundle or pinned host-runtime closure drift
+fails closed; start a new matched Apex/Codex cohort rather than resuming one arm.
 
 ```bash
 # Resume a specific run directory

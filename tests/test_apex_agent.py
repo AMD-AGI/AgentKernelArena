@@ -1692,6 +1692,21 @@ def _formal_apex_launch_fixture(
         captured["receipt_task_spec_bytes"] = kwargs["task_spec_bytes"]
 
     monkeypatch.setattr(apex_launcher, "prepare_attempt_home", fake_home)
+    monkeypatch.setattr(
+        apex_launcher,
+        "codex_cloud_config_bootstrap_receipt",
+        lambda _home: {
+            "schema": "aka.codex-cloud-config-bootstrap/v2",
+            "policy": "campaign_refreshed_minimal_home_identity_bound_signed_cache_v2",
+            "relative_path": ".codex/cloud-config-bundle-cache.json",
+            "present": True,
+            "sha256": "d" * 64,
+            "size_bytes": 1024,
+            "bundle_sha256": "e" * 64,
+            "signed_envelope_shape_validated": True,
+            "payload_recorded": False,
+        },
+    )
     monkeypatch.setattr(apex_launcher, "wrap_attempt_command", fake_wrap)
     monkeypatch.setattr(apex_launcher, "_run_apex", fake_run)
     monkeypatch.setattr(apex_launcher, "_validate_apex_lineage", fake_lineage)

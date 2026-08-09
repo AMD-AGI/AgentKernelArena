@@ -233,6 +233,26 @@ counts, timing helpers, report writers, or benchmark harness code.
 """
 
 
+def _formal_source_anti_tamper_prompt() -> str:
+    """Declare the shared source policy applied to both formal campaign arms."""
+    return """
+### Formal Candidate Source Policy
+
+This matched formal attempt applies the evaluator-owned
+`aka.formal-source-anti-tamper/v1` static policy to every configured candidate
+source file. Python imports are restricted to `torch`, `triton`, and `math`.
+Do not use dynamic code or namespace access (`exec`, `eval`, `compile`,
+`__import__`, `globals`, `locals`, `vars`, or dynamic protected `getattr`), do
+not mutate evaluator/torch/triton globals or class attributes, and do not call
+torch process-global state setters. The source bytes are manifest-bound before
+and after compile, correctness, and performance; violating or rewriting them
+makes the attempt ineligible.
+
+This static filter is defense-in-depth, not a Python sandbox. Candidate code is
+still executed only behind the campaign's process/container isolation boundary.
+"""
+
+
 def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config: dict, logger: logging.Logger) -> str:
     """
     Build the initial prompt for the agent based on task configuration.
@@ -342,6 +362,8 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
 
     # 6. Harness Integrity Section
     prompt_sections.append(_harness_integrity_prompt())
+    if isinstance(eval_config.get("campaign_attempt"), dict):
+        prompt_sections.append(_formal_source_anti_tamper_prompt())
 
     # 7. Output Format Section
     task_result_template = task_config.get('task_result_template', '')

@@ -68,6 +68,19 @@ CAMPAIGN_GPU_PLAN_SHA256=""
 CAMPAIGN_GPU_EXCLUSIVITY_HOST=""
 CAMPAIGN_GPU_EXCLUSIVITY_SHA256=""
 declare -a CAMPAIGN_GPU_LEASE_FDS=()
+# Formal Codex cloud configuration is refreshed in a campaign-private home by
+# the stdlib-only host helper. The shell owns only its lifecycle and bind mount.
+FORMAL_CODEX_REFRESH_HELPER="$HOST_ROOT/src/codex_cloud_config_refresh.py"
+CAMPAIGN_CODEX_REFRESH_ROOT=""
+CAMPAIGN_CODEX_REFRESH_ROOT_DEVICE=""
+CAMPAIGN_CODEX_REFRESH_ROOT_INODE=""
+CAMPAIGN_CODEX_REFRESH_PUBLISHED_ROOT=""
+CAMPAIGN_CODEX_REFRESH_BUNDLE_SHA256=""
+CAMPAIGN_CODEX_REFRESH_HOST_CLOSURE_SHA256=""
+CAMPAIGN_CODEX_REFRESH_INITIAL_RECEIPT_SHA256=""
+CAMPAIGN_CODEX_REFRESH_PID=""
+CAMPAIGN_CODEX_REFRESH_STARTTIME=""
+CAMPAIGN_CODEX_REFRESH_FATAL=0
 
 # /opt/venv/bin is placed before /usr/local/bin and /usr/bin so that a bare
 # `python3` / `pytest` resolves to the torch-enabled venv interpreter rather than
@@ -470,6 +483,144 @@ configure_campaign_provenance() {
     start_campaign_runtime_mounts
 }
 
+prepare_campaign_codex_refresh_state() {
+    local reason="${1:-prelaunch}"
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    [[ -z "$CAMPAIGN_CODEX_REFRESH_ROOT" ]] \
+        || die "formal Codex refresh state was already prepared"
+    [[ -f "$FORMAL_CODEX_REFRESH_HELPER" \
+        && ! -L "$FORMAL_CODEX_REFRESH_HELPER" ]] \
+        || die "formal Codex refresh helper is missing or unsafe"
+    local node_prefix owner_pid owner_starttime result next_refresh
+    node_prefix="$(detect_node_cli_prefix codex || true)"
+    [[ -n "$node_prefix" ]] \
+        || die "formal campaign requires the pinned host Codex CLI"
+    owner_pid="${CAMPAIGN_RUNTIME_OWNER_BASHPID:-$BASHPID}"
+    owner_starttime="$(runtime_service_starttime "$owner_pid")" \
+        || die "cannot bind formal Codex refresh owner identity"
+    if ! result="$(
+        /usr/bin/python3 "$FORMAL_CODEX_REFRESH_HELPER" bootstrap \
+            --auth-source "$HOST_HOME/.codex/auth.json" \
+            --node-prefix "$node_prefix" \
+            --campaign-data-root "$CAMPAIGN_DATA_ROOT" \
+            --owner-pid "$owner_pid" \
+            --owner-starttime "$owner_starttime" \
+            --reason "$reason"
+    )"; then
+        die "formal Codex cloud-config $reason refresh failed"
+    fi
+    IFS=$'\t' read -r \
+        CAMPAIGN_CODEX_REFRESH_ROOT \
+        CAMPAIGN_CODEX_REFRESH_ROOT_DEVICE \
+        CAMPAIGN_CODEX_REFRESH_ROOT_INODE \
+        CAMPAIGN_CODEX_REFRESH_PUBLISHED_ROOT \
+        CAMPAIGN_CODEX_REFRESH_BUNDLE_SHA256 \
+        CAMPAIGN_CODEX_REFRESH_HOST_CLOSURE_SHA256 \
+        next_refresh CAMPAIGN_CODEX_REFRESH_INITIAL_RECEIPT_SHA256 <<< "$result"
+    [[ "$CAMPAIGN_CODEX_REFRESH_ROOT" == \
+            /tmp/agentkernelarena-formal-codex.* \
+        && "$CAMPAIGN_CODEX_REFRESH_ROOT_DEVICE" =~ ^[0-9]+$ \
+        && "$CAMPAIGN_CODEX_REFRESH_ROOT_INODE" =~ ^[0-9]+$ \
+        && "$CAMPAIGN_CODEX_REFRESH_PUBLISHED_ROOT" == \
+            "$CAMPAIGN_CODEX_REFRESH_ROOT/published" \
+        && "$CAMPAIGN_CODEX_REFRESH_BUNDLE_SHA256" =~ ^[0-9a-f]{64}$ \
+        && "$CAMPAIGN_CODEX_REFRESH_HOST_CLOSURE_SHA256" =~ ^[0-9a-f]{64}$ \
+        && "$next_refresh" =~ ^[0-9]+$ \
+        && "$CAMPAIGN_CODEX_REFRESH_INITIAL_RECEIPT_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || die "formal Codex refresh helper returned invalid ready evidence"
+    echo "Formal Codex cloud-config refresh ready: reason=$reason bundle_sha256=$CAMPAIGN_CODEX_REFRESH_BUNDLE_SHA256 receipts=$CAMPAIGN_DATA_ROOT/codex-cloud-config-refresh-*.json" >&2
+}
+
+start_campaign_codex_refresh_supervisor() {
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    prepare_campaign_codex_refresh_state prelaunch
+    /usr/bin/python3 "$FORMAL_CODEX_REFRESH_HELPER" supervise \
+        --root "$CAMPAIGN_CODEX_REFRESH_ROOT" \
+        --device "$CAMPAIGN_CODEX_REFRESH_ROOT_DEVICE" \
+        --inode "$CAMPAIGN_CODEX_REFRESH_ROOT_INODE" &
+    CAMPAIGN_CODEX_REFRESH_PID=$!
+    CAMPAIGN_CODEX_REFRESH_STARTTIME="$(
+        runtime_service_starttime "$CAMPAIGN_CODEX_REFRESH_PID"
+    )" || die "cannot bind formal Codex refresh supervisor identity"
+    local attempt
+    for attempt in {1..50}; do
+        if /usr/bin/python3 "$FORMAL_CODEX_REFRESH_HELPER" health \
+            --root "$CAMPAIGN_CODEX_REFRESH_ROOT" \
+            --device "$CAMPAIGN_CODEX_REFRESH_ROOT_DEVICE" \
+            --inode "$CAMPAIGN_CODEX_REFRESH_ROOT_INODE" \
+            --pid "$CAMPAIGN_CODEX_REFRESH_PID" \
+            --starttime "$CAMPAIGN_CODEX_REFRESH_STARTTIME"; then
+            return 0
+        fi
+        [[ "$(runtime_service_starttime \
+            "$CAMPAIGN_CODEX_REFRESH_PID" 2>/dev/null || true)" == \
+            "$CAMPAIGN_CODEX_REFRESH_STARTTIME" ]] || break
+        sleep 0.1
+    done
+    die "formal Codex refresh supervisor did not become healthy"
+}
+
+prepare_campaign_codex_refresh_diagnostic() {
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    prepare_campaign_codex_refresh_state diagnostic
+}
+
+cleanup_campaign_codex_refresh_supervisor() {
+    [[ -n "${CAMPAIGN_RUNTIME_OWNER_BASHPID:-}" \
+        && "$BASHPID" == "$CAMPAIGN_RUNTIME_OWNER_BASHPID" ]] || return 0
+    [[ -n "$CAMPAIGN_CODEX_REFRESH_ROOT" ]] || return 0
+    local failed=0 current_starttime=""
+    [[ ! -f "$CAMPAIGN_CODEX_REFRESH_ROOT/fatal" ]] \
+        || CAMPAIGN_CODEX_REFRESH_FATAL=1
+    if [[ -n "$CAMPAIGN_CODEX_REFRESH_PID" \
+        && "$CAMPAIGN_CODEX_REFRESH_STARTTIME" =~ ^[0-9]+$ ]]; then
+        current_starttime="$(
+            runtime_service_starttime "$CAMPAIGN_CODEX_REFRESH_PID" \
+                2>/dev/null || true
+        )"
+        if [[ "$current_starttime" == "$CAMPAIGN_CODEX_REFRESH_STARTTIME" ]]; then
+            kill -TERM "$CAMPAIGN_CODEX_REFRESH_PID" 2>/dev/null || failed=1
+            local attempt
+            for attempt in {1..50}; do
+                current_starttime="$(
+                    runtime_service_starttime "$CAMPAIGN_CODEX_REFRESH_PID" \
+                        2>/dev/null || true
+                )"
+                [[ "$current_starttime" == \
+                    "$CAMPAIGN_CODEX_REFRESH_STARTTIME" ]] || break
+                sleep 0.1
+            done
+            if [[ "$current_starttime" == "$CAMPAIGN_CODEX_REFRESH_STARTTIME" ]]; then
+                kill -KILL "$CAMPAIGN_CODEX_REFRESH_PID" 2>/dev/null || true
+                failed=1
+            fi
+        else
+            if [[ ! -f "$CAMPAIGN_CODEX_REFRESH_ROOT/fatal" ]]; then
+                /usr/bin/python3 "$FORMAL_CODEX_REFRESH_HELPER" \
+                    mark-unexpected-exit \
+                    --root "$CAMPAIGN_CODEX_REFRESH_ROOT" \
+                    --device "$CAMPAIGN_CODEX_REFRESH_ROOT_DEVICE" \
+                    --inode "$CAMPAIGN_CODEX_REFRESH_ROOT_INODE" \
+                    || failed=1
+            fi
+            CAMPAIGN_CODEX_REFRESH_FATAL=1
+        fi
+        wait "$CAMPAIGN_CODEX_REFRESH_PID" 2>/dev/null || true
+    fi
+    [[ ! -f "$CAMPAIGN_CODEX_REFRESH_ROOT/fatal" ]] \
+        || CAMPAIGN_CODEX_REFRESH_FATAL=1
+    if ! /usr/bin/python3 "$FORMAL_CODEX_REFRESH_HELPER" cleanup \
+        --root "$CAMPAIGN_CODEX_REFRESH_ROOT" \
+        --device "$CAMPAIGN_CODEX_REFRESH_ROOT_DEVICE" \
+        --inode "$CAMPAIGN_CODEX_REFRESH_ROOT_INODE"; then
+        warn "retaining formal Codex private state after safe cleanup failure: $CAMPAIGN_CODEX_REFRESH_ROOT"
+        failed=1
+    else
+        CAMPAIGN_CODEX_REFRESH_ROOT=""
+        CAMPAIGN_CODEX_REFRESH_PUBLISHED_ROOT=""
+    fi
+    return "$failed"
+}
 fuse_config_enables_allow_other() {
     local config="$1"
     [[ "$config" == /* && -f "$config" && ! -L "$config" ]] \
@@ -1089,7 +1240,20 @@ cleanup_campaign_runtime_mounts() {
 finish_with_campaign_runtime_cleanup() {
     local original_status=$?
     trap - EXIT
-    if ! cleanup_campaign_runtime_mounts && [[ "$original_status" == "0" ]]; then
+    if [[ -n "$CAMPAIGN_CODEX_REFRESH_ROOT" \
+        && -f "$CAMPAIGN_CODEX_REFRESH_ROOT/fatal" ]]; then
+        CAMPAIGN_CODEX_REFRESH_FATAL=1
+    fi
+    local cleanup_failed=0
+    if ! cleanup_campaign_codex_refresh_supervisor; then
+        cleanup_failed=1
+    fi
+    if ! cleanup_campaign_runtime_mounts; then
+        cleanup_failed=1
+    fi
+    if [[ "$CAMPAIGN_CODEX_REFRESH_FATAL" == "1" ]]; then
+        original_status=71
+    elif [[ "$cleanup_failed" == "1" && "$original_status" == "0" ]]; then
         original_status=70
     fi
     exit "$original_status"
@@ -1346,8 +1510,22 @@ mount_agent() {
             need_path "$HOST_HOME/.codex" "Codex auth/config directory" "$strict" || return 0
             add_mount "$node_prefix" /opt/node ro
             if [[ "$isolate" == "1" ]]; then
-                add_mount "$HOST_HOME/.codex" "$AGENT_STATE_MOUNT_ROOT/.codex" ro
+                local codex_state_source="$HOST_HOME/.codex"
+                if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+                    [[ -n "$CAMPAIGN_CODEX_REFRESH_PUBLISHED_ROOT" ]] \
+                        || die "formal Codex published state is unavailable"
+                    codex_state_source="$CAMPAIGN_CODEX_REFRESH_PUBLISHED_ROOT/.codex"
+                    [[ -f "$codex_state_source/auth.json" \
+                        && -f "$codex_state_source/cloud-config-bundle-cache.json" \
+                        && "$(find "$codex_state_source" -mindepth 1 -maxdepth 1 \
+                            -printf '%f\n' | sort | tr '\n' ' ')" \
+                            == "auth.json cloud-config-bundle-cache.json " ]] \
+                        || die "formal Codex published state is not minimal"
+                fi
+                add_mount "$codex_state_source" "$AGENT_STATE_MOUNT_ROOT/.codex" ro
             else
+                [[ "$CAMPAIGN_PROVENANCE" != "1" ]] \
+                    || die "formal Codex state isolation cannot be disabled"
                 add_mount "$HOST_HOME/.codex" "$HOST_HOME/.codex"
             fi
             ;;
@@ -1485,6 +1663,10 @@ build_docker_args() {
     fi
 
     if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+        [[ "$CAMPAIGN_CODEX_REFRESH_HOST_CLOSURE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+            || die "formal Codex host runtime closure is unavailable"
+        [[ "$CAMPAIGN_CODEX_REFRESH_INITIAL_RECEIPT_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+            || die "formal Codex initial refresh receipt is unavailable"
         docker_args+=(
             -e "AGENT_KERNEL_ARENA_APEX_COMMIT=${CAMPAIGN_APEX_COMMIT}"
             -e "AGENT_KERNEL_ARENA_APEX_DIRTY=${CAMPAIGN_APEX_DIRTY}"
@@ -1501,6 +1683,8 @@ build_docker_args() {
             -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE_FILE_SHA256=${CAMPAIGN_AKA_RUNTIME_SERVICE_FILE_SHA256}"
             -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE_CONTENT_SHA256=${CAMPAIGN_AKA_RUNTIME_SERVICE_CONTENT_SHA256}"
             -e "AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT=${CAMPAIGN_DATA_ROOT}"
+            -e "AGENT_KERNEL_ARENA_CODEX_HOST_RUNTIME_CLOSURE_SHA256=${CAMPAIGN_CODEX_REFRESH_HOST_CLOSURE_SHA256}"
+            -e "AGENT_KERNEL_ARENA_CODEX_INITIAL_REFRESH_RECEIPT_SHA256=${CAMPAIGN_CODEX_REFRESH_INITIAL_RECEIPT_SHA256}"
         )
         if [[ "$APEX_RUNTIME" == "1" ]]; then
             docker_args+=(
@@ -2333,6 +2517,7 @@ case "${1:-}" in
         # Only the configured agent's CLI/auth is required for a run.
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
+        start_campaign_codex_refresh_supervisor
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
         docker_exec 0 python main.py "$@"
         ;;
@@ -2351,6 +2536,7 @@ case "${1:-}" in
         prepare_single_formal_gpu_runtime "preflight-$$"
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
+        start_campaign_codex_refresh_supervisor
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
         ;;
     shell)
@@ -2377,6 +2563,7 @@ case "${1:-}" in
         # request one, several, or `all` explicitly.
         REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"
         AGENTS_STRICT=1
+        prepare_campaign_codex_refresh_diagnostic
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_check_agents $REQUIRED_AGENTS
         ;;
     smoke)

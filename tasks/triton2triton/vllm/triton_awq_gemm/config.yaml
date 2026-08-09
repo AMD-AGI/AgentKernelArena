@@ -32,6 +32,32 @@ prompt:
     - Memory access pattern optimization
 
     Constraints:
-    - Must maintain the same function signature for `awq_gemm_triton`
-    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+    - Must maintain the same function signature for `awq_gemm_triton`, including
+      its optional block-size tuning arguments and defaults. The wrapper must
+      invoke `awq_gemm_kernel` exactly once with the requested `split_k_iters`
+      and block-size values; correctness attests the resolved two-dimensional
+      launch grid as well as the kernel constexpr metadata. The target launch
+      may not take hidden runtime operands; correctness freezes the four input
+      values at the launch boundary and snapshots output immediately afterward.
+      Standard Triton tuning controls remain configurable, but must be known,
+      bounded scalar values rather than tensors or other runtime payloads.
+    - Inputs are finite float16 `input[M,K]`, positive finite float16
+      `scales[K/group_size,N]`, and int32 `qweight[K,N/8]` and
+      `qzeros[K/group_size,N/8]` on the same device. `M`, `K`, and `N` are
+      positive, `N` is divisible by 8, and `K` is divisible by `group_size`.
+    - Supported `group_size` values are 32, 64, 128, and `K` (one group).
+      Supported `split_k_iters` values are powers of two from 1 through 32.
+      Correctness exercises both the default `(32,32,32)` block sizes and the
+      explicit nondefault `(16,64,16)` block-size request.
+    - M/N tile tails and positive-stride noncompact two-dimensional views are
+      valid, including padded row-major, inner-strided, and transposed layouts.
+      The function must not mutate an input or any storage backing an input view.
+    - Return a fresh deterministic `[M,N]` tensor on the input device with
+      `scales.dtype`; its storage must not alias another result, an input, or
+      input backing storage.
+    - Output must be finite and match the dequantize-then-matmul reference within
+      `atol=1e-2, rtol=1e-2` for float16.
+    - Extra correctness-only contract cases do not change the scoring workload:
+      `TEST_SHAPES`, `perf1`...`perf5`, warmup=10, repetitions=100, and the
+      performance command remain unchanged.
   cheatsheet: null

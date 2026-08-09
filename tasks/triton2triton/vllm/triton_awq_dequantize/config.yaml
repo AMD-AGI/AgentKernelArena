@@ -32,6 +32,33 @@ prompt:
     - Warp scheduling and occupancy tuning
 
     Constraints:
-    - Must maintain the same function signature for `awq_dequantize_triton`
-    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+    - Must maintain the same function signature for `awq_dequantize_triton`,
+      including the `block_size_x=32` and `block_size_y=32` tuning arguments.
+      Each argument accepts a positive power of two no larger than 128;
+      `block_size_y` must divide the inferred quantization group size. The
+      requested values must be passed to `awq_dequantize_kernel`. Each wrapper
+      invocation makes exactly one target-kernel launch bound to the exact
+      qweight, scales, zeros, and returned output tensors. The evaluator poisons
+      that output immediately before the target and snapshots it immediately
+      afterward; the snapshot must equal the returned tensor.
+    - Inputs are two-dimensional, C-contiguous tensors on one CUDA/ROCm device:
+      signed int32 `qweight[K,N_packed]`, positive finite float16
+      `scales[K/group_size,N_packed*8]`, and signed int32
+      `zeros[K/group_size,N_packed]`. Packed negative int32 values use their
+      unsigned two's-complement bit patterns before AWQ nibble reordering.
+    - `K` and `N_packed` are positive. The inferred `group_size` is exactly 32,
+      64, 128, or `K`, and must divide `K`. A nonzero storage offset is valid
+      when each logical matrix is still C-contiguous; strided, transposed, and
+      overlapping logical layouts are outside the supported domain and must be
+      rejected rather than copied.
+    - The function must not mutate an input or any storage backing an input
+      view. It returns a fresh C-contiguous `[K,N_packed*8]` float16 tensor on
+      the input device; its storage must not alias an input, input backing
+      allocation, or another invocation's result.
+    - Repeated calls with identical inputs are deterministic. Every output is
+      finite and matches the explicit AWQ unpack-and-dequantize reference within
+      `atol=1e-2, rtol=1e-2`.
+    - Extra correctness-only contract cases do not change the scoring workload:
+      `TEST_SHAPES`, `perf1`...`perf5`, warmup=10, repetitions=100, and the
+      performance command remain unchanged.
   cheatsheet: null

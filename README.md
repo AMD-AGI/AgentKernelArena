@@ -222,6 +222,25 @@ the agent, and require immutable Apex or direct-Codex session receipts before
 an attempt can enter central selection. The Apex treatment sees the scored workspace
 read-only and writes proposals only to a separate artifact root; AgentKernelArena
 rechecks the full workspace manifest before applying a validated source bundle.
+Each formal Codex home contains only `auth.json` and
+`cloud-config-bundle-cache.json`; history, model caches, user config, rules, and
+memory are excluded. Formal `run` and `preflight` first use a private host-side
+supervisor to stable-read only host authentication and run the exact model-free
+command `codex app-server --listen stdio://` with a forced cache miss. The user's
+host cloud-config cache is neither read nor mutated. AKA validates the signed-
+envelope shape, account binding, cache time, at least 630 seconds of remaining
+lifetime, and a maximum two-hour envelope lifetime, while the pinned Codex CLI
+remains the owner of cryptographic signature verification. It also pins and
+rechecks the complete host Codex/Node/package closure.
+
+The comparison contract binds a canonical SHA-256 of only
+`signed_payload.bundle`, so refreshed envelopes with the same policy are symmetric
+across both arms. The supervisor refreshes at expiry minus ten minutes and publishes
+only an unchanged-bundle envelope. Bundle or host-runtime drift preserves the last
+good cache, terminates the exact formal owner, and returns status 71. Immutable
+refresh receipts contain hashes, sizes, timing, policy, and status without account,
+user, token, signature, or bundle payloads; the manifest binds the initial receipt.
+Supervisor credential cleanup is independent of immutable-runtime/FUSE cleanup.
 The runner captures committed AKA bytes and the complete Apex Python/dependency
 closure, normalizes each into a deterministic SquashFS image, seals the image in
 a memfd, and mounts it read-only with `nodev,nosuid`. Docker receives those mounts,
@@ -339,6 +358,11 @@ dependencies and GPU-ID configuration before they are used with isolated
 workers.
 
 ### Resume a Run
+
+Formal Codex resume performs a fresh model-free refresh and requires its canonical
+bundle digest to match the sealed campaign anchor. Bundle or pinned host-runtime
+closure drift fails closed; create a new matched Apex/Codex cohort instead of
+resuming only one arm.
 
 ```bash
 make docker-run CONFIG="$CONFIG_PATH" RUN_ARGS="--resume-latest"

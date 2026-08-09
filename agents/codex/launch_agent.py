@@ -33,6 +33,7 @@ from src.campaign_isolation import (
     ATTEMPT_CONTAINMENT_POLICY,
     attempt_cleanup_verified,
     attempt_command_pass_fds,
+    codex_cloud_config_bootstrap_receipt,
     establish_attempt_boundary,
     finalize_attempt_boundary,
     formal_gpu_evidence,
@@ -1639,6 +1640,11 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     attempt_home = prepare_attempt_home(eval_config, backend="codex")
     if formal_campaign and attempt_home is None:
         raise CodexSessionError("formal direct Codex requires attempt containment")
+    cloud_config_bootstrap = (
+        codex_cloud_config_bootstrap_receipt(attempt_home)
+        if attempt_home is not None
+        else None
+    )
     process_env = isolated_environment(process_env, attempt_home)
     attempt_process_token = f"AKA_ATTEMPT_PROCESS_TOKEN={uuid.uuid4().hex}"
     process_env["AKA_ATTEMPT_PROCESS_TOKEN"] = attempt_process_token.split("=", 1)[1]
@@ -2299,6 +2305,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             "version": codex_version,
             "model": configured_model,
             "effort": configured_effort,
+            "cloud_config_bootstrap": cloud_config_bootstrap,
         },
         "invocation": {
             "argv_without_prompt": cmd[:-1],

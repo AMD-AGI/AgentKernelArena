@@ -155,6 +155,14 @@ def _formal_v6_contract(
         "backend_runtime_closure_schema": campaign.BACKEND_CLOSURE_SCHEMA,
         "backend_runtime_closure_sha256": closure["closure_sha256"],
         "backend_runtime_closure": closure,
+        "cloud_config_bootstrap_schema": (
+            campaign.CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA
+        ),
+        "cloud_config_bootstrap_policy": (
+            campaign.CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY
+        ),
+        "cloud_config_bundle_sha256": "c" * 64,
+        "cloud_config_host_runtime_closure_sha256": "d" * 64,
         "isolation": {
             "approval": "never_via_strict_config",
             "execpolicy_rules": "ignored",
@@ -168,6 +176,7 @@ def _formal_v6_contract(
     }
     apex_transport = campaign.FORMAL_AGENT_TRANSPORT_TREATMENTS["apex"]
     agent = codex | apex_treatment | {
+        "cloud_config_initial_refresh_receipt_sha256": "e" * 64,
         "max_process_output_bytes": apex_transport["max_process_output_bytes"],
         "structured_stream_overflow_policy": apex_transport["overflow_policy"],
     }

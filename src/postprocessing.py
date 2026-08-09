@@ -25,6 +25,7 @@ try:
         campaign_task_path_component,
     )
     from src.score import resolve_speedup_ratio, task_result_scoring
+    from src.evaluator_utils import canonical_json_sha256
     from src.preprocessing import get_task_workspace_path
 except ModuleNotFoundError:
     # Allow direct execution: `python src/postprocessing.py`
@@ -40,6 +41,7 @@ except ModuleNotFoundError:
         campaign_task_path_component,
     )
     from src.score import resolve_speedup_ratio, task_result_scoring
+    from src.evaluator_utils import canonical_json_sha256
     from src.preprocessing import get_task_workspace_path
 
 
@@ -1162,6 +1164,21 @@ def _revalidate_attempt_record(
         "agent_session_terminal_status": terminal_status,
         "selection_eligible": eligible,
     }
+    source_anti_tamper = report.get("source_anti_tamper")
+    if isinstance(source_anti_tamper, dict):
+        exact_fields.update(
+            {
+                "source_anti_tamper_sha256": canonical_json_sha256(
+                    source_anti_tamper
+                ),
+                "source_anti_tamper_source_manifest_sha256": (
+                    source_anti_tamper.get("source_manifest_sha256")
+                ),
+                "source_anti_tamper_rules_sha256": source_anti_tamper.get(
+                    "rules_sha256"
+                ),
+            }
+        )
     if any(record.get(key) != value for key, value in exact_fields.items()):
         raise ValueError(f"attempt {attempt} evaluator projection differs")
     if (
@@ -1390,6 +1407,15 @@ def _validate_canonical_lineage(
         "measurement_contract": task_campaign.get("measurement_contract"),
         "is_apex_canonical_300_sample_grade": False,
         "selected_central_evaluator_report_sha256": selected_result_sha256,
+        "selected_source_anti_tamper_sha256": selected.get(
+            "source_anti_tamper_sha256"
+        ),
+        "selected_source_manifest_sha256": selected.get(
+            "source_anti_tamper_source_manifest_sha256"
+        ),
+        "source_anti_tamper_rules_sha256": selected.get(
+            "source_anti_tamper_rules_sha256"
+        ),
         "selected_performance_evidence_sha256": evidence_hashes,
         "selected_workspace_manifest_sha256": selected_manifest_sha256,
     }

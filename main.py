@@ -587,6 +587,7 @@ def _run_single_task(
                 baseline_cases,
                 logger,
                 deadline_monotonic=deadline,
+                source_anti_tamper_required=isinstance(campaign_attempt, dict),
             )
             write_task_result(
                 workspace_path,

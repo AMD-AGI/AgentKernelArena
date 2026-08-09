@@ -286,11 +286,13 @@ the smaller home filesystem. Both repositories must be clean before formal campa
 initialization. The runner fails closed if image inspection, repo digests, GPU identity,
 source manifests, or worker affinity cannot be proven. During a formal campaign the AKA
 checkout is mounted read-only. Bubblewrap hides the shared campaign result tree
-from each agent. Direct Codex receives only its current workspace and fresh auth-only
-home writable; its raw changes are receipted and then reduced to declared
+from each agent. Direct Codex receives only its current workspace and fresh minimal
+bootstrap home writable; its raw changes are receipted and then reduced to declared
 `source_file_path` content. Apex instead receives the scored Arena workspace through an
-explicit read-only bind: only its separate result/artifact root and fresh auth-only home
-are writable. The adapter verifies a full pre-apply workspace manifest before it may
+explicit read-only bind: only its separate result/artifact root and fresh minimal
+bootstrap home are writable. Both homes contain only Codex authentication and the
+identity-bound signed cloud-config cache. The adapter verifies a full pre-apply
+workspace manifest before it may
 apply a validated Apex bundle, so `no_gain` cannot retain direct or undeclared edits.
 Both treatments use strict `approval_policy=never`, ignored user config and exec-policy
 rules, an ephemeral session, a private outer IPC namespace, and private `/dev/shm`.

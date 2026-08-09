@@ -33,6 +33,33 @@ prompt:
     - Persistent kernel loop optimization
 
     Constraints:
-    - Must maintain the same function signature for `matmul_persistent`
-    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+    - Must maintain the same function signature for `matmul_persistent` and
+      invoke `matmul_kernel_persistent` through a persistent one-dimensional
+      grid using positive `GROUP_SIZE_M` grouped tile scheduling. The target
+      may receive only its documented operands and known scalar Triton launch
+      controls; hidden tensor or object payloads are rejected.
+    - `a[M,K]` and `b[K,N]` are finite, positive-stride two-dimensional CUDA
+      tensors on the same device with the same dtype. Supported dtypes are
+      float16 and bfloat16; `M`, `N`, and `K` are positive. Float32 is rejected
+      before launch because this Triton dot path does not lower on gfx950.
+    - `bias` is optional. When present it is a finite length-`N` vector on the
+      same device with the same dtype; positive non-unit stride is valid.
+    - Padded row-major, inner-strided, and transposed input views are valid.
+      Inputs, bias, and every byte in their backing storage are read-only.
+    - Storage indexing is selected from the maximum relative element offset
+      implied by shape and strides, not tensor `numel`. Any A/B/C offset above
+      signed-int32 range must dispatch the target kernel's int64 index path.
+    - Return a fresh contiguous deterministic `[M,N]` tensor on the input device
+      with `a.dtype`. It must not alias an input, bias, backing storage, or a
+      previous result, and must match float32 matmul-plus-bias order within
+      `atol=1e-2, rtol=1e-2`.
+    - The evaluator poisons and snapshots the returned C allocation around the
+      recorded target launch. A dummy target launch followed by wrapper-side
+      computation is not valid target-kernel engagement.
+    - The >2^31 index gate uses evaluator-owned virtual shape/stride metadata and
+      launch receipts only; correctness never allocates a 2 GiB probe. Formal
+      qualification additionally requires source audit of the int64 pointer path.
+    - Extra correctness-only cases and metadata proofs do not change scoring:
+      `TEST_SHAPES`, `perf1`...`perf5`, warmup=10, repetitions=100, and
+      `run_performance` remain unchanged.
   cheatsheet: null

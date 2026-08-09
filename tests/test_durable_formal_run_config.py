@@ -104,7 +104,23 @@ def _offline_manifest(run_config: Path) -> dict:
     identity = {
         field: f"bound-{field}" for field in compare_runs._CODEX_IDENTITY_FIELDS
     }
-    agent = {"template": "codex", **identity}
+    identity.update(
+        {
+            "cloud_config_bootstrap_schema": (
+                campaign.CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA
+            ),
+            "cloud_config_bootstrap_policy": (
+                campaign.CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY
+            ),
+            "cloud_config_bundle_sha256": "c" * 64,
+            "cloud_config_host_runtime_closure_sha256": "d" * 64,
+        }
+    )
+    agent = {
+        "template": "codex",
+        **identity,
+        "cloud_config_initial_refresh_receipt_sha256": "e" * 64,
+    }
     comparison = {
         "schema": compare_runs._COMPARISON_SCHEMA,
         "objective_policy_id": compare_runs._OBJECTIVE_POLICY,

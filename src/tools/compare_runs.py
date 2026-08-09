@@ -37,6 +37,8 @@ try:
         APEX_RUNTIME_MOUNT_POLICY,
         APEX_RUNTIME_MOUNT_SCHEMA,
         ATTEMPT_MOUNT_RECEIPT_SCHEMA,
+        CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY,
+        CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA,
     )
     from src.campaign import (
         FORMAL_AGENT_TRANSPORT_TREATMENTS,
@@ -68,6 +70,8 @@ except (ModuleNotFoundError, ImportError):
         APEX_RUNTIME_MOUNT_POLICY,
         APEX_RUNTIME_MOUNT_SCHEMA,
         ATTEMPT_MOUNT_RECEIPT_SCHEMA,
+        CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY,
+        CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA,
     )
     from src.campaign import (
         FORMAL_AGENT_TRANSPORT_TREATMENTS,
@@ -119,6 +123,10 @@ _CODEX_IDENTITY_FIELDS = (
     "backend_runtime_closure_schema",
     "backend_runtime_closure_sha256",
     "backend_runtime_closure",
+    "cloud_config_bootstrap_schema",
+    "cloud_config_bootstrap_policy",
+    "cloud_config_bundle_sha256",
+    "cloud_config_host_runtime_closure_sha256",
 )
 _APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v6"
 _CODEX_RECEIPT_SCHEMA = "agentkernelarena.codex-attempt-receipt/v6"
@@ -653,7 +661,9 @@ def _agent_isolation_valid(isolation: Any) -> bool:
     }
 
 
-def _formal_agent_valid(agent: Any) -> bool:
+def _formal_agent_valid(
+    agent: Any, *, require_initial_refresh_receipt: bool = True
+) -> bool:
     return bool(
         isinstance(agent, dict)
         and agent.get("backend") == "codex"
@@ -669,6 +679,29 @@ def _formal_agent_valid(agent: Any) -> bool:
         and agent.get("attempt_containment_policy_id")
         == _ATTEMPT_CONTAINMENT_POLICY
         and agent.get("structured_stream_output_limit_bytes") == 16 * 1024 * 1024
+        and agent.get("cloud_config_bootstrap_schema")
+        == CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA
+        and agent.get("cloud_config_bootstrap_policy")
+        == CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY
+        and isinstance(agent.get("cloud_config_bundle_sha256"), str)
+        and _SHA256.fullmatch(agent["cloud_config_bundle_sha256"])
+        and isinstance(
+            agent.get("cloud_config_host_runtime_closure_sha256"), str
+        )
+        and _SHA256.fullmatch(
+            agent["cloud_config_host_runtime_closure_sha256"]
+        )
+        and (
+            not require_initial_refresh_receipt
+            or (
+                isinstance(
+                    agent.get("cloud_config_initial_refresh_receipt_sha256"), str
+                )
+                and _SHA256.fullmatch(
+                    agent["cloud_config_initial_refresh_receipt_sha256"]
+                )
+            )
+        )
         and isinstance(agent.get("codex_version"), str)
         and bool(agent["codex_version"])
         and _agent_isolation_valid(agent.get("isolation"))
@@ -1102,7 +1135,9 @@ def _v6_manifest_bindings_valid(
         and agent_binding_valid
         and _formal_agent_valid(agent)
         and _agent_transport_treatments_valid(agent, comparison)
-        and _formal_agent_valid(comparison.get("codex"))
+        and _formal_agent_valid(
+            comparison.get("codex"), require_initial_refresh_receipt=False
+        )
         and _runtime_binding_valid(
             runtime, comparison.get("runtime"), repositories, tasks, agent
         )
