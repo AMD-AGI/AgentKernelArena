@@ -170,6 +170,9 @@ REPO_SUBDIR = "vllm_fused_moe"
 KERNEL_FILE = "fused_moe.py"
 EDIT_MODULE_NAME = "vllm.model_executor.layers.fused_moe._ka_fused_moe"
 
+# How many times run_correctness rotates over the full case suite.
+CORRECTNESS_ROUNDS = 3
+
 
 def _configure() -> None:
     for key in ("GPU_ARCHS", "PYTORCH_ROCM_ARCH", "AMDGPU_TARGETS", "GPU_TARGETS"):
@@ -491,15 +494,25 @@ def run_compile() -> None:
 
 
 def run_correctness() -> None:
+    """Check every case, rotating over the whole suite CORRECTNESS_ROUNDS times.
+
+    A single pass only samples a kernel once, so an implementation that is wrong
+    intermittently — a racy cross-workgroup barrier, a reused global scratch
+    buffer — passes whenever the race happens not to fire. Rotating the suite
+    also exposes state that leaks from one case into the next, which a case run
+    back-to-back with itself would not surface. The suite is cheap next to
+    process start-up and JIT, so the extra rounds cost only a few percent.
+    """
     torch = _torch()
-    for case in CASES:
-        inputs = _make(case)
-        got = _run(inputs)
-        torch.cuda.synchronize()
-        torch.testing.assert_close(
-            got, _reference(inputs), atol=0.02, rtol=0.02
-        )
-        print("correctness PASS", case["id"])
+    for _ in range(CORRECTNESS_ROUNDS):
+        for case in CASES:
+            inputs = _make(case)
+            got = _run(inputs)
+            torch.cuda.synchronize()
+            torch.testing.assert_close(
+                got, _reference(inputs), atol=0.02, rtol=0.02
+            )
+            print("correctness PASS", case["id"])
 
 
 def run_performance() -> None:
