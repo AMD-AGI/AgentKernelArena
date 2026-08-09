@@ -1752,6 +1752,10 @@ docker_exec() {
                     --service-content-sha256 "$AGENT_KERNEL_ARENA_APEX_RUNTIME_SERVICE_EVIDENCE_CONTENT_SHA256" \
                     --output "$apex_mount_receipt"
             )" || exit 1
+            [[ "$apex_mount_receipt_sha256" =~ ^[0-9a-f]{64}$ ]] || {
+                echo "Apex runtime mount receipt did not emit a valid digest" >&2
+                exit 1
+            }
             chmod 0444 "$apex_mount_receipt" || exit 1
             export AGENT_KERNEL_ARENA_APEX_RUNTIME_MOUNT_RECEIPT="$apex_mount_receipt"
             export AGENT_KERNEL_ARENA_APEX_RUNTIME_MOUNT_RECEIPT_SHA256="$apex_mount_receipt_sha256"

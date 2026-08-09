@@ -2407,6 +2407,15 @@ def _main(arguments: Sequence[str] | None = None) -> int:
                     },
                 }
     _write_output(options.output, value)
+    if (
+        options.command == "mount-receipt"
+        and options.output is not None
+        and options.output != "-"
+    ):
+        # ``docker_benchmark.sh`` captures this content digest while the full
+        # receipt is written to its namespace-local evidence file.  Keep the
+        # stdout contract aligned with ``aka_runtime.py mount-receipt``.
+        print(value["sha256"])
     return 0
 
 

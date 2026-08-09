@@ -42,6 +42,55 @@ def test_apex_runtime_cli_imports_from_its_script_path() -> None:
     assert "mount-receipt" in completed.stdout
 
 
+def test_mount_receipt_cli_prints_content_digest_when_writing_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    digest = "a" * 64
+    receipt = {"schema": "test", "sha256": digest}
+    monkeypatch.setattr(
+        apex_runtime,
+        "verify_runtime_snapshot",
+        lambda _snapshot, _sha256: {"sha256": _sha256},
+    )
+    monkeypatch.setattr(
+        apex_runtime,
+        "load_runtime_service_evidence",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        apex_runtime,
+        "create_immutable_mount_receipt",
+        lambda *_args, **_kwargs: receipt,
+    )
+    output = tmp_path / "mount-receipt.json"
+
+    exit_code = apex_runtime._main(
+        [
+            "mount-receipt",
+            "--snapshot",
+            str(tmp_path),
+            "--sha256",
+            "b" * 64,
+            "--image-sha256",
+            "c" * 64,
+            "--service-evidence",
+            str(tmp_path / "service.json"),
+            "--service-file-sha256",
+            "d" * 64,
+            "--service-content-sha256",
+            "e" * 64,
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert exit_code == 0
+    assert capsys.readouterr().out == f"{digest}\n"
+    assert json.loads(output.read_text(encoding="utf-8")) == receipt
+
+
 def _runtime_checkout(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     root = tmp_path / "Apex"
     root.mkdir()

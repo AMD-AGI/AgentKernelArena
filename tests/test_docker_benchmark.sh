@@ -132,6 +132,8 @@ grep -Fq -- '--unshare-pid --unshare-ipc' "$RUNNER" \
     || fail "rootless bwrap preflight must create a private attempt PID namespace"
 grep -Fq -- '--proc /proc' "$RUNNER" \
     || fail "rootless bwrap preflight must mount the attempt-private procfs"
+grep -Fq '[[ "$apex_mount_receipt_sha256" =~ ^[0-9a-f]{64}$ ]]' "$RUNNER" \
+    || fail "formal Apex mount receipt digest must fail closed before main.py"
 
 # A cold Apex snapshot can legitimately spend more than 30 seconds inside the
 # deterministic image builder, whose own hard timeout is 120 seconds.  Exercise
