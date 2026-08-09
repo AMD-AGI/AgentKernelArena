@@ -1715,8 +1715,8 @@ def test_formal_apex_mount_contract_keeps_scored_workspace_read_only(
     runtime_mount = captured["receipt"]["apex_runtime_mount"]
     runtime_root = Path(runtime_mount["root"])
     assert captured["writable_roots"] == (artifact_root, attempt_home)
-    assert captured["read_only_roots"] == (workspace, contract_root, runtime_root)
-    assert captured["trusted_read_only_roots"] == ()
+    assert captured["read_only_roots"] == (workspace, contract_root)
+    assert captured["trusted_read_only_roots"] == (runtime_root,)
     assert captured["mount_roles"] == {
         "apex_artifacts": artifact_root,
         "backend_home": attempt_home,

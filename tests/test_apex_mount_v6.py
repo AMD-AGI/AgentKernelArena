@@ -607,7 +607,7 @@ def _role_fixture(tmp_path: Path) -> tuple[dict, dict, Path, Path, Path]:
     artifacts = attempt / ".workspace_apex/run"
     contract = attempt / ".workspace_apex/run.contract"
     home = attempt / ".agent-home"
-    runtime = attempt / ".workspace_apex/run.runtime"
+    runtime = tmp_path / "trusted-apex-runtime"
     for path in (workspace, artifacts, contract, home, runtime):
         path.mkdir(parents=True, exist_ok=True)
     contract_path = contract / "task_spec.json"

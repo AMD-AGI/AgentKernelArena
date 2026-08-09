@@ -3019,8 +3019,8 @@ def launch_agent(
             command,
             eval_config=eval_config,
             writable_roots=(artifact_root, attempt_home),
-            read_only_roots=(workspace_path, contract_root, runtime_root),
-            trusted_read_only_roots=(),
+            read_only_roots=(workspace_path, contract_root),
+            trusted_read_only_roots=(runtime_root,),
             mount_roles={
                 "apex_artifacts": artifact_root,
                 "backend_home": attempt_home,

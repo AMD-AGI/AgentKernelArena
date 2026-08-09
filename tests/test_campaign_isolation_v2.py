@@ -40,7 +40,7 @@ def _role_tree(tmp_path: Path) -> tuple[Path, dict[str, Path]]:
     roles = {
         "scored_workspace": attempt / "workspace",
         "sealed_task_contract": attempt / "task-contract",
-        "apex_runtime": attempt / "apex-runtime",
+        "apex_runtime": tmp_path / "trusted-apex-runtime",
         "apex_artifacts": attempt / "apex-artifacts",
         "backend_home": attempt / "backend-home",
     }
@@ -105,8 +105,8 @@ def test_role_mount_real_bwrap_preserves_exact_access_classes(
         read_only_roots=(
             roles["scored_workspace"],
             roles["sealed_task_contract"],
-            roles["apex_runtime"],
         ),
+        trusted_read_only_roots=(roles["apex_runtime"],),
         mount_roles=roles,
         private_proc=False,
     )
@@ -192,8 +192,53 @@ def test_role_mount_rejects_scored_workspace_as_writable(
             ),
             read_only_roots=(
                 roles["sealed_task_contract"],
-                roles["apex_runtime"],
             ),
+            trusted_read_only_roots=(roles["apex_runtime"],),
+            mount_roles=roles,
+        )
+
+
+def test_role_mount_requires_one_external_trusted_runtime(
+    tmp_path, monkeypatch
+) -> None:
+    data_root, roles = _role_tree(tmp_path)
+    monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
+    _disable_requirements_probe(monkeypatch)
+    internal_runtime = data_root / "run/task/attempt_01/internal-runtime"
+    internal_runtime.mkdir()
+    internal_roles = {**roles, "apex_runtime": internal_runtime}
+
+    with pytest.raises(
+        campaign_isolation.CampaignIsolationError,
+        match="trusted read-only root must be outside campaign data root",
+    ):
+        campaign_isolation.wrap_attempt_command(
+            ["/bin/true"],
+            eval_config=_formal_config(),
+            writable_roots=(roles["apex_artifacts"], roles["backend_home"]),
+            read_only_roots=(
+                roles["scored_workspace"],
+                roles["sealed_task_contract"],
+            ),
+            trusted_read_only_roots=(internal_runtime,),
+            mount_roles=internal_roles,
+        )
+
+    extra = tmp_path / "undeclared-trusted-root"
+    extra.mkdir()
+    with pytest.raises(
+        campaign_isolation.CampaignIsolationError,
+        match="role classes differ",
+    ):
+        campaign_isolation.wrap_attempt_command(
+            ["/bin/true"],
+            eval_config=_formal_config(),
+            writable_roots=(roles["apex_artifacts"], roles["backend_home"]),
+            read_only_roots=(
+                roles["scored_workspace"],
+                roles["sealed_task_contract"],
+            ),
+            trusted_read_only_roots=(roles["apex_runtime"], extra),
             mount_roles=roles,
         )
 
@@ -299,8 +344,8 @@ def test_outer_bwrap_exec_ignores_adversarial_path_and_is_sealed(
         read_only_roots=(
             roles["scored_workspace"],
             roles["sealed_task_contract"],
-            roles["apex_runtime"],
         ),
+        trusted_read_only_roots=(roles["apex_runtime"],),
         mount_roles=roles,
         private_proc=False,
     )
@@ -346,13 +391,20 @@ def test_outer_bwrap_memfd_has_exact_bytes_and_irrevocable_seals() -> None:
         os.close(descriptor)
 
 
-@pytest.mark.parametrize("attack", ["writable_workspace", "nested_mount"])
+@pytest.mark.parametrize(
+    "attack", ["writable_workspace", "nested_mount", "nested_runtime_mount"]
+)
 def test_mount_attestation_fails_before_untrusted_exec(
     tmp_path, monkeypatch, attack
 ) -> None:
     data_root, roles = _role_tree(tmp_path)
     executed = roles["apex_artifacts"] / "untrusted-executed"
-    nested = roles["scored_workspace"] / "nested"
+    nested_root = (
+        roles["apex_runtime"]
+        if attack == "nested_runtime_mount"
+        else roles["scored_workspace"]
+    )
+    nested = nested_root / "nested"
     nested.mkdir()
     monkeypatch.setenv("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", str(data_root))
     _disable_requirements_probe(monkeypatch)
@@ -363,8 +415,8 @@ def test_mount_attestation_fails_before_untrusted_exec(
         read_only_roots=(
             roles["scored_workspace"],
             roles["sealed_task_contract"],
-            roles["apex_runtime"],
         ),
+        trusted_read_only_roots=(roles["apex_runtime"],),
         mount_roles=roles,
         private_proc=False,
     )

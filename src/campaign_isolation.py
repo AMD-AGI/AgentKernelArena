@@ -1684,6 +1684,7 @@ def wrap_attempt_command(
                 "data_root": data_root,
                 "roles": dict(roles),
                 "identities": mount_identities,
+                "trusted_read_only": tuple(trusted_read_only),
             }
             if roles is not None
             else None
@@ -1936,6 +1937,7 @@ def _namespace_mount_attestation(
     data_root = contract["data_root"]
     roles = contract["roles"]
     identities = contract["identities"]
+    trusted_read_only = set(contract.get("trusted_read_only", ()))
     table = _namespace_mountinfo_table(pid)
     if os.stat(f"/proc/{pid}/ns/mnt").st_ino != mount_namespace_id:
         raise CampaignIsolationError("attempt mount namespace changed during attestation")
@@ -1950,6 +1952,7 @@ def _namespace_mount_attestation(
         for entry in table.values()
         if entry.mount_point == data_root
         or _path_is_below(entry.mount_point, data_root)
+        or entry.mount_point in trusted_read_only
     }
     if observed != declared:
         raise CampaignIsolationError(
@@ -2662,25 +2665,32 @@ def _validated_apex_mount_roles(
             ) from error
         if canonical != lexical:
             raise CampaignIsolationError(f"Apex mount role is not canonical: {role}")
-        try:
-            relative = canonical.relative_to(data_root)
-        except ValueError as error:
-            raise CampaignIsolationError(
-                f"Apex mount role is outside campaign data: {role}"
-            ) from error
-        if not relative.parts:
-            raise CampaignIsolationError(f"Apex mount role is too broad: {role}")
+        if role == "apex_runtime":
+            if canonical not in trusted_read_only:
+                raise CampaignIsolationError(
+                    "Apex runtime role is not the trusted external read-only root"
+                )
+        else:
+            try:
+                relative = canonical.relative_to(data_root)
+            except ValueError as error:
+                raise CampaignIsolationError(
+                    f"Apex mount role is outside campaign data: {role}"
+                ) from error
+            if not relative.parts:
+                raise CampaignIsolationError(
+                    f"Apex mount role is too broad: {role}"
+                )
         roles[role] = canonical
     expected_writable = {roles["apex_artifacts"], roles["backend_home"]}
     expected_read_only = {
         roles["scored_workspace"],
         roles["sealed_task_contract"],
-        roles["apex_runtime"],
     }
     if (
         set(writable) != expected_writable
         or set(read_only) != expected_read_only
-        or trusted_read_only
+        or set(trusted_read_only) != {roles["apex_runtime"]}
     ):
         raise CampaignIsolationError(
             "formal Apex role classes differ from requested mount roots"

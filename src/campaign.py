@@ -2429,9 +2429,10 @@ def _apex_attempt_mount_role_errors(
         or any(
             not path.is_relative_to(data_root)
             for name, path in expected.items()
-            if path is not None
+            if path is not None and name != "apex_runtime"
         )
         or expected_runtime is None
+        or expected_runtime.is_relative_to(data_root)
         or not receipt_below_data
     ):
         return ["apex_attempt_mount_role_contract_mismatch"]
