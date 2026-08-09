@@ -24,5 +24,14 @@ prompt:
 
     Constraints:
     - Must maintain the same function signature for `compute_token_logprobs`
-    - Output must match reference within atol=1e-2, rtol=1e-2 for float outputs or exactly for integer outputs
+    - Accept float16, bfloat16, and float32 2D logits with their actual leading
+      stride, including padded non-contiguous rows
+    - Support batch size one and arbitrary positive vocabulary sizes, including
+      non-power-of-two and large vocabularies
+    - Accept integer token IDs that the wrapper converts to int64; valid IDs may
+      be unsorted or duplicated (IDs outside [0, vocab_size) are not supported)
+    - Return a new float32 tensor with shape [batch, num_token_ids] without
+      mutating or aliasing either input
+    - Output must match the float32 log_softmax-plus-gather reference within
+      atol=1e-2, rtol=1e-2
   cheatsheet: null

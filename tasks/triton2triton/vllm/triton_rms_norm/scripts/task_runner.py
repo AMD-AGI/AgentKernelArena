@@ -23,6 +23,42 @@ TEST_SHAPES = [
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
+# Non-scoring public-contract coverage. Keep TEST_SHAPES reserved for performance.
+CORRECTNESS_CASES = [
+    {
+        "name": "non_power_float16",
+        "shape": (257,),
+        "dtype": "float16",
+        "layout": "contiguous",
+        "atol": 1e-2,
+        "rtol": 1e-2,
+    },
+    {
+        "name": "non_power_bfloat16",
+        "shape": (2, 3, 1025),
+        "dtype": "bfloat16",
+        "layout": "contiguous",
+        "atol": 2e-2,
+        "rtol": 2e-2,
+    },
+    {
+        "name": "noncontiguous_float32",
+        "shape": (2, 3, 513),
+        "dtype": "float32",
+        "layout": "padded",
+        "atol": 1e-4,
+        "rtol": 1e-4,
+    },
+    {
+        "name": "large_dynamic_fallback",
+        "shape": (1, 1048577),
+        "dtype": "float16",
+        "layout": "contiguous",
+        "atol": 1e-2,
+        "rtol": 1e-2,
+    },
+]
+
 
 # >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>
 def _measure_cuda_event_fallback(*args, **kwargs):
@@ -55,6 +91,32 @@ def reference_rms_norm(x, weight, eps=1e-6):
     w_f32 = weight.float()
     rms = torch.sqrt(x_f32.pow(2).mean(dim=-1, keepdim=True) + eps)
     return (x_f32 / rms * w_f32).to(x.dtype)
+
+
+def _make_rms_correctness_inputs(torch, case, device):
+    shape = case["shape"]
+    hidden = shape[-1]
+    dtype = getattr(torch, case["dtype"])
+
+    if case["layout"] == "padded":
+        input_storage = torch.randn(
+            *shape[:-1], hidden + 17, device=device, dtype=dtype
+        )
+        weight_storage = torch.randn(hidden * 2, device=device, dtype=dtype)
+        x = input_storage[..., :hidden]
+        weight = weight_storage[::2]
+        assert not x.is_contiguous()
+        assert not weight.is_contiguous()
+        backing_storages = (
+            ("x", input_storage),
+            ("weight", weight_storage),
+        )
+    else:
+        x = torch.randn(*shape, device=device, dtype=dtype)
+        weight = torch.randn(hidden, device=device, dtype=dtype)
+        backing_storages = ()
+
+    return x, weight, backing_storages
 
 
 def run_compile():
@@ -100,6 +162,51 @@ def run_correctness():
                 )
         except Exception as e:
             return False, f"Shape {i + 1} (rows={rows}, hidden={hidden}): exception: {e}"
+
+    for i, case in enumerate(CORRECTNESS_CASES):
+        name = case["name"]
+        try:
+            torch.manual_seed(142 + i)
+            x, weight, backing_storages = _make_rms_correctness_inputs(
+                torch, case, device
+            )
+            original_x = x.clone()
+            original_weight = weight.clone()
+            frozen_backing = [
+                (storage_name, storage, storage.clone())
+                for storage_name, storage in backing_storages
+            ]
+
+            result = mod.rms_norm(x, weight, eps=eps)
+            torch.cuda.synchronize()
+            ref = reference_rms_norm(x, weight, eps)
+
+            if result.shape != x.shape or result.dtype != x.dtype:
+                return False, (
+                    f"Contract case {name}: expected shape/dtype {x.shape}/{x.dtype}, "
+                    f"got {result.shape}/{result.dtype}"
+                )
+            result_storage = result.untyped_storage().data_ptr()
+            if result_storage in {
+                x.untyped_storage().data_ptr(),
+                weight.untyped_storage().data_ptr(),
+            }:
+                return False, f"Contract case {name}: output aliases an input"
+            if not torch.equal(x, original_x) or not torch.equal(weight, original_weight):
+                return False, f"Contract case {name}: input mutation"
+            for storage_name, observed, frozen in frozen_backing:
+                if not torch.equal(observed, frozen):
+                    return False, (
+                        f"Contract case {name}: write outside logical "
+                        f"{storage_name} view"
+                    )
+            if not torch.allclose(
+                result, ref, atol=case["atol"], rtol=case["rtol"]
+            ):
+                max_diff = (result - ref).abs().max().item()
+                return False, f"Contract case {name}: max diff = {max_diff:.6f}"
+        except Exception as e:
+            return False, f"Contract case {name}: exception: {e}"
 
     return True, None
 
@@ -172,7 +279,11 @@ def main():
 
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(TEST_SHAPES) + len(CORRECTNESS_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

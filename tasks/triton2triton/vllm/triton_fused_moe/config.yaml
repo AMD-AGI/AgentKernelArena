@@ -36,4 +36,14 @@ prompt:
     Constraints:
     - Must maintain the same function signature for `fused_moe`
     - Output must match reference within atol=5e-2, rtol=5e-2 for float16
+    - Public-domain precondition: every `topk_ids` value is an integer in
+      `[0, E)`. Invalid expert IDs are outside this task contract and are not
+      a semantic-failure test case
+    - Valid IDs may repeat, omit experts, or select the first/last expert;
+      `M=0`, optional routing weights, and both routed-weight branches must work
+    - The correctness phase includes a practical valid-domain retained-memory
+      and incremental peak-memory gate across specialization warmup and a normal
+      call; no 2 GiB address probe is used
+    - These are low-cost correctness/resource cases only. Performance
+      TEST_SHAPES, test-case IDs, warmup/iteration counts, and scoring are unchanged
   cheatsheet: null

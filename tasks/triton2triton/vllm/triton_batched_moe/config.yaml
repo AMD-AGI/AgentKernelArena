@@ -33,4 +33,13 @@ prompt:
     Constraints:
     - Must maintain the same function signature for `batched_moe_gemm`
     - Output must match reference within atol=5e-2, rtol=5e-2 for float16
+    - `expert_num_tokens[e]` is in `[0, max_num_tokens]`; zero-token experts,
+      including an all-zero batch, must leave their complete output slice zero
+    - Logical M/K/N sizes need not be kernel-block multiples
+    - A and B may be noncompact logical views with padded row/expert strides;
+      honor their explicit strides and do not mutate any input
+    - Return a fresh float16 output without aliasing an input or touching padded
+      backing storage outside the logical views
+    - These are low-cost correctness cases only. Performance TEST_SHAPES,
+      test-case IDs, warmup/iteration counts, and scoring are unchanged
   cheatsheet: null

@@ -35,6 +35,28 @@ TEST_SHAPES = [
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
+# Non-scoring public-contract coverage. Keep TEST_SHAPES reserved for performance.
+CORRECTNESS_CASES = [
+    {
+        "name": "padded_stride_fp16_nonpower_duplicates",
+        "batch": 3,
+        "vocab": 1003,
+        "num_tokens": 7,
+        "logits_dtype": "float16",
+        "token_ids_dtype": "int64",
+        "row_padding": 29,
+    },
+    {
+        "name": "large_vocab_batch1_bfloat16_int32_duplicates",
+        "batch": 1,
+        "vocab": 131071,
+        "num_tokens": 8,
+        "logits_dtype": "bfloat16",
+        "token_ids_dtype": "int32",
+        "row_padding": 17,
+    },
+]
+
 
 # >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>
 def _measure_cuda_event_fallback(*args, **kwargs):
@@ -52,6 +74,40 @@ def _benchmark_cuda_graph_or_events(*args, **kwargs):
         "src/tools/perf/vllm_cuda_graph_block.py into the workspace."
     )
 # <<< AKA-GENERATED <<<
+
+
+def _make_topk_correctness_inputs(torch, case, device):
+    batch = case["batch"]
+    vocab = case["vocab"]
+    num_tokens = case["num_tokens"]
+    row_padding = case["row_padding"]
+    logits_dtype = getattr(torch, case["logits_dtype"])
+    token_ids_dtype = getattr(torch, case["token_ids_dtype"])
+
+    logits_storage = torch.randn(
+        batch, vocab + row_padding, device=device, dtype=logits_dtype
+    )
+    logits = logits_storage[:, :vocab]
+    if batch > 1:
+        assert not logits.is_contiguous()
+    assert logits.stride(0) == vocab + row_padding
+
+    duplicate_unsorted_ids = [
+        vocab - 1,
+        3,
+        vocab // 2,
+        3,
+        0,
+        vocab - 7,
+        11,
+        0,
+    ]
+    token_ids = torch.tensor(
+        duplicate_unsorted_ids[:num_tokens],
+        device=device,
+        dtype=token_ids_dtype,
+    ).repeat(batch, 1)
+    return logits, token_ids, logits_storage
 
 def run_correctness():
     import torch
@@ -72,6 +128,49 @@ def run_correctness():
                 return False, f"Shape {i+1}: max diff = {(result - ref).abs().max().item()}"
         except Exception as e:
             return False, f"Shape {i+1}: exception: {e}"
+
+    for i, case in enumerate(CORRECTNESS_CASES):
+        name = case["name"]
+        try:
+            torch.manual_seed(142 + i)
+            logits, token_ids, logits_storage = _make_topk_correctness_inputs(
+                torch, case, device
+            )
+            original_logits = logits.clone()
+            original_token_ids = token_ids.clone()
+            original_logits_storage = logits_storage.clone()
+
+            result = mod.compute_token_logprobs(logits, token_ids)
+            torch.cuda.synchronize()
+            ref = torch.log_softmax(logits.float(), dim=-1).gather(
+                1, token_ids.to(torch.int64)
+            )
+
+            expected_shape = (case["batch"], case["num_tokens"])
+            if result.shape != expected_shape or result.dtype != torch.float32:
+                return False, (
+                    f"Contract case {name}: expected shape/dtype "
+                    f"{expected_shape}/{torch.float32}, got {result.shape}/{result.dtype}"
+                )
+            result_storage = result.untyped_storage().data_ptr()
+            if result_storage in {
+                logits.untyped_storage().data_ptr(),
+                token_ids.untyped_storage().data_ptr(),
+            }:
+                return False, f"Contract case {name}: output aliases an input"
+            if not torch.equal(logits, original_logits) or not torch.equal(
+                token_ids, original_token_ids
+            ):
+                return False, f"Contract case {name}: input mutation"
+            if not torch.equal(logits_storage, original_logits_storage):
+                return False, (
+                    f"Contract case {name}: write outside logical logits view"
+                )
+            if not torch.allclose(result, ref, atol=1e-2, rtol=1e-2):
+                max_diff = (result - ref).abs().max().item()
+                return False, f"Contract case {name}: max diff = {max_diff:.6f}"
+        except Exception as e:
+            return False, f"Contract case {name}: exception: {e}"
     return True, None
 
 def run_performance():
@@ -132,7 +231,11 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(TEST_SHAPES) + len(CORRECTNESS_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f: json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
         if err: print(f"Error: {err}")

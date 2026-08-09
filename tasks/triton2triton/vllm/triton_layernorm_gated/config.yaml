@@ -26,4 +26,15 @@ prompt:
     Constraints:
     - Must maintain the same function signature for `layer_norm_fwd`
     - Output must match reference within atol=1e-2, rtol=1e-2
+    - Preserve grouped LayerNorm and grouped RMSNorm semantics when `group_size`
+      divides N, including both `norm_before_gate` orders
+    - Honor noncompact inputs and caller-provided padded `out` row strides;
+      return that exact `out` object without overwriting padding canaries, or
+      return fresh non-aliasing storage when the caller does not provide `out`
+    - Return group-major float32 mean/rstd statistics in independent storage;
+      neither statistic may alias an input or output, and RMSNorm returns `mean=None`
+    - A feature group larger than the 64 KiB one-pass limit must fail before
+      launch with a controlled `RuntimeError` describing the feature limit
+    - These are low-cost correctness cases only; no 2 GiB address probe is used.
+      Performance TEST_SHAPES, IDs, warmup/iteration counts, and scoring are unchanged
   cheatsheet: null
