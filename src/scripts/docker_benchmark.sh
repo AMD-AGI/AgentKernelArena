@@ -17,6 +17,12 @@ AGENT_STATE_MOUNT_ROOT="${AKA_AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
 FORMAL_CODEX_REQUIREMENTS_HOST="$HOST_ROOT/agents/codex/formal_requirements.toml"
 FORMAL_CODEX_REQUIREMENTS_CONTAINER="/etc/codex/requirements.toml"
 DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
+# Building a deterministic runtime image is itself bounded at 120 seconds in
+# immutable_runtime_mount.py.  The supervising shell must outlive that bound,
+# plus the two inventory verifications and the FUSE mount/receipt checks.  Keep
+# this fixed (rather than caller-configurable) so formal campaigns have one
+# release-defined startup policy.
+RUNTIME_MOUNT_READY_POLL_ATTEMPTS=3000
 # Set by host-side commands after reading the selected run config. Keep this
 # separate from REQUIRED_AGENTS because geak_v4 is normalized to claude_code
 # before Docker arguments are built.
@@ -635,7 +641,7 @@ prepare_campaign_apex_runtime_contract() {
 wait_for_runtime_mount_service() {
     local pid="$1" ready="$2" label="$3" log_path="$4"
     local attempt
-    for attempt in $(seq 1 300); do
+    for attempt in $(seq 1 "$RUNTIME_MOUNT_READY_POLL_ATTEMPTS"); do
         if [[ -f "$ready" ]]; then
             /usr/bin/python3 - \
                 "$ready" "$pid" \

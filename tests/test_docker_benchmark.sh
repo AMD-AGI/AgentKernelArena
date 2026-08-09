@@ -133,6 +133,39 @@ grep -Fq -- '--unshare-pid --unshare-ipc' "$RUNNER" \
 grep -Fq -- '--proc /proc' "$RUNNER" \
     || fail "rootless bwrap preflight must mount the attempt-private procfs"
 
+# A cold Apex snapshot can legitimately spend more than 30 seconds inside the
+# deterministic image builder, whose own hard timeout is 120 seconds.  Exercise
+# the wait loop without wall-clock sleeping and prove that a live service is not
+# rejected at either the old 300-poll boundary or the builder's 1200-poll bound.
+# The fake service exits immediately after that bound, so this test never needs
+# to construct ready evidence.  Also lock the release-defined 300-second policy;
+# a shorter value could preserve this behavioral probe while losing headroom for
+# inventory verification, mounting, and receipt validation.
+runtime_wait_probe="$(
+    (
+        # shellcheck source=../src/scripts/docker_benchmark.sh
+        source "$RUNNER"
+        [[ "$RUNTIME_MOUNT_READY_POLL_ATTEMPTS" == "3000" ]] \
+            || die "unexpected runtime mount readiness policy"
+        readiness_poll_count=0
+        sleep() {
+            readiness_poll_count=$((readiness_poll_count + 1))
+        }
+        kill() {
+            if [[ "${1:-}" == "-0" ]]; then
+                (( readiness_poll_count <= 1200 ))
+                return
+            fi
+            command kill "$@"
+        }
+        wait_for_runtime_mount_service \
+            999999 "$TEST_HOME/no-ready.json" test /dev/null
+    ) 2>&1 || true
+)"
+[[ "$runtime_wait_probe" == *"exited before readiness"* \
+    && "$runtime_wait_probe" != *"did not become ready"* ]] \
+    || fail "runtime mount supervisor did not outlive the image-builder boundary"
+
 # Docker's root daemon cannot traverse an owner-only FUSE mount. Formal mode
 # therefore fails before materialization unless fuse.conf explicitly permits
 # allow_other; comments and symlinks do not satisfy the prerequisite.
