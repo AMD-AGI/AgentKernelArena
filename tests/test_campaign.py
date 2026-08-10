@@ -371,7 +371,7 @@ def _test_agent_manifest(name: str) -> dict:
     manifest = {
         "template": name,
         "session_receipt_schema": (
-            "agentkernelarena.apex-attempt-receipt/v6"
+            "agentkernelarena.apex-attempt-receipt/v7"
             if name == "apex"
             else "agentkernelarena.codex-attempt-receipt/v6"
         ),
@@ -1475,7 +1475,7 @@ def _write_campaign_codex_contract(
     }
     apex_treatment = {
         "template": "apex",
-        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v6",
+        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v7",
         "apex_runtime_mount_policy_id": campaign.APEX_RUNTIME_MOUNT_POLICY,
         "attempt_mount_receipt_schema": campaign.ATTEMPT_MOUNT_RECEIPT_SCHEMA,
         "apex_runtime_mount_schema": campaign.APEX_RUNTIME_MOUNT_SCHEMA,
@@ -1491,7 +1491,7 @@ def _write_campaign_codex_contract(
         "session_receipt_schema": (
             "agentkernelarena.codex-attempt-receipt/v6"
             if agent_template == "codex"
-            else "agentkernelarena.apex-attempt-receipt/v6"
+            else "agentkernelarena.apex-attempt-receipt/v7"
         ),
     }
     if agent_template == "apex":
@@ -1500,7 +1500,7 @@ def _write_campaign_codex_contract(
     comparison_runtime = campaign.comparison_runtime_projection(runtime)
     assert comparison_runtime is not None
     comparison_contract = {
-        "schema": "aka.apex-vs-codex-comparison-contract/v6",
+        "schema": "aka.apex-vs-codex-comparison-contract/v7",
         "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
         "formal_execution_sha256": campaign.FORMAL_LIVE_EXECUTION_SHA256,
         "policy": policy,
@@ -1559,7 +1559,7 @@ def _write_campaign_codex_contract(
         "_task_config_paths": task_config_paths,
         "_run_directory": str(run_directory.resolve()),
         "_checkpoint_policy": True,
-        "_apex_receipt_schema": "agentkernelarena.apex-attempt-receipt/v6",
+        "_apex_receipt_schema": "agentkernelarena.apex-attempt-receipt/v7",
     }
 
 
@@ -1611,11 +1611,11 @@ def _fixture_cloud_config_bootstrap(codex_contract: dict) -> dict:
 @pytest.mark.parametrize(
     ("template", "receipt_schema"),
     [
-        ("apex", "agentkernelarena.apex-attempt-receipt/v6"),
+        ("apex", "agentkernelarena.apex-attempt-receipt/v7"),
         ("codex", "agentkernelarena.codex-attempt-receipt/v6"),
     ],
 )
-def test_formal_campaign_fixture_is_a_complete_live_v6_contract(
+def test_formal_campaign_fixture_is_a_complete_live_v7_contract(
     tmp_path, template, receipt_schema
 ) -> None:
     run = tmp_path / template
@@ -1625,7 +1625,14 @@ def test_formal_campaign_fixture_is_a_complete_live_v6_contract(
     manifest = campaign._load_verified_campaign_manifest(run)
     comparison = manifest["comparison_contract"]
 
-    assert comparison["schema"] == "aka.apex-vs-codex-comparison-contract/v6"
+    assert comparison["schema"] == "aka.apex-vs-codex-comparison-contract/v7"
+    assert manifest["formal_execution"] == {
+        "mode": "live_formal_scoring",
+        "comparison_generation": 7,
+        "historical_compatibility": False,
+        "policy_id": "aka.live-formal-v7-only/v1",
+    }
+    assert comparison["formal_execution"] == manifest["formal_execution"]
     assert manifest["formal_execution_sha256"] == (
         campaign.FORMAL_LIVE_EXECUTION_SHA256
     )
@@ -2130,7 +2137,7 @@ def _write_valid_apex_receipt(
     assert status in {"candidate_ready", "no_gain", "budget_exhausted"}
     assert (
         codex_contract.get("_apex_receipt_schema")
-        == "agentkernelarena.apex-attempt-receipt/v6"
+        == "agentkernelarena.apex-attempt-receipt/v7"
     )
     turn_policy = "structured_agent_turn_checkpoint_v2"
     failed = status == "budget_exhausted"
@@ -2661,7 +2668,7 @@ def _write_valid_apex_receipt(
     if bundle_summary is not None:
         lineage["bundle"] = bundle_summary
     receipt = {
-        "schema": "agentkernelarena.apex-attempt-receipt/v6",
+        "schema": "agentkernelarena.apex-attempt-receipt/v7",
         "campaign_binding": task_spec["campaign_binding"],
         "comparison_contract_sha256": codex_contract[
             "_comparison_contract_sha256"
@@ -4052,7 +4059,7 @@ def test_direct_codex_manifest_rejects_substituted_apex_receipt(tmp_path) -> Non
         _unlock_apex_receipt_directories(run)
 
 
-def test_apex_v6_receipt_recomputes_result_event_invocation_and_transcript_lineage(
+def test_apex_v7_receipt_recomputes_result_event_invocation_and_transcript_lineage(
     tmp_path,
 ) -> None:
     run = tmp_path / "run"
@@ -4088,7 +4095,7 @@ def test_apex_v6_receipt_recomputes_result_event_invocation_and_transcript_linea
     _unlock_apex_receipt_directories(run)
 
 
-def test_apex_v6_receipt_rejects_campaign_binding_tamper_across_all_lineage(
+def test_apex_v7_receipt_rejects_campaign_binding_tamper_across_all_lineage(
     tmp_path: Path,
 ) -> None:
     run = tmp_path / "run"
@@ -4246,7 +4253,7 @@ def test_budget_exhausted_apex_receipt_has_verified_lineage_but_is_never_eligibl
         _unlock_apex_receipt_directories(run)
 
 
-def test_v6_budget_overrun_binds_inner_pidfd_containment(tmp_path) -> None:
+def test_v7_budget_overrun_binds_inner_pidfd_containment(tmp_path) -> None:
     run = tmp_path / "run"
     workspace = run / ".campaign_attempts/task/attempt_01/workspace"
     workspace.mkdir(parents=True)
@@ -4273,7 +4280,7 @@ def test_v6_budget_overrun_binds_inner_pidfd_containment(tmp_path) -> None:
         _unlock_apex_receipt_directories(run)
 
 
-def test_v6_budget_overrun_rejects_overlapping_inner_terminal_evidence(
+def test_v7_budget_overrun_rejects_overlapping_inner_terminal_evidence(
     tmp_path,
 ) -> None:
     run = tmp_path / "run"
@@ -4300,7 +4307,7 @@ def test_v6_budget_overrun_rejects_overlapping_inner_terminal_evidence(
         _unlock_apex_receipt_directories(run)
 
 
-def test_v6_budget_overrun_rejects_sigterm_in_place_of_pidfd_exit(tmp_path) -> None:
+def test_v7_budget_overrun_rejects_sigterm_in_place_of_pidfd_exit(tmp_path) -> None:
     run = tmp_path / "run"
     workspace = run / ".campaign_attempts/task/attempt_01/workspace"
     workspace.mkdir(parents=True)
@@ -4372,7 +4379,7 @@ def test_no_gain_apex_receipt_is_audited_but_never_selection_eligible(
         _unlock_apex_receipt_directories(run)
 
 
-def test_apex_v6_receipt_rejects_run_control_drift(tmp_path) -> None:
+def test_apex_v7_receipt_rejects_run_control_drift(tmp_path) -> None:
     run = tmp_path / "run"
     workspace = run / ".campaign_attempts/task/attempt_01/workspace"
     workspace.mkdir(parents=True)
@@ -4395,7 +4402,7 @@ def test_apex_v6_receipt_rejects_run_control_drift(tmp_path) -> None:
         _unlock_apex_receipt_directories(run)
 
 
-def test_apex_v6_receipt_rejects_run_control_missing_from_instructions(
+def test_apex_v7_receipt_rejects_run_control_missing_from_instructions(
     tmp_path,
 ) -> None:
     run = tmp_path / "run"
@@ -4421,7 +4428,7 @@ def test_apex_v6_receipt_rejects_run_control_missing_from_instructions(
         _unlock_apex_receipt_directories(run)
 
 
-def test_apex_v6_receipt_rejects_event_prompt_missing_run_control(tmp_path) -> None:
+def test_apex_v7_receipt_rejects_event_prompt_missing_run_control(tmp_path) -> None:
     run = tmp_path / "run"
     workspace = run / ".campaign_attempts/task/attempt_01/workspace"
     workspace.mkdir(parents=True)
@@ -4893,7 +4900,7 @@ def test_three_valid_apex_receipts_allow_canonical_projection(
         )
         assert all(
             attempt["session_receipt_binding"]["schema"]
-            == "agentkernelarena.apex-attempt-receipt/v6"
+            == "agentkernelarena.apex-attempt-receipt/v7"
             for attempt in evidence["attempts"]
         )
         assert all(
@@ -4977,7 +4984,7 @@ def _metadata_campaign_attempt(
     _write_campaign_codex_contract(run, agent_template=template)
     manifest_path = run / "campaign_manifest.yaml"
     live_schema = {
-        "apex": "agentkernelarena.apex-attempt-receipt/v6",
+        "apex": "agentkernelarena.apex-attempt-receipt/v7",
         "codex": "agentkernelarena.codex-attempt-receipt/v6",
     }[template]
     if receipt_schema != live_schema:
@@ -5000,8 +5007,8 @@ def _metadata_campaign_attempt(
     [
         (
             "apex",
-            "agentkernelarena.apex-attempt-receipt/v6",
-            "agentkernelarena.apex-attempt-receipt/v6",
+            "agentkernelarena.apex-attempt-receipt/v7",
+            "agentkernelarena.apex-attempt-receipt/v7",
         ),
         (
             "codex",
@@ -5010,6 +5017,7 @@ def _metadata_campaign_attempt(
         ),
         ("unknown", None, None),
         ("apex", 4, None),
+        ("apex", "agentkernelarena.apex-attempt-receipt/v6", None),
         ("codex", "agentkernelarena.codex-attempt-receipt/v5", None),
     ],
 )
@@ -5027,7 +5035,7 @@ def test_apex_no_gain_metadata_never_marks_baseline_as_scoreable(tmp_path) -> No
     receipt_path.write_text(
         json.dumps(
             {
-                "schema": "agentkernelarena.apex-attempt-receipt/v6",
+                "schema": "agentkernelarena.apex-attempt-receipt/v7",
                 "session_succeeded": True,
                 "terminal_status": "no_gain",
             }
@@ -5042,7 +5050,7 @@ def test_apex_no_gain_metadata_never_marks_baseline_as_scoreable(tmp_path) -> No
             tmp_path,
             receipt_path=receipt_path,
             template="apex",
-            receipt_schema="agentkernelarena.apex-attempt-receipt/v6",
+            receipt_schema="agentkernelarena.apex-attempt-receipt/v7",
         ),
         agent_error=None,
     )
@@ -5061,7 +5069,7 @@ def test_apex_candidate_ready_metadata_is_scoreable(tmp_path) -> None:
     receipt_path.write_text(
         json.dumps(
             {
-                "schema": "agentkernelarena.apex-attempt-receipt/v6",
+                "schema": "agentkernelarena.apex-attempt-receipt/v7",
                 "session_succeeded": True,
                 "terminal_status": "candidate_ready",
             }
@@ -5076,7 +5084,7 @@ def test_apex_candidate_ready_metadata_is_scoreable(tmp_path) -> None:
             tmp_path,
             receipt_path=receipt_path,
             template="apex",
-            receipt_schema="agentkernelarena.apex-attempt-receipt/v6",
+            receipt_schema="agentkernelarena.apex-attempt-receipt/v7",
         ),
         agent_error=None,
     )
@@ -5166,11 +5174,11 @@ def test_direct_codex_metadata_requires_a_source_delta(
         ),
     ],
 )
-def test_live_v6_campaign_metadata_is_symmetric_for_apex_and_direct_codex(
+def test_live_v7_campaign_metadata_is_symmetric_for_apex_and_direct_codex(
     tmp_path, agent, template, receipt_fields, mode, eligible, terminal
 ) -> None:
     schema = {
-        "apex": "agentkernelarena.apex-attempt-receipt/v6",
+        "apex": "agentkernelarena.apex-attempt-receipt/v7",
         "codex": "agentkernelarena.codex-attempt-receipt/v6",
     }[template]
     receipt_path = tmp_path / f"{template}_live_session_receipt.json"
@@ -5252,7 +5260,7 @@ def test_campaign_metadata_rejects_cross_arm_live_receipt_substitution(
     tmp_path, agent, template, other_template
 ) -> None:
     live_schemas = {
-        "apex": "agentkernelarena.apex-attempt-receipt/v6",
+        "apex": "agentkernelarena.apex-attempt-receipt/v7",
         "codex": "agentkernelarena.codex-attempt-receipt/v6",
     }
     expected_schema = live_schemas[template]
@@ -5307,7 +5315,7 @@ def test_metadata_rejects_receipt_schema_not_selected_by_sealed_manifest(
             tmp_path,
             receipt_path=receipt_path,
             template="apex",
-            receipt_schema="agentkernelarena.apex-attempt-receipt/v6",
+            receipt_schema="agentkernelarena.apex-attempt-receipt/v7",
         ),
         agent_error=None,
     )

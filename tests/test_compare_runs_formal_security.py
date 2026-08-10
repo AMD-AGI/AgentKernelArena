@@ -679,7 +679,7 @@ def _manifest(task_names: list[str], arm: str) -> dict:
     }
     apex_treatment = {
         "template": "apex",
-        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v6",
+        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v7",
         "apex_runtime_mount_policy_id": campaign.APEX_RUNTIME_MOUNT_POLICY,
         "attempt_mount_receipt_schema": campaign.ATTEMPT_MOUNT_RECEIPT_SCHEMA,
         "apex_runtime_mount_schema": campaign.APEX_RUNTIME_MOUNT_SCHEMA,
@@ -700,7 +700,7 @@ def _manifest(task_names: list[str], arm: str) -> dict:
         "effective_config_sha256": _digest(effective_run_config),
     }
     comparison = {
-        "schema": "aka.apex-vs-codex-comparison-contract/v6",
+        "schema": "aka.apex-vs-codex-comparison-contract/v7",
         "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
         "formal_execution_sha256": campaign.FORMAL_LIVE_EXECUTION_SHA256,
         "objective_policy_id": "aka.task-package-objective-and-protected-harness/v1",
@@ -734,7 +734,7 @@ def _manifest(task_names: list[str], arm: str) -> dict:
         "agent_config_sha256": "1" * 64,
         "template": arm,
         "session_receipt_schema": (
-            "agentkernelarena.apex-attempt-receipt/v6"
+            "agentkernelarena.apex-attempt-receipt/v7"
             if arm == "apex"
             else "agentkernelarena.codex-attempt-receipt/v6"
         ),
@@ -1301,7 +1301,7 @@ def test_compare_rejects_run_config_tamper(tmp_path: Path, tamper: str) -> None:
         )
 
 
-def test_v6_manifest_rejects_forged_static_squashfs_receipt(
+def test_v7_manifest_rejects_forged_static_squashfs_receipt(
     tmp_path: Path,
 ) -> None:
     manifest = _manifest([TASK], "codex")
@@ -1322,7 +1322,7 @@ def test_v6_manifest_rejects_forged_static_squashfs_receipt(
     _assert_manifest_rejected(tmp_path, manifest)
 
 
-def test_v6_manifest_rejects_digest_valid_but_incomplete_backend_closure(
+def test_v7_manifest_rejects_digest_valid_but_incomplete_backend_closure(
     tmp_path: Path,
 ) -> None:
     manifest = _manifest([TASK], "codex")
@@ -1345,7 +1345,7 @@ def test_v6_manifest_rejects_digest_valid_but_incomplete_backend_closure(
     _assert_manifest_rejected(tmp_path, manifest)
 
 
-def test_v6_manifest_rejects_launcher_component_identity_drift(
+def test_v7_manifest_rejects_launcher_component_identity_drift(
     tmp_path: Path,
 ) -> None:
     manifest = _manifest([TASK], "codex")
@@ -1365,7 +1365,7 @@ def test_v6_manifest_rejects_launcher_component_identity_drift(
     _assert_manifest_rejected(tmp_path, manifest)
 
 
-def test_v6_manifest_rejects_cloud_config_host_closure_binding_drift(
+def test_v7_manifest_rejects_cloud_config_host_closure_binding_drift(
     tmp_path: Path,
 ) -> None:
     manifest = _manifest([TASK], "codex")
@@ -1409,7 +1409,7 @@ def test_formal_pair_rejects_cloud_config_host_closure_mismatch() -> None:
     "tamper",
     ["policy", "measurement", "docker", "gpu", "isolation", "agent_policy"],
 )
-def test_v6_manifest_rejects_drift_from_formal_contract(
+def test_v7_manifest_rejects_drift_from_formal_contract(
     tmp_path: Path,
     tamper: str,
 ) -> None:
@@ -1457,7 +1457,7 @@ def test_v6_manifest_rejects_drift_from_formal_contract(
     ],
 )
 @pytest.mark.parametrize("synchronize_table", [False, True])
-def test_v6_manifest_rejects_transport_treatment_drift(
+def test_v7_manifest_rejects_transport_treatment_drift(
     tmp_path: Path,
     agent_field: str,
     table_field: str,
@@ -1476,7 +1476,7 @@ def test_v6_manifest_rejects_transport_treatment_drift(
 
 
 @pytest.mark.parametrize("tamper", ["git_policy", "clean_status"])
-def test_v6_manifest_rejects_untrusted_repository_provenance(
+def test_v7_manifest_rejects_untrusted_repository_provenance(
     tmp_path: Path,
     tamper: str,
 ) -> None:
@@ -1491,7 +1491,7 @@ def test_v6_manifest_rejects_untrusted_repository_provenance(
     _assert_manifest_rejected(tmp_path, manifest)
 
 
-def test_v6_manifest_rejects_placeholder_runtime_isolation(
+def test_v7_manifest_rejects_placeholder_runtime_isolation(
     tmp_path: Path,
 ) -> None:
     manifest = _manifest([TASK], "codex")
@@ -1514,7 +1514,7 @@ def test_v6_manifest_rejects_placeholder_runtime_isolation(
     _assert_manifest_rejected(tmp_path, manifest)
 
 
-def test_v6_manifest_rejects_incomplete_task_package_binding(
+def test_v7_manifest_rejects_incomplete_task_package_binding(
     tmp_path: Path,
 ) -> None:
     manifest = _manifest([TASK], "codex")
@@ -1526,7 +1526,7 @@ def test_v6_manifest_rejects_incomplete_task_package_binding(
     _assert_manifest_rejected(tmp_path, manifest)
 
 
-def test_v6_manifest_rejects_forged_mount_receipt_file_digest(
+def test_v7_manifest_rejects_forged_mount_receipt_file_digest(
     tmp_path: Path,
 ) -> None:
     manifest = _manifest([TASK], "codex")
@@ -1537,7 +1537,7 @@ def test_v6_manifest_rejects_forged_mount_receipt_file_digest(
     _assert_manifest_rejected(tmp_path, manifest)
 
 
-def test_v6_manifest_accepts_incomplete_supplementary_proc_audit() -> None:
+def test_v7_manifest_accepts_incomplete_supplementary_proc_audit() -> None:
     manifest = _manifest([TASK], "codex")
     exclusivity = manifest["runtime"]["gpu"]["exclusivity"]
     audit = exclusivity["supplementary_proc_audit"]
@@ -1552,7 +1552,7 @@ def test_v6_manifest_accepts_incomplete_supplementary_proc_audit() -> None:
     material = {key: value for key, value in exclusivity.items() if key != "sha256"}
     exclusivity["sha256"] = _digest(material)
 
-    assert compare_runs._v6_manifest_bindings_valid(
+    assert compare_runs._v7_manifest_bindings_valid(
         manifest,
         manifest["comparison_contract"],
         manifest["configuration"]["tasks"],
@@ -1573,7 +1573,7 @@ def test_v6_manifest_accepts_incomplete_supplementary_proc_audit() -> None:
         "duplicate_render_path",
     ],
 )
-def test_v6_manifest_rejects_forged_gpu_inventory_identity(
+def test_v7_manifest_rejects_forged_gpu_inventory_identity(
     tmp_path: Path,
     tamper: str,
 ) -> None:

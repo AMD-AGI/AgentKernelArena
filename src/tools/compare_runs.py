@@ -87,7 +87,7 @@ except (ModuleNotFoundError, ImportError):
 
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-_COMPARISON_SCHEMA = "aka.apex-vs-codex-comparison-contract/v6"
+_COMPARISON_SCHEMA = "aka.apex-vs-codex-comparison-contract/v7"
 _CANDIDATE_PERSISTENCE_POLICY = "structured_agent_turn_checkpoint_v2"
 _BOUNDARY_QUIESCENCE_POLICY = "sigstop_process_group_snapshot_v1"
 _ATTEMPT_CONTAINMENT_POLICY = "private_pid_namespace_init_pidfd_v1"
@@ -96,9 +96,9 @@ _OBJECTIVE_POLICY = "aka.task-package-objective-and-protected-harness/v1"
 _PROMPT_POLICY = "aka.shared-objective-backend-native-context-receipted/v1"
 _FORMAL_LIVE_EXECUTION = {
     "mode": "live_formal_scoring",
-    "comparison_generation": 6,
+    "comparison_generation": 7,
     "historical_compatibility": False,
-    "policy_id": "aka.live-formal-v6-only/v1",
+    "policy_id": "aka.live-formal-v7-only/v1",
 }
 _FORMAL_LIVE_EXECUTION_SHA256 = hashlib.sha256(
     json.dumps(
@@ -128,7 +128,7 @@ _CODEX_IDENTITY_FIELDS = (
     "cloud_config_bundle_sha256",
     "cloud_config_host_runtime_closure_sha256",
 )
-_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v6"
+_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v7"
 _CODEX_RECEIPT_SCHEMA = "agentkernelarena.codex-attempt-receipt/v6"
 _CLEAN_STATUS_SHA256 = hashlib.sha256(b"").hexdigest()
 _MOUNT_SEALS = ["F_SEAL_WRITE", "F_SEAL_SHRINK", "F_SEAL_GROW", "F_SEAL_SEAL"]
@@ -1086,7 +1086,7 @@ def _runtime_binding_valid(
     )
 
 
-def _v6_manifest_bindings_valid(
+def _v7_manifest_bindings_valid(
     manifest: Dict[str, Any], comparison: Dict[str, Any], tasks: Any
 ) -> bool:
     repositories = manifest.get("repositories")
@@ -1187,7 +1187,7 @@ def _formal_manifest_context(
         or not tasks
         or not isinstance(comparison, dict)
         or comparison.get("schema") != _COMPARISON_SCHEMA
-        or not _v6_manifest_bindings_valid(manifest, comparison, tasks)
+        or not _v7_manifest_bindings_valid(manifest, comparison, tasks)
         or comparison.get("objective_policy_id") != _OBJECTIVE_POLICY
         or comparison.get("prompt_policy_id") != _PROMPT_POLICY
         or comparison.get("tasks") != tasks

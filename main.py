@@ -1027,7 +1027,7 @@ def _validate_formal_descriptor_payload(
         assigned_host_gpu_id=assigned_gpu,
     )
     if binding.get("formal_execution_sha256") != FORMAL_LIVE_EXECUTION_SHA256:
-        raise CampaignError("formal descriptor is not bound to live v5 execution")
+        raise CampaignError("formal descriptor is not bound to live v7 execution")
     return binding
 
 

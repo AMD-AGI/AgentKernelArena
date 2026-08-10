@@ -1558,7 +1558,77 @@ def _formal_apex_launch_fixture(
     def fake_run(command, **kwargs):
         del kwargs
         mount_receipt = captured["attempt_mount_receipt"]
-        mount_receipt["namespace_mounts"] = {"closed_set": True}
+        receipt_roles = mount_receipt["roles"]
+        observed_roles = {"persistent_writable": {}, "read_only": {}}
+        next_visible_mount_id = iter(range(10_001, 10_006))
+        for group in ("persistent_writable", "read_only"):
+            for role, identity in receipt_roles[group].items():
+                source_mount = dict(identity["mount"])
+                visible_mount = {
+                    key: source_mount[key]
+                    for key in (
+                        "mount_id",
+                        "parent_id",
+                        "major_minor",
+                        "root",
+                        "mount_point",
+                    )
+                }
+                # Every bwrap bind creates a distinct visible mount even when
+                # several source paths originate on the same host mount.
+                visible_mount["mount_id"] = next(next_visible_mount_id)
+                observed_roles[group][role] = {
+                    "source": {
+                        key: identity[key] for key in ("path", "device", "inode")
+                    }
+                    | {"mount": source_mount},
+                    "target": {
+                        "path": identity["path"],
+                        "device": identity["device"],
+                        "inode": identity["inode"],
+                        "access": (
+                            "read_write"
+                            if group == "persistent_writable"
+                            else "read_only"
+                        ),
+                        "mount": visible_mount,
+                        "mount_options": [
+                            "rw" if group == "persistent_writable" else "ro"
+                        ],
+                        "covered_mount_ids": (
+                            [source_mount["mount_id"]]
+                            if role == "apex_runtime"
+                            and source_mount["mount_point"] == identity["path"]
+                            else []
+                        ),
+                    },
+                }
+        mount_receipt["namespace_mounts"] = {
+            "policy": "blocked_namespace_mount_attestation_v2",
+            "visible_mount_resolution_policy": (
+                "proc_root_o_path_fdinfo_mnt_id_v1"
+            ),
+            "root": {
+                "mount": {"mount_id": 20_000},
+                "covered_mount_ids": [],
+            },
+            "campaign_data_root": {
+                "mount": {"mount_id": 20_001},
+                "covered_mount_ids": [],
+            },
+            "private_tmpfs": {
+                "tmp": {
+                    "mount": {"mount_id": 20_002},
+                    "covered_mount_ids": [],
+                },
+                "dev_shm": {
+                    "mount": {"mount_id": 20_003},
+                    "covered_mount_ids": [],
+                },
+            },
+            "roles": observed_roles,
+            "closed_set": True,
+        }
         mount_receipt.pop("sha256", None)
         mount_receipt["sha256"] = apex_launcher._canonical_digest(mount_receipt)
         spec_path = Path(command[command.index("--task-spec") + 1])
@@ -2092,7 +2162,7 @@ def test_formal_apex_rejects_task_spec_mutation_and_receipts_prelaunch_bytes(
         apex_launcher.launch_agent(eval_config, str(config_path), str(workspace))
 
     receipt = captured["receipt"]
-    assert receipt["schema"] == "agentkernelarena.apex-attempt-receipt/v6"
+    assert receipt["schema"] == "agentkernelarena.apex-attempt-receipt/v7"
     assert receipt["session_succeeded"] is False
     assert receipt["task_spec_contract"]["postlaunch_unchanged"] is False
     received_spec = json.loads(captured["receipt_task_spec_bytes"])

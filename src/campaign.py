@@ -119,9 +119,9 @@ _SELECTION_POLICY = "correctness_then_measured_rate_v1"
 _MEASUREMENT_CONTRACT = "aka_native_100_repetition_external_score"
 _OBJECTIVE_POLICY_ID = "aka.task-package-objective-and-protected-harness/v1"
 _PROMPT_POLICY_ID = "aka.shared-objective-backend-native-context-receipted/v1"
-_COMPARISON_CONTRACT_SCHEMA = "aka.apex-vs-codex-comparison-contract/v6"
+_COMPARISON_CONTRACT_SCHEMA = "aka.apex-vs-codex-comparison-contract/v7"
 _CODEX_RECEIPT_SCHEMA = "agentkernelarena.codex-attempt-receipt/v6"
-_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v6"
+_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v7"
 _SESSION_RECEIPT_SCHEMA_BY_AGENT = {
     "apex": _APEX_RECEIPT_SCHEMA,
     "codex": _CODEX_RECEIPT_SCHEMA,
@@ -130,9 +130,9 @@ _SHA1 = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _FORMAL_LIVE_COMMITMENT = {
     "mode": "live_formal_scoring",
-    "comparison_generation": 6,
+    "comparison_generation": 7,
     "historical_compatibility": False,
-    "policy_id": "aka.live-formal-v6-only/v1",
+    "policy_id": "aka.live-formal-v7-only/v1",
 }
 _FORMAL_LIVE_COMMITMENT_SHA256 = hashlib.sha256(
     json.dumps(
@@ -1070,7 +1070,7 @@ def _materialize_durable_run_config(
     return destination
 
 
-def _v6_apex_treatment_contract(repositories: Any) -> dict[str, Any] | None:
+def _v7_apex_treatment_contract(repositories: Any) -> dict[str, Any] | None:
     if not isinstance(repositories, dict):
         return None
     apex = repositories.get("apex")
@@ -1089,7 +1089,7 @@ def _v6_apex_treatment_contract(repositories: Any) -> dict[str, Any] | None:
     }
 
 
-def _v6_top_level_agent_valid(
+def _v7_top_level_agent_valid(
     agent: Any, apex_treatment: dict[str, Any]
 ) -> bool:
     if not isinstance(agent, dict):
@@ -1148,12 +1148,12 @@ def _v6_top_level_agent_valid(
     )
 
 
-def _v6_manifest_contract_valid(
+def _v7_manifest_contract_valid(
     manifest: dict[str, Any], comparison: dict[str, Any]
 ) -> bool:
     repositories = manifest.get("repositories")
     comparison_repositories = comparison.get("repositories")
-    apex_treatment = _v6_apex_treatment_contract(repositories)
+    apex_treatment = _v7_apex_treatment_contract(repositories)
     apex = repositories.get("apex") if isinstance(repositories, dict) else None
     aka = (
         repositories.get("agent_kernel_arena")
@@ -1204,7 +1204,7 @@ def _v6_manifest_contract_valid(
         and comparison_repositories == repositories
         and apex_treatment is not None
         and comparison.get("apex_treatment") == apex_treatment
-        and _v6_top_level_agent_valid(
+        and _v7_top_level_agent_valid(
             agent, apex_treatment
         )
         and isinstance(agent, dict)
@@ -1260,7 +1260,7 @@ def _v6_manifest_contract_valid(
 
 
 def _load_verified_campaign_manifest(run_directory: Path) -> dict[str, Any]:
-    """Load a live, scoreable v6 manifest; older generations always fail."""
+    """Load a live, scoreable v7 manifest; older generations always fail."""
     manifest_path = run_directory / "campaign_manifest.yaml"
     if not _safe_read_only_file(manifest_path):
         raise CampaignError("formal execution requires an immutable campaign manifest")
@@ -1278,7 +1278,7 @@ def _load_verified_campaign_manifest(run_directory: Path) -> dict[str, Any]:
         == AGENT_PROCESS_CONTAINMENT_POLICY
         and comparison.get("attempt_containment_policy_id")
         == ATTEMPT_CONTAINMENT_POLICY
-        and _v6_manifest_contract_valid(manifest, comparison)
+        and _v7_manifest_contract_valid(manifest, comparison)
     )
     if (
         manifest.get("schema") != _CAMPAIGN_SCHEMA
@@ -1540,7 +1540,7 @@ def _comparison_contract(
     tasks: list[dict[str, Any]],
     run_config: dict[str, Any],
 ) -> dict[str, Any]:
-    apex_treatment = _v6_apex_treatment_contract(repositories)
+    apex_treatment = _v7_apex_treatment_contract(repositories)
     if (
         apex_treatment is None
         or (
@@ -2132,6 +2132,41 @@ def _mount_identity_matches(identity: Any, expected: Path) -> bool:
     )
 
 
+def _source_mount_identity_matches(identity: Any, expected: Path) -> bool:
+    if not isinstance(identity, dict) or set(identity) != {
+        "path",
+        "device",
+        "inode",
+        "mode",
+        "mount",
+        "nested_mounts",
+        "source",
+    }:
+        return False
+    observed_path = _canonical_receipt_directory(identity.get("path"))
+    mount = identity.get("mount")
+    if (
+        observed_path != expected
+        or not _source_mount_record_valid(mount)
+        or not expected.is_relative_to(Path(mount["mount_point"]))
+        or identity.get("nested_mounts") != []
+        or identity.get("source") != "o_path_nofollow_bind_fd"
+    ):
+        return False
+    try:
+        metadata = expected.lstat()
+    except OSError:
+        return False
+    return bool(
+        type(identity.get("device")) is int
+        and identity["device"] == metadata.st_dev
+        and type(identity.get("inode")) is int
+        and identity["inode"] == metadata.st_ino
+        and type(identity.get("mode")) is int
+        and identity["mode"] == stat.S_IMODE(metadata.st_mode)
+    )
+
+
 def _paths_overlap(first: Path, second: Path) -> bool:
     return first == second or first.is_relative_to(second) or second.is_relative_to(first)
 
@@ -2157,6 +2192,37 @@ def _mount_record_valid(value: Any, *, expected_path: Path | None = None) -> boo
         and (
             expected_path is None
             or Path(value["mount_point"]) == expected_path
+        )
+    )
+
+
+def _source_mount_record_valid(value: Any) -> bool:
+    base_fields = {
+        "mount_id",
+        "parent_id",
+        "major_minor",
+        "root",
+        "mount_point",
+    }
+    if not isinstance(value, dict) or set(value) != base_fields | {
+        "access",
+        "filesystem_type",
+        "source",
+        "super_options",
+    }:
+        return False
+    base = {field: value[field] for field in base_fields}
+    return bool(
+        _mount_record_valid(base)
+        and value.get("access") in {"read_only", "read_write"}
+        and isinstance(value.get("filesystem_type"), str)
+        and bool(value["filesystem_type"])
+        and isinstance(value.get("source"), str)
+        and bool(value["source"])
+        and isinstance(value.get("super_options"), list)
+        and all(
+            isinstance(option, str) and bool(option)
+            for option in value["super_options"]
         )
     )
 
@@ -2239,6 +2305,7 @@ def _namespace_private_mount_valid(value: Any, expected: Path) -> bool:
         return False
     options = value.get("mount_options")
     covered = value.get("covered_mount_ids")
+    visible_mount = value.get("mount")
     return bool(
         value.get("path") == str(expected)
         and type(value.get("device")) is int
@@ -2251,13 +2318,17 @@ def _namespace_private_mount_valid(value: Any, expected: Path) -> bool:
         and "ro" not in options
         and isinstance(covered, list)
         and all(type(item) is int and item > 0 for item in covered)
+        and covered == sorted(covered)
         and len(covered) == len(set(covered))
+        and isinstance(visible_mount, dict)
+        and visible_mount.get("mount_id") not in covered
     )
 
 
 def _namespace_role_mount_valid(
     value: Any,
     *,
+    role: str,
     expected: Path,
     source_identity: dict[str, Any],
     expected_access: str,
@@ -2271,21 +2342,37 @@ def _namespace_role_mount_valid(
         or set(source) != {"path", "device", "inode", "mount"}
         or not isinstance(target, dict)
         or set(target)
-        != {"path", "device", "inode", "access", "mount", "mount_options"}
+        != {
+            "path",
+            "device",
+            "inode",
+            "access",
+            "mount",
+            "mount_options",
+            "covered_mount_ids",
+        }
         or source.get("path") != str(expected)
         or source.get("device") != source_identity.get("device")
         or source.get("inode") != source_identity.get("inode")
-        or not _mount_record_valid(source.get("mount"))
+        or not _source_mount_record_valid(source.get("mount"))
         or target.get("path") != str(expected)
         or target.get("device") != source.get("device")
         or target.get("inode") != source.get("inode")
         or target.get("access") != expected_access
         or not _mount_record_valid(target.get("mount"), expected_path=expected)
-        or source_identity.get("mount") != target.get("mount")
+        or source_identity.get("mount") != source.get("mount")
     ):
         return False
     options = target.get("mount_options")
-    if not isinstance(options, list):
+    covered = target.get("covered_mount_ids")
+    if (
+        not isinstance(options, list)
+        or not isinstance(covered, list)
+        or any(type(item) is not int or item <= 0 for item in covered)
+        or covered != sorted(covered)
+        or len(covered) != len(set(covered))
+        or target["mount"]["mount_id"] in covered
+    ):
         return False
     expected_option = "ro" if expected_access == "read_only" else "rw"
     forbidden_option = "rw" if expected_option == "ro" else "ro"
@@ -2295,11 +2382,19 @@ def _namespace_role_mount_valid(
         relative = expected.relative_to(Path(source_mount["mount_point"]))
     except ValueError:
         return False
+    inherited_exact_mount = Path(source_mount["mount_point"]) == expected
+    expected_covered_count = 1 if role == "apex_runtime" and inherited_exact_mount else 0
     return bool(
         expected_option in options
         and forbidden_option not in options
         and target_mount["major_minor"] == source_mount["major_minor"]
         and Path(target_mount["root"]) == Path(source_mount["root"]) / relative
+        and len(covered) == expected_covered_count
+        and (
+            role != "apex_runtime"
+            or not inherited_exact_mount
+            or source_mount["access"] == "read_only"
+        )
     )
 
 
@@ -2312,6 +2407,7 @@ def _namespace_mounts_valid(
 ) -> bool:
     if not isinstance(value, dict) or set(value) != {
         "policy",
+        "visible_mount_resolution_policy",
         "namespace_init_pid",
         "mount_namespace_id",
         "root",
@@ -2329,19 +2425,31 @@ def _namespace_mounts_valid(
     roles = value.get("roles")
     declared = sorted([str(data_root), *(str(path) for path in concrete.values())])
     if (
-        value.get("policy") != "blocked_namespace_mount_attestation_v1"
+        value.get("policy") != "blocked_namespace_mount_attestation_v2"
+        or value.get("visible_mount_resolution_policy")
+        != "proc_root_o_path_fdinfo_mnt_id_v1"
         or type(value.get("namespace_init_pid")) is not int
         or value["namespace_init_pid"] <= 0
         or type(value.get("mount_namespace_id")) is not int
         or value["mount_namespace_id"] <= 0
         or not isinstance(root, dict)
-        or set(root) != {"path", "device", "inode", "access", "mount", "mount_options"}
+        or set(root)
+        != {
+            "path",
+            "device",
+            "inode",
+            "access",
+            "mount",
+            "mount_options",
+            "covered_mount_ids",
+        }
         or root.get("path") != "/"
         or root.get("access") != "read_only"
         or not _mount_record_valid(root.get("mount"), expected_path=Path("/"))
         or not isinstance(root.get("mount_options"), list)
         or "ro" not in root["mount_options"]
         or "rw" in root["mount_options"]
+        or root.get("covered_mount_ids") != []
         or not _namespace_private_mount_valid(value.get("campaign_data_root"), data_root)
         or not isinstance(private, dict)
         or set(private) != {"tmp", "dev_shm"}
@@ -2370,6 +2478,7 @@ def _namespace_mounts_valid(
         if any(
             not _namespace_role_mount_valid(
                 roles[group][name],
+                role=name,
                 expected=concrete[name],
                 source_identity=identities[name],
                 expected_access=access,
@@ -2382,9 +2491,26 @@ def _namespace_mounts_valid(
         for group, names in expected_groups.items()
         for name in names
     ]
+    observations = [
+        root,
+        value["campaign_data_root"],
+        private["tmp"],
+        private["dev_shm"],
+        *targets,
+    ]
     pairs = [(target["device"], target["inode"]) for target in targets]
-    mount_ids = [target["mount"]["mount_id"] for target in targets]
-    return len(pairs) == len(set(pairs)) and len(mount_ids) == len(set(mount_ids))
+    mount_ids = [observation["mount"]["mount_id"] for observation in observations]
+    covered_ids = [
+        mount_id
+        for observation in observations
+        for mount_id in observation["covered_mount_ids"]
+    ]
+    return bool(
+        len(pairs) == len(set(pairs))
+        and len(mount_ids) == len(set(mount_ids))
+        and len(covered_ids) == len(set(covered_ids))
+        and set(covered_ids).isdisjoint(mount_ids)
+    )
 
 
 def _apex_attempt_mount_role_errors(
@@ -2510,7 +2636,7 @@ def _apex_attempt_mount_role_errors(
     }
     concrete = {name: path for name, path in expected.items() if path is not None}
     if any(
-        not _mount_identity_matches(identities[name], path)
+        not _source_mount_identity_matches(identities[name], path)
         for name, path in concrete.items()
     ):
         return ["apex_attempt_mount_role_contract_mismatch"]

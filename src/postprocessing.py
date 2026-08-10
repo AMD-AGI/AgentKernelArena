@@ -17,7 +17,11 @@ from typing import List, Dict, Any, Optional, Union
 from collections import defaultdict
 try:
     from src.campaign import (
+        APEX_RUNTIME_MOUNT_POLICY,
+        APEX_RUNTIME_MOUNT_SCHEMA,
+        ATTEMPT_MOUNT_RECEIPT_SCHEMA,
         CampaignError,
+        FORMAL_LIVE_EXECUTION_SHA256,
         _campaign_failure_reasons,
         _evaluation_eligibility_errors,
         _select_attempt,
@@ -33,7 +37,11 @@ except ModuleNotFoundError:
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     from src.campaign import (
+        APEX_RUNTIME_MOUNT_POLICY,
+        APEX_RUNTIME_MOUNT_SCHEMA,
+        ATTEMPT_MOUNT_RECEIPT_SCHEMA,
         CampaignError,
+        FORMAL_LIVE_EXECUTION_SHA256,
         _campaign_failure_reasons,
         _evaluation_eligibility_errors,
         _select_attempt,
@@ -72,9 +80,48 @@ _ATTEMPT_CAMPAIGN_BINDING_KEYS = frozenset(
     }
 )
 _FORMAL_RECEIPT_SCHEMAS = {
-    "apex": "agentkernelarena.apex-attempt-receipt/v6",
+    "apex": "agentkernelarena.apex-attempt-receipt/v7",
     "codex": "agentkernelarena.codex-attempt-receipt/v6",
 }
+_FORMAL_COMPARISON_SCHEMA = "aka.apex-vs-codex-comparison-contract/v7"
+_FORMAL_LIVE_EXECUTION = {
+    "mode": "live_formal_scoring",
+    "comparison_generation": 7,
+    "historical_compatibility": False,
+    "policy_id": "aka.live-formal-v7-only/v1",
+}
+
+
+def _formal_generation_valid(manifest: Any, comparison: Any) -> bool:
+    """Reject stale or partially relabeled matched-comparison generations."""
+
+    repositories = manifest.get("repositories") if isinstance(manifest, dict) else None
+    apex = repositories.get("apex") if isinstance(repositories, dict) else None
+    runtime_digest = (
+        apex.get("runtime_manifest_sha256") if isinstance(apex, dict) else None
+    )
+    expected_treatment = {
+        "template": "apex",
+        "session_receipt_schema": _FORMAL_RECEIPT_SCHEMAS["apex"],
+        "apex_runtime_mount_policy_id": APEX_RUNTIME_MOUNT_POLICY,
+        "attempt_mount_receipt_schema": ATTEMPT_MOUNT_RECEIPT_SCHEMA,
+        "apex_runtime_mount_schema": APEX_RUNTIME_MOUNT_SCHEMA,
+        "runtime_manifest_sha256": runtime_digest,
+    }
+    return bool(
+        isinstance(manifest, dict)
+        and isinstance(comparison, dict)
+        and isinstance(runtime_digest, str)
+        and re.fullmatch(r"[0-9a-f]{64}", runtime_digest)
+        and manifest.get("formal_execution") == _FORMAL_LIVE_EXECUTION
+        and manifest.get("formal_execution_sha256")
+        == FORMAL_LIVE_EXECUTION_SHA256
+        and comparison.get("schema") == _FORMAL_COMPARISON_SCHEMA
+        and comparison.get("formal_execution") == _FORMAL_LIVE_EXECUTION
+        and comparison.get("formal_execution_sha256")
+        == FORMAL_LIVE_EXECUTION_SHA256
+        and comparison.get("apex_treatment") == expected_treatment
+    )
 
 
 def _build_general_report_lines(
@@ -538,6 +585,7 @@ def _load_formal_cohort(run_directory: Path) -> Dict[str, Any] | None:
         run_config_valid = False
     if (
         not isinstance(comparison, dict)
+        or not _formal_generation_valid(manifest, comparison)
         or not isinstance(comparison_digest, str)
         or hashlib.sha256(
             json.dumps(

@@ -185,7 +185,7 @@ def _run_config_contract() -> dict:
     }
 
 
-def _v6_manifest(runtime_digest: str = "c" * 64) -> dict:
+def _v7_manifest(runtime_digest: str = "c" * 64) -> dict:
     tasks = [{"task_index": 1, "task_name": "task"}]
     repositories = {
         "agent_kernel_arena": {
@@ -201,7 +201,7 @@ def _v6_manifest(runtime_digest: str = "c" * 64) -> dict:
     }
     agent = {
         "template": "apex",
-        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v6",
+        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v7",
         "apex_runtime_mount_policy_id": (
             campaign_isolation.APEX_RUNTIME_MOUNT_POLICY
         ),
@@ -243,7 +243,7 @@ def _v6_manifest(runtime_digest: str = "c" * 64) -> dict:
     evaluator = {"execution_manifest_sha256": "2" * 64}
     run_config = _run_config_contract()
     comparison = {
-        "schema": "aka.apex-vs-codex-comparison-contract/v6",
+        "schema": "aka.apex-vs-codex-comparison-contract/v7",
         "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
         "formal_execution_sha256": campaign._FORMAL_LIVE_COMMITMENT_SHA256,
         "objective_policy_id": (
@@ -343,26 +343,26 @@ def _write_manifest(run: Path, manifest: dict) -> Path:
     return path
 
 
-def test_v6_comparison_binds_repository_mount_policy_and_runtime_digest(
+def test_v7_comparison_binds_repository_mount_policy_and_runtime_digest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(campaign, "_revalidate_aka_runtime", lambda _manifest: True)
     monkeypatch.setattr(
         campaign, "verify_backend_closure", lambda closure, _digest: closure
     )
-    manifest = _v6_manifest()
+    manifest = _v7_manifest()
     _write_manifest(tmp_path, manifest)
 
     loaded = campaign._load_verified_campaign_manifest(tmp_path)
 
     comparison = loaded["comparison_contract"]
     assert campaign._expected_session_receipt_schema(tmp_path) == (
-        "agentkernelarena.apex-attempt-receipt/v6"
+        "agentkernelarena.apex-attempt-receipt/v7"
     )
     assert comparison["repositories"] == loaded["repositories"]
     assert comparison["apex_treatment"] == {
         "template": "apex",
-        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v6",
+        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v7",
         "apex_runtime_mount_policy_id": (
             campaign_isolation.APEX_RUNTIME_MOUNT_POLICY
         ),
@@ -373,7 +373,7 @@ def test_v6_comparison_binds_repository_mount_policy_and_runtime_digest(
         "runtime_manifest_sha256": "c" * 64,
     }
 
-    codex_manifest = _v6_manifest()
+    codex_manifest = _v7_manifest()
     codex_manifest["agent"] = {
         "template": "codex",
         "session_receipt_schema": "agentkernelarena.codex-attempt-receipt/v6",
@@ -433,7 +433,7 @@ def test_apex_repository_requires_runner_runtime_manifest_digest(
         campaign._apex_state_from_environment()
 
 
-def test_comparison_v6_digest_is_identical_for_apex_and_codex_arms() -> None:
+def test_comparison_v7_digest_is_identical_for_apex_and_codex_arms() -> None:
     policy = campaign.CampaignPolicy(
         comparison="apex_vs_codex",
         attempts=3,
@@ -481,7 +481,7 @@ def test_comparison_v6_digest_is_identical_for_apex_and_codex_arms() -> None:
     apex = {
         **common,
         "template": "apex",
-        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v6",
+        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v7",
         "apex_runtime_mount_policy_id": (
             campaign_isolation.APEX_RUNTIME_MOUNT_POLICY
         ),
@@ -526,10 +526,10 @@ def test_comparison_v6_digest_is_identical_for_apex_and_codex_arms() -> None:
 @pytest.mark.parametrize(
     "tamper", ["repository", "marker", "receipt", "schema", "combined"]
 )
-def test_v6_manifest_divergence_and_downgrade_fail_closed(
+def test_v7_manifest_divergence_and_downgrade_fail_closed(
     tmp_path: Path, tamper: str
 ) -> None:
-    manifest = _v6_manifest()
+    manifest = _v7_manifest()
     if tamper == "repository":
         manifest["repositories"] = {
             **manifest["repositories"],
@@ -539,11 +539,11 @@ def test_v6_manifest_divergence_and_downgrade_fail_closed(
         del manifest["agent"]["apex_runtime_mount_policy_id"]
     elif tamper == "receipt":
         manifest["agent"]["session_receipt_schema"] = (
-            "agentkernelarena.apex-attempt-receipt/v4"
+            "agentkernelarena.apex-attempt-receipt/v6"
         )
     elif tamper == "schema":
         comparison = manifest["comparison_contract"]
-        comparison["schema"] = "aka.apex-vs-codex-comparison-contract/v4"
+        comparison["schema"] = "aka.apex-vs-codex-comparison-contract/v6"
         manifest["comparison_contract_sha256"] = _digest(comparison)
     else:
         manifest["agent"] = {
@@ -588,6 +588,16 @@ def _mount_identity(path: Path, mount_id: int = 10, *, bound: bool = False) -> d
         ),
         "nested_mounts": [],
         "source": "o_path_nofollow_bind_fd",
+    }
+
+
+def _source_mount_record(mount: dict, *, access: str) -> dict:
+    return {
+        **mount,
+        "access": access,
+        "filesystem_type": "fixturefs",
+        "source": "fixture-source",
+        "super_options": ["ro" if access == "read_only" else "rw"],
     }
 
 
@@ -657,13 +667,23 @@ def _role_fixture(tmp_path: Path) -> tuple[dict, dict, Path, Path, Path]:
         "apex_runtime": runtime,
     }
     source_identities = {
-        role: _mount_identity(path, 20 + index)
-        for index, (role, path) in enumerate(paths.items())
+        role: _mount_identity(path, 20)
+        for role, path in paths.items()
     }
+    source_identities["apex_runtime"] = _mount_identity(
+        runtime, 24, bound=True
+    )
+    source_identities["apex_runtime"]["mount"]["major_minor"] = "0:2"
+    for role, identity in source_identities.items():
+        identity["mount"] = _source_mount_record(
+            identity["mount"],
+            access="read_only" if role == "apex_runtime" else "read_write",
+        )
     target_identities = {
         role: _mount_identity(path, 40 + index, bound=True)
         for index, (role, path) in enumerate(paths.items())
     }
+    target_identities["apex_runtime"]["mount"]["major_minor"] = "0:2"
     namespace_roles = {"persistent_writable": {}, "read_only": {}}
     for group, names in {
         "persistent_writable": ("apex_artifacts", "backend_home"),
@@ -674,7 +694,10 @@ def _role_fixture(tmp_path: Path) -> tuple[dict, dict, Path, Path, Path]:
             target = target_identities[role]
             namespace_roles[group][role] = {
                 "source": {
-                    key: source[key] for key in ("path", "device", "inode", "mount")
+                    "path": source["path"],
+                    "device": source["device"],
+                    "inode": source["inode"],
+                    "mount": copy.deepcopy(source["mount"]),
                 },
                 "target": {
                     "path": target["path"],
@@ -687,6 +710,7 @@ def _role_fixture(tmp_path: Path) -> tuple[dict, dict, Path, Path, Path]:
                     "mount_options": [
                         "rw" if group == "persistent_writable" else "ro"
                     ],
+                    "covered_mount_ids": [99] if role == "apex_runtime" else [],
                 },
             }
     declared = sorted([str(data), *(str(path) for path in paths.values())])
@@ -697,7 +721,10 @@ def _role_fixture(tmp_path: Path) -> tuple[dict, dict, Path, Path, Path]:
         "campaign_data_identity": _mount_identity(data),
         "outer_bubblewrap": _outer_bubblewrap(),
         "namespace_mounts": {
-            "policy": "blocked_namespace_mount_attestation_v1",
+            "policy": "blocked_namespace_mount_attestation_v2",
+            "visible_mount_resolution_policy": (
+                "proc_root_o_path_fdinfo_mnt_id_v1"
+            ),
             "namespace_init_pid": 123,
             "mount_namespace_id": 456,
             "root": {
@@ -707,6 +734,7 @@ def _role_fixture(tmp_path: Path) -> tuple[dict, dict, Path, Path, Path]:
                 "access": "read_only",
                 "mount": _mount_record(Path("/"), 2),
                 "mount_options": ["ro"],
+                "covered_mount_ids": [],
             },
             "campaign_data_root": _private_namespace_mount(data, 3),
             "private_tmpfs": {
@@ -721,11 +749,11 @@ def _role_fixture(tmp_path: Path) -> tuple[dict, dict, Path, Path, Path]:
         },
         "roles": {
             "persistent_writable": {
-                role: target_identities[role]
+                role: source_identities[role]
                 for role in ("apex_artifacts", "backend_home")
             },
             "read_only": {
-                role: target_identities[role]
+                role: source_identities[role]
                 for role in (
                     "scored_workspace",
                     "sealed_task_contract",
@@ -743,7 +771,81 @@ def _role_fixture(tmp_path: Path) -> tuple[dict, dict, Path, Path, Path]:
     return receipt, task_spec, receipt_path, contract_path, runtime
 
 
-def test_v6_mount_roles_are_closed_canonical_and_non_overlapping(
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "none",
+        "schema_v2",
+        "schema_v1",
+        "namespace_v1",
+        "resolution_policy",
+        "root_covered",
+        "non_runtime_covered",
+        "runtime_non_integer",
+        "runtime_negative",
+        "runtime_duplicate",
+        "private_unsorted",
+        "runtime_contains_visible",
+        "runtime_inherited_source_writable",
+        "runtime_target_writable",
+        "reused_private_visible_mount_id",
+    ],
+)
+def test_v7_launcher_rejects_stale_or_malformed_mount_layers(
+    tmp_path: Path, tamper: str
+) -> None:
+    receipt, _, _, _, runtime = _role_fixture(tmp_path)
+    mounts = receipt["attempt_mounts"]
+    namespace = mounts["namespace_mounts"]
+    runtime_target = namespace["roles"]["read_only"]["apex_runtime"]["target"]
+    if tamper == "schema_v2":
+        mounts["schema"] = "aka.attempt-mounts/v2"
+    elif tamper == "schema_v1":
+        mounts["schema"] = "aka.attempt-mounts/v1"
+    elif tamper == "namespace_v1":
+        namespace["policy"] = "blocked_namespace_mount_attestation_v1"
+    elif tamper == "resolution_policy":
+        namespace["visible_mount_resolution_policy"] = "mountinfo_order_v0"
+    elif tamper == "root_covered":
+        namespace["root"]["covered_mount_ids"] = [98]
+    elif tamper == "non_runtime_covered":
+        namespace["roles"]["read_only"]["scored_workspace"]["target"][
+            "covered_mount_ids"
+        ] = [98]
+    elif tamper == "runtime_non_integer":
+        runtime_target["covered_mount_ids"] = ["99"]
+    elif tamper == "runtime_negative":
+        runtime_target["covered_mount_ids"] = [-1]
+    elif tamper == "runtime_duplicate":
+        runtime_target["covered_mount_ids"] = [98, 98]
+    elif tamper == "private_unsorted":
+        namespace["private_tmpfs"]["tmp"]["covered_mount_ids"] = [99, 98]
+    elif tamper == "runtime_contains_visible":
+        runtime_target["covered_mount_ids"] = [runtime_target["mount"]["mount_id"]]
+    elif tamper == "runtime_inherited_source_writable":
+        mounts["roles"]["read_only"]["apex_runtime"]["mount"][
+            "access"
+        ] = "read_write"
+        namespace["roles"]["read_only"]["apex_runtime"]["source"]["mount"][
+            "access"
+        ] = "read_write"
+    elif tamper == "runtime_target_writable":
+        runtime_target["access"] = "read_write"
+        runtime_target["mount_options"] = ["rw"]
+    elif tamper == "reused_private_visible_mount_id":
+        namespace["private_tmpfs"]["tmp"]["mount"]["mount_id"] = namespace[
+            "campaign_data_root"
+        ]["mount"]["mount_id"]
+    material = copy.deepcopy(mounts)
+    material.pop("sha256")
+    mounts["sha256"] = _digest(material)
+
+    assert apex_launcher._attempt_mount_receipt_valid(
+        mounts, runtime_root=runtime
+    ) is (tamper == "none")
+
+
+def test_v7_mount_roles_are_closed_canonical_and_non_overlapping(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     receipt, task_spec, receipt_path, contract_path, runtime = _role_fixture(
@@ -783,7 +885,39 @@ def test_v6_mount_roles_are_closed_canonical_and_non_overlapping(
     ) == ["apex_attempt_mount_role_contract_mismatch"]
 
 
-def test_v6_mount_roles_reject_private_tmpfs_or_role_set_tampering(
+def test_v7_rejects_joint_runtime_source_and_covered_downgrade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    receipt, task_spec, receipt_path, contract_path, runtime = _role_fixture(tmp_path)
+    mounts = receipt["attempt_mounts"]
+    runtime_observation = mounts["namespace_mounts"]["roles"]["read_only"][
+        "apex_runtime"
+    ]
+    runtime_observation["source"]["mount"]["mount_point"] = str(runtime.parent)
+    runtime_observation["source"]["mount"]["root"] = str(runtime.parent)
+    runtime_observation["target"]["covered_mount_ids"] = []
+    material = copy.deepcopy(mounts)
+    material.pop("sha256")
+    mounts["sha256"] = _digest(material)
+    monkeypatch.setenv(
+        "AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT",
+        str(tmp_path / "campaign-data"),
+    )
+
+    assert not apex_launcher._attempt_mount_receipt_valid(
+        mounts, runtime_root=runtime
+    )
+    assert campaign._apex_attempt_mount_role_errors(
+        receipt=receipt,
+        receipt_path=receipt_path,
+        workspace=Path(task_spec["workspace"]),
+        task_spec=task_spec,
+        contract_path=contract_path,
+        runtime_root=runtime,
+    ) == ["apex_attempt_mount_role_contract_mismatch"]
+
+
+def test_v7_mount_roles_reject_private_tmpfs_or_role_set_tampering(
     tmp_path: Path,
 ) -> None:
     receipt, task_spec, receipt_path, contract_path, runtime = _role_fixture(
@@ -814,9 +948,23 @@ def test_v6_mount_roles_reject_private_tmpfs_or_role_set_tampering(
         "wrong_mount_root",
         "undeclared_nested_mount",
         "target_alias",
+        "old_namespace_policy",
+        "old_resolution_policy",
+        "covered_non_runtime_role",
+        "missing_runtime_covered_mount",
+        "stale_attempt_schema_v2",
+        "stale_attempt_schema_v1",
+        "covered_non_integer",
+        "covered_negative",
+        "covered_duplicate_private",
+        "covered_unsorted_private",
+        "covered_contains_visible",
+        "runtime_source_writable",
+        "runtime_source_projection_missing",
+        "reused_private_visible_mount_id",
     ],
 )
-def test_v6_mount_auditor_rejects_namespace_and_sealed_exec_tampering(
+def test_v7_mount_auditor_rejects_namespace_and_sealed_exec_tampering(
     tmp_path: Path, tamper: str
 ) -> None:
     receipt, task_spec, receipt_path, contract_path, runtime = _role_fixture(tmp_path)
@@ -838,13 +986,57 @@ def test_v6_mount_auditor_rejects_namespace_and_sealed_exec_tampering(
         namespace["observed_mount_points_below_campaign_data"].append(
             str(Path(task_spec["workspace"]) / "nested")
         )
-    else:
+    elif tamper == "target_alias":
         source = namespace["roles"]["read_only"]["scored_workspace"]["target"]
         alias = namespace["roles"]["persistent_writable"]["apex_artifacts"][
             "target"
         ]
         alias["device"] = source["device"]
         alias["inode"] = source["inode"]
+    elif tamper == "old_namespace_policy":
+        namespace["policy"] = "blocked_namespace_mount_attestation_v1"
+    elif tamper == "old_resolution_policy":
+        namespace["visible_mount_resolution_policy"] = "mountinfo_last_match_v0"
+    elif tamper == "covered_non_runtime_role":
+        namespace["roles"]["read_only"]["scored_workspace"]["target"][
+            "covered_mount_ids"
+        ] = [98]
+    elif tamper == "missing_runtime_covered_mount":
+        namespace["roles"]["read_only"]["apex_runtime"]["target"][
+            "covered_mount_ids"
+        ] = []
+    elif tamper == "stale_attempt_schema_v2":
+        mounts["schema"] = "aka.attempt-mounts/v2"
+    elif tamper == "stale_attempt_schema_v1":
+        mounts["schema"] = "aka.attempt-mounts/v1"
+    elif tamper == "covered_non_integer":
+        namespace["roles"]["read_only"]["apex_runtime"]["target"][
+            "covered_mount_ids"
+        ] = ["99"]
+    elif tamper == "covered_negative":
+        namespace["roles"]["read_only"]["apex_runtime"]["target"][
+            "covered_mount_ids"
+        ] = [-1]
+    elif tamper == "covered_duplicate_private":
+        namespace["private_tmpfs"]["tmp"]["covered_mount_ids"] = [98, 98]
+    elif tamper == "covered_unsorted_private":
+        namespace["private_tmpfs"]["tmp"]["covered_mount_ids"] = [99, 98]
+    elif tamper == "covered_contains_visible":
+        namespace["roles"]["read_only"]["apex_runtime"]["target"][
+            "covered_mount_ids"
+        ] = [44]
+    elif tamper == "runtime_source_writable":
+        namespace["roles"]["read_only"]["apex_runtime"]["source"]["mount"][
+            "access"
+        ] = "read_write"
+    elif tamper == "reused_private_visible_mount_id":
+        namespace["private_tmpfs"]["tmp"]["mount"]["mount_id"] = namespace[
+            "campaign_data_root"
+        ]["mount"]["mount_id"]
+    else:
+        del namespace["roles"]["read_only"]["apex_runtime"]["source"]["mount"][
+            "filesystem_type"
+        ]
     material = copy.deepcopy(mounts)
     material.pop("sha256")
     mounts["sha256"] = _digest(material)
@@ -859,7 +1051,7 @@ def test_v6_mount_auditor_rejects_namespace_and_sealed_exec_tampering(
     ) == ["apex_attempt_mount_role_contract_mismatch"]
 
 
-def test_v6_runtime_snapshot_binds_manifest_and_role_receipt(
+def test_v7_runtime_snapshot_binds_manifest_and_role_receipt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     receipt, task_spec, receipt_path, contract_path, runtime_parent = (
@@ -942,13 +1134,20 @@ def test_v6_runtime_snapshot_binds_manifest_and_role_receipt(
     )
 
     mounts = receipt["attempt_mounts"]
-    runtime_source_mount = _mount_identity(runtime, 24)
+    runtime_source_mount = _mount_identity(runtime, 24, bound=True)
     runtime_target_mount = _mount_identity(runtime, 44, bound=True)
-    mounts["roles"]["read_only"]["apex_runtime"] = runtime_target_mount
+    runtime_source_mount["mount"]["major_minor"] = "0:2"
+    runtime_target_mount["mount"]["major_minor"] = "0:2"
+    runtime_source_mount["mount"] = _source_mount_record(
+        runtime_source_mount["mount"], access="read_only"
+    )
+    mounts["roles"]["read_only"]["apex_runtime"] = runtime_source_mount
     mounts["namespace_mounts"]["roles"]["read_only"]["apex_runtime"] = {
         "source": {
-            key: runtime_source_mount[key]
-            for key in ("path", "device", "inode", "mount")
+            "path": runtime_source_mount["path"],
+            "device": runtime_source_mount["device"],
+            "inode": runtime_source_mount["inode"],
+            "mount": copy.deepcopy(runtime_source_mount["mount"]),
         },
         "target": {
             "path": runtime_target_mount["path"],
@@ -957,6 +1156,7 @@ def test_v6_runtime_snapshot_binds_manifest_and_role_receipt(
             "access": "read_only",
             "mount": runtime_target_mount["mount"],
             "mount_options": ["ro"],
+            "covered_mount_ids": [99],
         },
     }
     for key in ("declared_mount_points", "observed_mount_points_below_campaign_data"):
@@ -973,7 +1173,7 @@ def test_v6_runtime_snapshot_binds_manifest_and_role_receipt(
     monkeypatch.setattr(
         campaign, "verify_backend_closure", lambda closure, _digest: closure
     )
-    campaign_manifest = _v6_manifest(runtime_digest)
+    campaign_manifest = _v7_manifest(runtime_digest)
     runtime_repository = {
         "commit": runtime_manifest["git"]["commit"],
         "dirty": runtime_manifest["git"]["dirty"],
@@ -1019,7 +1219,7 @@ def test_v6_runtime_snapshot_binds_manifest_and_role_receipt(
     )
     receipt.update(
         {
-            "schema": "agentkernelarena.apex-attempt-receipt/v6",
+            "schema": "agentkernelarena.apex-attempt-receipt/v7",
             "apex_runtime_mount": runtime_receipt,
             "apex": {
                 "entrypoint": str(entrypoint),

@@ -89,7 +89,9 @@ _APEX_GENERIC_CONTEXT_MARKER = (
 )
 _NORMAL_NO_PATCH_STATUSES = {"no_gain"}
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v6"
+_APEX_RECEIPT_SCHEMA = "agentkernelarena.apex-attempt-receipt/v7"
+_NAMESPACE_MOUNT_POLICY = "blocked_namespace_mount_attestation_v2"
+_VISIBLE_MOUNT_RESOLUTION_POLICY = "proc_root_o_path_fdinfo_mnt_id_v1"
 _CAMPAIGN_BINDING_SCHEMA = "aka.attempt-campaign-binding/v1"
 _CAMPAIGN_BINDING_KEYS = frozenset(
     {
@@ -2799,17 +2801,160 @@ def _attempt_mount_receipt_valid(receipt: Any, *, runtime_root: Path) -> bool:
     digest = material.pop("sha256", None)
     roles = receipt.get("roles")
     read_only = roles.get("read_only") if isinstance(roles, dict) else None
+    namespace = receipt.get("namespace_mounts")
     return (
         receipt.get("schema") == ATTEMPT_MOUNT_RECEIPT_SCHEMA
         and receipt.get("campaign_data_root_hidden") is True
         and isinstance(read_only, dict)
         and isinstance(read_only.get("apex_runtime"), dict)
         and read_only["apex_runtime"].get("path") == str(runtime_root)
-        and isinstance(receipt.get("namespace_mounts"), dict)
-        and receipt["namespace_mounts"].get("closed_set") is True
+        and isinstance(namespace, dict)
+        and _namespace_mount_v3_valid(
+            namespace,
+            runtime_root=runtime_root,
+            source_roles=roles,
+        )
         and isinstance(digest, str)
         and _SHA256.fullmatch(digest) is not None
         and digest == _canonical_digest(material)
+    )
+
+
+def _covered_mount_ids_valid(value: Any, *, expected_count: int | None) -> bool:
+    if not isinstance(value, dict):
+        return False
+    covered = value.get("covered_mount_ids")
+    mount = value.get("mount")
+    if (
+        not isinstance(covered, list)
+        or any(type(item) is not int or item <= 0 for item in covered)
+        or covered != sorted(covered)
+        or len(covered) != len(set(covered))
+        or not isinstance(mount, dict)
+        or type(mount.get("mount_id")) is not int
+        or mount["mount_id"] <= 0
+        or mount["mount_id"] in covered
+    ):
+        return False
+    return expected_count is None or len(covered) == expected_count
+
+
+def _namespace_mount_v3_valid(
+    namespace: Any,
+    *,
+    runtime_root: Path,
+    source_roles: Any,
+) -> bool:
+    if (
+        not isinstance(namespace, dict)
+        or namespace.get("policy") != _NAMESPACE_MOUNT_POLICY
+        or namespace.get("visible_mount_resolution_policy")
+        != _VISIBLE_MOUNT_RESOLUTION_POLICY
+        or namespace.get("closed_set") is not True
+        or not isinstance(namespace.get("root"), dict)
+        or namespace["root"].get("covered_mount_ids") != []
+    ):
+        return False
+    roles = namespace.get("roles")
+    if not isinstance(roles, dict) or set(roles) != {
+        "persistent_writable",
+        "read_only",
+    }:
+        return False
+    expected = {
+        "persistent_writable": {"apex_artifacts", "backend_home"},
+        "read_only": {"scored_workspace", "sealed_task_contract", "apex_runtime"},
+    }
+    role_targets: list[dict[str, Any]] = []
+    for group, names in expected.items():
+        entries = roles.get(group)
+        source_entries = (
+            source_roles.get(group) if isinstance(source_roles, dict) else None
+        )
+        if (
+            not isinstance(entries, dict)
+            or set(entries) != names
+            or not isinstance(source_entries, dict)
+            or set(source_entries) != names
+        ):
+            return False
+        for name, observation in entries.items():
+            source_identity = source_entries[name]
+            source = (
+                observation.get("source") if isinstance(observation, dict) else None
+            )
+            target = observation.get("target") if isinstance(observation, dict) else None
+            if (
+                not isinstance(source_identity, dict)
+                or not isinstance(source, dict)
+                or source
+                != {
+                    "path": source_identity.get("path"),
+                    "device": source_identity.get("device"),
+                    "inode": source_identity.get("inode"),
+                    "mount": source_identity.get("mount"),
+                }
+                or not isinstance(target, dict)
+                or target.get("device") != source.get("device")
+                or target.get("inode") != source.get("inode")
+            ):
+                return False
+            role_targets.append(target)
+            if name != "apex_runtime" and not _covered_mount_ids_valid(
+                target, expected_count=0
+            ):
+                return False
+    runtime = roles["read_only"]["apex_runtime"]
+    source = runtime.get("source") if isinstance(runtime, dict) else None
+    target = runtime.get("target") if isinstance(runtime, dict) else None
+    source_mount = source.get("mount") if isinstance(source, dict) else None
+    target_options = target.get("mount_options") if isinstance(target, dict) else None
+    expected_covered = (
+        1
+        if isinstance(source_mount, dict)
+        and source_mount.get("mount_point") == str(runtime_root)
+        else 0
+    )
+    if (
+        not isinstance(target, dict)
+        or target.get("path") != str(runtime_root)
+        or target.get("access") != "read_only"
+        or not isinstance(target_options, list)
+        or "ro" not in target_options
+        or "rw" in target_options
+        or (
+            expected_covered == 1
+            and source_mount.get("access") != "read_only"
+        )
+        or not _covered_mount_ids_valid(target, expected_count=expected_covered)
+    ):
+        return False
+    private = namespace.get("private_tmpfs")
+    data = namespace.get("campaign_data_root")
+    if not isinstance(private, dict) or set(private) != {"tmp", "dev_shm"}:
+        return False
+    observations = [
+        namespace["root"],
+        data,
+        private["tmp"],
+        private["dev_shm"],
+        *role_targets,
+    ]
+    if any(
+        not _covered_mount_ids_valid(observation, expected_count=None)
+        for observation in observations
+    ):
+        return False
+    visible_ids = [observation["mount"]["mount_id"] for observation in observations]
+    covered_ids = [
+        mount_id
+        for observation in observations
+        for mount_id in observation["covered_mount_ids"]
+    ]
+    return bool(
+        len(visible_ids) == len(set(visible_ids))
+        and len(covered_ids) == len(set(covered_ids))
+        and set(visible_ids).isdisjoint(covered_ids)
     )
 
 

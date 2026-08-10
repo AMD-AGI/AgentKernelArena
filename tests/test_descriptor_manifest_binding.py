@@ -63,7 +63,7 @@ def _backend_closure() -> dict[str, object]:
     }
 
 
-def _formal_v6_contract(
+def _formal_v7_contract(
     *,
     tasks: list[dict[str, object]],
     mappings: list[dict[str, object]],
@@ -130,7 +130,7 @@ def _formal_v6_contract(
     }
     apex_treatment = {
         "template": "apex",
-        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v6",
+        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v7",
         "apex_runtime_mount_policy_id": campaign.APEX_RUNTIME_MOUNT_POLICY,
         "attempt_mount_receipt_schema": campaign.ATTEMPT_MOUNT_RECEIPT_SCHEMA,
         "apex_runtime_mount_schema": campaign.APEX_RUNTIME_MOUNT_SCHEMA,
@@ -182,7 +182,7 @@ def _formal_v6_contract(
     }
     formal_execution = dict(campaign._FORMAL_LIVE_COMMITMENT)
     comparison = {
-        "schema": "aka.apex-vs-codex-comparison-contract/v6",
+        "schema": "aka.apex-vs-codex-comparison-contract/v7",
         "formal_execution": formal_execution,
         "formal_execution_sha256": campaign.FORMAL_LIVE_EXECUTION_SHA256,
         "objective_policy_id": "aka.task-package-objective-and-protected-harness/v1",
@@ -289,7 +289,7 @@ def _make_formal_run(
     run_config = campaign._run_config_contract(
         durable_run_config_path, agent_name="apex"
     )
-    manifest = _formal_v6_contract(
+    manifest = _formal_v7_contract(
         tasks=tasks,
         mappings=mappings,
         devices=devices,

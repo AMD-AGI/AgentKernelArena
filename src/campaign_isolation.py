@@ -43,8 +43,10 @@ class CampaignIsolationError(RuntimeError):
 
 ATTEMPT_CONTAINMENT_POLICY = "private_pid_namespace_init_pidfd_v1"
 ATTEMPT_MOUNT_RECEIPT_SCHEMA_V1 = "aka.attempt-mounts/v1"
-ATTEMPT_MOUNT_RECEIPT_SCHEMA_V2 = "aka.attempt-mounts/v2"
-ATTEMPT_MOUNT_RECEIPT_SCHEMA = ATTEMPT_MOUNT_RECEIPT_SCHEMA_V2
+ATTEMPT_MOUNT_RECEIPT_SCHEMA_V3 = "aka.attempt-mounts/v3"
+ATTEMPT_MOUNT_RECEIPT_SCHEMA = ATTEMPT_MOUNT_RECEIPT_SCHEMA_V3
+_NAMESPACE_MOUNT_ATTESTATION_POLICY = "blocked_namespace_mount_attestation_v2"
+_VISIBLE_MOUNT_RESOLUTION_POLICY = "proc_root_o_path_fdinfo_mnt_id_v1"
 APEX_RUNTIME_MOUNT_POLICY = (
     "content_addressed_apex_runtime_snapshot_docker_bindable_read_only_v2"
 )
@@ -2127,15 +2129,159 @@ def _process_namespace_identity(pid: int) -> tuple[int, int]:
     return parent, namespace_pid
 
 
-def _exact_namespace_mount(
-    table: Mapping[int, _MountInfo], target: Path
-) -> _MountInfo:
-    matches = [entry for entry in table.values() if entry.mount_point == target]
-    if len(matches) != 1:
+def _mount_namespace_inode(pid: int) -> int:
+    try:
+        return os.stat(f"/proc/{pid}/ns/mnt").st_ino
+    except OSError as error:
         raise CampaignIsolationError(
-            f"blocked namespace lacks one exact mount target: {target}"
+            "cannot inspect blocked attempt mount namespace identity"
+        ) from error
+
+
+def _assert_blocked_namespace_identity(
+    *,
+    pid: int,
+    mount_namespace_id: int,
+    init_pidfd: int,
+    init_starttime: int,
+) -> None:
+    """Keep numeric procfs observations bound to the pinned namespace init."""
+
+    try:
+        exited = init_pidfd < 0 or _pidfd_ready(init_pidfd, 0)
+    except OSError as error:
+        raise CampaignIsolationError(
+            "cannot inspect blocked attempt namespace init pidfd"
+        ) from error
+    if (
+        exited
+        or _process_starttime(pid) != init_starttime
+        or _mount_namespace_inode(pid) != mount_namespace_id
+    ):
+        raise CampaignIsolationError(
+            "attempt namespace init identity changed during mount attestation"
         )
-    return matches[0]
+
+
+def _stable_namespace_mountinfo_table(
+    *,
+    pid: int,
+    mount_namespace_id: int,
+    init_pidfd: int,
+    init_starttime: int,
+) -> dict[int, _MountInfo]:
+    _assert_blocked_namespace_identity(
+        pid=pid,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
+    table = _namespace_mountinfo_table(pid)
+    _assert_blocked_namespace_identity(
+        pid=pid,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
+    return table
+
+
+def _assert_namespace_mountinfo_unchanged(
+    *,
+    pid: int,
+    mount_namespace_id: int,
+    init_pidfd: int,
+    init_starttime: int,
+    expected: Mapping[int, _MountInfo],
+) -> None:
+    observed = _stable_namespace_mountinfo_table(
+        pid=pid,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
+    if observed != expected:
+        raise CampaignIsolationError(
+            "attempt mount table changed during blocked attestation"
+        )
+
+
+def _namespace_target_relative_path(target: Path) -> str:
+    if not target.is_absolute() or ".." in target.parts:
+        raise CampaignIsolationError(
+            f"blocked namespace mount target is not absolute: {target}"
+        )
+    return "." if target == Path("/") else Path(*target.parts[1:]).as_posix()
+
+
+def _visible_namespace_mount(
+    *,
+    pid: int,
+    target: Path,
+    table: Mapping[int, _MountInfo],
+    mount_namespace_id: int,
+    init_pidfd: int,
+    init_starttime: int,
+) -> tuple[_MountInfo, os.stat_result, tuple[_MountInfo, ...]]:
+    """Resolve the kernel-visible mount without guessing from mountinfo order.
+
+    Multiple exact mountinfo entries are legal when an inner bind covers an
+    inherited bind at the same path.  Opening the target through the blocked
+    process's procfs root and reading the resulting O_PATH fd's ``mnt_id`` is
+    the kernel-authoritative way to identify which stack entry is visible.
+    """
+
+    _assert_blocked_namespace_identity(
+        pid=pid,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
+    root_descriptor = descriptor = -1
+    try:
+        path_flags = os.O_DIRECTORY | os.O_CLOEXEC
+        path_flags |= getattr(os, "O_PATH", os.O_RDONLY)
+        try:
+            root_descriptor = os.open(f"/proc/{pid}/root", path_flags)
+            descriptor = os.open(
+                _namespace_target_relative_path(target),
+                path_flags | os.O_NOFOLLOW,
+                dir_fd=root_descriptor,
+            )
+        except OSError as error:
+            raise CampaignIsolationError(
+                f"cannot open blocked namespace target: {target}"
+            ) from error
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise CampaignIsolationError(
+                f"blocked namespace target is not a directory: {target}"
+            )
+        mount_id = _descriptor_mount_id(descriptor)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if root_descriptor >= 0:
+            os.close(root_descriptor)
+        _assert_blocked_namespace_identity(
+            pid=pid,
+            mount_namespace_id=mount_namespace_id,
+            init_pidfd=init_pidfd,
+            init_starttime=init_starttime,
+        )
+    mount = table.get(mount_id)
+    if mount is None or mount.mount_point != target:
+        raise CampaignIsolationError(
+            f"visible mount id does not name the exact target: {target}"
+        )
+    exact = tuple(
+        sorted(
+            (entry for entry in table.values() if entry.mount_point == target),
+            key=lambda entry: entry.mount_id,
+        )
+    )
+    covered = tuple(entry for entry in exact if entry.mount_id != mount_id)
+    return mount, metadata, covered
 
 
 def _mount_access(entry: _MountInfo) -> str:
@@ -2164,27 +2310,78 @@ def _expected_bind_root(identity: Mapping[str, Any]) -> Path:
     return mount_root / relative
 
 
-def _namespace_target_stat(pid: int, target: Path) -> os.stat_result:
-    root = Path(f"/proc/{pid}/root")
-    path = root.joinpath(*target.parts[1:]) if target != Path("/") else root
-    try:
-        return path.stat()
-    except OSError as error:
+def _validate_role_covered_mounts(
+    *,
+    role: str,
+    path: Path,
+    expected_access: str,
+    source_mount: Mapping[str, Any],
+    visible: _MountInfo,
+    covered: tuple[_MountInfo, ...],
+) -> None:
+    source_is_exact_target = Path(str(source_mount.get("mount_point"))) == path
+    if role != "apex_runtime" or not source_is_exact_target:
+        if covered:
+            raise CampaignIsolationError(
+                f"blocked namespace role has covered exact mounts: {path}"
+            )
+        return
+    if expected_access != "read_only" or len(covered) != 1:
         raise CampaignIsolationError(
-            f"cannot inspect blocked namespace target: {target}"
-        ) from error
+            f"blocked namespace runtime mount stack is not canonical: {path}"
+        )
+    expected_root = Path(str(source_mount.get("root")))
+    expected_device = source_mount.get("major_minor")
+    expected_filesystem_type = source_mount.get("filesystem_type")
+    expected_source = source_mount.get("source")
+    expected_super_options = source_mount.get("super_options")
+    inherited = covered[0]
+    if (
+        source_mount.get("access") != "read_only"
+        or not isinstance(expected_filesystem_type, str)
+        or not expected_filesystem_type
+        or not isinstance(expected_source, str)
+        or not expected_source
+        or not isinstance(expected_super_options, list)
+        or inherited.mount_point != path
+        or inherited.major_minor != expected_device
+        or inherited.root != expected_root
+        or _mount_access(inherited) != "read_only"
+        or inherited.filesystem_type != expected_filesystem_type
+        or inherited.source != expected_source
+        or list(inherited.super_options) != expected_super_options
+        or visible.major_minor != expected_device
+        or visible.root != expected_root
+        or _mount_access(visible) != "read_only"
+        or visible.filesystem_type != expected_filesystem_type
+        or visible.source != expected_source
+        or list(visible.super_options) != expected_super_options
+    ):
+        raise CampaignIsolationError(
+            f"blocked namespace runtime covered mount changed projection: {path}"
+        )
 
 
 def _attest_role_mount(
     *,
     pid: int,
+    role: str,
     path: Path,
     expected_access: str,
     source_identity: dict[str, Any],
     table: Mapping[int, _MountInfo],
+    mount_namespace_id: int,
+    init_pidfd: int,
+    init_starttime: int,
 ) -> dict[str, Any]:
-    mount = _exact_namespace_mount(table, path)
-    metadata = _namespace_target_stat(pid, path)
+    mount, metadata, covered = _visible_namespace_mount(
+        pid=pid,
+        target=path,
+        table=table,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
     access = _mount_access(mount)
     source_mount = source_identity["mount"]
     if (
@@ -2199,6 +2396,14 @@ def _attest_role_mount(
         raise CampaignIsolationError(
             f"blocked namespace mount differs from pinned source: {path}"
         )
+    _validate_role_covered_mounts(
+        role=role,
+        path=path,
+        expected_access=expected_access,
+        source_mount=source_mount,
+        visible=mount,
+        covered=covered,
+    )
     nested = sorted(
         str(entry.mount_point)
         for entry in table.values()
@@ -2222,23 +2427,34 @@ def _attest_role_mount(
             "access": access,
             "mount": mount.receipt(),
             "mount_options": list(mount.mount_options),
+            "covered_mount_ids": sorted(entry.mount_id for entry in covered),
         },
     }
 
 
 def _attest_private_mount(
-    *, pid: int, path: Path, table: Mapping[int, _MountInfo]
+    *,
+    pid: int,
+    path: Path,
+    table: Mapping[int, _MountInfo],
+    mount_namespace_id: int,
+    init_pidfd: int,
+    init_starttime: int,
 ) -> dict[str, Any]:
-    metadata = _namespace_target_stat(pid, path)
+    mount, metadata, covered = _visible_namespace_mount(
+        pid=pid,
+        target=path,
+        table=table,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
     device = f"{os.major(metadata.st_dev)}:{os.minor(metadata.st_dev)}"
-    exact = [entry for entry in table.values() if entry.mount_point == path]
-    visible = [entry for entry in exact if entry.major_minor == device]
-    if len(visible) != 1:
-        raise CampaignIsolationError(
-            f"blocked namespace lacks one visible private mount: {path}"
-        )
-    mount = visible[0]
-    if _mount_access(mount) != "read_write" or mount.filesystem_type != "tmpfs":
+    if (
+        _mount_access(mount) != "read_write"
+        or mount.filesystem_type != "tmpfs"
+        or mount.major_minor != device
+    ):
         raise CampaignIsolationError(
             f"blocked namespace private mount is not writable tmpfs: {path}"
         )
@@ -2250,14 +2466,17 @@ def _attest_private_mount(
         "filesystem_type": mount.filesystem_type,
         "mount": mount.receipt(),
         "mount_options": list(mount.mount_options),
-        "covered_mount_ids": sorted(
-            entry.mount_id for entry in exact if entry.mount_id != mount.mount_id
-        ),
+        "covered_mount_ids": sorted(entry.mount_id for entry in covered),
     }
 
 
 def _namespace_mount_attestation(
-    command: WrappedAttemptCommand, *, pid: int, mount_namespace_id: int
+    command: WrappedAttemptCommand,
+    *,
+    pid: int,
+    mount_namespace_id: int,
+    init_pidfd: int,
+    init_starttime: int,
 ) -> dict[str, Any]:
     contract = command.mount_contract
     if not isinstance(contract, dict):
@@ -2266,14 +2485,35 @@ def _namespace_mount_attestation(
     roles = contract["roles"]
     identities = contract["identities"]
     trusted_read_only = set(contract.get("trusted_read_only", ()))
-    table = _namespace_mountinfo_table(pid)
-    if os.stat(f"/proc/{pid}/ns/mnt").st_ino != mount_namespace_id:
-        raise CampaignIsolationError("attempt mount namespace changed during attestation")
-    root_mount = _exact_namespace_mount(table, Path("/"))
-    root_stat = _namespace_target_stat(pid, Path("/"))
-    if _mount_access(root_mount) != "read_only":
+    table = _stable_namespace_mountinfo_table(
+        pid=pid,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
+    root_mount, root_stat, root_covered = _visible_namespace_mount(
+        pid=pid,
+        target=Path("/"),
+        table=table,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
+    root_device = f"{os.major(root_stat.st_dev)}:{os.minor(root_stat.st_dev)}"
+    if (
+        _mount_access(root_mount) != "read_only"
+        or root_mount.major_minor != root_device
+        or root_covered
+    ):
         raise CampaignIsolationError("blocked namespace root is not read-only")
-    data = _attest_private_mount(pid=pid, path=data_root, table=table)
+    data = _attest_private_mount(
+        pid=pid,
+        path=data_root,
+        table=table,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
     declared = {data_root, *roles.values()}
     observed = {
         entry.mount_point
@@ -2295,12 +2535,16 @@ def _namespace_mount_attestation(
         )
         role_receipts[access_group][role] = _attest_role_mount(
             pid=pid,
+            role=role,
             path=path,
             expected_access=(
                 "read_write" if access_group == "persistent_writable" else "read_only"
             ),
             source_identity=identities[path],
             table=table,
+            mount_namespace_id=mount_namespace_id,
+            init_pidfd=init_pidfd,
+            init_starttime=init_starttime,
         )
     target_pairs = [
         (entry["target"]["device"], entry["target"]["inode"])
@@ -2309,8 +2553,34 @@ def _namespace_mount_attestation(
     ]
     if len(target_pairs) != len(set(target_pairs)):
         raise CampaignIsolationError("blocked namespace role mounts contain aliases")
+    private_tmpfs = {
+        "tmp": _attest_private_mount(
+            pid=pid,
+            path=Path("/tmp"),
+            table=table,
+            mount_namespace_id=mount_namespace_id,
+            init_pidfd=init_pidfd,
+            init_starttime=init_starttime,
+        ),
+        "dev_shm": _attest_private_mount(
+            pid=pid,
+            path=Path("/dev/shm"),
+            table=table,
+            mount_namespace_id=mount_namespace_id,
+            init_pidfd=init_pidfd,
+            init_starttime=init_starttime,
+        ),
+    }
+    _assert_namespace_mountinfo_unchanged(
+        pid=pid,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+        expected=table,
+    )
     return {
-        "policy": "blocked_namespace_mount_attestation_v1",
+        "policy": _NAMESPACE_MOUNT_ATTESTATION_POLICY,
+        "visible_mount_resolution_policy": _VISIBLE_MOUNT_RESOLUTION_POLICY,
         "namespace_init_pid": pid,
         "mount_namespace_id": mount_namespace_id,
         "root": {
@@ -2320,14 +2590,12 @@ def _namespace_mount_attestation(
             "access": "read_only",
             "mount": root_mount.receipt(),
             "mount_options": list(root_mount.mount_options),
-        },
-        "campaign_data_root": data,
-        "private_tmpfs": {
-            "tmp": _attest_private_mount(pid=pid, path=Path("/tmp"), table=table),
-            "dev_shm": _attest_private_mount(
-                pid=pid, path=Path("/dev/shm"), table=table
+            "covered_mount_ids": sorted(
+                entry.mount_id for entry in root_covered
             ),
         },
+        "campaign_data_root": data,
+        "private_tmpfs": private_tmpfs,
         "roles": role_receipts,
         "declared_mount_points": sorted(str(path) for path in declared),
         "observed_mount_points_below_campaign_data": sorted(
@@ -2342,12 +2610,11 @@ def _commit_namespace_mount_attestation(
     command: WrappedAttemptCommand, attestation: dict[str, Any]
 ) -> None:
     receipt = command.mount_receipt
-    if not isinstance(receipt, dict) or receipt.get("schema") != ATTEMPT_MOUNT_RECEIPT_SCHEMA_V2:
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("schema") != ATTEMPT_MOUNT_RECEIPT_SCHEMA_V3
+    ):
         raise CampaignIsolationError("formal mount receipt cannot bind attestation")
-    roles = receipt["roles"]
-    for group in ("read_only", "persistent_writable"):
-        for role, observed in attestation["roles"][group].items():
-            roles[group][role]["mount"] = observed["target"]["mount"]
     receipt["namespace_mounts"] = attestation
     receipt.pop("sha256", None)
     receipt["sha256"] = canonical_digest(receipt)
@@ -2496,6 +2763,8 @@ def establish_attempt_boundary(
                 command,
                 pid=init_pid,
                 mount_namespace_id=status["mnt-namespace"],
+                init_pidfd=boundary.init_pidfd,
+                init_starttime=boundary.init_starttime,
             )
             _commit_namespace_mount_attestation(command, attestation)
             os.write(mount_gate_fd, b"1")
@@ -2852,12 +3121,19 @@ def _open_mount_root(
             raise CampaignIsolationError(
                 f"attempt mount root contains undeclared nested mounts: {root}"
             )
+        mount_receipt = {
+            **mount.receipt(),
+            "access": _mount_access(mount),
+            "filesystem_type": mount.filesystem_type,
+            "source": mount.source,
+            "super_options": list(mount.super_options),
+        }
         identity = {
             "path": str(root),
             "device": metadata.st_dev,
             "inode": metadata.st_ino,
             "mode": stat.S_IMODE(metadata.st_mode),
-            "mount": mount.receipt(),
+            "mount": mount_receipt,
             "nested_mounts": nested,
             "source": "o_path_nofollow_bind_fd",
         }
@@ -3040,11 +3316,30 @@ def _build_attempt_mount_receipt(
     if roles is not None:
         if identities is None or data_identity is None:
             raise CampaignIsolationError("role receipt is missing mount identities")
+        data_mount = data_identity.get("mount")
+        public_mount_fields = (
+            "mount_id",
+            "parent_id",
+            "major_minor",
+            "root",
+            "mount_point",
+        )
+        if not isinstance(data_mount, dict) or any(
+            field not in data_mount for field in public_mount_fields
+        ):
+            raise CampaignIsolationError("campaign data mount identity is malformed")
+        public_data_identity = {
+            **data_identity,
+            "mount": {
+                field: data_mount[field]
+                for field in public_mount_fields
+            },
+        }
         material = {
-            "schema": ATTEMPT_MOUNT_RECEIPT_SCHEMA_V2,
+            "schema": ATTEMPT_MOUNT_RECEIPT_SCHEMA_V3,
             "campaign_data_root": str(data_root),
             "campaign_data_root_hidden": True,
-            "campaign_data_identity": data_identity,
+            "campaign_data_identity": public_data_identity,
             "outer_bubblewrap": outer_bubblewrap,
             "namespace_mounts": None,
             "roles": {
@@ -3139,7 +3434,7 @@ __all__ = [
     "ATTEMPT_CONTAINMENT_POLICY",
     "ATTEMPT_MOUNT_RECEIPT_SCHEMA",
     "ATTEMPT_MOUNT_RECEIPT_SCHEMA_V1",
-    "ATTEMPT_MOUNT_RECEIPT_SCHEMA_V2",
+    "ATTEMPT_MOUNT_RECEIPT_SCHEMA_V3",
     "CampaignIsolationError",
     "CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY",
     "CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA",

@@ -120,11 +120,29 @@ def _offline_manifest(run_config: Path) -> dict:
         "template": "codex",
         **identity,
         "cloud_config_initial_refresh_receipt_sha256": "e" * 64,
+        "session_receipt_schema": "agentkernelarena.codex-attempt-receipt/v6",
+    }
+    repositories = {
+        "apex": {"runtime_manifest_sha256": "a" * 64},
+    }
+    apex_treatment = {
+        "template": "apex",
+        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v7",
+        "apex_runtime_mount_policy_id": campaign.APEX_RUNTIME_MOUNT_POLICY,
+        "attempt_mount_receipt_schema": campaign.ATTEMPT_MOUNT_RECEIPT_SCHEMA,
+        "apex_runtime_mount_schema": campaign.APEX_RUNTIME_MOUNT_SCHEMA,
+        "runtime_manifest_sha256": repositories["apex"][
+            "runtime_manifest_sha256"
+        ],
     }
     comparison = {
         "schema": compare_runs._COMPARISON_SCHEMA,
+        "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
+        "formal_execution_sha256": campaign.FORMAL_LIVE_EXECUTION_SHA256,
         "objective_policy_id": compare_runs._OBJECTIVE_POLICY,
         "prompt_policy_id": compare_runs._PROMPT_POLICY,
+        "repositories": repositories,
+        "apex_treatment": apex_treatment,
         "tasks": tasks,
         "codex": identity,
         "run_config": run_config_contract,
@@ -135,7 +153,10 @@ def _offline_manifest(run_config: Path) -> dict:
     payload = run_config.read_bytes()
     return {
         "schema": "aka.matched-campaign/v1",
+        "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
+        "formal_execution_sha256": campaign.FORMAL_LIVE_EXECUTION_SHA256,
         "agent": agent,
+        "repositories": repositories,
         "comparison_contract": comparison,
         "comparison_contract_sha256": comparison_sha256,
         "configuration": {
@@ -164,7 +185,7 @@ def test_postprocessing_and_compare_reopen_config_after_source_unmount_and_rejec
     source.unlink()
 
     monkeypatch.setattr(
-        compare_runs, "_v6_manifest_bindings_valid", lambda *_args: True
+        compare_runs, "_v7_manifest_bindings_valid", lambda *_args: True
     )
     monkeypatch.setattr(
         compare_runs.postprocessing,

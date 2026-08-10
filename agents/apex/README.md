@@ -78,6 +78,19 @@ tmpfs filesystems (`/tmp` and `/dev/shm`). Canonical mount IDs, device/inode ide
 nested mounts, aliases, role closure, and pairwise overlap are audited. No live Apex,
 virtualenv, Magpie, or TraceLens tree is mounted into the attempt.
 
+Attempt-mount receipt v3 resolves the mount that is actually visible at every target
+by opening `/proc/<namespace-init-pid>/root/<target>` with `O_PATH` and reading that
+descriptor's `mnt_id` from fdinfo. It never guesses visibility from mountinfo order.
+The receipt records the other exact-target layers as `covered_mount_ids`: the root
+and every non-runtime role must have none. Only `apex_runtime` may have one, and only
+when the parent already exposed an exact read-only runtime bind; the inherited and
+visible layers must project the same source, root, filesystem, and read-only access.
+Malformed, duplicated, unsorted, stale-v1/v2, or mixed-policy evidence fails closed.
+This stronger mount meaning is why the Apex outer receipt and matched comparison
+generation advance together to v7; Apex v6 receipts cannot be relabeled or combined
+with v3 mount evidence. The direct-Codex arm retains its independently versioned v6
+receipt inside the generation-v7 matched contract.
+
 Run artifacts are written beside, never inside, the scored workspace under
 `.<task-workspace>_apex/<run-id>/`.
 
@@ -218,7 +231,7 @@ at 4 MiB. Apex receipts additionally snapshot the
 TaskSpec, TaskResult, checksummed event journal, canonical agent transcript, and
 terminal verdict lineage. The event-bound inner agent prompt is also copied into the
 outer immutable receipt, so later audits do not depend on a still-live Apex CAS path.
-Formal receipts use `agentkernelarena.apex-attempt-receipt/v6`; the campaign
+Formal receipts use `agentkernelarena.apex-attempt-receipt/v7`; the campaign
 manifest freezes that sole supported schema before any attempt starts. Superseded
 formal artifacts are rejected rather than decoded. Receipt dispatch is selected
 from the sealed manifest's agent template and schema, never from the receipt's own
@@ -246,7 +259,7 @@ numeric exit cannot substitute for that proof. Formal lineage is validated befor
 outer Apex return code is rejected, so a failed session retains audit evidence while
 still raising and keeping `session_succeeded=false`. A nonzero `no_gain` is invalid.
 At the exact 50-turn boundary, both arms bind
-`private_pid_namespace_init_pidfd_v1` through comparison-contract v6, invocation,
+`private_pid_namespace_init_pidfd_v1` through comparison-contract v7, invocation,
 transcript, event, and attempt receipts. Each backend runs behind a gated private PID
 namespace with a private procfs. The trusted supervisor pins namespace PID 1 with a
 pidfd and freezes candidate bytes only after init exit, wrapper status/EOF, stream

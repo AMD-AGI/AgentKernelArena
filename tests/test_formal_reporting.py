@@ -679,7 +679,7 @@ def _formal_manifest(task_names: list[str], arm: str = "codex") -> dict:
     }
     apex_treatment = {
         "template": "apex",
-        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v6",
+        "session_receipt_schema": "agentkernelarena.apex-attempt-receipt/v7",
         "apex_runtime_mount_policy_id": campaign.APEX_RUNTIME_MOUNT_POLICY,
         "attempt_mount_receipt_schema": campaign.ATTEMPT_MOUNT_RECEIPT_SCHEMA,
         "apex_runtime_mount_schema": campaign.APEX_RUNTIME_MOUNT_SCHEMA,
@@ -700,7 +700,7 @@ def _formal_manifest(task_names: list[str], arm: str = "codex") -> dict:
         "effective_config_sha256": _digest(effective_run_config),
     }
     comparison = {
-        "schema": "aka.apex-vs-codex-comparison-contract/v6",
+        "schema": "aka.apex-vs-codex-comparison-contract/v7",
         "formal_execution": dict(campaign._FORMAL_LIVE_COMMITMENT),
         "formal_execution_sha256": campaign.FORMAL_LIVE_EXECUTION_SHA256,
         "objective_policy_id": "aka.task-package-objective-and-protected-harness/v1",
@@ -734,7 +734,7 @@ def _formal_manifest(task_names: list[str], arm: str = "codex") -> dict:
         "agent_config_sha256": "1" * 64,
         "template": arm,
         "session_receipt_schema": (
-            "agentkernelarena.apex-attempt-receipt/v6"
+            "agentkernelarena.apex-attempt-receipt/v7"
             if arm == "apex"
             else "agentkernelarena.codex-attempt-receipt/v6"
         ),
@@ -1308,6 +1308,54 @@ def test_formal_postprocessing_rejects_run_config_tamper(
             + "unexpected_output: /tmp/forged\n",
             encoding="utf-8",
         )
+
+    with pytest.raises(ValueError, match="task cohort is not digest-bound"):
+        postprocessing._load_formal_cohort(run)
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "comparison_schema",
+        "formal_execution",
+        "formal_execution_digest_only",
+        "apex_receipt_schema",
+        "attempt_mount_schema",
+    ],
+)
+def test_formal_postprocessing_rejects_stale_or_partially_relabeled_generation(
+    tmp_path: Path, tamper: str
+) -> None:
+    run = tmp_path / "workspace_MI355X_codex" / "run_20260807_000000_formal"
+    run.mkdir(parents=True)
+    manifest = _formal_manifest(["triton2triton/example"], arm="codex")
+    comparison = manifest["comparison_contract"]
+    old_execution = {
+        "mode": "live_formal_scoring",
+        "comparison_generation": 6,
+        "historical_compatibility": False,
+        "policy_id": "aka.live-formal-v6-only/v1",
+    }
+    if tamper == "comparison_schema":
+        comparison["schema"] = "aka.apex-vs-codex-comparison-contract/v6"
+    elif tamper == "formal_execution":
+        manifest["formal_execution"] = copy.deepcopy(old_execution)
+        manifest["formal_execution_sha256"] = _digest(old_execution)
+        comparison["formal_execution"] = copy.deepcopy(old_execution)
+        comparison["formal_execution_sha256"] = _digest(old_execution)
+    elif tamper == "formal_execution_digest_only":
+        manifest["formal_execution"] = copy.deepcopy(old_execution)
+        comparison["formal_execution"] = copy.deepcopy(old_execution)
+    elif tamper == "apex_receipt_schema":
+        comparison["apex_treatment"]["session_receipt_schema"] = (
+            "agentkernelarena.apex-attempt-receipt/v6"
+        )
+    else:
+        comparison["apex_treatment"]["attempt_mount_receipt_schema"] = (
+            "aka.attempt-mounts/v2"
+        )
+    manifest["comparison_contract_sha256"] = _digest(comparison)
+    _write_read_only_yaml(run / "campaign_manifest.yaml", manifest)
 
     with pytest.raises(ValueError, match="task cohort is not digest-bound"):
         postprocessing._load_formal_cohort(run)
