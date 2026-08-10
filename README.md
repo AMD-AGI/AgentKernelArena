@@ -74,6 +74,7 @@ AgentKernelArena/
 │   ├── cursor/                     # Cursor Agent CLI
 │   ├── claude_code/                # Claude Code CLI
 │   ├── codex/                      # Codex CLI
+│   ├── apex/                       # Apex bundle-producing optimizer
 │   ├── geak_v3/                    # GEAK HIP optimization
 │   ├── geak_v3_triton/             # GEAK Triton optimization
 │   ├── mini_swe_triton/            # mini-swe-agent Triton optimization
@@ -114,6 +115,7 @@ Each run selects one `agent.template`. Repeated runs can compare different agent
 | `cursor` | Cursor Agent CLI integration |
 | `claude_code` | Claude Code CLI integration |
 | `codex` | Codex CLI integration |
+| `apex` | Apex optimization with source-bundle import and Arena-central scoring |
 | `geak_v3` | GEAK optimization for HIP tasks |
 | `geak_v3_triton` | GEAK optimization for Triton tasks |
 | `mini_swe_triton` | mini-swe-agent-based Triton optimization |
@@ -188,17 +190,112 @@ installation. The npm path requires Node.js 22+ and npm. See the
 [official Claude Code setup guide](https://code.claude.com/docs/en/installation)
 for the current alternatives.
 
-The repository provides three ready-to-use run configurations:
+The repository provides quickstart and curated benchmark configurations:
 
 | Configuration | Purpose |
 | --- | --- |
 | `example_configs/quickstart_claude_mi300.yaml` | One Claude Code GELU task on MI300/MI300X (`gfx942`); use this for a first run on MI300-series hardware. |
 | `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`); use this for a first run on MI355X. |
+| `example_configs/quickstart_apex_mi300.yaml` | One Apex Triton task on MI300/MI300X (`gfx942`); requires a bootstrapped Apex checkout. |
+| `example_configs/quickstart_apex_mi355x.yaml` | One Apex Triton task on MI355X (`gfx950`); requires a bootstrapped Apex checkout. |
+| `example_configs/benchmark_{apex,codex}_mi355x_10.yaml` | Matched ten-task vLLM Triton A/B configurations; see [`agents/apex/README.md`](agents/apex/README.md). |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
 
 Running `make docker-run` without `CONFIG` uses the MI300/MI300X Claude
 quickstart. On another GPU, pass the matching configuration explicitly; for
 example, use `CONFIG=example_configs/quickstart_claude_mi355x.yaml` on MI355X.
+The matched Apex-versus-Codex configurations are stricter: run each with
+`make docker-run ... GPU_IDS=<same-single-GPU>`. They write under
+`/data/viouyang/apex/aka`, execute the ten tasks sequentially in one Docker mount
+namespace, and require matching provenance-contract hashes before comparison.
+Their normalized run-configuration contracts may differ only at the exact
+`agent: {template: apex|codex}` treatment mapping. Tasks and order, campaign
+attempts and timeouts, target GPU, workspace/output paths, log paths, and every
+other run-config field are digest-bound and must match. AKA re-reads the original
+YAML and verifies both its raw SHA-256 and normalized projection during campaign
+execution, postprocessing, and comparison; deletion or later modification fails
+closed.
+Formal `parallel-run` is rejected because independent Docker namespaces have
+different live mount receipts.
+Formal attempts require `bwrap`, expose only the current attempt directory to
+the agent, and require immutable Apex or direct-Codex session receipts before
+an attempt can enter central selection. The Apex treatment sees the scored workspace
+read-only and writes proposals only to a separate artifact root; AgentKernelArena
+rechecks the full workspace manifest before applying a validated source bundle.
+Each formal Codex home contains only `auth.json` and
+`cloud-config-bundle-cache.json`; history, model caches, user config, rules, and
+memory are excluded. Formal `run` and `preflight` first use a private host-side
+supervisor to stable-read only host authentication and run the exact model-free
+command `codex app-server --listen stdio://` with a forced cache miss. The user's
+host cloud-config cache is neither read nor mutated. AKA validates the signed-
+envelope shape, account binding, cache time, at least 630 seconds of remaining
+lifetime, and a maximum two-hour envelope lifetime, while the pinned Codex CLI
+remains the owner of cryptographic signature verification. It also pins and
+rechecks the complete host Codex/Node/package closure.
+
+The comparison contract binds a canonical SHA-256 of only
+`signed_payload.bundle`, so refreshed envelopes with the same policy are symmetric
+across both arms. The supervisor refreshes at expiry minus fifteen minutes and
+publishes only an unchanged-bundle envelope. Policy validation keeps that lead time
+strictly ahead of the consumer TTL floor, command timeout, both termination-grace
+waits, and scheduling slack. Bundle or host-runtime drift preserves the last good
+cache, terminates the exact formal owner, and returns status 71. Immutable
+refresh receipts contain hashes, sizes, timing, policy, and status without account,
+user, token, signature, or bundle payloads; the manifest binds the initial receipt.
+Supervisor credential cleanup is independent of immutable-runtime/FUSE cleanup.
+The runner captures committed AKA bytes and the complete Apex Python/dependency
+closure, normalizes each into a deterministic SquashFS image, seals the image in
+a memfd, and mounts it read-only with `nodev,nosuid`. Docker receives those mounts,
+not either live checkout. Each container regenerates the mount receipt from its
+own `/proc/self/mountinfo`; host mount IDs are never reused as container evidence.
+The sealed comparison-contract v5 binds the common Apex runtime treatment, exact-turn
+persistence, and distinct outer
+`attempt_containment_policy_id` and backend
+`agent_process_containment_policy_id` fields; both currently require
+`private_pid_namespace_init_pidfd_v1`. Direct Codex starts behind
+a gated private PID namespace whose namespace PID 1 is identified by bubblewrap's
+status pipe and pinned with a pidfd before the backend can execute. At turn 50 the
+launcher kills that exact namespace init; Linux then kills every member, including
+`setsid()`, double-fork, reparented, clean-environment, and closed-stdio descendants.
+Source is frozen only after pidfd exit, wrapper status/EOF, stream EOF, and a
+completed scan showing no supervisor-visible member of that namespace. Namespace
+init exit is the authoritative Linux teardown proof; inaccessible sibling `/proc`
+entries are counted and force `namespace_membership_scan_complete=false` instead of
+being misreported as a full scan. A natural-exit race must establish the same proof.
+Turn 51, timeout, truncated capture, an incomplete enumeration/status channel, a
+visible live namespace member, or any outer fallback cannot produce a candidate.
+The retained source still returns to AgentKernelArena's centralized evaluator.
+The Apex arm has two boundaries: AKA's outer PID namespace contains the trusted
+orchestrator, and Apex owns the private procfs/PID namespace around its backend.
+AKA intentionally leaves `/proc` inherited and writable only for that trusted outer
+Apex process: nested user-namespace setup needs its uid/gid maps, while a second
+procfs or locked outer mask submounts prevent the required Apex-to-Codex nesting.
+The backend never receives that view; Apex must prove its own private procfs is
+Docker-remasked and empty before it freezes a bundle, and AKA must then prove the
+outer namespace-init teardown plus its visible-membership corroboration before
+reading that bundle.
+Formal Docker workers stay non-root, drop every capability, and enable Docker
+`no-new-privileges`. Rootless `bwrap` needs unconfined Docker seccomp/AppArmor
+profiles plus `systempaths=unconfined` on this runtime. The last option is used only
+so rootless bubblewrap can mount a new per-attempt procfs; the outer boundary
+immediately rebuilds Docker's exact masked and read-only system paths. A live probe
+compares PID-namespace identities rather than numeric PIDs, verifies that no worker
+process exists in the attempt procfs, and tests parent root/fd aliases against secret
+bytes so PID-number collisions cannot create false evidence. A content-pinned
+managed Codex permission profile separately
+proves workspace writes, denies command network and credential reads, and
+disables hooks. The content-pinned `bwrap` shim is copied into a sealed memfd and
+mounted from that exact descriptor beneath a dedicated read-only mountpoint. Live
+rename/unlink/replace/write attacks must fail. The shim restores only the `/dev/kfd`
+and render nodes already admitted by Docker after Codex creates its private `/dev`.
+The worker remains non-root and capability-free. The same live probe requires the
+managed command to remain outside the worker PID namespace, blocks PID-1
+root/environ/mem credential aliases, exposes exactly one ROCm device, and completes
+a Torch allocation plus reduction on that device.
+The stable UID/capability/NNP/seccomp/AppArmor/Yama, exact outer `bwrap`, Codex
+GPU-shim and Codex identities, managed-policy hash, and both live probe results are
+bound into the immutable comparison contract; any drift fails the worker before an
+agent session starts.
 
 FlyDSL tasks require FlyDSL in the container. The pinned image may already provide it; otherwise run:
 
@@ -263,6 +360,11 @@ dependencies and GPU-ID configuration before they are used with isolated
 workers.
 
 ### Resume a Run
+
+Formal Codex resume performs a fresh model-free refresh and requires its canonical
+bundle digest to match the sealed campaign anchor. Bundle or pinned host-runtime
+closure drift fails closed; create a new matched Apex/Codex cohort instead of
+resuming only one arm.
 
 ```bash
 make docker-run CONFIG="$CONFIG_PATH" RUN_ARGS="--resume-latest"

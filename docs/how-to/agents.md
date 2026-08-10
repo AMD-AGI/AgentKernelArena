@@ -21,6 +21,7 @@ The following agents are available.
 | `cursor` | Cursor Agent CLI |
 | `claude_code` | Anthropic Claude Code CLI |
 | `codex` | OpenAI Codex CLI |
+| `apex` | Apex bundle-producing kernel optimizer; AgentKernelArena remains the evaluator |
 | `geak_v3` | Specialized GEAK integration for HIP optimization |
 | `geak_v3_triton` | Specialized GEAK integration for Triton optimization |
 | `mini_swe_triton` | mini-swe-agent-based Triton optimization |
@@ -36,9 +37,26 @@ agent:
 Each agent lives under `agents/<agent_name>/` and is registered into a shared
 registry, so the framework loads only the agent you select.
 
-The Cursor, Claude Code, and Codex integrations reuse their host CLI login
-state. Specialized integrations have additional setup and configuration under
-their respective `agents/<agent_name>/` directories.
+The Cursor, Claude Code, and Codex integrations reuse their host CLI login state.
+For a formal Codex campaign, AKA stable-reads only the host `auth.json` into a
+private host-side refresh supervisor. It does not copy or mutate the user's host
+cloud-config cache. The supervisor obtains and validates a fresh signed envelope,
+and the worker mounts only the resulting private `auth.json` and
+`cloud-config-bundle-cache.json`. Specialized integrations have additional setup
+and configuration under their respective `agents/<agent_name>/` directories.
+
+The Apex integration selects one of those three CLIs as its backend (Codex by
+default), translates each supported task into a caller-neutral `TaskSpec`, and
+imports only a validated source patch bundle. Bootstrap Apex's pinned Magpie and
+TraceLens dependencies, set `AKA_APEX_ROOT`, and follow the focused
+[`agents/apex` setup and A/B guide](../../agents/apex/README.md). The Docker
+runner mounts only the selected backend's bootstrap state. In a formal Codex
+attempt this is exactly the login file plus the identity-bound signed cloud-config
+cache; prior history, model caches, user configuration, rules, and memory are not
+copied into the fresh home. Formal `run` and `preflight` synchronously refresh this
+state before model-bearing attempts and keep a bounded supervisor alive for later
+same-policy refreshes. `docker-check-agents` uses a separate disposable diagnostic
+refresh; success there does not establish or refresh a campaign anchor.
 
 ## Models, providers, and agent settings
 
@@ -48,9 +66,10 @@ effort, timeout, and iteration settings through its CLI and
 `agents/<agent_name>/agent_config.yaml`.
 
 For Cursor, Claude Code, and Codex, authenticate with the host CLI. A normal run
-preflights only the selected CLI. When the config selects one of these
-first-class integrations (or `task_validator`), select the run configuration
-first and check its CLI/backend:
+preflights only the selected CLI. A formal Codex run needs valid host authentication,
+but it does not require a pre-populated host cloud-config cache. When the config
+selects one of these first-class integrations (or `task_validator`), select the run
+configuration first and check its CLI/backend:
 
 ```bash
 CONFIG_PATH=example_configs/quickstart_claude_mi300.yaml
@@ -58,9 +77,10 @@ make docker-check-agents CONFIG="$CONFIG_PATH"
 ```
 
 Use `AGENTS=<comma-separated names>` for an explicit subset or `AGENTS=all` for
-all three first-class CLIs and login states. Specialized integrations are not
-handled by this command; their README files document their own dependencies,
-API keys, and endpoint configuration.
+all three first-class CLIs and login states. Passing `AGENTS=apex`, or selecting
+an Apex run config, resolves to the one backend configured for Apex. Other
+specialized integrations document their own dependency and endpoint checks in
+their README files.
 
 `make vllm` starts an OpenAI-compatible local endpoint on port `30001`, but it
 does not automatically reconfigure an agent. Point the selected integration at

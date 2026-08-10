@@ -23,7 +23,10 @@ prompt:
     Optimize the Triton scaled matrix multiplication kernel `scaled_mm_kernel` for
     maximum GPU throughput while maintaining numerical correctness.
 
-    The kernel performs A @ B with per-token/per-channel scaling and optional bias.
+    The kernel performs A @ B with scalar or per-token/per-channel scaling and
+    optional bias. Its operation order is part of the contract: accumulate the
+    dot product, apply scale_a and then scale_b as separate float32 operations,
+    cast to out_dtype, and only then add bias in the output format.
 
     Key optimization opportunities:
     - Tile size tuning for the target GPU
@@ -32,5 +35,14 @@ prompt:
 
     Constraints:
     - Must maintain the same function signature for `triton_scaled_mm`
-    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+    - Preserve weak-contiguous row-major or column-major input/weight layouts,
+      including padded leading strides, and keep offset arithmetic safe for large
+      tensors
+    - Correctness uses low-cost layouts and does not allocate a 2 GiB address
+      probe; 64-bit address safety therefore remains subject to post-selection review
+    - Honor caller-provided block_size_m/n/k whenever `use_heuristic=False`
+    - Do not combine low-precision scale_a and scale_b before applying them; the
+      sequential float32 operations must not acquire product underflow or rounding
+    - Cast to out_dtype before adding bias, matching upstream vLLM semantics
+    - Output must match the reference within each case's declared tolerance
   cheatsheet: null

@@ -24,5 +24,29 @@ prompt:
 
     Constraints:
     - Must maintain the same function signature for `compute_token_logprobs`
-    - Output must match reference within atol=1e-2, rtol=1e-2 for float outputs or exactly for integer outputs
+    - Accept float16, bfloat16, and float32 2D logits with their actual leading
+      stride, including padded non-contiguous rows
+    - Support batch size one and arbitrary positive vocabulary sizes, including
+      non-power-of-two and large vocabularies
+    - Accept integer token IDs that the wrapper converts to int64; valid IDs may
+      be unsorted or duplicated (IDs outside [0, vocab_size) are not supported)
+    - Non-finite policy: finite logits and `-inf` logits are supported. `-inf`
+      represents a zero-probability entry and may appear in every row or fill
+      one or more complete 1024-token reduction chunks while other chunks stay
+      finite. If an entire row is `-inf`, every requested output for that row
+      must be NaN, matching `torch.log_softmax`.
+    - Any row containing `+inf` or NaN is outside the supported input domain,
+      including mixtures of finite values, `-inf`, `+inf`, and NaN. Such rows
+      are not correctness-scored and their output is unspecified; an optimizer
+      must not spend finite-input fast-path work trying to sanitize them.
+    - Return a new float32 tensor with shape [batch, num_token_ids] without
+      mutating or aliasing either input
+    - Each wrapper invocation makes exactly one monolithic
+      `_topk_log_softmax_kernel` launch. It must be bound to the exact logits,
+      int64-converted token IDs, and returned output tensors, with the actual
+      leading stride, batch grid, vocabulary size, and requested-ID count. The
+      evaluator poisons the output immediately before the target and snapshots
+      it immediately afterward; that snapshot must equal the returned tensor
+    - Output must match the float32 log_softmax-plus-gather reference within
+      atol=1e-2, rtol=1e-2
   cheatsheet: null

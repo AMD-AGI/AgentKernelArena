@@ -18,6 +18,25 @@ TEST_SHAPES = [
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
+# Non-scoring public-contract cases.  Keep these separate from TEST_SHAPES:
+# TEST_SHAPES is the immutable performance/scoring workload.
+BATCHED_MOE_CORRECTNESS_CASES = [
+    {
+        "name": "all_zero_token_experts_nonmultiple",
+        "shape": (3, 7, 33, 35),
+        "expert_num_tokens": (0, 0, 0),
+        "a_last_dim_padding": 0,
+        "b_last_dim_padding": 0,
+    },
+    {
+        "name": "mixed_zero_tokens_noncompact_nonmultiple",
+        "shape": (3, 17, 70, 73),
+        "expert_num_tokens": (0, 7, 17),
+        "a_last_dim_padding": 5,
+        "b_last_dim_padding": 7,
+    },
+]
+
 
 # >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>
 def _measure_cuda_event_fallback(*args, **kwargs):
@@ -41,6 +60,74 @@ def load_module():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def _make_padded_random(torch, shape, last_dim_padding, *, device):
+    """Return a logical tensor whose row/expert strides include optional padding."""
+    storage_shape = (*shape[:-1], shape[-1] + last_dim_padding)
+    storage = torch.randn(
+        storage_shape,
+        device=device,
+        dtype=torch.float16,
+    )
+    storage.mul_(0.1)
+    return storage[..., : shape[-1]], storage
+
+
+def _check_batched_moe_case(
+    torch,
+    mod,
+    A,
+    B,
+    expert_num_tokens,
+    label,
+    *,
+    backing_storages=(),
+):
+    frozen_A = A.clone()
+    frozen_B = B.clone()
+    frozen_counts = expert_num_tokens.clone()
+    frozen_backing = [
+        (name, storage, storage.clone()) for name, storage in backing_storages
+    ]
+
+    result = mod.batched_moe_gemm(A, B, expert_num_tokens)
+    torch.cuda.synchronize()
+
+    if result.shape != (A.shape[0], A.shape[1], B.shape[1]):
+        return f"{label}: wrong output shape {tuple(result.shape)}"
+    if result.dtype != A.dtype:
+        return f"{label}: wrong output dtype {result.dtype}, expected {A.dtype}"
+    result_storage = result.untyped_storage().data_ptr()
+    if result_storage in {
+        A.untyped_storage().data_ptr(),
+        B.untyped_storage().data_ptr(),
+        expert_num_tokens.untyped_storage().data_ptr(),
+    }:
+        return f"{label}: output aliases an input"
+    for name, observed, frozen in (
+        ("A", A, frozen_A),
+        ("B", B, frozen_B),
+        ("expert_num_tokens", expert_num_tokens, frozen_counts),
+    ):
+        if not torch.equal(observed, frozen):
+            return f"{label}: candidate mutated protected input {name}"
+    for name, observed, frozen in frozen_backing:
+        if not torch.equal(observed, frozen):
+            return f"{label}: candidate wrote outside logical {name} view"
+
+    ref = torch.zeros_like(result)
+    for expert in range(A.shape[0]):
+        num_tokens = int(expert_num_tokens[expert].item())
+        if num_tokens > 0:
+            ref[expert, :num_tokens] = (
+                A[expert, :num_tokens].float() @ B[expert].float().T
+            ).to(torch.float16)
+
+    if not torch.allclose(result.float(), ref.float(), atol=5e-2, rtol=5e-2):
+        max_diff = (result.float() - ref.float()).abs().max().item()
+        return f"{label}: max diff = {max_diff:.6f}"
+    return None
 
 
 def run_compile():
@@ -71,22 +158,60 @@ def run_correctness():
             A = torch.randn(E, max_tokens, K, device=device, dtype=torch.float16) * 0.1
             B = torch.randn(E, N, K, device=device, dtype=torch.float16) * 0.1
             expert_num_tokens = torch.randint(1, max_tokens + 1, (E,), device=device, dtype=torch.int32)
-
-            result = mod.batched_moe_gemm(A, B, expert_num_tokens)
-            torch.cuda.synchronize()
-
-            # Reference: per-expert matmul
-            ref = torch.zeros_like(result)
-            for e in range(E):
-                nt = expert_num_tokens[e].item()
-                if nt > 0:
-                    ref[e, :nt] = (A[e, :nt].float() @ B[e].float().T).to(torch.float16)
-
-            if not torch.allclose(result.float(), ref.float(), atol=5e-2, rtol=5e-2):
-                max_diff = (result.float() - ref.float()).abs().max().item()
-                return False, f"Shape {i+1}: max diff = {max_diff:.6f}"
+            error = _check_batched_moe_case(
+                torch,
+                mod,
+                A,
+                B,
+                expert_num_tokens,
+                f"Shape {i+1}",
+            )
+            if error is not None:
+                return False, error
         except Exception as e:
             return False, f"Shape {i+1}: exception: {e}"
+
+    for case_index, case in enumerate(BATCHED_MOE_CORRECTNESS_CASES):
+        try:
+            torch.manual_seed(142 + case_index)
+            E, max_tokens, K, N = case["shape"]
+            A, A_storage = _make_padded_random(
+                torch,
+                (E, max_tokens, K),
+                case["a_last_dim_padding"],
+                device=device,
+            )
+            B, B_storage = _make_padded_random(
+                torch,
+                (E, N, K),
+                case["b_last_dim_padding"],
+                device=device,
+            )
+            expert_num_tokens = torch.tensor(
+                case["expert_num_tokens"],
+                device=device,
+                dtype=torch.int32,
+            )
+            if case["a_last_dim_padding"] and A.is_contiguous():
+                return False, f"{case['name']}: A padding did not produce a view"
+            if case["b_last_dim_padding"] and B.is_contiguous():
+                return False, f"{case['name']}: B padding did not produce a view"
+            error = _check_batched_moe_case(
+                torch,
+                mod,
+                A,
+                B,
+                expert_num_tokens,
+                case["name"],
+                backing_storages=(
+                    ("A", A_storage),
+                    ("B", B_storage),
+                ),
+            )
+            if error is not None:
+                return False, error
+        except Exception as e:
+            return False, f"{case['name']}: exception: {e}"
     return True, None
 
 
@@ -155,7 +280,11 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(TEST_SHAPES) + len(BATCHED_MOE_CORRECTNESS_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

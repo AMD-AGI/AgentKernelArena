@@ -11,12 +11,76 @@ HOST_UID="$(id -u)"
 HOST_GID="$(id -g)"
 SELECTED_GPU_ARCH=""
 SELECTED_IMAGE=""
+SELECTED_IMAGE_ID=""
+SELECTED_IMAGE_REPO_DIGESTS=""
 AGENT_STATE_MOUNT_ROOT="${AKA_AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
+FORMAL_CODEX_REQUIREMENTS_HOST="$HOST_ROOT/agents/codex/formal_requirements.toml"
+FORMAL_CODEX_REQUIREMENTS_CONTAINER="/etc/codex/requirements.toml"
 DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
+# Building a deterministic runtime image is itself bounded at 120 seconds in
+# immutable_runtime_mount.py.  The supervising shell must outlive that bound,
+# plus the two inventory verifications and the FUSE mount/receipt checks.  Keep
+# this fixed (rather than caller-configurable) so formal campaigns have one
+# release-defined startup policy.
+RUNTIME_MOUNT_READY_POLL_ATTEMPTS=3000
 # Set by host-side commands after reading the selected run config. Keep this
 # separate from REQUIRED_AGENTS because geak_v4 is normalized to claude_code
 # before Docker arguments are built.
 GEAK_V4_RUNTIME=0
+APEX_RUNTIME=0
+APEX_HOST_ROOT=""
+APEX_CONTAINER_ROOT=""
+CAMPAIGN_PROVENANCE=0
+CAMPAIGN_APEX_COMMIT=""
+CAMPAIGN_APEX_DIRTY=""
+CAMPAIGN_APEX_STATUS_SHA256=""
+CAMPAIGN_APEX_ROOT=""
+CAMPAIGN_APEX_VENV_ROOT=""
+CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256=""
+CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT=""
+CAMPAIGN_APEX_RUNTIME_IMAGE_SHA256=""
+CAMPAIGN_APEX_EXTERNAL_ROOTS_JSON="[]"
+declare -a CAMPAIGN_APEX_EXTERNAL_ROOTS=()
+CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST=""
+CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256=""
+CAMPAIGN_AKA_RUNTIME_MANIFEST_FILE_SHA256=""
+CAMPAIGN_AKA_RUNTIME_STAGING_ROOT=""
+CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT=""
+CAMPAIGN_AKA_RUNTIME_IMAGE_SHA256=""
+CAMPAIGN_AKA_RUNTIME_SERVICE_HOST=""
+CAMPAIGN_AKA_RUNTIME_SERVICE_FILE_SHA256=""
+CAMPAIGN_AKA_RUNTIME_SERVICE_CONTENT_SHA256=""
+CAMPAIGN_APEX_RUNTIME_SERVICE_HOST=""
+CAMPAIGN_APEX_RUNTIME_SERVICE_FILE_SHA256=""
+CAMPAIGN_APEX_RUNTIME_SERVICE_CONTENT_SHA256=""
+CAMPAIGN_RUNTIME_TEMP_ROOT=""
+CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE=""
+CAMPAIGN_RUNTIME_TEMP_ROOT_INODE=""
+CAMPAIGN_RUNTIME_TEMP_ROOT_UID=""
+CAMPAIGN_RUNTIME_TEMP_ROOT_GID=""
+declare -a CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+declare -A CAMPAIGN_RUNTIME_SERVICE_STARTTIMES=()
+declare -A CAMPAIGN_RUNTIME_SERVICE_LABELS=()
+CAMPAIGN_DATA_ROOT=""
+CAMPAIGN_GPU_PLAN_HOST=""
+CAMPAIGN_GPU_PLAN_CONTAINER="/tmp/agentkernelarena-formal-gpu-boundary-plan.json"
+CAMPAIGN_GPU_PLAN_SHA256=""
+CAMPAIGN_GPU_EXCLUSIVITY_HOST=""
+CAMPAIGN_GPU_EXCLUSIVITY_SHA256=""
+declare -a CAMPAIGN_GPU_LEASE_FDS=()
+# Formal Codex cloud configuration is refreshed in a campaign-private home by
+# the stdlib-only host helper. The shell owns only its lifecycle and bind mount.
+FORMAL_CODEX_REFRESH_HELPER="$HOST_ROOT/src/codex_cloud_config_refresh.py"
+CAMPAIGN_CODEX_REFRESH_ROOT=""
+CAMPAIGN_CODEX_REFRESH_ROOT_DEVICE=""
+CAMPAIGN_CODEX_REFRESH_ROOT_INODE=""
+CAMPAIGN_CODEX_REFRESH_PUBLISHED_ROOT=""
+CAMPAIGN_CODEX_REFRESH_BUNDLE_SHA256=""
+CAMPAIGN_CODEX_REFRESH_HOST_CLOSURE_SHA256=""
+CAMPAIGN_CODEX_REFRESH_INITIAL_RECEIPT_SHA256=""
+CAMPAIGN_CODEX_REFRESH_PID=""
+CAMPAIGN_CODEX_REFRESH_STARTTIME=""
+CAMPAIGN_CODEX_REFRESH_FATAL=0
 
 # /opt/venv/bin is placed before /usr/local/bin and /usr/bin so that a bare
 # `python3` / `pytest` resolves to the torch-enabled venv interpreter rather than
@@ -48,6 +112,8 @@ Environment overrides:
   AKA_DOCKER_IMAGE_GFX950 Default image for gfx950.
   AKA_NODE_PREFIX         Host Node prefix containing bin/node and npm-installed agent CLI(s).
   AKA_AGENTS              Agent CLI(s) to check, comma/space separated; use all for all three.
+  AKA_APEX_ROOT           Host Apex checkout used when agent.template is apex.
+  AKA_APEX_CONTAINER_ROOT Must equal the host Apex path for its editable venv.
 EOF
 }
 
@@ -190,7 +256,18 @@ select_runtime() {
     else
         SELECTED_IMAGE="$(docker_image_for_arch "$SELECTED_GPU_ARCH")"
     fi
-    echo "Docker runtime: arch=${SELECTED_GPU_ARCH} image=${SELECTED_IMAGE}" >&2
+    SELECTED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$SELECTED_IMAGE")"
+    [[ "$SELECTED_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || die "Docker returned an invalid image ID for $SELECTED_IMAGE: $SELECTED_IMAGE_ID"
+    SELECTED_IMAGE_REPO_DIGESTS="$(
+        docker image inspect --format '{{json .RepoDigests}}' "$SELECTED_IMAGE"
+    )"
+    [[ "$SELECTED_IMAGE_REPO_DIGESTS" == \[*\] || "$SELECTED_IMAGE_REPO_DIGESTS" == "null" ]] \
+        || die "Docker returned invalid RepoDigests for $SELECTED_IMAGE"
+    if [[ -n "${AKA_DOCKER_IMAGE_ID:-}" && "$AKA_DOCKER_IMAGE_ID" != "$SELECTED_IMAGE_ID" ]]; then
+        die "AKA_DOCKER_IMAGE_ID=$AKA_DOCKER_IMAGE_ID does not match inspected ID $SELECTED_IMAGE_ID"
+    fi
+    echo "Docker runtime: arch=${SELECTED_GPU_ARCH} image=${SELECTED_IMAGE} id=${SELECTED_IMAGE_ID}" >&2
 }
 
 select_runtime_for_config() {
@@ -296,6 +373,1033 @@ configure_geak_v4_runtime() {
     fi
 }
 
+trusted_git() {
+    env -i \
+        PATH=/usr/bin:/bin \
+        LC_ALL=C \
+        HOME=/nonexistent \
+        XDG_CONFIG_HOME=/nonexistent \
+        GIT_CONFIG_NOSYSTEM=1 \
+        git -c core.fsmonitor=false "$@"
+}
+
+configure_apex_runtime() {
+    local config="$1"
+    APEX_RUNTIME=0
+    APEX_HOST_ROOT=""
+    [[ "$(read_agent_template "$config")" == "apex" ]] || return 0
+    APEX_RUNTIME=1
+
+    local candidate="${AKA_APEX_ROOT:-}"
+    if [[ -z "$candidate" && -d "$HOST_ROOT/../Apex" ]]; then
+        candidate="$HOST_ROOT/../Apex"
+    fi
+    [[ -n "$candidate" ]] || die "Apex checkout not found; set AKA_APEX_ROOT"
+    APEX_HOST_ROOT="$(realpath -e -- "$candidate" 2>/dev/null || true)"
+    [[ -n "$APEX_HOST_ROOT" && -f "$APEX_HOST_ROOT/main.py" ]] \
+        || die "Apex entrypoint not found below AKA_APEX_ROOT: $candidate/main.py"
+    APEX_CONTAINER_ROOT="${AKA_APEX_CONTAINER_ROOT:-$APEX_HOST_ROOT}"
+    [[ "$APEX_CONTAINER_ROOT" == "$APEX_HOST_ROOT" ]] \
+        || die "AKA_APEX_CONTAINER_ROOT must equal $APEX_HOST_ROOT so the pinned editable venv remains valid"
+    [[ -x "$APEX_HOST_ROOT/.venv/bin/python" ]] \
+        || die "Apex venv missing; run '$APEX_HOST_ROOT/scripts/bootstrap_dependencies.py install' first"
+}
+
+configure_campaign_provenance() {
+    local config="$1"
+    CAMPAIGN_PROVENANCE=0
+    CAMPAIGN_APEX_COMMIT=""
+    CAMPAIGN_APEX_DIRTY=""
+    CAMPAIGN_APEX_STATUS_SHA256=""
+    CAMPAIGN_APEX_ROOT=""
+    CAMPAIGN_APEX_VENV_ROOT=""
+    CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256=""
+    CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT=""
+    CAMPAIGN_APEX_RUNTIME_IMAGE_SHA256=""
+    CAMPAIGN_APEX_EXTERNAL_ROOTS_JSON="[]"
+    CAMPAIGN_APEX_EXTERNAL_ROOTS=()
+    CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST=""
+    CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256=""
+    CAMPAIGN_AKA_RUNTIME_MANIFEST_FILE_SHA256=""
+    CAMPAIGN_AKA_RUNTIME_STAGING_ROOT=""
+    CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT=""
+    CAMPAIGN_AKA_RUNTIME_IMAGE_SHA256=""
+    CAMPAIGN_AKA_RUNTIME_SERVICE_HOST=""
+    CAMPAIGN_AKA_RUNTIME_SERVICE_FILE_SHA256=""
+    CAMPAIGN_AKA_RUNTIME_SERVICE_CONTENT_SHA256=""
+    CAMPAIGN_APEX_RUNTIME_SERVICE_HOST=""
+    CAMPAIGN_APEX_RUNTIME_SERVICE_FILE_SHA256=""
+    CAMPAIGN_APEX_RUNTIME_SERVICE_CONTENT_SHA256=""
+    CAMPAIGN_RUNTIME_TEMP_ROOT=""
+    CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE=""
+    CAMPAIGN_RUNTIME_TEMP_ROOT_INODE=""
+    CAMPAIGN_RUNTIME_TEMP_ROOT_UID=""
+    CAMPAIGN_RUNTIME_TEMP_ROOT_GID=""
+    CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+    CAMPAIGN_RUNTIME_SERVICE_STARTTIMES=()
+    CAMPAIGN_RUNTIME_SERVICE_LABELS=()
+    CAMPAIGN_DATA_ROOT=""
+    grep -Eq '^[[:space:]]+comparison:[[:space:]]*apex_vs_codex([[:space:]#]|$)' "$config" \
+        || return 0
+    CAMPAIGN_PROVENANCE=1
+    AGENT_HOME_ISOLATION=1
+
+    require_fuse_allow_other
+
+    local workspace_prefix
+    workspace_prefix="$(read_workspace_prefix "$config")"
+    [[ "$workspace_prefix" == /* ]] \
+        || die "matched campaign workspace_directory_prefix must be absolute"
+    CAMPAIGN_DATA_ROOT="$(dirname "$workspace_prefix")"
+    mkdir -p "$CAMPAIGN_DATA_ROOT"
+    CAMPAIGN_DATA_ROOT="$(realpath -e -- "$CAMPAIGN_DATA_ROOT")"
+    CAMPAIGN_RUNTIME_TEMP_ROOT="$(
+        mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX
+    )" || die "cannot allocate formal runtime staging root"
+    bind_campaign_runtime_temp_root_identity
+    [[ -x /usr/bin/bwrap ]] \
+        || die "matched campaign requires /usr/bin/bwrap for per-attempt mount isolation"
+
+    local candidate="${AKA_APEX_ROOT:-}"
+    if [[ -z "$candidate" && -d "$HOST_ROOT/../Apex" ]]; then
+        candidate="$HOST_ROOT/../Apex"
+    fi
+    [[ -n "$candidate" ]] || die "matched campaign requires AKA_APEX_ROOT"
+    local apex_root status
+    apex_root="$(realpath -e -- "$candidate" 2>/dev/null || true)"
+    [[ -n "$apex_root" && -d "$apex_root/.git" ]] \
+        || die "matched campaign Apex checkout is not a Git worktree: $candidate"
+    CAMPAIGN_APEX_COMMIT="$(trusted_git -C "$apex_root" rev-parse HEAD)"
+    status="$(trusted_git -C "$apex_root" status --porcelain=v1 --untracked-files=normal)"
+    if [[ -n "$status" ]]; then
+        CAMPAIGN_APEX_DIRTY="true"
+    else
+        CAMPAIGN_APEX_DIRTY="false"
+    fi
+    CAMPAIGN_APEX_STATUS_SHA256="$(printf '%s' "$status" | sha256sum | cut -d' ' -f1)"
+    CAMPAIGN_APEX_ROOT="$apex_root"
+    prepare_campaign_aka_runtime_contract
+    prepare_campaign_apex_runtime_contract
+    start_campaign_runtime_mounts
+}
+
+prepare_campaign_codex_refresh_state() {
+    local reason="${1:-prelaunch}"
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    [[ -z "$CAMPAIGN_CODEX_REFRESH_ROOT" ]] \
+        || die "formal Codex refresh state was already prepared"
+    [[ -f "$FORMAL_CODEX_REFRESH_HELPER" \
+        && ! -L "$FORMAL_CODEX_REFRESH_HELPER" ]] \
+        || die "formal Codex refresh helper is missing or unsafe"
+    local node_prefix owner_pid owner_starttime result next_refresh
+    node_prefix="$(detect_node_cli_prefix codex || true)"
+    [[ -n "$node_prefix" ]] \
+        || die "formal campaign requires the pinned host Codex CLI"
+    owner_pid="${CAMPAIGN_RUNTIME_OWNER_BASHPID:-$BASHPID}"
+    owner_starttime="$(runtime_service_starttime "$owner_pid")" \
+        || die "cannot bind formal Codex refresh owner identity"
+    if ! result="$(
+        /usr/bin/python3 "$FORMAL_CODEX_REFRESH_HELPER" bootstrap \
+            --auth-source "$HOST_HOME/.codex/auth.json" \
+            --node-prefix "$node_prefix" \
+            --campaign-data-root "$CAMPAIGN_DATA_ROOT" \
+            --owner-pid "$owner_pid" \
+            --owner-starttime "$owner_starttime" \
+            --reason "$reason"
+    )"; then
+        die "formal Codex cloud-config $reason refresh failed"
+    fi
+    IFS=$'\t' read -r \
+        CAMPAIGN_CODEX_REFRESH_ROOT \
+        CAMPAIGN_CODEX_REFRESH_ROOT_DEVICE \
+        CAMPAIGN_CODEX_REFRESH_ROOT_INODE \
+        CAMPAIGN_CODEX_REFRESH_PUBLISHED_ROOT \
+        CAMPAIGN_CODEX_REFRESH_BUNDLE_SHA256 \
+        CAMPAIGN_CODEX_REFRESH_HOST_CLOSURE_SHA256 \
+        next_refresh CAMPAIGN_CODEX_REFRESH_INITIAL_RECEIPT_SHA256 <<< "$result"
+    [[ "$CAMPAIGN_CODEX_REFRESH_ROOT" == \
+            /tmp/agentkernelarena-formal-codex.* \
+        && "$CAMPAIGN_CODEX_REFRESH_ROOT_DEVICE" =~ ^[0-9]+$ \
+        && "$CAMPAIGN_CODEX_REFRESH_ROOT_INODE" =~ ^[0-9]+$ \
+        && "$CAMPAIGN_CODEX_REFRESH_PUBLISHED_ROOT" == \
+            "$CAMPAIGN_CODEX_REFRESH_ROOT/published" \
+        && "$CAMPAIGN_CODEX_REFRESH_BUNDLE_SHA256" =~ ^[0-9a-f]{64}$ \
+        && "$CAMPAIGN_CODEX_REFRESH_HOST_CLOSURE_SHA256" =~ ^[0-9a-f]{64}$ \
+        && "$next_refresh" =~ ^[0-9]+$ \
+        && "$CAMPAIGN_CODEX_REFRESH_INITIAL_RECEIPT_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || die "formal Codex refresh helper returned invalid ready evidence"
+    echo "Formal Codex cloud-config refresh ready: reason=$reason bundle_sha256=$CAMPAIGN_CODEX_REFRESH_BUNDLE_SHA256 receipts=$CAMPAIGN_DATA_ROOT/codex-cloud-config-refresh-*.json" >&2
+}
+
+start_campaign_codex_refresh_supervisor() {
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    prepare_campaign_codex_refresh_state prelaunch
+    /usr/bin/python3 "$FORMAL_CODEX_REFRESH_HELPER" supervise \
+        --root "$CAMPAIGN_CODEX_REFRESH_ROOT" \
+        --device "$CAMPAIGN_CODEX_REFRESH_ROOT_DEVICE" \
+        --inode "$CAMPAIGN_CODEX_REFRESH_ROOT_INODE" &
+    CAMPAIGN_CODEX_REFRESH_PID=$!
+    CAMPAIGN_CODEX_REFRESH_STARTTIME="$(
+        runtime_service_starttime "$CAMPAIGN_CODEX_REFRESH_PID"
+    )" || die "cannot bind formal Codex refresh supervisor identity"
+    local attempt
+    for attempt in {1..50}; do
+        if /usr/bin/python3 "$FORMAL_CODEX_REFRESH_HELPER" health \
+            --root "$CAMPAIGN_CODEX_REFRESH_ROOT" \
+            --device "$CAMPAIGN_CODEX_REFRESH_ROOT_DEVICE" \
+            --inode "$CAMPAIGN_CODEX_REFRESH_ROOT_INODE" \
+            --pid "$CAMPAIGN_CODEX_REFRESH_PID" \
+            --starttime "$CAMPAIGN_CODEX_REFRESH_STARTTIME"; then
+            return 0
+        fi
+        [[ "$(runtime_service_starttime \
+            "$CAMPAIGN_CODEX_REFRESH_PID" 2>/dev/null || true)" == \
+            "$CAMPAIGN_CODEX_REFRESH_STARTTIME" ]] || break
+        sleep 0.1
+    done
+    die "formal Codex refresh supervisor did not become healthy"
+}
+
+prepare_campaign_codex_refresh_diagnostic() {
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    prepare_campaign_codex_refresh_state diagnostic
+}
+
+cleanup_campaign_codex_refresh_supervisor() {
+    [[ -n "${CAMPAIGN_RUNTIME_OWNER_BASHPID:-}" \
+        && "$BASHPID" == "$CAMPAIGN_RUNTIME_OWNER_BASHPID" ]] || return 0
+    [[ -n "$CAMPAIGN_CODEX_REFRESH_ROOT" ]] || return 0
+    local failed=0 current_starttime=""
+    [[ ! -f "$CAMPAIGN_CODEX_REFRESH_ROOT/fatal" ]] \
+        || CAMPAIGN_CODEX_REFRESH_FATAL=1
+    if [[ -n "$CAMPAIGN_CODEX_REFRESH_PID" \
+        && "$CAMPAIGN_CODEX_REFRESH_STARTTIME" =~ ^[0-9]+$ ]]; then
+        current_starttime="$(
+            runtime_service_starttime "$CAMPAIGN_CODEX_REFRESH_PID" \
+                2>/dev/null || true
+        )"
+        if [[ "$current_starttime" == "$CAMPAIGN_CODEX_REFRESH_STARTTIME" ]]; then
+            kill -TERM "$CAMPAIGN_CODEX_REFRESH_PID" 2>/dev/null || failed=1
+            local attempt
+            for attempt in {1..50}; do
+                current_starttime="$(
+                    runtime_service_starttime "$CAMPAIGN_CODEX_REFRESH_PID" \
+                        2>/dev/null || true
+                )"
+                [[ "$current_starttime" == \
+                    "$CAMPAIGN_CODEX_REFRESH_STARTTIME" ]] || break
+                sleep 0.1
+            done
+            if [[ "$current_starttime" == "$CAMPAIGN_CODEX_REFRESH_STARTTIME" ]]; then
+                kill -KILL "$CAMPAIGN_CODEX_REFRESH_PID" 2>/dev/null || true
+                failed=1
+            fi
+        else
+            if [[ ! -f "$CAMPAIGN_CODEX_REFRESH_ROOT/fatal" ]]; then
+                /usr/bin/python3 "$FORMAL_CODEX_REFRESH_HELPER" \
+                    mark-unexpected-exit \
+                    --root "$CAMPAIGN_CODEX_REFRESH_ROOT" \
+                    --device "$CAMPAIGN_CODEX_REFRESH_ROOT_DEVICE" \
+                    --inode "$CAMPAIGN_CODEX_REFRESH_ROOT_INODE" \
+                    || failed=1
+            fi
+            CAMPAIGN_CODEX_REFRESH_FATAL=1
+        fi
+        wait "$CAMPAIGN_CODEX_REFRESH_PID" 2>/dev/null || true
+    fi
+    [[ ! -f "$CAMPAIGN_CODEX_REFRESH_ROOT/fatal" ]] \
+        || CAMPAIGN_CODEX_REFRESH_FATAL=1
+    if ! /usr/bin/python3 "$FORMAL_CODEX_REFRESH_HELPER" cleanup \
+        --root "$CAMPAIGN_CODEX_REFRESH_ROOT" \
+        --device "$CAMPAIGN_CODEX_REFRESH_ROOT_DEVICE" \
+        --inode "$CAMPAIGN_CODEX_REFRESH_ROOT_INODE"; then
+        warn "retaining formal Codex private state after safe cleanup failure: $CAMPAIGN_CODEX_REFRESH_ROOT"
+        failed=1
+    else
+        CAMPAIGN_CODEX_REFRESH_ROOT=""
+        CAMPAIGN_CODEX_REFRESH_PUBLISHED_ROOT=""
+    fi
+    return "$failed"
+}
+fuse_config_enables_allow_other() {
+    local config="$1"
+    [[ "$config" == /* && -f "$config" && ! -L "$config" ]] \
+        && grep -Eq '^[[:space:]]*user_allow_other[[:space:]]*$' "$config"
+}
+
+require_fuse_allow_other() {
+    local config="/etc/fuse.conf" identity mode numeric_mode
+    identity="$(/usr/bin/stat -c '%u:%g:%a:%F' -- "$config" 2>/dev/null || true)"
+    mode="$(cut -d: -f3 <<< "$identity")"
+    if [[ "$identity" == 0:0:*:* \
+        && "$(cut -d: -f4- <<< "$identity")" == "regular file" \
+        && "$mode" =~ ^[0-7]{3,4}$ ]]; then
+        numeric_mode=$((8#$mode))
+        if (( (numeric_mode & 0022) == 0 )) \
+            && fuse_config_enables_allow_other "$config"; then
+            return 0
+        fi
+    fi
+    die "formal Docker runtime requires a root-owned, non-writable $config with user_allow_other so dockerd can bind the sealed SquashFUSE roots"
+}
+
+bind_campaign_runtime_temp_root_identity() {
+    local identity kind mode
+    [[ "$CAMPAIGN_RUNTIME_TEMP_ROOT" =~ ^/tmp/agentkernelarena-formal-runtime\.[[:alnum:]]{6}$ \
+        && -d "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+        && ! -L "$CAMPAIGN_RUNTIME_TEMP_ROOT" ]] \
+        || die "formal runtime staging root identity is unsafe"
+    identity="$(
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%F' -- "$CAMPAIGN_RUNTIME_TEMP_ROOT"
+    )" || die "cannot bind formal runtime staging root identity"
+    IFS=: read -r \
+        CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE \
+        CAMPAIGN_RUNTIME_TEMP_ROOT_INODE \
+        CAMPAIGN_RUNTIME_TEMP_ROOT_UID \
+        CAMPAIGN_RUNTIME_TEMP_ROOT_GID \
+        mode kind <<< "$identity"
+    [[ "$CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE" =~ ^[0-9]+$ \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT_INODE" =~ ^[0-9]+$ \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT_UID" == "$HOST_UID" \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT_GID" == "$HOST_GID" \
+        && "$mode" == "700" \
+        && "$kind" == "directory" ]] \
+        || die "formal runtime staging root has an unsafe identity"
+}
+
+campaign_runtime_temp_root_identity_valid() {
+    local identity
+    [[ "$CAMPAIGN_RUNTIME_TEMP_ROOT" =~ ^/tmp/agentkernelarena-formal-runtime\.[[:alnum:]]{6}$ \
+        && -d "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+        && ! -L "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE" =~ ^[0-9]+$ \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT_INODE" =~ ^[0-9]+$ \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT_UID" == "$HOST_UID" \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT_GID" == "$HOST_GID" ]] \
+        || return 1
+    identity="$(
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%F' -- "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+            2>/dev/null
+    )" || return 1
+    [[ "$identity" == \
+        "$CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE:$CAMPAIGN_RUNTIME_TEMP_ROOT_INODE:$CAMPAIGN_RUNTIME_TEMP_ROOT_UID:$CAMPAIGN_RUNTIME_TEMP_ROOT_GID:700:directory" ]]
+}
+
+prepare_campaign_aka_runtime_contract() {
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    [[ -n "$CAMPAIGN_RUNTIME_TEMP_ROOT" && -d "$CAMPAIGN_RUNTIME_TEMP_ROOT" ]] \
+        || die "formal AKA runtime staging root is unavailable"
+    local runtime_tool="$HOST_ROOT/src/aka_runtime.py"
+    local manifest_parent="$CAMPAIGN_RUNTIME_TEMP_ROOT/aka-manifest"
+    local staging_parent="$CAMPAIGN_RUNTIME_TEMP_ROOT/aka-staging"
+    mkdir -m 0700 -- "$manifest_parent" "$staging_parent"
+    CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST="$manifest_parent/manifest.json"
+    CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256="$(
+        /usr/bin/python3 "$runtime_tool" discover \
+            --root "$HOST_ROOT" \
+            --output "$CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST"
+    )" || die "cannot capture the committed AKA runtime"
+    [[ "$CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || die "formal AKA runtime manifest digest is invalid"
+    CAMPAIGN_AKA_RUNTIME_STAGING_ROOT="${staging_parent}/${CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256}"
+    /usr/bin/python3 "$runtime_tool" materialize \
+        --root "$HOST_ROOT" \
+        --manifest "$CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST" \
+        --destination "$CAMPAIGN_AKA_RUNTIME_STAGING_ROOT" \
+        >/dev/null \
+        || die "cannot materialize the committed AKA runtime"
+    local persistent_manifest="${CAMPAIGN_DATA_ROOT}/aka-runtime-manifest-${CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256}.json"
+    if [[ -e "$persistent_manifest" ]]; then
+        cmp -s -- "$CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST" "$persistent_manifest" \
+            || die "formal AKA runtime manifest digest collision"
+    else
+        cp -- "$CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST" "$persistent_manifest"
+        chmod 0444 "$persistent_manifest"
+    fi
+    CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST="$persistent_manifest"
+    CAMPAIGN_AKA_RUNTIME_MANIFEST_FILE_SHA256="$(
+        sha256sum "$CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST" | cut -d' ' -f1
+    )"
+}
+
+prepare_campaign_apex_runtime_contract() {
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    [[ -n "$SELECTED_IMAGE" && -n "$CAMPAIGN_APEX_ROOT" ]] \
+        || die "formal Apex runtime preflight is missing its image or source root"
+    local runtime_tool="$HOST_ROOT/src/apex_runtime.py"
+    local apex_python="$CAMPAIGN_APEX_ROOT/.venv/bin/python"
+    [[ -f "$runtime_tool" && -x "$apex_python" ]] \
+        || die "formal Apex runtime preflight requires the locked Apex virtualenv"
+
+    local discovery
+    discovery="$(
+        /usr/bin/python3 "$runtime_tool" discover \
+            --root "$CAMPAIGN_APEX_ROOT" \
+            --python "$apex_python"
+    )" || die "cannot discover the formal Apex runtime closure"
+    CAMPAIGN_APEX_VENV_ROOT="$(
+        /usr/bin/python3 -c \
+            'import json,sys; value=json.load(sys.stdin); print(value["venv_root"])' \
+            <<< "$discovery"
+    )" || die "formal Apex virtualenv discovery is invalid"
+    CAMPAIGN_APEX_EXTERNAL_ROOTS_JSON="$(
+        /usr/bin/python3 -c \
+            'import json,sys; value=json.load(sys.stdin); print(json.dumps(value["external_roots"],separators=(",",":")))' \
+            <<< "$discovery"
+    )" || die "formal Apex editable-root discovery is invalid"
+    mapfile -t CAMPAIGN_APEX_EXTERNAL_ROOTS < <(
+        /usr/bin/python3 -c \
+            'import json,sys; [print(value) for value in json.loads(sys.argv[1])]' \
+            "$CAMPAIGN_APEX_EXTERNAL_ROOTS_JSON"
+    )
+
+    local root
+    for root in "$CAMPAIGN_APEX_VENV_ROOT" "${CAMPAIGN_APEX_EXTERNAL_ROOTS[@]}"; do
+        [[ "$root" == /* && -d "$root" && "$root" != *:* && "$root" != *,* ]] \
+            || die "formal Apex runtime source root is unsafe: $root"
+    done
+    local -a materialize=(
+        /usr/bin/python3 "$runtime_tool" materialize
+        --root "$CAMPAIGN_APEX_ROOT"
+        --python "$apex_python"
+        --snapshot-parent "$CAMPAIGN_RUNTIME_TEMP_ROOT/apex-staging"
+    )
+    for root in "${CAMPAIGN_APEX_EXTERNAL_ROOTS[@]}"; do
+        materialize+=(--declared-root "$root")
+    done
+    local evidence
+    evidence="$("${materialize[@]}")" \
+        || die "formal Apex runtime snapshot materialization failed"
+    /usr/bin/python3 -c \
+        'import json,sys; value=json.load(sys.stdin)["repository"]; expected={"commit":sys.argv[1],"dirty":sys.argv[2]=="true","status_sha256":sys.argv[3]}; assert value==expected' \
+        "$CAMPAIGN_APEX_COMMIT" \
+        "$CAMPAIGN_APEX_DIRTY" \
+        "$CAMPAIGN_APEX_STATUS_SHA256" \
+        <<< "$evidence" \
+        || die "formal Apex snapshot repository differs from the runner receipt"
+    CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256="$(
+        /usr/bin/python3 -c \
+            'import json,re,sys; value=json.load(sys.stdin)["runtime_manifest_sha256"]; assert re.fullmatch(r"[0-9a-f]{64}",value); print(value)' \
+            <<< "$evidence"
+    )" || die "formal Apex runtime manifest evidence is invalid"
+    CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT="$(
+        /usr/bin/python3 -c \
+            'import json,os,sys; value=json.load(sys.stdin)["root"]; assert os.path.isabs(value); print(value)' \
+            <<< "$evidence"
+    )" || die "formal Apex runtime snapshot root is invalid"
+}
+
+wait_for_runtime_mount_service() {
+    local pid="$1" ready="$2" label="$3" log_path="$4"
+    local attempt
+    for attempt in $(seq 1 "$RUNTIME_MOUNT_READY_POLL_ATTEMPTS"); do
+        if [[ -f "$ready" ]]; then
+            /usr/bin/python3 - \
+                "$ready" "$pid" \
+                "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+                "$CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE" \
+                "$CAMPAIGN_RUNTIME_TEMP_ROOT_INODE" \
+                "$CAMPAIGN_RUNTIME_TEMP_ROOT_UID" \
+                "$CAMPAIGN_RUNTIME_TEMP_ROOT_GID" <<'PY'
+import json
+import hashlib
+import pathlib
+import sys
+
+ready = pathlib.Path(sys.argv[1])
+pid = int(sys.argv[2])
+payload = json.loads(ready.read_text(encoding="utf-8"))
+service = payload.get("service")
+assert payload.get("schema") == "aka.immutable-runtime-mount-service-ready/v2"
+assert set(payload) == {
+    "schema", "policy_id", "ready_path", "service", "mount_receipt",
+    "engine_evidence", "sha256",
+}
+material = dict(payload)
+observed_digest = material.pop("sha256")
+canonical = json.dumps(material, sort_keys=True, separators=(",", ":")).encode()
+assert observed_digest == hashlib.sha256(canonical).hexdigest()
+assert payload.get("policy_id") == (
+    "single_docker_bindable_snapshot_signal_lifetime_v2"
+)
+assert isinstance(service, dict) and set(service) == {
+    "pid", "starttime", "owner", "accepted_signals", "engine_process",
+}
+assert service.get("pid") == pid
+stat = pathlib.Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+starttime = int(stat[stat.rfind(")") + 2:].split()[19])
+assert service.get("starttime") == starttime
+assert payload.get("mount_receipt", {}).get("sha256")
+assert payload.get("engine_evidence", {}).get("sha256")
+receipt = payload["mount_receipt"]
+engine = payload["engine_evidence"]
+policy = receipt.get("host_access_policy")
+engine_process = engine.get("process")
+requested = [
+    "ro", "nodev", "nosuid", "default_permissions", "allow_other",
+    "subtype=squashfuse",
+]
+assert receipt.get("schema") == "aka.host-runtime-immutable-mount/v2"
+assert receipt.get("policy_id") == "sealed_memfd_squashfs_docker_bindable_read_only_v2"
+assert receipt.get("requested_mount_options") == requested
+assert engine.get("schema") == "aka.immutable-runtime-mount-engine/v2"
+assert engine.get("requested_mount_options") == requested
+assert engine.get("host_access_policy_sha256") == policy.get("sha256")
+assert isinstance(engine_process, dict) and set(engine_process) == {
+    "pid", "starttime", "foreground",
+}
+assert service.get("engine_process") == {
+    "pid": engine_process["pid"], "starttime": engine_process["starttime"],
+}
+engine_stat = pathlib.Path(
+    f"/proc/{engine_process['pid']}/stat"
+).read_text(encoding="utf-8")
+engine_starttime = int(engine_stat[engine_stat.rfind(")") + 2:].split()[19])
+assert engine_process.get("starttime") == engine_starttime
+assert engine_process.get("foreground") is True
+assert "allow_other" in receipt.get("mount", {}).get("super_options", [])
+assert policy.get("private_ancestor") == {
+    "path": sys.argv[3],
+    "device": int(sys.argv[4]),
+    "inode": int(sys.argv[5]),
+    "uid": int(sys.argv[6]),
+    "gid": int(sys.argv[7]),
+    "mode": 0o700,
+}
+assert policy.get("mount_owner") == {
+    "uid": int(sys.argv[6]), "gid": int(sys.argv[7])
+}
+assert policy.get("worker") == policy["mount_owner"]
+assert service.get("owner") == policy["mount_owner"]
+assert service.get("accepted_signals") == ["SIGINT", "SIGTERM"]
+fuse = policy.get("fuse_config", {})
+assert fuse.get("path") == "/etc/fuse.conf"
+assert fuse.get("uid") == 0 and fuse.get("gid") == 0
+assert isinstance(fuse.get("mode"), int) and fuse["mode"] & 0o022 == 0
+assert fuse.get("nlink") == 1
+assert fuse.get("user_allow_other") is True
+assert isinstance(fuse.get("sha256"), str) and len(fuse["sha256"]) == 64
+PY
+            return 0
+        fi
+        if ! kill -0 "$pid" 2>/dev/null; then
+            tail -100 "$log_path" >&2 || true
+            die "$label immutable runtime mount service exited before readiness"
+        fi
+        sleep 0.1
+    done
+    tail -100 "$log_path" >&2 || true
+    die "$label immutable runtime mount service did not become ready"
+}
+
+runtime_service_starttime() {
+    /usr/bin/python3 -c \
+        'import pathlib,sys; value=pathlib.Path(f"/proc/{int(sys.argv[1])}/stat").read_text(); print(int(value[value.rfind(")")+2:].split()[19]))' \
+        "$1"
+}
+
+persist_runtime_service_evidence() {
+    local ready="$1" label="$2"
+    local file_sha destination content_sha
+    file_sha="$(sha256sum "$ready" | cut -d' ' -f1)"
+    [[ "$file_sha" =~ ^[0-9a-f]{64}$ ]] \
+        || die "$label runtime service evidence digest is invalid"
+    destination="${CAMPAIGN_DATA_ROOT}/${label}-runtime-service-${file_sha}.json"
+    if [[ -e "$destination" ]]; then
+        cmp -s -- "$ready" "$destination" \
+            || die "$label runtime service evidence digest collision"
+    else
+        cp -- "$ready" "$destination"
+        chmod 0444 "$destination"
+    fi
+    content_sha="$(
+        /usr/bin/python3 -c \
+            'import json,re,sys; value=json.load(open(sys.argv[1])); digest=value.get("sha256",""); assert re.fullmatch(r"[0-9a-f]{64}",digest); print(digest)' \
+            "$destination"
+    )" || die "$label runtime service content digest is invalid"
+    case "$label" in
+        aka)
+            CAMPAIGN_AKA_RUNTIME_SERVICE_HOST="$destination"
+            CAMPAIGN_AKA_RUNTIME_SERVICE_FILE_SHA256="$file_sha"
+            CAMPAIGN_AKA_RUNTIME_SERVICE_CONTENT_SHA256="$content_sha"
+            ;;
+        apex)
+            CAMPAIGN_APEX_RUNTIME_SERVICE_HOST="$destination"
+            CAMPAIGN_APEX_RUNTIME_SERVICE_FILE_SHA256="$file_sha"
+            CAMPAIGN_APEX_RUNTIME_SERVICE_CONTENT_SHA256="$content_sha"
+            ;;
+        *) die "unknown runtime service evidence label: $label" ;;
+    esac
+}
+
+start_campaign_runtime_mounts() {
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    local engine="$CAMPAIGN_AKA_RUNTIME_STAGING_ROOT/src/immutable_runtime_mount.py"
+    local aka_tool="$CAMPAIGN_AKA_RUNTIME_STAGING_ROOT/src/aka_runtime.py"
+    local apex_tool="$CAMPAIGN_AKA_RUNTIME_STAGING_ROOT/src/apex_runtime.py"
+    [[ -f "$engine" && -f "$aka_tool" && -f "$apex_tool" ]] \
+        || die "sealed AKA runtime lacks immutable runtime tools"
+
+    local aka_inventory="$CAMPAIGN_RUNTIME_TEMP_ROOT/aka-image-input.json"
+    local apex_inventory="$CAMPAIGN_RUNTIME_TEMP_ROOT/apex-image-input.json"
+    /usr/bin/python3 "$aka_tool" image-input \
+        --root "$CAMPAIGN_AKA_RUNTIME_STAGING_ROOT" \
+        --manifest "$CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST" \
+        --sha256 "$CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256" \
+        --output "$aka_inventory" \
+        >/dev/null \
+        || die "cannot bind AKA SquashFS image inputs"
+    if [[ "$APEX_RUNTIME" == "1" ]]; then
+        /usr/bin/python3 "$apex_tool" image-input \
+            --snapshot "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" \
+            --sha256 "$CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256" \
+            --output "$apex_inventory" \
+            >/dev/null \
+            || die "cannot bind Apex SquashFS image inputs"
+    fi
+
+    local aka_mount_parent="$CAMPAIGN_RUNTIME_TEMP_ROOT/aka-mount"
+    local apex_mount_parent="$CAMPAIGN_RUNTIME_TEMP_ROOT/apex-mount"
+    mkdir -m 0700 -- "$aka_mount_parent"
+    CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT="${aka_mount_parent}/${CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256}"
+    mkdir -m 0700 -- "$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT"
+    local apex_staging_root="$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT"
+    if [[ "$APEX_RUNTIME" == "1" ]]; then
+        mkdir -m 0700 -- "$apex_mount_parent"
+        CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT="${apex_mount_parent}/${CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256}"
+        mkdir -m 0700 -- "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT"
+    fi
+
+    local aka_ready="$CAMPAIGN_RUNTIME_TEMP_ROOT/aka-service-ready.json"
+    local apex_ready="$CAMPAIGN_RUNTIME_TEMP_ROOT/apex-service-ready.json"
+    local aka_log="$CAMPAIGN_RUNTIME_TEMP_ROOT/aka-service.log"
+    local apex_log="$CAMPAIGN_RUNTIME_TEMP_ROOT/apex-service.log"
+    /usr/bin/python3 "$engine" serve \
+        --staging-root "$CAMPAIGN_AKA_RUNTIME_STAGING_ROOT" \
+        --inventory-json "$aka_inventory" \
+        --mountpoint "$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT" \
+        --ready-json "$aka_ready" \
+        --private-ancestor "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+        --fuse-config /etc/fuse.conf \
+        --worker-uid "$HOST_UID" \
+        --worker-gid "$HOST_GID" \
+        >"$aka_log" 2>&1 &
+    local aka_pid=$!
+    CAMPAIGN_RUNTIME_SERVICE_PIDS+=("$aka_pid")
+    CAMPAIGN_RUNTIME_SERVICE_LABELS["$aka_pid"]="aka"
+    CAMPAIGN_RUNTIME_SERVICE_STARTTIMES["$aka_pid"]="$(
+        runtime_service_starttime "$aka_pid"
+    )" || die "cannot bind AKA runtime service process identity"
+    wait_for_runtime_mount_service "$aka_pid" "$aka_ready" "aka" "$aka_log"
+
+    CAMPAIGN_AKA_RUNTIME_IMAGE_SHA256="$(
+        /usr/bin/python3 -c \
+            'import json,sys; print(json.load(open(sys.argv[1]))["mount_receipt"]["image_sha256"])' \
+            "$aka_ready"
+    )"
+    [[ "$CAMPAIGN_AKA_RUNTIME_IMAGE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || die "immutable runtime service returned an invalid image digest"
+    persist_runtime_service_evidence "$aka_ready" "aka"
+    if [[ "$APEX_RUNTIME" == "1" ]]; then
+        /usr/bin/python3 "$engine" serve \
+            --staging-root "$apex_staging_root" \
+            --inventory-json "$apex_inventory" \
+            --mountpoint "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" \
+            --ready-json "$apex_ready" \
+            --private-ancestor "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+            --fuse-config /etc/fuse.conf \
+            --worker-uid "$HOST_UID" \
+            --worker-gid "$HOST_GID" \
+            >"$apex_log" 2>&1 &
+        local apex_pid=$!
+        CAMPAIGN_RUNTIME_SERVICE_PIDS+=("$apex_pid")
+        CAMPAIGN_RUNTIME_SERVICE_LABELS["$apex_pid"]="apex"
+        CAMPAIGN_RUNTIME_SERVICE_STARTTIMES["$apex_pid"]="$(
+            runtime_service_starttime "$apex_pid"
+        )" || die "cannot bind Apex runtime service process identity"
+        wait_for_runtime_mount_service "$apex_pid" "$apex_ready" "apex" "$apex_log"
+        CAMPAIGN_APEX_RUNTIME_IMAGE_SHA256="$(
+            /usr/bin/python3 -c \
+                'import json,sys; print(json.load(open(sys.argv[1]))["mount_receipt"]["image_sha256"])' \
+                "$apex_ready"
+        )"
+        [[ "$CAMPAIGN_APEX_RUNTIME_IMAGE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+            || die "Apex immutable runtime service returned an invalid image digest"
+        persist_runtime_service_evidence "$apex_ready" "apex"
+    fi
+}
+
+recover_campaign_runtime_service() {
+    local pid="$1" label="$2" expected_starttime="$3"
+    local evidence file_sha content_sha manifest_sha image_sha mountpoint
+    case "$label" in
+        aka)
+            evidence="$CAMPAIGN_AKA_RUNTIME_SERVICE_HOST"
+            file_sha="$CAMPAIGN_AKA_RUNTIME_SERVICE_FILE_SHA256"
+            content_sha="$CAMPAIGN_AKA_RUNTIME_SERVICE_CONTENT_SHA256"
+            manifest_sha="$CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256"
+            image_sha="$CAMPAIGN_AKA_RUNTIME_IMAGE_SHA256"
+            mountpoint="$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT"
+            ;;
+        apex)
+            evidence="$CAMPAIGN_APEX_RUNTIME_SERVICE_HOST"
+            file_sha="$CAMPAIGN_APEX_RUNTIME_SERVICE_FILE_SHA256"
+            content_sha="$CAMPAIGN_APEX_RUNTIME_SERVICE_CONTENT_SHA256"
+            manifest_sha="$CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256"
+            image_sha="$CAMPAIGN_APEX_RUNTIME_IMAGE_SHA256"
+            mountpoint="$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT"
+            ;;
+        *)
+            warn "unknown runtime service label during cleanup: $label"
+            return 1
+            ;;
+    esac
+    [[ -f "$evidence" && ! -L "$evidence" \
+        && "$file_sha" =~ ^[0-9a-f]{64}$ \
+        && "$content_sha" =~ ^[0-9a-f]{64}$ \
+        && "$manifest_sha" =~ ^[0-9a-f]{64}$ \
+        && "$image_sha" =~ ^[0-9a-f]{64}$ \
+        && "$mountpoint" == "$CAMPAIGN_RUNTIME_TEMP_ROOT"/* ]] \
+        || return 2
+
+    local recovery="$CAMPAIGN_RUNTIME_TEMP_ROOT/${label}-runtime-recovery.json"
+    local destination="${CAMPAIGN_DATA_ROOT}/${label}-runtime-cleanup-${content_sha}.json"
+    local tool="$CAMPAIGN_AKA_RUNTIME_STAGING_ROOT/src/aka_runtime.py"
+    if ! /usr/bin/python3 "$tool" recover-service \
+        --service-evidence "$evidence" \
+        --service-file-sha256 "$file_sha" \
+        --service-content-sha256 "$content_sha" \
+        --manifest-sha256 "$manifest_sha" \
+        --image-sha256 "$image_sha" \
+        --controller-pid "$pid" \
+        --controller-starttime "$expected_starttime" \
+        --mountpoint "$mountpoint" \
+        --private-ancestor "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+        --timeout-seconds 20 >"$recovery"; then
+        return 1
+    fi
+    /usr/bin/python3 - \
+        "$recovery" "$evidence" "$pid" "$expected_starttime" "$mountpoint" <<'PY' \
+        || return 1
+import hashlib
+import json
+import sys
+
+cleanup = json.load(open(sys.argv[1], encoding="utf-8"))
+service = json.load(open(sys.argv[2], encoding="utf-8"))
+material = dict(cleanup)
+observed = material.pop("sha256")
+canonical = json.dumps(material, sort_keys=True, separators=(",", ":")).encode()
+engine = service["engine_evidence"]
+receipt = service["mount_receipt"]
+expected_process_keys = {
+    "label", "pid", "starttime", "absent_before_cleanup", "signals",
+    "verified_exited",
+}
+assert set(cleanup) == {
+    "schema", "runtime_service_evidence_sha256",
+    "runtime_engine_evidence_sha256", "host_mount_receipt_sha256",
+    "controller", "engine", "mountpoint", "unmount_returncodes",
+    "mount_absent", "mountpoint_empty", "sha256",
+}
+assert set(cleanup.get("controller", {})) == expected_process_keys
+assert set(cleanup.get("engine", {})) == expected_process_keys
+assert cleanup.get("schema") == "aka.immutable-runtime-mount-recovery/v1"
+assert cleanup.get("runtime_service_evidence_sha256") == service["sha256"]
+assert cleanup.get("runtime_engine_evidence_sha256") == engine["sha256"]
+assert cleanup.get("host_mount_receipt_sha256") == receipt["sha256"]
+assert cleanup.get("controller", {}).get("pid") == int(sys.argv[3])
+assert cleanup.get("controller", {}).get("starttime") == int(sys.argv[4])
+assert cleanup.get("engine", {}).get("pid") == engine["process"]["pid"]
+assert cleanup.get("engine", {}).get("starttime") == engine["process"]["starttime"]
+assert cleanup["controller"]["label"] == "runtime controller"
+assert cleanup["engine"]["label"] == "runtime engine"
+assert cleanup["controller"]["verified_exited"] is True
+assert cleanup["engine"]["verified_exited"] is True
+assert all(
+    signal in {"SIGTERM", "SIGKILL"}
+    for process in (cleanup["controller"], cleanup["engine"])
+    for signal in process["signals"]
+)
+assert all(type(value) is int for value in cleanup["unmount_returncodes"])
+assert cleanup.get("mountpoint") == sys.argv[5] == receipt["root"]
+assert cleanup.get("mount_absent") is True
+assert cleanup.get("mountpoint_empty") is True
+assert observed == hashlib.sha256(canonical).hexdigest()
+PY
+    if [[ -e "$destination" ]]; then
+        cmp -s -- "$recovery" "$destination" || return 1
+    else
+        cp -- "$recovery" "$destination" || return 1
+        chmod 0444 "$destination" || return 1
+    fi
+}
+
+stop_unpublished_runtime_service() {
+    local pid="$1" expected_starttime="$2" mountpoint="$3"
+    local current_starttime state attempt
+    if kill -0 "$pid" 2>/dev/null; then
+        current_starttime="$(runtime_service_starttime "$pid" 2>/dev/null || true)"
+        [[ "$current_starttime" == "$expected_starttime" ]] || return 1
+        kill -TERM "$pid" 2>/dev/null || return 1
+        for attempt in $(seq 1 200); do
+            state="$(/usr/bin/python3 -c \
+                'import pathlib,sys; value=pathlib.Path(f"/proc/{int(sys.argv[1])}/stat").read_text(); print(value[value.rfind(")")+2:].split()[0])' \
+                "$pid" 2>/dev/null || true)"
+            [[ -z "$state" || "$state" == "Z" ]] && break
+            sleep 0.05
+        done
+        if [[ -n "$state" && "$state" != "Z" ]]; then
+            current_starttime="$(runtime_service_starttime "$pid" 2>/dev/null || true)"
+            [[ "$current_starttime" == "$expected_starttime" ]] || return 1
+            kill -KILL "$pid" 2>/dev/null || return 1
+        fi
+    fi
+    wait "$pid" 2>/dev/null || true
+    if [[ -n "$mountpoint" ]] && /usr/bin/mountpoint -q -- "$mountpoint"; then
+        warn "unpublished runtime service left a mount; retaining its staging root"
+        return 1
+    fi
+}
+
+cleanup_campaign_runtime_mounts() {
+    [[ -n "${CAMPAIGN_RUNTIME_OWNER_BASHPID:-}" \
+        && "$BASHPID" == "$CAMPAIGN_RUNTIME_OWNER_BASHPID" ]] || return 0
+    [[ -n "$CAMPAIGN_RUNTIME_TEMP_ROOT" ]] || return 0
+    local failed=0 pid expected_starttime label mountpoint recovery_status
+    for pid in "${CAMPAIGN_RUNTIME_SERVICE_PIDS[@]}"; do
+        expected_starttime="${CAMPAIGN_RUNTIME_SERVICE_STARTTIMES[$pid]:-}"
+        label="${CAMPAIGN_RUNTIME_SERVICE_LABELS[$pid]:-}"
+        [[ "$expected_starttime" =~ ^[0-9]+$ && -n "$label" ]] || {
+            failed=1
+            continue
+        }
+        recovery_status=0
+        recover_campaign_runtime_service \
+            "$pid" "$label" "$expected_starttime" || recovery_status=$?
+        if [[ "$recovery_status" == "2" ]]; then
+            failed=1
+            case "$label" in
+                aka) mountpoint="$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT" ;;
+                apex) mountpoint="$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" ;;
+                *) mountpoint="" ;;
+            esac
+            stop_unpublished_runtime_service \
+                "$pid" "$expected_starttime" "$mountpoint" || failed=1
+        elif [[ "$recovery_status" != "0" ]]; then
+            failed=1
+            case "$label" in
+                aka) mountpoint="$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT" ;;
+                apex) mountpoint="$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" ;;
+                *) mountpoint="" ;;
+            esac
+            stop_unpublished_runtime_service \
+                "$pid" "$expected_starttime" "$mountpoint" || true
+        fi
+        wait "$pid" 2>/dev/null || true
+    done
+    if [[ "$failed" == "0" ]] \
+        && ! campaign_runtime_temp_root_identity_valid; then
+        warn "formal runtime staging root identity changed; refusing cleanup"
+        failed=1
+    fi
+    if [[ "$failed" == "0" ]]; then
+        local staging_root staging_identity
+        for staging_root in \
+            "$CAMPAIGN_RUNTIME_TEMP_ROOT/aka-staging" \
+            "$CAMPAIGN_RUNTIME_TEMP_ROOT/apex-staging"; do
+            [[ -e "$staging_root" ]] || continue
+            staging_identity="$(
+                /usr/bin/stat -c '%d:%u:%g:%F' -- "$staging_root" 2>/dev/null \
+                    || true
+            )"
+            if [[ -L "$staging_root" || ! -d "$staging_root" \
+                || "$staging_identity" != \
+                    "$CAMPAIGN_RUNTIME_TEMP_ROOT_DEVICE:$HOST_UID:$HOST_GID:directory" ]] \
+                || ! find -P "$staging_root" -xdev -depth -type d \
+                    -exec chmod u+rwx -- {} +; then
+                failed=1
+            fi
+        done
+    fi
+    if [[ "$failed" == "0" \
+        && "$CAMPAIGN_RUNTIME_TEMP_ROOT" =~ ^/tmp/agentkernelarena-formal-runtime\.[[:alnum:]]{6}$ \
+        && -d "$CAMPAIGN_RUNTIME_TEMP_ROOT" \
+        && ! -L "$CAMPAIGN_RUNTIME_TEMP_ROOT" ]]; then
+        if ! campaign_runtime_temp_root_identity_valid \
+            || ! rm -rf -- "$CAMPAIGN_RUNTIME_TEMP_ROOT"; then
+            failed=1
+        fi
+    fi
+    if [[ "$failed" != "0" && -n "$CAMPAIGN_RUNTIME_TEMP_ROOT" ]]; then
+        warn "retaining formal runtime staging after cleanup failure: $CAMPAIGN_RUNTIME_TEMP_ROOT"
+    fi
+    return "$failed"
+}
+
+finish_with_campaign_runtime_cleanup() {
+    local original_status=$?
+    trap - EXIT
+    if [[ -n "$CAMPAIGN_CODEX_REFRESH_ROOT" \
+        && -f "$CAMPAIGN_CODEX_REFRESH_ROOT/fatal" ]]; then
+        CAMPAIGN_CODEX_REFRESH_FATAL=1
+    fi
+    local cleanup_failed=0
+    if ! cleanup_campaign_codex_refresh_supervisor; then
+        cleanup_failed=1
+    fi
+    if ! cleanup_campaign_runtime_mounts; then
+        cleanup_failed=1
+    fi
+    if [[ "$CAMPAIGN_CODEX_REFRESH_FATAL" == "1" ]]; then
+        original_status=71
+    elif [[ "$cleanup_failed" == "1" && "$original_status" == "0" ]]; then
+        original_status=70
+    fi
+    exit "$original_status"
+}
+
+prepare_campaign_gpu_boundary_plan() {
+    local gpu_pool_csv="$1"
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    [[ "$gpu_pool_csv" =~ ^[0-9]+(,[0-9]+)*$ ]] \
+        || die "formal GPU boundary requires an ordered numeric GPU pool"
+    command -v rocm-smi >/dev/null 2>&1 \
+        || die "formal GPU boundary requires rocm-smi on the host"
+    command -v python3 >/dev/null 2>&1 \
+        || die "formal GPU boundary requires python3 on the host"
+
+    local topology_root="${AKA_GPU_BOUNDARY_TOPOLOGY_ROOT:-/sys/class/kfd/kfd/topology/nodes}"
+    local dev_root="${AKA_GPU_BOUNDARY_DEV_ROOT:-/dev}"
+    local temporary digest final_path
+    temporary="$(mktemp --suffix=.json "${CAMPAIGN_DATA_ROOT}/.gpu-boundary-plan.XXXXXX")" \
+        || die "cannot allocate formal GPU boundary plan"
+    if ! rocm-smi --showuniqueid --showserial --showproductname --json \
+        | python3 "$HOST_ROOT/src/gpu_device_boundary.py" resolve \
+            --gpu-ids "$gpu_pool_csv" \
+            --rocm-smi-json - \
+            --topology-root "$topology_root" \
+            --dev-root "$dev_root" \
+            --output "$temporary"; then
+        rm -f -- "$temporary"
+        die "cannot prove the formal GPU boundary from rocm-smi and KFD topology"
+    fi
+    digest="$(python3 "$HOST_ROOT/src/gpu_device_boundary.py" plan-digest --plan "$temporary")" \
+        || { rm -f -- "$temporary"; die "cannot validate formal GPU boundary plan"; }
+    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] \
+        || { rm -f -- "$temporary"; die "formal GPU boundary plan digest is invalid"; }
+    final_path="${CAMPAIGN_DATA_ROOT}/gpu-boundary-plan-${digest}.json"
+    if [[ -e "$final_path" ]]; then
+        cmp -s -- "$temporary" "$final_path" \
+            || { rm -f -- "$temporary"; die "GPU boundary digest collision or stale plan"; }
+        rm -f -- "$temporary"
+    else
+        mv -- "$temporary" "$final_path"
+        chmod 0444 "$final_path"
+    fi
+    CAMPAIGN_GPU_PLAN_HOST="$final_path"
+    CAMPAIGN_GPU_PLAN_SHA256="$digest"
+}
+
+acquire_campaign_gpu_exclusivity() {
+    local run_name="$1"
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    [[ -n "$CAMPAIGN_GPU_PLAN_HOST" && -f "$CAMPAIGN_GPU_PLAN_HOST" ]] \
+        || die "formal GPU exclusivity requires a verified boundary plan"
+    command -v flock >/dev/null 2>&1 \
+        || die "formal GPU exclusivity requires flock on the host"
+
+    local lock_root="${AKA_GPU_LEASE_ROOT:-/tmp/agentkernelarena-gpu-leases}"
+    [[ "$lock_root" == /* && "$lock_root" != "/" ]] \
+        || die "formal GPU lease root must be a specific absolute path"
+    [[ ! -L "$lock_root" ]] \
+        || die "formal GPU lease root cannot be a symlink: $lock_root"
+    mkdir -p -- "$lock_root"
+    chmod 0700 "$lock_root"
+
+    local -a keys=() lock_arguments=()
+    local key lock_path lease_fd
+    while IFS= read -r key; do
+        [[ -n "$key" ]] || continue
+        [[ "$key" =~ ^0x[0-9a-f]+$ ]] \
+            || die "GPU boundary returned an unsafe physical unique ID"
+        keys+=("$key")
+    done < <(
+        python3 "$HOST_ROOT/src/gpu_exclusivity.py" lease-keys \
+            --plan "$CAMPAIGN_GPU_PLAN_HOST"
+    )
+    [[ "${#keys[@]}" -gt 0 ]] || die "formal GPU plan has no lease keys"
+
+    for key in "${keys[@]}"; do
+        lock_path="$lock_root/${key}.lock"
+        exec {lease_fd}>"$lock_path"
+        if ! flock -n "$lease_fd"; then
+            exec {lease_fd}>&-
+            die "physical GPU $key is leased by another formal run"
+        fi
+        CAMPAIGN_GPU_LEASE_FDS+=("$lease_fd")
+        lock_arguments+=(--lock "$key=$lock_path")
+    done
+
+    # Query the ROCm SMI library only after all physical-device leases are held.
+    # Unlike rocm-smi --showpids text, the helper checks every API return code.
+    local kfd_inventory_temp kfd_inventory_digest kfd_inventory_path
+    kfd_inventory_temp="$(
+        mktemp --suffix=.json "${CAMPAIGN_DATA_ROOT}/.kfd-process-inventory.XXXXXX"
+    )" || die "cannot allocate authoritative KFD process inventory"
+    if ! python3 "$HOST_ROOT/src/kfd_process_inventory.py" \
+        --output "$kfd_inventory_temp"; then
+        rm -f -- "$kfd_inventory_temp"
+        die "cannot query authoritative KFD process inventory"
+    fi
+    [[ -s "$kfd_inventory_temp" ]] \
+        || { rm -f -- "$kfd_inventory_temp"; die "KFD inventory artifact is empty"; }
+    kfd_inventory_digest="$(sha256sum "$kfd_inventory_temp" | cut -d' ' -f1)"
+    [[ "$kfd_inventory_digest" =~ ^[0-9a-f]{64}$ ]] \
+        || { rm -f -- "$kfd_inventory_temp"; die "KFD inventory digest is invalid"; }
+    kfd_inventory_path="${CAMPAIGN_DATA_ROOT}/kfd-process-inventory-${kfd_inventory_digest}.json"
+    if [[ -e "$kfd_inventory_path" ]]; then
+        cmp -s -- "$kfd_inventory_temp" "$kfd_inventory_path" \
+            || { rm -f -- "$kfd_inventory_temp"; die "KFD inventory digest collision"; }
+        rm -f -- "$kfd_inventory_temp"
+    else
+        mv -- "$kfd_inventory_temp" "$kfd_inventory_path"
+        chmod 0444 "$kfd_inventory_path"
+    fi
+
+    local temporary digest final_path
+    temporary="$(mktemp --suffix=.json "${CAMPAIGN_DATA_ROOT}/.gpu-exclusivity.XXXXXX")" \
+        || die "cannot allocate GPU exclusivity receipt"
+    if ! python3 "$HOST_ROOT/src/gpu_exclusivity.py" create-receipt \
+        --plan "$CAMPAIGN_GPU_PLAN_HOST" \
+        --run-name "$run_name" \
+        --runner-pid "$$" \
+        "${lock_arguments[@]}" \
+        --kfd-process-inventory "$kfd_inventory_path" \
+        --output "$temporary"; then
+        rm -f -- "$temporary"
+        die "selected GPU has a foreign KFD/render owner; refusing to terminate it"
+    fi
+    digest="$(
+        python3 "$HOST_ROOT/src/gpu_exclusivity.py" verify-receipt \
+            --receipt "$temporary" \
+            --plan-sha256 "$CAMPAIGN_GPU_PLAN_SHA256"
+    )" || { rm -f -- "$temporary"; die "cannot validate GPU exclusivity receipt"; }
+    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] \
+        || { rm -f -- "$temporary"; die "GPU exclusivity digest is invalid"; }
+    final_path="${CAMPAIGN_DATA_ROOT}/gpu-exclusivity-${digest}.json"
+    if [[ -e "$final_path" ]]; then
+        cmp -s -- "$temporary" "$final_path" \
+            || { rm -f -- "$temporary"; die "GPU exclusivity receipt collision"; }
+        rm -f -- "$temporary"
+    else
+        mv -- "$temporary" "$final_path"
+        chmod 0444 "$final_path"
+    fi
+    CAMPAIGN_GPU_EXCLUSIVITY_HOST="$final_path"
+    CAMPAIGN_GPU_EXCLUSIVITY_SHA256="$digest"
+}
+
 agent_list_contains() {
     local agents="$1"
     local expected="$2"
@@ -311,6 +1415,21 @@ read_validator_backend() {
     local cfg="$HOST_ROOT/agents/task_validator/agent_config.yaml"
     [[ -f "$cfg" ]] || { printf 'claude_code\n'; return; }
     sed -nE 's/^backend:[[:space:]]*["'"'"']?([A-Za-z0-9_]+).*/\1/p' "$cfg" | head -n 1
+}
+
+read_apex_backend() {
+    local cfg="$HOST_ROOT/agents/apex/agent_config.yaml"
+    [[ -f "$cfg" ]] || { printf 'codex\n'; return; }
+    sed -nE 's/^backend:[[:space:]]*["'"'"']?([A-Za-z0-9_-]+).*/\1/p' "$cfg" | head -n 1
+}
+
+normalize_backend_agent() {
+    case "$1" in
+        claude|claude_code) printf 'claude_code\n' ;;
+        cursor|cursor-agent) printf 'cursor\n' ;;
+        codex) printf 'codex\n' ;;
+        *) die "Apex backend must be codex, claude, or cursor; got '$1'" ;;
+    esac
 }
 
 # Decide which agent CLIs to provision into the container.
@@ -333,6 +1452,7 @@ resolve_required_agents() {
         claude|claude_code) printf 'claude_code\n' ;;
         cursor|cursor-agent) printf 'cursor\n' ;;
         codex) printf 'codex\n' ;;
+        apex) normalize_backend_agent "$(read_apex_backend)" ;;
         # GEAK v4 drives Claude Code; extra deps handled in build/preflight.
         geak_v4|geak-v4|geak) printf 'claude_code\n' ;;
         *) printf '%s\n' "$tmpl" ;;
@@ -359,6 +1479,9 @@ normalize_check_agents() {
                 ;;
             codex)
                 normalized+=(codex)
+                ;;
+            apex)
+                normalized+=("$(normalize_backend_agent "$(read_apex_backend)")")
                 ;;
             *)
                 die "docker-check-agents only supports codex, claude_code, cursor, or all; got '$agent'"
@@ -387,8 +1510,22 @@ mount_agent() {
             need_path "$HOST_HOME/.codex" "Codex auth/config directory" "$strict" || return 0
             add_mount "$node_prefix" /opt/node ro
             if [[ "$isolate" == "1" ]]; then
-                add_mount "$HOST_HOME/.codex" "$AGENT_STATE_MOUNT_ROOT/.codex" ro
+                local codex_state_source="$HOST_HOME/.codex"
+                if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+                    [[ -n "$CAMPAIGN_CODEX_REFRESH_PUBLISHED_ROOT" ]] \
+                        || die "formal Codex published state is unavailable"
+                    codex_state_source="$CAMPAIGN_CODEX_REFRESH_PUBLISHED_ROOT/.codex"
+                    [[ -f "$codex_state_source/auth.json" \
+                        && -f "$codex_state_source/cloud-config-bundle-cache.json" \
+                        && "$(find "$codex_state_source" -mindepth 1 -maxdepth 1 \
+                            -printf '%f\n' | sort | tr '\n' ' ')" \
+                            == "auth.json cloud-config-bundle-cache.json " ]] \
+                        || die "formal Codex published state is not minimal"
+                fi
+                add_mount "$codex_state_source" "$AGENT_STATE_MOUNT_ROOT/.codex" ro
             else
+                [[ "$CAMPAIGN_PROVENANCE" != "1" ]] \
+                    || die "formal Codex state isolation cannot be disabled"
                 add_mount "$HOST_HOME/.codex" "$HOST_HOME/.codex"
             fi
             ;;
@@ -481,10 +1618,6 @@ build_docker_args() {
     docker_args+=(
         --ipc=host
         --network=host
-        --privileged
-        --cap-add=SYS_ADMIN
-        --cap-add=SYS_PTRACE
-        --security-opt=seccomp=unconfined
         --user "${HOST_UID}:${HOST_GID}"
         -e "HOME=${container_home}"
         -e "CODEX_HOME=${codex_home}"
@@ -499,11 +1632,68 @@ build_docker_args() {
         -e "AGENT_KERNEL_ARENA_DOCKER=1"
         -e "AGENT_KERNEL_ARENA_WORKDIR=${CONTAINER_WORKDIR}"
         -e "AGENT_KERNEL_ARENA_GPU_ARCH=${SELECTED_GPU_ARCH}"
+        -e "AGENT_KERNEL_ARENA_DOCKER_IMAGE=${SELECTED_IMAGE}"
+        -e "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=${SELECTED_IMAGE_ID}"
+        -e "AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS=${SELECTED_IMAGE_REPO_DIGESTS}"
         -e "PYTORCH_ROCM_ARCH=${SELECTED_GPU_ARCH}"
         -e "AGENT_STATE_MOUNT_ROOT=${AGENT_STATE_MOUNT_ROOT}"
         -e "PATH=${container_path}"
         -w "$CONTAINER_WORKDIR"
     )
+    if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+        # A formal worker must remain subject to Docker's device cgroup. In
+        # particular, --privileged would make an individual --device mapping
+        # meaningless by granting the container every host device. Rootless
+        # bubblewrap needs user-namespace mount syscalls, but the non-root
+        # worker needs no host-namespace capabilities.
+        docker_args+=(
+            --cap-drop=ALL
+            --security-opt=seccomp=unconfined
+            --security-opt=apparmor=unconfined
+            --security-opt=no-new-privileges:true
+            --security-opt=systempaths=unconfined
+        )
+    else
+        docker_args+=(
+            --privileged
+            --cap-add=SYS_ADMIN
+            --cap-add=SYS_PTRACE
+            --security-opt=seccomp=unconfined
+        )
+    fi
+
+    if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+        [[ "$CAMPAIGN_CODEX_REFRESH_HOST_CLOSURE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+            || die "formal Codex host runtime closure is unavailable"
+        [[ "$CAMPAIGN_CODEX_REFRESH_INITIAL_RECEIPT_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+            || die "formal Codex initial refresh receipt is unavailable"
+        docker_args+=(
+            -e "AGENT_KERNEL_ARENA_APEX_COMMIT=${CAMPAIGN_APEX_COMMIT}"
+            -e "AGENT_KERNEL_ARENA_APEX_DIRTY=${CAMPAIGN_APEX_DIRTY}"
+            -e "AGENT_KERNEL_ARENA_APEX_STATUS_SHA256=${CAMPAIGN_APEX_STATUS_SHA256}"
+            -e "AGENT_KERNEL_ARENA_APEX_RUNTIME_MANIFEST_SHA256=${CAMPAIGN_APEX_RUNTIME_MANIFEST_SHA256}"
+            -e "AGENT_KERNEL_ARENA_APEX_SOURCE_ROOT=${CAMPAIGN_APEX_ROOT}"
+            -e "AGENT_KERNEL_ARENA_APEX_RUNTIME_IMAGE_SHA256=${CAMPAIGN_APEX_RUNTIME_IMAGE_SHA256}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_ROOT=${CONTAINER_WORKDIR}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST=${CAMPAIGN_AKA_RUNTIME_MANIFEST_HOST}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST_SHA256=${CAMPAIGN_AKA_RUNTIME_MANIFEST_SHA256}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST_FILE_SHA256=${CAMPAIGN_AKA_RUNTIME_MANIFEST_FILE_SHA256}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_IMAGE_SHA256=${CAMPAIGN_AKA_RUNTIME_IMAGE_SHA256}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE=${CAMPAIGN_AKA_RUNTIME_SERVICE_HOST}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE_FILE_SHA256=${CAMPAIGN_AKA_RUNTIME_SERVICE_FILE_SHA256}"
+            -e "AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE_CONTENT_SHA256=${CAMPAIGN_AKA_RUNTIME_SERVICE_CONTENT_SHA256}"
+            -e "AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT=${CAMPAIGN_DATA_ROOT}"
+            -e "AGENT_KERNEL_ARENA_CODEX_HOST_RUNTIME_CLOSURE_SHA256=${CAMPAIGN_CODEX_REFRESH_HOST_CLOSURE_SHA256}"
+            -e "AGENT_KERNEL_ARENA_CODEX_INITIAL_REFRESH_RECEIPT_SHA256=${CAMPAIGN_CODEX_REFRESH_INITIAL_RECEIPT_SHA256}"
+        )
+        if [[ "$APEX_RUNTIME" == "1" ]]; then
+            docker_args+=(
+                -e "AGENT_KERNEL_ARENA_APEX_RUNTIME_SERVICE_EVIDENCE=${CAMPAIGN_APEX_RUNTIME_SERVICE_HOST}"
+                -e "AGENT_KERNEL_ARENA_APEX_RUNTIME_SERVICE_EVIDENCE_FILE_SHA256=${CAMPAIGN_APEX_RUNTIME_SERVICE_FILE_SHA256}"
+                -e "AGENT_KERNEL_ARENA_APEX_RUNTIME_SERVICE_EVIDENCE_CONTENT_SHA256=${CAMPAIGN_APEX_RUNTIME_SERVICE_CONTENT_SHA256}"
+            )
+        fi
+    fi
 
     # geak_v4's claude-agent-sdk is installed with `pip install --target` into
     # this host-mounted dir (see container_setup_geak). Only put it on
@@ -527,16 +1717,41 @@ build_docker_args() {
 
     if [[ -n "${AKA_VISIBLE_GPU:-}" ]]; then
         local logical_gpu="${AKA_LOGICAL_GPU:-0}"
-        docker_args+=(
-            -e "AGENT_KERNEL_ARENA_HOST_GPU_ID=${AKA_VISIBLE_GPU}"
-            -e "ROCR_VISIBLE_DEVICES=${AKA_VISIBLE_GPU}"
-            -e "HIP_VISIBLE_DEVICES=${logical_gpu}"
-            -e "CUDA_VISIBLE_DEVICES=${logical_gpu}"
-            -e "GPU_DEVICE_ORDINAL=${logical_gpu}"
-        )
+        if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+            [[ "$logical_gpu" == "0" ]] \
+                || die "formal GPU boundary requires AKA_LOGICAL_GPU=0"
+            [[ -n "$CAMPAIGN_GPU_PLAN_HOST" && -f "$CAMPAIGN_GPU_PLAN_HOST" ]] \
+                || die "formal worker has no verified GPU boundary plan"
+            [[ -n "$CAMPAIGN_GPU_EXCLUSIVITY_HOST" \
+                && -f "$CAMPAIGN_GPU_EXCLUSIVITY_HOST" \
+                && "$CAMPAIGN_GPU_EXCLUSIVITY_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+                || die "formal worker has no verified host GPU exclusivity receipt"
+            docker_args+=(
+                -e "AGENT_KERNEL_ARENA_HOST_GPU_ID=${AKA_VISIBLE_GPU}"
+                -e "ROCR_VISIBLE_DEVICES=0"
+                -e "HIP_VISIBLE_DEVICES=0"
+                -e "CUDA_VISIBLE_DEVICES=0"
+                -e "GPU_DEVICE_ORDINAL=0"
+                -e "AGENT_KERNEL_ARENA_GPU_BOUNDARY_PLAN=${CAMPAIGN_GPU_PLAN_CONTAINER}"
+                -e "AGENT_KERNEL_ARENA_GPU_BOUNDARY_PLAN_SHA256=${CAMPAIGN_GPU_PLAN_SHA256}"
+                -e "AGENT_KERNEL_ARENA_GPU_EXCLUSIVITY_RECEIPT=${CAMPAIGN_GPU_EXCLUSIVITY_HOST}"
+                -e "AGENT_KERNEL_ARENA_GPU_EXCLUSIVITY_RECEIPT_SHA256=${CAMPAIGN_GPU_EXCLUSIVITY_SHA256}"
+            )
+        else
+            docker_args+=(
+                -e "AGENT_KERNEL_ARENA_HOST_GPU_ID=${AKA_VISIBLE_GPU}"
+                -e "ROCR_VISIBLE_DEVICES=${AKA_VISIBLE_GPU}"
+                -e "HIP_VISIBLE_DEVICES=${logical_gpu}"
+                -e "CUDA_VISIBLE_DEVICES=${logical_gpu}"
+                -e "GPU_DEVICE_ORDINAL=${logical_gpu}"
+            )
+        fi
     fi
     if [[ -n "${AKA_WORKER_ID:-}" ]]; then
         docker_args+=(-e "AGENT_KERNEL_ARENA_WORKER_ID=${AKA_WORKER_ID}")
+    fi
+    if [[ -n "${AKA_GPU_POOL:-}" ]]; then
+        docker_args+=(-e "AGENT_KERNEL_ARENA_GPU_POOL=${AKA_GPU_POOL}")
     fi
     if [[ "${AGENT_HOME_ISOLATION:-0}" == "1" ]]; then
         docker_args+=(-e "AGENT_KERNEL_ARENA_ISOLATED_HOME=1")
@@ -576,11 +1791,75 @@ build_docker_args() {
         fi
     done
 
-    add_device_if_present /dev/kfd
-    add_device_if_present /dev/dri
-    add_device_if_present /dev/mem
+    if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+        if [[ -n "$CAMPAIGN_GPU_PLAN_HOST" ]]; then
+            local gpu_device_output gpu_device_arg gpu_device_count=0
+            gpu_device_output="$(
+                python3 "$HOST_ROOT/src/gpu_device_boundary.py" docker-args \
+                    --plan "$CAMPAIGN_GPU_PLAN_HOST" \
+                    --host-gpu-id "${AKA_VISIBLE_GPU:?formal worker GPU is unset}" \
+                    --dev-root "${AKA_GPU_BOUNDARY_DEV_ROOT:-/dev}"
+            )" || die "formal GPU devices no longer match the verified boundary plan"
+            while IFS= read -r gpu_device_arg; do
+                [[ -n "$gpu_device_arg" ]] || continue
+                if [[ "$gpu_device_arg" != "--device=/dev/kfd:/dev/kfd:rw" \
+                    && ! "$gpu_device_arg" =~ ^--device=/dev/dri/renderD[0-9]+:/dev/dri/renderD[0-9]+:rw$ ]]; then
+                    die "GPU boundary resolver returned an unsafe Docker argument"
+                fi
+                docker_args+=("$gpu_device_arg")
+                gpu_device_count=$((gpu_device_count + 1))
+            done <<< "$gpu_device_output"
+            [[ "$gpu_device_count" -ge 2 ]] \
+                || die "formal GPU boundary must expose /dev/kfd and at least one render node"
+        fi
+    else
+        add_device_if_present /dev/kfd
+        add_device_if_present /dev/dri
+        add_device_if_present /dev/mem
+    fi
 
-    add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR"
+    if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+        # Formal campaign workers need only read evaluator/task sources. Results,
+        # logs, and attempt workspaces are on the separately mounted /data tree.
+        add_mount "$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT" "$CONTAINER_WORKDIR" ro
+        add_mount "$CAMPAIGN_DATA_ROOT" "$CAMPAIGN_DATA_ROOT"
+        add_mount /usr/bin/bwrap /usr/bin/bwrap ro
+        need_path \
+            "$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT/agents/codex/formal_requirements.toml" \
+            "formal Codex requirements policy" 1
+        add_mount \
+            "$CAMPAIGN_AKA_RUNTIME_MOUNT_ROOT/agents/codex/formal_requirements.toml" \
+            "$FORMAL_CODEX_REQUIREMENTS_CONTAINER" ro
+        if [[ -n "$CAMPAIGN_GPU_PLAN_HOST" ]]; then
+            add_mount "$CAMPAIGN_GPU_PLAN_HOST" "$CAMPAIGN_GPU_PLAN_CONTAINER" ro
+        fi
+    else
+        add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR"
+    fi
+    if [[ "$APEX_RUNTIME" == "1" ]]; then
+        if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+            [[ -n "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" \
+                && -d "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" ]] \
+                || die "formal Apex worker has no sealed runtime snapshot"
+            add_mount \
+                "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" \
+                "$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT" ro
+            docker_args+=(
+                -e "AGENT_KERNEL_ARENA_APEX_RUNTIME_SNAPSHOT_ROOT=$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT"
+                -e "APEX_ROOT=$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT/repo"
+                -e "APEX_PYTHON=$CAMPAIGN_APEX_RUNTIME_SNAPSHOT_ROOT/sealed-bin/python"
+            )
+        else
+            add_mount "$APEX_HOST_ROOT" "$APEX_CONTAINER_ROOT" ro
+            docker_args+=(
+                -e "APEX_ROOT=$APEX_CONTAINER_ROOT"
+                -e "APEX_PYTHON=$APEX_CONTAINER_ROOT/.venv/bin/python"
+            )
+        fi
+        docker_args+=(
+            -e "PYTHONDONTWRITEBYTECODE=1"
+        )
+    fi
     # Persistent pip user-base (PYTHONUSERBASE) so `make docker-setup-flydsl` survives
     # across runs. It lives INSIDE the repo dir, which is already bind-mounted above and
     # is owned by the host user — this avoids a separate mount whose source the docker
@@ -624,7 +1903,74 @@ docker_exec() {
     local interactive="${1:-0}"
     shift
     build_docker_args "$interactive"
-    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@"
+    docker "${docker_args[@]}" -lc '
+        cd "$AGENT_KERNEL_ARENA_WORKDIR" || exit 1
+        if [[ -n "${AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST_SHA256:-}" ]]; then
+            aka_mount_receipt=/tmp/agentkernelarena-aka-runtime-mount-receipt.json
+            aka_mount_receipt_sha256="$(
+                python3 src/aka_runtime.py mount-receipt \
+                    --root "$AGENT_KERNEL_ARENA_AKA_RUNTIME_ROOT" \
+                    --manifest-sha256 "$AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST_SHA256" \
+                    --image-sha256 "$AGENT_KERNEL_ARENA_AKA_RUNTIME_IMAGE_SHA256" \
+                    --service-evidence "$AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE" \
+                    --service-file-sha256 "$AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE_FILE_SHA256" \
+                    --service-content-sha256 "$AGENT_KERNEL_ARENA_AKA_RUNTIME_SERVICE_EVIDENCE_CONTENT_SHA256" \
+                    --output "$aka_mount_receipt"
+            )" || exit 1
+            chmod 0444 "$aka_mount_receipt" || exit 1
+            export AGENT_KERNEL_ARENA_AKA_RUNTIME_MOUNT_RECEIPT="$aka_mount_receipt"
+            export AGENT_KERNEL_ARENA_AKA_RUNTIME_MOUNT_RECEIPT_SHA256="$aka_mount_receipt_sha256"
+            export AGENT_KERNEL_ARENA_AKA_RUNTIME_MOUNT_RECEIPT_FILE_SHA256="$(
+                sha256sum "$aka_mount_receipt" | cut -d" " -f1
+            )"
+        fi
+        if [[ -n "${AGENT_KERNEL_ARENA_APEX_RUNTIME_SNAPSHOT_ROOT:-}" ]]; then
+            apex_mount_receipt=/tmp/agentkernelarena-apex-runtime-mount-receipt.json
+            apex_mount_receipt_sha256="$(
+                python3 src/apex_runtime.py mount-receipt \
+                    --snapshot "$AGENT_KERNEL_ARENA_APEX_RUNTIME_SNAPSHOT_ROOT" \
+                    --sha256 "$AGENT_KERNEL_ARENA_APEX_RUNTIME_MANIFEST_SHA256" \
+                    --image-sha256 "$AGENT_KERNEL_ARENA_APEX_RUNTIME_IMAGE_SHA256" \
+                    --service-evidence "$AGENT_KERNEL_ARENA_APEX_RUNTIME_SERVICE_EVIDENCE" \
+                    --service-file-sha256 "$AGENT_KERNEL_ARENA_APEX_RUNTIME_SERVICE_EVIDENCE_FILE_SHA256" \
+                    --service-content-sha256 "$AGENT_KERNEL_ARENA_APEX_RUNTIME_SERVICE_EVIDENCE_CONTENT_SHA256" \
+                    --output "$apex_mount_receipt"
+            )" || exit 1
+            [[ "$apex_mount_receipt_sha256" =~ ^[0-9a-f]{64}$ ]] || {
+                echo "Apex runtime mount receipt did not emit a valid digest" >&2
+                exit 1
+            }
+            chmod 0444 "$apex_mount_receipt" || exit 1
+            export AGENT_KERNEL_ARENA_APEX_RUNTIME_MOUNT_RECEIPT="$apex_mount_receipt"
+            export AGENT_KERNEL_ARENA_APEX_RUNTIME_MOUNT_RECEIPT_SHA256="$apex_mount_receipt_sha256"
+            export AGENT_KERNEL_ARENA_APEX_RUNTIME_MOUNT_RECEIPT_FILE_SHA256="$(
+                sha256sum "$apex_mount_receipt" | cut -d" " -f1
+            )"
+        fi
+        if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then
+            bash src/scripts/docker_benchmark.sh _container_prepare_worker_home || exit 1
+        fi
+        if [[ -n "${AGENT_KERNEL_ARENA_GPU_BOUNDARY_PLAN:-}" ]]; then
+            receipt=/tmp/agentkernelarena-formal-gpu-boundary-receipt.json
+            runtime_inventory=/tmp/agentkernelarena-formal-rocm-inventory.json
+            torch_observation=/tmp/agentkernelarena-formal-torch-observation.json
+            command -v rocm-smi >/dev/null 2>&1 || exit 1
+            rocm-smi --showuniqueid --showserial --showproductname --json \
+                > "$runtime_inventory" || exit 1
+            python3 -c "import json, torch; count=torch.cuda.device_count(); props=torch.cuda.get_device_properties(0) if count else None; print(json.dumps(dict(device_count=count, device_name=getattr(props, \"name\", \"\"), gcn_arch_name=getattr(props, \"gcnArchName\", \"\"))))" \
+                > "$torch_observation" || exit 1
+            python3 src/gpu_device_boundary.py verify-runtime \
+                --plan "$AGENT_KERNEL_ARENA_GPU_BOUNDARY_PLAN" \
+                --host-gpu-id "$AGENT_KERNEL_ARENA_HOST_GPU_ID" \
+                --rocm-smi-json "$runtime_inventory" \
+                --torch-json "$torch_observation" \
+                --output "$receipt" || exit 1
+            rm -f -- "$runtime_inventory" "$torch_observation" || exit 1
+            chmod 0444 "$receipt" || exit 1
+            export AGENT_KERNEL_ARENA_GPU_BOUNDARY_RECEIPT="$receipt"
+        fi
+        exec "$@"
+    ' _ "$@"
 }
 
 extract_config_name() {
@@ -764,6 +2110,22 @@ container_preflight() {
     if [[ "$(read_agent_template "$config_name")" == geak_v4 ]]; then
         container_setup_geak
         container_check_geak
+    fi
+    if grep -Eq '^[[:space:]]+comparison:[[:space:]]*apex_vs_codex([[:space:]#]|$)' "$config_name"; then
+        command -v bwrap >/dev/null 2>&1 || die "bwrap is unavailable in campaign container"
+        bwrap --die-with-parent --unshare-pid --unshare-ipc --ro-bind / / \
+            --dev-bind /dev /dev --tmpfs /dev/shm --proc /proc -- /bin/true \
+            || die "bwrap cannot create the required per-attempt PID boundary"
+        python3 - <<'PY'
+import json
+
+from src.campaign_isolation import runtime_isolation_receipt
+
+print(
+    "runtime_isolation_receipt="
+    + json.dumps(runtime_isolation_receipt(), sort_keys=True, separators=(",", ":"))
+)
+PY
     fi
 python - "$config_name" <<'PY'
 import pathlib
@@ -922,7 +2284,12 @@ resolve_workspace_dir_for_config() {
     [[ -n "$prefix" ]] || die "workspace_directory_prefix not found in $config"
     [[ -n "$model" ]] || die "target_gpu_model not found in $config"
     [[ -n "$agent" ]] || die "agent.template not found in $config"
-    printf '%s/%s_%s_%s\n' "$HOST_ROOT" "$prefix" "$model" "$agent"
+    local workspace_name="${prefix}_${model}_${agent}"
+    if [[ "$workspace_name" == /* ]]; then
+        printf '%s\n' "$workspace_name"
+    else
+        printf '%s/%s\n' "$HOST_ROOT" "$workspace_name"
+    fi
 }
 
 resolve_latest_run_name() {
@@ -983,11 +2350,54 @@ safe_label() {
     printf '%s\n' "$value"
 }
 
+prepare_formal_container_home() {
+    local run_label="$1"
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+
+    local safe_run_label
+    safe_run_label="$(safe_label "$run_label")"
+    [[ -n "$safe_run_label" && "$safe_run_label" != "." && "$safe_run_label" != ".." ]] \
+        || die "formal container HOME label is unsafe"
+
+    # Formal containers mount the AKA checkout read-only, and the host HOME is
+    # intentionally not writable inside the container. Give every single-run
+    # entrypoint an ephemeral HOME so the read-only auth snapshot can be copied
+    # there without changing host state. Override any caller-provided CODEX_HOME
+    # as well so credentials and mutable session files cannot escape this HOME.
+    export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_label}"
+    export AKA_CODEX_HOME="${AKA_CONTAINER_HOME}/.codex"
+    export AKA_CACHE_SUFFIX="$safe_run_label"
+    export AGENT_HOME_ISOLATION=1
+}
+
+prepare_single_formal_gpu_runtime() {
+    local run_label="$1"
+    [[ "$CAMPAIGN_PROVENANCE" == "1" ]] || return 0
+    local -a gpu_ids=()
+    local gpu_id
+    while IFS= read -r gpu_id; do
+        [[ -n "$gpu_id" ]] || continue
+        [[ "$gpu_id" =~ ^[0-9]+$ ]] || die "GPU ID must be numeric: $gpu_id"
+        gpu_ids+=("$gpu_id")
+    done < <(resolve_gpu_ids)
+    [[ "${#gpu_ids[@]}" == "1" ]] \
+        || die "formal single run requires exactly one GPU ID; use parallel-run for a pool"
+    export AKA_VISIBLE_GPU="${gpu_ids[0]}"
+    export AKA_GPU_POOL="${gpu_ids[0]}"
+    export AKA_LOGICAL_GPU=0
+    prepare_campaign_gpu_boundary_plan "${gpu_ids[0]}"
+    acquire_campaign_gpu_exclusivity "$run_label"
+}
+
 run_parallel() {
     local config_name
     config_name="$(extract_config_name "$@")"
     select_runtime_for_config "$config_name"
     configure_geak_v4_runtime "$config_name"
+    configure_apex_runtime "$config_name"
+    configure_campaign_provenance "$config_name"
+    [[ "$CAMPAIGN_PROVENANCE" != "1" ]] \
+        || die "formal matched campaigns require single-container 'run'; parallel-run spans mount namespaces"
 
     REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
     AGENTS_STRICT=1
@@ -999,27 +2409,44 @@ run_parallel() {
     local -a gpu_ids=()
     local gpu_id
     while IFS= read -r gpu_id; do
-        [[ -n "$gpu_id" ]] && gpu_ids+=("$gpu_id")
+        [[ -n "$gpu_id" ]] || continue
+        [[ "$gpu_id" =~ ^[0-9]+$ ]] || die "GPU ID must be numeric: $gpu_id"
+        local existing
+        for existing in "${gpu_ids[@]}"; do
+            [[ "$existing" != "$gpu_id" ]] || die "GPU_IDS contains duplicate ID: $gpu_id"
+        done
+        gpu_ids+=("$gpu_id")
     done < <(resolve_gpu_ids)
     [[ "${#gpu_ids[@]}" -gt 0 ]] || die "No GPU IDs available; set GPU_IDS=0,1,..."
+
+    local gpu_pool_csv
+    gpu_pool_csv="$(IFS=,; printf '%s' "${gpu_ids[*]}")"
+    if [[ "$CAMPAIGN_PROVENANCE" == "1" ]]; then
+        prepare_campaign_gpu_boundary_plan "$gpu_pool_csv"
+        acquire_campaign_gpu_exclusivity "$run_name"
+    fi
 
     echo "Parallel run: run_name=${run_name} workers=${#gpu_ids[@]} gpu_ids=${gpu_ids[*]}" >&2
 
     (
         export AKA_VISIBLE_GPU="${gpu_ids[0]}"
+        export AKA_GPU_POOL="$gpu_pool_csv"
         export AKA_WORKER_ID="preflight"
         export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_name}-preflight"
         export AKA_CACHE_SUFFIX="${safe_run_name}-preflight"
         export AGENT_HOME_ISOLATION=1
+        prepare_formal_container_home "${safe_run_name}-preflight"
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
     )
 
     (
         export AKA_VISIBLE_GPU="${gpu_ids[0]}"
+        export AKA_GPU_POOL="$gpu_pool_csv"
         export AKA_WORKER_ID="init"
         export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_name}-init"
         export AKA_CACHE_SUFFIX="${safe_run_name}-init"
         export AGENT_HOME_ISOLATION=1
+        prepare_formal_container_home "${safe_run_name}-init"
         docker_exec 0 python main.py "$@" --parallel-init --run-name "$run_name"
     )
 
@@ -1029,10 +2456,12 @@ run_parallel() {
         gpu_id="${gpu_ids[$worker_id]}"
         (
             export AKA_VISIBLE_GPU="$gpu_id"
+            export AKA_GPU_POOL="$gpu_pool_csv"
             export AKA_WORKER_ID="$worker_id"
             export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_name}-worker-${worker_id}"
             export AKA_CACHE_SUFFIX="${safe_run_name}-worker-${worker_id}"
             export AGENT_HOME_ISOLATION=1
+            prepare_formal_container_home "${safe_run_name}-worker-${worker_id}"
             docker_exec 0 python main.py "$@" --parallel-worker --worker-id "$worker_id" --run-name "$run_name"
         ) &
         pids+=("$!")
@@ -1049,10 +2478,12 @@ run_parallel() {
     local postprocess_failed=0
     if ! (
         export AKA_VISIBLE_GPU="${gpu_ids[0]}"
+        export AKA_GPU_POOL="$gpu_pool_csv"
         export AKA_WORKER_ID="postprocess"
         export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_name}-postprocess"
         export AKA_CACHE_SUFFIX="${safe_run_name}-postprocess"
         export AGENT_HOME_ISOLATION=1
+        prepare_formal_container_home "${safe_run_name}-postprocess"
         docker_exec 0 python main.py "$@" --postprocess-only --run-name "$run_name"
     ); then
         postprocess_failed=1
@@ -1063,15 +2494,30 @@ run_parallel() {
     fi
 }
 
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    return 0
+fi
+
+CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+trap finish_with_campaign_runtime_cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 case "${1:-}" in
     run)
         shift
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
         configure_geak_v4_runtime "$config_name"
+        configure_apex_runtime "$config_name"
+        configure_campaign_provenance "$config_name"
+        prepare_formal_container_home "single-run-$$"
+        prepare_single_formal_gpu_runtime "single-run-$$"
         # Only the configured agent's CLI/auth is required for a run.
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
+        start_campaign_codex_refresh_supervisor
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
         docker_exec 0 python main.py "$@"
         ;;
@@ -1084,8 +2530,13 @@ case "${1:-}" in
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
         configure_geak_v4_runtime "$config_name"
+        configure_apex_runtime "$config_name"
+        configure_campaign_provenance "$config_name"
+        prepare_formal_container_home "preflight-$$"
+        prepare_single_formal_gpu_runtime "preflight-$$"
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
+        start_campaign_codex_refresh_supervisor
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
         ;;
     shell)
@@ -1105,10 +2556,14 @@ case "${1:-}" in
             [[ -f "$config_name" ]] || die "config file not found: $config_name"
         fi
         configure_geak_v4_runtime "$config_name"
+        configure_apex_runtime "$config_name"
+        configure_campaign_provenance "$config_name"
+        prepare_formal_container_home "check-agents-$$"
         # By default, check only the CLI selected by CONFIG. AKA_AGENTS can
         # request one, several, or `all` explicitly.
         REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"
         AGENTS_STRICT=1
+        prepare_campaign_codex_refresh_diagnostic
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_check_agents $REQUIRED_AGENTS
         ;;
     smoke)

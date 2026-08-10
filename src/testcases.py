@@ -570,7 +570,13 @@ def save_performance_results(
         # fell back to cuda_event timing (per-launch + sync overhead) would otherwise
         # fabricate a speedup/regression from the measurement-method delta alone.
         if case.metadata:
-            for k in ('benchmark_method', 'benchmark_fallback_reason'):
+            for k in (
+                'benchmark_method',
+                'benchmark_fallback_reason',
+                'benchmark_samples',
+                'benchmark_effective_repeats',
+                'benchmark_max_repeats',
+            ):
                 if case.metadata.get(k) is not None:
                     case_dict[k] = case.metadata[k]
         results['test_cases'].append(case_dict)

@@ -34,5 +34,12 @@ prompt:
 
     Constraints:
     - Must maintain the same function signature for `rms_norm`
-    - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+    - Preserve the public wrapper contract for arbitrary positive last-dimension
+      sizes, including non-power-of-two sizes and sizes too large for one Triton
+      block; optimized fast paths must retain a correct dynamic fallback
+    - Preserve input shape and dtype for float16, bfloat16, and float32 inputs,
+      use float32 accumulation, and accept non-contiguous input/weight views
+      through the wrapper without mutating them; return fresh non-aliasing storage
+    - Output must match the PyTorch reference within the case-specific tolerance
+      (at most atol=2e-2, rtol=2e-2)
   cheatsheet: null

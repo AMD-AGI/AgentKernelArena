@@ -22,3 +22,13 @@ speedup_calculation_error_message: null
 
 optimization_summary: "Framework-generated evaluator summary"
 score: 0.0
+
+# Matched campaigns add these controller-owned fields after centralized
+# evaluation. Diagnostic and explicit no-candidate baseline replays are never
+# candidate-scoring evidence; for Apex, only candidate_ready sets eligibility.
+# Fail closed until the campaign controller writes the evaluated session state.
+evaluation_mode: null
+agent_session_score_eligible: false
+agent_session_succeeded: false
+agent_session_error_type: null
+agent_session_terminal_status: null

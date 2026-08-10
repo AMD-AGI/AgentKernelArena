@@ -1,0 +1,3457 @@
+# Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
+"""Per-attempt mount and home isolation for formal matched campaigns."""
+
+from __future__ import annotations
+
+import base64
+import binascii
+import fcntl
+import hashlib
+import json
+import os
+import re
+import select
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Iterable, Mapping
+
+from src.codex_cloud_config_evidence import (
+    DEFAULT_CLOCK_SKEW_SECONDS,
+    DEFAULT_MAXIMUM_ENVELOPE_LIFETIME_SECONDS,
+    DEFAULT_MINIMUM_TTL_SECONDS,
+)
+from src.gpu_device_boundary import (
+    GpuBoundaryError,
+    RECEIPT_SCHEMA as GPU_BOUNDARY_RECEIPT_SCHEMA,
+    canonical_digest,
+    load_plan,
+    selected_device,
+)
+from src.gpu_exclusivity import GpuExclusivityError, load_receipt
+
+
+class CampaignIsolationError(RuntimeError):
+    """Raised when a formal attempt cannot be given a private filesystem view."""
+
+
+ATTEMPT_CONTAINMENT_POLICY = "private_pid_namespace_init_pidfd_v1"
+ATTEMPT_MOUNT_RECEIPT_SCHEMA_V1 = "aka.attempt-mounts/v1"
+ATTEMPT_MOUNT_RECEIPT_SCHEMA_V3 = "aka.attempt-mounts/v3"
+ATTEMPT_MOUNT_RECEIPT_SCHEMA = ATTEMPT_MOUNT_RECEIPT_SCHEMA_V3
+_NAMESPACE_MOUNT_ATTESTATION_POLICY = "blocked_namespace_mount_attestation_v2"
+_VISIBLE_MOUNT_RESOLUTION_POLICY = "proc_root_o_path_fdinfo_mnt_id_v1"
+APEX_RUNTIME_MOUNT_POLICY = (
+    "content_addressed_apex_runtime_snapshot_docker_bindable_read_only_v2"
+)
+APEX_RUNTIME_MOUNT_SCHEMA = "aka.apex-runtime-snapshot-receipt/v2"
+_BROAD_EXTERNAL_ROOTS = frozenset(
+    {Path("/tmp"), Path("/var/tmp"), Path("/dev/shm")}
+)
+_APEX_MOUNT_ROLES = frozenset(
+    {
+        "scored_workspace",
+        "sealed_task_contract",
+        "apex_runtime",
+        "apex_artifacts",
+        "backend_home",
+    }
+)
+
+
+class WrappedAttemptCommand(list[str]):
+    """Command argv plus narrowly scoped descriptors required by its mounts."""
+
+    def __init__(
+        self,
+        argv: Iterable[str],
+        *,
+        pass_fds: Iterable[int] = (),
+        boundary_status_fd: int | None = None,
+        boundary_gate_fd: int | None = None,
+        mount_status_fd: int | None = None,
+        mount_gate_fd: int | None = None,
+        boundary_procfs: str = "private_attempt_procfs",
+        mount_receipt: dict[str, Any] | None = None,
+        mount_contract: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(argv)
+        self.pass_fds = tuple(pass_fds)
+        self.boundary_status_fd = boundary_status_fd
+        self.boundary_gate_fd = boundary_gate_fd
+        self.mount_status_fd = mount_status_fd
+        self.mount_gate_fd = mount_gate_fd
+        self.boundary_procfs = boundary_procfs
+        self.mount_receipt = mount_receipt
+        self.mount_contract = mount_contract
+
+    def release_pass_fds(self) -> None:
+        descriptors, self.pass_fds = self.pass_fds, ()
+        for descriptor in descriptors:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+    def close_boundary_status_fd(self) -> None:
+        descriptor, self.boundary_status_fd = self.boundary_status_fd, None
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+    def close_boundary_gate_fd(self) -> None:
+        descriptor, self.boundary_gate_fd = self.boundary_gate_fd, None
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+    def close_mount_gate_fds(self) -> None:
+        for attribute in ("mount_status_fd", "mount_gate_fd"):
+            descriptor = getattr(self, attribute)
+            setattr(self, attribute, None)
+            if descriptor is not None:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+
+
+@dataclass
+class AttemptBoundary:
+    """Exact pidfd identity for a formal attempt's private PID namespace init."""
+
+    init_pidfd: int
+    status_fd: int
+    status: dict[str, int]
+    init_starttime: int
+    init_parent_pid: int
+    procfs: str
+    sigkill_sent: bool = False
+
+    def receipt(self) -> dict[str, Any]:
+        return {
+            "schema": "aka.attempt-process-boundary/v1",
+            "policy": ATTEMPT_CONTAINMENT_POLICY,
+            "pid_namespace_unshared": True,
+            "procfs": self.procfs,
+            "namespace_init_pid": self.status["child-pid"],
+            "namespace_init_starttime": self.init_starttime,
+            "namespace_init_parent_pid": self.init_parent_pid,
+            "namespace_init_inner_pid": 1,
+            "pid_namespace_id": self.status["pid-namespace"],
+            "mount_namespace_id": self.status["mnt-namespace"],
+            "ipc_namespace_id": self.status["ipc-namespace"],
+            "pidfd_opened": self.init_pidfd >= 0,
+            "identity_source": "pinned_bubblewrap_json_status_fd",
+        }
+
+    def close(self) -> None:
+        descriptor, self.init_pidfd = self.init_pidfd, -1
+        if descriptor >= 0:
+            os.close(descriptor)
+        descriptor, self.status_fd = self.status_fd, -1
+        if descriptor >= 0:
+            os.close(descriptor)
+
+    def terminate_now(self) -> None:
+        """Synchronously target the exact namespace init without numeric PID reuse."""
+        if self.init_pidfd < 0 or _pidfd_ready(self.init_pidfd, 0):
+            return
+        signal.pidfd_send_signal(self.init_pidfd, signal.SIGKILL)
+        self.sigkill_sent = True
+
+
+@dataclass(frozen=True)
+class _NamespaceMembershipScan:
+    """Visible `/proc` corroboration for authoritative pidfd teardown."""
+
+    enumeration_completed: bool
+    inaccessible_entries_count: int
+    live_visible_members: tuple[dict[str, Any], ...]
+
+    @property
+    def complete(self) -> bool:
+        return self.enumeration_completed and self.inaccessible_entries_count == 0
+
+
+_RUNTIME_ISOLATION_SCHEMA = "aka.runtime-isolation-receipt/v5"
+_ZERO_CAPABILITY_FIELDS = ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb")
+_CODEX_REQUIREMENTS_PATH = Path("/etc/codex/requirements.toml")
+_CODEX_PERMISSION_PROFILE = "aka_formal_kernel_v1"
+_CODEX_REQUIREMENTS_SHA256 = "0c68db4f0ee56b42f15af2896e51f4e667d9d6f86d9d3864dfec571278572ade"
+_CODEX_GPU_BWRAP_PATH = (
+    Path(__file__).resolve().parents[1] / "agents" / "codex" / "bin" / "bwrap"
+)
+_CODEX_GPU_BWRAP_SHA256 = "9271bd346d1ea5f878c8f345537e8464a56156b82f956942b66b82feb61791ef"
+_CODEX_GPU_BWRAP_SIZE_BYTES = 2381
+_CODEX_GPU_REAL_BWRAP_PATH = Path("/usr/bin/bwrap")
+_CODEX_GPU_REAL_BWRAP_SHA256 = "d78807229d616606e339c5988392b9e0ab4a6a6998fa51e4590837f426a12fca"
+_OUTER_BWRAP_PATH = Path("/usr/bin/bwrap")
+_OUTER_BWRAP_SHA256 = "d78807229d616606e339c5988392b9e0ab4a6a6998fa51e4590837f426a12fca"
+_OUTER_BWRAP_SIZE_BYTES = 72_160
+_OUTER_BWRAP_VERSION = "bubblewrap 0.6.1"
+_MOUNT_GATE_PYTHON = Path("/usr/bin/python3")
+_OUTER_BWRAP_SEALS = (
+    "F_SEAL_WRITE",
+    "F_SEAL_SHRINK",
+    "F_SEAL_GROW",
+    "F_SEAL_SEAL",
+)
+_CODEX_GPU_BWRAP_TRUSTED_DIR = Path("/tmp/aka-codex-gpu-bwrap")
+_CODEX_GPU_BWRAP_TRUSTED_PATH = _CODEX_GPU_BWRAP_TRUSTED_DIR / "bwrap"
+_DOCKER_MASKED_DIRECTORIES = (
+    "/proc/acpi",
+    "/proc/asound",
+    "/proc/scsi",
+    "/sys/devices/virtual/powercap",
+    "/sys/firmware",
+)
+_DOCKER_MASKED_FILES = (
+    "/proc/interrupts",
+    "/proc/kcore",
+    "/proc/keys",
+    "/proc/latency_stats",
+    "/proc/sched_debug",
+    "/proc/timer_list",
+    "/proc/timer_stats",
+)
+_DOCKER_READONLY_PATHS = (
+    "/proc/bus",
+    "/proc/fs",
+    "/proc/irq",
+    "/proc/sys",
+    "/proc/sysrq-trigger",
+)
+_CODEX_AUTH_RELATIVE_PATH = Path(".codex/auth.json")
+_CODEX_CLOUD_CONFIG_RELATIVE_PATH = Path(
+    ".codex/cloud-config-bundle-cache.json"
+)
+_CODEX_CLOUD_CONFIG_MAX_BYTES = 1024 * 1024
+_CODEX_CLOUD_CONFIG_MIN_TTL = timedelta(
+    seconds=DEFAULT_MINIMUM_TTL_SECONDS
+)
+_CODEX_CLOUD_CONFIG_MAX_LIFETIME = timedelta(
+    seconds=DEFAULT_MAXIMUM_ENVELOPE_LIFETIME_SECONDS
+)
+_CODEX_CLOUD_CONFIG_CLOCK_SKEW = timedelta(
+    seconds=DEFAULT_CLOCK_SKEW_SECONDS
+)
+_CODEX_CLOUD_CONFIG_TIMESTAMP = re.compile(
+    r"^(?P<seconds>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})"
+    r"(?:\.(?P<fraction>[0-9]{1,9}))?Z$"
+)
+CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA = "aka.codex-cloud-config-bootstrap/v2"
+CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY = (
+    "campaign_refreshed_minimal_home_identity_bound_signed_cache_v2"
+)
+
+_MOUNT_GATE_WRAPPER = r"""
+import os
+import sys
+
+status_fd = int(sys.argv[1])
+gate_fd = int(sys.argv[2])
+if sys.argv[3] != "--" or len(sys.argv) < 5:
+    raise SystemExit(72)
+keep = {status_fd, gate_fd}
+for value in os.listdir("/proc/self/fd"):
+    try:
+        descriptor = int(value)
+    except ValueError:
+        continue
+    if descriptor > 2 and descriptor not in keep:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+os.write(status_fd, b"mounts-ready\n")
+os.close(status_fd)
+if os.read(gate_fd, 2) != b"1":
+    raise SystemExit(73)
+os.close(gate_fd)
+os.execvpe(sys.argv[4], sys.argv[4:], os.environ)
+"""
+
+
+def _proc_status() -> dict[str, str]:
+    try:
+        lines = Path("/proc/self/status").read_text(encoding="utf-8").splitlines()
+    except OSError as error:
+        raise CampaignIsolationError("cannot read /proc/self/status") from error
+    status: dict[str, str] = {}
+    for line in lines:
+        key, separator, value = line.partition(":")
+        if separator:
+            status[key] = value.strip()
+    return status
+
+
+def _outer_runtime_observation() -> dict[str, Any]:
+    """Fail closed unless the outer Docker worker has the pinned security state."""
+    status = _proc_status()
+    capabilities: dict[str, int] = {}
+    for field in _ZERO_CAPABILITY_FIELDS:
+        raw = status.get(field, "")
+        try:
+            value = int(raw, 16)
+        except ValueError as error:
+            raise CampaignIsolationError(f"invalid {field} in /proc/self/status") from error
+        if value != 0:
+            raise CampaignIsolationError(f"formal Docker worker retained {field} capabilities")
+        capabilities[field] = value
+
+    try:
+        no_new_privileges = int(status.get("NoNewPrivs", ""))
+        seccomp_mode = int(status.get("Seccomp", ""))
+        seccomp_filters = int(status.get("Seccomp_filters", ""))
+    except ValueError as error:
+        raise CampaignIsolationError("invalid NNP/seccomp state in /proc/self/status") from error
+    if no_new_privileges != 1:
+        raise CampaignIsolationError("formal Docker worker requires no-new-privileges")
+    if seccomp_mode != 0 or seccomp_filters != 0:
+        raise CampaignIsolationError(
+            "formal Docker worker requires the pinned unconfined seccomp profile"
+        )
+
+    try:
+        apparmor_profile = Path("/proc/self/attr/current").read_text(
+            encoding="utf-8"
+        ).strip()
+    except OSError as error:
+        raise CampaignIsolationError("cannot read the Docker AppArmor profile") from error
+    if apparmor_profile != "unconfined":
+        raise CampaignIsolationError(
+            "formal Docker worker requires the pinned unconfined AppArmor profile"
+        )
+
+    try:
+        yama_ptrace_scope = int(
+            Path("/proc/sys/kernel/yama/ptrace_scope")
+            .read_text(encoding="utf-8")
+            .strip()
+        )
+    except (OSError, ValueError) as error:
+        raise CampaignIsolationError("cannot prove the Yama ptrace policy") from error
+    if yama_ptrace_scope < 1:
+        raise CampaignIsolationError(
+            "formal campaign requires kernel.yama.ptrace_scope >= 1"
+        )
+    if os.geteuid() == 0:
+        raise CampaignIsolationError("formal Docker worker must run as a non-root UID")
+
+    try:
+        pid_namespace = os.readlink("/proc/self/ns/pid")
+        ipc_namespace = os.readlink("/proc/self/ns/ipc")
+    except OSError as error:
+        raise CampaignIsolationError("cannot inspect outer Docker namespaces") from error
+    return {
+        "effective_uid": os.geteuid(),
+        "effective_gid": os.getegid(),
+        "supplementary_gids": sorted(set(os.getgroups())),
+        "capabilities": capabilities,
+        "no_new_privileges": True,
+        "seccomp_mode": seccomp_mode,
+        "seccomp_filters": seccomp_filters,
+        "apparmor_profile": apparmor_profile,
+        "yama_ptrace_scope": yama_ptrace_scope,
+        "pid_namespace": pid_namespace,
+        "ipc_namespace": ipc_namespace,
+    }
+
+
+_ATTEMPT_ESCAPE_PROBE = r"""
+import errno
+import json
+import os
+import pathlib
+import sys
+
+outer_pid = int(sys.argv[1])
+outer_fd = int(sys.argv[2])
+sentinel = pathlib.Path(sys.argv[3])
+outer_pid_namespace = sys.argv[4]
+outer_ipc_namespace = sys.argv[5]
+nonce = bytes.fromhex(sys.argv[6])
+
+def read_error(path):
+    try:
+        with open(path, "rb") as stream:
+            stream.read(1)
+        return None
+    except OSError as error:
+        return error.errno
+
+def read_bytes(path):
+    try:
+        return pathlib.Path(path).read_bytes()
+    except OSError:
+        return None
+
+def status_value(name):
+    for line in pathlib.Path("/proc/self/status").read_text(encoding="utf-8").splitlines():
+        key, separator, value = line.partition(":")
+        if separator and key == name:
+            return value.strip()
+    return ""
+
+def mount_options(path):
+    matches = []
+    for line in pathlib.Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if len(fields) > 6 and fields[4] == path:
+            matches.append(fields[5].split(","))
+    return matches
+
+def mount_identity(path):
+    matches = []
+    for line in pathlib.Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if len(fields) < 10 or fields[4] != path or "-" not in fields:
+            continue
+        separator = fields.index("-")
+        matches.append({
+            "root": fields[3],
+            "options": fields[5].split(","),
+            "filesystem": fields[separator + 1],
+            "source": fields[separator + 2],
+        })
+    return matches[-1] if matches else None
+
+def masked_directory(path):
+    identity = mount_identity(path)
+    if identity is None:
+        return not pathlib.Path(path).exists()
+    try:
+        empty = pathlib.Path(path).is_dir() and not any(pathlib.Path(path).iterdir())
+    except OSError:
+        return False
+    return (
+        empty
+        and identity["filesystem"] == "tmpfs"
+        and identity["root"] == "/"
+        and "ro" in identity["options"]
+    )
+
+def masked_file(path):
+    identity = mount_identity(path)
+    if identity is None:
+        return not pathlib.Path(path).exists()
+    return (
+        identity["root"] == "/null"
+        and identity["filesystem"] in {"tmpfs", "devtmpfs"}
+        and "ro" in identity["options"]
+    )
+
+def mount_read_only(path):
+    try:
+        return bool(os.statvfs(path).f_flag & os.ST_RDONLY)
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+
+parent_root = f"/proc/{outer_pid}/root{sentinel}"
+parent_fd = f"/proc/{outer_pid}/fd/{outer_fd}"
+proc_options = mount_options("/proc")
+direct_error = read_error(sentinel)
+visible_pid_namespaces = set()
+for entry in pathlib.Path("/proc").iterdir():
+    if not entry.name.isdigit():
+        continue
+    try:
+        visible_pid_namespaces.add(os.readlink(entry / "ns/pid"))
+    except OSError:
+        pass
+result = {
+    "campaign_data_hidden": direct_error == errno.ENOENT,
+    "outer_pid_namespace_absent_from_private_proc": (
+        outer_pid_namespace not in visible_pid_namespaces
+    ),
+    # Numeric PIDs can collide across nested namespaces.  Compare the secret
+    # bytes, not errno, so a same-number attempt process cannot create a false
+    # isolation proof.
+    "parent_root_sentinel_unreachable": read_bytes(parent_root) != nonce,
+    "parent_fd_sentinel_unreachable": read_bytes(parent_fd) != nonce,
+    "proc_mount_read_write": bool(proc_options) and "rw" in proc_options[-1],
+    "pid_namespace_unshared": os.readlink("/proc/self/ns/pid") != outer_pid_namespace,
+    "ipc_namespace_unshared": os.readlink("/proc/self/ns/ipc") != outer_ipc_namespace,
+    "private_shm": any(
+        len(fields) > 6 and fields[4] == "/dev/shm" and "tmpfs" in fields
+        for fields in (
+            line.split()
+            for line in pathlib.Path("/proc/self/mountinfo")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        )
+    ),
+    "docker_system_paths_remasked": all(
+        masked_directory(path)
+        for path in (
+            "/proc/acpi", "/proc/asound", "/proc/scsi",
+            "/sys/devices/virtual/powercap", "/sys/firmware",
+        )
+    ) and all(
+        masked_file(path)
+        for path in (
+            "/proc/interrupts", "/proc/kcore", "/proc/keys",
+            "/proc/latency_stats", "/proc/sched_debug", "/proc/timer_list",
+            "/proc/timer_stats",
+        )
+    ),
+    "private_proc_control_writes_blocked": all(
+        mount_read_only(path)
+        for path in (
+            "/proc/bus", "/proc/fs", "/proc/irq", "/proc/sys",
+            "/proc/sysrq-trigger",
+        )
+    ),
+    "no_new_privileges": status_value("NoNewPrivs") == "1",
+    "effective_capabilities_zero": int(status_value("CapEff"), 16) == 0,
+    "bounding_capabilities_zero": int(status_value("CapBnd"), 16) == 0,
+    "all_capability_sets_zero": all(
+        int(status_value(name), 16) == 0
+        for name in ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb")
+    ),
+    "seccomp_disabled": (
+        status_value("Seccomp") == "0" and status_value("Seccomp_filters") == "0"
+    ),
+}
+print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+raise SystemExit(0 if all(result.values()) else 73)
+"""
+
+
+def _sha256_regular_file(path: Path) -> str:
+    if not path.is_file():
+        raise CampaignIsolationError(f"isolation executable is not a file: {path}")
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError as error:
+        raise CampaignIsolationError(f"cannot hash isolation executable: {path}") from error
+    return digest.hexdigest()
+
+
+def _codex_requirements_identity() -> tuple[Path, dict[str, Any]]:
+    """Validate the immutable managed policy used by both formal treatments."""
+    path = _CODEX_REQUIREMENTS_PATH
+    try:
+        metadata = path.lstat()
+    except OSError as error:
+        raise CampaignIsolationError("formal Codex requirements are unavailable") from error
+    if (
+        path.is_symlink()
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_nlink != 1
+    ):
+        raise CampaignIsolationError("formal Codex requirements file is unsafe")
+    digest = _sha256_regular_file(path)
+    if digest != _CODEX_REQUIREMENTS_SHA256:
+        raise CampaignIsolationError("formal Codex requirements violate the pinned policy")
+    resolved = path.resolve(strict=True)
+    return resolved, {
+        "resolved_path": str(resolved),
+        "sha256": digest,
+        "permission_profile": _CODEX_PERMISSION_PROFILE,
+        "agent_requested_sandbox": "workspace-write_legacy_cli",
+        "effective_profile_probe": "explicit_named_profile_live",
+        "normalization_evidence": "managed_allowlist_plus_pinned_cli_identity",
+        "workspace_write": True,
+        "credential_path": "~/.codex/auth.json",
+        "credential_read": "deny",
+        "command_network": "deny",
+        "device_access": (
+            "sealed_pinned_immutable_path_bwrap_with_docker_device_boundary"
+        ),
+        "hooks": "disabled",
+    }
+
+
+def _codex_gpu_bwrap_identity() -> tuple[Path, dict[str, Any]]:
+    path = _CODEX_GPU_BWRAP_PATH
+    try:
+        metadata = path.lstat()
+    except OSError as error:
+        raise CampaignIsolationError("formal Codex GPU bwrap shim is unavailable") from error
+    if (
+        path.is_symlink()
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_nlink != 1
+        or not metadata.st_mode & stat.S_IXUSR
+    ):
+        raise CampaignIsolationError("formal Codex GPU bwrap shim is unsafe")
+    if metadata.st_size != _CODEX_GPU_BWRAP_SIZE_BYTES:
+        raise CampaignIsolationError("formal Codex GPU bwrap shim violates its pin")
+    digest = _sha256_regular_file(path)
+    if digest != _CODEX_GPU_BWRAP_SHA256:
+        raise CampaignIsolationError("formal Codex GPU bwrap shim violates its pin")
+    resolved = path.resolve(strict=True)
+    try:
+        real_metadata = _CODEX_GPU_REAL_BWRAP_PATH.lstat()
+    except OSError as error:
+        raise CampaignIsolationError("formal Codex real bwrap is unavailable") from error
+    if (
+        _CODEX_GPU_REAL_BWRAP_PATH.is_symlink()
+        or not stat.S_ISREG(real_metadata.st_mode)
+        or real_metadata.st_nlink != 1
+        or not real_metadata.st_mode & stat.S_IXUSR
+    ):
+        raise CampaignIsolationError("formal Codex real bwrap is unsafe")
+    real_digest = _sha256_regular_file(_CODEX_GPU_REAL_BWRAP_PATH)
+    if real_digest != _CODEX_GPU_REAL_BWRAP_SHA256:
+        raise CampaignIsolationError("formal Codex real bwrap violates its pin")
+    return resolved, {
+        "resolved_path": str(resolved),
+        "sha256": digest,
+        "size_bytes": _CODEX_GPU_BWRAP_SIZE_BYTES,
+        "interpreter": "/usr/bin/python3 -I",
+        "real_bwrap": str(_CODEX_GPU_REAL_BWRAP_PATH),
+        "real_bwrap_sha256": real_digest,
+        "sandbox_mounted_path": str(_CODEX_GPU_BWRAP_TRUSTED_PATH),
+        "mount_transport": (
+            "sealed_memfd_ro_bind_data_under_remounted_ro_tmpfs"
+        ),
+        "device_policy": "docker_visible_kfd_and_render_nodes_only",
+    }
+
+
+def _sealed_codex_gpu_bwrap(source: Path) -> int:
+    """Copy the pinned shim into an immutable anonymous file for exact binding."""
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    source_descriptor = -1
+    sealed_descriptor = -1
+    try:
+        source_descriptor = os.open(source, flags)
+        metadata = os.fstat(source_descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
+        ):
+            raise CampaignIsolationError("formal Codex GPU bwrap shim is unsafe")
+        if metadata.st_size != _CODEX_GPU_BWRAP_SIZE_BYTES:
+            raise CampaignIsolationError("formal Codex GPU bwrap shim violates its pin")
+        payload = bytearray()
+        while len(payload) <= _CODEX_GPU_BWRAP_SIZE_BYTES:
+            chunk = os.read(
+                source_descriptor,
+                _CODEX_GPU_BWRAP_SIZE_BYTES + 1 - len(payload),
+            )
+            if not chunk:
+                break
+            payload.extend(chunk)
+        if (
+            len(payload) != _CODEX_GPU_BWRAP_SIZE_BYTES
+            or hashlib.sha256(payload).hexdigest() != _CODEX_GPU_BWRAP_SHA256
+        ):
+            raise CampaignIsolationError("formal Codex GPU bwrap shim violates its pin")
+
+        sealed_descriptor = os.memfd_create(
+            "aka-codex-gpu-bwrap",
+            os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING,
+        )
+        remaining = memoryview(payload)
+        while remaining:
+            written = os.write(sealed_descriptor, remaining)
+            if written <= 0:
+                raise CampaignIsolationError("cannot materialize formal Codex GPU bwrap")
+            remaining = remaining[written:]
+        os.fchmod(sealed_descriptor, 0o555)
+        seals = (
+            fcntl.F_SEAL_WRITE
+            | fcntl.F_SEAL_SHRINK
+            | fcntl.F_SEAL_GROW
+            | fcntl.F_SEAL_SEAL
+        )
+        fcntl.fcntl(sealed_descriptor, fcntl.F_ADD_SEALS, seals)
+        if fcntl.fcntl(sealed_descriptor, fcntl.F_GET_SEALS) != seals:
+            raise CampaignIsolationError("formal Codex GPU bwrap memfd is not fully sealed")
+        os.lseek(sealed_descriptor, 0, os.SEEK_SET)
+        result, sealed_descriptor = sealed_descriptor, -1
+        return result
+    except (AttributeError, OSError) as error:
+        raise CampaignIsolationError(
+            "cannot create sealed formal Codex GPU bwrap transport"
+        ) from error
+    finally:
+        if source_descriptor >= 0:
+            os.close(source_descriptor)
+        if sealed_descriptor >= 0:
+            os.close(sealed_descriptor)
+
+
+_CODEX_SANDBOX_PROBE = r"""
+import errno
+import json
+import os
+import pathlib
+import socket
+import sys
+
+workspace = pathlib.Path(sys.argv[1])
+credential = pathlib.Path(sys.argv[2])
+outer_pid_namespace = sys.argv[3]
+trusted_gpu_bwrap = pathlib.Path(sys.argv[4])
+marker = workspace / "managed-sandbox-write-probe"
+
+def read_error(path):
+    try:
+        pathlib.Path(path).read_bytes()
+    except OSError as error:
+        return error.errno
+    return None
+
+try:
+    credential.read_bytes()
+    credential_errno = None
+except OSError as error:
+    credential_errno = error.errno
+
+try:
+    marker.write_text("ok", encoding="utf-8")
+    workspace_write = marker.read_text(encoding="utf-8") == "ok"
+except OSError:
+    workspace_write = False
+
+network_errno = None
+sock = None
+try:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(1.0)
+    network_errno = sock.connect_ex(("1.1.1.1", 443))
+except OSError as error:
+    network_errno = error.errno
+finally:
+    if sock is not None:
+        sock.close()
+
+mutation_denied_errors = {errno.EACCES, errno.EPERM, errno.EROFS, errno.EBUSY}
+renamed_trusted_dir = trusted_gpu_bwrap.parent.with_name(
+    trusted_gpu_bwrap.parent.name + "-renamed"
+)
+try:
+    trusted_gpu_bwrap.parent.rename(renamed_trusted_dir)
+    trusted_dir_rename_errno = None
+except OSError as error:
+    trusted_dir_rename_errno = error.errno
+
+try:
+    trusted_gpu_bwrap.unlink()
+    trusted_path_unlink_errno = None
+except OSError as error:
+    trusted_path_unlink_errno = error.errno
+
+renamed_trusted_path = trusted_gpu_bwrap.with_name(
+    trusted_gpu_bwrap.name + "-renamed"
+)
+try:
+    trusted_gpu_bwrap.rename(renamed_trusted_path)
+    trusted_path_rename_errno = None
+except OSError as error:
+    trusted_path_rename_errno = error.errno
+
+replacement = workspace / "replacement-bwrap"
+replacement.write_bytes(b"malicious")
+try:
+    replacement.replace(trusted_gpu_bwrap)
+    trusted_path_replace_errno = None
+except OSError as error:
+    trusted_path_replace_errno = error.errno
+
+try:
+    descriptor = os.open(trusted_gpu_bwrap, os.O_WRONLY | os.O_TRUNC)
+    os.close(descriptor)
+    trusted_path_write_errno = None
+except OSError as error:
+    trusted_path_write_errno = error.errno
+
+render_nodes = sorted(pathlib.Path("/dev/dri").glob("renderD*"))
+assigned_gpu_devices_visible = pathlib.Path("/dev/kfd").exists() and bool(render_nodes)
+device_descriptors = []
+device_open_error = None
+try:
+    for device in (pathlib.Path("/dev/kfd"), *render_nodes):
+        device_descriptors.append(os.open(device, os.O_RDWR | os.O_CLOEXEC))
+    assigned_gpu_devices_writable = bool(render_nodes)
+except OSError as error:
+    device_open_error = repr(error)
+    assigned_gpu_devices_writable = False
+finally:
+    for descriptor in device_descriptors:
+        os.close(descriptor)
+
+torch_probe_error = None
+try:
+    import torch
+    single_gpu_runtime_visible = torch.cuda.is_available() and torch.cuda.device_count() == 1
+    if single_gpu_runtime_visible:
+        values = torch.arange(16, dtype=torch.float32, device="cuda")
+        gpu_compute_probe_passed = values.sum().item() == 120.0
+    else:
+        gpu_compute_probe_passed = False
+except Exception as error:
+    torch_probe_error = repr(error)
+    single_gpu_runtime_visible = False
+    gpu_compute_probe_passed = False
+
+blocked_proc_errors = {errno.EACCES, errno.EPERM, errno.ENOENT}
+result = {
+    "workspace_write_enforced": workspace_write,
+    "credential_read_denied": credential_errno in {errno.EACCES, errno.EPERM, errno.ENOENT},
+    "command_network_denied": network_errno in {
+        errno.EACCES,
+        errno.EPERM,
+        errno.ENETDOWN,
+        errno.ENETUNREACH,
+        errno.EHOSTUNREACH,
+    },
+    "command_not_in_worker_pid_namespace": (
+        os.readlink("/proc/self/ns/pid") != outer_pid_namespace
+    ),
+    # /proc/1 is the closest PID-namespace init visible to the managed command.
+    # These probes close the common /proc/<pid>/root credential-bypass route
+    # without assuming host and namespace PID numbers cannot collide.
+    "pid1_root_alias_credential_blocked": (
+        read_error(f"/proc/1/root{credential}") in blocked_proc_errors
+    ),
+    "pid1_environ_blocked": (
+        read_error("/proc/1/environ") in blocked_proc_errors
+    ),
+    "pid1_mem_blocked": read_error("/proc/1/mem") in blocked_proc_errors,
+    "pinned_gpu_bwrap_active": os.environ.get("AKA_CODEX_GPU_BWRAP_ACTIVE") == "1",
+    "gpu_bwrap_directory_immutable": (
+        trusted_dir_rename_errno in mutation_denied_errors
+    ),
+    "gpu_bwrap_path_immutable": all(
+        value in mutation_denied_errors
+        for value in (
+            trusted_path_unlink_errno,
+            trusted_path_rename_errno,
+            trusted_path_write_errno,
+        )
+    ) and trusted_path_replace_errno in (
+        mutation_denied_errors | {errno.EXDEV}
+    ),
+    "assigned_gpu_devices_visible": assigned_gpu_devices_visible,
+    "assigned_gpu_devices_writable": assigned_gpu_devices_writable,
+    "single_gpu_runtime_visible": single_gpu_runtime_visible,
+    "gpu_compute_probe_passed": gpu_compute_probe_passed,
+}
+if not (
+    result["gpu_bwrap_directory_immutable"]
+    and result["gpu_bwrap_path_immutable"]
+    and assigned_gpu_devices_visible
+    and assigned_gpu_devices_writable
+    and single_gpu_runtime_visible
+    and gpu_compute_probe_passed
+):
+    device_metadata = {}
+    for device in (pathlib.Path("/dev/kfd"), *render_nodes):
+        try:
+            metadata = device.stat()
+            device_metadata[str(device)] = {
+                "uid": metadata.st_uid,
+                "gid": metadata.st_gid,
+                "mode": oct(metadata.st_mode & 0o777),
+            }
+        except OSError as error:
+            device_metadata[str(device)] = {"stat_error": repr(error)}
+    print(json.dumps({
+        "gpu_probe_diagnostic": {
+            "euid": os.geteuid(),
+            "egid": os.getegid(),
+            "groups": os.getgroups(),
+            "devices": device_metadata,
+            "device_open_error": device_open_error,
+            "torch_probe_error": torch_probe_error,
+            "trusted_gpu_bwrap_mutation_errnos": {
+                "rename_directory": trusted_dir_rename_errno,
+                "unlink_path": trusted_path_unlink_errno,
+                "rename_path": trusted_path_rename_errno,
+                "replace_path": trusted_path_replace_errno,
+                "write_path": trusted_path_write_errno,
+            },
+        }
+    }, sort_keys=True, separators=(",", ":")), file=sys.stderr)
+print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+raise SystemExit(0 if all(result.values()) else 74)
+"""
+
+
+def _descriptor_payload(descriptor: int, expected_size: int) -> bytes:
+    payload = bytearray()
+    offset = 0
+    while len(payload) <= expected_size:
+        chunk = os.pread(descriptor, expected_size + 1 - len(payload), offset)
+        if not chunk:
+            break
+        payload.extend(chunk)
+        offset += len(chunk)
+    return bytes(payload)
+
+
+def _sealed_outer_bwrap() -> tuple[int, dict[str, Any]]:
+    """Return a sealed exact-byte executable copied from canonical bwrap."""
+
+    source_fd = sealed_fd = -1
+    flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        source_fd = os.open(_OUTER_BWRAP_PATH, flags)
+        source = os.fstat(source_fd)
+        lexical = _OUTER_BWRAP_PATH.lstat()
+        payload = _descriptor_payload(source_fd, _OUTER_BWRAP_SIZE_BYTES)
+        digest = hashlib.sha256(payload).hexdigest()
+        if (
+            not stat.S_ISREG(source.st_mode)
+            or stat.S_ISLNK(lexical.st_mode)
+            or (source.st_dev, source.st_ino) != (lexical.st_dev, lexical.st_ino)
+            or source.st_uid != 0
+            or source.st_gid != 0
+            or source.st_nlink != 1
+            or not source.st_mode & stat.S_IXUSR
+            or source.st_size != _OUTER_BWRAP_SIZE_BYTES
+            or len(payload) != _OUTER_BWRAP_SIZE_BYTES
+            or digest != _OUTER_BWRAP_SHA256
+        ):
+            raise CampaignIsolationError("canonical outer bubblewrap violates its pin")
+        sealed_fd = os.memfd_create(
+            "aka-outer-bwrap", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING
+        )
+        remaining = memoryview(payload)
+        while remaining:
+            written = os.write(sealed_fd, remaining)
+            if written <= 0:
+                raise CampaignIsolationError("cannot materialize sealed outer bubblewrap")
+            remaining = remaining[written:]
+        os.fchmod(sealed_fd, 0o555)
+        seals = (
+            fcntl.F_SEAL_WRITE
+            | fcntl.F_SEAL_SHRINK
+            | fcntl.F_SEAL_GROW
+            | fcntl.F_SEAL_SEAL
+        )
+        fcntl.fcntl(sealed_fd, fcntl.F_ADD_SEALS, seals)
+        sealed = os.fstat(sealed_fd)
+        if (
+            fcntl.fcntl(sealed_fd, fcntl.F_GET_SEALS) != seals
+            or sealed.st_size != source.st_size
+            or hashlib.sha256(
+                _descriptor_payload(sealed_fd, _OUTER_BWRAP_SIZE_BYTES)
+            ).hexdigest()
+            != digest
+        ):
+            raise CampaignIsolationError("sealed outer bubblewrap identity changed")
+        identity = {
+            "policy": "canonical_source_to_sealed_memfd_exec_v1",
+            "canonical_path": str(_OUTER_BWRAP_PATH),
+            "source": {
+                "device": source.st_dev,
+                "inode": source.st_ino,
+                "mode": stat.S_IMODE(source.st_mode),
+                "uid": source.st_uid,
+                "gid": source.st_gid,
+                "nlink": source.st_nlink,
+                "size_bytes": source.st_size,
+                "sha256": digest,
+            },
+            "sealed_exec": {
+                "transport": "sealed_memfd_proc_self_fd",
+                "size_bytes": sealed.st_size,
+                "sha256": digest,
+                "seals": list(_OUTER_BWRAP_SEALS),
+            },
+        }
+        result, sealed_fd = sealed_fd, -1
+        return result, identity
+    except (AttributeError, OSError) as error:
+        raise CampaignIsolationError("cannot seal canonical outer bubblewrap") from error
+    finally:
+        if source_fd >= 0:
+            os.close(source_fd)
+        if sealed_fd >= 0:
+            os.close(sealed_fd)
+
+
+def _bubblewrap_identity() -> tuple[Path, dict[str, Any]]:
+    descriptor = -1
+    try:
+        descriptor, sealed = _sealed_outer_bwrap()
+        completed = subprocess.run(
+            [f"/proc/self/fd/{descriptor}", "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+            pass_fds=(descriptor,),
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise CampaignIsolationError("cannot identify bubblewrap") from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    version = (completed.stdout or completed.stderr).strip()
+    if completed.returncode != 0 or version != _OUTER_BWRAP_VERSION:
+        raise CampaignIsolationError("bubblewrap version violates its pin")
+    return _OUTER_BWRAP_PATH, {
+        "resolved_path": str(_OUTER_BWRAP_PATH),
+        "sha256": sealed["source"]["sha256"],
+        "version": version,
+        "execution_transport": sealed["sealed_exec"]["transport"],
+    }
+
+
+def _bubblewrap_base_command(
+    binary: str | Path,
+    data_root: Path,
+    *,
+    private_proc: bool = True,
+) -> list[str]:
+    """Pinned mount/namespace boundary shared by probes and real attempts."""
+    command = [
+        str(binary),
+        "--die-with-parent",
+        "--unshare-ipc",
+        "--unshare-pid",
+        "--ro-bind",
+        "/",
+        "/",
+        "--dev-bind",
+        "/dev",
+        "/dev",
+        "--tmpfs",
+        "/dev/shm",
+    ]
+    if private_proc:
+        command.extend(["--proc", "/proc"])
+        # A replaced procfs no longer carries Docker's protected submounts.
+        # Recreate them before the untrusted direct backend can execute.
+        for path in _DOCKER_MASKED_DIRECTORIES:
+            if Path(path).is_dir():
+                command.extend(["--tmpfs", path, "--remount-ro", path])
+        for path in _DOCKER_MASKED_FILES:
+            if Path(path).exists():
+                command.extend(["--ro-bind", "/dev/null", path])
+        for path in _DOCKER_READONLY_PATHS:
+            if Path(path).exists():
+                command.extend(["--ro-bind", path, path])
+    else:
+        # Apex is trusted at this layer and must create a nested user namespace
+        # around its untrusted backend.  The recursive read-only root bind above
+        # otherwise makes /proc/<pid>/uid_map unwritable and causes inner bwrap
+        # to fail before it can establish that stronger boundary.
+        command.extend(["--bind", "/proc", "/proc"])
+    command.extend(["--tmpfs", "/tmp", "--tmpfs", str(data_root)])
+    return command
+
+
+def _mount_codex_gpu_bwrap(command: list[str], descriptor: int) -> None:
+    """Expose sealed shim bytes on an immutable private mount outside Codex's cwd."""
+    command.extend(
+        [
+            "--perms",
+            "0555",
+            "--dir",
+            str(_CODEX_GPU_BWRAP_TRUSTED_DIR),
+            "--tmpfs",
+            str(_CODEX_GPU_BWRAP_TRUSTED_DIR),
+            "--perms",
+            "0555",
+            "--ro-bind-data",
+            str(descriptor),
+            str(_CODEX_GPU_BWRAP_TRUSTED_PATH),
+            "--remount-ro",
+            str(_CODEX_GPU_BWRAP_TRUSTED_DIR),
+        ]
+    )
+
+
+def _codex_cli_identity() -> tuple[Path, dict[str, str]]:
+    discovered = shutil.which("codex")
+    if not discovered:
+        raise CampaignIsolationError("formal campaign requires the Codex CLI")
+    try:
+        binary = Path(discovered).resolve(strict=True)
+        completed = subprocess.run(
+            [str(binary), "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise CampaignIsolationError("cannot identify the Codex CLI") from error
+    version = (completed.stdout or completed.stderr).strip()
+    if completed.returncode != 0 or not version:
+        raise CampaignIsolationError("Codex CLI version is unavailable")
+    return binary, {
+        "resolved_path": str(binary),
+        "sha256": _sha256_regular_file(binary),
+        "version": version,
+    }
+
+
+def _codex_sandbox_probe(
+    *,
+    codex_binary: Path,
+    bubblewrap_binary: Path,
+    gpu_bubblewrap_binary: Path,
+    data_root: Path,
+) -> dict[str, bool]:
+    """Exercise the exact outer mount boundary and Codex managed command policy."""
+    probe_dir = Path(tempfile.mkdtemp(prefix=".aka-codex-sandbox-probe-", dir=data_root))
+    home = probe_dir / "home"
+    workspace = probe_dir / "workspace"
+    credential = home / ".codex" / "auth.json"
+    outer_bwrap_descriptor = -1
+    gpu_bwrap_descriptor = -1
+    try:
+        if bubblewrap_binary.resolve(strict=True) != _OUTER_BWRAP_PATH:
+            raise CampaignIsolationError("Codex probe received unpinned outer bubblewrap")
+        outer_bwrap_descriptor, _outer_identity = _sealed_outer_bwrap()
+        credential.parent.mkdir(parents=True)
+        workspace.mkdir()
+        credential.write_text('{"fixture":"must-not-be-readable"}\n', encoding="utf-8")
+        outer_pid_namespace = os.readlink("/proc/self/ns/pid")
+        command = _bubblewrap_base_command(
+            f"/proc/self/fd/{outer_bwrap_descriptor}", data_root
+        )
+        gpu_bwrap_descriptor = _sealed_codex_gpu_bwrap(gpu_bubblewrap_binary)
+        _mount_codex_gpu_bwrap(command, gpu_bwrap_descriptor)
+        current = data_root
+        for part in probe_dir.relative_to(data_root).parts:
+            current /= part
+            command.extend(["--dir", str(current)])
+        command.extend(
+            [
+                "--bind",
+                str(probe_dir),
+                str(probe_dir),
+                "--",
+                str(codex_binary),
+                "sandbox",
+                "--include-managed-config",
+                "--permission-profile",
+                _CODEX_PERMISSION_PROFILE,
+                "-C",
+                str(workspace),
+                "--",
+                sys.executable,
+                "-c",
+                _CODEX_SANDBOX_PROBE,
+                str(workspace),
+                str(credential),
+                outer_pid_namespace,
+                str(_CODEX_GPU_BWRAP_TRUSTED_PATH),
+            ]
+        )
+        environment = dict(os.environ)
+        environment["PATH"] = (
+            f"{_CODEX_GPU_BWRAP_TRUSTED_DIR}{os.pathsep}"
+            f"{environment.get('PATH', '')}"
+        )
+        environment.update(
+            {
+                "HOME": str(home),
+                "CODEX_HOME": str(home / ".codex"),
+                "XDG_CONFIG_HOME": str(home / ".config"),
+                "XDG_STATE_HOME": str(home / ".local/state"),
+                "PYTHONDONTWRITEBYTECODE": "1",
+            }
+        )
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=30,
+                env=environment,
+                pass_fds=(outer_bwrap_descriptor, gpu_bwrap_descriptor),
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise CampaignIsolationError("Codex managed sandbox probe failed to run") from error
+        lines = [line for line in completed.stdout.splitlines() if line.strip()]
+        try:
+            result = json.loads(lines[-1]) if lines else None
+        except json.JSONDecodeError as error:
+            raise CampaignIsolationError(
+                f"Codex managed sandbox probe emitted invalid evidence: {completed.stderr.strip()}"
+            ) from error
+        expected_keys = {
+            "workspace_write_enforced",
+            "credential_read_denied",
+            "command_network_denied",
+            "command_not_in_worker_pid_namespace",
+            "pid1_root_alias_credential_blocked",
+            "pid1_environ_blocked",
+            "pid1_mem_blocked",
+            "pinned_gpu_bwrap_active",
+            "gpu_bwrap_directory_immutable",
+            "gpu_bwrap_path_immutable",
+            "assigned_gpu_devices_visible",
+            "assigned_gpu_devices_writable",
+            "single_gpu_runtime_visible",
+            "gpu_compute_probe_passed",
+        }
+        if (
+            completed.returncode != 0
+            or not isinstance(result, dict)
+            or set(result) != expected_keys
+            or any(result.get(key) is not True for key in expected_keys)
+        ):
+            raise CampaignIsolationError(
+                "Codex managed sandbox probe failed closed: "
+                f"result={result!r} stderr={completed.stderr.strip()!r}"
+            )
+        return result
+    finally:
+        if outer_bwrap_descriptor >= 0:
+            os.close(outer_bwrap_descriptor)
+        if gpu_bwrap_descriptor >= 0:
+            os.close(gpu_bwrap_descriptor)
+        shutil.rmtree(probe_dir, ignore_errors=False)
+
+
+def _attempt_escape_probe(
+    *, binary: Path, data_root: Path, outer: dict[str, Any]
+) -> dict[str, bool]:
+    raw_root = Path(os.environ.get("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", ""))
+    if not raw_root.is_absolute() or raw_root == Path("/") or raw_root.is_symlink():
+        raise CampaignIsolationError("formal campaign data root is unsafe")
+    try:
+        resolved_root = raw_root.resolve(strict=True)
+    except OSError as error:
+        raise CampaignIsolationError("formal campaign data root is unavailable") from error
+    if resolved_root != data_root or not data_root.is_dir():
+        raise CampaignIsolationError("formal campaign data root changed during isolation proof")
+
+    probe_dir = Path(tempfile.mkdtemp(prefix=".aka-isolation-probe-", dir=data_root))
+    sentinel = probe_dir / "sentinel"
+    descriptor = outer_bwrap_descriptor = -1
+    try:
+        if binary.resolve(strict=True) != _OUTER_BWRAP_PATH:
+            raise CampaignIsolationError("isolation probe received unpinned bubblewrap")
+        outer_bwrap_descriptor, _outer_identity = _sealed_outer_bwrap()
+        nonce = os.urandom(32)
+        sentinel.write_bytes(nonce)
+        descriptor = os.open(sentinel, os.O_RDONLY | os.O_CLOEXEC)
+        parent_root_alias = Path(f"/proc/{os.getpid()}/root{sentinel}")
+        parent_fd_alias = Path(f"/proc/{os.getpid()}/fd/{descriptor}")
+        try:
+            root_bytes = parent_root_alias.read_bytes()
+            fd_bytes = parent_fd_alias.read_bytes()
+        except OSError as error:
+            raise CampaignIsolationError(
+                "outer runtime cannot establish readable parent /proc aliases"
+            ) from error
+        if root_bytes != nonce or fd_bytes != nonce:
+            raise CampaignIsolationError("outer parent /proc aliases do not bind the sentinel")
+        command = _bubblewrap_base_command(
+            f"/proc/self/fd/{outer_bwrap_descriptor}", data_root
+        ) + [
+            "--",
+            sys.executable,
+            "-c",
+            _ATTEMPT_ESCAPE_PROBE,
+            str(os.getpid()),
+            str(descriptor),
+            str(sentinel),
+            str(outer["pid_namespace"]),
+            str(outer["ipc_namespace"]),
+            nonce.hex(),
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=20,
+                pass_fds=(outer_bwrap_descriptor,),
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise CampaignIsolationError("bubblewrap isolation probe failed to run") from error
+        try:
+            result = json.loads(completed.stdout)
+        except json.JSONDecodeError as error:
+            raise CampaignIsolationError(
+                f"bubblewrap isolation probe emitted invalid evidence: {completed.stderr.strip()}"
+            ) from error
+        if completed.returncode != 0 or not isinstance(result, dict):
+            raise CampaignIsolationError(
+                f"bubblewrap isolation probe failed closed: {result!r}"
+            )
+        expected_keys = {
+            "campaign_data_hidden",
+            "outer_pid_namespace_absent_from_private_proc",
+            "parent_root_sentinel_unreachable",
+            "parent_fd_sentinel_unreachable",
+            "proc_mount_read_write",
+            "pid_namespace_unshared",
+            "ipc_namespace_unshared",
+            "private_shm",
+            "docker_system_paths_remasked",
+            "private_proc_control_writes_blocked",
+            "no_new_privileges",
+            "effective_capabilities_zero",
+            "bounding_capabilities_zero",
+            "all_capability_sets_zero",
+            "seccomp_disabled",
+        }
+        if set(result) != expected_keys or any(
+            not isinstance(result[key], bool) for key in expected_keys
+        ):
+            raise CampaignIsolationError("bubblewrap isolation probe evidence is malformed")
+        if any(result[key] is not True for key in expected_keys):
+            raise CampaignIsolationError("bubblewrap isolation proof is incomplete")
+        return result
+    finally:
+        if outer_bwrap_descriptor >= 0:
+            os.close(outer_bwrap_descriptor)
+        if descriptor >= 0:
+            os.close(descriptor)
+        sentinel.unlink(missing_ok=True)
+        try:
+            probe_dir.rmdir()
+        except OSError as error:
+            raise CampaignIsolationError("cannot remove the isolation probe directory") from error
+
+
+def runtime_isolation_receipt() -> dict[str, Any]:
+    """Return invariant, live evidence for the formal Docker+bwrap boundary."""
+    raw_root = Path(os.environ.get("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", ""))
+    try:
+        data_root = raw_root.resolve(strict=True)
+    except OSError as error:
+        raise CampaignIsolationError("formal campaign data root is unavailable") from error
+    outer = _outer_runtime_observation()
+    binary, bubblewrap = _bubblewrap_identity()
+    _requirements_path, codex_requirements = _codex_requirements_identity()
+    gpu_bubblewrap_binary, gpu_bubblewrap = _codex_gpu_bwrap_identity()
+    codex_binary, codex_cli = _codex_cli_identity()
+    attempt = _attempt_escape_probe(binary=binary, data_root=data_root, outer=outer)
+    codex_sandbox = _codex_sandbox_probe(
+        codex_binary=codex_binary,
+        bubblewrap_binary=binary,
+        gpu_bubblewrap_binary=gpu_bubblewrap_binary,
+        data_root=data_root,
+    )
+    # Namespace inode identifiers are deliberately used only by the live probe:
+    # they differ for every Docker worker and would make the Apex/Codex
+    # comparison contract run-specific. The manifest records only the verified
+    # relationships (attempt PID/IPC unshared and private procfs active).
+    recorded_outer = {
+        key: value
+        for key, value in outer.items()
+        if key not in {"pid_namespace", "ipc_namespace"}
+    }
+    return {
+        "schema": _RUNTIME_ISOLATION_SCHEMA,
+        "policy": {
+            "docker_user": "non_root",
+            "docker_capabilities": "drop_all",
+            "docker_no_new_privileges": True,
+            "docker_apparmor": "unconfined_for_rootless_userns",
+            "docker_seccomp": "unconfined_for_rootless_userns",
+            "docker_systempaths": "unconfined_for_private_attempt_procfs",
+            "docker_masked_paths_rebuilt": [
+                *_DOCKER_MASKED_DIRECTORIES,
+                *_DOCKER_MASKED_FILES,
+            ],
+            "docker_readonly_paths_rebuilt": list(_DOCKER_READONLY_PATHS),
+            "docker_pid_namespace": "private_default",
+            "attempt_mount_namespace": "bubblewrap",
+            "attempt_pid_namespace": "private_per_attempt_with_bwrap_reaper_pid1",
+            "attempt_ipc_namespace": "unshared",
+            "attempt_proc": "private_procfs_for_attempt_pid_namespace",
+            "direct_agent_proc": "aka_outer_private_attempt_procfs",
+            "apex_outer_proc": (
+                "trusted_orchestrator_inherited_worker_procfs_nested_userns_writable"
+            ),
+            "apex_backend_proc": "apex_inner_private_attempt_procfs_required",
+            "process_lifetime_boundary": "namespace_init_pidfd_v1",
+            "proc_escape_guard": "outer_process_absent_from_private_procfs_v1",
+            "command_sandbox": "codex_managed_permission_profile_bwrap",
+            "command_pid_namespace": (
+                "nested_codex_unshared_inside_private_attempt_pidns_v1"
+            ),
+            "command_network": "managed_profile_denied_live_probe_v1",
+            "command_gpu_access": (
+                "sealed_memfd_immutable_path_bwrap_and_single_gpu_probe_v1"
+            ),
+            "credential_read": "denied_by_managed_permission_profile",
+        },
+        "outer_runtime": recorded_outer,
+        "bubblewrap": bubblewrap,
+        "codex_gpu_bubblewrap": gpu_bubblewrap,
+        "codex_cli": codex_cli,
+        "codex_requirements": codex_requirements,
+        "attempt_probe": attempt,
+        "codex_sandbox_probe": codex_sandbox,
+    }
+
+
+def is_formal_campaign(eval_config: dict[str, Any]) -> bool:
+    campaign = eval_config.get("campaign") or {}
+    attempt = eval_config.get("campaign_attempt") or {}
+    return (
+        isinstance(campaign, dict)
+        and campaign.get("comparison") == "apex_vs_codex"
+        and isinstance(attempt, dict)
+        and attempt.get("fresh_session") is True
+    )
+
+
+def formal_gpu_evidence(eval_config: dict[str, Any]) -> dict[str, Any] | None:
+    """Validate runner-owned physical-device and exclusivity receipts."""
+    if not is_formal_campaign(eval_config):
+        return None
+    plan_path = Path(os.environ.get("AGENT_KERNEL_ARENA_GPU_BOUNDARY_PLAN", ""))
+    boundary_receipt_path = Path(
+        os.environ.get("AGENT_KERNEL_ARENA_GPU_BOUNDARY_RECEIPT", "")
+    )
+    lease_receipt_path = Path(
+        os.environ.get("AGENT_KERNEL_ARENA_GPU_EXCLUSIVITY_RECEIPT", "")
+    )
+    expected_plan_digest = os.environ.get(
+        "AGENT_KERNEL_ARENA_GPU_BOUNDARY_PLAN_SHA256", ""
+    )
+    expected_lease_digest = os.environ.get(
+        "AGENT_KERNEL_ARENA_GPU_EXCLUSIVITY_RECEIPT_SHA256", ""
+    )
+    host_gpu_id = os.environ.get("AGENT_KERNEL_ARENA_HOST_GPU_ID", "")
+    if any(
+        not path.is_absolute()
+        for path in (plan_path, boundary_receipt_path, lease_receipt_path)
+    ):
+        raise CampaignIsolationError("formal GPU evidence paths must be absolute")
+    try:
+        plan = load_plan(plan_path)
+        selected = selected_device(plan, host_gpu_id)
+        boundary = json.loads(boundary_receipt_path.read_text(encoding="utf-8"))
+        lease = load_receipt(
+            lease_receipt_path, expected_plan_sha256=expected_plan_digest
+        )
+    except (GpuBoundaryError, GpuExclusivityError, OSError, json.JSONDecodeError) as error:
+        raise CampaignIsolationError(f"formal GPU evidence is invalid: {error}") from error
+    if not isinstance(boundary, dict):
+        raise CampaignIsolationError("formal GPU boundary receipt must be an object")
+    boundary_material = {key: value for key, value in boundary.items() if key != "sha256"}
+    if (
+        plan.get("sha256") != expected_plan_digest
+        or boundary.get("schema") != GPU_BOUNDARY_RECEIPT_SCHEMA
+        or boundary.get("sha256") != canonical_digest(boundary_material)
+        or boundary.get("plan_sha256") != expected_plan_digest
+        or boundary.get("host_gpu_id") != host_gpu_id
+        or boundary.get("unique_id") != selected.get("unique_id")
+        or boundary.get("verified") is not True
+        or boundary.get("runtime_verified") is not True
+        or lease.get("sha256") != expected_lease_digest
+        or lease.get("exclusivity_verified") is not True
+    ):
+        raise CampaignIsolationError("formal GPU evidence does not match the selected worker")
+    return {
+        "policy": "physical_device_boundary_with_host_exclusivity_v1",
+        "plan_sha256": expected_plan_digest,
+        "boundary_receipt_sha256": boundary["sha256"],
+        "exclusivity_receipt_sha256": lease["sha256"],
+        "exclusivity_verified": True,
+        "host_gpu_id": host_gpu_id,
+        "unique_id": selected["unique_id"],
+        "allowed_render_nodes": [
+            render["path"] for render in selected["render_nodes"]
+        ],
+        "observed_devices": boundary.get("observed_devices"),
+        "runtime_identity": boundary.get("runtime_identity"),
+    }
+
+
+def prepare_attempt_home(
+    eval_config: dict[str, Any],
+    *,
+    backend: str,
+) -> Path | None:
+    """Copy only the selected backend bootstrap state into a fresh home."""
+    if not is_formal_campaign(eval_config):
+        return None
+    attempt = eval_config["campaign_attempt"]
+    receipt_path = Path(str(attempt.get("receipt_path", "")))
+    if not receipt_path.is_absolute():
+        raise CampaignIsolationError("formal campaign receipt_path must be absolute")
+    home = receipt_path.parent / ".agent-home"
+    if home.exists():
+        raise CampaignIsolationError(f"attempt home already exists: {home}")
+
+    state_root = Path(os.environ.get("AGENT_STATE_MOUNT_ROOT", "/opt/aka-agent-state"))
+    codex_material: tuple[bytes, bytes, str] | None = None
+    if backend == "codex":
+        codex_material = _validated_codex_bootstrap_material(state_root)
+
+    home.mkdir(mode=0o700)
+    selected = {
+        # Codex authentication and its signed cloud-config envelope are copied
+        # separately from stable descriptors. Copying the complete Codex home
+        # would expose prior transcripts, memories, model caches, rules, and
+        # user configuration even when the CLI is asked not to load them.
+        "codex": (),
+        "claude": (".claude", ".claude.json"),
+        "cursor": (".cursor", ".config/cursor"),
+    }.get(backend)
+    if selected is None:
+        raise CampaignIsolationError(f"unsupported isolated backend: {backend}")
+    try:
+        if codex_material is not None:
+            auth_bytes, cache_bytes, _ = codex_material
+            _write_private_regular(home / _CODEX_AUTH_RELATIVE_PATH, auth_bytes)
+            _write_private_regular(
+                home / _CODEX_CLOUD_CONFIG_RELATIVE_PATH, cache_bytes
+            )
+        for relative in selected:
+            source = state_root / relative
+            if not source.exists():
+                continue
+            _assert_safe_source(source)
+            destination = home / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if source.is_dir():
+                shutil.copytree(source, destination, symlinks=False)
+            elif source.is_file() and not source.is_symlink():
+                shutil.copy2(source, destination, follow_symlinks=False)
+            else:
+                raise CampaignIsolationError(f"unsafe backend state path: {source}")
+        _make_owner_writable(home)
+    except Exception:
+        shutil.rmtree(home, ignore_errors=True)
+        raise
+    return home
+
+
+def _read_stable_regular(
+    path: Path,
+    *,
+    label: str,
+    maximum_bytes: int,
+) -> bytes:
+    """Read one bounded non-symlink file from a descriptor-stable identity."""
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+        )
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_size <= 0
+            or before.st_size > maximum_bytes
+        ):
+            raise CampaignIsolationError(f"formal {label} is not a safe regular file")
+        chunks = []
+        observed = 0
+        while observed <= maximum_bytes:
+            chunk = os.read(descriptor, min(64 * 1024, maximum_bytes + 1 - observed))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            observed += len(chunk)
+        after = os.fstat(descriptor)
+    except OSError as error:
+        raise CampaignIsolationError(f"formal {label} is unavailable") from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    identity_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+    if (
+        observed > maximum_bytes
+        or observed != before.st_size
+        or any(getattr(before, field) != getattr(after, field) for field in identity_fields)
+    ):
+        raise CampaignIsolationError(f"formal {label} changed while it was read")
+    return b"".join(chunks)
+
+
+def _json_object_without_duplicate_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _load_private_json(raw: bytes, *, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_json_object_without_duplicate_keys,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as error:
+        raise CampaignIsolationError(f"formal {label} is malformed") from error
+    if not isinstance(value, dict):
+        raise CampaignIsolationError(f"formal {label} must be a JSON object")
+    return value
+
+
+def _cloud_config_timestamp(value: Any, *, field: str) -> datetime:
+    if not isinstance(value, str):
+        raise CampaignIsolationError(
+            f"formal Codex cloud-config cache has an invalid {field}"
+        )
+    match = _CODEX_CLOUD_CONFIG_TIMESTAMP.fullmatch(value)
+    if match is None:
+        raise CampaignIsolationError(
+            f"formal Codex cloud-config cache has an invalid {field}"
+        )
+    fraction = (match.group("fraction") or "").ljust(6, "0")[:6]
+    try:
+        parsed = datetime.strptime(
+            match.group("seconds"), "%Y-%m-%dT%H:%M:%S"
+        ).replace(
+            microsecond=int(fraction or "0"),
+            tzinfo=timezone.utc,
+        )
+    except ValueError as error:
+        raise CampaignIsolationError(
+            f"formal Codex cloud-config cache has an invalid {field}"
+        ) from error
+    return parsed
+
+
+def _validate_codex_cloud_config_cache(
+    raw: bytes,
+    *,
+    expected_account_id: str,
+) -> str:
+    cache = _load_private_json(raw, label="Codex cloud-config cache")
+    if set(cache) != {"signature", "signed_payload"}:
+        raise CampaignIsolationError(
+            "formal Codex cloud-config cache is not a signed envelope"
+        )
+    signature = cache.get("signature")
+    try:
+        decoded_signature = base64.b64decode(signature, validate=True)
+    except (TypeError, ValueError, binascii.Error) as error:
+        raise CampaignIsolationError(
+            "formal Codex cloud-config cache signature is malformed"
+        ) from error
+    payload = cache.get("signed_payload")
+    if (
+        len(decoded_signature) != 32
+        or not isinstance(payload, dict)
+        or payload.get("version") != 1
+        or payload.get("account_id") != expected_account_id
+        or not isinstance(payload.get("chatgpt_user_id"), str)
+        or not payload["chatgpt_user_id"]
+    ):
+        raise CampaignIsolationError(
+            "formal Codex cloud-config cache identity or version is invalid"
+        )
+    bundle = payload.get("bundle")
+    if (
+        not isinstance(bundle, dict)
+        or set(bundle) != {"config_toml", "requirements_toml"}
+        or not all(isinstance(value, dict) for value in bundle.values())
+    ):
+        raise CampaignIsolationError(
+            "formal Codex cloud-config cache bundle shape is invalid"
+        )
+    cached_at = _cloud_config_timestamp(payload.get("cached_at"), field="cached_at")
+    expires_at = _cloud_config_timestamp(
+        payload.get("expires_at"), field="expires_at"
+    )
+    now = datetime.now(timezone.utc)
+    if (
+        cached_at > now + _CODEX_CLOUD_CONFIG_CLOCK_SKEW
+        or expires_at <= cached_at
+        or expires_at - cached_at > _CODEX_CLOUD_CONFIG_MAX_LIFETIME
+        or expires_at <= now + _CODEX_CLOUD_CONFIG_MIN_TTL
+    ):
+        raise CampaignIsolationError(
+            "formal Codex cloud-config cache is expired or too close to expiry"
+        )
+    return hashlib.sha256(
+        json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _validated_codex_bootstrap_material(
+    state_root: Path,
+) -> tuple[bytes, bytes, str]:
+    if not state_root.is_absolute() or state_root.is_symlink() or not state_root.is_dir():
+        raise CampaignIsolationError("formal Codex state mount root is unavailable")
+    codex_root = state_root / _CODEX_AUTH_RELATIVE_PATH.parent
+    try:
+        codex_root_metadata = codex_root.lstat()
+    except OSError as error:
+        raise CampaignIsolationError(
+            "formal Codex state directory is unavailable"
+        ) from error
+    if stat.S_ISLNK(codex_root_metadata.st_mode) or not stat.S_ISDIR(
+        codex_root_metadata.st_mode
+    ):
+        raise CampaignIsolationError("formal Codex state directory is unsafe")
+    auth_bytes = _read_stable_regular(
+        state_root / _CODEX_AUTH_RELATIVE_PATH,
+        label="Codex authentication state",
+        maximum_bytes=1024 * 1024,
+    )
+    auth = _load_private_json(auth_bytes, label="Codex authentication state")
+    tokens = auth.get("tokens")
+    account_id = tokens.get("account_id") if isinstance(tokens, dict) else None
+    if auth.get("auth_mode") != "chatgpt" or not isinstance(account_id, str) or not account_id:
+        raise CampaignIsolationError(
+            "formal Codex authentication lacks a ChatGPT account identity"
+        )
+    cache_bytes = _read_stable_regular(
+        state_root / _CODEX_CLOUD_CONFIG_RELATIVE_PATH,
+        label="Codex cloud-config cache",
+        maximum_bytes=_CODEX_CLOUD_CONFIG_MAX_BYTES,
+    )
+    bundle_sha256 = _validate_codex_cloud_config_cache(
+        cache_bytes,
+        expected_account_id=account_id,
+    )
+    return auth_bytes, cache_bytes, bundle_sha256
+
+
+def codex_cloud_config_contract(
+    state_root: Path | None = None,
+) -> dict[str, str]:
+    """Bind both formal arms to the same signed cloud-config bundle semantics."""
+    selected_root = state_root or Path(
+        os.environ.get("AGENT_STATE_MOUNT_ROOT", "/opt/aka-agent-state")
+    )
+    _, _, bundle_sha256 = _validated_codex_bootstrap_material(selected_root)
+    host_closure_sha256 = os.environ.get(
+        "AGENT_KERNEL_ARENA_CODEX_HOST_RUNTIME_CLOSURE_SHA256", ""
+    )
+    if re.fullmatch(r"[0-9a-f]{64}", host_closure_sha256) is None:
+        raise CampaignIsolationError(
+            "formal Codex host runtime closure digest is unavailable"
+        )
+    initial_receipt_sha256 = os.environ.get(
+        "AGENT_KERNEL_ARENA_CODEX_INITIAL_REFRESH_RECEIPT_SHA256", ""
+    )
+    if re.fullmatch(r"[0-9a-f]{64}", initial_receipt_sha256) is None:
+        raise CampaignIsolationError(
+            "formal Codex initial refresh receipt digest is unavailable"
+        )
+    return {
+        "cloud_config_bootstrap_schema": CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA,
+        "cloud_config_bootstrap_policy": CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY,
+        "cloud_config_bundle_sha256": bundle_sha256,
+        "cloud_config_host_runtime_closure_sha256": host_closure_sha256,
+        "cloud_config_initial_refresh_receipt_sha256": initial_receipt_sha256,
+    }
+
+
+def _write_private_regular(path: Path, value: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW,
+            0o600,
+        )
+        remaining = memoryview(value)
+        while remaining:
+            written = os.write(descriptor, remaining)
+            if written <= 0:
+                raise OSError("short write")
+            remaining = remaining[written:]
+        os.fsync(descriptor)
+        os.fchmod(descriptor, 0o600)
+    except OSError as error:
+        raise CampaignIsolationError(
+            "cannot materialize formal Codex bootstrap state"
+        ) from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def codex_cloud_config_bootstrap_receipt(home: Path) -> dict[str, Any]:
+    """Attest the cache bytes copied before a formal Codex process starts."""
+    auth_bytes = _read_stable_regular(
+        home / _CODEX_AUTH_RELATIVE_PATH,
+        label="attempt Codex authentication state",
+        maximum_bytes=1024 * 1024,
+    )
+    auth = _load_private_json(auth_bytes, label="attempt Codex authentication state")
+    tokens = auth.get("tokens")
+    account_id = tokens.get("account_id") if isinstance(tokens, dict) else None
+    if not isinstance(account_id, str) or not account_id:
+        raise CampaignIsolationError(
+            "attempt Codex authentication lacks an account identity"
+        )
+    cache_bytes = _read_stable_regular(
+        home / _CODEX_CLOUD_CONFIG_RELATIVE_PATH,
+        label="attempt Codex cloud-config cache",
+        maximum_bytes=_CODEX_CLOUD_CONFIG_MAX_BYTES,
+    )
+    bundle_sha256 = _validate_codex_cloud_config_cache(
+        cache_bytes,
+        expected_account_id=account_id,
+    )
+    return {
+        "schema": CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA,
+        "policy": CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY,
+        "relative_path": _CODEX_CLOUD_CONFIG_RELATIVE_PATH.as_posix(),
+        "present": True,
+        "sha256": hashlib.sha256(cache_bytes).hexdigest(),
+        "size_bytes": len(cache_bytes),
+        "bundle_sha256": bundle_sha256,
+        "signed_envelope_shape_validated": True,
+        "payload_recorded": False,
+    }
+
+
+def _assert_safe_source(source: Path) -> None:
+    source_metadata = source.lstat()
+    if stat.S_ISLNK(source_metadata.st_mode) or not (
+        stat.S_ISDIR(source_metadata.st_mode)
+        or stat.S_ISREG(source_metadata.st_mode)
+    ):
+        raise CampaignIsolationError(f"unsafe backend state path: {source}")
+    candidates = tuple(source.rglob("*")) if stat.S_ISDIR(source_metadata.st_mode) else ()
+    for path in candidates:
+        metadata = path.lstat()
+        if stat.S_ISLNK(metadata.st_mode) or not (
+            stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)
+        ):
+            raise CampaignIsolationError(f"unsafe backend state path: {path}")
+
+
+def isolated_environment(environment: dict[str, str], home: Path | None) -> dict[str, str]:
+    if home is None:
+        return environment
+    updated = dict(environment)
+    updated["HOME"] = str(home)
+    updated["CODEX_HOME"] = str(home / ".codex")
+    updated["XDG_CONFIG_HOME"] = str(home / ".config")
+    updated["XDG_STATE_HOME"] = str(home / ".local/state")
+    updated["PYTHONDONTWRITEBYTECODE"] = "1"
+    _gpu_bubblewrap, _identity = _codex_gpu_bwrap_identity()
+    updated["PATH"] = (
+        f"{_CODEX_GPU_BWRAP_TRUSTED_DIR}{os.pathsep}{updated.get('PATH', '')}"
+    )
+    return updated
+
+
+def wrap_attempt_command(
+    command: list[str],
+    *,
+    eval_config: dict[str, Any],
+    writable_roots: Iterable[Path],
+    read_only_roots: Iterable[Path] = (),
+    trusted_read_only_roots: Iterable[Path] = (),
+    mount_roles: Mapping[str, Path] | None = None,
+    private_proc: bool = True,
+) -> list[str]:
+    """Hide campaign data and expose attempt roots plus pre-authenticated roots.
+
+    ``trusted_read_only_roots`` is intentionally not a general escape hatch: its
+    caller must bind each root to an independent identity contract and persist the
+    returned mount receipt.
+    """
+    if not is_formal_campaign(eval_config):
+        return command
+    # Re-resolve, hash, and version-check the read-only mounted executable at
+    # attempt construction time instead of trusting a prior PATH lookup.
+    _binary, _identity = _bubblewrap_identity()
+    _codex_requirements_identity()
+    gpu_bubblewrap, _gpu_bubblewrap_identity = _codex_gpu_bwrap_identity()
+    data_root_raw = os.environ.get("AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT", "")
+    raw_data_root = Path(data_root_raw).expanduser()
+    if not raw_data_root.is_absolute():
+        raise CampaignIsolationError("formal campaign data root is unavailable")
+    lexical_data_root = Path(os.path.abspath(raw_data_root))
+    try:
+        data_root = lexical_data_root.resolve(strict=True)
+    except OSError as error:
+        raise CampaignIsolationError("formal campaign data root is unavailable") from error
+    if data_root != lexical_data_root or not data_root.is_dir():
+        raise CampaignIsolationError("formal campaign data root is not canonical")
+
+    writable = _validated_attempt_roots(
+        writable_roots, data_root=data_root, label="writable"
+    )
+    read_only = _validated_attempt_roots(
+        read_only_roots, data_root=data_root, label="read-only"
+    )
+    trusted_read_only = _validated_trusted_read_only_roots(
+        trusted_read_only_roots, data_root=data_root
+    )
+    if not writable:
+        raise CampaignIsolationError("formal campaign has no attempt writable root")
+    _reject_overlapping_roots((*writable, *read_only, *trusted_read_only))
+    roles = _validated_apex_mount_roles(
+        mount_roles,
+        data_root=data_root,
+        writable=writable,
+        read_only=read_only,
+        trusted_read_only=trusted_read_only,
+    )
+
+    mount_arguments: list[str] = []
+    state_root = Path(
+        os.environ.get("AGENT_STATE_MOUNT_ROOT", "/opt/aka-agent-state")
+    )
+    if state_root.is_absolute() and state_root.is_dir():
+        # Authentication was copied into the fresh attempt home. Hide the
+        # original read-only mount so prior history, memories, rules, caches,
+        # and user configuration cannot be recovered through its old path.
+        mount_arguments.extend(["--tmpfs", str(state_root.resolve(strict=True))])
+    created: set[Path] = set()
+    for root in (*read_only, *writable):
+        relative = root.relative_to(data_root)
+        current = data_root
+        for part in relative.parts:
+            current /= part
+            if current not in created:
+                mount_arguments.extend(["--dir", str(current)])
+                created.add(current)
+    for root in trusted_read_only:
+        if root.is_relative_to(Path("/tmp")):
+            current = Path("/tmp")
+            for part in root.relative_to(current).parts:
+                current /= part
+                if current not in created:
+                    mount_arguments.extend(["--dir", str(current)])
+                    created.add(current)
+    # These are user-owned trees and are intentionally excluded from the formal
+    # Git-clean check. Hide them rather than exposing unmanifested observations.
+    workdir = Path(os.environ.get("AGENT_KERNEL_ARENA_WORKDIR", "/workspace"))
+    for relative in (".eval-tool-artifacts", "experiments"):
+        path = workdir / relative
+        if path.is_dir():
+            mount_arguments.extend(["--tmpfs", str(path)])
+    mount_descriptors: dict[Path, int] = {}
+    mount_identities: dict[Path, dict[str, Any]] = {}
+    data_descriptor = -1
+    data_identity: dict[str, Any] | None = None
+    outer_bwrap_descriptor = -1
+    gpu_bwrap_descriptor = -1
+    status_read = status_write = gate_read = gate_write = -1
+    mount_status_read = mount_status_write = mount_gate_read = mount_gate_write = -1
+    try:
+        outer_bwrap_descriptor, outer_bwrap_identity = _sealed_outer_bwrap()
+        wrapped = _bubblewrap_base_command(
+            f"/proc/self/fd/{outer_bwrap_descriptor}",
+            data_root,
+            private_proc=private_proc,
+        )
+        wrapped.extend(mount_arguments)
+        table = _mountinfo_table()
+        data_descriptor, data_identity = _open_mount_root(data_root, table=table)
+        for root in (*read_only, *trusted_read_only, *writable):
+            descriptor, identity = _open_mount_root(root, table=table)
+            mount_descriptors[root] = descriptor
+            mount_identities[root] = identity
+        _reject_mount_aliases({data_root: data_identity, **mount_identities})
+        os.close(data_descriptor)
+        data_descriptor = -1
+        # Bind from pinned O_PATH descriptors. A rename/replacement of any host
+        # pathname after validation therefore cannot change the mounted inode.
+        for root in read_only:
+            wrapped.extend(
+                ["--ro-bind-fd", str(mount_descriptors[root]), str(root)]
+            )
+        for root in trusted_read_only:
+            wrapped.extend(
+                ["--ro-bind-fd", str(mount_descriptors[root]), str(root)]
+            )
+        for root in writable:
+            wrapped.extend(
+                ["--bind-fd", str(mount_descriptors[root]), str(root)]
+            )
+        gpu_bwrap_descriptor = _sealed_codex_gpu_bwrap(gpu_bubblewrap)
+        status_read, status_write = os.pipe2(os.O_CLOEXEC)
+        gate_read, gate_write = os.pipe2(os.O_CLOEXEC)
+        if roles is not None:
+            mount_status_read, mount_status_write = os.pipe2(os.O_CLOEXEC)
+            mount_gate_read, mount_gate_write = os.pipe2(os.O_CLOEXEC)
+        _mount_codex_gpu_bwrap(wrapped, gpu_bwrap_descriptor)
+        wrapped.extend(
+            [
+                "--json-status-fd",
+                str(status_write),
+                "--block-fd",
+                str(gate_read),
+            ]
+        )
+        inner_command = command
+        if roles is not None:
+            inner_command = [
+                str(_MOUNT_GATE_PYTHON),
+                "-I",
+                "-S",
+                "-c",
+                _MOUNT_GATE_WRAPPER,
+                str(mount_status_write),
+                str(mount_gate_read),
+                "--",
+                *command,
+            ]
+        wrapped.extend(["--", *inner_command])
+        mount_contract = (
+            {
+                "data_root": data_root,
+                "roles": dict(roles),
+                "identities": mount_identities,
+                "trusted_read_only": tuple(trusted_read_only),
+            }
+            if roles is not None
+            else None
+        )
+        result = WrappedAttemptCommand(
+            wrapped,
+            pass_fds=(
+                outer_bwrap_descriptor,
+                *mount_descriptors.values(),
+                gpu_bwrap_descriptor,
+                status_write,
+                gate_read,
+                *(
+                    (mount_status_write, mount_gate_read)
+                    if roles is not None
+                    else ()
+                ),
+            ),
+            boundary_status_fd=status_read,
+            boundary_gate_fd=gate_write,
+            mount_status_fd=(mount_status_read if roles is not None else None),
+            mount_gate_fd=(mount_gate_write if roles is not None else None),
+            boundary_procfs=(
+                "private_attempt_procfs"
+                if private_proc
+                else "trusted_orchestrator_inherited_procfs"
+            ),
+            mount_receipt=_build_attempt_mount_receipt(
+                data_root=data_root,
+                writable=writable,
+                read_only=read_only,
+                trusted_read_only=trusted_read_only,
+                identities=mount_identities,
+                roles=roles,
+                data_identity=data_identity,
+                outer_bubblewrap=outer_bwrap_identity,
+            ),
+            mount_contract=mount_contract,
+        )
+        data_descriptor = -1
+        mount_descriptors = {}
+        outer_bwrap_descriptor = gpu_bwrap_descriptor = -1
+        status_write = gate_read = status_read = gate_write = -1
+        mount_status_write = mount_gate_read = -1
+        mount_status_read = mount_gate_write = -1
+        return result
+    except Exception:
+        raise
+    finally:
+        for descriptor in (
+            data_descriptor,
+            *mount_descriptors.values(),
+            outer_bwrap_descriptor,
+            gpu_bwrap_descriptor,
+            status_read,
+            status_write,
+            gate_read,
+            gate_write,
+            mount_status_read,
+            mount_status_write,
+            mount_gate_read,
+            mount_gate_write,
+        ):
+            if descriptor >= 0:
+                os.close(descriptor)
+
+
+def attempt_command_pass_fds(command: list[str]) -> tuple[int, ...]:
+    """Return only descriptors explicitly owned by a wrapped attempt command."""
+    if isinstance(command, WrappedAttemptCommand):
+        return command.pass_fds
+    return ()
+
+
+def release_attempt_command_fds(command: list[str]) -> None:
+    """Release parent copies after subprocess creation; safe to call repeatedly."""
+    if isinstance(command, WrappedAttemptCommand):
+        command.release_pass_fds()
+
+
+def _pidfd_ready(descriptor: int, timeout_seconds: float) -> bool:
+    poller = select.poll()
+    poller.register(descriptor, select.POLLIN | select.POLLHUP | select.POLLERR)
+    return bool(poller.poll(max(0, int(timeout_seconds * 1000))))
+
+
+def _process_starttime(pid: int) -> int:
+    try:
+        stat_line = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        fields = stat_line[stat_line.rfind(")") + 2 :].split()
+        value = int(fields[19])
+    except (OSError, ValueError, IndexError) as error:
+        raise CampaignIsolationError("cannot bind attempt namespace init starttime") from error
+    if value <= 0:
+        raise CampaignIsolationError("attempt namespace init starttime is invalid")
+    return value
+
+
+def _process_namespace_identity(pid: int) -> tuple[int, int]:
+    try:
+        lines = Path(f"/proc/{pid}/status").read_text(encoding="utf-8").splitlines()
+        values = {
+            key: value.strip()
+            for line in lines
+            for key, separator, value in [line.partition(":")]
+            if separator and key in {"PPid", "NSpid"}
+        }
+        parent = int(values["PPid"])
+        namespace_pid = int(values["NSpid"].split()[-1])
+    except (OSError, KeyError, ValueError, IndexError) as error:
+        raise CampaignIsolationError("cannot bind attempt namespace process identity") from error
+    return parent, namespace_pid
+
+
+def _mount_namespace_inode(pid: int) -> int:
+    try:
+        return os.stat(f"/proc/{pid}/ns/mnt").st_ino
+    except OSError as error:
+        raise CampaignIsolationError(
+            "cannot inspect blocked attempt mount namespace identity"
+        ) from error
+
+
+def _assert_blocked_namespace_identity(
+    *,
+    pid: int,
+    mount_namespace_id: int,
+    init_pidfd: int,
+    init_starttime: int,
+) -> None:
+    """Keep numeric procfs observations bound to the pinned namespace init."""
+
+    try:
+        exited = init_pidfd < 0 or _pidfd_ready(init_pidfd, 0)
+    except OSError as error:
+        raise CampaignIsolationError(
+            "cannot inspect blocked attempt namespace init pidfd"
+        ) from error
+    if (
+        exited
+        or _process_starttime(pid) != init_starttime
+        or _mount_namespace_inode(pid) != mount_namespace_id
+    ):
+        raise CampaignIsolationError(
+            "attempt namespace init identity changed during mount attestation"
+        )
+
+
+def _stable_namespace_mountinfo_table(
+    *,
+    pid: int,
+    mount_namespace_id: int,
+    init_pidfd: int,
+    init_starttime: int,
+) -> dict[int, _MountInfo]:
+    _assert_blocked_namespace_identity(
+        pid=pid,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
+    table = _namespace_mountinfo_table(pid)
+    _assert_blocked_namespace_identity(
+        pid=pid,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
+    return table
+
+
+def _assert_namespace_mountinfo_unchanged(
+    *,
+    pid: int,
+    mount_namespace_id: int,
+    init_pidfd: int,
+    init_starttime: int,
+    expected: Mapping[int, _MountInfo],
+) -> None:
+    observed = _stable_namespace_mountinfo_table(
+        pid=pid,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
+    if observed != expected:
+        raise CampaignIsolationError(
+            "attempt mount table changed during blocked attestation"
+        )
+
+
+def _namespace_target_relative_path(target: Path) -> str:
+    if not target.is_absolute() or ".." in target.parts:
+        raise CampaignIsolationError(
+            f"blocked namespace mount target is not absolute: {target}"
+        )
+    return "." if target == Path("/") else Path(*target.parts[1:]).as_posix()
+
+
+def _visible_namespace_mount(
+    *,
+    pid: int,
+    target: Path,
+    table: Mapping[int, _MountInfo],
+    mount_namespace_id: int,
+    init_pidfd: int,
+    init_starttime: int,
+) -> tuple[_MountInfo, os.stat_result, tuple[_MountInfo, ...]]:
+    """Resolve the kernel-visible mount without guessing from mountinfo order.
+
+    Multiple exact mountinfo entries are legal when an inner bind covers an
+    inherited bind at the same path.  Opening the target through the blocked
+    process's procfs root and reading the resulting O_PATH fd's ``mnt_id`` is
+    the kernel-authoritative way to identify which stack entry is visible.
+    """
+
+    _assert_blocked_namespace_identity(
+        pid=pid,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
+    root_descriptor = descriptor = -1
+    try:
+        path_flags = os.O_DIRECTORY | os.O_CLOEXEC
+        path_flags |= getattr(os, "O_PATH", os.O_RDONLY)
+        try:
+            root_descriptor = os.open(f"/proc/{pid}/root", path_flags)
+            descriptor = os.open(
+                _namespace_target_relative_path(target),
+                path_flags | os.O_NOFOLLOW,
+                dir_fd=root_descriptor,
+            )
+        except OSError as error:
+            raise CampaignIsolationError(
+                f"cannot open blocked namespace target: {target}"
+            ) from error
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise CampaignIsolationError(
+                f"blocked namespace target is not a directory: {target}"
+            )
+        mount_id = _descriptor_mount_id(descriptor)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if root_descriptor >= 0:
+            os.close(root_descriptor)
+        _assert_blocked_namespace_identity(
+            pid=pid,
+            mount_namespace_id=mount_namespace_id,
+            init_pidfd=init_pidfd,
+            init_starttime=init_starttime,
+        )
+    mount = table.get(mount_id)
+    if mount is None or mount.mount_point != target:
+        raise CampaignIsolationError(
+            f"visible mount id does not name the exact target: {target}"
+        )
+    exact = tuple(
+        sorted(
+            (entry for entry in table.values() if entry.mount_point == target),
+            key=lambda entry: entry.mount_id,
+        )
+    )
+    covered = tuple(entry for entry in exact if entry.mount_id != mount_id)
+    return mount, metadata, covered
+
+
+def _mount_access(entry: _MountInfo) -> str:
+    read_only = "ro" in entry.mount_options
+    read_write = "rw" in entry.mount_options
+    if read_only == read_write:
+        raise CampaignIsolationError(
+            f"blocked namespace mount access is ambiguous: {entry.mount_point}"
+        )
+    return "read_only" if read_only else "read_write"
+
+
+def _expected_bind_root(identity: Mapping[str, Any]) -> Path:
+    source_mount = identity.get("mount")
+    source_path = Path(str(identity.get("path")))
+    if not isinstance(source_mount, dict):
+        raise CampaignIsolationError("attempt source mount identity is malformed")
+    mount_point = Path(str(source_mount.get("mount_point")))
+    mount_root = Path(str(source_mount.get("root")))
+    try:
+        relative = source_path.relative_to(mount_point)
+    except ValueError as error:
+        raise CampaignIsolationError(
+            "attempt source is outside its pinned mount"
+        ) from error
+    return mount_root / relative
+
+
+def _validate_role_covered_mounts(
+    *,
+    role: str,
+    path: Path,
+    expected_access: str,
+    source_mount: Mapping[str, Any],
+    visible: _MountInfo,
+    covered: tuple[_MountInfo, ...],
+) -> None:
+    source_is_exact_target = Path(str(source_mount.get("mount_point"))) == path
+    if role != "apex_runtime" or not source_is_exact_target:
+        if covered:
+            raise CampaignIsolationError(
+                f"blocked namespace role has covered exact mounts: {path}"
+            )
+        return
+    if expected_access != "read_only" or len(covered) != 1:
+        raise CampaignIsolationError(
+            f"blocked namespace runtime mount stack is not canonical: {path}"
+        )
+    expected_root = Path(str(source_mount.get("root")))
+    expected_device = source_mount.get("major_minor")
+    expected_filesystem_type = source_mount.get("filesystem_type")
+    expected_source = source_mount.get("source")
+    expected_super_options = source_mount.get("super_options")
+    inherited = covered[0]
+    if (
+        source_mount.get("access") != "read_only"
+        or not isinstance(expected_filesystem_type, str)
+        or not expected_filesystem_type
+        or not isinstance(expected_source, str)
+        or not expected_source
+        or not isinstance(expected_super_options, list)
+        or inherited.mount_point != path
+        or inherited.major_minor != expected_device
+        or inherited.root != expected_root
+        or _mount_access(inherited) != "read_only"
+        or inherited.filesystem_type != expected_filesystem_type
+        or inherited.source != expected_source
+        or list(inherited.super_options) != expected_super_options
+        or visible.major_minor != expected_device
+        or visible.root != expected_root
+        or _mount_access(visible) != "read_only"
+        or visible.filesystem_type != expected_filesystem_type
+        or visible.source != expected_source
+        or list(visible.super_options) != expected_super_options
+    ):
+        raise CampaignIsolationError(
+            f"blocked namespace runtime covered mount changed projection: {path}"
+        )
+
+
+def _attest_role_mount(
+    *,
+    pid: int,
+    role: str,
+    path: Path,
+    expected_access: str,
+    source_identity: dict[str, Any],
+    table: Mapping[int, _MountInfo],
+    mount_namespace_id: int,
+    init_pidfd: int,
+    init_starttime: int,
+) -> dict[str, Any]:
+    mount, metadata, covered = _visible_namespace_mount(
+        pid=pid,
+        target=path,
+        table=table,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
+    access = _mount_access(mount)
+    source_mount = source_identity["mount"]
+    if (
+        access != expected_access
+        or mount.major_minor != source_mount["major_minor"]
+        or mount.root != _expected_bind_root(source_identity)
+        or metadata.st_dev != source_identity["device"]
+        or metadata.st_ino != source_identity["inode"]
+        or f"{os.major(metadata.st_dev)}:{os.minor(metadata.st_dev)}"
+        != mount.major_minor
+    ):
+        raise CampaignIsolationError(
+            f"blocked namespace mount differs from pinned source: {path}"
+        )
+    _validate_role_covered_mounts(
+        role=role,
+        path=path,
+        expected_access=expected_access,
+        source_mount=source_mount,
+        visible=mount,
+        covered=covered,
+    )
+    nested = sorted(
+        str(entry.mount_point)
+        for entry in table.values()
+        if entry.mount_point != path and _path_is_below(entry.mount_point, path)
+    )
+    if nested:
+        raise CampaignIsolationError(
+            f"blocked namespace role contains undeclared mounts: {path}"
+        )
+    return {
+        "source": {
+            "path": str(path),
+            "device": source_identity["device"],
+            "inode": source_identity["inode"],
+            "mount": dict(source_mount),
+        },
+        "target": {
+            "path": str(path),
+            "device": metadata.st_dev,
+            "inode": metadata.st_ino,
+            "access": access,
+            "mount": mount.receipt(),
+            "mount_options": list(mount.mount_options),
+            "covered_mount_ids": sorted(entry.mount_id for entry in covered),
+        },
+    }
+
+
+def _attest_private_mount(
+    *,
+    pid: int,
+    path: Path,
+    table: Mapping[int, _MountInfo],
+    mount_namespace_id: int,
+    init_pidfd: int,
+    init_starttime: int,
+) -> dict[str, Any]:
+    mount, metadata, covered = _visible_namespace_mount(
+        pid=pid,
+        target=path,
+        table=table,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
+    device = f"{os.major(metadata.st_dev)}:{os.minor(metadata.st_dev)}"
+    if (
+        _mount_access(mount) != "read_write"
+        or mount.filesystem_type != "tmpfs"
+        or mount.major_minor != device
+    ):
+        raise CampaignIsolationError(
+            f"blocked namespace private mount is not writable tmpfs: {path}"
+        )
+    return {
+        "path": str(path),
+        "device": metadata.st_dev,
+        "inode": metadata.st_ino,
+        "access": "read_write",
+        "filesystem_type": mount.filesystem_type,
+        "mount": mount.receipt(),
+        "mount_options": list(mount.mount_options),
+        "covered_mount_ids": sorted(entry.mount_id for entry in covered),
+    }
+
+
+def _namespace_mount_attestation(
+    command: WrappedAttemptCommand,
+    *,
+    pid: int,
+    mount_namespace_id: int,
+    init_pidfd: int,
+    init_starttime: int,
+) -> dict[str, Any]:
+    contract = command.mount_contract
+    if not isinstance(contract, dict):
+        raise CampaignIsolationError("formal mount attestation contract is missing")
+    data_root = contract["data_root"]
+    roles = contract["roles"]
+    identities = contract["identities"]
+    trusted_read_only = set(contract.get("trusted_read_only", ()))
+    table = _stable_namespace_mountinfo_table(
+        pid=pid,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
+    root_mount, root_stat, root_covered = _visible_namespace_mount(
+        pid=pid,
+        target=Path("/"),
+        table=table,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
+    root_device = f"{os.major(root_stat.st_dev)}:{os.minor(root_stat.st_dev)}"
+    if (
+        _mount_access(root_mount) != "read_only"
+        or root_mount.major_minor != root_device
+        or root_covered
+    ):
+        raise CampaignIsolationError("blocked namespace root is not read-only")
+    data = _attest_private_mount(
+        pid=pid,
+        path=data_root,
+        table=table,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+    )
+    declared = {data_root, *roles.values()}
+    observed = {
+        entry.mount_point
+        for entry in table.values()
+        if entry.mount_point == data_root
+        or _path_is_below(entry.mount_point, data_root)
+        or entry.mount_point in trusted_read_only
+    }
+    if observed != declared:
+        raise CampaignIsolationError(
+            "blocked namespace campaign mounts are not a closed declared set"
+        )
+    role_receipts = {"read_only": {}, "persistent_writable": {}}
+    for role, path in roles.items():
+        access_group = (
+            "persistent_writable"
+            if role in {"apex_artifacts", "backend_home"}
+            else "read_only"
+        )
+        role_receipts[access_group][role] = _attest_role_mount(
+            pid=pid,
+            role=role,
+            path=path,
+            expected_access=(
+                "read_write" if access_group == "persistent_writable" else "read_only"
+            ),
+            source_identity=identities[path],
+            table=table,
+            mount_namespace_id=mount_namespace_id,
+            init_pidfd=init_pidfd,
+            init_starttime=init_starttime,
+        )
+    target_pairs = [
+        (entry["target"]["device"], entry["target"]["inode"])
+        for group in role_receipts.values()
+        for entry in group.values()
+    ]
+    if len(target_pairs) != len(set(target_pairs)):
+        raise CampaignIsolationError("blocked namespace role mounts contain aliases")
+    private_tmpfs = {
+        "tmp": _attest_private_mount(
+            pid=pid,
+            path=Path("/tmp"),
+            table=table,
+            mount_namespace_id=mount_namespace_id,
+            init_pidfd=init_pidfd,
+            init_starttime=init_starttime,
+        ),
+        "dev_shm": _attest_private_mount(
+            pid=pid,
+            path=Path("/dev/shm"),
+            table=table,
+            mount_namespace_id=mount_namespace_id,
+            init_pidfd=init_pidfd,
+            init_starttime=init_starttime,
+        ),
+    }
+    _assert_namespace_mountinfo_unchanged(
+        pid=pid,
+        mount_namespace_id=mount_namespace_id,
+        init_pidfd=init_pidfd,
+        init_starttime=init_starttime,
+        expected=table,
+    )
+    return {
+        "policy": _NAMESPACE_MOUNT_ATTESTATION_POLICY,
+        "visible_mount_resolution_policy": _VISIBLE_MOUNT_RESOLUTION_POLICY,
+        "namespace_init_pid": pid,
+        "mount_namespace_id": mount_namespace_id,
+        "root": {
+            "path": "/",
+            "device": root_stat.st_dev,
+            "inode": root_stat.st_ino,
+            "access": "read_only",
+            "mount": root_mount.receipt(),
+            "mount_options": list(root_mount.mount_options),
+            "covered_mount_ids": sorted(
+                entry.mount_id for entry in root_covered
+            ),
+        },
+        "campaign_data_root": data,
+        "private_tmpfs": private_tmpfs,
+        "roles": role_receipts,
+        "declared_mount_points": sorted(str(path) for path in declared),
+        "observed_mount_points_below_campaign_data": sorted(
+            str(path) for path in observed
+        ),
+        "closed_set": True,
+        "aliases_absent": True,
+    }
+
+
+def _commit_namespace_mount_attestation(
+    command: WrappedAttemptCommand, attestation: dict[str, Any]
+) -> None:
+    receipt = command.mount_receipt
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("schema") != ATTEMPT_MOUNT_RECEIPT_SCHEMA_V3
+    ):
+        raise CampaignIsolationError("formal mount receipt cannot bind attestation")
+    receipt["namespace_mounts"] = attestation
+    receipt.pop("sha256", None)
+    receipt["sha256"] = canonical_digest(receipt)
+
+
+def _pid_namespace_membership_scan(
+    namespace_inode: int,
+) -> _NamespaceMembershipScan:
+    """Corroborate pidfd teardown across every supervisor-visible `/proc` entry."""
+    try:
+        entries = list(Path("/proc").iterdir())
+    except OSError:
+        return _NamespaceMembershipScan(False, 0, ())
+    members: list[dict[str, Any]] = []
+    inaccessible_entries = 0
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            if (entry / "ns/pid").stat().st_ino != namespace_inode:
+                continue
+        except FileNotFoundError:
+            # A process may exit between enumerating /proc and inspecting it.
+            continue
+        except PermissionError:
+            # Yama and sibling user namespaces can conceal otherwise visible
+            # entries, including entries owned by the same host uid. Never call
+            # that a complete scan: namespace-init pidfd exit is the authority,
+            # while this scan only corroborates supervisor-visible membership.
+            inaccessible_entries += 1
+            continue
+        except OSError:
+            return _NamespaceMembershipScan(
+                False, inaccessible_entries, tuple(members)
+            )
+        try:
+            stat_line = (entry / "stat").read_text(encoding="utf-8")
+            fields = stat_line[stat_line.rfind(")") + 2 :].split()
+            if fields[0] != "Z":
+                members.append(
+                    {
+                        "pid": int(entry.name),
+                        "state": fields[0],
+                        "starttime": int(fields[19]),
+                    }
+                )
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError, IndexError):
+            return _NamespaceMembershipScan(
+                False, inaccessible_entries, tuple(members)
+            )
+    return _NamespaceMembershipScan(
+        True,
+        inaccessible_entries,
+        tuple(sorted(members, key=lambda item: item["pid"])),
+    )
+
+
+def establish_attempt_boundary(
+    command: list[str],
+    process: subprocess.Popen[Any],
+    *,
+    timeout_seconds: float = 5.0,
+) -> AttemptBoundary | None:
+    """Bind a formal bwrap PID namespace before allowing its command to exec."""
+    if not isinstance(command, WrappedAttemptCommand):
+        return None
+    status_fd = command.boundary_status_fd
+    gate_fd = command.boundary_gate_fd
+    if status_fd is None or gate_fd is None:
+        raise CampaignIsolationError("formal attempt boundary descriptors are missing")
+    boundary: AttemptBoundary | None = None
+    try:
+        ready, _, _ = select.select([status_fd], [], [], timeout_seconds)
+        if not ready:
+            raise CampaignIsolationError("formal attempt boundary status timed out")
+        payload = os.read(status_fd, 4097)
+        if len(payload) > 4096 or not payload.endswith(b"\n"):
+            raise CampaignIsolationError("formal attempt boundary status is malformed")
+        try:
+            status = json.loads(payload)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise CampaignIsolationError(
+                "formal attempt boundary status is not canonical JSON"
+            ) from error
+        expected = {
+            "child-pid",
+            "ipc-namespace",
+            "mnt-namespace",
+            "pid-namespace",
+        }
+        if (
+            not isinstance(status, dict)
+            or set(status) != expected
+            or any(type(status.get(key)) is not int or status[key] <= 0 for key in expected)
+        ):
+            raise CampaignIsolationError("formal attempt boundary status is invalid")
+        init_pid = status["child-pid"]
+        try:
+            init_pidfd = os.pidfd_open(init_pid, 0)
+        except OSError as error:
+            raise CampaignIsolationError("cannot open attempt namespace init pidfd") from error
+        parent_pid, namespace_pid = _process_namespace_identity(init_pid)
+        boundary = AttemptBoundary(
+            init_pidfd=init_pidfd,
+            status_fd=status_fd,
+            status=status,
+            init_starttime=_process_starttime(init_pid),
+            init_parent_pid=parent_pid,
+            procfs=command.boundary_procfs,
+        )
+        command.boundary_status_fd = None
+        try:
+            namespace_inode = os.stat(f"/proc/{init_pid}/ns/pid").st_ino
+            mount_inode = os.stat(f"/proc/{init_pid}/ns/mnt").st_ino
+            ipc_inode = os.stat(f"/proc/{init_pid}/ns/ipc").st_ino
+        except OSError as error:
+            raise CampaignIsolationError(
+                "cannot bind attempt namespace identity"
+            ) from error
+        if (
+            namespace_inode != status["pid-namespace"]
+            or mount_inode != status["mnt-namespace"]
+            or ipc_inode != status["ipc-namespace"]
+            or parent_pid != process.pid
+            or namespace_pid != 1
+            or _pidfd_ready(init_pidfd, 0)
+            or _process_starttime(init_pid) != boundary.init_starttime
+        ):
+            raise CampaignIsolationError("attempt namespace init identity changed")
+        os.write(gate_fd, b"1")
+        if command.mount_contract is not None:
+            mount_status_fd = command.mount_status_fd
+            mount_gate_fd = command.mount_gate_fd
+            if mount_status_fd is None or mount_gate_fd is None:
+                raise CampaignIsolationError(
+                    "formal attempt mount gate descriptors are missing"
+                )
+            ready, _, _ = select.select([mount_status_fd], [], [], timeout_seconds)
+            if not ready or os.read(mount_status_fd, 64) != b"mounts-ready\n":
+                raise CampaignIsolationError(
+                    "formal attempt mount attestation gate timed out"
+                )
+            attestation = _namespace_mount_attestation(
+                command,
+                pid=init_pid,
+                mount_namespace_id=status["mnt-namespace"],
+                init_pidfd=boundary.init_pidfd,
+                init_starttime=boundary.init_starttime,
+            )
+            _commit_namespace_mount_attestation(command, attestation)
+            os.write(mount_gate_fd, b"1")
+        return boundary
+    except Exception:
+        if boundary is not None:
+            boundary.terminate_now()
+            boundary.close()
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        raise
+    finally:
+        command.close_boundary_status_fd()
+        command.close_boundary_gate_fd()
+        command.close_mount_gate_fds()
+
+
+def finalize_attempt_boundary(
+    process: subprocess.Popen[Any],
+    boundary: AttemptBoundary,
+    *,
+    reason: str,
+    terminate: bool,
+    timeout_seconds: float = 5.0,
+) -> dict[str, Any]:
+    """End or verify a PID namespace through its exact, non-reusable pidfd."""
+    evidence = {
+        "required": terminate,
+        "reason": reason,
+        "scope": "private_pid_namespace",
+        "method": "namespace_init_pidfd_v1",
+        "boundary": boundary.receipt(),
+        "sigkill_sent": False,
+        "outer_supervisor_force_killed": False,
+        "verification_performed": True,
+        "namespace_init_exit_verified": False,
+        "verified_absent": False,
+        "kernel_semantics": (
+            "linux_pid_namespace_init_exit_sigkill_all_members"
+        ),
+        "bubblewrap_terminal_status_verified": False,
+        "bubblewrap_status_eof_verified": False,
+    }
+    try:
+        if terminate:
+            boundary.terminate_now()
+        evidence["sigkill_sent"] = boundary.sigkill_sent
+        try:
+            process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            evidence["outer_supervisor_force_killed"] = True
+            try:
+                process.wait(timeout=timeout_seconds)
+            except subprocess.TimeoutExpired:
+                pass
+        evidence["namespace_init_exit_verified"] = _pidfd_ready(
+            boundary.init_pidfd, timeout_seconds
+        )
+        evidence["outer_supervisor_exit_code"] = process.poll()
+        terminal_payload = os.read(boundary.status_fd, 4097)
+        terminal_absent = terminal_payload == b""
+        if len(terminal_payload) <= 4096 and terminal_payload.endswith(b"\n"):
+            lines = terminal_payload.splitlines()
+            try:
+                terminal = json.loads(lines[0]) if len(lines) == 1 else None
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                terminal = None
+            expected_exit = process.poll()
+            if (
+                isinstance(terminal, dict)
+                and set(terminal) == {"exit-code"}
+                and type(terminal.get("exit-code")) is int
+                and terminal["exit-code"] == expected_exit
+            ):
+                evidence["bubblewrap_terminal_status_verified"] = True
+                evidence["bubblewrap_terminal_status"] = terminal
+        evidence["bubblewrap_status_eof_verified"] = (
+            os.read(boundary.status_fd, 1) == b""
+        )
+        evidence["bubblewrap_terminal_status_absent_after_sigkill"] = (
+            terminal_absent and boundary.sigkill_sent
+        )
+        evidence["teardown_mode"] = (
+            "pidfd_sigkill" if boundary.sigkill_sent else "natural_exit"
+        )
+        membership_scan = _pid_namespace_membership_scan(
+            boundary.status["pid-namespace"]
+        )
+        evidence["namespace_membership_enumeration_completed"] = (
+            membership_scan.enumeration_completed
+        )
+        evidence["namespace_membership_scan_complete"] = membership_scan.complete
+        evidence["namespace_membership_inaccessible_entries_count"] = (
+            membership_scan.inaccessible_entries_count
+        )
+        evidence["live_visible_namespace_members_after"] = list(
+            membership_scan.live_visible_members
+        )
+        terminal_evidence_valid = (
+            evidence["bubblewrap_terminal_status_verified"] is True
+            or evidence["bubblewrap_terminal_status_absent_after_sigkill"] is True
+        )
+        evidence["verified_absent"] = (
+            evidence["namespace_init_exit_verified"] is True
+            and process.poll() is not None
+            and evidence["outer_supervisor_force_killed"] is False
+            and terminal_evidence_valid
+            and evidence["bubblewrap_status_eof_verified"] is True
+            and membership_scan.enumeration_completed
+            and not membership_scan.live_visible_members
+        )
+        return evidence
+    except (OSError, ProcessLookupError) as error:
+        evidence["error"] = f"{type(error).__name__}: {error}"
+        evidence["outer_supervisor_exit_code"] = process.poll()
+        return evidence
+    finally:
+        boundary.close()
+
+
+def attempt_cleanup_verified(
+    cleanup: Any,
+    *,
+    exit_code: Any,
+    allowed_reasons: set[str],
+    required_procfs: str,
+) -> bool:
+    """Fail-closed verifier for a serialized formal attempt boundary."""
+    if not isinstance(cleanup, dict):
+        return False
+    boundary = cleanup.get("boundary")
+    inaccessible_entries = cleanup.get(
+        "namespace_membership_inaccessible_entries_count"
+    )
+    scan_complete = cleanup.get("namespace_membership_scan_complete")
+    reason = cleanup.get("reason")
+    common = (
+        reason in allowed_reasons
+        and cleanup.get("required") is (reason != "normal_exit")
+        and cleanup.get("scope") == "private_pid_namespace"
+        and cleanup.get("method") == "namespace_init_pidfd_v1"
+        and cleanup.get("verification_performed") is True
+        and cleanup.get("namespace_init_exit_verified") is True
+        and cleanup.get("namespace_membership_enumeration_completed") is True
+        and type(scan_complete) is bool
+        and type(inaccessible_entries) is int
+        and inaccessible_entries >= 0
+        and scan_complete == (inaccessible_entries == 0)
+        and cleanup.get("live_visible_namespace_members_after") == []
+        and cleanup.get("verified_absent") is True
+        and cleanup.get("outer_supervisor_force_killed") is False
+        and cleanup.get("bubblewrap_status_eof_verified") is True
+        and cleanup.get("outer_supervisor_exit_code") == exit_code
+        and cleanup.get("kernel_semantics")
+        == "linux_pid_namespace_init_exit_sigkill_all_members"
+        and isinstance(boundary, dict)
+        and boundary.get("schema") == "aka.attempt-process-boundary/v1"
+        and boundary.get("policy") == ATTEMPT_CONTAINMENT_POLICY
+        and boundary.get("pid_namespace_unshared") is True
+        and boundary.get("procfs") == required_procfs
+        and boundary.get("pidfd_opened") is True
+        and boundary.get("identity_source")
+        == "pinned_bubblewrap_json_status_fd"
+        and all(
+            type(boundary.get(field)) is int and boundary[field] > 0
+            for field in (
+                "namespace_init_pid",
+                "namespace_init_starttime",
+                "namespace_init_parent_pid",
+                "pid_namespace_id",
+                "mount_namespace_id",
+                "ipc_namespace_id",
+            )
+        )
+        and boundary.get("namespace_init_inner_pid") == 1
+    )
+    if not common:
+        return False
+    if cleanup.get("teardown_mode") == "pidfd_sigkill":
+        terminal_status_valid = (
+            cleanup.get("bubblewrap_terminal_status_verified") is True
+            and cleanup.get("bubblewrap_terminal_status")
+            == {"exit-code": exit_code}
+            and cleanup.get("bubblewrap_terminal_status_absent_after_sigkill")
+            is False
+        )
+        terminal_status_absent = (
+            cleanup.get("bubblewrap_terminal_status_verified") is False
+            and cleanup.get("bubblewrap_terminal_status") is None
+            and cleanup.get("bubblewrap_terminal_status_absent_after_sigkill")
+            is True
+        )
+        return (
+            cleanup.get("sigkill_sent") is True
+            and exit_code == 128 + int(signal.SIGKILL)
+            and reason in {"exact_turn_boundary", "timeout"}
+            and (terminal_status_valid or terminal_status_absent)
+        )
+    return (
+        cleanup.get("teardown_mode") == "natural_exit"
+        and cleanup.get("sigkill_sent") is False
+        and type(exit_code) is int
+        and cleanup.get("bubblewrap_terminal_status_verified") is True
+        and cleanup.get("bubblewrap_terminal_status") == {"exit-code": exit_code}
+        and cleanup.get("bubblewrap_terminal_status_absent_after_sigkill") is False
+    )
+
+
+@dataclass(frozen=True)
+class _MountInfo:
+    mount_id: int
+    parent_id: int
+    major_minor: str
+    root: Path
+    mount_point: Path
+    mount_options: tuple[str, ...] = ()
+    optional_fields: tuple[str, ...] = ()
+    filesystem_type: str = ""
+    source: str = ""
+    super_options: tuple[str, ...] = ()
+
+    def receipt(self) -> dict[str, Any]:
+        return {
+            "mount_id": self.mount_id,
+            "parent_id": self.parent_id,
+            "major_minor": self.major_minor,
+            "root": str(self.root),
+            "mount_point": str(self.mount_point),
+        }
+
+
+def _decode_mountinfo_path(value: str) -> Path:
+    decoded = value
+    for escaped, plain in (
+        (r"\040", " "),
+        (r"\011", "\t"),
+        (r"\012", "\n"),
+        (r"\134", "\\"),
+    ):
+        decoded = decoded.replace(escaped, plain)
+    return Path(decoded)
+
+
+def _parse_mountinfo(lines: Iterable[str]) -> dict[int, _MountInfo]:
+    table: dict[int, _MountInfo] = {}
+    for line in lines:
+        fields = line.split()
+        try:
+            separator = fields.index("-")
+            mount_id = int(fields[0])
+            parent_id = int(fields[1])
+            filesystem_type = fields[separator + 1]
+            source = fields[separator + 2]
+            super_options = tuple(fields[separator + 3].split(","))
+        except (ValueError, IndexError) as error:
+            raise CampaignIsolationError("malformed /proc mountinfo") from error
+        if separator < 6 or mount_id in table:
+            raise CampaignIsolationError("ambiguous /proc mountinfo")
+        table[mount_id] = _MountInfo(
+            mount_id=mount_id,
+            parent_id=parent_id,
+            major_minor=fields[2],
+            root=_decode_mountinfo_path(fields[3]),
+            mount_point=_decode_mountinfo_path(fields[4]),
+            mount_options=tuple(fields[5].split(",")),
+            optional_fields=tuple(fields[6:separator]),
+            filesystem_type=filesystem_type,
+            source=source,
+            super_options=super_options,
+        )
+    if not table:
+        raise CampaignIsolationError("empty /proc mountinfo")
+    return table
+
+
+def _mountinfo_table() -> dict[int, _MountInfo]:
+    try:
+        lines = Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as error:
+        raise CampaignIsolationError("cannot read /proc/self/mountinfo") from error
+    return _parse_mountinfo(lines)
+
+
+def _namespace_mountinfo_table(pid: int) -> dict[int, _MountInfo]:
+    try:
+        lines = Path(f"/proc/{pid}/mountinfo").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    except (OSError, UnicodeError) as error:
+        raise CampaignIsolationError(
+            "cannot inspect blocked attempt mount namespace"
+        ) from error
+    return _parse_mountinfo(lines)
+
+
+def _descriptor_mount_id(descriptor: int) -> int:
+    try:
+        lines = Path(f"/proc/self/fdinfo/{descriptor}").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    except (OSError, UnicodeError) as error:
+        raise CampaignIsolationError("cannot read mount descriptor identity") from error
+    values = [line.partition(":")[2].strip() for line in lines if line.startswith("mnt_id:")]
+    if len(values) != 1 or not values[0].isdigit():
+        raise CampaignIsolationError("mount descriptor has no unique mount id")
+    return int(values[0])
+
+
+def _path_is_below(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _open_mount_root(
+    root: Path, *, table: dict[int, _MountInfo]
+) -> tuple[int, dict[str, Any]]:
+    flags = os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    flags |= getattr(os, "O_PATH", os.O_RDONLY)
+    try:
+        descriptor = os.open(root, flags)
+    except OSError as error:
+        raise CampaignIsolationError(f"cannot pin attempt mount root: {root}") from error
+    try:
+        metadata = os.fstat(descriptor)
+        lexical = root.lstat()
+        if (
+            metadata.st_dev != lexical.st_dev
+            or metadata.st_ino != lexical.st_ino
+            or not stat.S_ISDIR(metadata.st_mode)
+            or stat.S_ISLNK(lexical.st_mode)
+        ):
+            raise CampaignIsolationError(f"attempt mount root changed: {root}")
+        mount_id = _descriptor_mount_id(descriptor)
+        mount = table.get(mount_id)
+        if mount is None:
+            raise CampaignIsolationError(f"mount id is absent for root: {root}")
+        nested = sorted(
+            str(entry.mount_point)
+            for entry in table.values()
+            if entry.mount_point != root
+            and _path_is_below(entry.mount_point, root)
+        )
+        if nested:
+            raise CampaignIsolationError(
+                f"attempt mount root contains undeclared nested mounts: {root}"
+            )
+        mount_receipt = {
+            **mount.receipt(),
+            "access": _mount_access(mount),
+            "filesystem_type": mount.filesystem_type,
+            "source": mount.source,
+            "super_options": list(mount.super_options),
+        }
+        identity = {
+            "path": str(root),
+            "device": metadata.st_dev,
+            "inode": metadata.st_ino,
+            "mode": stat.S_IMODE(metadata.st_mode),
+            "mount": mount_receipt,
+            "nested_mounts": nested,
+            "source": "o_path_nofollow_bind_fd",
+        }
+        return descriptor, identity
+    except Exception:
+        os.close(descriptor)
+        raise
+
+
+def _reject_mount_aliases(identities: Mapping[Path, dict[str, Any]]) -> None:
+    items = list(identities.items())
+    for index, (path, identity) in enumerate(items):
+        mount = identity["mount"]
+        for other_path, other_identity in items[index + 1 :]:
+            other_mount = other_identity["mount"]
+            same_inode = (
+                identity["device"], identity["inode"]
+            ) == (other_identity["device"], other_identity["inode"])
+            roots_alias = (
+                mount["mount_id"] != other_mount["mount_id"]
+                and mount["major_minor"] == other_mount["major_minor"]
+                and (
+                    _path_is_below(Path(mount["root"]), Path(other_mount["root"]))
+                    or _path_is_below(Path(other_mount["root"]), Path(mount["root"]))
+                )
+            )
+            if same_inode or roots_alias:
+                raise CampaignIsolationError(
+                    f"attempt mount roots are filesystem aliases: {path} and {other_path}"
+                )
+
+
+def _validated_attempt_roots(
+    raw_roots: Iterable[Path], *, data_root: Path, label: str
+) -> list[Path]:
+    roots: list[Path] = []
+    for raw in raw_roots:
+        try:
+            root = Path(raw).resolve(strict=True)
+        except OSError as error:
+            raise CampaignIsolationError(
+                f"attempt {label} root is unavailable: {raw}"
+            ) from error
+        try:
+            relative = root.relative_to(data_root)
+        except ValueError as error:
+            raise CampaignIsolationError(
+                f"attempt {label} root is outside campaign data root: {root}"
+            ) from error
+        if not relative.parts or not root.is_dir():
+            raise CampaignIsolationError(
+                f"attempt {label} root must be a specific directory: {root}"
+            )
+        if root not in roots:
+            roots.append(root)
+    return roots
+
+
+def _validated_trusted_read_only_roots(
+    raw_roots: Iterable[Path], *, data_root: Path
+) -> list[Path]:
+    """Resolve exact external roots that the caller already authenticated.
+
+    Formal attempts hide both ``/tmp`` and the complete campaign data root.
+    Apex may itself live below ``/tmp``, so its already provenance-bound checkout
+    needs one explicit read-only rebind.  This path class is deliberately separate
+    from attempt-owned roots: it must be canonical, external to campaign data, and
+    narrower than a top-level filesystem directory.
+    """
+
+    roots: list[Path] = []
+    for raw in raw_roots:
+        candidate = Path(raw).expanduser()
+        if not candidate.is_absolute():
+            raise CampaignIsolationError(
+                f"trusted read-only root must be absolute: {raw}"
+            )
+        lexical = Path(os.path.abspath(candidate))
+        try:
+            metadata = lexical.lstat()
+            root = lexical.resolve(strict=True)
+        except OSError as error:
+            raise CampaignIsolationError(
+                f"trusted read-only root is unavailable: {raw}"
+            ) from error
+        if (
+            root != lexical
+            or stat.S_ISLNK(metadata.st_mode)
+            or not stat.S_ISDIR(metadata.st_mode)
+            or len(root.parts) < 3
+            or root in _BROAD_EXTERNAL_ROOTS
+        ):
+            raise CampaignIsolationError(
+                f"trusted read-only root must be a specific canonical directory: {root}"
+            )
+        try:
+            root.relative_to(data_root)
+        except ValueError:
+            pass
+        else:
+            raise CampaignIsolationError(
+                "trusted read-only root must be outside campaign data root: "
+                f"{root}"
+            )
+        if root not in roots:
+            roots.append(root)
+    return roots
+
+
+def _validated_apex_mount_roles(
+    raw_roles: Mapping[str, Path] | None,
+    *,
+    data_root: Path,
+    writable: list[Path],
+    read_only: list[Path],
+    trusted_read_only: list[Path],
+) -> dict[str, Path] | None:
+    if raw_roles is None:
+        return None
+    if set(raw_roles) != _APEX_MOUNT_ROLES:
+        raise CampaignIsolationError("formal Apex mount roles are incomplete")
+    roles: dict[str, Path] = {}
+    for role, raw in raw_roles.items():
+        candidate = Path(raw).expanduser()
+        if not candidate.is_absolute():
+            raise CampaignIsolationError(f"Apex mount role is not absolute: {role}")
+        lexical = Path(os.path.abspath(candidate))
+        try:
+            canonical = lexical.resolve(strict=True)
+        except OSError as error:
+            raise CampaignIsolationError(
+                f"Apex mount role is unavailable: {role}"
+            ) from error
+        if canonical != lexical:
+            raise CampaignIsolationError(f"Apex mount role is not canonical: {role}")
+        if role == "apex_runtime":
+            if canonical not in trusted_read_only:
+                raise CampaignIsolationError(
+                    "Apex runtime role is not the trusted external read-only root"
+                )
+        else:
+            try:
+                relative = canonical.relative_to(data_root)
+            except ValueError as error:
+                raise CampaignIsolationError(
+                    f"Apex mount role is outside campaign data: {role}"
+                ) from error
+            if not relative.parts:
+                raise CampaignIsolationError(
+                    f"Apex mount role is too broad: {role}"
+                )
+        roles[role] = canonical
+    expected_writable = {roles["apex_artifacts"], roles["backend_home"]}
+    expected_read_only = {
+        roles["scored_workspace"],
+        roles["sealed_task_contract"],
+    }
+    if (
+        set(writable) != expected_writable
+        or set(read_only) != expected_read_only
+        or set(trusted_read_only) != {roles["apex_runtime"]}
+    ):
+        raise CampaignIsolationError(
+            "formal Apex role classes differ from requested mount roots"
+        )
+    return roles
+
+
+def _build_attempt_mount_receipt(
+    *,
+    data_root: Path,
+    writable: list[Path],
+    read_only: list[Path],
+    trusted_read_only: list[Path],
+    identities: Mapping[Path, dict[str, Any]] | None = None,
+    roles: Mapping[str, Path] | None = None,
+    data_identity: dict[str, Any] | None = None,
+    outer_bubblewrap: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if roles is not None:
+        if identities is None or data_identity is None:
+            raise CampaignIsolationError("role receipt is missing mount identities")
+        data_mount = data_identity.get("mount")
+        public_mount_fields = (
+            "mount_id",
+            "parent_id",
+            "major_minor",
+            "root",
+            "mount_point",
+        )
+        if not isinstance(data_mount, dict) or any(
+            field not in data_mount for field in public_mount_fields
+        ):
+            raise CampaignIsolationError("campaign data mount identity is malformed")
+        public_data_identity = {
+            **data_identity,
+            "mount": {
+                field: data_mount[field]
+                for field in public_mount_fields
+            },
+        }
+        material = {
+            "schema": ATTEMPT_MOUNT_RECEIPT_SCHEMA_V3,
+            "campaign_data_root": str(data_root),
+            "campaign_data_root_hidden": True,
+            "campaign_data_identity": public_data_identity,
+            "outer_bubblewrap": outer_bubblewrap,
+            "namespace_mounts": None,
+            "roles": {
+                "persistent_writable": {
+                    role: identities[roles[role]]
+                    for role in ("apex_artifacts", "backend_home")
+                },
+                "read_only": {
+                    role: identities[roles[role]]
+                    for role in (
+                        "scored_workspace",
+                        "sealed_task_contract",
+                        "apex_runtime",
+                    )
+                },
+                "private_tmpfs": {
+                    "tmp": {"path": "/tmp", "persistence": "private"},
+                    "dev_shm": {
+                        "path": "/dev/shm",
+                        "persistence": "private",
+                    },
+                },
+            },
+        }
+        return {**material, "sha256": canonical_digest(material)}
+    material: dict[str, Any] = {
+        "schema": ATTEMPT_MOUNT_RECEIPT_SCHEMA_V1,
+        "campaign_data_root": str(data_root),
+        "campaign_data_root_hidden": True,
+        "writable_roots": [str(path) for path in writable],
+        "read_only_roots": [str(path) for path in read_only],
+        "trusted_external_read_only_roots": [
+            str(path) for path in trusted_read_only
+        ],
+    }
+    return {**material, "sha256": canonical_digest(material)}
+
+
+def attempt_mount_receipt(command: list[str]) -> dict[str, Any] | None:
+    """Return the receipt that gate-time attestation finalizes in place.
+
+    Callers may retain this object before spawning the attempt.  Its digest and
+    namespace fields become final only after :func:`establish_attempt_boundary`
+    verifies the blocked namespace and releases the inner mount gate.
+    """
+
+    if not isinstance(command, WrappedAttemptCommand):
+        return None
+    receipt = command.mount_receipt
+    if not isinstance(receipt, dict):
+        return None
+    return receipt
+
+
+def _reject_overlapping_roots(roots: tuple[Path, ...]) -> None:
+    for index, root in enumerate(roots):
+        for other in roots[index + 1 :]:
+            try:
+                root.relative_to(other)
+                overlaps = True
+            except ValueError:
+                try:
+                    other.relative_to(root)
+                    overlaps = True
+                except ValueError:
+                    overlaps = False
+            if overlaps:
+                raise CampaignIsolationError(
+                    f"attempt mount roots overlap: {root} and {other}"
+                )
+
+
+def _make_owner_writable(root: Path) -> None:
+    for path in (root, *root.rglob("*")):
+        try:
+            mode = path.lstat().st_mode
+        except OSError as error:
+            raise CampaignIsolationError(f"cannot inspect attempt home: {path}") from error
+        if stat.S_ISLNK(mode):
+            raise CampaignIsolationError(f"attempt home contains a symlink: {path}")
+        if stat.S_ISDIR(mode):
+            path.chmod((mode & 0o777) | 0o700)
+        elif stat.S_ISREG(mode):
+            path.chmod((mode & 0o777) | 0o600)
+        else:
+            raise CampaignIsolationError(f"attempt home contains an unsafe file: {path}")
+
+
+__all__ = [
+    "APEX_RUNTIME_MOUNT_POLICY",
+    "APEX_RUNTIME_MOUNT_SCHEMA",
+    "ATTEMPT_CONTAINMENT_POLICY",
+    "ATTEMPT_MOUNT_RECEIPT_SCHEMA",
+    "ATTEMPT_MOUNT_RECEIPT_SCHEMA_V1",
+    "ATTEMPT_MOUNT_RECEIPT_SCHEMA_V3",
+    "CampaignIsolationError",
+    "CODEX_CLOUD_CONFIG_BOOTSTRAP_POLICY",
+    "CODEX_CLOUD_CONFIG_BOOTSTRAP_SCHEMA",
+    "AttemptBoundary",
+    "WrappedAttemptCommand",
+    "attempt_cleanup_verified",
+    "attempt_command_pass_fds",
+    "attempt_mount_receipt",
+    "codex_cloud_config_contract",
+    "codex_cloud_config_bootstrap_receipt",
+    "establish_attempt_boundary",
+    "finalize_attempt_boundary",
+    "is_formal_campaign",
+    "formal_gpu_evidence",
+    "isolated_environment",
+    "prepare_attempt_home",
+    "release_attempt_command_fds",
+    "runtime_isolation_receipt",
+    "wrap_attempt_command",
+]

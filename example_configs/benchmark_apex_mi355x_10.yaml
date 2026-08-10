@@ -1,0 +1,32 @@
+# Apex side of the matched 10-task MI355X A/B benchmark. Keep the task list
+# byte-for-byte equivalent to benchmark_codex_mi355x_10.yaml.
+agent:
+  template: apex
+
+campaign:
+  comparison: apex_vs_codex
+  attempts: 3
+  attempt_timeout_seconds: 3600
+  apex_internal_allowance_seconds: 3600
+  task_timeout_seconds: 25200
+  evaluator_allowance_seconds: 3600
+  selection_policy: correctness_then_measured_rate_v1
+  workspace_policy: fresh_per_attempt
+  gpu_policy: deterministic_task_gpu_v1
+  require_clean_checkouts: true
+
+tasks:
+  - triton2triton/vllm/triton_awq_dequantize
+  - triton2triton/vllm/triton_awq_gemm
+  - triton2triton/vllm/triton_batched_moe
+  - triton2triton/vllm/triton_flash_prefill_attention
+  - triton2triton/vllm/triton_fused_moe
+  - triton2triton/vllm/triton_layernorm_gated
+  - triton2triton/vllm/triton_matmul_persistent
+  - triton2triton/vllm/triton_rms_norm
+  - triton2triton/vllm/triton_scaled_mm
+  - triton2triton/vllm/triton_topk_log_softmax
+
+target_gpu_model: MI355X
+log_directory: /data/viouyang/apex/aka/logs
+workspace_directory_prefix: /data/viouyang/apex/aka/workspace

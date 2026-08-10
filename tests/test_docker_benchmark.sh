@@ -5,6 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNNER="$ROOT/src/scripts/docker_benchmark.sh"
 cd "$ROOT"
 PINNED_GFX950_IMAGE="lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705"
+GFX950_V0514_DOCKER_IMAGE_ID="sha256:0a78d51f2f1db80a1abfe23350fc2e5733ac5acb1528d6dc7ce3679bdb099aff"
+export GFX950_V0514_DOCKER_IMAGE_ID
 OLD_GFX950_IMAGE="lmsysorg/sglang:v0.5.12-rocm720-mi35x"
 
 fail() {
@@ -31,9 +33,50 @@ assert_not_has() {
     done
 }
 
+find_arg_with_prefix() {
+    local prefix="$1"
+    shift
+    local value
+    for value in "$@"; do
+        if [[ "$value" == "$prefix"* ]]; then
+            printf '%s\n' "$value"
+            return 0
+        fi
+    done
+    return 1
+}
+
+find_arg_with_suffix() {
+    local suffix="$1"
+    shift
+    local value
+    for value in "$@"; do
+        if [[ "$value" == *"$suffix" ]]; then
+            printf '%s\n' "$value"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Capture the exact argv that the runner would pass to Docker without requiring
 # a daemon, GPU devices, or the benchmark images on this host.
 docker() {
+    if [[ "${1:-}" == image && "${2:-}" == inspect ]]; then
+        case "${4:-}" in
+            '{{.Id}}') printf '%s\n' "$GFX950_V0514_DOCKER_IMAGE_ID" ;;
+            '{{json .RepoDigests}}') printf '["example.invalid/runtime@sha256:%064d"]\n' 0 ;;
+            *) return 2 ;;
+        esac
+        return 0
+    fi
+    local argument
+    for argument in "$@"; do
+        if [[ "$argument" == "com.amd.aka.apex-runtime-preflight=1" ]]; then
+            printf '{"runtime_manifest_sha256":"%064d","schema":"aka.apex-runtime-snapshot/v1"}\n' 0
+            return 0
+        fi
+    done
     printf '%s\n' "$@"
 }
 export -f docker
@@ -71,14 +114,443 @@ assert_cache_args_absent() {
     assert_not_has "/tmp/aiter_configs:rw,uid=$(id -u),gid=$(id -g),mode=1777" "$@"
 }
 
+write_fake_codex_refresh_cli() {
+    local prefix="$1"
+    mkdir -p "$prefix/bin"
+    ln -s /bin/true "$prefix/bin/node"
+    cat > "$prefix/bin/codex" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == "app-server --listen stdio://" ]] || exit 64
+mode="normal"
+[[ ! -f "$CODEX_HOME/test-mode" ]] || mode="$(cat "$CODEX_HOME/test-mode")"
+case "$mode" in
+    timeout) sleep 60; exit 0 ;;
+    flood) yes x ;;
+    nonzero) exit 23 ;;
+esac
+bundle="fixture-a"
+[[ ! -f "$CODEX_HOME/test-bundle" ]] \
+    || bundle="$(cat "$CODEX_HOME/test-bundle")"
+/usr/bin/python3 - "$CODEX_HOME" "$bundle" <<'PY'
+import base64
+import datetime
+import json
+import os
+import sys
+
+root, marker = sys.argv[1:]
+auth = json.load(open(os.path.join(root, "auth.json"), encoding="utf-8"))
+now = datetime.datetime.now(datetime.timezone.utc)
+cache = {
+    "signature": base64.b64encode(b"s" * 32).decode(),
+    "signed_payload": {
+        "version": 1,
+        "cached_at": now.isoformat().replace("+00:00", "Z"),
+        "expires_at": (now + datetime.timedelta(hours=1)).isoformat().replace(
+            "+00:00", "Z"
+        ),
+        "chatgpt_user_id": "private-user-must-not-enter-receipt",
+        "account_id": auth["tokens"]["account_id"],
+        "bundle": {
+            "config_toml": {"marker": marker},
+            "requirements_toml": {"enterprise_managed": []},
+        },
+    },
+}
+path = os.path.join(root, "cloud-config-bundle-cache.json")
+with open(path, "w", encoding="utf-8") as output:
+    json.dump(cache, output, sort_keys=True, separators=(",", ":"))
+PY
+SH
+    chmod +x "$prefix/bin/codex"
+}
+
 TEST_HOME="$(mktemp -d)"
-trap 'rm -rf "$TEST_HOME"' EXIT
+cleanup_test_home() {
+    chmod -R u+w "$TEST_HOME" 2>/dev/null || true
+    rm -rf "$TEST_HOME"
+}
+trap cleanup_test_home EXIT
 UNRELATED_GEAK_WORKFLOW_DIR="$TEST_HOME/unrelated-geak-workflow"
 GEAK_SDK_PYTHONPATH="PYTHONPATH=/workspace/.aka-pyuserbase/geak-sdk"
 mkdir -p "$UNRELATED_GEAK_WORKFLOW_DIR"
 touch "$UNRELATED_GEAK_WORKFLOW_DIR/kernel_workflow.js"
 
 bash -n "$RUNNER"
+grep -Fq 'json.dumps(dict(device_count=count' "$RUNNER" \
+    || fail "runtime GPU observation must avoid nested single-quote corruption"
+grep -Fq -- '--unshare-pid --unshare-ipc' "$RUNNER" \
+    || fail "rootless bwrap preflight must create a private attempt PID namespace"
+grep -Fq -- '--proc /proc' "$RUNNER" \
+    || fail "rootless bwrap preflight must mount the attempt-private procfs"
+grep -Fq '[[ "$apex_mount_receipt_sha256" =~ ^[0-9a-f]{64}$ ]]' "$RUNNER" \
+    || fail "formal Apex mount receipt digest must fail closed before main.py"
+
+# A cold Apex snapshot can legitimately spend more than 30 seconds inside the
+# deterministic image builder, whose own hard timeout is 120 seconds.  Exercise
+# the wait loop without wall-clock sleeping and prove that a live service is not
+# rejected at either the old 300-poll boundary or the builder's 1200-poll bound.
+# The fake service exits immediately after that bound, so this test never needs
+# to construct ready evidence.  Also lock the release-defined 300-second policy;
+# a shorter value could preserve this behavioral probe while losing headroom for
+# inventory verification, mounting, and receipt validation.
+runtime_wait_probe="$(
+    (
+        # shellcheck source=../src/scripts/docker_benchmark.sh
+        source "$RUNNER"
+        [[ "$RUNTIME_MOUNT_READY_POLL_ATTEMPTS" == "3000" ]] \
+            || die "unexpected runtime mount readiness policy"
+        readiness_poll_count=0
+        sleep() {
+            readiness_poll_count=$((readiness_poll_count + 1))
+        }
+        kill() {
+            if [[ "${1:-}" == "-0" ]]; then
+                (( readiness_poll_count <= 1200 ))
+                return
+            fi
+            command kill "$@"
+        }
+        wait_for_runtime_mount_service \
+            999999 "$TEST_HOME/no-ready.json" test /dev/null
+    ) 2>&1 || true
+)"
+[[ "$runtime_wait_probe" == *"exited before readiness"* \
+    && "$runtime_wait_probe" != *"did not become ready"* ]] \
+    || fail "runtime mount supervisor did not outlive the image-builder boundary"
+
+# Docker's root daemon cannot traverse an owner-only FUSE mount. Formal mode
+# therefore fails before materialization unless fuse.conf explicitly permits
+# allow_other; comments and symlinks do not satisfy the prerequisite.
+FUSE_CONFIG_ENABLED="$TEST_HOME/fuse-enabled.conf"
+FUSE_CONFIG_DISABLED="$TEST_HOME/fuse-disabled.conf"
+FUSE_CONFIG_LINK="$TEST_HOME/fuse-link.conf"
+printf '#user_allow_other\n' > "$FUSE_CONFIG_DISABLED"
+printf 'user_allow_other\n' > "$FUSE_CONFIG_ENABLED"
+ln -s "$FUSE_CONFIG_ENABLED" "$FUSE_CONFIG_LINK"
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    fuse_config_enables_allow_other "$FUSE_CONFIG_ENABLED"
+) || fail "enabled FUSE allow_other prerequisite was rejected"
+if (
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    fuse_config_enables_allow_other "$FUSE_CONFIG_DISABLED"
+) >/dev/null 2>&1; then
+    fail "commented FUSE allow_other prerequisite was accepted"
+fi
+if (
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    fuse_config_enables_allow_other "$FUSE_CONFIG_LINK"
+) >/dev/null 2>&1; then
+    fail "symlink FUSE config prerequisite was accepted"
+fi
+
+# Content-addressed staging is deliberately 0555 while live. Successful exact
+# service cleanup must make only those directories owner-removable before rm.
+SEALED_CLEANUP_ROOT="$(mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX)"
+mkdir -p "$SEALED_CLEANUP_ROOT/aka-staging/digest/nested" \
+    "$SEALED_CLEANUP_ROOT/apex-staging/digest/nested"
+touch "$SEALED_CLEANUP_ROOT/aka-staging/digest/nested/file" \
+    "$SEALED_CLEANUP_ROOT/apex-staging/digest/nested/file"
+chmod 0555 "$SEALED_CLEANUP_ROOT/aka-staging/digest/nested" \
+    "$SEALED_CLEANUP_ROOT/aka-staging/digest" \
+    "$SEALED_CLEANUP_ROOT/apex-staging/digest/nested" \
+    "$SEALED_CLEANUP_ROOT/apex-staging/digest"
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    CAMPAIGN_RUNTIME_TEMP_ROOT="$SEALED_CLEANUP_ROOT"
+    bind_campaign_runtime_temp_root_identity
+    CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+    cleanup_campaign_runtime_mounts
+)
+[[ ! -e "$SEALED_CLEANUP_ROOT" ]] \
+    || fail "successful formal cleanup retained sealed staging directories"
+
+# A scheduled refresh failure TERM-signals the runner, so the EXIT trap first
+# observes 143. Refresh fatal evidence must still normalize the final status to
+# the dedicated release-defined code 71.
+set +e
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    cleanup_campaign_codex_refresh_supervisor() {
+        CAMPAIGN_CODEX_REFRESH_FATAL=1
+        return 0
+    }
+    cleanup_campaign_runtime_mounts() { return 0; }
+    set +e
+    (exit 143)
+    finish_with_campaign_runtime_cleanup
+) >/dev/null 2>&1
+refresh_fatal_status=$?
+set -e
+[[ "$refresh_fatal_status" == "71" ]] \
+    || fail "scheduled Codex refresh fatal did not normalize TERM status to 71"
+
+# Formal Codex refresh uses an auth-only private home, promotes only auth/cache,
+# and supervises refreshes without mutating the user's real Codex directory.
+REFRESH_HOST_HOME="$TEST_HOME/refresh-host-home"
+REFRESH_PREFIX="$TEST_HOME/refresh-node"
+REFRESH_DATA="$TEST_HOME/refresh-data"
+mkdir -p "$REFRESH_HOST_HOME/.codex" "$REFRESH_DATA"
+printf '%s\n' '{"auth_mode":"chatgpt","tokens":{"account_id":"00000000-0000-0000-0000-000000000001","access_token":"secret-token-must-not-enter-receipt"}}' \
+    > "$REFRESH_HOST_HOME/.codex/auth.json"
+write_fake_codex_refresh_cli "$REFRESH_PREFIX"
+if (
+    export HOME="$REFRESH_HOST_HOME"
+    export AKA_NODE_PREFIX="$REFRESH_PREFIX"
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_PROVENANCE=1
+    AGENT_HOME_ISOLATION=1
+    docker_args=()
+    unset _MOUNTED_TARGETS
+    declare -gA _MOUNTED_TARGETS=()
+    mount_agent codex 1
+) >/dev/null 2>&1; then
+    fail "formal Codex mount fell back to the user's complete state directory"
+fi
+(
+    export HOME="$REFRESH_HOST_HOME"
+    export AKA_NODE_PREFIX="$REFRESH_PREFIX"
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_PROVENANCE=1
+    CAMPAIGN_DATA_ROOT="$REFRESH_DATA"
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    start_campaign_codex_refresh_supervisor
+    private_root="$CAMPAIGN_CODEX_REFRESH_ROOT"
+    supervisor_pid="$CAMPAIGN_CODEX_REFRESH_PID"
+    published="$CAMPAIGN_CODEX_REFRESH_PUBLISHED_ROOT/.codex"
+    [[ "$(find "$published" -mindepth 1 -maxdepth 1 -printf '%f\n' \
+        | sort | tr '\n' ' ')" == \
+        "auth.json cloud-config-bundle-cache.json " ]] \
+        || fail "formal Codex published state was not minimal"
+    docker_args=()
+    unset _MOUNTED_TARGETS
+    declare -gA _MOUNTED_TARGETS=()
+    AGENT_HOME_ISOLATION=1
+    mount_agent codex 1
+    assert_has \
+        "$published:/opt/aka-agent-state/.codex:ro" \
+        "${docker_args[@]}"
+    assert_not_has \
+        "$REFRESH_HOST_HOME/.codex:/opt/aka-agent-state/.codex:ro" \
+        "${docker_args[@]}"
+    receipt_count="$(find "$REFRESH_DATA" -maxdepth 1 -type f \
+        -name 'codex-cloud-config-refresh-*.json' | wc -l)"
+    (( receipt_count == 1 )) \
+        || fail "formal Codex bootstrap did not emit exactly one initial receipt"
+    if grep -R -E \
+        'secret-token-must-not-enter-receipt|private-user-must-not-enter-receipt|00000000-0000-0000-0000-000000000001' \
+        "$REFRESH_DATA"; then
+        fail "formal Codex refresh receipt leaked private payload"
+    fi
+    cleanup_campaign_codex_refresh_supervisor
+    [[ ! -e "$private_root" ]] \
+        || fail "formal Codex sensitive private state survived cleanup"
+    [[ -z "$(runtime_service_starttime "$supervisor_pid" 2>/dev/null || true)" ]] \
+        || fail "formal Codex refresh supervisor survived cleanup"
+)
+
+# A stale or substituted root identity must stop cleanup before chmod or rm.
+UNTRUSTED_CLEANUP_ROOT="$(mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX)"
+mkdir -p "$UNTRUSTED_CLEANUP_ROOT/aka-staging/digest"
+chmod 0555 "$UNTRUSTED_CLEANUP_ROOT/aka-staging/digest"
+if (
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    CAMPAIGN_RUNTIME_TEMP_ROOT="$UNTRUSTED_CLEANUP_ROOT"
+    bind_campaign_runtime_temp_root_identity
+    CAMPAIGN_RUNTIME_TEMP_ROOT_INODE="$((CAMPAIGN_RUNTIME_TEMP_ROOT_INODE + 1))"
+    CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+    cleanup_campaign_runtime_mounts
+) >/dev/null 2>&1; then
+    fail "untrusted formal cleanup target reported success"
+fi
+[[ -d "$UNTRUSTED_CLEANUP_ROOT" \
+    && "$(stat -c '%a' "$UNTRUSTED_CLEANUP_ROOT/aka-staging/digest")" == "555" ]] \
+    || fail "untrusted formal cleanup target was modified"
+chmod -R u+rwx "$UNTRUSTED_CLEANUP_ROOT"
+rm -rf -- "$UNTRUSTED_CLEANUP_ROOT"
+
+# A staging-root symlink is never traversed or chmodded, even inside a valid root.
+SYMLINK_CLEANUP_ROOT="$(mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX)"
+SYMLINK_CLEANUP_TARGET="$TEST_HOME/cleanup-symlink-target"
+mkdir -p "$SYMLINK_CLEANUP_TARGET/nested"
+chmod 0555 "$SYMLINK_CLEANUP_TARGET/nested"
+ln -s "$SYMLINK_CLEANUP_TARGET" "$SYMLINK_CLEANUP_ROOT/aka-staging"
+if (
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    CAMPAIGN_RUNTIME_TEMP_ROOT="$SYMLINK_CLEANUP_ROOT"
+    bind_campaign_runtime_temp_root_identity
+    CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+    cleanup_campaign_runtime_mounts
+) >/dev/null 2>&1; then
+    fail "staging-symlink cleanup reported success"
+fi
+[[ -L "$SYMLINK_CLEANUP_ROOT/aka-staging" \
+    && "$(stat -c '%a' "$SYMLINK_CLEANUP_TARGET/nested")" == "555" ]] \
+    || fail "formal cleanup traversed an untrusted staging symlink"
+rm -- "$SYMLINK_CLEANUP_ROOT/aka-staging"
+rmdir -- "$SYMLINK_CLEANUP_ROOT"
+
+# EXIT cleanup preserves an existing failure, but promotes an otherwise
+# successful formal run to EX_SOFTWARE when exact cleanup fails.
+PRESERVED_STATUS_ROOT="$(mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX)"
+set +e
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    set +e
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    CAMPAIGN_RUNTIME_TEMP_ROOT="$PRESERVED_STATUS_ROOT"
+    bind_campaign_runtime_temp_root_identity
+    CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+    /bin/sh -c 'exit 23'
+    finish_with_campaign_runtime_cleanup
+)
+PRESERVED_STATUS=$?
+set -e
+[[ "$PRESERVED_STATUS" == "23" && ! -e "$PRESERVED_STATUS_ROOT" ]] \
+    || fail "successful exact cleanup changed the original exit status"
+
+PROMOTED_STATUS_ROOT="$(mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX)"
+set +e
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    CAMPAIGN_RUNTIME_TEMP_ROOT="$PROMOTED_STATUS_ROOT"
+    bind_campaign_runtime_temp_root_identity
+    CAMPAIGN_RUNTIME_TEMP_ROOT_INODE="$((CAMPAIGN_RUNTIME_TEMP_ROOT_INODE + 1))"
+    CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+    finish_with_campaign_runtime_cleanup
+) >/dev/null 2>&1
+PROMOTED_STATUS=$?
+set -e
+[[ "$PROMOTED_STATUS" == "70" && -d "$PROMOTED_STATUS_ROOT" ]] \
+    || fail "cleanup failure did not promote a successful formal exit to 70"
+rmdir -- "$PROMOTED_STATUS_ROOT"
+
+ORIGINAL_FAILURE_ROOT="$(mktemp -d /tmp/agentkernelarena-formal-runtime.XXXXXX)"
+set +e
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    set +e
+    CAMPAIGN_RUNTIME_OWNER_BASHPID="$BASHPID"
+    CAMPAIGN_RUNTIME_TEMP_ROOT="$ORIGINAL_FAILURE_ROOT"
+    bind_campaign_runtime_temp_root_identity
+    CAMPAIGN_RUNTIME_TEMP_ROOT_INODE="$((CAMPAIGN_RUNTIME_TEMP_ROOT_INODE + 1))"
+    CAMPAIGN_RUNTIME_SERVICE_PIDS=()
+    /bin/sh -c 'exit 29'
+    finish_with_campaign_runtime_cleanup
+) >/dev/null 2>&1
+ORIGINAL_FAILURE_STATUS=$?
+set -e
+[[ "$ORIGINAL_FAILURE_STATUS" == "29" && -d "$ORIGINAL_FAILURE_ROOT" ]] \
+    || fail "cleanup failure masked the original formal failure"
+rmdir -- "$ORIGINAL_FAILURE_ROOT"
+
+# Formal HOME preparation is fail-closed: it overrides every caller-provided
+# mutable path. The same helper must be a strict no-op outside a formal campaign.
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_PROVENANCE=0
+    AKA_CONTAINER_HOME="/caller/home"
+    AKA_CODEX_HOME="/caller/codex"
+    AKA_CACHE_SUFFIX="caller-cache"
+    AGENT_HOME_ISOLATION=0
+    prepare_formal_container_home "ignored/label"
+    [[ "$AKA_CONTAINER_HOME" == "/caller/home" ]]
+    [[ "$AKA_CODEX_HOME" == "/caller/codex" ]]
+    [[ "$AKA_CACHE_SUFFIX" == "caller-cache" ]]
+    [[ "$AGENT_HOME_ISOLATION" == "0" ]]
+
+    CAMPAIGN_PROVENANCE=1
+    prepare_formal_container_home "formal/worker"
+    [[ "$AKA_CONTAINER_HOME" == "/tmp/aka-home-formal_worker" ]]
+    [[ "$AKA_CODEX_HOME" == "/tmp/aka-home-formal_worker/.codex" ]]
+    [[ "$AKA_CACHE_SUFFIX" == "formal_worker" ]]
+    [[ "$AGENT_HOME_ISOLATION" == "1" ]]
+) || fail "formal container HOME preparation contract failed"
+
+# Exercise the formal lease/inventory path itself with CPU-only command fakes.
+# This catches shell-scope regressions such as passing an unset inventory path.
+FORMAL_SHELL_ROOT="$TEST_HOME/formal-shell"
+FORMAL_INVENTORY_MARKER="$FORMAL_SHELL_ROOT/inventory-path"
+mkdir -p "$FORMAL_SHELL_ROOT/data"
+printf '{}\n' > "$FORMAL_SHELL_ROOT/gpu-plan.json"
+(
+    # shellcheck source=../src/scripts/docker_benchmark.sh
+    source "$RUNNER"
+    CAMPAIGN_PROVENANCE=1
+    CAMPAIGN_DATA_ROOT="$FORMAL_SHELL_ROOT/data"
+    CAMPAIGN_GPU_PLAN_HOST="$FORMAL_SHELL_ROOT/gpu-plan.json"
+    CAMPAIGN_GPU_PLAN_SHA256="$(printf '%064d' 0)"
+    CAMPAIGN_GPU_LEASE_FDS=()
+    AKA_GPU_LEASE_ROOT="$FORMAL_SHELL_ROOT/leases"
+
+    python3() {
+        local script="$1"
+        shift
+        case "$(basename "$script"):${1:-}" in
+            gpu_exclusivity.py:lease-keys)
+                printf '0x0000000000000001\n'
+                ;;
+            kfd_process_inventory.py:--output)
+                printf '{"cpu_only_fake_inventory":true}\n' > "$2"
+                ;;
+            gpu_exclusivity.py:create-receipt)
+                local inventory="" output=""
+                while [[ "$#" -gt 0 ]]; do
+                    case "$1" in
+                        --kfd-process-inventory)
+                            inventory="$2"
+                            shift 2
+                            ;;
+                        --output)
+                            output="$2"
+                            shift 2
+                            ;;
+                        *)
+                            shift
+                            ;;
+                    esac
+                done
+                [[ -n "$inventory" && -f "$inventory" && -s "$inventory" ]] || return 70
+                printf '%s\n' "$inventory" > "$FORMAL_INVENTORY_MARKER"
+                printf '{"cpu_only_fake_receipt":true}\n' > "$output"
+                ;;
+            gpu_exclusivity.py:verify-receipt)
+                printf '%064d\n' 0
+                ;;
+            *)
+                return 71
+                ;;
+        esac
+    }
+
+    acquire_campaign_gpu_exclusivity "cpu-only-formal-shell-test"
+    [[ -s "$FORMAL_INVENTORY_MARKER" ]]
+    inventory_path="$(<"$FORMAL_INVENTORY_MARKER")"
+    [[ "$inventory_path" == "$FORMAL_SHELL_ROOT/data/"* ]]
+    [[ -f "$inventory_path" && -s "$inventory_path" ]]
+    [[ "$(stat -c '%a' "$inventory_path")" == "444" ]]
+    [[ -f "$CAMPAIGN_GPU_EXCLUSIVITY_HOST" ]]
+) || fail "formal GPU acquire path did not pass a published KFD inventory artifact"
 
 # The internal container subcommand must forward the selected agent list instead
 # of falling back to its all-three default. A fake Python records the environment
@@ -93,7 +565,18 @@ forwarded_agents="$(PATH="$FAKE_BIN:$PATH" bash "$RUNNER" _container_check_agent
 # The gfx950 default resolves to the pinned image and enables writable caches.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950)
 assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=$GFX950_V0514_DOCKER_IMAGE_ID" "${args[@]}"
+assert_has 'AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS=["example.invalid/runtime@sha256:0000000000000000000000000000000000000000000000000000000000000000"]' "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
+
+# A caller-supplied expected image ID is a check, never an unchecked override.
+if run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE_ID="sha256:$(printf '%064d' 9)" \
+    >/dev/null 2>&1; then
+    fail "mismatched AKA_DOCKER_IMAGE_ID was accepted"
+fi
+
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_GPU_POOL=0,1,2,3,4,5,6,7)
+assert_has "AGENT_KERNEL_ARENA_GPU_POOL=0,1,2,3,4,5,6,7" "${args[@]}"
 
 # A worker suffix must isolate both runtime cache directories.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_CACHE_SUFFIX=worker/3)
@@ -153,8 +636,10 @@ assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
 CODEX_HOME="$TEST_HOME/codex-home"
 CODEX_PREFIX="$TEST_HOME/codex-node"
 CODEX_CONFIG="$TEST_HOME/codex-config.yaml"
-mkdir -p "$CODEX_HOME/.codex" "$CODEX_PREFIX/bin"
-touch "$CODEX_PREFIX/bin/node" "$CODEX_PREFIX/bin/codex"
+mkdir -p "$CODEX_HOME/.codex"
+printf '%s\n' '{"auth_mode":"chatgpt","tokens":{"account_id":"00000000-0000-0000-0000-000000000002","access_token":"formal-test-secret"}}' \
+    > "$CODEX_HOME/.codex/auth.json"
+write_fake_codex_refresh_cli "$CODEX_PREFIX"
 printf 'agent:\n  template: codex\n' > "$CODEX_CONFIG"
 
 mapfile -t args < <(run_check_args \
@@ -170,6 +655,191 @@ assert_not_has "ANTHROPIC_API_KEY" "${args[@]}"
 assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
 assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
+
+# Apex is an orchestrating agent. The runner mounts its checkout read-only and
+# provisions only the backend selected in agents/apex/agent_config.yaml (Codex
+# by default), rather than exposing all three backend credentials.
+APEX_ROOT="$TEST_HOME/apex-checkout"
+APEX_CONFIG="$TEST_HOME/apex-config.yaml"
+mkdir -p "$APEX_ROOT"
+touch "$APEX_ROOT/main.py"
+mkdir -p "$APEX_ROOT/.venv/bin"
+touch "$APEX_ROOT/.venv/bin/python"
+chmod +x "$APEX_ROOT/.venv/bin/python"
+printf 'agent:\n  template: apex\n' > "$APEX_CONFIG"
+
+mapfile -t args < <(run_check_args \
+    "$CODEX_HOME" \
+    "$APEX_CONFIG" \
+    AKA_APEX_ROOT="$APEX_ROOT" \
+    AKA_NODE_PREFIX="$CODEX_PREFIX" \
+    ANTHROPIC_API_KEY=apex-codex-must-not-receive-this)
+assert_has "$APEX_ROOT:$APEX_ROOT:ro" "${args[@]}"
+assert_has "APEX_ROOT=$APEX_ROOT" "${args[@]}"
+assert_has "APEX_PYTHON=$APEX_ROOT/.venv/bin/python" "${args[@]}"
+assert_has "PYTHONDONTWRITEBYTECODE=1" "${args[@]}"
+assert_not_has "PYTHONPATH=" "${args[@]}"
+assert_has "$CODEX_PREFIX:/opt/node:ro" "${args[@]}"
+assert_has "$CODEX_HOME/.codex:$CODEX_HOME/.codex" "${args[@]}"
+assert_has "codex" "${args[@]}"
+assert_not_has "$CODEX_HOME/.claude:$CODEX_HOME/.claude" "${args[@]}"
+assert_not_has "$CODEX_HOME/.local/share/cursor-agent:$CODEX_HOME/.local/share/cursor-agent:ro" "${args[@]}"
+assert_not_has "ANTHROPIC_API_KEY" "${args[@]}"
+
+# A matched direct-Codex campaign receives only the Apex Git receipt, not the
+# Apex source mount. This pins the treatment revision without letting the
+# baseline agent inspect the treatment implementation.
+CAMPAIGN_APEX_ROOT="$TEST_HOME/campaign-apex-checkout"
+CAMPAIGN_CODEX_CONFIG="$TEST_HOME/campaign-codex-config.yaml"
+mkdir -p "$CAMPAIGN_APEX_ROOT"
+git -C "$CAMPAIGN_APEX_ROOT" init -q
+touch "$CAMPAIGN_APEX_ROOT/main.py"
+printf '.venv\n' > "$CAMPAIGN_APEX_ROOT/.gitignore"
+mkdir -p "$CAMPAIGN_APEX_ROOT/.venv/bin"
+mkdir -p "$CAMPAIGN_APEX_ROOT/.venv/lib/python3.10/site-packages"
+ln -s /usr/bin/python3 "$CAMPAIGN_APEX_ROOT/.venv/bin/python"
+printf 'include-system-site-packages = false\n' > "$CAMPAIGN_APEX_ROOT/.venv/pyvenv.cfg"
+git -C "$CAMPAIGN_APEX_ROOT" add main.py .gitignore
+git -C "$CAMPAIGN_APEX_ROOT" \
+    -c user.name=AKA -c user.email=aka@example.invalid \
+    commit -q -m initial
+CAMPAIGN_APEX_COMMIT="$(git -C "$CAMPAIGN_APEX_ROOT" rev-parse HEAD)"
+CAMPAIGN_DATA_ROOT="$TEST_HOME/campaign-data"
+printf 'agent:\n  template: codex\ncampaign:\n  comparison: apex_vs_codex\nworkspace_directory_prefix: %s/workspace\n' \
+    "$CAMPAIGN_DATA_ROOT" > "$CAMPAIGN_CODEX_CONFIG"
+
+mapfile -t args < <(run_check_args \
+    "$CODEX_HOME" \
+    "$CAMPAIGN_CODEX_CONFIG" \
+    AKA_APEX_ROOT="$CAMPAIGN_APEX_ROOT" \
+    AKA_NODE_PREFIX="$CODEX_PREFIX")
+mapfile -t aka_service_receipts < <(
+    find "$CAMPAIGN_DATA_ROOT" -maxdepth 1 -type f \
+        -name 'aka-runtime-service-*.json' -print | sort
+)
+mapfile -t aka_cleanup_receipts < <(
+    find "$CAMPAIGN_DATA_ROOT" -maxdepth 1 -type f \
+        -name 'aka-runtime-cleanup-*.json' -print | sort
+)
+[[ "${#aka_service_receipts[@]}" == "1" \
+    && "${#aka_cleanup_receipts[@]}" == "1" \
+    && "$(stat -c '%a' "${aka_service_receipts[0]}")" == "444" \
+    && "$(stat -c '%a' "${aka_cleanup_receipts[0]}")" == "444" ]] \
+    || fail "formal mount service cleanup evidence was not persisted exactly"
+if find "$CAMPAIGN_DATA_ROOT" -maxdepth 1 -name 'aka-runtime-engine-*.json' \
+    -print -quit | grep -q .; then
+    fail "legacy runtime-engine evidence filename survived the clean cut"
+fi
+python3 - "${aka_service_receipts[0]}" "${aka_cleanup_receipts[0]}" <<'PY'
+import hashlib
+import json
+import sys
+
+service = json.load(open(sys.argv[1], encoding="utf-8"))
+cleanup = json.load(open(sys.argv[2], encoding="utf-8"))
+material = dict(cleanup)
+observed = material.pop("sha256")
+canonical = json.dumps(material, sort_keys=True, separators=(",", ":")).encode()
+assert cleanup["runtime_service_evidence_sha256"] == service["sha256"]
+assert cleanup["runtime_engine_evidence_sha256"] == service["engine_evidence"]["sha256"]
+assert cleanup["host_mount_receipt_sha256"] == service["mount_receipt"]["sha256"]
+assert cleanup["controller"]["pid"] == service["service"]["pid"]
+assert cleanup["controller"]["starttime"] == service["service"]["starttime"]
+assert cleanup["engine"]["pid"] == service["engine_evidence"]["process"]["pid"]
+assert cleanup["engine"]["starttime"] == service["engine_evidence"]["process"]["starttime"]
+assert cleanup["mount_absent"] is cleanup["mountpoint_empty"] is True
+assert observed == hashlib.sha256(canonical).hexdigest()
+PY
+assert_has "AGENT_KERNEL_ARENA_APEX_COMMIT=$CAMPAIGN_APEX_COMMIT" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_APEX_DIRTY=false" "${args[@]}"
+apex_runtime_digest_arg="$(
+    find_arg_with_prefix "AGENT_KERNEL_ARENA_APEX_RUNTIME_MANIFEST_SHA256=" "${args[@]}"
+)" || fail "formal campaign did not bind the Apex runtime manifest"
+[[ "${apex_runtime_digest_arg#*=}" =~ ^[0-9a-f]{64}$ ]] \
+    || fail "formal Apex runtime manifest digest is invalid"
+assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=$GFX950_V0514_DOCKER_IMAGE_ID" "${args[@]}"
+assert_not_has "$CAMPAIGN_APEX_ROOT:$CAMPAIGN_APEX_ROOT:ro" "${args[@]}"
+assert_not_has "APEX_ROOT=$CAMPAIGN_APEX_ROOT" "${args[@]}"
+assert_has "$CAMPAIGN_DATA_ROOT:$CAMPAIGN_DATA_ROOT" "${args[@]}"
+aka_runtime_mount="$(find_arg_with_suffix ":/workspace:ro" "${args[@]}")" \
+    || fail "formal campaign did not mount a sealed AKA runtime"
+[[ "$aka_runtime_mount" == /tmp/agentkernelarena-formal-runtime.*:/workspace:ro ]] \
+    || fail "formal AKA runtime mount is not an isolated immutable mount: $aka_runtime_mount"
+assert_not_has "$ROOT:/workspace:ro" "${args[@]}"
+assert_not_has "$ROOT:/workspace" "${args[@]}"
+formal_codex_state_mount="$(
+    find_arg_with_suffix ":/opt/aka-agent-state/.codex:ro" "${args[@]}"
+)" || fail "formal campaign did not mount its refreshed minimal Codex state"
+[[ "$formal_codex_state_mount" == \
+    /tmp/agentkernelarena-formal-codex.*/published/.codex:/opt/aka-agent-state/.codex:ro ]] \
+    || fail "formal Codex state was not mounted from campaign-private publication: $formal_codex_state_mount"
+assert_not_has "$CODEX_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+assert_not_has "$CODEX_HOME/.codex:$CODEX_HOME/.codex" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_ISOLATED_HOME=1" "${args[@]}"
+formal_home_arg="$(find_arg_with_prefix "HOME=/tmp/aka-home-check-agents-" "${args[@]}")" \
+    || fail "formal check-agents did not receive an ephemeral HOME"
+formal_home="${formal_home_arg#HOME=}"
+assert_has "CODEX_HOME=$formal_home/.codex" "${args[@]}"
+formal_label="${formal_home#/tmp/aka-home-}"
+assert_has "XDG_CACHE_HOME=/tmp/agent-cache-$formal_label" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_CAMPAIGN_DATA_ROOT=$CAMPAIGN_DATA_ROOT" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_AKA_RUNTIME_ROOT=/workspace" "${args[@]}"
+aka_manifest_arg="$(
+    find_arg_with_prefix "AGENT_KERNEL_ARENA_AKA_RUNTIME_MANIFEST=" "${args[@]}"
+)" || fail "formal campaign did not mount an AKA execution manifest"
+[[ "${aka_manifest_arg#*=}" == "$CAMPAIGN_DATA_ROOT/aka-runtime-manifest-"*.json ]] \
+    || fail "formal AKA manifest is not a persistent campaign artifact"
+aka_image_arg="$(
+    find_arg_with_prefix "AGENT_KERNEL_ARENA_AKA_RUNTIME_IMAGE_SHA256=" "${args[@]}"
+)" || fail "formal campaign did not bind the AKA immutable image"
+[[ "${aka_image_arg#*=}" =~ ^[0-9a-f]{64}$ ]] \
+    || fail "formal AKA image digest is invalid"
+assert_has "/usr/bin/bwrap:/usr/bin/bwrap:ro" "${args[@]}"
+formal_requirements_mount="$(
+    find_arg_with_suffix "/agents/codex/formal_requirements.toml:/etc/codex/requirements.toml:ro" "${args[@]}"
+)" || fail "formal Codex requirements were not sourced from the sealed AKA runtime"
+[[ "$formal_requirements_mount" == /tmp/agentkernelarena-formal-runtime.* ]] \
+    || fail "formal Codex requirements came from a live checkout"
+assert_has "--security-opt=seccomp=unconfined" "${args[@]}"
+assert_has "--security-opt=apparmor=unconfined" "${args[@]}"
+assert_has "--security-opt=no-new-privileges:true" "${args[@]}"
+assert_has "--security-opt=systempaths=unconfined" "${args[@]}"
+assert_has "--cap-drop=ALL" "${args[@]}"
+assert_not_has "--privileged" "${args[@]}"
+assert_not_has "--cap-add=SYS_ADMIN" "${args[@]}"
+assert_not_has "--cap-add=SYS_PTRACE" "${args[@]}"
+assert_not_has "--pid=host" "${args[@]}"
+assert_not_has "--device=/dev/mem" "${args[@]}"
+assert_not_has "--device=/dev/dri" "${args[@]}"
+assert_not_has "--device=/dev/kfd" "${args[@]}"
+
+# The Apex arm executes only from its digest-addressed SquashFS snapshot. The
+# live treatment checkout remains provenance text and is not visible in Docker.
+CAMPAIGN_APEX_AGENT_CONFIG="$TEST_HOME/campaign-apex-agent-config.yaml"
+printf 'agent:\n  template: apex\ncampaign:\n  comparison: apex_vs_codex\nworkspace_directory_prefix: %s/workspace-apex\n' \
+    "$CAMPAIGN_DATA_ROOT" > "$CAMPAIGN_APEX_AGENT_CONFIG"
+mapfile -t apex_args < <(run_check_args \
+    "$CODEX_HOME" \
+    "$CAMPAIGN_APEX_AGENT_CONFIG" \
+    AKA_APEX_ROOT="$CAMPAIGN_APEX_ROOT" \
+    AKA_NODE_PREFIX="$CODEX_PREFIX")
+apex_snapshot_arg="$(
+    find_arg_with_prefix "AGENT_KERNEL_ARENA_APEX_RUNTIME_SNAPSHOT_ROOT=" "${apex_args[@]}"
+)" || fail "formal Apex arm did not receive its immutable runtime root"
+apex_snapshot="${apex_snapshot_arg#*=}"
+[[ "$apex_snapshot" == /tmp/agentkernelarena-formal-runtime.*/*/* \
+    && "$(basename "$apex_snapshot")" =~ ^[0-9a-f]{64}$ ]] \
+    || fail "formal Apex runtime root is not digest-addressed: $apex_snapshot"
+assert_has "$apex_snapshot:$apex_snapshot:ro" "${apex_args[@]}"
+assert_has "APEX_ROOT=$apex_snapshot/repo" "${apex_args[@]}"
+assert_has "APEX_PYTHON=$apex_snapshot/sealed-bin/python" "${apex_args[@]}"
+assert_has "AGENT_KERNEL_ARENA_APEX_SOURCE_ROOT=$CAMPAIGN_APEX_ROOT" "${apex_args[@]}"
+assert_not_has "$CAMPAIGN_APEX_ROOT:$CAMPAIGN_APEX_ROOT:ro" "${apex_args[@]}"
+apex_image_arg="$(
+    find_arg_with_prefix "AGENT_KERNEL_ARENA_APEX_RUNTIME_IMAGE_SHA256=" "${apex_args[@]}"
+)" || fail "formal Apex arm did not bind its immutable image"
+[[ "${apex_image_arg#*=}" =~ ^[0-9a-f]{64}$ ]] \
+    || fail "formal Apex immutable image digest is invalid"
 
 # A natively installed Claude CLI is a launcher in ~/.local/bin that resolves
 # into ~/.local/share/claude/versions. Both sides of that symlink must be

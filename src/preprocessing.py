@@ -2,6 +2,7 @@
 # This script will setup environment tools and dependencies. It will also provide duplicated workspace for the agent
 import os
 import shutil
+import stat
 import subprocess
 import logging
 from pathlib import Path
@@ -10,6 +11,40 @@ import yaml
 from typing import Any, Optional
 
 from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
+
+
+def _make_workspace_tree_owner_mutable(root: Path) -> None:
+    """Turn a copied, sealed source tree into an owner-mutable workspace."""
+
+    for current, directory_names, file_names in os.walk(
+        root, topdown=True, followlinks=False
+    ):
+        current_path = Path(current)
+        current_metadata = current_path.lstat()
+        if not stat.S_ISDIR(current_metadata.st_mode):
+            raise RuntimeError(f"workspace tree contains a non-directory: {current_path}")
+        current_path.chmod(stat.S_IMODE(current_metadata.st_mode) | stat.S_IRWXU)
+
+        for name in list(directory_names):
+            path = current_path / name
+            metadata = path.lstat()
+            if stat.S_ISLNK(metadata.st_mode):
+                directory_names.remove(name)
+            elif not stat.S_ISDIR(metadata.st_mode):
+                raise RuntimeError(f"workspace tree contains an unsafe entry: {path}")
+            else:
+                path.chmod(stat.S_IMODE(metadata.st_mode) | stat.S_IRWXU)
+
+        for name in file_names:
+            path = current_path / name
+            metadata = path.lstat()
+            if stat.S_ISLNK(metadata.st_mode):
+                continue
+            if not stat.S_ISREG(metadata.st_mode):
+                raise RuntimeError(f"workspace tree contains an unsafe entry: {path}")
+            path.chmod(
+                stat.S_IMODE(metadata.st_mode) | stat.S_IRUSR | stat.S_IWUSR
+            )
 
 
 def _resolve_gfx_arch(target_gpu_model: str) -> str | None:
@@ -549,6 +584,10 @@ def setup_workspace(task_config_dir: str, run_directory: Path, timestamp: str, l
         )
         _maybe_post_clone_install(task_config, repo_dir, did_seed, logger)
 
+    # Formal execution reads task sources from an immutable 0444/0555 snapshot.
+    # The copied attempt workspace is intentionally mutable, so restore only the
+    # owner's write bit while preserving executable bits and the sealed source.
+    _make_workspace_tree_owner_mutable(workspace_path)
     materialize_perf_helpers_in_workspace(workspace_path, logger=logger)
 
     return workspace_path

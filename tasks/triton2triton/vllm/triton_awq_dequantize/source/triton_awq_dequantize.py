@@ -2,7 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
-AWQ_TRITON_SUPPORTED_GROUP_SIZES = [-1, 32, 64, 128]
+AWQ_TRITON_SUPPORTED_GROUP_SIZES = (32, 64, 128)
+AWQ_TRITON_MAX_BLOCK_SIZE = 128
 
 
 @triton.jit
@@ -85,6 +86,63 @@ def awq_dequantize_kernel(
     tl.store(result_ptr + result_offsets, iweights, result_masks)
 
 
+def _validate_awq_dequantize_contract(
+    qweight: torch.Tensor,
+    scales: torch.Tensor,
+    zeros: torch.Tensor,
+    block_size_x: int,
+    block_size_y: int,
+) -> tuple[int, int, int]:
+    tensors = (qweight, scales, zeros)
+    if not all(isinstance(tensor, torch.Tensor) for tensor in tensors):
+        raise TypeError("qweight, scales, and zeros must be torch.Tensor instances")
+    if not all(tensor.ndim == 2 for tensor in tensors):
+        raise ValueError("qweight, scales, and zeros must be two-dimensional")
+    if qweight.dtype != torch.int32 or zeros.dtype != torch.int32:
+        raise TypeError("qweight and zeros must have dtype torch.int32")
+    if scales.dtype != torch.float16:
+        raise TypeError("scales must have dtype torch.float16")
+    if not (qweight.device == scales.device == zeros.device):
+        raise ValueError("qweight, scales, and zeros must be on one device")
+    if qweight.device.type != "cuda":
+        raise ValueError("AWQ dequantization requires a CUDA/ROCm device")
+    if not all(tensor.is_contiguous() for tensor in tensors):
+        raise ValueError("all AWQ inputs must be C-contiguous; implicit copies are forbidden")
+
+    K, num_cols = qweight.shape
+    if K <= 0 or num_cols <= 0:
+        raise ValueError("K and N_packed must be positive")
+    num_groups = scales.shape[0]
+    if num_groups <= 0 or K % num_groups != 0:
+        raise ValueError("the scales row count must divide K exactly")
+    group_size = K // num_groups
+    if (
+        group_size not in AWQ_TRITON_SUPPORTED_GROUP_SIZES
+        and group_size != K
+    ):
+        raise ValueError("group_size must be 32, 64, 128, or K")
+    if scales.shape != (num_groups, num_cols * 8):
+        raise ValueError("scales must have shape [K/group_size, N_packed*8]")
+    if zeros.shape != (num_groups, num_cols):
+        raise ValueError("zeros must have shape [K/group_size, N_packed]")
+
+    for name, value in (
+        ("block_size_x", block_size_x),
+        ("block_size_y", block_size_y),
+    ):
+        if (
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or value <= 0
+            or value > AWQ_TRITON_MAX_BLOCK_SIZE
+            or value & (value - 1)
+        ):
+            raise ValueError(f"{name} must be a positive power of two no larger than 128")
+    if group_size % block_size_y != 0:
+        raise ValueError("block_size_y must divide group_size")
+    return K, num_cols, group_size
+
+
 def awq_dequantize_triton(
     qweight: torch.Tensor,
     scales: torch.Tensor,
@@ -92,25 +150,22 @@ def awq_dequantize_triton(
     block_size_x: int = 32,
     block_size_y: int = 32,
 ) -> torch.Tensor:
-    K = qweight.shape[0]
-    M = scales.shape[1]
-    group_size = qweight.shape[0] // scales.shape[0]
-
-    assert K > 0 and M > 0
-    assert scales.shape[0] == K // group_size and scales.shape[1] == M
-    assert zeros.shape[0] == K // group_size and zeros.shape[1] == M // 8
-    assert group_size <= K
-    assert group_size in AWQ_TRITON_SUPPORTED_GROUP_SIZES or group_size == K
+    K, X, group_size = _validate_awq_dequantize_contract(
+        qweight,
+        scales,
+        zeros,
+        block_size_x,
+        block_size_y,
+    )
 
     result = torch.empty(
-        qweight.shape[0],
-        qweight.shape[1] * 8,
+        K,
+        X * 8,
         device=qweight.device,
         dtype=scales.dtype,
     )
 
-    Y = qweight.shape[0]
-    X = qweight.shape[1]
+    Y = K
 
     grid = lambda META: (
         triton.cdiv(X, META["BLOCK_SIZE_X"]),

@@ -23,6 +23,70 @@ TEST_SHAPES = [
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
+# Non-scoring public-contract coverage. Keep TEST_SHAPES reserved for performance.
+CORRECTNESS_CASES = [
+    {
+        "name": "bias_after_output_cast",
+        "shape": (5, 16, 7),
+        "input_dtype": "float16",
+        "scale_dtype": "float32",
+        "out_dtype": "float16",
+        "layout": "contiguous",
+        "data": "bias_rounding",
+        "per_token_scale_a": False,
+        "per_channel_scale_b": False,
+        "has_bias": True,
+        "tiles": (16, 16, 16),
+        "atol": 5e-5,
+        "rtol": 0.0,
+    },
+    {
+        "name": "sequential_low_precision_scales",
+        "shape": (5, 64, 7),
+        "input_dtype": "float16",
+        "scale_dtype": "float16",
+        "out_dtype": "float32",
+        "layout": "contiguous",
+        "data": "scale_product_underflow",
+        "per_token_scale_a": False,
+        "per_channel_scale_b": False,
+        "has_bias": False,
+        "tiles": (16, 16, 32),
+        "atol": 1e-8,
+        "rtol": 1e-4,
+    },
+    {
+        "name": "weak_contiguous_custom_tiles",
+        "shape": (37, 96, 45),
+        "input_dtype": "float16",
+        "scale_dtype": "float32",
+        "out_dtype": "float16",
+        "layout": "column_input_row_weight",
+        "data": "random",
+        "per_token_scale_a": True,
+        "per_channel_scale_b": True,
+        "has_bias": True,
+        "tiles": (16, 32, 32),
+        "atol": 1e-2,
+        "rtol": 1e-2,
+    },
+    {
+        "name": "weak_contiguous_column_weight",
+        "shape": (33, 96, 47),
+        "input_dtype": "float16",
+        "scale_dtype": "float32",
+        "out_dtype": "float16",
+        "layout": "row_input_column_weight",
+        "data": "random",
+        "per_token_scale_a": True,
+        "per_channel_scale_b": True,
+        "has_bias": False,
+        "tiles": (32, 16, 32),
+        "atol": 1e-2,
+        "rtol": 1e-2,
+    },
+]
+
 
 # >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>
 def _measure_cuda_event_fallback(*args, **kwargs):
@@ -48,23 +112,122 @@ def load_module():
     return mod
 
 
+class _KernelLaunchRecorder:
+    def __init__(self, kernel):
+        self.kernel = kernel
+        self.tiles = []
+
+    def __getitem__(self, grid):
+        launch = self.kernel[grid]
+
+        def record_and_launch(*args, **kwargs):
+            self.tiles.append(
+                (
+                    kwargs.get("BLOCK_SIZE_M"),
+                    kwargs.get("BLOCK_SIZE_N"),
+                    kwargs.get("BLOCK_SIZE_K"),
+                )
+            )
+            return launch(*args, **kwargs)
+
+        return record_and_launch
+
+
 def reference_scaled_mm(input_t, weight, scale_a, scale_b, out_dtype, bias=None):
-    """CPU reference: (input * scale_a) @ (weight * scale_b) + bias"""
-    import torch
+    """Mirror vLLM's dot, sequential scales, output cast, then bias order."""
     a = input_t.float()
     b = weight.float()
     sa = scale_a.float()
     sb = scale_b.float()
 
-    # scale_a is [M,1] or [1,1], scale_b is [N,1] or [1,1]
-    # We need: (a * sa) @ (b * sb.T) but sb applies to columns of b (i.e. rows of result)
-    result = (sa * a) @ b
+    result = a @ b
+    result = sa * result
     result = result * sb.reshape(1, -1)
+    result = result.to(out_dtype)
 
     if bias is not None:
-        result = result + bias.float()
+        result = result + bias
 
-    return result.to(out_dtype)
+    return result
+
+
+def _make_scaled_correctness_inputs(torch, case, device):
+    M, K, N = case["shape"]
+    input_dtype = getattr(torch, case["input_dtype"])
+    scale_dtype = getattr(torch, case["scale_dtype"])
+    out_dtype = getattr(torch, case["out_dtype"])
+
+    if case["data"] == "bias_rounding":
+        input_t = torch.full(
+            (M, K), 1.0 / 3.0, device=device, dtype=input_dtype
+        )
+        weight = torch.full((K, N), 0.1875, device=device, dtype=input_dtype)
+        scale_a = torch.ones((1, 1), device=device, dtype=scale_dtype)
+        scale_b = torch.ones((1, 1), device=device, dtype=scale_dtype)
+        bias = -torch.ones(N, device=device, dtype=out_dtype)
+        backing_storages = ()
+    elif case["data"] == "scale_product_underflow":
+        input_t = torch.ones((M, K), device=device, dtype=input_dtype)
+        weight = torch.ones((K, N), device=device, dtype=input_dtype)
+        scale_a = torch.full(
+            (1, 1), 2.0**-13, device=device, dtype=scale_dtype
+        )
+        scale_b = torch.full(
+            (1, 1), 2.0**-13, device=device, dtype=scale_dtype
+        )
+        bias = None
+        backing_storages = ()
+    elif case["layout"] == "column_input_row_weight":
+        input_storage = torch.randn(
+            K, M + 3, device=device, dtype=input_dtype
+        )
+        input_storage.mul_(0.1)
+        input_t = input_storage[:, :M].T
+        weight_storage = torch.randn(
+            K, N + 5, device=device, dtype=input_dtype
+        )
+        weight_storage.mul_(0.1)
+        weight = weight_storage[:, :N]
+        assert not input_t.is_contiguous() and input_t.stride(0) == 1
+        assert not weight.is_contiguous() and weight.stride(1) == 1
+        backing_storages = (
+            ("input", input_storage),
+            ("weight", weight_storage),
+        )
+    else:
+        input_storage = torch.randn(
+            M, K + 3, device=device, dtype=input_dtype
+        )
+        input_storage.mul_(0.1)
+        input_t = input_storage[:, :K]
+        weight_storage = torch.randn(
+            N, K + 5, device=device, dtype=input_dtype
+        )
+        weight_storage.mul_(0.1)
+        weight = weight_storage[:, :K].T
+        assert not input_t.is_contiguous() and input_t.stride(1) == 1
+        assert not weight.is_contiguous() and weight.stride(0) == 1
+        backing_storages = (
+            ("input", input_storage),
+            ("weight", weight_storage),
+        )
+
+    if case["data"] == "random":
+        scale_a_rows = M if case["per_token_scale_a"] else 1
+        scale_b_rows = N if case["per_channel_scale_b"] else 1
+        scale_a = torch.rand(
+            scale_a_rows, 1, device=device, dtype=scale_dtype
+        ) + 0.5
+        scale_b = torch.rand(
+            scale_b_rows, 1, device=device, dtype=scale_dtype
+        ) + 0.5
+        bias = (
+            torch.randn(N, device=device, dtype=out_dtype) * 0.1
+            if case["has_bias"]
+            else None
+        )
+
+    return input_t, weight, scale_a, scale_b, out_dtype, bias, backing_storages
 
 
 def run_compile():
@@ -122,6 +285,99 @@ def run_correctness():
                 )
         except Exception as e:
             return False, f"Shape {i+1} (M={M}, K={K}, N={N}): exception: {e}"
+
+    for i, case in enumerate(CORRECTNESS_CASES):
+        name = case["name"]
+        try:
+            torch.manual_seed(142 + i)
+            inputs = _make_scaled_correctness_inputs(torch, case, device)
+            (
+                input_t,
+                weight,
+                scale_a,
+                scale_b,
+                out_dtype,
+                bias,
+                backing_storages,
+            ) = inputs
+            block_m, block_n, block_k = case["tiles"]
+            protected_inputs = [
+                ("input", input_t, input_t.clone()),
+                ("weight", weight, weight.clone()),
+                ("scale_a", scale_a, scale_a.clone()),
+                ("scale_b", scale_b, scale_b.clone()),
+            ]
+            if bias is not None:
+                protected_inputs.append(("bias", bias, bias.clone()))
+            protected_backing = [
+                (storage_name, storage, storage.clone())
+                for storage_name, storage in backing_storages
+            ]
+            ref = reference_scaled_mm(
+                protected_inputs[0][2],
+                protected_inputs[1][2],
+                protected_inputs[2][2],
+                protected_inputs[3][2],
+                out_dtype,
+                bias=protected_inputs[4][2] if bias is not None else None,
+            )
+
+            original_kernel = mod.scaled_mm_kernel
+            recorder = _KernelLaunchRecorder(original_kernel)
+            mod.scaled_mm_kernel = recorder
+            try:
+                result = mod.triton_scaled_mm(
+                    input_t,
+                    weight,
+                    scale_a,
+                    scale_b,
+                    out_dtype,
+                    bias=bias,
+                    block_size_m=block_m,
+                    block_size_n=block_n,
+                    block_size_k=block_k,
+                    use_heuristic=False,
+                )
+            finally:
+                mod.scaled_mm_kernel = original_kernel
+            torch.cuda.synchronize()
+
+            for input_name, observed, frozen in protected_inputs:
+                if not torch.equal(observed, frozen):
+                    return False, (
+                        f"Contract case {name}: candidate mutated protected "
+                        f"{input_name}"
+                    )
+            for storage_name, observed, frozen in protected_backing:
+                if not torch.equal(observed, frozen):
+                    return False, (
+                        f"Contract case {name}: write outside logical "
+                        f"{storage_name} view"
+                    )
+
+            if (block_m, block_n, block_k) not in recorder.tiles:
+                return False, (
+                    f"Contract case {name}: custom tile request was not honored; "
+                    f"launches={recorder.tiles}"
+                )
+            if result.shape != ref.shape or result.dtype != out_dtype:
+                return False, (
+                    f"Contract case {name}: expected shape/dtype {ref.shape}/{out_dtype}, "
+                    f"got {result.shape}/{result.dtype}"
+                )
+            result_storage = result.untyped_storage().data_ptr()
+            if any(
+                result_storage == observed.untyped_storage().data_ptr()
+                for _input_name, observed, _frozen in protected_inputs
+            ):
+                return False, f"Contract case {name}: output aliases an input"
+            if not torch.allclose(
+                result, ref, atol=case["atol"], rtol=case["rtol"]
+            ):
+                max_diff = (result - ref).abs().max().item()
+                return False, f"Contract case {name}: max diff = {max_diff:.8f}"
+        except Exception as e:
+            return False, f"Contract case {name}: exception: {e}"
 
     return True, None
 
@@ -209,7 +465,11 @@ def main():
 
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(TEST_SHAPES) + len(CORRECTNESS_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

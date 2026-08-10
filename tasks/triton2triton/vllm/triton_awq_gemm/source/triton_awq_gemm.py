@@ -29,7 +29,12 @@ def awq_gemm_kernel(
     pid_m = pid // num_pid_n
     pid_n = pid % num_pid_n
 
-    accumulator_dtype = c_ptr.type.element_ty
+    # The public contract is atol=1e-2/rtol=1e-2. Accumulating directly in the
+    # float16 output type misses that contract on the baseline perf4 shape on
+    # gfx950 (observed max absolute error 0.0625). Keep the packed operands and
+    # output ABI unchanged, but accumulate the dot product in float32 before
+    # the final output cast.
+    accumulator_dtype = tl.float32
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=accumulator_dtype)
 
@@ -94,7 +99,7 @@ def awq_gemm_kernel(
         b = (b >> shifts) & 0xF
         zeros = (zeros >> shifts) & 0xF
         b = (b - zeros) * scales
-        b = b.to(c_ptr.type.element_ty)
+        b = b.to(a_ptr.type.element_ty)
 
         accumulator = tl.dot(a, b, accumulator, out_dtype=accumulator_dtype)
 
@@ -132,13 +137,31 @@ def awq_gemm_triton(
     assert split_k_iters <= 32
     assert group_size <= K
     assert group_size in AWQ_TRITON_SUPPORTED_GROUP_SIZES or group_size == K
+    assert K % group_size == 0
+
+    # The public wrapper accepts positive-stride noncompact logical views. Keep
+    # the kernel ABI stride-free and materialize only inputs that need it. The
+    # frozen scoring inputs are contiguous, so this adds no copy or device work
+    # to the scoring launches. The host-side wrapper is nevertheless part of the
+    # new baseline and must be remeasured from this source revision.
+    if not input.is_contiguous():
+        input = input.contiguous()
+    if not qweight.is_contiguous():
+        qweight = qweight.contiguous()
+    if not scales.is_contiguous():
+        scales = scales.contiguous()
+    if not qzeros.is_contiguous():
+        qzeros = qzeros.contiguous()
 
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
         split_k_iters,
     )
 
-    result = torch.zeros((split_k_iters, M, N), dtype=scales.dtype, device=input.device)
+    # Preserve every split lane in float32 until the reduction. Casting each
+    # lane to float16 before summation loses enough cancellation accuracy to
+    # violate the public 1e-2 tolerance for valid split-K workloads.
+    result = torch.zeros((split_k_iters, M, N), dtype=torch.float32, device=input.device)
 
     awq_gemm_kernel[grid](
         input,
@@ -156,5 +179,5 @@ def awq_gemm_triton(
         SPLIT_K=split_k_iters,
     )
 
-    result = result.sum(0)
+    result = result.sum(0).to(scales.dtype)
     return result

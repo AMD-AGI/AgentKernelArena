@@ -106,6 +106,75 @@ make docker-shell
 
 The Docker runner currently supports Codex, Claude Code, and Cursor Agent login
 reuse from the host. It preflights the selected config before starting the run.
+Matched Apex-versus-Codex runs also execute a fail-closed runtime-isolation
+preflight and repeat it in every worker. The resulting stable security receipt is
+part of `campaign_manifest.yaml`; a worker with different UID/capability/NNP,
+seccomp/AppArmor/Yama, `bwrap`/Codex identity, managed-policy hash, namespace,
+system-path remasking, or managed Codex sandbox behavior cannot join the run.
+Formal `run` and `preflight` synchronously invoke the exact model-free command
+`codex app-server --listen stdio://` in a private host-side root before starting a
+model-bearing attempt. AKA stable-reads host authentication, forces a cache miss,
+and never reads or mutates the user's host cloud-config cache. It validates envelope
+shape, account identity, cache time, at least 630 seconds of remaining lifetime, and
+a maximum two-hour issue-to-expiry lifetime; the pinned Codex CLI still owns
+cryptographic signature verification. The complete host Codex/Node/package closure
+is pinned and rechecked around generation.
+
+The supervisor publishes only private `auth.json` and
+`cloud-config-bundle-cache.json`, then refreshes at expiry minus fifteen minutes.
+That lead must remain strictly greater than the consumer TTL floor plus the refresh
+timeout, both termination-grace waits, and scheduling slack. The comparison
+contract binds the canonical `signed_payload.bundle` SHA-256 across both arms. A
+scheduled envelope is published only when that digest remains unchanged;
+bundle or host-runtime drift preserves the last good cache, terminates the formal
+owner, and produces exit status 71. Immutable refresh receipts expose only policy,
+status, timing, hashes, and byte sizes—not account, token, signature, or config
+payloads. The campaign manifest binds the initial receipt; the later scheduled
+receipt chain is supervisor evidence and is not yet linked into every attempt.
+
+`docker-check-agents` performs a private diagnostic refresh, but that disposable
+receipt does not establish a campaign anchor. If the bundle changes, stop both arms
+and initialize a new matched campaign.
+The two formal runs' normalized YAML documents may differ only in the exact
+`agent.template` treatment (`apex` versus `codex`); comments and formatting are
+not semantic differences. AKA removes that one mapping, binds every other normalized
+field into the comparison contract, and separately binds each raw YAML SHA-256. A
+difference in tasks or ordering, attempt policy, GPU target,
+workspace/output path, log path, or any other run setting makes the arms
+incomparable. Campaign execution, postprocessing, and comparison each re-read this
+evidence and fail closed if the original config was changed or removed.
+Each direct attempt creates a private PID namespace and private procfs, pins its
+namespace init with a pidfd, and proves the worker PID namespace is absent by inode
+identity rather than numeric PID. Parent root/fd probes compare secret bytes, so a
+PID-number collision cannot pass. The managed Codex profile is tested
+separately for workspace write access, credential-read denial, and command-network
+denial. A content-pinned bubblewrap shim is transported through a sealed memfd and
+mounted beneath a dedicated read-only mountpoint before it restores only
+Docker-approved KFD/render devices inside Codex's private `/dev`. The probe
+requires rename/unlink/replace/write attacks against that path to fail and
+requires the command to remain outside the worker PID namespace, blocks PID-1
+root/environ/mem credential aliases, exposes exactly one ROCm device, and completes
+a Torch allocation plus reduction on that GPU.
+
+Comparison-contract v4 fixes both the outer attempt and backend-agent policy fields
+to `private_pid_namespace_init_pidfd_v1`. At turn 50,
+Direct Codex kills the pidfd-pinned namespace init and freezes source only after the
+kernel teardown, wrapper status/EOF, stream EOF, and a completed scan with no
+supervisor-visible namespace member. The receipt separately records inaccessible
+sibling `/proc` entries and never calls such a scan complete; pidfd-pinned namespace
+init exit remains the authoritative teardown proof. This contains `setsid`,
+double-fork, clear-environment, immediate-exec, and
+late-writer descendants without trusting PGIDs or `/proc` polling identities. The
+Apex arm uses an AKA outer namespace around its trusted orchestrator and a separate
+Apex-owned private procfs/namespace around the backend; both teardown receipts are
+required before a bundle is read. The outer inherited procfs is writable only so
+Apex can create the nested user namespace; the backend sees only Apex's remasked
+private procfs. Apex's `apex.agent-invocation/v3`,
+`apex.agent-transcript/v3`, event payload, and candidate-persistence digest must all
+bind the same `apex.agent-process-containment/v1` receipt. Turn 49 is not an exact checkpoint; turn 51,
+timeout, output truncation, a live namespace member, or fallback cleanup is rejected.
+Central Arena evaluation remains the scoring authority, and a successful session
+with no independently recomputed source delta is a non-scoreable baseline replay.
 
 ## Run across multiple GPUs
 
@@ -176,6 +245,11 @@ Run the same configuration again with one agent capability changed and a new
 ## Resume an interrupted run
 
 Long runs can be resumed; completed tasks are skipped.
+
+For a formal Codex resume, AKA creates a fresh private supervisor, performs a new
+model-free refresh, and admits the resume only when the refreshed canonical bundle
+matches the sealed campaign anchor. Bundle or pinned host-runtime closure drift
+fails closed; start a new matched Apex/Codex cohort rather than resuming one arm.
 
 ```bash
 # Resume a specific run directory

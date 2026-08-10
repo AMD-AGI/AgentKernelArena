@@ -1,0 +1,10 @@
+# Minimal Apex integration smoke test on MI355X (gfx950).
+agent:
+  template: apex
+
+tasks:
+  - triton2triton/vllm/triton_rms_norm
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

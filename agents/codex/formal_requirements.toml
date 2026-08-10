@@ -1,0 +1,30 @@
+# Admin-enforced policy for formal Apex-versus-direct-Codex campaigns.
+#
+# Both treatment paths still request the legacy `workspace-write` CLI mode so
+# the pinned Apex implementation and the direct adapter issue equivalent
+# commands.  `allowed_permission_profiles` makes Codex 0.138+ normalize that
+# request to this single managed profile, which is enforced by the Linux bwrap
+# sandbox.  The outer AKA bwrap boundary supplies attempt-level mount isolation;
+# this profile supplies command-level write, credential-read, and network
+# isolation.
+
+default_permissions = "aka_formal_kernel_v1"
+allowed_approval_policies = ["never"]
+allowed_web_search_modes = []
+allow_managed_hooks_only = true
+
+[allowed_permission_profiles]
+aka_formal_kernel_v1 = true
+
+[permissions.aka_formal_kernel_v1]
+description = "Formal kernel workspace writes with credentials and command network denied."
+extends = ":workspace"
+
+[permissions.aka_formal_kernel_v1.network]
+enabled = false
+
+[permissions.filesystem]
+deny_read = ["~/.codex/auth.json"]
+
+[features]
+hooks = false
