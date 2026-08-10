@@ -92,7 +92,7 @@ class Policy:
         required_refresh_window = (
             self.minimum_ttl_seconds
             + self.timeout_seconds
-            + self.term_grace_seconds
+            + 2 * self.term_grace_seconds
             + MINIMUM_REFRESH_SCHEDULING_SLACK_SECONDS
         )
         if self.refresh_early_seconds <= required_refresh_window:

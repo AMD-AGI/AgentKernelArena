@@ -277,13 +277,23 @@ def test_invalid_envelope_time_bounds_fail_closed(
 
 
 def test_policy_rejects_refresh_window_that_can_cross_consumer_ttl() -> None:
-    with pytest.raises(evidence.RefreshError, match="invalid_refresh_ttl_margin"):
-        evidence.Policy(
-            timeout_seconds=30,
-            term_grace_seconds=5,
-            refresh_early_seconds=600,
-            minimum_ttl_seconds=630,
-        ).validate()
+    required = (
+        630 + 30 + 2 * 5 + evidence.MINIMUM_REFRESH_SCHEDULING_SLACK_SECONDS
+    )
+    for refresh_early in (600, required):
+        with pytest.raises(evidence.RefreshError, match="invalid_refresh_ttl_margin"):
+            evidence.Policy(
+                timeout_seconds=30,
+                term_grace_seconds=5,
+                refresh_early_seconds=refresh_early,
+                minimum_ttl_seconds=630,
+            ).validate()
+    evidence.Policy(
+        timeout_seconds=30,
+        term_grace_seconds=5,
+        refresh_early_seconds=required + 1,
+        minimum_ttl_seconds=630,
+    ).validate()
 
 
 def test_refresh_schedule_stays_ahead_of_consumer_ttl_and_command_deadline(
@@ -302,7 +312,7 @@ def test_refresh_schedule_stays_ahead_of_consumer_ttl_and_command_deadline(
         required = (
             state.policy.minimum_ttl_seconds
             + state.policy.timeout_seconds
-            + state.policy.term_grace_seconds
+            + 2 * state.policy.term_grace_seconds
             + evidence.MINIMUM_REFRESH_SCHEDULING_SLACK_SECONDS
         )
         assert refresh_lead == state.policy.refresh_early_seconds
