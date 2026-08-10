@@ -243,6 +243,8 @@ def _validate_cache_and_publish(
         raise RefreshError("invalid_envelope_lifetime")
     if expires <= now + dt.timedelta(seconds=state.policy.minimum_ttl_seconds):
         raise RefreshError("insufficient_envelope_ttl")
+    if expires <= now + dt.timedelta(seconds=state.policy.refresh_early_seconds):
+        raise RefreshError("insufficient_envelope_refresh_window")
     bundle_sha256 = hashlib.sha256(_canonical_bytes(bundle)).hexdigest()
     bundle_matches = (
         not state.anchor_bundle_sha256

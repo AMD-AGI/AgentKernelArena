@@ -131,7 +131,7 @@ def _policy() -> evidence.Policy:
         timeout_seconds=2,
         term_grace_seconds=1,
         output_limit_bytes=4096,
-        refresh_early_seconds=600,
+        refresh_early_seconds=900,
         minimum_ttl_seconds=630,
         maximum_envelope_lifetime_seconds=7200,
         clock_skew_seconds=300,
@@ -271,6 +271,61 @@ def test_invalid_envelope_time_bounds_fail_closed(
         outcome = refresh.refresh_once(state, "scheduled")
         assert outcome.status == "fatal"
         assert outcome.failure == failure
+        assert published_cache.read_bytes() == original
+    finally:
+        _cleanup(state)
+
+
+def test_policy_rejects_refresh_window_that_can_cross_consumer_ttl() -> None:
+    with pytest.raises(evidence.RefreshError, match="invalid_refresh_ttl_margin"):
+        evidence.Policy(
+            timeout_seconds=30,
+            term_grace_seconds=5,
+            refresh_early_seconds=600,
+            minimum_ttl_seconds=630,
+        ).validate()
+
+
+def test_refresh_schedule_stays_ahead_of_consumer_ttl_and_command_deadline(
+    tmp_path: Path,
+) -> None:
+    state, initial, _ = _bootstrap(tmp_path)
+    try:
+        receipt = json.loads(Path(initial.receipt_path).read_text(encoding="utf-8"))
+        expires_at = evidence._parse_timestamp(
+            json.loads(
+                (Path(state.published_directory) / "cloud-config-bundle-cache.json")
+                .read_text(encoding="utf-8")
+            )["signed_payload"]["expires_at"]
+        )
+        refresh_lead = int(expires_at.timestamp()) - initial.next_refresh_epoch
+        required = (
+            state.policy.minimum_ttl_seconds
+            + state.policy.timeout_seconds
+            + state.policy.term_grace_seconds
+            + evidence.MINIMUM_REFRESH_SCHEDULING_SLACK_SECONDS
+        )
+        assert refresh_lead == state.policy.refresh_early_seconds
+        assert refresh_lead > required
+        assert receipt["schema"] == "aka.formal-codex-cloud-config-refresh/v3"
+        assert receipt["policy_id"] == "private_auth_only_app_server_refresh_v3"
+    finally:
+        _cleanup(state)
+
+
+def test_short_envelope_cannot_publish_with_refresh_epoch_in_the_past(
+    tmp_path: Path,
+) -> None:
+    state, _, _ = _bootstrap(tmp_path)
+    try:
+        published_cache = Path(state.published_directory) / "cloud-config-bundle-cache.json"
+        original = published_cache.read_bytes()
+        (Path(state.work_home) / ".codex/test-lifetime").write_text(
+            "800", encoding="utf-8"
+        )
+        outcome = refresh.refresh_once(state, "scheduled")
+        assert outcome.status == "fatal"
+        assert outcome.failure == "insufficient_envelope_refresh_window"
         assert published_cache.read_bytes() == original
     finally:
         _cleanup(state)

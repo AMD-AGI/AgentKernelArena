@@ -33,10 +33,15 @@ except ImportError:  # Script execution places src/ directly on sys.path.
 
 CONTROL_SCHEMA = "aka.formal-codex-cloud-config-refresh-control/v1"
 HEALTH_SCHEMA = "aka.formal-codex-cloud-config-refresh-health/v1"
-RECEIPT_SCHEMA = "aka.formal-codex-cloud-config-refresh/v2"
-RECEIPT_POLICY = "private_auth_only_app_server_refresh_v2"
+RECEIPT_SCHEMA = "aka.formal-codex-cloud-config-refresh/v3"
+RECEIPT_POLICY = "private_auth_only_app_server_refresh_v3"
 PRIVATE_ROOT_PREFIX = "agentkernelarena-formal-codex."
 MAX_JSON_BYTES = 1024 * 1024
+MINIMUM_REFRESH_SCHEDULING_SLACK_SECONDS = 30
+DEFAULT_REFRESH_EARLY_SECONDS = 900
+DEFAULT_MINIMUM_TTL_SECONDS = 630
+DEFAULT_MAXIMUM_ENVELOPE_LIFETIME_SECONDS = 7_200
+DEFAULT_CLOCK_SKEW_SECONDS = 300
 _CLOUD_CONFIG_TIMESTAMP = re.compile(
     r"^(?P<seconds>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})"
     r"(?:\.(?P<fraction>[0-9]{1,9}))?Z$"
@@ -73,16 +78,24 @@ class Policy:
     timeout_seconds: int = 30
     term_grace_seconds: int = 5
     output_limit_bytes: int = 65_536
-    refresh_early_seconds: int = 600
-    minimum_ttl_seconds: int = 630
-    maximum_envelope_lifetime_seconds: int = 7_200
-    clock_skew_seconds: int = 300
+    refresh_early_seconds: int = DEFAULT_REFRESH_EARLY_SECONDS
+    minimum_ttl_seconds: int = DEFAULT_MINIMUM_TTL_SECONDS
+    maximum_envelope_lifetime_seconds: int = (
+        DEFAULT_MAXIMUM_ENVELOPE_LIFETIME_SECONDS
+    )
+    clock_skew_seconds: int = DEFAULT_CLOCK_SKEW_SECONDS
 
     def validate(self) -> None:
         values = dataclasses.asdict(self)
         if any(not isinstance(value, int) or value <= 0 for value in values.values()):
             raise RefreshError("invalid_refresh_policy")
-        if self.minimum_ttl_seconds <= self.refresh_early_seconds:
+        required_refresh_window = (
+            self.minimum_ttl_seconds
+            + self.timeout_seconds
+            + self.term_grace_seconds
+            + MINIMUM_REFRESH_SCHEDULING_SLACK_SECONDS
+        )
+        if self.refresh_early_seconds <= required_refresh_window:
             raise RefreshError("invalid_refresh_ttl_margin")
 
 

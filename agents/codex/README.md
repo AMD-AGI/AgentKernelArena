@@ -97,12 +97,15 @@ is pinned and rechecked around every later refresh. The supervisor atomically
 publishes exactly `auth.json` and `cloud-config-bundle-cache.json` into the formal
 home. History, model caches, user configuration, rules, and memory are never copied.
 
-At expiry minus ten minutes, the supervisor forces another cache miss and may
-publish the new envelope only if its canonical bundle SHA-256 still matches the
-campaign anchor. Bundle or host-runtime drift never replaces the last good cache;
-it terminates the exact owner process and makes the formal command fail with status
-71. If policy changes, stop both arms and initialize a new matched campaign rather
-than refreshing or restarting only one arm.
+At expiry minus fifteen minutes, the supervisor forces another cache miss. Policy
+validation requires this lead time to exceed the evaluator's minimum accepted TTL,
+the bounded refresh timeout, termination grace, and scheduling slack; an envelope
+that cannot leave that window is rejected before publication. A refreshed envelope
+may be published only if its canonical bundle SHA-256 still matches the campaign
+anchor. Bundle or host-runtime drift never replaces the last good cache; it
+terminates the exact owner process and makes the formal command fail with status 71.
+If policy changes, stop both arms and initialize a new matched campaign rather than
+refreshing or restarting only one arm.
 
 Every generation writes an immutable receipt named
 `codex-cloud-config-refresh-<sequence>-<digest>.json` under the campaign data root.

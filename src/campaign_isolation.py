@@ -22,6 +22,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from src.codex_cloud_config_evidence import (
+    DEFAULT_CLOCK_SKEW_SECONDS,
+    DEFAULT_MAXIMUM_ENVELOPE_LIFETIME_SECONDS,
+    DEFAULT_MINIMUM_TTL_SECONDS,
+)
 from src.gpu_device_boundary import (
     GpuBoundaryError,
     RECEIPT_SCHEMA as GPU_BOUNDARY_RECEIPT_SCHEMA,
@@ -230,9 +235,15 @@ _CODEX_CLOUD_CONFIG_RELATIVE_PATH = Path(
     ".codex/cloud-config-bundle-cache.json"
 )
 _CODEX_CLOUD_CONFIG_MAX_BYTES = 1024 * 1024
-_CODEX_CLOUD_CONFIG_MIN_TTL = timedelta(seconds=630)
-_CODEX_CLOUD_CONFIG_MAX_LIFETIME = timedelta(hours=2)
-_CODEX_CLOUD_CONFIG_CLOCK_SKEW = timedelta(minutes=5)
+_CODEX_CLOUD_CONFIG_MIN_TTL = timedelta(
+    seconds=DEFAULT_MINIMUM_TTL_SECONDS
+)
+_CODEX_CLOUD_CONFIG_MAX_LIFETIME = timedelta(
+    seconds=DEFAULT_MAXIMUM_ENVELOPE_LIFETIME_SECONDS
+)
+_CODEX_CLOUD_CONFIG_CLOCK_SKEW = timedelta(
+    seconds=DEFAULT_CLOCK_SKEW_SECONDS
+)
 _CODEX_CLOUD_CONFIG_TIMESTAMP = re.compile(
     r"^(?P<seconds>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})"
     r"(?:\.(?P<fraction>[0-9]{1,9}))?Z$"
