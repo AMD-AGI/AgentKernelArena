@@ -121,9 +121,11 @@ cryptographic signature verification. The complete host Codex/Node/package closu
 is pinned and rechecked around generation.
 
 The supervisor publishes only private `auth.json` and
-`cloud-config-bundle-cache.json`, then refreshes at expiry minus ten minutes. The
-comparison contract binds the canonical `signed_payload.bundle` SHA-256 across both
-arms. A scheduled envelope is published only when that digest remains unchanged;
+`cloud-config-bundle-cache.json`, then refreshes at expiry minus fifteen minutes.
+That lead must remain strictly greater than the consumer TTL floor plus the refresh
+timeout, both termination-grace waits, and scheduling slack. The comparison
+contract binds the canonical `signed_payload.bundle` SHA-256 across both arms. A
+scheduled envelope is published only when that digest remains unchanged;
 bundle or host-runtime drift preserves the last good cache, terminates the formal
 owner, and produces exit status 71. Immutable refresh receipts expose only policy,
 status, timing, hashes, and byte sizes—not account, token, signature, or config

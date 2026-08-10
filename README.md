@@ -235,9 +235,11 @@ rechecks the complete host Codex/Node/package closure.
 
 The comparison contract binds a canonical SHA-256 of only
 `signed_payload.bundle`, so refreshed envelopes with the same policy are symmetric
-across both arms. The supervisor refreshes at expiry minus ten minutes and publishes
-only an unchanged-bundle envelope. Bundle or host-runtime drift preserves the last
-good cache, terminates the exact formal owner, and returns status 71. Immutable
+across both arms. The supervisor refreshes at expiry minus fifteen minutes and
+publishes only an unchanged-bundle envelope. Policy validation keeps that lead time
+strictly ahead of the consumer TTL floor, command timeout, both termination-grace
+waits, and scheduling slack. Bundle or host-runtime drift preserves the last good
+cache, terminates the exact formal owner, and returns status 71. Immutable
 refresh receipts contain hashes, sizes, timing, policy, and status without account,
 user, token, signature, or bundle payloads; the manifest binds the initial receipt.
 Supervisor credential cleanup is independent of immutable-runtime/FUSE cleanup.
