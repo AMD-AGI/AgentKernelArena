@@ -107,7 +107,6 @@ def _command(tmp_path: Path, **overrides) -> list[str]:
         "workspace": str(tmp_path),
         "experiments_dir": tmp_path / "forge_experiments",
         "result_json": tmp_path / "forge_experiments" / "forge_result.json",
-        "program_md": tmp_path / "forge_program.md",
         "agent_config": {
             "max_iters": 1000,
             "timeout_seconds": 7200,
@@ -137,6 +136,7 @@ def test_supplied_kernel_identity_fields_are_forwarded(tmp_path):
     assert "--shapes-json" not in argv
     assert "--workload-key" not in argv
     assert "--kernel-kind" not in argv
+    assert "--program-md-file" not in argv
     assert "--resume" not in argv
 
 

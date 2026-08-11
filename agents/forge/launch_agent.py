@@ -11,8 +11,7 @@ that loop's contract:
   2. Materialize a driver shim implementing the KernelForge driver contract
      (prints ``SNR: <db> dB`` for correctness and ``wall_ms: <ms>`` for bench).
   3. ``git init`` + initial commit the workspace (the loop uses git keep/revert).
-  4. Generate a ``forge_program.md`` from the task prompt for agent guidance.
-  5. Shell out to ``kernel-agents forge-loop`` (streaming output), which leaves
+  4. Shell out to ``kernel-agents forge-loop`` (streaming output), which leaves
      the workspace at the best-kept kernel.
 
 After this returns, Arena re-materializes its perf helpers and re-scores the
@@ -485,7 +484,6 @@ performance_report.json
 perf_report.json
 forge_experiments/
 forge_driver.py
-forge_program.md
 .pytest_cache/
 *.log
 """
@@ -511,80 +509,6 @@ def _init_git_workspace(workspace: str, logger: logging.Logger) -> None:
     _git(workspace, "rm", "-r", "--cached", "--quiet", ".", logger=logger)
     _git(workspace, "add", "-A", logger=logger)
     _git(workspace, "commit", "-m", "forge: initial workspace snapshot", logger=logger)
-
-
-def _write_program_md(
-    task_config: dict[str, Any],
-    target_funcs,
-    gpu_arch: str,
-    backend: str,
-    editable_sources: list[Path],
-    dest: Path,
-) -> None:
-    """Generate a program.md for the forge agent from the Arena task prompt."""
-    prompt_cfg = task_config.get("prompt") or {}
-    instructions = prompt_cfg.get("instructions") or ""
-    funcs = ", ".join(target_funcs) if target_funcs else "the target kernel"
-
-    # Level-3 tasks (repository / image_kernel) give the agent a full source tree,
-    # so the target kernel file is often only an ENTRY POINT: the code that governs
-    # its performance may live in other files it includes/imports. Tell the agent
-    # it may follow the implementation across the workspace and edit those files
-    # too. Snippet tasks copy a single self-contained file, so the note is omitted
-    # there to avoid pointing the agent at unrelated files.
-    task_type = str(task_config.get("task_type") or "").strip().lower()
-    scope_section = ""
-    if task_type in ("repository", "image_kernel"):
-        source_allowlist = "\n".join(
-            f"- `{path}`" for path in editable_sources
-        )
-        scope_section = f"""
-## Editable Source Scope
-`{funcs}` lives in the target kernel file, but the code that governs its
-performance may span OTHER files in this workspace (headers it includes, modules
-it imports, dispatch/config layers, or JIT template sources).
-
-The complete editable source allowlist is:
-{source_allowlist}
-
-You may inspect any dependency, but edit ONLY files in this allowlist. If an
-additional dependency must be editable, stop and report that the task's
-`editable_sources` declaration is incomplete. Do not edit measurement files.
-"""
-
-    dest.write_text(
-        f"""# Program: optimize {funcs}
-
-**GPU**: {gpu_arch}
-**Backend**: {backend}
-
-## Objective
-Optimize the body of `{funcs}` for maximum performance on {gpu_arch} while
-keeping numerical results correct (the loop gates on an SNR threshold).
-{scope_section}
-## Modification Rules
-1. You MAY make multiple changes across several places in the kernel this
-   iteration (not just one); group them under a clear hypothesis so the
-   iteration's effect stays attributable.
-2. Do NOT change the kernel's function signature or parameter list.
-3. Do NOT remove imports or helper utilities in the file.
-4. Do NOT edit task harness, test, scoring, or measurement files (`config.yaml`,
-   `script/`, `scripts/`, `test/`, `tests/`, `conftest.py`,
-   `performance_utils_pytest.py`, `*_test.py`, `*_test.cpp`, `*_test.cu`,
-   `*_test.hip`, `*_harness.py`). The Arena runner hashes these files and rejects
-   the score if they change. Directory rules match any path component; filename and
-   suffix rules match anywhere in the workspace, so both `dev/config.yaml` and
-   `dev/extra_test.py` are protected. Name your own scratch scripts outside those
-   patterns (`dev/sweep.py`) — a file you create that matches is deleted before
-   scoring.
-5. Build, run, and verify your edit YOURSELF (compile, run the driver, profile)
-   before finishing. The loop additionally runs a canonical correctness (SNR gate)
-   and benchmark pass on your final kernel after you stop.
-
-## Task instructions (from AgentKernelArena)
-{instructions}
-"""
-    )
 
 
 def _render_driver_shim(drivers_dir: str, workspace: str, task_config: str, arena_root: str) -> str:
@@ -623,7 +547,6 @@ def _build_forge_command(
     workspace: str,
     experiments_dir: Path,
     result_json: Path,
-    program_md: Path,
     agent_config: dict[str, Any],
     gpu_arch: str,
     fellow: str,
@@ -659,8 +582,6 @@ def _build_forge_command(
         fellow,
         "--git-branch",
         "forge-optimize",
-        "--program-md-file",
-        str(program_md),
         "--model",
         str(agent_config.get("model", "claude-opus-4-8")),
         "--permission-mode",
@@ -902,17 +823,6 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         ))
         logger.info(f"Forge: generated driver shim -> {driver_dest} (task paths baked in)")
 
-    # program.md for agent guidance.
-    program_md = Path(workspace) / "forge_program.md"
-    _write_program_md(
-        task_config,
-        target_funcs,
-        gpu_arch,
-        backend,
-        all_source_files,
-        program_md,
-    )
-
     # Repository / image_kernel tasks bring a cloned repo (with its own nested
     # .git) into the workspace. Strip it before outer git init so keep/revert
     # tracks the real source files.
@@ -934,7 +844,6 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         workspace=workspace,
         experiments_dir=experiments_dir,
         result_json=result_json,
-        program_md=program_md,
         agent_config=agent_config,
         gpu_arch=gpu_arch,
         fellow=fellow,
