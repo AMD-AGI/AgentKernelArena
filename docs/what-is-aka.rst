@@ -57,7 +57,8 @@ AgentKernelArena includes the following key features.
   reproducibility.
 * **Multi-GPU parallel runs**: On multi-GPU servers, start one isolated Docker
   worker per GPU and keep idle GPUs busy with a shared task queue.
-* **Task validator**: An agent that runs 10 automated checks on task quality
+* **Task validator**: An agent plus deterministic report gate that runs 12 checks
+  on task quality, benchmark integrity, and harness integrity
   before tasks are used in shared experiments.
 * **Held-out evaluation**: Re-evaluate optimized kernels on unseen shapes and
   quantify generalization regressions. See :doc:`how-to/held-out-evaluation`.

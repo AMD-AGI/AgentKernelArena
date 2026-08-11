@@ -3,7 +3,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 from main import run_task, should_run_task_for_platform
+from agents.task_validator.report_schema import (
+    CHECK_NAMES,
+    finalize_report,
+    validation_report_is_complete,
+)
 from src.module_registration import AgentType
 
 
@@ -18,6 +25,7 @@ class TaskValidatorWorkspaceTests(unittest.TestCase):
             config_path = task_dir / "config.yaml"
             config_path.write_text("task_type: flydsl2flydsl\n")
             (task_dir / "validation_report.yaml").write_text("overall_status: WARN\n")
+            (task_dir / ".validation_complete").write_text("copied stale marker\n")
 
             launcher_called = False
 
@@ -26,7 +34,54 @@ class TaskValidatorWorkspaceTests(unittest.TestCase):
                 launcher_called = True
                 report_path = Path(workspace) / "validation_report.yaml"
                 self.assertFalse(report_path.exists())
-                report_path.write_text("overall_status: PASS\n")
+                self.assertFalse((Path(workspace) / ".validation_complete").exists())
+                checks = {
+                    name: {"status": "PASS", "details": "checked"}
+                    for name in CHECK_NAMES
+                }
+                attempt = {
+                    "command": "true",
+                    "exit_code": 0,
+                    "timed_out": False,
+                }
+                for name in ("compilation", "correctness", "performance"):
+                    checks[name]["attempts"] = [dict(attempt)]
+                checks["benchmark_integrity"].update(
+                    {
+                        "case_count": 1,
+                        "valid_case_count": 1,
+                        "benchmark_methods": ["cuda_graph"],
+                        "method_metadata_complete": True,
+                        "method_policy_valid": True,
+                        "case_identity_complete": True,
+                        "baseline_policy_immutable": True,
+                        "state_restore_valid": True,
+                        "workload_symmetric": True,
+                        "replay_validation_valid": True,
+                        "representative_inputs_valid": True,
+                        "timing_boundaries_valid": True,
+                    }
+                )
+                checks["harness_integrity"].update(
+                    {
+                        "guard_coverage_reviewed": True,
+                        "editable_targets_preserved": True,
+                    }
+                )
+                report_path.write_text(
+                    yaml.safe_dump(
+                        {
+                            "validation_schema_version": 2,
+                            "task_name": "flydsl2flydsl/example",
+                            "validation_timestamp": "2026-07-21T00:00:00+00:00",
+                            "overall_status": "PASS",
+                            "checks": checks,
+                        }
+                    )
+                )
+                finalize_report(
+                    workspace, expected_task_name="flydsl2flydsl/example"
+                )
 
             completed, workspace = run_task(
                 eval_config={},
@@ -44,10 +99,7 @@ class TaskValidatorWorkspaceTests(unittest.TestCase):
             self.assertTrue(launcher_called)
             self.assertTrue(completed)
             self.assertIsNotNone(workspace)
-            self.assertEqual(
-                (workspace / "validation_report.yaml").read_text(),
-                "overall_status: PASS\n",
-            )
+            self.assertTrue(validation_report_is_complete(workspace))
 
 
 class PlatformSupportTests(unittest.TestCase):

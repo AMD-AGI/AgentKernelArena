@@ -2,7 +2,7 @@
 
 ## What This Agent Does
 
-The **task_validator** agent validates that tasks in AgentKernelArena are correctly configured, self-contained, and functional. It does **not** optimize kernels. Instead, it runs 10 automated checks on each task and produces a structured `validation_report.yaml`.
+The **task_validator** agent validates that tasks in AgentKernelArena are correctly configured, self-contained, functional, benchmark-fair, and compatible with the protected harness boundary. It does **not** optimize kernels. It runs 12 checks and produces a framework-finalized, schema-versioned `validation_report.yaml`.
 
 Use it to:
 - Audit existing tasks before controlled comparisons or RL data collection.
@@ -36,7 +36,7 @@ make docker-run CONFIG=config_task_validator.yaml
 
 ### 3. Read Results
 
-Each task workspace will contain a `validation_report.yaml` with per-check results. A `validation_summary.yaml` is written to the workspace root with aggregated statistics.
+Each task workspace contains `validation_report.yaml` plus a framework completion marker. A `validation_summary.yaml` is written to the workspace root with aggregated statistics. Resume accepts only reports with a valid schema-v2 marker and digest; the presence of an arbitrary or partial YAML file is not completion evidence.
 
 Tasks filtered by `platform_support.status: skip` or a non-matching
 `platform_support.required_arch` are skipped before workspace creation and are
@@ -49,7 +49,7 @@ model unset so the selected CLI uses its default:
 
 ```yaml
 backend: claude_code          # claude_code | codex
-timeout_seconds: 1200         # max time per task validation (set 0 to disable timeout)
+timeout_seconds: 1200         # minimum outer limit; auto-raised for command budgets (0 disables)
 python_path: null             # null -> auto-use framework-detected interpreter (recommended)
 
 # Optional model settings for the active backend.
@@ -62,6 +62,10 @@ compile_timeout: 600
 correctness_timeout: 600
 performance_timeout: 600
 ```
+
+Task-level `compile_timeout`, `correctness_timeout`, and `performance_timeout`
+override these defaults. The validator backend timeout is automatically raised
+enough to cover those commands plus static review.
 
 ## Validation Checks
 
@@ -76,13 +80,20 @@ performance_timeout: 600
 | 7 | **correctness_implementation_review** | The correctness check is meaningful (not trivially passing) |
 | 8 | **self_contained** | No missing headers/imports; isolated tasks avoid undeclared external paths, while repository tasks declare upstream dependencies |
 | 9 | **gpu_hang_check** | No command hangs or times out |
-| 10 | **result_template_compatibility** | Task output maps to the standard `task_result_template.yaml` schema |
+| 10 | **result_template_compatibility** | Command and per-case output signals can be consumed by the centralized evaluator |
+| 11 | **benchmark_integrity** | Device timing, case identity, Graph/Event policy, replay correctness, state reset, and timed workload boundaries are scoreable and fair |
+| 12 | **harness_integrity** | Protected harness/helper paths remain protected while declared target bodies remain editable |
 
 ### Overall Status
 
 - **PASS** — all applicable checks passed; a contract-approved `SKIP` does not prevent PASS
 - **WARN** — no failures, but at least one warning (e.g., questionable correctness implementation)
-- **FAIL** — at least one check failed
+- **FAIL** — at least one check failed or timed out, the report is malformed, or the validator backend failed
+
+`overall_status` is recomputed by the framework from normalized checks. The
+validator agent's self-reported value cannot override a failed command, timeout,
+missing check, invalid benchmark method, or malformed report. A validation FAIL
+also makes the final CLI/post-processing gate exit nonzero.
 
 ---
 
@@ -123,17 +134,18 @@ correctness_command:
   - python3 scripts/task_runner.py --mode correctness
 
 # Task type: one of hip2hip, cuda2hip, triton2triton, triton2flydsl,
-# instruction2triton, torch2hip, torch2flydsl, flydsl2flydsl, repository
+# instruction2triton, torch2hip, torch2flydsl, flydsl2flydsl,
+# repository, image_kernel
 task_type: cuda2hip
+
+# Performance is required for current optimization tasks.
+performance_command:
+  - python3 scripts/task_runner.py --mode performance
 ```
 
 ### Optional `config.yaml` Fields
 
 ```yaml
-# Command(s) to run performance benchmarking
-performance_command:
-  - python3 scripts/task_runner.py --mode performance
-
 # Legacy compatibility only; the centralized evaluator writes the standard schema.
 task_result_template: null
 
@@ -180,12 +192,19 @@ The correctness check **must** be a real validation, not a trivial pass:
 2. Exit code 0 means success, non-zero means failure.
 3. A `build/compile_report.json` with `{"status": "ok"}` or `{"status": "fail", "error": "..."}` is recommended.
 
-### Performance Check Rules (if applicable)
+### Performance Check Rules
 
 1. The `performance_command` should measure kernel execution time and report it in a parseable format.
 2. It only needs to report the runtime for the implementation currently in the workspace. The framework runs the same command before and after agent execution and computes speedup.
 3. A `build/performance_report.json` with timing data is recommended.
-4. Recommended methodology: `10` warmup iterations + `100` measured iterations, and report the average measured runtime (speedup should be derived from averaged runtimes). The validator may mark performance as `WARN` if a task is functional but does not follow or clearly document this methodology.
+4. Every case must report finite positive device time, a stable ID/params/shape,
+   and `benchmark_method: cuda_graph` or `cuda_event_fallback`. Host/CPU timing is
+   invalid; Event fallback needs a reason and must not be candidate-controlled.
+5. Restore stateful/in-place inputs outside timing, keep scratch/JIT/reset outside
+   the timed callable, make reference/candidate workloads symmetric, and validate
+   output from the timed Graph replay with representative nonzero inputs.
+6. `10` warmups and `100` measured samples are recommended defaults, not a scoring
+   requirement. A sound documented alternative may receive WARN rather than FAIL.
 
 ### Result Template Compatibility
 
@@ -222,6 +241,8 @@ Before submitting a new task, verify:
 - [ ] Correctness check compares against a real reference (not trivially passing)
 - [ ] Isolated tasks have no undeclared external paths; repository tasks declare `repo_url` and setup requirements
 - [ ] Commands complete within reasonable time (no GPU hangs)
-- [ ] Output is compatible with `task_result_template.yaml`
+- [ ] Every performance case has scoreable device timing and method metadata
+- [ ] Stateful inputs, scratch/reset work, allocation, and Graph replay validation have fair boundaries
+- [ ] The declared editable targets are compatible with the protected harness boundary
 
 Run the task_validator agent on your task to automatically verify all of the above.

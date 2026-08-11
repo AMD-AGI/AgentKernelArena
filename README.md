@@ -411,7 +411,7 @@ workspace_directory_prefix: workspace
 make docker-run CONFIG=config_task_validator.yaml
 ```
 
-The validator runs 10 checks covering schema, source files, target symbols, compilation, correctness, performance, correctness quality, self-containedness, GPU hangs, and result compatibility. Review the generated `validation_report.yaml`; `PASS` is expected, while `WARN` requires justification. See [agents/task_validator/README.md](agents/task_validator/README.md).
+The validator runs 12 checks covering schema, source files, target symbols, compilation, correctness, performance, correctness quality, self-containedness, GPU hangs, result compatibility, benchmark integrity, and harness integrity. Reports are schema-versioned and framework-finalized; any FAIL/TIMEOUT makes the final command exit nonzero. See [agents/task_validator/README.md](agents/task_validator/README.md).
 
 ## Additional Tools
 

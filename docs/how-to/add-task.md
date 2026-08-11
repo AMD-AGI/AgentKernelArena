@@ -168,5 +168,6 @@ before pushing. To inspect a task with the real helpers injected, run
 ## Validate before merging
 
 Every new task must pass the `task_validator` agent before it's merged. It
-runs 10 automated checks and emits a `validation_report.yaml`. See
+runs 12 checks, including benchmark and harness integrity, and emits a
+framework-finalized `validation_report.yaml`. See
 [Validate tasks](task-validator.md) for the full check list and how to run it.

@@ -206,10 +206,10 @@ The rules, expressed as the framework applies them:
 **Example**: A kernel that compiles (`20`), is correct (`100`), and achieves a
 `1.58×` speedup scores `20 + 100 + 158 = 278`.
 
-The speedup used for scoring prefers the explicit `speedup_ratio` written by the
-evaluator (which weights each test case equally for multi-testcase tasks) and
-falls back to `base_execution_time / best_optimized_execution_time` when an
-explicit ratio is not present.
+The speedup used for scoring is the explicit `speedup_ratio` written by the
+evaluator. For multi-case tasks it is the arithmetic mean of matched per-case
+ratios. Missing/invalid ratios or incomplete/mismatched benchmark-method metadata
+receive no performance points; aggregate timing fields are not a scoring fallback.
 
 This is the default scoring scheme; you can define your own in `src/score.py`.
 

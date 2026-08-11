@@ -7,12 +7,21 @@ import sys
 import threading
 import shlex
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 import yaml
 from agents import register_agent
+from agents.task_validator.report_schema import finalize_report
 from agents.task_validator.validation_prompt import build_validation_prompt
 from src.runtime_env import PYTHON_ENV_VAR
+
+
+@dataclass(frozen=True)
+class BackendResult:
+    output: str
+    returncode: int | None
+    timed_out: bool
 
 
 def _launch_claude_code(
@@ -22,7 +31,7 @@ def _launch_claude_code(
     logger: logging.Logger,
     model: str | None = None,
     effort: str | None = None,
-) -> str:
+) -> BackendResult:
     """Launch Claude Code CLI with the validation prompt."""
     AGENT = "claude"
     # --dangerously-skip-permissions is exactly equivalent to
@@ -122,12 +131,14 @@ def _launch_claude_code(
     stdout_thread.start()
     stderr_thread.start()
 
+    timed_out = False
     try:
         if timeout_seconds > 0:
             process.wait(timeout=timeout_seconds)
         else:
             process.wait()
     except subprocess.TimeoutExpired:
+        timed_out = True
         logger.warning(f"Validator timed out after {timeout_seconds}s; terminating process")
         process.terminate()
         try:
@@ -135,6 +146,7 @@ def _launch_claude_code(
         except subprocess.TimeoutExpired:
             logger.warning("Force killing validator process")
             process.kill()
+            process.wait(timeout=10)
 
     stdout_thread.join(timeout=5)
     stderr_thread.join(timeout=5)
@@ -148,7 +160,7 @@ def _launch_claude_code(
     if stderr_lines:
         output += "\n=== STDERR ===\n" + "\n".join(stderr_lines)
 
-    return output
+    return BackendResult(output=output, returncode=process.returncode, timed_out=timed_out)
 
 
 def _launch_codex(
@@ -158,7 +170,7 @@ def _launch_codex(
     logger: logging.Logger,
     model: str | None = None,
     effort: str | None = None,
-) -> str:
+) -> BackendResult:
     """Launch Codex CLI in non-interactive mode for task validation."""
     AGENT = "codex"
 
@@ -307,12 +319,14 @@ def _launch_codex(
     stderr_thread.start()
 
     # timeout_seconds <= 0 means "wait until completion".
+    timed_out = False
     try:
         if timeout_seconds > 0:
             process.wait(timeout=timeout_seconds)
         else:
             process.wait()
     except subprocess.TimeoutExpired:
+        timed_out = True
         logger.warning(f"Validator timed out after {timeout_seconds}s; terminating process")
         process.terminate()
         try:
@@ -320,6 +334,7 @@ def _launch_codex(
         except subprocess.TimeoutExpired:
             logger.warning("Force killing validator process")
             process.kill()
+            process.wait(timeout=10)
 
     stdout_thread.join(timeout=5)
     stderr_thread.join(timeout=5)
@@ -331,7 +346,72 @@ def _launch_codex(
     output = "\n".join(stdout_lines)
     if stderr_lines:
         output += "\n=== STDERR ===\n" + "\n".join(stderr_lines)
-    return output
+    return BackendResult(output=output, returncode=process.returncode, timed_out=timed_out)
+
+
+def _positive_timeout(value: Any, fallback: int) -> int:
+    if isinstance(value, bool):
+        return fallback
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return parsed if parsed > 0 else fallback
+
+
+def _resolve_validation_timeouts(
+    task_config: dict[str, Any], agent_config: dict[str, Any]
+) -> tuple[int, int, int, int]:
+    """Return compile, correctness, performance, and backend timeouts.
+
+    Task-level command limits are the evaluator contract and therefore override
+    validator defaults. The backend must have enough time to run the commands
+    sequentially plus perform its static review.
+    """
+    compile_timeout = _positive_timeout(
+        task_config.get("compile_timeout"),
+        _positive_timeout(agent_config.get("compile_timeout"), 300),
+    )
+    correctness_timeout = _positive_timeout(
+        task_config.get("correctness_timeout"),
+        _positive_timeout(agent_config.get("correctness_timeout"), 300),
+    )
+    performance_timeout = _positive_timeout(
+        task_config.get("performance_timeout"),
+        _positive_timeout(agent_config.get("performance_timeout"), 300),
+    )
+    configured_backend_timeout = agent_config.get("timeout_seconds", 1200)
+    try:
+        configured_backend_timeout = int(configured_backend_timeout)
+    except (TypeError, ValueError):
+        configured_backend_timeout = 1200
+    if configured_backend_timeout <= 0:
+        backend_timeout = 0
+    else:
+        command_counts = [
+            max(1, len(commands)) if isinstance(commands, list) else 1
+            for commands in (
+                task_config.get("compile_command"),
+                task_config.get("correctness_command"),
+                task_config.get("performance_command"),
+            )
+        ]
+        backend_timeout = max(
+            configured_backend_timeout,
+            compile_timeout * command_counts[0]
+            + correctness_timeout * command_counts[1]
+            + performance_timeout * command_counts[2]
+            + 300,
+        )
+    return compile_timeout, correctness_timeout, performance_timeout, backend_timeout
+
+
+def _expected_task_name(task_config_dir: str) -> str:
+    path = Path(task_config_dir).resolve()
+    parts = path.parts
+    if "tasks" in parts:
+        return Path(*parts[parts.index("tasks") + 1 : -1]).as_posix()
+    return path.parent.name
 
 
 @register_agent("task_validator")
@@ -358,8 +438,26 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     with config_path.open("r") as f:
         agent_config = yaml.safe_load(f) or {}
 
+    task_config_error = None
+    try:
+        with Path(task_config_dir).open() as f:
+            loaded_task_config = yaml.safe_load(f)
+        if not isinstance(loaded_task_config, dict):
+            task_config_error = "config.yaml top level must be a mapping"
+            task_config = {}
+        else:
+            task_config = loaded_task_config
+    except Exception as exc:
+        task_config_error = f"config.yaml could not be parsed: {exc}"
+        task_config = {}
+
     backend = agent_config.get("backend", "claude_code")
-    timeout_seconds = int(agent_config.get("timeout_seconds", 600))
+    (
+        compile_timeout,
+        correctness_timeout,
+        performance_timeout,
+        timeout_seconds,
+    ) = _resolve_validation_timeouts(task_config, agent_config)
     configured_model = agent_config.get("model")
     configured_effort = agent_config.get("effort")
     # Resolve interpreter: explicit config -> framework-detected (set by main.py)
@@ -373,13 +471,29 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 
     # Inject agent_config values into eval_config for the prompt builder
     agent_section = eval_config.setdefault("agent", {})
+    if not isinstance(agent_section, dict):
+        agent_section = {}
+        eval_config["agent"] = agent_section
     agent_section["python_path"] = python_path
-    agent_section["compile_timeout"] = int(agent_config.get("compile_timeout", 300))
-    agent_section["correctness_timeout"] = int(agent_config.get("correctness_timeout", 300))
-    agent_section["performance_timeout"] = int(agent_config.get("performance_timeout", 300))
+    agent_section["compile_timeout"] = compile_timeout
+    agent_section["correctness_timeout"] = correctness_timeout
+    agent_section["performance_timeout"] = performance_timeout
 
-    # GPU availability check — validation tasks require a GPU to run compile/correctness/performance
+    expected_task_name = _expected_task_name(task_config_dir)
+    logger.info(f"Task Validator: backend={backend}, timeout={timeout_seconds}s")
+    logger.info(
+        "Task command timeouts: compile=%ss correctness=%ss performance=%ss",
+        compile_timeout,
+        correctness_timeout,
+        performance_timeout,
+    )
+    logger.info(f"Task Validator model: {configured_model if configured_model else '<backend default/config>'}")
+    logger.info(f"Task Validator effort: {configured_effort if configured_effort else '<backend default/config>'}")
+    logger.info(f"Task config: {task_config_dir}")
+    logger.info(f"Workspace: {workspace}")
+
     try:
+        # Validation tasks require a GPU for compile/correctness/performance.
         gpu_check = subprocess.run(
             ["rocm-smi", "--showid"],
             capture_output=True, text=True, timeout=10
@@ -389,52 +503,54 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
                 "No AMD GPU detected. `rocm-smi --showid` failed. "
                 "Task validation requires a GPU to run compile, correctness, and performance checks."
             )
-    except FileNotFoundError:
-        raise RuntimeError(
-            "rocm-smi not found. ROCm toolkit is required for task validation. "
-            "Please ensure ROCm is installed and rocm-smi is in your PATH."
-        )
+        prompt = build_validation_prompt(task_config_dir, workspace, eval_config)
+        logger.info(f"Validation prompt built, length: {len(prompt)} characters")
 
-    logger.info(f"Task Validator: backend={backend}, timeout={timeout_seconds}s")
-    logger.info(f"Task Validator model: {configured_model if configured_model else '<backend default/config>'}")
-    logger.info(f"Task Validator effort: {configured_effort if configured_effort else '<backend default/config>'}")
-    logger.info(f"Task config: {task_config_dir}")
-    logger.info(f"Workspace: {workspace}")
+        if backend == "claude_code":
+            result = _launch_claude_code(
+                prompt,
+                workspace,
+                timeout_seconds,
+                logger,
+                model=configured_model,
+                effort=configured_effort,
+            )
+        elif backend == "codex":
+            result = _launch_codex(
+                prompt,
+                workspace,
+                timeout_seconds,
+                logger,
+                model=configured_model,
+                effort=configured_effort,
+            )
+        elif backend == "cursor":
+            raise NotImplementedError("Cursor backend not yet implemented for task_validator")
+        else:
+            raise ValueError(f"Unknown backend: {backend}. Supported: claude_code, codex")
 
-    # Build validation prompt (custom, not using shared prompt_builder)
-    prompt = build_validation_prompt(task_config_dir, workspace, eval_config)
-    logger.info(f"Validation prompt built, length: {len(prompt)} characters")
-
-    # Launch the chosen backend
-    if backend == "claude_code":
-        output = _launch_claude_code(
-            prompt,
+        framework_error = task_config_error
+        if result.timed_out:
+            framework_error = f"Validator backend timed out after {timeout_seconds} seconds"
+        elif result.returncode != 0:
+            framework_error = f"Validator backend exited with code {result.returncode}"
+        report = finalize_report(
             workspace,
-            timeout_seconds,
-            logger,
-            model=configured_model,
-            effort=configured_effort,
+            expected_task_name=expected_task_name,
+            framework_error=framework_error,
         )
-    elif backend == "codex":
-        output = _launch_codex(
-            prompt,
+        logger.info(
+            "Framework-finalized validation report: %s (overall=%s)",
+            Path(workspace) / "validation_report.yaml",
+            report["overall_status"],
+        )
+        return result.output
+    except Exception as exc:
+        error = f"Validator operational failure: {type(exc).__name__}: {exc}"
+        logger.error(error, exc_info=True)
+        finalize_report(
             workspace,
-            timeout_seconds,
-            logger,
-            model=configured_model,
-            effort=configured_effort,
+            expected_task_name=expected_task_name,
+            framework_error=error,
         )
-    elif backend == "cursor":
-        # Placeholder for Cursor backend
-        raise NotImplementedError("Cursor backend not yet implemented for task_validator")
-    else:
-        raise ValueError(f"Unknown backend: {backend}. Supported: claude_code, codex")
-
-    # Verify that validation_report.yaml was generated
-    report_path = Path(workspace) / "validation_report.yaml"
-    if report_path.exists():
-        logger.info(f"Validation report generated: {report_path}")
-    else:
-        logger.warning(f"WARNING: validation_report.yaml was NOT generated in {workspace}")
-
-    return output
+        return error
