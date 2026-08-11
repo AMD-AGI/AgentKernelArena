@@ -336,22 +336,34 @@ def run_benchmark(shapes, warmup, iterations):
         kernel_time, kernel_meta = _gpu_median_time(_run_kernel, warmup, iterations)
 
         methods_match = ref_meta["benchmark_method"] == kernel_meta["benchmark_method"]
-        speedup = ref_time / kernel_time if kernel_time > 0 and methods_match else 1.0
-        speedups.append(speedup)
+        speedup = ref_time / kernel_time if kernel_time > 0 and methods_match else None
+        if speedup is not None:
+            speedups.append(speedup)
         kernel_times.append(kernel_time)
         kernel_methods.append(kernel_meta["benchmark_method"])
 
         shape_str = f"M={M}, N={N}, K={K}"
+        speedup_text = f"{speedup:.2f}x" if speedup is not None else "N/A"
         print(f"  {i+1:>3d}   {shape_str:>24s}  {ref_time:>10.4f}  "
-              f"{kernel_time:>12.4f}  {speedup:>7.2f}x")
+              f"{kernel_time:>12.4f}  {speedup_text:>8s}")
 
     print("-" * 68)
-    geomean_speedup = math.exp(sum(math.log(s) for s in speedups) / len(speedups))
+    methods_consistent = len(speedups) == len(kernel_times)
+    geomean_speedup = (
+        math.exp(sum(math.log(s) for s in speedups) / len(speedups))
+        if methods_consistent else None
+    )
     geomean_latency_ms = math.exp(sum(math.log(t) for t in kernel_times) / len(kernel_times))
     print(f"Geometric mean latency: {geomean_latency_ms:.4f} ms")
-    print(f"Geometric mean speedup: {geomean_speedup:.4f}x")
+    print(
+        f"Geometric mean speedup: {geomean_speedup:.4f}x"
+        if geomean_speedup is not None else
+        "Geometric mean speedup: N/A (timing methods differ)"
+    )
     print(f"GEAK_RESULT_LATENCY_MS={geomean_latency_ms:.4f}")
-    print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}")
+    if geomean_speedup is not None:
+        print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}")
+    print(f"GEAK_BENCHMARK_METHOD_CONSISTENT={int(methods_consistent)}")
     method = kernel_methods[0] if len(set(kernel_methods)) == 1 else "mixed:" + ",".join(sorted(set(kernel_methods)))
     print(f"GEAK_BENCHMARK_METHOD={method}")
 

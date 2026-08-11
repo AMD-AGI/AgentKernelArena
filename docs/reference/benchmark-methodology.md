@@ -38,15 +38,18 @@ contract uses a median or percentile call
 `benchmark_cuda_graph_or_events_samples()` instead.  It returns the same
 metadata and a list of per-invocation millisecond samples.
 
-The callable must launch already-compiled device work using stable allocations.
-JIT compilation, module construction, input allocation, and workspace sizing
-belong before the benchmark call.
+The callable must launch already-compiled device work. JIT compilation, module
+construction, and scratch/workspace sizing belong before the benchmark call.
+If the public operation returns newly allocated outputs, both sides must retain
+that same contract; otherwise both sides use caller-owned output buffers.
 
 Stateful in-place kernels may provide `prepare_fn`. It runs on the active
 benchmark stream before each warmup and measured sample, but before the start
 event, so input restoration is ordered correctly and excluded from the kernel
 time. In this mode each graph replay contains one logical `fn` call; this
 prevents a later captured call from consuming state mutated by an earlier one.
+Output resets follow the same rule: they belong in `prepare_fn`, not in the
+captured/timed callable.
 
 ## Graph-first measurement
 
@@ -64,6 +67,11 @@ For each fixed test case, the helper:
 6. Captures and primes the final graph outside the reported sample set, replays
    it `repetition` times, and divides each replay's event time by the calls
    captured in that graph.
+7. For tasks that request a timed-run handle, exposes the exact captured output
+   buffers and an additional replay of the same graph executable. Correctness
+   checks poison or perturb those buffers, replay, and compare them with the
+   eager/reference result. Such tasks fail closed rather than falling back to an
+   unobservable Event invocation.
 
 The start event, graph replay, and end event all run on the same side stream.
 This ordering is important: recording events on one stream while replaying on
@@ -107,7 +115,9 @@ graph look non-empty even when the target kernel escaped to stream zero. HIP
 task harnesses therefore run a conservative source preflight. Every visible
 launch must use a stream obtained from PyTorch's current CUDA/HIP stream; a
 literal legacy stream, capture-unsafe synchronization/allocation, or an
-unverifiable launch construct forces both sides of the comparison to Events.
+unverifiable launch construct classifies the baseline case as Event-only. For
+hip2hip comparisons, the reference source fixes this policy; candidate source
+cannot downgrade a graph-capable reference to Events.
 
 Fallback still uses device events; it does not use Python, subprocess, or CPU
 wall-clock timing.  Host and wall-time-only fields are rejected by the central
@@ -151,14 +161,12 @@ matched case**:
 - different shapes may use different methods, provided each matched
   baseline/optimized pair uses the same exact method.
 
-For every graph-capable baseline case, the baseline phase also records a paired
-forced-Event measurement under `benchmark_alternate_event_*` metadata. The
-graph result remains the default. If—and only if—the corresponding optimized
-case reports `cuda_event_fallback`, evaluation selects that case's stored Event
-baseline. This makes an unavoidable fallback scoreable without ever comparing
-graph timing against Event timing. The selected set is written to
-`comparison_baseline_perf.yaml`; the original dual-track data remains in
-`baseline_perf.yaml` for auditability.
+The baseline result fixes the timing policy before candidate measurement. If a
+baseline case succeeds with Graph but the candidate falls back to Events, the
+candidate timing remains visible for diagnosis but earns no performance score.
+Only a case that the baseline itself classified as Event-only can be scored as
+Event versus Event. The evaluator never collects or selects a candidate-driven
+alternate Event baseline.
 
 Missing or unknown method metadata is not comparable and produces no speedup;
 every scored case must explicitly identify `cuda_graph` or
@@ -188,3 +196,10 @@ every task config. Each configured performance path must be recognized as a
 canonical Python importer, vLLM adapter, ROCmBench adapter, or native graph
 driver. An unrecognized benchmark entrypoint fails the check instead of quietly
 using an undocumented timer.
+
+Pull requests also run the CPU/mock unit suite and Python compilation audit in
+CI. `benchmark-gpu-smoke` exercises a stateful Graph workload, observable timed
+replay, forced-Event rejection, and native matrix/MLA replay validation with
+nonzero inputs. It retains the logs as artifacts. Repository administrators can
+set `AKA_GPU_CI_ENABLED=true` after registering an isolated self-hosted runner
+with the `rocm` and `gfx950` labels, then make this workflow a required check.

@@ -28,7 +28,9 @@ void roipool3dLauncher(int batch_size, int pts_num, int boxes_num, int feature_i
                        int *pooled_empty_flag, int *pts_assign, int *pts_idx);
 
 
-int roipool3d_gpu(at::Tensor xyz, at::Tensor boxes3d, at::Tensor pts_feature, at::Tensor pooled_features, at::Tensor pooled_empty_flag){
+int roipool3d_gpu(at::Tensor xyz, at::Tensor boxes3d, at::Tensor pts_feature,
+                  at::Tensor pooled_features, at::Tensor pooled_empty_flag,
+                  at::Tensor pts_assign, at::Tensor pts_idx){
     // params xyz: (B, N, 3)
     // params boxes3d: (B, M, 7)
     // params pts_feature: (B, N, C)
@@ -39,6 +41,8 @@ int roipool3d_gpu(at::Tensor xyz, at::Tensor boxes3d, at::Tensor pts_feature, at
     CHECK_INPUT(pts_feature);
     CHECK_INPUT(pooled_features);
     CHECK_INPUT(pooled_empty_flag);
+    CHECK_INPUT(pts_assign);
+    CHECK_INPUT(pts_idx);
 
     int batch_size = xyz.size(0);
     int pts_num = xyz.size(1);
@@ -52,14 +56,6 @@ int roipool3d_gpu(at::Tensor xyz, at::Tensor boxes3d, at::Tensor pts_feature, at
     const float * pts_feature_data = pts_feature.data_ptr<float>();
     float * pooled_features_data = pooled_features.data_ptr<float>();
     int * pooled_empty_flag_data = pooled_empty_flag.data_ptr<int>();
-    // Use PyTorch's capture-aware allocator instead of hipMalloc/hipFree in
-    // the launcher.  These workspaces are internal implementation details and
-    // their shapes are fully determined by the public tensor arguments.
-    at::Tensor pts_assign = at::empty(
-        {batch_size, pts_num, boxes_num}, xyz.options().dtype(at::kInt));
-    at::Tensor pts_idx = at::empty(
-        {batch_size, boxes_num, sampled_pts_num}, xyz.options().dtype(at::kInt));
-
     roipool3dLauncher(batch_size, pts_num, boxes_num, feature_in_len, sampled_pts_num,
                        xyz_data, boxes3d_data, pts_feature_data, pooled_features_data,
                        pooled_empty_flag_data, pts_assign.data_ptr<int>(), pts_idx.data_ptr<int>());

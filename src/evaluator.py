@@ -23,7 +23,6 @@ from .testcases import (
     calculate_average_speedup,
     collect_benchmark_methods,
     save_performance_results,
-    select_method_matched_baselines,
 )
 
 # Default timeouts for run_command (seconds). Repository CMake builds can exceed a few minutes.
@@ -224,16 +223,10 @@ def evaluate_kernel(
         # Record the timing method(s) used for the optimized measurement so the final
         # task_result can flag mixed-method (baseline vs optimized) comparisons.
         results['optimized_benchmark_methods'] = collect_benchmark_methods(optimized_cases)
-        comparison_baseline_cases = select_method_matched_baselines(
-            baseline_cases, optimized_cases, log
-        )
-        results['_comparison_baseline_cases'] = comparison_baseline_cases
-        save_performance_results(
-            comparison_baseline_cases,
-            workspace,
-            "comparison_baseline_perf.yaml",
-            logger,
-        )
+        # The baseline method is the immutable policy for each case. A
+        # candidate that cannot replay a graph must remain incomparable; it may
+        # not select a second Event baseline after seeing its own fallback.
+        comparison_baseline_cases = baseline_cases
         valid_optimized_cases = _valid_perf_cases(optimized_cases)
         valid_baseline_cases = _valid_perf_cases(comparison_baseline_cases)
         results['valid_optimized_cases'] = len(valid_optimized_cases)
@@ -372,9 +365,7 @@ def write_task_result(
     
     # Get average baseline time
     avg_baseline_time = 0.0
-    comparison_baseline_cases = evaluation_results.get(
-        '_comparison_baseline_cases', baseline_cases
-    )
+    comparison_baseline_cases = baseline_cases
     valid_baseline_cases = _valid_perf_cases(comparison_baseline_cases)
     if valid_baseline_cases:
         avg_baseline_time = sum(c.execution_time_ms for c in valid_baseline_cases) / len(valid_baseline_cases)

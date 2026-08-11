@@ -6,13 +6,11 @@ from src.performance import measure_baseline
 from src.testcases import (
     TestCaseResult as CaseResult,
     analyze_benchmark_method_consistency,
-    attach_event_fallback_baselines,
     calculate_average_speedup,
     load_performance_results,
     match_test_cases,
     parse_test_cases_from_stdout,
     save_performance_results,
-    select_method_matched_baselines,
 )
 
 
@@ -131,73 +129,23 @@ def test_singleton_synthetic_cases_keep_index_fallback():
     assert calculate_average_speedup(baseline, optimized) == 2.0
 
 
-def test_dual_baseline_selects_event_variant_per_optimized_case():
-    baseline = [
-        _case("a", 2.0, "cuda_graph", [1]),
-        _case("b", 4.0, "cuda_graph", [2]),
-    ]
-    forced_events = [
-        _case("b", 8.0, "cuda_event_fallback", [2]),
-        _case("a", 6.0, "cuda_event_fallback", [1]),
-    ]
-    for case in forced_events:
-        case.metadata["benchmark_fallback_reason"] = "forced_event_baseline"
-        case.metadata["benchmark_effective_repeats"] = 1
-
-    attach_event_fallback_baselines(baseline, forced_events)
-    optimized = [
-        _case("a", 3.0, "cuda_event_fallback", [1]),
-        _case("b", 2.0, "cuda_graph", [2]),
-    ]
-    selected = select_method_matched_baselines(baseline, optimized)
-
-    assert [case.execution_time_ms for case in selected] == [6.0, 4.0]
-    assert [case.metadata["benchmark_method"] for case in selected] == [
-        "cuda_event_fallback",
-        "cuda_graph",
-    ]
-    assert selected[0].metadata["benchmark_baseline_variant"] == "forced_event"
-    assert selected[0].metadata["benchmark_fallback_reason"] == (
-        "forced_event_baseline"
-    )
-    assert calculate_average_speedup(selected, optimized) == 2.0
-
-
-def test_dual_baseline_metadata_survives_yaml_round_trip(tmp_path):
+def test_candidate_event_fallback_cannot_switch_graph_baseline():
     baseline = [_case("a", 2.0, "cuda_graph", [1])]
-    forced = [_case("a", 6.0, "cuda_event_fallback", [1])]
-    forced[0].metadata["benchmark_fallback_reason"] = "forced_event_baseline"
-    attach_event_fallback_baselines(baseline, forced)
-
-    save_performance_results(baseline, tmp_path, "baseline_perf.yaml")
-    loaded = load_performance_results(tmp_path, "baseline_perf.yaml")
-
-    assert loaded[0].metadata["benchmark_alternate_event_time_ms"] == 6.0
-    assert loaded[0].metadata["benchmark_alternate_event_method"] == (
+    optimized = [_case("a", 3.0, "cuda_event_fallback", [1])]
+    # Legacy alternate metadata must not affect the immutable baseline policy.
+    baseline[0].metadata["benchmark_alternate_event_time_ms"] = 6.0
+    baseline[0].metadata["benchmark_alternate_event_method"] = (
         "cuda_event_fallback"
     )
-    selected = select_method_matched_baselines(
-        loaded, [_case("a", 3.0, "cuda_event_fallback", [1])]
+
+    consistent, mismatches = analyze_benchmark_method_consistency(
+        baseline, optimized
     )
-    assert selected[0].execution_time_ms == 6.0
 
-
-def test_event_baselines_do_not_index_match_unrelated_multi_case_sets():
-    baseline = [
-        _case("a", 2.0, "cuda_graph", None),
-        _case("b", 4.0, "cuda_graph", None),
-    ]
-    forced = [
-        _case("x", 6.0, "cuda_event_fallback", None),
-        _case("y", 8.0, "cuda_event_fallback", None),
-    ]
-
-    attach_event_fallback_baselines(baseline, forced)
-
-    assert all(
-        "benchmark_alternate_event_time_ms" not in case.metadata
-        for case in baseline
-    )
+    assert not consistent
+    assert len(mismatches) == 1
+    assert baseline[0].execution_time_ms == 2.0
+    assert calculate_average_speedup(baseline, optimized) == 0.0
 
 
 def test_synthetic_id_provenance_survives_yaml_round_trip(tmp_path):
@@ -210,7 +158,7 @@ def test_synthetic_id_provenance_survives_yaml_round_trip(tmp_path):
     assert loaded[0].metadata["_synthetic_test_case_id"] is True
 
 
-def test_mixed_graph_baseline_also_collects_paired_event_variant(tmp_path):
+def test_baseline_is_measured_once_without_candidate_selected_event_variant(tmp_path):
     baseline = [
         _case(
             "aggregate",
@@ -219,23 +167,14 @@ def test_mixed_graph_baseline_also_collects_paired_event_variant(tmp_path):
             [1],
         )
     ]
-    forced = [_case("aggregate", 6.0, "cuda_event_fallback", [1])]
-    forced[0].metadata["benchmark_fallback_reason"] = "forced_event_baseline"
-
     with mock.patch(
         "src.performance.measure_performance",
-        side_effect=[baseline, forced],
+        return_value=baseline,
     ) as measured:
         measured_baseline = measure_baseline(tmp_path, {}, logger=mock.Mock())
 
-    assert measured.call_count == 2
-    assert measured.call_args_list[1].kwargs["force_event"] is True
-    assert measured_baseline[0].metadata[
-        "benchmark_alternate_event_method"
-    ] == "cuda_event_fallback"
-    assert measured_baseline[0].metadata[
-        "benchmark_alternate_event_time_ms"
-    ] == 6.0
+    assert measured.call_count == 1
+    assert measured_baseline == baseline
 
 
 def test_mixed_aggregate_method_string_must_match_exactly():
@@ -275,6 +214,7 @@ def test_stdout_geak_metadata_is_retained():
     cases = parse_test_cases_from_stdout(
         "GEAK_RESULT_LATENCY_MS=0.125\n"
         "GEAK_BENCHMARK_METHOD=mixed:cuda_graph,cuda_event_fallback\n"
+        "GEAK_BENCHMARK_METHOD_CONSISTENT=0\n"
         "GEAK_BENCHMARK_FALLBACK_REASON=shape 2 reads a host scalar\n"
     )
 
@@ -286,6 +226,21 @@ def test_stdout_geak_metadata_is_retained():
     assert cases[0].metadata["benchmark_fallback_reason"] == (
         "shape 2 reads a host scalar"
     )
+    assert cases[0].metadata["benchmark_method_consistent"] is False
+
+
+def test_task_reported_method_mismatch_is_unscoreable_even_if_outer_methods_match():
+    baseline = [_case("a", 2.0, "cuda_graph", [1])]
+    optimized = [_case("a", 1.0, "cuda_graph", [1])]
+    optimized[0].metadata["benchmark_method_consistent"] = False
+
+    consistent, mismatches = analyze_benchmark_method_consistency(
+        baseline, optimized
+    )
+
+    assert not consistent
+    assert mismatches[0]["reason"] == "task_reported_method_mismatch"
+    assert calculate_average_speedup(baseline, optimized) == 0.0
 
 
 def test_all_benchmark_metadata_survives_yaml_round_trip(tmp_path):

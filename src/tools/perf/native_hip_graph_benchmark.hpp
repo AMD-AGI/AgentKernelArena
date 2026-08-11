@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -30,6 +31,9 @@ struct benchmark_result
     std::size_t benchmark_effective_repeats = 1;
     std::size_t benchmark_samples           = 1;
 };
+
+using replay_validator
+    = std::function<std::string(hipGraphExec_t graph_exec, hipStream_t stream)>;
 
 inline std::string hip_failure(const char* operation, hipError_t error)
 {
@@ -115,7 +119,8 @@ benchmark_result benchmark_graph_or_events(Launch&& launch,
                                            std::size_t warmup      = 10,
                                            std::size_t samples     = 100,
                                            double target_ms        = 1.0,
-                                           std::size_t max_repeats = 1000)
+                                           std::size_t max_repeats = 1000,
+                                           const replay_validator& validate = {})
 {
     samples     = std::max<std::size_t>(samples, 1);
     max_repeats = std::max<std::size_t>(max_repeats, 1);
@@ -132,6 +137,15 @@ benchmark_result benchmark_graph_or_events(Launch&& launch,
         forced_result.benchmark_fallback_reason = "forced_event_baseline";
         forced_result.benchmark_effective_repeats = 1;
         forced_result.benchmark_samples           = samples;
+        if(validate)
+        {
+            const std::string validation_failure = validate(nullptr, stream);
+            if(!validation_failure.empty())
+            {
+                throw std::runtime_error("event output validation failed: "
+                                         + validation_failure);
+            }
+        }
         return forced_result;
     }
 
@@ -236,6 +250,7 @@ benchmark_result benchmark_graph_or_events(Launch&& launch,
     }
 
     benchmark_result result;
+    std::string validation_failure;
     result.benchmark_effective_repeats = graph_repeats;
     result.benchmark_samples           = samples;
 
@@ -298,6 +313,21 @@ benchmark_result benchmark_graph_or_events(Launch&& launch,
         }
     }
 
+    // Validate an actual replay of the graph executable that produced the
+    // measured samples while it is still alive. Drivers may poison outputs in
+    // this callback, replay once, and compare against an eager/reference result.
+    if(result.benchmark_method == "cuda_graph" && validate)
+    {
+        try
+        {
+            validation_failure = validate(graph_exec, graph_stream);
+        }
+        catch(const std::exception& validation_error)
+        {
+            validation_failure = validation_error.what();
+        }
+    }
+
     // A timed graph failure may occur after earlier replays were enqueued.
     // Drain the isolated graph stream before destroying it so those launches
     // cannot overlap the eager fallback on the caller stream and shared
@@ -321,6 +351,12 @@ benchmark_result benchmark_graph_or_events(Launch&& launch,
         static_cast<void>(hipStreamDestroy(graph_stream));
     }
 
+    if(!validation_failure.empty())
+    {
+        throw std::runtime_error("graph replay output validation failed: "
+                                 + validation_failure);
+    }
+
     if(result.benchmark_method.empty())
     {
         static_cast<void>(hipGetLastError());
@@ -338,6 +374,15 @@ benchmark_result benchmark_graph_or_events(Launch&& launch,
         result.benchmark_method          = "cuda_event_fallback";
         result.benchmark_fallback_reason = "cuda_graph_failed: " + graph_failure_reason;
         result.benchmark_effective_repeats = 1;
+        if(validate)
+        {
+            validation_failure = validate(nullptr, stream);
+            if(!validation_failure.empty())
+            {
+                throw std::runtime_error("event output validation failed: "
+                                         + validation_failure);
+            }
+        }
     }
 
     return result;

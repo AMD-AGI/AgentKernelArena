@@ -62,120 +62,51 @@ def _relerr(a, b) -> float:
 # --------------------------------------------------------------------------- #
 # CUDA-graph benchmark (device-time only; falls back to CUDA events).
 # --------------------------------------------------------------------------- #
-def _measure_cuda_event(fn, repetition):
-    import torch
-
-    times_ms = []
-    for _ in range(max(1, int(repetition))):
-        torch.cuda.synchronize()
-        s = torch.cuda.Event(enable_timing=True)
-        e = torch.cuda.Event(enable_timing=True)
-        s.record()
-        fn()
-        e.record()
-        torch.cuda.synchronize()
-        times_ms.append(s.elapsed_time(e))
-    return times_ms
+# >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>
+def _measure_cuda_event_fallback(*args, **kwargs):
+    raise RuntimeError(
+        "CUDA-graph benchmark helpers were not materialized. "
+        "Run this task through AgentKernelArena so setup_workspace() can inject "
+        "src/tools/perf/vllm_cuda_graph_block.py into the workspace."
+    )
 
 
-class _TimedRun:
-    def __init__(self):
-        self._rerun = None
-        self.outputs = None
-
-    def _bind(self, rerun, outputs=None):
-        self._rerun = rerun
-        self.outputs = outputs
-
-    @property
-    def bound(self):
-        return self._rerun is not None
-
-    def rerun(self):
-        if self._rerun is None:
-            raise RuntimeError("timed run was never bound")
-        self.outputs = self._rerun()
-        return self.outputs
+def _benchmark_cuda_graph_or_events(*args, **kwargs):
+    raise RuntimeError(
+        "CUDA-graph benchmark helpers were not materialized. "
+        "Run this task through AgentKernelArena so setup_workspace() can inject "
+        "src/tools/perf/vllm_cuda_graph_block.py into the workspace."
+    )
+# <<< AKA-GENERATED <<<
 
 
-def _benchmark_cuda_graph(
-    fn,
-    warmup=10,
-    repetition=100,
-    target_ms=1.0,
-    max_graph_repeats=200,
-    timed_run=None,
-):
-    import torch
+if "_TimedRun" not in globals():
+    class _TimedRun:
+        """Source-tree fallback; workspace materialization supplies the real class."""
 
-    for _ in range(max(0, int(warmup))):
-        fn()
-    torch.cuda.synchronize()
+        def __init__(self):
+            self._rerun = None
+            self.outputs = None
 
-    meta = {"benchmark_target_ms": float(target_ms), "benchmark_samples": int(repetition)}
-    try:
-        stream = torch.cuda.Stream()
-        stream.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(stream):
-            est = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(est):
-                for _ in range(3):
-                    fn()
-            torch.cuda.synchronize()
-            s, e = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-            s.record(stream)
-            est.replay()
-            e.record(stream)
-            torch.cuda.synchronize()
-            est_ms = s.elapsed_time(e) / 3
-            repeats = min(max_graph_repeats, max(1, int(target_ms / max(est_ms, 1e-9))))
+        def _bind(self, rerun, outputs=None):
+            self._rerun = rerun
+            self.outputs = outputs
 
-            graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(graph):
-                captured_outputs = None
-                for _ in range(repeats):
-                    captured_outputs = fn()
-            torch.cuda.synchronize()
+        @property
+        def bound(self):
+            return self._rerun is not None
 
-            times = []
-            for _ in range(max(1, int(repetition))):
-                s, e = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-                s.record(stream)
-                graph.replay()
-                e.record(stream)
-                torch.cuda.synchronize()
-                times.append(s.elapsed_time(e) / repeats)
-        mean_ms = sum(times) / len(times)
-        if mean_ms < 1e-5:
-            raise RuntimeError("empty_cuda_graph_capture")
-        meta.update(benchmark_method="cuda_graph", benchmark_effective_repeats=int(repeats))
-        if timed_run is not None:
-            def _replay_once():
-                stream.wait_stream(torch.cuda.current_stream())
-                with torch.cuda.stream(stream):
-                    graph.replay()
-                torch.cuda.synchronize()
-                return captured_outputs
+        def rerun(self):
+            if self._rerun is None:
+                raise RuntimeError("timed run was never bound")
+            self.outputs = self._rerun()
+            return self.outputs
 
-            timed_run._bind(_replay_once, captured_outputs)
-        return mean_ms, meta
-    except Exception as exc:
-        try:
-            torch.cuda.synchronize()
-        except Exception:
-            pass
-        if timed_run is not None:
-            raise RuntimeError(
-                "CUDA-graph capture failed; timed outputs cannot be validated "
-                "through a separate event-timed invocation"
-            ) from exc
-        times = _measure_cuda_event(fn, repetition)
-        meta.update(
-            benchmark_method="cuda_event_fallback",
-            benchmark_effective_repeats=int(repetition),
-            benchmark_fallback_reason=f"{type(exc).__name__}: {str(exc)[:160]}",
-        )
-        return sum(times) / len(times), meta
+
+def _benchmark_cuda_graph(*args, **kwargs):
+    """Compatibility name used by the task's standalone/forge drivers."""
+
+    return _benchmark_cuda_graph_or_events(*args, **kwargs)
 
 
 # --------------------------------------------------------------------------- #

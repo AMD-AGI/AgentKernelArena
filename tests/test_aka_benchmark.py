@@ -272,6 +272,66 @@ def test_prepare_fn_forces_one_stateful_call_per_graph_replay(monkeypatch):
     assert metadata["benchmark_effective_repeats"] == 1
 
 
+def test_timed_run_binds_outputs_to_the_exact_measured_graph(monkeypatch):
+    helper = _load_helper(monkeypatch)
+    captured_output = object()
+
+    class Graph:
+        def __init__(self):
+            self.replays = 0
+
+        def replay(self):
+            self.replays += 1
+
+    final_graph = Graph()
+    captures = 0
+
+    def capture(fn, repeats, stream, prepare_fn=None, output_holder=None):
+        nonlocal captures
+        del repeats, stream, prepare_fn
+        captures += 1
+        if output_holder is not None:
+            output_holder[:] = [fn()]
+            return final_graph
+        return Graph()
+
+    def replay(graph, stream, samples, calls_per_replay, prepare_fn=None):
+        del graph, stream, calls_per_replay, prepare_fn
+        return [0.25] * samples
+
+    class TimedRun:
+        def __init__(self):
+            self.outputs = None
+            self._rerun = None
+
+        def _bind(self, rerun, outputs=None):
+            self._rerun = rerun
+            self.outputs = outputs
+
+        def rerun(self):
+            return self._rerun()
+
+    monkeypatch.setattr(helper, "_capture_graph", capture)
+    monkeypatch.setattr(helper, "_graph_replay_samples", replay)
+    monkeypatch.setattr(
+        helper.torch.cuda, "stream", lambda _stream: nullcontext(), raising=False
+    )
+    timed = TimedRun()
+
+    _samples, metadata = helper.benchmark_cuda_graph_or_events_samples(
+        lambda: captured_output,
+        warmup=0,
+        repetition=2,
+        timed_run=timed,
+    )
+
+    assert captures == 2
+    assert metadata["benchmark_method"] == "cuda_graph"
+    assert timed.outputs is captured_output
+    assert timed.rerun() is captured_output
+    assert final_graph.replays == 1
+
+
 def test_hip_source_policy_accepts_current_stream_launch(monkeypatch, tmp_path):
     helper = _load_helper(monkeypatch)
     source = tmp_path / "kernel.hip"

@@ -147,14 +147,40 @@ def _write_perf_report(report: Dict[str, Any]) -> None:
 def cal_hip_latency(kernel_hip: Any, inputs: List[Any], hip_fn: Any,
                     n_iter: int = 100, n_warmup: int = 10,
                     use_cuda_graph: bool = True,
-                    fallback_reason: str | None = None) -> Tuple[float, Dict[str, Any]]:
+                    fallback_reason: str | None = None,
+                    prepare_fn: Any = None) -> Tuple[float, Dict[str, Any]]:
     return benchmark_cuda_graph_or_events(
         lambda: kernel_hip(*inputs, fn=hip_fn),
         warmup=n_warmup,
         repetition=n_iter,
         use_cuda_graph=use_cuda_graph,
         fallback_reason=fallback_reason,
+        prepare_fn=prepare_fn,
     )
+
+
+def _clone_benchmark_inputs(inputs: List[Any]) -> List[Any]:
+    return [
+        value.detach().clone() if torch.is_tensor(value) else copy.deepcopy(value)
+        for value in inputs
+    ]
+
+
+def _tensor_inputs_changed(before: List[Any], after: List[Any]) -> bool:
+    return any(
+        torch.is_tensor(old) and torch.is_tensor(new) and not torch.equal(old, new)
+        for old, new in zip(before, after)
+    )
+
+
+def _make_restore_fn(working: List[Any], pristine: List[Any]):
+    def _restore() -> None:
+        with torch.no_grad():
+            for destination, source in zip(working, pristine):
+                if torch.is_tensor(destination) and torch.is_tensor(source):
+                    destination.copy_(source)
+
+    return _restore
 
 
 def _normalize_get_inputs_result(inputs_result: Any) -> Any:
@@ -194,11 +220,10 @@ def cal_kernel_perf(
     ref_graph_enabled, ref_graph_reason = hip_source_graph_capture_policy(
         ref_hip_kernel_path
     )
-    opt_graph_enabled, opt_graph_reason = hip_source_graph_capture_policy(
-        hip_kernel_path
-    )
-    graph_enabled = ref_graph_enabled and opt_graph_enabled
-    graph_fallback_reason = ref_graph_reason or opt_graph_reason
+    # The reference decides the method policy. A candidate cannot force both
+    # sides onto Event timing by making its own graph capture unsafe.
+    graph_enabled = ref_graph_enabled
+    graph_fallback_reason = ref_graph_reason
 
     # Create separate build directories for reference and optimized kernels
     ref_hip_dir = os.path.join(build_dir, "hip_ref")
@@ -312,11 +337,23 @@ def cal_kernel_perf(
         try:
             torch.manual_seed(1337 + case_idx)
             torch.cuda.manual_seed_all(1337 + case_idx)
-            ref_result = kernel_func(*copy.deepcopy(inputs_func_cuda), fn=ref_hip_fn)
+            ref_check_inputs = _clone_benchmark_inputs(inputs_func_cuda)
+            ref_check_pristine = _clone_benchmark_inputs(ref_check_inputs)
+            ref_result = kernel_func(*ref_check_inputs, fn=ref_hip_fn)
+            torch.cuda.synchronize()
+            reference_mutates_inputs = _tensor_inputs_changed(
+                ref_check_pristine, ref_check_inputs
+            )
 
             torch.manual_seed(1337 + case_idx)
             torch.cuda.manual_seed_all(1337 + case_idx)
-            opt_result = kernel_func(*copy.deepcopy(inputs_func_cuda), fn=opt_hip_fn)
+            opt_check_inputs = _clone_benchmark_inputs(inputs_func_cuda)
+            opt_check_pristine = _clone_benchmark_inputs(opt_check_inputs)
+            opt_result = kernel_func(*opt_check_inputs, fn=opt_hip_fn)
+            torch.cuda.synchronize()
+            inputs_mutated = reference_mutates_inputs or _tensor_inputs_changed(
+                opt_check_pristine, opt_check_inputs
+            )
 
             if not _compare_results(ref_result, opt_result, rtol=rtol, atol=atol):
                 print(f"[MISMATCH] {kernel_name} case {case_idx}: reference and optimized results differ.")
@@ -332,21 +369,37 @@ def cal_kernel_perf(
             report["test_cases"].append(case_entry)
             continue
 
-        # Performance comparison: reference HIP vs optimized HIP
+        # Performance comparison: reference HIP vs optimized HIP. Each side
+        # gets independent buffers. If either implementation mutates its inputs,
+        # both buffers are restored before every measured invocation.
         try:
+            ref_perf_inputs = _clone_benchmark_inputs(inputs_func_cuda)
+            opt_perf_inputs = _clone_benchmark_inputs(inputs_func_cuda)
+            ref_pristine = _clone_benchmark_inputs(ref_perf_inputs)
+            opt_pristine = _clone_benchmark_inputs(opt_perf_inputs)
+            ref_prepare = (
+                _make_restore_fn(ref_perf_inputs, ref_pristine)
+                if inputs_mutated else None
+            )
+            opt_prepare = (
+                _make_restore_fn(opt_perf_inputs, opt_pristine)
+                if inputs_mutated else None
+            )
             ref_time, ref_meta = cal_hip_latency(
                 kernel_func,
-                inputs_func_cuda,
+                ref_perf_inputs,
                 ref_hip_fn,
                 use_cuda_graph=graph_enabled,
                 fallback_reason=graph_fallback_reason,
+                prepare_fn=ref_prepare,
             )
             opt_time, opt_meta = cal_hip_latency(
                 kernel_func,
-                inputs_func_cuda,
+                opt_perf_inputs,
                 opt_hip_fn,
                 use_cuda_graph=graph_enabled,
                 fallback_reason=graph_fallback_reason,
+                prepare_fn=opt_prepare,
             )
             
             case_entry["ref_time"] = round(ref_time, 5)

@@ -277,18 +277,15 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
                 def run_fused():
                     return kmod.flydsl_topk_softplus(gating, bias, topk, renorm, rs)
             else:
-                fused_w = torch.empty(
-                    (shape["tokens"], topk),
-                    dtype=torch.float32,
-                    device=gating.device,
-                )
-                fused_idx = torch.empty(
-                    (shape["tokens"], topk),
-                    dtype=torch.int32,
-                    device=gating.device,
-                )
-
                 def run_fused():
+                    fused_w = torch.empty(
+                        (shape["tokens"], topk), dtype=torch.float32,
+                        device=gating.device,
+                    )
+                    fused_idx = torch.empty(
+                        (shape["tokens"], topk), dtype=torch.int32,
+                        device=gating.device,
+                    )
                     aiter.topk_softplus(
                         fused_w,
                         fused_idx,

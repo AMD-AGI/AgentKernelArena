@@ -17,7 +17,7 @@ from src.held_out.run_heldout_eval import (
     evaluate_single_task,
     resolve_task_id,
 )
-from src.testcases import TestCaseResult, attach_event_fallback_baselines
+from src.testcases import TestCaseResult
 
 
 class HeldOutInjectionTests(unittest.TestCase):
@@ -111,10 +111,8 @@ class HeldOutBenchmarkMethodTests(unittest.TestCase):
             metadata={"benchmark_method": method},
         )
 
-    def test_selects_paired_event_baseline_for_event_optimized_case(self) -> None:
+    def test_candidate_event_fallback_cannot_replace_graph_baseline(self) -> None:
         baseline = [self._case(2.0, "cuda_graph")]
-        forced_event = [self._case(6.0, "cuda_event_fallback")]
-        attach_event_fallback_baselines(baseline, forced_event)
         optimized = [self._case(3.0, "cuda_event_fallback")]
 
         selected, valid_optimized, consistent, mismatches = (
@@ -123,14 +121,14 @@ class HeldOutBenchmarkMethodTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(selected[0].execution_time_ms, 6.0)
+        self.assertEqual(selected[0].execution_time_ms, 2.0)
         self.assertEqual(
             selected[0].metadata["benchmark_method"],
-            "cuda_event_fallback",
+            "cuda_graph",
         )
         self.assertEqual(valid_optimized, optimized)
-        self.assertTrue(consistent)
-        self.assertEqual(mismatches, [])
+        self.assertFalse(consistent)
+        self.assertEqual(len(mismatches), 1)
 
     def test_missing_event_alternate_remains_unscoreable(self) -> None:
         baseline = [self._case(2.0, "cuda_graph")]
@@ -146,7 +144,7 @@ class HeldOutBenchmarkMethodTests(unittest.TestCase):
         self.assertFalse(consistent)
         self.assertEqual(len(mismatches), 1)
 
-    def test_evaluation_reports_and_scores_selected_event_baseline(self) -> None:
+    def test_evaluation_refuses_to_score_candidate_event_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             original_workspace = root / "original"
@@ -164,8 +162,6 @@ class HeldOutBenchmarkMethodTests(unittest.TestCase):
             }))
 
             baseline = [self._case(2.0, "cuda_graph")]
-            forced_event = [self._case(6.0, "cuda_event_fallback")]
-            attach_event_fallback_baselines(baseline, forced_event)
             optimized = [self._case(3.0, "cuda_event_fallback")]
 
             with (
@@ -198,19 +194,15 @@ class HeldOutBenchmarkMethodTests(unittest.TestCase):
                     logging.getLogger(__name__),
                 )
 
-            self.assertEqual(result["orig_heldout_execution_time"], 6.0)
+            self.assertEqual(result["orig_heldout_execution_time"], 2.0)
             self.assertEqual(result["opt_execution_time"], 3.0)
-            self.assertEqual(result["speedup_ratio"], 2.0)
-            self.assertTrue(result["benchmark_method_consistent"])
-            self.assertEqual(result["benchmark_method_mismatches"], [])
-            self.assertEqual(result["score"], 320.0)
-            comparison = yaml.safe_load(
+            self.assertEqual(result["speedup_ratio"], 0.0)
+            self.assertFalse(result["benchmark_method_consistent"])
+            self.assertEqual(len(result["benchmark_method_mismatches"]), 1)
+            self.assertEqual(result["score"], 120.0)
+            self.assertFalse(
                 (output_workspace / "orig" / "comparison_baseline_perf.yaml")
-                .read_text()
-            )
-            self.assertEqual(
-                comparison["test_cases"][0]["benchmark_method"],
-                "cuda_event_fallback",
+                .exists()
             )
 
 

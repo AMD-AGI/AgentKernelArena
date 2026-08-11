@@ -6,7 +6,10 @@ in the sibling materialized ``_aka_benchmark.py`` module.
 
 
 def _measure_cuda_event_fallback(fn, repetition, prepare_fn=None):
-    from _aka_benchmark import benchmark_cuda_event_samples
+    try:
+        from _aka_benchmark import benchmark_cuda_event_samples
+    except ModuleNotFoundError:  # Direct source-tree unit tests.
+        from src.tools.perf.aka_benchmark import benchmark_cuda_event_samples
 
     return benchmark_cuda_event_samples(
         fn, repetition=repetition, prepare_fn=prepare_fn
@@ -64,7 +67,10 @@ def _benchmark_cuda_graph_or_events(
     timed_run=None,
     prepare_fn=None,
 ):
-    from _aka_benchmark import benchmark_cuda_graph_or_events
+    try:
+        from _aka_benchmark import benchmark_cuda_graph_or_events
+    except ModuleNotFoundError:  # Direct source-tree unit tests.
+        from src.tools.perf.aka_benchmark import benchmark_cuda_graph_or_events
 
     return benchmark_cuda_graph_or_events(
         fn,

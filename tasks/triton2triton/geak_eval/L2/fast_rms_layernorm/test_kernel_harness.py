@@ -298,21 +298,32 @@ def run_benchmark(shapes, warmup=50, iterations=200):
             )
 
         methods_match = kernel_meta["benchmark_method"] == ref_meta["benchmark_method"]
-        speedup = ref_ms / kernel_ms if methods_match and kernel_ms > 0 else 1.0
-        speedups.append(speedup)
+        speedup = ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        if speedup is not None:
+            speedups.append(speedup)
         kernel_latencies.append(kernel_ms)
         benchmark_methods.append(kernel_meta["benchmark_method"])
-        speedup_text = f"{speedup:.3f}x" if methods_match else "N/A (timing methods differ)"
+        speedup_text = f"{speedup:.3f}x" if speedup is not None else "N/A (timing methods differ)"
         print(f"  Shape {shape}: kernel={kernel_ms:.4f} ms | ref={ref_ms:.4f} ms | speedup={speedup_text}")
 
-    geo_mean = math.exp(sum(math.log(s) for s in speedups) / len(speedups))
+    methods_consistent = len(speedups) == len(kernel_latencies)
+    geo_mean = (
+        math.exp(sum(math.log(s) for s in speedups) / len(speedups))
+        if methods_consistent else None
+    )
     median_latency = statistics.median(kernel_latencies)
 
     print()
-    print(f"Geometric mean speedup: {geo_mean:.3f}x")
+    print(
+        f"Geometric mean speedup: {geo_mean:.3f}x"
+        if geo_mean is not None else
+        "Geometric mean speedup: N/A (timing methods differ)"
+    )
     print(f"Median kernel latency: {median_latency:.4f} ms")
     print(f"GEAK_RESULT_LATENCY_MS={median_latency:.6f}")
-    print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geo_mean:.4f}")
+    if geo_mean is not None:
+        print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geo_mean:.4f}")
+    print(f"GEAK_BENCHMARK_METHOD_CONSISTENT={int(methods_consistent)}")
     print("GEAK_BENCHMARK_METHOD={}".format(
         benchmark_methods[0] if len(set(benchmark_methods)) == 1
         else "mixed:" + ",".join(sorted(set(benchmark_methods)))

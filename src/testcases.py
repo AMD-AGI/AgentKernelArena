@@ -13,7 +13,6 @@ from dataclasses import dataclass
 
 _SYNTHETIC_TEST_ID_METADATA_KEY = "_synthetic_test_case_id"
 _TIMING_SOURCE_METADATA_KEY = "_timing_source"
-_ALTERNATE_EVENT_PREFIX = "benchmark_alternate_event_"
 
 _DEVICE_TIME_KEYS = [
     "device_time_ms",
@@ -337,6 +336,15 @@ def parse_test_cases_from_stdout(
     )
     if fallback_match:
         benchmark_metadata['benchmark_fallback_reason'] = fallback_match.group(1).strip()
+    consistency_match = re.search(
+        r'^\s*GEAK_BENCHMARK_METHOD_CONSISTENT=(0|1|false|true)\s*$',
+        output,
+        re.MULTILINE | re.IGNORECASE,
+    )
+    if consistency_match:
+        benchmark_metadata['benchmark_method_consistent'] = (
+            consistency_match.group(1).lower() in {'1', 'true'}
+        )
 
     # GEAK harnesses use a machine-readable token rather than a JSON report.
     geak_matches = re.findall(r'GEAK_RESULT_LATENCY_MS=([0-9.]+)', output)
@@ -622,8 +630,14 @@ def _benchmark_method_mismatches(
     mismatches: List[Dict[str, Any]] = []
     comparable_methods = {'cuda_graph', 'cuda_event_fallback'}
     for base_case, opt_case in matched_cases:
-        base_method = (base_case.metadata or {}).get('benchmark_method')
-        opt_method = (opt_case.metadata or {}).get('benchmark_method')
+        base_metadata = base_case.metadata or {}
+        opt_metadata = opt_case.metadata or {}
+        base_method = base_metadata.get('benchmark_method')
+        opt_method = opt_metadata.get('benchmark_method')
+        task_reported_mismatch = (
+            base_metadata.get('benchmark_method_consistent') is False
+            or opt_metadata.get('benchmark_method_consistent') is False
+        )
         mixed_aggregate = (
             isinstance(base_method, str) and base_method.startswith('mixed:')
         ) or (
@@ -637,6 +651,7 @@ def _benchmark_method_mismatches(
             base_method == opt_method
             and not mixed_aggregate
             and not missing_or_unknown
+            and not task_reported_mismatch
         ):
             continue
         mismatch = {
@@ -645,7 +660,9 @@ def _benchmark_method_mismatches(
             'baseline_benchmark_method': base_method,
             'optimized_benchmark_method': opt_method,
         }
-        if mixed_aggregate:
+        if task_reported_mismatch:
+            mismatch['reason'] = 'task_reported_method_mismatch'
+        elif mixed_aggregate:
             mismatch['reason'] = 'ambiguous_mixed_aggregate'
         elif missing_or_unknown:
             mismatch['reason'] = 'missing_or_unknown_benchmark_method'
@@ -685,111 +702,6 @@ def analyze_benchmark_method_consistency(
         return False, []
     mismatches = _benchmark_method_mismatches(matched)
     return not mismatches, mismatches
-
-
-def attach_event_fallback_baselines(
-    baseline_cases: List[TestCaseResult],
-    event_cases: List[TestCaseResult],
-    logger: Optional[logging.Logger] = None,
-) -> List[TestCaseResult]:
-    """Attach forced-Event timing as an auditable alternate baseline.
-
-    The normal baseline remains the graph-first result.  When an optimized
-    callable genuinely cannot be captured, evaluation can select the paired
-    Event timing for that exact case instead of comparing unlike methods.
-    """
-
-    log = logger or logging.getLogger(__name__)
-    matched = match_test_cases(
-        baseline_cases,
-        event_cases,
-        log,
-        # Index matching is only safe for the unavoidable singleton legacy
-        # format. Equal-length multi-case lists can be unrelated or reordered.
-        allow_index_fallback=len(baseline_cases) == len(event_cases) == 1,
-    )
-    if len(matched) != len(baseline_cases) or len(matched) != len(event_cases):
-        log.warning(
-            "Could not attach complete Event baseline set: matched=%d, "
-            "baseline=%d, event=%d",
-            len(matched),
-            len(baseline_cases),
-            len(event_cases),
-        )
-
-    for baseline_case, event_case in matched:
-        event_metadata = event_case.metadata or {}
-        if event_metadata.get("benchmark_method") != "cuda_event_fallback":
-            log.warning(
-                "Ignoring non-Event alternate baseline for %s: %r",
-                baseline_case.test_case_id,
-                event_metadata.get("benchmark_method"),
-            )
-            continue
-        if baseline_case.metadata is None:
-            baseline_case.metadata = {}
-        baseline_case.metadata[f"{_ALTERNATE_EVENT_PREFIX}time_ms"] = (
-            event_case.execution_time_ms
-        )
-        for key, value in event_metadata.items():
-            if key.startswith("benchmark_") and value is not None:
-                suffix = key[len("benchmark_") :]
-                baseline_case.metadata[f"{_ALTERNATE_EVENT_PREFIX}{suffix}"] = value
-    return baseline_cases
-
-
-def select_method_matched_baselines(
-    baseline_cases: List[TestCaseResult],
-    optimized_cases: List[TestCaseResult],
-    logger: Optional[logging.Logger] = None,
-) -> List[TestCaseResult]:
-    """Select each baseline timing variant matching the optimized method."""
-
-    log = logger or logging.getLogger(__name__)
-    allow_index_fallback = len(baseline_cases) == len(optimized_cases) == 1
-    matched = match_test_cases(
-        baseline_cases,
-        optimized_cases,
-        log,
-        allow_index_fallback=allow_index_fallback,
-    )
-    if len(matched) != len(baseline_cases) or len(matched) != len(optimized_cases):
-        return baseline_cases
-
-    selected: List[TestCaseResult] = []
-    for baseline_case, optimized_case in matched:
-        metadata = dict(baseline_case.metadata or {})
-        execution_time_ms = baseline_case.execution_time_ms
-        optimized_method = (optimized_case.metadata or {}).get("benchmark_method")
-        baseline_method = metadata.get("benchmark_method")
-        alternate_method = metadata.get(f"{_ALTERNATE_EVENT_PREFIX}method")
-        alternate_time = _safe_float(
-            metadata.get(f"{_ALTERNATE_EVENT_PREFIX}time_ms")
-        )
-
-        if (
-            optimized_method == "cuda_event_fallback"
-            and baseline_method != optimized_method
-            and alternate_method == optimized_method
-            and alternate_time is not None
-            and alternate_time > 0.0
-        ):
-            execution_time_ms = alternate_time
-            for key, value in list(metadata.items()):
-                if not key.startswith(_ALTERNATE_EVENT_PREFIX):
-                    continue
-                suffix = key[len(_ALTERNATE_EVENT_PREFIX) :]
-                if suffix != "time_ms":
-                    metadata[f"benchmark_{suffix}"] = value
-            metadata["benchmark_baseline_variant"] = "forced_event"
-
-        selected.append(TestCaseResult(
-            test_case_id=baseline_case.test_case_id,
-            shape=baseline_case.shape,
-            execution_time_ms=execution_time_ms,
-            metadata=metadata,
-        ))
-    return selected
 
 
 def save_performance_results(

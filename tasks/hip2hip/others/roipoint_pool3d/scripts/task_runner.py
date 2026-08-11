@@ -153,7 +153,7 @@ def run_correctness():
 
 
 def run_performance():
-    from roipoint_pool3d_wrapper import RoIPointPool3d
+    from kernel_loader import roipoint_pool3d_ext
 
     test_cases = []
     
@@ -164,14 +164,31 @@ def run_performance():
         point_features = point_features.float()
         boxes3d = boxes3d.float()
 
-        pool = RoIPointPool3d(num_sampled_points=nsample)
+        pooled_boxes3d = boxes3d.view(B, -1, 7).contiguous()
+        pooled_features = torch.empty(
+            (B, M, nsample, 3 + C), device="cuda", dtype=point_features.dtype,
+        )
+        pooled_empty_flag = torch.empty((B, M), device="cuda", dtype=torch.int)
+        pts_assign = torch.empty((B, N, M), device="cuda", dtype=torch.int)
+        pts_idx = torch.empty((B, M, nsample), device="cuda", dtype=torch.int)
+
+        def prepare_outputs():
+            pooled_features.zero_()
+            pooled_empty_flag.zero_()
+
+        def run_pool():
+            return roipoint_pool3d_ext.forward(
+                points.contiguous(), pooled_boxes3d, point_features.contiguous(),
+                pooled_features, pooled_empty_flag, pts_assign, pts_idx,
+            )
 
         elapsed_ms, benchmark_meta = benchmark_cuda_graph_or_events(
-            lambda: pool(points, point_features, boxes3d),
+            run_pool,
             warmup=10,
             repetition=100,
             use_cuda_graph=HIP_GRAPH_ENABLED,
             fallback_reason=HIP_GRAPH_FALLBACK_REASON,
+            prepare_fn=prepare_outputs,
         )
         
         test_cases.append({

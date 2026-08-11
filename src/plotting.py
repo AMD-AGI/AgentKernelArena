@@ -131,9 +131,7 @@ def plot_performance_comparison(
     # Load performance results
     baseline_cases = load_performance_results(
         workspace,
-        "comparison_baseline_perf.yaml"
-        if (workspace / "comparison_baseline_perf.yaml").exists()
-        else "baseline_perf.yaml",
+        "baseline_perf.yaml",
         logger,
     )
     optimized_cases = load_performance_results(workspace, "optimized_perf.yaml", logger)

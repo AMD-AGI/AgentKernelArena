@@ -283,18 +283,15 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
                         shape["topk_group"], shape["renormalize"], shape["route_scale"],
                     )
             else:
-                fused_w = torch.empty(
-                    (shape["tokens"], shape["topk"]),
-                    dtype=torch.float32,
-                    device=gating.device,
-                )
-                fused_idx = torch.empty(
-                    (shape["tokens"], shape["topk"]),
-                    dtype=torch.int32,
-                    device=gating.device,
-                )
-
                 def run_fused():
+                    fused_w = torch.empty(
+                        (shape["tokens"], shape["topk"]), dtype=torch.float32,
+                        device=gating.device,
+                    )
+                    fused_idx = torch.empty(
+                        (shape["tokens"], shape["topk"]), dtype=torch.int32,
+                        device=gating.device,
+                    )
                     aiter.biased_grouped_topk_hip(
                         gating,
                         bias,

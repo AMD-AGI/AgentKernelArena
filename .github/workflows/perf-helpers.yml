@@ -1,15 +1,25 @@
-name: perf-helpers
+name: benchmark-integrity
 
 on:
   pull_request:
   push:
 
 jobs:
-  check:
+  unit-and-helper-audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: make check-perf-helpers
+      - name: Install CPU test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest pyyaml numpy matplotlib
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Run benchmark helper audit
+        run: make check-perf-helpers
+      - name: Run CPU and mock unit tests
+        run: python -m pytest -q tests
+      - name: Compile Python sources
+        run: python -m compileall -q src tasks tests

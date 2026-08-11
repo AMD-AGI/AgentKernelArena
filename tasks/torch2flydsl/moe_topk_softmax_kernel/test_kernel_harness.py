@@ -312,18 +312,19 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
                 def run_fused():
                     return kmod.flydsl_topk_softmax(gating, bias, topk, rs)
             else:
-                fused_w = torch.empty(
-                    (shape["tokens"], topk),
-                    dtype=torch.float32,
-                    device=gating.device,
-                )
-                fused_idx = torch.empty(
-                    (shape["tokens"], topk),
-                    dtype=torch.int32,
-                    device=gating.device,
-                )
-
                 def run_fused():
+                    # Match the public candidate/reference contract: both
+                    # return freshly allocated result tensors. Do not give the
+                    # aiter fallback caller-owned outputs while timing the
+                    # torch reference's allocations.
+                    fused_w = torch.empty(
+                        (shape["tokens"], topk), dtype=torch.float32,
+                        device=gating.device,
+                    )
+                    fused_idx = torch.empty(
+                        (shape["tokens"], topk), dtype=torch.int32,
+                        device=gating.device,
+                    )
                     aiter.topk_gating(
                         fused_w,
                         fused_idx,

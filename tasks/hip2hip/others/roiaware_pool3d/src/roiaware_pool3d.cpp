@@ -31,7 +31,8 @@ void roiaware_pool3d_backward_launcher(int boxes_num, int out_x, int out_y,
 
 int roiaware_pool3d_gpu(at::Tensor rois, at::Tensor pts, at::Tensor pts_feature,
                         at::Tensor argmax, at::Tensor pts_idx_of_voxels,
-                        at::Tensor pooled_features, int pool_method);
+                        at::Tensor pooled_features, at::Tensor pts_mask,
+                        int pool_method);
 
 int roiaware_pool3d_gpu_backward(at::Tensor pts_idx_of_voxels,
                                  at::Tensor argmax, at::Tensor grad_out,
@@ -39,7 +40,8 @@ int roiaware_pool3d_gpu_backward(at::Tensor pts_idx_of_voxels,
 
 int roiaware_pool3d_gpu(at::Tensor rois, at::Tensor pts, at::Tensor pts_feature,
                         at::Tensor argmax, at::Tensor pts_idx_of_voxels,
-                        at::Tensor pooled_features, int pool_method) {
+                        at::Tensor pooled_features, at::Tensor pts_mask,
+                        int pool_method) {
   // params rois: (N, 7) [x, y, z, x_size, y_size, z_size, ry] in LiDAR coordinate
   // params pts: (npoints, 3) [x, y, z] in LiDAR coordinate
   // params pts_feature: (npoints, C)
@@ -54,6 +56,7 @@ int roiaware_pool3d_gpu(at::Tensor rois, at::Tensor pts, at::Tensor pts_feature,
   CHECK_INPUT(argmax);
   CHECK_INPUT(pts_idx_of_voxels);
   CHECK_INPUT(pooled_features);
+  CHECK_INPUT(pts_mask);
 
   int boxes_num = rois.size(0);
   int pts_num = pts.size(0);
@@ -71,11 +74,6 @@ int roiaware_pool3d_gpu(at::Tensor rois, at::Tensor pts, at::Tensor pts_feature,
   int *argmax_data = argmax.data_ptr<int>();
   int *pts_idx_of_voxels_data = pts_idx_of_voxels.data_ptr<int>();
   float *pooled_features_data = pooled_features.data_ptr<float>();
-  // Allocate temporary storage through PyTorch's capture-aware caching
-  // allocator.  The tensor remains alive until all launcher work has been
-  // enqueued, and the allocator safely tracks its use on the current stream.
-  at::Tensor pts_mask = at::empty(
-      {boxes_num, pts_num}, rois.options().dtype(at::kInt));
   int *pts_mask_data = pts_mask.data_ptr<int>();
 
   roiaware_pool3d_launcher(

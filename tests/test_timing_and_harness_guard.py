@@ -49,6 +49,12 @@ def test_grouped_gemm_timed_run_rejects_event_fallback(monkeypatch):
     import torch
 
     runner = _load_grouped_gemm_runner()
+    from src.tools.perf.aka_benchmark import benchmark_cuda_graph_or_events
+
+    monkeypatch.setattr(
+        runner, "_benchmark_cuda_graph_or_events", benchmark_cuda_graph_or_events
+    )
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
 
     def _reject_stream():
@@ -56,7 +62,7 @@ def test_grouped_gemm_timed_run_rejects_event_fallback(monkeypatch):
 
     monkeypatch.setattr(torch.cuda, "Stream", _reject_stream)
 
-    with pytest.raises(RuntimeError, match="timed outputs cannot be validated"):
+    with pytest.raises(RuntimeError, match="timed_run cannot validate"):
         runner._benchmark_cuda_graph(
             lambda: None,
             warmup=0,

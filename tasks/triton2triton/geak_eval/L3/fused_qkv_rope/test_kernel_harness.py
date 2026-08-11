@@ -408,9 +408,10 @@ def run_benchmark(configs=None, warmup=50, iters=200, verbose=True):
             run_reference, warmup=warmup, repetition=iters,
         )
         methods_match = triton_meta["benchmark_method"] == ref_meta["benchmark_method"]
-        speedup = ref_ms / triton_ms if methods_match and triton_ms > 0 else 1.0
+        speedup = ref_ms / triton_ms if methods_match and triton_ms > 0 else None
         latencies.append(triton_ms)
-        speedups.append(speedup)
+        if speedup is not None:
+            speedups.append(speedup)
         benchmark_methods.append(triton_meta["benchmark_method"])
 
         tag = f"B={B} QH={QH_PER_KH} KH={KH} D={D} {rs.name} nope={nope}"
@@ -425,8 +426,9 @@ def run_benchmark(configs=None, warmup=50, iters=200, verbose=True):
         })
 
         if verbose:
-            marker = " *" if speedup > 1.0 else ""
-            print(f"{tag:<50} {ref_ms:>8.4f}ms {triton_ms:>8.4f}ms {speedup:>8.2f}x{marker}")
+            marker = " *" if speedup is not None and speedup > 1.0 else ""
+            speedup_text = f"{speedup:.2f}x" if speedup is not None else "N/A"
+            print(f"{tag:<50} {ref_ms:>8.4f}ms {triton_ms:>8.4f}ms {speedup_text:>9s}{marker}")
 
         del qkv
         torch.cuda.empty_cache()
@@ -434,15 +436,25 @@ def run_benchmark(configs=None, warmup=50, iters=200, verbose=True):
     log_sum = sum(math.log(t) for t in latencies)
     geomean_latency = math.exp(log_sum / len(latencies))
 
-    log_sum_speedup = sum(math.log(s) for s in speedups)
-    geomean_speedup = math.exp(log_sum_speedup / len(speedups))
+    methods_consistent = len(speedups) == len(latencies)
+    geomean_speedup = (
+        math.exp(sum(math.log(s) for s in speedups) / len(speedups))
+        if methods_consistent else None
+    )
 
     if verbose:
         print("-" * 90)
         print(f"{'Geometric mean latency:':<50} {geomean_latency:.4f} ms")
-        print(f"{'Geometric mean speedup:':<50} {geomean_speedup:.2f}x")
+        print(
+            f"{'Geometric mean speedup:':<50} {geomean_speedup:.2f}x"
+            if geomean_speedup is not None else
+            f"{'Geometric mean speedup:':<50} N/A (timing methods differ)"
+        )
         print(f"GEAK_RESULT_LATENCY_MS={geomean_latency:.4f}")
-        print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}")
+        if geomean_speedup is not None:
+            print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}")
+
+    print(f"GEAK_BENCHMARK_METHOD_CONSISTENT={int(methods_consistent)}")
 
     print("GEAK_BENCHMARK_METHOD={}".format(
         benchmark_methods[0] if len(set(benchmark_methods)) == 1

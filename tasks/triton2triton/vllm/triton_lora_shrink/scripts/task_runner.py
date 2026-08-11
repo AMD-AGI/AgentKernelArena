@@ -180,8 +180,9 @@ def run_performance():
                 M, hidden_size, lora_rank, num_loras, num_slices, device, 0)
 
             # Avoid the wrapper's per-call CUDA pointer tensor construction.
-            # Its output reset remains in the captured graph because the split-K
-            # target kernel accumulates atomically into output_tensor.
+            # The split-K kernel accumulates atomically, so reset its output via
+            # prepare_fn. Preparation is stream-ordered but excluded from both
+            # Graph and Event timing, matching other stateful tasks.
             (
                 lora_ptr_tensor,
                 lora_stride0,
@@ -204,7 +205,6 @@ def run_performance():
             output_stride0, output_stride1, output_stride2 = output_tensor.stride()
 
             def _bench_fn():
-                output_tensor.zero_()
                 mod._lora_shrink_kernel[grid](
                     inputs,
                     lora_ptr_tensor,
@@ -242,6 +242,7 @@ def run_performance():
                 _bench_fn,
                 warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS,
+                prepare_fn=output_tensor.zero_,
             )
 
             test_cases.append({

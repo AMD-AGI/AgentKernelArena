@@ -58,6 +58,20 @@ int main(int argc, char** argv)
 
         std::vector<int32_t> h_r2t(r2t_e);
         std::vector<int32_t> h_bsl(batch, ctx);
+        std::vector<bf16> h_q(q_e);
+        std::vector<uint8_t> h_kv(kv_e);
+        std::vector<bf16> h_golden(o_e);
+        std::vector<bf16> h_actual(o_e);
+        for(std::size_t i = 0; i < q_e; ++i)
+        {
+            const int value = static_cast<int>((i * 17U) % 31U) - 15;
+            h_q[i] = __float2bfloat16(static_cast<float>(value) * 0.015625f);
+        }
+        for(std::size_t i = 0; i < kv_e; ++i)
+        {
+            const int value = static_cast<int>((i * 13U + 5U) % 29U) - 14;
+            h_kv[i] = f32_to_fp8_e4m3fn(static_cast<float>(value) * 0.03125f);
+        }
         for(int b = 0; b < batch; ++b)
         {
             for(int t = 0; t < ctx; ++t)
@@ -79,9 +93,13 @@ int main(int argc, char** argv)
         aka_native_perf::throw_on_hip_error(hipMalloc(&d_bsl, batch * sizeof(int32_t)),
                                              "hipMalloc(seq_len)");
         aka_native_perf::throw_on_hip_error(
-            hipMemsetAsync(d_q, 0, q_e * sizeof(bf16), stream), "hipMemsetAsync(q)");
+            hipMemcpyAsync(d_q, h_q.data(), q_e * sizeof(bf16),
+                           hipMemcpyHostToDevice, stream),
+            "hipMemcpyAsync(q)");
         aka_native_perf::throw_on_hip_error(
-            hipMemsetAsync(d_kv, 0, kv_e * sizeof(uint8_t), stream), "hipMemsetAsync(kv)");
+            hipMemcpyAsync(d_kv, h_kv.data(), kv_e * sizeof(uint8_t),
+                           hipMemcpyHostToDevice, stream),
+            "hipMemcpyAsync(kv)");
         aka_native_perf::throw_on_hip_error(
             hipMemcpyAsync(d_r2t,
                            h_r2t.data(),
@@ -102,7 +120,7 @@ int main(int argc, char** argv)
         const dim3 grid(batch, HEAD_GROUPS);
         const dim3 block(BLOCK_THREADS);
         const std::size_t smem = BLOCK_H * LK * sizeof(float);
-    auto launch = [&](hipStream_t launch_stream) -> hipError_t
+        auto launch = [&](hipStream_t launch_stream) -> hipError_t
         {
             hipLaunchKernelGGL(mla_decode_kernel,
                                grid,
@@ -121,13 +139,62 @@ int main(int argc, char** argv)
             return hipGetLastError();
         };
 
+        aka_native_perf::throw_on_hip_error(
+            hipMemsetAsync(d_o, 0xFF, o_e * sizeof(bf16), stream),
+            "hipMemsetAsync(o golden)");
+        aka_native_perf::throw_on_hip_error(launch(stream), "golden eager launch");
+        aka_native_perf::throw_on_hip_error(
+            hipMemcpyAsync(h_golden.data(), d_o, o_e * sizeof(bf16),
+                           hipMemcpyDeviceToHost, stream),
+            "hipMemcpyAsync(golden)");
+        aka_native_perf::throw_on_hip_error(
+            hipStreamSynchronize(stream), "hipStreamSynchronize(golden)");
+
+        auto validate = [&](hipGraphExec_t graph_exec,
+                            hipStream_t validation_stream) -> std::string
+        {
+            hipError_t error
+                = hipMemsetAsync(d_o, 0xFF, o_e * sizeof(bf16), validation_stream);
+            if(error == hipSuccess)
+            {
+                error = graph_exec != nullptr
+                    ? hipGraphLaunch(graph_exec, validation_stream)
+                    : launch(validation_stream);
+            }
+            if(error == hipSuccess)
+            {
+                error = hipMemcpyAsync(h_actual.data(), d_o, o_e * sizeof(bf16),
+                                       hipMemcpyDeviceToHost, validation_stream);
+            }
+            if(error == hipSuccess)
+            {
+                error = hipStreamSynchronize(validation_stream);
+            }
+            if(error != hipSuccess)
+            {
+                return aka_native_perf::hip_failure("MLA replay validation", error);
+            }
+            for(std::size_t i = 0; i < o_e; ++i)
+            {
+                const float expected = __bfloat162float(h_golden[i]);
+                const float actual = __bfloat162float(h_actual[i]);
+                if(!std::isfinite(actual)
+                   || std::fabs(actual - expected) > 1.0e-2f)
+                {
+                    return "output mismatch at element " + std::to_string(i);
+                }
+            }
+            return {};
+        };
+
         const auto result = aka_native_perf::benchmark_graph_or_events(
             launch,
             stream,
             /*warmup=*/10,
             static_cast<std::size_t>(samples),
             /*target_ms=*/1.0,
-            /*max_repeats=*/1000);
+            /*max_repeats=*/1000,
+            validate);
         const double bytes_per_launch
             = static_cast<double>(batch) * ctx * LK
               + static_cast<double>(batch) * NHEAD * (LK + LV) * sizeof(bf16);

@@ -42,7 +42,6 @@ from src.testcases import (
     analyze_benchmark_method_consistency,
     calculate_average_speedup,
     save_performance_results,
-    select_method_matched_baselines,
 )
 from src.score import score as calc_score
 
@@ -84,11 +83,9 @@ def _select_heldout_comparison_cases(
     bool,
     List[Dict[str, Any]],
 ]:
-    """Select method-matched held-out baselines and validate the full set."""
+    """Validate held-out cases against the immutable baseline method policy."""
 
-    comparison_baseline_cases = select_method_matched_baselines(
-        baseline_cases, optimized_cases, logger
-    )
+    comparison_baseline_cases = baseline_cases
     valid_baseline = _valid_perf_cases(comparison_baseline_cases)
     valid_optimized = _valid_perf_cases(optimized_cases)
     method_consistent, method_mismatches = analyze_benchmark_method_consistency(
@@ -417,16 +414,7 @@ def evaluate_single_task(
         valid_baseline = _valid_perf_cases(comparison_baseline_cases)
         result["benchmark_method_consistent"] = benchmark_method_consistent
         result["benchmark_method_mismatches"] = benchmark_method_mismatches
-        save_performance_results(
-            comparison_baseline_cases,
-            orig_ws,
-            "comparison_baseline_perf.yaml",
-            logger,
-        )
-
-        # Report the same selected baseline that is used for the held-out score.
-        # In particular, an optimized Event fallback uses its paired forced-Event
-        # baseline rather than the graph-first baseline average.
+        # Report the original graph-first/Event-only baseline used for scoring.
         if valid_baseline:
             result["orig_heldout_execution_time"] = (
                 sum(c.execution_time_ms for c in valid_baseline)

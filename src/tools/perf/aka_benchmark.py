@@ -683,6 +683,7 @@ def _capture_graph(
     repeats: int,
     stream: Any,
     prepare_fn: Callable[[], Any] | None = None,
+    output_holder: list[Any] | None = None,
 ) -> Any:
     graph = torch.cuda.CUDAGraph()
     if prepare_fn is not None:
@@ -700,7 +701,9 @@ def _capture_graph(
         with torch.cuda.stream(stream):
             with torch.cuda.graph(graph):
                 for _ in range(repeats):
-                    fn()
+                    captured_outputs = fn()
+                    if output_holder is not None:
+                        output_holder[:] = [captured_outputs]
     torch.cuda.synchronize()
     if any(
         "graph is empty" in str(item.message).lower()
@@ -762,7 +765,13 @@ def _event_fallback(
     metadata: dict[str, Any],
     reason: str,
     prepare_fn: Callable[[], Any] | None = None,
+    timed_run: Any | None = None,
 ) -> tuple[list[float], dict[str, Any]]:
+    if timed_run is not None:
+        raise RuntimeError(
+            f"{reason}; timed_run requires an observable CUDA-graph replay "
+            "and cannot validate a separate post-timing invocation"
+        )
     values = benchmark_cuda_event_samples(fn, repetition, prepare_fn=prepare_fn)
     return values, _fallback_metadata(metadata, repetition, reason)
 
@@ -778,6 +787,7 @@ def benchmark_cuda_graph_or_events_samples(
     use_cuda_graph: bool = True,
     fallback_reason: str | None = None,
     prepare_fn: Callable[[], Any] | None = None,
+    timed_run: Any | None = None,
 ) -> tuple[list[float], dict[str, Any]]:
     """Benchmark ``fn`` and return per-call millisecond samples plus metadata.
 
@@ -797,6 +807,11 @@ def benchmark_cuda_graph_or_events_samples(
     """
 
     del n_retries
+    if timed_run is not None and not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA is unavailable; timed_run requires an observable CUDA-graph "
+            "replay and cannot validate a separate post-timing invocation"
+        )
     _require_gpu_timing()
 
     if os.environ.get(_FORCE_EVENT_ENV) == "1":
@@ -825,12 +840,19 @@ def benchmark_cuda_graph_or_events_samples(
     }
 
     if not use_cuda_graph:
+        if timed_run is not None:
+            raise RuntimeError(
+                "CUDA-graph timing is disabled; timed_run requires an observable "
+                "CUDA-graph replay and cannot validate a separate post-timing "
+                "invocation"
+            )
         return _event_fallback(
             fn,
             repetition,
             metadata,
             fallback_reason or "cuda_graph_disabled",
             prepare_fn=prepare_fn,
+            timed_run=timed_run,
         )
 
     try:
@@ -869,6 +891,7 @@ def benchmark_cuda_graph_or_events_samples(
                 metadata,
                 fallback_reason or "empty_cuda_graph_capture",
                 prepare_fn=prepare_fn,
+                timed_run=timed_run,
             )
 
         graph_repeats = (
@@ -879,12 +902,11 @@ def benchmark_cuda_graph_or_events_samples(
                 max(1, int(target_ms / estimate_ms)),
             )
         )
-        graph = _capture_graph(
-            fn,
-            graph_repeats,
-            stream,
-            prepare_fn=prepare_fn,
-        )
+        captured_outputs: list[Any] | None = [] if timed_run is not None else None
+        capture_kwargs: dict[str, Any] = {"prepare_fn": prepare_fn}
+        if captured_outputs is not None:
+            capture_kwargs["output_holder"] = captured_outputs
+        graph = _capture_graph(fn, graph_repeats, stream, **capture_kwargs)
         # Prime the final graph executable outside the reported sample set.
         # Some backends perform lazy graph-exec setup on the first replay; if
         # the start event has already reached the head of the stream, that host
@@ -914,6 +936,7 @@ def benchmark_cuda_graph_or_events_samples(
                 metadata,
                 fallback_reason or "empty_or_invalid_cuda_graph_replay",
                 prepare_fn=prepare_fn,
+                timed_run=timed_run,
             )
 
         metadata.update(
@@ -923,6 +946,22 @@ def benchmark_cuda_graph_or_events_samples(
                 "benchmark_estimate_ms": estimate_ms,
             }
         )
+        if timed_run is not None:
+            captured_output = captured_outputs[0] if captured_outputs else None
+
+            def _replay_once() -> Any:
+                # Callers may perturb inputs or poison outputs on the current
+                # stream before requesting validation. Order the capture stream
+                # after that work, then replay the exact graph that was timed.
+                stream.wait_stream(torch.cuda.current_stream())
+                with torch.cuda.stream(stream):
+                    if prepare_fn is not None:
+                        prepare_fn()
+                    graph.replay()
+                torch.cuda.synchronize()
+                return captured_output
+
+            timed_run._bind(_replay_once, captured_output)
         return values, metadata
     except _EmptyGraphCapture:
         return _event_fallback(
@@ -931,6 +970,7 @@ def benchmark_cuda_graph_or_events_samples(
             metadata,
             fallback_reason or "empty_cuda_graph_capture",
             prepare_fn=prepare_fn,
+            timed_run=timed_run,
         )
     except Exception as exc:
         # A failed capture can leave queued work behind.  Best-effort isolation
@@ -941,6 +981,11 @@ def benchmark_cuda_graph_or_events_samples(
             torch.cuda.synchronize()
         except Exception:
             pass
+        if timed_run is not None:
+            raise RuntimeError(
+                "CUDA-graph capture failed; timed_run cannot validate the "
+                "separate CUDA-event fallback invocation"
+            ) from exc
         for _ in range(min(3, max(1, warmup))):
             if prepare_fn is not None:
                 prepare_fn()
@@ -967,6 +1012,7 @@ def benchmark_cuda_graph_or_events(
     use_cuda_graph: bool = True,
     fallback_reason: str | None = None,
     prepare_fn: Callable[[], Any] | None = None,
+    timed_run: Any | None = None,
 ) -> tuple[float, dict[str, Any]]:
     """Return mean device milliseconds per ``fn`` invocation plus metadata."""
 
@@ -981,6 +1027,7 @@ def benchmark_cuda_graph_or_events(
         use_cuda_graph=use_cuda_graph,
         fallback_reason=fallback_reason,
         prepare_fn=prepare_fn,
+        timed_run=timed_run,
     )
     return sum(samples) / len(samples), metadata
 

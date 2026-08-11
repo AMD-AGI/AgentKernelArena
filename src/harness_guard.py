@@ -194,10 +194,9 @@ def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None) -> None:
     """
 
     def _scan() -> dict[str, str]:
-        return {
-            str(path.relative_to(snapshot.root)): _sha256(path)
-            for path in sorted(_iter_protected_files(snapshot.root))
-        }
+        # Preserve the editable-body masking used for colocated kernel/harness
+        # files. A raw SHA here would reject legitimate target-function edits.
+        return _protected_digests(snapshot.root)
 
     before = snapshot.digests
     current = _scan()

@@ -171,7 +171,7 @@ def _time_kernel(fn, n_warmup=10, n_iter=100):
 
 
 def run_performance():
-    from roiaware_pool3d_wrapper import RoIAwarePool3d
+    from kernel_loader import roiaware_pool3d_ext
 
     test_cases = []
     
@@ -182,13 +182,44 @@ def run_performance():
         pts = pts.float()
         pts_feature = pts_feature.float()
 
-        pool_max = RoIAwarePool3d(out_size=out_size, max_pts_per_voxel=128, mode='max')
-        pool_avg = RoIAwarePool3d(out_size=out_size, max_pts_per_voxel=128, mode='avg')
+        pooled_features = torch.empty(
+            (num_rois, out_size, out_size, out_size, C),
+            device="cuda", dtype=pts_feature.dtype,
+        )
+        argmax = torch.empty_like(pooled_features, dtype=torch.int)
+        pts_idx_of_voxels = torch.empty(
+            (num_rois, out_size, out_size, out_size, 128),
+            device="cuda", dtype=torch.int,
+        )
+        pts_mask = torch.empty(
+            (num_rois, num_pts), device="cuda", dtype=torch.int,
+        )
+
+        def prepare_outputs():
+            pooled_features.zero_()
+            argmax.zero_()
+            pts_idx_of_voxels.zero_()
+
+        def run_pool(pool_method):
+            return roiaware_pool3d_ext.forward(
+                rois, pts, pts_feature, argmax, pts_idx_of_voxels,
+                pooled_features, pts_mask, pool_method,
+            )
 
         # Perf1: max pooling
-        ms_max, meta_max = _time_kernel(lambda: pool_max(rois, pts, pts_feature))
+        ms_max, meta_max = benchmark_cuda_graph_or_events(
+            lambda: run_pool(0), warmup=10, repetition=100,
+            use_cuda_graph=HIP_GRAPH_ENABLED,
+            fallback_reason=HIP_GRAPH_FALLBACK_REASON,
+            prepare_fn=prepare_outputs,
+        )
         # Perf2: avg pooling
-        ms_avg, meta_avg = _time_kernel(lambda: pool_avg(rois, pts, pts_feature))
+        ms_avg, meta_avg = benchmark_cuda_graph_or_events(
+            lambda: run_pool(1), warmup=10, repetition=100,
+            use_cuda_graph=HIP_GRAPH_ENABLED,
+            fallback_reason=HIP_GRAPH_FALLBACK_REASON,
+            prepare_fn=prepare_outputs,
+        )
 
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_maxpool",
