@@ -1,0 +1,53 @@
+source_file_path:
+  - asm_baseline.py
+  - aiter_local/fused_moe.py
+  - aiter_local/ops/moe_op.py
+  - csrc/ck_gemm_moe_2stages_codegen/gemm_moe_ck2stages_common_blockscale.cuh
+  - 3rdparty/composable_kernel/include/ck/tensor_operation/gpu/grid/gridwise_moe_gemm_blockscale.hpp
+
+target_kernel_functions:
+  - fmoe_fp8_blockscale_g1u1
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: hip2hip
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the MiniMax-M2.5 fp8 block-scaled grouped MoE GEMM (gather + fused
+    SwiGLU), dtype fp8_e4m3 blockscale 128x128. Dominant vLLM MoE path on
+    MI300X (~52% of device time at the per-GPU shape).
+
+    Shape (TP=2 per-GPU): model_dim=3072, inter_dim=768, E=256, topk=8. Token
+    regimes: 64 (decode), 256/1024 (prefill chunk), 4096 (big).
+
+    Production baseline (the bar to beat) = task-local faithful extraction of
+    AITER ASM `fmoe_fp8_blockscale_g1u1` (asm_baseline.asm_call). The ASM `.co`
+    cannot be rebuilt; the optimization entry is a CK 2-stage rewrite or configuration:
+      - Forcing 2-stage CK with block_m=16 (token<=256) / 32 (token>256) beats
+        the 1-stage ASM default; apply back via a tuned tuned_fmoe.csv
+        (AITER_CONFIG_FMOE). CK full 2-stage ~0.402 ms.
+
+    Golden = moe_harness.torch_moe_blockscale (fp32) with SNR / cosine_diff
+    metrics. Pass bar: SNR >= 25 dB, cosine_diff < 0.01.
+
+    Files (untouched): moe_harness.py (shape, quant layouts, torch golden,
+    metrics: prepare/golden/snr_db/cosine_diff); asm_baseline.py (runs the ASM
+    kernel vs golden, prints SNR + median_us).
+
+    Constraints:
+      - Uses task-local AITER MoE source extraction plus PyTorch/ROCm runtime.
+      - NOTE: as shipped, the harness measures the ASM baseline. A CK/Triton
+        candidate must beat its median_us while keeping SNR >= 25 dB.
+  cheatsheet: null
+

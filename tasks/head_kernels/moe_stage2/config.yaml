@@ -1,0 +1,60 @@
+source_file_path:
+  - source/gemm_moe_ck2stages_common_blockscale.cuh
+  - source/gridwise_moe_gemm_blockscale.hpp
+  - aiter_local/fused_moe.py
+  - aiter_local/ops/moe_op.py
+  - csrc/ck_gemm_moe_2stages_codegen/gemm_moe_ck2stages_common_blockscale.cuh
+
+target_kernel_functions:
+  - ck_moe_stage2
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: hip2hip
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the MiniMax-M2.5 aiter CK block-scale MoE **stage-2** GEMM (down
+    projection) — the second-largest MoE GPU consumer (~11.8%) in MiniMax-M2.5
+    sglang serving on MI300X, and the kernel with the **most headroom**
+    (under-utilized: ~36% HBM, ~19% MFMA → occupancy/latency-bound).
+
+    The kernel is real C++ (CK GridwiseMoeGemmBlockScale, InMemoryDataOp=
+    AtomicAdd, scatters top-8 expert outputs to token rows and applies routing
+    weights), JIT-compiled by the harness. Editable source vendored in this task:
+      - source/gemm_moe_ck2stages_common_blockscale.cuh
+        (ck_moe_stage2_gemm, CK_MOE_STAGE2_GEMM_DEFINE macro)
+      - source/gridwise_moe_gemm_blockscale.hpp
+      tile list: gemm_moe_ck2stages_common.py
+
+    Shapes (TP=2 per rank): inter (token,8,768) fp8, w2 (256,3072,768) fp8 ->
+    out (token,3072) fp16. E=256, topk=8, per_1x128. block_m: decode=16,
+    prefill=64. K=768 (short loop) so launch/fill overhead dominates.
+
+    Levers (in order): (1) occupancy/tiling — raise MWaves/NWaves, pick
+    MPerBlock/NPerBlock/KPerBlock for K=768 N=3072 and skewed per-expert token
+    counts, cut padding waste; (2) atomic-add scatter cost — accumulate per-block
+    in LDS/regs before global atomics; (3) pipeline fill; (4) blockscale dequant
+    in regs/LDS.
+
+    IMPORTANT (CK JIT cache): aiter caches the compiled .so and will NOT
+    recompile just because the .cuh changed. The `compile` step here invalidates
+    the cached module so the next correctness/performance run recompiles the
+    edited source from scratch (~80s). Editing any .py does NOT change the kernel.
+
+    Constraints:
+      - Correctness vs torch_moe_stage2: err_ratio <= 0.20 and cos_diff < 0.02.
+      - The C++ source is task-local; Python dispatch helpers must remain
+        faithful to the captured CK MoE path.
+  cheatsheet: null
+

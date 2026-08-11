@@ -1,0 +1,1930 @@
+[
+  {
+    "test_case_id": "sig_7b6340559547",
+    "count": 376,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          16,
+          128
+        ],
+        "stride": [
+          2048,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          16,
+          4
+        ],
+        "stride": [
+          64,
+          4,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          16,
+          4
+        ],
+        "stride": [
+          64,
+          4,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          16,
+          4,
+          128
+        ],
+        "stride": [
+          8192,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          16,
+          128
+        ],
+        "stride": [
+          2048,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          57718,
+          1,
+          16,
+          16,
+          8
+        ],
+        "stride": [
+          2048,
+          2048,
+          128,
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          57718,
+          1,
+          128,
+          16
+        ],
+        "stride": [
+          2048,
+          2048,
+          16,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 1,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831845,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1,
+          128
+        ],
+        "stride": [
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          2
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 16,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 1024,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'f16'"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "out",
+      "exp_sums",
+      "max_logits",
+      "tmp_out",
+      "query",
+      "key_cache",
+      "value_cache",
+      "num_kv_heads",
+      "scale",
+      "block_tables",
+      "seq_lens",
+      "query_start_loc",
+      "block_size",
+      "max_seq_len",
+      "alibi_slopes",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale",
+      "fp8_out_scale",
+      "mfma_type"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+        "count": 376
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_b167bd1c728f",
+    "count": 376,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          16,
+          128
+        ],
+        "stride": [
+          2048,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          16,
+          5
+        ],
+        "stride": [
+          80,
+          5,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          16,
+          5
+        ],
+        "stride": [
+          80,
+          5,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          16,
+          5,
+          128
+        ],
+        "stride": [
+          10240,
+          640,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          16,
+          128
+        ],
+        "stride": [
+          2048,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          57718,
+          1,
+          16,
+          16,
+          8
+        ],
+        "stride": [
+          2048,
+          2048,
+          128,
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          57718,
+          1,
+          128,
+          16
+        ],
+        "stride": [
+          2048,
+          2048,
+          16,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 1,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831845,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1,
+          128
+        ],
+        "stride": [
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          2
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 16,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 1025,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'f16'"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "out",
+      "exp_sums",
+      "max_logits",
+      "tmp_out",
+      "query",
+      "key_cache",
+      "value_cache",
+      "num_kv_heads",
+      "scale",
+      "block_tables",
+      "seq_lens",
+      "query_start_loc",
+      "block_size",
+      "max_seq_len",
+      "alibi_slopes",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale",
+      "fp8_out_scale",
+      "mfma_type"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+        "count": 376
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_e211e5aa7aeb",
+    "count": 376,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          16,
+          128
+        ],
+        "stride": [
+          2048,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          32,
+          16,
+          4
+        ],
+        "stride": [
+          64,
+          4,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          32,
+          16,
+          4
+        ],
+        "stride": [
+          64,
+          4,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          16,
+          4,
+          128
+        ],
+        "stride": [
+          8192,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1520,
+          16,
+          128
+        ],
+        "stride": [
+          2048,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          46209,
+          1,
+          16,
+          16,
+          8
+        ],
+        "stride": [
+          2048,
+          2048,
+          128,
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          46209,
+          1,
+          128,
+          16
+        ],
+        "stride": [
+          2048,
+          2048,
+          16,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 1,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831845,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          32,
+          128
+        ],
+        "stride": [
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          32
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          33
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 16,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 1024,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'f16'"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "out",
+      "exp_sums",
+      "max_logits",
+      "tmp_out",
+      "query",
+      "key_cache",
+      "value_cache",
+      "num_kv_heads",
+      "scale",
+      "block_tables",
+      "seq_lens",
+      "query_start_loc",
+      "block_size",
+      "max_seq_len",
+      "alibi_slopes",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale",
+      "fp8_out_scale",
+      "mfma_type"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_hip",
+        "count": 376
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_1227d7656405",
+    "count": 376,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          16,
+          128
+        ],
+        "stride": [
+          2048,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          32,
+          16,
+          5
+        ],
+        "stride": [
+          80,
+          5,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          32,
+          16,
+          5
+        ],
+        "stride": [
+          80,
+          5,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          16,
+          5,
+          128
+        ],
+        "stride": [
+          10240,
+          640,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          32,
+          16,
+          128
+        ],
+        "stride": [
+          2048,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          46209,
+          1,
+          16,
+          16,
+          8
+        ],
+        "stride": [
+          2048,
+          2048,
+          128,
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          46209,
+          1,
+          128,
+          16
+        ],
+        "stride": [
+          2048,
+          2048,
+          16,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 1,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831845,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          32,
+          128
+        ],
+        "stride": [
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          32
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          33
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 16,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 1025,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'f16'"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "out",
+      "exp_sums",
+      "max_logits",
+      "tmp_out",
+      "query",
+      "key_cache",
+      "value_cache",
+      "num_kv_heads",
+      "scale",
+      "block_tables",
+      "seq_lens",
+      "query_start_loc",
+      "block_size",
+      "max_seq_len",
+      "alibi_slopes",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale",
+      "fp8_out_scale",
+      "mfma_type"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3-235B-A22B-FP8",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_hip",
+        "count": 376
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_35e859d9b24a",
+    "count": 48,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          32,
+          4
+        ],
+        "stride": [
+          128,
+          4,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          32,
+          4
+        ],
+        "stride": [
+          128,
+          4,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          32,
+          4,
+          128
+        ],
+        "stride": [
+          16384,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          47679,
+          4,
+          16,
+          16,
+          8
+        ],
+        "stride": [
+          8192,
+          2048,
+          128,
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          47679,
+          4,
+          128,
+          16
+        ],
+        "stride": [
+          8192,
+          2048,
+          16,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 4,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831845,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1,
+          128
+        ],
+        "stride": [
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          2
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 16,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 1024,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'f16'"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "out",
+      "exp_sums",
+      "max_logits",
+      "tmp_out",
+      "query",
+      "key_cache",
+      "value_cache",
+      "num_kv_heads",
+      "scale",
+      "block_tables",
+      "seq_lens",
+      "query_start_loc",
+      "block_size",
+      "max_seq_len",
+      "alibi_slopes",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale",
+      "fp8_out_scale",
+      "mfma_type"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+        "count": 48
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_c18c27c7fbd9",
+    "count": 48,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          32,
+          5
+        ],
+        "stride": [
+          160,
+          5,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          32,
+          5
+        ],
+        "stride": [
+          160,
+          5,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          32,
+          5,
+          128
+        ],
+        "stride": [
+          20480,
+          640,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          47679,
+          4,
+          16,
+          16,
+          8
+        ],
+        "stride": [
+          8192,
+          2048,
+          128,
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          47679,
+          4,
+          128,
+          16
+        ],
+        "stride": [
+          8192,
+          2048,
+          16,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 4,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831845,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1,
+          128
+        ],
+        "stride": [
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          2
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 16,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 1025,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'f16'"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "out",
+      "exp_sums",
+      "max_logits",
+      "tmp_out",
+      "query",
+      "key_cache",
+      "value_cache",
+      "num_kv_heads",
+      "scale",
+      "block_tables",
+      "seq_lens",
+      "query_start_loc",
+      "block_size",
+      "max_seq_len",
+      "alibi_slopes",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale",
+      "fp8_out_scale",
+      "mfma_type"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "default",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+        "count": 48
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_7ffb6dca9258",
+    "count": 48,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          32,
+          4
+        ],
+        "stride": [
+          128,
+          4,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          32,
+          4
+        ],
+        "stride": [
+          128,
+          4,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          32,
+          4,
+          128
+        ],
+        "stride": [
+          16384,
+          512,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1024,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          45466,
+          4,
+          16,
+          16,
+          8
+        ],
+        "stride": [
+          8192,
+          2048,
+          128,
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          45466,
+          4,
+          128,
+          16
+        ],
+        "stride": [
+          8192,
+          2048,
+          16,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 4,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831845,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1,
+          128
+        ],
+        "stride": [
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          2
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 16,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 1024,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'f16'"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "out",
+      "exp_sums",
+      "max_logits",
+      "tmp_out",
+      "query",
+      "key_cache",
+      "value_cache",
+      "num_kv_heads",
+      "scale",
+      "block_tables",
+      "seq_lens",
+      "query_start_loc",
+      "block_size",
+      "max_seq_len",
+      "alibi_slopes",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale",
+      "fp8_out_scale",
+      "mfma_type"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_hip",
+        "count": 48
+      }
+    ]
+  },
+  {
+    "test_case_id": "sig_d3abec4575ad",
+    "count": 48,
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          32,
+          5
+        ],
+        "stride": [
+          160,
+          5,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [
+          1,
+          32,
+          5
+        ],
+        "stride": [
+          160,
+          5,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          32,
+          5,
+          128
+        ],
+        "stride": [
+          20480,
+          640,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          1,
+          32,
+          128
+        ],
+        "stride": [
+          4096,
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          45466,
+          4,
+          16,
+          16,
+          8
+        ],
+        "stride": [
+          8192,
+          2048,
+          128,
+          8,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          45466,
+          4,
+          128,
+          16
+        ],
+        "stride": [
+          8192,
+          2048,
+          16,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 4,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 0.08838834764831845,
+        "py_type": "float"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1,
+          128
+        ],
+        "stride": [
+          128,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          1
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "int32",
+        "shape": [
+          2
+        ],
+        "stride": [
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": 16,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": 1025,
+        "py_type": "int"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'auto'"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "float32",
+        "shape": [],
+        "stride": [],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "opaque",
+        "py_type": "str",
+        "repr": "'f16'"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {},
+    "args_names": [
+      "out",
+      "exp_sums",
+      "max_logits",
+      "tmp_out",
+      "query",
+      "key_cache",
+      "value_cache",
+      "num_kv_heads",
+      "scale",
+      "block_tables",
+      "seq_lens",
+      "query_start_loc",
+      "block_size",
+      "max_seq_len",
+      "alibi_slopes",
+      "kv_cache_dtype",
+      "k_scale",
+      "v_scale",
+      "fp8_out_scale",
+      "mfma_type"
+    ],
+    "sources": [
+      {
+        "model": "Qwen_Qwen3.5-35B-A3B",
+        "engine": "vllm",
+        "mode": "hip",
+        "combo": "Qwen_Qwen3.5-35B-A3B__vllm_hip",
+        "count": 48
+      }
+    ]
+  }
+]

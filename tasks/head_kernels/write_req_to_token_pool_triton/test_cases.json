@@ -1,0 +1,17 @@
+[
+  {
+    "test_case_id": "c2",
+    "regime": {"B": 2, "seq_len": 1024, "pre_len": 16, "extend_len": 1008, "grid": [2]},
+    "note": "token-parallel KV-write, prefill-style; grid=(B,); shapes driven by scripts/harness_run.py"
+  },
+  {
+    "test_case_id": "c32",
+    "regime": {"B": 32, "seq_len": 1024, "pre_len": 16, "extend_len": 1008, "grid": [32]},
+    "note": "token-parallel KV-write, prefill-style; grid=(B,); shapes driven by scripts/harness_run.py"
+  },
+  {
+    "test_case_id": "c64",
+    "regime": {"B": 64, "seq_len": 1024, "pre_len": 16, "extend_len": 1008, "grid": [64]},
+    "note": "token-parallel KV-write, prefill-style; grid=(B,); shapes driven by scripts/harness_run.py"
+  }
+]

@@ -1,0 +1,58 @@
+source_file_path:
+  - source/gemm_moe_ck2stages_common_blockscale.cuh
+  - source/gridwise_moe_gemm_blockscale.hpp
+  - aiter_local/fused_moe.py
+  - aiter_local/ops/moe_op.py
+  - csrc/ck_gemm_moe_2stages_codegen/gemm_moe_ck2stages_common_blockscale.cuh
+
+target_kernel_functions:
+  - ck_moe_stage1
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: hip2hip
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the MiniMax-M2.5 aiter CK block-scale MoE **stage-1** GEMM
+    (gate/up projection + SiLU gating) — the single largest GPU consumer
+    (~22.5%) in MiniMax-M2.5 sglang serving on MI300X.
+
+    The kernel is real C++ (CK GridwiseMoeGemmBlockScale, InMemoryDataOp=Set),
+    JIT-compiled by the harness. The editable source vendored in this task is:
+      - source/gemm_moe_ck2stages_common_blockscale.cuh
+        (ck_moe_stage1_gemm, CK_MOE_STAGE1_GEMM_DEFINE macro)
+      - source/gridwise_moe_gemm_blockscale.hpp
+      tile list: gemm_moe_ck2stages_common.py
+
+    Shapes (TP=2 per rank): a1 (token,3072) fp8_e4m3fnuz, w1 (256,1536,3072) fp8
+    -> a2 (token,8,768) fp16. E=256, topk=8, per_1x128. block_m: decode=16,
+    prefill=64. Regime: HBM-bandwidth saturated, fp8 weight-streaming bound —
+    optimize bytes moved / stalls, not FLOPs.
+
+    Levers: expert-weight read coalescing/vectorization (BK1); pipeline overlap
+    (Intrawave/Interwave scheduler, PipelineVer, prefetch depth); blockscale
+    dequant in regs/LDS; SiLU-gate epilogue with no extra HBM roundtrip.
+
+    IMPORTANT (CK JIT cache): aiter caches the compiled .so and will NOT
+    recompile just because the .cuh changed. The `compile` step here invalidates
+    the cached module so the next correctness/performance run recompiles the
+    edited source from scratch (~80s). Editing any .py does NOT change the
+    kernel.
+
+    Constraints:
+      - Correctness vs torch_moe_stage1: err_ratio <= 0.20 and cos_diff < 0.02.
+      - The C++ source is task-local; Python dispatch helpers must remain
+        faithful to the captured CK MoE path.
+  cheatsheet: null
+

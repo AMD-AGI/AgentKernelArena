@@ -1,0 +1,52 @@
+source_file_path:
+  - src/aiter_meta/csrc/cpp_itfs/pa/pa_v1.cpp.jinja
+  - src/aiter_meta/csrc/cpp_itfs/pa/pa_v1.cuh
+  - src/aiter_meta/csrc/cpp_itfs/pa/pa_kernels.cuh
+  - src/aiter_meta/csrc/cpp_itfs/pa/pa_common.cuh
+  - src/aiter_meta/csrc/cpp_itfs/pa/pa_v1.py
+
+target_kernel_functions:
+  - paged_attention_v1
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: hip2hip
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the MiniMax-M2.5 decode paged-attention kernel (bf16 KV) used in
+    vLLM serving on MI300X (~12.5% of device time). Memory-bandwidth bound
+    (HBM roofline ~5.3 TB/s).
+
+    Shape (TP=2 per-GPU): GQA q_heads=24, kv_heads=4 (group 6), head_dim=128,
+    block_size=16, bf16 KV, ctx=2048, decode batch num_seqs=64. Scaling points:
+    num_seqs=128, ctx=4096. KV caches are contiguous BHSD
+    [num_blks, kv_heads, block, head].
+
+    Production baseline (the bar to beat) = local faithful extraction of
+    AITER pa_v1 (~0.125 ms, SNR ~48.7 dB). This is the production kernel source; a
+    candidate is a CK/FlyDSL/Triton rewrite scored against the same golden.
+
+    Golden = pa_harness.run_torch (per-seq masked attention, fp32 softmax) with
+    SNR / cosine_diff metrics. Pass bar: SNR >= 30 dB, cosine_diff < 0.01.
+
+    Files (untouched): pa_harness.py (shapes, torch golden, metrics:
+    prepare/golden/snr_db/cosine_diff); pa_aiter_baseline.py (runs the
+    local pa_v1 extraction vs golden, prints SNR + median_us).
+
+    Constraints:
+      - Requires only the task-local pa_v1 source plus PyTorch/ROCm runtime.
+      - This kernel is a production extraction with baseline only (weak optimization
+        headroom); the harness measures the production op as the bar.
+  cheatsheet: null
+
