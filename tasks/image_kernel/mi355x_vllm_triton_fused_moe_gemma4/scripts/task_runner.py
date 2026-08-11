@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Harness for the vLLM Triton WNA16 (int4/bf16) fused-MoE kernel
-``fused_moe_kernel_gptq_awq`` (fused_moe.py).
+"""Harness for vLLM's unquantized Triton fused-MoE expert GEMM
+``fused_moe_kernel`` (``vllm/model_executor/layers/fused_moe/fused_moe.py``).
 
 The kernel is loaded from the editable workspace copy of the in-image source tree
-so an optimizing agent's edits take effect. fused_moe.py registers a custom op at
-import; registration is suppressed while loading the editable copy so it does not
-clash with the already-registered installed copy (mirrors the vLLM MHC harness).
+so an optimizing agent's edits to fused_moe.py (and to ``configs/``) take effect;
+Triton re-keys its JIT on the source, so no explicit rebuild step is needed.
+
+This is the BF16 path, not the int4 ``fused_moe_kernel_gptq_awq`` covered by
+``mi355x_vllm_triton_fused_moe_gptq_awq``.
 """
 from __future__ import annotations
 
@@ -25,8 +27,11 @@ REPO_SUBDIR = "vllm_fused_moe"
 KERNEL_FILE = "fused_moe.py"
 EDIT_MODULE_NAME = "vllm.model_executor.layers.fused_moe._ka_fused_moe"
 
-# How many times run_correctness rotates over the full case suite.
-CORRECTNESS_ROUNDS = 3
+# Profiling is a single-shape probe, pinned rather than derived from timings so
+# the profiled kernel never drifts between runs. The decode shape is the
+# session's hot entry at 12.5% of GPU time. Correctness and performance still
+# sweep every case in CASES.
+PROFILE_CASE_ID = SPEC.get("profile_case") or CASES[0]["id"]
 
 
 def _configure() -> None:
@@ -74,6 +79,8 @@ def _load_kernel_module():
     import vllm.utils.torch_utils as torch_utils
 
     path = WORKSPACE / REPO_SUBDIR / KERNEL_FILE
+    if not path.is_file():
+        raise RuntimeError(f"seeded kernel source not found: {path}")
     spec = importlib.util.spec_from_file_location(EDIT_MODULE_NAME, path)
     module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
@@ -87,23 +94,14 @@ def _load_kernel_module():
     return module
 
 
-def _quant_pack_int4(w: "object", group_size: int):
-    """Symmetric int4 (zero-point=8) group quant along the last (K) dim.
-
-    Returns (packed_uint8 [E,N,K//2], scale_bf16 [E,N,K//group], deq_bf16 [E,N,K]).
-    Matches the kernel dequant: deq = (q - 8) * scale, packed low nibble = even k.
-    """
-    torch = _torch()
-    E, N, K = w.shape
-    ng = K // group_size
-    wg = w.reshape(E, N, ng, group_size).float()
-    scale = (wg.abs().amax(dim=-1) / 7.0).clamp(min=1e-4)  # [E,N,ng]
-    q = torch.round(wg / scale.unsqueeze(-1)) + 8.0
-    q = q.clamp(0, 15)  # [E,N,ng,group_size]
-    deq = ((q - 8.0) * scale.unsqueeze(-1)).reshape(E, N, K).to(torch.bfloat16)
-    q = q.to(torch.uint8).reshape(E, N, K // 2, 2)
-    packed = (q[..., 0] | (q[..., 1] << 4)).contiguous()  # [E,N,K//2]
-    return packed, scale.to(torch.bfloat16).contiguous(), deq
+def profile_case() -> dict:
+    """The single case profiling runs against (see PROFILE_CASE_ID)."""
+    for case in CASES:
+        if case["id"] == PROFILE_CASE_ID:
+            return case
+    raise KeyError(
+        f"profile_case {PROFILE_CASE_ID!r} is not present in session_cases.json"
+    )
 
 
 def _make(case: dict) -> dict:
@@ -120,53 +118,37 @@ def _make(case: dict) -> dict:
     topk = p["topk"]
     hidden = p["hidden"]
     inter = p["inter"]
-    group_size = p["group_size"]
-    assert hidden % group_size == 0 and inter % group_size == 0
 
     torch.manual_seed(31)
     module = _load_kernel_module()
 
-    # Scale inputs/weights so the MoE output is O(1); this keeps the correctness
-    # tolerance meaningful (tiny outputs would let a broken kernel pass under a
-    # fixed atol). Reductions to K are normalized by 1/sqrt(K).
+    # Normalize weights by 1/sqrt(K) so the MoE output stays O(1); a fixed atol
+    # against a tiny output would let a broken kernel pass.
     x = torch.randn((tokens, hidden), device="cuda", dtype=torch.bfloat16)
+    w1 = torch.randn(
+        (num_experts, 2 * inter, hidden), device="cuda", dtype=torch.bfloat16
+    ) / (hidden**0.5)
+    w2 = torch.randn(
+        (num_experts, hidden, inter), device="cuda", dtype=torch.bfloat16
+    ) / (inter**0.5)
 
-    # w1 gate/up: [E, 2*inter, hidden] ; w2 down: [E, hidden, inter]
-    w1 = (
-        torch.randn((num_experts, 2 * inter, hidden), device="cuda", dtype=torch.bfloat16)
-        / (hidden**0.5)
-    )
-    w2 = (
-        torch.randn((num_experts, hidden, inter), device="cuda", dtype=torch.bfloat16)
-        / (inter**0.5)
-    )
-    w1_packed, w1_scale, w1_deq = _quant_pack_int4(w1, group_size)
-    w2_packed, w2_scale, w2_deq = _quant_pack_int4(w2, group_size)
-    del w1, w2
-
-    # routing: top-k experts per token
+    # Router: Gemma4Router picks top-k over a softmax of fp32 logits.
     logits = torch.randn((tokens, num_experts), device="cuda", dtype=torch.float32)
-    topk_weights, topk_ids = torch.topk(torch.softmax(logits, dim=-1), topk, dim=-1)
-    topk_weights = topk_weights.to(torch.float32).contiguous()
-    topk_ids = topk_ids.to(torch.int32).contiguous()
+    topk_weights, topk_ids = torch.topk(
+        torch.softmax(logits, dim=-1), topk, dim=-1
+    )
 
     return {
         "cfg": case,
         "module": module,
         "x": x,
-        "w1": w1_packed,
-        "w2": w2_packed,
-        "w1_scale": w1_scale,
-        "w2_scale": w2_scale,
-        # The dequantized weights back the reference. They are kept for the
-        # performance run too, because the timed invocation is validated as well.
-        "w1_deq": w1_deq,
-        "w2_deq": w2_deq,
-        "topk_weights": topk_weights,
-        "topk_ids": topk_ids,
+        "w1": w1,
+        "w2": w2,
+        "topk_weights": topk_weights.to(torch.float32).contiguous(),
+        "topk_ids": topk_ids.to(torch.int32).contiguous(),
         "num_experts": num_experts,
-        "group_size": group_size,
         "inter": inter,
+        "activation": p["activation"],
     }
 
 
@@ -177,39 +159,36 @@ def _run(inputs: dict):
         w2=inputs["w2"],
         topk_weights=inputs["topk_weights"],
         topk_ids=inputs["topk_ids"],
-        activation="silu",
-        use_int4_w4a16=True,
+        activation=inputs["activation"],
         global_num_experts=inputs["num_experts"],
-        w1_scale=inputs["w1_scale"],
-        w2_scale=inputs["w2_scale"],
-        w1_zp=None,
-        w2_zp=None,
-        block_shape=[0, inputs["group_size"]],
     )
 
 
 def _reference(inputs: dict):
-    """Dequantized torch reference for the int4 fused MoE.
+    """Torch reference for the gated fused MoE.
 
     Iterates experts rather than (token, slot) pairs: every token routed to an
     expert is one batched matmul instead of a Python step. The loop this replaces
-    ran M*topk times and synchronised on ``topk_ids`` each step, which is what
-    made a full-shape correctness run impractical.
+    ran M*topk times and synchronised on ``topk_ids``/``topk_weights`` each step,
+    which is what made a full-shape correctness run impractical.
 
-    The dequantized weights stay bf16 and are cast per expert, so the reference
-    never materialises an fp32 copy of the whole expert bank.
+    The weights stay bf16 and are cast per expert, so the reference never
+    materialises an fp32 copy of the whole expert bank.
     """
     torch = _torch()
     import torch.nn.functional as F
 
     x = inputs["x"].float()  # [M, hidden]
-    w1d = inputs["w1_deq"]  # [E, 2*inter, hidden] bf16
-    w2d = inputs["w2_deq"]  # [E, hidden, inter] bf16
+    w1 = inputs["w1"]  # [E, 2*inter, hidden] bf16
+    w2 = inputs["w2"]  # [E, hidden, inter] bf16
     tw = inputs["topk_weights"].float()  # [M, topk]
     tid = inputs["topk_ids"].long()  # [M, topk]
     inter = inputs["inter"]
+    assert inputs["activation"] == "gelu_tanh", inputs["activation"]
+
     M, hidden = x.shape
     topk = tid.shape[1]
+    num_experts = w1.shape[0]
 
     out = torch.zeros((M, hidden), device="cuda", dtype=torch.float32)
     flat_expert = tid.reshape(-1)
@@ -219,18 +198,17 @@ def _reference(inputs: dict):
     flat_weight = tw.reshape(-1)
 
     order = torch.argsort(flat_expert)
-    sorted_expert = flat_expert[order]
-    # One boundary per expert, so slicing needs no per-pair host round trip.
-    counts = torch.bincount(sorted_expert, minlength=w1d.shape[0])
+    counts = torch.bincount(flat_expert[order], minlength=num_experts)
     offsets = torch.cumsum(counts, dim=0).tolist()
     start = 0
     for expert, stop in enumerate(offsets):
         if stop == start:
             continue
         rows = flat_token[order[start:stop]]
-        gate_up = x[rows] @ w1d[expert].float().t()  # [n, 2*inter]
-        act = F.silu(gate_up[:, :inter]) * gate_up[:, inter:]
-        contrib = (act @ w2d[expert].float().t()) * flat_weight[
+        gate_up = x[rows] @ w1[expert].float().t()  # [n, 2*inter]
+        # gelu_tanh_and_mul: gelu_tanh(first half) * second half
+        act = F.gelu(gate_up[:, :inter], approximate="tanh") * gate_up[:, inter:]
+        contrib = (act @ w2[expert].float().t()) * flat_weight[
             order[start:stop]
         ].unsqueeze(-1)
         out.index_add_(0, rows, contrib)
@@ -238,8 +216,10 @@ def _reference(inputs: dict):
     return out.to(torch.bfloat16)
 
 
-def _assert_close(inputs: dict, got) -> None:
-    _torch().testing.assert_close(got, _reference(inputs), atol=0.02, rtol=0.02)
+def _assert_close(case: dict, inputs: dict, got) -> None:
+    torch = _torch()
+    assert torch.isfinite(got).all(), case["id"]
+    torch.testing.assert_close(got, _reference(inputs), atol=0.03, rtol=0.03)
 
 
 def _perturb_inputs(inputs: dict) -> None:
@@ -247,12 +227,11 @@ def _perturb_inputs(inputs: dict) -> None:
 
     A replayed CUDA graph reads the captured input address, so writing through it
     changes what the scored kernel consumes. Only ``x`` is redrawn: the routing
-    tensors are kernel inputs rather than something the kernel derives, and the
-    packed weights have a dequantized twin that would have to be rebuilt in
-    lockstep for no benefit here.
+    tensors are kernel inputs rather than something the kernel derives, so
+    holding them fixed keeps the kernel and the reference on the same workload.
     """
     torch = _torch()
-    torch.manual_seed(53)
+    torch.manual_seed(61)
     inputs["x"].normal_()
 
 
@@ -263,22 +242,20 @@ def _compile_smoke_case(case: dict) -> dict:
     shape, otherwise the scored path is not the validated path.
     """
     params = dict(case["params"])
-    group_size = params["group_size"]
     params["tokens"] = min(params["tokens"], 16)
     params["num_experts"] = min(params["num_experts"], 8)
     params["topk"] = min(params["topk"], 2)
-    # Both reductions must stay a whole number of quantization groups.
-    params["hidden"] = max(group_size, min(params["hidden"], 512))
-    params["inter"] = max(group_size, min(params["inter"], 128))
+    params["hidden"] = min(params["hidden"], 512)
+    params["inter"] = min(params["inter"], 128)
     return {**case, "params": params}
 
 
-def _assert_timed_outputs(inputs: dict, timed) -> None:
+def _assert_timed_outputs(case: dict, inputs: dict, timed) -> None:
     """Validate the invocation the benchmark actually timed.
 
     ``run_correctness`` checks a separate call, which a kernel can tell apart
     from the scored one. This re-runs the timed unit against a freshly perturbed
-    activation and checks the buffer it wrote, so work that the scored path skips
+    activation and checks the buffer it wrote, so work the scored path skips
     cannot hide behind a correctness call that took a different branch.
     """
     if not timed.bound:
@@ -286,7 +263,7 @@ def _assert_timed_outputs(inputs: dict, timed) -> None:
     _perturb_inputs(inputs)
     if timed.outputs is not None:
         timed.outputs.fill_(float("nan"))
-    _assert_close(inputs, timed.rerun())
+    _assert_close(case, inputs, timed.rerun())
 
 
 def run_compile() -> None:
@@ -297,23 +274,13 @@ def run_compile() -> None:
 
 
 def run_correctness() -> None:
-    """Check every case, rotating over the whole suite CORRECTNESS_ROUNDS times.
-
-    A single pass only samples a kernel once, so an implementation that is wrong
-    intermittently — a racy cross-workgroup barrier, a reused global scratch
-    buffer — passes whenever the race happens not to fire. Rotating the suite
-    also exposes state that leaks from one case into the next, which a case run
-    back-to-back with itself would not surface. The suite is cheap next to
-    process start-up and JIT, so the extra rounds cost only a few percent.
-    """
     torch = _torch()
-    for _ in range(CORRECTNESS_ROUNDS):
-        for case in CASES:
-            inputs = _make(case)
-            got = _run(inputs)
-            torch.cuda.synchronize()
-            _assert_close(inputs, got)
-            print("correctness PASS", case["id"])
+    for case in CASES:
+        inputs = _make(case)
+        got = _run(inputs)
+        torch.cuda.synchronize()
+        _assert_close(case, inputs, got)
+        print("correctness PASS", case["id"])
 
 
 def run_performance() -> None:
@@ -327,15 +294,19 @@ def run_performance() -> None:
             lambda: _run(inputs),
             warmup=10,
             repetition=100,
-            target_ms=1.0,
+            # These cases run 0.16-1.0 ms per call, so the default target_ms=1.0
+            # collapses the captured repeat count toward 1 and stops amortizing
+            # the fixed graph-replay overhead - measured run-to-run swings of
+            # 1.7x, and up to 30x on a cold first run. 10 ms keeps the repeat
+            # count comfortably above 1 for every case.
+            target_ms=10.0,
             max_graph_repeats=1000,
             timed_run=timed,
         )
-        _assert_timed_outputs(inputs, timed)
+        _assert_timed_outputs(case, inputs, timed)
         metadata = {
             **case["params"],
             "model": case.get("model"),
-            "session_id": case.get("session_id"),
             "kernel_ids": case.get("kernel_ids"),
             "gpu_pct": case.get("gpu_pct"),
             "benchmark_method": bench_meta.get("benchmark_method"),

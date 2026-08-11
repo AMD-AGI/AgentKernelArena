@@ -125,9 +125,60 @@ def apply_jit_rebuild(
 
     if workspace is not None and task_config is not None:
         _clear_stale_aiter_op_so(Path(workspace), task_config, lg)
+        if _sources_match_image(Path(workspace), task_config, lg):
+            # Nothing has been edited yet, so the prebuilt in-tree .so IS the
+            # current source and forcing a rebuild only burns compile time. This
+            # matters most under the profiler, which re-spawns the driver once
+            # per counter pass and would otherwise re-enter the rebuild path
+            # every time.
+            return {}
     # Explicit "1" (not setdefault): an inherited AITER_REBUILD=0 must still be
     # overridden when a rebuild is required. Scoped to the caller's subprocess.
     return {"AITER_REBUILD": "1"}
+
+
+def _sources_match_image(
+    workspace: Path, task_config: dict[str, Any], logger: logging.Logger
+) -> bool:
+    """True only when every editable source is byte-identical to the in-image copy.
+
+    Deliberately fails safe. Serving a prebuilt ``.so`` for an edited kernel is
+    the exact failure this module exists to prevent — the benchmark would measure
+    the ORIGINAL kernel — so anything we cannot positively verify (missing image
+    path, unreadable file, source we cannot locate) counts as edited.
+    """
+    image_root = task_config.get("image_repo_path")
+    if not image_root:
+        return False
+    image_root = Path(str(image_root))
+    if not image_root.is_dir():
+        return False
+
+    sfp = task_config.get("source_file_path") or []
+    if isinstance(sfp, str):
+        sfp = [sfp]
+    rels = [str(s) for s in sfp if str(s).lower().endswith(_CPP_EXTS)]
+    if not rels:
+        return False
+
+    resolved = _resolve_source_files(workspace, task_config)
+    if len(resolved) != len(rels):
+        return False
+
+    for rel, ours in zip(rels, resolved):
+        theirs = image_root / rel
+        try:
+            if ours.read_bytes() != theirs.read_bytes():
+                return False
+        except OSError:
+            return False
+
+    logger.info(
+        "force_jit_rebuild: %d editable source(s) still match the in-image copy; "
+        "keeping the prebuilt .so instead of forcing a rebuild",
+        len(rels),
+    )
+    return True
 
 
 def _op_name_keys(task_config: dict[str, Any]) -> set[str]:

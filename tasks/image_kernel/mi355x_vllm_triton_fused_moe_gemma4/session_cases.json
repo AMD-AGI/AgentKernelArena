@@ -1,0 +1,103 @@
+{
+  "source_day": "2026-08-01",
+  "date_field": "session_started_at",
+  "platform": "MI355X/gfx950",
+  "framework": "vllm 0.24.0",
+  "base_image": "harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0",
+  "selection": "vLLM's unquantized Triton fused_moe_kernel, the second largest hot path in the gemma-4-26B-A4B-it roofline trace (16.75% across its three token counts). Cases cover the decode step plus both chunked-prefill steps at the session's per-rank expert geometry.",
+  "task_name": "mi355x-gemma4-26b-vllm-triton-fused-moe-20260801",
+  "operator": "fused_moe",
+  "profile_case": "gemma4-moe-decode-m64",
+  "provenance": {
+    "model": "gemma-4-26B-A4B-it",
+    "session_dir": "/shared_nfs/hyperloom-k8s/safe-opt-claw-top-models-forge-google-ge-45b22e20-a1/45b22e20-cd68-4916-918d-48936ecacc00/gemma-4-26B-A4B-it/20260801T162014Z",
+    "tracelens_snapshot": "kernel-agent/runs/20260801T162014Z/20260801T173050Z_tl-c549cffd/tracelens",
+    "trace": "runs/roofline/32dab7b3267b41b691f2d060d8af1ec4/benchmark_vllm_20260801_171753/torch_trace/dp0_pp0_tp0_dcp0_ep0_rank0.1785605122621332807.pt.trace.json.gz",
+    "device_kernel": "fused_moe_kernel",
+    "entry": "vllm/model_executor/layers/fused_moe/fused_moe.py:293 @triton.jit fused_moe_kernel",
+    "call_chain": "vllm::moe_forward -> runner/moe_runner.py:118 _moe_forward -> :779 _forward_impl -> :534 _apply_quant_method -> routed_experts.py:1063 forward_modular -> unquantized_fused_moe_method.py:295 apply -> :313 forward_native -> modular_kernel.py:1623/1354/1205 -> experts/triton_moe.py:198 TritonExperts.apply -> fused_moe.py:772 fused_moe_kernel[grid] (inside invoke_fused_moe_kernel)",
+    "model_entry": "vllm/model_executor/models/gemma4.py:348 Gemma4MoE (router at :251 Gemma4Router, activation=\"gelu_tanh\" at :361, top_k=config.top_k_experts at :350)",
+    "kernel_ownership": "This is the UNQUANTIZED fused_moe_kernel. The sibling task mi355x_vllm_triton_fused_moe_gptq_awq edits the same file but targets fused_moe_kernel_gptq_awq, the int4 weight-only WNA16 path - a different @triton.jit kernel with different operands.",
+    "why_triton": "The ROCm AITER unquantized MoE backend rejects the GELU_TANH activation, so the oracle falls back to Triton. server.log: unquantized.py:252 'Unquantized MoE backend ROCm AITER does not support ... MoEActivation.GELU_TANH activation. Falling back' then unquantized.py:266 'Using TRITON Unquantized MoE backend out of potential backends: [TRITON, BATCHED_TRITON]'. Selection logic lives at fused_moe/oracle/unquantized.py:156.",
+    "workload": "TP=2, EP=1, concurrency=64, ISL=1024, OSL=1024, max_model_len=6144, NUM_PROMPTS=776.",
+    "dtypes": "BF16, unquantized. server.log reports dtype=torch.bfloat16 and quantization=None; config.json carries no quantization_config. The session workload label precision: fp8 is inaccurate - TraceLens metadata/model_info.json also records BF16.",
+    "geometry": "config.json gives num_experts 128, top_k_experts 8, hidden_size 2816, moe_intermediate_size 704 and hidden_activation gelu_pytorch_tanh. EP=1 keeps all 128 experts on every rank while TP=2 shards the intermediate, so the per-rank expert tensors are w13 (128, 2*352, 2816) and w2 (128, 2816, 352). Cross-checked against the trace: gelu_tanh_and_mul takes (512, 704) and returns (512, 352), where 512 = 64 tokens x top-8 and 352 = 704 / TP2.",
+    "calls_per_step": "Each MoE layer launches fused_moe_kernel twice - once for w13 (gate_up) and once for w2 (down) - so the trace's 1800 decode calls are 30 layers x 2 GEMMs x 30 steps. A single harness call through fused_experts_impl covers both launches, matching the trace's aggregation.",
+    "missing_tuned_config": "The session ran with vLLM's fallback MoE config: server.log line 89 warns 'Using default MoE config. Performance might be sub-optimal! Config file not found at .../configs/E=128,N=352,device_name=AMD_Instinct_MI355_OAM.json'. The harness reproduces that condition exactly - no such file ships in the image. configs/ is part of the seeded editable tree, so supplying a tuned config for this shape is a legitimate and probably the highest-leverage optimization.",
+    "trace_shapes": [
+      "k010 hidden (64, 2816) BF16, router logits (64, 128) FP32, decode, 1800 calls = 30 layers x 2 GEMMs x 30 steps, 12.500%, 77339 us",
+      "k011 hidden (7218, 2816), prefill step, 60 calls = 30 layers x 2, 3.326%, 20581 us",
+      "k012 hidden (1080, 2816), prefill step, 60 calls, 0.926%, 5731 us"
+    ],
+    "shapes_fully_determined": "Unlike the attention kernels in this session, MoE is token-parallel: the kernel's shape is fully determined by the token count, expert geometry and top-k, with no hidden per-sequence composition. All three trace token counts are therefore reproduced directly rather than reconstructed.",
+    "surrounding_overhead": "For context, the MoE periphery in the same trace costs another 4.35%: moe_align_block_size 2.33%, moe_sum 1.20% and gelu_tanh_and_mul 0.82%. Those are separate kernels and are not part of this task."
+  },
+  "cases": [
+    {
+      "id": "gemma4-moe-decode-m64",
+      "model": "gemma-4-26B-A4B-it",
+      "kernel_ids": ["k010"],
+      "gpu_pct": 12.5,
+      "params": {
+        "phase": "decode",
+        "tokens": 64,
+        "num_experts": 128,
+        "topk": 8,
+        "hidden": 2816,
+        "inter": 352,
+        "activation": "gelu_tanh",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "hidden (64,2816) bf16",
+        "router logits (64,128) fp32",
+        "w13 (128,704,2816) bf16",
+        "w2 (128,2816,352) bf16"
+      ]
+    },
+    {
+      "id": "gemma4-moe-prefill-m1080",
+      "model": "gemma-4-26B-A4B-it",
+      "kernel_ids": ["k012"],
+      "gpu_pct": 0.926,
+      "params": {
+        "phase": "prefill",
+        "tokens": 1080,
+        "num_experts": 128,
+        "topk": 8,
+        "hidden": 2816,
+        "inter": 352,
+        "activation": "gelu_tanh",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "hidden (1080,2816) bf16",
+        "router logits (1080,128) fp32",
+        "w13 (128,704,2816) bf16",
+        "w2 (128,2816,352) bf16"
+      ]
+    },
+    {
+      "id": "gemma4-moe-prefill-m7218",
+      "model": "gemma-4-26B-A4B-it",
+      "kernel_ids": ["k011"],
+      "gpu_pct": 3.326,
+      "params": {
+        "phase": "prefill",
+        "tokens": 7218,
+        "num_experts": 128,
+        "topk": 8,
+        "hidden": 2816,
+        "inter": 352,
+        "activation": "gelu_tanh",
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "hidden (7218,2816) bf16",
+        "router logits (7218,128) fp32",
+        "w13 (128,704,2816) bf16",
+        "w2 (128,2816,352) bf16"
+      ]
+    }
+  ]
+}

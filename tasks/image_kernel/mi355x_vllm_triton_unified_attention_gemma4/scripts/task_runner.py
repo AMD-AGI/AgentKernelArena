@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Harness for the vLLM Triton decode paged-attention kernel
-``kernel_paged_attention_2d`` (chunked_prefill_paged_decode.py).
+"""Harness for vLLM's Triton attention kernel ``kernel_unified_attention``
+(``vllm/v1/attention/ops/triton_unified_attention.py``).
 
 The kernel is loaded from the editable workspace copy of the in-image source tree
-so an optimizing agent's edits to chunked_prefill_paged_decode.py take effect.
+so an optimizing agent's edits to triton_unified_attention.py take effect; Triton
+re-keys its JIT on the source, so no explicit rebuild step is needed.
+
+This is vLLM's kernel, not AITER's ``kernel_unified_attention_2d``/``_3d`` - see
+``session_cases.json`` ``provenance.kernel_ownership``.
 """
 from __future__ import annotations
 
@@ -20,10 +24,16 @@ OPERATOR = SPEC["operator"]
 CASES = SPEC["cases"]
 
 REPO_SUBDIR = "vllm_v1_attention_ops"
-KERNEL_FILE = "chunked_prefill_paged_decode.py"
-# Dotted name so the edited copy's relative `from .prefix_prefill import ...`
-# resolves against the installed vllm package (prefill path is untouched here).
-EDIT_MODULE_NAME = "vllm.v1.attention.ops._ka_chunked_prefill_paged_decode"
+KERNEL_FILE = "triton_unified_attention.py"
+# Dotted name so the edited copy is importable under the installed vllm package;
+# every import in the file is absolute, so it resolves against the install.
+EDIT_MODULE_NAME = "vllm.v1.attention.ops._ka_triton_unified_attention"
+
+# Profiling is a single-shape probe, pinned rather than derived from timings so
+# the profiled kernel never drifts between runs. The sliding/head_size-256 decode
+# shape is the session's largest single leaf at 19.55% of GPU time. Correctness
+# and performance still sweep every case in CASES.
+PROFILE_CASE_ID = SPEC.get("profile_case") or CASES[0]["id"]
 
 
 def _configure() -> None:
@@ -65,11 +75,13 @@ def _torch():
 
 
 def _load_kernel_module():
-    # Ensure the installed vllm package (and the parent of the edited module) is
-    # importable so the edited copy's relative import resolves.
-    import vllm.v1.attention.ops.prefix_prefill  # noqa: F401
+    # Import the installed module first so the vllm.v1.attention.ops package (the
+    # parent of the edited module) is initialized.
+    import vllm.v1.attention.ops.triton_unified_attention  # noqa: F401
 
     path = WORKSPACE / REPO_SUBDIR / KERNEL_FILE
+    if not path.is_file():
+        raise RuntimeError(f"seeded kernel source not found: {path}")
     spec = importlib.util.spec_from_file_location(EDIT_MODULE_NAME, path)
     module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
@@ -78,41 +90,51 @@ def _load_kernel_module():
     return module
 
 
-def _scored_dimensions(case: dict) -> tuple[int, int]:
-    params = case["params"]
-    return params["num_seqs"], params["ctx_len"]
-
-
-def _compile_smoke_case(case: dict) -> dict:
-    smoke_case = {**case, "params": dict(case["params"])}
-    smoke_case["params"]["num_seqs"] = min(case["params"]["num_seqs"], 8)
-    smoke_case["params"]["ctx_len"] = min(case["params"]["ctx_len"], 256)
-    return smoke_case
+def profile_case() -> dict:
+    """The single case profiling runs against (see PROFILE_CASE_ID)."""
+    for case in CASES:
+        if case["id"] == PROFILE_CASE_ID:
+            return case
+    raise KeyError(
+        f"profile_case {PROFILE_CASE_ID!r} is not present in session_cases.json"
+    )
 
 
 def _make(case: dict) -> dict:
+    """Build a case at its scored shape.
+
+    There is deliberately no correctness/performance switch here: a shape that is
+    timed must also be the shape that is validated, or the scored code path can
+    differ from the checked one. It matters twice over on this operator: the
+    sliding window only clips once ``ctx_len`` exceeds it, so a shortened context
+    silently turns a windowed layer into a full-attention one.
+    """
     torch = _torch()
     params = dict(case["params"])
-    num_seqs, ctx_len = _scored_dimensions(case)
+    num_seqs = params["num_seqs"]
+    ctx_len = params["ctx_len"]
     num_query_heads = params["num_query_heads"]
     num_kv_heads = params["num_kv_heads"]
     head_size = params["head_size"]
     block_size = params["block_size"]
+    sliding_window = params["sliding_window"]
     dtype = torch.bfloat16
     scale = head_size**-0.5
 
-    torch.manual_seed(23)
+    # TritonAttentionImpl maps a causal SWA layer to (window-1, 0); a full
+    # attention layer disables the window entirely.
+    window_size = (sliding_window - 1, 0) if sliding_window else (-1, -1)
+
+    torch.manual_seed(31)
 
     # Decode: one query token per sequence.
     query = torch.randn(
         (num_seqs, num_query_heads, head_size), device="cuda", dtype=dtype
     )
     output = torch.empty_like(query)
-    query_start_loc = torch.arange(num_seqs + 1, device="cuda", dtype=torch.int32)
-    seq_lens = torch.full((num_seqs,), ctx_len, device="cuda", dtype=torch.int32)
 
-    # Contiguous per-sequence context KV, used to fill the paged cache and to
-    # compute the reference.
+    # Contiguous per-sequence context KV, used both to fill the paged cache and
+    # to compute the reference.
     key = torch.randn(
         (num_seqs, ctx_len, num_kv_heads, head_size), device="cuda", dtype=dtype
     )
@@ -123,30 +145,28 @@ def _make(case: dict) -> dict:
     pages_per_seq = (ctx_len + block_size - 1) // block_size
     num_blocks = num_seqs * pages_per_seq + 1
 
-    # Paged KV cache in the vLLM ROCm layout: (2, num_blocks, block_size,
-    # num_kv_heads, head_size), split into 5D key / 4D value views.
+    # TritonAttentionBackend.get_kv_cache_shape:
+    # (num_blocks, 2, block_size, num_kv_heads, head_size), unbound on dim 1.
     kv_cache = torch.zeros(
-        (2, num_blocks, block_size, num_kv_heads, head_size),
+        (num_blocks, 2, block_size, num_kv_heads, head_size),
         device="cuda",
         dtype=dtype,
     )
-    from vllm.v1.attention.ops.paged_attn import PagedAttention
-
-    key_cache, value_cache = PagedAttention.split_kv_cache(
-        kv_cache, num_kv_heads, head_size
-    )
-
     block_table = torch.arange(
         num_seqs * pages_per_seq, device="cuda", dtype=torch.int32
     ).view(num_seqs, pages_per_seq)
 
-    # slot = physical_block * block_size + offset, in (seq, pos) row-major order.
     seq_idx = torch.arange(num_seqs, device="cuda").view(-1, 1).expand(-1, ctx_len)
     pos = torch.arange(ctx_len, device="cuda").view(1, -1).expand(num_seqs, -1)
-    phys_block = block_table[seq_idx, pos // block_size].long()
-    slot_mapping = (phys_block * block_size + (pos % block_size)).reshape(-1)
+    phys_block = block_table[seq_idx, pos // block_size].long().reshape(-1)
+    offset = (pos % block_size).reshape(-1)
+    key_cache, value_cache = kv_cache.unbind(1)
 
-    one = torch.ones(1, device="cuda", dtype=torch.float32)
+    # Non-quantized KV still receives expanded per-(seq, kv_head) descales, the
+    # same way TritonAttentionImpl.forward builds them from layer._k_scale.
+    descale = torch.ones(
+        (num_seqs, num_kv_heads), device="cuda", dtype=torch.float32
+    )
 
     inputs = {
         "cfg": case,
@@ -155,15 +175,23 @@ def _make(case: dict) -> dict:
         "output": output,
         "key": key,
         "value": value,
+        "kv_cache": kv_cache,
         "key_cache": key_cache,
         "value_cache": value_cache,
         "block_table": block_table,
-        "query_start_loc": query_start_loc,
-        "seq_lens": seq_lens,
-        "max_seq_len": ctx_len,
+        "cu_seqlens_q": torch.arange(
+            num_seqs + 1, device="cuda", dtype=torch.int32
+        ),
+        "seqused_k": torch.full(
+            (num_seqs,), ctx_len, device="cuda", dtype=torch.int32
+        ),
+        "descale": descale,
+        "ctx_len": ctx_len,
+        "sliding_window": sliding_window,
+        "window_size": window_size,
         "scale": scale,
-        "one": one,
-        "slot_mapping": slot_mapping,
+        "phys_block": phys_block,
+        "offset": offset,
         "num_kv_heads": num_kv_heads,
         "head_size": head_size,
     }
@@ -175,22 +203,17 @@ def _fill_kv_cache(inputs: dict) -> None:
     """Page the contiguous key/value into the cache the kernel reads.
 
     The reference reads ``key``/``value`` while the kernel reads the paged cache,
-    so the two must be refreshed together or they stop describing the same
+    so the two have to be refreshed together or they stop describing the same
     workload.
     """
-    import vllm._custom_ops as ops
-
     num_kv_heads = inputs["num_kv_heads"]
     head_size = inputs["head_size"]
-    ops.reshape_and_cache(
-        inputs["key"].reshape(-1, num_kv_heads, head_size),
-        inputs["value"].reshape(-1, num_kv_heads, head_size),
-        inputs["key_cache"],
-        inputs["value_cache"],
-        inputs["slot_mapping"],
-        "auto",
-        inputs["one"],
-        inputs["one"],
+    kv_cache = inputs["kv_cache"]
+    kv_cache[inputs["phys_block"], 0, inputs["offset"]] = inputs["key"].reshape(
+        -1, num_kv_heads, head_size
+    )
+    kv_cache[inputs["phys_block"], 1, inputs["offset"]] = inputs["value"].reshape(
+        -1, num_kv_heads, head_size
     )
 
 
@@ -202,7 +225,7 @@ def _perturb_inputs(inputs: dict) -> None:
     buffer that the kernel never wrote from matching the reference by accident.
     """
     torch = _torch()
-    torch.manual_seed(37)
+    torch.manual_seed(67)
     inputs["query"].normal_()
     inputs["key"].normal_()
     inputs["value"].normal_()
@@ -210,23 +233,23 @@ def _perturb_inputs(inputs: dict) -> None:
 
 
 def _run(inputs: dict):
-    inputs["module"].chunked_prefill_paged_decode(
-        query=inputs["query"],
-        key=None,
-        value=None,
-        output=inputs["output"],
-        kv_cache_dtype="auto",
-        key_cache=inputs["key_cache"],
-        value_cache=inputs["value_cache"],
-        block_table=inputs["block_table"],
-        query_start_loc=inputs["query_start_loc"],
-        seq_lens=inputs["seq_lens"],
-        max_seq_len=inputs["max_seq_len"],
-        max_query_len=1,
-        k_scale=inputs["one"],
-        v_scale=inputs["one"],
-        sm_scale=inputs["scale"],
+    inputs["module"].unified_attention(
+        q=inputs["query"],
+        k=inputs["key_cache"],
+        v=inputs["value_cache"],
+        out=inputs["output"],
+        cu_seqlens_q=inputs["cu_seqlens_q"],
+        max_seqlen_q=1,
+        seqused_k=inputs["seqused_k"],
+        max_seqlen_k=inputs["ctx_len"],
+        softmax_scale=inputs["scale"],
         causal=True,
+        window_size=inputs["window_size"],
+        block_table=inputs["block_table"],
+        softcap=0.0,
+        q_descale=None,
+        k_descale=inputs["descale"],
+        v_descale=inputs["descale"],
     )
     return inputs["output"]
 
@@ -236,20 +259,36 @@ def _reference(inputs: dict):
     query = inputs["query"].float()  # (S, num_query_heads, head_size)
     key = inputs["key"].float()  # (S, ctx, num_kv_heads, head_size)
     value = inputs["value"].float()
-    scale = inputs["scale"]
+    ctx_len = inputs["ctx_len"]
+    window = inputs["sliding_window"]
+    # The single decode query sits at position ctx_len-1, so a (window-1, 0)
+    # causal window admits exactly the last `window` context tokens.
+    lo = max(0, ctx_len - window) if window else 0
     ratio = query.shape[1] // key.shape[2]
     outputs = []
     for s in range(query.shape[0]):
-        k = key[s].repeat_interleave(ratio, dim=1)  # (ctx, num_query_heads, hs)
-        v = value[s].repeat_interleave(ratio, dim=1)
-        scores = torch.einsum("hd,khd->hk", query[s], k) * scale
+        k = key[s, lo:].repeat_interleave(ratio, dim=1)
+        v = value[s, lo:].repeat_interleave(ratio, dim=1)
+        scores = torch.einsum("hd,khd->hk", query[s], k) * inputs["scale"]
         probs = torch.softmax(scores, dim=-1)
         outputs.append(torch.einsum("hk,khd->hd", probs, v))
     return torch.stack(outputs).to(inputs["output"].dtype)
 
 
 def _assert_close(inputs: dict, got) -> None:
-    _torch().testing.assert_close(got, _reference(inputs), atol=0.08, rtol=0.08)
+    _torch().testing.assert_close(got, _reference(inputs), atol=0.02, rtol=0.02)
+
+
+def _compile_smoke_case(case: dict) -> dict:
+    """Shrink a case so the compile smoke test stays cheap.
+
+    Only ``compile`` may use this. Correctness and performance must share one
+    shape, otherwise the scored path is not the validated path.
+    """
+    params = dict(case["params"])
+    params["num_seqs"] = min(params["num_seqs"], 8)
+    params["ctx_len"] = min(params["ctx_len"], 256)
+    return {**case, "params": params}
 
 
 def _assert_timed_outputs(inputs: dict, timed) -> None:
@@ -257,14 +296,12 @@ def _assert_timed_outputs(inputs: dict, timed) -> None:
 
     ``run_correctness`` checks a separate call, which a kernel can tell apart
     from the scored one. This re-runs the timed unit against freshly perturbed
-    inputs and checks the buffer it wrote, so work that the scored path skips
-    cannot hide behind a correctness call that took a different branch.
+    inputs and checks the buffer it wrote, so work the scored path skips cannot
+    hide behind a correctness call that took a different branch.
     """
     if not timed.bound:
         raise RuntimeError("benchmark did not expose the timed invocation")
     _perturb_inputs(inputs)
-    # The output is harness-owned, so poison it directly; a kernel that stops
-    # writing keeps the poison instead of a plausible stale result.
     inputs["output"].fill_(float("nan"))
     _assert_close(inputs, timed.rerun())
 
@@ -280,6 +317,10 @@ def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
         inputs = _make(case)
+        # The output buffer is written, never accumulated: poison it so an
+        # implementation that leaves rows untouched cannot pass on allocator
+        # leftovers.
+        inputs["output"].fill_(float("nan"))
         got = _run(inputs)
         torch.cuda.synchronize()
         _assert_close(inputs, got)
@@ -305,7 +346,6 @@ def run_performance() -> None:
         metadata = {
             **case["params"],
             "model": case.get("model"),
-            "session_id": case.get("session_id"),
             "kernel_ids": case.get("kernel_ids"),
             "gpu_pct": case.get("gpu_pct"),
             "benchmark_method": bench_meta.get("benchmark_method"),

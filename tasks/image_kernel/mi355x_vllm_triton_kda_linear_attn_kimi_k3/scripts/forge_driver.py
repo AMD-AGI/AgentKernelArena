@@ -81,7 +81,7 @@ def _run_correctness(tr) -> int:
 
     worst_db = math.inf
     for case in tr.CASES:
-        inp = tr._prepare(case, correctness=True)
+        inp = tr._prepare(case)
         ref = tr._golden(inp)          # BEFORE _run: the kernels mutate the state
         out, _state = tr._run(inp)
         torch.cuda.synchronize()
@@ -102,7 +102,7 @@ def _run_bench(tr, warmup: int, iters: int) -> int:
 
     results = []
     for case in tr.CASES:
-        inp = tr._prepare(case, correctness=False)
+        inp = tr._prepare(case)
         tr._run(inp)                   # settle the Triton JIT before capture
         torch.cuda.synchronize()
         bench = case.get("benchmark", {})
@@ -134,7 +134,7 @@ def _run_profile(tr) -> int:
     import torch
 
     case = max(tr.CASES, key=_case_cost)
-    inp = tr._prepare(case, correctness=False)
+    inp = tr._prepare(case)
     for _ in range(3):                 # settle Triton JIT / autotune selection
         tr._run(inp)
     torch.cuda.synchronize()

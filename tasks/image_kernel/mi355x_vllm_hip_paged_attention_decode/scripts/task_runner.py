@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""Harness for the vLLM Triton decode paged-attention kernel
-``kernel_paged_attention_2d`` (chunked_prefill_paged_decode.py).
+"""Harness for the ROCm custom paged-attention decode kernels
+``paged_attention_ll4mi_QKV_mfma16_kernel`` + ``paged_attention_ll4mi_reduce_kernel``
+(AITER ``csrc/cpp_itfs/pa``), reached through ``aiter.paged_attention_rocm``.
 
-The kernel is loaded from the editable workspace copy of the in-image source tree
-so an optimizing agent's edits to chunked_prefill_paged_decode.py take effect.
+The kernels are JIT specialized from the editable workspace copy of the in-image
+AITER source tree: ``AITER_META_DIR`` points the importable ``csrc`` package and
+``AITER_CORE_DIR`` at ``<workspace>/aiter_meta``, and ``AITER_REBUILD`` clears the
+template-op build cache so an agent's edit to ``pa_kernels.cuh`` / ``pa.cuh`` /
+``pa_common.cuh`` / ``pa.cpp.jinja`` is recompiled before it is measured.
 """
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import os
-import sys
 from pathlib import Path
 
 WORKSPACE = Path(__file__).resolve().parents[1]
@@ -19,16 +21,71 @@ SPEC = json.loads((WORKSPACE / "session_cases.json").read_text())
 OPERATOR = SPEC["operator"]
 CASES = SPEC["cases"]
 
-REPO_SUBDIR = "vllm_v1_attention_ops"
-KERNEL_FILE = "chunked_prefill_paged_decode.py"
-# Dotted name so the edited copy's relative `from .prefix_prefill import ...`
-# resolves against the installed vllm package (prefill path is untouched here).
-EDIT_MODULE_NAME = "vllm.v1.attention.ops._ka_chunked_prefill_paged_decode"
+REPO_SUBDIR = "aiter_meta"
+PARTITION_SIZE = 256
+
+# Profiling is a single-shape probe, pinned rather than derived from timings so
+# the profiled kernel never drifts between runs. GQA 4:1 at head_size 128 /
+# block_size 16 is the most common decode geometry in this suite (shared by
+# Llama-3.1-8B-Instruct and Qwen3-8B). Correctness and performance still sweep
+# every case in CASES.
+PROFILE_CASE_ID = SPEC.get("profile_case") or CASES[0]["id"]
+
+
+def _sources_edited() -> bool:
+    """True unless every editable source still matches its in-image original.
+
+    Fails safe: anything we cannot positively verify counts as edited. Serving a
+    prebuilt .so for an edited kernel would silently benchmark the ORIGINAL, so
+    a false "unedited" is far worse than a redundant rebuild.
+    """
+    try:
+        import yaml
+
+        cfg = yaml.safe_load((WORKSPACE / "config.yaml").read_text()) or {}
+        image_root = Path(str(cfg["image_repo_path"]))
+        sources = cfg["source_file_path"] or []
+        if isinstance(sources, str):
+            sources = [sources]
+        if not sources or not image_root.is_dir():
+            return True
+        for rel in sources:
+            ours = WORKSPACE / REPO_SUBDIR / str(rel)
+            if ours.read_bytes() != (image_root / str(rel)).read_bytes():
+                return True
+        return False
+    except Exception:  # noqa: BLE001 - unverifiable means "assume edited"
+        return True
 
 
 def _configure() -> None:
     for key in ("GPU_ARCHS", "PYTORCH_ROCM_ARCH", "AMDGPU_TARGETS", "GPU_TARGETS"):
         os.environ.setdefault(key, "gfx950")
+
+    # compile_template_op caches purely by template arguments, so an edited
+    # kernel would otherwise keep serving the previously built lib.so. Clearing
+    # the cache is what makes a source edit take effect. AgentKernelArena also
+    # injects AITER_REBUILD=1 per build subprocess (src/jit_rebuild.py); the
+    # default here keeps standalone runs honest.
+    #
+    # Only force it once something has actually been edited. aiter treats any
+    # non-zero AITER_REBUILD as "rebuild this module on first use", without
+    # checking the source, and the profiler re-spawns this driver once per
+    # counter pass, so an unedited baseline would re-enter the rebuild path
+    # over and over for a kernel that never changed.
+    if _sources_edited():
+        os.environ.setdefault("AITER_REBUILD", "1")
+    # Keep the template-op build cache inside the workspace instead of the
+    # shared ~/.aiter, so parallel runs cannot serve each other's kernels.
+    os.environ.setdefault("AITER_ROOT_DIR", str(WORKSPACE / "build" / "aiter_root"))
+
+    repo = WORKSPACE / REPO_SUBDIR
+    if repo.is_dir():
+        # aiter/jit/core.py puts this on sys.path, which is what makes
+        # `import csrc.cpp_itfs.pa.pa` resolve to the workspace copy; pa.py then
+        # derives AITER_CORE_DIR from its own location, so the jinja template and
+        # every include come from the same editable tree.
+        os.environ["AITER_META_DIR"] = str(repo)
     os.chdir(WORKSPACE)
 
 
@@ -64,36 +121,46 @@ def _torch():
     return torch
 
 
-def _load_kernel_module():
-    # Ensure the installed vllm package (and the parent of the edited module) is
-    # importable so the edited copy's relative import resolves.
-    import vllm.v1.attention.ops.prefix_prefill  # noqa: F401
+def _import_aiter():
+    import aiter
 
-    path = WORKSPACE / REPO_SUBDIR / KERNEL_FILE
-    spec = importlib.util.spec_from_file_location(EDIT_MODULE_NAME, path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec and spec.loader
-    sys.modules[EDIT_MODULE_NAME] = module
-    spec.loader.exec_module(module)
-    return module
+    seeded = os.environ.get("AITER_META_DIR")
+    if seeded:
+        import csrc.cpp_itfs.utils as cpp_itfs_utils
 
-
-def _scored_dimensions(case: dict) -> tuple[int, int]:
-    params = case["params"]
-    return params["num_seqs"], params["ctx_len"]
+        core = Path(cpp_itfs_utils.AITER_CORE_DIR).resolve()
+        if core != Path(seeded).resolve():
+            raise RuntimeError(
+                "AITER template ops resolved to "
+                f"{core}, not the editable workspace tree {seeded}; "
+                "kernel edits would be silently ignored."
+            )
+    return aiter
 
 
-def _compile_smoke_case(case: dict) -> dict:
-    smoke_case = {**case, "params": dict(case["params"])}
-    smoke_case["params"]["num_seqs"] = min(case["params"]["num_seqs"], 8)
-    smoke_case["params"]["ctx_len"] = min(case["params"]["ctx_len"], 256)
-    return smoke_case
+def profile_case() -> dict:
+    """The single case profiling runs against (see PROFILE_CASE_ID)."""
+    for case in CASES:
+        if case["id"] == PROFILE_CASE_ID:
+            return case
+    raise KeyError(
+        f"profile_case {PROFILE_CASE_ID!r} is not present in session_cases.json"
+    )
 
 
 def _make(case: dict) -> dict:
+    """Build a case at its scored shape.
+
+    There is deliberately no correctness/performance switch here: a shape that is
+    timed must also be the shape that is validated, or the scored code path can
+    differ from the checked one. ``ctx_len`` also sets the split-K partition
+    count, so a shortened context changes which reduction path the kernel takes.
+    """
     torch = _torch()
+    aiter = _import_aiter()
     params = dict(case["params"])
-    num_seqs, ctx_len = _scored_dimensions(case)
+    num_seqs = params["num_seqs"]
+    ctx_len = params["ctx_len"]
     num_query_heads = params["num_query_heads"]
     num_kv_heads = params["num_kv_heads"]
     head_size = params["head_size"]
@@ -101,18 +168,16 @@ def _make(case: dict) -> dict:
     dtype = torch.bfloat16
     scale = head_size**-0.5
 
-    torch.manual_seed(23)
+    torch.manual_seed(29)
 
     # Decode: one query token per sequence.
     query = torch.randn(
         (num_seqs, num_query_heads, head_size), device="cuda", dtype=dtype
     )
     output = torch.empty_like(query)
-    query_start_loc = torch.arange(num_seqs + 1, device="cuda", dtype=torch.int32)
-    seq_lens = torch.full((num_seqs,), ctx_len, device="cuda", dtype=torch.int32)
 
-    # Contiguous per-sequence context KV, used to fill the paged cache and to
-    # compute the reference.
+    # Contiguous per-sequence context KV, used both to fill the paged cache and
+    # to compute the reference.
     key = torch.randn(
         (num_seqs, ctx_len, num_kv_heads, head_size), device="cuda", dtype=dtype
     )
@@ -124,7 +189,8 @@ def _make(case: dict) -> dict:
     num_blocks = num_seqs * pages_per_seq + 1
 
     # Paged KV cache in the vLLM ROCm layout: (2, num_blocks, block_size,
-    # num_kv_heads, head_size), split into 5D key / 4D value views.
+    # num_kv_heads, head_size), split into the 5D key / 4D value views that
+    # paged_attention_rocm expects.
     kv_cache = torch.zeros(
         (2, num_blocks, block_size, num_kv_heads, head_size),
         device="cuda",
@@ -148,9 +214,24 @@ def _make(case: dict) -> dict:
 
     one = torch.ones(1, device="cuda", dtype=torch.float32)
 
+    # Split-K scratch, sized exactly as vLLM sizes it in
+    # chunked_prefill_paged_decode.py before calling paged_attention_rocm.
+    max_num_partitions = (ctx_len + PARTITION_SIZE - 1) // PARTITION_SIZE
+    tmp_output = torch.empty(
+        (num_seqs, num_query_heads, max_num_partitions, head_size),
+        device="cuda",
+        dtype=dtype,
+    )
+    exp_sums = torch.empty(
+        (num_seqs, num_query_heads, max_num_partitions),
+        device="cuda",
+        dtype=torch.float32,
+    )
+    max_logits = torch.empty_like(exp_sums)
+
     inputs = {
         "cfg": case,
-        "module": _load_kernel_module(),
+        "aiter": aiter,
         "query": query,
         "output": output,
         "key": key,
@@ -158,14 +239,19 @@ def _make(case: dict) -> dict:
         "key_cache": key_cache,
         "value_cache": value_cache,
         "block_table": block_table,
-        "query_start_loc": query_start_loc,
-        "seq_lens": seq_lens,
+        "seq_lens": torch.full(
+            (num_seqs,), ctx_len, device="cuda", dtype=torch.int32
+        ),
+        "exp_sums": exp_sums,
+        "max_logits": max_logits,
+        "tmp_output": tmp_output,
+        "num_kv_heads": num_kv_heads,
+        "head_size": head_size,
+        "block_size": block_size,
         "max_seq_len": ctx_len,
         "scale": scale,
         "one": one,
         "slot_mapping": slot_mapping,
-        "num_kv_heads": num_kv_heads,
-        "head_size": head_size,
     }
     _fill_kv_cache(inputs)
     return inputs
@@ -175,7 +261,7 @@ def _fill_kv_cache(inputs: dict) -> None:
     """Page the contiguous key/value into the cache the kernel reads.
 
     The reference reads ``key``/``value`` while the kernel reads the paged cache,
-    so the two must be refreshed together or they stop describing the same
+    so the two have to be refreshed together or they stop describing the same
     workload.
     """
     import vllm._custom_ops as ops
@@ -202,7 +288,7 @@ def _perturb_inputs(inputs: dict) -> None:
     buffer that the kernel never wrote from matching the reference by accident.
     """
     torch = _torch()
-    torch.manual_seed(37)
+    torch.manual_seed(71)
     inputs["query"].normal_()
     inputs["key"].normal_()
     inputs["value"].normal_()
@@ -210,23 +296,24 @@ def _perturb_inputs(inputs: dict) -> None:
 
 
 def _run(inputs: dict):
-    inputs["module"].chunked_prefill_paged_decode(
-        query=inputs["query"],
-        key=None,
-        value=None,
-        output=inputs["output"],
-        kv_cache_dtype="auto",
-        key_cache=inputs["key_cache"],
-        value_cache=inputs["value_cache"],
-        block_table=inputs["block_table"],
-        query_start_loc=inputs["query_start_loc"],
-        seq_lens=inputs["seq_lens"],
-        max_seq_len=inputs["max_seq_len"],
-        max_query_len=1,
-        k_scale=inputs["one"],
-        v_scale=inputs["one"],
-        sm_scale=inputs["scale"],
-        causal=True,
+    inputs["aiter"].paged_attention_rocm(
+        inputs["output"],
+        inputs["exp_sums"],
+        inputs["max_logits"],
+        inputs["tmp_output"],
+        inputs["query"],
+        inputs["key_cache"],
+        inputs["value_cache"],
+        inputs["num_kv_heads"],
+        inputs["scale"],
+        inputs["block_table"],
+        inputs["seq_lens"],
+        inputs["block_size"],
+        inputs["max_seq_len"],
+        None,
+        "auto",
+        inputs["one"],
+        inputs["one"],
     )
     return inputs["output"]
 
@@ -249,7 +336,19 @@ def _reference(inputs: dict):
 
 
 def _assert_close(inputs: dict, got) -> None:
-    _torch().testing.assert_close(got, _reference(inputs), atol=0.08, rtol=0.08)
+    _torch().testing.assert_close(got, _reference(inputs), atol=0.02, rtol=0.02)
+
+
+def _compile_smoke_case(case: dict) -> dict:
+    """Shrink a case so the compile smoke test stays cheap.
+
+    Only ``compile`` may use this. Correctness and performance must share one
+    shape, otherwise the scored path is not the validated path.
+    """
+    params = dict(case["params"])
+    params["num_seqs"] = min(params["num_seqs"], 8)
+    params["ctx_len"] = min(params["ctx_len"], 256)
+    return {**case, "params": params}
 
 
 def _assert_timed_outputs(inputs: dict, timed) -> None:
@@ -257,14 +356,12 @@ def _assert_timed_outputs(inputs: dict, timed) -> None:
 
     ``run_correctness`` checks a separate call, which a kernel can tell apart
     from the scored one. This re-runs the timed unit against freshly perturbed
-    inputs and checks the buffer it wrote, so work that the scored path skips
-    cannot hide behind a correctness call that took a different branch.
+    inputs and checks the buffer it wrote, so work the scored path skips cannot
+    hide behind a correctness call that took a different branch.
     """
     if not timed.bound:
         raise RuntimeError("benchmark did not expose the timed invocation")
     _perturb_inputs(inputs)
-    # The output is harness-owned, so poison it directly; a kernel that stops
-    # writing keeps the poison instead of a plausible stale result.
     inputs["output"].fill_(float("nan"))
     _assert_close(inputs, timed.rerun())
 
@@ -280,6 +377,10 @@ def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
         inputs = _make(case)
+        # The output buffer is written, never accumulated: poison it so an
+        # implementation that leaves elements untouched cannot pass by reusing
+        # whatever the allocator handed back.
+        inputs["output"].fill_(float("nan"))
         got = _run(inputs)
         torch.cuda.synchronize()
         _assert_close(inputs, got)

@@ -170,6 +170,9 @@ REPO_SUBDIR = "vllm_fused_moe"
 KERNEL_FILE = "fused_moe.py"
 EDIT_MODULE_NAME = "vllm.model_executor.layers.fused_moe._ka_fused_moe"
 
+# How many times run_correctness rotates over the full case suite.
+CORRECTNESS_ROUNDS = 3
+
 
 def _configure() -> None:
     for key in ("GPU_ARCHS", "PYTORCH_ROCM_ARCH", "AMDGPU_TARGETS", "GPU_TARGETS"):
@@ -384,21 +387,14 @@ def _quant_pack_int4(w: "object", group_size: int):
     return packed, scale.to(torch.bfloat16).contiguous(), deq
 
 
-def _make(case: dict, correctness: bool = False) -> dict:
+def _make(case: dict) -> dict:
     torch = _torch()
     p = dict(case["params"])
-    if correctness:
-        tokens = min(p["tokens"], 16)
-        num_experts = min(p["num_experts"], 8)
-        topk = min(p["topk"], 2)
-        hidden = min(p["hidden"], 512)
-        inter = min(p["inter"], 128)
-    else:
-        tokens = p["tokens"]
-        num_experts = p["num_experts"]
-        topk = p["topk"]
-        hidden = p["hidden"]
-        inter = p["inter"]
+    tokens = p["tokens"]
+    num_experts = p["num_experts"]
+    topk = p["topk"]
+    hidden = p["hidden"]
+    inter = p["inter"]
     group_size = p["group_size"]
     assert hidden % group_size == 0 and inter % group_size == 0
 
@@ -437,8 +433,8 @@ def _make(case: dict, correctness: bool = False) -> dict:
         "w2": w2_packed,
         "w1_scale": w1_scale,
         "w2_scale": w2_scale,
-        "w1_deq": w1_deq if correctness else None,
-        "w2_deq": w2_deq if correctness else None,
+        "w1_deq": w1_deq,
+        "w2_deq": w2_deq,
         "topk_weights": topk_weights,
         "topk_ids": topk_ids,
         "num_experts": num_experts,
@@ -491,28 +487,38 @@ def _reference(inputs: dict):
 
 
 def run_compile() -> None:
-    inputs = _make(CASES[0], correctness=True)
+    inputs = _make(CASES[0])
     _run(inputs)
     _torch().cuda.synchronize()
     print(f"{OPERATOR} compile smoke: PASS")
 
 
 def run_correctness() -> None:
+    """Check every case, rotating over the whole suite CORRECTNESS_ROUNDS times.
+
+    A single pass only samples a kernel once, so an implementation that is wrong
+    intermittently — a racy cross-workgroup barrier, a reused global scratch
+    buffer — passes whenever the race happens not to fire. Rotating the suite
+    also exposes state that leaks from one case into the next, which a case run
+    back-to-back with itself would not surface. The suite is cheap next to
+    process start-up and JIT, so the extra rounds cost only a few percent.
+    """
     torch = _torch()
-    for case in CASES:
-        inputs = _make(case, correctness=True)
-        got = _run(inputs)
-        torch.cuda.synchronize()
-        torch.testing.assert_close(
-            got, _reference(inputs), atol=0.02, rtol=0.02
-        )
-        print("correctness PASS", case["id"])
+    for _ in range(CORRECTNESS_ROUNDS):
+        for case in CASES:
+            inputs = _make(case)
+            got = _run(inputs)
+            torch.cuda.synchronize()
+            torch.testing.assert_close(
+                got, _reference(inputs), atol=0.02, rtol=0.02
+            )
+            print("correctness PASS", case["id"])
 
 
 def run_performance() -> None:
     rows = []
     for case in CASES:
-        inputs = _make(case, correctness=False)
+        inputs = _make(case)
         _run(inputs)
         _torch().cuda.synchronize()
         execution_time_ms, bench_meta = _benchmark_cuda_graph_or_events(
@@ -637,7 +643,7 @@ def _pick_profile_case(tr, case_id: str) -> dict:
 def _run_profile(tr, case_id: str) -> int:
     torch = tr._torch()
     case = _pick_profile_case(tr, case_id)
-    inputs = tr._make(case, correctness=False)
+    inputs = tr._make(case)
     for _ in range(5):          # settle Triton JIT / autotune selection
         tr._run(inputs)
     torch.cuda.synchronize()

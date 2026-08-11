@@ -112,7 +112,10 @@ WORKSPACE = _resolve_workspace()
 SPEC = json.loads(_SESSION_CASES_JSON)
 CASES = SPEC["cases"]
 BLOCK_M = 64
-CORRECTNESS_MAX_TOKENS = 64  # cap T so the O(T*top_k) python reference stays cheap
+# Token count for the compile smoke test only. Correctness and performance both
+# run at the scored token count; the reference is batched per expert, so a full
+# shape stays affordable.
+COMPILE_SMOKE_MAX_TOKENS = 64
 
 
 def _configure() -> None:
@@ -159,7 +162,34 @@ def _measure_cuda_event(fn, repetition):
     return times_ms
 
 
-def _benchmark_cuda_graph(fn, warmup=10, repetition=100, target_ms=1.0, max_graph_repeats=200):
+class _TimedRun:
+    def __init__(self):
+        self._rerun = None
+        self.outputs = None
+
+    def _bind(self, rerun, outputs=None):
+        self._rerun = rerun
+        self.outputs = outputs
+
+    @property
+    def bound(self):
+        return self._rerun is not None
+
+    def rerun(self):
+        if self._rerun is None:
+            raise RuntimeError("timed run was never bound")
+        self.outputs = self._rerun()
+        return self.outputs
+
+
+def _benchmark_cuda_graph(
+    fn,
+    warmup=10,
+    repetition=100,
+    target_ms=1.0,
+    max_graph_repeats=200,
+    timed_run=None,
+):
     import torch
 
     for _ in range(max(0, int(warmup))):
@@ -186,8 +216,9 @@ def _benchmark_cuda_graph(fn, warmup=10, repetition=100, target_ms=1.0, max_grap
 
             graph = torch.cuda.CUDAGraph()
             with torch.cuda.graph(graph):
+                captured_outputs = None
                 for _ in range(repeats):
-                    fn()
+                    captured_outputs = fn()
             torch.cuda.synchronize()
 
             times = []
@@ -202,12 +233,26 @@ def _benchmark_cuda_graph(fn, warmup=10, repetition=100, target_ms=1.0, max_grap
         if mean_ms < 1e-5:
             raise RuntimeError("empty_cuda_graph_capture")
         meta.update(benchmark_method="cuda_graph", benchmark_effective_repeats=int(repeats))
+        if timed_run is not None:
+            def _replay_once():
+                stream.wait_stream(torch.cuda.current_stream())
+                with torch.cuda.stream(stream):
+                    graph.replay()
+                torch.cuda.synchronize()
+                return captured_outputs
+
+            timed_run._bind(_replay_once, captured_outputs)
         return mean_ms, meta
     except Exception as exc:
         try:
             torch.cuda.synchronize()
         except Exception:
             pass
+        if timed_run is not None:
+            raise RuntimeError(
+                "CUDA-graph capture failed; timed outputs cannot be validated "
+                "through a separate event-timed invocation"
+            ) from exc
         times = _measure_cuda_event(fn, repetition)
         meta.update(
             benchmark_method="cuda_event_fallback",
@@ -220,7 +265,13 @@ def _benchmark_cuda_graph(fn, warmup=10, repetition=100, target_ms=1.0, max_grap
 # --------------------------------------------------------------------------- #
 # Build the two grouped-GEMM invocations of one MoE forward (untimed setup).
 # --------------------------------------------------------------------------- #
-def _make(case: dict, correctness: bool = False) -> dict:
+def _make(case: dict) -> dict:
+    """Build a case at its scored shape.
+
+    There is deliberately no correctness/performance switch here: a shape that is
+    timed must also be the shape that is validated, or the scored code path can
+    differ from the checked one.
+    """
     torch = _torch()
     from sglang.kernels.ops.moe.minimax_m3_swiglu import swiglu_oai_split
     from sglang.kernels.ops.moe.mxfp8_moe_amd_gfx95 import _grouped_gemm_mxfp8
@@ -233,7 +284,7 @@ def _make(case: dict, correctness: bool = False) -> dict:
     )
 
     p = case["params"]
-    T = min(p["tokens"], CORRECTNESS_MAX_TOKENS) if correctness else p["tokens"]
+    T = p["tokens"]
     H, I, E, top_k = p["hidden"], p["inter"], p["experts"], p["top_k"]
     alpha, beta, limit = p["alpha"], p["beta"], p["limit"]
     torch.manual_seed(case.get("seed", 0))
@@ -286,8 +337,9 @@ def _run_gemms(inputs: dict):
     """The timed region: the two grouped-GEMM launches of one MoE forward."""
     from sglang.kernels.ops.moe.mxfp8_moe_amd_gfx95 import _grouped_gemm_mxfp8
 
-    _grouped_gemm_mxfp8(**inputs["gemm1_args"])
-    return _grouped_gemm_mxfp8(**inputs["gemm2_args"])
+    gemm1 = _grouped_gemm_mxfp8(**inputs["gemm1_args"])
+    gemm2 = _grouped_gemm_mxfp8(**inputs["gemm2_args"])
+    return gemm1, gemm2
 
 
 def _fused_output(inputs: dict):
@@ -310,37 +362,137 @@ def _fused_output(inputs: dict):
     return g2.view(T, top_k, H).sum(dim=1).to(torch.bfloat16)
 
 
-def _reference(inputs: dict):
+def _timed_references(inputs: dict):
+    """Independent references for the two outputs produced inside the timed region."""
     torch = _torch()
     from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
 
     x = dequant_mxfp8_to_bf16(inputs["a_q"], inputs["a_s"]).float()
-    w13 = dequant_mxfp8_to_bf16(inputs["w13_fp8"], inputs["w13_scale"]).float()
-    w2 = dequant_mxfp8_to_bf16(inputs["w2_fp8"], inputs["w2_scale"]).float()
+    act = dequant_mxfp8_to_bf16(
+        inputs["gemm2_args"]["a_q"],
+        inputs["gemm2_args"]["a_scale"],
+    ).float()
+    w13 = dequant_mxfp8_to_bf16(inputs["w13_fp8"], inputs["w13_scale"])
+    w2 = dequant_mxfp8_to_bf16(inputs["w2_fp8"], inputs["w2_scale"])
+
+    topk_ids = inputs["topk_ids"].long().reshape(-1)
+    topk_weights = inputs["topk_weights"].float().reshape(-1)
+    top_k = inputs["top_k"]
+    flat_token = torch.arange(
+        inputs["T"], device=x.device
+    ).unsqueeze(1).expand(inputs["T"], top_k).reshape(-1)
+
+    gemm1 = torch.empty(
+        topk_ids.numel(),
+        2 * inputs["I"],
+        device=x.device,
+        dtype=torch.bfloat16,
+    )
+    gemm2 = torch.empty(
+        topk_ids.numel(),
+        inputs["H"],
+        device=x.device,
+        dtype=torch.float32,
+    )
+    for expert in range(w13.shape[0]):
+        slots = torch.where(topk_ids == expert)[0]
+        if slots.numel() == 0:
+            continue
+        rows = flat_token[slots]
+        gemm1[slots] = (x[rows] @ w13[expert].float().T).to(torch.bfloat16)
+        gemm2[slots] = (
+            act[slots] @ w2[expert].float().T
+        ) * topk_weights[slots].unsqueeze(-1)
+    return gemm1, gemm2
+
+
+def _assert_timed_outputs(inputs: dict, timed: _TimedRun) -> None:
+    if not timed.bound or not isinstance(timed.outputs, tuple) or len(timed.outputs) != 2:
+        raise RuntimeError("benchmark did not expose both timed GEMM outputs")
+
+    for output in timed.outputs:
+        output.fill_(float("nan"))
+    got1, got2 = timed.rerun()
+    ref1, ref2 = _timed_references(inputs)
+    tol = inputs["cfg"]["params"].get("max_relerr", 0.08)
+    err1 = _relerr(got1, ref1)
+    err2 = _relerr(got2, ref2)
+    assert err1 < tol, (inputs["cfg"]["id"], "timed_gemm1", err1, tol)
+    assert err2 < tol, (inputs["cfg"]["id"], "timed_gemm2", err2, tol)
+
+
+def _reference(inputs: dict):
+    """Dequantized torch reference for one MoE forward.
+
+    Iterates experts rather than (token, slot) pairs: every token routed to an
+    expert is one batched matmul instead of a Python step. The loop this replaces
+    ran T*top_k times and synchronised on ``topk_ids`` each step, which is what
+    made a full-shape correctness run impractical.
+
+    The dequantized weights stay bf16 and are cast per expert, so the reference
+    never materialises an fp32 copy of the whole expert bank.
+    """
+    torch = _torch()
+    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
+
+    x = dequant_mxfp8_to_bf16(inputs["a_q"], inputs["a_s"]).float()
+    w13 = dequant_mxfp8_to_bf16(inputs["w13_fp8"], inputs["w13_scale"])
+    w2 = dequant_mxfp8_to_bf16(inputs["w2_fp8"], inputs["w2_scale"])
     T, I, top_k = inputs["T"], inputs["I"], inputs["top_k"]
     alpha, beta, limit = inputs["alpha"], inputs["beta"], inputs["limit"]
     topk_weights, topk_ids = inputs["topk_weights"], inputs["topk_ids"]
     H = inputs["H"]
+    num_experts = w13.shape[0]
+
     out = torch.zeros(T, H, device=x.device, dtype=torch.float32)
-    for t in range(T):
-        for j in range(top_k):
-            e = int(topk_ids[t, j].item())
-            if e < 0 or e >= w13.shape[0]:
-                continue
-            g1 = x[t] @ w13[e].T
-            gate, up = g1[:I], g1[I:]
-            gate = gate.clamp(max=limit)
-            up = up.clamp(min=-limit, max=limit)
-            act = gate * torch.sigmoid(alpha * gate) * (up + beta)
-            out[t] += topk_weights[t, j].float() * (act @ w2[e].T)
+    flat_expert = topk_ids.long().reshape(-1)
+    flat_token = torch.arange(
+        T, device=x.device
+    ).unsqueeze(1).expand(T, top_k).reshape(-1)
+    flat_weight = topk_weights.float().reshape(-1)
+
+    # moe_align_block_size can emit padding slots outside the expert range.
+    keep = (flat_expert >= 0) & (flat_expert < num_experts)
+    flat_expert = flat_expert[keep]
+    flat_token = flat_token[keep]
+    flat_weight = flat_weight[keep]
+
+    order = torch.argsort(flat_expert)
+    counts = torch.bincount(flat_expert[order], minlength=num_experts)
+    offsets = torch.cumsum(counts, dim=0).tolist()
+    start = 0
+    for expert, stop in enumerate(offsets):
+        if stop == start:
+            continue
+        rows = flat_token[order[start:stop]]
+        g1 = x[rows] @ w13[expert].float().T  # [n, 2*I]
+        gate = g1[:, :I].clamp(max=limit)
+        up = g1[:, I:].clamp(min=-limit, max=limit)
+        act = gate * torch.sigmoid(alpha * gate) * (up + beta)
+        contrib = (act @ w2[expert].float().T) * flat_weight[
+            order[start:stop]
+        ].unsqueeze(-1)
+        out.index_add_(0, rows, contrib)
+        start = stop
     return out.to(torch.bfloat16)
 
 
 # --------------------------------------------------------------------------- #
 # Modes
 # --------------------------------------------------------------------------- #
+def _compile_smoke_case(case: dict) -> dict:
+    """Shrink a case so the compile smoke test stays cheap.
+
+    Only ``compile`` may use this. Correctness and performance must share one
+    shape, otherwise the scored path is not the validated path.
+    """
+    params = dict(case["params"])
+    params["tokens"] = min(params["tokens"], COMPILE_SMOKE_MAX_TOKENS)
+    return {**case, "params": params}
+
+
 def run_compile() -> None:
-    inputs = _make(CASES[0], correctness=True)
+    inputs = _make(_compile_smoke_case(CASES[0]))
     _run_gemms(inputs)
     _torch().cuda.synchronize()
     print("mxfp8_grouped_gemm compile smoke: PASS")
@@ -349,7 +501,7 @@ def run_compile() -> None:
 def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
-        inputs = _make(case, correctness=True)
+        inputs = _make(case)
         got = _fused_output(inputs)
         torch.cuda.synchronize()
         err = _relerr(got, _reference(inputs))
@@ -362,10 +514,15 @@ def run_performance() -> None:
     torch = _torch()
     rows = []
     for case in CASES:
-        inputs = _make(case, correctness=False)
+        inputs = _make(case)
         _run_gemms(inputs)
         torch.cuda.synchronize()
-        ms, bmeta = _benchmark_cuda_graph(lambda: _run_gemms(inputs))
+        timed = _TimedRun()
+        ms, bmeta = _benchmark_cuda_graph(
+            lambda: _run_gemms(inputs),
+            timed_run=timed,
+        )
+        _assert_timed_outputs(inputs, timed)
         row = {
             "test_case_id": case["id"],
             "execution_time_ms": ms,
@@ -410,7 +567,7 @@ def _run_correctness(tr, mode: str) -> int:
     torch = tr._torch()
     all_ok = True
     for case in tr.CASES:
-        inputs = tr._make(case, correctness=True)
+        inputs = tr._make(case)
         got = tr._fused_output(inputs)
         torch.cuda.synchronize()
         err = tr._relerr(got, tr._reference(inputs))
@@ -428,14 +585,17 @@ def _run_bench(tr, warmup: int, iters: int) -> int:
     torch = tr._torch()
     means = []
     for case in tr.CASES:
-        inputs = tr._make(case, correctness=False)
+        inputs = tr._make(case)
         tr._run_gemms(inputs)  # warm/JIT settle before capture
         torch.cuda.synchronize()
+        timed = tr._TimedRun()
         ms, meta = tr._benchmark_cuda_graph(
             lambda i=inputs: tr._run_gemms(i),
             warmup=max(1, warmup),
             repetition=max(1, iters),
+            timed_run=timed,
         )
+        tr._assert_timed_outputs(inputs, timed)
         means.append(ms)
         # Per-case time (forge can round-trip the case_id to --profile-case).
         print(f"case_ms: {case['id']} {ms:.6f}")
@@ -457,7 +617,7 @@ def _run_profile(tr, case_id: str) -> int:
     else:
         # Default: the largest / dominant case (most tokens) when unspecified.
         case = max(tr.CASES, key=lambda c: int(c["params"]["tokens"]))
-    inputs = tr._make(case, correctness=False)
+    inputs = tr._make(case)
     for _ in range(5):          # settle Triton JIT / autotune selection
         tr._run_gemms(inputs)
     torch.cuda.synchronize()

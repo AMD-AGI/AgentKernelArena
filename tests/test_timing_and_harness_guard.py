@@ -1,6 +1,108 @@
+import importlib.util
 import json
+import sys
+from pathlib import Path
 
 import pytest
+
+
+def _load_grouped_gemm_runner():
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "tasks/image_kernel/mi355x_sglang_triton_mxfp8_grouped_gemm"
+        / "scripts/task_runner.py"
+    )
+    spec = importlib.util.spec_from_file_location("_test_grouped_gemm_runner", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_grouped_gemm_timed_validation_checks_both_outputs(monkeypatch):
+    import torch
+
+    runner = _load_grouped_gemm_runner()
+    ref1 = torch.ones(2, 3)
+    ref2 = torch.ones(2, 4)
+    out1 = torch.zeros_like(ref1)
+    out2 = torch.zeros_like(ref2)
+    timed = runner._TimedRun()
+
+    def _rerun_with_corrupt_gemm1():
+        out2.copy_(ref2)
+        return out1, out2
+
+    timed._bind(_rerun_with_corrupt_gemm1, (out1, out2))
+    monkeypatch.setattr(
+        runner,
+        "_timed_references",
+        lambda _inputs: (ref1, ref2),
+    )
+    inputs = {"cfg": {"id": "shape0", "params": {"max_relerr": 0.08}}}
+
+    with pytest.raises(AssertionError, match="timed_gemm1"):
+        runner._assert_timed_outputs(inputs, timed)
+
+
+def test_grouped_gemm_timed_run_rejects_event_fallback(monkeypatch):
+    import torch
+
+    runner = _load_grouped_gemm_runner()
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+
+    def _reject_stream():
+        raise RuntimeError("capture unavailable")
+
+    monkeypatch.setattr(torch.cuda, "Stream", _reject_stream)
+
+    with pytest.raises(RuntimeError, match="timed outputs cannot be validated"):
+        runner._benchmark_cuda_graph(
+            lambda: None,
+            warmup=0,
+            repetition=1,
+            timed_run=runner._TimedRun(),
+        )
+
+
+def test_timed_run_fails_closed_without_cuda(monkeypatch):
+    import torch
+
+    from src.tools.perf.vllm_cuda_graph_block import (
+        _TimedRun,
+        _benchmark_cuda_graph_or_events,
+    )
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+
+    with pytest.raises(RuntimeError, match="requires an observable CUDA-graph replay"):
+        _benchmark_cuda_graph_or_events(
+            lambda: None,
+            warmup=0,
+            repetition=1,
+            timed_run=_TimedRun(),
+        )
+
+
+def test_timed_run_fails_closed_when_cuda_graph_is_disabled(monkeypatch):
+    import torch
+
+    from src.tools.perf.vllm_cuda_graph_block import (
+        _TimedRun,
+        _benchmark_cuda_graph_or_events,
+    )
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+
+    with pytest.raises(RuntimeError, match="CUDA-graph timing is disabled"):
+        _benchmark_cuda_graph_or_events(
+            lambda: None,
+            warmup=0,
+            repetition=1,
+            use_cuda_graph=False,
+            timed_run=_TimedRun(),
+        )
 
 
 def test_device_timing_preferred_over_host_time(tmp_path):

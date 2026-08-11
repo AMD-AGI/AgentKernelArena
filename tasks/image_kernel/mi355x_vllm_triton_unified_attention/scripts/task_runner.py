@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
-import math
 import os
 import sys
 from pathlib import Path
@@ -95,27 +93,22 @@ def _torch():
     return torch
 
 
-def _import_aiter():
-    import aiter
-
-    return aiter
-
-
 def _make_attention(
     case: dict,
-    correctness: bool = False,
     *,
     ctx_len_override: int | None = None,
     expected_path: str | None = None,
 ) -> dict:
+    """Build the attention case at its scored ``ctx_len``.
+
+    ``ctx_len_override`` exists only so correctness can additionally exercise the
+    2d dispatch, which the scored ``ctx_len`` does not reach. It is never used to
+    shrink the scored shape itself.
+    """
     torch = _torch()
     params = dict(case["params"])
     ctx_len = (
-        ctx_len_override
-        if ctx_len_override is not None
-        else min(params["ctx_len"], 128)
-        if correctness
-        else params["ctx_len"]
+        ctx_len_override if ctx_len_override is not None else params["ctx_len"]
     )
     num_seqs = params["q_tokens"]
     num_q_heads = params["num_q_heads"]
@@ -175,7 +168,6 @@ def _attention_correctness_inputs(case: dict) -> list[tuple[str, dict]]:
             "2d",
             _make_attention(
                 case,
-                correctness=True,
                 ctx_len_override=min(full_ctx_len, 128),
                 expected_path="2d",
             ),
@@ -184,7 +176,6 @@ def _attention_correctness_inputs(case: dict) -> list[tuple[str, dict]]:
             "3d",
             _make_attention(
                 case,
-                correctness=True,
                 ctx_len_override=full_ctx_len,
                 expected_path="3d",
             ),
@@ -282,550 +273,75 @@ def _attention_reference(inputs: dict):
     return torch.stack(outputs).to(inputs["output"].dtype)
 
 
-def _make_gemm(case: dict, correctness: bool = False) -> dict:
+def _assert_operator() -> None:
+    """Guard against this runner being pointed at a different operator.
+
+    The file was specialized to ``unified_attention``; the other builders, callers and
+    references from the shared template are gone. Failing loudly beats silently
+    running the wrong workload.
+    """
+    if OPERATOR != "unified_attention":
+        raise KeyError(f"{OPERATOR}: this runner only implements unified_attention")
+
+
+def _make(case: dict) -> dict:
+    """Build a case at its scored shape.
+
+    There is deliberately no correctness/performance switch here: a shape that is
+    timed must also be the shape that is validated, or the scored code path can
+    differ from the checked one.
+
+    Kept as the entry point the task drivers call, alongside :func:`_run`.
+    """
+    _assert_operator()
+    return _make_attention(case)
+
+
+def _assert_attention_close(inputs: dict, got) -> None:
+    _torch().testing.assert_close(
+        got, _attention_reference(inputs), atol=0.08, rtol=0.08
+    )
+
+
+def _perturb_attention_inputs(inputs: dict) -> None:
+    """Refresh the data inputs in place with values no earlier launch has seen.
+
+    A replayed CUDA graph reads the captured input addresses, so writing through
+    them changes what the scored kernel consumes. Fresh values stop an output
+    buffer that the kernel never wrote from matching the reference by accident.
+    """
     torch = _torch()
-    params = dict(case["params"])
-    m = min(params["m"], 64) if correctness else params["m"]
-    n = params["n"]
-    k = params["k"]
-    torch.manual_seed(9)
-    x = (torch.rand((m, k), device="cuda") * 0.2 - 0.1).to(
-        torch.float8_e4m3fn
-    )
-    weight = (torch.rand((n, k), device="cuda") * 0.2 - 0.1).to(
-        torch.float8_e4m3fn
-    )
-    x_scale = (
-        torch.rand((m, k // 128), device="cuda", dtype=torch.float32) * 0.1
-        + 0.01
-    )
-    w_scale = (
-        torch.rand(
-            (math.ceil(n / 128), k // 128),
-            device="cuda",
-            dtype=torch.float32,
-        )
-        * 0.1
-        + 0.01
-    )
-    return {
-        "cfg": case,
-        "x": x,
-        "weight": weight,
-        "x_scale": x_scale,
-        "w_scale": w_scale,
-        "shape": [m, n, k],
-    }
-
-
-def _run_gemm(inputs: dict):
-    return _import_aiter().gemm_a8w8_blockscale(
-        inputs["x"],
-        inputs["weight"],
-        inputs["x_scale"],
-        inputs["w_scale"],
-        _torch().bfloat16,
-    )
-
-
-def _gemm_reference(inputs: dict):
-    torch = _torch()
-    m, n, k = inputs["shape"]
-    x = (
-        inputs["x"].float()
-        * inputs["x_scale"].repeat_interleave(128, dim=1)[:, :k]
-    )
-    weight = (
-        inputs["weight"].float()
-        * inputs["w_scale"]
-        .repeat_interleave(128, dim=0)
-        .repeat_interleave(128, dim=1)[:n, :k]
-    )
-    return (x @ weight.t()).to(torch.bfloat16)
-
-
-def _make_quant(case: dict) -> dict:
-    torch = _torch()
-    torch.manual_seed(11)
-    shape = tuple(case["params"]["shape"])
-    input_tensor = torch.randn(shape, device="cuda", dtype=torch.bfloat16)
-    output = torch.empty(shape, device="cuda", dtype=torch.float8_e4m3fn)
-    scale = torch.empty(1, device="cuda", dtype=torch.float32)
-    return {
-        "cfg": case,
-        "input": input_tensor,
-        "output": output,
-        "scale": scale,
-    }
-
-
-def _run_quant(inputs: dict):
-    _import_aiter().dynamic_per_tensor_quant(
-        inputs["output"], inputs["input"], inputs["scale"]
-    )
-    return inputs["output"]
-
-
-def _load_mhc_module():
-    # Import the installed package first so its custom ops are registered once.
-    # Then suppress registration while loading the editable workspace copy;
-    # otherwise both copies call direct_register_custom_op with the same names.
-    import vllm.model_executor.kernels.mhc.tilelang_kernels  # noqa: F401
-    import vllm.utils.torch_utils as torch_utils
-
-    path = WORKSPACE / "mhc" / "tilelang.py"
-    spec = importlib.util.spec_from_file_location("ka_mhc_tilelang", path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec and spec.loader
-    original_register = torch_utils.direct_register_custom_op
-    torch_utils.direct_register_custom_op = lambda *args, **kwargs: None
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        torch_utils.direct_register_custom_op = original_register
-    return module
-
-
-def _make_mhc(case: dict, correctness: bool = False) -> dict:
-    torch = _torch()
-    params = dict(case["params"])
-    tokens = min(params["tokens"], 64) if correctness else params["tokens"]
-    hidden_size = params["hidden_size"]
-    hc_mult = params["hc_mult"]
-    torch.manual_seed(13)
-    x = torch.randn(
-        (tokens, hidden_size), device="cuda", dtype=torch.bfloat16
-    )
-    residual = torch.randn(
-        (tokens, hc_mult, hidden_size),
-        device="cuda",
-        dtype=torch.bfloat16,
-    )
-    post_mix = torch.randn(
-        (tokens, hc_mult, 1), device="cuda", dtype=torch.float32
-    )
-    comb_mix = torch.softmax(
-        torch.randn(
-            (tokens, hc_mult, hc_mult),
-            device="cuda",
-            dtype=torch.float32,
-        ),
-        dim=-1,
-    )
-    hc_mult3 = hc_mult * 2 + hc_mult * hc_mult
-    fn = (
-        torch.randn(
-            (hc_mult3, hc_mult * hidden_size),
-            device="cuda",
-            dtype=torch.float32,
-        )
-        * 0.001
-    )
-    hc_scale = torch.ones(3, device="cuda", dtype=torch.float32)
-    hc_base = torch.zeros(hc_mult3, device="cuda", dtype=torch.float32)
-    return {
-        "cfg": case,
-        "params": params,
-        "x": x,
-        "residual": residual,
-        "post_mix": post_mix,
-        "comb_mix": comb_mix,
-        "fn": fn,
-        "hc_scale": hc_scale,
-        "hc_base": hc_base,
-        "module": _load_mhc_module(),
-    }
-
-
-def _run_mhc(inputs: dict):
-    params = inputs["params"]
-    return inputs["module"].mhc_fused_post_pre_tilelang(
-        inputs["x"],
-        inputs["residual"],
-        inputs["post_mix"],
-        inputs["comb_mix"],
-        inputs["fn"],
-        inputs["hc_scale"],
-        inputs["hc_base"],
-        params["rms_eps"],
-        params["hc_pre_eps"],
-        params["hc_sinkhorn_eps"],
-        params["hc_post_mult"],
-        params["sinkhorn_repeat"],
-        1,
-        1,
-        None,
-        0.0,
-    )
-
-
-def _mhc_reference(inputs: dict):
-    from vllm.model_executor.kernels.mhc.torch import mhc_post_torch, mhc_pre_torch
-
-    params = inputs["params"]
-    residual = mhc_post_torch(
-        inputs["x"],
-        inputs["residual"],
-        inputs["post_mix"],
-        inputs["comb_mix"],
-    )
-    post_mix, comb_mix, layer_input = mhc_pre_torch(
-        residual,
-        inputs["fn"],
-        inputs["hc_scale"],
-        inputs["hc_base"],
-        params["rms_eps"],
-        params["hc_pre_eps"],
-        params["hc_sinkhorn_eps"],
-        params["hc_post_mult"],
-        params["sinkhorn_repeat"],
-    )
-    return residual, post_mix, comb_mix, layer_input
-
-
-def _make_mla(case: dict, correctness: bool = False) -> dict:
-    torch = _torch()
-    params = dict(case["params"])
-    batch = min(params["batch"], 64) if correctness else params["batch"]
-    ctx_len = min(params["ctx_len"], 128) if correctness else params["ctx_len"]
-    capacity = (
-        min(params["kv_capacity"], batch * ctx_len + 1024)
-        if correctness
-        else params["kv_capacity"]
-    )
-    torch.manual_seed(17)
-    query = torch.randn(
-        (batch, params["num_heads"], params["qk_dim"]),
-        device="cuda",
-        dtype=torch.bfloat16,
-    )
+    torch.manual_seed(41)
+    inputs["query"].normal_()
+    # key/value may be fp8 views of one bf16 draw, so rebuild them the same way
+    # _make_attention did instead of writing noise straight into the fp8 buffers.
     kv = torch.randn(
-        (capacity, params["page_size"], params["kv_heads"], params["qk_dim"]),
-        device="cuda",
-        dtype=torch.bfloat16,
+        inputs["key"].shape, device="cuda", dtype=torch.bfloat16
     )
-    output = torch.empty(
-        (batch, params["num_heads"], params["v_dim"]),
-        device="cuda",
-        dtype=torch.bfloat16,
-    )
-    qo_indptr = torch.arange(batch + 1, device="cuda", dtype=torch.int32)
-    kv_indptr = torch.arange(
-        0, (batch + 1) * ctx_len, ctx_len, device="cuda", dtype=torch.int32
-    )
-    kv_indices = (
-        torch.arange(batch * ctx_len, device="cuda", dtype=torch.int32)
-        % capacity
-    )
-    last_page_lens = torch.ones(batch, device="cuda", dtype=torch.int32)
-    return {
-        "cfg": case,
-        "params": params,
-        "query": query,
-        "kv": kv,
-        "output": output,
-        "qo_indptr": qo_indptr,
-        "kv_indptr": kv_indptr,
-        "kv_indices": kv_indices,
-        "last_page_lens": last_page_lens,
-        "ctx_len": ctx_len,
-    }
+    inputs["key"].copy_(kv.to(inputs["key"].dtype))
+    inputs["value"].copy_((kv * 0.7).to(inputs["value"].dtype))
 
 
-def _run_mla(inputs: dict):
-    params = inputs["params"]
-    return _import_aiter().mla.mla_decode_fwd(
-        inputs["query"],
-        inputs["kv"],
-        inputs["output"],
-        inputs["qo_indptr"],
-        inputs["kv_indptr"],
-        inputs["kv_indices"],
-        inputs["last_page_lens"],
-        1,
-        params["page_size"],
-        params["kv_heads"],
-        params["qk_dim"] ** -0.5,
-        num_kv_splits=None,
-        return_lse=False,
-    )
+def _assert_timed_outputs(inputs: dict, timed) -> None:
+    """Validate the invocation the benchmark actually timed.
 
-
-def _mla_reference(inputs: dict):
-    torch = _torch()
-    query = inputs["query"].float()
-    outputs = []
-    for seq_idx in range(query.shape[0]):
-        start = seq_idx * inputs["ctx_len"]
-        end = (seq_idx + 1) * inputs["ctx_len"]
-        indices = inputs["kv_indices"][start:end]
-        kv = inputs["kv"][indices].reshape(
-            -1,
-            inputs["params"]["kv_heads"],
-            inputs["params"]["qk_dim"],
-        )
-        key = kv
-        value = kv[..., : inputs["params"]["v_dim"]]
-        ratio = query.shape[1] // key.shape[1]
-        key = key.repeat_interleave(ratio, dim=1)
-        value = value.repeat_interleave(ratio, dim=1)
-        scores = (
-            torch.einsum("hd,khd->hk", query[seq_idx], key.float())
-            * (inputs["params"]["qk_dim"] ** -0.5)
-        )
-        probs = torch.softmax(scores, dim=-1)
-        outputs.append(torch.einsum("hk,khd->hd", probs, value.float()))
-    return torch.stack(outputs).to(inputs["output"].dtype)
-
-
-def _moe_enums(params: dict, aiter):
-    quant_type = {
-        "per_Tensor": aiter.QuantType.per_Tensor,
-        "per_1x128": aiter.QuantType.per_1x128,
-        "per_1x32": aiter.QuantType.per_1x32,
-    }[params["quant_type"]]
-    activation = {
-        "silu": aiter.ActivationType.Silu,
-        "swiglu": aiter.ActivationType.Swiglu,
-    }[params["activation"]]
-    return quant_type, activation
-
-
-def _prepare_moe(case: dict, correctness: bool = False) -> dict:
-    torch = _torch()
-    aiter = _import_aiter()
-    from aiter import dtypes
-    from aiter.fused_moe import fused_topk
-    from aiter.ops.shuffle import (
-        shuffle_scale_a16w4,
-        shuffle_weight,
-        shuffle_weight_a16w4,
-    )
-    from aiter.utility import fp4_utils
-
-    params = dict(case["params"])
-    token = min(params["token"], 64) if correctness else params["token"]
-    experts = params["experts"]
-    model_dim = params["model_dim"]
-    inter_dim = params["inter_dim"]
-    topk = params["topk"]
-    quant_type, activation = _moe_enums(params, aiter)
-    activation_dtype = {
-        "fp8": dtypes.fp8,
-        "fp4": dtypes.fp4x2,
-        "bf16": dtypes.bf16,
-    }[params["a_dtype"]]
-    weight_dtype = {"fp8": dtypes.fp8, "fp4": dtypes.fp4x2}[
-        params["w_dtype"]
-    ]
-
-    torch.manual_seed(19)
-    hidden = (
-        torch.randn(
-            (token, model_dim), device="cuda", dtype=dtypes.bf16
-        )
-        * 0.1
-    )
-    w1 = (
-        torch.randn(
-            (experts, inter_dim * 2, model_dim),
-            device="cuda",
-            dtype=dtypes.bf16,
-        )
-        * 0.03
-    )
-    w2 = (
-        torch.randn(
-            (experts, model_dim, inter_dim),
-            device="cuda",
-            dtype=dtypes.bf16,
-        )
-        * 0.03
-    )
-    score = torch.randn((token, experts), device="cuda", dtype=dtypes.bf16)
-    topk_weights, topk_ids = fused_topk(hidden, score, topk, True)
-    torch_quant = aiter.get_torch_quant(quant_type)
-
-    if quant_type == aiter.QuantType.per_Tensor:
-        w1_quant, w1_scale = aiter.pertoken_quant(
-            w1.view(experts, -1), quant_dtype=weight_dtype
-        )
-        w2_quant, w2_scale = aiter.pertoken_quant(
-            w2.view(experts, -1), quant_dtype=weight_dtype
-        )
-        w1_quant = w1_quant.view(w1.shape)
-        w2_quant = w2_quant.view(w2.shape)
-    else:
-        w1_quant, w1_scale = torch_quant(w1, quant_dtype=weight_dtype)
-        w2_quant, w2_scale = torch_quant(w2, quant_dtype=weight_dtype)
-
-    if quant_type == aiter.QuantType.per_1x32:
-        w1_quant = w1_quant.view(
-            experts, w1.shape[1], w1.shape[2] // 2
-        )
-        w2_quant = w2_quant.view(
-            experts, w2.shape[1], w2.shape[2] // 2
-        )
-
-    w1_reference = w1_quant
-    w2_reference = w2_quant
-    if (
-        quant_type == aiter.QuantType.per_1x32
-        and activation_dtype in (dtypes.bf16, dtypes.fp16, dtypes.fp8)
-        and weight_dtype == dtypes.fp4x2
-    ):
-        w1_runtime = shuffle_weight_a16w4(w1_quant, 16, True)
-        w1_scale_runtime = shuffle_scale_a16w4(
-            w1_scale, experts, True
-        )
-        w2_runtime = shuffle_weight_a16w4(w2_quant, 16, False)
-        w2_scale_runtime = shuffle_scale_a16w4(
-            w2_scale, experts, False
-        )
-    else:
-        w1_runtime = shuffle_weight(w1_quant, layout=(16, 16))
-        w2_runtime = shuffle_weight(w2_quant, layout=(16, 16))
-        w1_scale_runtime = fp4_utils.e8m0_shuffle(w1_scale)
-        w2_scale_runtime = fp4_utils.e8m0_shuffle(w2_scale)
-
-    return {
-        "cfg": case,
-        "params": params,
-        "hidden": hidden,
-        "w1": w1_runtime,
-        "w2": w2_runtime,
-        "w1_reference": w1_reference,
-        "w2_reference": w2_reference,
-        "w1_scale": w1_scale,
-        "w2_scale": w2_scale,
-        "w1_scale_runtime": w1_scale_runtime,
-        "w2_scale_runtime": w2_scale_runtime,
-        "topk_weights": topk_weights,
-        "topk_ids": topk_ids,
-        "quant_type": quant_type,
-        "activation": activation,
-        "activation_dtype": activation_dtype,
-        "weight_dtype": weight_dtype,
-    }
-
-
-def _run_moe(inputs: dict):
-    from aiter.fused_moe import fused_moe
-
-    return fused_moe(
-        inputs["hidden"],
-        inputs["w1"],
-        inputs["w2"],
-        inputs["topk_weights"],
-        inputs["topk_ids"],
-        w1_scale=inputs["w1_scale_runtime"],
-        w2_scale=inputs["w2_scale_runtime"],
-        quant_type=inputs["quant_type"],
-        activation=inputs["activation"],
-        dtype=_torch().bfloat16,
-    )
-
-
-def _moe_reference(inputs: dict):
-    torch = _torch()
-    aiter = _import_aiter()
-    from aiter import dtypes
-    from aiter.fused_moe import torch_moe_stage1, torch_moe_stage2
-
-    torch_quant = aiter.get_torch_quant(inputs["quant_type"])
-    params = inputs["params"]
-    if inputs["quant_type"] == aiter.QuantType.per_1x128:
-        a1_quant, a1_scale = torch_quant(
-            inputs["hidden"].view(inputs["hidden"].shape[0], -1, 128),
-            quant_dtype=inputs["activation_dtype"],
-        )
-        a1_quant = a1_quant.view(inputs["hidden"].shape)
-        a1_scale = a1_scale.squeeze(-1)
-    elif (
-        inputs["quant_type"] == aiter.QuantType.per_1x32
-        and inputs["activation_dtype"]
-        in (dtypes.bf16, dtypes.fp16, dtypes.fp8)
-        and inputs["weight_dtype"] == dtypes.fp4x2
-    ):
-        a1_quant = inputs["hidden"].to(inputs["activation_dtype"])
-        a1_scale = None
-    else:
-        a1_quant, a1_scale = torch_quant(
-            inputs["hidden"], quant_dtype=inputs["activation_dtype"]
-        )
-
-    stage1 = torch_moe_stage1(
-        a1_quant,
-        inputs["w1_reference"],
-        inputs["w2_reference"],
-        inputs["topk_weights"],
-        inputs["topk_ids"],
-        dtype=torch.bfloat16,
-        activation=inputs["activation"],
-        quant_type=inputs["quant_type"],
-        a1_scale=a1_scale,
-        w1_scale=inputs["w1_scale"],
-    )
-    if inputs["quant_type"] == aiter.QuantType.per_1x128:
-        a2_quant, a2_scale = torch_quant(
-            stage1.view(stage1.shape[0], -1, 128),
-            quant_dtype=inputs["activation_dtype"],
-        )
-        a2_scale = a2_scale.view(
-            stage1.shape[0], params["topk"], -1
-        )
-    elif (
-        inputs["quant_type"] == aiter.QuantType.per_1x32
-        and inputs["activation_dtype"]
-        in (dtypes.bf16, dtypes.fp16, dtypes.fp8)
-        and inputs["weight_dtype"] == dtypes.fp4x2
-    ):
-        a2_quant = stage1
-        a2_scale = None
-    else:
-        a2_quant, a2_scale = torch_quant(
-            stage1, quant_dtype=inputs["activation_dtype"]
-        )
-    a2_quant = a2_quant.view(stage1.shape[0], params["topk"], -1)
-    return torch_moe_stage2(
-        a2_quant,
-        inputs["w1_reference"],
-        inputs["w2_reference"],
-        inputs["topk_weights"],
-        inputs["topk_ids"],
-        dtype=torch.bfloat16,
-        quant_type=inputs["quant_type"],
-        w2_scale=inputs["w2_scale"],
-        a2_scale=a2_scale,
-    )
-
-
-def _make(case: dict, correctness: bool = False) -> dict:
-    if OPERATOR == "unified_attention":
-        return _make_attention(case, correctness)
-    if OPERATOR == "a8w8_blockscale_gemm":
-        return _make_gemm(case, correctness)
-    if OPERATOR == "dynamic_per_tensor_quant":
-        return _make_quant(case)
-    if OPERATOR == "mhc_fused_post_pre":
-        return _make_mhc(case, correctness)
-    if OPERATOR == "mla_decode":
-        return _make_mla(case, correctness)
-    if OPERATOR in ("ck_moe_2stage", "cktile_moe_2stage"):
-        return _prepare_moe(case, correctness)
-    raise KeyError(OPERATOR)
+    ``run_correctness`` checks a separate call, which a kernel can tell apart
+    from the scored one. This re-runs the timed unit against freshly perturbed
+    inputs and checks the buffer it wrote, so work that the scored path skips
+    cannot hide behind a correctness call that took a different branch.
+    """
+    if not timed.bound:
+        raise RuntimeError("benchmark did not expose the timed invocation")
+    _perturb_attention_inputs(inputs)
+    # The output is harness-owned, so poison it directly; a kernel that stops
+    # writing keeps the poison instead of a plausible stale result.
+    inputs["output"].fill_(float("nan"))
+    _assert_attention_close(inputs, timed.rerun())
 
 
 def _run(inputs: dict):
-    return {
-        "unified_attention": _run_attention,
-        "a8w8_blockscale_gemm": _run_gemm,
-        "dynamic_per_tensor_quant": _run_quant,
-        "mhc_fused_post_pre": _run_mhc,
-        "mla_decode": _run_mla,
-        "ck_moe_2stage": _run_moe,
-        "cktile_moe_2stage": _run_moe,
-    }[OPERATOR](inputs)
+    _assert_operator()
+    return _run_attention(inputs)
 
 
 def run_compile() -> None:
@@ -833,7 +349,7 @@ def run_compile() -> None:
         for _, inputs in _attention_correctness_inputs(CASES[0]):
             _run_attention(inputs)
     else:
-        inputs = _make(CASES[0], correctness=True)
+        inputs = _make(CASES[0])
         _run(inputs)
     _torch().cuda.synchronize()
     print(f"{OPERATOR} compile smoke: PASS")
@@ -842,80 +358,29 @@ def run_compile() -> None:
 def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
-        if OPERATOR == "unified_attention":
-            for path, inputs in _attention_correctness_inputs(case):
-                got = _run_attention(inputs)
-                torch.cuda.synchronize()
-                torch.testing.assert_close(
-                    got, _attention_reference(inputs), atol=0.08, rtol=0.08
-                )
-                print("correctness PASS", case["id"], f"path={path}")
-            continue
-
-        inputs = _make(case, correctness=True)
-        got = _run(inputs)
-        torch.cuda.synchronize()
-        if OPERATOR == "a8w8_blockscale_gemm":
-            torch.testing.assert_close(
-                got, _gemm_reference(inputs), atol=0.15, rtol=0.12
-            )
-        elif OPERATOR == "dynamic_per_tensor_quant":
-            expected_scale = (
-                inputs["input"].abs().float().max()
-                / torch.finfo(torch.float8_e4m3fn).max
-            )
-            torch.testing.assert_close(
-                inputs["scale"],
-                expected_scale.reshape(1),
-                atol=1e-5,
-                rtol=2e-2,
-            )
-            torch.testing.assert_close(
-                got.float() * inputs["scale"],
-                inputs["input"].float(),
-                atol=0.25,
-                rtol=0.15,
-            )
-        elif OPERATOR == "mhc_fused_post_pre":
-            for actual, expected in zip(got, _mhc_reference(inputs)):
-                torch.testing.assert_close(
-                    actual, expected, atol=0.08, rtol=0.08
-                )
-        elif OPERATOR == "mla_decode":
-            torch.testing.assert_close(
-                inputs["output"],
-                _mla_reference(inputs),
-                atol=0.08,
-                rtol=0.08,
-            )
-        else:
-            expected = _moe_reference(inputs)
-            cosine_error = 1 - torch.nn.functional.cosine_similarity(
-                got.float().flatten(),
-                expected.float().flatten(),
-                dim=0,
-            )
-            assert torch.isfinite(got).all()
-            assert float(cosine_error) < 0.03, (
-                case["id"],
-                float(cosine_error),
-            )
-        print("correctness PASS", case["id"])
+        for path, inputs in _attention_correctness_inputs(case):
+            got = _run_attention(inputs)
+            torch.cuda.synchronize()
+            _assert_attention_close(inputs, got)
+            print("correctness PASS", case["id"], f"path={path}")
 
 
 def run_performance() -> None:
     rows = []
     for case in CASES:
-        inputs = _make(case, correctness=False)
+        inputs = _make(case)
         _run(inputs)
         _torch().cuda.synchronize()
+        timed = _TimedRun()
         execution_time_ms, bench_meta = _benchmark_cuda_graph_or_events(
             lambda: _run(inputs),
             warmup=3,
             repetition=20,
             target_ms=1.0,
             max_graph_repeats=100,
+            timed_run=timed,
         )
+        _assert_timed_outputs(inputs, timed)
         metadata = {
             **case["params"],
             "model": case["model"],

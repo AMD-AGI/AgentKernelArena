@@ -17,7 +17,7 @@ entirely and no per-run driver authoring can fail.
 How it satisfies the contract without per-kernel reimplementation
 -----------------------------------------------------------------
 Every image_kernel ``scripts/task_runner.py`` in this suite exposes the same
-canonical entry points: ``_configure`` / ``_torch`` / ``_make(case)``
+canonical entry points: ``_configure`` / ``_torch`` / ``_make(case, correctness)``
 / ``_run(inputs)`` / ``run_correctness()`` / ``run_performance()`` (the latter
 writes ``build/performance_report.json`` and times under a CUDA/HIP graph via
 ``_benchmark_cuda_graph_or_events``). This driver REUSES those, so it measures
@@ -134,7 +134,12 @@ def _run_bench(tr) -> int:
 
 def _pick_profile_case(tr) -> dict:
     cases = {c["id"]: c for c in tr.CASES}
-    # Prefer the slowest case from a prior complete performance run.
+    # Profiling is a single-shape probe. When the task pins one representative
+    # case, honour it so the profiled kernel does not drift with timing noise.
+    pinned = getattr(tr, "profile_case", None)
+    if callable(pinned):
+        return pinned()
+    # Otherwise prefer the slowest case from a prior complete performance run.
     rp = _report_path(tr)
     if rp.is_file():
         try:
