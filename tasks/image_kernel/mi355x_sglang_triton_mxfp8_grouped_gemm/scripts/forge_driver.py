@@ -106,11 +106,14 @@ def _run_bench(tr, warmup: int, iters: int) -> int:
         inputs = tr._make(case)
         tr._run_gemms(inputs)  # warm/JIT settle before capture
         torch.cuda.synchronize()
+        timed = tr._TimedRun()
         ms, meta = tr._benchmark_cuda_graph(
             lambda i=inputs: tr._run_gemms(i),
             warmup=max(1, warmup),
             repetition=max(1, iters),
+            timed_run=timed,
         )
+        tr._assert_timed_outputs(inputs, timed)
         if not math.isfinite(ms) or ms <= 0:
             print(f"error: invalid timing for case {case['id']!r}: {ms!r}", file=sys.stderr)
             return 1

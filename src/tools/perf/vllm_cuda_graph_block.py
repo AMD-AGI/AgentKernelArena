@@ -42,8 +42,9 @@ class _TimedRun:
 
     Under CUDA-graph timing the buffers are captured once and every replay
     writes to those same addresses, so ``outputs`` keeps tracking replays. Under
-    event-timing fallback each call allocates fresh buffers, so ``outputs`` is
-    only populated once ``rerun`` has run.
+    event-timing fallback the measured outputs cannot be observed reliably, so a
+    benchmark that requests this collector fails closed instead of validating a
+    separate post-timing invocation.
     """
 
     def __init__(self):
@@ -82,19 +83,12 @@ def _benchmark_cuda_graph_or_events(
 ):
     import torch
 
-    def _bind_direct_call():
-        # Fallback paths allocate fresh outputs per call, so there is nothing to
-        # alias; the caller gets them by re-running the same unit once.
-        if timed_run is None:
-            return
-
-        def _call_once():
-            out = fn()
-            if torch.cuda.is_available():
-                torch.cuda.synchronize()
-            return out
-
-        timed_run._bind(_call_once)
+    def _reject_unobservable_fallback(reason):
+        if timed_run is not None:
+            raise RuntimeError(
+                f"{reason}; timed_run requires an observable CUDA-graph replay "
+                "and cannot validate a separate post-timing invocation"
+            )
 
     # A captured graph whose measured per-iteration time falls below this floor is
     # treated as empty (it recorded no device work) and rejected in favour of
@@ -116,23 +110,23 @@ def _benchmark_cuda_graph_or_events(
     }
 
     if not torch.cuda.is_available():
+        _reject_unobservable_fallback("CUDA is unavailable")
         times = _measure_cuda_event_fallback(fn, repetition)
         metadata.update({
             "benchmark_method": "cpu_timer_fallback",
             "benchmark_effective_repeats": int(repetition),
             "benchmark_fallback_reason": fallback_reason or "cuda_unavailable",
         })
-        _bind_direct_call()
         return sum(times) / len(times), metadata
 
     if not use_cuda_graph:
+        _reject_unobservable_fallback("CUDA-graph timing is disabled")
         times = _measure_cuda_event_fallback(fn, repetition)
         metadata.update({
             "benchmark_method": "cuda_event_fallback",
             "benchmark_effective_repeats": int(repetition),
             "benchmark_fallback_reason": fallback_reason or "cuda_graph_disabled",
         })
-        _bind_direct_call()
         return sum(times) / len(times), metadata
 
     try:
@@ -178,13 +172,13 @@ def _benchmark_cuda_graph_or_events(
 
         graph_mean = sum(retry_times) / len(retry_times)
         if graph_mean < empty_graph_floor_ms:
+            _reject_unobservable_fallback("CUDA graph captured no device work")
             times = _measure_cuda_event_fallback(fn, repetition)
             metadata.update({
                 "benchmark_method": "cuda_event_fallback",
                 "benchmark_effective_repeats": int(repetition),
                 "benchmark_fallback_reason": fallback_reason or "empty_cuda_graph_capture",
             })
-            _bind_direct_call()
             return sum(times) / len(times), metadata
 
         metadata.update({
@@ -214,6 +208,11 @@ def _benchmark_cuda_graph_or_events(
             torch.cuda.synchronize()
         except Exception:
             pass
+        if timed_run is not None:
+            raise RuntimeError(
+                "CUDA-graph capture failed; timed_run cannot validate the "
+                "separate CUDA-event fallback invocation"
+            ) from exc
         for _ in range(min(3, max(1, int(warmup)))):
             fn()
         torch.cuda.synchronize()
@@ -223,5 +222,4 @@ def _benchmark_cuda_graph_or_events(
             "benchmark_effective_repeats": int(repetition),
             "benchmark_fallback_reason": f"cuda_graph_failed: {type(exc).__name__}: {str(exc)[:160]}",
         })
-        _bind_direct_call()
         return sum(times) / len(times), metadata

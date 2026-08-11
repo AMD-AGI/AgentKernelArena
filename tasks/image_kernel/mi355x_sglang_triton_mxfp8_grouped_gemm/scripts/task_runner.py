@@ -78,7 +78,34 @@ def _measure_cuda_event(fn, repetition):
     return times_ms
 
 
-def _benchmark_cuda_graph(fn, warmup=10, repetition=100, target_ms=1.0, max_graph_repeats=200):
+class _TimedRun:
+    def __init__(self):
+        self._rerun = None
+        self.outputs = None
+
+    def _bind(self, rerun, outputs=None):
+        self._rerun = rerun
+        self.outputs = outputs
+
+    @property
+    def bound(self):
+        return self._rerun is not None
+
+    def rerun(self):
+        if self._rerun is None:
+            raise RuntimeError("timed run was never bound")
+        self.outputs = self._rerun()
+        return self.outputs
+
+
+def _benchmark_cuda_graph(
+    fn,
+    warmup=10,
+    repetition=100,
+    target_ms=1.0,
+    max_graph_repeats=200,
+    timed_run=None,
+):
     import torch
 
     for _ in range(max(0, int(warmup))):
@@ -105,8 +132,9 @@ def _benchmark_cuda_graph(fn, warmup=10, repetition=100, target_ms=1.0, max_grap
 
             graph = torch.cuda.CUDAGraph()
             with torch.cuda.graph(graph):
+                captured_outputs = None
                 for _ in range(repeats):
-                    fn()
+                    captured_outputs = fn()
             torch.cuda.synchronize()
 
             times = []
@@ -121,12 +149,26 @@ def _benchmark_cuda_graph(fn, warmup=10, repetition=100, target_ms=1.0, max_grap
         if mean_ms < 1e-5:
             raise RuntimeError("empty_cuda_graph_capture")
         meta.update(benchmark_method="cuda_graph", benchmark_effective_repeats=int(repeats))
+        if timed_run is not None:
+            def _replay_once():
+                stream.wait_stream(torch.cuda.current_stream())
+                with torch.cuda.stream(stream):
+                    graph.replay()
+                torch.cuda.synchronize()
+                return captured_outputs
+
+            timed_run._bind(_replay_once, captured_outputs)
         return mean_ms, meta
     except Exception as exc:
         try:
             torch.cuda.synchronize()
         except Exception:
             pass
+        if timed_run is not None:
+            raise RuntimeError(
+                "CUDA-graph capture failed; timed outputs cannot be validated "
+                "through a separate event-timed invocation"
+            ) from exc
         times = _measure_cuda_event(fn, repetition)
         meta.update(
             benchmark_method="cuda_event_fallback",
@@ -211,8 +253,9 @@ def _run_gemms(inputs: dict):
     """The timed region: the two grouped-GEMM launches of one MoE forward."""
     from sglang.kernels.ops.moe.mxfp8_moe_amd_gfx95 import _grouped_gemm_mxfp8
 
-    _grouped_gemm_mxfp8(**inputs["gemm1_args"])
-    return _grouped_gemm_mxfp8(**inputs["gemm2_args"])
+    gemm1 = _grouped_gemm_mxfp8(**inputs["gemm1_args"])
+    gemm2 = _grouped_gemm_mxfp8(**inputs["gemm2_args"])
+    return gemm1, gemm2
 
 
 def _fused_output(inputs: dict):
@@ -233,6 +276,65 @@ def _fused_output(inputs: dict):
     g2 = _grouped_gemm_mxfp8(**args)  # [M, H] fp32, top-k weighted
     T, top_k, H = inputs["T"], inputs["top_k"], inputs["H"]
     return g2.view(T, top_k, H).sum(dim=1).to(torch.bfloat16)
+
+
+def _timed_references(inputs: dict):
+    """Independent references for the two outputs produced inside the timed region."""
+    torch = _torch()
+    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
+
+    x = dequant_mxfp8_to_bf16(inputs["a_q"], inputs["a_s"]).float()
+    act = dequant_mxfp8_to_bf16(
+        inputs["gemm2_args"]["a_q"],
+        inputs["gemm2_args"]["a_scale"],
+    ).float()
+    w13 = dequant_mxfp8_to_bf16(inputs["w13_fp8"], inputs["w13_scale"])
+    w2 = dequant_mxfp8_to_bf16(inputs["w2_fp8"], inputs["w2_scale"])
+
+    topk_ids = inputs["topk_ids"].long().reshape(-1)
+    topk_weights = inputs["topk_weights"].float().reshape(-1)
+    top_k = inputs["top_k"]
+    flat_token = torch.arange(
+        inputs["T"], device=x.device
+    ).unsqueeze(1).expand(inputs["T"], top_k).reshape(-1)
+
+    gemm1 = torch.empty(
+        topk_ids.numel(),
+        2 * inputs["I"],
+        device=x.device,
+        dtype=torch.bfloat16,
+    )
+    gemm2 = torch.empty(
+        topk_ids.numel(),
+        inputs["H"],
+        device=x.device,
+        dtype=torch.float32,
+    )
+    for expert in range(w13.shape[0]):
+        slots = torch.where(topk_ids == expert)[0]
+        if slots.numel() == 0:
+            continue
+        rows = flat_token[slots]
+        gemm1[slots] = (x[rows] @ w13[expert].float().T).to(torch.bfloat16)
+        gemm2[slots] = (
+            act[slots] @ w2[expert].float().T
+        ) * topk_weights[slots].unsqueeze(-1)
+    return gemm1, gemm2
+
+
+def _assert_timed_outputs(inputs: dict, timed: _TimedRun) -> None:
+    if not timed.bound or not isinstance(timed.outputs, tuple) or len(timed.outputs) != 2:
+        raise RuntimeError("benchmark did not expose both timed GEMM outputs")
+
+    for output in timed.outputs:
+        output.fill_(float("nan"))
+    got1, got2 = timed.rerun()
+    ref1, ref2 = _timed_references(inputs)
+    tol = inputs["cfg"]["params"].get("max_relerr", 0.08)
+    err1 = _relerr(got1, ref1)
+    err2 = _relerr(got2, ref2)
+    assert err1 < tol, (inputs["cfg"]["id"], "timed_gemm1", err1, tol)
+    assert err2 < tol, (inputs["cfg"]["id"], "timed_gemm2", err2, tol)
 
 
 def _reference(inputs: dict):
@@ -325,19 +427,18 @@ def run_correctness() -> None:
 
 
 def run_performance() -> None:
-    # Sibling tasks additionally validate the timed invocation itself. That is
-    # not done here yet: `_make` freezes GEMM2's activation from a setup-time
-    # GEMM1, so inside the timed `_run_gemms` the GEMM2 result does not depend on
-    # GEMM1 at all, and the returned value cannot witness whether GEMM1 ran.
-    # Closing this needs `_run_gemms` to surface both results, which should land
-    # with a run on an sglang build that can execute the operator.
     torch = _torch()
     rows = []
     for case in CASES:
         inputs = _make(case)
         _run_gemms(inputs)
         torch.cuda.synchronize()
-        ms, bmeta = _benchmark_cuda_graph(lambda: _run_gemms(inputs))
+        timed = _TimedRun()
+        ms, bmeta = _benchmark_cuda_graph(
+            lambda: _run_gemms(inputs),
+            timed_run=timed,
+        )
+        _assert_timed_outputs(inputs, timed)
         row = {
             "test_case_id": case["id"],
             "execution_time_ms": ms,
