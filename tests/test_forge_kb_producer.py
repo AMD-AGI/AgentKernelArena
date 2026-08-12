@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+from agents.forge.drivers import arena_task_adapter
 from agents.forge.launch_agent import (
     _build_forge_command,
     _declared_editable_sources,
@@ -21,10 +22,9 @@ from agents.forge.launch_agent import (
     _resolve_all_source_files,
     _resolve_fellow,
     _resolve_framework,
+    _resolve_gpu_type,
     _resolve_kernel_kind,
 )
-from agents.forge.drivers import arena_task_adapter
-
 
 CK_TASK_NAMES = (
     "mi355x_vllm_ck_a8w8_blockscale_gemm",
@@ -112,6 +112,7 @@ def _command(tmp_path: Path, **overrides) -> list[str]:
             "timeout_seconds": 7200,
         },
         "gpu_arch": "gfx950",
+        "gpu_type": "mi355x",
         "fellow": "triton-fellow",
         "task_type": "image_kernel",
         "source_files": [tmp_path / "wrapper.py", tmp_path / "kernel.py"],
@@ -126,6 +127,8 @@ def _command(tmp_path: Path, **overrides) -> list[str]:
 def test_supplied_kernel_identity_fields_are_forwarded(tmp_path):
     argv = _command(tmp_path)
 
+    assert _value(argv, "--gpu-target") == "gfx950"
+    assert _value(argv, "--gpu-type") == "mi355x"
     assert _value(argv, "--operator-name") == "unified_attention"
     assert _value(argv, "--framework") == "aiter"
     assert _value(argv, "--target-functions") == "dispatch,_device_kernel"
@@ -261,6 +264,13 @@ def test_forge_budget_reserves_internal_shutdown_margin():
     assert _forge_max_hours({"timeout_seconds": 600}) == 1.0
 
 
+def test_gpu_type_uses_normalized_arena_hardware_model():
+    assert _resolve_gpu_type({"target_gpu_model": "MI355X"}) == "mi355x"
+    assert _resolve_gpu_type({"target_gpu_model": "mi300"}) == "mi300"
+    with pytest.raises(ValueError, match="target_gpu_model"):
+        _resolve_gpu_type({"target_gpu_model": ""})
+
+
 @pytest.mark.parametrize(
     ("task_name", "logical_operator", "kernel_kind", "source_owner"),
     [
@@ -303,7 +313,7 @@ def test_forge_budget_reserves_internal_shutdown_margin():
         ),
         (
             "mi355x_vllm_triton_paged_attention_2d",
-            "unified_attention_with_output",
+            "paged_attention_2d",
             "triton",
             "vllm",
         ),

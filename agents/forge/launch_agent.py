@@ -84,6 +84,17 @@ def _resolve_gpu_arch(eval_config: dict[str, Any]) -> str:
     )
 
 
+def _resolve_gpu_type(eval_config: dict[str, Any]) -> str:
+    """Return Arena's hardware model in Forge's canonical KB token form."""
+    raw = str(eval_config.get("target_gpu_model") or "").strip().lower()
+    if not raw or not re.fullmatch(r"[a-z0-9][a-z0-9._+-]*", raw):
+        raise ValueError(
+            "target_gpu_model must be a non-empty hardware model token "
+            f"for Forge KB identity; got {eval_config.get('target_gpu_model')!r}"
+        )
+    return raw
+
+
 def _process_group_exists(pgid: int) -> bool:
     """Return whether a process group still has signalable members."""
     try:
@@ -549,6 +560,7 @@ def _build_forge_command(
     result_json: Path,
     agent_config: dict[str, Any],
     gpu_arch: str,
+    gpu_type: str,
     fellow: str,
     task_type: str,
     source_files: list[Path],
@@ -578,6 +590,8 @@ def _build_forge_command(
         str(_forge_max_hours(agent_config)),
         "--gpu-target",
         gpu_arch,
+        "--gpu-type",
+        gpu_type,
         "--fellow",
         fellow,
         "--git-branch",
@@ -786,8 +800,8 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     task_type = str(task_config.get("task_type") or "").strip()
 
     gpu_arch = _resolve_gpu_arch(eval_config)
+    gpu_type = _resolve_gpu_type(eval_config)
     fellow = _resolve_fellow(task_config, agent_config)
-    backend = fellow.split("-")[0]
     logical_operator = _logical_operator(task_config)
     kernel_kind = _resolve_kernel_kind(task_config)
     framework = _resolve_framework(task_config)
@@ -846,6 +860,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         result_json=result_json,
         agent_config=agent_config,
         gpu_arch=gpu_arch,
+        gpu_type=gpu_type,
         fellow=fellow,
         task_type=task_type,
         source_files=all_source_files,
@@ -862,6 +877,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logger.info(f"  kernel:      {kernel_file}")
     logger.info(f"  driver:      {driver_dest}")
     logger.info(f"  gpu target:  {gpu_arch}")
+    logger.info(f"  gpu type:    {gpu_type}")
     logger.info(f"  model:       {model}")
     logger.info(f"  fellow:      {fellow} (resolved from task configuration)")
     logger.info(f"  operator:    {logical_operator or '<forge inference>'}")
