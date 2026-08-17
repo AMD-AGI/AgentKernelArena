@@ -1,0 +1,173 @@
+{
+  "source_day": "2026-08-14",
+  "date_field": "session_started_at",
+  "platform": "MI355X/gfx950",
+  "framework": "sglang 0.5.15.post1.dev20260723+g6c9fd0adc5 (ROCm 7.2.0, aiter 0.1.17.dev352+gdcd204ea5)",
+  "model": "Kimi-K3",
+  "session_id": "20260814T191522Z",
+  "operator": "flydsl_hgemm_small_m",
+  "task_name": "mi355x-kimi-k3-flydsl-hgemm-small-m-20260814",
+  "language": "flydsl (aiter FlyDSL MLIR builder -> MFMA assembly)",
+  "selection": "hgemm_bf16_16x64x64x7_SPK2_W1x2x1_BLDS1_TN_AS1_0 -- 4.55% of end-to-end GPU time, decode-only, 162 launches per decode step at 12.3 us each (1.99 ms of the 25.557 ms step, 7.79% of decode). It is the largest attackable non-attention, non-communication kernel in the session: the bigger GEMM entries (Cijk_* MT256x256x64 etc., ~15% E2E) are hipBLASLt Tensile code objects with no source in the image.",
+  "phase_scope": "DECODE ONLY, and that is a dispatch property rather than a gap. In prefill the very same two projections run at M = 16384 and the aiter A16W16 dispatcher sends them to hipBLASLt (trace: Cijk_Alik_Bljk_BBS_..._MT256x256x64, 69 + 93 calls/step). At decode M they fall to the FlyDSL small-M split-K path. So the FlyDSL kernel this task targets has zero prefill launches; the prefill counterpart is not editable source and is already at 64-66% of bf16 peak. Only shapes whose tuned-CSV row selects libtype=flydsl are scored; see provenance.excluded_shape_note for the one combination that was dropped.",
+  "provenance": {
+    "session_root": "/shared_nfs/hyperloom-claw/Kimi-K3/20260814T191522Z",
+    "trace": "geak/e2e_cycle0/profile/round_0/profile/1786763352.027878-TP-{0..7}.trace.json.gz",
+    "analysis": "/shared_nfs/jqliu/new-image-hot-kernels/hot-kernels-analysis/kimi-k3-hot-kernels.md",
+    "e2e_weights": {
+      "prefill": 0.416,
+      "decode": 0.584
+    },
+    "measured_decode_tp0": {
+      "step_total_ms": 25.557,
+      "hgemm_bf16_16x64x64x7_SPK2_W1x2x1_BLDS1_TN_AS1_0": {
+        "calls_per_step": 162,
+        "total_ms": 1.99,
+        "avg_us": 12.3,
+        "pct_of_step": 7.79,
+        "e2e_pct": 4.55
+      },
+      "hgemm_bf16_16x64x64x7_SPK7_W1x2x1_BLDS1_TN_AS1_0": {
+        "calls_per_step": 24,
+        "e2e_pct": 0.51
+      },
+      "hgemm_bf16_16x64x64x8_SPK7_W1x1x2_BLDS1_TN_AS1_0": {
+        "calls_per_step": 24,
+        "e2e_pct": 0.46
+      },
+      "cross_rank_check": "1.96-2.00 ms across all 8 ranks -- pure compute, no skew."
+    },
+    "kernel_name_decode": {
+      "generator": "aiter/aiter/ops/flydsl/kernels/splitk_hgemm.py:249 -- KERNEL_NAME = f\"hgemm_{dtype}_{BLOCK_M}x{BLOCK_N}x{BLOCK_K}x{STAGES}_SPK{SPLIT_K}_W{BLOCK_M_WARPS}x{BLOCK_N_WARPS}x{BLOCK_K_WARPS}_BLDS{int(B_TO_LDS)}_TN\" (the _SPK suffix also appears at small_m_hgemm.py:155)",
+      "dtype": "bf16",
+      "tile_m": 16,
+      "tile_n": 64,
+      "tile_k": 64,
+      "stages": 7,
+      "split_k": 2,
+      "block_m_warps": 1,
+      "block_n_warps": 2,
+      "block_k_warps": 1,
+      "b_to_lds": true,
+      "async_copy": true,
+      "layout": "TN",
+      "note": "tile_m=16 is the bs=8 decode batch padded to the smallest FlyDSL M tile."
+    },
+    "shape_evidence": "Two independent artifacts agree. (1) Trace arithmetic: the kernel fires 162x per decode step, and 162 = 69 + 93 -- exactly the per-step call counts the prefill GEMM census (trace-read aten::mm Input Dims) shows for [T,7168]x[7168,6144] (69 = the KDA layer count, q/k/v/gate = 4 x 12 heads x 128) and [T,1536]x[1536,7168] (93 = o_proj over KDA 69 + MLA 24, both with local output dim 12 x 128 = 1536). (2) The tuned config the running stack actually consults, aiter/configs/model_configs/kimik3_bf16_tuned_gemm.csv, contains rows gfx950/cu_num=256/M=8 for BOTH (N=6144,K=7168) and (N=7168,K=1536), each selecting libtype=flydsl with kernelName flydsl_gemm7_abf16_wbf16_bf16_t16x64x64_split_k2_block_m_warp1_block_n_warp2_block_k_warp1_async_copyTrue_b_to_ldsTrue_b_preshuffleFalse_c_to_ldsFalse_gfx950 -- which decodes to exactly hgemm_bf16_16x64x64x7_SPK2_W1x2x1_BLDS1_TN_AS1_0 (the gemm<N> suffix is the stage count). The CSV's full distinct (N,K) set also reproduces the trace's projection census: 6144/7168 (KDA qkv), 7168/1536 (o_proj), 7168/3584 (routed_expert_up_proj), 3072/512 (MLA kv_b_proj), 7168/768 (shared-expert down_proj), 2304/1536 (MLA q_b_proj = 12 x (128 nope + 64 rope)), 2112/7168 (fused q_a + kv_a + rope = 1536 + 512 + 64).",
+    "dispatch_note": "The harness calls the real dispatcher aiter.tuned_gemm.tgemm.mm, which resolves the backend and config through get_GEMM_A16W16_config(M,N,K,...) against kimik3_bf16_tuned_gemm.csv. The lookup is therefore live and inside the edit surface, and per-M dispatch is real session behaviour that must be preserved: at M=8 both shape families select the session's exact kernel (flydsl_gemm7_..._t16x64x64_split_k2_block_m_warp1_block_n_warp2_...), while at M=64 the o_proj family moves to flydsl_gemm4_..._t32x64x128_split_k1_block_m_warp2_.... Every case records the resolved libtype/kernelName in the performance report AND asserts it equals params.require_libtype ('flydsl') in _prepare, so routing around FlyDSL fails the run instead of inflating the score.",
+    "batch_derivation": "The trace's decode annotation is step[DECODE bs=8] -- profiling started at warmup 0s and captured the ramp. The run's steady-state decode batch is bs=64 (conc=64, max_running_requests=64; median_itl_ms 46.73 vs 25.56 ms at bs=8; 192 requests / 1024 OSL = 3 waves of 64). Both are scored, and both have tuned CSV rows.",
+    "excluded_shape_note": "(M=64, N=6144, K=7168) -- the KDA input projection at the steady-state decode batch -- is DELIBERATELY NOT a case. Verified on gfx950/cu_num=256: that row of kimik3_bf16_tuned_gemm.csv selects libtype=opus (opus_gemm_flatmm_splitk_256x64x96x64_2x1_16x16x32_0x0x0_wgpc, splitK=4), not FlyDSL, so scoring it here would benchmark module_deepgemm_opus -- outside this task's edit surface -- and would also drag a large opus instance build into every run. Reading the full CSV column for this shape: M=1..32 and M=128..256 are flydsl, M=64 is opus, M=512..1024 fall back to torch. The trace-recorded batch (bs=8) is flydsl, which is what this task targets."
+  },
+  "model_config": {
+    "source": "/shared_nfs/hyperloom/models/Kimi-K3/config.json (text_config) + kimik3_bf16_tuned_gemm.csv",
+    "hidden_size": 7168,
+    "num_attention_heads": 96,
+    "tensor_parallel_size": 8,
+    "local_heads": 12,
+    "kda_head_dim": 128,
+    "kda_layers": 69,
+    "mla_layers": 24,
+    "q_lora_rank": 1536,
+    "kv_lora_rank": 512,
+    "qk_nope_head_dim": 128,
+    "qk_rope_head_dim": 64,
+    "cu_num": 256,
+    "notes": "KDA input projection N = 4 x (12 heads x 128) = 6144 (q, k, v and the full-rank gate). o_proj K = 12 x 128 = 1536 for both KDA and MLA, which is why its call count is 69 + 24 = 93."
+  },
+  "cases": [
+    {
+      "id": "hgemm-decode-bs8-kdaqkv-n6144k7168",
+      "phase": "decode",
+      "model": "Kimi-K3",
+      "kernel_ids": [
+        "hgemm_bf16_16x64x64x7_SPK2_W1x2x1_BLDS1_TN_AS1_0"
+      ],
+      "gpu_pct_e2e": 4.55,
+      "exact_shape_source": "TRACE-MEASURED batch (step[DECODE bs=8]) x the KDA input projection; the (M=8, N=6144, K=7168) row exists in kimik3_bf16_tuned_gemm.csv and selects the session's exact kernel",
+      "trace_input_shapes": [
+        "a (8, 7168) bf16",
+        "b (6144, 7168) bf16   [N, K], TN layout",
+        "out (8, 6144) bf16"
+      ],
+      "expected_kernel_name": "flydsl_gemm7_abf16_wbf16_bf16_t16x64x64_split_k2_block_m_warp1_block_n_warp2_block_k_warp1_async_copyTrue_b_to_ldsTrue_b_preshuffleFalse_c_to_ldsFalse_gfx950",
+      "calls_per_decode_step": 69,
+      "params": {
+        "M": 8,
+        "N": 6144,
+        "K": 7168,
+        "dtype": "bfloat16",
+        "bias": false,
+        "min_cosine": 0.9995,
+        "max_rel_err": 0.02,
+        "require_libtype": "flydsl"
+      },
+      "benchmark": {
+        "warmup": 5,
+        "repetition": 50,
+        "target_ms": 1.0,
+        "max_graph_repeats": 400
+      },
+      "seed": 6141
+    },
+    {
+      "id": "hgemm-decode-bs8-oproj-n7168k1536",
+      "phase": "decode",
+      "model": "Kimi-K3",
+      "kernel_ids": [
+        "hgemm_bf16_16x64x64x7_SPK2_W1x2x1_BLDS1_TN_AS1_0"
+      ],
+      "exact_shape_source": "TRACE-MEASURED batch (bs=8) x o_proj (KDA 69 + MLA 24 = 93 calls/step); the (M=8, N=7168, K=1536) row exists in the tuned CSV and selects the same kernel",
+      "trace_input_shapes": [
+        "a (8, 1536) bf16",
+        "b (7168, 1536) bf16   [N, K], TN layout",
+        "out (8, 7168) bf16"
+      ],
+      "expected_kernel_name": "flydsl_gemm7_abf16_wbf16_bf16_t16x64x64_split_k2_block_m_warp1_block_n_warp2_block_k_warp1_async_copyTrue_b_to_ldsTrue_b_preshuffleFalse_c_to_ldsFalse_gfx950",
+      "calls_per_decode_step": 93,
+      "params": {
+        "M": 8,
+        "N": 7168,
+        "K": 1536,
+        "dtype": "bfloat16",
+        "bias": false,
+        "min_cosine": 0.9995,
+        "max_rel_err": 0.02,
+        "require_libtype": "flydsl"
+      },
+      "benchmark": {
+        "warmup": 5,
+        "repetition": 50,
+        "target_ms": 1.0,
+        "max_graph_repeats": 400
+      },
+      "seed": 6142
+    },
+    {
+      "id": "hgemm-decode-bs64-oproj-n7168k1536",
+      "phase": "decode",
+      "model": "Kimi-K3",
+      "kernel_ids": [
+        "flydsl small-M hgemm (M=64 bucket)"
+      ],
+      "exact_shape_source": "SESSION STEADY STATE -- bs=64 x o_proj; the (M=64, N=7168, K=1536) row exists in the tuned CSV and selects a DIFFERENT config (t32x64x128 split_k1 block_m_warp2), which is real per-M dispatch behaviour",
+      "expected_kernel_name": "flydsl_gemm4_abf16_wbf16_bf16_t32x64x128_split_k1_block_m_warp2_block_n_warp2_block_k_warp1_async_copyTrue_b_to_ldsTrue_b_preshuffleFalse_c_to_ldsFalse_gfx950",
+      "params": {
+        "M": 64,
+        "N": 7168,
+        "K": 1536,
+        "dtype": "bfloat16",
+        "bias": false,
+        "min_cosine": 0.9995,
+        "max_rel_err": 0.02,
+        "require_libtype": "flydsl"
+      },
+      "benchmark": {
+        "warmup": 5,
+        "repetition": 50,
+        "target_ms": 1.0,
+        "max_graph_repeats": 300
+      },
+      "seed": 6144
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "source_day": "2026-08-14",
+  "date_field": "session_started_at",
+  "platform": "MI355X/gfx950",
+  "framework": "sglang 0.5.17 (ROCm 7.2.0) + aiter d9e5ef7ce",
+  "base_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+  "model": "GLM-5.2-MXFP4",
+  "session_id": "GLM-5.2-MXFP4_20260814T163244Z_06452039",
+  "session_root": "/shared_nfs/hyperloom-claw/GLM-5.2-MXFP4/20260814T163244Z",
+  "run": "runs/roofline/0c88d5c74d7d4031b1ed2f17bc8677b1/benchmark_sglang_20260814_190004",
+  "operator": "mxfp4_moe_2stage",
+  "timed_callable": "aiter.fused_moe -- one MoE layer. Profiled on the target part: 7 device kernels per call (2 FlyDSL grouped GEMMs + FlyDSL moe_reduction + 2 HIP mx-quant/sort + 2 HIP opus_moe_sorting phases).",
+  "task_name": "mi355x-glm52-flydsl-mxfp4-moe-2stage-20260814",
+  "selection": "Second-highest-E2E operator family of the GLM-5.2 session. The timed callable is the whole aiter fused_moe, so it covers the two FlyDSL grouped GEMMs (decode 15.08% + 7.86%) plus the five aux kernels fused_moe itself launches (moe_reduction, 2x mx-quant/sort, 2x opus sorting; 7.92% combined) -- 30.86% of decode GPU time, E2E ~19%.",
+  "e2e_attribution": {
+    "wall_clock_s": 719.61,
+    "prefill_pct": 52.9,
+    "decode_pct": 43.9,
+    "prefill_pct_of_prefill_gpu": 9.64,
+    "e2e_pct": 19.1,
+    "method": "decode: 8-rank torch trace, 128 x step[DECODE bs=64], kernel-sum 3283.7 ms/rank. prefill: aiter's own GLM-5 tuning table (configs/model_configs/glm5_fp4_tuned_fmoe.csv, TP=8 row inter_dim=256) at token=16384 gives us1=367.41 / us2=894.91 per layer -> 94.7 ms over 75 layers against the 982.0 ms measured prefill forward. Replaying fused_moe at the same shape on this part gives 1318 us/layer = 98.9 ms, i.e. within 4.4% of the table. In-scope decode share is 30.86%, not the full 33.49% MoE section: grouped_topk, _fused_append_shared_experts and the router gate GEMM sit upstream of fused_moe.",
+    "decode_pct_in_scope": 30.86
+  },
+  "headroom": {
+    "prefill_stage2_regression": "In glm5_fp4_tuned_fmoe.csv (TP=8 row) stage-2 costs 894.91 us at token=16384 versus stage-1's 367.41 us, despite having HALF the FLOPs. It scales superlinearly: 239 us @4096, 452 us @8192, 895 us @16384. The tuner's pick at large M is flydsl_moe2_afp4_wfp4_bf16_t64x256x256_reduce_bnt2_sbm12, and that reduce variant is the regression. This is invisible from the decode trace, which is why no prior pass found it.",
+    "decode_efficiency": "At the decode shape M = 64 x 9 = 576 rows spread over 257 experts -- about 2 rows per expert. Stage-1 measures 70 TFLOP/s versus 1102 TFLOP/s at the prefill shape: a 16x gap.",
+    "decode_aux_share": "At T=64 the whole fused_moe measures ~290 us eager while the two GEMMs account for ~78 us of it. The sort/quant/reduce family and launch overhead dominate the decode regime; there are two separate sorting launches (P0_v2, P23) and two separate MX-quant launches (stage-1 and stage-2 inputs)."
+  },
+  "provenance": {
+    "model_config": "/shared_nfs/hyperloom/models/GLM-5.2-MXFP4/config.json",
+    "entry": "aiter/fused_moe.py:441 fused_moe",
+    "compute_core": "aiter/ops/flydsl/kernels/mixed_moe_gemm_2stage.py:313 (mfma_moe1_silu_mul_a{a}_w{b}_*) and :7432 (mfma_moe2_a{a}_w{b}_*_cshuffle)",
+    "call_chain": "GlmMoeDsaForCausalLM -> Quark w4a4 MXFP4 MoE (srt/layers/quantization/quark/schemes/quark_w4a4_mxfp4_moe.py) -> AiterRunnerCore (srt/layers/moe/moe_runner/aiter.py:196) -> aiter.fused_moe",
+    "weight_prep": "quark_w4a4_mxfp4_moe.py:562-597 process_weights_after_loading -- e8m0_shuffle on both scales (reshaped to 2D and back), shuffle_weight(w, (16,16)) on both packed weights. Reproduced verbatim in the harness.",
+    "quant_scheme": "afp4_wfp4: BOTH operands are MXFP4. Weights are pre-quantized (quark checkpoint, group_size=32, e8m0 scales); the activation is dynamically quantized inside fused_moe by fused_mx_quant_moe_sort_kernel. This is NOT the a16w4 path used by the Kimi-K3 task.",
+    "activation": "ActivationType.Silu (GLM-5.2 hidden_act=silu). No SiTUv2, no swiglu_limit, no gate_mode override -- the sglang aiter runner only sets those for situ / swiglu_limit>0 models.",
+    "doweight_stage1": false,
+    "verified_shapes": "Building the weights with aiter's own dynamic_mxfp4_quant reproduces the trace-recorded dims byte for byte: w1 [257,512,3072] float4_e2m1fn_x2, w1_scale [257,512,192] float8_e8m0fnu, w2 [257,6144,128] float4_e2m1fn_x2, w2_scale [257,6144,8] float8_e8m0fnu."
+  },
+  "moe_config": {
+    "model_dim": 6144,
+    "inter_dim": 256,
+    "inter_dim_full": 2048,
+    "tp_size": 8,
+    "n_routed_experts": 256,
+    "n_shared_experts": 1,
+    "experts": 257,
+    "num_experts_per_tok": 8,
+    "topk": 9,
+    "shared_expert_id": 256,
+    "routed_scaling_factor": 2.5,
+    "norm_topk_prob": true,
+    "scoring_func": "sigmoid",
+    "topk_method": "noaux_tc",
+    "activation": "silu",
+    "quant_type": "QuantType.per_1x32",
+    "group_size": 32,
+    "weight_dtype": "torch.float4_e2m1fn_x2",
+    "scale_dtype": "torch.float8_e8m0fnu",
+    "act_dtype": "torch.bfloat16",
+    "out_dtype": "torch.bfloat16",
+    "moe_layers": 75,
+    "dense_layers": 3
+  },
+  "cases": [
+    {
+      "id": "decode-t64",
+      "regime": "decode",
+      "gpu_pct": 33.49,
+      "trace_input_shapes": "x[64,6144] bf16 / w1[257,512,3072] fp4x2 / w2[257,6144,128] fp4x2 / w1_scale[257,512,192] e8m0 / w2_scale[257,6144,8] e8m0 / topk_weight[64,9] fp32 / topk_ids[64,9] int32",
+      "measured_session_us": 78.5,
+      "notes": "bs=64 decode CUDA-graph step; M_routed = 64 x 9 = 576. measured_session_us is the two GEMMs only (3.87 + 2.02 ms per 128 steps over 75 layers); the aux family adds another ~12.5% of decode GPU time on top.",
+      "params": {
+        "tokens": 64,
+        "seed": 29,
+        "max_relerr": 0.01
+      }
+    },
+    {
+      "id": "prefill-t16384",
+      "regime": "prefill",
+      "gpu_pct": 9.64,
+      "trace_input_shapes": "x[16384,6144] bf16 / weights as above / topk_weight[16384,9] fp32 / topk_ids[16384,9] int32",
+      "measured_table_us": 1262.3,
+      "notes": "chunked_prefill_size = max_prefill_tokens = 16384. M_routed = 147,456. measured_table_us = us1 367.41 + us2 894.91 from glm5_fp4_tuned_fmoe.csv at token=16384.",
+      "params": {
+        "tokens": 16384,
+        "seed": 31,
+        "max_relerr": 0.01
+      }
+    },
+    {
+      "id": "prefill-t8192",
+      "regime": "prefill",
+      "gpu_pct": 9.64,
+      "trace_input_shapes": "x[8192,6144] bf16 / weights as above / topk_weight[8192,9] fp32 / topk_ids[8192,9] int32",
+      "measured_table_us": 675.3,
+      "notes": "The 8192-token prefill bucket (23 of 399 in-window batches). M_routed = 73,728.",
+      "params": {
+        "tokens": 8192,
+        "seed": 37,
+        "max_relerr": 0.01
+      }
+    }
+  ],
+  "tolerance_note": "max_relerr is the MEAN relative error against aiter's own torch_moe_stage1/stage2 reference driven at the same MXFP4 contract. Measured 0.0016 at decode-t64 on the session image, so 0.01 is ~6x headroom. Using fp4_utils.dynamic_mxfp4_quant instead of aiter.get_torch_quant(per_1x32) for the activations pushes this to 0.15 -- the two quantizers round the e8m0 block scale differently. Do not swap them.",
+  "kernels_inside_timed_region": {
+    "flydsl": {
+      "mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32": 15.08,
+      "mfma_moe2_afp4_wfp4_bf16_cshuffle_t32x128x256_vscale_fix3_fp4opt_v1_persist_cu256_acc0": 7.86,
+      "moe_reduction_kernel_plain_bf16_topk9_md6144": 1.29
+    },
+    "hip_cpp": {
+      "fused_mx_quant_moe_sort_kernel<bf16,fp4_t,256,32>": 2.32,
+      "fused_mx_quant_moe_sort_kernel<bf16,fp4_t,64,8>": 1.79,
+      "opus_moe_sorting_entry<P23>": 1.3,
+      "opus_moe_sorting_entry<P0_v2>": 1.22
+    },
+    "decode_pct_total": 30.86,
+    "note": "Percentages are share of decode GPU time in the scored run."
+  },
+  "kernels_outside_timed_region": {
+    "grouped_topk_kernel": 1.41,
+    "_fused_append_shared_experts_kernel": 1.22,
+    "hgemm_bf16_32x64x128x5_SPK8 (router gate 6144->256)": 1.92,
+    "note": "These run in sglang's select_experts path BEFORE fused_moe, so they are not in the timed region. The harness synthesizes topk_ids / topk_weight directly, matching their output structure (8 routed experts + shared expert 256 in column 8)."
+  }
+}

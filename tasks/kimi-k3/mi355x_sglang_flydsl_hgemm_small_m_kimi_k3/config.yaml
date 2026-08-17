@@ -1,0 +1,104 @@
+task_type: image_kernel
+image_repo_path: /sgl-workspace/aiter
+repo_subdir: aiter
+image_repo_exclude:
+  - __pycache__
+  - aiter/jit/build
+  - aiter/jit/flydsl_cache
+# The compute core is a FlyDSL MLIR builder; 'flydsl' must be one of the keys under
+# `knowledge` in src/prompts/cheatsheet/default_cheatsheet.yaml (flydsl/hip/triton),
+# which is also forge's fellow set.
+repository_language: flydsl
+source_file_path:
+  - aiter/ops/flydsl/kernels/splitk_hgemm.py
+  - aiter/ops/flydsl/kernels/small_m_hgemm.py
+  - aiter/ops/flydsl/kernels/hgemm_dispatch.py
+editable_sources:
+  - aiter/configs/model_configs/kimik3_bf16_tuned_gemm.csv
+  - aiter/tuned_gemm.py
+  - aiter/ops/flydsl/gemm_kernels.py
+target_kernel_functions:
+  - flydsl_hgemm
+  - flydsl_gemm
+  - compile_flydsl_hgemm_kernel
+kernel_identity:
+  logical_operator: flydsl_hgemm_small_m
+  kernel_kind: flydsl
+  source_owner: aiter
+  workload:
+    source: session_cases.json
+    primary_case: hgemm-decode-bs8-oproj-n7168k1536
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+compile_timeout: 3600
+correctness_timeout: 1800
+performance_timeout: 3600
+task_result_template: null
+platform_support:
+  required_arch: gfx950
+  status: active
+  skip_reason: null
+prompt:
+  source_code: null
+  instructions: >-
+    Optimize the Kimi-K3 decode-side FlyDSL small-M split-K HGEMM on MI355X/gfx950.
+    Target kernel: hgemm_bf16_16x64x64x7_SPK2_W1x2x1_BLDS1_TN_AS1_0 -- 4.55% of
+    end-to-end GPU time in Hyperloom session 20260814T191522Z, decode-only, 162
+    launches per decode step at 12.3 us each (1.99 ms of the 25.557 ms step, 7.79%
+    of decode). It is the largest attackable non-attention, non-communication
+    kernel in the session: the bigger GEMM entries (Cijk_* MT256x256x64 and
+    friends, ~15% E2E) are hipBLASLt Tensile code objects with no source in the
+    image, and they already run at 62-65% of bf16 peak.
+
+    The kernel symbol decodes directly from the generator f-string at
+    ops/flydsl/kernels/splitk_hgemm.py:249: bf16, tile 16x64x64, stages 7,
+    split_k 2, warps 1x2x1, b_to_lds on, async_copy on, TN layout. tile_m=16 is the
+    bs=8 decode batch padded to the smallest FlyDSL M tile -- i.e. HALF the M tile
+    is wasted at the trace-recorded batch, and split_k=2 exists purely to find
+    parallelism a 16-row problem cannot supply on its own.
+
+    Which GEMMs these are. 162 launches/step = 69 + 93, exactly the per-step counts
+    the prefill GEMM census (trace-read aten::mm dims) shows for
+    [T,7168]x[7168,6144] (69 = the KDA layer count; N = 4 x 12 heads x 128 for
+    q/k/v/gate) and [T,1536]x[1536,7168] (93 = o_proj over KDA 69 + MLA 24, both
+    with local output dim 12 x 128 = 1536). Independently, the tuned table the
+    running stack consults -- aiter/configs/model_configs/kimik3_bf16_tuned_gemm.csv
+    -- has gfx950/cu_num=256/M=8 rows for both (N=6144,K=7168) and (N=7168,K=1536),
+    each selecting libtype=flydsl with
+    flydsl_gemm7_..._t16x64x64_split_k2_block_m_warp1_block_n_warp2_..., which is
+    precisely the session's kernel (the gemm<N> suffix is the stage count).
+
+    Entry point is the REAL dispatcher, aiter.tuned_gemm.tgemm.mm, so the config
+    lookup in that CSV is live and inside your edit surface. Per-M dispatch is part
+    of the contract and must be preserved rather than collapsed to one config: at
+    M=8 the CSV picks t16x64x64/split_k2, at M=64 it picks a different FlyDSL
+    config (t32x64x128/split_k1/block_m_warp2 for N=7168,K=1536). The harness
+    records the resolved libtype and kernelName for every case, so silently falling
+    back to hipBLASLt or triton will be visible in the report -- do not do it, the
+    task is to make the FlyDSL path faster, not to route around it.
+
+    Scored shapes: M in {8, 64} x {(N=6144, K=7168), (N=7168, K=1536)} -- the
+    trace-recorded ramp batch and the steady-state batch (conc=64,
+    max_running_requests=64) against both projection families. All four have rows in
+    the tuned CSV. Activations are [M, K] bf16, weights [N, K] bf16 (TN), output
+    [M, N] bf16, fp32 accumulation, no bias. The correctness set and the performance
+    set are the same list.
+
+    Useful levers: the split-K reduction (partial buffer traffic and the final
+    combine dominate at M=8, where the whole GEMM is 12 us), tile_m/tile_n/tile_k and
+    the stage count for a 16-row problem, warp partitioning, b_to_lds unroll and
+    async-copy pipelining, persistent-CTA / n_tile_repeat variants, and retuning the
+    CSV rows for these four exact shapes. Note this GEMM is firmly
+    memory/latency-bound, not compute-bound: at M=8, N=6144, K=7168 the arithmetic is
+    0.7 GFLOP against ~88 MB of weight reads, so the weight stream and the split-K
+    epilogue are the budget.
+
+    Correctness is float64 parity against a torch reference (a @ b.T) in the harness:
+    cos > 0.9995 and normalized max error < 0.02. Keep the public signature of
+    flydsl_hgemm and the tgemm.mm contract unchanged, and keep the operator
+    graph-capturable -- performance is measured under HIP graph replay.
+  cheatsheet: null

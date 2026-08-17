@@ -1,0 +1,86 @@
+task_type: image_kernel
+image_repo_path: /usr/local/lib/python3.12/dist-packages/aiter
+repo_subdir: aiter
+image_repo_exclude:
+- __pycache__
+- jit/build
+# The compute cores are FlyDSL (mfma_moe1_* / mfma_moe2_*, emitted by
+# ops/flydsl/kernels/mixed_moe_gemm_2stage.py). Must be one of the keys under
+# `knowledge` in src/prompts/cheatsheet/default_cheatsheet.yaml
+# (flydsl/hip/triton) -- 'python' hard-fails prompt_builder.
+repository_language: flydsl
+source_file_path:
+- fused_moe.py
+- ops/flydsl/moe_kernels.py
+editable_sources:
+- ops/flydsl/kernels/mixed_moe_gemm_2stage.py
+- ops/flydsl/moe_common.py
+- configs/model_configs/minimax_m3_fp4_tuned_fmoe.csv
+- configs/tuned_fmoe.csv
+target_kernel_functions:
+- fused_moe
+- moe_gemm1
+- moe_gemm2
+kernel_identity:
+  logical_operator: aiter_mxfp4_moe_2stage
+  kernel_kind: flydsl
+  source_owner: aiter
+  workload:
+    source: session_cases.json
+    primary_case: m3-moe-prefill-token8192
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: >-
+    Optimize the aiter FlyDSL MoE 2-stage GEMM pair that serves MiniMax-M3's
+    prefill token counts on MI355X/gfx950:
+    `mfma_moe1_silu_mul_afp4_wfp4_bf16_t128x128x256_pm1_async_v32` and
+    `mfma_moe2_afp4_wfp4_bf16_cshuffle_t128x128x256_vscale_fix3_fp4opt_v1_persist_cu256`,
+    both emitted by `aiter/ops/flydsl/kernels/mixed_moe_gemm_2stage.py`
+    (kernel names are built at :273 for moe1 and :3111 for moe2).
+
+    Config, all taken from the session: 128 experts, top-4, model_dim=6144,
+    inter_dim=512 per rank under TP=8, mxfp4 weights AND mxfp4 activations
+    (QuantType.per_1x32, e8m0 group scales), ActivationType.Swiglu, bf16 in/out.
+
+    Routed-expert MoE GEMM is 18.60% of normalized end-to-end GPU time -- the
+    largest single computational function in the model. The FlyDSL pair covers the
+    prefill half of that, 6.01%.
+
+    Two concrete findings from the session:
+
+    1. `mfma_moe2` does HALF the FLOPs of `mfma_moe1` but takes TWICE the time --
+       602 vs 2315 TFLOP/s measured, a 3.8x efficiency gap for the same
+       expert-GEMM shape class. Neither is at a roof: measured traffic is 2.78 TB/s
+       (gemm1) and 1.79 TB/s (gemm2) against an 8 TB/s HBM peak. gemm2 is the
+       obvious target; its heuristic name ends in `_atomic`, so how the per-expert
+       partials are accumulated is worth looking at first.
+
+    2. The session never found a tuned config. server.log says: "[fused_moe] no
+       tuned FlyDSL config for ('gfx950', 256, 8192, 6144, 512, 128, 4,
+       ActivationType.Swiglu, ...), using heuristic FlyDSL fallback
+       (kn1='flydsl_moe1_afp4_wfp4_bf16_t128x128x256_w2_bnt0',
+       kn2='flydsl_moe2_afp4_wfp4_bf16_t128x128x256_atomic')". Producing a tuned
+       entry for this shape is part of the edit surface
+       (`configs/model_configs/minimax_m3_fp4_tuned_fmoe.csv`).
+
+    Both the prefill (token=8192) and decode (token=64) cases are scored so the
+    report shows the whole MoE picture, but only the prefill case runs FlyDSL --
+    token=64 dispatches to the CK-Tile pair, whose sources live in aiter_meta/
+    (C++/HIP), outside this task's edit surface, and which already runs at 90% of
+    HBM peak. Do not chase it here; the decode case is expected to stay flat.
+
+    Constraints: `aiter.fused_moe.fused_moe` keeps its public signature and its
+    weight/scale layout contract with vLLM's loader
+    (`vllm/model_executor/layers/fused_moe/oracle/mxfp4.py:973-1014`:
+    `e8m0_shuffle` on the scales, `rocm_aiter_ops.shuffle_weights` with the (16,16)
+    layout on the packed fp4 weights). Correctness is a cosine / relative-norm
+    check against a dequantized torch reference. The score is the CUDA-graph
+    measured time over the same case list.
+  cheatsheet: null

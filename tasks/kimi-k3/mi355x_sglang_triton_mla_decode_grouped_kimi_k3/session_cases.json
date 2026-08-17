@@ -1,0 +1,137 @@
+{
+  "source_day": "2026-08-14",
+  "date_field": "session_started_at",
+  "platform": "MI355X/gfx950",
+  "framework": "sglang 0.5.15.post1.dev20260723+g6c9fd0adc5 (ROCm 7.2.0, triton 3.6.0+git42270451)",
+  "model": "Kimi-K3",
+  "session_id": "20260814T191522Z",
+  "operator": "mla_decode_grouped",
+  "task_name": "mi355x-kimi-k3-mla-decode-grouped-20260814",
+  "language": "triton (@triton.jit, runtime-compiled; sglang/kernels/ops/attention/decode_attention.py)",
+  "selection": "_fwd_grouped_kernel_stage1 (3.96% E2E) + _fwd_kernel_stage2 (0.69% E2E) = 4.65%, the flash-decoding split-KV pair behind decode_attention_fwd_grouped. K3 runs 24 MLA full-attention layers (the other 69 are KDA linear attention), and the trace shows exactly 24 stage1 + 24 stage2 launches per decode step. The session launched sglang with --attention-backend triton, so this is the path that actually ran.",
+  "phase_scope": "DECODE ONLY -- and that is a property of the operator, not a gap in the case set. K3's MLA prefill goes through a structurally different kernel (_fwd_kernel in kernels/ops/attention/extend_attention.py, 1.50% E2E, 0 launches in decode); decode_attention_fwd_grouped has 0 launches in prefill. Every shape below is therefore a decode shape. The correctness set and the performance set are the same CASES list.",
+  "provenance": {
+    "session_root": "/shared_nfs/hyperloom-claw/Kimi-K3/20260814T191522Z",
+    "trace": "geak/e2e_cycle0/profile/round_0/profile/1786763352.027878-TP-{0..7}.trace.json.gz",
+    "analysis": "/shared_nfs/jqliu/new-image-hot-kernels/hot-kernels-analysis/kimi-k3-hot-kernels.md",
+    "e2e_weights": {"prefill": 0.416, "decode": 0.584},
+    "measured_decode_tp0": {
+      "step_total_ms": 25.557,
+      "_fwd_grouped_kernel_stage1": {"calls_per_step": 24, "total_ms": 1.72, "avg_us": 71.7, "pct_of_step": 6.79, "e2e_pct": 3.96},
+      "_fwd_kernel_stage2": {"calls_per_step": 24, "total_ms": 0.30, "avg_us": 12.5, "pct_of_step": 1.18, "e2e_pct": 0.69},
+      "note": "Both run inside the CUDA graph, so the trace carries no grid/block and no CPU-side Input Dims for them. The tensor layout below is therefore reconstructed from the call site (srt/layers/attention/triton_backend.py:1823) plus the model config -- every number is pinned by code, not guessed; see layout_derivation."
+    },
+    "call_stack": [
+      "sglang/srt/layers/attention/triton_backend.py(1823): TritonAttnBackend.forward_decode -> self.decode_attention_fwd(...)",
+      "sglang/kernels/ops/attention/decode_attention.py(967): decode_attention_fwd  -- kv_group_num = 12/1 = 12 != 1 -> grouped path",
+      "sglang/kernels/ops/attention/decode_attention.py(912): decode_attention_fwd_grouped",
+      "sglang/kernels/ops/attention/decode_attention.py(384): _fwd_grouped_kernel_stage1  (via _decode_grouped_att_m_fwd)",
+      "sglang/kernels/ops/attention/decode_attention.py(732): _fwd_kernel_stage2          (via _decode_softmax_reducev_fwd)"
+    ],
+    "layout_derivation": {
+      "q": "[bs, tp_q_head_num, qk_head_dim] = [bs, 12, 576].  tp_q_head_num = num_attention_heads 96 / TP 8 = 12.  qk_head_dim for the absorbed MLA decode = kv_lora_rank 512 + qk_rope_head_dim 64 = 576.  Call site: triton_backend.py:1824 q.view(-1, layer.tp_q_head_num, layer.qk_head_dim).",
+      "k_buffer": "[num_kv_tokens, 1, 576] bf16 -- the MLA pool stores one compressed latent+rope entry per token, so kv_head_num = 1 and kv_group_num = 12/1 = 12 (this is what routes the call to the *grouped* kernel).",
+      "v_buffer": "[num_kv_tokens, 1, 512] bf16 -- get_value_buffer() returns a NON-CONTIGUOUS view of the first kv_lora_rank=512 columns of the same 576-wide buffer. The harness reproduces the view rather than allocating a separate tensor, because the stride pattern is part of what the kernel sees.",
+      "o": "[bs, 12, 512] -- triton_backend.py:1827 o.view(-1, layer.tp_q_head_num, layer.v_head_dim); v_head_dim is kv_lora_rank in the absorbed decode.",
+      "attn_logits": "[bs, 12, max_kv_splits, 512] f32 -- triton_backend.py:761. decode_attention_fwd asserts max_kv_splits == attn_logits.shape[2] and the kernel's '// Lv' stride trick requires shape[-1] == v_head_dim.",
+      "attn_lse": "[bs, 12, max_kv_splits] f32 -- triton_backend.py:774.",
+      "max_kv_splits": "256. server default triton_attention_num_kv_splits = 8, then _mla_decode_kv_splits_cap(8, sm_count=256, max_context_len=13312) = max(8, min(next_pow2(256)=256, next_pow2(ceil(13312/32))=512)) = 256. _MLA_DECODE_MIN_BLOCK_KV = 32 (triton_backend.py:64,67-74). MI355X has 256 CUs and the session's max_model_len is 13312, so 256 is exact for this run.",
+      "num_kv_splits": "[bs] i32, filled by the same get_num_kv_splits_triton scheduler the backend uses (kernels/ops/attention/metadata.py, called from triton_backend.py:328 with num_head=12, num_kv_head=1, max_kv_splits=256, device_core_count=256). The harness calls it directly; it is outside the edit surface.",
+      "sm_scale": "(qk_nope_head_dim 128 + qk_rope_head_dim 64) ** -0.5 = 192 ** -0.5 = 0.0721687836. This is layer.scaling for a DeepSeek-style MLA layer.",
+      "k_descale/v_descale": "None -- the KV cache is bf16 in this session (the reference launch recipe's kv-cache-dtype fp8_e4m3 applies to the non-MLA path; the trace's MLA decode kernels are the bf16 template)."
+    },
+    "seq_len_derivation": "Workload is ISL 8192 / OSL 1024 / max_model_len 13312. A request enters decode with 8192 KV tokens and leaves with 8192+1024 = 9216, so the decode KV length sweeps [8192, 9216] across the run. Both endpoints are scored. During the profiled window the requests had just finished prefill, i.e. the 8192 end.",
+    "batch_derivation": "The trace's decode annotation is step[DECODE bs=8] -- profiling started at warmup 0s so it captured the ramp. The run's steady-state decode batch is bs=64 (conc=64, max_running_requests=64; median_itl_ms 46.73 vs 25.56 ms at bs=8, and 196608 output tokens / 1024 OSL = 192 requests = 3 waves of 64). Both are scored."
+  },
+  "model_config": {
+    "source": "/shared_nfs/hyperloom/models/Kimi-K3/config.json (text_config)",
+    "num_attention_heads": 96,
+    "tensor_parallel_size": 8,
+    "tp_q_head_num": 12,
+    "kv_lora_rank": 512,
+    "qk_nope_head_dim": 128,
+    "qk_rope_head_dim": 64,
+    "v_head_dim": 128,
+    "qk_head_dim_decode": 576,
+    "v_head_dim_decode": 512,
+    "mla_layers": 24,
+    "kda_layers": 69,
+    "max_model_len": 13312,
+    "notes": "K3 is a hybrid: linear_attn_config.full_attn_layers lists 24 MLA layers, the remaining 69 are KDA linear attention. Only the 24 MLA layers reach this kernel, which is exactly the 24 launches/step the trace shows."
+  },
+  "cases": [
+    {
+      "id": "mla-decode-bs8-kv8192",
+      "phase": "decode",
+      "model": "Kimi-K3",
+      "kernel_ids": ["_fwd_grouped_kernel_stage1", "_fwd_kernel_stage2"],
+      "gpu_pct_e2e": 4.65,
+      "exact_shape_source": "TRACE-MEASURED batch (step[DECODE bs=8]) x session ISL (8192 KV tokens at the start of generation)",
+      "trace_input_shapes": [
+        "q (8, 12, 576) bf16",
+        "k_buffer (65536, 1, 576) bf16",
+        "v_buffer (65536, 1, 512) bf16 [view of k_buffer[..., :512]]",
+        "o (8, 12, 512) bf16",
+        "attn_logits (8, 12, 256, 512) f32",
+        "attn_lse (8, 12, 256) f32"
+      ],
+      "params": {
+        "batch_size": 8, "num_heads": 12, "kv_head_num": 1,
+        "qk_head_dim": 576, "v_head_dim": 512,
+        "seq_len": 8192, "max_kv_splits": 256, "page_size": 1,
+        "sm_scale": 0.0721687836, "logit_cap": 0.0,
+        "dtype": "bfloat16", "min_cosine": 0.9995, "max_rel_err": 0.02
+      },
+      "benchmark": {"warmup": 5, "repetition": 30, "target_ms": 1.0, "max_graph_repeats": 200},
+      "seed": 7141
+    },
+    {
+      "id": "mla-decode-bs64-kv8192",
+      "phase": "decode",
+      "model": "Kimi-K3",
+      "kernel_ids": ["_fwd_grouped_kernel_stage1", "_fwd_kernel_stage2"],
+      "exact_shape_source": "SESSION STEADY STATE -- bs=64 (conc=64, max_running_requests=64, 3072 of the run's decode steps) x 8192 KV tokens at the start of generation",
+      "params": {
+        "batch_size": 64, "num_heads": 12, "kv_head_num": 1,
+        "qk_head_dim": 576, "v_head_dim": 512,
+        "seq_len": 8192, "max_kv_splits": 256, "page_size": 1,
+        "sm_scale": 0.0721687836, "logit_cap": 0.0,
+        "dtype": "bfloat16", "min_cosine": 0.9995, "max_rel_err": 0.02
+      },
+      "benchmark": {"warmup": 3, "repetition": 20, "target_ms": 2.0, "max_graph_repeats": 50},
+      "seed": 7142
+    },
+    {
+      "id": "mla-decode-bs64-kv9216",
+      "phase": "decode",
+      "model": "Kimi-K3",
+      "kernel_ids": ["_fwd_grouped_kernel_stage1", "_fwd_kernel_stage2"],
+      "exact_shape_source": "SESSION STEADY STATE -- bs=64 x 9216 KV tokens (ISL 8192 + OSL 1024), the end of generation and the longest KV this workload reaches",
+      "params": {
+        "batch_size": 64, "num_heads": 12, "kv_head_num": 1,
+        "qk_head_dim": 576, "v_head_dim": 512,
+        "seq_len": 9216, "max_kv_splits": 256, "page_size": 1,
+        "sm_scale": 0.0721687836, "logit_cap": 0.0,
+        "dtype": "bfloat16", "min_cosine": 0.9995, "max_rel_err": 0.02
+      },
+      "benchmark": {"warmup": 3, "repetition": 20, "target_ms": 2.0, "max_graph_repeats": 50},
+      "seed": 7143
+    },
+    {
+      "id": "mla-decode-bs8-kv9216",
+      "phase": "decode",
+      "model": "Kimi-K3",
+      "kernel_ids": ["_fwd_grouped_kernel_stage1", "_fwd_kernel_stage2"],
+      "exact_shape_source": "TRACE-MEASURED batch (bs=8) x 9216 KV tokens (ISL + OSL), the tail of the ramp-phase requests",
+      "params": {
+        "batch_size": 8, "num_heads": 12, "kv_head_num": 1,
+        "qk_head_dim": 576, "v_head_dim": 512,
+        "seq_len": 9216, "max_kv_splits": 256, "page_size": 1,
+        "sm_scale": 0.0721687836, "logit_cap": 0.0,
+        "dtype": "bfloat16", "min_cosine": 0.9995, "max_rel_err": 0.02
+      },
+      "benchmark": {"warmup": 5, "repetition": 30, "target_ms": 1.0, "max_graph_repeats": 200},
+      "seed": 7144
+    }
+  ]
+}

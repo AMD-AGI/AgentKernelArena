@@ -1,0 +1,7 @@
+# Run artifacts. Task dirs are copied into a per-run workspace; nothing produced
+# by compile / correctness / performance belongs in the committed task source.
+build/
+__pycache__/
+*.pyc
+*.so
+.rocprofv3/

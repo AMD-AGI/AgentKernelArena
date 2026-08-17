@@ -1,0 +1,105 @@
+task_type: image_kernel
+image_repo_path: /sgl-workspace/aiter
+repo_subdir: aiter
+image_repo_exclude:
+  - __pycache__
+  - aiter/jit/build
+  - aiter/jit/flydsl_cache
+repository_language: hip
+source_file_path:
+  - csrc/kernels/topk_softmax_kernels_group.cu
+  - csrc/include/moe_sorting_opus.h
+  - csrc/kernels/quant_kernels.cu
+editable_sources:
+  - aiter/ops/topk.py
+  - aiter/ops/moe_sorting_opus.py
+  - aiter/ops/quant.py
+target_kernel_functions:
+  - biased_grouped_topk_hip
+  - moe_sorting_opus_fwd
+  - fused_dynamic_mx_quant_moe_sort_hip
+kernel_identity:
+  logical_operator: moe_routing_sort_quant
+  kernel_kind: hip
+  source_owner: aiter
+  workload:
+    source: session_cases.json
+    primary_case: moe-route-prefill-t16384
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+compile_timeout: 3600
+correctness_timeout: 3600
+performance_timeout: 3600
+task_result_template: null
+platform_support:
+  required_arch: gfx950
+  status: active
+  skip_reason: null
+prompt:
+  source_code: null
+  instructions: >-
+    Optimize the Kimi-K3 MoE routing / sorting / MX-quant stages on MI355X/gfx950.
+    These are the MoE pipeline stages that sit AROUND the 2-stage expert GEMM and
+    are deliberately NOT covered by mi355x_vllm_aiter_mxfp4_moe_2stage_kimi_k3.
+    From Hyperloom session 20260814T191522Z: grouped_topk 2.75% + opus_moe_sorting
+    P23 1.20% + P0_v2 0.90% + fused_mx_quant_moe_sort 1.50% = 6.35% of end-to-end
+    GPU time. That is MORE than any single MoE GEMM kernel in the session (the
+    largest is mfma_moe1 t64x128x256 at 2.92%), and none of them has ever been a
+    task -- they are invisible to a kernel ranking that sorts by individual kernel
+    name.
+
+    The chain, exactly as the model runs it per MoE layer (92 of 93 layers, so 92
+    calls per forward pass for every kernel here):
+      1. biased_grouped_topk_hip(gating[T,896] bf16, correction_bias[896] bf16)
+         -> topk_weights[T,16] f32, topk_ids[T,16] i32.
+         K3 has num_expert_group=1 and topk_group=1, so the group stage degenerates
+         and this is a plain biased top-16 over 896 experts with renormalization.
+         The launcher picks the HIP kernel (not moe_fused_gate) because
+         num_experts/num_expert_group = 896 > 32.
+      2. moe_sorting_opus_fwd(topk_ids, topk_weights) -> sorted_ids, sorted_weights,
+         sorted_expert_ids, num_valid_ids. Multi-phase: the trace shows P0_v2 and
+         P23 as separate kernels plus two more phases (grids 1408/256/512/896).
+         sorted_ids packs (slot_id << 24) | token_id.
+      3. fused_dynamic_mx_quant_moe_sort_hip(latent[T,3584] bf16) -> fp8_e4m3 out
+         + e8m0 scales[.,112], group_size 32. In the chain only for the small-M and
+         decode cases: at big M the session's MoE1 kernel is
+         mfma_moe1_..._fp8q_sort_async_..., which folds the quant into the GEMM
+         prologue, so the standalone kernel measures 0.02% in prefill.
+
+    Dims are the session's real per-rank TP=8 values: num_experts=896, topk=16,
+    num_expert_group=1, topk_group=1, renormalize=true, routed_scaling_factor=1.0,
+    latent (routed_expert_hidden_size) = 3584, local inter_dim = 384, MX group 32.
+    block_size is 64 for the T>=8192 buckets and 32 for the small-M bucket -- this
+    was solved out of the trace's own buffer lengths
+    (max_num_tokens_padded = T*topk + num_experts*block_size - topk gives 319472 /
+    188400 / 29680 for T = 16384 / 8192 / 64) and must be preserved as a dispatch
+    contract, not hardcoded away.
+
+    Both phases are scored: prefill T = 16384 (chunked-prefill block), 8192 (first
+    EXTEND step) and 64 (tail step), decode T = 8 (trace-recorded ramp batch) and
+    64 (steady-state batch). The correctness set and the performance set are the
+    same list, so a shape that is timed is always a shape that was validated.
+
+    Useful levers: the top-k selection algorithm at E=896/topk=16 (the current
+    kernel is one CTA of 64 threads per token), the multi-phase sort's phase count
+    and workspace traffic (moe_sorting_opus_get_workspace_size returns 14.7 MB at
+    T=16384), fusing phases, wave/LDS occupancy at tiny T where the whole chain is
+    launch-latency bound (12.0 us at T=64 vs 70.3 us at T=16384 for a 256x smaller
+    problem), and the quant kernel's group-scale write pattern.
+
+    Correctness: the harness validates each stage independently against vectorized
+    torch references. The sort check is deliberately ORDERING-AGNOSTIC -- it decodes
+    sorted_ids, asserts every valid slot sits in a block whose sorted_expert_ids
+    entry is the expert that (token, slot) actually routed to, asserts the valid
+    (token, slot) pairs form exactly the T*topk routing set with no drops or
+    duplicates, and asserts sorted_weights carries the matching weight. Intra-expert
+    order and padding fill are yours to change. Keep the public Python signatures of
+    biased_grouped_topk_hip, moe_sorting_opus_fwd and
+    fused_dynamic_mx_quant_moe_sort_hip unchanged, keep num_valid_ids block-aligned,
+    and keep the chain graph-capturable -- performance is measured under HIP graph
+    replay.
+  cheatsheet: null
