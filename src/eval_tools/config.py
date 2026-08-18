@@ -41,6 +41,10 @@ RUNTIME_OPTION_KEYS: dict[str, frozenset[str]] = {
         }
     ),
     "rocjitsu": frozenset({"rocjitsu_binary", "config_path"}),
+    "rocjitsu_waitcheck": frozenset(
+        {"waitcheck_binary", "waitcheck_capi_wrapper"}
+    ),
+    "rocjitsu_consan": frozenset({"consan_hook"}),
     "hip_fpsan": frozenset({"include_dir", "public_header"}),
 }
 

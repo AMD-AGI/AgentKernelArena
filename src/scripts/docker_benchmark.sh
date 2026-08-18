@@ -483,7 +483,7 @@ normalize_eval_tool_id() {
     local tool="${1//-/_}"
     tool="$(printf '%s' "$tool" | tr '[:upper:]' '[:lower:]')"
     case "$tool" in
-        triton_fpsan|gpu_asan|rocjitsu|hip_fpsan) printf '%s\n' "$tool" ;;
+        triton_fpsan|gpu_asan|rocjitsu|rocjitsu_waitcheck|rocjitsu_consan|hip_fpsan) printf '%s\n' "$tool" ;;
         *) die "Unsupported evaluation tool '$1'" ;;
     esac
 }
@@ -503,7 +503,14 @@ if not value:
     raise SystemExit(0)
 enabled = value.get("enabled", ()) if isinstance(value, dict) else ()
 if enabled is True:
-    enabled = ("triton_fpsan", "gpu_asan", "rocjitsu", "hip_fpsan")
+    enabled = (
+        "triton_fpsan",
+        "gpu_asan",
+        "rocjitsu",
+        "rocjitsu_waitcheck",
+        "rocjitsu_consan",
+        "hip_fpsan",
+    )
 elif isinstance(enabled, str):
     enabled = (enabled,)
 print(" ".join(str(item) for item in enabled or ()))
@@ -687,21 +694,23 @@ build_eval_tool_docker_args() {
         )
     fi
 
-    local gpu_grp gpu_gid
-    for gpu_grp in render video; do
-        gpu_gid="$(getent group "$gpu_grp" 2>/dev/null | cut -d: -f3 || true)"
-        [[ -z "$gpu_gid" ]] || eval_tool_docker_args+=(--group-add "$gpu_gid")
-    done
-    [[ ! -e /dev/kfd ]] || eval_tool_docker_args+=(--device=/dev/kfd)
-    [[ ! -e /dev/dri ]] || eval_tool_docker_args+=(--device=/dev/dri)
+    if [[ "$tool" != "rocjitsu_waitcheck" ]]; then
+        local gpu_grp gpu_gid
+        for gpu_grp in render video; do
+            gpu_gid="$(getent group "$gpu_grp" 2>/dev/null | cut -d: -f3 || true)"
+            [[ -z "$gpu_gid" ]] || eval_tool_docker_args+=(--group-add "$gpu_gid")
+        done
+        [[ ! -e /dev/kfd ]] || eval_tool_docker_args+=(--device=/dev/kfd)
+        [[ ! -e /dev/dri ]] || eval_tool_docker_args+=(--device=/dev/dri)
 
-    if [[ -n "${AKA_VISIBLE_GPU:-}" ]]; then
-        eval_tool_docker_args+=(
-            -e "ROCR_VISIBLE_DEVICES=${AKA_VISIBLE_GPU}"
-            -e "HIP_VISIBLE_DEVICES=${AKA_LOGICAL_GPU:-0}"
-            -e "CUDA_VISIBLE_DEVICES=${AKA_LOGICAL_GPU:-0}"
-            -e "GPU_DEVICE_ORDINAL=${AKA_LOGICAL_GPU:-0}"
-        )
+        if [[ -n "${AKA_VISIBLE_GPU:-}" ]]; then
+            eval_tool_docker_args+=(
+                -e "ROCR_VISIBLE_DEVICES=${AKA_VISIBLE_GPU}"
+                -e "HIP_VISIBLE_DEVICES=${AKA_LOGICAL_GPU:-0}"
+                -e "CUDA_VISIBLE_DEVICES=${AKA_LOGICAL_GPU:-0}"
+                -e "GPU_DEVICE_ORDINAL=${AKA_LOGICAL_GPU:-0}"
+            )
+        fi
     fi
 
     eval_tool_docker_args+=(
@@ -806,7 +815,7 @@ stop_eval_tool_sidecars() {
     unset AKA_SCORING_IMAGE_RUNTIME_REF
     unset AKA_SCORING_IMAGE_REFERENCE
     local tool runtime_env
-    for tool in triton_fpsan gpu_asan rocjitsu hip_fpsan; do
+    for tool in triton_fpsan gpu_asan rocjitsu rocjitsu_waitcheck rocjitsu_consan hip_fpsan; do
         runtime_env="AKA_EVAL_TOOL_RUNTIME_REF_$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')"
         unset "$runtime_env"
     done
@@ -827,11 +836,24 @@ build_eval_tool_images() {
     select_runtime_for_host
     [[ "$SELECTED_GPU_ARCH" == "gfx950" ]] \
         || die "Tool images currently have verified build locks only for gfx950"
-    local tool image dockerfile
-    for tool in triton_fpsan gpu_asan rocjitsu hip_fpsan; do
+    local tool image dockerfile target
+    for tool in triton_fpsan gpu_asan rocjitsu rocjitsu_waitcheck rocjitsu_consan hip_fpsan; do
         image="$(eval_tool_image "$tool")"
-        dockerfile="$HOST_ROOT/docker/eval-tools/${tool//_/-}/Dockerfile"
-        docker build --pull=false -f "$dockerfile" -t "$image" "$HOST_ROOT"
+        target=""
+        case "$tool" in
+            rocjitsu_waitcheck|rocjitsu_consan)
+                dockerfile="$HOST_ROOT/docker/eval-tools/rocjitsu-sanitizers/Dockerfile"
+                target="${tool//_/-}-runtime"
+                ;;
+            *)
+                dockerfile="$HOST_ROOT/docker/eval-tools/${tool//_/-}/Dockerfile"
+                ;;
+        esac
+        if [[ -n "$target" ]]; then
+            docker build --pull=false --target "$target" -f "$dockerfile" -t "$image" "$HOST_ROOT"
+        else
+            docker build --pull=false -f "$dockerfile" -t "$image" "$HOST_ROOT"
+        fi
     done
 }
 
@@ -1027,7 +1049,7 @@ build_docker_args() {
             docker_args+=(-e "AKA_EVAL_TOOLS_SELECTED=${AKA_EVAL_TOOLS_SELECTED}")
         fi
         local eval_tool runtime_env
-        for eval_tool in triton_fpsan gpu_asan rocjitsu hip_fpsan; do
+        for eval_tool in triton_fpsan gpu_asan rocjitsu rocjitsu_waitcheck rocjitsu_consan hip_fpsan; do
             runtime_env="AKA_EVAL_TOOL_RUNTIME_REF_$(printf '%s' "$eval_tool" | tr '[:lower:]' '[:upper:]')"
             if [[ -n "${!runtime_env:-}" ]]; then
                 docker_args+=(-e "$runtime_env=${!runtime_env}")
@@ -1661,7 +1683,7 @@ case "${1:-}" in
         ;;
     eval-tools-smoke)
         select_runtime_for_host
-        export AKA_EVAL_TOOLS="${AKA_EVAL_TOOLS:-triton_fpsan,gpu_asan,rocjitsu,hip_fpsan}"
+        export AKA_EVAL_TOOLS="${AKA_EVAL_TOOLS:-triton_fpsan,gpu_asan,rocjitsu,rocjitsu_waitcheck,rocjitsu_consan,hip_fpsan}"
         trap stop_eval_tool_sidecars EXIT
         start_eval_tool_sidecars "" "smoke-${BASHPID}"
         for eval_tool in "${eval_tool_ids[@]}"; do

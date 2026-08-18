@@ -4,10 +4,12 @@ import pytest
 
 from src.eval_tools.contracts import (
     ArtifactKind,
+    CapabilityCheck,
+    CapabilityState,
     InstrumentationControl,
     KernelLanguage,
 )
-from src.eval_tools.task_profile import resolve_task_profile
+from src.eval_tools.task_profile import resolve_builtin_capability, resolve_task_profile
 
 
 @pytest.mark.parametrize(
@@ -164,3 +166,41 @@ def test_manual_instrumentation_evidence_is_explicit_and_auditable():
     assert {"fpsan_ported", "rebuilt_from_source"} <= set(
         profile.explicit_overrides
     )
+
+
+@pytest.mark.parametrize(
+    ("tool", "adapter"),
+    [
+        ("rocjitsu_waitcheck", "waitcheck_code_object"),
+        ("rocjitsu_consan", "consan_native"),
+    ],
+)
+def test_native_rocjitsu_profiles_are_explicitly_ready(tool, adapter):
+    profile = resolve_task_profile(
+        {
+            "task_type": "hip2hip",
+            "source_file_path": ["kernel.hip"],
+            "evaluation_profile": {"adapter": adapter},
+        }
+    )
+    capability = resolve_builtin_capability(
+        tool, profile, CapabilityCheck.ready(target_arch="gfx950")
+    )
+    assert capability.ready
+
+
+def test_consan_broad_library_runtime_is_unsupported():
+    profile = resolve_task_profile(
+        {
+            "task_type": "image_kernel",
+            "repository_language": "hip",
+            "image_repo_path": "/sgl-workspace/aiter",
+            "source_file_path": ["kernel.hip"],
+            "evaluation_profile": {"adapter": "consan_native"},
+        }
+    )
+    capability = resolve_builtin_capability(
+        "rocjitsu_consan", profile, CapabilityCheck.ready(target_arch="gfx950")
+    )
+    assert capability.engine.state == CapabilityState.UNSUPPORTED
+    assert capability.engine.reason_code == "CONSAN_BROAD_LIBRARY_RUNTIME_UNSUPPORTED"

@@ -108,39 +108,44 @@ def _with_option_artifact_evidence(
 ) -> SourceEvidence:
     """Bind pre-existing replay inputs to the plan fingerprint.
 
-    A replay capsule is generated after the optimization agent has run, so its
-    content is not necessarily present in the pre-agent submission snapshot.
-    Hash the JSON here; its validated manifest hashes bind the HSACO and blobs.
-    Invalid/missing paths are recorded rather than raised so capability
-    assessment can produce the normal fail-closed adapter reason.
+    Replay capsules and native code objects may be generated after the
+    optimization agent has run, so their content is not necessarily present in
+    the pre-agent submission snapshot. Hash them here so the exact analysis
+    artifact participates in the plan fingerprint. Invalid/missing paths are
+    recorded rather than raised so capability assessment can produce the
+    normal fail-closed adapter reason.
     """
 
     records: dict[str, Any] = {}
     workspace = workspace.resolve(strict=False)
     for tool in config.tools:
-        raw = tool.options.get("capsule")
-        if not raw:
-            continue
-        record: dict[str, Any] = {"configured_path": str(raw)}
-        candidate = Path(str(raw))
-        if not candidate.is_absolute():
-            candidate = workspace / candidate
-        candidate = candidate.resolve(strict=False)
-        try:
-            relative = candidate.relative_to(workspace)
-        except ValueError:
-            record["status"] = "outside_workspace"
-        else:
-            record["workspace_relative_path"] = relative.as_posix()
-            if candidate.is_file():
-                record.update(
-                    status="captured",
-                    sha256=_sha256_file(candidate),
-                    size=candidate.stat().st_size,
-                )
+        tool_records: dict[str, Any] = {}
+        for option_name in ("capsule", "code_object"):
+            raw = tool.options.get(option_name)
+            if not raw:
+                continue
+            record: dict[str, Any] = {"configured_path": str(raw)}
+            candidate = Path(str(raw))
+            if not candidate.is_absolute():
+                candidate = workspace / candidate
+            candidate = candidate.resolve(strict=False)
+            try:
+                relative = candidate.relative_to(workspace)
+            except ValueError:
+                record["status"] = "outside_workspace"
             else:
-                record["status"] = "missing"
-        records[tool.name] = {"capsule": record}
+                record["workspace_relative_path"] = relative.as_posix()
+                if candidate.is_file():
+                    record.update(
+                        status="captured",
+                        sha256=_sha256_file(candidate),
+                        size=candidate.stat().st_size,
+                    )
+                else:
+                    record["status"] = "missing"
+            tool_records[option_name] = record
+        if tool_records:
+            records[tool.name] = tool_records
     if not records:
         return evidence
     metadata = dict(evidence.metadata)

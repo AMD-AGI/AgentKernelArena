@@ -221,6 +221,35 @@ def test_capsule_content_is_bound_into_plan_fingerprint(tmp_path):
     assert second.plan.fingerprint != first.plan.fingerprint
 
 
+def test_native_code_object_is_bound_into_plan_fingerprint(tmp_path):
+    code_object = tmp_path / "optimized.hsaco"
+    code_object.write_bytes(b"first-code-object")
+    config = EvalToolsConfig.from_mapping(
+        {
+            "evaluation_tools": {
+                "enabled": ["gpu_asan"],
+                "positive_control": "optional",
+                "tools": {
+                    "gpu_asan": {
+                        "options": {"code_object": "optimized.hsaco"}
+                    }
+                },
+            }
+        }
+    )
+    manager = _manager(FakePlugin(), FakeRuntime())
+    first = manager.evaluate(workspace=tmp_path, task_config=_task(), config=config)
+    record = first.plan.source_evidence.metadata["option_artifacts"]["gpu_asan"][
+        "code_object"
+    ]
+    assert record["status"] == "captured"
+    assert record["workspace_relative_path"] == "optimized.hsaco"
+
+    code_object.write_bytes(b"second-code-object")
+    second = manager.evaluate(workspace=tmp_path, task_config=_task(), config=config)
+    assert second.plan.fingerprint != first.plan.fingerprint
+
+
 def test_scoring_image_identity_is_recorded_in_plan_evidence(tmp_path, monkeypatch):
     monkeypatch.setenv("AKA_SCORING_IMAGE_RUNTIME_REF", "sha256:scoring")
     monkeypatch.setenv("AKA_SCORING_IMAGE_REFERENCE", "example.invalid/scoring:pinned")

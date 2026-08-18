@@ -30,6 +30,8 @@ _BUILTIN_PROBES = {
     "triton_fpsan": ("triton_fpsan_probe.py",),
     "gpu_asan": ("gpu_asan_probe.hip", "triton_asan_probe.py"),
     "rocjitsu": ("rocjitsu_race_probe.hip",),
+    "rocjitsu_waitcheck": ("waitcheck_probe.hip",),
+    "rocjitsu_consan": ("consan_probe.hip",),
     "hip_fpsan": ("hip_fpsan_probe.hip",),
 }
 
@@ -381,6 +383,12 @@ class SidecarRuntimeClient:
                 "xnack_supported",
             ),
             "rocjitsu": ("rocjitsu_binary", "config_path"),
+            "rocjitsu_waitcheck": (
+                "waitcheck_binary",
+                "waitcheck_capi_wrapper",
+                "target_arch",
+            ),
+            "rocjitsu_consan": ("consan_hook", "target_arch", "gpu_arch"),
             "hip_fpsan": ("include_dir", "public_header", "hip_fpsan_headers"),
         }.get(tool, ())
         missing = [name for name in required_assets if not evidence.get(name)]

@@ -22,10 +22,10 @@ execution, and RL-ready GPU kernel evaluation.
 - Added first-class A/B experimentation workflows with labeled baseline and treatment runs.
 - Exposed compilation, correctness, latency, speedup, and score fields as structured signals for external agent-RL systems.
 - Added opt-in, per-tool sidecar plumbing and typed reports for Triton FpSan,
-  ROCm GPU ASan, rocJITsu, and HIP-FpSan. The initial sidecar locks are verified
-  only for `gfx950`. Workers automatically execute synthetic startup controls,
-  while useful candidate runs still require task-specific adapters and
-  attestations.
+  ROCm GPU ASan, rocJITsu Race Detector, rocJITsu Waitcheck, rocJITsu ConSan,
+  and HIP-FpSan. The initial sidecar locks are verified only for `gfx950`.
+  Workers automatically execute synthetic startup controls, while useful
+  candidate runs still require task-specific adapters and attestations.
 - Added run comparison through `src/tools/compare_runs.py` and the standalone visualization dashboard.
 - Added held-out evaluation for testing kernel generalization on unseen shapes.
 - Centralized compilation, correctness, performance measurement, result generation, and scoring outside agent-editable code.
@@ -123,12 +123,15 @@ The task validator now includes Codex backend support, repository-task validatio
 - Evaluation-tool sidecars are experimental and `gfx950`-only. Startup controls
   prove a tool installation can detect its synthetic bug, not that a candidate
   was instrumented. No bundled task currently supplies a production-qualified
-  adapter/attestation. All four integrated startup controls pass on the current
+  adapter/attestation. All six integrated startup controls pass on the current
   MI355X qualification host. Synthetic manager-to-sidecar candidate pairs also
   distinguished clean from seeded-bug Triton FpSan, HIP/Triton GPU ASan, and
   HIP-FpSan runs; trusted AOT replay produced a clean Triton result and found the
-  seeded FlyDSL LDS race. These fixtures do not qualify a bundled task. Keep the
-  policy advisory until each selected candidate path is independently qualified.
+  seeded FlyDSL LDS race. Waitcheck distinguished a correct wait from a missing
+  `lgkmcnt(0)`, and strict ConSan record/replay distinguished clean single-wave
+  LDS accesses from seeded cross-wave conflicts. These fixtures do not qualify
+  a bundled task. Keep the policy advisory until each selected candidate path
+  is independently qualified.
 - Evaluation-tool parsing and execution now fail closed on ambiguous FpSan
   markers, process failure, non-finite protocol numbers, stale artifact reuse,
   unsupported GPU-library kernels, and replay capsules without a golden output.

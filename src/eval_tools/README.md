@@ -6,11 +6,14 @@ isolation model are documented in
 [`docs/how-to/use-evaluation-tools.md`](../../docs/how-to/use-evaluation-tools.md).
 
 The built-in registry currently contains Triton FpSan, ROCm GPU
-AddressSanitizer, the rocJITsu race detector, and HIP-FpSan. A tool name being
-listed in a roadmap is not evidence that an optimized kernel was analyzed. A
-supported tool also needs a pinned sidecar, a candidate-specific adapter,
-instrumentation or dispatch attestation, a passing startup control, and a
-fail-closed parser before it can produce a clean result or gate scoring.
+AddressSanitizer, the rocJITsu race detector, rocJITsu Waitcheck, rocJITsu
+ConSan, and HIP-FpSan. Waitcheck and ConSan require explicit final-code-object
+adapters and are currently qualified only for advisory use; enabling them does
+not automatically inspect every optimized kernel. A tool name being listed in a
+roadmap is not evidence that an optimized kernel was analyzed. A supported tool
+also needs a pinned sidecar, a candidate-specific adapter, instrumentation or
+dispatch attestation, a passing startup control, and a fail-closed parser before
+it can produce a clean result or gate scoring.
 
 ## Planned sanitizer coverage
 

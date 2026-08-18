@@ -115,6 +115,14 @@ def test_health_round_trip(tmp_path: Path) -> None:
             },
         ),
         ("rocjitsu", {"rocjitsu_binary", "config_path", "target_arch"}),
+        (
+            "rocjitsu_waitcheck",
+            {"waitcheck_binary", "waitcheck_capi_wrapper", "target_arch"},
+        ),
+        (
+            "rocjitsu_consan",
+            {"consan_hook", "target_arch", "gpu_arch"},
+        ),
         ("hip_fpsan", {"include_dir", "public_header", "hip_fpsan_headers"}),
     ],
 )

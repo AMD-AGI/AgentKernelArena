@@ -120,7 +120,14 @@ def replay_capsule(tmp_path: Path, adapter: str, *, arch: str = "gfx950") -> Pat
 
 
 def test_registry_uses_core_plugin_contracts(tmp_path):
-    assert plugin_ids() == ("gpu_asan", "hip_fpsan", "rocjitsu", "triton_fpsan")
+    assert plugin_ids() == (
+        "gpu_asan",
+        "hip_fpsan",
+        "rocjitsu",
+        "rocjitsu_consan",
+        "rocjitsu_waitcheck",
+        "triton_fpsan",
+    )
     plugin = get_plugin("triton-fpsan")
     capability = plugin.assess(
         context(tmp_path, profile(KernelLanguage.TRITON, framework="triton"), {"command": ["true"]}),
@@ -134,7 +141,88 @@ def test_builtins_register_in_core_registry():
     requested = ToolRegistry()
     registry = register_builtin_plugins(requested)
     assert registry is requested
-    assert tuple(registry) == ("gpu_asan", "hip_fpsan", "rocjitsu", "triton_fpsan")
+    assert tuple(registry) == (
+        "gpu_asan",
+        "hip_fpsan",
+        "rocjitsu",
+        "rocjitsu_consan",
+        "rocjitsu_waitcheck",
+        "triton_fpsan",
+    )
+
+
+def test_waitcheck_binds_code_object_kernel_and_entry(tmp_path):
+    code_object = tmp_path / "kernel.hsaco"
+    code_object.write_bytes(b"\x7fELFwaitcheck")
+    ctx = context(
+        tmp_path,
+        profile(
+            KernelLanguage.HIP,
+            framework="standalone",
+            artifact=ArtifactKind.HSACO_PRECOMPILED,
+            adapter="waitcheck_code_object",
+        ),
+        {
+            "code_object": code_object.name,
+            "expected_kernel": "optimized_kernel",
+            "kernel_entry": "0x40",
+            "waitcheck_binary": "/opt/rocjitsu/bin/rj_waitcheck",
+            "waitcheck_capi_wrapper": "/opt/rocjitsu/bin/aka-waitcheck-capi",
+        },
+    )
+    plugin = get_plugin("rocjitsu_waitcheck")
+    capability = plugin.assess(ctx, runtime(target_arch="gfx950"))
+    invocation = plugin.build_invocation(ctx)
+
+    assert capability.ready
+    assert capability.adapter.evidence["code_object_sha256"] == hashlib.sha256(
+        code_object.read_bytes()
+    ).hexdigest()
+    assert "--kernel-entry" in invocation.command
+    assert invocation.metadata["kernel_entry"] == 0x40
+
+
+def test_consan_requires_exact_hsaco_launcher_and_oracle(tmp_path):
+    code_object = tmp_path / "kernel.hsaco"
+    code_object.write_bytes(b"\x7fELFconsan")
+    task_profile = profile(
+        KernelLanguage.HIP,
+        framework="standalone",
+        artifact=ArtifactKind.HSACO_PRECOMPILED,
+        adapter="consan_native",
+    )
+    missing_oracle = context(
+        tmp_path,
+        task_profile,
+        {"code_object": code_object.name, "command": ["launcher", code_object.name]},
+    )
+    plugin = get_plugin("rocjitsu_consan")
+    assert (
+        plugin.assess(missing_oracle, runtime(gpu_arch="gfx950")).effective.state
+        == CapabilityState.ADAPTER_REQUIRED
+    )
+
+    ctx = context(
+        tmp_path,
+        task_profile,
+        {
+            "code_object": code_object.name,
+            "command": ["launcher", code_object.name],
+            "oracle_command": ["oracle", code_object.name],
+            "consan_hook": "/opt/rocjitsu/lib/librocjitsu_dbi_hooks.so",
+        },
+    )
+    capability = plugin.assess(ctx, runtime(gpu_arch="gfx950"))
+    invocation = plugin.build_invocation(ctx)
+
+    assert capability.ready
+    assert capability.adapter.evidence["code_object_fingerprint"].startswith(
+        "fnv1a64:"
+    )
+    assert invocation.metadata["policy"] == "strict"
+    assert invocation.metadata["mode"] == "record-replay"
+    assert invocation.command.count("--command-arg") == 2
+    assert invocation.command.count("--oracle-arg") == 2
 
 
 def test_flydsl_gpu_asan_is_fail_closed(tmp_path):
