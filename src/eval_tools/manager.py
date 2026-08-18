@@ -6,6 +6,7 @@ from dataclasses import replace
 import hashlib
 import os
 from pathlib import Path
+import uuid
 from typing import Any, Mapping
 
 from .config import EvalToolsConfig, RUNTIME_OPTION_KEYS, build_evaluation_plan
@@ -285,8 +286,16 @@ class EvalToolManager:
 
         for tool_plan in plan.tools:
             plugin = self.registry.get(tool_plan.tool)
-            artifact_dir = root / tool_plan.tool
-            artifact_dir.mkdir(parents=True, exist_ok=True)
+            artifact_dir = (
+                root
+                / tool_plan.tool
+                / plan.fingerprint
+                / uuid.uuid4().hex
+            )
+            # Every execution receives a never-before-used directory. A command
+            # that fails to emit current evidence therefore cannot inherit an
+            # attestation, race report, cache entry, or log from an older run.
+            artifact_dir.mkdir(parents=True, exist_ok=False)
             context = ToolContext(
                 workspace=str(workspace_path),
                 task_config=task_config,

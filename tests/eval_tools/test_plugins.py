@@ -164,6 +164,28 @@ def test_precompiled_aiter_gpu_asan_is_fail_closed(tmp_path):
     assert capability.effective.reason_code == "gpu_asan_precompiled_code_object"
 
 
+@pytest.mark.parametrize("framework", ["rocblas", "rccl"])
+def test_library_kernel_gpu_asan_stays_unsupported_after_source_rebuild(
+    tmp_path, framework
+):
+    capability = get_plugin("gpu_asan").assess(
+        context(
+            tmp_path,
+            profile(
+                KernelLanguage.HIP,
+                framework=framework,
+                artifact=ArtifactKind.HSACO_PRECOMPILED,
+                control=InstrumentationControl.RECOMPILE,
+                evidence={"rebuilt_from_source": True},
+            ),
+            {"command": ["true"]},
+        ),
+        runtime(gpu_asan=True, xnack_supported=True),
+    )
+    assert capability.effective.state == CapabilityState.UNSUPPORTED
+    assert capability.effective.reason_code == "gpu_asan_library_kernel_out_of_scope"
+
+
 @pytest.mark.parametrize("language", [KernelLanguage.TRITON, KernelLanguage.FLYDSL])
 def test_rocjitsu_python_jit_requires_aot_adapter(tmp_path, language):
     capability = get_plugin("rocjitsu").assess(
@@ -204,6 +226,58 @@ def test_gpu_asan_invocation_uses_fresh_triton_cache_and_xnack(tmp_path):
     ]
     assert invocation.env["LD_LIBRARY_PATH"].split(":")[2] == "/opt/rocm/lib"
     assert invocation.timeout_s == 12
+
+
+@pytest.mark.parametrize("tool", ["gpu_asan", "triton_fpsan", "hip_fpsan"])
+def test_configured_attestation_path_is_shared_by_invocation_and_parser(
+    tmp_path, tool
+):
+    if tool == "gpu_asan":
+        task_profile = profile(
+            KernelLanguage.HIP,
+            framework="standalone",
+            artifact=ArtifactKind.SOURCE_AOT,
+            control=InstrumentationControl.RECOMPILE,
+        )
+        options = {"command": ["true"]}
+    elif tool == "triton_fpsan":
+        task_profile = profile(KernelLanguage.TRITON, framework="triton")
+        options = {"comparison_command": ["true"]}
+    else:
+        task_profile = profile(
+            KernelLanguage.HIP,
+            framework="standalone",
+            artifact=ArtifactKind.SOURCE_AOT,
+            control=InstrumentationControl.RECOMPILE,
+            evidence={"fpsan_ported": True},
+        )
+        options = {
+            "comparison_command": ["true"],
+            "include_dir": "/opt/hip-fpsan/include",
+        }
+    options["attestation_path"] = "custom/build_attestation.json"
+    ctx = context(tmp_path, task_profile, options)
+
+    invocation = get_plugin(tool).build_invocation(ctx)
+    expected = Path(ctx.artifact_dir) / "custom" / "build_attestation.json"
+
+    assert invocation.env["AKA_BUILD_ATTESTATION_PATH"] == str(expected)
+    assert invocation.metadata["attestation_path"] == str(expected)
+
+
+def test_attestation_path_cannot_escape_invocation_artifacts(tmp_path):
+    ctx = context(
+        tmp_path,
+        profile(
+            KernelLanguage.HIP,
+            framework="standalone",
+            artifact=ArtifactKind.SOURCE_AOT,
+            control=InstrumentationControl.RECOMPILE,
+        ),
+        {"command": ["true"], "attestation_path": "../stale.json"},
+    )
+    with pytest.raises(ValueError, match="artifact directory"):
+        get_plugin("gpu_asan").build_invocation(ctx)
 
 
 def test_hip_fpsan_requires_explicit_source_port(tmp_path):
@@ -447,6 +521,45 @@ END_RACE
             command=("trusted-helper",),
             returncode=0,
             stdout=_aot_output(capsule),
+            stderr=race,
+        ),
+    )
+
+    assert result.finding == FindingStatus.FOUND
+    assert result.findings_count == 1
+
+
+def test_rocjitsu_current_stderr_race_is_not_hidden_by_clean_file(tmp_path):
+    ctx = context(
+        tmp_path,
+        profile(
+            KernelLanguage.HIP,
+            framework="standalone",
+            artifact=ArtifactKind.SOURCE_AOT,
+        ),
+        {
+            "launcher": ["./hip-launcher"],
+            "rocjitsu_binary": "/usr/local/bin/rocjitsu",
+            "config_path": "/opt/rocjitsu/gfx950.json",
+            "race_report": "custom/race.log",
+            "expected_kernel": "hip_kernel",
+        },
+    )
+    plugin = get_plugin("rocjitsu")
+    invocation = plugin.build_invocation(ctx)
+    report = Path(invocation.metadata["race_report"])
+    assert report.read_text(encoding="utf-8") == ""
+    report.write_text('[rocjitsu] Kernel dispatch: "hip_kernel"', encoding="utf-8")
+    race = '''[rocjitsu] Kernel dispatch: "hip_kernel"
+RACE type=LDS reg=8 wave=0 lane=1 wg=0,0,0 conflict=unknown
+END_RACE
+'''
+
+    result = plugin.parse(
+        ctx,
+        ExecutionRecord(
+            command=invocation.command,
+            returncode=0,
             stderr=race,
         ),
     )

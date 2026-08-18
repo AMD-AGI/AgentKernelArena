@@ -9,6 +9,7 @@ bounded files, and terminates the complete group on exit or timeout.
 
 from __future__ import annotations
 
+import ctypes
 import os
 import signal
 import subprocess
@@ -46,13 +47,18 @@ class ExecutionResult:
     signal: int | None
     timed_out: bool
     termination: str
+    cleanup_required: bool
     duration_ms: int
     stdout: LogCapture
     stderr: LogCapture
 
     @property
     def succeeded(self) -> bool:
-        return not self.timed_out and self.exit_code == 0
+        return (
+            not self.timed_out
+            and not self.cleanup_required
+            and self.exit_code == 0
+        )
 
     def to_dict(self) -> dict[str, object]:
         value = asdict(self)
@@ -108,6 +114,152 @@ class _BoundedDrain:
             bytes_seen=self.bytes_seen,
             bytes_written=self.bytes_written,
             truncated=self.bytes_seen > self.bytes_written,
+        )
+
+
+@dataclass(frozen=True)
+class _ProcessInfo:
+    pid: int
+    ppid: int
+    state: str
+    start_time: int
+
+    @property
+    def identity(self) -> tuple[int, int]:
+        return self.pid, self.start_time
+
+
+def enable_child_subreaper() -> None:
+    """Reparent double-forked invocation descendants to the sidecar worker."""
+
+    if os.name != "posix" or not Path("/proc/self/stat").is_file():
+        raise RuntimeError("process containment requires Linux /proc")
+    libc = ctypes.CDLL(None, use_errno=True)
+    # Linux prctl(PR_SET_CHILD_SUBREAPER, 1). This is unprivileged and ensures
+    # descendants cannot escape ancestry tracking merely by double-forking.
+    if libc.prctl(36, 1, 0, 0, 0) != 0:
+        error_number = ctypes.get_errno()
+        raise OSError(error_number, os.strerror(error_number))
+
+
+def _process_table() -> dict[int, _ProcessInfo]:
+    result: dict[int, _ProcessInfo] = {}
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "stat").read_text(encoding="utf-8")
+            fields = raw[raw.rfind(")") + 2 :].split()
+            info = _ProcessInfo(
+                pid=int(entry.name),
+                state=fields[0],
+                ppid=int(fields[1]),
+                start_time=int(fields[19]),
+            )
+        except (FileNotFoundError, IndexError, OSError, ValueError):
+            continue
+        result[info.pid] = info
+    return result
+
+
+def _descendants(owner_pid: int) -> list[_ProcessInfo]:
+    table = _process_table()
+    ancestor_pids = {owner_pid}
+    result: dict[int, _ProcessInfo] = {}
+    while True:
+        added = {
+            pid: info
+            for pid, info in table.items()
+            if pid not in ancestor_pids and info.ppid in ancestor_pids
+        }
+        if not added:
+            break
+        result.update(added)
+        ancestor_pids.update(added)
+    return list(result.values())
+
+
+class LinuxProcessContainment:
+    """Track and clean every process created inside one sequential invocation."""
+
+    def __init__(
+        self,
+        owner_pid: int,
+        baseline: set[tuple[int, int]],
+        *,
+        fatal_on_failure: bool = False,
+    ):
+        self.owner_pid = owner_pid
+        self.baseline = baseline
+        self.fatal_on_failure = fatal_on_failure
+
+    @classmethod
+    def capture(
+        cls, *, fatal_on_failure: bool = False
+    ) -> "LinuxProcessContainment":
+        owner_pid = os.getpid()
+        return cls(
+            owner_pid,
+            {info.identity for info in _descendants(owner_pid)},
+            fatal_on_failure=fatal_on_failure,
+        )
+
+    def _targets(self) -> list[_ProcessInfo]:
+        return [
+            info
+            for info in _descendants(self.owner_pid)
+            if info.identity not in self.baseline
+        ]
+
+    def _reap_direct_children(self, targets: Sequence[_ProcessInfo]) -> None:
+        for info in targets:
+            if info.ppid != self.owner_pid:
+                continue
+            try:
+                os.waitpid(info.pid, os.WNOHANG)
+            except (ChildProcessError, ProcessLookupError):
+                pass
+
+    def _signal_until_gone(self, sig: signal.Signals, timeout: float) -> bool:
+        deadline = time.monotonic() + max(0.0, timeout)
+        while True:
+            targets = self._targets()
+            if not targets:
+                return True
+            for info in targets:
+                if info.state == "Z":
+                    continue
+                try:
+                    os.kill(info.pid, sig)
+                except ProcessLookupError:
+                    pass
+                except PermissionError as error:
+                    raise RuntimeError(
+                        f"cannot signal escaped invocation process {info.pid}"
+                    ) from error
+            self._reap_direct_children(targets)
+            if not self._targets():
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.02)
+
+    def cleanup(
+        self, *, term_grace_seconds: float, kill_grace_seconds: float
+    ) -> tuple[str, bool]:
+        if not self._targets():
+            return "none", False
+        if self._signal_until_gone(signal.SIGTERM, term_grace_seconds):
+            return "sigterm", True
+        if self._signal_until_gone(signal.SIGKILL, kill_grace_seconds):
+            return "sigkill", True
+        survivors = sorted(info.pid for info in self._targets())
+        if self.fatal_on_failure:
+            # Exiting PID 1 tears down the complete Docker PID namespace. Never
+            # leave a poisoned persistent worker alive for another request.
+            os._exit(70)
+        raise RuntimeError(
+            f"failed to clean invocation PID containment; survivors={survivors}"
         )
 
 
@@ -208,6 +360,7 @@ def execute_command(
     stderr_limit_bytes: int = DEFAULT_LOG_LIMIT_BYTES,
     term_grace_seconds: float = DEFAULT_TERM_GRACE_SECONDS,
     kill_grace_seconds: float = DEFAULT_KILL_GRACE_SECONDS,
+    containment: LinuxProcessContainment | None = None,
 ) -> ExecutionResult:
     """Execute ``argv`` and capture bounded logs.
 
@@ -253,6 +406,7 @@ def execute_command(
 
     timed_out = False
     termination = "none"
+    cleanup_required = False
     try:
         process.wait(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
@@ -267,6 +421,7 @@ def execute_command(
         # A launcher may exit after spawning a daemon that inherited our pipes.
         # Evaluation commands are not allowed to leave background descendants.
         if _group_alive(process_group):
+            cleanup_required = True
             termination = _terminate_group(
                 process,
                 process_group,
@@ -281,6 +436,14 @@ def execute_command(
                 term_grace_seconds=term_grace_seconds,
                 kill_grace_seconds=kill_grace_seconds,
             )
+        if containment is not None:
+            containment_termination, containment_required = containment.cleanup(
+                term_grace_seconds=term_grace_seconds,
+                kill_grace_seconds=kill_grace_seconds,
+            )
+            cleanup_required = cleanup_required or containment_required
+            if containment_termination != "none":
+                termination = containment_termination
         # Once the complete group is gone both pipe writers are closed.  Keep the
         # wait bounded so an OS/filesystem failure cannot wedge the worker.
         drain_wait = term_grace_seconds + kill_grace_seconds + 1.0
@@ -309,6 +472,7 @@ def execute_command(
         signal=signal_number,
         timed_out=timed_out,
         termination=termination,
+        cleanup_required=cleanup_required,
         duration_ms=duration_ms,
         stdout=stdout_drain.metadata(),
         stderr=stderr_drain.metadata(),

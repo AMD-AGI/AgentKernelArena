@@ -18,9 +18,9 @@ from ..contracts import (
 )
 from .attestation import BuildAttestation
 from .base import (
+    artifact_path,
     blocked_check,
     command_from_context,
-    context_path,
     parsed_to_run_result,
     ready_check,
     sidecar_path,
@@ -56,20 +56,26 @@ def hip_asan_build_flags(target_arch: str) -> tuple[str, ...]:
 
 class GpuAsanPlugin:
     name = ToolName.GPU_ASAN.value
-    version = "1"
+    version = "2"
 
     def assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
         profile = context.profile
         is_triton = profile.language == KernelLanguage.TRITON or profile.framework == "triton"
         is_hip = profile.language == KernelLanguage.HIP
 
-        if profile.language == KernelLanguage.FLYDSL or profile.framework == "flydsl":
+        if profile.framework in {"rocblas", "rccl"}:
+            engine = blocked_check(
+                CapabilityState.UNSUPPORTED,
+                "gpu_asan_library_kernel_out_of_scope",
+                "rocBLAS/RCCL internals are outside the selected submission and are not instrumented.",
+            )
+        elif profile.language == KernelLanguage.FLYDSL or profile.framework == "flydsl":
             engine = blocked_check(
                 CapabilityState.UNSUPPORTED,
                 "gpu_asan_flydsl_no_device_instrumentation",
                 "FlyDSL 0.2.x does not insert the AMDGPU AddressSanitizer pass.",
             )
-        elif profile.framework in {"aiter", "rocblas", "rccl"} or profile.artifact_kind == ArtifactKind.HSACO_PRECOMPILED:
+        elif profile.framework == "aiter" or profile.artifact_kind == ArtifactKind.HSACO_PRECOMPILED:
             # Explicit source-rebuild evidence may make a future AITER HIP lane
             # eligible, but the default classification must remain fail closed.
             rebuilt = bool(profile.evidence.get("rebuilt_from_source"))
@@ -164,9 +170,11 @@ class GpuAsanPlugin:
                 str(hip_runtime),
                 inherited=env.get("LD_PRELOAD", ""),
             )
-        env["AKA_BUILD_ATTESTATION_PATH"] = str(
-            artifact_dir / "build_attestation.json"
+        attestation_path = artifact_path(
+            context, "attestation_path", "build_attestation.json"
         )
+        attestation_path.parent.mkdir(parents=True, exist_ok=True)
+        env["AKA_BUILD_ATTESTATION_PATH"] = str(attestation_path)
         return ToolInvocation(
             tool=self.name,
             command=command,
@@ -176,15 +184,15 @@ class GpuAsanPlugin:
             artifact_dir=context.artifact_dir,
             metadata={
                 "build_flags": list(hip_asan_build_flags(context.gpu_arch or "gfx950")) if not is_triton else [],
-                "attestation_path": str(artifact_dir / "build_attestation.json"),
+                "attestation_path": str(attestation_path),
             },
         )
 
     def parse(self, context: ToolContext, execution) -> ToolRunResult:
         profile = context.profile
         is_triton = profile.language == KernelLanguage.TRITON or profile.framework == "triton"
-        attestation_path = context_path(context, "attestation_path") or (
-            Path(context.artifact_dir) / "build_attestation.json"
+        attestation_path = artifact_path(
+            context, "attestation_path", "build_attestation.json"
         )
         attested = False
         if attestation_path.is_file():

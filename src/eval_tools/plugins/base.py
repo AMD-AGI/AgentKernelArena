@@ -170,16 +170,28 @@ def command_from_context(context: ToolContext, *keys: str) -> tuple[str, ...]:
     raise ValueError(f"missing tool argv option; expected one of {keys or ('command',)}")
 
 
-def context_path(context: ToolContext, key: str, *, required: bool = False) -> Optional[Path]:
+def artifact_path(
+    context: ToolContext,
+    key: str,
+    default_relative: str | Path,
+) -> Path:
+    """Resolve one evaluator-owned output below this invocation's artifact root."""
+
+    root = Path(context.artifact_dir).resolve(strict=False)
     raw = context.options.get(key)
-    if raw is None:
-        if required:
-            raise ValueError(f"missing required tool option: {key}")
-        return None
-    path = Path(str(raw))
-    if not path.is_absolute():
-        path = Path(context.workspace) / path
-    return path
+    configured = Path(str(raw)) if raw is not None else Path(default_relative)
+    candidate = (
+        configured.resolve(strict=False)
+        if configured.is_absolute()
+        else (root / configured).resolve(strict=False)
+    )
+    try:
+        relative = candidate.relative_to(root)
+    except ValueError as error:
+        raise ValueError(f"{key} must resolve below the invocation artifact directory") from error
+    if not relative.parts:
+        raise ValueError(f"{key} must name a file below the invocation artifact directory")
+    return candidate
 
 
 def sidecar_path(context: ToolContext, key: str, *, required: bool = False) -> Optional[Path]:

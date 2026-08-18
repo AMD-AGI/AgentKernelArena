@@ -276,6 +276,47 @@ def test_typed_sidecar_client_maps_paths_and_returns_logs(tmp_path: Path) -> Non
         _stop_worker(process, client)
 
 
+def test_typed_client_never_maps_containment_cleanup_to_success(
+    tmp_path: Path,
+) -> None:
+    process, socket_path = _start_worker(tmp_path, tool="test_tool")
+    input_root = tmp_path / "input"
+    workspace = input_root / "task"
+    workspace.mkdir()
+    artifact_root = tmp_path / "artifacts"
+    artifact_dir = artifact_root / "run" / "test_tool"
+    client = UnixSocketRuntimeClient(socket_path)
+    typed = SidecarRuntimeClient(
+        socket_dir=socket_path.parent,
+        scoring_root=input_root,
+        artifact_scoring_root=artifact_root,
+    )
+    context = _context(workspace, artifact_dir)
+    child_code = "import time; time.sleep(60)"
+    leader_code = (
+        "import subprocess,sys; "
+        f"child=subprocess.Popen([sys.executable,'-c',{child_code!r}],"
+        "start_new_session=True); print(child.pid, flush=True)"
+    )
+    try:
+        record = typed.execute(
+            ToolInvocation(
+                tool="test_tool",
+                command=(sys.executable, "-c", leader_code),
+                cwd=str(workspace),
+                timeout_s=2,
+            ),
+            context,
+        )
+        child_pid = int(record.stdout.strip())
+
+        assert record.returncode is None
+        assert record.metadata["execution"]["cleanup_required"] is True
+        assert not Path(f"/proc/{child_pid}").exists()
+    finally:
+        _stop_worker(process, client)
+
+
 def test_typed_sidecar_client_rejects_workspace_and_artifact_escape(
     tmp_path: Path,
 ) -> None:

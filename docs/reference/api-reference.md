@@ -82,11 +82,11 @@ submount remains writable when the quality-loop repository root is read-only.
 | `evaluation_tools.enabled` | boolean, string, or list of strings | empty | Tool IDs to plan. `true` expands to all four built-ins; `false` disables the feature. A single string is accepted. Hyphens are normalized to underscores. When the host sets `AKA_EVAL_TOOLS`, its normalized subset is authoritative for both started sidecars and the in-container plan. |
 | `evaluation_tools.policy` | `advisory` or `required` | `advisory` | `advisory` always permits performance but records an unsatisfied policy. `required` permits performance only when every applicable selected tool is ready, completes, and reports `clean`. |
 | `evaluation_tools.positive_control` | `required`, `optional`, `disabled`, or boolean | `required` | Requires the applicable synthetic known-bug startup control to pass before runtime capability is ready. `optional`, `disabled`, and `false` normalize to not required; the worker still runs and reports its control. |
-| `evaluation_tools.timeout_s` | positive integer | `3600` | Default maximum execution time for each selected tool. |
+| `evaluation_tools.timeout_s` | exact integer from 1 through 3600 | `3600` | Default maximum execution time for each selected tool. Booleans, floats, and numeric strings are rejected. |
 | `evaluation_tools.runtime_profile` | string or `null` | `null` | Fallback runtime-identity assertion for plans whose tool has no `runtime_ref`. It does not select an image and must exactly match worker health when set. |
 | `evaluation_tools.tools` | mapping | `{}` | Per-tool configuration keyed by normalized tool ID. Entries do not enable tools. |
 | `evaluation_tools.tools.<id>.runtime_ref` | string or `null` | automatic host image ID | Exact bare local Docker image ID (`sha256:...`) asserted by the plan and compared with worker health. The `image_digest` key is an alias. This field does not select an image; omit it when using automatic host injection. |
-| `evaluation_tools.tools.<id>.timeout_s` | positive integer | top-level timeout | Per-tool timeout. |
+| `evaluation_tools.tools.<id>.timeout_s` | exact integer from 1 through 3600 | top-level timeout | Per-tool timeout; it cannot exceed the top-level timeout. |
 | `evaluation_tools.tools.<id>.options` | mapping | `{}` | Adapter options, including argv lists and candidate-evidence paths. Reserved framework keys are rejected at run and task level: `positive_control_required`; GPU ASan runtime/preload/library keys; rocJITsu binary/config keys; and HIP-FpSan include/header keys. |
 
 The exact reserved option keys are `positive_control_required` for every tool;
@@ -95,6 +95,10 @@ The exact reserved option keys are `positive_control_required` for every tool;
 `rocjitsu_binary` and `config_path` for `rocjitsu`; and `include_dir` and
 `public_header` for `hip_fpsan`. They are selected and attested by worker health,
 not YAML.
+
+An explicit `evaluation_tools` mapping and each per-tool configuration reject
+unknown fields. Unknown enabled tool IDs are also rejected. If both
+`runtime_ref` and `image_digest` are supplied, they must be identical.
 
 Example run-level section:
 
@@ -268,10 +272,10 @@ Commands are argv lists, not shell strings. The built-in adapter keys are:
 
 | Tool | Adapter keys |
 | --- | --- |
-| `triton_fpsan` | `comparison_command` or `command`; optional `attestation_path`. |
-| `gpu_asan` | `command`; optional candidate `attestation_path`. ASan runtime/preload/library paths come only from verified sidecar health. |
-| `rocjitsu` | HIP uses `launcher` or `command`, with optional `expected_kernel` and candidate `race_report`. Triton/FlyDSL requires `capsule` and the exact `triton_aot`/`flydsl_aot` profile adapter; arbitrary launchers are rejected. The capsule must be workspace-contained, single-dispatch, manifest-valid, and target `gfx950`. Binary/config and the trusted replay helper come only from the image/health. Automatic trusted capsule capture from correctness is not implemented. |
-| `hip_fpsan` | `comparison_command` or `command`; optional candidate `attestation_path`; requires `evaluation_profile.fpsan_ported: true`. The include path comes only from verified sidecar health. |
+| `triton_fpsan` | `comparison_command` or `command`; optional invocation-artifact-contained `attestation_path`. |
+| `gpu_asan` | `command`; optional invocation-artifact-contained candidate `attestation_path`. ASan runtime/preload/library paths come only from verified sidecar health. |
+| `rocjitsu` | HIP uses `launcher` or `command`, with optional `expected_kernel` and invocation-artifact-contained `race_report` whose filename must be `race.log`. Triton/FlyDSL requires `capsule` and the exact `triton_aot`/`flydsl_aot` profile adapter; arbitrary launchers and task-configured race-report paths are rejected. The capsule must be workspace-contained, single-dispatch, contain a golden expected output, be manifest-valid, and target `gfx950`. Binary/config and the trusted replay helper come only from the image/health. Automatic trusted capsule capture from correctness is not implemented. |
+| `hip_fpsan` | `comparison_command` or `command`; optional invocation-artifact-contained candidate `attestation_path`; requires `evaluation_profile.fpsan_ported: true`. The include path comes only from verified sidecar health. |
 
 Sidecar health attests and injects runtime-internal assets. Candidate/task
 configuration cannot override or supply ASan preload/library paths, the
@@ -282,6 +286,11 @@ containing that JSON. The artifact must be beside or below the attestation;
 absolute paths, `..`, and symlink resolutions that escape the directory are
 rejected. The parser resolves the relative path in the scoring namespace and
 verifies the declared SHA-256.
+
+Each execution uses a fresh
+`<tool>/<plan-fingerprint>/<invocation-id>` artifact directory. Custom
+attestation and race-report paths are resolved against that directory; an
+absolute path is accepted only when its resolution remains inside it.
 
 ### Platform support
 

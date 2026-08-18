@@ -17,9 +17,9 @@ from ..contracts import (
 )
 from .attestation import BuildAttestation
 from .base import (
+    artifact_path,
     blocked_check,
     command_from_context,
-    context_path,
     parsed_to_run_result,
     ready_check,
 )
@@ -28,7 +28,7 @@ from .parsers import parse_fpsan_comparison
 
 class TritonFpSanPlugin:
     name = ToolName.TRITON_FPSAN.value
-    version = "1"
+    version = "2"
 
     def assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
         profile = context.profile
@@ -77,15 +77,17 @@ class TritonFpSanPlugin:
         artifact_dir = Path(context.artifact_dir)
         cache_dir = artifact_dir / "triton-fpsan-cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
+        attestation_path = artifact_path(
+            context, "attestation_path", "build_attestation.json"
+        )
+        attestation_path.parent.mkdir(parents=True, exist_ok=True)
         env = {
             **dict(context.env),
             "TRITON_INSTRUMENTATION_MODE": "fpsan",
             "TRITON_CACHE_DIR": str(cache_dir),
             "AKA_EVAL_TOOL": self.name,
             "AKA_FPSAN_REQUIRE_COMPARISON": "1",
-            "AKA_BUILD_ATTESTATION_PATH": str(
-                artifact_dir / "build_attestation.json"
-            ),
+            "AKA_BUILD_ATTESTATION_PATH": str(attestation_path),
         }
         return ToolInvocation(
             tool=self.name,
@@ -94,12 +96,12 @@ class TritonFpSanPlugin:
             env=env,
             timeout_s=int(context.options.get("timeout_s", 600)),
             artifact_dir=context.artifact_dir,
-            metadata={"attestation_path": str(artifact_dir / "build_attestation.json")},
+            metadata={"attestation_path": str(attestation_path)},
         )
 
     def parse(self, context: ToolContext, execution) -> ToolRunResult:
-        attestation_path = context_path(context, "attestation_path") or (
-            Path(context.artifact_dir) / "build_attestation.json"
+        attestation_path = artifact_path(
+            context, "attestation_path", "build_attestation.json"
         )
         attested = False
         if attestation_path.is_file():

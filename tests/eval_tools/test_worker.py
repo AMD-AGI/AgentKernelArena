@@ -158,6 +158,64 @@ def test_timeout_above_worker_cap_is_rejected(tmp_path: Path) -> None:
         _cleanup(process, client)
 
 
+@pytest.mark.parametrize("field", ["timeout_s", "term_grace_s", "kill_grace_s"])
+def test_non_finite_timing_values_are_rejected(
+    tmp_path: Path, field: str
+) -> None:
+    process, _roots, client = _worker(tmp_path)
+    request = {
+        "argv": [sys.executable, "-c", "print('must not run')"],
+        "cwd": {"root": "input", "path": "workspace"},
+        "artifact_dir": "safe",
+        "timeout_s": 2,
+    }
+    request[field] = float("nan")
+    try:
+        with pytest.raises(RuntimeRPCError) as raised:
+            client.execute(request)
+        assert raised.value.code == "INVALID_REQUEST"
+    finally:
+        _cleanup(process, client)
+
+
+def test_detached_descendant_is_killed_by_worker_containment(tmp_path: Path) -> None:
+    process, roots, client = _worker(tmp_path)
+    child_code = "import time; time.sleep(60)"
+    leader_code = (
+        "import subprocess,sys; "
+        f"child=subprocess.Popen([sys.executable,'-c',{child_code!r}],"
+        "start_new_session=True); "
+        "print(child.pid, flush=True)"
+    )
+    try:
+        response = client.execute(
+            {
+                "argv": [sys.executable, "-c", leader_code],
+                "cwd": {"root": "input", "path": "workspace"},
+                "artifact_dir": "detached",
+                "timeout_s": 2,
+                "term_grace_s": 0.2,
+                "kill_grace_s": 1,
+            }
+        )
+        execution = response["execution"]
+        child_pid = int(
+            (roots["artifacts"] / execution["stdout"]["path"])
+            .read_text(encoding="utf-8")
+            .strip()
+        )
+        deadline = time.monotonic() + 2
+        while Path(f"/proc/{child_pid}").exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+
+        assert execution["cleanup_required"] is True
+        assert execution["succeeded"] is False
+        assert execution["termination"] in {"sigterm", "sigkill"}
+        assert not Path(f"/proc/{child_pid}").exists()
+    finally:
+        _cleanup(process, client)
+
+
 def test_hip_fpsan_positive_control_requires_both_processes_to_exit_zero(
     tmp_path: Path, monkeypatch
 ) -> None:

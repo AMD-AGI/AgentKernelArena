@@ -129,6 +129,13 @@ The task validator now includes Codex backend support, repository-task validatio
   HIP-FpSan runs; trusted AOT replay produced a clean Triton result and found the
   seeded FlyDSL LDS race. These fixtures do not qualify a bundled task. Keep the
   policy advisory until each selected candidate path is independently qualified.
+- Evaluation-tool parsing and execution now fail closed on ambiguous FpSan
+  markers, process failure, non-finite protocol numbers, stale artifact reuse,
+  unsupported GPU-library kernels, and replay capsules without a golden output.
+  Each attempt receives a fresh artifact directory. The worker contains the
+  complete descendant process tree, including session-detached children, and
+  treats required cleanup as a failed execution. Replay launch geometry is
+  validated as exact `uint32` input and checked against runtime device limits.
 - The current runner exposes evaluation-tool sockets and agent-writable report
   paths during the same container run. Per-tool writable socket directories and
   a read-only top-level artifact namespace plus one writable

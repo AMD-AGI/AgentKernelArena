@@ -24,9 +24,9 @@ from ..contracts import (
 from .base import (
     INCONCLUSIVE,
     ParseResult,
+    artifact_path,
     blocked_check,
     command_from_context,
-    context_path,
     parsed_to_run_result,
     ready_check,
     sidecar_path,
@@ -98,9 +98,19 @@ def _load_aot_capsule(context: ToolContext) -> tuple[Path, ReplayCapsule, str]:
     return path, capsule, sha256_file(path)
 
 
+def _race_report_path(context: ToolContext) -> Path:
+    if _expected_aot_adapter(context) is not None and "race_report" in context.options:
+        raise ValueError("AOT replay does not allow a configurable race_report sink")
+    return artifact_path(
+        context,
+        "race_report",
+        Path("rocjitsu-report") / "race.log",
+    )
+
+
 class RocJitsuPlugin:
     name = ToolName.ROCJITSU.value
-    version = "2"
+    version = "3"
 
     def assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
         profile = context.profile
@@ -179,9 +189,14 @@ class RocJitsuPlugin:
         assert binary is not None and config is not None
         # ``binary`` and ``config`` are sidecar-namespace paths.  Their
         # existence/version is established by RuntimeClient.probe().
-        report_dir = Path(context.artifact_dir) / "rocjitsu-report"
+        report_path = _race_report_path(context)
+        if report_path.name != "race.log":
+            raise ValueError("race_report must name rocJITsu's race.log sink")
+        report_dir = report_path.parent
         report_dir.mkdir(parents=True, exist_ok=True)
-        metadata = {"race_report": str(report_dir / "race.log")}
+        # File sinks are never allowed to inherit evidence from an earlier run.
+        report_path.write_text("", encoding="utf-8")
+        metadata = {"race_report": str(report_path)}
         if _expected_aot_adapter(context) is not None:
             capsule_path, capsule, capsule_sha256 = _load_aot_capsule(context)
             replay_dir = Path(context.artifact_dir) / "rocjitsu-replay"
@@ -244,14 +259,7 @@ class RocJitsuPlugin:
 
     def parse(self, context: ToolContext, execution) -> ToolRunResult:
         aot_adapter = _expected_aot_adapter(context)
-        if aot_adapter is not None:
-            # AOT reports have an evaluator-selected location; a submission may
-            # not redirect parsing to attacker-authored text.
-            report_path = Path(context.artifact_dir) / "rocjitsu-report" / "race.log"
-        else:
-            report_path = context_path(context, "race_report") or (
-                Path(context.artifact_dir) / "rocjitsu-report" / "race.log"
-            )
+        report_path = _race_report_path(context)
         report = report_path.read_text(encoding="utf-8", errors="replace") if report_path.is_file() else ""
         combined = "\n".join((execution.stdout, execution.stderr, report))
         metadata = {}
@@ -301,10 +309,7 @@ class RocJitsuPlugin:
             attested = dispatch_seen
         parsed = parse_rocjitsu(
             execution.stdout,
-            # rocJITsu is configured with both stderr and file sinks.  Once the
-            # evaluator-owned report exists it is the authoritative race stream;
-            # parsing stderr as well would duplicate every structured finding.
-            "" if report else execution.stderr,
+            execution.stderr,
             execution.returncode,
             attested=attested,
             report_text=report,

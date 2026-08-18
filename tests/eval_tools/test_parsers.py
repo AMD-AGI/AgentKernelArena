@@ -42,6 +42,17 @@ def test_rocjitsu_clean_requires_dispatch_attestation():
     assert result.status == PASS
 
 
+def test_rocjitsu_deduplicates_races_repeated_across_sinks():
+    race = '''
+[rocjitsu] Kernel dispatch: "kernel"
+RACE type=LDS reg=12 wave=0 lane=1 wg=0,0,0 conflict=unknown
+END_RACE
+'''
+    result = parse_rocjitsu("", race, 0, attested=True, report_text=race)
+    assert result.status == FINDING
+    assert len(result.findings) == 1
+
+
 def fpsan_line(reference="abc", candidate="abc", instrumented=True):
     return "AKA_FPSAN_RESULT " + json.dumps(
         {"instrumented": instrumented, "reference_digest": reference, "candidate_digest": candidate}
@@ -56,6 +67,26 @@ def test_fpsan_parser_detects_semantic_mismatch():
 
 def test_fpsan_parser_requires_comparison_and_attestation():
     assert parse_fpsan_comparison(fpsan_line(), "", 0, attested=False).status == INCONCLUSIVE
-    assert parse_fpsan_comparison("ordinary correctness pass", "", 0, attested=True).status == INCONCLUSIVE
+    assert parse_fpsan_comparison("ordinary correctness pass", "", 0, attested=True).status == TOOL_ERROR
     assert parse_fpsan_comparison(fpsan_line(), "", 0, attested=True).status == PASS
     assert parse_fpsan_comparison("", "crash", 2, attested=True).status == TOOL_ERROR
+
+
+def test_fpsan_parser_rejects_multiple_result_records():
+    result = parse_fpsan_comparison(
+        "\n".join((fpsan_line("abc", "def"), fpsan_line("abc", "abc"))),
+        "",
+        0,
+        attested=True,
+    )
+    assert result.status == TOOL_ERROR
+    assert result.reason_code == "fpsan_multiple_results"
+
+
+def test_fpsan_parser_never_reports_clean_after_process_failure():
+    for returncode in (139, None):
+        result = parse_fpsan_comparison(
+            fpsan_line(), "", returncode, attested=True
+        )
+        assert result.status == TOOL_ERROR
+        assert result.reason_code == "fpsan_process_failed"

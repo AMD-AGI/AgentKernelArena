@@ -89,6 +89,7 @@ def parse_rocjitsu(
     combined = "\n".join(part for part in (stdout, stderr, report_text) if part)
     kernel_matches = list(_KERNEL_RE.finditer(combined))
     findings = []
+    seen_findings: set[tuple[object, ...]] = set()
     for match, raw in _race_blocks(combined):
         kernel = None
         for candidate in kernel_matches:
@@ -96,6 +97,18 @@ def parse_rocjitsu(
                 kernel = candidate.group("kernel")
             else:
                 break
+        finding_key = (
+            match.group("type").lower(),
+            int(match.group("reg")),
+            int(match.group("wave")),
+            int(match.group("lane")),
+            match.group("wg"),
+            match.group("conflict"),
+            kernel,
+        )
+        if finding_key in seen_findings:
+            continue
+        seen_findings.add(finding_key)
         findings.append(
             FindingRecord(
                 kind=f"{match.group('type').lower()}-race",
@@ -146,6 +159,10 @@ def parse_rocjitsu(
 _FPSAN_PREFIX = "AKA_FPSAN_RESULT "
 
 
+def _reject_json_constant(value: str) -> object:
+    raise ValueError(f"non-finite JSON constant: {value}")
+
+
 def parse_fpsan_comparison(
     stdout: str,
     stderr: str,
@@ -155,12 +172,17 @@ def parse_fpsan_comparison(
     timed_out: bool = False,
 ) -> ParseResult:
     combined = "\n".join(part for part in (stdout, stderr) if part)
-    payload = None
+    payloads: list[object] = []
     for line in combined.splitlines():
         if line.startswith(_FPSAN_PREFIX):
             try:
-                payload = json.loads(line[len(_FPSAN_PREFIX) :])
-            except json.JSONDecodeError as exc:
+                payloads.append(
+                    json.loads(
+                        line[len(_FPSAN_PREFIX) :],
+                        parse_constant=_reject_json_constant,
+                    )
+                )
+            except (json.JSONDecodeError, ValueError) as exc:
                 return ParseResult(
                     TOOL_ERROR,
                     reason_code="fpsan_invalid_result_json",
@@ -169,24 +191,39 @@ def parse_fpsan_comparison(
                 )
     if timed_out:
         return ParseResult(TOOL_ERROR, reason_code="fpsan_timeout", details=combined, attested=attested)
+    if returncode != 0:
+        return ParseResult(
+            TOOL_ERROR,
+            reason_code="fpsan_process_failed",
+            details=combined,
+            attested=attested,
+        )
     if not attested:
         return ParseResult(
             INCONCLUSIVE,
             reason_code="fpsan_instrumentation_not_attested",
             details="FPSan outputs are meaningful only when both compared kernels were instrumented.",
         )
-    if returncode != 0 and payload is None:
+    if len(payloads) > 1:
         return ParseResult(
             TOOL_ERROR,
-            reason_code="fpsan_process_failed_without_result",
+            reason_code="fpsan_multiple_results",
             details=combined,
             attested=True,
         )
-    if not isinstance(payload, dict):
+    if not payloads:
         return ParseResult(
-            INCONCLUSIVE,
+            TOOL_ERROR,
             reason_code="fpsan_comparison_missing",
             details="Expected an AKA_FPSAN_RESULT JSON line from the comparison harness.",
+            attested=True,
+        )
+    payload = payloads[0]
+    if not isinstance(payload, dict):
+        return ParseResult(
+            TOOL_ERROR,
+            reason_code="fpsan_result_not_an_object",
+            details=json.dumps(payload, sort_keys=True),
             attested=True,
         )
     if payload.get("instrumented") is not True:
