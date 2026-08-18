@@ -81,6 +81,7 @@ class QualityLoopConfig:
     case_enhancement: bool = True
     artifact_root: str = "quality_loop_runs"
     worktree_root: str = ".quality_loop_worktrees"
+    evaluation_tools: dict[str, Any] = field(default_factory=dict)
     promotion_task_types: tuple[str, ...] = (
         "hip2hip",
         "triton2triton",
@@ -121,6 +122,9 @@ class QualityLoopConfig:
             "promotion_task_types",
             ["hip2hip", "triton2triton", "flydsl2flydsl"],
         )
+        evaluation_tools = raw.get("evaluation_tools") or {}
+        if not isinstance(evaluation_tools, dict):
+            raise ValueError("evaluation_tools must be a mapping")
         return cls(
             tasks=tuple(str(task) for task in tasks),
             target_gpu_model=target,
@@ -140,6 +144,7 @@ class QualityLoopConfig:
                 audit.get("worktree_root", ".quality_loop_worktrees"),
                 "quality_loop.worktree_root",
             ),
+            evaluation_tools=dict(evaluation_tools),
             promotion_task_types=tuple(str(value) for value in promotion_types),
         )
 

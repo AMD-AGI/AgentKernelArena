@@ -1,0 +1,13 @@
+# Evaluation-tool images need only their locked Docker assets and the immutable
+# eval-tools framework.  The repository commonly contains multi-gigabyte task
+# workspaces under experiments/, so an allow-list keeps builds fast and prevents
+# candidate/run artifacts from entering the Docker build context.
+**
+!docker/
+!docker/eval-tools/
+!docker/eval-tools/**
+!src/
+!src/eval_tools/
+!src/eval_tools/**
+**/__pycache__/
+**/*.py[cod]

@@ -1,0 +1,4 @@
+triton @ https://pypi.amd.com/triton/release_/rocm-7.2.0/packages/triton/triton-3.7.0+amd.rocm7.2.0.gitd0d77a509-cp310-cp310-linux_x86_64.whl \
+    --hash=sha256:3a8acacdfb4723c8bb71844c427f4d3ce047658bf97fbdc23065c06205231687
+triton-kernels @ https://pypi.amd.com/triton/release_/rocm-7.2.0/packages/triton-kernels/triton_kernels-1.0.0+amd.rocm7.2.0.gitd0d77a509-py3-none-any.whl \
+    --hash=sha256:df8b42ebf098767c0d31a3916913bd7557a623903aefa26602e7c6818c34b84a
