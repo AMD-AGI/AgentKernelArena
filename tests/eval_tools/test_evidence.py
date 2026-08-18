@@ -113,6 +113,30 @@ def test_candidate_fingerprint_allows_symlink_within_workspace(
     assert evidence.candidate_fingerprint() != original_fingerprint
 
 
+def test_candidate_fingerprint_detects_retargeted_declared_symlink(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "a.py").write_text("a = 1\n", encoding="utf-8")
+    (workspace / "b.py").write_text("b = 2\n", encoding="utf-8")
+    declared = workspace / "kernel.py"
+    declared.symlink_to("a.py")
+    evidence = capture_submission_evidence(
+        workspace,
+        {"source_file_path": ["kernel.py"]},
+        tmp_path / "evidence",
+    )
+    original_fingerprint = evidence.candidate_fingerprint()
+
+    assert evidence.manifest["entries"][0]["workspace_relative_path"] == "kernel.py"
+    assert evidence.manifest["entries"][0]["resolved_workspace_relative_path"] == "a.py"
+    declared.unlink()
+    declared.symlink_to("b.py")
+
+    assert evidence.candidate_fingerprint() != original_fingerprint
+
+
 def test_capture_resolves_image_repository_source(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     source = workspace / "aiter" / "aiter" / "kernel.py"

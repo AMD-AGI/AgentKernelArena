@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 from typing import Any, Iterable
@@ -95,13 +96,22 @@ def resolve_submission_path(
     be fingerprinted (important for tasks where the agent creates ``kernel.py``).
     """
 
+    _lexical, resolved = _submission_location(workspace, relative, task_config)
+    return resolved
+
+
+def _submission_location(
+    workspace: Path, relative: str, task_config: dict[str, Any]
+) -> tuple[Path, Path]:
+    """Return both the declared lookup path and its contained resolved target."""
+
     workspace = workspace.resolve()
     candidates = list(_candidate_locations(workspace, relative, task_config))
-    chosen = next((path for path in candidates if path.exists()), candidates[0])
-    resolved = chosen.resolve(strict=False)
+    lexical = next((path for path in candidates if path.exists()), candidates[0])
+    resolved = lexical.resolve(strict=False)
     if not resolved.is_relative_to(workspace):
         raise ValueError(f"submission path escapes workspace: {relative!r}")
-    return resolved
+    return lexical, resolved
 
 
 def _sha256_file(path: Path) -> str:
@@ -172,7 +182,8 @@ class SubmissionEvidence:
             # or one of its parent directories with a symlink after capture.
             # Continue with the resolved target so retargeting the originally
             # declared symlink cannot redirect the subsequent file read.
-            path = (workspace / relative).resolve(strict=False)
+            lexical = workspace / relative
+            path = lexical.resolve(strict=False)
             if not path.is_relative_to(workspace):
                 raise ValueError(
                     "candidate submission path escapes workspace: "
@@ -183,6 +194,12 @@ class SubmissionEvidence:
                 {
                     "declared_path": original["declared_path"],
                     "workspace_relative_path": original["workspace_relative_path"],
+                    "resolved_workspace_relative_path": path.relative_to(
+                        workspace
+                    ).as_posix(),
+                    "symlink_target": (
+                        os.readlink(lexical) if lexical.is_symlink() else None
+                    ),
                     "exists": exists,
                     "sha256": _sha256_file(path) if exists else None,
                     "size": path.stat().st_size if exists else None,
@@ -207,12 +224,16 @@ def capture_submission_evidence(
 
     entries: list[dict[str, Any]] = []
     for declared in declared_submission_paths(task_config):
-        source = resolve_submission_path(workspace, declared, task_config)
-        relative = source.relative_to(workspace).as_posix()
+        lexical, source = _submission_location(workspace, declared, task_config)
+        relative = lexical.relative_to(workspace).as_posix()
         exists = source.is_file()
         entry = {
             "declared_path": declared,
             "workspace_relative_path": relative,
+            "resolved_workspace_relative_path": source.relative_to(
+                workspace
+            ).as_posix(),
+            "symlink_target": os.readlink(lexical) if lexical.is_symlink() else None,
             "exists": exists,
             "sha256": _sha256_file(source) if exists else None,
             "size": source.stat().st_size if exists else None,
@@ -224,7 +245,7 @@ def capture_submission_evidence(
             shutil.copy2(source, destination)
 
     manifest_body = {
-        "schema_version": 1,
+        "schema_version": 2,
         "workspace": str(workspace),
         "entries": entries,
     }

@@ -17,9 +17,9 @@ from ..contracts import (
 )
 from .attestation import BuildAttestation
 from .base import (
+    artifact_path,
     blocked_check,
     command_from_context,
-    context_path,
     parsed_to_run_result,
     ready_check,
     sidecar_path,
@@ -29,7 +29,7 @@ from .parsers import parse_fpsan_comparison
 
 class HipFpSanPlugin:
     name = ToolName.HIP_FPSAN.value
-    version = "1"
+    version = "2"
 
     def assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
         profile = context.profile
@@ -82,15 +82,17 @@ class HipFpSanPlugin:
         include_dir = sidecar_path(context, "include_dir", required=True)
         assert include_dir is not None
         flags = self.build_flags(include_dir)
+        attestation_path = artifact_path(
+            context, "attestation_path", "build_attestation.json"
+        )
+        attestation_path.parent.mkdir(parents=True, exist_ok=True)
         env = {
             **dict(context.env),
             "AKA_EVAL_TOOL": self.name,
             "AKA_HIP_FPSAN": "1",
             "FPSAN_INCLUDE_DIR": str(include_dir),
             "AKA_FPSAN_REQUIRE_COMPARISON": "1",
-            "AKA_BUILD_ATTESTATION_PATH": str(
-                Path(context.artifact_dir) / "build_attestation.json"
-            ),
+            "AKA_BUILD_ATTESTATION_PATH": str(attestation_path),
         }
         return ToolInvocation(
             tool=self.name,
@@ -101,15 +103,15 @@ class HipFpSanPlugin:
             artifact_dir=context.artifact_dir,
             metadata={
                 "build_flags": list(flags),
-                "attestation_path": str(Path(context.artifact_dir) / "build_attestation.json"),
+                "attestation_path": str(attestation_path),
             },
         )
 
     def parse(self, context: ToolContext, execution) -> ToolRunResult:
         include_dir = sidecar_path(context, "include_dir", required=True)
         assert include_dir is not None
-        attestation_path = context_path(context, "attestation_path") or (
-            Path(context.artifact_dir) / "build_attestation.json"
+        attestation_path = artifact_path(
+            context, "attestation_path", "build_attestation.json"
         )
         attested = False
         if attestation_path.is_file():

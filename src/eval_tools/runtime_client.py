@@ -593,7 +593,11 @@ class SidecarRuntimeClient:
 
         exit_code = execution.get("exit_code")
         signal_number = execution.get("signal")
-        if exit_code is not None:
+        if execution.get("cleanup_required") is True:
+            # Background descendants violate the invocation contract even when
+            # the leader exited zero and containment successfully removed them.
+            returncode = None
+        elif exit_code is not None:
             try:
                 returncode: int | None = int(exit_code)
             except (TypeError, ValueError) as error:

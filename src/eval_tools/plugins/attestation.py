@@ -21,6 +21,26 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _command_has_flag(command: tuple[str, ...], required: str) -> bool:
+    """Match compiler flags structurally without accepting textual near-matches."""
+
+    if required in command:
+        return True
+    if required.startswith(("-I", "-L")) and len(required) > 2:
+        prefix, value = required[:2], required[2:]
+        return any(
+            command[index] == prefix and command[index + 1] == value
+            for index in range(len(command) - 1)
+        )
+    if required.startswith("--") and "=" in required:
+        prefix, value = required.split("=", 1)
+        return any(
+            command[index] == prefix and command[index + 1] == value
+            for index in range(len(command) - 1)
+        )
+    return False
+
+
 @dataclass(frozen=True)
 class BuildAttestation:
     """Evidence that the artifact which ran was built with the requested tool.
@@ -59,9 +79,8 @@ class BuildAttestation:
             return False, "attestation_tool_mismatch"
         if not self.instrumented:
             return False, "artifact_not_instrumented"
-        command_text = " ".join(self.build_command)
         for flag in required_flags:
-            if flag not in command_text:
+            if not _command_has_flag(self.build_command, flag):
                 return False, f"missing_build_flag:{flag}"
         for key, expected in required_env.items():
             if str(self.environment.get(key, "")) != str(expected):

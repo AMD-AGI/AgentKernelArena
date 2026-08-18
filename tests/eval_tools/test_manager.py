@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from pathlib import Path
 
 from src.eval_tools.config import EvalToolsConfig
 from src.eval_tools.contracts import (
@@ -133,11 +134,39 @@ def test_manager_executes_ready_plugin_with_configured_isolation(tmp_path):
     assert len(runtime.invocations) == 1
     invocation, context = runtime.invocations[0]
     assert invocation.timeout_s == 17
-    assert invocation.artifact_dir == str(tmp_path / "tool_reports" / "gpu_asan")
+    artifact_dir = Path(invocation.artifact_dir)
+    assert artifact_dir.parent.name == report.plan.fingerprint
+    assert artifact_dir.parent.parent == tmp_path / "tool_reports" / "gpu_asan"
+    assert artifact_dir.is_dir()
     assert context.runtime_ref == "image@sha256:abc"
     assert context.source_evidence.candidate_fingerprint == "candidate-1"
     result = report.evaluations[0].result
     assert result.execution_record.stdout == "tool completed"
+
+
+def test_repeated_evaluation_cannot_reuse_stale_tool_artifacts(tmp_path):
+    runtime = FakeRuntime()
+    manager = _manager(FakePlugin(), runtime)
+    first = manager.evaluate(
+        workspace=tmp_path,
+        task_config=_task(),
+        config=_config(),
+        candidate_fingerprint="same-candidate",
+    )
+    first_dir = Path(runtime.invocations[-1][0].artifact_dir)
+    (first_dir / "build_attestation.json").write_text("stale", encoding="utf-8")
+
+    second = manager.evaluate(
+        workspace=tmp_path,
+        task_config=_task(),
+        config=_config(),
+        candidate_fingerprint="same-candidate",
+    )
+    second_dir = Path(runtime.invocations[-1][0].artifact_dir)
+
+    assert first.plan.fingerprint == second.plan.fingerprint
+    assert first_dir != second_dir
+    assert not (second_dir / "build_attestation.json").exists()
 
 
 def test_runtime_evidence_cannot_be_shadowed_by_config_options(tmp_path):

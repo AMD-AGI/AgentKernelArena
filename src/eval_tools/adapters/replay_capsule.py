@@ -19,6 +19,7 @@ from typing import Any, Mapping, Optional
 
 
 SCHEMA_VERSION = 1
+_UINT32_MAX = (1 << 32) - 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_.$][A-Za-z0-9_.$@-]*$")
 _ALLOCATION_ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
@@ -72,13 +73,28 @@ def _require_mapping(value: Any, name: str) -> Mapping[str, Any]:
     return value
 
 
+def _exact_int(
+    value: Any,
+    name: str,
+    *,
+    lower: int,
+    upper: int = _UINT32_MAX,
+) -> int:
+    if type(value) is not int:
+        raise CapsuleValidationError(f"{name} must be an exact JSON integer")
+    if value < lower or value > upper:
+        raise CapsuleValidationError(f"{name} must be in [{lower}, {upper}]")
+    return value
+
+
 def _tuple3(value: Any, name: str, *, positive: bool) -> tuple[int, int, int]:
     if not isinstance(value, (list, tuple)) or len(value) != 3:
         raise CapsuleValidationError(f"{name} must contain exactly three integers")
-    result = tuple(int(item) for item in value)
     lower = 1 if positive else 0
-    if any(item < lower for item in result):
-        raise CapsuleValidationError(f"{name} components must be >= {lower}")
+    result = tuple(
+        _exact_int(item, f"{name}[{index}]", lower=lower)
+        for index, item in enumerate(value)
+    )
     return result  # type: ignore[return-value]
 
 
@@ -196,12 +212,21 @@ class LaunchSpec:
         return cls(
             _tuple3(raw.get("grid"), "launch.grid", positive=True),
             _tuple3(raw.get("block"), "launch.block", positive=True),
-            int(raw.get("dynamic_smem_bytes", 0)),
+            _exact_int(
+                raw.get("dynamic_smem_bytes", 0),
+                "launch.dynamic_smem_bytes",
+                lower=0,
+            ),
         )
 
     def validate(self) -> None:
-        if self.dynamic_smem_bytes < 0:
-            raise CapsuleValidationError("launch.dynamic_smem_bytes cannot be negative")
+        _tuple3(self.grid, "launch.grid", positive=True)
+        _tuple3(self.block, "launch.block", positive=True)
+        _exact_int(
+            self.dynamic_smem_bytes,
+            "launch.dynamic_smem_bytes",
+            lower=0,
+        )
         threads = math.prod(self.block)
         if threads > 1024:
             raise CapsuleValidationError(f"launch.block has too many threads: {threads}")
@@ -448,6 +473,10 @@ class ReplayCapsule:
             raise CapsuleValidationError("allocation ids must be unique")
         for allocation in self.allocations:
             allocation.validate()
+        if not any(allocation.expected_blob for allocation in self.allocations):
+            raise CapsuleValidationError(
+                "replay capsule requires at least one golden expected output"
+            )
         for arg in self.abi:
             if arg.kind == "pointer" and arg.ref not in allocations:
                 raise CapsuleValidationError(f"ABI pointer {arg.name} references unknown allocation {arg.ref!r}")

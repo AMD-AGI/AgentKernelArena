@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import importlib.metadata
 import json
+import math
 import os
 import re
 import signal
@@ -22,8 +23,11 @@ from .execution import (
     DEFAULT_KILL_GRACE_SECONDS,
     DEFAULT_LOG_LIMIT_BYTES,
     DEFAULT_TERM_GRACE_SECONDS,
+    LinuxProcessContainment,
+    enable_child_subreaper,
     execute_command,
 )
+from .config import MAX_TOOL_TIMEOUT_SECONDS
 
 
 MAX_REQUEST_BYTES = 1024 * 1024
@@ -47,6 +51,18 @@ class RequestValidationError(ValueError):
 
 class PathValidationError(RequestValidationError):
     pass
+
+
+def _reject_nonfinite_json(value: Any) -> None:
+    if isinstance(value, float) and not math.isfinite(value):
+        raise RequestValidationError("request contains a non-finite JSON number")
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            _reject_nonfinite_json(key)
+            _reject_nonfinite_json(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            _reject_nonfinite_json(item)
 
 
 def _sha256_file(path: Path) -> str:
@@ -723,7 +739,7 @@ def _positive_number(value: Any, *, field: str, maximum: float) -> float:
         number = float(value)
     except (TypeError, ValueError) as error:
         raise RequestValidationError(f"{field} must be a positive number") from error
-    if number <= 0 or number > maximum:
+    if not math.isfinite(number) or number <= 0 or number > maximum:
         raise RequestValidationError(f"{field} must be in (0, {maximum}]")
     return number
 
@@ -735,7 +751,7 @@ def _nonnegative_number(value: Any, *, field: str, maximum: float) -> float:
         number = float(value)
     except (TypeError, ValueError) as error:
         raise RequestValidationError(f"{field} must be a non-negative number") from error
-    if number < 0 or number > maximum:
+    if not math.isfinite(number) or number < 0 or number > maximum:
         raise RequestValidationError(f"{field} must be in [0, {maximum}]")
     return number
 
@@ -917,6 +933,7 @@ class EvalToolServer(socketserver.UnixStreamServer):
             stderr_limit_bytes=stderr_limit,
             term_grace_seconds=term_grace,
             kill_grace_seconds=kill_grace,
+            containment=LinuxProcessContainment.capture(fatal_on_failure=True),
         ).to_dict()
         for stream_name in ("stdout", "stderr"):
             stream = result[stream_name]
@@ -945,6 +962,7 @@ class EvalToolRequestHandler(socketserver.StreamRequestHandler):
             request_id = request.get("id")
             if not isinstance(request_id, str) or not request_id:
                 raise RequestValidationError("request id must be a non-empty string")
+            _reject_nonfinite_json(request)
             method = request.get("method")
             params = request.get("params", {})
             if not isinstance(method, str) or not method:
@@ -1003,6 +1021,7 @@ def serve(
     artifact_root: Path,
     max_timeout_seconds: float,
 ) -> None:
+    enable_child_subreaper()
     _prepare_socket_path(socket_path)
     for root in (input_root, scratch_root, artifact_root):
         root.mkdir(parents=True, exist_ok=True)
@@ -1043,14 +1062,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input-root", required=True, type=Path)
     parser.add_argument("--scratch-root", required=True, type=Path)
     parser.add_argument("--artifact-root", required=True, type=Path)
-    parser.add_argument("--max-timeout-s", type=float, default=3600.0)
+    parser.add_argument(
+        "--max-timeout-s",
+        type=float,
+        default=float(MAX_TOOL_TIMEOUT_SECONDS),
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.max_timeout_s <= 0:
-        raise SystemExit("--max-timeout-s must be positive")
+    if (
+        not math.isfinite(args.max_timeout_s)
+        or args.max_timeout_s <= 0
+        or args.max_timeout_s > MAX_TOOL_TIMEOUT_SECONDS
+    ):
+        raise SystemExit(
+            f"--max-timeout-s must be in (0, {MAX_TOOL_TIMEOUT_SECONDS}]"
+        )
     serve(
         tool=args.tool,
         socket_path=args.socket,

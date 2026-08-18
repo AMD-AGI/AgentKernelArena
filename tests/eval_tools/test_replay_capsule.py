@@ -106,8 +106,40 @@ def test_native_launcher_contract_contains_exact_launch_and_hidden_args(tmp_path
     assert "void* arg_2 = global_scratch" in source
     assert "void* arg_3 = profile_scratch" in source
     assert "AKA_REPLAY_RESULT pass" in source
+    assert "hipGetDeviceProperties" in source
+    assert "device_properties.maxGridSize" in source
+    assert "device_properties.maxThreadsDim" in source
+    assert "device_properties.sharedMemPerBlock" in source
     assert "int main(int argc, char** argv)" in source
     assert str(tmp_path) not in source
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("grid", [1.9, 1, 1]),
+        ("grid", [True, 1, 1]),
+        ("grid", [1 << 32, 1, 1]),
+        ("block", ["64", 1, 1]),
+        ("dynamic_smem_bytes", 1.5),
+        ("dynamic_smem_bytes", 1 << 32),
+    ],
+)
+def test_capsule_rejects_lossy_or_out_of_range_launch_geometry(
+    tmp_path, field, value
+):
+    _path, raw = capsule_fixture(tmp_path)
+    raw["launch"][field] = value
+    with pytest.raises(CapsuleValidationError, match="exact JSON integer|must be in"):
+        ReplayCapsule.from_dict(raw, base_dir=tmp_path)
+
+
+def test_capsule_requires_at_least_one_golden_output(tmp_path):
+    _path, raw = capsule_fixture(tmp_path)
+    raw["allocations"][0].pop("expected_blob")
+    raw["allocations"][0].pop("expected_sha256")
+    with pytest.raises(CapsuleValidationError, match="golden expected output"):
+        ReplayCapsule.from_dict(raw, base_dir=tmp_path)
 
 
 def test_native_launcher_plan_passes_capsule_root_at_runtime(tmp_path):

@@ -65,7 +65,7 @@ class NativeLauncherPlan:
 class NativeLauncherContract:
     """The subset of capsules supported by the generated HIP launcher."""
 
-    version = "2"
+    version = "3"
 
     def validate(self, capsule: ReplayCapsule) -> None:
         capsule.validate(allow_descriptors=False)
@@ -114,6 +114,22 @@ class NativeLauncherContract:
             '  if (argc != 2) { std::fprintf(stderr, "usage: replay_launcher CAPSULE_ROOT\\n"); return 5; }',
             "  const std::string capsule_root(argv[1]);",
             f"  const std::string code_object_path = capsule_path(capsule_root, {_cpp_string(capsule.code_object.path)});",
+            "  hipDeviceProp_t device_properties{};",
+            "  HIP_OK(hipGetDeviceProperties(&device_properties, 0));",
+            (
+                "  if ("
+                f"{capsule.launch.grid[0]}ULL > static_cast<std::uint64_t>(device_properties.maxGridSize[0]) || "
+                f"{capsule.launch.grid[1]}ULL > static_cast<std::uint64_t>(device_properties.maxGridSize[1]) || "
+                f"{capsule.launch.grid[2]}ULL > static_cast<std::uint64_t>(device_properties.maxGridSize[2]) || "
+                f"{capsule.launch.block[0]}ULL > static_cast<std::uint64_t>(device_properties.maxThreadsDim[0]) || "
+                f"{capsule.launch.block[1]}ULL > static_cast<std::uint64_t>(device_properties.maxThreadsDim[1]) || "
+                f"{capsule.launch.block[2]}ULL > static_cast<std::uint64_t>(device_properties.maxThreadsDim[2]) || "
+                f"{capsule.launch.block[0] * capsule.launch.block[1] * capsule.launch.block[2]}ULL > static_cast<std::uint64_t>(device_properties.maxThreadsPerBlock) || "
+                f"{capsule.launch.dynamic_smem_bytes}ULL > static_cast<std::uint64_t>(device_properties.sharedMemPerBlock)) {{"
+            ),
+            '    std::fprintf(stderr, "capsule launch geometry exceeds device limits\\n");',
+            "    return 6;",
+            "  }",
             "  hipModule_t module = nullptr;",
             "  hipFunction_t function = nullptr;",
             "  HIP_OK(hipModuleLoad(&module, code_object_path.c_str()));",

@@ -92,3 +92,39 @@ def test_validate_fails_if_relative_artifact_symlink_moves_outside(tmp_path):
         False,
         "attested_artifact_outside_attestation_dir",
     )
+
+
+@pytest.mark.parametrize(
+    "near_match",
+    ["-DNOTE=-fsanitize=address", "--not-shared-libsan"],
+)
+def test_required_build_flags_reject_substring_near_matches(near_match):
+    attestation = BuildAttestation(
+        tool="gpu_asan",
+        instrumented=True,
+        compiler="hipcc",
+        compiler_version="7.2",
+        target_arch="gfx950:xnack+",
+        build_command=("hipcc", near_match, "candidate.hip"),
+    )
+    assert attestation.validate(
+        expected_tool="gpu_asan",
+        required_flags=("-fsanitize=address",),
+        require_artifact=False,
+    ) == (False, "missing_build_flag:-fsanitize=address")
+
+
+def test_required_build_flags_accept_explicit_split_include_form():
+    attestation = BuildAttestation(
+        tool="hip_fpsan",
+        instrumented=True,
+        compiler="hipcc",
+        compiler_version="7.2",
+        target_arch="gfx950",
+        build_command=("hipcc", "-I", "/opt/hip-fpsan/include", "candidate.hip"),
+    )
+    assert attestation.validate(
+        expected_tool="hip_fpsan",
+        required_flags=("-I/opt/hip-fpsan/include",),
+        require_artifact=False,
+    ) == (True, "ok")

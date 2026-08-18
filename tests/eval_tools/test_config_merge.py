@@ -154,3 +154,81 @@ def test_explicit_runtime_ref_must_match_host_selected_image(monkeypatch) -> Non
                 }
             }
         )
+
+
+@pytest.mark.parametrize(
+    "section",
+    [
+        {"polciy": "required"},
+        {
+            "enabled": ["gpu_asan"],
+            "tools": {"gpu_asan": {"runtime_reff": "sha256:typo"}},
+        },
+    ],
+)
+def test_unknown_run_and_tool_fields_fail_closed(section) -> None:
+    with pytest.raises(ValueError, match="unknown fields"):
+        EvalToolsConfig.from_mapping({"evaluation_tools": section})
+
+
+@pytest.mark.parametrize("timeout", [0, 3601, 1.5, "30", True])
+def test_run_timeout_must_match_worker_contract(timeout) -> None:
+    with pytest.raises(ValueError, match="timeout"):
+        EvalToolsConfig.from_mapping(
+            {
+                "evaluation_tools": {
+                    "enabled": ["gpu_asan"],
+                    "timeout_s": timeout,
+                }
+            }
+        )
+
+
+def test_full_run_config_without_evaluation_tools_remains_disabled() -> None:
+    parsed = EvalToolsConfig.from_mapping(
+        {"agent": {"template": "codex"}, "target_gpu_model": "MI355X"}
+    )
+    assert parsed.enabled == ()
+
+
+def test_unknown_enabled_tool_and_conflicting_identity_fail_closed() -> None:
+    with pytest.raises(ValueError, match="unknown tool"):
+        EvalToolsConfig.from_mapping(
+            {"evaluation_tools": {"enabled": ["gpu_assan"]}}
+        )
+    with pytest.raises(ValueError, match="conflicting runtime identities"):
+        EvalToolsConfig.from_mapping(
+            {
+                "evaluation_tools": {
+                    "enabled": ["gpu_asan"],
+                    "tools": {
+                        "gpu_asan": {
+                            "runtime_ref": "sha256:one",
+                            "image_digest": "sha256:two",
+                        }
+                    },
+                }
+            }
+        )
+
+
+def test_hyphenated_tool_mapping_is_normalized_without_losing_options() -> None:
+    parsed = EvalToolsConfig.from_mapping(
+        {
+            "evaluation_tools": {
+                "enabled": ["gpu-asan"],
+                "tools": {"gpu-asan": {"timeout_s": 17}},
+            }
+        }
+    )
+    assert parsed.tools[0].name == "gpu_asan"
+    assert parsed.tools[0].timeout_s == 17
+
+    with pytest.raises(ValueError, match="duplicate normalized tool"):
+        EvalToolsConfig.from_mapping(
+            {
+                "evaluation_tools": {
+                    "tools": {"gpu_asan": {}, "gpu-asan": {}},
+                }
+            }
+        )

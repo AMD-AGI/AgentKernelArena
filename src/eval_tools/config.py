@@ -18,7 +18,14 @@ from .contracts import (
 )
 
 
-PLAN_SCHEMA_VERSION = 1
+PLAN_SCHEMA_VERSION = 2
+MAX_TOOL_TIMEOUT_SECONDS = 3600
+_RUN_SECTION_KEYS = frozenset(
+    {"enabled", "policy", "runtime_profile", "positive_control", "timeout_s", "tools"}
+)
+_TOOL_CONFIG_KEYS = frozenset(
+    {"runtime_ref", "image_digest", "timeout_s", "options"}
+)
 
 # These values are discovered and attested by the selected sidecar image.  They
 # are framework state, not user adapter options: accepting them from YAML would
@@ -52,6 +59,22 @@ def _tool_name(value: Any) -> str:
     return name
 
 
+def _validate_keys(
+    value: Mapping[object, object], *, allowed: frozenset[str], field: str
+) -> None:
+    unknown = {str(key) for key in value} - allowed
+    if unknown:
+        raise ValueError(f"{field} contains unknown fields: {sorted(unknown)}")
+
+
+def _timeout(value: Any, *, field: str, maximum: int = MAX_TOOL_TIMEOUT_SECONDS) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field} must be an integer")
+    if value <= 0 or value > maximum:
+        raise ValueError(f"{field} must be in [1, {maximum}]")
+    return value
+
+
 def _canonical(value: Any) -> Any:
     if hasattr(value, "to_dict"):
         return _canonical(value.to_dict())
@@ -73,9 +96,11 @@ class ToolConfig:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _tool_name(self.name))
-        if int(self.timeout_s) <= 0:
-            raise ValueError(f"timeout_s for {self.name} must be positive")
-        object.__setattr__(self, "timeout_s", int(self.timeout_s))
+        object.__setattr__(
+            self,
+            "timeout_s",
+            _timeout(self.timeout_s, field=f"timeout_s for {self.name}"),
+        )
         object.__setattr__(self, "options", dict(self.options or {}))
 
     def to_dict(self) -> dict[str, Any]:
@@ -121,11 +146,20 @@ class EvalToolsConfig:
             return cls.disabled()
         if not isinstance(config, Mapping):
             raise ValueError("evaluation tools config must be a mapping")
-        section: Any = config.get("evaluation_tools", config)
+        if "evaluation_tools" in config:
+            section: Any = config["evaluation_tools"]
+        elif not config or _RUN_SECTION_KEYS.intersection(str(key) for key in config):
+            section = config
+        else:
+            # A full run configuration with no evaluation_tools section keeps
+            # this optional stage disabled. Unknown fields are rejected once a
+            # section is explicitly present, where typos can weaken policy.
+            return cls.disabled()
         if section in (None, False):
             return cls.disabled()
         if not isinstance(section, Mapping):
             raise ValueError("evaluation_tools must be a mapping")
+        _validate_keys(section, allowed=_RUN_SECTION_KEYS, field="evaluation_tools")
 
         policy = EvaluationPolicy(str(section.get("policy", "advisory")).strip().lower())
         runtime_profile = section.get("runtime_profile")
@@ -168,17 +202,46 @@ class EvalToolsConfig:
         raw_tool_config = section.get("tools") or {}
         if not isinstance(raw_tool_config, Mapping):
             raise ValueError("evaluation_tools.tools must be a mapping")
-        default_timeout = int(section.get("timeout_s", 3600))
-        if default_timeout <= 0:
-            raise ValueError("evaluation_tools.timeout_s must be positive")
+        canonical_tool_config: dict[str, Mapping[object, object]] = {}
+        for raw_name, raw_item in raw_tool_config.items():
+            name = _tool_name(raw_name)
+            if name not in {tool.value for tool in ToolName}:
+                raise ValueError(f"evaluation_tools.tools contains unknown tool: {name}")
+            if name in canonical_tool_config:
+                raise ValueError(
+                    "evaluation_tools.tools contains duplicate normalized tool: "
+                    f"{name}"
+                )
+            if not isinstance(raw_item, Mapping):
+                raise ValueError(f"evaluation_tools.tools.{name} must be a mapping")
+            _validate_keys(
+                raw_item,
+                allowed=_TOOL_CONFIG_KEYS,
+                field=f"evaluation_tools.tools.{name}",
+            )
+            canonical_tool_config[name] = raw_item
+        default_timeout = _timeout(
+            section.get("timeout_s", MAX_TOOL_TIMEOUT_SECONDS),
+            field="evaluation_tools.timeout_s",
+        )
 
         tools: list[ToolConfig] = []
         for raw_name in enabled:
             name = _tool_name(raw_name)
-            item = raw_tool_config.get(name) or {}
+            if name not in {tool.value for tool in ToolName}:
+                raise ValueError(f"evaluation_tools.enabled contains unknown tool: {name}")
+            item = canonical_tool_config.get(name) or {}
             if not isinstance(item, Mapping):
                 raise ValueError(f"evaluation_tools.tools.{name} must be a mapping")
             runtime_ref = item.get("runtime_ref", item.get("image_digest"))
+            if (
+                item.get("runtime_ref") is not None
+                and item.get("image_digest") is not None
+                and item.get("runtime_ref") != item.get("image_digest")
+            ):
+                raise ValueError(
+                    f"evaluation_tools.tools.{name} has conflicting runtime identities"
+                )
             if runtime_ref is not None:
                 runtime_ref = str(runtime_ref).strip() or None
             # The host runner resolves the selected tag to the immutable local
@@ -216,7 +279,11 @@ class EvalToolsConfig:
                 ToolConfig(
                     name=name,
                     runtime_ref=runtime_ref,
-                    timeout_s=int(item.get("timeout_s", default_timeout)),
+                    timeout_s=_timeout(
+                        item.get("timeout_s", default_timeout),
+                        field=f"evaluation_tools.tools.{name}.timeout_s",
+                        maximum=default_timeout,
+                    ),
                     options=merged_options,
                 )
             )
@@ -362,11 +429,11 @@ def merge_task_tool_config(
                 f"task tool {base.name} cannot override reserved options "
                 f"{sorted(attempted_reserved)}"
             )
-        timeout = int(override.get("timeout_s", base.timeout_s))
-        if timeout <= 0 or timeout > base.timeout_s:
-            raise ValueError(
-                f"task timeout for {base.name} must be in [1, {base.timeout_s}]"
-            )
+        timeout = _timeout(
+            override.get("timeout_s", base.timeout_s),
+            field=f"task timeout for {base.name}",
+            maximum=base.timeout_s,
+        )
         merged.append(
             ToolConfig(
                 name=base.name,
@@ -386,6 +453,7 @@ def merge_task_tool_config(
 
 __all__ = [
     "EvalToolsConfig",
+    "MAX_TOOL_TIMEOUT_SECONDS",
     "PLAN_SCHEMA_VERSION",
     "ToolConfig",
     "build_evaluation_plan",

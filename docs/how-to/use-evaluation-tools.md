@@ -294,7 +294,7 @@ global milestone.
 | 1. Qualify installations | Run automatic safe/known-bug startup controls on `gfx950`; repeat the now-passing four-tool qualification on clean hosts. | Both positive and negative lanes pass repeatedly. `eval-tools-smoke` evidence is archived and independently reviewed. |
 | 2. Build trusted pilot adapters | Start with one editable Triton task for Triton FpSan, one Triton and one HIP task for GPU ASan, one native HIP task for rocJITsu, and one explicitly ported HIP-FpSan task. Put harnesses under protected `scripts/` paths and declare all inputs. | Each pilot distinguishes a safe fixture from a seeded bug, identifies the selected candidate, and produces bounded structured artifacts. No precompiled AITER/library kernel is claimed as covered. |
 | 3. Finish AOT capture and binding | The trusted `triton_aot`/`flydsl_aot` replay path now validates one-dispatch capsules and generates the launcher. Add evaluator-owned extraction immediately after correctness and bind the capsule to that exact candidate/case. | Safe and racy fixtures pass end to end, malformed capsules fail closed, and a task cannot substitute a different valid capsule for the correctness dispatch. |
-| 4. Harden provenance and phase isolation | The runner now uses per-tool writable socket directories, a read-only socket parent in scoring, a narrow per-worker artifact mount, a complete serialized plan, and capsule digests in the fingerprint. Next run tools only after the agent exits, freeze the candidate, use evaluator-only/authenticated RPC and per-task/tool artifact ownership, strengthen artifact/dispatch binding, and wire resume to plan freshness. | An adversarial task cannot call a worker, overwrite evidence, reach another task's artifacts, spoof a clean result, or reuse a stale report. This phase is required before sanitizer output becomes a reward signal. |
+| 4. Harden provenance and phase isolation | The runner now uses per-tool writable socket directories, a read-only socket parent in scoring, a narrow per-worker artifact mount, fresh per-invocation artifact directories, a complete serialized plan, and capsule digests in the fingerprint. Next run tools only after the agent exits, freeze the candidate, use evaluator-only/authenticated RPC and evaluator-owned artifacts, strengthen artifact/dispatch binding, and wire resume to plan freshness. | An adversarial task cannot call a worker, overwrite evidence, reach another task's artifacts, spoof a clean result, or reuse a stale report. This phase is required before sanitizer output becomes a reward signal. |
 | 5. Advisory campaign | Run qualified paths with `policy: advisory` across representative and private held-out shapes; measure overhead, timeouts, log volume, flakes, false positives, and GPU recovery behavior. | Each task/tool pair has reviewed coverage cases, stable resource limits, and an explicit owner/runbook. Incomplete results remain visible and never score as clean. |
 | 6. Narrow required gates | Change only individually qualified task/tool pairs to `required`; leave unsupported and not-yet-qualified paths advisory or disabled. | Required gates block seeded findings and infrastructure failures without changing ordinary correctness semantics or the scoring performance baseline. |
 | 7. Add `gfx942` separately | Build architecture-specific images/configs and rerun every startup, adapter, security, and workload fixture on MI300X/MI325X. | Only mark `gfx942` supported after independent qualification; do not infer it from `gfx950`. |
@@ -338,6 +338,13 @@ Do not enable all four tools merely because all four images exist. On a
 heterogeneous task set, irrelevant tools become `not_applicable`, unsupported
 paths remain visible as unsupported, and missing adapters remain
 `adapter_required`.
+
+Timeouts are exact YAML/JSON integers from 1 through 3600 seconds; booleans,
+floats, numeric strings, and larger values are rejected. A task-level timeout
+must also be no larger than the run-level timeout. Explicit
+`evaluation_tools` sections and per-tool entries reject unknown fields rather
+than silently weakening the requested policy. Supplying both `runtime_ref` and
+its `image_digest` alias is rejected when the two assertions differ.
 
 ### Select and attest each tool image separately
 
@@ -431,6 +438,14 @@ Common built-in option keys are:
 | `rocjitsu` | HIP: `launcher` or `command`. Triton/FlyDSL: `capsule` plus an exact profile adapter of `triton_aot` or `flydsl_aot`; user launchers are forbidden on these AOT paths. | HIP may set `expected_kernel` and `race_report`. AOT capsule path must stay below the task workspace and target `gfx950`; the executable/config and trusted replay helper come from the sidecar image. |
 | `hip_fpsan` | `comparison_command` or `command`, plus `evaluation_profile.fpsan_ported: true` | Candidate `attestation_path`; both paths must be instrumented. The include directory comes from health. |
 
+`attestation_path` is resolved below the fresh artifact directory for the
+current tool invocation and the same resolved path is used for the injected
+environment variable, metadata, and parser. Relative paths are recommended;
+an absolute path is accepted only when it resolves below that invocation
+directory. Native HIP rocJITsu applies the same containment rule to
+`race_report` and requires the report filename to remain `race.log`. AOT replay
+does not accept a task-configured race-report path.
+
 For repository or image-kernel tasks, declare every candidate file whose change
 must invalidate evidence with `evaluation_profile.submission_paths`. Paths must
 be workspace-relative and cannot contain `..`. If this field is absent, capture
@@ -460,7 +475,9 @@ tool-specific attestation:
 - Triton FpSan and HIP-FpSan currently require one build attestation whose
   evidence contains the self-declared `reference_instrumented` and
   `candidate_instrumented` booleans, plus an `AKA_FPSAN_RESULT` payload with the
-  two digests. They do not validate two independently attested artifacts.
+  two digests. Exactly one result marker is required; zero or multiple markers,
+  a timeout, or any nonzero/unknown process exit is a tool error. They do not
+  validate two independently attested artifacts.
 - Native HIP rocJITsu requires an observed simulator dispatch, optionally
   matched to `expected_kernel`. This path accepts a task launcher, so its output
   text remains weak evidence and can be forged by that launcher.
@@ -473,7 +490,9 @@ tool-specific attestation:
 - Build attestation records the compiler, compiler version, and target
   architecture. The current validator directly checks tool identity,
   `instrumented: true`, required build flags/environment, artifact existence,
-  and artifact SHA-256. The host/runtime `gfx950` guards provide the current
+  and artifact SHA-256. Required flags are matched as complete argv tokens
+  (including supported split-value forms), not as substrings of unrelated
+  arguments. The host/runtime `gfx950` guards provide the current
   architecture boundary; stricter compiler/version/target comparisons remain
   future attestation hardening.
 
@@ -488,9 +507,9 @@ validated capsule and digest, but the capsule can still have been supplied for
 a different candidate/case. Current `required` policy is suitable for trusted
 integration diagnostics, not an adversarial reward boundary.
 
-The default build-attestation location is the tool's directory below the
-external per-task artifact root described later. A wrapper executing in a
-sidecar must write it through the writable `/artifacts` mount; the
+The default build-attestation location is the fresh invocation directory below
+the external per-task/tool artifact root described later. A wrapper executing
+in a sidecar must write it through the writable `/artifacts` mount; the
 repository/workspace input mount is read-only. GPU ASan, Triton FpSan, and
 HIP-FpSan invocations inject `AKA_BUILD_ATTESTATION_PATH`, and the runtime client
 translates that output path into the sidecar namespace. The adapter must place
@@ -627,22 +646,22 @@ For a normal run, the relevant files are:
 │       │       ├── summary.json            # startup verdict and step metadata
 │       │       └── <step>.{stdout,stderr}.log
 │       └── <task-name>-<path-hash>/
-│           ├── gpu_asan/
+│           ├── gpu_asan/<plan-fingerprint>/<invocation-id>/
 │           │   ├── stdout.log
 │           │   ├── stderr.log
 │           │   ├── build_attestation.json # when the adapter supplies it
 │           │   └── triton-gpu-asan-cache/ # Triton only
-│           ├── triton_fpsan/
+│           ├── triton_fpsan/<plan-fingerprint>/<invocation-id>/
 │           │   ├── stdout.log
 │           │   ├── stderr.log
 │           │   ├── build_attestation.json
 │           │   └── triton-fpsan-cache/
-│           ├── rocjitsu/
+│           ├── rocjitsu/<plan-fingerprint>/<invocation-id>/
 │           │   ├── stdout.log
 │           │   ├── stderr.log
 │           │   ├── rocjitsu-report/race.log
 │           │   └── rocjitsu-replay/       # generated AOT launcher, when used
-│           └── hip_fpsan/
+│           └── hip_fpsan/<plan-fingerprint>/<invocation-id>/
 │               ├── stdout.log
 │               ├── stderr.log
 │               └── build_attestation.json
@@ -655,11 +674,17 @@ For a normal run, the relevant files are:
         └── task_result.yaml               # nested tool_evaluation summary
 ```
 
-Each stdout and stderr file is limited to 64 MiB by default and records
-truncation metadata. Tool processes run in a new process group; timeout cleanup
-sends termination and then kill signals to descendants. Per-sidecar scratch and
-cache directories outside `.eval-tool-artifacts` are deleted when the sidecar
-stops. The report records absolute scoring-side paths below
+Each tool attempt gets a newly created invocation directory, so a repeated plan
+cannot consume an old attestation or race report. Each stdout and stderr file is
+limited to 64 MiB by default and records truncation metadata. Tool processes run
+in a new process group. The Linux worker also acts as a child subreaper and
+tracks the invocation's complete descendant tree through `/proc`, including a
+child that starts a new session or process group. Cleanup sends termination and
+then kill signals; observing descendants after the command exits makes the
+execution fail rather than clean. If survivors cannot be removed, the worker
+exits so its container is not reused. Per-sidecar scratch and cache directories
+outside `.eval-tool-artifacts` are deleted when the sidecar stops. The report
+records absolute scoring-side paths below
 `/workspace/.eval-tool-artifacts/<worker-label>`. The runner explicitly mounts
 that path read/write even when `/workspace` itself is read-only. The per-worker
 namespace prevents a writable sidecar alias to task workspaces but is not a
@@ -680,7 +705,9 @@ Every tool report has a SHA-256 `plan_fingerprint` covering:
   and verifies that the two local IDs match;
 - resolved task profile and explicit overrides;
 - enabled plugin versions;
-- captured-original and optimized-candidate fingerprints for declared paths;
+- captured-original and optimized-candidate fingerprints for declared paths,
+  including both the lexical submission path and its current resolved symlink
+  target;
 - the SHA-256 and size of a configured replay-capsule JSON, whose validated
   manifest in turn binds the referenced HSACO and blobs.
 
@@ -744,6 +771,10 @@ expected dispatch, exact capsule/code-object marker, and replay success marker.
 The current validator fails closed for at least:
 
 - more than one kernel dispatch;
+- a capsule with no golden expected-output blob;
+- non-integral, boolean, negative, or greater-than-`uint32` launch dimensions;
+- launch dimensions, block size, or dynamic shared memory that exceed the
+  selected device's runtime limits;
 - opaque/tensor descriptors;
 - empty, misordered, or unsupported ABI arguments and unknown implicit refs;
 - invalid relocations and out-of-bounds allocation views;
