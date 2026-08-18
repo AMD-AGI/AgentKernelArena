@@ -40,6 +40,13 @@ from agents import register_agent
 _FORGE_RESULT_SENTINEL = "__FORGE_RESULT__"
 _KB_STATUS_FILE = "arena_forge_status.json"
 _FORGE_SHUTDOWN_MARGIN_SECONDS = 900
+_GPU_TYPE_ALIASES = {
+    # Arena historically accepts the family-style names below for the X SKUs.
+    # KernelForge addresses KB records by exact hardware model, so normalize the
+    # aliases before they become distinct, non-interoperable recipe identities.
+    "mi300": "mi300x",
+    "mi325": "mi325x",
+}
 
 
 def _normalize_gfx_arch(arch: str) -> str:
@@ -92,7 +99,7 @@ def _resolve_gpu_type(eval_config: dict[str, Any]) -> str:
             "target_gpu_model must be a non-empty hardware model token "
             f"for Forge KB identity; got {eval_config.get('target_gpu_model')!r}"
         )
-    return raw
+    return _GPU_TYPE_ALIASES.get(raw, raw)
 
 
 def _process_group_exists(pgid: int) -> bool:
@@ -475,6 +482,95 @@ def _git(workspace: str, *args: str, logger: logging.Logger) -> None:
         logger.debug(f"git {' '.join(args)} -> {result.returncode}: {result.stderr.strip()}")
 
 
+def _git_required(workspace: str, *args: str) -> str:
+    """Run a git query whose failure must reject the Forge result."""
+    result = subprocess.run(
+        ["git", *args], cwd=workspace, capture_output=True, text=True, check=False
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Forge workspace integrity check failed: git {' '.join(args)} "
+            f"returned {result.returncode}: {result.stderr.strip()}"
+        )
+    return result.stdout
+
+
+def _capture_forge_edit_baseline(workspace: str) -> str:
+    """Return the immutable commit Arena created before Forge starts editing."""
+    baseline = _git_required(workspace, "rev-parse", "--verify", "HEAD").strip()
+    if not re.fullmatch(r"[0-9a-f]{40,64}", baseline):
+        raise RuntimeError(f"Invalid Forge workspace baseline commit: {baseline!r}")
+    return baseline
+
+
+def _verify_forge_edit_scope(
+    workspace: str,
+    baseline_commit: str,
+    editable_sources: list[Path],
+    logger: logging.Logger | None = None,
+) -> None:
+    """Enforce Arena's declared source allowlist before final scoring.
+
+    KernelForge treats ``--source-files`` as orientation and KB metadata rather
+    than an edit boundary. Arena owns that boundary: only files resolved from
+    ``source_file_path`` plus ``editable_sources`` may differ from the initial
+    workspace snapshot. The check includes committed, staged, unstaged, deleted,
+    and renamed paths. Non-ignored untracked scratch files are discarded, matching
+    Arena's harness guard: they did not exist at baseline and cannot influence the
+    score after removal.
+    """
+    root = Path(workspace).resolve()
+    allowed: set[str] = set()
+    for source in editable_sources:
+        resolved = Path(source).resolve()
+        try:
+            relative = resolved.relative_to(root)
+        except ValueError as error:
+            raise RuntimeError(
+                f"Editable source escapes the Forge workspace: {resolved}"
+            ) from error
+        allowed.add(relative.as_posix())
+
+    changed_output = _git_required(
+        workspace,
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        baseline_commit,
+        "--",
+    )
+    untracked_output = _git_required(
+        workspace,
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        "-z",
+    )
+    changed = {path for path in changed_output.split("\0") if path}
+    untracked = {path for path in untracked_output.split("\0") if path}
+    for relative in sorted(untracked - allowed):
+        scratch = root / relative
+        try:
+            scratch.unlink()
+        except OSError as error:
+            raise RuntimeError(
+                f"Could not discard undeclared Forge scratch file: {relative}"
+            ) from error
+        if logger is not None:
+            logger.warning(
+                "Discarded undeclared Forge scratch file before scoring: %s",
+                relative,
+            )
+
+    violations = sorted(changed - allowed)
+    if violations:
+        raise RuntimeError(
+            "Forge changed files outside source_file_path/editable_sources; "
+            f"Arena refuses to score this result: {violations}"
+        )
+
+
 # Build artifacts / regenerated reports / forge scaffolding must NOT be tracked:
 # if they are, a validation or benchmark run that regenerates them dirties the
 # tree and makes the loop's `git revert` fail — leaking a reverted (often broken)
@@ -845,6 +941,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 
     # The loop needs a git repo for the keep/revert pattern.
     _init_git_workspace(workspace, logger)
+    edit_baseline = _capture_forge_edit_baseline(workspace)
 
     experiments_dir = Path(workspace) / "forge_experiments"
     result_json = experiments_dir / "forge_result.json"
@@ -956,6 +1053,12 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     # The loop runs on the 'forge-optimize' branch; ensure no partial/uncommitted
     # revert leaves the tree dirty before Arena re-scores.
     _git(workspace, "checkout", "--", ".", logger=logger)
+    _verify_forge_edit_scope(
+        workspace,
+        edit_baseline,
+        all_source_files,
+        logger,
+    )
 
     output = "\n".join(stdout_lines)
     if stderr_lines:

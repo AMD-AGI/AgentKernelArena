@@ -26,8 +26,11 @@ drivers run the task's complete case suite.
 
 `source_file_path[0]` is the anchor implementation. Additional entries in
 `source_file_path` and the optional `editable_sources` list form one complete
-edit allowlist passed through `--source-files`. Agents may inspect other
-dependencies but must not edit files absent from that allowlist.
+edit allowlist. Arena passes these paths through `--source-files` for Forge's
+orientation and KB identity, then rejects the final result if its Git diff
+escapes that allowlist. Non-ignored untracked scratch files are discarded before
+scoring. Agents may inspect other dependencies but must not edit files absent
+from that allowlist.
 `target_kernel_functions` remains the concrete symbol list; it is not a
 substitute for `logical_operator`. Keep it focused on useful edit/profile hints
 defined in the editable sources. Reuse identity is based on KernelForge's
@@ -45,10 +48,11 @@ Multi-stage MoE and KDA tasks intentionally use one task-level logical operator
 covering their complete measured pipeline. Their Solution patch and workload
 therefore represent the combined operation rather than an individual stage.
 
-`mi355x_vllm_triton_unified_attention` and
-`mi355x_vllm_triton_paged_attention_2d` share the logical operation
-`unified_attention_with_output`, while their source-owner component keeps the
-AITER and vLLM implementations on separate Kernel pages.
+`mi355x_vllm_triton_unified_attention` uses the logical operation
+`unified_attention_with_output`, while
+`mi355x_vllm_triton_paged_attention_2d` uses `paged_attention_2d`. Keeping the
+logical operations distinct prevents paged-attention recipes from being reused
+as unified-attention implementations.
 
 TileLang metadata uses `kernel_kind: tilelang`, so Arena forwards
 `tilelang-fellow` without substituting another backend. KernelForge decides

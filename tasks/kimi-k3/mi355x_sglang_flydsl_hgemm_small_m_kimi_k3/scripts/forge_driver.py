@@ -72,11 +72,19 @@ def _case_cost(case: dict) -> int:
     return int(p["M"]) * int(p["N"]) * int(p["K"])
 
 
+def _snr_db(signal: float, noise: float, *, finite: bool) -> float:
+    """Return a finite failing sentinel when an output cannot be scored safely."""
+    if not finite or not math.isfinite(signal) or not math.isfinite(noise):
+        return -1.0e9
+    return 200.0 if noise <= 0 else 20.0 * math.log10(signal / noise)
+
+
 def _run_correctness(tr) -> int:
     """Per-case SNR against the float64 golden; report the worst case."""
     import torch
 
     worst_db = math.inf
+    all_finite = True
     for case in tr.CASES:
         inp = tr._prepare(case)
         out = tr._run(inp)
@@ -86,13 +94,15 @@ def _run_correctness(tr) -> int:
         gold = ref.flatten()
         noise = (got - gold).norm().item()
         signal = gold.norm().item()
-        db = 200.0 if noise <= 0 else 20.0 * math.log10(signal / noise)
+        finite = bool(torch.isfinite(out).all())
+        all_finite = all_finite and finite
+        db = _snr_db(signal, noise, finite=finite)
         worst_db = min(worst_db, db)
-        print(f"# case {case['id']}: SNR={db:.2f} dB finite={bool(torch.isfinite(out).all())}")
+        print(f"# case {case['id']}: SNR={db:.2f} dB finite={finite}")
         del inp, out, ref, got, gold
         torch.cuda.empty_cache()
     print(f"SNR: {worst_db:.2f} dB")
-    return 0
+    return 0 if all_finite else 1
 
 
 def _run_bench(tr, warmup: int, iters: int) -> int:
