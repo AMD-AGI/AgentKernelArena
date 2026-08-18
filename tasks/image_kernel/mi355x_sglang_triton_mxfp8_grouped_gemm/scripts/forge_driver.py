@@ -4,7 +4,7 @@
 Target kernel (PROTECTED, optimized by forge-loop):
     ``_mxfp8_grouped_gemm_kernel`` (Triton ``tl.dot_scaled``, CDNA4/gfx950) and
     its launcher ``_grouped_gemm_mxfp8`` in
-    ``sglang/kernels/ops/moe/mxfp8_moe_amd_gfx95.py``.
+    ``sglang/srt/layers/moe/moe_runner/triton_utils/mxfp8_moe_amd_gfx95.py``.
 
 Why this file exists
 --------------------

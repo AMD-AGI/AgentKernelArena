@@ -6,9 +6,11 @@ so an embedded benchmark there could be gamed. The harness owns the measurement
 and only imports the kernel-side building blocks (kernel, wrapper, input builder).
 """
 import argparse
+import json
 import math
 import os
 import sys
+from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
 
 
@@ -22,6 +24,28 @@ def benchmark_cuda_graph_or_events(*args, **kwargs):
         else (values[midpoint - 1] + values[midpoint]) / 2.0
     )
     return median_ms, metadata
+
+
+class _TimedRun:
+    """Expose the exact captured graph invocation for post-timing validation."""
+
+    def __init__(self):
+        self._rerun = None
+        self.outputs = None
+
+    def _bind(self, rerun, outputs=None):
+        self._rerun = rerun
+        self.outputs = outputs
+
+    @property
+    def bound(self):
+        return self._rerun is not None
+
+    def rerun(self):
+        if self._rerun is None:
+            raise RuntimeError("timed run was never bound")
+        self.outputs = self._rerun()
+        return self.outputs
 
 # kernel.py lives next to this harness; Python puts the script dir on sys.path[0].
 _HARNESS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -38,8 +62,8 @@ from kernel import (
     identity_pytorch,
 )
 
-WARMUP = 50
-ITERATIONS = int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "200"))
+WARMUP = 10
+ITERATIONS = int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "100"))
 
 ALL_CONFIGS = EVAL_CONFIGS
 
@@ -66,11 +90,27 @@ def check_correctness(cfg):
 
 def _bench_one(cfg, warmup, iters):
     data, output = get_inputs(**cfg)
-    return benchmark_cuda_graph_or_events(
+    timed = _TimedRun()
+    ms, metadata = benchmark_cuda_graph_or_events(
         lambda: identity_triton(data, output),
         warmup=warmup,
         repetition=iters,
+        timed_run=timed,
     )
+    if not timed.bound:
+        raise RuntimeError("benchmark did not expose the timed graph invocation")
+
+    # Change the captured input in place and poison its output, then replay the
+    # exact graph executable that produced the reported samples.  This proves
+    # the measured graph still reads current inputs and writes a correct result.
+    data.uniform_(-1, 1)
+    reference = torch.empty_like(data)
+    identity_pytorch(data, reference)
+    output.fill_(float("nan"))
+    replayed = timed.rerun()
+    if not torch.equal(replayed, reference):
+        raise AssertionError("timed CUDA graph replay produced an invalid output")
+    return ms, metadata
 
 
 def run_correctness(indices):
@@ -84,6 +124,7 @@ def run_correctness(indices):
         except Exception as e:  # noqa: BLE001
             ok = False
             print("  [{}] {}  FAIL: {}".format(idx, _label(cfg), str(e)[:80]))
+            all_ok = False
             continue
         if ok:
             print("  [{}] {}  PASS".format(idx, _label(cfg)))
@@ -102,12 +143,22 @@ def run_benchmark(indices, warmup, iters):
     print("Running benchmark on {} configs ...".format(len(indices)))
     latencies = []
     methods = []
+    report_cases = []
     for idx in indices:
         cfg = ALL_CONFIGS[idx]
         ms, metadata = _bench_one(cfg, warmup, iters)
         latencies.append(ms)
         methods.append(metadata["benchmark_method"])
+        report_cases.append({
+            "test_case_id": _label(cfg),
+            "params": dict(cfg),
+            "execution_time_ms": ms,
+            **metadata,
+        })
         print("  [{}] {}  {:.4f}ms".format(idx, _label(cfg), ms))
+    report_path = Path("build/performance_report.json")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report_cases, indent=2))
     geo = math.exp(sum(math.log(l) for l in latencies) / len(latencies))
     print("GEAK_SHAPES_USED={}".format(indices))
     print("GEAK_RESULT_LATENCY_MS={:.4f}".format(geo))

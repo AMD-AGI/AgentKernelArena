@@ -224,12 +224,17 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             device_op(a, w)
         torch.cuda.synchronize()
 
+        use_graph = has_kernel
+        event_reason = None if use_graph else "capture_unsafe_aiter_hipblaslt"
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: device_op(a, w), warmup=0, repetition=iters
+            lambda: device_op(a, w), warmup=0, repetition=iters,
+            use_cuda_graph=use_graph, fallback_reason=event_reason,
         )
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: torch.mm(a.float(), w.float().transpose(0, 1)), warmup=0, repetition=iters
+            lambda: torch.mm(a.float(), w.float().transpose(0, 1)),
+            warmup=0, repetition=iters, use_cuda_graph=use_graph,
+            fallback_reason=event_reason,
         )
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]

@@ -116,6 +116,8 @@ def validation_post_processing(
                 "task_name": report["task_name"],
                 "overall_status": report["overall_status"],
                 "validation_errors": report.get("validation_errors", []),
+                "validation_warnings": report.get("validation_warnings", []),
+                "policy_findings": report.get("policy_findings", []),
                 "summary": report.get("summary", ""),
             }
             for report in reports

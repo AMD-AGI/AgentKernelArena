@@ -36,7 +36,7 @@ make docker-run CONFIG=config_task_validator.yaml
 
 ### 3. Read Results
 
-Each task workspace contains `validation_report.yaml` plus a framework completion marker. A `validation_summary.yaml` is written to the workspace root with aggregated statistics. Resume accepts only reports with a valid schema-v2 marker and digest; the presence of an arbitrary or partial YAML file is not completion evidence.
+Each task workspace contains `validation_report.yaml` plus a framework completion marker. A `validation_summary.yaml` is written to the workspace root with aggregated statistics. Resume accepts only reports with a valid schema-v3 marker and digest; the presence of an arbitrary or partial YAML file is not completion evidence.
 
 Tasks filtered by `platform_support.status: skip` or a non-matching
 `platform_support.required_arch` are skipped before workspace creation and are
@@ -81,8 +81,8 @@ enough to cover those commands plus static review.
 | 8 | **self_contained** | No missing headers/imports; isolated tasks avoid undeclared external paths, while repository tasks declare upstream dependencies |
 | 9 | **gpu_hang_check** | No command hangs or times out |
 | 10 | **result_template_compatibility** | Command and per-case output signals can be consumed by the centralized evaluator |
-| 11 | **benchmark_integrity** | Device timing, case identity, Graph/Event policy, replay correctness, state reset, and timed workload boundaries are scoreable and fair |
-| 12 | **harness_integrity** | Protected harness/helper paths remain protected while declared target bodies remain editable |
+| 11 | **benchmark_integrity** | Device timing, case identity, Graph/Event policy, state reset, and timed workload boundaries are scoreable and fair; missing exact replay validation is reported as WARN |
+| 12 | **harness_integrity** | Protected harness logic remains protected while co-located target and Triton-JIT implementation nodes remain editable |
 
 ### Overall Status
 
@@ -90,10 +90,22 @@ enough to cover those commands plus static review.
 - **WARN** — no failures, but at least one warning (e.g., questionable correctness implementation)
 - **FAIL** — at least one check failed or timed out, the report is malformed, or the validator backend failed
 
+A verified zero-byte `torch2hip` generation placeholder uses
+`SKIP/generation_placeholder` for candidate compilation and correctness. Its
+performance command still runs once with `--baseline_only` to validate reference
+timing before candidate generation.
+
 `overall_status` is recomputed by the framework from normalized checks. The
 validator agent's self-reported value cannot override a failed command, timeout,
 missing check, invalid benchmark method, or malformed report. A validation FAIL
 also makes the final CLI/post-processing gate exit nonzero.
+
+The framework supplies the validator with authoritative scoring-lifecycle and
+harness-guard facts. Baseline and candidate are measured in separate pre/post
+invocations of the same protected performance entrypoint; a task-local performance
+command does not need to time both implementations at once. Judgment-heavy WARN/FAIL
+findings should include source-line or runtime-case evidence. Insufficient evidence is
+WARN rather than an inferred failure.
 
 ---
 
@@ -200,9 +212,11 @@ The correctness check **must** be a real validation, not a trivial pass:
 4. Every case must report finite positive device time, a stable ID/params/shape,
    and `benchmark_method: cuda_graph` or `cuda_event_fallback`. Host/CPU timing is
    invalid; Event fallback needs a reason and must not be candidate-controlled.
-5. Restore stateful/in-place inputs outside timing, keep scratch/JIT/reset outside
-   the timed callable, make reference/candidate workloads symmetric, and validate
-   output from the timed Graph replay with representative nonzero inputs.
+5. Restore stateful/in-place inputs outside timing, keep avoidable scratch/JIT/reset
+   outside the timed callable, make pre/post workloads symmetric, and use
+   representative nonzero inputs. Exact output validation from the timed Graph replay
+   is strongly recommended; its absence is WARN unless runtime evidence demonstrates
+   an incorrect/stale replay or an unsafe state/reset defect.
 6. `10` warmups and `100` measured samples are recommended defaults, not a scoring
    requirement. A sound documented alternative may receive WARN rather than FAIL.
 

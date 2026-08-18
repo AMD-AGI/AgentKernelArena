@@ -133,8 +133,22 @@ def _build_metadata_from_case(
     case: Dict[str, Any],
     exclude_keys: List[str]
 ) -> Dict[str, Any]:
-    """Build metadata dict excluding specified keys."""
+    """Build metadata dict and normalize canonical benchmark provenance.
+
+    Some task runners keep task-specific fields under a nested ``metadata``
+    mapping while older runners write canonical ``benchmark_*`` fields at the
+    row level.  Scoring consumes the canonical fields from
+    ``TestCaseResult.metadata`` directly, so promote nested benchmark fields
+    without discarding the original task metadata.  Explicit row-level values
+    win when both representations are present.
+    """
     metadata = {k: v for k, v in case.items() if k not in exclude_keys}
+
+    nested_metadata = case.get('metadata')
+    if isinstance(nested_metadata, dict):
+        for key, value in nested_metadata.items():
+            if key.startswith('benchmark_') and key not in metadata:
+                metadata[key] = value
     
     # Always include params if present
     if 'params' in case:

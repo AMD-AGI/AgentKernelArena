@@ -3,7 +3,7 @@
 SGLang `_mxfp8_grouped_gemm_kernel` (fused-MoE grouped GEMM via `tl.dot_scaled`) image_kernel
 harness, verified on MI355X/gfx950.
 
-- **Source**: `kernels/ops/moe/mxfp8_moe_amd_gfx95.py`
+- **Source**: `srt/layers/moe/moe_runner/triton_utils/mxfp8_moe_amd_gfx95.py`
 - **Target kernel**: `_mxfp8_grouped_gemm_kernel`; timed launcher `_grouped_gemm_mxfp8`.
   The harness builds one MoE forward (MoE-align + activation quant + SwiGLU-OAI, untimed)
   and times the two grouped-GEMM launches (GEMM1 `a_div=top_k`, GEMM2 `a_div=1` weighted).

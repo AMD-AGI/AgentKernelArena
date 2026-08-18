@@ -8,6 +8,7 @@ import yaml
 from main import run_task, should_run_task_for_platform
 from agents.task_validator.report_schema import (
     CHECK_NAMES,
+    REPORT_SCHEMA_VERSION,
     finalize_report,
     validation_report_is_complete,
 )
@@ -71,7 +72,7 @@ class TaskValidatorWorkspaceTests(unittest.TestCase):
                 report_path.write_text(
                     yaml.safe_dump(
                         {
-                            "validation_schema_version": 2,
+                            "validation_schema_version": REPORT_SCHEMA_VERSION,
                             "task_name": "flydsl2flydsl/example",
                             "validation_timestamp": "2026-07-21T00:00:00+00:00",
                             "overall_status": "PASS",

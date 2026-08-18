@@ -1,3 +1,4 @@
+import json
 import logging
 from unittest import mock
 
@@ -9,6 +10,7 @@ from src.testcases import (
     calculate_average_speedup,
     load_performance_results,
     match_test_cases,
+    parse_test_cases_from_json,
     parse_test_cases_from_stdout,
     save_performance_results,
 )
@@ -208,6 +210,47 @@ def test_missing_method_metadata_is_never_comparable():
     assert not consistent
     assert mismatches[0]["reason"] == "missing_or_unknown_benchmark_method"
     assert calculate_average_speedup(baseline, optimized) == 0.0
+
+
+def test_nested_benchmark_metadata_is_promoted_for_scoring(tmp_path):
+    report = tmp_path / "performance_report.json"
+    row = {
+        "test_case_id": "a",
+        "shape": [1],
+        "execution_time_ms": 2.0,
+        "metadata": {
+            "model": "representative-image-kernel",
+            "benchmark_method": "cuda_graph",
+            "benchmark_samples": 100,
+        },
+    }
+    report.write_text(json.dumps([row]))
+    baseline = parse_test_cases_from_json(report)
+
+    row["execution_time_ms"] = 1.0
+    report.write_text(json.dumps([row]))
+    optimized = parse_test_cases_from_json(report)
+
+    assert baseline[0].metadata["metadata"]["model"] == (
+        "representative-image-kernel"
+    )
+    assert baseline[0].metadata["benchmark_method"] == "cuda_graph"
+    assert baseline[0].metadata["benchmark_samples"] == 100
+    assert calculate_average_speedup(baseline, optimized) == 2.0
+
+
+def test_flat_benchmark_metadata_wins_over_nested_compatibility_value(tmp_path):
+    report = tmp_path / "performance_report.json"
+    report.write_text(json.dumps([{
+        "test_case_id": "a",
+        "execution_time_ms": 1.0,
+        "benchmark_method": "cuda_event_fallback",
+        "metadata": {"benchmark_method": "cuda_graph"},
+    }]))
+
+    cases = parse_test_cases_from_json(report)
+
+    assert cases[0].metadata["benchmark_method"] == "cuda_event_fallback"
 
 
 def test_stdout_geak_metadata_is_retained():

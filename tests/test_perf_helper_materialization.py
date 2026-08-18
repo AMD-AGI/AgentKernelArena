@@ -239,14 +239,15 @@ def test_colocated_kernel_body_is_editable_but_harness_remains_protected(tmp_pat
         verify_workspace_harness(snapshot)
 
 
-def test_colocated_kernel_signature_and_decorators_stay_protected(tmp_path):
+def test_colocated_kernel_imports_structure_and_triton_helpers_are_editable(tmp_path):
     entrypoint = tmp_path / "combined_benchmark.py"
     entrypoint.write_text(
-        "def decorator(fn):\n"
-        "    return fn\n\n"
-        "@decorator\n"
+        "import triton\n\n"
+        "@triton.jit\n"
         "def kernel(x):\n"
-        "    return x\n"
+        "    return x\n\n"
+        "def test_performance():\n"
+        "    return kernel(1)\n"
     )
     (tmp_path / "config.yaml").write_text(
         "source_file_path: [combined_benchmark.py]\n"
@@ -256,10 +257,48 @@ def test_colocated_kernel_signature_and_decorators_stay_protected(tmp_path):
 
     snapshot = snapshot_workspace_harness(tmp_path)
     entrypoint.write_text(
-        "def decorator(fn):\n"
-        "    return fn\n\n"
+        "from math import prod\n"
+        "import triton\n\n"
+        "@triton.jit\n"
+        "def helper(x):\n"
+        "    return x * 2\n\n"
+        "@triton.autotune(configs=[triton.Config({}, num_warps=8)], key=['x'])\n"
+        "@triton.jit\n"
         "def kernel(x, extra=None):\n"
-        "    return x\n"
+        "    return helper(x)\n\n"
+        "def test_performance():\n"
+        "    return kernel(1)\n"
+    )
+
+    verify_workspace_harness(snapshot)
+
+
+def test_colocated_module_constants_and_non_triton_helpers_stay_protected(tmp_path):
+    entrypoint = tmp_path / "combined_benchmark.py"
+    entrypoint.write_text(
+        "SHAPES = [1]\n\n"
+        "def make_input():\n"
+        "    return SHAPES[0]\n\n"
+        "def kernel(x):\n"
+        "    return x\n\n"
+        "def test_performance():\n"
+        "    return kernel(make_input())\n"
+    )
+    (tmp_path / "config.yaml").write_text(
+        "source_file_path: [combined_benchmark.py]\n"
+        "target_kernel_functions: [kernel]\n"
+        "performance_command: [python3 combined_benchmark.py]\n"
+    )
+
+    snapshot = snapshot_workspace_harness(tmp_path)
+    entrypoint.write_text(
+        "SHAPES = [4096]\n\n"
+        "def make_input():\n"
+        "    return SHAPES[-1]\n\n"
+        "def kernel(x):\n"
+        "    return x * 2\n\n"
+        "def test_performance():\n"
+        "    return kernel(make_input())\n"
     )
 
     with pytest.raises(RuntimeError, match="combined_benchmark.py"):

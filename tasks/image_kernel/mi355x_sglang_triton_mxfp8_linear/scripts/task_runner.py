@@ -4,7 +4,7 @@
 Target device kernel : ``_mxfp8_linear_kernel``  (tl.dot_scaled, CDNA4/gfx950)
 Timed launcher       : ``_run_mxfp8_linear_kernel`` (inner GEMM only; excludes the
                        separate activation-quant kernel, matching the profiled hot leaf)
-Source               : sglang/kernels/ops/quantization/mxfp8_amd_gfx95.py
+Source               : sglang/srt/layers/quantization/mxfp8_amd_gfx95.py
 
 Shapes are the real MiniMax-M3-MXFP8 (TP=8) dense-linear families recovered from the
 2026-07-23 session GEAK capture + model config (see session_cases.json). MXFP8 contract:
@@ -25,6 +25,10 @@ CASES = SPEC["cases"]
 
 
 def _configure() -> None:
+    # Docker workers run under the host UID, which may not exist in /etc/passwd.
+    # Torch Inductor calls getpass.getuser() while importing SGLang.
+    os.environ.setdefault("USER", "agentkernelarena")
+    os.environ.setdefault("LOGNAME", "agentkernelarena")
     for key in ("GPU_ARCHS", "PYTORCH_ROCM_ARCH", "AMDGPU_TARGETS", "GPU_TARGETS"):
         os.environ.setdefault(key, "gfx950")
     # Prefer the workspace-seeded editable copy so the agent's edits take effect;
@@ -108,7 +112,7 @@ def _benchmark_cuda_graph(*args, **kwargs):
 # --------------------------------------------------------------------------- #
 def _make(case: dict) -> dict:
     torch = _torch()
-    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import (
+    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import (
         _mxfp8_e4m3_quantize_torch,
         mxfp8_e4m3_quantize,
     )
@@ -134,7 +138,7 @@ def _make(case: dict) -> dict:
 
 def _run(inputs: dict):
     torch = _torch()
-    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import _run_mxfp8_linear_kernel
+    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import _run_mxfp8_linear_kernel
 
     return _run_mxfp8_linear_kernel(
         inputs["x_fp8"],
@@ -147,7 +151,7 @@ def _run(inputs: dict):
 
 def _reference(inputs: dict):
     torch = _torch()
-    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
+    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
 
     x = dequant_mxfp8_to_bf16(inputs["x_fp8"], inputs["x_scale"])
     w = dequant_mxfp8_to_bf16(inputs["w_fp8"], inputs["w_scale"])
@@ -173,7 +177,7 @@ def _perturb_inputs(inputs: dict) -> None:
     consistent; the weight stays fixed.
     """
     torch = _torch()
-    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import mxfp8_e4m3_quantize
+    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import mxfp8_e4m3_quantize
 
     p = inputs["cfg"]["params"]
     torch.manual_seed(59)

@@ -210,12 +210,24 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             _call()
         torch.cuda.synchronize()
 
+        # The PyTorch reference dispatches hipBLASLt, which rejects stream
+        # capture in this image. Predetermine an Event-only policy for both
+        # sides so the candidate cannot select a different timing method.
+        event_reason = "capture_unsafe_hipblaslt_reference"
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            _call, warmup=0, repetition=iters
+            _call,
+            warmup=0,
+            repetition=iters,
+            use_cuda_graph=False,
+            fallback_reason=event_reason,
         )
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: torch.matmul(x, weight.transpose(-1, -2)), warmup=0, repetition=iters
+            lambda: torch.matmul(x, weight.transpose(-1, -2)),
+            warmup=0,
+            repetition=iters,
+            use_cuda_graph=False,
+            fallback_reason=event_reason,
         )
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]

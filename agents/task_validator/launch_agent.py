@@ -406,6 +406,26 @@ def _resolve_validation_timeouts(
     return compile_timeout, correctness_timeout, performance_timeout, backend_timeout
 
 
+def _resolve_backend_settings(
+    eval_config: dict[str, Any], agent_config: dict[str, Any]
+) -> tuple[str, str | None, str | None]:
+    """Resolve validator backend settings with per-run overrides first."""
+
+    run_agent = eval_config.get("agent")
+    if not isinstance(run_agent, dict):
+        run_agent = {}
+
+    def _value(name: str, default: Any) -> Any:
+        configured = run_agent.get(name)
+        return default if configured in (None, "") else configured
+
+    return (
+        str(_value("backend", agent_config.get("backend", "claude_code"))),
+        _value("model", agent_config.get("model")),
+        _value("effort", agent_config.get("effort")),
+    )
+
+
 def _expected_task_name(task_config_dir: str) -> str:
     path = Path(task_config_dir).resolve()
     parts = path.parts
@@ -451,15 +471,15 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         task_config_error = f"config.yaml could not be parsed: {exc}"
         task_config = {}
 
-    backend = agent_config.get("backend", "claude_code")
+    backend, configured_model, configured_effort = _resolve_backend_settings(
+        eval_config, agent_config
+    )
     (
         compile_timeout,
         correctness_timeout,
         performance_timeout,
         timeout_seconds,
     ) = _resolve_validation_timeouts(task_config, agent_config)
-    configured_model = agent_config.get("model")
-    configured_effort = agent_config.get("effort")
     # Resolve interpreter: explicit config -> framework-detected (set by main.py)
     # -> this process's interpreter. Avoids hardcoding a path that may not exist
     # inside the Docker container.

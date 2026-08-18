@@ -202,6 +202,24 @@ def test_harness_guard_allows_source_edits(tmp_path):
     verify_workspace_harness(snapshot)
 
 
+def test_harness_guard_ignores_runtime_environment_files(tmp_path):
+    from src.harness_guard import describe_workspace_harness
+
+    runtime_tests = tmp_path / ".task-venv" / "site-packages" / "pkg" / "tests"
+    runtime_tests.mkdir(parents=True)
+    (runtime_tests / "test_dependency.py").write_text("def test_dependency(): pass\n")
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "task_runner.py").write_text("print('protected')\n")
+
+    description = describe_workspace_harness(tmp_path)
+
+    assert "scripts/task_runner.py" in description["protected_paths"]
+    assert not any(
+        path.startswith(".task-venv/") for path in description["protected_paths"]
+    )
+
+
 def test_harness_guard_discards_agent_created_scratch_file(tmp_path):
     """A scratch file the agent invents cannot have influenced the baseline score.
 

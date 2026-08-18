@@ -16,7 +16,7 @@ from typing import Any, Mapping
 import yaml
 
 
-REPORT_SCHEMA_VERSION = 2
+REPORT_SCHEMA_VERSION = 3
 REPORT_FILENAME = "validation_report.yaml"
 COMPLETION_MARKER_FILENAME = ".validation_complete"
 
@@ -62,6 +62,26 @@ ALLOWED_SKIP_REASONS = frozenset(
 )
 COMMAND_CHECKS = frozenset({"compilation", "correctness", "performance"})
 SCOREABLE_BENCHMARK_METHODS = frozenset({"cuda_graph", "cuda_event_fallback"})
+REVIEW_CHECKS = frozenset(
+    {
+        "correctness_implementation_review",
+        "self_contained",
+        "result_template_compatibility",
+        "benchmark_integrity",
+        "harness_integrity",
+    }
+)
+HARD_BENCHMARK_REVIEW_FIELDS = (
+    "method_metadata_complete",
+    "method_policy_valid",
+    "case_identity_complete",
+    "baseline_policy_immutable",
+    "state_restore_valid",
+    "workload_symmetric",
+    "representative_inputs_valid",
+    "timing_boundaries_valid",
+)
+ADVISORY_BENCHMARK_REVIEW_FIELDS = ("replay_validation_valid",)
 
 
 def _utc_timestamp() -> str:
@@ -145,6 +165,7 @@ def _normalize_benchmark_integrity(
     check: dict[str, Any],
     status: str,
     errors: list[str],
+    policy_findings: list[str],
 ) -> str:
     if status == "SKIP":
         return status
@@ -152,68 +173,140 @@ def _normalize_benchmark_integrity(
     case_count = check.get("case_count")
     valid_case_count = check.get("valid_case_count")
     methods = check.get("benchmark_methods")
-    required_true_fields = (
-        "method_metadata_complete",
-        "method_policy_valid",
-        "case_identity_complete",
-        "baseline_policy_immutable",
-        "state_restore_valid",
-        "workload_symmetric",
-        "replay_validation_valid",
-        "representative_inputs_valid",
-        "timing_boundaries_valid",
-    )
-
-    invalid = False
-    if not isinstance(case_count, int) or isinstance(case_count, bool) or case_count <= 0:
-        errors.append("benchmark_integrity: case_count must be a positive integer")
-        invalid = True
+    hard_failure = False
+    advisory = False
+    if not isinstance(case_count, int) or isinstance(case_count, bool):
+        errors.append("benchmark_integrity: case_count must be an integer")
+        hard_failure = True
+    elif case_count <= 0:
+        policy_findings.append(
+            "benchmark_integrity: performance produced no scoreable cases"
+        )
+        hard_failure = True
     if (
         not isinstance(valid_case_count, int)
         or isinstance(valid_case_count, bool)
-        or valid_case_count != case_count
     ):
-        errors.append("benchmark_integrity: every reported case must be valid")
-        invalid = True
+        errors.append("benchmark_integrity: valid_case_count must be an integer")
+        hard_failure = True
+    elif isinstance(case_count, int) and valid_case_count != case_count:
+        policy_findings.append(
+            "benchmark_integrity: every emitted case must be structurally scoreable"
+        )
+        hard_failure = True
     if not isinstance(methods, list) or not methods:
         errors.append("benchmark_integrity: benchmark_methods must be a non-empty list")
-        invalid = True
+        hard_failure = True
         normalized_methods: set[str] = set()
     else:
         normalized_methods = {m for m in methods if isinstance(m, str)}
-        if not all(isinstance(m, str) for m in methods) or not normalized_methods <= SCOREABLE_BENCHMARK_METHODS:
-            errors.append(
+        if not all(isinstance(m, str) for m in methods) or not (
+            normalized_methods <= SCOREABLE_BENCHMARK_METHODS
+        ):
+            policy_findings.append(
                 "benchmark_integrity: methods must be exactly cuda_graph or cuda_event_fallback"
             )
-            invalid = True
+            hard_failure = True
 
-    for field in required_true_fields:
-        if check.get(field) is not True:
-            errors.append(f"benchmark_integrity: {field} must be true")
-            invalid = True
+    for field in HARD_BENCHMARK_REVIEW_FIELDS:
+        if field not in check:
+            errors.append(f"benchmark_integrity: missing required field {field}")
+            hard_failure = True
+            continue
+        value = check[field]
+        if value is False:
+            policy_findings.append(f"benchmark_integrity: {field} is false")
+            hard_failure = True
+        elif value is None:
+            policy_findings.append(f"benchmark_integrity: {field} is undetermined")
+            advisory = True
+        elif value is not True:
+            errors.append(f"benchmark_integrity: {field} must be true, false, or null")
+            hard_failure = True
+
+    for field in ADVISORY_BENCHMARK_REVIEW_FIELDS:
+        if field not in check:
+            errors.append(f"benchmark_integrity: missing required field {field}")
+            hard_failure = True
+            continue
+        value = check[field]
+        if value is False:
+            policy_findings.append(
+                "benchmark_integrity: exact captured-graph replay output is not validated"
+            )
+            advisory = True
+        elif value is None:
+            policy_findings.append(f"benchmark_integrity: {field} is undetermined")
+            advisory = True
+        elif value is not True:
+            errors.append(f"benchmark_integrity: {field} must be true, false, or null")
+            hard_failure = True
 
     if "cuda_event_fallback" in normalized_methods:
         reasons = check.get("event_fallback_reasons")
         if not isinstance(reasons, list) or not reasons or not all(
             isinstance(reason, str) and reason.strip() for reason in reasons
         ):
-            errors.append(
+            policy_findings.append(
                 "benchmark_integrity: Event fallback requires a non-empty fallback reason"
             )
-            invalid = True
+            hard_failure = True
 
-    return "FAIL" if invalid else status
+    if hard_failure:
+        return "FAIL"
+    if advisory:
+        return "WARN"
+    return status
 
 
 def _normalize_harness_integrity(
-    check: dict[str, Any], status: str, errors: list[str]
+    check: dict[str, Any],
+    status: str,
+    errors: list[str],
+    policy_findings: list[str],
 ) -> str:
     invalid = False
     for field in ("guard_coverage_reviewed", "editable_targets_preserved"):
-        if check.get(field) is not True:
-            errors.append(f"harness_integrity: {field} must be true")
+        if field not in check or not isinstance(check[field], bool):
+            errors.append(f"harness_integrity: {field} must be boolean")
+            invalid = True
+        elif check[field] is False:
+            policy_findings.append(f"harness_integrity: {field} is false")
             invalid = True
     return "FAIL" if invalid else status
+
+
+def _review_evidence_warnings(
+    check_name: str,
+    check: Mapping[str, Any],
+    status: str,
+    warnings: list[str],
+) -> None:
+    """Record non-fatal report-quality warnings for judgment-heavy findings."""
+
+    if check_name not in REVIEW_CHECKS or status not in {"FAIL", "WARN"}:
+        return
+    evidence = check.get("evidence")
+    if not isinstance(evidence, list) or not evidence:
+        warnings.append(
+            f"{check_name}: FAIL/WARN should include a non-empty evidence[] list"
+        )
+        return
+    for index, item in enumerate(evidence):
+        if not isinstance(item, Mapping):
+            warnings.append(f"{check_name}: evidence[{index}] must be a mapping")
+            continue
+        finding = item.get("finding")
+        if not isinstance(finding, str) or not finding.strip():
+            warnings.append(f"{check_name}: evidence[{index}].finding is required")
+        path = item.get("path")
+        case_id = item.get("case_id")
+        if not (isinstance(path, str) and path.strip()) and not (
+            isinstance(case_id, str) and case_id.strip()
+        ):
+            warnings.append(
+                f"{check_name}: evidence[{index}] needs a path or case_id"
+            )
 
 
 def compute_overall_status(report: Mapping[str, Any]) -> str:
@@ -238,6 +331,8 @@ def normalize_report(
 ) -> dict[str, Any]:
     """Normalize untrusted agent YAML into a complete versioned report."""
     errors: list[str] = []
+    warnings: list[str] = []
+    policy_findings: list[str] = []
     raw = raw_report if isinstance(raw_report, dict) else {}
     if not isinstance(raw_report, dict):
         errors.append("validation_report.yaml must contain a YAML mapping")
@@ -301,12 +396,17 @@ def normalize_report(
         if check_name in COMMAND_CHECKS:
             status = _normalize_attempts(check_name, check, status, errors)
         elif check_name == "benchmark_integrity":
-            status = _normalize_benchmark_integrity(check, status, errors)
+            status = _normalize_benchmark_integrity(
+                check, status, errors, policy_findings
+            )
         elif check_name == "harness_integrity":
-            status = _normalize_harness_integrity(check, status, errors)
+            status = _normalize_harness_integrity(
+                check, status, errors, policy_findings
+            )
 
         check["status"] = status
         check["details"] = _details(check, "No details were supplied by the validation agent.")
+        _review_evidence_warnings(check_name, check, status, warnings)
         normalized_checks[check_name] = check
 
     if framework_error:
@@ -327,7 +427,11 @@ def normalize_report(
     }:
         errors.append("performance cannot pass after correctness failed or timed out")
         normalized_checks["performance"]["status"] = "FAIL"
-    if normalized_checks["performance"]["status"] in {"FAIL", "TIMEOUT", "SKIP"} and benchmark_status in {
+    if normalized_checks["performance"]["status"] in {
+        "FAIL",
+        "TIMEOUT",
+        "SKIP",
+    } and benchmark_status in {
         "PASS",
         "WARN",
     }:
@@ -343,6 +447,8 @@ def normalize_report(
         "overall_status": "FAIL",  # Recomputed below.
         "checks": normalized_checks,
         "validation_errors": errors,
+        "validation_warnings": warnings,
+        "policy_findings": policy_findings,
         "summary": raw.get("summary", "") if isinstance(raw.get("summary"), str) else "",
     }
     report["overall_status"] = compute_overall_status(report)
@@ -378,6 +484,28 @@ def finalize_report(
 
     if raw_report is None and framework_error is None:
         framework_error = "Validator backend did not produce validation_report.yaml"
+
+    if isinstance(raw_report, dict):
+        # Harness coverage is enforced by framework code outside the task
+        # workspace. Replace the agent's guess with the actual effective guard
+        # boundary before normalizing the report.
+        try:
+            from src.harness_guard import describe_workspace_harness
+
+            guard_facts = describe_workspace_harness(workspace_path)
+            checks = raw_report.get("checks")
+            if isinstance(checks, dict):
+                harness_check = checks.get("harness_integrity")
+                if isinstance(harness_check, dict):
+                    harness_check["framework_guard_enforced"] = bool(
+                        guard_facts["enforced_during_optimization"]
+                    )
+                    harness_check["guard_coverage_reviewed"] = True
+                    harness_check["protected_paths"] = guard_facts["protected_paths"]
+        except Exception as exc:
+            framework_error = framework_error or (
+                f"Unable to resolve framework harness facts: {exc}"
+            )
 
     report = normalize_report(
         raw_report,

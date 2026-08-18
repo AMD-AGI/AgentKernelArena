@@ -311,6 +311,11 @@ static void max_diff(
         const double x = static_cast<double>(__bfloat162float(a[i]));
         const double y = static_cast<double>(__bfloat162float(b[i]));
         const double d = std::fabs(x - y);
+        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(d)) {
+            max_abs = INFINITY;
+            max_rel = INFINITY;
+            return;
+        }
         max_abs = std::fmax(max_abs, d);
         const double denom = std::fmax(1e-8, std::fmax(std::fabs(x), std::fabs(y)));
         max_rel = std::fmax(max_rel, d / denom);
@@ -418,6 +423,8 @@ int main(int argc, char** argv) {
 
     // Correctness (full or check mode).
     if (mode == Mode::Full || mode == Mode::Check) {
+        std::fill(h_o.begin(), h_o.end(), __float2bfloat16(NAN));
+        HIP_CHECK(hipMemcpy(d_o, h_o.data(), o_e * sizeof(bf16), hipMemcpyHostToDevice));
         launch();
         HIP_CHECK(hipDeviceSynchronize());
         HIP_CHECK(hipMemcpy(h_o.data(), d_o, o_e * sizeof(bf16), hipMemcpyDeviceToHost));

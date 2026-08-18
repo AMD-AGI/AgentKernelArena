@@ -5,7 +5,7 @@ Target device kernel : ``_mxfp8_grouped_gemm_kernel`` (tl.dot_scaled, CDNA4/gfx9
 Timed launcher       : ``_grouped_gemm_mxfp8`` -- both specializations of a MoE forward
                        (GEMM1: a_div=top_k; GEMM2: a_div=1, weighted) are launched back
                        to back, matching the two hot leaves in the profile.
-Source               : sglang/kernels/ops/moe/mxfp8_moe_amd_gfx95.py
+Source               : sglang/srt/layers/moe/moe_runner/triton_utils/mxfp8_moe_amd_gfx95.py
 
 The MoE-align / activation-quant / SwiGLU setup that surrounds the two GEMMs is built once
 per case (untimed); only the grouped-GEMM launches are timed under a CUDA graph, so the
@@ -35,6 +35,10 @@ COMPILE_SMOKE_MAX_TOKENS = 64
 
 
 def _configure() -> None:
+    # Docker workers run under the host UID, which may not exist in /etc/passwd.
+    # Torch Inductor calls getpass.getuser() while importing SGLang.
+    os.environ.setdefault("USER", "agentkernelarena")
+    os.environ.setdefault("LOGNAME", "agentkernelarena")
     for key in ("GPU_ARCHS", "PYTORCH_ROCM_ARCH", "AMDGPU_TARGETS", "GPU_TARGETS"):
         os.environ.setdefault(key, "gfx950")
     seeded = WORKSPACE / "sglang"
@@ -120,9 +124,9 @@ def _make(case: dict) -> dict:
     differ from the checked one.
     """
     torch = _torch()
-    from sglang.kernels.ops.moe.minimax_m3_swiglu import swiglu_oai_split
-    from sglang.kernels.ops.moe.mxfp8_moe_amd_gfx95 import _grouped_gemm_mxfp8
-    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import (
+    from sglang.jit_kernel.minimax_m3 import swiglu_oai_split
+    from sglang.srt.layers.moe.moe_runner.triton_utils.mxfp8_moe_amd_gfx95 import _grouped_gemm_mxfp8
+    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import (
         _mxfp8_e4m3_quantize_torch,
         mxfp8_e4m3_quantize,
     )
@@ -182,7 +186,7 @@ def _make(case: dict) -> dict:
 
 def _run_gemms(inputs: dict):
     """The timed region: the two grouped-GEMM launches of one MoE forward."""
-    from sglang.kernels.ops.moe.mxfp8_moe_amd_gfx95 import _grouped_gemm_mxfp8
+    from sglang.srt.layers.moe.moe_runner.triton_utils.mxfp8_moe_amd_gfx95 import _grouped_gemm_mxfp8
 
     gemm1 = _grouped_gemm_mxfp8(**inputs["gemm1_args"])
     gemm2 = _grouped_gemm_mxfp8(**inputs["gemm2_args"])
@@ -192,9 +196,9 @@ def _run_gemms(inputs: dict):
 def _fused_output(inputs: dict):
     """Full MoE output reconstructed from the two grouped GEMMs (for correctness)."""
     torch = _torch()
-    from sglang.kernels.ops.moe.minimax_m3_swiglu import swiglu_oai_split
-    from sglang.kernels.ops.moe.mxfp8_moe_amd_gfx95 import _grouped_gemm_mxfp8
-    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import mxfp8_e4m3_quantize
+    from sglang.jit_kernel.minimax_m3 import swiglu_oai_split
+    from sglang.srt.layers.moe.moe_runner.triton_utils.mxfp8_moe_amd_gfx95 import _grouped_gemm_mxfp8
+    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import mxfp8_e4m3_quantize
 
     g1 = _grouped_gemm_mxfp8(**inputs["gemm1_args"])
     act = swiglu_oai_split(
@@ -212,7 +216,7 @@ def _fused_output(inputs: dict):
 def _timed_references(inputs: dict):
     """Independent references for the two outputs produced inside the timed region."""
     torch = _torch()
-    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
+    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
 
     x = dequant_mxfp8_to_bf16(inputs["a_q"], inputs["a_s"]).float()
     act = dequant_mxfp8_to_bf16(
@@ -280,7 +284,7 @@ def _reference(inputs: dict):
     never materialises an fp32 copy of the whole expert bank.
     """
     torch = _torch()
-    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
+    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
 
     x = dequant_mxfp8_to_bf16(inputs["a_q"], inputs["a_s"]).float()
     w13 = dequant_mxfp8_to_bf16(inputs["w13_fp8"], inputs["w13_scale"])

@@ -49,7 +49,30 @@ def _run(cmd: list[str], cwd: Path) -> None:
     subprocess.run(cmd, cwd=str(cwd), check=True)
 
 
+def _inherit_parent_site_packages(venv_python: Path) -> None:
+    """Expose packages from the image's parent venv inside the task venv."""
+
+    if Path(sys.executable).resolve() == venv_python.resolve():
+        return
+    child_site = subprocess.check_output(
+        [str(venv_python), "-c", "import sysconfig; print(sysconfig.get_paths()['purelib'])"],
+        text=True,
+    ).strip()
+    parent_sites = [
+        entry
+        for entry in sys.path
+        if "site-packages" in entry and Path(entry).is_dir()
+    ]
+    (Path(child_site) / "aka_parent_site_packages.pth").write_text(
+        "\n".join(
+            f"import site; site.addsitedir({entry!r})" for entry in parent_sites
+        ) + "\n"
+    )
+
+
 def _ensure_venv() -> None:
+    os.environ.setdefault("USER", "agentkernelarena")
+    os.environ.setdefault("LOGNAME", "agentkernelarena")
     venv_dir = _venv_dir()
     venv_python = _venv_python()
     ready_marker = venv_dir / ".ready"
@@ -58,6 +81,8 @@ def _ensure_venv() -> None:
     if not venv_python.exists():
         builder = venv.EnvBuilder(with_pip=True, system_site_packages=True)
         builder.create(str(venv_dir))
+
+    _inherit_parent_site_packages(venv_python)
 
     if not ready_marker.exists():
         _run(

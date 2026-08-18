@@ -145,12 +145,17 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             kmod.flydsl_hgemm(a, b, **tiling)
         torch.cuda.synchronize()
 
+        event_reason = "capture_unsafe_hipblaslt_reference"
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: kmod.flydsl_hgemm(a, b, **tiling), warmup=0, repetition=iters
+            lambda: kmod.flydsl_hgemm(a, b, **tiling),
+            warmup=0, repetition=iters, use_cuda_graph=False,
+            fallback_reason=event_reason,
         )
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: torch.mm(a, b.transpose(-1, -2)), warmup=0, repetition=iters
+            lambda: torch.mm(a, b.transpose(-1, -2)),
+            warmup=0, repetition=iters, use_cuda_graph=False,
+            fallback_reason=event_reason,
         )
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]

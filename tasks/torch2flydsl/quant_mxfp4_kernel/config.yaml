@@ -10,6 +10,8 @@ correctness_command:
 performance_command:
 - python3 test_kernel_harness.py --full-benchmark
 task_type: torch2flydsl
-supported_archs:
-- gfx950
+platform_support:
+  required_arch: gfx950
+  status: active
+  skip_reason: null
 task_result_template: null

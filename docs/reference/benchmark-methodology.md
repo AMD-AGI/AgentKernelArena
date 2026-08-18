@@ -144,9 +144,10 @@ HIP runtime already required by its task.
 Generated helpers, marked adapters, native benchmark drivers, and the source
 files directly named by `performance_command` are covered by the harness
 integrity guard. If a ROCmBench task intentionally colocates its editable kernel
-and benchmark in one Python file, the guard masks only the declared target
-function bodies; the surrounding imports, decorators, signatures, helpers, and
-tests remain protected.
+and benchmark in one Python file, the guard omits imports, complete declared
+target AST nodes, and complete top-level `@triton.jit`/`@jit` helper nodes.
+Benchmark/test functions, ordinary Python helpers, module constants, and
+executable harness statements remain protected.
 
 ## Baseline and optimized fairness
 

@@ -224,6 +224,11 @@ def cal_kernel_perf(
     # sides onto Event timing by making its own graph capture unsafe.
     graph_enabled = ref_graph_enabled
     graph_fallback_reason = ref_graph_reason
+    # This extension pair completes capture but aborts during ROCm graph
+    # destruction (CUDAGraph::~CUDAGraph). Predetermine Event timing for both
+    # immutable reference and candidate workloads so teardown is never entered.
+    graph_enabled = False
+    graph_fallback_reason = "capture_unsafe_rocm_graph_teardown"
 
     # Create separate build directories for reference and optimized kernels
     ref_hip_dir = os.path.join(build_dir, "hip_ref")

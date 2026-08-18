@@ -91,3 +91,113 @@ def test_flydsl_topk_fallback_matches_allocating_output_contract():
         run_fused = source.split("def run_fused():", 2)[-1]
         assert "fused_w = torch.empty(" in run_fused, harness
         assert "fused_idx = torch.empty(" in run_fused, harness
+
+
+def test_hipblaslt_starter_baselines_are_predetermined_event_only():
+    tasks = [
+        "batched_gemm_a8w8_kernel",
+        "batched_gemm_bf16_kernel",
+        "gemm_a16w8_blockscale_kernel",
+        "gemm_a16wfp4_kernel",
+        "gemm_a4w4_kernel",
+        "gemm_a8w8_blockscale_kernel",
+        "gemm_a8w8_kernel",
+        "gemm_a8w8_per_token_scale_kernel",
+        "gemm_a8wfp4_kernel",
+        "gemm_afp4wfp4_kernel",
+        "gemm_afp8wfp8_kernel",
+    ]
+    for task in tasks:
+        harness = ROOT / "tasks/torch2flydsl" / task / "test_kernel_harness.py"
+        source = harness.read_text()
+        assert "use_graph = has_kernel" in source, harness
+        assert "capture_unsafe_aiter_hipblaslt" in source, harness
+
+
+def test_implemented_gemm_and_hipblaslt_reference_share_event_policy():
+    tasks = ["gemm_a8w8_bpreshuffle_kernel", "hgemm_kernel"]
+    for task in tasks:
+        harness = ROOT / "tasks/torch2flydsl" / task / "test_kernel_harness.py"
+        source = harness.read_text()
+        assert source.count("use_cuda_graph=False") == 2, harness
+        assert "capture_unsafe_hipblaslt_reference" in source, harness
+
+
+def test_torch2flydsl_gfx950_configs_use_platform_support():
+    tasks = [
+        "gemm_a16wfp4_kernel",
+        "gemm_a4w4_kernel",
+        "gemm_a8wfp4_kernel",
+        "gemm_afp4wfp4_kernel",
+        "gemm_afp8wfp8_kernel",
+        "quant_mxfp4_kernel",
+    ]
+    for task in tasks:
+        config = (ROOT / "tasks/torch2flydsl" / task / "config.yaml").read_text()
+        assert "supported_archs:" not in config, task
+        assert "platform_support:" in config, task
+        assert "required_arch: gfx950" in config, task
+        assert "status: active" in config, task
+
+    for task in ["fav3_sage_mxfp4", "gemm_afp8wfp8"]:
+        config = (
+            ROOT / "tasks/triton2flydsl/aiter" / task / "config.yaml"
+        ).read_text()
+        assert "supported_archs:" not in config, task
+        assert "platform_support:" in config, task
+        assert "required_arch: gfx950" in config, task
+        assert "status: active" in config, task
+
+
+def test_aiter_task_venvs_inherit_the_image_parent_packages():
+    tasks = [
+        "mla_decode_rope",
+        "moe_routing_sigmoid_top1_fused",
+        "pa_decode",
+        "pa_prefill",
+        "unified_attention",
+    ]
+    for task in tasks:
+        runner = (
+            ROOT / "tasks/repository/aiter" / task / "scripts/task_runner.py"
+        ).read_text()
+        assert "def _inherit_parent_site_packages(" in runner, task
+        assert "aka_parent_site_packages.pth" in runner, task
+        assert "site.addsitedir" in runner, task
+        assert 'os.environ.setdefault("USER", "agentkernelarena")' in runner, task
+        assert 'os.environ.setdefault("LOGNAME", "agentkernelarena")' in runner, task
+        assert runner.index("_inherit_parent_site_packages(venv_python)") < (
+            runner.index("if not ready_marker.exists()")
+        ), task
+
+
+def test_sglang_mxfp8_runners_handle_anonymous_docker_uids():
+    tasks = [
+        "mi355x_sglang_triton_mxfp8_grouped_gemm",
+        "mi355x_sglang_triton_mxfp8_linear",
+    ]
+    for task in tasks:
+        scripts = ROOT / "tasks/image_kernel" / task / "scripts"
+        for name in ("task_runner.py", "standalone_driver.py"):
+            source = (scripts / name).read_text()
+            assert 'os.environ.setdefault("USER", "agentkernelarena")' in source
+            assert 'os.environ.setdefault("LOGNAME", "agentkernelarena")' in source
+
+
+def test_normal_attention_dot_predetermines_event_timing_for_rocm_teardown():
+    runner = (
+        ROOT
+        / "tasks/hip2hip/gpumode/NormalAttention_dot/eval_tools/cal_kernel_perf.py"
+    ).read_text()
+    assert 'graph_fallback_reason = "capture_unsafe_rocm_graph_teardown"' in runner
+    marker = runner.index('graph_fallback_reason = "capture_unsafe_rocm_graph_teardown"')
+    assert "graph_enabled = False" in runner[marker - 200 : marker]
+
+
+def test_refk_identity_emits_structured_per_case_performance_results():
+    harness = (
+        ROOT / "tasks/triton2triton/geak_eval/L1/refk_identity/test_kernel_harness.py"
+    ).read_text()
+    assert '"test_case_id": _label(cfg)' in harness
+    assert 'Path("build/performance_report.json")' in harness
+    assert "json.dumps(report_cases" in harness

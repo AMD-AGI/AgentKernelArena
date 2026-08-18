@@ -53,7 +53,7 @@ make docker-parallel-run \
   RUN_ARGS="--run-suffix validator_parallel8"
 ```
 
-Parallel resume skips only validator tasks with a framework-finalized schema-v2
+Parallel resume skips only validator tasks with a framework-finalized schema-v3
 report and matching completion digest. A partial, legacy, or manually copied
 `validation_report.yaml` is rerun.
 
@@ -98,8 +98,8 @@ The `task_validator` runs the following checks in order.
 | 8 | `self_contained` | No missing headers/imports; isolated tasks avoid undeclared external repos/paths, and repository tasks declare their upstream in `repo_url` |
 | 9 | `gpu_hang_check` | No command hangs or times out |
 | 10 | `result_template_compatibility` | Command and per-case output signals can be consumed by the centralized evaluator |
-| 11 | `benchmark_integrity` | Every case has scoreable device timing/method metadata, stable identity, fair state/allocation boundaries, and validated replay output |
-| 12 | `harness_integrity` | Harnesses/helpers are protected and declared target bodies remain legitimately editable |
+| 11 | `benchmark_integrity` | Every case has scoreable device timing/method metadata, stable identity, and fair state/allocation boundaries; missing exact replay validation is WARN |
+| 12 | `harness_integrity` | Harness logic stays protected while co-located target and Triton-JIT implementation nodes remain editable |
 
 ## Overall status
 
@@ -117,9 +117,18 @@ review.
 
 For performance, `cuda_graph` and `cuda_event_fallback` are the only scoreable
 methods. CPU/host timing, missing or mixed methods, candidate-triggered fallback,
-invalid/partial cases, missing state restore, asymmetric timed work, or unchecked
-Graph replay output fail `benchmark_integrity`. The 10-warmup/100-sample pattern
-is a recommended default rather than a hard scoring rule.
+invalid/partial cases, missing state restore, or demonstrably asymmetric timed work
+fail `benchmark_integrity`. Missing exact output validation from the captured Graph is
+WARN by itself; an observed incorrect/stale replay or a demonstrated unsafe state/reset
+interaction remains FAIL. The 10-warmup/100-sample pattern is a recommended default
+rather than a hard scoring rule.
+
+The validator receives trusted framework facts for the protected harness boundary and
+the pre/post scoring lifecycle. Baseline and candidate are separate invocations of the
+same protected performance entrypoint, so a task runner does not need an in-process
+reference timing path. Judgment-heavy WARN/FAIL results include source-line or runtime
+case evidence; genuinely unavailable evidence is reported as WARN rather than inferred
+as a failure.
 
 ## Result template
 

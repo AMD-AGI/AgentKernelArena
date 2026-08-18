@@ -227,12 +227,27 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             device_op(x, w)
         torch.cuda.synchronize()
 
+        # The independent aiter starter baseline dispatches hipBLASLt, which is
+        # known to reject stream capture.  Make that case explicitly Event-only
+        # before timing rather than attempting Graph and falling back after a
+        # candidate-controlled failure.  An implemented FlyDSL kernel retains
+        # the normal Graph-first policy.
+        use_graph = has_kernel
+        event_reason = None if use_graph else "capture_unsafe_aiter_hipblaslt"
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: device_op(x, w), warmup=0, repetition=iters
+            lambda: device_op(x, w),
+            warmup=0,
+            repetition=iters,
+            use_cuda_graph=use_graph,
+            fallback_reason=event_reason,
         )
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: torch.bmm(x.float(), w.float().transpose(1, 2)), warmup=0, repetition=iters
+            lambda: torch.bmm(x.float(), w.float().transpose(1, 2)),
+            warmup=0,
+            repetition=iters,
+            use_cuda_graph=use_graph,
+            fallback_reason=event_reason,
         )
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]

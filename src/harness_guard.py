@@ -44,6 +44,13 @@ _HARNESS_FILE_SUFFIXES = (
     "_test.hip",
     "_harness.py",
 )
+_IGNORED_RUNTIME_DIRS = {
+    ".git",
+    ".task-venv",
+    ".validator_torch_extensions",
+    ".venv",
+    "__pycache__",
+}
 
 
 @dataclass(frozen=True)
@@ -72,7 +79,7 @@ def _iter_protected_files(root: Path) -> Iterable[Path]:
         if not path.is_file():
             continue
         rel = path.relative_to(root)
-        if ".git" in rel.parts or "__pycache__" in rel.parts:
+        if set(rel.parts) & _IGNORED_RUNTIME_DIRS:
             continue
         if _is_protected_path(rel) or path.resolve() in configured_entrypoints:
             yield path
@@ -112,9 +119,9 @@ def _editable_entrypoint_targets(root: Path) -> dict[Path, set[str]]:
 
     A small number of ROCmBench tasks intentionally keep the Triton kernel and
     pytest harness in one configured file. Protecting that whole entrypoint
-    would make the optimization task impossible, so its declared target
-    function bodies are excluded from the integrity digest while imports,
-    decorators, signatures, helpers, and benchmark tests remain protected.
+    would make the optimization task impossible, so its kernel implementation
+    surface is excluded from the integrity digest while benchmark tests and
+    task-owned data remain protected.
     """
 
     config = _task_config(root)
@@ -141,20 +148,48 @@ def _editable_entrypoint_targets(root: Path) -> dict[Path, set[str]]:
     }
 
 
+def _is_triton_jit_function(node: ast.AST) -> bool:
+    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return False
+    for decorator in node.decorator_list:
+        target = decorator.func if isinstance(decorator, ast.Call) else decorator
+        if (
+            isinstance(target, ast.Attribute)
+            and isinstance(target.value, ast.Name)
+            and target.value.id == "triton"
+            and target.attr == "jit"
+        ):
+            return True
+        if isinstance(target, ast.Name) and target.id == "jit":
+            return True
+    return False
+
+
 def _sha256_python_harness(path: Path, editable_targets: set[str]) -> str:
-    """Hash Python structure after masking declared target function bodies."""
+    """Hash the harness portion of a co-located Python kernel entrypoint.
+
+    ROCmBench keeps editable Triton code and pytest harnesses in one module.
+    Imports, declared target functions, and Triton JIT helpers are legitimate
+    optimization surface, so omit their complete AST nodes.  Test/benchmark
+    functions, ordinary Python helpers, module constants, and executable
+    statements remain in the digest.
+    """
 
     try:
         tree = ast.parse(path.read_text())
     except (OSError, UnicodeDecodeError, SyntaxError):
         return "invalid-python:" + _sha256(path)
 
-    for node in tree.body:
-        if (
+    tree.body = [
+        node
+        for node in tree.body
+        if not isinstance(node, (ast.Import, ast.ImportFrom))
+        and not (
             isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
             and node.name in editable_targets
-        ):
-            node.body = [ast.Pass()]
+        )
+        and not _is_triton_jit_function(node)
+    ]
     canonical = ast.dump(tree, annotate_fields=True, include_attributes=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -170,6 +205,31 @@ def _protected_digests(root: Path) -> dict[str, str]:
             digest = _sha256(path)
         digests[str(path.relative_to(root))] = digest
     return digests
+
+
+def describe_workspace_harness(root: Path) -> dict[str, object]:
+    """Return trusted, non-secret facts about the active harness guard.
+
+    Task validators run inside the materialized task workspace and cannot inspect
+    the framework source tree that applies the guard.  Expose the effective path
+    boundary so validation prompts do not have to infer it from task-local files
+    or look for a guard manifest that intentionally does not live in the task.
+    """
+
+    root = Path(root)
+    editable_entrypoints = _editable_entrypoint_targets(root)
+    return {
+        "enforced_during_optimization": True,
+        "protected_paths": sorted(
+            str(path.relative_to(root)) for path in _iter_protected_files(root)
+        ),
+        "editable_entrypoint_targets": {
+            str(path.relative_to(root)): sorted(targets)
+            for path, targets in sorted(
+                editable_entrypoints.items(), key=lambda item: str(item[0])
+            )
+        },
+    }
 
 
 def snapshot_workspace_harness(root: Path) -> WorkspaceSnapshot:

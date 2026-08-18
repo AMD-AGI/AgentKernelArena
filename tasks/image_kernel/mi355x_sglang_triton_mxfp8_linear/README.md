@@ -3,7 +3,7 @@
 SGLang `_mxfp8_linear_kernel` (dense MXFP8 GEMM via `tl.dot_scaled`) image_kernel harness,
 verified on MI355X/gfx950.
 
-- **Source**: `kernels/ops/quantization/mxfp8_amd_gfx95.py`
+- **Source**: `srt/layers/quantization/mxfp8_amd_gfx95.py`
 - **Target kernel**: `_mxfp8_linear_kernel`; timed launcher `_run_mxfp8_linear_kernel`
   (inner GEMM only — excludes the separate activation-quant kernel, matching the profiled leaf).
 - **Shapes**: real MiniMax-M3-MXFP8 (TP=8) `qkv_proj` (N=1280, K=6144) and `o_proj`
