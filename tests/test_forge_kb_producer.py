@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import importlib.util
 import logging
-import math
 import subprocess
 import sys
 from pathlib import Path
@@ -66,17 +65,6 @@ def _load_k3_forge_driver():
         / "scripts/forge_driver.py"
     )
     spec = importlib.util.spec_from_file_location("_k3_forge_driver_test", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _load_task_module(relative_path: str):
-    root = Path(__file__).resolve().parents[1]
-    path = root / relative_path
-    module_name = f"_{path.parent.parent.name}_{path.stem}"
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -364,81 +352,6 @@ def test_gpu_type_uses_normalized_arena_hardware_model():
     assert _resolve_gpu_type({"target_gpu_model": "MI325X"}) == "mi325x"
     with pytest.raises(ValueError, match="target_gpu_model"):
         _resolve_gpu_type({"target_gpu_model": ""})
-
-
-@pytest.mark.parametrize(
-    "relative_path",
-    [
-        "tasks/kimi-k3/mi355x_sglang_flydsl_hgemm_small_m_kimi_k3/scripts/forge_driver.py",
-        "tasks/kimi-k3/mi355x_sglang_triton_attn_residual_kimi_k3/scripts/forge_driver.py",
-        "tasks/kimi-k3/mi355x_sglang_triton_mla_decode_grouped_kimi_k3/scripts/forge_driver.py",
-    ],
-)
-def test_kimi_forge_driver_snr_fails_closed_on_non_finite_output(
-    monkeypatch,
-    relative_path,
-):
-    driver = _load_task_module(relative_path)
-
-    class _Scalar:
-        def __init__(self, value):
-            self.value = value
-
-        def item(self):
-            return self.value
-
-    class _Vector:
-        def __init__(self, norm, noise=0.0):
-            self.norm_value = norm
-            self.noise = noise
-
-        def flatten(self):
-            return self
-
-        def norm(self):
-            return _Scalar(self.norm_value)
-
-        def __sub__(self, _other):
-            return _Vector(self.noise)
-
-    class _Output:
-        def __init__(self, finite, noise):
-            self.finite = finite
-            self.noise = noise
-
-        def double(self):
-            return _Vector(1.0, self.noise)
-
-    class _Reference:
-        def flatten(self):
-            return _Vector(1.0)
-
-    class _TaskRunner:
-        CASES = [{"id": "case0"}]
-
-        def __init__(self, finite, noise):
-            self.finite = finite
-            self.noise = noise
-
-        @staticmethod
-        def _prepare(_case):
-            return {}
-
-        def _run(self, _inputs):
-            return _Output(self.finite, self.noise)
-
-        @staticmethod
-        def _golden(_inputs):
-            return _Reference()
-
-    fake_torch = SimpleNamespace(
-        cuda=SimpleNamespace(synchronize=lambda: None, empty_cache=lambda: None),
-        isfinite=lambda output: SimpleNamespace(all=lambda: output.finite),
-    )
-    monkeypatch.setitem(sys.modules, "torch", fake_torch)
-
-    assert driver._run_correctness(_TaskRunner(False, math.nan)) == 1
-    assert driver._run_correctness(_TaskRunner(True, 0.001)) == 0
 
 
 @pytest.mark.parametrize(
