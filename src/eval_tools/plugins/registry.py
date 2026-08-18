@@ -6,8 +6,10 @@ from typing import Iterable
 
 from .gpu_asan import GpuAsanPlugin
 from .hip_fpsan import HipFpSanPlugin
+from .consan import ConSanPlugin
 from .rocjitsu import RocJitsuPlugin
 from .triton_fpsan import TritonFpSanPlugin
+from .waitcheck import WaitcheckPlugin
 
 
 _PLUGINS = {
@@ -16,6 +18,8 @@ _PLUGINS = {
         TritonFpSanPlugin(),
         GpuAsanPlugin(),
         RocJitsuPlugin(),
+        WaitcheckPlugin(),
+        ConSanPlugin(),
         HipFpSanPlugin(),
     )
 }

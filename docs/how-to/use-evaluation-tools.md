@@ -1,8 +1,8 @@
 ---
 myst:
     html_meta:
-        "description": "Run Triton FpSan, ROCm GPU AddressSanitizer, rocJITsu, and HIP-FpSan as isolated AgentKernelArena evaluation tools."
-        "keywords": "AgentKernelArena, sanitizer, Triton FpSan, GPU ASan, rocJITsu, HIP-FpSan, ROCm, gfx950"
+        "description": "Run Triton FpSan, ROCm GPU AddressSanitizer, rocJITsu Race Detector, Waitcheck, ConSan, and HIP-FpSan as isolated AgentKernelArena evaluation tools."
+        "keywords": "AgentKernelArena, sanitizer, Triton FpSan, GPU ASan, rocJITsu, Waitcheck, ConSan, HIP-FpSan, ROCm, gfx950"
 ---
 
 # Check kernels with evaluation tools
@@ -15,17 +15,21 @@ initial tool set is:
   comparison.
 - ROCm GPU AddressSanitizer (GPU ASan) for invalid device-memory accesses.
 - rocJITsu for simulated race detection.
+- rocJITsu Waitcheck for static missing or too-weak wait detection on one exact
+  final code object and kernel entry.
+- rocJITsu ConSan for strict dynamic record/replay concurrency checking of one
+  exact code object launched by a focused native harness.
 - HIP-FpSan for explicitly ported HIP/C++ floating-point comparisons.
 
 This feature is experimental and opt-in. Capability and evidence checks fail
 closed; whether an incomplete result blocks performance is controlled by the
-`advisory` or `required` policy. It is not a general three- or four-tool
+`advisory` or `required` policy. It is not a general sanitizer suite:
 sanitizer suite: every result is qualified by the kernel language, generated
 artifact, adapter, tool image, GPU architecture, and evidence that the intended
 kernel was actually instrumented or dispatched.
 
 > **Current validation boundary:** sidecar build locks, integrated startup
-> controls, and end-to-end fixtures exist only for MI355X (`gfx950`). All four
+> controls, and end-to-end fixtures exist only for MI355X (`gfx950`). All six
 > startup controls passed in the current hardware qualification. Candidate
 > readiness still depends on language, artifact, adapter, and attestation.
 > `gfx942` is unverified, and the Docker runner currently rejects
@@ -66,7 +70,7 @@ container receives the socket parent read-only. These changes reduce accidental
 cross-tool mutation, but do not create an agent/evaluator trust boundary; the
 remaining security consequences are described later.
 
-All four tool images bake the worker, trusted replay helper, and synthetic
+All six tool images bake the worker, trusted replay helper, and synthetic
 probes into the read-only image at `/opt/aka-eval-tools`. Worker startup verifies
 that it imported this image-owned tree rather than the repository mounted at
 `/input`. This protects the sidecar control-plane code from a task changing the
@@ -110,6 +114,8 @@ The pinned sidecar dependencies are recorded in
 | `triton_fpsan` | AMD Triton `3.7.0+amd.rocm7.2.0.gitd0d77a509` and matching `triton-kernels` wheels. |
 | `gpu_asan` | ROCm 7.2 ASan runtime packages, including `hip-runtime-amd-asan`. |
 | `rocjitsu` | rocJITsu from pinned `rocm-systems` commit `0bf561a0...`, built with GCC 13 for `gfx950`. |
+| `rocjitsu_waitcheck` | rocJITsu Waitcheck C API and CLI from pinned `rocm-systems` commit `ed35c0b...`; zstd source is separately checksum-locked. |
+| `rocjitsu_consan` | rocJITsu ConSan HSA hook from the same pinned `ed35c0b...` source, forced to strict record/replay mode. |
 | `hip_fpsan` | HIP-FpSan headers/source from pinned commit `0ac9be8a...`. |
 
 ## Understand support levels
@@ -170,6 +176,21 @@ it does not mean the ordinary correctness command is automatically reused.
 | AITER or another precompiled HSACO/library kernel | Cannot retrofit instrumentation | Unsupported unless the exact kernel source is rebuilt and attested; preloading the runtime is insufficient | Unsupported by the current evaluator runtime | Cannot retrofit value semantics |
 | rocBLAS or RCCL internal kernel | Do not enable; library internals are outside the selected submission | The stock library is not instrumented and is not covered | Not a supported general library-runtime path | Do not enable |
 
+Waitcheck and ConSan use narrower, explicit final-code-object adapters:
+
+| Kernel path | rocJITsu Waitcheck | rocJITsu ConSan |
+| --- | --- | --- |
+| Standalone final `gfx950` HSACO from HIP, Triton, or FlyDSL | Advisory-ready only when `code_object`, `expected_kernel`, and exact `kernel_entry` identify one descriptor in an unbundled final ELF. It is static and receives no GPU device. | Advisory-ready only with `code_object`, a focused native `command` that names and loads that file, and an independent `oracle_command`. Strict record/replay must report the same FNV-1a identity and complete coverage. |
+| Whole Python/JIT process | Not automatically captured or bound to the correctness dispatch. Extract and declare the exact final code object first. | Unsupported by this first integration; incidental framework and library code objects make exact candidate attribution ambiguous. |
+| AITER, rocBLAS, RCCL, or another broad library runtime | A selected extracted kernel may be inspected statically, but that does not cover the surrounding runtime or prove it was dispatched. | Unsupported; the current adapter deliberately rejects broad library runtimes. |
+
+Both tools are currently qualified only for `policy: advisory`. The generic
+manager can enforce `required` when explicitly configured, but doing so for
+these tools is unsupported until the selected task adapter and candidate
+provenance have been independently promoted. The evaluator does not
+automatically discover optimized kernels or reuse the ordinary correctness
+command for either tool.
+
 This matrix describes engine and adapter support once the corresponding runtime
 is qualified. The current `gfx950` startup qualification is stricter:
 
@@ -179,6 +200,8 @@ is qualified. The current `gfx950` startup qualification is stricter:
 | HIP-FpSan | Passing on hardware; explicitly ported task paths can proceed to candidate attestation. |
 | GPU ASan | Passing on hardware for both HIP and Triton safe/OOB lanes; an applicable candidate still needs its own instrumentation/build attestation. |
 | rocJITsu | Passing on hardware with barrier-safe and deliberately racy LDS fixtures; an applicable candidate still needs a native HIP launcher or validated AOT replay capsule. |
+| rocJITsu Waitcheck | Passing on hardware: a correct `s_waitcnt lgkmcnt(0)` fixture is clean and a missing-wait fixture produces one exact hazard. Candidate use still requires exact SHA-256, kernel name, and entry attestation. |
+| rocJITsu ConSan | Passing on hardware in strict record/replay: a single-wave LDS fixture is clean and a two-wave conflicting fixture produces complete FNV-attributed diagnostics. Candidate use still requires an exact code object, focused loader, and separate oracle. |
 
 Additional boundaries:
 
@@ -200,6 +223,10 @@ Additional boundaries:
 - A deliberately out-of-bounds, **uninstrumented** HIP HSACO exited normally in
   a complete GPU ASan runtime. This is why a runtime preload alone is never
   accepted as GPU ASan coverage.
+- ConSan embeds Waitcheck as a preflight. The ConSan parser records that preflight
+  as metadata but does not duplicate its diagnostics as ConSan race findings;
+  enable `rocjitsu_waitcheck` separately when a standalone wait-hazard result is
+  required.
 - `gfx942` has not completed the same image, positive-control, adapter, and
   end-to-end validation. Its status is unverified, not unsupported by theory.
 
@@ -208,7 +235,7 @@ Additional boundaries:
 Building requires Docker and network access to the pinned package and source
 locations. Runtime sidecars themselves start with networking disabled.
 
-Build all four local `gfx950` images from the repository root:
+Build all six local `gfx950` images from the repository root:
 
 ```bash
 src/scripts/docker_benchmark.sh build-eval-tool-images
@@ -220,6 +247,8 @@ The default local tags are:
 agent-kernel-arena/eval-tool-triton-fpsan:gfx950
 agent-kernel-arena/eval-tool-gpu-asan:gfx950
 agent-kernel-arena/eval-tool-rocjitsu:gfx950
+agent-kernel-arena/eval-tool-rocjitsu-waitcheck:gfx950
+agent-kernel-arena/eval-tool-rocjitsu-consan:gfx950
 agent-kernel-arena/eval-tool-hip-fpsan:gfx950
 ```
 
@@ -253,15 +282,17 @@ worker:
 | `triton_fpsan` | Compile instrumented reference/candidate kernels and require a known numerical mismatch to produce different digests plus FpSan compiler metadata. |
 | `gpu_asan` | Compile and run safe/OOB HIP fixtures and safe/OOB Triton fixtures; the task profile selects the relevant lane. |
 | `rocjitsu` | Require a barrier-protected fixture to remain clean and a deliberately racy LDS fixture to report a race. |
+| `rocjitsu_waitcheck` | Compile unbundled `gfx950` code objects; require the correct-wait fixture to be clean and the missing-wait fixture to report the exact `lgkmcnt(0)` hazard. |
+| `rocjitsu_consan` | Under strict record/replay, require a single-wave LDS fixture to remain clean and a two-wave conflicting fixture to emit complete FNV-attributed diagnostics. |
 | `hip_fpsan` | Require explicitly ported equivalent expressions to match and a known-wrong expression to produce a different digest. |
 
-`eval-tools-smoke` prints this evidence, but its CLI exit status currently means
-that the health RPC succeeded, not that every nested `positive_control.passed`
-value is true. Inspect the JSON summaries before promotion. A normal evaluation
-with `positive_control: required` performs the fail-closed check during the
-typed runtime probe.
+`eval-tools-smoke` prints this evidence and exits nonzero if a worker reports
+`degraded`, including a failed nested positive control. Inspect and retain the
+JSON summaries before promotion. A normal evaluation with
+`positive_control: required` repeats the fail-closed check during the typed
+runtime probe.
 
-As of the current `gfx950` qualification run, all four integrated startup
+As of the current `gfx950` qualification run, all six integrated startup
 controls pass on hardware. This qualifies the installed tool runtimes only. It
 does not promote a candidate path without the language-specific adapter and
 attestation in the strict support matrix.
@@ -291,15 +322,15 @@ global milestone.
 | Phase | Work | Exit criterion |
 | --- | --- | --- |
 | 0. Freeze baselines | Keep the pinned scoring image, FlyDSL 0.2.2, and AITER version unchanged; build each tool from its lock into a sidecar. | Existing compilation, correctness, held-out, and performance baselines remain unchanged with tools disabled. Sidecar image IDs and the verified scoring-image ID/reference are captured in plans. |
-| 1. Qualify installations | Run automatic safe/known-bug startup controls on `gfx950`; repeat the now-passing four-tool qualification on clean hosts. | Both positive and negative lanes pass repeatedly. `eval-tools-smoke` evidence is archived and independently reviewed. |
-| 2. Build trusted pilot adapters | Start with one editable Triton task for Triton FpSan, one Triton and one HIP task for GPU ASan, one native HIP task for rocJITsu, and one explicitly ported HIP-FpSan task. Put harnesses under protected `scripts/` paths and declare all inputs. | Each pilot distinguishes a safe fixture from a seeded bug, identifies the selected candidate, and produces bounded structured artifacts. No precompiled AITER/library kernel is claimed as covered. |
+| 1. Qualify installations | Run automatic safe/known-bug startup controls on `gfx950`; repeat the now-passing six-tool qualification on clean hosts. | Both positive and negative lanes pass repeatedly. `eval-tools-smoke` evidence is archived and independently reviewed. |
+| 2. Build trusted pilot adapters | Start with one editable Triton task for Triton FpSan, one Triton and one HIP task for GPU ASan, one native HIP task for rocJITsu, one final-HSACO task for Waitcheck, one focused native loader for ConSan, and one explicitly ported HIP-FpSan task. Put harnesses under protected `scripts/` paths and declare all inputs. | Each pilot distinguishes a safe fixture from a seeded bug, identifies the selected candidate, and produces bounded structured artifacts. No precompiled AITER/library kernel is claimed as broadly covered. |
 | 3. Finish AOT capture and binding | The trusted `triton_aot`/`flydsl_aot` replay path now validates one-dispatch capsules and generates the launcher. Add evaluator-owned extraction immediately after correctness and bind the capsule to that exact candidate/case. | Safe and racy fixtures pass end to end, malformed capsules fail closed, and a task cannot substitute a different valid capsule for the correctness dispatch. |
 | 4. Harden provenance and phase isolation | The runner now uses per-tool writable socket directories, a read-only socket parent in scoring, a narrow per-worker artifact mount, fresh per-invocation artifact directories, a complete serialized plan, and capsule digests in the fingerprint. Next run tools only after the agent exits, freeze the candidate, use evaluator-only/authenticated RPC and evaluator-owned artifacts, strengthen artifact/dispatch binding, and wire resume to plan freshness. | An adversarial task cannot call a worker, overwrite evidence, reach another task's artifacts, spoof a clean result, or reuse a stale report. This phase is required before sanitizer output becomes a reward signal. |
 | 5. Advisory campaign | Run qualified paths with `policy: advisory` across representative and private held-out shapes; measure overhead, timeouts, log volume, flakes, false positives, and GPU recovery behavior. | Each task/tool pair has reviewed coverage cases, stable resource limits, and an explicit owner/runbook. Incomplete results remain visible and never score as clean. |
 | 6. Narrow required gates | Change only individually qualified task/tool pairs to `required`; leave unsupported and not-yet-qualified paths advisory or disabled. | Required gates block seeded findings and infrastructure failures without changing ordinary correctness semantics or the scoring performance baseline. |
 | 7. Add `gfx942` separately | Build architecture-specific images/configs and rerun every startup, adapter, security, and workload fixture on MI300X/MI325X. | Only mark `gfx942` supported after independent qualification; do not infer it from `gfx950`. |
 
-Phase 0, the four integrated startup controls, complete plan serialization, the
+Phase 0, the six integrated startup controls, complete plan serialization, the
 narrower runner mounts, and the trusted AOT replay core exist. No bundled task
 has completed production qualification through phases 2–6. Automatic capsule
 capture, exact candidate/dispatch provenance, top-level resume freshness, and
@@ -334,7 +365,7 @@ evaluation_tools:
       options: {}
 ```
 
-Do not enable all four tools merely because all four images exist. On a
+Do not enable all six tools merely because all six images exist. On a
 heterogeneous task set, irrelevant tools become `not_applicable`, unsupported
 paths remain visible as unsupported, and missing adapters remain
 `adapter_required`.
@@ -357,7 +388,9 @@ make docker-run CONFIG=my_sanitized_run.yaml RUN_ARGS='--run-suffix asan_advisor
 ```
 
 The override names are `AKA_EVAL_TOOL_IMAGE_TRITON_FPSAN`,
-`AKA_EVAL_TOOL_IMAGE_GPU_ASAN`, `AKA_EVAL_TOOL_IMAGE_ROCJITSU`, and
+`AKA_EVAL_TOOL_IMAGE_GPU_ASAN`, `AKA_EVAL_TOOL_IMAGE_ROCJITSU`,
+`AKA_EVAL_TOOL_IMAGE_ROCJITSU_WAITCHECK`,
+`AKA_EVAL_TOOL_IMAGE_ROCJITSU_CONSAN`, and
 `AKA_EVAL_TOOL_IMAGE_HIP_FPSAN`.
 
 After selecting a tool-image reference, the runner resolves its local immutable
@@ -388,8 +421,9 @@ Reserved framework options are rejected at both run and task level. They are
 `positive_control_required`; GPU ASan's `asan_runtime_dir`,
 `hip_asan_runtime`, `host_asan_preload`, `host_asan_lib_dir`, and
 `normal_rocm_lib_dir`; rocJITsu's `rocjitsu_binary` and `config_path`; and
-HIP-FpSan's `include_dir` and `public_header`. The host/runtime probe is the
-only authority for those values.
+Waitcheck's `waitcheck_binary` and `waitcheck_capi_wrapper`; ConSan's
+`consan_hook`; and HIP-FpSan's `include_dir` and `public_header`. The
+host/runtime probe is the only authority for those values.
 
 Commands must be argv lists, never shell strings. A dedicated tool command is
 required because reusing `correctness_command` could instrument the reference,
@@ -425,9 +459,10 @@ These are adapter contracts, not automatically generated files. The task
 wrapper must build and launch the optimized candidate, exercise representative
 inputs, and emit the required evidence. Sidecar health is the only authority
 for container-internal ASan libraries and preload, the rocJITsu binary and
-architecture config, and the HIP-FpSan include directory. The runtime probe
-attests and injects those values into the plugin context; neither run nor task
-configuration may supply or override them.
+architecture config, the Waitcheck CLI/C API wrapper, the ConSan HSA hook, and
+the HIP-FpSan include directory. The runtime probe attests and injects those
+values into the plugin context; neither run nor task configuration may supply
+or override them.
 
 Common built-in option keys are:
 
@@ -436,7 +471,36 @@ Common built-in option keys are:
 | `triton_fpsan` | `comparison_command` or `command` | `attestation_path`; command must emit one `AKA_FPSAN_RESULT` JSON line |
 | `gpu_asan` | `command` | Candidate `attestation_path`; a HIP command must use the required compile flags. Runtime/preload/library paths come from health. |
 | `rocjitsu` | HIP: `launcher` or `command`. Triton/FlyDSL: `capsule` plus an exact profile adapter of `triton_aot` or `flydsl_aot`; user launchers are forbidden on these AOT paths. | HIP may set `expected_kernel` and `race_report`. AOT capsule path must stay below the task workspace and target `gfx950`; the executable/config and trusted replay helper come from the sidecar image. |
+| `rocjitsu_waitcheck` | `code_object`, `expected_kernel`, and integer `kernel_entry` | `code_object` must be an unbundled final AMDGPU ELF below the workspace. The image-owned inventory helper must attest exactly the requested `gfx950` descriptor before the C API runs. |
+| `rocjitsu_consan` | `code_object`, `command`, and `oracle_command` | `command` must be a focused native argv that explicitly names and loads `code_object`; `oracle_command` runs separately without the hook. Exact SHA-256 and FNV-1a64 identities are required. |
 | `hip_fpsan` | `comparison_command` or `command`, plus `evaluation_profile.fpsan_ported: true` | Candidate `attestation_path`; both paths must be instrumented. The include directory comes from health. |
+
+The plugin validates these adapter options directly, so both tools may inspect
+the same declared candidate in one advisory plan. For example:
+
+```yaml
+evaluation_profile:
+  language: hip
+  artifact_kind: hsaco_precompiled
+  framework: standalone
+
+evaluation_tools:
+  tools:
+    rocjitsu_waitcheck:
+      options:
+        code_object: build/optimized.hsaco
+        expected_kernel: optimized_kernel
+        kernel_entry: 0
+    rocjitsu_consan:
+      options:
+        code_object: build/optimized.hsaco
+        command: [scripts/load_hsaco, build/optimized.hsaco]
+        oracle_command: [scripts/load_hsaco, build/optimized.hsaco, --check]
+```
+
+With ROCm 7.2, `hipcc --genco` produces a clang bundle by default; use
+`--no-gpu-bundle-output` or explicitly extract the final device ELF before
+supplying `code_object`.
 
 `attestation_path` is resolved below the fresh artifact directory for the
 current tool invocation and the same resolved path is used for the injected
@@ -456,8 +520,8 @@ Put evaluator-owned adapter code under a harness-protected path such as
 `scripts/`, not an arbitrary agent-editable `eval_tools/` directory. Also list
 adapter scripts, HSACO files, and input blobs in `submission_paths` when their
 contents must affect the general candidate fingerprint. A configured replay
-capsule receives additional handling: immediately before plan construction the
-manager records its SHA-256 and size under
+capsule or Waitcheck/ConSan code object receives additional handling:
+immediately before plan construction the manager records its SHA-256 and size under
 `source_evidence.metadata.option_artifacts`, so that digest is covered by the
 plan fingerprint. The validated capsule manifest contains and verifies the
 HSACO and blob digests. This binds the plan to the supplied capsule bytes; it
@@ -487,6 +551,15 @@ tool-specific attestation:
   kernel dispatch, and `AKA_REPLAY_RESULT pass`. Missing or changed evidence is
   inconclusive. This is stronger replay integrity, but the task-supplied capsule
   is not yet automatically tied to the correctness run.
+- rocJITsu Waitcheck re-hashes the selected final code object, inventories its
+  descriptors with the image-owned CLI, matches the exact kernel name and entry,
+  and obtains structured diagnostics through the stable C API. Missing,
+  duplicate, truncated, or incomplete evidence is inconclusive.
+- rocJITsu ConSan re-hashes the code object, requires the configured launcher to
+  name it, matches the hook's FNV-1a64 identity, enforces strict record/replay
+  completeness and accounting, and runs a separate correctness oracle without
+  the hook. Embedded Waitcheck text is preflight metadata, not a duplicate
+  ConSan finding.
 - Build attestation records the compiler, compiler version, and target
   architecture. The current validator directly checks tool identity,
   `instrumented: true`, required build flags/environment, artifact existence,
@@ -888,7 +961,7 @@ the following:
   runner.
 - Every useful task still needs a reviewed adapter command. Tool installation
   alone usually produces `adapter_required`.
-- All four startup positive controls pass on the current `gfx950` host. This
+- All six startup positive controls pass on the current `gfx950` host. This
   qualifies tool installation, not candidate coverage.
 - Runtime-internal asset paths are injected from verified sidecar health and
   cannot be supplied by task configuration.
@@ -912,8 +985,9 @@ the following:
 - YAML `runtime_ref` does not select the image; it is an assertion compared with
   the host-injected, worker-reported local image ID.
 - Top-level resume does not yet enforce `plan_fingerprint` freshness.
-- Fingerprints cover declared file content plus a configured capsule digest;
-  other option-referenced files need submission evidence or explicit digests.
+- Fingerprints cover declared file content plus configured capsule and
+  Waitcheck/ConSan code-object digests; other option-referenced files need
+  submission evidence or explicit digests.
   The report serializes the complete tool plan.
 - Triton/FlyDSL AOT replay is implemented for validated, single-dispatch
   `gfx950` capsules and forbids arbitrary launchers. Automatic evaluator-owned

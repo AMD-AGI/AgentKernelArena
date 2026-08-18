@@ -120,6 +120,40 @@ def test_runtime_asset_paths_are_reserved_at_run_and_task_levels() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("tool", "key"),
+    [
+        ("rocjitsu_waitcheck", "waitcheck_binary"),
+        ("rocjitsu_waitcheck", "waitcheck_capi_wrapper"),
+        ("rocjitsu_consan", "consan_hook"),
+    ],
+)
+def test_native_sanitizer_runtime_assets_are_reserved(tool, key) -> None:
+    with pytest.raises(ValueError, match=key):
+        EvalToolsConfig.from_mapping(
+            {
+                "evaluation_tools": {
+                    "enabled": [tool],
+                    "tools": {tool: {"options": {key: "/candidate/fake"}}},
+                }
+            }
+        )
+
+
+def test_enabled_true_expands_to_all_six_builtin_tools() -> None:
+    parsed = EvalToolsConfig.from_mapping(
+        {"evaluation_tools": {"enabled": True}}
+    )
+    assert parsed.enabled == (
+        "triton_fpsan",
+        "gpu_asan",
+        "rocjitsu",
+        "rocjitsu_waitcheck",
+        "rocjitsu_consan",
+        "hip_fpsan",
+    )
+
+
 def test_host_selected_tool_subset_is_authoritative(monkeypatch) -> None:
     monkeypatch.setenv("AKA_EVAL_TOOLS_SELECTED", "rocjitsu,gpu-asan")
     parsed = EvalToolsConfig.from_mapping(

@@ -43,6 +43,27 @@ tools:
       repository: https://github.com/google/flatbuffers.git
       commit: 595bf0007ab1929570c7671f091313c8fc20644e
 
+  rocjitsu_waitcheck:
+    repository: https://github.com/ROCm/rocm-systems.git
+    commit: ed35c0b54547c98bab359c8732529d9f5e8fd1ae
+    target: gfx950
+    interface: waitcheck-c-api-v1
+    gcc: 13.4.0-6ubuntu1~22~ppa2
+    zstd:
+      version: 1.5.7
+      sha256: eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3
+
+  rocjitsu_consan:
+    repository: https://github.com/ROCm/rocm-systems.git
+    commit: ed35c0b54547c98bab359c8732529d9f5e8fd1ae
+    target: gfx950
+    mode: record-replay
+    policy: strict
+    gcc: 13.4.0-6ubuntu1~22~ppa2
+    zstd:
+      version: 1.5.7
+      sha256: eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3
+
   hip_fpsan:
     repository: https://github.com/ROCm/hip-fpsan.git
     commit: 0ac9be8a1539a473ba21dfa686564c3be33c890e

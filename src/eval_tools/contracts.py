@@ -26,6 +26,8 @@ class ToolName(_StringEnum):
     TRITON_FPSAN = "triton_fpsan"
     GPU_ASAN = "gpu_asan"
     ROCJITSU = "rocjitsu"
+    ROCJITSU_WAITCHECK = "rocjitsu_waitcheck"
+    ROCJITSU_CONSAN = "rocjitsu_consan"
     HIP_FPSAN = "hip_fpsan"
 
 

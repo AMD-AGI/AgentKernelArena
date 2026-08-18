@@ -369,6 +369,60 @@ def resolve_builtin_capability(
             capability = ToolCapability(tool_name, ready(), adapter_check, runtime_check)
         else:
             capability = _not_applicable(tool_name, "ROCJITSU_NON_GPU_KERNEL")
+    elif tool_name == ToolName.ROCJITSU_WAITCHECK.value:
+        if profile.language not in {
+            KernelLanguage.HIP,
+            KernelLanguage.TRITON,
+            KernelLanguage.FLYDSL,
+        }:
+            capability = _not_applicable(tool_name, "WAITCHECK_NON_AMDGPU_KERNEL")
+        else:
+            adapter_check = (
+                ready()
+                if profile.adapter == "waitcheck_code_object"
+                else CapabilityCheck.blocked(
+                    CapabilityState.ADAPTER_REQUIRED,
+                    "WAITCHECK_CODE_OBJECT_ADAPTER_REQUIRED",
+                    "capture the final HSACO plus its exact kernel name and .text entry offset",
+                )
+            )
+            capability = ToolCapability(
+                tool_name, ready(analysis="static_object_code"), adapter_check, runtime_check
+            )
+    elif tool_name == ToolName.ROCJITSU_CONSAN.value:
+        if profile.language not in {
+            KernelLanguage.HIP,
+            KernelLanguage.TRITON,
+            KernelLanguage.FLYDSL,
+        }:
+            capability = _not_applicable(tool_name, "CONSAN_NON_AMDGPU_KERNEL")
+        elif profile.framework in {"aiter", "rocblas", "rccl"}:
+            capability = ToolCapability(
+                tool_name,
+                CapabilityCheck.blocked(
+                    CapabilityState.UNSUPPORTED,
+                    "CONSAN_BROAD_LIBRARY_RUNTIME_UNSUPPORTED",
+                    "the qualified lane requires a focused native launcher",
+                ),
+                ready(),
+                runtime_check,
+            )
+        else:
+            adapter_check = (
+                ready()
+                if profile.adapter == "consan_native"
+                else CapabilityCheck.blocked(
+                    CapabilityState.ADAPTER_REQUIRED,
+                    "CONSAN_NATIVE_ADAPTER_REQUIRED",
+                    "provide an exact HSACO, focused launcher, and independent correctness oracle",
+                )
+            )
+            capability = ToolCapability(
+                tool_name,
+                ready(mode="record-replay", policy="strict"),
+                adapter_check,
+                runtime_check,
+            )
     elif tool_name == ToolName.HIP_FPSAN.value:
         if profile.language != KernelLanguage.HIP:
             capability = _not_applicable(tool_name, "HIP_FPSAN_NON_HIP")

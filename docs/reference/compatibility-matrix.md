@@ -39,14 +39,14 @@ The following software versions are required or verified.
 
 ## Evaluation-tool sidecars
 
-Optional Triton FpSan, GPU ASan, rocJITsu, and HIP-FpSan dependencies are kept
-out of the scoring image and installed in one isolated sidecar image per tool.
-The scoring image, FlyDSL, and AITER versions in the preceding table remain
-unchanged.
+Optional Triton FpSan, GPU ASan, rocJITsu Race Detector, rocJITsu Waitcheck,
+rocJITsu ConSan, and HIP-FpSan dependencies are kept out of the scoring image
+and installed in one isolated sidecar image per tool. The scoring image,
+FlyDSL, and AITER versions in the preceding table remain unchanged.
 
 | GPU architecture | Sidecar status | Notes |
 | --- | --- | --- |
-| `gfx950` (MI355X) | Runtime-qualified, candidate-dependent | Pinned image/build locks and all four integrated startup controls pass on the current hardware. End-to-end readiness still depends on language, artifact, adapter, and candidate attestation. Trusted single-dispatch Triton/FlyDSL rocJITsu capsule replay is implemented, but automatic evaluator-owned capsule capture and binding to the correctness run remain advisory-only gaps. |
+| `gfx950` (MI355X) | Runtime-qualified, candidate-dependent | Pinned image/build locks and all six integrated startup controls pass on the current hardware. End-to-end readiness still depends on language, artifact, adapter, and candidate attestation. Waitcheck and ConSan are qualified only for explicitly configured advisory pilots. Trusted single-dispatch Triton/FlyDSL rocJITsu capsule replay is implemented, but automatic evaluator-owned capsule capture and binding to the correctness run remain advisory-only gaps. |
 | `gfx942` (MI300X/MI325X) | Unverified | No equivalent image/adapter/positive-control qualification has completed; the host runner currently rejects evaluation-tool sidecars. |
 
 The runtime base digest and per-tool package/source locks are recorded in

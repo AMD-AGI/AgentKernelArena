@@ -1,0 +1,7 @@
+rocm_systems: ed35c0b54547c98bab359c8732529d9f5e8fd1ae
+googletest: b514bdc898e2951020cbdca1304b75f5950d1f59
+flatbuffers: 595bf0007ab1929570c7671f091313c8fc20644e
+gcc_13: 13.4.0-6ubuntu1~22~ppa2
+zstd:
+  version: 1.5.7
+  sha256: eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3

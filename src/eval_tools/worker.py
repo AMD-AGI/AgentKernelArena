@@ -492,6 +492,188 @@ def _rocjitsu_positive(
     )
 
 
+def _waitcheck_positive(
+    evidence: Mapping[str, Any], probe_root: Path, work_dir: Path, artifact_dir: Path
+) -> dict[str, Any]:
+    hipcc = shutil.which("hipcc") or "/opt/rocm/bin/hipcc"
+    binary = str(evidence.get("waitcheck_binary") or "")
+    safe = work_dir / "waitcheck-safe.hsaco"
+    hazard = work_dir / "waitcheck-hazard.hsaco"
+    source = str(probe_root / "waitcheck_probe.hip")
+    steps: dict[str, dict[str, Any]] = {}
+    steps["compile_safe"] = _run_probe_step(
+        "compile-safe",
+        [
+            hipcc,
+            "-O1",
+            "--genco",
+            "--no-gpu-bundle-output",
+            "--offload-arch=gfx950",
+            source,
+            "-o",
+            str(safe),
+        ],
+        cwd=work_dir,
+        environment={},
+        artifact_dir=artifact_dir,
+    )
+    steps["compile_hazard"] = _run_probe_step(
+        "compile-hazard",
+        [
+            hipcc,
+            "-O1",
+            "--genco",
+            "--no-gpu-bundle-output",
+            "--offload-arch=gfx950",
+            "-DAKA_WAITCHECK_HAZARD=1",
+            source,
+            "-o",
+            str(hazard),
+        ],
+        cwd=work_dir,
+        environment={},
+        artifact_dir=artifact_dir,
+    )
+    if (
+        steps["compile_safe"]["returncode"] == 0
+        and steps["compile_hazard"]["returncode"] == 0
+        and binary
+    ):
+        steps["safe"] = _run_probe_step(
+            "safe",
+            [binary, str(safe), "--target", "gfx950"],
+            cwd=work_dir,
+            environment={},
+            artifact_dir=artifact_dir,
+        )
+        steps["hazard"] = _run_probe_step(
+            "hazard",
+            [binary, str(hazard), "--target", "gfx950"],
+            cwd=work_dir,
+            environment={},
+            artifact_dir=artifact_dir,
+        )
+    safe_text = str(steps.get("safe", {}).get("_stdout", "")) + str(
+        steps.get("safe", {}).get("_stderr", "")
+    )
+    hazard_text = str(steps.get("hazard", {}).get("_stdout", "")) + str(
+        steps.get("hazard", {}).get("_stderr", "")
+    )
+    passed = (
+        steps.get("safe", {}).get("returncode") == 0
+        and "diagnostics=0" in safe_text
+        and steps.get("hazard", {}).get("returncode") == 4
+        and "missing" in hazard_text.lower()
+    )
+    return _positive_result(
+        passed=passed,
+        kind="waitcheck_known_missing_wait",
+        detail=(
+            "barrier-complete fixture was clean and the missing-wait fixture was rejected"
+            if passed
+            else "Waitcheck did not distinguish the known safe/missing-wait pair"
+        ),
+        artifact_dir=artifact_dir,
+        steps=steps,
+    )
+
+
+def _consan_positive(
+    evidence: Mapping[str, Any], probe_root: Path, work_dir: Path, artifact_dir: Path
+) -> dict[str, Any]:
+    hipcc = shutil.which("hipcc") or "/opt/rocm/bin/hipcc"
+    hook = str(evidence.get("consan_hook") or "")
+    safe = work_dir / "consan-safe"
+    racy = work_dir / "consan-racy"
+    source = str(probe_root / "consan_probe.hip")
+    steps: dict[str, dict[str, Any]] = {}
+    steps["compile_safe"] = _run_probe_step(
+        "compile-safe",
+        [hipcc, "-O1", "--offload-arch=gfx950", source, "-o", str(safe)],
+        cwd=work_dir,
+        environment={},
+        artifact_dir=artifact_dir,
+    )
+    steps["compile_racy"] = _run_probe_step(
+        "compile-racy",
+        [
+            hipcc,
+            "-O1",
+            "--offload-arch=gfx950",
+            "-DAKA_CONSAN_RACY=1",
+            source,
+            "-o",
+            str(racy),
+        ],
+        cwd=work_dir,
+        environment={},
+        artifact_dir=artifact_dir,
+    )
+    base_env = {
+        "HSA_TOOLS_DISABLE_REGISTER": "1",
+        "HSA_TOOLS_LIB": hook,
+        "RJ_CONSAN_MODE": "record-replay",
+        "RJ_CONSAN_POLICY": "strict",
+        "RJ_CONSAN_LOG": "1",
+        "ROCR_VISIBLE_DEVICES": "0",
+        "HIP_VISIBLE_DEVICES": "0",
+        "CUDA_VISIBLE_DEVICES": "0",
+        "GPU_DEVICE_ORDINAL": "0",
+    }
+    if (
+        steps["compile_safe"]["returncode"] == 0
+        and steps["compile_racy"]["returncode"] == 0
+        and hook
+    ):
+        steps["safe"] = _run_probe_step(
+            "safe",
+            [str(safe)],
+            cwd=work_dir,
+            environment={**base_env, "RJ_CONSAN_MOI_FORBID_DIAGNOSTICS": "1"},
+            artifact_dir=artifact_dir,
+        )
+        steps["racy"] = _run_probe_step(
+            "racy",
+            [str(racy)],
+            cwd=work_dir,
+            environment={**base_env, "RJ_CONSAN_MOI_REQUIRE_DIAGNOSTICS": "1"},
+            artifact_dir=artifact_dir,
+        )
+    safe_text = str(steps.get("safe", {}).get("_stdout", "")) + str(
+        steps.get("safe", {}).get("_stderr", "")
+    )
+    racy_text = str(steps.get("racy", {}).get("_stdout", "")) + str(
+        steps.get("racy", {}).get("_stderr", "")
+    )
+    complete = (
+        "analysis_complete=true" in safe_text
+        and "static_complete=true" in safe_text
+        and "dynamic_complete=true" in safe_text
+        and "analysis_complete=true" in racy_text
+        and "static_complete=true" in racy_text
+        and "dynamic_complete=true" in racy_text
+    )
+    passed = (
+        steps.get("safe", {}).get("returncode") == 0
+        and "CONSAN_SAFE_ORACLE_PASS" in safe_text
+        and "ConSan MOI auto replay diagnostic" not in safe_text
+        and steps.get("racy", {}).get("returncode") == 0
+        and "ConSan MOI auto replay diagnostic" in racy_text
+        and complete
+    )
+    return _positive_result(
+        passed=passed,
+        kind="consan_known_lds_race",
+        detail=(
+            "strict record/replay kept the safe oracle clean and detected the seeded LDS race"
+            if passed
+            else "ConSan did not produce complete, distinct safe/racy control evidence"
+        ),
+        artifact_dir=artifact_dir,
+        steps=steps,
+    )
+
+
 def _hip_fpsan_positive(
     evidence: Mapping[str, Any], probe_root: Path, work_dir: Path, artifact_dir: Path
 ) -> dict[str, Any]:
@@ -571,6 +753,10 @@ def positive_control_evidence(
             return _gpu_asan_positive(evidence, probe_root, work_dir, artifact_dir)
         if tool == "rocjitsu":
             return _rocjitsu_positive(evidence, probe_root, work_dir, artifact_dir)
+        if tool == "rocjitsu_waitcheck":
+            return _waitcheck_positive(evidence, probe_root, work_dir, artifact_dir)
+        if tool == "rocjitsu_consan":
+            return _consan_positive(evidence, probe_root, work_dir, artifact_dir)
         if tool == "hip_fpsan":
             return _hip_fpsan_positive(evidence, probe_root, work_dir, artifact_dir)
     except Exception as error:
@@ -672,6 +858,43 @@ def runtime_evidence(
             "target_arch": "gfx950",
             "rocjitsu_commit": os.environ.get("AKA_ROCJITSU_COMMIT"),
         })
+    elif tool == "rocjitsu_waitcheck":
+        binary = os.environ.get("AKA_WAITCHECK_BINARY") or shutil.which(
+            "rj_waitcheck"
+        )
+        capi_wrapper = os.environ.get("AKA_WAITCHECK_CAPI_WRAPPER") or shutil.which(
+            "aka-waitcheck-capi"
+        )
+        evidence.update(
+            {
+                "waitcheck_binary": (
+                    binary if binary and Path(binary).is_file() else None
+                ),
+                "waitcheck_capi_wrapper": (
+                    capi_wrapper
+                    if capi_wrapper and Path(capi_wrapper).is_file()
+                    else None
+                ),
+                "target_arch": "gfx950",
+                "rocjitsu_sanitizers_commit": os.environ.get(
+                    "AKA_ROCJITSU_SANITIZERS_COMMIT"
+                ),
+            }
+        )
+    elif tool == "rocjitsu_consan":
+        hook = os.environ.get("AKA_CONSAN_HOOK") or _existing_path(
+            "/opt/rocjitsu/lib/librocjitsu_dbi_hooks.so"
+        )
+        evidence.update(
+            {
+                "consan_hook": hook if hook and Path(hook).is_file() else None,
+                "target_arch": "gfx950",
+                "rocjitsu_sanitizers_commit": os.environ.get(
+                    "AKA_ROCJITSU_SANITIZERS_COMMIT"
+                ),
+            }
+        )
+        evidence.update(_gpu_evidence())
     elif tool == "hip_fpsan":
         include_dir = Path(os.environ.get("AKA_HIP_FPSAN_INCLUDE_DIR", "/opt/hip-fpsan/include"))
         public_header = include_dir / "fpsan" / "fpsan.hpp"
@@ -841,7 +1064,15 @@ class EvalToolServer(socketserver.UnixStreamServer):
             )
             status = (
                 "ready"
-                if self.tool not in {"triton_fpsan", "gpu_asan", "rocjitsu", "hip_fpsan"}
+                if self.tool
+                not in {
+                    "triton_fpsan",
+                    "gpu_asan",
+                    "rocjitsu",
+                    "rocjitsu_waitcheck",
+                    "rocjitsu_consan",
+                    "hip_fpsan",
+                }
                 or control_passed
                 else "degraded"
             )

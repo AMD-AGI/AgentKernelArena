@@ -25,9 +25,11 @@ from .base import (
 )
 from .gpu_asan import GPU_ASAN_ENV, GpuAsanPlugin, hip_asan_build_flags
 from .hip_fpsan import HipFpSanPlugin
+from .consan import ConSanPlugin
 from .registry import get_plugin, iter_plugins, plugin_ids, register_builtin_plugins
 from .rocjitsu import RocJitsuPlugin
 from .triton_fpsan import TritonFpSanPlugin
+from .waitcheck import WaitcheckPlugin
 
 __all__ = [
     "ADAPTER_REQUIRED",
@@ -39,6 +41,7 @@ __all__ = [
     "GPU_ASAN_ENV",
     "GpuAsanPlugin",
     "HipFpSanPlugin",
+    "ConSanPlugin",
     "INCONCLUSIVE",
     "NOT_APPLICABLE",
     "PASS",
@@ -50,6 +53,7 @@ __all__ = [
     "TOOL_ERROR",
     "ToolInvocation",
     "TritonFpSanPlugin",
+    "WaitcheckPlugin",
     "UNAVAILABLE_RUNTIME",
     "UNSUPPORTED",
     "attest_artifact",
