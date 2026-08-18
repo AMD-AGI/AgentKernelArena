@@ -9,6 +9,8 @@ version_number = "0.2.0"
 html_theme = "rocm_docs_theme"
 html_theme_options = {
     "flavor": "hyperloom",
+    "use_repository_button": True,
+    "use_issues_button": True,
 }
 
 # This section turns on/off article info
