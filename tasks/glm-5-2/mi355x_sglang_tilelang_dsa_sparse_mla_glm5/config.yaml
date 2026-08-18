@@ -1,0 +1,82 @@
+task_type: image_kernel
+image_repo_path: /sgl-workspace/sglang/python/sglang
+repo_subdir: sglang
+image_repo_exclude:
+  - __pycache__
+repository_language: tilelang
+source_file_path:
+  - kernels/ops/attention/dsa/tilelang_kernel.py
+editable_sources:
+  - kernels/ops/attention/dsa/tilelang_kernel.py
+  - srt/layers/attention/dsa_backend.py
+target_kernel_functions:
+  - sparse_mla_fwd_decode_partial
+  - sparse_mla_fwd_decode_combine
+  - tilelang_sparse_fwd
+kernel_identity:
+  logical_operator: dsa_sparse_mla
+  kernel_kind: tilelang
+  source_owner: sglang
+  workload:
+    source: session_cases.json
+    primary_case: prefill-16384
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+compile_timeout: 600
+correctness_timeout: 600
+performance_timeout: 600
+task_result_template: null
+platform_support:
+  required_arch: gfx950
+  status: active
+  skip_reason: null
+prompt:
+  source_code: null
+  instructions: >-
+    Optimize the GLM-5.2 DeepSeek-Sparse-Attention (DSA) sparse-MLA TileLang
+    kernels on MI355X/gfx950. This is the highest-E2E operator of Hyperloom
+    session GLM-5.2-MXFP4_20260814T163244Z: 21.46% of decode GPU time and
+    (measured by replay at the session's prefill shape) about 58% of the prefill
+    forward, i.e. roughly 40% end to end (range 36-52%).
+
+    IMPORTANT -- `main_kernel` in the session trace is TWO kernels, not one. Both
+    TileLang prim_funcs are named `main`, so roctracer records
+    `sparse_mla_fwd_decode_partial` (tilelang_kernel.py:811) and
+    `sparse_mla_fwd_decode_combine` (:989) under the same name. In the trace they
+    alternate 66.43 us / 4.21 us at 78 pairs per decode step. The hot one is
+    `partial` (20.18% of decode); `combine` is 1.28%. Prior analyses of this
+    session reported the sum as a single 21.5% kernel.
+
+    Both phases go through the same entry, `tilelang_sparse_fwd`
+    (tilelang_kernel.py:1317) -- server.log line 12 of the scored run reads
+    "Set DSA backends for bfloat16 KV Cache: prefill=tilelang, decode=tilelang".
+    The three harness cases are the session's real buckets: decode bs=64 (S=64),
+    and chunked prefill at S=16384 and S=8192. The whole entry function is timed,
+    so the partial/combine split, the `_pick_inner_iter` heuristic
+    (tilelang_kernel.py:75) and the launch geometry are all inside the edit
+    surface -- you may restructure them as long as the numerics hold.
+
+    Contract that must be preserved: Q is [1,S,8,576] bf16 where dims [0:512] are
+    the MLA latent and [512:576] the RoPE tail; K is the full 576-dim latent and V
+    is dims [0:512] of the SAME KV tensor; a NEGATIVE index means padding and must
+    be masked out of the softmax (a fully-masked row outputs 0, not NaN); topk is
+    2048 and `tilelang_sparse_fwd` asserts it.
+
+    Measured facts worth knowing: at the decode shape the kernel runs at
+    34.4 TFLOP/s (1.4% of bf16 peak) and moves KV at 2.27 TB/s -- it is
+    gather/latency bound, not compute bound. At the prefill shape inner_iter
+    becomes 32 and N_GROUPS becomes 1, which makes `combine` a 32768-block copy
+    over a single split -- pure overhead in that regime. Known trap: a previous
+    attempt on this session replaced the entry with an authored Triton kernel and
+    failed integration with
+    "HIP error: operation not permitted when stream is capturing" -- whatever you
+    write must still be capturable into sglang's decode CUDA graph, and the
+    harness times under CUDA graph so a non-capturable patch fails there too.
+
+    Preserve all correctness cases and improve the CUDA-graph measured
+    performance. Do not edit the harness under scripts/.
+  cheatsheet: null

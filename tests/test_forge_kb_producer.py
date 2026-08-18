@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import math
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,8 +12,10 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+from agents.forge.drivers import arena_task_adapter
 from agents.forge.launch_agent import (
     _build_forge_command,
+    _capture_forge_edit_baseline,
     _declared_editable_sources,
     _forge_max_hours,
     _infer_backend,
@@ -21,10 +25,10 @@ from agents.forge.launch_agent import (
     _resolve_all_source_files,
     _resolve_fellow,
     _resolve_framework,
+    _resolve_gpu_type,
     _resolve_kernel_kind,
+    _verify_forge_edit_scope,
 )
-from agents.forge.drivers import arena_task_adapter
-
 
 CK_TASK_NAMES = (
     "mi355x_vllm_ck_a8w8_blockscale_gemm",
@@ -62,6 +66,17 @@ def _load_k3_forge_driver():
         / "scripts/forge_driver.py"
     )
     spec = importlib.util.spec_from_file_location("_k3_forge_driver_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_task_module(relative_path: str):
+    root = Path(__file__).resolve().parents[1]
+    path = root / relative_path
+    module_name = f"_{path.parent.parent.name}_{path.stem}"
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -107,12 +122,12 @@ def _command(tmp_path: Path, **overrides) -> list[str]:
         "workspace": str(tmp_path),
         "experiments_dir": tmp_path / "forge_experiments",
         "result_json": tmp_path / "forge_experiments" / "forge_result.json",
-        "program_md": tmp_path / "forge_program.md",
         "agent_config": {
             "max_iters": 1000,
             "timeout_seconds": 7200,
         },
         "gpu_arch": "gfx950",
+        "gpu_type": "mi355x",
         "fellow": "triton-fellow",
         "task_type": "image_kernel",
         "source_files": [tmp_path / "wrapper.py", tmp_path / "kernel.py"],
@@ -127,6 +142,8 @@ def _command(tmp_path: Path, **overrides) -> list[str]:
 def test_supplied_kernel_identity_fields_are_forwarded(tmp_path):
     argv = _command(tmp_path)
 
+    assert _value(argv, "--gpu-target") == "gfx950"
+    assert _value(argv, "--gpu-type") == "mi355x"
     assert _value(argv, "--operator-name") == "unified_attention"
     assert _value(argv, "--framework") == "aiter"
     assert _value(argv, "--target-functions") == "dispatch,_device_kernel"
@@ -137,6 +154,7 @@ def test_supplied_kernel_identity_fields_are_forwarded(tmp_path):
     assert "--shapes-json" not in argv
     assert "--workload-key" not in argv
     assert "--kernel-kind" not in argv
+    assert "--program-md-file" not in argv
     assert "--resume" not in argv
 
 
@@ -211,6 +229,83 @@ def test_editable_sources_extend_complete_source_allowlist(tmp_path):
     assert resolved == [kernel.resolve(), helper.resolve()]
 
 
+def _init_scope_test_repo(tmp_path: Path) -> str:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "forge-test@local"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "forge-test"], cwd=tmp_path, check=True
+    )
+    (tmp_path / ".gitignore").write_text("build/\nforge_experiments/\n")
+    (tmp_path / "kernel.py").write_text("def kernel(): return 0\n")
+    (tmp_path / "helper.py").write_text("def helper(): return 0\n")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "baseline"], cwd=tmp_path, check=True, capture_output=True
+    )
+    return _capture_forge_edit_baseline(str(tmp_path))
+
+
+def test_forge_edit_scope_allows_declared_source_change(tmp_path):
+    baseline = _init_scope_test_repo(tmp_path)
+    kernel = tmp_path / "kernel.py"
+    kernel.write_text("def kernel(): return 1\n")
+    subprocess.run(["git", "add", "kernel.py"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "allowed edit"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+
+    _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
+
+
+def test_forge_edit_scope_allows_ignored_runtime_artifacts(tmp_path):
+    baseline = _init_scope_test_repo(tmp_path)
+    kernel = tmp_path / "kernel.py"
+    build = tmp_path / "build"
+    build.mkdir()
+    (build / "kernel.hsaco").write_bytes(b"runtime artifact")
+
+    _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
+
+
+def test_forge_edit_scope_discards_undeclared_untracked_file(tmp_path):
+    baseline = _init_scope_test_repo(tmp_path)
+    kernel = tmp_path / "kernel.py"
+    scratch = tmp_path / "new_helper.py"
+    scratch.write_text("def bypass(): return 1\n")
+
+    _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
+
+    assert not scratch.exists()
+
+
+@pytest.mark.parametrize("change_kind", ["tracked", "rename"])
+def test_forge_edit_scope_rejects_undeclared_changes(tmp_path, change_kind):
+    baseline = _init_scope_test_repo(tmp_path)
+    kernel = tmp_path / "kernel.py"
+    helper = tmp_path / "helper.py"
+    if change_kind == "tracked":
+        helper.write_text("def helper(): return 1\n")
+        subprocess.run(["git", "add", "helper.py"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "undeclared edit"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+    else:
+        helper.rename(tmp_path / "renamed_helper.py")
+
+    with pytest.raises(RuntimeError, match="outside source_file_path/editable_sources"):
+        _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
+
+
 def test_explicit_source_owner_wins_for_wrapper_anchor():
     config = {
         "image_repo_path": "/workspace/vllm/model_executor/attention.py",
@@ -261,6 +356,91 @@ def test_forge_budget_reserves_internal_shutdown_margin():
     assert _forge_max_hours({"timeout_seconds": 600}) == 1.0
 
 
+def test_gpu_type_uses_normalized_arena_hardware_model():
+    assert _resolve_gpu_type({"target_gpu_model": "MI355X"}) == "mi355x"
+    assert _resolve_gpu_type({"target_gpu_model": "mi300"}) == "mi300x"
+    assert _resolve_gpu_type({"target_gpu_model": "MI300X"}) == "mi300x"
+    assert _resolve_gpu_type({"target_gpu_model": "mi325"}) == "mi325x"
+    assert _resolve_gpu_type({"target_gpu_model": "MI325X"}) == "mi325x"
+    with pytest.raises(ValueError, match="target_gpu_model"):
+        _resolve_gpu_type({"target_gpu_model": ""})
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "tasks/kimi-k3/mi355x_sglang_flydsl_hgemm_small_m_kimi_k3/scripts/forge_driver.py",
+        "tasks/kimi-k3/mi355x_sglang_triton_attn_residual_kimi_k3/scripts/forge_driver.py",
+        "tasks/kimi-k3/mi355x_sglang_triton_mla_decode_grouped_kimi_k3/scripts/forge_driver.py",
+    ],
+)
+def test_kimi_forge_driver_snr_fails_closed_on_non_finite_output(
+    monkeypatch,
+    relative_path,
+):
+    driver = _load_task_module(relative_path)
+
+    class _Scalar:
+        def __init__(self, value):
+            self.value = value
+
+        def item(self):
+            return self.value
+
+    class _Vector:
+        def __init__(self, norm, noise=0.0):
+            self.norm_value = norm
+            self.noise = noise
+
+        def flatten(self):
+            return self
+
+        def norm(self):
+            return _Scalar(self.norm_value)
+
+        def __sub__(self, _other):
+            return _Vector(self.noise)
+
+    class _Output:
+        def __init__(self, finite, noise):
+            self.finite = finite
+            self.noise = noise
+
+        def double(self):
+            return _Vector(1.0, self.noise)
+
+    class _Reference:
+        def flatten(self):
+            return _Vector(1.0)
+
+    class _TaskRunner:
+        CASES = [{"id": "case0"}]
+
+        def __init__(self, finite, noise):
+            self.finite = finite
+            self.noise = noise
+
+        @staticmethod
+        def _prepare(_case):
+            return {}
+
+        def _run(self, _inputs):
+            return _Output(self.finite, self.noise)
+
+        @staticmethod
+        def _golden(_inputs):
+            return _Reference()
+
+    fake_torch = SimpleNamespace(
+        cuda=SimpleNamespace(synchronize=lambda: None, empty_cache=lambda: None),
+        isfinite=lambda output: SimpleNamespace(all=lambda: output.finite),
+    )
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+
+    assert driver._run_correctness(_TaskRunner(False, math.nan)) == 1
+    assert driver._run_correctness(_TaskRunner(True, 0.001)) == 0
+
+
 @pytest.mark.parametrize(
     ("task_name", "logical_operator", "kernel_kind", "source_owner"),
     [
@@ -303,7 +483,7 @@ def test_forge_budget_reserves_internal_shutdown_margin():
         ),
         (
             "mi355x_vllm_triton_paged_attention_2d",
-            "unified_attention_with_output",
+            "paged_attention_2d",
             "triton",
             "vllm",
         ),

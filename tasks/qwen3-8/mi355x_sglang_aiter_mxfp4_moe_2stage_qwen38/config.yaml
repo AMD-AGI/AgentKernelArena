@@ -1,0 +1,101 @@
+task_type: image_kernel
+# aiter is a source checkout in this image, not a dist-packages install; the
+# package dir is the seed, and scripts/task_runner.py symlinks the csrc/3rdparty/hsa
+# siblings the copy needs to import (aiter/utility/aiter_types.py:10 -> parents[2]).
+image_repo_path: /sgl-workspace/aiter/aiter
+repo_subdir: aiter
+image_repo_exclude:
+- __pycache__
+- jit/build
+# The compute cores are FlyDSL (mfma_moe1_* / mfma_moe2_*) and the edit surface
+# includes ops/flydsl/kernels/mixed_moe_gemm_2stage.py. Must be one of the keys
+# under `knowledge` in src/prompts/cheatsheet/default_cheatsheet.yaml
+# (flydsl/hip/triton) -- 'python' hard-fails prompt_builder.
+repository_language: flydsl
+source_file_path:
+- fused_moe.py
+- ops/flydsl/moe_kernels.py
+- ops/shuffle.py
+# Kernel source only. The tuned-config CSV is deliberately NOT an edit surface:
+# populating a lookup table is backend tuning, not kernel work, and this task set
+# is scoped to source-editable kernels.
+editable_sources:
+- ops/flydsl/kernels/mixed_moe_gemm_2stage.py
+# NOTE ON OVERLAP with tasks/image_kernel/mi355x_vllm_aiter_mxfp4_moe_2stage_kimi_k3:
+# both tasks edit mixed_moe_gemm_2stage.py, but DIFFERENT builder functions in it.
+# K3 is a16w4 -> compile_mixed_moe_gemm1_a16w4 (:4959) / _a16w4 (:7215).
+# This task is a4w4 -> compile_mixed_moe_gemm1 (:147) / compile_mixed_moe_gemm2 (:3079).
+# The builders are listed below so the two tasks are distinguishable by target,
+# not just by name, and logical_operator carries the _a4w4 suffix for the same reason.
+target_kernel_functions:
+- compile_mixed_moe_gemm1
+- compile_mixed_moe_gemm2
+- _flydsl_stage1_wrapper
+- _flydsl_stage2_wrapper
+- fused_moe
+kernel_identity:
+  logical_operator: aiter_mxfp4_moe_2stage_a4w4
+  kernel_kind: flydsl
+  source_owner: aiter
+  workload:
+    source: session_cases.json
+    primary_case: qwen38-moe-decode-m64
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+compile_timeout: 1800
+correctness_timeout: 3600
+performance_timeout: 2400
+task_result_template: null
+platform_support:
+  required_arch: gfx950
+  status: active
+  skip_reason: null
+prompt:
+  source_code: null
+  instructions: >-
+    Faithful reproduction of the Qwen3.8-2.4T-A95B routed-expert MXFP4 MoE
+    2-stage GEMM as it actually executed in Hyperloom session 100137
+    (20260814T175123Z) on MI355X/gfx950 under sglang 0.5.17. These are the
+    session's #2 and #4 hot kernels by E2E share:
+    mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32 at 11.62% E2E and
+    mfma_moe2_afp4_wfp4_bf16_cshuffle_t32x128x256_vscale_fix3_fp4opt_v1_persist_cu256
+    at 6.25% E2E -- together 17.9% of end-to-end wall clock, the largest
+    non-communication block in the workload.
+    Config: a4w4 (fp4 activation x fp4 weight, MXFP4 group_size=32 ->
+    QuantType.per_1x32, e8m0 scales), g1u1, ActivationType.Silu, per-rank
+    (TP=8 EP=8) model_dim=8192 / inter_dim=2048 / 64 local experts of 512 /
+    topk=10. Exact shapes and dtypes are trace-recorded in session_cases.json.
+    The compute core is a FlyDSL MLIR builder and is the edit surface:
+    ops/flydsl/kernels/mixed_moe_gemm_2stage.py, compile_mixed_moe_gemm1 (:147,
+    kernel at :468) and compile_mixed_moe_gemm2 (:3079, kernel at :3275). Useful
+    levers are the MFMA pipeline, tile/block loop structure, LDS usage and the
+    ping-pong staging, the async-copy schedule, the persistent stage-2 CU
+    mapping, the CShuffle epilogue, and stage-2's atomic reduction.
+    Context worth having: this session has NO tuned FlyDSL config at all -- its
+    server.log logs "no tuned FlyDSL config" 120 times, covering all 15 M
+    buckets, so every MoE GEMM in production runs on the heuristic fallback tile
+    from aiter/fused_moe.py:2249-2255. That is why there is headroom. Note
+    though that the tuned-config CSV is NOT in the edit surface: filling in a
+    lookup table is backend tuning, not kernel work. Win by making the kernel
+    faster at the three tiles the session actually dispatches.
+    Three M buckets are covered and they dispatch three DIFFERENT kernel pairs,
+    so a tile change must be evaluated on all of them: decode M=64 (t32x128x256),
+    prefill M=8192 (t128x128x256) and prefill M=16384 (t64x128x256). The harness
+    pins the expected pair per case.
+    The harness enforces invariants a valid patch must keep. Weights must reach
+    fused_moe with .is_shuffled=True and the sglang load-time preparation
+    (e8m0_shuffle on the 2D scale view, then shuffle_weight(w, (16,16))); without
+    it aiter/fused_moe.py:2198 silently routes to the CK 2-stage path, which is
+    not the kernel the session ran. Dispatch must stay on the FlyDSL a4w4 pair.
+    Correctness and performance run the identical case list at identical shapes,
+    and correctness is the worst of 3 runs because stage2 reduces with atomics.
+    Correctness compares against an independent vectorized torch reference that
+    unpacks the MXFP4 nibbles and fake-quantizes activations the same way the
+    kernel does; observed baseline agreement is cos ~0.9887 at every M. Do not
+    edit the harness. Preserve all correctness cases and improve the CUDA-graph
+    measured performance.
+  cheatsheet: null

@@ -1,0 +1,157 @@
+{
+  "source_day": "2026-08-15",
+  "date_field": "session_started_at",
+  "platform": "MI355X/gfx950",
+  "framework": "vllm 0.26.0",
+  "base_image": "harbor.crusoe.primus-safe.amd.com/proxy/vllm/vllm-openai-rocm:v0.26.0",
+  "task_name": "mi355x-minimax-m3-gqa-sparse-attn-prefill-20260815",
+  "operator": "gqa_sparse_attn_prefill",
+  "selection": "hot leaf _gqa_sparse_fwd_kernel, 8.53% of normalized E2E GPU time (rank #3 of the whole session), 21.20% of every chunked-prefill step",
+  "provenance": {
+    "model": "MiniMax-M3-MXFP4",
+    "session_id": "20260815T100002Z",
+    "session_path": "/shared_nfs/hyperloom-claw/MiniMax-M3-MXFP4/20260815T100002Z",
+    "trace": "runs/roofline/ca746c43c5564616b0ff91a3582c73ab/benchmark_vllm_20260815_111805/torch_trace/dp0_pp0_tp0_dcp0_ep0_rank0.1786793700435294667.pt.trace.json.gz",
+    "workload": "ISL 8192 / OSL 1024 / conc 64 / max_model_len 13312 / TP=8 / quark MXFP4",
+    "device_kernel": "_gqa_sparse_fwd_kernel",
+    "entry": "vllm/models/minimax_m3/amd/ops/sparse_attn.py:73 (kernel), launcher minimax_m3_sparse_attn() at :243, launch at :286",
+    "call_chain": "MiniMaxM3SparseForConditionalGeneration -> models/minimax_m3/amd/model.py -> minimax_m3_sparse_attn",
+    "phase": "prefill only -- 57 calls per chunked-prefill step (one per block-sparse layer), 0 calls in pure-decode steps",
+    "measured": {
+      "normalized_e2e_pct": 8.53,
+      "prefill_step_pct": 21.2,
+      "decode_step_pct": 0.0,
+      "calls_per_prefill_step": 57,
+      "us_per_call": 720.0,
+      "grid": "(max_query_len, num_kv_heads, batch) -- measured (8131,1,1) x57, (8132,1,1) x57, (8073,1,2) x57, (61,1,1) x57",
+      "block": "(64,1,1) -- one wavefront, because _sparse_attn_prefill_kwargs() sets num_warps=1",
+      "achieved_tflops": 83.6,
+      "pct_of_bf16_peak": 3.6,
+      "note": "BLOCK_SIZE_Q=1 means one CTA handles a single query token, so the QK GEMM has M=8 (the GQA group width) and cannot fill an MFMA_16x16 tile. Effective FLOPs use the causal-corrected average of 14.11 selected blocks per query (queries below position 2048 see fewer than topk=16 blocks)."
+    },
+    "shape_evidence": "grid dims read directly off the kernel events; batch = grid[2], max_query_len = grid[0]. Query/sequence lengths cross-checked against the step annotations execute_8192_context_1(sq8131sk8131...), context_1(sq8132sk8132...), context_2(sq8133sk16265...) and execute_121_context_1(sq61sk8192...). num_blocks=41215 and the kv_cache layout [41215,1,128,256] bf16 come from _C::fused_minimax_m3_qknorm_rope_kv_insert arg 15 in the bs=64 capture trace.",
+    "constants_evidence": "num_heads=8 = 64/TP8, num_kv_heads=1 = max(1, 4/TP8), head_dim=128, topk=16 (sparse_topk_blocks), BLOCK_SIZE_K=128 (sparse_block_size), SUB_K=64 (= 128//2 because on_gfx950() is true, sparse_attn.py:28), USE_FP8=False and KV_SCALE_MODE=0 (kv_cache_dtype=auto -> bf16), launch kwargs num_warps=1 / matrix_instr_nonkdim=16 / kpack=2 / num_stages=1 (_sparse_attn_prefill_kwargs, sparse_attn.py:33) -- consistent with the measured block (64,1,1).",
+    "harness_agreement": "harness 0.7175 ms at m3-prefill-b1-q8131-prefix0 vs 720.0 us/call in the session trace -- 99.7% agreement."
+  },
+  "model_config": {
+    "num_heads_per_rank": 8,
+    "num_kv_heads_per_rank": 1,
+    "head_dim": 128,
+    "sparse_block_size": 128,
+    "sparse_topk_blocks": 16,
+    "sparse_init_block": 0,
+    "sparse_local_block": 1,
+    "num_blocks": 41215,
+    "max_model_len": 13312,
+    "max_num_batched_tokens": 8192,
+    "dtype": "bf16"
+  },
+  "shape_notes": {
+    "kv_cache_size": "The cache is allocated at the session's real 41215 blocks (2.70 GB) and each sequence is given a shuffled, non-contiguous page set, so the kernel sees the address spread it sees in production rather than one tight contiguous range.",
+    "topk_idx": "Generated deterministically per query: block ids drawn from the causally visible range [0, ceil((prefix+i+1)/128)), always including the local block (sparse_local_block=1), sorted ascending and right-padded with -1. Queries below position 2048 therefore carry fewer than 16 entries, which is what makes the measured average 14.11 blocks/query."
+  },
+  "cases": [
+    {
+      "id": "m3-prefill-b1-q8131-prefix0",
+      "model": "MiniMax-M3-MXFP4",
+      "session_id": "20260815T100002Z",
+      "phase": "chunked-prefill step, first chunk of an 8192-token prompt (37 of the 40 sampled prefill steps)",
+      "gpu_pct": 21.2,
+      "params": {
+        "batch": 1,
+        "query_lens": [
+          8131
+        ],
+        "seq_lens": [
+          8131
+        ],
+        "prefix_lens": [
+          0
+        ],
+        "num_heads": 8,
+        "num_kv_heads": 1,
+        "head_dim": 128,
+        "topk": 16,
+        "sparse_block_size": 128,
+        "num_blocks": 41215,
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "q (8131,8,128) bf16",
+        "kv_cache (41215,1,128,256) bf16",
+        "topk_idx (1,8131,16) int32",
+        "block_table (1,104) int32",
+        "grid (8131,1,1) block (64,1,1)"
+      ]
+    },
+    {
+      "id": "m3-prefill-b2-q8073p60",
+      "model": "MiniMax-M3-MXFP4",
+      "session_id": "20260815T100002Z",
+      "phase": "chunked-prefill step with two context sequences (annotation context_2(sq8133 sk16265))",
+      "gpu_pct": null,
+      "params": {
+        "batch": 2,
+        "query_lens": [
+          8073,
+          60
+        ],
+        "seq_lens": [
+          8073,
+          8192
+        ],
+        "prefix_lens": [
+          0,
+          8132
+        ],
+        "num_heads": 8,
+        "num_kv_heads": 1,
+        "head_dim": 128,
+        "topk": 16,
+        "sparse_block_size": 128,
+        "num_blocks": 41215,
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "q (8133,8,128) bf16",
+        "kv_cache (41215,1,128,256) bf16",
+        "topk_idx (1,8133,16) int32",
+        "block_table (2,104) int32",
+        "grid (8073,1,2) block (64,1,1)"
+      ]
+    },
+    {
+      "id": "m3-prefill-b1-q61-prefix8131",
+      "model": "MiniMax-M3-MXFP4",
+      "session_id": "20260815T100002Z",
+      "phase": "chunked-prefill tail chunk (annotation execute_121_context_1(sq61 sk8192))",
+      "gpu_pct": null,
+      "params": {
+        "batch": 1,
+        "query_lens": [
+          61
+        ],
+        "seq_lens": [
+          8192
+        ],
+        "prefix_lens": [
+          8131
+        ],
+        "num_heads": 8,
+        "num_kv_heads": 1,
+        "head_dim": 128,
+        "topk": 16,
+        "sparse_block_size": 128,
+        "num_blocks": 41215,
+        "dtype": "bf16"
+      },
+      "trace_input_shapes": [
+        "q (61,8,128) bf16",
+        "kv_cache (41215,1,128,256) bf16",
+        "topk_idx (1,61,16) int32",
+        "block_table (1,104) int32",
+        "grid (61,1,1) block (64,1,1)"
+      ]
+    }
+  ]
+}

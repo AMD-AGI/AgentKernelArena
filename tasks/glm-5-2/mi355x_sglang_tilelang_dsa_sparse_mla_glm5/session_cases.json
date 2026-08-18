@@ -1,0 +1,128 @@
+{
+  "source_day": "2026-08-14",
+  "date_field": "session_started_at",
+  "platform": "MI355X/gfx950",
+  "framework": "sglang 0.5.17 (ROCm 7.2.0)",
+  "base_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+  "model": "GLM-5.2-MXFP4",
+  "session_id": "GLM-5.2-MXFP4_20260814T163244Z_06452039",
+  "session_root": "/shared_nfs/hyperloom-claw/GLM-5.2-MXFP4/20260814T163244Z",
+  "run": "runs/roofline/0c88d5c74d7d4031b1ed2f17bc8677b1/benchmark_sglang_20260814_190004",
+  "operator": "dsa_sparse_mla",
+  "kernel": "main_kernel (TileLang prim_func `main`; partial + combine share the name)",
+  "timed_callable": "tilelang_sparse_fwd (partial + combine, one MLA layer)",
+  "task_name": "mi355x-glm52-tilelang-dsa-sparse-mla-20260814",
+  "selection": "Highest-E2E kernel of the GLM-5.2 session. Both phases run it: server.log line 12 -- 'Set DSA backends for bfloat16 KV Cache: prefill=tilelang, decode=tilelang'. E2E ~40% (36-52%).",
+  "e2e_attribution": {
+    "wall_clock_s": 719.61,
+    "prefill_s": 381.0,
+    "prefill_pct": 52.9,
+    "decode_s": 316.1,
+    "decode_pct": 43.9,
+    "scheduler_gap_s": 22.5,
+    "decode_measured_pct_of_decode_gpu": 21.46,
+    "decode_split": {
+      "partial": 20.18,
+      "combine": 1.28
+    },
+    "prefill_pct_of_prefill_gpu": 58.1,
+    "e2e_pct": 40.1,
+    "method": "decode side: 8-rank torch trace, 128 x step[DECODE bs=64], kernel-sum 3283.7 ms/rank, inter-rank spread <1%. prefill side: no kernel trace exists in the session (profiler window start_step=6080 caught 128 decode steps only), so the prefill share was measured directly by replaying this kernel at the session's prefill shape on the same gfx950 part: 7.317 ms/layer x 78 layers = 570.7 ms, against the 982.0 ms measured prefill forward (server.log, 376 batches, p10-p90 spread 0.7%) -> 58.1%. Range: the replay reuses one KV buffer across iterations so it runs L2-warm while the real forward touches a different per-layer KV slice each time, making 58.1% an OPTIMISTIC (low) estimate. Lower bound from the budget side: 982.0 - 185 ms of GEMM (measured from aiter's GLM-5 tuning table) - at most ~300 ms of all-reduce + norm/elementwise + indexer = 497 ms = 50.6%. Upper bound 982.0 - 185 = 797 ms = 81%. So E2E is 36-52%, centred on 40%.",
+    "e2e_pct_range": [
+      36,
+      52
+    ]
+  },
+  "provenance": {
+    "model_config": "/shared_nfs/hyperloom/models/GLM-5.2-MXFP4/config.json",
+    "entry": "sglang/kernels/ops/attention/dsa/tilelang_kernel.py:1317 tilelang_sparse_fwd",
+    "kernels": {
+      "partial": "tilelang_kernel.py:811 sparse_mla_fwd_decode_partial -- 78 calls/step, 66.43 us each, 663.31 ms/128 steps",
+      "combine": "tilelang_kernel.py:989 sparse_mla_fwd_decode_combine -- 78 calls/step, 4.21 us each, 42.07 ms/128 steps"
+    },
+    "call_chain": "GlmMoeDsaForCausalLM (models/glm4_moe.py:1447, subclass of DeepseekV2ForCausalLM) -> DSA attention backend (srt/layers/attention/dsa_backend.py) -> _forward_tilelang (:2923) -> tilelang_sparse_fwd",
+    "trace_evidence": "main_kernel durations alternate strictly 66.9 / 4.4 / 65.8 / 4.2 ... at 156 calls per decode step = 78 layers x (partial, combine). Both compile from a TileLang prim_func named `main`, which is why roctracer records one name.",
+    "server_args": "tp_size=8, kv_cache_dtype='bfloat16', attention_backend='dsa', dsa_prefill_backend='tilelang', dsa_decode_backend='tilelang', page_size=64, chunked_prefill_size=16384, max_prefill_tokens=16384, context_length=11264, disable_radix_cache=True, quantization='quark'",
+    "model_dims": {
+      "num_hidden_layers": 78,
+      "hidden_size": 6144,
+      "num_attention_heads": 64,
+      "tp_size": 8,
+      "heads_per_rank": 8,
+      "kv_lora_rank": 512,
+      "qk_rope_head_dim": 64,
+      "latent_dim": 576,
+      "v_head_dim_effective": 512,
+      "index_topk": 2048,
+      "kv_pool_slots": 1810496
+    }
+  },
+  "kernel_contract": {
+    "q": "[1, S, H=8, 576] bf16 -- MLA-absorbed query; dims [0:512] pair with the latent, [512:576] with the RoPE tail",
+    "kv": "[1, kv_pool_slots, 1, 576] bf16 -- the paged latent KV pool; K is all 576 dims, V is dims [0:512]",
+    "indices": "[1, S, 1, 2048] int32 -- DSA top-k slot ids; a NEGATIVE entry means padding and is masked out of the softmax (tilelang_kernel.py:913)",
+    "sm_scale": "(512+64)**-0.5, applied to the raw QK dot before softmax (the kernel folds log2(e) into it internally)",
+    "output": "[1, S, H, 512] bf16",
+    "launch_geometry": "block_I=64, threads=256, block_per_cu=2, cu=256, ni = 2048/64 = 32, inner_iter = _pick_inner_iter(S, 32, 256, 2), N_GROUPS = 32/inner_iter"
+  },
+  "workload_construction": {
+    "why_it_matters": "This kernel is gather-bound (34.4 TFLOP/s = 1.4% of peak, 2.27 TB/s of KV gather at the decode shape). Its runtime is dominated by the LOCALITY and ORDER of the top-k index set, not by the shape alone. Two independent ways to get this wrong, both measured: drawing indices uniformly from the whole 1.81M-slot pool instead of from the query's own sequence, and leaving the 2048 slots unsorted.",
+    "rule": "Every query draws its top-k from ITS OWN sequence's contiguous slot range, causally (positions 0..p), which is what sglang's topk_transform emits. Queries at position p < 2048 get min(p+1, 2048) valid entries and -1 padding for the rest.",
+    "decode": "64 concurrent requests, 1 new token each, each with its own ~8704-token context -> 64 disjoint working sets, no cross-query reuse (matches the trace's 2.27 TB/s).",
+    "prefill": "chunked_prefill_size=16384 over ISL=8192 requests -> one chunk covers 2 whole sequences, so 16384 queries share 2 x 9.4 MB of KV and get heavy L2 reuse.",
+    "index_order": "The 2048 slots of each row are SORTED ascending. sglang's selector (kernels/aot/csrc/elementwise/topk.hip) emits them that way: naive_topk_transform (context <= 2048) copies the page table straight through, and fast_topk_cuda_tl is a radix-select appending via atomicAdd while threads scan idx in strided order, so the output is monotone at block granularity. Measured cost of getting this wrong: an unsorted draw inflates prefill-16384 by 13% (8.30 ms/layer vs 7.32) and would have put the prefill share at 66% instead of 58%. Block-shuffling within 64 measures the same as a full sort (7.26 vs 7.31 ms)."
+  },
+  "params_common": {
+    "heads": 8,
+    "dim": 512,
+    "tail_dim": 64,
+    "topk": 2048,
+    "kv_pool_slots": 1810496,
+    "dtype": "bfloat16",
+    "index_dtype": "int32"
+  },
+  "cases": [
+    {
+      "id": "decode-bs64",
+      "regime": "decode",
+      "gpu_pct": 21.46,
+      "trace_input_shapes": "Q[1,64,8,576] bf16 / KV[1,1810496,1,576] bf16 / Indices[1,64,1,2048] int32",
+      "measured_session_us": 70.64,
+      "notes": "66.43 us partial + 4.21 us combine, 78x per decode step. inner_iter=4, N_GROUPS=8, partial grid (64,8)=512 blocks on 256 CUs.",
+      "params": {
+        "num_seqs": 64,
+        "q_per_seq": 1,
+        "ctx_len": 8704,
+        "seed": 29
+      }
+    },
+    {
+      "id": "prefill-16384",
+      "regime": "prefill",
+      "gpu_pct": 58.1,
+      "trace_input_shapes": "Q[1,16384,8,576] bf16 / KV[1,1810496,1,576] bf16 / Indices[1,16384,1,2048] int32",
+      "measured_replay_us": 7316.5,
+      "notes": "chunked_prefill_size=16384 = 2 x ISL 8192. inner_iter=32, N_GROUPS=1, partial grid (16384,1); combine degenerates to a 32768-block copy over NI=1 and is pure overhead here.",
+      "params": {
+        "num_seqs": 2,
+        "q_per_seq": 8192,
+        "ctx_len": 8192,
+        "seed": 31
+      }
+    },
+    {
+      "id": "prefill-8192",
+      "regime": "prefill",
+      "gpu_pct": 58.1,
+      "trace_input_shapes": "Q[1,8192,8,576] bf16 / KV[1,1810496,1,576] bf16 / Indices[1,8192,1,2048] int32",
+      "measured_replay_us": 3601.3,
+      "notes": "The 8192-token prefill bucket (23 of 399 in-window batches; server.log median 512.1 ms forward).",
+      "params": {
+        "num_seqs": 1,
+        "q_per_seq": 8192,
+        "ctx_len": 8192,
+        "seed": 37
+      }
+    }
+  ]
+}

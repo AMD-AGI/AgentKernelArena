@@ -1,0 +1,308 @@
+{
+  "source_day": "2026-08-14",
+  "date_field": "session_started_at",
+  "platform": "MI355X/gfx950 (256 CU)",
+  "framework": "sglang 0.5.17.dev20260812+gdc5f6c4883 (ROCm 7.2.0, aiter d9e5ef7ce)",
+  "faithful_reproduction": true,
+  "run_environment_requirement": "Must run in the session's image (lmsysorg/sglang-rocm:v0.5.17-rocm720-mi35x-20260812, i.e. sglang 0.5.17.dev20260812+gdc5f6c4883 + aiter d9e5ef7ce) on MI355X/gfx950. Verified on that image: the harness reproduces the session's own aiter dispatch lines byte-for-byte, including the tuple key and both heuristic kernel names (see dispatch_evidence).",
+  "selection": "Hot kernels #2 and #4 of session 100137 by E2E share: mfma_moe1 (11.62% E2E) and mfma_moe2 (6.25% E2E). They are the two stages of the SAME aiter fused_moe call, so one task covers both. Communication kernels are deliberately excluded from this task set.",
+  "task_name": "mi355x-qwen38-sglang-aiter-mxfp4-moe-2stage-20260814",
+  "operator": "aiter_mxfp4_moe_2stage",
+  "provenance": {
+    "session_id": "100137",
+    "session_root": "/shared_nfs/hyperloom-claw/Qwen3.8-2.4T-A95B-Quark-MXFP4/20260814T175123Z",
+    "benchmark_run": "runs/roofline/27652f24f9ee4b999c4479ca44c9bf7c/benchmark_sglang_20260815_060127",
+    "trace": "torch_trace/1786775072.0389888-TP-{0..7}.trace.json.gz",
+    "shape_source": "torch_trace/graph_capture_profile/cuda_graph_capture-DecodeCudaGraphRunner-TP-0.json.gz (record_shapes=True), aiter::fused_moe_ cpu_op in the bs=64 segment",
+    "model_config": "/shared_nfs/hyperloom/models/Qwen3.8-2.4T-A95B-Quark-MXFP4/config.json",
+    "serving_config": "TP=8 EP=8, mem_fraction_static=0.765, kv_cache_dtype=fp8_e4m3, chunked_prefill_size=16384, max_model_len=13312, ISL 8192 / OSL 1024 / conc 64",
+    "kernel_identity": {
+      "decode_stage1": "mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32 -- 92 calls/step, 6.3257 ms/step (8-rank mean), 20.50% of the decode step, 11.62% E2E",
+      "decode_stage2": "mfma_moe2_afp4_wfp4_bf16_cshuffle_t32x128x256_vscale_fix3_fp4opt_v1_persist_cu256 -- 92 calls/step, 3.3994 ms/step (8-rank mean), 11.02% of the decode step, 6.25% E2E",
+      "prefill_stage1": "mfma_moe1_silu_mul_afp4_wfp4_bf16_t64x128x256_... -- identity from aiter/fused_moe.py:2249-2255 (M>=16384 -> tile_m=64); the session captured no prefill trace, so its timing is unmeasured",
+      "prefill_stage2": "mfma_moe2_afp4_wfp4_bf16_..._t64x128x... -- same"
+    },
+    "logical_dims": "Per-rank (TP=8, EP=8) routed-expert MoE. model_dim = hidden_size = 8192. inter_dim = moe_intermediate_size = 2048 (NOT TP-sharded; EP shards the expert axis). num_experts = 512 global -> 64 local per rank. topk = num_experts_per_tok = 10. MXFP4 group_size 32 -> QuantType.per_1x32. Both activation and weight are fp4 (a4w4). g1u1 = True (w1 rows = 2*inter_dim, GGUU layout).",
+    "scale_layout": "per_1x32 group scales, dtype Float8_e8m0fnu. Runtime shapes as captured: w1_scale [64, 4096, 256] = [E_local, 2*inter, model_dim/32]; w2_scale [64, 8192, 64] = [E_local, model_dim, inter_dim/32]. sglang applies e8m0_shuffle on the 2D view (E*rows, groups) then reshapes back -- quark_w4a4_mxfp4_moe.py:577-586.",
+    "weight_layout": "sglang shuffles the packed nibbles with shuffle_weight(w, (16, 16)) and sets .is_shuffled = True at load time -- quark_w4a4_mxfp4_moe.py:589-597. Without that attribute aiter/fused_moe.py:2529 sees is_shuffled=False, use_mxfp4_flydsl (:2198) is False, and the call silently lands on the CK 2-stage path instead of the FlyDSL kernels this task reproduces.",
+    "dispatch_evidence": "Re-running this harness on the session image reproduces the session's aiter log verbatim for both M buckets. server.log line (x8 ranks, 15 M buckets, 120 occurrences total): \"[fused_moe] no tuned FlyDSL config for ('gfx950', 256, <M>, 8192, 2048, 64, 9, 'ActivationType.Silu', 'torch.bfloat16', 'torch.float4_e2m1fn_x2', 'torch.float4_e2m1fn_x2', 'QuantType.per_1x32', True, False), using heuristic FlyDSL fallback (kn1=..., kn2=...)\". Harness output for M=64 and M=16384 matches this tuple exactly.",
+    "untuned": "Unlike the Kimi-K3 sibling task, this session runs entirely on the HEURISTIC FALLBACK branch -- every one of the 15 M buckets logs 'no tuned FlyDSL config'. The fallback tile selection (aiter/fused_moe.py:2249-2255) is itself part of the optimisation surface, so the harness asserts FlyDSL dispatch but does NOT require a tuned-CSV hit."
+  },
+  "moe_config": {
+    "quant_type": "per_1x32",
+    "activation": "Silu",
+    "gate_up_layout": "GGUU (separated): w1 rows [0:inter] = gate, [inter:2*inter] = up",
+    "shuffle_layout": [
+      16,
+      16
+    ],
+    "scale_dtype": "float8_e8m0fnu",
+    "weight_dtype": "float4_e2m1fn_x2",
+    "activation_dtype": "bfloat16 in, fp4 after the kernel's own dynamic quant",
+    "doweight_stage1": false,
+    "doweight_stage2": true
+  },
+  "cases": [
+    {
+      "id": "qwen38-moe-decode-m64",
+      "phase": "decode",
+      "model": "Qwen3.8-2.4T-A95B-Quark-MXFP4",
+      "seed": 7,
+      "session_e2e_pct": {
+        "stage1": 11.62,
+        "stage2": 6.25
+      },
+      "calls_per_forward": 92,
+      "measured": "trace",
+      "note": "The profiled decode step, bs=64 (conc 64, one token per sequence). This is the only case whose session timing is directly measured: 8-rank torch trace, step[DECODE bs=64] = 30.854 ms.",
+      "trace_input_shapes": {
+        "hidden_states": [
+          64,
+          8192
+        ],
+        "w1": [
+          64,
+          4096,
+          4096
+        ],
+        "w2": [
+          64,
+          8192,
+          1024
+        ],
+        "w1_scale": [
+          64,
+          4096,
+          256
+        ],
+        "w2_scale": [
+          64,
+          8192,
+          64
+        ],
+        "topk_weight": [
+          64,
+          10
+        ],
+        "topk_ids": [
+          64,
+          10
+        ],
+        "expert_mask": [
+          512
+        ],
+        "output": [
+          64,
+          8192
+        ]
+      },
+      "trace_input_dtypes": {
+        "hidden_states": "bfloat16",
+        "w1": "float4_e2m1fn_x2",
+        "w2": "float4_e2m1fn_x2",
+        "w1_scale": "float8_e8m0fnu",
+        "w2_scale": "float8_e8m0fnu",
+        "topk_weight": "float32",
+        "topk_ids": "int32",
+        "expert_mask": "int32",
+        "output": "bfloat16"
+      },
+      "expected_dispatch": {
+        "stage1": "flydsl_moe1_afp4_wfp4_bf16_t32x128x256_w2",
+        "stage2": "flydsl_moe2_afp4_wfp4_bf16_t32x128x256_atomic_bnt2"
+      },
+      "params": {
+        "token": 64,
+        "model_dim": 8192,
+        "inter_dim": 2048,
+        "local_experts": 64,
+        "total_experts": 512,
+        "topk": 10,
+        "quant_type": "per_1x32",
+        "a_dtype": "fp4",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.97,
+        "max_rel_norm_err": 0.25
+      },
+      "benchmark": {
+        "warmup": 5,
+        "repetition": 20,
+        "target_ms": 2.0,
+        "max_graph_repeats": 100
+      }
+    },
+    {
+      "id": "qwen38-moe-prefill-m16384",
+      "phase": "prefill",
+      "model": "Qwen3.8-2.4T-A95B-Quark-MXFP4",
+      "seed": 11,
+      "session_e2e_pct": null,
+      "calls_per_forward": 92,
+      "measured": "shape_only",
+      "note": "chunked_prefill_size = 16384; 403 of the session's 429 prefill batches are exactly this size (6,604,752 of 6,815,744 prefill tokens). The SHAPE is certain, the E2E weight is not: the session captured no prefill trace, so session_e2e_pct is null on purpose.",
+      "trace_input_shapes": {
+        "hidden_states": [
+          16384,
+          8192
+        ],
+        "w1": [
+          64,
+          4096,
+          4096
+        ],
+        "w2": [
+          64,
+          8192,
+          1024
+        ],
+        "w1_scale": [
+          64,
+          4096,
+          256
+        ],
+        "w2_scale": [
+          64,
+          8192,
+          64
+        ],
+        "topk_weight": [
+          16384,
+          10
+        ],
+        "topk_ids": [
+          16384,
+          10
+        ],
+        "expert_mask": [
+          512
+        ],
+        "output": [
+          16384,
+          8192
+        ]
+      },
+      "trace_input_dtypes": {
+        "hidden_states": "bfloat16",
+        "w1": "float4_e2m1fn_x2",
+        "w2": "float4_e2m1fn_x2",
+        "w1_scale": "float8_e8m0fnu",
+        "w2_scale": "float8_e8m0fnu",
+        "topk_weight": "float32",
+        "topk_ids": "int32",
+        "expert_mask": "int32",
+        "output": "bfloat16"
+      },
+      "expected_dispatch": {
+        "stage1": "flydsl_moe1_afp4_wfp4_bf16_t64x128x256_w4_bnt0",
+        "stage2": "flydsl_moe2_afp4_wfp4_bf16_t64x128x256_atomic"
+      },
+      "params": {
+        "token": 16384,
+        "model_dim": 8192,
+        "inter_dim": 2048,
+        "local_experts": 64,
+        "total_experts": 512,
+        "topk": 10,
+        "quant_type": "per_1x32",
+        "a_dtype": "fp4",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.97,
+        "max_rel_norm_err": 0.25
+      },
+      "benchmark": {
+        "warmup": 3,
+        "repetition": 15,
+        "target_ms": 20.0,
+        "max_graph_repeats": 20
+      }
+    },
+    {
+      "id": "qwen38-moe-prefill-m8192",
+      "phase": "prefill",
+      "model": "Qwen3.8-2.4T-A95B-Quark-MXFP4",
+      "seed": 13,
+      "session_e2e_pct": null,
+      "calls_per_forward": 92,
+      "measured": "shape_only",
+      "note": "The other prefill batch size the session actually ran: 26 of 429 batches at 8192 tokens (one un-paired ISL-8192 request). This is a THIRD kernel pair, not a duplicate of M=16384: aiter/fused_moe.py:2251 sends 4096 <= token < 16384 to tile_m=128 (_w2_bnt0), while token >= 16384 goes to tile_m=64 (_w4_bnt0). Verified by running the harness -- the expected_dispatch below is what aiter actually logs.",
+      "trace_input_shapes": {
+        "hidden_states": [
+          8192,
+          8192
+        ],
+        "w1": [
+          64,
+          4096,
+          4096
+        ],
+        "w2": [
+          64,
+          8192,
+          1024
+        ],
+        "w1_scale": [
+          64,
+          4096,
+          256
+        ],
+        "w2_scale": [
+          64,
+          8192,
+          64
+        ],
+        "topk_weight": [
+          8192,
+          10
+        ],
+        "topk_ids": [
+          8192,
+          10
+        ],
+        "expert_mask": [
+          512
+        ],
+        "output": [
+          8192,
+          8192
+        ]
+      },
+      "trace_input_dtypes": {
+        "hidden_states": "bfloat16",
+        "w1": "float4_e2m1fn_x2",
+        "w2": "float4_e2m1fn_x2",
+        "w1_scale": "float8_e8m0fnu",
+        "w2_scale": "float8_e8m0fnu",
+        "topk_weight": "float32",
+        "topk_ids": "int32",
+        "expert_mask": "int32",
+        "output": "bfloat16"
+      },
+      "expected_dispatch": {
+        "stage1": "flydsl_moe1_afp4_wfp4_bf16_t128x128x256_w2_bnt0",
+        "stage2": "flydsl_moe2_afp4_wfp4_bf16_t128x128x256_atomic"
+      },
+      "params": {
+        "token": 8192,
+        "model_dim": 8192,
+        "inter_dim": 2048,
+        "local_experts": 64,
+        "total_experts": 512,
+        "topk": 10,
+        "quant_type": "per_1x32",
+        "a_dtype": "fp4",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.97,
+        "max_rel_norm_err": 0.25
+      },
+      "benchmark": {
+        "warmup": 3,
+        "repetition": 15,
+        "target_ms": 10.0,
+        "max_graph_repeats": 40
+      }
+    }
+  ]
+}

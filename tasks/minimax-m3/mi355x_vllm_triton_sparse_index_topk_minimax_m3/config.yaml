@@ -1,0 +1,78 @@
+task_type: image_kernel
+image_repo_path: /usr/local/lib/python3.12/dist-packages/vllm/models/minimax_m3
+repo_subdir: vllm_models_minimax_m3
+image_repo_exclude:
+- __pycache__
+- nvidia
+repository_language: triton
+source_file_path:
+- amd/ops/index_topk.py
+editable_sources:
+- common/ops/index_topk.py
+target_kernel_functions:
+- _decode_index_score_kernel
+- _topk_index_partial_kernel
+- _topk_index_merge_kernel
+- _index_block_score_kernel
+- _topk_index_kernel
+- minimax_m3_index_decode
+- minimax_m3_index_score
+- minimax_m3_index_topk
+kernel_identity:
+  logical_operator: sparse_index_topk
+  kernel_kind: triton
+  source_owner: vllm
+  workload:
+    source: session_cases.json
+    primary_case: m3-decodepath-bs64-ctx9098
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: >-
+    Optimize MiniMax-M3's sparse block-selection chain in
+    `vllm/models/minimax_m3/amd/ops/index_topk.py` on MI355X/gfx950.
+
+    This chain decides, for every query token of every one of the 57 block-sparse
+    layers, which 16 of the up-to-104 128-token KV blocks the attention kernel will
+    read. It produces no attention output -- it is pure overhead that block-sparse
+    attention pays -- and it costs 8.01% of normalized end-to-end GPU time in the
+    source session, versus 3.53% for the kernel that actually computes sparse
+    decode attention.
+
+    Two paths, both scored:
+      decode  `minimax_m3_index_decode()` -> `_decode_index_score_kernel` (5.23%)
+              + `_topk_index_partial_kernel` (0.96%) + `_topk_index_merge_kernel`
+              (0.77%)
+      prefill `minimax_m3_index_score()` -> `_index_block_score_kernel` (0.89%),
+              then `minimax_m3_index_topk()` -> `_topk_index_kernel` (0.16%)
+
+    Where the headroom is: `_decode_index_score_kernel` already reaches 5.32 TB/s,
+    66.5% of the 8 TB/s HBM peak, so it is close to its roof and squeezing it
+    further will not pay. The opportunity is the *chain*, not the individual
+    kernels. At batch 64 with `max_block = 104` the top-16 selection is split into
+    a partial pass over 8 chunks plus a merge pass (1.73% combined) over a
+    [1, 64, 112] fp32 score buffer -- a tiny problem that is paying two kernel
+    launches and a round trip through global memory. Fusing the selection into the
+    score pass, or collapsing partial+merge into one pass, is the direction worth
+    exploring.
+
+    Hard constraint -- the decode path is captured in a CUDA graph. Every launch
+    grid and every intermediate buffer shape must be derivable from shape constants
+    alone (that is why `num_kv_chunks` is computed from `TARGET_GRID` rather than
+    from `seq_lens`, and why the score stride is rounded up to a multiple of 16).
+    Anything that makes a grid depend on runtime tensor values will break capture.
+
+    Other constraints: `minimax_m3_index_decode`, `minimax_m3_index_score` and
+    `minimax_m3_index_topk` keep their public signatures, including the `out=`
+    buffer contract (write into `out[:, :total_q, :]`); the returned `topk_idx`
+    keeps its `[num_idx_heads, total_q, topk]` int32 layout with -1 padding and
+    the forced init/local blocks (`sparse_init_block=0`, `sparse_local_block=1`).
+    Intermediate buffer layouts between the passes are yours to change. The score
+    is the CUDA-graph measured time over the same case list.
+  cheatsheet: null

@@ -1,0 +1,88 @@
+task_type: image_kernel
+image_repo_path: /sgl-workspace/sglang/python/sglang
+repo_subdir: sglang
+image_repo_exclude:
+  - __pycache__
+repository_language: triton
+source_file_path:
+  - srt/layers/attn_residual.py
+editable_sources:
+  - kernels/ops/kimi_k3/attn_res.py
+target_kernel_functions:
+  - aggregate_stream
+  - _mix_fused
+  - _score_kernel
+  - _combine_kernel
+kernel_identity:
+  logical_operator: attn_residual
+  kernel_kind: triton
+  source_owner: sglang
+  workload:
+    source: session_cases.json
+    primary_case: attn-res-prefill-t16384-nvb8
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+compile_timeout: 1800
+correctness_timeout: 3600
+performance_timeout: 3600
+task_result_template: null
+platform_support:
+  required_arch: gfx950
+  status: active
+  skip_reason: null
+prompt:
+  source_code: null
+  instructions: >-
+    Optimize the Kimi-K3 attention-residual aggregation on MI355X/gfx950. This is
+    the single largest attackable kernel in Hyperloom session 20260814T191522Z:
+    _score_kernel (8.20% of end-to-end GPU time) plus _combine_kernel (4.04%),
+    12.24% together, both in sglang/srt/layers/attn_residual.py.
+
+    What the operator does: K3 does not carry one residual stream. Every
+    attn_res_block_size (=12) layers it snapshots the running pre-attention prefix
+    into a bank [T, NB, H]; at each of the 186 aggregation points per forward pass
+    the model scores every banked snapshot plus the current prefix, softmaxes, and
+    emits the weighted mixture. _score_kernel is grid (T, nvb+1) block (512,1,1),
+    one CTA per (token, row), scanning H=7168 to emit one scalar
+    score = (v . cw) * rsqrt(mean(v^2) + eps), where cw = norm.weight *
+    proj.weight is precomputed by get_cw(). _combine_kernel is grid (T, H/1024)
+    block (256,1,1): softmax over the <=16 scores (redundantly per H-chunk, which
+    is cheap and intentional) then the weighted sum, one 1024-wide H chunk per CTA.
+
+    Where the headroom is. _score_kernel is memory-bound and lands at 1.74-1.82
+    TB/s at every measured prefill grid -- about 22-23% of the MI355X HBM3E peak
+    (8 TB/s). Each CTA reads only 7168*2 = 14 KB and then does two reductions
+    (sumsq and dotv) to emit a single scalar, so with up to ~147k CTAs the
+    reduction tail dominates. On top of that the two-kernel split round-trips
+    scores[T,16] fp32 through HBM and reads the whole bank TWICE per aggregation
+    point. Note that _use_fast() (attn_residual.py:32) gates a warp-specialized
+    fused kernel behind torch.cuda.get_device_capability().major >= 10, i.e.
+    NVIDIA SM100+ only -- gfx950 has no fused path at all. Writing the gfx950
+    equivalent (score + online softmax + combine, and ideally the output RMSNorm,
+    in ONE kernel with the bank read once and no fp32 scores round-trip) is the
+    obvious and largest win. Other levers: BLOCK_H and num_warps retuning per nvb,
+    persistent CTAs, packed bf16 loads, splitting the H scan across more CTAs with
+    a cheap cross-CTA reduction, and specializing the tiny-T decode grid
+    (T*(nvb+1) is only ~40-580 CTAs, which is deeply under-occupied on 256 CUs).
+
+    Dims are the session's real ones: hidden_size H=7168 (= 7 x BLOCK_H, so the
+    H % _BLOCK_H eager fallback in aggregate_stream never triggers), bank depth
+    NB=8 with nvb sweeping 1..8 inside one forward pass, _MAX_ROWS=16,
+    rms_norm_eps=1e-5, dtype bf16 with fp32 accumulation and an fp32 cw. Both
+    phases are scored from session_cases.json: prefill T=16384 (chunked prefill
+    block size) at nvb 1/4/8, T=8192, T=64, and decode T=8 (the trace-recorded
+    ramp batch) and T=64 (the steady-state batch that dominates the 249 s run).
+
+    Correctness is numerical parity against an independent, vectorized float64
+    golden in the harness (cos > 0.9995 and normalized max error < 0.02). Do NOT
+    try to satisfy it by editing aggregate_stream_torch: the harness never calls
+    it. Keep the public signature of aggregate_stream(prefix_sum, bank, nvb,
+    score_proj, score_norm) unchanged, keep get_cw()'s contract (it may be called
+    with dtype=torch.float32 or torch.bfloat16 and caches on the proj object), and
+    keep the operator graph-capturable -- performance is measured under HIP graph
+    replay.
+  cheatsheet: null

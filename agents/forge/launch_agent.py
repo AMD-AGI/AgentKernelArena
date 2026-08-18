@@ -11,8 +11,7 @@ that loop's contract:
   2. Materialize a driver shim implementing the KernelForge driver contract
      (prints ``SNR: <db> dB`` for correctness and ``wall_ms: <ms>`` for bench).
   3. ``git init`` + initial commit the workspace (the loop uses git keep/revert).
-  4. Generate a ``forge_program.md`` from the task prompt for agent guidance.
-  5. Shell out to ``kernel-agents forge-loop`` (streaming output), which leaves
+  4. Shell out to ``kernel-agents forge-loop`` (streaming output), which leaves
      the workspace at the best-kept kernel.
 
 After this returns, Arena re-materializes its perf helpers and re-scores the
@@ -41,6 +40,13 @@ from agents import register_agent
 _FORGE_RESULT_SENTINEL = "__FORGE_RESULT__"
 _KB_STATUS_FILE = "arena_forge_status.json"
 _FORGE_SHUTDOWN_MARGIN_SECONDS = 900
+_GPU_TYPE_ALIASES = {
+    # Arena historically accepts the family-style names below for the X SKUs.
+    # KernelForge addresses KB records by exact hardware model, so normalize the
+    # aliases before they become distinct, non-interoperable recipe identities.
+    "mi300": "mi300x",
+    "mi325": "mi325x",
+}
 
 
 def _normalize_gfx_arch(arch: str) -> str:
@@ -83,6 +89,17 @@ def _resolve_gpu_arch(eval_config: dict[str, Any]) -> str:
         "src/prompts/cheatsheet/default_cheatsheet.yaml. Add the model there (with "
         "its gfx_arch) or run on the target GPU so rocminfo can report it."
     )
+
+
+def _resolve_gpu_type(eval_config: dict[str, Any]) -> str:
+    """Return Arena's hardware model in Forge's canonical KB token form."""
+    raw = str(eval_config.get("target_gpu_model") or "").strip().lower()
+    if not raw or not re.fullmatch(r"[a-z0-9][a-z0-9._+-]*", raw):
+        raise ValueError(
+            "target_gpu_model must be a non-empty hardware model token "
+            f"for Forge KB identity; got {eval_config.get('target_gpu_model')!r}"
+        )
+    return _GPU_TYPE_ALIASES.get(raw, raw)
 
 
 def _process_group_exists(pgid: int) -> bool:
@@ -465,6 +482,95 @@ def _git(workspace: str, *args: str, logger: logging.Logger) -> None:
         logger.debug(f"git {' '.join(args)} -> {result.returncode}: {result.stderr.strip()}")
 
 
+def _git_required(workspace: str, *args: str) -> str:
+    """Run a git query whose failure must reject the Forge result."""
+    result = subprocess.run(
+        ["git", *args], cwd=workspace, capture_output=True, text=True, check=False
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Forge workspace integrity check failed: git {' '.join(args)} "
+            f"returned {result.returncode}: {result.stderr.strip()}"
+        )
+    return result.stdout
+
+
+def _capture_forge_edit_baseline(workspace: str) -> str:
+    """Return the immutable commit Arena created before Forge starts editing."""
+    baseline = _git_required(workspace, "rev-parse", "--verify", "HEAD").strip()
+    if not re.fullmatch(r"[0-9a-f]{40,64}", baseline):
+        raise RuntimeError(f"Invalid Forge workspace baseline commit: {baseline!r}")
+    return baseline
+
+
+def _verify_forge_edit_scope(
+    workspace: str,
+    baseline_commit: str,
+    editable_sources: list[Path],
+    logger: logging.Logger | None = None,
+) -> None:
+    """Enforce Arena's declared source allowlist before final scoring.
+
+    KernelForge treats ``--source-files`` as orientation and KB metadata rather
+    than an edit boundary. Arena owns that boundary: only files resolved from
+    ``source_file_path`` plus ``editable_sources`` may differ from the initial
+    workspace snapshot. The check includes committed, staged, unstaged, deleted,
+    and renamed paths. Non-ignored untracked scratch files are discarded, matching
+    Arena's harness guard: they did not exist at baseline and cannot influence the
+    score after removal.
+    """
+    root = Path(workspace).resolve()
+    allowed: set[str] = set()
+    for source in editable_sources:
+        resolved = Path(source).resolve()
+        try:
+            relative = resolved.relative_to(root)
+        except ValueError as error:
+            raise RuntimeError(
+                f"Editable source escapes the Forge workspace: {resolved}"
+            ) from error
+        allowed.add(relative.as_posix())
+
+    changed_output = _git_required(
+        workspace,
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        baseline_commit,
+        "--",
+    )
+    untracked_output = _git_required(
+        workspace,
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        "-z",
+    )
+    changed = {path for path in changed_output.split("\0") if path}
+    untracked = {path for path in untracked_output.split("\0") if path}
+    for relative in sorted(untracked - allowed):
+        scratch = root / relative
+        try:
+            scratch.unlink()
+        except OSError as error:
+            raise RuntimeError(
+                f"Could not discard undeclared Forge scratch file: {relative}"
+            ) from error
+        if logger is not None:
+            logger.warning(
+                "Discarded undeclared Forge scratch file before scoring: %s",
+                relative,
+            )
+
+    violations = sorted(changed - allowed)
+    if violations:
+        raise RuntimeError(
+            "Forge changed files outside source_file_path/editable_sources; "
+            f"Arena refuses to score this result: {violations}"
+        )
+
+
 # Build artifacts / regenerated reports / forge scaffolding must NOT be tracked:
 # if they are, a validation or benchmark run that regenerates them dirties the
 # tree and makes the loop's `git revert` fail — leaking a reverted (often broken)
@@ -485,7 +591,6 @@ performance_report.json
 perf_report.json
 forge_experiments/
 forge_driver.py
-forge_program.md
 .pytest_cache/
 *.log
 """
@@ -511,80 +616,6 @@ def _init_git_workspace(workspace: str, logger: logging.Logger) -> None:
     _git(workspace, "rm", "-r", "--cached", "--quiet", ".", logger=logger)
     _git(workspace, "add", "-A", logger=logger)
     _git(workspace, "commit", "-m", "forge: initial workspace snapshot", logger=logger)
-
-
-def _write_program_md(
-    task_config: dict[str, Any],
-    target_funcs,
-    gpu_arch: str,
-    backend: str,
-    editable_sources: list[Path],
-    dest: Path,
-) -> None:
-    """Generate a program.md for the forge agent from the Arena task prompt."""
-    prompt_cfg = task_config.get("prompt") or {}
-    instructions = prompt_cfg.get("instructions") or ""
-    funcs = ", ".join(target_funcs) if target_funcs else "the target kernel"
-
-    # Level-3 tasks (repository / image_kernel) give the agent a full source tree,
-    # so the target kernel file is often only an ENTRY POINT: the code that governs
-    # its performance may live in other files it includes/imports. Tell the agent
-    # it may follow the implementation across the workspace and edit those files
-    # too. Snippet tasks copy a single self-contained file, so the note is omitted
-    # there to avoid pointing the agent at unrelated files.
-    task_type = str(task_config.get("task_type") or "").strip().lower()
-    scope_section = ""
-    if task_type in ("repository", "image_kernel"):
-        source_allowlist = "\n".join(
-            f"- `{path}`" for path in editable_sources
-        )
-        scope_section = f"""
-## Editable Source Scope
-`{funcs}` lives in the target kernel file, but the code that governs its
-performance may span OTHER files in this workspace (headers it includes, modules
-it imports, dispatch/config layers, or JIT template sources).
-
-The complete editable source allowlist is:
-{source_allowlist}
-
-You may inspect any dependency, but edit ONLY files in this allowlist. If an
-additional dependency must be editable, stop and report that the task's
-`editable_sources` declaration is incomplete. Do not edit measurement files.
-"""
-
-    dest.write_text(
-        f"""# Program: optimize {funcs}
-
-**GPU**: {gpu_arch}
-**Backend**: {backend}
-
-## Objective
-Optimize the body of `{funcs}` for maximum performance on {gpu_arch} while
-keeping numerical results correct (the loop gates on an SNR threshold).
-{scope_section}
-## Modification Rules
-1. You MAY make multiple changes across several places in the kernel this
-   iteration (not just one); group them under a clear hypothesis so the
-   iteration's effect stays attributable.
-2. Do NOT change the kernel's function signature or parameter list.
-3. Do NOT remove imports or helper utilities in the file.
-4. Do NOT edit task harness, test, scoring, or measurement files (`config.yaml`,
-   `script/`, `scripts/`, `test/`, `tests/`, `conftest.py`,
-   `performance_utils_pytest.py`, `*_test.py`, `*_test.cpp`, `*_test.cu`,
-   `*_test.hip`, `*_harness.py`). The Arena runner hashes these files and rejects
-   the score if they change. Directory rules match any path component; filename and
-   suffix rules match anywhere in the workspace, so both `dev/config.yaml` and
-   `dev/extra_test.py` are protected. Name your own scratch scripts outside those
-   patterns (`dev/sweep.py`) — a file you create that matches is deleted before
-   scoring.
-5. Build, run, and verify your edit YOURSELF (compile, run the driver, profile)
-   before finishing. The loop additionally runs a canonical correctness (SNR gate)
-   and benchmark pass on your final kernel after you stop.
-
-## Task instructions (from AgentKernelArena)
-{instructions}
-"""
-    )
 
 
 def _render_driver_shim(drivers_dir: str, workspace: str, task_config: str, arena_root: str) -> str:
@@ -623,9 +654,9 @@ def _build_forge_command(
     workspace: str,
     experiments_dir: Path,
     result_json: Path,
-    program_md: Path,
     agent_config: dict[str, Any],
     gpu_arch: str,
+    gpu_type: str,
     fellow: str,
     task_type: str,
     source_files: list[Path],
@@ -655,12 +686,12 @@ def _build_forge_command(
         str(_forge_max_hours(agent_config)),
         "--gpu-target",
         gpu_arch,
+        "--gpu-type",
+        gpu_type,
         "--fellow",
         fellow,
         "--git-branch",
         "forge-optimize",
-        "--program-md-file",
-        str(program_md),
         "--model",
         str(agent_config.get("model", "claude-opus-4-8")),
         "--permission-mode",
@@ -865,8 +896,8 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     task_type = str(task_config.get("task_type") or "").strip()
 
     gpu_arch = _resolve_gpu_arch(eval_config)
+    gpu_type = _resolve_gpu_type(eval_config)
     fellow = _resolve_fellow(task_config, agent_config)
-    backend = fellow.split("-")[0]
     logical_operator = _logical_operator(task_config)
     kernel_kind = _resolve_kernel_kind(task_config)
     framework = _resolve_framework(task_config)
@@ -902,17 +933,6 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         ))
         logger.info(f"Forge: generated driver shim -> {driver_dest} (task paths baked in)")
 
-    # program.md for agent guidance.
-    program_md = Path(workspace) / "forge_program.md"
-    _write_program_md(
-        task_config,
-        target_funcs,
-        gpu_arch,
-        backend,
-        all_source_files,
-        program_md,
-    )
-
     # Repository / image_kernel tasks bring a cloned repo (with its own nested
     # .git) into the workspace. Strip it before outer git init so keep/revert
     # tracks the real source files.
@@ -921,6 +941,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 
     # The loop needs a git repo for the keep/revert pattern.
     _init_git_workspace(workspace, logger)
+    edit_baseline = _capture_forge_edit_baseline(workspace)
 
     experiments_dir = Path(workspace) / "forge_experiments"
     result_json = experiments_dir / "forge_result.json"
@@ -934,9 +955,9 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         workspace=workspace,
         experiments_dir=experiments_dir,
         result_json=result_json,
-        program_md=program_md,
         agent_config=agent_config,
         gpu_arch=gpu_arch,
+        gpu_type=gpu_type,
         fellow=fellow,
         task_type=task_type,
         source_files=all_source_files,
@@ -953,6 +974,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logger.info(f"  kernel:      {kernel_file}")
     logger.info(f"  driver:      {driver_dest}")
     logger.info(f"  gpu target:  {gpu_arch}")
+    logger.info(f"  gpu type:    {gpu_type}")
     logger.info(f"  model:       {model}")
     logger.info(f"  fellow:      {fellow} (resolved from task configuration)")
     logger.info(f"  operator:    {logical_operator or '<forge inference>'}")
@@ -1031,6 +1053,12 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     # The loop runs on the 'forge-optimize' branch; ensure no partial/uncommitted
     # revert leaves the tree dirty before Arena re-scores.
     _git(workspace, "checkout", "--", ".", logger=logger)
+    _verify_forge_edit_scope(
+        workspace,
+        edit_baseline,
+        all_source_files,
+        logger,
+    )
 
     output = "\n".join(stdout_lines)
     if stderr_lines:

@@ -1,0 +1,110 @@
+{
+  "source_day": "2026-08-14",
+  "date_field": "session_started_at",
+  "platform": "MI355X/gfx950 (256 CU)",
+  "framework": "sglang 0.5.17.dev20260812+gdc5f6c4883 (ROCm 7.2.0, triton 3.7.0+amd.rocm7.2.0)",
+  "faithful_reproduction": true,
+  "run_environment_requirement": "Must run in the session's image (lmsysorg/sglang-rocm:v0.5.17-rocm720-mi35x-20260812) on MI355X/gfx950. The chain is pure sglang Triton plus torch, so no aiter build is needed.",
+  "selection": "The Gated-DeltaNet linear-attention decode chain of session 100137. No single kernel in it reaches 5% E2E -- the recurrent kernel is 2.278% -- but the five kernels the chain launches per layer total 5.76% E2E, and 2.35 of those points are pure data movement (aten::cat + aten::copy_) created by the split/reshape/concat around the kernels. The chain is therefore scored as one unit. Communication kernels are deliberately excluded from this task set.",
+  "task_name": "mi355x-qwen38-sglang-triton-gdn-linear-attn-20260814",
+  "operator": "gdn_linear_attn_decode",
+  "provenance": {
+    "session_id": "100137",
+    "session_root": "/shared_nfs/hyperloom-claw/Qwen3.8-2.4T-A95B-Quark-MXFP4/20260814T175123Z",
+    "benchmark_run": "runs/roofline/27652f24f9ee4b999c4479ca44c9bf7c/benchmark_sglang_20260815_060127",
+    "trace": "torch_trace/1786775072.0389888-TP-{0..7}.trace.json.gz",
+    "shape_source": "torch_trace/graph_capture_profile/cuda_graph_capture-DecodeCudaGraphRunner-TP-0.json.gz (record_shapes=True), bs=64 segment",
+    "model_config": "/shared_nfs/hyperloom/models/Qwen3.8-2.4T-A95B-Quark-MXFP4/config.json",
+    "serving_config": "TP=8, --mamba-ssm-dtype bfloat16, linear_attn_backend=triton, mamba_backend=triton, ISL 8192 / OSL 1024 / conc 64",
+    "layer_mix": "layer_types = 69 linear_attention + 23 full_attention out of 92 layers (full_attention_interval=4). Every kernel in this chain therefore runs 69x per decode step.",
+    "kernel_identity": {
+      "recurrent": "fused_recurrent_gated_delta_rule_packed_decode_kernel -- 69 calls/step, 1.2397 ms/step (TP-0), 4.018% of the decode step, 2.278% E2E. Source sglang/kernels/ops/attention/fla/fused_recurrent.py:186 (launch :374).",
+      "copy": "at::native::elementwise_kernel_manual_unroll<128,8,direct_copy_kernel_cuda> -- 208 calls/step, 0.9052 ms/step, 2.934% of the decode step, 1.663% E2E. These are aten::copy_ [64,16] x138 and [64,16,128] x69, i.e. the .contiguous() on b/a and the norm output reshape.",
+      "cat": "at::native::CatArrayBatchedCopy<OpaqueType<2u>,unsigned int,2,64,64> -- 69 calls/step, 0.3765 ms/step, 1.220% of the decode step, 0.692% E2E. torch.cat(([64,256],[64,256],[64,2048]), -1).",
+      "conv": "_causal_conv1d_update_kernel -- 69 calls/step, 0.3148 ms/step, 1.020% of the decode step, 0.578% E2E. Source sglang/kernels/ops/mamba/causal_conv1d_triton.py:581 (launch :1144).",
+      "norm": "_layer_norm_fwd_1pass_kernel -- 69 calls/step, 0.3005 ms/step, 0.974% of the decode step, 0.552% E2E. Source sglang/kernels/ops/attention/fla/layernorm_gated.py:75 (launch :273)."
+    },
+    "logical_dims": "Per-rank (TP=8) Gated DeltaNet. Global: linear_num_key_heads=16, linear_key_head_dim=128 -> key_dim 2048; linear_num_value_heads=128, linear_value_head_dim=128 -> value_dim 16384; linear_conv_kernel_dim=4 -> conv_dim = 2*key_dim + value_dim = 20480. After TP=8: 2 k heads (256), 16 v heads (2048), conv_dim 2560. in_proj_qkvz out = 4608/rank, in_proj_ba out = 32/rank.",
+    "excluded_from_unit": "The two input projections (in_proj_qkvz [64,8192]x[8192,4608] and in_proj_ba [64,8192]x[8192,32]) and the output projection (out_proj [64,2048]x[8192,2048]) are NOT part of this timed unit -- they are dense GEMMs and belong to the skinny-bf16-GEMM task. Their outputs/inputs are this unit's boundary.",
+    "split_branch_evidence": "qwen3_5.py:640 uses fused_qkvzba_split_reshape_cat_contiguous only when num_v_heads // num_k_heads is in (1, 2, 4). Qwen3.8 is 128 // 16 = 8, so the model takes the plain-torch else-branch at qwen3_5.py:658 -- which is exactly where the 208 aten::copy_ and 69 aten::cat launches per step come from. The harness asserts this ratio.",
+    "stateful": "causal_conv1d_update and the recurrent kernel both update their cache in place (gdn_triton.py passes ht=initial_state). A CUDA-graph replay advances the caches once per chained invocation, so the timed-run check steps the torch reference the same number of times from the same snapshot."
+  },
+  "gdn_config": {
+    "use_qk_l2norm_in_kernel": true,
+    "conv_activation": "silu",
+    "output_gate_type": "swish",
+    "norm_before_gate": true,
+    "scale": "head_k_dim ** -0.5",
+    "softplus_threshold": 20.0,
+    "ssm_state_dtype": "bfloat16 (--mamba-ssm-dtype bfloat16)",
+    "ssm_state_layout": "[slots, HV, V, K] = [slots, 16, 128, 128]"
+  },
+  "cases": [
+    {
+      "id": "qwen38-gdn-decode-bs64",
+      "phase": "decode",
+      "model": "Qwen3.8-2.4T-A95B-Quark-MXFP4",
+      "seed": 5,
+      "session_e2e_pct": {
+        "chain": 5.76,
+        "recurrent": 2.278,
+        "copy": 1.663,
+        "cat": 0.692,
+        "conv": 0.578,
+        "norm": 0.552
+      },
+      "calls_per_forward": 69,
+      "measured": "trace",
+      "note": "The profiled decode step: bs=64 (conc 64), one token per sequence, all 64 requests holding a distinct mamba cache slot. This is the shape the session's 8-rank trace measured directly.",
+      "trace_input_shapes": {
+        "projected_states_qkvz": [64, 4608],
+        "projected_states_ba": [64, 32],
+        "mixed_qkv_after_cat": [64, 2560],
+        "cat_parts": [[64, 256], [64, 256], [64, 2048]],
+        "conv_weight": [2560, 4],
+        "conv_bias": [2560],
+        "conv_state": [64, 2560, 3],
+        "ssm_state": [64, 16, 128, 128],
+        "A_log": [16],
+        "dt_bias": [16],
+        "ssm_state_indices": [64],
+        "recurrent_out": [64, 1, 16, 128],
+        "norm_input": [1024, 128],
+        "norm_weight": [128],
+        "output": [64, 2048]
+      },
+      "trace_input_dtypes": {
+        "projected_states_qkvz": "bfloat16",
+        "projected_states_ba": "bfloat16",
+        "mixed_qkv_after_cat": "bfloat16",
+        "conv_weight": "bfloat16",
+        "conv_bias": "bfloat16",
+        "conv_state": "bfloat16",
+        "ssm_state": "bfloat16",
+        "A_log": "float32",
+        "dt_bias": "float32",
+        "ssm_state_indices": "int32",
+        "recurrent_out": "bfloat16",
+        "norm_input": "bfloat16",
+        "norm_weight": "bfloat16",
+        "output": "bfloat16"
+      },
+      "params": {
+        "batch": 64,
+        "num_k_heads": 2,
+        "num_v_heads": 16,
+        "head_k_dim": 128,
+        "head_v_dim": 128,
+        "conv_width": 4,
+        "state_slots": 64,
+        "rms_norm_eps": 1e-06,
+        "conv_activation": "silu",
+        "output_gate_type": "swish",
+        "min_cosine": 0.999,
+        "max_rel_norm_err": 0.03
+      },
+      "benchmark": {"warmup": 10, "repetition": 30, "target_ms": 1.0, "max_graph_repeats": 50}
+    }
+  ],
+  "prefill_note": "There is NO prefill case in this task, and that is deliberate rather than an omission. The prefill path of the same operator does not run this kernel: qwen3_5 linear attention dispatches chunked prefill to sglang/kernels/ops/attention/fla/chunk.py::chunk_gated_delta_rule, a different Triton kernel with a different algorithm (chunked scan, not a single recurrent step). Covering it faithfully needs the per-request ragged chunk metadata that only a prefill trace supplies, and session 100137 captured no prefill trace (both profiler windows landed entirely on step[DECODE bs=64]). Adding a synthetic prefill case here would score a shape the session cannot confirm. The decode kernel this task does cover is decode-only by construction -- see its name."
+}

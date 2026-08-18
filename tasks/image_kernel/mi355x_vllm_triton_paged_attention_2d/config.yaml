@@ -9,7 +9,7 @@ source_file_path:
 target_kernel_functions:
 - kernel_paged_attention_2d
 kernel_identity:
-  logical_operator: unified_attention_with_output
+  logical_operator: paged_attention_2d
   kernel_kind: triton
   source_owner: vllm
   workload:

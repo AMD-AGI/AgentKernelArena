@@ -1,0 +1,94 @@
+task_type: image_kernel
+image_repo_path: /sgl-workspace/sglang/python/sglang
+repo_subdir: sglang
+image_repo_exclude:
+  - __pycache__
+repository_language: triton
+source_file_path:
+  - kernels/ops/attention/decode_attention.py
+target_kernel_functions:
+  - decode_attention_fwd_grouped
+  - _fwd_grouped_kernel_stage1
+  - _fwd_kernel_stage2
+kernel_identity:
+  logical_operator: mla_decode_grouped
+  kernel_kind: triton
+  source_owner: sglang
+  workload:
+    source: session_cases.json
+    primary_case: mla-decode-bs64-kv8192
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+compile_timeout: 1800
+correctness_timeout: 3600
+performance_timeout: 3600
+task_result_template: null
+platform_support:
+  required_arch: gfx950
+  status: active
+  skip_reason: null
+prompt:
+  source_code: null
+  instructions: >-
+    Optimize Kimi-K3 MLA grouped decode attention (flash-decoding split-KV) on
+    MI355X/gfx950. From Hyperloom session 20260814T191522Z:
+    _fwd_grouped_kernel_stage1 is 3.96% of end-to-end GPU time and
+    _fwd_kernel_stage2 is 0.69%, 4.65% together, both reached through
+    decode_attention_fwd_grouped in
+    sglang/kernels/ops/attention/decode_attention.py. The session ran
+    --attention-backend triton, so this is the path that actually executed.
+
+    K3 is a hybrid model: only 24 of its 93 layers are MLA full attention (the
+    other 69 are KDA linear attention), and the trace shows exactly 24 stage1 +
+    24 stage2 launches per decode step, which pins the attribution.
+
+    This operator is DECODE ONLY, and that is a property of the operator rather
+    than a gap in the case set: K3's MLA prefill goes through a structurally
+    different kernel (_fwd_kernel in extend_attention.py) which has zero launches
+    in decode, and decode_attention_fwd_grouped has zero launches in prefill.
+
+    Layout (absorbed MLA decode, per-rank TP=8; every number pinned by the call
+    site at srt/layers/attention/triton_backend.py:1823 plus the model config):
+      q            [bs, 12, 576]            bf16   12 = 96 heads / TP8;
+                                                   576 = kv_lora 512 + rope 64
+      k_buffer     [num_kv_tokens, 1, 576]  bf16   one compressed entry per token
+      v_buffer     [num_kv_tokens, 1, 512]  bf16   NON-CONTIGUOUS view of
+                                                   k_buffer[..., :512]
+      o            [bs, 12, 512]            bf16
+      attn_logits  [bs, 12, 256, 512]       f32
+      attn_lse     [bs, 12, 256]            f32
+    kv_head_num = 1 so kv_group_num = 12 -- that is what routes the call to the
+    grouped kernel. max_kv_splits = 256 is exact for this run: the server default
+    is 8, then _mla_decode_kv_splits_cap(8, sm_count=256, max_context_len=13312)
+    = max(8, min(next_pow2(256), next_pow2(ceil(13312/32)))) = 256. sm_scale =
+    192**-0.5 = 0.0721687836 (qk_nope 128 + qk_rope 64). num_kv_splits is filled by
+    the backend's own get_num_kv_splits_triton scheduler, which is outside the edit
+    surface, so you are timed against the session's real split schedule.
+
+    Scored shapes span the workload's real decode envelope: batch 8 (the
+    trace-recorded ramp batch, step[DECODE bs=8]) and 64 (the steady-state batch --
+    conc=64, max_running_requests=64), each at KV length 8192 (ISL, start of
+    generation) and 9216 (ISL + OSL, end of generation). The correctness set and
+    the performance set are the same list.
+
+    Useful levers: the stage1 KV-block tile and the BLOCK_H grouping over the 12
+    query heads, exploiting that q and k share the same 576-wide buffer while v is
+    just its first 512 columns (one load can serve both), the fp32 attn_logits
+    traffic (bs * 12 * 256 * 512 * 4 B = 402 MB at bs=64 -- the split count is
+    capped at 256 by CU count, not by need, so a smarter per-sequence split
+    schedule or a smaller logits footprint is on the table), stage1/stage2 fusion
+    when the split count is small, LDS reuse across the 12-head group, and the
+    non-contiguous v_buffer stride pattern.
+
+    Correctness is numerical parity against an independent, vectorized float64
+    reference attention in the harness (cos > 0.9995 and normalized max error <
+    0.02). The reference is split-agnostic -- split-KV must reproduce plain softmax
+    attention, so you may change num_kv_splits handling freely as long as the
+    result is unchanged. Keep the public signature of decode_attention_fwd_grouped
+    unchanged, keep honouring has_mla=True and page_size, and keep the operator
+    graph-capturable -- performance is measured under HIP graph replay.
+  cheatsheet: null
