@@ -137,12 +137,24 @@ def _aiter_grouped(aiter, gating, bias, shape):
 def _compare_routing(ref_w, ref_id, out_w, out_id, sel, topk):
     """Return (genuine_mismatch_tokens, weight_norm_err). Ids match as sets except
     at masked-selection-score ties; weights compared by matched id."""
+    import torch
 
     ref_id_c = ref_id.cpu()
     out_id_c = out_id.cpu()
     ref_w_c = ref_w.float().cpu()
     out_w_c = out_w.float().cpu()
     sel_c = sel.float().cpu()
+
+    # Python's max keeps the existing finite value when the other operand is
+    # NaN, so the loop below cannot be relied on to reject non-finite weights.
+    # Turn any non-finite oracle, candidate, or selection score into an explicit
+    # mismatch before applying the normalized tolerance.
+    if not (
+        torch.isfinite(ref_w_c).all()
+        and torch.isfinite(out_w_c).all()
+        and torch.isfinite(sel_c).all()
+    ):
+        return max(1, out_id_c.shape[0]), float("inf")
 
     sorted_sel, _ = sel_c.sort(dim=-1, descending=True)
     cutoff = sorted_sel[:, topk - 1]

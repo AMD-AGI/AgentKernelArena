@@ -126,7 +126,11 @@ def _configure_runtime() -> None:
 
 def _benchmark_ms(fn, warmup: int = 10, rep: int = 30) -> tuple[float, dict]:
     samples, metadata = benchmark_cuda_graph_or_events_samples(
-        fn, warmup=warmup, repetition=rep,
+        fn,
+        warmup=warmup,
+        repetition=rep,
+        use_cuda_graph=False,
+        fallback_reason="pa_decode_runtime_operation_is_not_graph_capture_safe",
     )
     return statistics.median(samples), metadata
 

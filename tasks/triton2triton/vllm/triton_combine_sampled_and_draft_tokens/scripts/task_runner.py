@@ -199,6 +199,7 @@ def run_performance():
                 warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS,
                 target_ms=20.0,
+                prepare_fn=lambda: input_ids_work.copy_(input_ids),
             )
 
             test_cases.append({

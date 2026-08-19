@@ -74,7 +74,7 @@ def _make_inputs(M, K, N, E, top_k, device="cuda"):
     return A, B, topk_ids, topk_weights
 
 
-def _run_kernel(mod, A, B, topk_ids, topk_weights, top_k, mul_routed_weight):
+def _prepare_kernel(mod, A, B, topk_ids, topk_weights, top_k, mul_routed_weight):
     import torch
     import triton.language as tl
 
@@ -88,23 +88,34 @@ def _run_kernel(mod, A, B, topk_ids, topk_weights, top_k, mul_routed_weight):
         "BLOCK_SIZE_K": 32,
         "GROUP_SIZE_M": 8,
     }
-    mod.fused_moe(
-        A,
-        B,
-        C,
-        None,
-        None,
-        topk_weights,
-        topk_ids,
-        sorted_ids,
-        expert_ids,
-        num_post,
-        mul_routed_weight,
-        top_k,
-        tl.bfloat16,
-        config=config,
+
+    def run():
+        mod.fused_moe(
+            A,
+            B,
+            C,
+            None,
+            None,
+            topk_weights,
+            topk_ids,
+            sorted_ids,
+            expert_ids,
+            num_post,
+            mul_routed_weight,
+            top_k,
+            tl.bfloat16,
+            config=config,
+        )
+        return C
+
+    return run, C
+
+
+def _run_kernel(mod, A, B, topk_ids, topk_weights, top_k, mul_routed_weight):
+    run, _ = _prepare_kernel(
+        mod, A, B, topk_ids, topk_weights, top_k, mul_routed_weight
     )
-    return C
+    return run()
 
 
 # --- numerical reference -----------------------------------------------------
@@ -213,16 +224,18 @@ def run_benchmark(verbose=True):
         A, B, topk_ids, topk_weights = _make_inputs(
             shape["M"], shape["K"], shape["N"], shape["E"], shape["top_k"]
         )
-        fn = lambda: _run_kernel(  # noqa: E731
+        fn, output = _prepare_kernel(
             mod, A, B, topk_ids, topk_weights, shape["top_k"], True
         )
+        prepare_fn = output.zero_
         fn()
         torch.cuda.synchronize()
         for _ in range(WARMUP):
+            prepare_fn()
             fn()
         torch.cuda.synchronize()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, prepare_fn=prepare_fn
         )
         latencies.append(ms)
         flops = 2.0 * shape["M"] * shape["top_k"] * shape["N"] * shape["K"]

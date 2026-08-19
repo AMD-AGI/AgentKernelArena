@@ -104,7 +104,6 @@ def bench_one(M, N, K, dtype=torch.bfloat16):
     x, w, y = generate_inputs(M, N, K, dtype)
 
     def _fn():
-        y.zero_()
         return gemm_a16w16_atomic(x, w, torch.float32, y)
 
     ms, metadata = benchmark_cuda_graph_or_events(

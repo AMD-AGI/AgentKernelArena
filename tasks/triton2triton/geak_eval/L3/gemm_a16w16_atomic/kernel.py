@@ -7,34 +7,11 @@ NUM_KSPLIT>1 and atomic accumulation for improved parallelism.
 """
 
 from typing import Optional
-import functools
-import os
-import json
-import math
 
 import torch
 import torch.nn.functional as F
 import triton
 import triton.language as tl
-
-
-# ============================================================================
-# ARCH INFO (from aiter.ops.triton.utils._triton.arch_info)
-# ============================================================================
-
-AITER_TRITON_CONFIGS_PATH = "/sgl-workspace/aiter/aiter/ops/triton/configs"
-
-
-@functools.lru_cache(maxsize=1)
-def get_arch():
-    try:
-        arch = triton.runtime.driver.active.get_current_target().arch
-    except RuntimeError:
-        from jax._src.lib import gpu_triton as triton_kernel_call_lib
-
-        arch = triton_kernel_call_lib.get_arch_details("0")
-        arch = arch.split(":")[0]
-    return arch
 
 
 # ============================================================================
@@ -249,41 +226,27 @@ def _gemm_a16_w16_atomic_kernel(
 # ============================================================================
 
 
-@functools.lru_cache(maxsize=1024)
 def _get_config(M: int, N: int, K: int):
-    if not hasattr(_get_config, "_config_dict"):
-        dev = get_arch()
-        _get_config._config_dict = {}
-        fpath = f"{AITER_TRITON_CONFIGS_PATH}/gemm/{dev}-GEMM-A16W16-ATOMIC.json"
-        with open(fpath, "r") as file:
-            config = json.load(file)
-        _get_config._config_dict["default"] = config
+    """Return the bundled fallback used by the declared N=1280, K=8192 cases.
 
-    key = f"{N}_{K}"
-    if key not in _get_config._config_dict.keys():
-        dev = get_arch()
-        fpath = f"{AITER_TRITON_CONFIGS_PATH}/gemm/{dev}-GEMM-A16W16-ATOMIC-N={N}-K={K}.json"
-        if os.path.exists(fpath):
-            with open(fpath, "r") as file:
-                config = json.load(file)
-                _get_config._config_dict[key] = config
-        else:
-            key = "default"
-            return _get_config._config_dict[key]["any"]
-    if M < 32:
-        return _get_config._config_dict[key]["small"]
-    elif M <= 128:
-        BLK_M = triton.next_power_of_2(M)
-        if BLK_M == 32:
-            return _get_config._config_dict[key]["medium_M32"]
-        elif BLK_M == 64:
-            return _get_config._config_dict[key]["medium_M64"]
-        elif BLK_M == 128:
-            return _get_config._config_dict[key]["medium_M128"]
-    elif M <= 256:
-        return _get_config._config_dict[key]["large"]
-    else:
-        return _get_config._config_dict[key]["xlarge"]
+    The upstream AITER lookup has no shape-specific file for this workload and
+    therefore selects the ``any`` entry from its gfx950 default table.  Keeping
+    that entry here preserves the evaluated launch while making the task
+    independent of an undeclared absolute AITER installation path.
+    """
+    del M, N, K
+    return {
+        "BLOCK_SIZE_M": 256,
+        "BLOCK_SIZE_N": 128,
+        "BLOCK_SIZE_K": 64,
+        "GROUP_SIZE_M": 4,
+        "num_warps": 8,
+        "num_stages": 3,
+        "waves_per_eu": 2,
+        "matrix_instr_nonkdim": 16,
+        "cache_modifier": None,
+        "NUM_KSPLIT": 1,
+    }
 
 
 # ============================================================================

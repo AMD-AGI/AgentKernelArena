@@ -14,6 +14,12 @@ import triton
 import triton.language as tl
 
 
+# The 3D path needs temporary segment reductions.  Keep one workspace per
+# device stream and shape so warmup pays the allocation cost while graph replay
+# measures only the attention and reduction kernels.
+_segment_workspace_cache = {}
+
+
 # --- inlined arch detection (utils._triton.arch_info) ---
 def _detect_arch_str() -> str:
     try:
@@ -1448,28 +1454,43 @@ def unified_attention(
         )
         NUM_SEGMENTS = attn_config["NUM_SEGMENTS_PER_SEQ"]
         if NUM_SEGMENTS > 1:
-            segm_output = torch.empty(
+            stream = torch.cuda.current_stream(q.device)
+            workspace_key = (
+                q.device,
+                stream.cuda_stream,
                 q.shape[0],
                 num_query_heads,
                 NUM_SEGMENTS,
                 triton.next_power_of_2(head_size),
-                dtype=torch.float32,
-                device=q.device,
             )
-            segm_max = torch.empty(
-                q.shape[0],
-                num_query_heads,
-                NUM_SEGMENTS,
-                dtype=torch.float32,
-                device=q.device,
-            )
-            segm_expsum = torch.empty(
-                q.shape[0],
-                num_query_heads,
-                NUM_SEGMENTS,
-                dtype=torch.float32,
-                device=q.device,
-            )
+            workspace = _segment_workspace_cache.get(workspace_key)
+            if workspace is None:
+                workspace = (
+                    torch.empty(
+                        q.shape[0],
+                        num_query_heads,
+                        NUM_SEGMENTS,
+                        triton.next_power_of_2(head_size),
+                        dtype=torch.float32,
+                        device=q.device,
+                    ),
+                    torch.empty(
+                        q.shape[0],
+                        num_query_heads,
+                        NUM_SEGMENTS,
+                        dtype=torch.float32,
+                        device=q.device,
+                    ),
+                    torch.empty(
+                        q.shape[0],
+                        num_query_heads,
+                        NUM_SEGMENTS,
+                        dtype=torch.float32,
+                        device=q.device,
+                    ),
+                )
+                _segment_workspace_cache[workspace_key] = workspace
+            segm_output, segm_max, segm_expsum = workspace
         else:
             segm_output = out
             segm_max = out  # dummy ptr

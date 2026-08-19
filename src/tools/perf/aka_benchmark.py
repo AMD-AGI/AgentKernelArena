@@ -529,9 +529,12 @@ def hip_source_graph_capture_policy(*source_paths: Any) -> tuple[bool, str | Non
     for path in source_paths:
         try:
             with open(path, encoding="utf-8") as source_file:
-                sources.append(_strip_cpp_comments_and_literals(source_file.read()))
+                raw_source = source_file.read()
         except (OSError, UnicodeError):
             return False, "hip_source_unreadable"
+        if "AKA_BENCHMARK_EVENT_ONLY" in raw_source:
+            return False, "hip_source_declares_event_only"
+        sources.append(_strip_cpp_comments_and_literals(raw_source))
 
     if any(
         _CAPTURE_UNSAFE_HIP_API.search(source)

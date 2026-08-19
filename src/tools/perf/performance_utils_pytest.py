@@ -35,6 +35,9 @@ def _measure_times(
     n_retries: int = 5,
     estimate_reps: int = 5,
     max_graph_repeats: int = 1000,
+    prepare_fn: Callable[[], Any] | None = None,
+    use_cuda_graph: bool = True,
+    fallback_reason: str | None = None,
 ) -> tuple[list[float], dict[str, Any]]:
     """Return canonical per-call device samples and benchmark metadata."""
 
@@ -46,6 +49,9 @@ def _measure_times(
         n_retries=n_retries,
         estimate_reps=estimate_reps,
         max_graph_repeats=max_graph_repeats,
+        prepare_fn=prepare_fn,
+        use_cuda_graph=use_cuda_graph,
+        fallback_reason=fallback_reason,
     )
 
 
@@ -68,10 +74,21 @@ def _compute_timing_stats(times_ms: list[float], config: BenchConfig) -> dict[st
 class PytestBenchmarker:
     """Simple benchmark helper used by ROCmBench pytest performance tests."""
 
-    def __init__(self, op_callable: Callable[[], Any], op_name: str, config: BenchConfig) -> None:
+    def __init__(
+        self,
+        op_callable: Callable[[], Any],
+        op_name: str,
+        config: BenchConfig,
+        prepare_fn: Callable[[], Any] | None = None,
+        use_cuda_graph: bool = True,
+        fallback_reason: str | None = None,
+    ) -> None:
         self.op_callable = op_callable
         self.op_name = op_name
         self.config = config
+        self.prepare_fn = prepare_fn
+        self.use_cuda_graph = use_cuda_graph
+        self.fallback_reason = fallback_reason
 
     def run_benchmark(
         self,
@@ -80,7 +97,13 @@ class PytestBenchmarker:
         tflops_calculator: Callable[[dict[str, Any], float], float] | None = None,
         baseline_callable: Callable[[], Any] | None = None,
     ) -> dict[str, Any]:
-        times_ms, benchmark_metadata = _measure_times(self.op_callable, self.config)
+        times_ms, benchmark_metadata = _measure_times(
+            self.op_callable,
+            self.config,
+            prepare_fn=self.prepare_fn,
+            use_cuda_graph=self.use_cuda_graph,
+            fallback_reason=self.fallback_reason,
+        )
         timing_stats = _compute_timing_stats(times_ms, self.config)
         mean_ms = timing_stats["mean"]
 
@@ -103,7 +126,12 @@ class PytestBenchmarker:
                 result["tflops_error"] = str(exc)
 
         if baseline_callable is not None:
-            baseline_times, baseline_metadata = _measure_times(baseline_callable, self.config)
+            baseline_times, baseline_metadata = _measure_times(
+                baseline_callable,
+                self.config,
+                use_cuda_graph=self.use_cuda_graph,
+                fallback_reason=self.fallback_reason,
+            )
             baseline_stats = _compute_timing_stats(baseline_times, self.config)
             result["baseline_timing_ms"] = baseline_stats
             for key, value in baseline_metadata.items():

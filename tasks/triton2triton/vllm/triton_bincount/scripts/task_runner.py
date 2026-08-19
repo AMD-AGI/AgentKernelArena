@@ -112,13 +112,14 @@ def run_performance():
             block_size = 1024
             num_blocks = (seq_len + block_size - 1) // block_size
 
-            def run_kernel():
-                # The public wrapper uses advanced-index assignment, which is
-                # not graph-capturable on ROCm. These equivalent device resets
-                # plus the actual target launch keep the full GPU work inside
-                # the replayable graph without adding a task dependency.
+            def prepare_kernel():
                 prompt_mask.zero_()
                 output_counts.zero_()
+
+            def run_kernel():
+                # The public wrapper uses advanced-index assignment, which is
+                # not graph-capturable on ROCm. Time the actual target launch
+                # while restoring its output state outside every sample.
                 mod._bincount_kernel[(batch, num_blocks)](
                     idx_mapping,
                     all_token_ids,
@@ -137,6 +138,7 @@ def run_performance():
                 warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS,
                 target_ms=20.0,
+                prepare_fn=prepare_kernel,
             )
 
             test_cases.append({

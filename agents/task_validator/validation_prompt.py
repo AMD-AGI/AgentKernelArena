@@ -319,7 +319,9 @@ the framework does not filter it before execution.
 Configured source data: {source_files!r}. Resolve exact workspace paths first, then
 `repo_subdir/path`, then a UNIQUE suffix match for repository/image layouts. Never
 PASS from an arbitrary basename match; ambiguity is FAIL. Check `editable_sources`
-too. Repository tasks with no declared source use SKIP reason
+too. For a legacy `instruction2triton` task with an empty source list, treat the
+configured Python performance entrypoint as its implied co-located source and inspect
+it normally. Repository tasks with no declared source use SKIP reason
 `repository_field_not_declared`.
 
 ## 3. target_symbols_found
@@ -367,6 +369,10 @@ Inspect the actual scored shapes, references, output comparisons, tolerances, an
 exception handling. Garbage, NaN, missing writes, or arbitrary exceptions must not
 pass. Weak but real coverage/tolerance is WARN; no independent comparison or a
 fallback that ignores candidate output is FAIL and `is_trivially_passing: true`.
+When a branch is explicitly unsupported by the active backend/runtime and the
+command records a concrete backend-specific skip reason, do not fail solely for
+that unreachable branch. Require independent checks for every runnable declared
+target and mark the unavailable branch as a coverage WARN.
 
 ## 8. self_contained
 
@@ -398,7 +404,9 @@ The performance command reports the implementation currently in the workspace. D
 not require it to time a separate reference/candidate pair in one invocation, and do
 not fail an extra task-local aggregate speedup line when complete per-case data is
 also available. The centralized evaluator owns baseline/candidate matching and final
-speedup arithmetic.
+speedup arithmetic. Use WARN when the emitted format is structurally parseable but
+an allowed SKIP (for example a generation placeholder) prevents full scoreability;
+reserve FAIL for an observable format or case-matching incompatibility.
 
 ## 11. benchmark_integrity
 
@@ -416,12 +424,27 @@ Hard failures are observable violations of these requirements:
 - Event fallback has a nonempty reason and is allowed only for a case pre-determined
   Event-only; candidate-triggered fallback from a Graph baseline remains unscoreable;
 - stateful/in-place inputs are restored before every warmup/sample via `prepare_fn`;
-- scratch/JIT/module construction is outside timing; reset and output contracts must
-  stay stable across the protected pre/post scoring lifecycle. Do not require a
-  separate reference timing path inside `run_performance`;
+- one-time JIT/module construction, static shape metadata, reusable workspace, and
+  reset work are outside timing; reset and output contracts must stay stable across
+  the protected pre/post scoring lifecycle. Do not require a separate reference
+  timing path inside `run_performance`;
+- for `cuda_graph`, distinguish Python executed once while constructing/capturing
+  the graph from GPU operations replayed inside the reported device-event samples.
+  Static Python shape math, launch-grid construction, and wrapper bookkeeping are
+  outside replay timing even when they appear lexically inside the captured callable;
+  do not mark `timing_boundaries_valid: false` solely for those operations. Inspect
+  the benchmark helper and emitted method before deciding what the device events
+  actually bracket;
 - an API-mandated returned-output allocation may remain inside both pre/post timed
-  calls. Fail only when avoidable setup/scratch/reset work is inside timing or editable
-  candidate code can change the measured contract unfairly;
+  calls. Required per-invocation intermediates that implement the documented public
+  end-to-end operator (for example, an API that explicitly quantizes inputs internally)
+  are also timed work. The computational transform that produces such an intermediate
+  must stay timed; allocation of a reusable scratch/intermediate buffer may be hoisted
+  when the protected harness supplies the same stable buffer and restores any required
+  state symmetrically before every sample. Do not fail that protected preallocation
+  merely because the convenience wrapper allocates the buffer per call. Fail omitted
+  computation, missing state restoration, asymmetric setup, or an editable measured
+  contract that can be changed unfairly;
 - use representative nonzero inputs, not all-zero performance data;
 - multi-case output is complete and uniquely matchable. Different cases may use
   different methods, but each baseline/candidate pair must match exactly.
@@ -449,9 +472,11 @@ excluded from the guard digest. Benchmark/test functions, ordinary Python helper
 module constants, and executable harness statements remain protected. Verify that
 each declared editable target co-located with an entrypoint is declared in
 `source_file_path`, which is the current guard's masking input (`editable_sources`
-alone does not enable that mask). An empty source list plus a target inside a protected
-performance entrypoint is FAIL because a legitimate agent edit would be rejected as
-harness tampering.
+alone does not enable that mask). Legacy `instruction2triton` is the one exception:
+when its source list is empty, the guard treats its configured Python performance
+entrypoint as the implied source and masks the declared target/import/Triton-helper
+AST nodes there. Confirm that trusted editable-entrypoint fact instead of failing the
+empty list. Other families still require an explicit source declaration.
 
 The trusted framework block lists the effective protected paths and co-located editable
 targets. Treat that list as proof that framework guard coverage is enforced, set

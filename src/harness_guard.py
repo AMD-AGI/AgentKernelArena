@@ -141,6 +141,13 @@ def _editable_entrypoint_targets(root: Path) -> dict[Path, set[str]]:
     entrypoints = {
         path.resolve() for path in configured_performance_entrypoints(root)
     }
+    # Legacy instruction2triton tasks embed the editable Triton target in the
+    # configured pytest/performance entrypoint but leave source_file_path empty.
+    # Treat that entrypoint as the implied source for this family only. The AST
+    # digest still protects tests, ordinary helpers, constants, and executable
+    # harness statements; only imports and Triton target/helper nodes are masked.
+    if config.get("task_type") == "instruction2triton" and not source_paths:
+        source_paths.update(entrypoints)
     return {
         path: targets
         for path in source_paths & entrypoints

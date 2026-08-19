@@ -46,7 +46,7 @@ ALLOWED_STATUSES = {
     "correctness_implementation_review": frozenset({"PASS", "FAIL", "WARN", "SKIP"}),
     "self_contained": frozenset({"PASS", "FAIL", "WARN"}),
     "gpu_hang_check": frozenset({"PASS", "FAIL", "WARN"}),
-    "result_template_compatibility": frozenset({"PASS", "FAIL"}),
+    "result_template_compatibility": frozenset({"PASS", "FAIL", "WARN"}),
     "benchmark_integrity": frozenset({"PASS", "FAIL", "WARN", "SKIP"}),
     "harness_integrity": frozenset({"PASS", "FAIL", "WARN"}),
 }
@@ -343,7 +343,10 @@ def normalize_report(
 
     reported_task_name = raw.get("task_name")
     if reported_task_name != expected_task_name:
-        errors.append(
+        # The framework already knows the authoritative task from the workspace
+        # it materialized.  A model typo in this display field is report-quality
+        # noise, not evidence that the task itself is invalid.
+        warnings.append(
             f"task_name mismatch: expected {expected_task_name!r}, got {reported_task_name!r}"
         )
 
@@ -368,6 +371,18 @@ def normalize_report(
             errors.append(f"checks contains unexpected entries: {unexpected_checks}")
 
     normalized_checks: dict[str, dict[str, Any]] = {}
+    skip_reason_sources = {
+        "target_symbols_found": ("source_files_exist",),
+        "compilation": ("target_symbols_found", "source_files_exist"),
+        "correctness": ("compilation", "target_symbols_found"),
+        "performance": ("correctness", "compilation"),
+        "correctness_implementation_review": (
+            "correctness",
+            "performance",
+            "target_symbols_found",
+        ),
+        "benchmark_integrity": ("performance", "correctness"),
+    }
     for check_name in CHECK_NAMES:
         raw_check = raw_checks.get(check_name)
         if not isinstance(raw_check, dict):
@@ -390,8 +405,28 @@ def normalize_report(
         if status == "SKIP":
             reason = check.get("skip_reason_code")
             if reason not in ALLOWED_SKIP_REASONS:
-                errors.append(f"{check_name}: SKIP requires an allowlisted skip_reason_code")
-                status = "FAIL"
+                inherited_reason = next(
+                    (
+                        normalized_checks[source].get("skip_reason_code")
+                        for source in skip_reason_sources.get(check_name, ())
+                        if source in normalized_checks
+                        and normalized_checks[source].get("status") == "SKIP"
+                        and normalized_checks[source].get("skip_reason_code")
+                        in ALLOWED_SKIP_REASONS
+                    ),
+                    None,
+                )
+                if inherited_reason is None:
+                    errors.append(
+                        f"{check_name}: SKIP requires an allowlisted skip_reason_code"
+                    )
+                    status = "FAIL"
+                else:
+                    check["skip_reason_code"] = inherited_reason
+                    warnings.append(
+                        f"{check_name}: inherited SKIP reason {inherited_reason!r} "
+                        "from an upstream check"
+                    )
 
         if check_name in COMMAND_CHECKS:
             status = _normalize_attempts(check_name, check, status, errors)
@@ -427,14 +462,21 @@ def normalize_report(
     }:
         errors.append("performance cannot pass after correctness failed or timed out")
         normalized_checks["performance"]["status"] = "FAIL"
-    if normalized_checks["performance"]["status"] in {
-        "FAIL",
-        "TIMEOUT",
-        "SKIP",
-    } and benchmark_status in {
+    if normalized_checks["performance"]["status"] == "SKIP" and benchmark_status in {
         "PASS",
         "WARN",
     }:
+        skip_reason = normalized_checks["performance"].get("skip_reason_code")
+        normalized_checks["benchmark_integrity"]["status"] = "SKIP"
+        normalized_checks["benchmark_integrity"]["skip_reason_code"] = skip_reason
+        warnings.append(
+            "benchmark_integrity: normalized to SKIP because performance was "
+            f"SKIP/{skip_reason}"
+        )
+    elif normalized_checks["performance"]["status"] in {
+        "FAIL",
+        "TIMEOUT",
+    } and benchmark_status in {"PASS", "WARN"}:
         errors.append("benchmark_integrity cannot pass when performance is not runnable")
         normalized_checks["benchmark_integrity"]["status"] = "FAIL"
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # GEAK materialized harness bootstrap
 import importlib.util
+import json
 import os
 import sys
 import types
@@ -397,6 +398,7 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
     latencies = []
     speedups = []
     benchmark_methods = []
+    report_cases = []
 
     print(f"Running benchmark on {len(shapes)} shapes, {warmup} warmup, {iters} iterations each...")
     print(f"  Comparing kernel vs {ref_label}")
@@ -444,11 +446,21 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
         if speedup is not None:
             speedups.append(speedup)
         benchmark_methods.append(triton_meta["benchmark_method"])
+        report_cases.append({
+            "test_case_id": f"M={M} N1={N1} N2={N2}",
+            "params": {"M": M, "N1": N1, "N2": N2},
+            "execution_time_ms": triton_ms,
+            **triton_meta,
+        })
 
         marker = " *" if speedup is not None and speedup > 1.0 else ""
         if verbose:
             speedup_text = f"{speedup:.2f}x" if speedup is not None else "N/A"
             print(f"({M:>6}, {N1:>5}, {N2:>5}){' ':4} {ref_ms:>8.4f}ms {triton_ms:>8.4f}ms {speedup_text:>9s}{marker}", flush=True)
+
+    report_path = Path("build/performance_report.json")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report_cases, indent=2))
 
     log_sum = sum(math.log(l) for l in latencies)
     geomean_latency = math.exp(log_sum / len(latencies))

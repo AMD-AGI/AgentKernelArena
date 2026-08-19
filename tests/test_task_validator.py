@@ -90,15 +90,27 @@ class ValidationReportSchemaTests(unittest.TestCase):
         self.assertEqual(report["checks"]["self_contained"]["status"], "FAIL")
         self.assertEqual(report["overall_status"], "FAIL")
 
-    def test_task_name_mismatch_is_a_contract_failure(self) -> None:
+    def test_task_name_mismatch_is_normalized_as_report_quality_warning(self) -> None:
         raw = _valid_raw_report(task_name="hip2hip/wrong")
         report = normalize_report(raw, expected_task_name="hip2hip/example")
-        self.assertEqual(report["framework_status"], "FAIL")
-        self.assertEqual(report["overall_status"], "FAIL")
+        self.assertEqual(report["task_name"], "hip2hip/example")
+        self.assertEqual(report["framework_status"], "PASS")
+        self.assertEqual(report["overall_status"], "PASS")
+        self.assertIn(
+            "task_name mismatch: expected 'hip2hip/example', got 'hip2hip/wrong'",
+            report["validation_warnings"],
+        )
 
     def test_warn_is_recomputed_without_becoming_failure(self) -> None:
         raw = _valid_raw_report()
         raw["checks"]["performance"]["status"] = "WARN"
+        report = normalize_report(raw, expected_task_name="hip2hip/example")
+        self.assertEqual(report["framework_status"], "PASS")
+        self.assertEqual(report["overall_status"], "WARN")
+
+    def test_parseable_but_unscoreable_template_can_warn(self) -> None:
+        raw = _valid_raw_report()
+        raw["checks"]["result_template_compatibility"]["status"] = "WARN"
         report = normalize_report(raw, expected_task_name="hip2hip/example")
         self.assertEqual(report["framework_status"], "PASS")
         self.assertEqual(report["overall_status"], "WARN")
@@ -114,6 +126,50 @@ class ValidationReportSchemaTests(unittest.TestCase):
         report = normalize_report(raw, expected_task_name="hip2hip/example")
         self.assertEqual(report["checks"]["performance"]["status"], "FAIL")
         self.assertEqual(report["overall_status"], "FAIL")
+
+    def test_downstream_skip_inherits_valid_upstream_reason(self) -> None:
+        raw = _valid_raw_report()
+        raw["checks"]["performance"].update(
+            {"status": "SKIP", "skip_reason_code": "starter_stub"}
+        )
+        raw["checks"]["correctness_implementation_review"] = {
+            "status": "SKIP",
+            "details": "No candidate implementation exists for the starter task.",
+        }
+        raw["checks"]["benchmark_integrity"].update(
+            {"status": "SKIP", "skip_reason_code": "starter_stub"}
+        )
+        report = normalize_report(raw, expected_task_name="hip2hip/example")
+        review = report["checks"]["correctness_implementation_review"]
+        self.assertEqual(review["status"], "SKIP")
+        self.assertEqual(review["skip_reason_code"], "starter_stub")
+        self.assertEqual(report["framework_status"], "PASS")
+        self.assertEqual(report["overall_status"], "PASS")
+        self.assertIn(
+            "correctness_implementation_review: inherited SKIP reason 'starter_stub' "
+            "from an upstream check",
+            report["validation_warnings"],
+        )
+
+    def test_benchmark_review_is_skipped_when_performance_is_skipped(self) -> None:
+        raw = _valid_raw_report()
+        raw["checks"]["performance"].update(
+            {"status": "SKIP", "skip_reason_code": "starter_stub"}
+        )
+        raw["checks"]["benchmark_integrity"].update(
+            {"status": "WARN", "replay_validation_valid": False}
+        )
+        report = normalize_report(raw, expected_task_name="hip2hip/example")
+        benchmark = report["checks"]["benchmark_integrity"]
+        self.assertEqual(benchmark["status"], "SKIP")
+        self.assertEqual(benchmark["skip_reason_code"], "starter_stub")
+        self.assertEqual(report["framework_status"], "PASS")
+        self.assertEqual(report["overall_status"], "PASS")
+        self.assertIn(
+            "benchmark_integrity: normalized to SKIP because performance was "
+            "SKIP/starter_stub",
+            report["validation_warnings"],
+        )
 
     def test_cpu_timer_is_not_a_scoreable_method(self) -> None:
         raw = _valid_raw_report()
@@ -337,6 +393,26 @@ class ValidationLauncherTests(unittest.TestCase):
             )
             self.assertIn(
                 "not require it to time a separate reference/candidate pair",
+                prompt,
+                str(config),
+            )
+            self.assertIn(
+                "Required per-invocation intermediates that implement the documented public",
+                prompt,
+                str(config),
+            )
+            self.assertIn(
+                "allocation of a reusable scratch/intermediate buffer may be hoisted",
+                prompt,
+                str(config),
+            )
+            self.assertIn(
+                "distinguish Python executed once while constructing/capturing",
+                prompt,
+                str(config),
+            )
+            self.assertIn(
+                "explicitly unsupported by the active backend/runtime",
                 prompt,
                 str(config),
             )

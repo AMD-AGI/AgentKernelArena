@@ -143,6 +143,15 @@ def test_native_helper_supports_paired_forced_event_baseline():
     assert '"forced_event_baseline"' in header
 
 
+def test_rocmbench_adapter_forwards_state_and_method_policy():
+    adapter = (ROOT / "src/tools/perf/performance_utils_pytest.py").read_text()
+
+    assert "prepare_fn: Callable[[], Any] | None = None" in adapter
+    assert "prepare_fn=self.prepare_fn" in adapter
+    assert "use_cuda_graph=self.use_cuda_graph" in adapter
+    assert "fallback_reason=self.fallback_reason" in adapter
+
+
 def test_config_declared_entrypoint_and_generated_helper_are_protected(tmp_path):
     eval_tools = tmp_path / "eval_tools"
     eval_tools.mkdir()
@@ -271,6 +280,47 @@ def test_colocated_kernel_imports_structure_and_triton_helpers_are_editable(tmp_
     )
 
     verify_workspace_harness(snapshot)
+
+
+def test_legacy_instruction2triton_entrypoint_is_implied_editable_source(tmp_path):
+    entrypoint = tmp_path / "test_kernel.py"
+    entrypoint.write_text(
+        "import triton\n\n"
+        "@triton.jit\n"
+        "def kernel(x):\n"
+        "    return x\n\n"
+        "def test_performance():\n"
+        "    return kernel(1)\n"
+    )
+    (tmp_path / "config.yaml").write_text(
+        "task_type: instruction2triton\n"
+        "source_file_path: []\n"
+        "target_kernel_functions: [kernel]\n"
+        "performance_command: [pytest test_kernel.py -k test_performance]\n"
+    )
+
+    snapshot = snapshot_workspace_harness(tmp_path)
+    entrypoint.write_text(
+        "import triton\n\n"
+        "@triton.jit\n"
+        "def kernel(x):\n"
+        "    return x * 2\n\n"
+        "def test_performance():\n"
+        "    return kernel(1)\n"
+    )
+    verify_workspace_harness(snapshot)
+
+    snapshot = snapshot_workspace_harness(tmp_path)
+    entrypoint.write_text(
+        "import triton\n\n"
+        "@triton.jit\n"
+        "def kernel(x):\n"
+        "    return x * 2\n\n"
+        "def test_performance():\n"
+        "    return 0.000001\n"
+    )
+    with pytest.raises(RuntimeError, match="test_kernel.py"):
+        verify_workspace_harness(snapshot)
 
 
 def test_colocated_module_constants_and_non_triton_helpers_stay_protected(tmp_path):

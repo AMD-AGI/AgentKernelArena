@@ -415,7 +415,13 @@ def run_correctness(shapes=None, verbose=True):
             launch()
             torch.cuda.synchronize()
             tol = 5e-3
+            if not torch.isfinite(out).all():
+                raise AssertionError("candidate output contains NaN or Inf")
+            if not torch.isfinite(ref).all():
+                raise AssertionError("reference output contains NaN or Inf")
             max_err = (out.float() - ref.float()).abs().max().item()
+            if not math.isfinite(max_err):
+                raise AssertionError(f"max_err is not finite: {max_err}")
             if max_err > tol:
                 raise AssertionError(f"max_err={max_err:.4e} > {tol}")
             results.append({"config": (batch_size, query_length, num_heads, quant_mode), "correct": True})

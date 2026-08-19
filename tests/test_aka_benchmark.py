@@ -662,6 +662,21 @@ def test_hip_source_policy_rejects_legacy_default_stream(
     )
 
 
+def test_hip_source_policy_honors_protected_event_only_marker(monkeypatch, tmp_path):
+    helper = _load_helper(monkeypatch)
+    source = tmp_path / "kernel.hip"
+    source.write_text(
+        "#define AKA_BENCHMARK_EVENT_ONLY 1\n"
+        "auto stream = at::hip::getCurrentHIPStream();\n"
+        "kernel<<<grid, block, 0, stream>>>(output);\n"
+    )
+
+    assert helper.hip_source_graph_capture_policy(source) == (
+        False,
+        "hip_source_declares_event_only",
+    )
+
+
 def test_hip_source_policy_rejects_unverified_and_capture_unsafe_code(
     monkeypatch, tmp_path
 ):
@@ -833,7 +848,13 @@ def test_committed_hip2hip_sources_are_graph_capture_compatible(monkeypatch):
         if policy != (True, None):
             failures[f"tasks/hip2hip/others/{task_name}"] = policy
 
-    assert failures == {}
+    assert failures == {
+        "tasks/hip2hip/gpumode/CrossEntropyLossLabelSmoothing/hip/"
+        "hip_12501_CrossEntropyLossLabelSmoothing_ref.hip": (
+            False,
+            "hip_source_declares_event_only",
+        )
+    }
 
 
 def test_hip_source_policy_does_not_trust_unrelated_stream_assignment(

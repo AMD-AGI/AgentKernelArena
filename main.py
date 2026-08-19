@@ -557,6 +557,38 @@ def run_task(
         return True, workspace_path
     except Exception as e:
         logger.error(f"Task {task_name} failed with error: {e}", exc_info=True)
+        if agent == AgentType.TASK_VALIDATOR:
+            # Workspace materialization can fail after creating the task
+            # directory (for example when an image_repo_path is unavailable).
+            # Persist that operational failure as a complete validator report
+            # so parallel resume does not retry it forever and post-processing
+            # can distinguish it from a task audit finding.
+            report_workspace = workspace_path or get_task_workspace_path(
+                run_directory, task_name, timestamp
+            )
+            if report_workspace.is_dir():
+                try:
+                    from agents.task_validator.report_schema import finalize_report
+
+                    finalize_report(
+                        report_workspace,
+                        expected_task_name=task_name,
+                        framework_error=(
+                            "task setup/execution failed before validation: "
+                            f"{type(e).__name__}: {e}"
+                        ),
+                    )
+                    logger.info(
+                        "Recorded validator setup/execution failure for %s",
+                        task_name,
+                    )
+                    return True, report_workspace
+                except Exception:
+                    logger.error(
+                        "Could not finalize validator failure report for %s",
+                        task_name,
+                        exc_info=True,
+                    )
         return False, workspace_path
 
 

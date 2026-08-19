@@ -1,0 +1,19 @@
+# Full MI355X task audit with one isolated validator worker per GPU.
+#
+# Run with:
+#   make docker-parallel-run \
+#     CONFIG=example_configs/all_tasks_validator_luna_xhigh_mi355x.yaml \
+#     GPU_IDS=0,1,2,3,4,5,6,7 \
+#     RUN_ARGS="--run-suffix all_tasks_luna_xhigh_round1"
+agent:
+  template: task_validator
+  backend: codex
+  model: gpt-5.6-luna
+  effort: xhigh
+
+tasks:
+  - all
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

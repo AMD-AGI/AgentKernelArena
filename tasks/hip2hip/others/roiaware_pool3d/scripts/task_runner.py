@@ -48,6 +48,7 @@ def cpu_roiaware_pool3d(rois, pts, pts_feature, out_size, mode='max'):
     C = pts_feature.shape[1]
     out_x = out_y = out_z = out_size
     pooled = torch.zeros(N, out_x, out_y, out_z, C, dtype=pts_feature.dtype)
+    counts = torch.zeros(N, out_x, out_y, out_z, dtype=torch.int32)
 
     for n in range(N):
         cx, cy, cz, dx, dy, dz, heading = rois[n]
@@ -83,9 +84,11 @@ def cpu_roiaware_pool3d(rois, pts, pts_feature, out_size, mode='max'):
                 pooled[n, vx, vy, vz] = torch.max(pooled[n, vx, vy, vz], pts_feature[p])
             else:  # avg - accumulate, we'll divide later
                 pooled[n, vx, vy, vz] += pts_feature[p]
+                counts[n, vx, vy, vz] += 1
 
-    # For avg mode, we'd need counts - but boundary effects make exact comparison difficult
-    # So we use sum-based comparison instead of exact match
+    if mode == 'avg':
+        nonempty = counts > 0
+        pooled[nonempty] /= counts[nonempty].to(pooled.dtype).unsqueeze(-1)
     return pooled
 
 
@@ -151,13 +154,20 @@ def run_correctness():
             return False, (f"Shape {i+1}: output shape {gpu_out_max.shape} "
                            f"!= expected {expected_shape}")
 
-        # Test avg pooling (just check shape and non-NaN)
+        # Test avg pooling against the independent CPU voxel/count reference.
         pool_avg = RoIAwarePool3d(out_size=out_size, max_pts_per_voxel=128, mode='avg')
         gpu_out_avg = pool_avg(rois_gpu, pts_gpu, feat_gpu)
         if gpu_out_avg.shape != expected_shape:
             return False, f"Shape {i+1}: avg pool output shape mismatch"
-        if torch.isnan(gpu_out_avg).any():
-            return False, f"Shape {i+1}: avg pool output contains NaN"
+        if not torch.isfinite(gpu_out_avg).all():
+            return False, f"Shape {i+1}: avg pool output contains NaN or Inf"
+        cpu_out_avg = cpu_roiaware_pool3d(
+            rois.float(), pts.float(), pts_feature.float(), out_size, mode='avg')
+        try:
+            torch.testing.assert_close(
+                gpu_out_avg.cpu(), cpu_out_avg, atol=1e-4, rtol=1e-3)
+        except AssertionError as exc:
+            return False, f"Shape {i+1}: avg pool mismatch: {exc}"
 
     return True, None
 

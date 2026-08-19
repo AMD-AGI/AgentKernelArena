@@ -506,7 +506,9 @@ def main():
 
     if args.correctness:
         print("\n[Correctness Mode]")
-        run_correctness(HARNESS_SHAPES)
+        correctness = run_correctness(HARNESS_SHAPES)
+        if not correctness["correct"]:
+            sys.exit(1)
     elif args.profile:
         print("\n[Profile Mode]")
         warmup = args.warmup if args.warmup is not None else 50

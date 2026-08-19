@@ -1,8 +1,9 @@
 task_type: image_kernel
-image_repo_path: /usr/local/lib/python3.12/dist-packages/aiter
+image_repo_path: /sgl-workspace/aiter
 repo_subdir: aiter
 image_repo_exclude:
 - __pycache__
+- aiter/jit/flydsl_cache
 - jit/build
 # The compute cores are FlyDSL (flydsl_moe1_* / flydsl_moe2_*) and the edit
 # surface includes ops/flydsl/moe_kernels.py. Must be one of the keys under

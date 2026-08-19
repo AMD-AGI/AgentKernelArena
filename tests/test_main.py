@@ -2,6 +2,7 @@ import logging
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
 
@@ -13,9 +14,55 @@ from agents.task_validator.report_schema import (
     validation_report_is_complete,
 )
 from src.module_registration import AgentType
+from src.preprocessing import get_task_workspace_path
 
 
 class TaskValidatorWorkspaceTests(unittest.TestCase):
+    def test_validator_records_workspace_setup_failure_as_complete_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            run_directory = root / "run"
+            run_directory.mkdir()
+            config_path = root / "config.yaml"
+            config_path.write_text("task_type: image_kernel\n")
+            task_name = "image_kernel/missing_repo"
+            timestamp = "20260721_000000"
+            expected_workspace = get_task_workspace_path(
+                run_directory, task_name, timestamp
+            )
+
+            def fail_after_workspace_creation(*args, **kwargs):
+                expected_workspace.mkdir(parents=True)
+                raise FileNotFoundError("image_repo_path is unavailable")
+
+            with patch("main.setup_workspace", side_effect=fail_after_workspace_creation):
+                completed, workspace = run_task(
+                    eval_config={},
+                    agent=AgentType.TASK_VALIDATOR,
+                    agent_launcher=lambda **kwargs: None,
+                    task_name=task_name,
+                    task_config_dir=str(config_path),
+                    run_directory=run_directory,
+                    timestamp=timestamp,
+                    logger=logging.getLogger(__name__),
+                    task_index=1,
+                    total_tasks=1,
+                )
+
+            self.assertTrue(completed)
+            self.assertEqual(workspace, expected_workspace)
+            self.assertTrue(validation_report_is_complete(expected_workspace))
+            report = yaml.safe_load(
+                (expected_workspace / "validation_report.yaml").read_text()
+            )
+            self.assertEqual(report["framework_status"], "FAIL")
+            self.assertTrue(
+                any(
+                    "image_repo_path is unavailable" in error
+                    for error in report["validation_errors"]
+                )
+            )
+
     def test_validator_does_not_treat_copied_report_as_current_run_output(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

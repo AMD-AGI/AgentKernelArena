@@ -3,9 +3,11 @@
 # Shape source: op_tests/triton_tests/moe/test_moe_mx.py
 
 import argparse
+import json
 import os
 import sys
 import math
+from pathlib import Path
 
 import torch
 import triton
@@ -389,6 +391,7 @@ def do_benchmark(indices):
     torch.manual_seed(42)
     latencies = []
     methods = []
+    report_cases = []
 
     for idx in indices:
         cfg = ALL_CONFIGS[idx]
@@ -402,8 +405,27 @@ def do_benchmark(indices):
         )
         latencies.append(median_ms)
         methods.append(benchmark_meta["benchmark_method"])
+        report_cases.append({
+            # The upstream list intentionally contains one repeated shape. Keep
+            # both workloads, but include the stable list index so baseline and
+            # candidate records remain uniquely matchable.
+            "test_case_id": "case={} {}".format(idx, _format_config(cfg)),
+            "params": {
+                "case_index": idx,
+                "M": cfg[0],
+                "N": cfg[1],
+                "K": cfg[2],
+                "E": cfg[3],
+                "top_k": cfg[4],
+            },
+            "execution_time_ms": median_ms,
+            **benchmark_meta,
+        })
         print("  {}  {:.4f}ms".format(_format_config(cfg), median_ms))
 
+    report_path = Path("build/performance_report.json")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report_cases, indent=2))
     return latencies, methods
 
 

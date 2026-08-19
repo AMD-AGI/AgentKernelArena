@@ -11,9 +11,11 @@ Modes: --correctness, --benchmark, --full-benchmark, --profile
 import os
 import sys
 import argparse
+import json
 import math
 import random
 from enum import IntEnum
+from pathlib import Path
 
 import torch
 import triton
@@ -272,6 +274,34 @@ def _config_label(cfg):
     )
 
 
+def _write_performance_report(records):
+    """Write stable, uniquely matchable per-case benchmark records."""
+    rows = []
+    for idx, cfg, latency_ms, metadata in records:
+        params = {
+            key: (
+                value.name
+                if isinstance(value, IntEnum)
+                else str(value)
+                if isinstance(value, torch.dtype)
+                else value
+            )
+            for key, value in cfg.items()
+        }
+        params["case_index"] = idx
+        rows.append(
+            {
+                "test_case_id": f"case={idx} {_config_label(cfg)}",
+                "params": params,
+                "execution_time_ms": latency_ms,
+                **metadata,
+            }
+        )
+    report_path = Path("build/performance_report.json")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(rows, indent=2))
+
+
 def _setup_inputs(cfg):
     """Build inputs for fused_qk_rope_cat_and_cache_mla, matching the test."""
     torch.manual_seed(42)
@@ -488,6 +518,12 @@ def _benchmark_single(cfg):
     kv_cache_clone = inp["kv_cache"].clone()
     if inp["cache_dtype"] == torch.uint8:
         kv_cache_clone = kv_cache_clone.view(inp["cache_dtype_actual"])
+    slot_mapping = inp["slot_mapping"].long()
+    # ROCm does not implement index_copy_ for Float8_e4m3fn. Restore the exact
+    # cache bytes instead; dtype views preserve the same storage and slot axis,
+    # so this works uniformly for bf16 and float8-backed uint8 cache cases.
+    cache_restore_view = kv_cache_clone.view(torch.uint8)
+    initial_slots = cache_restore_view.index_select(0, slot_mapping).clone()
 
     def _kernel_fn():
         return fused_qk_rope_cat_and_cache_mla(
@@ -510,7 +546,12 @@ def _benchmark_single(cfg):
         )
 
     return benchmark_cuda_graph_or_events(
-        _kernel_fn, warmup=WARMUP, repetition=ITERATIONS,
+        _kernel_fn,
+        warmup=WARMUP,
+        repetition=ITERATIONS,
+        prepare_fn=lambda: cache_restore_view.index_copy_(
+            0, slot_mapping, initial_slots
+        ),
     )
 
 
@@ -550,12 +591,15 @@ def main():
         print(f"Running profile on {len(configs)} configs...")
         latencies = []
         methods = []
+        records = []
         for i, (idx, cfg) in enumerate(zip(indices, configs)):
             label = _config_label(cfg)
             ms, metadata = _benchmark_single(cfg)
             latencies.append(ms)
             methods.append(metadata["benchmark_method"])
+            records.append((idx, cfg, ms, metadata))
             print(f"  {label}  {ms:.4f}ms")
+        _write_performance_report(records)
         geo_mean = math.exp(sum(math.log(t) for t in latencies) / len(latencies))
         print(f"GEAK_SHAPES_USED={indices}")
         print(f"GEAK_RESULT_LATENCY_MS={geo_mean:.4f}")
@@ -569,12 +613,15 @@ def main():
         print(f"Running benchmark on {len(configs)} configs...")
         latencies = []
         methods = []
+        records = []
         for i, (idx, cfg) in enumerate(zip(indices, configs)):
             label = _config_label(cfg)
             ms, metadata = _benchmark_single(cfg)
             latencies.append(ms)
             methods.append(metadata["benchmark_method"])
+            records.append((idx, cfg, ms, metadata))
             print(f"  {label}  {ms:.4f}ms")
+        _write_performance_report(records)
         geo_mean = math.exp(sum(math.log(t) for t in latencies) / len(latencies))
         print(f"GEAK_SHAPES_USED={indices}")
         print(f"GEAK_RESULT_LATENCY_MS={geo_mean:.4f}")
@@ -588,12 +635,15 @@ def main():
         print(f"Running full benchmark on {len(configs)} configs...")
         latencies = []
         methods = []
+        records = []
         for i, (idx, cfg) in enumerate(zip(indices, configs)):
             label = _config_label(cfg)
             ms, metadata = _benchmark_single(cfg)
             latencies.append(ms)
             methods.append(metadata["benchmark_method"])
+            records.append((idx, cfg, ms, metadata))
             print(f"  {label}  {ms:.4f}ms")
+        _write_performance_report(records)
         geo_mean = math.exp(sum(math.log(t) for t in latencies) / len(latencies))
         print(f"GEAK_SHAPES_USED={indices}")
         print(f"GEAK_RESULT_LATENCY_MS={geo_mean:.4f}")
