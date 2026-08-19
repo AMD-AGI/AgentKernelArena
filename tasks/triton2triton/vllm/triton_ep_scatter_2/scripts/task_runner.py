@@ -137,34 +137,38 @@ def run_performance():
                 starts.append(s)
                 s += a
 
-            for _ in range(WARMUP_ITERATIONS):
-                expert_start_loc = torch.tensor(starts, device=device, dtype=torch.int32)
-                output_tensor = torch.zeros(total, hidden_size, device=device, dtype=torch.float16)
-                output_index = torch.full((num_tokens, topk), -1, device=device, dtype=torch.int32)
-                mod.ep_scatter_2(recv_x, recv_topk, expert_start_loc, output_tensor, output_index)
-            torch.cuda.synchronize()
+            expert_start_loc = torch.tensor(starts, device=device, dtype=torch.int32)
+            initial_expert_start_loc = expert_start_loc.clone()
+            output_tensor = torch.zeros(total, hidden_size, device=device, dtype=torch.float16)
+            output_index = torch.full((num_tokens, topk), -1, device=device, dtype=torch.int32)
 
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
-                expert_start_loc_j = torch.tensor(starts, device=device, dtype=torch.int32)
-                output_tensor_j = torch.zeros(total, hidden_size, device=device, dtype=torch.float16)
-                output_index_j = torch.full((num_tokens, topk), -1, device=device, dtype=torch.int32)
-                start_events[j].record()
-                mod.ep_scatter_2(recv_x, recv_topk, expert_start_loc_j, output_tensor_j, output_index_j)
-                end_events[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "per_iteration_prepare_or_state_reset",
-            }
+            grid = (min(num_tokens, 1024 * 8),)
+            recv_x_stride0, recv_x_stride1 = recv_x.stride()
+            recv_topk_stride0, recv_topk_stride1 = recv_topk.stride()
+            output_stride0, output_stride1 = output_tensor.stride()
+            output_index_stride0, output_index_stride1 = output_index.stride()
+            hidden_size_pad = mod.triton.next_power_of_2(hidden_size)
+
+            def _bench_fn():
+                mod._fwd_kernel_ep_scatter_2[grid](
+                    num_tokens,
+                    expert_start_loc,
+                    recv_x, recv_x_stride0, recv_x_stride1,
+                    recv_topk, recv_topk_stride0, recv_topk_stride1,
+                    output_tensor, output_stride0, output_stride1,
+                    output_index, output_index_stride0, output_index_stride1,
+                    topk_num=topk,
+                    num_warps=8,
+                    HIDDEN_SIZE=hidden_size,
+                    HIDDEN_SIZE_PAD=hidden_size_pad,
+                )
+
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                _bench_fn,
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                prepare_fn=lambda: expert_start_loc.copy_(initial_expert_start_loc),
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
@@ -181,6 +185,8 @@ def run_performance():
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
+                "benchmark_method": "benchmark_failed",
+                "benchmark_fallback_reason": "performance_case_exception",
                 "params": {
                     "num_tokens": num_tokens,
                     "hidden_size": hidden_size,

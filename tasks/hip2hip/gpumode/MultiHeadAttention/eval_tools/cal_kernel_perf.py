@@ -12,6 +12,10 @@ from typing import Any, Dict, List, Tuple, Union
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from compile import clear_workdir
 from utils import load_function_from_path, load_hip_kernel, save_eval_result
+from _aka_benchmark import (
+    benchmark_cuda_graph_or_events,
+    hip_source_graph_capture_policy,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -140,23 +144,43 @@ def _write_perf_report(report: Dict[str, Any]) -> None:
         json.dump(report, f, indent=2)
 
 
-def cal_hip_latency(kernel_hip: Any, inputs: List[Any], hip_fn: Any, n_iter: int = 100, n_warmup: int = 10) -> float:
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
+def cal_hip_latency(kernel_hip: Any, inputs: List[Any], hip_fn: Any,
+                    n_iter: int = 100, n_warmup: int = 10,
+                    use_cuda_graph: bool = True,
+                    fallback_reason: str | None = None,
+                    prepare_fn: Any = None) -> Tuple[float, Dict[str, Any]]:
+    return benchmark_cuda_graph_or_events(
+        lambda: kernel_hip(*inputs, fn=hip_fn),
+        warmup=n_warmup,
+        repetition=n_iter,
+        use_cuda_graph=use_cuda_graph,
+        fallback_reason=fallback_reason,
+        prepare_fn=prepare_fn,
+    )
 
-    for _ in range(n_warmup):
-        kernel_hip(*inputs, fn=hip_fn)
 
-    torch.cuda.synchronize()
-    start.record()
-    for _ in range(n_iter):
-        kernel_hip(*inputs, fn=hip_fn)
-    end.record()
-    torch.cuda.synchronize()
+def _clone_benchmark_inputs(inputs: List[Any]) -> List[Any]:
+    return [
+        value.detach().clone() if torch.is_tensor(value) else copy.deepcopy(value)
+        for value in inputs
+    ]
 
-    elapsed = start.elapsed_time(end)
-    avg_time = elapsed / n_iter
-    return avg_time
+
+def _tensor_inputs_changed(before: List[Any], after: List[Any]) -> bool:
+    return any(
+        torch.is_tensor(old) and torch.is_tensor(new) and not torch.equal(old, new)
+        for old, new in zip(before, after)
+    )
+
+
+def _make_restore_fn(working: List[Any], pristine: List[Any]):
+    def _restore() -> None:
+        with torch.no_grad():
+            for destination, source in zip(working, pristine):
+                if torch.is_tensor(destination) and torch.is_tensor(source):
+                    destination.copy_(source)
+
+    return _restore
 
 
 def _normalize_get_inputs_result(inputs_result: Any) -> Any:
@@ -193,6 +217,13 @@ def cal_kernel_perf(
     auto_cleanup: bool = True,
 ) -> Tuple[Any, Any, Any]:
     failed_ret: Tuple[Any, Any, Any] = (None, None, None)
+    ref_graph_enabled, ref_graph_reason = hip_source_graph_capture_policy(
+        ref_hip_kernel_path
+    )
+    # The reference decides the method policy. A candidate cannot force both
+    # sides onto Event timing by making its own graph capture unsafe.
+    graph_enabled = ref_graph_enabled
+    graph_fallback_reason = ref_graph_reason
 
     # Create separate build directories for reference and optimized kernels
     ref_hip_dir = os.path.join(build_dir, "hip_ref")
@@ -305,11 +336,23 @@ def cal_kernel_perf(
         try:
             torch.manual_seed(1337 + case_idx)
             torch.cuda.manual_seed_all(1337 + case_idx)
-            ref_result = kernel_func(*copy.deepcopy(inputs_func_cuda), fn=ref_hip_fn)
+            ref_check_inputs = _clone_benchmark_inputs(inputs_func_cuda)
+            ref_check_pristine = _clone_benchmark_inputs(ref_check_inputs)
+            ref_result = kernel_func(*ref_check_inputs, fn=ref_hip_fn)
+            torch.cuda.synchronize()
+            reference_mutates_inputs = _tensor_inputs_changed(
+                ref_check_pristine, ref_check_inputs
+            )
 
             torch.manual_seed(1337 + case_idx)
             torch.cuda.manual_seed_all(1337 + case_idx)
-            opt_result = kernel_func(*copy.deepcopy(inputs_func_cuda), fn=opt_hip_fn)
+            opt_check_inputs = _clone_benchmark_inputs(inputs_func_cuda)
+            opt_check_pristine = _clone_benchmark_inputs(opt_check_inputs)
+            opt_result = kernel_func(*opt_check_inputs, fn=opt_hip_fn)
+            torch.cuda.synchronize()
+            inputs_mutated = reference_mutates_inputs or _tensor_inputs_changed(
+                opt_check_pristine, opt_check_inputs
+            )
 
             if not _compare_results(ref_result, opt_result, rtol=rtol, atol=atol):
                 print(f"[MISMATCH] {kernel_name} case {case_idx}: reference and optimized results differ.")
@@ -325,20 +368,57 @@ def cal_kernel_perf(
             report["test_cases"].append(case_entry)
             continue
 
-        # Performance comparison: reference HIP vs optimized HIP
+        # Performance comparison: reference HIP vs optimized HIP. Each side
+        # gets independent buffers. If either implementation mutates its inputs,
+        # both buffers are restored before every measured invocation.
         try:
-            ref_time = cal_hip_latency(kernel_func, inputs_func_cuda, ref_hip_fn)
-            opt_time = cal_hip_latency(kernel_func, inputs_func_cuda, opt_hip_fn)
+            ref_perf_inputs = _clone_benchmark_inputs(inputs_func_cuda)
+            opt_perf_inputs = _clone_benchmark_inputs(inputs_func_cuda)
+            ref_pristine = _clone_benchmark_inputs(ref_perf_inputs)
+            opt_pristine = _clone_benchmark_inputs(opt_perf_inputs)
+            ref_prepare = (
+                _make_restore_fn(ref_perf_inputs, ref_pristine)
+                if inputs_mutated else None
+            )
+            opt_prepare = (
+                _make_restore_fn(opt_perf_inputs, opt_pristine)
+                if inputs_mutated else None
+            )
+            ref_time, ref_meta = cal_hip_latency(
+                kernel_func,
+                ref_perf_inputs,
+                ref_hip_fn,
+                use_cuda_graph=graph_enabled,
+                fallback_reason=graph_fallback_reason,
+                prepare_fn=ref_prepare,
+            )
+            opt_time, opt_meta = cal_hip_latency(
+                kernel_func,
+                opt_perf_inputs,
+                opt_hip_fn,
+                use_cuda_graph=graph_enabled,
+                fallback_reason=graph_fallback_reason,
+                prepare_fn=opt_prepare,
+            )
             
             case_entry["ref_time"] = round(ref_time, 5)
             case_entry["opt_time"] = round(opt_time, 5)
-            case_entry["speedup"] = round(ref_time / opt_time, 2) if opt_time > 0 else None
             case_entry["execution_time_ms"] = round(opt_time, 5)
+            case_entry.update(opt_meta)
+            ref_method = ref_meta.get("benchmark_method")
+            opt_method = opt_meta.get("benchmark_method")
+            case_entry["reference_benchmark_method"] = ref_method
+            case_entry["benchmark_method_consistent"] = ref_method == opt_method
+            case_entry["speedup"] = (
+                round(ref_time / opt_time, 2)
+                if opt_time > 0 and ref_method == opt_method else None
+            )
             
             ref_times.append(ref_time)
             opt_times.append(opt_time)
             
-            print(f"[INFO] Case {case_idx}: ref={ref_time:.5f}ms, opt={opt_time:.5f}ms, speedup={case_entry['speedup']:.2f}x")
+            speedup_text = f"{case_entry['speedup']:.2f}x" if case_entry["speedup"] is not None else "N/A"
+            print(f"[INFO] Case {case_idx}: ref={ref_time:.5f}ms, opt={opt_time:.5f}ms, speedup={speedup_text}")
         except Exception as e:
             print(f"[Error] {kernel_name} case {case_idx} performance exception: {e}")
             case_entry["error"] = f"perf_exception: {e}"
@@ -365,13 +445,22 @@ def cal_kernel_perf(
         # Calculate average times across all test cases
         avg_ref_time = sum(ref_times) / len(ref_times)
         avg_opt_time = sum(opt_times) / len(opt_times)
-        avg_speedup = avg_ref_time / avg_opt_time if avg_opt_time > 0 else None
+        methods_consistent = bool(report["test_cases"]) and all(
+            case.get("benchmark_method_consistent", False)
+            for case in report["test_cases"]
+        )
+        avg_speedup = (
+            avg_ref_time / avg_opt_time
+            if methods_consistent and avg_opt_time > 0 else None
+        )
 
         print(f"[INFO] HIP kernel {kernel_name} processed {len(ref_times)} test cases.")
-        print(f"[INFO] Average: ref={avg_ref_time:.5f}ms, opt={avg_opt_time:.5f}ms, speedup={avg_speedup:.2f}x")
+        avg_speedup_text = f"{avg_speedup:.2f}x" if avg_speedup is not None else "N/A"
+        print(f"[INFO] Average: ref={avg_ref_time:.5f}ms, opt={avg_opt_time:.5f}ms, speedup={avg_speedup_text}")
         
         report["status"] = "ok"
         report["message"] = f"Performance benchmark completed for {len(ref_times)} test cases"
+        report["benchmark_method_consistent"] = methods_consistent
         report["speedup"] = round(avg_speedup, 2) if avg_speedup else None
         report["ori_time"] = round(avg_ref_time, 5)
         report["opt_time"] = round(avg_opt_time, 5)
@@ -380,7 +469,7 @@ def cal_kernel_perf(
         if auto_cleanup:
             clear_workdir(ref_hip_dir)
             clear_workdir(opt_hip_dir)
-        return round(avg_speedup, 2) if avg_speedup else None, round(avg_ref_time, 5), round(avg_opt_time, 5)
+        return round(avg_speedup, 2) if avg_speedup is not None else 0.0, round(avg_ref_time, 5), round(avg_opt_time, 5)
 
 
 if __name__ == "__main__":
@@ -389,4 +478,3 @@ if __name__ == "__main__":
     if ret_perf[0] is not None:
         save_eval_result({"speedup": ret_perf[0], "ori_time": ret_perf[1], "opt_time": ret_perf[2]})
     sys.exit(0 if ret_perf[0] is not None else 1)
-

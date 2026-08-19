@@ -456,9 +456,12 @@ def general_post_processing(
             base_execution_time = result_data.get('base_execution_time', 0.0)
             best_optimized_execution_time = result_data.get('best_optimized_execution_time', 0.0)
             task_info['speedup_ratio'] = resolve_speedup_ratio(
-                speedup_ratio=result_data.get('speedup_ratio', 0.0),
+                speedup_ratio=result_data.get('speedup_ratio'),
                 base_execution_time=base_execution_time,
                 best_optimized_execution_time=best_optimized_execution_time,
+                benchmark_method_consistent=result_data.get(
+                    'benchmark_method_consistent'
+                ),
             )
 
             # Update counters

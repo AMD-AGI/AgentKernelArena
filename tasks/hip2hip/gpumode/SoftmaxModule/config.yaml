@@ -1,7 +1,7 @@
 source_file_path:
 - hip/hip_10082_SoftmaxModule.hip
 target_kernel_functions:
-- forward
+  - softmax_forward
 compile_command:
 - python3 eval_tools/compile.py --hip_file hip/hip_10082_SoftmaxModule.hip
 correctness_command:

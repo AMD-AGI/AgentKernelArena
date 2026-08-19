@@ -5,7 +5,6 @@
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 
@@ -14,6 +13,8 @@ os.chdir(TASK_DIR)
 
 TASK_NAME = "hip2hip/mla_decode"
 BINARY = os.path.join(TASK_DIR, "applications_mla_decode")
+BENCH_BINARY = os.path.join(TASK_DIR, "build", "native_graph_benchmark")
+BENCH_SOURCE = os.path.join(TASK_DIR, "scripts", "native", "benchmark_driver.hip")
 
 # 5 representative shapes covering the decode regime. The kernel is
 # hardcoded to NHEAD=128 / LK=576 / LV=512, so the only free axes are
@@ -44,6 +45,21 @@ def run_compile():
             return False, f"make failed:\n{result.stderr}\n{result.stdout}"
         if not os.path.isfile(BINARY):
             return False, f"Binary {BINARY} not found after make"
+        os.makedirs(os.path.dirname(BENCH_BINARY), exist_ok=True)
+        result = subprocess.run(
+            [
+                os.environ.get("HIPCXX", "hipcc"),
+                "-O3", "-ffast-math",
+                "--offload-arch=gfx950", "--offload-arch=gfx942",
+                "-munsafe-fp-atomics", "-std=c++17",
+                BENCH_SOURCE, "-o", BENCH_BINARY,
+            ],
+            cwd=TASK_DIR, capture_output=True, text=True, timeout=600,
+        )
+        if result.returncode != 0:
+            return False, f"native benchmark compile failed:\n{result.stderr}\n{result.stdout}"
+        if not os.path.isfile(BENCH_BINARY):
+            return False, f"Native benchmark {BENCH_BINARY} not found after compile"
         return True, None
     except Exception as e:
         return False, str(e)
@@ -74,36 +90,48 @@ def run_correctness():
     return True, None
 
 
+def _parse_native_result(output):
+    prefix = "AKA_BENCHMARK_RESULT "
+    for line in output.splitlines():
+        if not line.startswith(prefix):
+            continue
+        result = json.loads(line[len(prefix):])
+        if result.get("benchmark_method") not in {"cuda_graph", "cuda_event_fallback"}:
+            raise ValueError("native benchmark returned an invalid benchmark_method")
+        elapsed = float(result["execution_time_ms"])
+        if elapsed <= 0:
+            raise ValueError("native benchmark returned a non-positive execution time")
+        return result
+    raise ValueError("native benchmark did not emit AKA_BENCHMARK_RESULT")
+
+
 def run_performance():
-    if not os.path.isfile(BINARY):
-        return []
+    if not os.path.isfile(BENCH_BINARY):
+        return [], "Native benchmark binary not found. Run compile first."
 
     test_cases = []
     for shape_idx, (batch, ctx) in enumerate(TEST_SHAPES):
         try:
-            # The binary benchmark performs the measurement loop internally:
-            # 10 warmup launches followed by 100 measured launches, returning
-            # the average device time per launch. Keep the Python wrapper to
-            # one subprocess per shape so we do not multiply the measurement
-            # loop by another layer of subprocess iterations.
             result = subprocess.run(
-                [BINARY, "--batch", str(batch), "--ctx", str(ctx), "--mode", "bench"],
+                [
+                    BENCH_BINARY,
+                    "--batch", str(batch),
+                    "--ctx", str(ctx),
+                    "--samples", "100",
+                ],
                 capture_output=True, text=True, timeout=300,
             )
             output = result.stdout + result.stderr
-            m = re.search(r"Perf:\s+([\d.]+)\s+us/launch", output)
+            if result.returncode != 0:
+                return [], f"Shape {shape_idx} native benchmark failed:\n{output}"
+            parsed = _parse_native_result(output)
+            parsed["test_case_id"] = f"shape_{shape_idx}"
+            parsed["params"] = {"batch": batch, "ctx": ctx}
+            test_cases.append(parsed)
+        except Exception as error:
+            return [], f"Shape {shape_idx} native benchmark failed: {error}"
 
-            if result.returncode == 0 and m:
-                elapsed_ms = float(m.group(1)) / 1000.0
-                test_cases.append({
-                    "test_case_id": f"shape_{shape_idx}",
-                    "execution_time_ms": elapsed_ms,
-                    "params": {"batch": batch, "ctx": ctx},
-                })
-        except Exception:
-            continue
-
-    return test_cases
+    return test_cases, None
 
 
 def main():
@@ -134,12 +162,14 @@ def main():
         sys.exit(0 if ok else 1)
 
     elif args.mode == "performance":
-        test_cases = run_performance()
+        test_cases, err = run_performance()
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
-            json.dump({"test_cases": test_cases}, f, indent=2)
+            json.dump({"test_cases": test_cases, "error": err}, f, indent=2)
         for case in test_cases:
             print(f"Performance: {case['execution_time_ms']:.4f} ms ({case['test_case_id']})")
-        sys.exit(0)
+        if err:
+            print(f"Performance: FAIL\nError: {err}")
+        sys.exit(0 if test_cases and not err else 1)
 
 
 if __name__ == "__main__":

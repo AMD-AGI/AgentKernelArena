@@ -5,7 +5,7 @@ paged-attention decode) on AMD MI300X (gfx942).
 This replaces the old "compile-smoke" stub that timed kernel COMPILATION.
 Here we compile ONCE (the kernel's compile_* entry points are lru_cached and
 the returned launchers are @flyc.jit, so repeated calls reuse the compiled
-artifact) and then time real kernel EXECUTION with torch.cuda.Event.
+artifact) and then time real kernel EXECUTION with graph-first timing.
 
 Pipeline (per the kernel's intended usage, both stages run):
   stage 1: launch_pa_decode_sw        -> exp_sums / max_logits / tmp_out
@@ -25,6 +25,7 @@ import math
 import os
 import sys
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 # ============================================================================
 # Bootstrap / path discipline
@@ -266,9 +267,11 @@ def _make_decode(mod, data):
     gy = num_kv_heads * mtp_groups
     gz = max_parts
 
-    stream = torch.cuda.current_stream()
-
     def _run():
+        # The benchmark helper captures on a side stream. Resolve the active
+        # stream at invocation time so both stages become graph nodes instead
+        # of being launched onto the stream that built this closure.
+        stream = torch.cuda.current_stream()
         stage1(
             exp_sums, max_logits, tmp_out, output,
             q, kc, vc, bt, cl, ks, vs,
@@ -393,7 +396,7 @@ def run_correctness(shapes=None, verbose=True):
 
 
 # ============================================================================
-# Benchmark (compile ONCE, time EXECUTION via cuda events, median over iters)
+# Benchmark (compile once, then use graph-first GPU timing)
 # ============================================================================
 def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
     import torch
@@ -422,19 +425,16 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
                 run_fn()
             torch.cuda.synchronize()
 
-            times = []
-            for _ in range(iters):
-                s = torch.cuda.Event(enable_timing=True)
-                e = torch.cuda.Event(enable_timing=True)
-                s.record()
-                run_fn()
-                e.record()
-                torch.cuda.synchronize()
-                times.append(s.elapsed_time(e))
-            kernel_ms = sum(times) / len(times)
+            kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+                run_fn, warmup=0, repetition=iters
+            )
             status = ""
         except Exception as ex:
             kernel_ms = float("nan")
+            kernel_bench_meta = {
+                "benchmark_method": "benchmark_failed",
+                "benchmark_fallback_reason": str(ex),
+            }
             status = f"  [FAIL: {str(ex)[:60]}]"
 
         speedup = 1.0  # no torch SWA paged-attention reference; report latency
@@ -445,6 +445,7 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         report_cases.append({
             "test_case_id": f"test_case_{idx}",
             "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
             "params": {"num_seqs": num_seqs, "context_len": ctx,
                        "num_kv_heads": kvh, "sliding_window": sw},
         })

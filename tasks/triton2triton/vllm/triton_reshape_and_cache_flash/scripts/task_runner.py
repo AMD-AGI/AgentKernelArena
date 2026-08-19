@@ -147,13 +147,24 @@ def run_performance():
             value_cache = torch.zeros(num_blocks, block_size, num_heads, head_size, device=device, dtype=dtype)
             total_slots = num_blocks * block_size
             slot_mapping = torch.randperm(total_slots, device=device)[:num_tokens].to(torch.int64)
+            k_scale = torch.tensor(1.0, dtype=torch.float32, device=device)
+            v_scale = torch.tensor(1.0, dtype=torch.float32, device=device)
 
             def _bench_fn():
-                mod.reshape_and_cache_flash(key, value, key_cache, value_cache, slot_mapping)
+                mod.reshape_and_cache_flash(
+                    key,
+                    value,
+                    key_cache,
+                    value_cache,
+                    slot_mapping,
+                    k_scale=k_scale,
+                    v_scale=v_scale,
+                )
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
                 _bench_fn,
                 warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS,
+                prepare_fn=lambda: (key_cache.zero_(), value_cache.zero_()),
             )
 
             test_cases.append({

@@ -21,6 +21,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 KERNEL_FILE = "kernel.py"
 MODEL_FILE = "model.py"
@@ -222,52 +223,54 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             run_kernel()
         torch.cuda.synchronize()
 
-        ktimes = []
-        for _ in range(iters):
-            s = torch.cuda.Event(enable_timing=True)
-            e = torch.cuda.Event(enable_timing=True)
-            s.record()
-            run_kernel()
-            e.record()
-            torch.cuda.synchronize()
-            ktimes.append(s.elapsed_time(e))
-        kernel_ms = sum(ktimes) / len(ktimes)
+        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+            run_kernel, warmup=0, repetition=iters
+        )
 
         with torch.no_grad():
-            for _ in range(warmup):
-                model(q, kv, kv_weight, cos, sin, positions)
-            torch.cuda.synchronize()
-            rtimes = []
-            for _ in range(iters):
-                s = torch.cuda.Event(enable_timing=True)
-                e = torch.cuda.Event(enable_timing=True)
-                s.record()
-                model(q, kv, kv_weight, cos, sin, positions)
-                e.record()
-                torch.cuda.synchronize()
-                rtimes.append(s.elapsed_time(e))
-        ref_ms = sum(rtimes) / len(rtimes)
+            ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: model(q, kv, kv_weight, cos, sin, positions),
+                warmup=warmup,
+                repetition=iters,
+            )
 
-        speedup = ref_ms / kernel_ms if kernel_ms > 0 else 1.0
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
         latencies.append(kernel_ms)
-        speedups.append(speedup)
+        if speedup is not None:
+            speedups.append(speedup)
         # bytes moved: Q in/out + KV in/out + kv_weight (bf16).
         bytes_total = (T * H * D * 2 * 2) + (T * D * 2 * 2) + (D * 2)
         gbps = bytes_total / (kernel_ms * 1e-3) / 1e9
         report.append({
             "test_case_id": f"test_case_{idx}",
             "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
             "shape": [T, H, D, RD],
             "params": {"T": T, "H": H, "D": D, "RD": RD, "group_size": G, "dtype": "bf16"},
             "gbps": gbps,
         })
         if verbose:
-            print(f"{shape['name']:<24} {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup:>8.2f}x")
+            print(f"{shape['name']:<24} {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}")
         del model, q, kv, kv_weight, cos, sin, positions
         torch.cuda.empty_cache()
 
     geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
-    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups))
+    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
 
     build_dir = Path(_KERNEL_DIR) / "build"
     build_dir.mkdir(exist_ok=True)
@@ -276,7 +279,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
 
     print("-" * 60)
     print(f"Geometric mean latency: {geomean_latency:.4f} ms")
-    print(f"Geometric mean speedup: {geomean_speedup:.2f}x")
+    print(f"Geometric mean speedup: {geomean_speedup_display}")
     return {"geomean_latency_ms": geomean_latency, "geomean_speedup": geomean_speedup}
 
 

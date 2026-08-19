@@ -1,6 +1,7 @@
 // Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 #include <torch/extension.h>
 #include <ATen/ATen.h>
+#include <c10/hip/HIPStream.h>
 #include <hip/hip_runtime.h>
 #include <cmath>
 #include <cfloat>
@@ -112,6 +113,23 @@ __global__ void fused_kd_loss_kernel(
     }
 }
 
+// Apply the final scalar normalization on device so forward() remains
+// asynchronous and graph-capturable. Keep the arithmetic order identical to
+// the former host-side expression.
+__global__ void finalize_kd_loss_kernel(
+    float* out_sum,
+    float temp_factor,
+    int N)
+{
+    if (blockIdx.x == 0 && threadIdx.x == 0) {
+        float loss = out_sum[0];
+        loss = loss * temp_factor;
+        loss = loss * temp_factor;
+        loss = loss / static_cast<float>(N);
+        out_sum[0] = loss;
+    }
+}
+
 // Launcher: matches PyTorch kd_loss_fn semantics and returns a scalar tensor
 torch::Tensor forward(
     torch::Tensor input,
@@ -135,8 +153,8 @@ torch::Tensor forward(
     int H = static_cast<int>(sizes[2]);
     int W = static_cast<int>(sizes[3]);
 
-    // Allocate device scalar for sum
-    auto out_sum = torch::zeros({1}, input.options());
+    // Allocate the scalar output directly on device.
+    auto out_sum = torch::zeros({}, input.options());
 
     int M = N * H * W; // blocks
     int max_threads = 256;
@@ -145,33 +163,33 @@ torch::Tensor forward(
     if (threads < 32) threads = 32; // reasonable minimum
 
     size_t smem = threads * sizeof(float);
+    hipStream_t stream = c10::hip::getCurrentHIPStream().stream();
 
     hipLaunchKernelGGL(
         fused_kd_loss_kernel,
-        dim3(M), dim3(threads), smem, 0,
+        dim3(M), dim3(threads), smem, stream,
         input.data_ptr<float>(),
         target.data_ptr<float>(),
         out_sum.data_ptr<float>(),
         N, C, H, W,
         temp_factor
     );
-
-    hipError_t err = hipDeviceSynchronize();
+    hipError_t err = hipGetLastError();
     TORCH_CHECK(err == hipSuccess, "HIP kernel launch failed: ", hipGetErrorString(err));
 
-    // Finish loss: loss = sum * temp^2 / N
-    float sum_val = out_sum.item<float>();
-    float loss_val = sum_val * temp_factor * temp_factor / static_cast<float>(N);
+    hipLaunchKernelGGL(
+        finalize_kd_loss_kernel,
+        dim3(1), dim3(1), 0, stream,
+        out_sum.data_ptr<float>(),
+        temp_factor,
+        N
+    );
+    err = hipGetLastError();
+    TORCH_CHECK(err == hipSuccess, "HIP finalization launch failed: ", hipGetErrorString(err));
 
-    // Return scalar tensor on device with same dtype/options
-    auto loss_tensor = torch::empty({}, input.options());
-    // Write via CPU then copy or directly set by making a scalar on device
-    // Use at::full to create device scalar
-    loss_tensor = at::full({}, loss_val, input.options());
-    return loss_tensor;
+    return out_sum;
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &forward, "KD Loss forward (HIP, fused)");
 }
-

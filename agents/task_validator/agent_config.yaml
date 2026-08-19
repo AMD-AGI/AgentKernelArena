@@ -1,5 +1,5 @@
 backend: claude_code          # claude_code | codex
-timeout_seconds: 1200         # 0 means no timeout; run until validator backend exits
+timeout_seconds: 1200         # minimum outer timeout; auto-raised for task command budgets (0 disables)
 # null -> auto-use the framework-detected interpreter (AGENT_KERNEL_ARENA_PYTHON),
 # which is correct inside the Docker container (e.g. /opt/venv/bin/python).
 python_path: null

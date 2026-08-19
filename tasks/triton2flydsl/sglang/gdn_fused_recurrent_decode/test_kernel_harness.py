@@ -9,7 +9,7 @@ Modes:
   --correctness    : run the Triton kernel vs a torch fp32 reference on real
                      Qwen3.5-35B-A3B GDN decode shapes; assert close (output AND
                      updated recurrent state).
-  --full-benchmark : warmup + cuda-event timing, write build/performance_report.json
+  --full-benchmark : graph-first GPU timing, write build/performance_report.json
 
 The Triton kernel `fused_recurrent_gated_delta_rule_packed_decode` is the kernel
 under test; `reference_decode` (pure torch, fp32) is the golden. The flydsl
@@ -23,6 +23,7 @@ import json
 import time
 import argparse
 import importlib.util
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -230,39 +231,44 @@ def run_performance():
             torch.manual_seed(42 + ti)
             inp = make_test_data(B, H, HV, K, V, pool, "cuda", dtype)
             state = inp["ssm_states"]
+            initial_state = state.clone()
             out = inp["mixed_qkv"].new_empty(B, 1, HV, V)
 
+            def prepare_fn():
+                state.copy_(initial_state)
+
             def fn():
-                _retry_oom(lambda: mod.fused_recurrent_gated_delta_rule_packed_decode(
+                mod.fused_recurrent_gated_delta_rule_packed_decode(
                     mixed_qkv=inp["mixed_qkv"], a=inp["a"], b=inp["b"],
                     A_log=inp["A_log"], dt_bias=inp["dt_bias"], scale=inp["scale"],
                     initial_state=state, out=out,
                     ssm_state_indices=inp["cache_indices"],
                     use_qk_l2norm_in_kernel=True,
-                ))
+                )
 
+            prepare_fn()
+            _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
+                prepare_fn()
                 fn()
             torch.cuda.synchronize()
 
-            n_iter = BENCHMARK_ITERATIONS
-            se = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            ee = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
-                se[j].record()
-                fn()
-                ee[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(se, ee)]
+            elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS,
+                prepare_fn=prepare_fn,
+            )
             test_cases.append({
                 "test_case_id": f"perf{ti + 1}",
-                "execution_time_ms": sum(times) / len(times),
+                "execution_time_ms": elapsed_ms,
+                **bench_meta,
                 "params": params,
             })
         except Exception:
             test_cases.append({
                 "test_case_id": f"perf{ti + 1}",
                 "execution_time_ms": -1.0,
+                "benchmark_method": "benchmark_failed",
+                "benchmark_fallback_reason": "performance case failed before timing completed",
                 "params": params,
             })
     return test_cases

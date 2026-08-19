@@ -163,36 +163,24 @@ def run_performance():
             kv = torch.randn(B, H, NUM_BLOCK, D, E, device=device, dtype=torch.float32)
             kv_history = torch.zeros(B, H, D, E, device=device, dtype=torch.float32)
 
-            # Warmup
-            for _ in range(WARMUP_ITERATIONS):
-                kv_c = kv.clone()
-                h_c = kv_history.clone()
-                mod.lightning_attn_kv_reduce_forward(s, kv_c, h_c, N, BLOCK)
-            torch.cuda.synchronize()
+            kv_work = kv.clone()
+            history_work = kv_history.clone()
 
-            # Benchmark
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            def _bench_fn():
+                mod.lightning_attn_kv_reduce_forward(
+                    s, kv_work, history_work, N, BLOCK
+                )
 
-            for j in range(n_iter):
-                kv_c = kv.clone()
-                h_c = kv_history.clone()
-                start_events[j].record()
-                mod.lightning_attn_kv_reduce_forward(s, kv_c, h_c, N, BLOCK)
-                end_events[j].record()
+            def _prepare_benchmark_state():
+                kv_work.copy_(kv)
+                history_work.copy_(kv_history)
 
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "per_iteration_prepare_or_state_reset",
-            }
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                _bench_fn,
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                prepare_fn=_prepare_benchmark_state,
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

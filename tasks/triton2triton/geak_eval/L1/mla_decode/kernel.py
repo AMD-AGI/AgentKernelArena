@@ -27,7 +27,7 @@ from typing import Optional
 import triton
 import torch
 from aiter.ops.triton.utils.logger import AiterTritonLogger
-from aiter.ops.triton._triton_kernels.mla_decode_rope import (
+from aiter.ops.triton._triton_kernels.attention.mla_decode_rope import (
     _fwd_grouped_kernel_stage1_rope,
     _fwd_kernel_stage2,
     _get_config,

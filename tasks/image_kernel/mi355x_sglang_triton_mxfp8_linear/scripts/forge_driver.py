@@ -4,7 +4,7 @@
 Target kernel (PROTECTED, optimized by forge-loop):
     ``_mxfp8_linear_kernel`` (Triton ``tl.dot_scaled``, CDNA4/gfx950) and its
     launcher ``_run_mxfp8_linear_kernel`` in
-    ``sglang/kernels/ops/quantization/mxfp8_amd_gfx95.py``.
+    ``sglang/srt/layers/quantization/mxfp8_amd_gfx95.py``.
 
 Why this file exists
 --------------------

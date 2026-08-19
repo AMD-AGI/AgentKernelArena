@@ -252,7 +252,7 @@ def run_performance() -> None:
             "shape": [p["m"], p["n"], p["k"]],
             "execution_time_ms": time_ms,
             "metadata": p,
-            "benchmark_method": bench_meta.get("benchmark_method"),
+            **bench_meta,
         }
         if bench_meta.get("benchmark_fallback_reason"):
             entry["benchmark_fallback_reason"] = bench_meta["benchmark_fallback_reason"]

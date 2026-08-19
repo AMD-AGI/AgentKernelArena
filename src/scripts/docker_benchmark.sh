@@ -313,6 +313,24 @@ read_validator_backend() {
     sed -nE 's/^backend:[[:space:]]*["'"'"']?([A-Za-z0-9_]+).*/\1/p' "$cfg" | head -n 1
 }
 
+read_run_validator_backend() {
+    local run_config="${1:-}"
+    [[ -f "$run_config" ]] || return 0
+    awk '
+        /^[^[:space:]#][^:]*:[[:space:]]*/ {
+            in_agent = ($0 ~ /^agent[[:space:]]*:/)
+            next
+        }
+        in_agent && /^[[:space:]]+backend[[:space:]]*:/ {
+            sub(/^[^:]*:[[:space:]]*/, "")
+            sub(/[[:space:]#].*/, "")
+            gsub(/^["\047]|["\047]$/, "")
+            print
+            exit
+        }
+    ' "$run_config"
+}
+
 # Decide which agent CLIs to provision into the container.
 # AKA_AGENTS env (comma/space list) overrides; else derive from config's
 # agent.template (task_validator -> its backend); else all three.
@@ -328,7 +346,11 @@ resolve_required_agents() {
         printf 'codex claude_code cursor\n'
         return
     fi
-    [[ "$tmpl" == "task_validator" ]] && tmpl="$(read_validator_backend)"
+    if [[ "$tmpl" == "task_validator" ]]; then
+        local run_backend
+        run_backend="$(read_run_validator_backend "$config")"
+        tmpl="${run_backend:-$(read_validator_backend)}"
+    fi
     case "$tmpl" in
         claude|claude_code) printf 'claude_code\n' ;;
         cursor|cursor-agent) printf 'cursor\n' ;;

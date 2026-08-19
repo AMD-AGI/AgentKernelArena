@@ -9,6 +9,7 @@ This module provides standardized evaluation of optimized kernels:
 - Baseline measurement for speedup calculation
 """
 import logging
+import math
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
@@ -16,7 +17,13 @@ from typing import Dict, Any, Optional, List, Tuple
 from .evaluator_utils import inspect_target_definitions, run_command
 from .jit_rebuild import force_jit_rebuild
 from .performance import measure_performance, measure_baseline
-from .testcases import TestCaseResult, save_performance_results, calculate_average_speedup, collect_benchmark_methods
+from .testcases import (
+    TestCaseResult,
+    analyze_benchmark_method_consistency,
+    calculate_average_speedup,
+    collect_benchmark_methods,
+    save_performance_results,
+)
 
 # Default timeouts for run_command (seconds). Repository CMake builds can exceed a few minutes.
 _DEFAULT_COMPILE_TIMEOUT_S = 3600
@@ -27,7 +34,11 @@ def _valid_perf_cases(cases: List[TestCaseResult]) -> List[TestCaseResult]:
     """Return only test cases with valid positive execution time."""
     valid_cases: List[TestCaseResult] = []
     for case in cases:
-        if case.execution_time_ms is not None and case.execution_time_ms > 0:
+        if (
+            case.execution_time_ms is not None
+            and math.isfinite(case.execution_time_ms)
+            and case.execution_time_ms > 0
+        ):
             valid_cases.append(case)
     return valid_cases
 
@@ -153,6 +164,8 @@ def evaluate_kernel(
         'compilation_error_message': None,
         'correctness_error_message': None,
         'speedup_calculation_error_message': None,
+        'benchmark_method_consistent': False,
+        'benchmark_method_mismatches': [],
     }
     
     # 1. Compilation check
@@ -210,10 +223,22 @@ def evaluate_kernel(
         # Record the timing method(s) used for the optimized measurement so the final
         # task_result can flag mixed-method (baseline vs optimized) comparisons.
         results['optimized_benchmark_methods'] = collect_benchmark_methods(optimized_cases)
+        # The baseline method is the immutable policy for each case. A
+        # candidate that cannot replay a graph must remain incomparable; it may
+        # not select a second Event baseline after seeing its own fallback.
+        comparison_baseline_cases = baseline_cases
         valid_optimized_cases = _valid_perf_cases(optimized_cases)
-        valid_baseline_cases = _valid_perf_cases(baseline_cases)
+        valid_baseline_cases = _valid_perf_cases(comparison_baseline_cases)
         results['valid_optimized_cases'] = len(valid_optimized_cases)
         results['valid_baseline_cases'] = len(valid_baseline_cases)
+        method_consistent, method_mismatches = analyze_benchmark_method_consistency(
+            valid_baseline_cases,
+            valid_optimized_cases,
+            logger,
+            require_complete_match=True,
+        )
+        results['benchmark_method_consistent'] = method_consistent
+        results['benchmark_method_mismatches'] = method_mismatches
 
         if not valid_optimized_cases:
             results['best_optimized_execution_time'] = 0.0
@@ -233,18 +258,45 @@ def evaluate_kernel(
             if valid_baseline_cases:
                 avg_baseline_time = sum(c.execution_time_ms for c in valid_baseline_cases) / len(valid_baseline_cases)
                 log.info(
-                    f"Baseline: {len(valid_baseline_cases)}/{len(baseline_cases)} valid test case(s), "
+                    f"Baseline: {len(valid_baseline_cases)}/{len(comparison_baseline_cases)} valid test case(s), "
                     f"average time: {avg_baseline_time:.4f} ms"
                 )
 
-                if (
-                    len(valid_baseline_cases) != len(baseline_cases)
+                if method_mismatches:
+                    mismatch_parts = []
+                    for item in method_mismatches:
+                        if item.get('reason') == 'ambiguous_mixed_aggregate':
+                            mismatch_parts.append(
+                                f"{item['test_case_id']}: ambiguous aggregate "
+                                f"{item['baseline_benchmark_method']!r}"
+                            )
+                        elif item.get('reason') == 'missing_or_unknown_benchmark_method':
+                            mismatch_parts.append(
+                                f"{item['test_case_id']}: missing or unknown method "
+                                f"(baseline={item['baseline_benchmark_method']!r}, "
+                                f"optimized={item['optimized_benchmark_method']!r})"
+                            )
+                        else:
+                            mismatch_parts.append(
+                                f"{item['test_case_id']}: "
+                                f"{item['baseline_benchmark_method']!r} != "
+                                f"{item['optimized_benchmark_method']!r}"
+                            )
+                    mismatch_summary = "; ".join(mismatch_parts)
+                    error_msg = (
+                        "Cannot calculate speedup because matched test cases used "
+                        f"different benchmark methods: {mismatch_summary}"
+                    )
+                    results['speedup_calculation_error_message'] = error_msg
+                    log.warning(error_msg)
+                elif (
+                    len(valid_baseline_cases) != len(comparison_baseline_cases)
                     or len(valid_optimized_cases) != len(optimized_cases)
                 ):
                     error_msg = (
                         "Cannot calculate speedup because performance results contain invalid "
                         "test case timings: "
-                        f"baseline_valid={len(valid_baseline_cases)}/{len(baseline_cases)}, "
+                        f"baseline_valid={len(valid_baseline_cases)}/{len(comparison_baseline_cases)}, "
                         f"optimized_valid={len(valid_optimized_cases)}/{len(optimized_cases)}"
                     )
                     results['speedup_calculation_error_message'] = error_msg
@@ -267,7 +319,7 @@ def evaluate_kernel(
                         results['speedup_calculation_error_message'] = error_msg
                         log.warning(error_msg)
             else:
-                if baseline_cases:
+                if comparison_baseline_cases:
                     error_msg = (
                         "Baseline data exists but has no valid performance samples "
                         "(execution_time_ms <= 0 or invalid). Cannot calculate speedup."
@@ -313,7 +365,8 @@ def write_task_result(
     
     # Get average baseline time
     avg_baseline_time = 0.0
-    valid_baseline_cases = _valid_perf_cases(baseline_cases)
+    comparison_baseline_cases = baseline_cases
+    valid_baseline_cases = _valid_perf_cases(comparison_baseline_cases)
     if valid_baseline_cases:
         avg_baseline_time = sum(c.execution_time_ms for c in valid_baseline_cases) / len(valid_baseline_cases)
     elif baseline_cases:
@@ -326,27 +379,32 @@ def write_task_result(
     optimized_time = evaluation_results.get('best_optimized_execution_time', 0.0)
     avg_speedup = evaluation_results.get('average_speedup', 0.0)
     speedup_error = evaluation_results.get('speedup_calculation_error_message')
+    benchmark_method_consistent = bool(
+        evaluation_results.get('benchmark_method_consistent', False)
+    )
     
     # Use average speedup if available, otherwise calculate from average times
-    if avg_speedup == 0.0 and not speedup_error and avg_baseline_time > 0 and optimized_time > 0:
+    if (
+        avg_speedup == 0.0
+        and not speedup_error
+        and benchmark_method_consistent
+        and avg_baseline_time > 0
+        and optimized_time > 0
+    ):
         avg_speedup = avg_baseline_time / optimized_time
 
-    # Surface the timing method(s) used on each side. If baseline and optimized were
-    # measured with different methods (e.g. cuda_graph vs cuda_event_fallback), the
-    # reported speedup_ratio may reflect the measurement-method delta rather than kernel
-    # quality — make that visible so such comparisons can be spotted/discounted.
-    baseline_methods = collect_benchmark_methods(baseline_cases)
+    # Surface task-wide method sets for diagnostics, but enforce consistency on
+    # matched cases.  One shape may use graph while another falls back to events;
+    # that is fair as long as each baseline/optimized pair uses the same method.
+    baseline_methods = collect_benchmark_methods(comparison_baseline_cases)
     optimized_methods = evaluation_results.get('optimized_benchmark_methods', [])
-    benchmark_method_consistent = (
-        bool(baseline_methods)
-        and bool(optimized_methods)
-        and len(set(baseline_methods) | set(optimized_methods)) == 1
+    benchmark_method_mismatches = evaluation_results.get(
+        'benchmark_method_mismatches', []
     )
-    if baseline_methods and optimized_methods and not benchmark_method_consistent:
+    if benchmark_method_mismatches:
         log.warning(
-            f"Benchmark method mismatch — baseline={baseline_methods} optimized={optimized_methods}. "
-            "speedup_ratio may reflect the measurement-method delta (e.g. cuda_graph vs "
-            "cuda_event_fallback overhead), not kernel quality."
+            "Benchmark method mismatch on matched case(s); speedup_ratio is disabled: %s",
+            benchmark_method_mismatches,
         )
 
     task_result = {
@@ -361,6 +419,7 @@ def write_task_result(
         'baseline_benchmark_methods': baseline_methods,
         'optimized_benchmark_methods': optimized_methods,
         'benchmark_method_consistent': benchmark_method_consistent,
+        'benchmark_method_mismatches': benchmark_method_mismatches,
         'valid_baseline_cases': len(valid_baseline_cases),
         'valid_optimized_cases': evaluation_results.get('valid_optimized_cases', 0),
         'speedup_calculation_error_message': speedup_error,
@@ -379,11 +438,20 @@ def write_task_result(
             from .plotting import plot_performance_comparison
             
             # Only create plots if we have performance data
-            if (evaluation_results.get('best_optimized_execution_time', 0.0) > 0 and 
-                baseline_cases):
+            if (
+                evaluation_results.get('best_optimized_execution_time', 0.0) > 0
+                and baseline_cases
+                and benchmark_method_consistent
+                and not speedup_error
+            ):
                 plot_file = plot_performance_comparison(workspace, task_name, logger)
                 if plot_file:
                     log.info(f"Created performance comparison plot: {plot_file}")
+            elif not benchmark_method_consistent:
+                log.warning(
+                    "Skipping performance plots because benchmark methods are "
+                    "not consistently matched"
+                )
         except ImportError as e:
             log.warning(f"Could not create plots (matplotlib may not be installed): {e}")
         except Exception as e:

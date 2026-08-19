@@ -9,6 +9,7 @@ import subprocess
 import sys
 import venv
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
 
 TASK_NAME = "repository/aiter/mla_decode_rope"
 REPO_SUBDIR = "aiter"
@@ -48,7 +49,30 @@ def _run(cmd: list[str], cwd: Path) -> None:
     subprocess.run(cmd, cwd=str(cwd), check=True)
 
 
+def _inherit_parent_site_packages(venv_python: Path) -> None:
+    """Expose packages from the image's parent venv inside the task venv."""
+
+    if Path(sys.executable).resolve() == venv_python.resolve():
+        return
+    child_site = subprocess.check_output(
+        [str(venv_python), "-c", "import sysconfig; print(sysconfig.get_paths()['purelib'])"],
+        text=True,
+    ).strip()
+    parent_sites = [
+        entry
+        for entry in sys.path
+        if "site-packages" in entry and Path(entry).is_dir()
+    ]
+    (Path(child_site) / "aka_parent_site_packages.pth").write_text(
+        "\n".join(
+            f"import site; site.addsitedir({entry!r})" for entry in parent_sites
+        ) + "\n"
+    )
+
+
 def _ensure_venv() -> None:
+    os.environ.setdefault("USER", "agentkernelarena")
+    os.environ.setdefault("LOGNAME", "agentkernelarena")
     venv_dir = _venv_dir()
     venv_python = _venv_python()
     ready_marker = venv_dir / ".ready"
@@ -57,6 +81,8 @@ def _ensure_venv() -> None:
     if not venv_python.exists():
         builder = venv.EnvBuilder(with_pip=True, system_site_packages=True)
         builder.create(str(venv_dir))
+
+    _inherit_parent_site_packages(venv_python)
 
     if not ready_marker.exists():
         _run(
@@ -98,23 +124,11 @@ def _configure_runtime() -> None:
     os.chdir(repo_root)
 
 
-def _benchmark_ms(fn, warmup: int = 10, rep: int = 30) -> float:
-    import torch
-
-    for _ in range(warmup):
-        fn()
-    torch.cuda.synchronize()
-
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    samples: list[float] = []
-    for _ in range(rep):
-        start.record()
-        fn()
-        end.record()
-        torch.cuda.synchronize()
-        samples.append(start.elapsed_time(end))
-    return statistics.median(samples)
+def _benchmark_ms(fn, warmup: int = 10, rep: int = 30) -> tuple[float, dict]:
+    samples, metadata = benchmark_cuda_graph_or_events_samples(
+        fn, warmup=warmup, repetition=rep,
+    )
+    return statistics.median(samples), metadata
 
 
 def _write_performance_report(results: list[dict]) -> None:
@@ -323,7 +337,7 @@ def run_performance() -> None:
     results: list[dict] = []
     for test_case_id, case in benchmark_cases:
         _run_kernel(case)
-        time_ms = _benchmark_ms(lambda: _run_kernel(case))
+        time_ms, benchmark_meta = _benchmark_ms(lambda: _run_kernel(case))
         params = case["params"]
         results.append(
             {
@@ -336,6 +350,7 @@ def run_performance() -> None:
                     params["qk_rope_head_dim"],
                 ],
                 "execution_time_ms": time_ms,
+                **benchmark_meta,
                 "metadata": params,
             }
         )

@@ -28,6 +28,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 KERNEL_FILE = "kernel.py"
 MODEL_FILE = "model.py"
@@ -263,42 +264,75 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
                     return kmod.flydsl_topk_sigmoid(gating, topk)
             else:
                 def run_fused():
-                    return _aiter_sigmoid(aiter, gating, topk)
+                    fused_w = torch.empty(
+                        (shape["tokens"], topk), dtype=torch.float32,
+                        device=gating.device,
+                    )
+                    fused_idx = torch.empty(
+                        (shape["tokens"], topk), dtype=torch.int32,
+                        device=gating.device,
+                    )
+                    aiter.topk_gating(
+                        fused_w,
+                        fused_idx,
+                        gating,
+                        score_func="sigmoid",
+                        need_renorm=False,
+                    )
+                    return fused_w, fused_idx
+
+                def prepare_fused():
+                    run_fused()
+                    torch.cuda.synchronize()
+
+                _retry(prepare_fused, what="aiter.topk_gating(sigmoid)")
 
             run_fused()
             torch.cuda.synchronize()
             for _ in range(warmup):
                 run_fused()
             torch.cuda.synchronize()
-            ktimes = []
-            for _ in range(iters):
-                s = torch.cuda.Event(enable_timing=True); e = torch.cuda.Event(enable_timing=True)
-                s.record(); run_fused(); e.record(); torch.cuda.synchronize()
-                ktimes.append(s.elapsed_time(e))
-            fused_ms = sum(ktimes) / len(ktimes)
+            fused_ms, fused_bench_meta = benchmark_cuda_graph_or_events(
+                run_fused, warmup=0, repetition=iters
+            )
 
-            rtimes = []
-            for _ in range(iters):
-                s = torch.cuda.Event(enable_timing=True); e = torch.cuda.Event(enable_timing=True)
-                s.record(); model(gating); e.record(); torch.cuda.synchronize()
-                rtimes.append(s.elapsed_time(e))
-            ref_ms = sum(rtimes) / len(rtimes)
+            ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: model(gating), warmup=0, repetition=iters
+            )
 
-        speedup = ref_ms / fused_ms if fused_ms > 0 else 1.0
-        latencies.append(fused_ms); speedups.append(speedup)
+        methods_match = fused_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / fused_ms if methods_match and fused_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(fused_ms)
+        if speedup is not None:
+            speedups.append(speedup)
         report.append({
             "test_case_id": f"test_case_{idx}",
             "execution_time_ms": fused_ms,
+            **fused_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": fused_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
             "shape": [shape["tokens"], shape["experts"], shape["topk"]],
             "params": {k: shape[k] for k in ("tokens", "experts", "topk")},
         })
         if verbose:
-            print(f"{shape['name']:<24} {ref_ms:>8.4f}ms {fused_ms:>8.4f}ms {speedup:>8.2f}x")
+            print(f"{shape['name']:<24} {ref_ms:>8.4f}ms {fused_ms:>8.4f}ms {speedup_display}")
         del model, gating
         torch.cuda.empty_cache()
 
     geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
-    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups))
+    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
 
     build_dir = Path(_KERNEL_DIR) / "build"
     build_dir.mkdir(exist_ok=True)
@@ -307,7 +341,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
 
     print("-" * 60)
     print(f"Geometric mean latency: {geomean_latency:.4f} ms")
-    print(f"Geometric mean speedup: {geomean_speedup:.2f}x")
+    print(f"Geometric mean speedup: {geomean_speedup_display}")
     return {"geomean_latency_ms": geomean_latency, "geomean_speedup": geomean_speedup}
 
 

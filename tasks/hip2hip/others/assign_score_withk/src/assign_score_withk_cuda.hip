@@ -163,7 +163,8 @@ void assign_score_withk_forward_wrapper(int B, int N0, int N1, int M, int K, int
 
     dim3 blocks(DIVUP(B*O*N1*K, THREADS_PER_BLOCK));
     dim3 threads(THREADS_PER_BLOCK);
-    assign_score_withk_forward_kernel<<<blocks, threads, 0>>>(
+    hipStream_t stream = at::cuda::getCurrentCUDAStream();
+    assign_score_withk_forward_kernel<<<blocks, threads, 0, stream>>>(
         B, N0, N1, M, K, O, aggregate, points_data, centers_data, scores_data, knn_idx_data, output_data);
     CUDA_CHECK_ERRORS();
 
@@ -204,9 +205,9 @@ void assign_score_withk_backward_wrapper(int B, int N0, int N1, int M, int K, in
     dim3 threads1(THREADS_PER_BLOCK);
     dim3 blocks2(DIVUP(B*N1*K*M, THREADS_PER_BLOCK));
     dim3 threads2(THREADS_PER_BLOCK);
-    assign_score_withk_backward_points_kernel<<<blocks1, threads1, 0>>>(
+    assign_score_withk_backward_points_kernel<<<blocks1, threads1, 0, stream>>>(
         B, N0, N1, M, K, O, aggregate, grad_out_data, scores_data, knn_idx_data, grad_points_data, grad_centers_data);
-    assign_score_withk_backward_scores_kernel<<<blocks2, threads2, 0>>>(
+    assign_score_withk_backward_scores_kernel<<<blocks2, threads2, 0, stream>>>(
         B, N0, N1, M, K, O, aggregate, grad_out_data, points_data, centers_data, knn_idx_data, grad_scores_data);
 
     CUDA_CHECK_ERRORS();

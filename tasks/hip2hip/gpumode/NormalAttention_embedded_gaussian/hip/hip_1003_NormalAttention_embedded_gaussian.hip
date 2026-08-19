@@ -1,6 +1,7 @@
 // Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 #include <torch/extension.h>
 #include <ATen/ATen.h>
+#include <ATen/hip/HIPContext.h>
 #include <hip/hip_runtime.h>
 #include <cmath>
 
@@ -336,6 +337,7 @@ torch::Tensor normal_attention_embedded_gaussian_forward(
     TORCH_CHECK(gamma_weight.size(0) == C && gamma_weight.size(1) == C, "Gamma weight must be [C, C]");
 
     auto options = x.options();
+    hipStream_t stream = at::hip::getCurrentHIPStream();
 
     // 1. Query conv -> [B, HW, Cq]
     auto query_hw_c = torch::empty({B, HW, Cq}, options);
@@ -343,7 +345,7 @@ torch::Tensor normal_attention_embedded_gaussian_forward(
         dim3 grid(B, HW);
         int threads = 128;
         AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "conv1x1_query_to_hw_c", ([&] {
-            hipLaunchKernelGGL(HIP_KERNEL_NAME(conv1x1_query_to_hw_c_kernel<scalar_t>), grid, dim3(threads), 0, 0,
+            hipLaunchKernelGGL(HIP_KERNEL_NAME(conv1x1_query_to_hw_c_kernel<scalar_t>), grid, dim3(threads), 0, stream,
                 x.data_ptr<scalar_t>(),
                 query_weight.data_ptr<scalar_t>(),
                 query_bias.defined() ? query_bias.data_ptr<scalar_t>() : nullptr,
@@ -359,7 +361,7 @@ torch::Tensor normal_attention_embedded_gaussian_forward(
         dim3 grid(B, Cq);
         int threads = 128;
         AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "conv1x1_key_to_c_hw", ([&] {
-            hipLaunchKernelGGL(HIP_KERNEL_NAME(conv1x1_to_c_hw_kernel<scalar_t>), grid, dim3(threads), 0, 0,
+            hipLaunchKernelGGL(HIP_KERNEL_NAME(conv1x1_to_c_hw_kernel<scalar_t>), grid, dim3(threads), 0, stream,
                 x.data_ptr<scalar_t>(),
                 key_weight.data_ptr<scalar_t>(),
                 key_bias.defined() ? key_bias.data_ptr<scalar_t>() : nullptr,
@@ -375,7 +377,7 @@ torch::Tensor normal_attention_embedded_gaussian_forward(
         dim3 grid(B, C);
         int threads = 128;
         AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "conv1x1_value_to_c_hw", ([&] {
-            hipLaunchKernelGGL(HIP_KERNEL_NAME(conv1x1_to_c_hw_kernel<scalar_t>), grid, dim3(threads), 0, 0,
+            hipLaunchKernelGGL(HIP_KERNEL_NAME(conv1x1_to_c_hw_kernel<scalar_t>), grid, dim3(threads), 0, stream,
                 x.data_ptr<scalar_t>(),
                 value_weight.data_ptr<scalar_t>(),
                 value_bias.defined() ? value_bias.data_ptr<scalar_t>() : nullptr,
@@ -392,7 +394,7 @@ torch::Tensor normal_attention_embedded_gaussian_forward(
         dim3 grid((HW + TILE_N - 1) / TILE_N, (HW + TILE_M - 1) / TILE_M, B);
         size_t shmem = (TILE_M * TILE_K + TILE_K * TILE_N) * torch::elementSize(x.scalar_type());
         AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "bmm_qk_tiled", ([&] {
-            hipLaunchKernelGGL(HIP_KERNEL_NAME(bmm_qk_tiled_kernel<scalar_t>), grid, block, shmem, 0,
+            hipLaunchKernelGGL(HIP_KERNEL_NAME(bmm_qk_tiled_kernel<scalar_t>), grid, block, shmem, stream,
                 query_hw_c.data_ptr<scalar_t>(),
                 key_c_hw.data_ptr<scalar_t>(),
                 energy.data_ptr<scalar_t>(),
@@ -406,7 +408,7 @@ torch::Tensor normal_attention_embedded_gaussian_forward(
         dim3 grid(B, HW);
         int threads = 256;
         AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "rowwise_softmax_inplace", ([&] {
-            hipLaunchKernelGGL(HIP_KERNEL_NAME(rowwise_softmax_inplace_kernel<scalar_t>), grid, dim3(threads), 0, 0,
+            hipLaunchKernelGGL(HIP_KERNEL_NAME(rowwise_softmax_inplace_kernel<scalar_t>), grid, dim3(threads), 0, stream,
                 energy.data_ptr<scalar_t>(), B, HW);
         }));
         hipCheck("rowwise_softmax_inplace");
@@ -419,7 +421,7 @@ torch::Tensor normal_attention_embedded_gaussian_forward(
         dim3 grid((HW + TILE_N - 1) / TILE_N, (C + TILE_M - 1) / TILE_M, B);
         size_t shmem = (TILE_M * TILE_K + TILE_K * TILE_N) * torch::elementSize(x.scalar_type());
         AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "bmm_vE_tiled", ([&] {
-            hipLaunchKernelGGL(HIP_KERNEL_NAME(bmm_vE_tiled_kernel<scalar_t>), grid, block, shmem, 0,
+            hipLaunchKernelGGL(HIP_KERNEL_NAME(bmm_vE_tiled_kernel<scalar_t>), grid, block, shmem, stream,
                 value_c_hw.data_ptr<scalar_t>(),
                 energy.data_ptr<scalar_t>(),
                 out_c_hw.data_ptr<scalar_t>(),
@@ -434,7 +436,7 @@ torch::Tensor normal_attention_embedded_gaussian_forward(
         dim3 grid(B, C);
         int threads = 128;
         AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "gamma_conv1x1_on_flat", ([&] {
-            hipLaunchKernelGGL(HIP_KERNEL_NAME(gamma_conv1x1_on_flat_kernel<scalar_t>), grid, dim3(threads), 0, 0,
+            hipLaunchKernelGGL(HIP_KERNEL_NAME(gamma_conv1x1_on_flat_kernel<scalar_t>), grid, dim3(threads), 0, stream,
                 out_c_hw.data_ptr<scalar_t>(),
                 gamma_weight.data_ptr<scalar_t>(),
                 gamma_bias.defined() ? gamma_bias.data_ptr<scalar_t>() : nullptr,
@@ -450,7 +452,7 @@ torch::Tensor normal_attention_embedded_gaussian_forward(
         dim3 grid(B, C);
         int threads = 128;
         AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "reshape_flat_to_nchw", ([&] {
-            hipLaunchKernelGGL(HIP_KERNEL_NAME(reshape_flat_to_nchw_kernel<scalar_t>), grid, dim3(threads), 0, 0,
+            hipLaunchKernelGGL(HIP_KERNEL_NAME(reshape_flat_to_nchw_kernel<scalar_t>), grid, dim3(threads), 0, stream,
                 out_gamma_c_hw.data_ptr<scalar_t>(),
                 out_final.data_ptr<scalar_t>(),
                 B, C, H, W);
@@ -465,4 +467,3 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &normal_attention_embedded_gaussian_forward,
           "NormalAttention_embedded_gaussian forward (HIP)");
 }
-

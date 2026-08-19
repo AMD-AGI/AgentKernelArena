@@ -168,9 +168,6 @@ def gemm(
     M, K = x.shape
     N, _ = w.shape
 
-    # Transpose W for computation
-    w_t = w.T.contiguous()
-
     y = torch.empty((M, N), dtype=x.dtype, device=x.device)
 
     config = get_config(M, N, K)

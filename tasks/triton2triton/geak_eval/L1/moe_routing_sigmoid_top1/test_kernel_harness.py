@@ -5,6 +5,19 @@ import os
 import sys
 import types
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+
+
+def benchmark_cuda_graph_or_events(*args, **kwargs):
+    samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
+    values = sorted(samples)
+    midpoint = len(values) // 2
+    median_ms = (
+        values[midpoint]
+        if len(values) % 2
+        else (values[midpoint - 1] + values[midpoint]) / 2.0
+    )
+    return median_ms, metadata
 
 def _find_baseline_kernel_dir():
     """Find preprocess dir (has benchmark_baseline.txt) by walking up from GEAK_WORK_DIR."""
@@ -195,23 +208,10 @@ def _torch_routing_sigmoid_top1(
 
 
 def _gpu_median_time(fn, warmup, iterations):
-    """Time *fn* using CUDA events and return the median elapsed time in ms."""
-    for _ in range(warmup):
-        fn()
-    torch.cuda.synchronize()
-
-    times = []
-    for _ in range(iterations):
-        start_evt = torch.cuda.Event(enable_timing=True)
-        end_evt = torch.cuda.Event(enable_timing=True)
-        start_evt.record()
-        fn()
-        end_evt.record()
-        torch.cuda.synchronize()
-        times.append(start_evt.elapsed_time(end_evt))
-
-    times.sort()
-    return times[len(times) // 2]
+    """Time *fn* using graph replay, with CUDA-event fallback."""
+    return benchmark_cuda_graph_or_events(
+        fn, warmup=warmup, repetition=iterations
+    )
 
 
 # ---- modes ----------------------------------------------------------------
@@ -309,6 +309,7 @@ def run_benchmark(shapes, warmup, iterations):
 
     speedups = []
     kernel_times = []
+    kernel_methods = []
 
     for i, (M, N, K) in enumerate(shapes):
         x = torch.randn((M, K), dtype=dtype, device=device)
@@ -331,24 +332,40 @@ def run_benchmark(shapes, warmup, iterations):
         def _run_kernel(x=x, w=w):
             routing_sigmoid_top1(x, w, TOPK, fused_shared_experts=True)
 
-        ref_time = _gpu_median_time(_run_ref, warmup, iterations)
-        kernel_time = _gpu_median_time(_run_kernel, warmup, iterations)
+        ref_time, ref_meta = _gpu_median_time(_run_ref, warmup, iterations)
+        kernel_time, kernel_meta = _gpu_median_time(_run_kernel, warmup, iterations)
 
-        speedup = ref_time / kernel_time if kernel_time > 0 else float("inf")
-        speedups.append(speedup)
+        methods_match = ref_meta["benchmark_method"] == kernel_meta["benchmark_method"]
+        speedup = ref_time / kernel_time if kernel_time > 0 and methods_match else None
+        if speedup is not None:
+            speedups.append(speedup)
         kernel_times.append(kernel_time)
+        kernel_methods.append(kernel_meta["benchmark_method"])
 
         shape_str = f"M={M}, N={N}, K={K}"
+        speedup_text = f"{speedup:.2f}x" if speedup is not None else "N/A"
         print(f"  {i+1:>3d}   {shape_str:>24s}  {ref_time:>10.4f}  "
-              f"{kernel_time:>12.4f}  {speedup:>7.2f}x")
+              f"{kernel_time:>12.4f}  {speedup_text:>8s}")
 
     print("-" * 68)
-    geomean_speedup = math.exp(sum(math.log(s) for s in speedups) / len(speedups))
+    methods_consistent = len(speedups) == len(kernel_times)
+    geomean_speedup = (
+        math.exp(sum(math.log(s) for s in speedups) / len(speedups))
+        if methods_consistent else None
+    )
     geomean_latency_ms = math.exp(sum(math.log(t) for t in kernel_times) / len(kernel_times))
     print(f"Geometric mean latency: {geomean_latency_ms:.4f} ms")
-    print(f"Geometric mean speedup: {geomean_speedup:.4f}x")
+    print(
+        f"Geometric mean speedup: {geomean_speedup:.4f}x"
+        if geomean_speedup is not None else
+        "Geometric mean speedup: N/A (timing methods differ)"
+    )
     print(f"GEAK_RESULT_LATENCY_MS={geomean_latency_ms:.4f}")
-    print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}")
+    if geomean_speedup is not None:
+        print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}")
+    print(f"GEAK_BENCHMARK_METHOD_CONSISTENT={int(methods_consistent)}")
+    method = kernel_methods[0] if len(set(kernel_methods)) == 1 else "mixed:" + ",".join(sorted(set(kernel_methods)))
+    print(f"GEAK_BENCHMARK_METHOD={method}")
 
 
 # ---- CLI ------------------------------------------------------------------

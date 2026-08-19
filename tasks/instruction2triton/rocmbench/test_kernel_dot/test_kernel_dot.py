@@ -213,6 +213,7 @@ def test_performance(dtype_str, num_warps_launch, request):
     # For now, assume the JIT `kernel_dot` can handle the dtype of the passed tensor.
     Z_tensor = torch.randn((FIXED_DIM_FOR_KERNEL_DOT, FIXED_DIM_FOR_KERNEL_DOT), 
                            device='cuda', dtype=current_dtype)
+    Z_initial = Z_tensor.clone()
     
     # --- Create op_lambda for benchmarking ---
     # The kernel modifies Z_tensor in-place.
@@ -222,7 +223,8 @@ def test_performance(dtype_str, num_warps_launch, request):
     bench_config = do_bench_config(warm_up=10, repetition=100) # Kernel is tiny, need more reps
     benchmarker = PytestBenchmarker(op_callable=op_lambda,
                                     op_name=OP_NAME_FOR_BENCHMARK,
-                                    config=bench_config)
+                                    config=bench_config,
+                                    prepare_fn=lambda: Z_tensor.copy_(Z_initial))
 
     current_params_for_logs_and_calc = {
         "DIM": FIXED_DIM_FOR_KERNEL_DOT, # M=N=K=16

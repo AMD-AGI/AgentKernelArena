@@ -7,6 +7,7 @@
 #include <ATen/ops/gelu.h>
 #include <ATen/ops/bernoulli.h>
 #include <ATen/ops/full_like.h>
+#include <ATen/hip/HIPContext.h>
 #include <hip/hip_runtime.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -149,6 +150,7 @@ torch::Tensor forward(
     TORCH_CHECK(Cw == C, "ffn1_weight in_channels must equal input C");
     TORCH_CHECK(K == kernel_size, "kernel_size must match weight's K");
     TORCH_CHECK(ffn2_weight.size(1) == F, "ffn2_weight in_features must equal F");
+    hipStream_t stream = at::hip::getCurrentHIPStream();
 
     // Handle incremental state behavior
     bool have_incremental = !incremental_state_obj.is_none() && !module_instance.is_none();
@@ -207,7 +209,7 @@ torch::Tensor forward(
         const int threads = 256;
         const int blocks = static_cast<int>((numel + threads - 1) / threads);
         AT_DISPATCH_FLOATING_TYPES(x_contig.scalar_type(), "gelu_erf_kernel", ([&] {
-            hipLaunchKernelGGL(gelu_erf_kernel<scalar_t>, dim3(blocks), dim3(threads), 0, 0,
+            hipLaunchKernelGGL(gelu_erf_kernel<scalar_t>, dim3(blocks), dim3(threads), 0, stream,
                                x_contig.data_ptr<scalar_t>(), numel);
         }));
         x_tbf = x_contig;
@@ -227,7 +229,7 @@ torch::Tensor forward(
         const int threads = 256;
         const int blocks = static_cast<int>((numel + threads - 1) / threads);
         AT_DISPATCH_FLOATING_TYPES(x_contig.scalar_type(), "dropout_apply_kernel", ([&] {
-            hipLaunchKernelGGL(dropout_apply_kernel<scalar_t>, dim3(blocks), dim3(threads), 0, 0,
+            hipLaunchKernelGGL(dropout_apply_kernel<scalar_t>, dim3(blocks), dim3(threads), 0, stream,
                                x_contig.data_ptr<scalar_t>(), mask.data_ptr<uint8_t>(), inv_keep, numel);
         }));
         x_tbf = x_contig;
@@ -249,7 +251,7 @@ torch::Tensor forward(
         dim3 blocks((static_cast<unsigned int>((N + threads.x - 1) / threads.x)),
                     (static_cast<unsigned int>((Cout + threads.y - 1) / threads.y)));
         AT_DISPATCH_FLOATING_TYPES(y_contig.scalar_type(), "add_bias_kernel", ([&] {
-            hipLaunchKernelGGL(add_bias_kernel<scalar_t>, blocks, threads, 0, 0,
+            hipLaunchKernelGGL(add_bias_kernel<scalar_t>, blocks, threads, 0, stream,
                                y_contig.data_ptr<scalar_t>(), ffn2_bias.data_ptr<scalar_t>(),
                                static_cast<int>(N), static_cast<int>(Cout));
         }));
@@ -263,4 +265,3 @@ torch::Tensor forward(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &forward, "TransformerFFNLayer functional (HIP/ROCm) with incremental state and padding");
 }
-

@@ -144,28 +144,16 @@ def run_performance():
             total_content = int(cu_lens[-1].item())
             write_contents = torch.randint(1, 10000, (total_content,), dtype=torch.int32, device=device)
 
-            for _ in range(WARMUP_ITERATIONS):
-                mod.apply_write(output.clone(), write_indices, write_starts, write_contents, cu_lens)
-            torch.cuda.synchronize()
-
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
-                start_events[j].record()
-                mod.apply_write(output.clone(), write_indices, write_starts, write_contents, cu_lens)
-                end_events[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "timed_clone_or_fresh_tensor",
-            }
+            output_work = output.clone()
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                lambda: mod.apply_write(
+                    output_work, write_indices, write_starts, write_contents, cu_lens,
+                ),
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                target_ms=20.0,
+                prepare_fn=lambda: output_work.copy_(output),
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

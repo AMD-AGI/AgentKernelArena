@@ -190,37 +190,76 @@ def run_performance():
              lora_ids, num_active_loras) = make_test_data(
                 M, hidden_size, lora_rank, num_loras, num_slices, device, 0)
 
-            for _ in range(WARMUP_ITERATIONS):
-                mod.lora_expand(
-                    inputs, lora_b_weights, output_tensor, token_lora_mapping,
-                    token_indices_sorted, num_tokens_per_lora, lora_token_start_loc,
-                    lora_ids, num_active_loras, offset_start=0, add_inputs=False,
-                )
-            torch.cuda.synchronize()
+            # The public wrapper constructs CUDA pointer/stride tensors for
+            # multi-slice inputs on every call. Materialize them once so graph
+            # capture contains only the target Triton launch.
+            (
+                slice_start_tensor,
+                lora_ptr_tensor,
+                lora_strides_d0,
+                lora_strides_d1,
+                lora_strides_d2,
+                hidden_sizes,
+                same_stride,
+                max_n,
+            ) = mod._get_lora_b_ptr(lora_b_weights, 0, inputs.device)
+            block_m = 64
+            block_n = max(64, mod._next_power_of_2(128 // num_slices))
+            block_k = 16
+            even_k = lora_rank % block_k == 0
+            cast_type = (
+                inputs.dtype == torch.float32
+                and lora_b_weights[0].dtype in (torch.float16, torch.bfloat16)
+            )
+            grid = (
+                mod.triton.cdiv(M, block_m) * mod.triton.cdiv(max_n, block_n),
+                num_slices,
+                num_active_loras,
+            )
+            input_stride0, input_stride1, input_stride2 = inputs.stride()
+            output_stride0, output_stride1 = output_tensor.stride()
 
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
-                output_tensor.zero_()
-                start_events[j].record()
-                mod.lora_expand(
-                    inputs, lora_b_weights, output_tensor, token_lora_mapping,
-                    token_indices_sorted, num_tokens_per_lora, lora_token_start_loc,
-                    lora_ids, num_active_loras, offset_start=0, add_inputs=False,
+            def _bench_fn():
+                mod._lora_expand_kernel[grid](
+                    inputs,
+                    lora_ptr_tensor,
+                    output_tensor,
+                    M,
+                    max_n,
+                    lora_rank,
+                    token_indices_sorted,
+                    num_tokens_per_lora,
+                    lora_token_start_loc,
+                    lora_ids,
+                    slice_start_tensor,
+                    input_stride0,
+                    input_stride1,
+                    input_stride2,
+                    lora_strides_d0,
+                    lora_strides_d1,
+                    lora_strides_d2,
+                    output_stride0,
+                    output_stride1,
+                    hidden_sizes,
+                    block_m,
+                    block_n,
+                    block_k,
+                    even_k,
+                    False,  # ADD_INPUTS
+                    cast_type,
+                    num_slices,
+                    same_stride,
+                    False,  # USE_GDC
+                    num_warps=4,
+                    num_stages=2,
+                    launch_pdl=False,
                 )
-                end_events[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "per_iteration_prepare_or_state_reset",
-            }
+
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                _bench_fn,
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
@@ -238,6 +277,8 @@ def run_performance():
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
+                "benchmark_method": "benchmark_failed",
+                "benchmark_fallback_reason": "performance_case_exception",
                 "params": {
                     "M": M,
                     "hidden_size": hidden_size,

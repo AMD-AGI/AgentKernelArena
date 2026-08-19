@@ -203,20 +203,43 @@ def check_capabilities():
             pytest.skip("CUDA 8.0+ required")
 
 
+def mxfp_to_bf16_torch(x, scale, type_x):
+    """Independent PyTorch decoder for the E8M0-scaled MXFP input."""
+    scale_bits = scale.to(torch.int32) << 7
+    scale_bf16 = scale_bits.to(torch.uint16).contiguous().view(torch.bfloat16)
+
+    if type_x == "e2m1":
+        packed = x.to(torch.int32)
+        em0 = packed & 0x70
+        em1 = packed & 0x7
+        x0 = (em0 << 2) | ((packed & 0x80) << 8)
+        x1 = (em1 << 6) | ((packed & 0x8) << 12)
+        x0 = torch.where((em0 & 0x60) != 0, x0 + (126 << 7), x0)
+        x1 = torch.where((em1 & 0x6) != 0, x1 + (126 << 7), x1)
+        x0 = torch.where(em0 == 0x10, 16128 | (x0 & 0x8000), x0)
+        x1 = torch.where(em1 == 0x1, 16128 | (x1 & 0x8000), x1)
+        value_bits = torch.stack((x0, x1), dim=-1).reshape(*x.shape[:-1], -1)
+        values = value_bits.to(torch.uint16).contiguous().view(torch.bfloat16)
+    else:
+        fp8_dtype = {
+            "e4m3": torch.float8_e4m3fn,
+            "e5m2": torch.float8_e5m2,
+        }[type_x]
+        values = x.contiguous().view(fp8_dtype).to(torch.bfloat16)
+
+    decoded = values * scale_bf16.unsqueeze(-1)
+    return torch.where(
+        scale.unsqueeze(-1) == 0xFF,
+        torch.full_like(decoded, float("nan")),
+        decoded,
+    )
+
+
 def dot_scale_ref(x, scale, y, type_x, type_y):
-    e_bits, m_bits = {"e2m1": (2, 1), "e4m3": (4, 3), "e5m2": (5, 2)}[type_x]
     type_fp8_y = {"e4m3": torch.float8_e4m3fn, "e5m2": torch.float8_e5m2}[type_y]
 
-    comp_dtype = torch.float32
     out_dtype = torch.bfloat16
-
-    x = x.contiguous()
-    x_upcast = x.new_empty(scale.shape[:-1] + (32 * scale.shape[-1], ), dtype=comp_dtype)
-
-    N = x_upcast.numel()
-    BLOCK_SIZE = 512
-    grid = ((N + BLOCK_SIZE - 1) // BLOCK_SIZE, )
-    mxfp_to_bf16_kernel[grid](x, scale, x_upcast, scale.numel(), e_bits, m_bits, BLOCK_SIZE, num_warps=4)
+    x_upcast = mxfp_to_bf16_torch(x, scale, type_x)
     y_upcast = y.view(type_fp8_y)
 
     class AccumulateInFp32:
@@ -230,6 +253,32 @@ def dot_scale_ref(x, scale, y, type_x, type_y):
 
     with AccumulateInFp32():
         return torch.matmul(x_upcast.to(out_dtype), y_upcast.to(out_dtype))
+
+
+def test_mxfp_to_bf16_numerical_correctness(request):
+    """Exercise the conversion target against an independent bit-level oracle."""
+    set_seed()
+    rows = 17
+    packed = torch.randint(256, (rows, 16), device="cuda", dtype=torch.uint8)
+    scale = torch.randint(74, (rows,), device="cuda", dtype=torch.uint8)
+    output = torch.empty((rows, 32), device="cuda", dtype=torch.float32)
+    block_size = 512
+    grid = (triton.cdiv(output.numel(), block_size),)
+    mxfp_to_bf16_kernel[grid](
+        packed,
+        scale,
+        output,
+        rows,
+        2,
+        1,
+        block_size,
+        num_warps=4,
+    )
+    reference = mxfp_to_bf16_torch(packed, scale, "e2m1").float()
+    torch.testing.assert_close(output, reference, atol=0.0, rtol=0.0)
+
+    result_gold["_CALL_SUCCESS_"] = torch.tensor([[1.0]])
+    result_gold[request.node.name] = output.detach().cpu()
 
 
 @pytest.mark.parametrize("scale", [True, False])

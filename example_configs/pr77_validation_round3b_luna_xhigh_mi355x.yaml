@@ -1,0 +1,14 @@
+# Follow-up validation for fixes added after round3a had already materialized.
+agent:
+  template: task_validator
+  backend: codex
+  model: gpt-5.6-luna
+  effort: xhigh
+
+tasks:
+  - triton2triton/geak_eval/L1/mla_decode
+  - triton2triton/geak_eval/L3/fused_qk_rope_cache_mla
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

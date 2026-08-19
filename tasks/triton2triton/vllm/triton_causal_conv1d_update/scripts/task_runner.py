@@ -128,29 +128,27 @@ def run_performance():
             conv_state = torch.randn(batch, dim, state_len, device=device, dtype=torch.float32)
             conv_state = conv_state.transpose(1, 2).contiguous().transpose(1, 2)
             conv_state_indices = torch.arange(batch, device=device, dtype=torch.int32)
-            for _ in range(WARMUP_ITERATIONS):
-                mod.causal_conv1d_update(x.clone(), conv_state.clone(), weight, bias=bias_t,
-                                         activation=activation, conv_state_indices=conv_state_indices)
-            torch.cuda.synchronize()
-            n_iter = BENCHMARK_ITERATIONS
-            starts = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            ends = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
-                starts[j].record()
-                mod.causal_conv1d_update(x.clone(), conv_state.clone(), weight, bias=bias_t,
-                                         activation=activation, conv_state_indices=conv_state_indices)
-                ends[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(starts, ends)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "timed_clone_or_fresh_tensor",
-            }
+            x_work = x.clone()
+            conv_state_work = conv_state.clone()
+
+            def _prepare_benchmark_state():
+                x_work.copy_(x)
+                conv_state_work.copy_(conv_state)
+
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                lambda: mod.causal_conv1d_update(
+                    x_work,
+                    conv_state_work,
+                    weight,
+                    bias=bias_t,
+                    activation=activation,
+                    conv_state_indices=conv_state_indices,
+                ),
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                target_ms=20.0,
+                prepare_fn=_prepare_benchmark_state,
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
