@@ -31,7 +31,7 @@ _BUILTIN_PROBES = {
     "gpu_asan": ("gpu_asan_probe.hip", "triton_asan_probe.py"),
     "rocjitsu": ("rocjitsu_race_probe.hip",),
     "rocjitsu_waitcheck": ("waitcheck_probe.hip",),
-    "rocjitsu_consan": ("consan_probe.hip",),
+    "rocjitsu_consan": ("consan_probe.hip", "consan_module_launcher.hip"),
     "hip_fpsan": ("hip_fpsan_probe.hip",),
 }
 
