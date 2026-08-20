@@ -28,6 +28,8 @@ from .execution import (
     execute_command,
 )
 from .config import MAX_TOOL_TIMEOUT_SECONDS
+from .plugins.base import FINDING, PASS
+from .plugins.parsers import parse_consan, parse_waitcheck
 
 
 MAX_REQUEST_BYTES = 1024 * 1024
@@ -71,6 +73,16 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _fnv1a64_file(path: Path) -> str:
+    value = 14695981039346656037
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            for byte in chunk:
+                value ^= byte
+                value = (value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+    return f"fnv1a64:{value:016x}"
 
 
 def _framework_provenance(input_root: Path) -> tuple[Path, str, Path]:
@@ -250,6 +262,27 @@ def _fpsan_record(output: str) -> dict[str, Any] | None:
                 return None
             return value if isinstance(value, dict) else None
     return None
+
+
+def _waitcheck_inventory_entry(
+    step: Mapping[str, Any], expected_kernel: str
+) -> int | None:
+    if step.get("returncode") != 0:
+        return None
+    records: list[dict[str, Any]] = []
+    for line in str(step.get("_stdout", "")).splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(value, dict) and value.get("kernel_name") == expected_kernel:
+            records.append(value)
+    if len(records) != 1:
+        return None
+    entry = records[0].get("kernel_entry")
+    if isinstance(entry, bool) or not isinstance(entry, int) or entry < 0:
+        return None
+    return entry
 
 
 def _positive_result(
@@ -497,9 +530,12 @@ def _waitcheck_positive(
 ) -> dict[str, Any]:
     hipcc = shutil.which("hipcc") or "/opt/rocm/bin/hipcc"
     binary = str(evidence.get("waitcheck_binary") or "")
+    capi_wrapper = str(evidence.get("waitcheck_capi_wrapper") or "")
     safe = work_dir / "waitcheck-safe.hsaco"
     hazard = work_dir / "waitcheck-hazard.hsaco"
     source = str(probe_root / "waitcheck_probe.hip")
+    entrypoint = str(probe_root.parent / "adapters" / "waitcheck_entrypoint.py")
+    expected_kernel = "waitcheck_probe_kernel"
     steps: dict[str, dict[str, Any]] = {}
     steps["compile_safe"] = _run_probe_step(
         "compile-safe",
@@ -538,40 +574,105 @@ def _waitcheck_positive(
         steps["compile_safe"]["returncode"] == 0
         and steps["compile_hazard"]["returncode"] == 0
         and binary
+        and capi_wrapper
     ):
-        steps["safe"] = _run_probe_step(
-            "safe",
-            [binary, str(safe), "--target", "gfx950"],
+        steps["inventory_safe"] = _run_probe_step(
+            "inventory-safe",
+            [binary, str(safe), "--target", "gfx950", "--list-kernels"],
             cwd=work_dir,
             environment={},
             artifact_dir=artifact_dir,
         )
-        steps["hazard"] = _run_probe_step(
-            "hazard",
+    kernel_entry = _waitcheck_inventory_entry(
+        steps.get("inventory_safe", {}), expected_kernel
+    )
+    if kernel_entry is not None:
+        safe_sha256 = _sha256_file(safe)
+        hazard_sha256 = _sha256_file(hazard)
+
+        def production_argv(code_object: Path, expected_sha256: str) -> list[str]:
+            return [
+                os.sys.executable,
+                "-I",
+                entrypoint,
+                "--waitcheck",
+                binary,
+                "--capi-wrapper",
+                capi_wrapper,
+                "--code-object",
+                str(code_object),
+                "--expected-sha256",
+                expected_sha256,
+                "--target",
+                "gfx950",
+                "--expected-kernel",
+                expected_kernel,
+                "--kernel-entry",
+                str(kernel_entry),
+            ]
+
+        steps["safe_production"] = _run_probe_step(
+            "safe-production",
+            production_argv(safe, safe_sha256),
+            cwd=work_dir,
+            environment={},
+            artifact_dir=artifact_dir,
+        )
+        steps["hazard_production"] = _run_probe_step(
+            "hazard-production",
+            production_argv(hazard, hazard_sha256),
+            cwd=work_dir,
+            environment={},
+            artifact_dir=artifact_dir,
+        )
+        steps["hazard_cli"] = _run_probe_step(
+            "hazard-cli",
             [binary, str(hazard), "--target", "gfx950"],
             cwd=work_dir,
             environment={},
             artifact_dir=artifact_dir,
         )
-    safe_text = str(steps.get("safe", {}).get("_stdout", "")) + str(
-        steps.get("safe", {}).get("_stderr", "")
-    )
-    hazard_text = str(steps.get("hazard", {}).get("_stdout", "")) + str(
-        steps.get("hazard", {}).get("_stderr", "")
+        safe_step = steps["safe_production"]
+        hazard_step = steps["hazard_production"]
+        safe_result = parse_waitcheck(
+            str(safe_step.get("_stdout", "")),
+            str(safe_step.get("_stderr", "")),
+            safe_step.get("returncode"),
+            expected_sha256=safe_sha256,
+            expected_target="gfx950",
+            expected_kernel=expected_kernel,
+            expected_entry=kernel_entry,
+        )
+        hazard_result = parse_waitcheck(
+            str(hazard_step.get("_stdout", "")),
+            str(hazard_step.get("_stderr", "")),
+            hazard_step.get("returncode"),
+            expected_sha256=hazard_sha256,
+            expected_target="gfx950",
+            expected_kernel=expected_kernel,
+            expected_entry=kernel_entry,
+        )
+    else:
+        safe_result = None
+        hazard_result = None
+    hazard_text = str(steps.get("hazard_cli", {}).get("_stdout", "")) + str(
+        steps.get("hazard_cli", {}).get("_stderr", "")
     )
     passed = (
-        steps.get("safe", {}).get("returncode") == 0
-        and "diagnostics=0" in safe_text
-        and steps.get("hazard", {}).get("returncode") == 4
+        safe_result is not None
+        and safe_result.status == PASS
+        and hazard_result is not None
+        and hazard_result.status == FINDING
+        and steps.get("hazard_cli", {}).get("returncode") == 4
         and "missing" in hazard_text.lower()
     )
     return _positive_result(
         passed=passed,
         kind="waitcheck_known_missing_wait",
         detail=(
-            "barrier-complete fixture was clean and the missing-wait fixture was rejected"
+            "production C API/parser attested the clean fixture and rejected the missing-wait fixture"
             if passed
-            else "Waitcheck did not distinguish the known safe/missing-wait pair"
+            else "Waitcheck production path did not distinguish the known safe/missing-wait pair"
         ),
         artifact_dir=artifact_dir,
         steps=steps,
@@ -583,13 +684,25 @@ def _consan_positive(
 ) -> dict[str, Any]:
     hipcc = shutil.which("hipcc") or "/opt/rocm/bin/hipcc"
     hook = str(evidence.get("consan_hook") or "")
-    safe = work_dir / "consan-safe"
-    racy = work_dir / "consan-racy"
+    safe = work_dir / "consan-safe.hsaco"
+    racy = work_dir / "consan-racy.hsaco"
+    launcher = work_dir / "consan-module-launcher"
     source = str(probe_root / "consan_probe.hip")
+    launcher_source = str(probe_root / "consan_module_launcher.hip")
+    entrypoint = str(probe_root.parent / "adapters" / "consan_entrypoint.py")
     steps: dict[str, dict[str, Any]] = {}
     steps["compile_safe"] = _run_probe_step(
         "compile-safe",
-        [hipcc, "-O1", "--offload-arch=gfx950", source, "-o", str(safe)],
+        [
+            hipcc,
+            "-O1",
+            "--genco",
+            "--no-gpu-bundle-output",
+            "--offload-arch=gfx950",
+            source,
+            "-o",
+            str(safe),
+        ],
         cwd=work_dir,
         environment={},
         artifact_dir=artifact_dir,
@@ -599,6 +712,8 @@ def _consan_positive(
         [
             hipcc,
             "-O1",
+            "--genco",
+            "--no-gpu-bundle-output",
             "--offload-arch=gfx950",
             "-DAKA_CONSAN_RACY=1",
             source,
@@ -609,12 +724,21 @@ def _consan_positive(
         environment={},
         artifact_dir=artifact_dir,
     )
+    steps["compile_launcher"] = _run_probe_step(
+        "compile-launcher",
+        [
+            hipcc,
+            "-O2",
+            "--offload-arch=gfx950",
+            launcher_source,
+            "-o",
+            str(launcher),
+        ],
+        cwd=work_dir,
+        environment={},
+        artifact_dir=artifact_dir,
+    )
     base_env = {
-        "HSA_TOOLS_DISABLE_REGISTER": "1",
-        "HSA_TOOLS_LIB": hook,
-        "RJ_CONSAN_MODE": "record-replay",
-        "RJ_CONSAN_POLICY": "strict",
-        "RJ_CONSAN_LOG": "1",
         "ROCR_VISIBLE_DEVICES": "0",
         "HIP_VISIBLE_DEVICES": "0",
         "CUDA_VISIBLE_DEVICES": "0",
@@ -623,51 +747,97 @@ def _consan_positive(
     if (
         steps["compile_safe"]["returncode"] == 0
         and steps["compile_racy"]["returncode"] == 0
+        and steps["compile_launcher"]["returncode"] == 0
         and hook
     ):
-        steps["safe"] = _run_probe_step(
-            "safe",
-            [str(safe)],
+        identities = {
+            safe: (_sha256_file(safe), _fnv1a64_file(safe), 64),
+            racy: (_sha256_file(racy), _fnv1a64_file(racy), 128),
+        }
+
+        def production_argv(code_object: Path) -> list[str]:
+            sha256, fingerprint, threads = identities[code_object]
+            argv = [
+                os.sys.executable,
+                "-I",
+                entrypoint,
+                "--hook",
+                hook,
+                "--code-object",
+                str(code_object),
+                "--expected-sha256",
+                sha256,
+                "--expected-fingerprint",
+                fingerprint,
+                "--mode",
+                "record-replay",
+            ]
+            for argument in (
+                str(launcher),
+                str(code_object),
+                str(threads),
+                "instrumented",
+            ):
+                argv.extend(("--command-arg", argument))
+            for argument in (
+                str(launcher),
+                str(code_object),
+                str(threads),
+                "oracle",
+            ):
+                argv.extend(("--oracle-arg", argument))
+            return argv
+
+        steps["safe_production"] = _run_probe_step(
+            "safe-production",
+            production_argv(safe),
             cwd=work_dir,
-            environment={**base_env, "RJ_CONSAN_MOI_FORBID_DIAGNOSTICS": "1"},
+            environment=base_env,
             artifact_dir=artifact_dir,
         )
-        steps["racy"] = _run_probe_step(
-            "racy",
-            [str(racy)],
+        steps["racy_production"] = _run_probe_step(
+            "racy-production",
+            production_argv(racy),
             cwd=work_dir,
-            environment={**base_env, "RJ_CONSAN_MOI_REQUIRE_DIAGNOSTICS": "1"},
+            environment=base_env,
             artifact_dir=artifact_dir,
         )
-    safe_text = str(steps.get("safe", {}).get("_stdout", "")) + str(
-        steps.get("safe", {}).get("_stderr", "")
-    )
-    racy_text = str(steps.get("racy", {}).get("_stdout", "")) + str(
-        steps.get("racy", {}).get("_stderr", "")
-    )
-    complete = (
-        "analysis_complete=true" in safe_text
-        and "static_complete=true" in safe_text
-        and "dynamic_complete=true" in safe_text
-        and "analysis_complete=true" in racy_text
-        and "static_complete=true" in racy_text
-        and "dynamic_complete=true" in racy_text
-    )
+        safe_step = steps["safe_production"]
+        racy_step = steps["racy_production"]
+        safe_result = parse_consan(
+            str(safe_step.get("_stdout", "")),
+            str(safe_step.get("_stderr", "")),
+            safe_step.get("returncode"),
+            expected_sha256=identities[safe][0],
+            expected_fingerprint=identities[safe][1],
+        )
+        racy_result = parse_consan(
+            str(racy_step.get("_stdout", "")),
+            str(racy_step.get("_stderr", "")),
+            racy_step.get("returncode"),
+            expected_sha256=identities[racy][0],
+            expected_fingerprint=identities[racy][1],
+        )
+    else:
+        safe_result = None
+        racy_result = None
+    safe_text = str(steps.get("safe_production", {}).get("_stdout", ""))
+    racy_text = str(steps.get("racy_production", {}).get("_stdout", ""))
     passed = (
-        steps.get("safe", {}).get("returncode") == 0
-        and "CONSAN_SAFE_ORACLE_PASS" in safe_text
-        and "ConSan MOI auto replay diagnostic" not in safe_text
-        and steps.get("racy", {}).get("returncode") == 0
-        and "ConSan MOI auto replay diagnostic" in racy_text
-        and complete
+        safe_result is not None
+        and safe_result.status == PASS
+        and racy_result is not None
+        and racy_result.status == FINDING
+        and "CONSAN_ORACLE_ENV_CLEAN" in safe_text
+        and "CONSAN_ORACLE_ENV_CLEAN" in racy_text
     )
     return _positive_result(
         passed=passed,
         kind="consan_known_lds_race",
         detail=(
-            "strict record/replay kept the safe oracle clean and detected the seeded LDS race"
+            "production entrypoint/parser kept independent oracles clean and detected the seeded LDS race"
             if passed
-            else "ConSan did not produce complete, distinct safe/racy control evidence"
+            else "ConSan production path did not produce complete, distinct safe/racy evidence"
         ),
         artifact_dir=artifact_dir,
         steps=steps,

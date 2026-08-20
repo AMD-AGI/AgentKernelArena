@@ -71,6 +71,12 @@ _RACE_START_RE = re.compile(
 _KERNEL_RE = re.compile(r'^\[rocjitsu\]\s+Kernel dispatch:\s+"(?P<kernel>[^"]+)"', re.M)
 
 
+def rocjitsu_dispatch_kernels(text: str) -> tuple[str, ...]:
+    """Return kernels from canonical rocJITsu dispatch records only."""
+
+    return tuple(match.group("kernel") for match in _KERNEL_RE.finditer(text))
+
+
 def _race_blocks(text: str) -> Iterable[tuple[re.Match[str], str]]:
     for match in _RACE_START_RE.finditer(text):
         end = text.find("END_RACE", match.end())
@@ -146,11 +152,14 @@ def parse_rocjitsu(
             details=combined,
             attested=True,
         )
-    if not kernel_matches and "rocjitsu" not in combined.lower():
+    if not kernel_matches:
         return ParseResult(
             INCONCLUSIVE,
             reason_code="rocjitsu_no_dispatch_observed",
-            details="The launcher exited cleanly but rocJITsu logged no kernel dispatch.",
+            details=(
+                "The launcher exited cleanly but no canonical "
+                "[rocjitsu] Kernel dispatch record was observed."
+            ),
             attested=True,
         )
     return ParseResult(PASS, reason_code="rocjitsu_clean", attested=True)
