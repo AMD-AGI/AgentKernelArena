@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -164,6 +165,47 @@ def test_typed_probe_fails_closed_when_tool_assets_are_missing(tmp_path: Path) -
         assert capability.evidence["hip_fpsan_headers"] is False
     finally:
         _stop_worker(process, low_level)
+
+
+def test_consan_probe_requires_module_launcher_in_image_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    digest = "a" * 64
+    evidence = {
+        "consan_hook": "/opt/rocjitsu/lib/librocjitsu_dbi_hooks.so",
+        "target_arch": "gfx950",
+        "gpu_arch": "gfx950",
+        "framework_root": "/opt/aka-eval-tools",
+        "framework_source": "configured_image",
+        "worker_module": "/opt/aka-eval-tools/src/eval_tools/worker.py",
+        "worker_module_sha256": digest,
+        "probe_manifest": {"consan_probe.hip": digest},
+    }
+    health = {
+        "status": "ready",
+        "tool": "rocjitsu_consan",
+        "protocol_version": 1,
+        "evidence": evidence,
+    }
+    typed = SidecarRuntimeClient(
+        socket_dir=tmp_path / "sockets",
+        scoring_root=tmp_path / "input",
+        artifact_scoring_root=tmp_path / "artifacts",
+    )
+    monkeypatch.setattr(
+        typed,
+        "_client",
+        lambda _tool: SimpleNamespace(health=lambda: health),
+    )
+    context = _context(tmp_path / "input", tmp_path / "artifacts" / "tool")
+
+    missing_launcher = typed.probe("rocjitsu_consan", context)
+    assert missing_launcher.state == CapabilityState.UNAVAILABLE_RUNTIME
+    assert missing_launcher.reason_code == "INVALID_FRAMEWORK_PROVENANCE"
+
+    evidence["probe_manifest"]["consan_module_launcher.hip"] = digest
+    complete_manifest = typed.probe("rocjitsu_consan", context)
+    assert complete_manifest.state == CapabilityState.READY
 
 
 def test_tool_socket_names_and_relative_paths_are_validated(tmp_path: Path) -> None:
