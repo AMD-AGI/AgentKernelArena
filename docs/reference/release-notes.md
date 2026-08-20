@@ -139,6 +139,12 @@ The task validator now includes Codex backend support, repository-task validatio
   complete descendant process tree, including session-detached children, and
   treats required cleanup as a failed execution. Replay launch geometry is
   validated as exact `uint32` input and checked against runtime device limits.
+- Native HIP rocJITsu no longer accepts task-launcher stdout/stderr as clean
+  dispatch attestation; only canonical records in the evaluator-owned report
+  sink are eligible. Waitcheck and ConSan startup controls now execute their
+  production entrypoints and parsers. The Waitcheck control covers inventory
+  and the C API, while ConSan uses exact raw HSACO identities, separate
+  instrumented/oracle argv, and an oracle that rejects leaked hook state.
 - The current runner exposes evaluation-tool sockets and agent-writable report
   paths during the same container run. Per-tool writable socket directories and
   a read-only top-level artifact namespace plus one writable

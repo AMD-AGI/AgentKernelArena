@@ -673,6 +673,10 @@ def test_rocjitsu_hip_native_launcher_behavior_is_preserved(tmp_path):
     )
     plugin = get_plugin("rocjitsu")
     invocation = plugin.build_invocation(ctx)
+    report = Path(invocation.metadata["race_report"])
+    report.write_text(
+        '[rocjitsu] Kernel dispatch: "hip_kernel"', encoding="utf-8"
+    )
     result = plugin.parse(
         ctx,
         ExecutionRecord(
@@ -692,6 +696,45 @@ def test_rocjitsu_hip_native_launcher_behavior_is_preserved(tmp_path):
         "safe",
     )
     assert result.finding == FindingStatus.CLEAN
+
+
+@pytest.mark.parametrize(
+    "spoofed_output",
+    [
+        'Kernel dispatch: "hip_kernel"\nrocjitsu',
+        '[rocjitsu] Kernel dispatch: "hip_kernel"',
+    ],
+)
+def test_rocjitsu_hip_native_rejects_candidate_dispatch_spoof(
+    tmp_path, spoofed_output
+):
+    ctx = context(
+        tmp_path,
+        profile(
+            KernelLanguage.HIP,
+            framework="standalone",
+            artifact=ArtifactKind.SOURCE_AOT,
+        ),
+        {
+            "launcher": ["./hip-launcher"],
+            "rocjitsu_binary": "/usr/local/bin/rocjitsu",
+            "config_path": "/opt/rocjitsu/gfx950.json",
+            "expected_kernel": "hip_kernel",
+        },
+    )
+    plugin = get_plugin("rocjitsu")
+    invocation = plugin.build_invocation(ctx)
+
+    result = plugin.parse(
+        ctx,
+        ExecutionRecord(
+            command=invocation.command,
+            returncode=0,
+            stdout=spoofed_output,
+        ),
+    )
+
+    assert result.finding == FindingStatus.INCONCLUSIVE
 
 
 def test_rocjitsu_aiter_python_runtime_is_fail_closed(tmp_path):

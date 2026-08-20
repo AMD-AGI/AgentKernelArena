@@ -44,6 +44,17 @@ def test_rocjitsu_clean_requires_dispatch_attestation():
     assert result.status == PASS
 
 
+def test_rocjitsu_parser_rejects_unstructured_dispatch_even_if_pre_attested():
+    result = parse_rocjitsu(
+        'Kernel dispatch: "safe"\nrocjitsu launcher output',
+        "",
+        0,
+        attested=True,
+    )
+    assert result.status == INCONCLUSIVE
+    assert result.reason_code == "rocjitsu_no_dispatch_observed"
+
+
 def test_rocjitsu_deduplicates_races_repeated_across_sinks():
     race = '''
 [rocjitsu] Kernel dispatch: "kernel"

@@ -282,8 +282,8 @@ worker:
 | `triton_fpsan` | Compile instrumented reference/candidate kernels and require a known numerical mismatch to produce different digests plus FpSan compiler metadata. |
 | `gpu_asan` | Compile and run safe/OOB HIP fixtures and safe/OOB Triton fixtures; the task profile selects the relevant lane. |
 | `rocjitsu` | Require a barrier-protected fixture to remain clean and a deliberately racy LDS fixture to report a race. |
-| `rocjitsu_waitcheck` | Compile unbundled `gfx950` code objects; require the correct-wait fixture to be clean and the missing-wait fixture to report the exact `lgkmcnt(0)` hazard. |
-| `rocjitsu_consan` | Under strict record/replay, require a single-wave LDS fixture to remain clean and a two-wave conflicting fixture to emit complete FNV-attributed diagnostics. |
+| `rocjitsu_waitcheck` | Compile unbundled `gfx950` code objects and run the production entrypoint, inventory, C API, and parser on the correct-wait and missing-wait fixtures; retain a direct CLI hazard check as an independent engine control. |
+| `rocjitsu_consan` | Compile raw safe/racy HSACOs plus an image-owned module launcher, run the production entrypoint with separate instrumented/oracle argv, require the oracle environment to be scrubbed, and make the production parser return clean/finding with exact FNV attribution. |
 | `hip_fpsan` | Require explicitly ported equivalent expressions to match and a known-wrong expression to produce a different digest. |
 
 `eval-tools-smoke` prints this evidence and exits nonzero if a worker reports
@@ -542,9 +542,12 @@ tool-specific attestation:
   two digests. Exactly one result marker is required; zero or multiple markers,
   a timeout, or any nonzero/unknown process exit is a tool error. They do not
   validate two independently attested artifacts.
-- Native HIP rocJITsu requires an observed simulator dispatch, optionally
-  matched to `expected_kernel`. This path accepts a task launcher, so its output
-  text remains weak evidence and can be forged by that launcher.
+- Native HIP rocJITsu requires a canonical simulator dispatch in the
+  evaluator-owned report sink, optionally matched to `expected_kernel`.
+  Task-launcher stdout/stderr cannot attest a clean dispatch, even if it prints
+  the complete rocJITsu prefix. The task launcher still inherits the report
+  configuration, so this lane remains advisory rather than trusted reward
+  evidence.
 - Triton/FlyDSL rocJITsu uses the image-owned replay helper instead of a task
   launcher. It revalidates the capsule and manifest, generates the native
   launcher, and requires an exact capsule/code-object attestation, expected

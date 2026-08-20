@@ -31,7 +31,7 @@ from .base import (
     ready_check,
     sidecar_path,
 )
-from .parsers import parse_rocjitsu
+from .parsers import parse_rocjitsu, rocjitsu_dispatch_kernels
 
 
 _AOT_ADAPTERS = {
@@ -279,7 +279,11 @@ class RocJitsuPlugin:
                     artifacts=[report_path] if report_path.is_file() else [],
                 )
             expected_kernel = capsule.code_object.kernel_name
-            dispatch_seen = f'Kernel dispatch: "{expected_kernel}"' in combined
+            # The AOT entrypoint and generated host launcher are image-owned,
+            # so their canonical dispatch record may be consumed from any
+            # captured sink. Native task launchers are handled more narrowly
+            # below because they control their own stdout/stderr.
+            dispatch_seen = expected_kernel in rocjitsu_dispatch_kernels(combined)
             replay_pass_seen = "AKA_REPLAY_RESULT pass" in combined
             capsule_attestation = (
                 "AKA_REPLAY_CAPSULE "
@@ -302,10 +306,11 @@ class RocJitsuPlugin:
             }
         else:
             expected_kernel = context.options.get("expected_kernel")
+            report_kernels = rocjitsu_dispatch_kernels(report)
             if expected_kernel:
-                dispatch_seen = f'Kernel dispatch: "{expected_kernel}"' in combined
+                dispatch_seen = expected_kernel in report_kernels
             else:
-                dispatch_seen = "[rocjitsu] Kernel dispatch:" in combined
+                dispatch_seen = bool(report_kernels)
             attested = dispatch_seen
         parsed = parse_rocjitsu(
             execution.stdout,

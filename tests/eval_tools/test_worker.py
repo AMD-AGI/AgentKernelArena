@@ -5,11 +5,13 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from src.eval_tools.runtime_client import RuntimeRPCError, UnixSocketRuntimeClient
 from src.eval_tools import worker
+from src.eval_tools.plugins.base import FINDING, PASS
+from src.eval_tools.runtime_client import RuntimeRPCError, UnixSocketRuntimeClient
 
 
 def _worker(tmp_path: Path):
@@ -249,3 +251,194 @@ def test_hip_fpsan_positive_control_requires_both_processes_to_exit_zero(
 
     assert result["passed"] is False
     assert result["steps"]["mismatch"]["returncode"] == 139
+
+
+def _waitcheck_result_line(
+    sha256: str, *, passed: bool, diagnostic: bool
+) -> str:
+    diagnostics = []
+    if diagnostic:
+        diagnostics.append(
+            {
+                "code": "wait-counter",
+                "kernel_name": "waitcheck_probe_kernel",
+                "kernel_entry": 0,
+                "section_name": ".text",
+                "section_offset": 8,
+                "message": "missing s_waitcnt lgkmcnt(0)",
+            }
+        )
+    payload = {
+        "schema_version": 1,
+        "code_object_sha256": sha256,
+        "target": "gfx950",
+        "expected_kernel": "waitcheck_probe_kernel",
+        "kernel_entry": 0,
+        "inventory_attested": True,
+        "api_status": 0,
+        "analysis_complete": True,
+        "instructions_analyzed": 4,
+        "memory_events_tracked": 1,
+        "kernels_discovered": 1,
+        "kernels_analyzed": 1,
+        "diagnostics_observed": len(diagnostics),
+        "diagnostics_reported": len(diagnostics),
+        "diagnostics_truncated": False,
+        "stopped_early": False,
+        "passed": passed,
+        "diagnostics": diagnostics,
+    }
+    return "AKA_WAITCHECK_RESULT " + worker.json.dumps(payload)
+
+
+def test_waitcheck_positive_control_runs_production_capi_and_parser(
+    tmp_path: Path, monkeypatch
+) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    safe = work / "waitcheck-safe.hsaco"
+    hazard = work / "waitcheck-hazard.hsaco"
+    safe.write_bytes(b"safe")
+    hazard.write_bytes(b"hazard")
+    calls: dict[str, tuple[list[str], dict[str, str]]] = {}
+
+    def run_step(name, argv, *, environment, **_kwargs):
+        calls[name] = (argv, dict(environment))
+        output = ""
+        returncode = 0
+        if name == "inventory-safe":
+            output = worker.json.dumps(
+                {
+                    "kind": "kernel",
+                    "kernel_name": "waitcheck_probe_kernel",
+                    "kernel_entry": 0,
+                }
+            )
+        elif name == "safe-production":
+            output = _waitcheck_result_line(
+                worker._sha256_file(safe), passed=True, diagnostic=False
+            )
+        elif name == "hazard-production":
+            output = _waitcheck_result_line(
+                worker._sha256_file(hazard), passed=False, diagnostic=True
+            )
+        elif name == "hazard-cli":
+            output = "missing s_waitcnt lgkmcnt(0)"
+            returncode = 4
+        return {
+            "command": argv,
+            "returncode": returncode,
+            "_stdout": output,
+            "_stderr": "",
+        }
+
+    monkeypatch.setattr(worker, "_run_probe_step", run_step)
+    result = worker._waitcheck_positive(
+        {
+            "waitcheck_binary": "/opt/rocjitsu/bin/rj_waitcheck",
+            "waitcheck_capi_wrapper": "/opt/rocjitsu/bin/aka-waitcheck-capi",
+        },
+        tmp_path / "framework" / "probes",
+        work,
+        tmp_path / "artifacts",
+    )
+
+    assert result["passed"] is True
+    safe_command = calls["safe-production"][0]
+    assert any(value.endswith("waitcheck_entrypoint.py") for value in safe_command)
+    assert "/opt/rocjitsu/bin/aka-waitcheck-capi" in safe_command
+    assert "hazard-production" in calls
+    assert calls["hazard-cli"][0][0] == "/opt/rocjitsu/bin/rj_waitcheck"
+
+
+def test_waitcheck_positive_control_rejects_broken_production_entrypoint(
+    tmp_path: Path, monkeypatch
+) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "waitcheck-safe.hsaco").write_bytes(b"safe")
+    (work / "waitcheck-hazard.hsaco").write_bytes(b"hazard")
+
+    def run_step(name, argv, **_kwargs):
+        output = ""
+        returncode = 0
+        if name == "inventory-safe":
+            output = worker.json.dumps(
+                {
+                    "kernel_name": "waitcheck_probe_kernel",
+                    "kernel_entry": 0,
+                }
+            )
+        elif name == "safe-production":
+            returncode = 2
+        elif name == "hazard-cli":
+            output = "missing wait"
+            returncode = 4
+        return {
+            "command": argv,
+            "returncode": returncode,
+            "_stdout": output,
+            "_stderr": "",
+        }
+
+    monkeypatch.setattr(worker, "_run_probe_step", run_step)
+    result = worker._waitcheck_positive(
+        {
+            "waitcheck_binary": "/opt/rocjitsu/bin/rj_waitcheck",
+            "waitcheck_capi_wrapper": "/opt/rocjitsu/bin/aka-waitcheck-capi",
+        },
+        tmp_path / "framework" / "probes",
+        work,
+        tmp_path / "artifacts",
+    )
+
+    assert result["passed"] is False
+
+
+def test_consan_positive_control_runs_production_entrypoint_and_oracle_split(
+    tmp_path: Path, monkeypatch
+) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    safe = work / "consan-safe.hsaco"
+    racy = work / "consan-racy.hsaco"
+    safe.write_bytes(b"safe")
+    racy.write_bytes(b"racy")
+    calls: dict[str, tuple[list[str], dict[str, str]]] = {}
+
+    def run_step(name, argv, *, environment, **_kwargs):
+        calls[name] = (argv, dict(environment))
+        output = (
+            "CONSAN_ORACLE_ENV_CLEAN\nAKA_CONSAN_RUN {}"
+            if name.endswith("-production")
+            else ""
+        )
+        return {
+            "command": argv,
+            "returncode": 0,
+            "_stdout": output,
+            "_stderr": "",
+        }
+
+    parsed_statuses = iter((PASS, FINDING))
+    monkeypatch.setattr(worker, "_run_probe_step", run_step)
+    monkeypatch.setattr(
+        worker,
+        "parse_consan",
+        lambda *_args, **_kwargs: SimpleNamespace(status=next(parsed_statuses)),
+    )
+    result = worker._consan_positive(
+        {"consan_hook": "/opt/rocjitsu/lib/librocjitsu_dbi_hooks.so"},
+        tmp_path / "framework" / "probes",
+        work,
+        tmp_path / "artifacts",
+    )
+
+    assert result["passed"] is True
+    for name in ("safe-production", "racy-production"):
+        command, environment = calls[name]
+        assert any(value.endswith("consan_entrypoint.py") for value in command)
+        assert command.count("--command-arg") == 4
+        assert command.count("--oracle-arg") == 4
+        assert "HSA_TOOLS_LIB" not in environment
+        assert not any(key.startswith("RJ_CONSAN_") for key in environment)
