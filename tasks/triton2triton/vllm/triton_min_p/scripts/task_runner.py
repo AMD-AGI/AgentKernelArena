@@ -91,27 +91,14 @@ def run_performance():
             logits = torch.randn(batch, vocab, device=device, dtype=torch.float32)
             idx_mapping = torch.arange(batch, dtype=torch.int32, device=device)
             min_p = torch.full((batch,), 0.1, device=device, dtype=torch.float32)
-            for _ in range(WARMUP_ITERATIONS): mod.apply_min_p(logits.clone(), idx_mapping, min_p)
-            torch.cuda.synchronize()
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
-                l = logits.clone()
-                start_events[j].record()
-                mod.apply_min_p(l, idx_mapping, min_p)
-                end_events[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "per_iteration_prepare_or_state_reset",
-            }
+            logits_work = logits.clone()
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                lambda: mod.apply_min_p(logits_work, idx_mapping, min_p),
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                target_ms=20.0,
+                prepare_fn=lambda: logits_work.copy_(logits),
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

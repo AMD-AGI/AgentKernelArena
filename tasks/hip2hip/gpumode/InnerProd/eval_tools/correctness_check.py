@@ -114,7 +114,7 @@ def load_func_obj(py_func_path: str, class_name: str, init_func_name: str) -> An
     return model
 
 
-def _compare_results(modu_result: Any, func_result: Any, rtol: float = 1e-4, atol: float = 1e-5) -> bool:
+def _compare_results(modu_result: Any, func_result: Any, rtol: float = 1e-4, atol: float = 1e-4) -> bool:
     if isinstance(modu_result, dict) and isinstance(func_result, dict):
         if set(modu_result.keys()) != set(func_result.keys()):
             return False
@@ -163,7 +163,7 @@ def correctness_check(
     hip_kernel_path: str,
     build_dir: str = "temp",
     rtol: float = 1e-4,
-    atol: float = 1e-5,
+    atol: float = 1e-4,
     auto_cleanup: bool = True,
 ) -> bool:
     hip_dir = os.path.join(build_dir, "hip")

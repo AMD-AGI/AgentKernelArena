@@ -1,33 +1,38 @@
 # Canonical performance-benchmark helpers
 
-The real timing helpers live here as the single source of truth. Committed task
-sources keep only small stubs/markers, and `setup_workspace()` materializes the
-canonical helper code into each per-run workspace before benchmark commands run.
-This keeps generated code out of normal development diffs while preserving
-self-contained task workspaces at runtime.
+This directory is the single source of truth for graph-first device timing.
+Committed task sources keep small imports, stubs, or generated marker regions;
+`setup_workspace()` materializes the canonical code into each run workspace.
+The resulting task remains self-contained and does not import `src`.
 
 ## Files
-- `performance_utils_pytest.py` - full rocmbench pytest timing helper. In task
-  sources, `tasks/*/rocmbench/**/performance_utils_pytest.py` is a stub; in run
-  workspaces, it is replaced with this file.
-- `vllm_cuda_graph_block.py` - the two vLLM helper functions
-  (`_measure_cuda_event_fallback`, `_benchmark_cuda_graph_or_events`). In task
-  sources, the `# >>> AKA-GENERATED ... >>>` / `# <<< AKA-GENERATED <<<` region
-  contains a stub block; in run workspaces, that region is replaced with these
-  functions.
+
+- `aka_benchmark.py` — self-contained Python implementation (standard library
+  plus PyTorch). It is copied as `_aka_benchmark.py` beside importing
+  performance entrypoints. Its optional `prepare_fn` supports stateful kernels
+  by restoring inputs before, and outside, each measured replay/event interval.
+  It also contains the conservative HIP-source current-stream preflight used by
+  compiled-extension tasks.
+- `performance_utils_pytest.py` — thin ROCmBench adapter. Task sources keep a
+  stub; run workspaces receive this file and a sibling `_aka_benchmark.py`.
+- `vllm_cuda_graph_block.py` — thin compatibility functions injected between
+  the vLLM/image AKA-GENERATED markers. A sibling `_aka_benchmark.py` supplies
+  their implementation.
+- `native_hip_graph_benchmark.hpp` — self-contained HIP runtime implementation,
+  materialized as `scripts/native/hip_graph_benchmark.hpp` when requested by a
+  native benchmark driver.
 
 ## Workflow
-1. Edit the canonical file(s) here.
-2. Run `make check-perf-helpers` before pushing. This verifies that committed
-   task stubs/markers are valid.
-3. If you add a new task or change marker/stub structure, run
-   `make sync-perf-helpers` to refresh the committed stubs.
 
-Do not hand-edit the committed perf-helper stubs in task directories. Runtime
-workspaces are materialized from `src/tools/perf/` by the framework.
+1. Edit canonical helper code here.
+2. Run `make check-perf-helpers`. The check validates stubs and audits every
+   configured task performance entrypoint.
+3. If marker or stub structure changes, run `make sync-perf-helpers`.
 
-Use `make materialize-perf-workspace WORKSPACE=...` to inject helpers into an
-existing copied task workspace, or `make materialize-perf-task TASK=tasks/...`
-to copy a task to `/tmp/aka-materialized-tasks` and inject helpers there.
+Do not commit `_aka_benchmark.py` or `hip_graph_benchmark.hpp` copies under
+`tasks/`, and do not hand-edit generated helper regions. Use
+`make materialize-perf-workspace WORKSPACE=...` for an existing copied
+workspace, or `make materialize-perf-task TASK=tasks/...` for local inspection.
 
-See `docs/reference/benchmark-methodology.md` for the timing methodology itself.
+See `docs/reference/benchmark-methodology.md` for measurement and fairness
+rules, including paired graph/Event baseline selection.

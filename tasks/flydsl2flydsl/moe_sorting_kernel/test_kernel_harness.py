@@ -71,7 +71,10 @@ Usage:
 
 import argparse
 import os
+import statistics
 import sys
+from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import benchmark_cuda_event_samples
 
 WARMUP_ITERS = 3
 RUN_BENCH = os.environ.get("MOE_SORTING_BENCH", "0") == "1"
@@ -91,6 +94,45 @@ def _call_flydsl(topk_ids, topk_weights, E, model_dim=4096, topk=None, unit_size
     nv = torch.empty(2, dtype=torch.int32, device=device)
     buf = torch.empty((T, model_dim), dtype=torch.bfloat16, device=device)
     return moe_sorting_flydsl(topk_ids, topk_weights, s_ids, s_w, s_eids, nv, buf, E, unit_size, expert_mask)
+
+
+def _make_preallocated_flydsl_call(
+    topk_ids,
+    topk_weights,
+    E,
+    model_dim=4096,
+    topk=None,
+    unit_size=UNIT_SIZE,
+    expert_mask=None,
+):
+    """Create an allocation-free launcher closure for benchmarking."""
+    if topk is None:
+        topk = topk_ids.shape[1]
+    T = topk_ids.shape[0]
+    max_padded = T * topk + E * unit_size - topk
+    max_blocks = (max_padded + unit_size - 1) // unit_size
+    device = topk_ids.device
+    s_ids = torch.empty(max_padded, dtype=torch.int32, device=device)
+    s_w = torch.empty(max_padded, dtype=torch.float32, device=device)
+    s_eids = torch.empty(max_blocks, dtype=torch.int32, device=device)
+    nv = torch.empty(2, dtype=torch.int32, device=device)
+    buf = torch.empty((T, model_dim), dtype=torch.bfloat16, device=device)
+
+    def launch():
+        return moe_sorting_flydsl(
+            topk_ids,
+            topk_weights,
+            s_ids,
+            s_w,
+            s_eids,
+            nv,
+            buf,
+            E,
+            unit_size,
+            expert_mask,
+        )
+
+    return launch
 
 
 BENCH_ITERS = 20
@@ -415,18 +457,20 @@ def run_test(T, E, topk, unit_size=UNIT_SIZE, max_tokens=None):
     # --- Benchmark (opt-in via MOE_SORTING_BENCH=1) ---
     gpu_time_us = None
     if passed and RUN_BENCH:
-        for _ in range(WARMUP_ITERS):
-            _call_flydsl(topk_ids, topk_weights, E, model_dim=4096, topk=topk, unit_size=unit_size)
-        torch.cuda.synchronize()
-
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        start.record()
-        for _ in range(BENCH_ITERS):
-            _call_flydsl(topk_ids, topk_weights, E, model_dim=4096, topk=topk, unit_size=unit_size)
-        end.record()
-        torch.cuda.synchronize()
-        gpu_time_us = start.elapsed_time(end) * 1000.0 / BENCH_ITERS  # ms → us
+        bench_fn = _make_preallocated_flydsl_call(
+            topk_ids,
+            topk_weights,
+            E,
+            model_dim=4096,
+            topk=topk,
+            unit_size=unit_size,
+        )
+        gpu_time_ms, _bench_meta = benchmark_cuda_graph_or_events(
+            bench_fn,
+            warmup=WARMUP_ITERS,
+            repetition=BENCH_ITERS,
+        )
+        gpu_time_us = gpu_time_ms * 1e3
         print(f"  [perf] {gpu_time_us:.2f} us/call ({path})")
 
     status = "PASSED" if passed else "FAILED"
@@ -587,73 +631,27 @@ EP_CONFIGS = [
 # Benchmark utilities
 # ---------------------------------------------------------------------------
 def bench_eager_us(fn, warmup=BENCH_WARMUP, iters=BENCH_MEASURE, flush_l2=True):
-    """Per-iteration CUDA events timer with L2 flush and median latency."""
-    flush_buf = None
+    """Event-fallback comparison timer; the scoring path remains graph-first."""
     if flush_l2:
         props = torch.cuda.get_device_properties(torch.cuda.current_device())
         l2_bytes = getattr(props, "L2_cache_size", 4 * 1024 * 1024)
         flush_buf = torch.empty(max(l2_bytes * 2, 8 * 1024 * 1024), dtype=torch.uint8, device="cuda")
-
+        flush_buf.zero_()
+        torch.cuda.synchronize()
+        del flush_buf
     for _ in range(warmup):
-        if flush_buf is not None:
-            flush_buf.zero_()
         fn()
     torch.cuda.synchronize()
-
-    starts = [torch.cuda.Event(enable_timing=True) for _ in range(iters)]
-    ends = [torch.cuda.Event(enable_timing=True) for _ in range(iters)]
-    for i in range(iters):
-        if flush_buf is not None:
-            flush_buf.zero_()
-        starts[i].record()
-        fn()
-        ends[i].record()
-    torch.cuda.synchronize()
-
-    latencies = sorted(starts[i].elapsed_time(ends[i]) * 1e3 for i in range(iters))
-    n = len(latencies)
-    if n >= 8:
-        q1, q3 = latencies[n // 4], latencies[3 * n // 4]
-        iqr = q3 - q1
-        lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-        latencies = [x for x in latencies if lo <= x <= hi] or latencies
-    del flush_buf
-    return latencies[len(latencies) // 2]
+    samples_ms = benchmark_cuda_event_samples(fn, repetition=iters)
+    return statistics.median(samples_ms) * 1e3
 
 
 def bench_graph_us(fn, warmup=BENCH_WARMUP, iters=BENCH_MEASURE):
-    """CUDA graph benchmark — amortizes kernel launch overhead."""
-    for _ in range(warmup):
-        fn()
-    torch.cuda.synchronize()
-
-    stream = torch.cuda.Stream()
-    stream.wait_stream(torch.cuda.current_stream())
-    try:
-        with torch.cuda.stream(stream):
-            fn()
-        torch.cuda.current_stream().wait_stream(stream)
-        torch.cuda.synchronize()
-
-        graph = torch.cuda.CUDAGraph()
-        with torch.cuda.stream(stream):
-            with torch.cuda.graph(graph, stream=stream):
-                fn()
-        torch.cuda.current_stream().wait_stream(stream)
-        for _ in range(warmup):
-            graph.replay()
-        torch.cuda.synchronize()
-    except RuntimeError:
-        return None  # graph capture not supported
-
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    start.record()
-    for _ in range(iters):
-        graph.replay()
-    end.record()
-    torch.cuda.synchronize()
-    return start.elapsed_time(end) * 1e3 / iters
+    """Graph-first comparison timer with automatic Event fallback."""
+    elapsed_ms, _bench_meta = benchmark_cuda_graph_or_events(
+        fn, warmup=warmup, repetition=iters
+    )
+    return elapsed_ms * 1e3
 
 
 def run_bench_comparison(token_sweep=None):
@@ -675,7 +673,7 @@ def run_bench_comparison(token_sweep=None):
     print(f"  Device: {torch.cuda.get_device_name(0)}")
     props = torch.cuda.get_device_properties(0)
     print(f"  CUs: {props.multi_processor_count}, oneshot threshold: T<={sub_tokens}")
-    print(f"  Modes: eager (with L2 flush, median of {BENCH_MEASURE}), graph ({BENCH_MEASURE} replays)")
+    print(f"  Modes: eager (median of {BENCH_MEASURE}), graph ({BENCH_MEASURE} replays)")
     print(f"{'=' * 110}")
     print(
         f"{'T':>6s} | {'Path':>7s} | {'FLY eager':>10s} | {'FLY graph':>10s} | "
@@ -847,23 +845,17 @@ def run_geak_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
             continue
         torch.manual_seed(42)
         topk_ids, topk_weights = generate_topk_ids(T, E, k)
-        for _ in range(warmup):
-            _call_flydsl(topk_ids, topk_weights, E, model_dim=4096, topk=k)
-        torch.cuda.synchronize()
-        times = []
-        for _ in range(iters):
-            s = torch.cuda.Event(enable_timing=True)
-            e = torch.cuda.Event(enable_timing=True)
-            s.record()
-            _call_flydsl(topk_ids, topk_weights, E, model_dim=4096, topk=k)
-            e.record()
-            torch.cuda.synchronize()
-            times.append(s.elapsed_time(e))
-        ms = sum(times) / len(times)
+        launch = _make_preallocated_flydsl_call(
+            topk_ids, topk_weights, E, model_dim=4096, topk=k
+        )
+        ms, bench_meta = benchmark_cuda_graph_or_events(
+            launch, warmup=warmup, repetition=iters
+        )
         latencies.append(ms)
         report_cases.append({
             "test_case_id": f"moe_sort_{idx}",
             "execution_time_ms": ms,
+            **bench_meta,
             "shape": [T, E, k],
             "params": {"T": T, "E": E, "topk": k},
         })

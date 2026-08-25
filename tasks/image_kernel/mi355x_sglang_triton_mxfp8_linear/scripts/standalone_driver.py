@@ -123,6 +123,8 @@ CASES = SPEC["cases"]
 
 
 def _configure() -> None:
+    os.environ.setdefault("USER", "agentkernelarena")
+    os.environ.setdefault("LOGNAME", "agentkernelarena")
     for key in ("GPU_ARCHS", "PYTORCH_ROCM_ARCH", "AMDGPU_TARGETS", "GPU_TARGETS"):
         os.environ.setdefault(key, "gfx950")
     # Prefer the workspace-seeded editable copy so the agent's edits take effect;
@@ -233,7 +235,7 @@ def _benchmark_cuda_graph(fn, warmup=10, repetition=100, target_ms=1.0, max_grap
 # --------------------------------------------------------------------------- #
 def _make(case: dict) -> dict:
     torch = _torch()
-    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import (
+    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import (
         _mxfp8_e4m3_quantize_torch,
         mxfp8_e4m3_quantize,
     )
@@ -259,7 +261,7 @@ def _make(case: dict) -> dict:
 
 def _run(inputs: dict):
     torch = _torch()
-    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import _run_mxfp8_linear_kernel
+    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import _run_mxfp8_linear_kernel
 
     return _run_mxfp8_linear_kernel(
         inputs["x_fp8"],
@@ -272,7 +274,7 @@ def _run(inputs: dict):
 
 def _reference(inputs: dict):
     torch = _torch()
-    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
+    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
 
     x = dequant_mxfp8_to_bf16(inputs["x_fp8"], inputs["x_scale"])
     w = dequant_mxfp8_to_bf16(inputs["w_fp8"], inputs["w_scale"])

@@ -8,6 +8,8 @@
 #include <string>
 #include <cmath>
 
+#define AKA_BENCHMARK_EVENT_ONLY 1
+
 // One thread computes loss for one row (all classes) to avoid inter-thread comms.
 // Supports:
 // - from_logits: compute log_softmax on the fly, else treat input as log-probabilities
@@ -289,4 +291,3 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         py::arg("from_logits") = true
     );
 }
-

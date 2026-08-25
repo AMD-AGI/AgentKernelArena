@@ -13,7 +13,7 @@ Modes:
                     match the fp32-reduce torch reference (residual_out + rmsnorm) at
                     the upstream bf16/fp16 tolerance (1e-2)
                     [mirrors op_tests/.../test_rmsnorm.py:test_fused_add_rmsnorm]
-  --full-benchmark  warmup + cuda-event timing, write build/performance_report.json
+  --full-benchmark  graph-first GPU timing, write build/performance_report.json
 """
 import argparse
 import ast
@@ -23,6 +23,7 @@ import math
 import os
 import sys
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 SOURCE_FILE = "fused_add_rmsnorm.py"
 ENTRY = "rmsnorm2d_fwd_with_add"
@@ -161,22 +162,16 @@ def run_benchmark(verbose=True):
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
-        times = []
-        for _ in range(ITERS):
-            s = torch.cuda.Event(enable_timing=True)
-            e = torch.cuda.Event(enable_timing=True)
-            s.record()
-            fn()
-            e.record()
-            torch.cuda.synchronize()
-            times.append(s.elapsed_time(e))
-        ms = sum(times) / len(times)
+        ms, bench_meta = benchmark_cuda_graph_or_events(
+            fn, warmup=0, repetition=ITERS
+        )
         latencies.append(ms)
         nbytes = 4.0 * shape["M"] * shape["N"] * 2  # x+res read, out+res_out write (bf16)
         report.append(
             {
                 "test_case_id": f"perf{idx + 1}",
                 "execution_time_ms": ms,
+                **bench_meta,
                 "params": {k: shape[k] for k in ("M", "N")},
                 "gbps": nbytes / (ms * 1e-3) / 1e9,
             }

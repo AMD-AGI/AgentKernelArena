@@ -1,0 +1,13 @@
+# Revalidates the repository task after enabling its Triton-only aiter runtime.
+agent:
+  template: task_validator
+  backend: codex
+  model: gpt-5.6-luna
+  effort: xhigh
+
+tasks:
+  - repository/aiter/unified_attention
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

@@ -6,7 +6,7 @@ Self-contained harness mirroring the triton2flydsl template:
   - correctness  : run the triton source on TEST_SHAPES, assert finite output. No torch
                    comparison: the flydsl-vs-triton comparison is added when the FlyDSL
                    target lands (the Triton kernel is the reference here).
-  - performance  : warmup + cuda-event timing, write build/performance_report.json
+  - performance  : graph-first GPU timing, write build/performance_report.json
 
 The kernel under test is SageAttention v1 (INT8 Q/K + FP8 V flash attention).
 Public entry: `fav3_sage(q, k, v, ...)` (high-precision BF16/FP16/FP32 in -> BF16 out;
@@ -18,6 +18,7 @@ import os
 import json
 import argparse
 import importlib.util
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -329,28 +330,24 @@ def run_performance():
                 _call_kernel(mod, q, k, v, scale, causal, window)
             torch.cuda.synchronize()
 
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-
-            for j in range(n_iter):
-                start_events[j].record()
-                _call_kernel(mod, q, k, v, scale, causal, window)
-                end_events[j].record()
-
-            torch.cuda.synchronize()
-            times = [s_e.elapsed_time(e_e) for s_e, e_e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
+            elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
+                lambda: _call_kernel(mod, q, k, v, scale, causal, window),
+                warmup=0,
+                repetition=BENCHMARK_ITERATIONS,
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": elapsed_ms,
+                **bench_meta,
                 "params": params,
             })
         except Exception:
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
+                "benchmark_method": "benchmark_failed",
+                "benchmark_fallback_reason": "performance case failed before timing completed",
                 "params": params,
             })
     return test_cases

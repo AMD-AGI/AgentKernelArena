@@ -1,6 +1,7 @@
 // Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 #include <torch/extension.h>
 #include <ATen/ATen.h>
+#include <c10/hip/HIPStream.h>
 #include <hip/hip_runtime.h>
 
 #define HIP_CHECK(err) \
@@ -162,12 +163,13 @@ torch::Tensor forward(
     int AB_q = q_size * seq_size;
     int AB_s = s_size * seq_size;
     int threads_lin = std::min(256, std::max(32, hidden_size));
+    hipStream_t stream = c10::hip::getCurrentHIPStream().stream();
 
-    hipLaunchKernelGGL(linear_lastdim_kernel, dim3(AB_q), dim3(threads_lin), 0, 0,
+    hipLaunchKernelGGL(linear_lastdim_kernel, dim3(AB_q), dim3(threads_lin), 0, stream,
         qs_flat.data_ptr<float>(), weight.data_ptr<float>(), bias.data_ptr<float>(), qs_lin_flat.data_ptr<float>(), AB_q, feature_size, hidden_size);
     HIP_CHECK(hipGetLastError());
 
-    hipLaunchKernelGGL(linear_lastdim_kernel, dim3(AB_s), dim3(threads_lin), 0, 0,
+    hipLaunchKernelGGL(linear_lastdim_kernel, dim3(AB_s), dim3(threads_lin), 0, stream,
         hs_flat.data_ptr<float>(), weight.data_ptr<float>(), bias.data_ptr<float>(), hs_lin_flat.data_ptr<float>(), AB_s, feature_size, hidden_size);
     HIP_CHECK(hipGetLastError());
 
@@ -182,7 +184,7 @@ torch::Tensor forward(
     dim3 grid(q_size, s_size, seq_size);
     size_t shmem_bytes = static_cast<size_t>(seq_size) * sizeof(float);
 
-    hipLaunchKernelGGL(weighted_context_kernel, grid, dim3(threads_att), shmem_bytes, 0,
+    hipLaunchKernelGGL(weighted_context_kernel, grid, dim3(threads_att), shmem_bytes, stream,
         qs_lin.data_ptr<float>(),
         hs_lin.data_ptr<float>(),
         hs.data_ptr<float>(),
@@ -190,11 +192,9 @@ torch::Tensor forward(
         q_size, s_size, seq_size, hidden_size, feature_size);
     HIP_CHECK(hipGetLastError());
 
-    HIP_CHECK(hipDeviceSynchronize());
     return out;
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &forward, "ItemQueryAttention HIP forward (ROCm)");
 }
-

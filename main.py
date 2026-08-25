@@ -477,10 +477,17 @@ def run_task(
         # for this run. Remove the copied report before launching the validator
         # so an agent/backend failure cannot be mistaken for a successful run.
         if is_validator:
-            stale_report = workspace_path / "validation_report.yaml"
-            if stale_report.exists():
-                stale_report.unlink()
-                logger.info("Removed copied stale validation_report.yaml before validation")
+            stale_validator_files = (
+                workspace_path / "validation_report.yaml",
+                workspace_path / ".validation_complete",
+            )
+            removed_stale = False
+            for stale_file in stale_validator_files:
+                if stale_file.exists():
+                    stale_file.unlink()
+                    removed_stale = True
+            if removed_stale:
+                logger.info("Removed copied stale validator completion artifacts before validation")
 
         baseline_cases = []
         if is_validator:
@@ -537,25 +544,69 @@ def run_task(
             logger.error(f"Task {task_name} did not produce expected completion report: {expected_report}")
             return False, workspace_path
 
-        logger.info(f"Task {task_name} completed successfully")
+        if is_validator:
+            with (workspace_path / "validation_report.yaml").open() as report_handle:
+                validation_report = yaml.safe_load(report_handle) or {}
+            logger.info(
+                "Task validation audit completed: %s (overall=%s)",
+                task_name,
+                validation_report.get("overall_status", "FAIL"),
+            )
+        else:
+            logger.info(f"Task {task_name} completed successfully")
         return True, workspace_path
     except Exception as e:
         logger.error(f"Task {task_name} failed with error: {e}", exc_info=True)
+        if agent == AgentType.TASK_VALIDATOR:
+            # Workspace materialization can fail after creating the task
+            # directory (for example when an image_repo_path is unavailable).
+            # Persist that operational failure as a complete validator report
+            # so parallel resume does not retry it forever and post-processing
+            # can distinguish it from a task audit finding.
+            report_workspace = workspace_path or get_task_workspace_path(
+                run_directory, task_name, timestamp
+            )
+            if report_workspace.is_dir():
+                try:
+                    from agents.task_validator.report_schema import finalize_report
+
+                    finalize_report(
+                        report_workspace,
+                        expected_task_name=task_name,
+                        framework_error=(
+                            "task setup/execution failed before validation: "
+                            f"{type(e).__name__}: {e}"
+                        ),
+                    )
+                    logger.info(
+                        "Recorded validator setup/execution failure for %s",
+                        task_name,
+                    )
+                    return True, report_workspace
+                except Exception:
+                    logger.error(
+                        "Could not finalize validator failure report for %s",
+                        task_name,
+                        exc_info=True,
+                    )
         return False, workspace_path
 
 
-def run_post_processing(agent: AgentType, workspace_paths: list[str], logger: logging.Logger) -> None:
+def run_post_processing(agent: AgentType, workspace_paths: list[str], logger: logging.Logger) -> bool:
     logger.info("=" * 80)
     logger.info("Running Post-Processing")
     logger.info("=" * 80)
 
     try:
         post_processing_handler = load_post_processing_handler(agent, logger)
-        post_processing_handler(workspace_paths, logger)
+        result = post_processing_handler(workspace_paths, logger)
+        return result is not False
     except NotImplementedError as e:
         logger.warning(f"Post-processing skipped: {e}")
+        return True
     except Exception as e:
         logger.error(f"Post-processing failed: {e}", exc_info=True)
+        return False
 
 
 def _queue_root(run_directory: Path) -> Path:
@@ -677,7 +728,8 @@ def run_serial(args: argparse.Namespace) -> int:
     if context is None:
         return 1
 
-    task_config_dict = context["task_config_dict"]
+    all_task_config_dict = context["task_config_dict"]
+    task_config_dict = all_task_config_dict
     if context["resume_mode"]:
         task_config_dict = _filter_completed_tasks(
             task_config_dict,
@@ -689,12 +741,22 @@ def run_serial(args: argparse.Namespace) -> int:
 
     if not task_config_dict:
         context["logger"].info("All tasks are already completed. Nothing to run.")
+        if context["agent"] == AgentType.TASK_VALIDATOR:
+            workspace_paths = collect_existing_workspace_paths(
+                context["run_directory"],
+                all_task_config_dict,
+                context["timestamp"],
+            )
+            return 0 if run_post_processing(
+                context["agent"], workspace_paths, context["logger"]
+            ) else 1
         return 0
 
     workspace_paths: list[str] = []
+    execution_failed = False
     total_tasks = len(task_config_dict)
     for index, (task_name, task_config_dir) in enumerate(task_config_dict.items(), 1):
-        _, workspace_path = run_task(
+        completed, workspace_path = run_task(
             eval_config=context["config"],
             agent=context["agent"],
             agent_launcher=context["agent_launcher"],
@@ -708,12 +770,25 @@ def run_serial(args: argparse.Namespace) -> int:
         )
         if workspace_path is not None:
             workspace_paths.append(str(workspace_path))
+        if not completed:
+            execution_failed = True
 
-    run_post_processing(context["agent"], workspace_paths, context["logger"])
+    if context["agent"] == AgentType.TASK_VALIDATOR and context["resume_mode"]:
+        # Validator summaries are gates, so a resumed run must include reports
+        # from both prior and newly completed workspaces.
+        workspace_paths = collect_existing_workspace_paths(
+            context["run_directory"],
+            all_task_config_dict,
+            context["timestamp"],
+        )
+
+    post_processing_passed = run_post_processing(
+        context["agent"], workspace_paths, context["logger"]
+    )
     context["logger"].info("=" * 80)
     context["logger"].info("AgentKernelArena Framework Completed")
     context["logger"].info("=" * 80)
-    return 0
+    return 1 if execution_failed or not post_processing_passed else 0
 
 
 def run_parallel_init(args: argparse.Namespace) -> int:
@@ -780,7 +855,9 @@ def run_postprocess_only(args: argparse.Namespace) -> int:
         context["timestamp"],
     )
     context["logger"].info(f"Post-processing {len(workspace_paths)} workspace(s)")
-    run_post_processing(context["agent"], workspace_paths, context["logger"])
+    post_processing_passed = run_post_processing(
+        context["agent"], workspace_paths, context["logger"]
+    )
 
     pending_descriptors = list(_queue_state_dir(context["run_directory"], "pending").glob("*.yaml"))
     running_descriptors = list(_queue_state_dir(context["run_directory"], "running").glob("*.yaml"))
@@ -793,6 +870,9 @@ def run_postprocess_only(args: argparse.Namespace) -> int:
         return 1
     if failed_descriptors:
         context["logger"].error(f"Parallel run has {len(failed_descriptors)} failed task(s)")
+        return 1
+    if not post_processing_passed:
+        context["logger"].error("Post-processing gate failed")
         return 1
 
     context["logger"].info("=" * 80)

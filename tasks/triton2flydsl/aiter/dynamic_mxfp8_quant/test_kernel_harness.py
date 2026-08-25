@@ -14,7 +14,7 @@ Modes:
                     bit-faithful fp32 torch reference: e8m0 scales BIT-EXACT and FP8
                     values within 1 ULP on the uint8 view
                     [mirrors quant/test_quant_mxfp8.py:torch_mxfp8_quant_from_fp32]
-  --full-benchmark  warmup + cuda-event timing, write build/performance_report.json
+  --full-benchmark  graph-first GPU timing, write build/performance_report.json
 """
 import argparse
 import ast
@@ -24,6 +24,7 @@ import math
 import os
 import sys
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 SOURCE_FILE = "dynamic_mxfp8_quant.py"
 ENTRY = "dynamic_mxfp8_quant"
@@ -157,21 +158,15 @@ def run_benchmark(verbose=True):
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
-        times = []
-        for _ in range(ITERS):
-            s = torch.cuda.Event(enable_timing=True)
-            e = torch.cuda.Event(enable_timing=True)
-            s.record()
-            fn()
-            e.record()
-            torch.cuda.synchronize()
-            times.append(s.elapsed_time(e))
-        ms = sum(times) / len(times)
+        ms, bench_meta = benchmark_cuda_graph_or_events(
+            fn, warmup=0, repetition=ITERS
+        )
         latencies.append(ms)
         report.append(
             {
                 "test_case_id": f"perf{idx + 1}",
                 "execution_time_ms": ms,
+                **bench_meta,
                 "params": {"shape": list(sh)},
             }
         )

@@ -458,9 +458,14 @@ def is_task_complete(
         True if the expected completion report exists, False otherwise
     """
     task_dir = get_task_workspace_path(run_directory, task_name, timestamp)
-    report_name = "validation_report.yaml" if agent_name == "task_validator" else "task_result.yaml"
-    result_file = task_dir / report_name
-    return result_file.exists()
+    if agent_name == "task_validator":
+        # A model-written YAML file is not completion evidence by itself. Only a
+        # schema-valid report atomically finalized by the validator launcher may
+        # be resumed or counted by post-processing.
+        from agents.task_validator.report_schema import validation_report_is_complete
+
+        return validation_report_is_complete(task_dir)
+    return (task_dir / "task_result.yaml").exists()
 
 
 def setup_workspace(task_config_dir: str, run_directory: Path, timestamp: str, logger: logging.Logger,

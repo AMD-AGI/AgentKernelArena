@@ -78,9 +78,11 @@ class RoIAwarePool3dFunction(Function):
         pts_idx_of_voxels = pts_feature.new_zeros(
             (num_rois, out_x, out_y, out_z, max_pts_per_voxel),
             dtype=torch.int)
+        pts_mask = pts_feature.new_empty((num_rois, num_pts), dtype=torch.int)
 
         roiaware_pool3d_ext.forward(rois, pts, pts_feature, argmax,
-                                    pts_idx_of_voxels, pooled_features, mode)
+                                    pts_idx_of_voxels, pooled_features,
+                                    pts_mask, mode)
 
         ctx.roiaware_pool3d_for_backward = (pts_idx_of_voxels, argmax, mode,
                                             num_pts, num_channels)

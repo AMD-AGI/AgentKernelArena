@@ -33,6 +33,7 @@ import math
 import os
 import sys
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 KERNEL_FILE = "kernel.py"
 MODEL_FILE = "model.py"
@@ -90,6 +91,57 @@ def _make_inputs(mmod, shape, device="cuda"):
 def _ref_outputs(mmod, shape, topk_ids, topk_weights):
     model = mmod.Model(num_experts=shape["E"], topk=shape["topk"], block_size=BLOCK_SIZE)
     return model(topk_ids, topk_weights)
+
+
+def _make_prepared_reference(shape, topk_ids, topk_weights):
+    """Resolve data-dependent expert run sizes once for graph-safe replay."""
+    import torch
+
+    M, topk = topk_ids.shape
+    num_experts = shape["E"]
+    max_tokens = M * topk + num_experts * BLOCK_SIZE - topk
+    max_blocks = (max_tokens + BLOCK_SIZE - 1) // BLOCK_SIZE
+    sentinel = (topk << 24) | M
+
+    sorted_token_ids = torch.empty(max_tokens, dtype=torch.int32, device=topk_ids.device)
+    sorted_weights = torch.empty(max_tokens, dtype=torch.float32, device=topk_ids.device)
+    sorted_expert_ids = torch.empty(max_blocks, dtype=torch.int32, device=topk_ids.device)
+
+    plans = []
+    ids_cursor = 0
+    block_cursor = 0
+    for expert in range(num_experts):
+        token_id, topk_pos = torch.where(topk_ids == expert)
+        count = token_id.numel()
+        if not count:
+            continue
+        blocks = (count + BLOCK_SIZE - 1) // BLOCK_SIZE
+        plans.append(
+            (expert, token_id, topk_pos, ids_cursor, count, block_cursor, blocks)
+        )
+        ids_cursor += blocks * BLOCK_SIZE
+        block_cursor += blocks
+
+    num_valid_ids = torch.empty(2, dtype=torch.int32, device=topk_ids.device)
+    num_valid_template = torch.tensor(
+        [ids_cursor, M], dtype=torch.int32, device=topk_ids.device
+    )
+
+    def run_ref():
+        sorted_token_ids.fill_(sentinel)
+        sorted_weights.zero_()
+        sorted_expert_ids.fill_(-1)
+        num_valid_ids.copy_(num_valid_template)
+        for expert, token_id, topk_pos, start, count, block_start, blocks in plans:
+            packed = (topk_pos.to(torch.int32) << 24) | token_id.to(torch.int32)
+            sorted_token_ids[start : start + count].copy_(packed)
+            sorted_weights[start : start + count].copy_(
+                topk_weights[token_id, topk_pos].to(torch.float32)
+            )
+            sorted_expert_ids[block_start : block_start + blocks].fill_(expert)
+        return sorted_token_ids, sorted_weights, sorted_expert_ids, num_valid_ids
+
+    return run_ref
 
 
 def _exact_check(shape, ref, out, verbose=True):
@@ -254,6 +306,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         torch.manual_seed(SEED)
         topk_ids, topk_weights = _make_inputs(mmod, shape)
         model = mmod.Model(num_experts=shape["E"], topk=shape["topk"], block_size=BLOCK_SIZE)
+        run_ref = _make_prepared_reference(shape, topk_ids, topk_weights)
 
         with torch.no_grad():
             def run_kernel():
@@ -266,34 +319,46 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             for _ in range(warmup):
                 run_kernel()
             torch.cuda.synchronize()
-            ktimes = []
-            for _ in range(iters):
-                s = torch.cuda.Event(enable_timing=True); e = torch.cuda.Event(enable_timing=True)
-                s.record(); run_kernel(); e.record(); torch.cuda.synchronize()
-                ktimes.append(s.elapsed_time(e))
-            kernel_ms = sum(ktimes) / len(ktimes)
+            kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+                run_kernel, warmup=0, repetition=iters
+            )
 
-            rtimes = []
-            for _ in range(iters):
-                s = torch.cuda.Event(enable_timing=True); e = torch.cuda.Event(enable_timing=True)
-                s.record(); model(topk_ids, topk_weights); e.record(); torch.cuda.synchronize()
-                rtimes.append(s.elapsed_time(e))
-            ref_ms = sum(rtimes) / len(rtimes)
+            ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+                run_ref, warmup=0, repetition=iters
+            )
 
-        speedup = ref_ms / kernel_ms if kernel_ms > 0 else 1.0
-        latencies.append(kernel_ms); speedups.append(speedup)
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(kernel_ms)
+        if speedup is not None:
+            speedups.append(speedup)
         report.append({
             "test_case_id": f"test_case_{idx}",
             "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
             "shape": [shape["M"], shape["E"], shape["topk"]],
             "params": {k: shape[k] for k in ("M", "E", "topk")},
         })
         if verbose:
-            print(f"{shape['name']:<24} {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup:>8.2f}x")
+            print(f"{shape['name']:<24} {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}")
         torch.cuda.empty_cache()
 
     geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
-    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups))
+    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
 
     build_dir = Path(_KERNEL_DIR) / "build"
     build_dir.mkdir(exist_ok=True)
@@ -302,7 +367,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
 
     print("-" * 60)
     print(f"Geometric mean latency: {geomean_latency:.4f} ms")
-    print(f"Geometric mean speedup: {geomean_speedup:.2f}x")
+    print(f"Geometric mean speedup: {geomean_speedup_display}")
     return {"geomean_latency_ms": geomean_latency, "geomean_speedup": geomean_speedup}
 
 

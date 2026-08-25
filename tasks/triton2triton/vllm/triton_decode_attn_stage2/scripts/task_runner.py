@@ -226,40 +226,17 @@ def run_performance():
             mid_o, q, o, lse, v_buffer, b_seqlen = \
                 make_stage1_outputs(bs, nh, nkv, hd, max_seq, num_splits, ps, device, dtype)
 
-            # Warmup
-            for _ in range(WARMUP_ITERATIONS):
-                o.zero_()
-                lse.zero_()
+            def _bench_fn():
                 mod.decode_softmax_reducev_fwd(
                     mid_o, q, o, lse, v_buffer, b_seqlen, num_splits,
                 )
-            torch.cuda.synchronize()
 
-            # Benchmark
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-
-            for j in range(n_iter):
-                o.zero_()
-                lse.zero_()
-                start_events[j].record()
-                mod.decode_softmax_reducev_fwd(
-                    mid_o, q, o, lse, v_buffer, b_seqlen, num_splits,
-                )
-                end_events[j].record()
-
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "per_iteration_prepare_or_state_reset",
-            }
+            # Both outputs are fully overwritten by the reduction kernel.
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                _bench_fn,
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

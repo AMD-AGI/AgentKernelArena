@@ -9,6 +9,7 @@ All Rights Reserved 2018.
 
 #include <math.h>
 #include <stdio.h>
+#include <ATen/cuda/HIPContext.h>
 
 #define THREADS_PER_BLOCK 256
 #define DIVUP(m,n) ((m) / (n) + ((m) % (n) > 0))
@@ -139,31 +140,19 @@ __global__ void roipool3d_forward(int batch_size, int pts_num, int boxes_num, in
 
 
 void roipool3dLauncher(int batch_size, int pts_num, int boxes_num, int feature_in_len, int sampled_pts_num,
-                       const float *xyz, const float *boxes3d, const float *pts_feature, float *pooled_features, int *pooled_empty_flag){
+                       const float *xyz, const float *boxes3d, const float *pts_feature, float *pooled_features,
+                       int *pooled_empty_flag, int *pts_assign, int *pts_idx){
 
     // printf("batch_size=%d, pts_num=%d, boxes_num=%d\n", batch_size, pts_num, boxes_num);
-    int *pts_assign = NULL;
-    hipMalloc(&pts_assign, batch_size * pts_num * boxes_num * sizeof(int));  // (batch_size, N, M)
-    // hipMemset(&pts_assign, -1, batch_size * pts_num * boxes_num * sizeof(int));
-
     dim3 blocks(DIVUP(pts_num, THREADS_PER_BLOCK), boxes_num, batch_size);  // blockIdx.x(col), blockIdx.y(row)
     dim3 threads(THREADS_PER_BLOCK);
-    assign_pts_to_box3d<<<blocks, threads>>>(batch_size, pts_num, boxes_num, xyz, boxes3d, pts_assign);
-
-    int *pts_idx = NULL;
-    hipMalloc(&pts_idx, batch_size * boxes_num * sampled_pts_num * sizeof(int));  // (batch_size, M, sampled_pts_num)
+    hipStream_t stream = at::cuda::getCurrentCUDAStream();
+    assign_pts_to_box3d<<<blocks, threads, 0, stream>>>(batch_size, pts_num, boxes_num, xyz, boxes3d, pts_assign);
 
     dim3 blocks2(DIVUP(boxes_num, THREADS_PER_BLOCK), batch_size);  // blockIdx.x(col), blockIdx.y(row)
-    get_pooled_idx<<<blocks2, threads>>>(batch_size, pts_num, boxes_num, sampled_pts_num, pts_assign, pts_idx, pooled_empty_flag);
+    get_pooled_idx<<<blocks2, threads, 0, stream>>>(batch_size, pts_num, boxes_num, sampled_pts_num, pts_assign, pts_idx, pooled_empty_flag);
 
     dim3 blocks_pool(DIVUP(sampled_pts_num, THREADS_PER_BLOCK), boxes_num, batch_size);
-    roipool3d_forward<<<blocks_pool, threads>>>(batch_size, pts_num, boxes_num, feature_in_len, sampled_pts_num,
+    roipool3d_forward<<<blocks_pool, threads, 0, stream>>>(batch_size, pts_num, boxes_num, feature_in_len, sampled_pts_num,
                                                       xyz, pts_idx, pts_feature, pooled_features, pooled_empty_flag);
-
-    hipFree(pts_assign);
-    hipFree(pts_idx);
-
-#ifdef DEBUG
-    hipDeviceSynchronize();  // for using printf in kernel function
-#endif
 }

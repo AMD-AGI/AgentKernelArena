@@ -62,9 +62,10 @@ def _fp32_to_e2m1_rne(val):
     normal = ~(sat | denorm)
 
     denorm_const = 149 << 23
-    d = abs_f + torch.tensor(
-        denorm_const, dtype=torch.int32, device=val.device
-    ).view(torch.float32)
+    # Bit pattern ``149 << 23`` is the exactly representable float 2**22.
+    # Using the Python scalar lets PyTorch scalar-lift it into the kernel and
+    # avoids allocating/copying a device tensor inside a captured callback.
+    d = abs_f + 4194304.0
     d = (d.view(torch.int32).to(torch.int64) & 0xFFFFFFFF) - denorm_const
 
     mant_odd = (qx >> 22) & 1

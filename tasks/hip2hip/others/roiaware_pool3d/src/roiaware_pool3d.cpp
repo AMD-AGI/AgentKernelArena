@@ -20,7 +20,7 @@ void roiaware_pool3d_launcher(int boxes_num, int pts_num, int channels,
                               int out_z, const float *rois, const float *pts,
                               const float *pts_feature, int *argmax,
                               int *pts_idx_of_voxels, float *pooled_features,
-                              int pool_method);
+                              int *pts_mask, int pool_method);
 
 void roiaware_pool3d_backward_launcher(int boxes_num, int out_x, int out_y,
                                        int out_z, int channels,
@@ -31,7 +31,8 @@ void roiaware_pool3d_backward_launcher(int boxes_num, int out_x, int out_y,
 
 int roiaware_pool3d_gpu(at::Tensor rois, at::Tensor pts, at::Tensor pts_feature,
                         at::Tensor argmax, at::Tensor pts_idx_of_voxels,
-                        at::Tensor pooled_features, int pool_method);
+                        at::Tensor pooled_features, at::Tensor pts_mask,
+                        int pool_method);
 
 int roiaware_pool3d_gpu_backward(at::Tensor pts_idx_of_voxels,
                                  at::Tensor argmax, at::Tensor grad_out,
@@ -39,7 +40,8 @@ int roiaware_pool3d_gpu_backward(at::Tensor pts_idx_of_voxels,
 
 int roiaware_pool3d_gpu(at::Tensor rois, at::Tensor pts, at::Tensor pts_feature,
                         at::Tensor argmax, at::Tensor pts_idx_of_voxels,
-                        at::Tensor pooled_features, int pool_method) {
+                        at::Tensor pooled_features, at::Tensor pts_mask,
+                        int pool_method) {
   // params rois: (N, 7) [x, y, z, x_size, y_size, z_size, ry] in LiDAR coordinate
   // params pts: (npoints, 3) [x, y, z] in LiDAR coordinate
   // params pts_feature: (npoints, C)
@@ -54,6 +56,7 @@ int roiaware_pool3d_gpu(at::Tensor rois, at::Tensor pts, at::Tensor pts_feature,
   CHECK_INPUT(argmax);
   CHECK_INPUT(pts_idx_of_voxels);
   CHECK_INPUT(pooled_features);
+  CHECK_INPUT(pts_mask);
 
   int boxes_num = rois.size(0);
   int pts_num = pts.size(0);
@@ -71,11 +74,12 @@ int roiaware_pool3d_gpu(at::Tensor rois, at::Tensor pts, at::Tensor pts_feature,
   int *argmax_data = argmax.data_ptr<int>();
   int *pts_idx_of_voxels_data = pts_idx_of_voxels.data_ptr<int>();
   float *pooled_features_data = pooled_features.data_ptr<float>();
+  int *pts_mask_data = pts_mask.data_ptr<int>();
 
   roiaware_pool3d_launcher(
       boxes_num, pts_num, channels, max_pts_each_voxel, out_x, out_y, out_z,
       rois_data, pts_data, pts_feature_data, argmax_data,
-      pts_idx_of_voxels_data, pooled_features_data, pool_method);
+      pts_idx_of_voxels_data, pooled_features_data, pts_mask_data, pool_method);
 
   return 1;
 }

@@ -1,0 +1,69 @@
+# Revalidates every task changed while triaging the full PR #77 audit, plus
+# first-round hard failures whose result depends on the corrected v3 policy.
+# The Kimi-K3 image_kernel task is intentionally run from its dedicated image
+# with a separate one-task config.
+agent:
+  template: task_validator
+  backend: codex
+  model: gpt-5.6-luna
+  effort: xhigh
+
+tasks:
+  - instruction2triton/rocmbench/test_kernel_dot
+  - instruction2triton/rocmbench/test_matmul_MXFP
+  - instruction2triton/rocmbench/test_chained_dot_fp8
+  - instruction2triton/rocmbench/test_add_kernel
+  - instruction2triton/rocmbench/test_block_copy
+  - instruction2triton/rocmbench/test_load_reduce
+  - instruction2triton/rocmbench/rmsnorm_fwd
+  - instruction2triton/rocmbench/rmsnorm_bwd
+  - instruction2triton/rocmbench/softmax
+  - instruction2triton/rocmbench/test_tma_store_gemm
+  - torch2flydsl/gemm_afp4wfp4_kernel
+  - torch2flydsl/moe_biased_grouped_topk_kernel
+  - torch2flydsl/moe_sorting_kernel
+  - torch2flydsl/quant_mxfp4_kernel
+  - torch2flydsl/silu_and_mul_quant_kernel
+  - flydsl2flydsl/pa_decode_fp8_kernel
+  - torch2hip/gpumode/10190_FusedLeakyReLU
+  - torch2hip/kernelbench/level2/l2n82_Conv2d_Tanh_Scaling_BiasAdd_Max
+  - triton2flydsl/aiter/fav3_sage
+  - triton2flydsl/aiter/fp8_mqa_logits
+  - triton2flydsl/aiter/mla
+  - triton2flydsl/aiter/moe_fused_gemm
+  - triton2flydsl/aiter/moe_routing_sigmoid_top1
+  - triton2flydsl/aiter/unified_attention
+  - triton2triton/geak_eval/L1/mla_decode
+  - triton2triton/geak_eval/L2/topk
+  - triton2triton/geak_eval/L3/fused_moe_mxfp4
+  - triton2triton/geak_eval/L3/fused_qk_rope_cache_mla
+  - triton2triton/geak_eval/L3/fused_qkv_rope
+  - triton2triton/geak_eval/L3/fused_rms_fp8
+  - triton2triton/geak_eval/L3/gemm
+  - triton2triton/geak_eval/L3/gemm_a16w16_atomic
+  - triton2triton/rocmbench/easy/test_kernel_dot
+  - triton2triton/rocmbench/easy/test_block_copy
+  - triton2triton/rocmbench/hard/test_matmul_MXFP
+  - triton2triton/rocmbench/hard/test_chained_dot_fp8
+  - triton2triton/rocmbench/hard/rmsnorm_bwd
+  - triton2triton/vllm/triton_apply_grammar_bitmask
+  - triton2triton/vllm/triton_apply_write
+  - triton2triton/vllm/triton_bad_words
+  - triton2triton/vllm/triton_bincount
+  - triton2triton/vllm/triton_combine_sampled_and_draft_tokens
+  - triton2triton/vllm/triton_fla_layernorm
+  - triton2triton/vllm/triton_fused_moe
+  - triton2triton/vllm/triton_fused_moe_gptq_awq
+  - triton2triton/vllm/triton_fused_moe_lora
+  - triton2triton/vllm/triton_reshape_and_cache_flash
+  - triton2triton/vllm/triton_reshape_and_cache_flash_diffkv
+  - repository/aiter/unified_attention
+  - repository/aiter/pa_decode
+  - hip2hip/others/roiaware_pool3d
+  - hip2hip/gpumode/MaskedLanguageModel
+  - hip2hip/gpumode/CrossEntropyLossLabelSmoothing
+  - hip2hip/gpumode/SoftmaxModule
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

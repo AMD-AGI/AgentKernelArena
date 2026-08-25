@@ -171,6 +171,17 @@ assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
 assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
 
+# task_validator may override its default backend in the run config. Provision
+# that selected CLI rather than the backend from agent_config.yaml.
+VALIDATOR_CODEX_CONFIG="$TEST_HOME/validator-codex-config.yaml"
+printf 'agent:\n  template: task_validator\n  backend: codex\ntasks:\n  - backend: ignored\n' > "$VALIDATOR_CODEX_CONFIG"
+mapfile -t args < <(run_check_args \
+    "$CODEX_HOME" \
+    "$VALIDATOR_CODEX_CONFIG" \
+    AKA_NODE_PREFIX="$CODEX_PREFIX")
+assert_has "codex" "${args[@]}"
+assert_not_has "claude_code" "${args[@]}"
+
 # A natively installed Claude CLI is a launcher in ~/.local/bin that resolves
 # into ~/.local/share/claude/versions. Both sides of that symlink must be
 # mounted at the same absolute paths inside the container.

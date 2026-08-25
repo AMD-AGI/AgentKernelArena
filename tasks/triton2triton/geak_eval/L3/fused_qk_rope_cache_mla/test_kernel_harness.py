@@ -11,12 +11,27 @@ Modes: --correctness, --benchmark, --full-benchmark, --profile
 import os
 import sys
 import argparse
+import json
 import math
 import random
 from enum import IntEnum
+from pathlib import Path
 
 import torch
 import triton
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+
+
+def benchmark_cuda_graph_or_events(*args, **kwargs):
+    samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
+    values = sorted(samples)
+    midpoint = len(values) // 2
+    median_ms = (
+        values[midpoint]
+        if len(values) % 2
+        else (values[midpoint - 1] + values[midpoint]) / 2.0
+    )
+    return median_ms, metadata
 
 # kernel.py sits next to this harness — Python adds the script's directory to
 # sys.path[0] automatically, so the bare import always picks up the agent's
@@ -259,6 +274,34 @@ def _config_label(cfg):
     )
 
 
+def _write_performance_report(records):
+    """Write stable, uniquely matchable per-case benchmark records."""
+    rows = []
+    for idx, cfg, latency_ms, metadata in records:
+        params = {
+            key: (
+                value.name
+                if isinstance(value, IntEnum)
+                else str(value)
+                if isinstance(value, torch.dtype)
+                else value
+            )
+            for key, value in cfg.items()
+        }
+        params["case_index"] = idx
+        rows.append(
+            {
+                "test_case_id": f"case={idx} {_config_label(cfg)}",
+                "params": params,
+                "execution_time_ms": latency_ms,
+                **metadata,
+            }
+        )
+    report_path = Path("build/performance_report.json")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(rows, indent=2))
+
+
 def _setup_inputs(cfg):
     """Build inputs for fused_qk_rope_cat_and_cache_mla, matching the test."""
     torch.manual_seed(42)
@@ -470,14 +513,20 @@ def _check_correctness_single(cfg):
 
 
 def _benchmark_single(cfg):
-    """Benchmark a single config. Returns median latency in ms."""
+    """Benchmark a single config with graph replay or CUDA-event fallback."""
     inp = _setup_inputs(cfg)
+    kv_cache_clone = inp["kv_cache"].clone()
+    if inp["cache_dtype"] == torch.uint8:
+        kv_cache_clone = kv_cache_clone.view(inp["cache_dtype_actual"])
+    slot_mapping = inp["slot_mapping"].long()
+    # ROCm does not implement index_copy_ for Float8_e4m3fn. Restore the exact
+    # cache bytes instead; dtype views preserve the same storage and slot axis,
+    # so this works uniformly for bf16 and float8-backed uint8 cache cases.
+    cache_restore_view = kv_cache_clone.view(torch.uint8)
+    initial_slots = cache_restore_view.index_select(0, slot_mapping).clone()
 
     def _kernel_fn():
-        kv_cache_clone = inp["kv_cache"].clone()
-        if inp["cache_dtype"] == torch.uint8:
-            kv_cache_clone = kv_cache_clone.view(inp["cache_dtype_actual"])
-        fused_qk_rope_cat_and_cache_mla(
+        return fused_qk_rope_cat_and_cache_mla(
             inp["q_nope"],
             inp["q_pe"],
             inp["k_lora"],
@@ -496,23 +545,14 @@ def _benchmark_single(cfg):
             k_pe_out=None,
         )
 
-    for _ in range(WARMUP):
-        _kernel_fn()
-    torch.cuda.synchronize()
-
-    times = []
-    for _ in range(ITERATIONS):
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        start.record()
-        _kernel_fn()
-        end.record()
-        torch.cuda.synchronize()
-        times.append(start.elapsed_time(end))
-
-    times.sort()
-    median_ms = times[len(times) // 2]
-    return median_ms
+    return benchmark_cuda_graph_or_events(
+        _kernel_fn,
+        warmup=WARMUP,
+        repetition=ITERATIONS,
+        prepare_fn=lambda: cache_restore_view.index_copy_(
+            0, slot_mapping, initial_slots
+        ),
+    )
 
 
 def main():
@@ -550,42 +590,66 @@ def main():
         indices, configs = _pick(ALL_CONFIGS, 5)
         print(f"Running profile on {len(configs)} configs...")
         latencies = []
+        methods = []
+        records = []
         for i, (idx, cfg) in enumerate(zip(indices, configs)):
             label = _config_label(cfg)
-            ms = _benchmark_single(cfg)
+            ms, metadata = _benchmark_single(cfg)
             latencies.append(ms)
+            methods.append(metadata["benchmark_method"])
+            records.append((idx, cfg, ms, metadata))
             print(f"  {label}  {ms:.4f}ms")
+        _write_performance_report(records)
         geo_mean = math.exp(sum(math.log(t) for t in latencies) / len(latencies))
         print(f"GEAK_SHAPES_USED={indices}")
         print(f"GEAK_RESULT_LATENCY_MS={geo_mean:.4f}")
+        print("GEAK_BENCHMARK_METHOD={}".format(
+            methods[0] if len(set(methods)) == 1 else "mixed:" + ",".join(sorted(set(methods)))
+        ))
 
     if args.benchmark:
         indices = list(range(len(ALL_CONFIGS)))
         configs = ALL_CONFIGS
         print(f"Running benchmark on {len(configs)} configs...")
         latencies = []
+        methods = []
+        records = []
         for i, (idx, cfg) in enumerate(zip(indices, configs)):
             label = _config_label(cfg)
-            ms = _benchmark_single(cfg)
+            ms, metadata = _benchmark_single(cfg)
             latencies.append(ms)
+            methods.append(metadata["benchmark_method"])
+            records.append((idx, cfg, ms, metadata))
             print(f"  {label}  {ms:.4f}ms")
+        _write_performance_report(records)
         geo_mean = math.exp(sum(math.log(t) for t in latencies) / len(latencies))
         print(f"GEAK_SHAPES_USED={indices}")
         print(f"GEAK_RESULT_LATENCY_MS={geo_mean:.4f}")
+        print("GEAK_BENCHMARK_METHOD={}".format(
+            methods[0] if len(set(methods)) == 1 else "mixed:" + ",".join(sorted(set(methods)))
+        ))
 
     if args.full_benchmark:
         indices = list(range(len(ALL_CONFIGS)))
         configs = ALL_CONFIGS
         print(f"Running full benchmark on {len(configs)} configs...")
         latencies = []
+        methods = []
+        records = []
         for i, (idx, cfg) in enumerate(zip(indices, configs)):
             label = _config_label(cfg)
-            ms = _benchmark_single(cfg)
+            ms, metadata = _benchmark_single(cfg)
             latencies.append(ms)
+            methods.append(metadata["benchmark_method"])
+            records.append((idx, cfg, ms, metadata))
             print(f"  {label}  {ms:.4f}ms")
+        _write_performance_report(records)
         geo_mean = math.exp(sum(math.log(t) for t in latencies) / len(latencies))
         print(f"GEAK_SHAPES_USED={indices}")
         print(f"GEAK_RESULT_LATENCY_MS={geo_mean:.4f}")
+        print("GEAK_BENCHMARK_METHOD={}".format(
+            methods[0] if len(set(methods)) == 1 else "mixed:" + ",".join(sorted(set(methods)))
+        ))
 
 
 if __name__ == "__main__":

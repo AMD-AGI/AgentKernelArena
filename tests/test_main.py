@@ -2,12 +2,67 @@ import logging
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+import yaml
 
 from main import run_task, should_run_task_for_platform
+from agents.task_validator.report_schema import (
+    CHECK_NAMES,
+    REPORT_SCHEMA_VERSION,
+    finalize_report,
+    validation_report_is_complete,
+)
 from src.module_registration import AgentType
+from src.preprocessing import get_task_workspace_path
 
 
 class TaskValidatorWorkspaceTests(unittest.TestCase):
+    def test_validator_records_workspace_setup_failure_as_complete_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            run_directory = root / "run"
+            run_directory.mkdir()
+            config_path = root / "config.yaml"
+            config_path.write_text("task_type: image_kernel\n")
+            task_name = "image_kernel/missing_repo"
+            timestamp = "20260721_000000"
+            expected_workspace = get_task_workspace_path(
+                run_directory, task_name, timestamp
+            )
+
+            def fail_after_workspace_creation(*args, **kwargs):
+                expected_workspace.mkdir(parents=True)
+                raise FileNotFoundError("image_repo_path is unavailable")
+
+            with patch("main.setup_workspace", side_effect=fail_after_workspace_creation):
+                completed, workspace = run_task(
+                    eval_config={},
+                    agent=AgentType.TASK_VALIDATOR,
+                    agent_launcher=lambda **kwargs: None,
+                    task_name=task_name,
+                    task_config_dir=str(config_path),
+                    run_directory=run_directory,
+                    timestamp=timestamp,
+                    logger=logging.getLogger(__name__),
+                    task_index=1,
+                    total_tasks=1,
+                )
+
+            self.assertTrue(completed)
+            self.assertEqual(workspace, expected_workspace)
+            self.assertTrue(validation_report_is_complete(expected_workspace))
+            report = yaml.safe_load(
+                (expected_workspace / "validation_report.yaml").read_text()
+            )
+            self.assertEqual(report["framework_status"], "FAIL")
+            self.assertTrue(
+                any(
+                    "image_repo_path is unavailable" in error
+                    for error in report["validation_errors"]
+                )
+            )
+
     def test_validator_does_not_treat_copied_report_as_current_run_output(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -18,6 +73,7 @@ class TaskValidatorWorkspaceTests(unittest.TestCase):
             config_path = task_dir / "config.yaml"
             config_path.write_text("task_type: flydsl2flydsl\n")
             (task_dir / "validation_report.yaml").write_text("overall_status: WARN\n")
+            (task_dir / ".validation_complete").write_text("copied stale marker\n")
 
             launcher_called = False
 
@@ -26,7 +82,54 @@ class TaskValidatorWorkspaceTests(unittest.TestCase):
                 launcher_called = True
                 report_path = Path(workspace) / "validation_report.yaml"
                 self.assertFalse(report_path.exists())
-                report_path.write_text("overall_status: PASS\n")
+                self.assertFalse((Path(workspace) / ".validation_complete").exists())
+                checks = {
+                    name: {"status": "PASS", "details": "checked"}
+                    for name in CHECK_NAMES
+                }
+                attempt = {
+                    "command": "true",
+                    "exit_code": 0,
+                    "timed_out": False,
+                }
+                for name in ("compilation", "correctness", "performance"):
+                    checks[name]["attempts"] = [dict(attempt)]
+                checks["benchmark_integrity"].update(
+                    {
+                        "case_count": 1,
+                        "valid_case_count": 1,
+                        "benchmark_methods": ["cuda_graph"],
+                        "method_metadata_complete": True,
+                        "method_policy_valid": True,
+                        "case_identity_complete": True,
+                        "baseline_policy_immutable": True,
+                        "state_restore_valid": True,
+                        "workload_symmetric": True,
+                        "replay_validation_valid": True,
+                        "representative_inputs_valid": True,
+                        "timing_boundaries_valid": True,
+                    }
+                )
+                checks["harness_integrity"].update(
+                    {
+                        "guard_coverage_reviewed": True,
+                        "editable_targets_preserved": True,
+                    }
+                )
+                report_path.write_text(
+                    yaml.safe_dump(
+                        {
+                            "validation_schema_version": REPORT_SCHEMA_VERSION,
+                            "task_name": "flydsl2flydsl/example",
+                            "validation_timestamp": "2026-07-21T00:00:00+00:00",
+                            "overall_status": "PASS",
+                            "checks": checks,
+                        }
+                    )
+                )
+                finalize_report(
+                    workspace, expected_task_name="flydsl2flydsl/example"
+                )
 
             completed, workspace = run_task(
                 eval_config={},
@@ -44,10 +147,7 @@ class TaskValidatorWorkspaceTests(unittest.TestCase):
             self.assertTrue(launcher_called)
             self.assertTrue(completed)
             self.assertIsNotNone(workspace)
-            self.assertEqual(
-                (workspace / "validation_report.yaml").read_text(),
-                "overall_status: PASS\n",
-            )
+            self.assertTrue(validation_report_is_complete(workspace))
 
 
 class PlatformSupportTests(unittest.TestCase):

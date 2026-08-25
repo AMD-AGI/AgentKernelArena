@@ -29,6 +29,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 KERNEL_FILE = "kernel.py"
 MODEL_FILE = "model.py"
@@ -136,12 +137,24 @@ def _aiter_grouped(aiter, gating, bias, shape):
 def _compare_routing(ref_w, ref_id, out_w, out_id, sel, topk):
     """Return (genuine_mismatch_tokens, weight_norm_err). Ids match as sets except
     at masked-selection-score ties; weights compared by matched id."""
+    import torch
 
     ref_id_c = ref_id.cpu()
     out_id_c = out_id.cpu()
     ref_w_c = ref_w.float().cpu()
     out_w_c = out_w.float().cpu()
     sel_c = sel.float().cpu()
+
+    # Python's max keeps the existing finite value when the other operand is
+    # NaN, so the loop below cannot be relied on to reject non-finite weights.
+    # Turn any non-finite oracle, candidate, or selection score into an explicit
+    # mismatch before applying the normalized tolerance.
+    if not (
+        torch.isfinite(ref_w_c).all()
+        and torch.isfinite(out_w_c).all()
+        and torch.isfinite(sel_c).all()
+    ):
+        return max(1, out_id_c.shape[0]), float("inf")
 
     sorted_sel, _ = sel_c.sort(dim=-1, descending=True)
     cutoff = sorted_sel[:, topk - 1]
@@ -283,44 +296,80 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
                     )
             else:
                 def run_fused():
-                    return _aiter_grouped(aiter, gating, bias, shape)
+                    fused_w = torch.empty(
+                        (shape["tokens"], shape["topk"]), dtype=torch.float32,
+                        device=gating.device,
+                    )
+                    fused_idx = torch.empty(
+                        (shape["tokens"], shape["topk"]), dtype=torch.int32,
+                        device=gating.device,
+                    )
+                    aiter.biased_grouped_topk_hip(
+                        gating,
+                        bias,
+                        fused_w,
+                        fused_idx,
+                        shape["num_expert_group"],
+                        shape["topk_group"],
+                        shape["renormalize"],
+                        shape["route_scale"],
+                    )
+                    return fused_w, fused_idx
+
+                def prepare_fused():
+                    run_fused()
+                    torch.cuda.synchronize()
+
+                _retry(prepare_fused, what="aiter.biased_grouped_topk_hip")
 
             run_fused()
             torch.cuda.synchronize()
             for _ in range(warmup):
                 run_fused()
             torch.cuda.synchronize()
-            ktimes = []
-            for _ in range(iters):
-                s = torch.cuda.Event(enable_timing=True); e = torch.cuda.Event(enable_timing=True)
-                s.record(); run_fused(); e.record(); torch.cuda.synchronize()
-                ktimes.append(s.elapsed_time(e))
-            fused_ms = sum(ktimes) / len(ktimes)
+            fused_ms, fused_bench_meta = benchmark_cuda_graph_or_events(
+                run_fused, warmup=0, repetition=iters
+            )
 
-            rtimes = []
-            for _ in range(iters):
-                s = torch.cuda.Event(enable_timing=True); e = torch.cuda.Event(enable_timing=True)
-                s.record(); model(gating); e.record(); torch.cuda.synchronize()
-                rtimes.append(s.elapsed_time(e))
-            ref_ms = sum(rtimes) / len(rtimes)
+            ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: model(gating), warmup=0, repetition=iters
+            )
 
-        speedup = ref_ms / fused_ms if fused_ms > 0 else 1.0
-        latencies.append(fused_ms); speedups.append(speedup)
+        methods_match = fused_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / fused_ms if methods_match and fused_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(fused_ms)
+        if speedup is not None:
+            speedups.append(speedup)
         report.append({
             "test_case_id": f"test_case_{idx}",
             "execution_time_ms": fused_ms,
+            **fused_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": fused_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
             "shape": [shape["tokens"], shape["experts"], shape["topk"]],
             "params": {k: shape[k] for k in (
                 "tokens", "experts", "topk", "num_expert_group", "topk_group",
                 "renormalize", "route_scale")},
         })
         if verbose:
-            print(f"{shape['name']:<24} {ref_ms:>8.4f}ms {fused_ms:>8.4f}ms {speedup:>8.2f}x")
+            print(f"{shape['name']:<24} {ref_ms:>8.4f}ms {fused_ms:>8.4f}ms {speedup_display}")
         del model, gating
         torch.cuda.empty_cache()
 
     geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
-    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups))
+    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
 
     build_dir = Path(_KERNEL_DIR) / "build"
     build_dir.mkdir(exist_ok=True)
@@ -329,7 +378,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
 
     print("-" * 60)
     print(f"Geometric mean latency: {geomean_latency:.4f} ms")
-    print(f"Geometric mean speedup: {geomean_speedup:.2f}x")
+    print(f"Geometric mean speedup: {geomean_speedup_display}")
     return {"geomean_latency_ms": geomean_latency, "geomean_speedup": geomean_speedup}
 
 

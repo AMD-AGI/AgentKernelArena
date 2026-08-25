@@ -1,5 +1,6 @@
 // Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 #include <torch/extension.h>
+#include <ATen/hip/HIPContext.h>
 #include <hip/hip_runtime.h>
 #include <cmath>
 
@@ -72,6 +73,7 @@ torch::Tensor forward(torch::Tensor x) {
     const int threads = 256;
     // Use a reasonable grid size; cap to avoid oversubscription
     const int maxBlocks = 65535;
+    hipStream_t stream = at::hip::getCurrentHIPStream();
 
     AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "silu_kernel_launch", [&] {
         const scalar_t* x_ptr = x.data_ptr<scalar_t>();
@@ -94,7 +96,7 @@ torch::Tensor forward(torch::Tensor x) {
             if (blocks < 1) blocks = 1;
             hipLaunchKernelGGL(
                 (silu_kernel_vectorized<scalar_t>),
-                dim3(blocks), dim3(threads), 0, 0,
+                dim3(blocks), dim3(threads), 0, stream,
                 x_ptr, y_ptr, n_packed
             );
         } else {
@@ -103,17 +105,15 @@ torch::Tensor forward(torch::Tensor x) {
             if (blocks < 1) blocks = 1;
             hipLaunchKernelGGL(
                 (silu_kernel_scalar<scalar_t>),
-                dim3(blocks), dim3(threads), 0, 0,
+                dim3(blocks), dim3(threads), 0, stream,
                 x_ptr, y_ptr, numel
             );
         }
     });
 
-    hipDeviceSynchronize();
     return y;
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &forward, "SiLU activation forward (HIP, optimized)");
 }
-

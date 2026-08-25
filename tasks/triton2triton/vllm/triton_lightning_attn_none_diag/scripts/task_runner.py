@@ -172,34 +172,19 @@ def run_performance():
             o = torch.randn(B, H, N, E, device=device, dtype=dtype) * 0.1
             kv = torch.randn(B, H, NUM_BLOCK, D, E, device=device, dtype=torch.float32) * 0.01
 
-            # Warmup
-            for _ in range(WARMUP_ITERATIONS):
-                o_c = o.clone()
-                mod.lightning_attn_none_diag_forward(q, o_c, s, kv, BLOCK, CBLOCK)
-            torch.cuda.synchronize()
+            output_work = o.clone()
 
-            # Benchmark
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            def _bench_fn():
+                mod.lightning_attn_none_diag_forward(
+                    q, output_work, s, kv, BLOCK, CBLOCK
+                )
 
-            for j in range(n_iter):
-                o_c = o.clone()
-                start_events[j].record()
-                mod.lightning_attn_none_diag_forward(q, o_c, s, kv, BLOCK, CBLOCK)
-                end_events[j].record()
-
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "per_iteration_prepare_or_state_reset",
-            }
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                _bench_fn,
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                prepare_fn=lambda: output_work.copy_(o),
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

@@ -143,27 +143,16 @@ def run_performance():
             D = torch.randn(nheads, dim, device=device, dtype=torch.float32) if has_D else None
             z = torch.randn(batch, nheads, dim, device=device, dtype=torch.float32) if has_z else None
             out = torch.empty(batch, nheads, dim, device=device, dtype=torch.float32)
-            for _ in range(WARMUP_ITERATIONS):
-                mod.selective_state_update(state.clone(), x, dt, A, B, C, D=D, z=z, out=out)
-            torch.cuda.synchronize()
-            n_iter = BENCHMARK_ITERATIONS
-            starts = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            ends = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
-                starts[j].record()
-                mod.selective_state_update(state.clone(), x, dt, A, B, C, D=D, z=z, out=out)
-                ends[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(starts, ends)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "timed_clone_or_fresh_tensor",
-            }
+            state_work = state.clone()
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                lambda: mod.selective_state_update(
+                    state_work, x, dt, A, B, C, D=D, z=z, out=out,
+                ),
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                target_ms=20.0,
+                prepare_fn=lambda: state_work.copy_(state),
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

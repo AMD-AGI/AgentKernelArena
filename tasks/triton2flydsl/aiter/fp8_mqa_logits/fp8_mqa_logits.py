@@ -13,9 +13,9 @@ import triton.language as tl
 try:
     _CACHED_ARCH = triton.runtime.driver.active.get_current_target().arch
 except RuntimeError:
-    from jax._src.lib import gpu_triton as triton_kernel_call_lib
-
-    _CACHED_ARCH = triton_kernel_call_lib.get_arch_details("0").split(":")[0]
+    _CACHED_ARCH = torch.cuda.get_device_properties(
+        torch.cuda.current_device()
+    ).gcnArchName.split(":")[0]
 
 
 def get_arch():

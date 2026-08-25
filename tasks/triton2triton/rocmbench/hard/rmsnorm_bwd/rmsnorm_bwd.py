@@ -728,7 +728,9 @@ def test_performance(M, N, ZERO_CENTERED_GAMMA, dtype_str, request):
     bench_config = do_bench_config(warm_up=10, repetition=100)
     benchmarker = PytestBenchmarker(op_callable=op_lambda,
                                     op_name=OP_NAME_FOR_BENCHMARK,
-                                    config=bench_config)
+                                    config=bench_config,
+                                    use_cuda_graph=False,
+                                    fallback_reason="rmsnorm_bwd_graph_capture_native_segfault")
 
     current_params_for_logs_and_calc = {
         "M": M, "N": N, "ZERO_CENTERED_GAMMA": ZERO_CENTERED_GAMMA,

@@ -3,6 +3,7 @@
 #include <torch/extension.h>
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
+#include <ATen/hip/HIPContext.h>
 #include <c10/util/Half.h>
 #include <c10/util/BFloat16.h>
 #include <cmath>
@@ -309,6 +310,7 @@ torch::Tensor layer_norm_forward(
     const int M = static_cast<int>(M64);
 
     auto output = torch::empty_like(input);
+    hipStream_t stream = at::hip::getCurrentHIPStream();
 
     // Heuristics
     int waves_per_block = 4; // default 4 wavefronts per block (256 threads)
@@ -332,7 +334,7 @@ torch::Tensor layer_norm_forward(
             dim3 block(waves_per_block * WAVE_SIZE);
             hipLaunchKernelGGL(
                 (layer_norm_subgroup_tinyN_kernel<scalar_t_, acc_t>),
-                grid, block, 0, 0,
+                grid, block, 0, stream,
                 input.data_ptr<scalar_t_>(),
                 gamma.data_ptr<scalar_t_>(),
                 beta.data_ptr<scalar_t_>(),
@@ -357,7 +359,7 @@ torch::Tensor layer_norm_forward(
                 dim3 block(threads);
                 hipLaunchKernelGGL(
                     (layer_norm_fused_smallN_kernel<scalar_t_, acc_t>),
-                    grid, block, smem_needed, 0,
+                    grid, block, smem_needed, stream,
                     input.data_ptr<scalar_t_>(),
                     gamma.data_ptr<scalar_t_>(),
                     beta.data_ptr<scalar_t_>(),
@@ -382,7 +384,7 @@ torch::Tensor layer_norm_forward(
             dim3 block(tpb);
             hipLaunchKernelGGL(
                 (layer_norm_generic_kernel<scalar_t_, acc_t>),
-                grid, block, shmem_bytes, 0,
+                grid, block, shmem_bytes, stream,
                 input.data_ptr<scalar_t_>(),
                 gamma.data_ptr<scalar_t_>(),
                 beta.data_ptr<scalar_t_>(),
@@ -400,4 +402,3 @@ torch::Tensor layer_norm_forward(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &layer_norm_forward, "LayerNorm forward (HIP, ROCm, advanced optimized)");
 }
-

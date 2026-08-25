@@ -9,12 +9,15 @@ tasks:
   - image_kernel/mi355x_vllm_ck_cktile_moe_2stage
   - image_kernel/mi355x_vllm_ck_moe_2stage
   - image_kernel/mi355x_vllm_hip_dynamic_per_tensor_quant
+  - image_kernel/mi355x_vllm_hip_paged_attention_decode
   - image_kernel/mi355x_vllm_tilelang_mhc_fused_post_pre
   - image_kernel/mi355x_vllm_triton_fused_moe_gptq_awq
+  - image_kernel/mi355x_vllm_triton_fused_moe_gemma4
   - image_kernel/mi355x_vllm_triton_kda_linear_attn_kimi_k3
   - image_kernel/mi355x_vllm_triton_paged_attention_2d
   - image_kernel/mi355x_vllm_triton_sparse_attn_prefill_ragged
   - image_kernel/mi355x_vllm_triton_unified_attention
+  - image_kernel/mi355x_vllm_triton_unified_attention_gemma4
 
 target_gpu_model: MI355X
 log_directory: logs

@@ -10,6 +10,19 @@ import math
 import torch
 import torch.nn.functional as F
 import triton
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+
+
+def benchmark_cuda_graph_or_events(*args, **kwargs):
+    samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
+    values = sorted(samples)
+    midpoint = len(values) // 2
+    median_ms = (
+        values[midpoint]
+        if len(values) % 2
+        else (values[midpoint - 1] + values[midpoint]) / 2.0
+    )
+    return median_ms, metadata
 
 # kernel.py lives next to this harness; Python puts the script dir on sys.path[0].
 _HARNESS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -91,15 +104,14 @@ def bench_one(M, N, K, dtype=torch.bfloat16):
     x, w, y = generate_inputs(M, N, K, dtype)
 
     def _fn():
-        y.zero_()
         return gemm_a16w16_atomic(x, w, torch.float32, y)
 
-    ms = triton.testing.do_bench(
+    ms, metadata = benchmark_cuda_graph_or_events(
         _fn,
         warmup=WARMUP,
-        rep=ITERATIONS,
+        repetition=ITERATIONS,
     )
-    return ms
+    return ms, metadata
 
 
 # ---------------------------------------------------------------------------
@@ -124,17 +136,22 @@ def run_correctness(indices):
 def run_benchmark(indices):
     torch.manual_seed(42)
     latencies = []
+    methods = []
     print("Running benchmark on {} configs ...".format(len(indices)))
     for idx in indices:
         M, N, K = ALL_CONFIGS[idx]
-        ms = bench_one(M, N, K)
+        ms, metadata = bench_one(M, N, K)
         latencies.append(ms)
+        methods.append(metadata["benchmark_method"])
         print("  M={} N={} K={}  {:.4f}ms".format(M, N, K, ms))
     # Geometric mean
     log_sum = sum(math.log(l) for l in latencies)
     geo_mean = math.exp(log_sum / len(latencies))
     print("GEAK_SHAPES_USED={}".format(indices))
     print("GEAK_RESULT_LATENCY_MS={:.4f}".format(geo_mean))
+    print("GEAK_BENCHMARK_METHOD={}".format(
+        methods[0] if len(set(methods)) == 1 else "mixed:" + ",".join(sorted(set(methods)))
+    ))
 
 
 def run_profile(indices):
@@ -142,7 +159,7 @@ def run_profile(indices):
     print("Running profile on {} configs ...".format(len(indices)))
     for idx in indices:
         M, N, K = ALL_CONFIGS[idx]
-        ms = bench_one(M, N, K)
+        ms, _ = bench_one(M, N, K)
         print("  M={} N={} K={}  {:.4f}ms".format(M, N, K, ms))
     print("GEAK_SHAPES_USED={}".format(indices))
 

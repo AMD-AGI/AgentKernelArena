@@ -189,35 +189,44 @@ def run_performance():
             k = torch.randn(num_tokens, n_kh * head_size, device=device, dtype=dtype)
             cos = torch.randn(3, num_tokens, rotary_dim // 2, device=device, dtype=dtype)
             sin = torch.randn(3, num_tokens, rotary_dim // 2, device=device, dtype=dtype)
+            q_tmp = q.clone()
+            k_tmp = k.clone()
 
-            for _ in range(WARMUP_ITERATIONS):
-                q_tmp = q.clone()
-                k_tmp = k.clone()
-                mod.triton_mrope(q_tmp, k_tmp, cos, sin, mrope_section, head_size, rotary_dim, False)
-            torch.cuda.synchronize()
+            pad_head_size = mod.triton.next_power_of_2(head_size)
+            pad_num_q_heads = mod.triton.next_power_of_2(n_qh)
+            pad_num_kv_heads = mod.triton.next_power_of_2(n_kh)
+            mrope_t, mrope_h, mrope_w = mrope_section
 
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
+            def _bench_fn():
+                mod._triton_mrope_forward[(num_tokens,)](
+                    q_tmp,
+                    k_tmp,
+                    cos,
+                    sin,
+                    num_tokens,
+                    n_qh,
+                    n_kh,
+                    head_size,
+                    rotary_dim,
+                    pad_num_q_heads,
+                    pad_num_kv_heads,
+                    pad_head_size,
+                    mrope_t,
+                    mrope_h,
+                    mrope_w,
+                    False,
+                )
 
-            for j in range(n_iter):
-                q_tmp = q.clone()
-                k_tmp = k.clone()
-                start_events[j].record()
-                mod.triton_mrope(q_tmp, k_tmp, cos, sin, mrope_section, head_size, rotary_dim, False)
-                end_events[j].record()
+            def _prepare_benchmark_state():
+                q_tmp.copy_(q)
+                k_tmp.copy_(k)
 
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "per_iteration_prepare_or_state_reset",
-            }
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                _bench_fn,
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                prepare_fn=_prepare_benchmark_state,
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
@@ -235,6 +244,8 @@ def run_performance():
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
+                "benchmark_method": "benchmark_failed",
+                "benchmark_fallback_reason": "performance_case_exception",
                 "params": {
                     "num_tokens": num_tokens,
                     "num_q_heads": n_qh,

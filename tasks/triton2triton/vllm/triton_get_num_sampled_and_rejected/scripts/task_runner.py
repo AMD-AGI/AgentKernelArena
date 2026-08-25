@@ -161,28 +161,20 @@ def run_performance():
                 cu_num_logits[r + 1] = cu_num_logits[r] + logits_per_req
             num_sampled = torch.randint(1, logits_per_req + 1, (num_reqs,), dtype=torch.int32, device=device)
 
-            for _ in range(WARMUP_ITERATIONS):
-                mod.get_num_sampled_and_rejected(num_sampled.clone(), seq_lens, cu_num_logits, idx_mapping, prefill_len)
-            torch.cuda.synchronize()
-
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
-                start_events[j].record()
-                mod.get_num_sampled_and_rejected(num_sampled.clone(), seq_lens, cu_num_logits, idx_mapping, prefill_len)
-                end_events[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "timed_clone_or_fresh_tensor",
-            }
+            num_sampled_work = num_sampled.clone()
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                lambda: mod.get_num_sampled_and_rejected(
+                    num_sampled_work,
+                    seq_lens,
+                    cu_num_logits,
+                    idx_mapping,
+                    prefill_len,
+                ),
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                target_ms=20.0,
+                prepare_fn=lambda: num_sampled_work.copy_(num_sampled),
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
