@@ -172,13 +172,39 @@ def _is_triton_jit_function(node: ast.AST) -> bool:
     return False
 
 
+def _target_decorator_helper_names(
+    tree: ast.Module, editable_targets: set[str]
+) -> set[str]:
+    """Return top-level helper names called by declared target decorators.
+
+    Autotune and heuristic configuration is often kept in an ordinary helper
+    such as ``get_autotune_config()`` rather than written inline in the target
+    decorator.  Follow calls from the target's decorators by exactly one hop;
+    calls made by those helpers are deliberately not traversed.
+    """
+
+    helper_names: set[str] = set()
+    for node in tree.body:
+        if not (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name in editable_targets
+        ):
+            continue
+        for decorator in node.decorator_list:
+            for child in ast.walk(decorator):
+                if isinstance(child, ast.Call) and isinstance(child.func, ast.Name):
+                    helper_names.add(child.func.id)
+    return helper_names
+
+
 def _sha256_python_harness(path: Path, editable_targets: set[str]) -> str:
     """Hash the harness portion of a co-located Python kernel entrypoint.
 
     ROCmBench keeps editable Triton code and pytest harnesses in one module.
-    Imports, declared target functions, and Triton JIT helpers are legitimate
-    optimization surface, so omit their complete AST nodes.  Test/benchmark
-    functions, ordinary Python helpers, module constants, and executable
+    Imports, declared target functions, Triton JIT helpers, and top-level
+    helpers called directly by target decorators are legitimate optimization
+    surface, so omit their complete AST nodes.  Test/benchmark functions,
+    unrelated ordinary Python helpers, module constants, and executable
     statements remain in the digest.
     """
 
@@ -187,13 +213,14 @@ def _sha256_python_harness(path: Path, editable_targets: set[str]) -> str:
     except (OSError, UnicodeDecodeError, SyntaxError):
         return "invalid-python:" + _sha256(path)
 
+    decorator_helpers = _target_decorator_helper_names(tree, editable_targets)
     tree.body = [
         node
         for node in tree.body
         if not isinstance(node, (ast.Import, ast.ImportFrom))
         and not (
             isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name in editable_targets
+            and node.name in editable_targets | decorator_helpers
         )
         and not _is_triton_jit_function(node)
     ]

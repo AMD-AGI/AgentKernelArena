@@ -1,3 +1,5 @@
+import ast
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -278,6 +280,112 @@ def test_colocated_kernel_imports_structure_and_triton_helpers_are_editable(tmp_
         "def test_performance():\n"
         "    return kernel(1)\n"
     )
+
+    verify_workspace_harness(snapshot)
+
+
+def test_colocated_target_decorator_helpers_are_editable_one_hop(tmp_path):
+    entrypoint = tmp_path / "combined_benchmark.py"
+    entrypoint.write_text(
+        "import triton\n\n"
+        "def build_configs():\n"
+        "    return [triton.Config({}, num_warps=2)]\n\n"
+        "def get_autotune_config():\n"
+        "    return build_configs()\n\n"
+        "def get_autotune_key():\n"
+        "    return ['x']\n\n"
+        "def get_triton_heuristics():\n"
+        "    return {'EVEN': lambda args: True}\n\n"
+        "@triton.autotune(configs=get_autotune_config(), key=get_autotune_key())\n"
+        "@triton.heuristics(get_triton_heuristics())\n"
+        "@triton.jit\n"
+        "def kernel(x):\n"
+        "    return x\n\n"
+        "def test_performance():\n"
+        "    return kernel(1)\n"
+    )
+    (tmp_path / "config.yaml").write_text(
+        "source_file_path: [combined_benchmark.py]\n"
+        "target_kernel_functions: [kernel]\n"
+        "performance_command: [python3 combined_benchmark.py]\n"
+    )
+
+    snapshot = snapshot_workspace_harness(tmp_path)
+    entrypoint.write_text(
+        "import triton\n\n"
+        "def build_configs():\n"
+        "    return [triton.Config({}, num_warps=2)]\n\n"
+        "def get_autotune_config():\n"
+        "    return [triton.Config({}, num_warps=8, num_stages=3)]\n\n"
+        "def get_autotune_key():\n"
+        "    return ['x', 'y']\n\n"
+        "def get_triton_heuristics():\n"
+        "    return {'EVEN': lambda args: False}\n\n"
+        "@triton.autotune(configs=get_autotune_config(), key=get_autotune_key())\n"
+        "@triton.heuristics(get_triton_heuristics())\n"
+        "@triton.jit\n"
+        "def kernel(x):\n"
+        "    return x\n\n"
+        "def test_performance():\n"
+        "    return kernel(1)\n"
+    )
+    verify_workspace_harness(snapshot)
+
+    snapshot = snapshot_workspace_harness(tmp_path)
+    entrypoint.write_text(entrypoint.read_text().replace("num_warps=2", "num_warps=4"))
+    with pytest.raises(RuntimeError, match="combined_benchmark.py"):
+        verify_workspace_harness(snapshot)
+
+
+@pytest.mark.parametrize(
+    ("task_path", "source_name", "helper_name"),
+    [
+        (
+            "tasks/triton2triton/rocmbench/medium/layernorm",
+            "layernorm.py",
+            "get_autotune_config",
+        ),
+        (
+            "tasks/triton2triton/rocmbench/medium/rmsnorm_fwd",
+            "rmsnorm_fwd.py",
+            "get_autotune_config",
+        ),
+        (
+            "tasks/triton2triton/rocmbench/medium/softmax",
+            "softmax.py",
+            "get_autotune_config",
+        ),
+        (
+            "tasks/triton2triton/rocmbench/hard/multreduce_matmul_dot_kernel",
+            "multreduce_matmul_dot_kernel.py",
+            "get_triton_dot_autotune_configs",
+        ),
+        (
+            "tasks/triton2triton/rocmbench/hard/triton_multreduce_matmul_kernel",
+            "triton_multreduce_matmul_kernel.py",
+            "get_triton_multreduce_autotune_configs",
+        ),
+    ],
+)
+def test_rocmbench_decorator_config_helpers_are_editable(
+    tmp_path, task_path, source_name, helper_name
+):
+    task_root = tmp_path / "task"
+    shutil.copytree(ROOT / task_path, task_root)
+    snapshot = snapshot_workspace_harness(task_root)
+
+    source_path = task_root / source_name
+    source = source_path.read_text()
+    tree = ast.parse(source)
+    helper = next(
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == helper_name
+    )
+    lines = source.splitlines(keepends=True)
+    lines.insert(helper.body[0].lineno - 1, "    _aka_guard_probe = 1\n")
+    source_path.write_text("".join(lines))
 
     verify_workspace_harness(snapshot)
 
