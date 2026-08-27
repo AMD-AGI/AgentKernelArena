@@ -438,7 +438,7 @@ def test_consan_positive_control_runs_production_entrypoint_and_oracle_split(
     for name in ("safe-production", "racy-production"):
         command, environment = calls[name]
         assert any(value.endswith("consan_entrypoint.py") for value in command)
-        assert command.count("--command-arg") == 4
-        assert command.count("--oracle-arg") == 4
+        assert sum(value.startswith("--command-arg=") for value in command) == 4
+        assert sum(value.startswith("--oracle-arg=") for value in command) == 4
         assert "HSA_TOOLS_LIB" not in environment
         assert not any(key.startswith("RJ_CONSAN_") for key in environment)

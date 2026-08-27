@@ -778,14 +778,14 @@ def _consan_positive(
                 str(threads),
                 "instrumented",
             ):
-                argv.extend(("--command-arg", argument))
+                argv.append(f"--command-arg={argument}")
             for argument in (
                 str(launcher),
                 str(code_object),
                 str(threads),
                 "oracle",
             ):
-                argv.extend(("--oracle-arg", argument))
+                argv.append(f"--oracle-arg={argument}")
             return argv
 
         steps["safe_production"] = _run_probe_step(

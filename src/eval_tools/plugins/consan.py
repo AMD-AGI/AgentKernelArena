@@ -133,9 +133,9 @@ class ConSanPlugin:
             "record-replay",
         ]
         for argument in command:
-            argv.extend(("--command-arg", argument))
+            argv.append(f"--command-arg={argument}")
         for argument in oracle:
-            argv.extend(("--oracle-arg", argument))
+            argv.append(f"--oracle-arg={argument}")
         return ToolInvocation(
             tool=self.name,
             command=tuple(argv),

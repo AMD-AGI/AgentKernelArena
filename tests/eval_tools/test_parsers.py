@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from src.eval_tools.plugins.base import FINDING, INCONCLUSIVE, PASS, TOOL_ERROR
 from src.eval_tools.plugins.parsers import (
     parse_consan,
@@ -20,6 +22,19 @@ def test_gpu_asan_extracts_memory_finding():
 def test_gpu_asan_clean_requires_build_attestation():
     assert parse_gpu_asan("safe", "", 0, attested=False).status == INCONCLUSIVE
     assert parse_gpu_asan("safe", "", 0, attested=True).status == PASS
+
+
+@pytest.mark.parametrize(
+    "output",
+    (
+        "AddressSanitizer initialized successfully",
+        "Begin function __asan_report_load4",
+    ),
+)
+def test_gpu_asan_does_not_treat_non_report_markers_as_findings(output):
+    result = parse_gpu_asan(output, "", 0, attested=True)
+    assert result.status == PASS
+    assert not result.findings
 
 
 def test_rocjitsu_parses_structured_race_block():
@@ -103,6 +118,18 @@ def test_fpsan_parser_never_reports_clean_after_process_failure():
         )
         assert result.status == TOOL_ERROR
         assert result.reason_code == "fpsan_process_failed"
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate"),
+    (("", ""), ("abc", ""), ("", "abc")),
+)
+def test_fpsan_parser_rejects_empty_digests(reference, candidate):
+    result = parse_fpsan_comparison(
+        fpsan_line(reference, candidate), "", 0, attested=True
+    )
+    assert result.status == TOOL_ERROR
+    assert result.reason_code == "fpsan_digest_empty"
 
 
 def waitcheck_line(*, diagnostics=None, passed=True, complete=True):

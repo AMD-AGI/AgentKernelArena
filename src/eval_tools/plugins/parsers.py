@@ -14,7 +14,7 @@ from typing import Iterable, Optional
 from .base import FINDING, INCONCLUSIVE, PASS, TOOL_ERROR, FindingRecord, ParseResult
 
 
-_ASAN_HEAD_RE = re.compile(r"(?:ERROR:\s*)?(?:AddressSanitizer|GPU AddressSanitizer)", re.I)
+_ASAN_HEAD_RE = re.compile(r"\bERROR:\s*(?:GPU\s+)?AddressSanitizer\b", re.I)
 _ASAN_KIND_RE = re.compile(
     r"\b(heap-buffer-overflow|global-buffer-overflow|stack-buffer-overflow|"
     r"use-after-free|use-after-return|double-free|invalid-free|"
@@ -33,7 +33,7 @@ def parse_gpu_asan(
     timed_out: bool = False,
 ) -> ParseResult:
     combined = "\n".join(part for part in (stdout, stderr) if part)
-    asan_marker = _ASAN_HEAD_RE.search(combined) or "Begin function __asan_report" in combined
+    asan_marker = _ASAN_HEAD_RE.search(combined)
     if asan_marker:
         kind_match = _ASAN_KIND_RE.search(combined)
         location_match = _ASAN_LOCATION_RE.search(combined)
@@ -248,6 +248,13 @@ def parse_fpsan_comparison(
         return ParseResult(
             TOOL_ERROR,
             reason_code="fpsan_digest_missing",
+            details=json.dumps(payload, sort_keys=True),
+            attested=True,
+        )
+    if not reference or not candidate:
+        return ParseResult(
+            TOOL_ERROR,
+            reason_code="fpsan_digest_empty",
             details=json.dumps(payload, sort_keys=True),
             attested=True,
         )

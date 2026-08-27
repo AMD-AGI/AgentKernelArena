@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from src.eval_tools.adapters import consan_entrypoint
 from src.eval_tools.contracts import (
     ArtifactKind,
     CapabilityCheck,
@@ -182,9 +183,11 @@ def test_waitcheck_binds_code_object_kernel_and_entry(tmp_path):
     assert invocation.metadata["kernel_entry"] == 0x40
 
 
-def test_consan_requires_exact_hsaco_launcher_and_oracle(tmp_path):
+def test_consan_requires_exact_hsaco_launcher_and_oracle(tmp_path, monkeypatch):
     code_object = tmp_path / "kernel.hsaco"
     code_object.write_bytes(b"\x7fELFconsan")
+    hook = tmp_path / "consan-hook.so"
+    hook.write_bytes(b"hook")
     task_profile = profile(
         KernelLanguage.HIP,
         framework="standalone",
@@ -207,9 +210,9 @@ def test_consan_requires_exact_hsaco_launcher_and_oracle(tmp_path):
         task_profile,
         {
             "code_object": code_object.name,
-            "command": ["launcher", code_object.name],
-            "oracle_command": ["oracle", code_object.name],
-            "consan_hook": "/opt/rocjitsu/lib/librocjitsu_dbi_hooks.so",
+            "command": ["launcher", code_object.name, "--instrumented"],
+            "oracle_command": ["oracle", code_object.name, "--check"],
+            "consan_hook": str(hook),
         },
     )
     capability = plugin.assess(ctx, runtime(gpu_arch="gfx950"))
@@ -221,8 +224,26 @@ def test_consan_requires_exact_hsaco_launcher_and_oracle(tmp_path):
     )
     assert invocation.metadata["policy"] == "strict"
     assert invocation.metadata["mode"] == "record-replay"
-    assert invocation.command.count("--command-arg") == 2
-    assert invocation.command.count("--oracle-arg") == 2
+    assert "--command-arg=--instrumented" in invocation.command
+    assert "--oracle-arg=--check" in invocation.command
+    assert "--command-arg" not in invocation.command
+    assert "--oracle-arg" not in invocation.command
+
+    completed_commands = []
+
+    def run_command(argv, **_kwargs):
+        completed_commands.append(tuple(argv))
+        return consan_entrypoint.subprocess.CompletedProcess(
+            argv, 0, stdout="", stderr=""
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(consan_entrypoint.subprocess, "run", run_command)
+    assert consan_entrypoint._main(list(invocation.command[3:])) == 0
+    assert completed_commands == [
+        ("launcher", code_object.name, "--instrumented"),
+        ("oracle", code_object.name, "--check"),
+    ]
 
 
 def test_flydsl_gpu_asan_is_fail_closed(tmp_path):
