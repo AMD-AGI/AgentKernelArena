@@ -15,13 +15,14 @@ resume, and inspect a run.
 ## Choose or create a run configuration
 
 A run configuration selects the agent, tasks, and target GPU. The repository
-ships three examples:
+ships quickstarts and specialized examples, including:
 
 | Configuration | Purpose |
 | --- | --- |
 | `example_configs/quickstart_claude_mi300.yaml` | One Claude Code GELU task on MI300/MI300X (`gfx942`). |
 | `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`). |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; use only after installing and authenticating Cursor Agent. |
+| `example_configs/evaluation_tools_advisory_mi355x.yaml` | Default-disabled template for experimental `gfx950` evaluation-tool sidecars. It still requires task-specific adapters before opt-in. |
 
 For a first run, select the quickstart that matches the physical GPU:
 
@@ -77,6 +78,11 @@ select tasks at any level of granularity.
 
 See [Configuration and API reference](../reference/api-reference.md) for the full
 set of run-configuration fields.
+
+Optional sanitizer and analysis sidecars run after ordinary correctness and
+before performance. They are disabled by default, verified only on `gfx950`,
+and require language/task-specific adapters. See [Check kernels with evaluation
+tools](use-evaluation-tools.md) before enabling them.
 
 ## Start a run
 

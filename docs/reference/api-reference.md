@@ -50,6 +50,79 @@ log_directory: logs
 workspace_directory_prefix: workspace
 ```
 
+## Evaluation tools
+
+`evaluation_tools` configures optional, isolated kernel-analysis sidecars. The
+section is disabled when it is absent, `null`, or `false`. A configured mapping
+with no enabled tools is also disabled unless the host runner supplies
+`AKA_EVAL_TOOLS`; for a mapping, that host subset replaces its `enabled` value.
+The built-in IDs are `triton_fpsan`, `gpu_asan`, `rocjitsu`,
+`rocjitsu_waitcheck`, `rocjitsu_consan`, and `hip_fpsan`.
+
+Sidecar build locks, integrated positive controls, and end-to-end fixtures
+currently exist only for `gfx950`; all six startup controls pass in the current
+MI355X qualification. Each applicable candidate still needs a task-specific
+adapter and attestation, and enabling an image alone does not imply that a
+kernel was analyzed. See [Check kernels with evaluation
+tools](../how-to/use-evaluation-tools.md) for the support matrix and operational
+requirements.
+
+When tools are enabled, the selected scoring image must resolve to the same
+immutable local Docker image ID as the pinned
+`lmsysorg/sglang-rocm@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78`
+manifest. The runner rejects a different build, launches by the verified ID,
+and records both the selected reference and verified ID in plan source evidence.
+
+Worker reports live at repository-root
+`.eval-tool-artifacts/<worker-label>`. The runner mounts that specific host
+directory read/write into both sidecars and the scoring container; the latter
+submount remains writable when the quality-loop repository root is read-only.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `evaluation_tools.enabled` | boolean, string, or list of strings | empty | Tool IDs to plan. `true` expands to all six built-ins; `false` disables the feature. A single string is accepted. Hyphens are normalized to underscores. When the host sets `AKA_EVAL_TOOLS`, its normalized subset is authoritative for both started sidecars and the in-container plan. |
+| `evaluation_tools.policy` | `advisory` or `required` | `advisory` | `advisory` always permits performance but records an unsatisfied policy. `required` permits performance only when every applicable selected tool is ready, completes, and reports `clean`. |
+| `evaluation_tools.positive_control` | `required`, `optional`, `disabled`, or boolean | `required` | Requires the applicable synthetic known-bug startup control to pass before runtime capability is ready. `optional`, `disabled`, and `false` normalize to not required; the worker still runs and reports its control. |
+| `evaluation_tools.timeout_s` | exact integer from 1 through 3600 | `3600` | Default maximum execution time for each selected tool. Booleans, floats, and numeric strings are rejected. |
+| `evaluation_tools.runtime_profile` | string or `null` | `null` | Fallback runtime-identity assertion for plans whose tool has no `runtime_ref`. It does not select an image and must exactly match worker health when set. |
+| `evaluation_tools.tools` | mapping | `{}` | Per-tool configuration keyed by normalized tool ID. Entries do not enable tools. |
+| `evaluation_tools.tools.<id>.runtime_ref` | string or `null` | automatic host image ID | Exact bare local Docker image ID (`sha256:...`) asserted by the plan and compared with worker health. The `image_digest` key is an alias. This field does not select an image; omit it when using automatic host injection. |
+| `evaluation_tools.tools.<id>.timeout_s` | exact integer from 1 through 3600 | top-level timeout | Per-tool timeout; it cannot exceed the top-level timeout. |
+| `evaluation_tools.tools.<id>.options` | mapping | `{}` | Adapter options, including argv lists and candidate-evidence paths. Reserved framework keys are rejected at run and task level: `positive_control_required`; GPU ASan runtime/preload/library keys; rocJITsu binary/config keys; Waitcheck CLI/C API keys; ConSan hook keys; and HIP-FpSan include/header keys. |
+
+The exact reserved option keys are `positive_control_required` for every tool;
+`asan_runtime_dir`, `hip_asan_runtime`, `host_asan_preload`,
+`host_asan_lib_dir`, and `normal_rocm_lib_dir` for `gpu_asan`;
+`rocjitsu_binary` and `config_path` for `rocjitsu`; `waitcheck_binary` and
+`waitcheck_capi_wrapper` for `rocjitsu_waitcheck`; `consan_hook` for
+`rocjitsu_consan`; and `include_dir` and `public_header` for `hip_fpsan`. They
+are selected and attested by worker health, not YAML.
+
+An explicit `evaluation_tools` mapping and each per-tool configuration reject
+unknown fields. Unknown enabled tool IDs are also rejected. If both
+`runtime_ref` and `image_digest` are supplied, they must be identical.
+
+Example run-level section:
+
+```yaml
+evaluation_tools:
+  enabled:
+    - gpu_asan
+  policy: advisory
+  positive_control: required
+  timeout_s: 600
+  tools:
+    gpu_asan:
+      options: {}
+```
+
+The image is selected separately with a host override. The runner resolves and
+attests its immutable local image ID automatically:
+
+```bash
+export AKA_EVAL_TOOL_IMAGE_GPU_ASAN='registry.example/eval-tool-gpu-asan@sha256:<digest>'
+```
+
 ## Command-line flags
 
 The in-container `main.py` entrypoint accepts these flags:
@@ -157,6 +230,73 @@ For repository-level tasks (`task_type: repository`):
 
 See [Add a task](../how-to/add-task.md) for layout and authoring rules.
 
+### Evaluation profile
+
+The evaluator infers a profile from `task_type`, `repository_language`, source
+suffixes, and repository paths. Add `evaluation_profile` only when that
+inference is insufficient. Recognized profile overrides, including
+`submission_paths`, are recorded in
+`resolved_task_profile.explicit_overrides`. Unknown profile fields are currently
+ignored, so use only the documented keys.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `evaluation_profile.language` | string | Canonical values are `triton`, `hip`, `flydsl`, and `unknown`. |
+| `evaluation_profile.artifact_kind` | string | `source_aot`, `python_jit`, `hsaco_precompiled`, or `unknown`. |
+| `evaluation_profile.framework` | string | Framework identity such as `standalone`, `aiter`, `rocblas`, or `rccl`. |
+| `evaluation_profile.instrumentation_control` | string | `compiler_controlled`, `recompile`, `none`, or `unknown`. This describes whether the selected candidate can be rebuilt/instrumented. |
+| `evaluation_profile.adapter` | string or `null` | Explicit adapter identity, for example `triton_aot`, `flydsl_aot`, or `hip_fpsan_manual`. It is a claim that must still be supported by adapter options/evidence. |
+| `evaluation_profile.source_available` | boolean | Whether source for the selected candidate is available to the evaluator. |
+| `evaluation_profile.submission_paths` | string or list of strings | Workspace-relative candidate files captured before agent edits and fingerprinted after optimization. Required when repository/image tasks change files beyond the normal source fields. Absolute paths and `..` are rejected. |
+| `evaluation_profile.fpsan_ported` | boolean | Explicit evidence that the HIP reference and candidate were manually ported to HIP-FpSan value semantics. |
+| `evaluation_profile.rebuilt_from_source` | boolean | Explicit evidence used when a framework/library path is rebuilt from controlled source. It does not replace artifact attestation. |
+
+### Task-level tool adapters
+
+A task can add adapter options only for tools enabled by the run. The only
+allowed task-level structure is:
+
+```yaml
+evaluation_tools:
+  tools:
+    gpu_asan:
+      timeout_s: 300
+      options:
+        command: [python3, scripts/eval_tools/run_gpu_asan.py]
+```
+
+`timeout_s` must be between 1 and the run-level value. Task configuration cannot
+enable another tool, change the top-level `policy` or `positive_control`, select
+another runtime image, increase a timeout, or set any reserved framework option
+listed above. Other options are merged over the run-level options.
+
+Commands are argv lists, not shell strings. The built-in adapter keys are:
+
+| Tool | Adapter keys |
+| --- | --- |
+| `triton_fpsan` | `comparison_command` or `command`; optional invocation-artifact-contained `attestation_path`. |
+| `gpu_asan` | `command`; optional invocation-artifact-contained candidate `attestation_path`. ASan runtime/preload/library paths come only from verified sidecar health. |
+| `rocjitsu` | HIP uses `launcher` or `command`, with optional `expected_kernel` and invocation-artifact-contained `race_report` whose filename must be `race.log`. Triton/FlyDSL requires `capsule` and the exact `triton_aot`/`flydsl_aot` profile adapter; arbitrary launchers and task-configured race-report paths are rejected. The capsule must be workspace-contained, single-dispatch, contain a golden expected output, be manifest-valid, and target `gfx950`. Binary/config and the trusted replay helper come only from the image/health. Automatic trusted capsule capture from correctness is not implemented. |
+| `rocjitsu_waitcheck` | `code_object`, `expected_kernel`, and non-negative integer `kernel_entry`. The workspace-contained unbundled final ELF is SHA-256-bound to the plan; an image-owned inventory must match its exact `gfx950` descriptor before structured C API analysis. |
+| `rocjitsu_consan` | `code_object`, focused native `command`, and independent `oracle_command`. The instrumented command must explicitly name and load the code object. Strict record/replay, SHA-256/FNV identity, complete accounting, and an oracle pass are required. Broad AITER/rocBLAS/RCCL runtimes are rejected. |
+| `hip_fpsan` | `comparison_command` or `command`; optional invocation-artifact-contained candidate `attestation_path`; requires `evaluation_profile.fpsan_ported: true`. The include path comes only from verified sidecar health. |
+
+Sidecar health attests and injects runtime-internal assets. Candidate/task
+configuration cannot override or supply ASan preload/library paths, the
+rocJITsu binary/config path, the Waitcheck CLI/C API wrapper, the ConSan hook,
+or the HIP-FpSan include path.
+
+Build-attestation JSON must store `artifact_path` relative to the directory
+containing that JSON. The artifact must be beside or below the attestation;
+absolute paths, `..`, and symlink resolutions that escape the directory are
+rejected. The parser resolves the relative path in the scoring namespace and
+verifies the declared SHA-256.
+
+Each execution uses a fresh
+`<tool>/<plan-fingerprint>/<invocation-id>` artifact directory. Custom
+attestation and race-report paths are resolved against that directory; an
+absolute path is accepted only when its resolution remains inside it.
+
 ### Platform support
 
 `platform_support.status: skip` excludes a task unconditionally. An active task
@@ -175,6 +315,9 @@ Each task produces a `task_result.yaml` in its workspace:
 | `compilation_error_message` | Error text if compilation failed, else `null` |
 | `pass_correctness` | Whether correctness passed |
 | `correctness_error_message` | Error text if correctness failed, else `null` |
+| `pass_tool_gate` | Whether the selected evaluation-tool policy allows performance to proceed. Defaults to `true` when tools are disabled. This is independent of `pass_correctness`. |
+| `tool_policy_satisfied` | Whether every applicable selected tool was ready and completed with a `clean` finding status. Under `advisory`, this can be `false` while `pass_tool_gate` remains `true`. |
+| `tool_evaluation` | Versioned complete plan, plan fingerprint, profile, capability, execution, finding, evidence, and decision data. Omitted when no tool is enabled. |
 | `base_execution_time` | Baseline runtime in ms |
 | `best_optimized_execution_time` | Best optimized runtime in ms |
 | `speedup_ratio` | Speedup over baseline |
@@ -186,6 +329,37 @@ Each task produces a `task_result.yaml` in its workspace:
 | `speedup_calculation_error_message` | Error text if speedup could not be calculated, else `null` |
 | `optimization_summary` | Framework-generated note identifying the optimizing agent and centralized evaluator |
 | `score` | Computed score (see below) |
+
+`tool_evaluation` uses this high-level shape:
+
+| Field | Description |
+| --- | --- |
+| `schema_version` | Evaluation-tool result schema version. |
+| `plan_fingerprint` | SHA-256 over normalized configuration, resolved task profile, plugin versions, captured original/candidate evidence for declared paths, verified scoring-image reference/ID, and the content digest of a configured replay capsule. |
+| `plan` | Complete immutable plan: schema, policy, profile, ordered tool records (runtime reference, plugin version, timeout, and options), fingerprint, and source evidence. |
+| `policy` | `advisory` or `required`. |
+| `overall_status` | `clean`, `finding`, `incomplete`, or `not_applicable`. |
+| `resolved_task_profile` | Inferred profile plus auditable explicit overrides. |
+| `source_evidence` | Captured-original and candidate fingerprints plus manifest metadata, including `metadata.scoring_runtime.image_id` and `.reference` when tools run. |
+| `decision` | `allowed`, `policy_satisfied`, and machine-readable reason strings. |
+| `tools.<id>.capability` | Separate `engine`, `adapter`, `runtime`, and resolved `effective` checks. |
+| `tools.<id>.result.execution` | `not_run`, `completed`, `tool_error`, or `timeout`. |
+| `tools.<id>.result.finding` | `not_evaluated`, `clean`, `found`, or `inconclusive`. |
+| `tools.<id>.result.findings` | Structured finding records. |
+| `tools.<id>.result.artifacts` | Paths to retained reports/attestations. Raw stdout/stderr is omitted from the YAML summary by default. |
+
+Execution status and finding status are deliberately independent. A sanitizer
+can terminate the candidate while producing a valid finding, and a process can
+exit zero without proving that an instrumented kernel ran.
+
+The complete `plan.tools` records make the selected runtime, plugin version,
+timeout, and options reconstructable from the report. Ordinary option path
+strings still do not hash referenced adapter, HSACO, or input contents; include
+those files in `evaluation_profile.submission_paths` or add explicit digests. A
+configured rocJITsu `capsule` is handled specially: its JSON SHA-256/size are
+added to source evidence and the fingerprint, while capsule validation verifies
+the manifest's HSACO and blob hashes. This does not prove the capsule came from
+the ordinary correctness run.
 
 ## Scoring
 

@@ -1,0 +1,74 @@
+schema_version: 1
+
+# The scoring runtime remains unchanged.  Every tool image is an immutable child
+# of this verified MI355X/gfx950 image.
+base:
+  gfx950:
+    reference: lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705
+    digest: sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78
+    rocm: 7.2.0
+
+tools:
+  triton_fpsan:
+    triton:
+      version: 3.7.0+amd.rocm7.2.0.gitd0d77a509
+      sha256: 3a8acacdfb4723c8bb71844c427f4d3ce047658bf97fbdc23065c06205231687
+    triton_kernels:
+      version: 1.0.0+amd.rocm7.2.0.gitd0d77a509
+      sha256: df8b42ebf098767c0d31a3916913bd7557a623903aefa26602e7c6818c34b84a
+
+  gpu_asan:
+    packages:
+      rocm-core-asan:
+        version: 7.2.0.70200-43~22.04
+        sha256: 3bd5b98b3ae2cb8fbfd10c248682feb86d0f5136914e7a226b701340f9b90f83
+      comgr-asan:
+        version: 3.0.0.70200-43~22.04
+        sha256: 31118ea2dc79fe9d8c69ad7ff2176a2f1c822128ece604d4438b6c13a1aa3179
+      hsa-rocr-asan:
+        version: 1.18.0.70200-43~22.04
+        sha256: c5d6e48846f6163b5c8d7168949e1c24dc41f69bd871705621b0972c2f1a03cc
+      hip-runtime-amd-asan:
+        version: 7.2.26015.70200-43~22.04
+        sha256: fa56c2192f28adb022dc323d2836dfbe4f12211287575ea27978dc96b10a5300
+
+  rocjitsu:
+    repository: https://github.com/ROCm/rocm-systems.git
+    commit: 0bf561a0d8a4a6b88954f2c46bd3a50871cda140
+    gcc: 13.4.0-6ubuntu1~22~ppa2
+    googletest:
+      repository: https://github.com/google/googletest.git
+      commit: b514bdc898e2951020cbdca1304b75f5950d1f59
+    flatbuffers:
+      repository: https://github.com/google/flatbuffers.git
+      commit: 595bf0007ab1929570c7671f091313c8fc20644e
+
+  rocjitsu_waitcheck:
+    repository: https://github.com/ROCm/rocm-systems.git
+    commit: ed35c0b54547c98bab359c8732529d9f5e8fd1ae
+    target: gfx950
+    interface: waitcheck-c-api-v1
+    gcc: 13.4.0-6ubuntu1~22~ppa2
+    zstd:
+      version: 1.5.7
+      sha256: eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3
+
+  rocjitsu_consan:
+    repository: https://github.com/ROCm/rocm-systems.git
+    commit: ed35c0b54547c98bab359c8732529d9f5e8fd1ae
+    target: gfx950
+    mode: record-replay
+    policy: strict
+    gcc: 13.4.0-6ubuntu1~22~ppa2
+    zstd:
+      version: 1.5.7
+      sha256: eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3
+
+  hip_fpsan:
+    repository: https://github.com/ROCm/hip-fpsan.git
+    commit: 0ac9be8a1539a473ba21dfa686564c3be33c890e
+    image_probe: src/eval_tools/probes/hip_fpsan_probe.hip
+
+verification:
+  gfx950: verified
+  gfx942: unverified
