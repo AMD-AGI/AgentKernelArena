@@ -44,7 +44,7 @@ LEGACY_MARK_START = (
 )
 MARK_STARTS = (MARK_START, OLD_MARK_START, LEGACY_MARK_START)
 MARK_END = "# <<< AKA-GENERATED <<<"
-FUNC_ANCHOR = "def _measure_cuda_event_fallback("
+VLLM_BLOCK_ANCHOR = "import sys as _aka_sys"
 VLLM_HELPER_SYMBOLS = ("_measure_cuda_event_fallback", "_benchmark_cuda_graph_or_events")
 
 ROCMBENCH_HELPER_STUB = '''"""Generated at workspace setup from src/tools/perf/performance_utils_pytest.py.
@@ -129,7 +129,7 @@ def canonical_aka_helper(root: Path = ROOT) -> str:
 
 def canonical_vllm_block(root: Path = ROOT) -> str:
     text = (root / "src/tools/perf/vllm_cuda_graph_block.py").read_text()
-    return text[text.index(FUNC_ANCHOR) :]
+    return text[text.index(VLLM_BLOCK_ANCHOR) :]
 
 
 def replace_marked_region(current: str, block: str) -> str | None:
