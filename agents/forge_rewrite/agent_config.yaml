@@ -5,9 +5,10 @@
 # sessions it is worth.
 model: claude-opus-5
 
-# Arena's hard subprocess timeout. --max-hours is derived from it with a
-# shutdown margin so KernelForge self-stops before the kill.
-timeout_seconds: 7200
+# Arena's hard subprocess timeout. --max-hours is derived from it with a 900s
+# shutdown margin so KernelForge self-stops before the kill, so this value is
+# the rewrite budget plus that margin: 15300 = 4h + 15min.
+timeout_seconds: 15300
 
 permission_mode: acceptEdits
 snr_threshold: 30.0
