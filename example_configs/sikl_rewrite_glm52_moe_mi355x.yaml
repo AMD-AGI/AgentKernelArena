@@ -10,6 +10,9 @@
 agent:
   template: forge_rewrite
 
+# The schema carries six workload cases; swap in another shape, or select
+# the whole family with `- SIKL-task` (which also picks up the flydsl_opt
+# tasks). Available: t8, t16, t32, t64, t128, t256.
 tasks:
   - SIKL-task/glm52_moe_mxfp4_per1x32_t64
 

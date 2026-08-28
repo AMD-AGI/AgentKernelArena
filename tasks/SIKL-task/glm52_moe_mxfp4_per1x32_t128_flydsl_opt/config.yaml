@@ -6,7 +6,7 @@ task_type: image_kernel
 #
 # The operator ships inside aiter, so the editable source is the aiter tree the
 # image provides, seeded into the workspace per run. The sibling task
-# glm52_moe_mxfp4_per1x32_t64 measures the same operator with the same
+# glm52_moe_mxfp4_per1x32_t128 measures the same operator with the same
 # inputs, reference and baseline, but rewrites it in FlyDSL from scratch; this
 # one optimizes the FlyDSL implementation aiter already ships, so the two scores
 # answer the same question from opposite directions.
@@ -65,7 +65,7 @@ kernel_identity:
   source_owner: aiter
   workload:
     source: workload.json
-    primary_case: num_tokens_64
+    primary_case: num_tokens_128
 
 compile_command:
   - python3 test_kernel_harness.py --compile
@@ -101,11 +101,11 @@ prompt:
     is quantized to MXFP4 twice, once into stage 1 and again on the stage-1
     output going into stage 2.
 
-    This task scores the num_tokens=64 workload case, where the shipped
-    implementation measures 0.1106 ms under CUDA-graph replay. The
-    tuned table dispatches this shape to flydsl_moe1_afp4_wfp4_bf16_t32x128x256_w4
-    and flydsl_moe2_afp4_wfp4_bf16_t32x128x256_reduce_persist.
-    M is small: 64 tokens x topk 9 = 576 rows spread over
+    This task scores the num_tokens=128 workload case, where the shipped
+    implementation measures 0.1169 ms under CUDA-graph replay. The
+    tuned table dispatches this shape to flydsl_moe1_afp4_wfp4_bf16_t32x64x256_w3_kw2_fp4
+    and flydsl_moe2_afp4_wfp4_bf16_t16x128x256_atomic_sbm32.
+    M is small: 128 tokens x topk 9 = 1152 rows spread over
     257 experts, so occupancy and per-expert tile efficiency dominate rather
     than raw FLOPs.
 
@@ -119,6 +119,6 @@ prompt:
     are applied in the stage-2 reduction.
 
     Correctness is measured against scripts/task_reference.py with a mean
-    relative error gate of 0.01; the shipped kernels measure
-    0.001634. Do not edit the harness, the driver, or anything
+    relative error gate of 0.09; the shipped kernels measure
+    0.035199. Do not edit the harness, the driver, or anything
     under scripts/.

@@ -11,6 +11,8 @@
 agent:
   template: forge
 
+# The schema carries six workload cases; swap in another shape.
+# Available: t8, t16, t32, t64, t128, t256 (each with a _flydsl_opt task).
 tasks:
   - SIKL-task/glm52_moe_mxfp4_per1x32_t64_flydsl_opt
 

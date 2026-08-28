@@ -1,0 +1,15 @@
+{
+  "definition": "aiter_fused_moe_per_1x32_d6144_e257_topk9_n512_k3072_i128",
+  "case_uuid": "bcb4276b91f86b96",
+  "num_tokens": 64,
+  "seed": 29,
+  "max_relerr": 0.01,
+  "tolerance_reason": "The tuned stage-1 kernel for this shape writes bf16 and the activation quantization follows the same contract as the reference, so aiter's own output sits 0.0016 from it. The gate is ~6x that floor.",
+  "measured": {
+    "baseline_relerr_vs_reference": 0.001634,
+    "baseline_ms_cuda_graph": 0.110635,
+    "stage1_kernel": "flydsl_moe1_afp4_wfp4_bf16_t32x128x256_w4",
+    "stage2_kernel": "flydsl_moe2_afp4_wfp4_bf16_t32x128x256_reduce_persist",
+    "platform": "MI355X/gfx950"
+  }
+}

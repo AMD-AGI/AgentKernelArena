@@ -32,8 +32,8 @@ rewrite:
 # truth; duplicating it here would let the two drift.
 workload:
   definition: aiter_fused_moe_per_1x32_d6144_e257_topk9_n512_k3072_i128
-  case_uuid: bcb4276b91f86b96
-  num_tokens: 64
+  case_uuid: b52bc228fcecd82a
+  num_tokens: 128
 
 compile_command:
   - python3 test_kernel_harness.py --compile
@@ -67,10 +67,10 @@ prompt:
     scales); the activation must be quantized to MXFP4 twice, once into stage 1
     and again on the stage-1 output going into stage 2.
 
-    This task scores the num_tokens=64 workload case. At that shape the
-    production implementation measures 0.1106 ms under CUDA-graph
-    replay, dispatching to flydsl_moe1_afp4_wfp4_bf16_t32x128x256_w4
-    and flydsl_moe2_afp4_wfp4_bf16_t32x128x256_reduce_persist.
+    This task scores the num_tokens=128 workload case. At that shape the
+    production implementation measures 0.1169 ms under CUDA-graph
+    replay, dispatching to flydsl_moe1_afp4_wfp4_bf16_t32x64x256_w3_kw2_fp4
+    and flydsl_moe2_afp4_wfp4_bf16_t16x128x256_atomic_sbm32.
 
     The interface you must expose, the exact tensor layouts, and the file paths
     of the baseline implementation (aiter's entry, its FlyDSL stage kernels and
@@ -81,6 +81,6 @@ prompt:
     Write the implementation in FlyDSL only. Do not call aiter, torch or any
     other GPU library to compute the result -- that defeats the rewrite.
     Correctness is measured against scripts/task_reference.py with a mean
-    relative error gate of 0.01; the production baseline measures
-    0.001634. Edit only kernel.py; the harness, driver,
+    relative error gate of 0.09; the production baseline measures
+    0.035199. Edit only kernel.py; the harness, driver,
     reference, baseline and input construction are protected.

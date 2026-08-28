@@ -8,6 +8,8 @@ while they keep measuring the same thing the same way, which is what these
 tests hold in place.
 """
 
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -18,9 +20,28 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-REWRITE_TASK = ROOT / "tasks/SIKL-task/glm52_moe_mxfp4_per1x32_t64"
-OPTIMIZE_TASK = ROOT / "tasks/SIKL-task/glm52_moe_mxfp4_per1x32_t64_flydsl_opt"
+SIKL = ROOT / "tasks/SIKL-task"
+GENERATOR = SIKL / "generate_shape_tasks.py"
+SHAPES = (8, 16, 32, 64, 128, 256)
+
+REWRITE_TASK = SIKL / "glm52_moe_mxfp4_per1x32_t64"
+OPTIMIZE_TASK = SIKL / "glm52_moe_mxfp4_per1x32_t64_flydsl_opt"
 TASKS = (REWRITE_TASK, OPTIMIZE_TASK)
+
+REWRITE_FAMILY = tuple(SIKL / f"glm52_moe_mxfp4_per1x32_t{n}" for n in SHAPES)
+OPTIMIZE_FAMILY = tuple(SIKL / f"glm52_moe_mxfp4_per1x32_t{n}_flydsl_opt" for n in SHAPES)
+ALL_TASKS = REWRITE_FAMILY + OPTIMIZE_FAMILY
+
+# Present in every task of a family and required to be byte-identical: Arena
+# copies each task into its own workspace, so a divergent copy would silently
+# score one shape differently from the rest.
+SHARED_FILES = (
+    "test_kernel_harness.py",
+    "scripts/forge_driver.py",
+    "scripts/task_inputs.py",
+    "scripts/task_reference.py",
+    "scripts/task_baseline.py",
+)
 
 # aiter's MXFP4 quantizer, used by the correctness reference. An agent that
 # could edit it would move the operator and its oracle together.
@@ -41,6 +62,42 @@ def _inputs_module(task: Path):
     import task_inputs
 
     return task_inputs
+
+
+def test_every_schema_workload_has_both_tasks():
+    for task in ALL_TASKS:
+        assert task.is_dir(), f"missing task: {task.name}"
+
+
+@pytest.mark.parametrize(
+    "family", (REWRITE_FAMILY, OPTIMIZE_FAMILY), ids=("rewrite", "flydsl_opt")
+)
+@pytest.mark.parametrize("shared", SHARED_FILES)
+def test_a_family_ships_one_implementation(family, shared):
+    digests = {(task / shared).read_bytes() for task in family}
+    assert len(digests) == 1, f"{shared} differs across the family"
+
+
+@pytest.mark.parametrize("task", ALL_TASKS, ids=lambda task: task.name)
+def test_workload_matches_the_task_name(task):
+    workload = json.loads((task / "workload.json").read_text())
+    expected = int(task.name.split("_t")[1].split("_")[0])
+    assert workload["num_tokens"] == expected
+    assert workload["definition"] == (
+        "aiter_fused_moe_per_1x32_d6144_e257_topk9_n512_k3072_i128"
+    )
+    # A gate without its measured floor and a reason is a number nobody can
+    # audit later.
+    assert workload["max_relerr"] >= workload["measured"]["baseline_relerr_vs_reference"]
+    assert workload["tolerance_reason"].strip()
+
+
+def test_generated_tasks_are_up_to_date():
+    result = subprocess.run(
+        [sys.executable, str(GENERATOR), "--check"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
