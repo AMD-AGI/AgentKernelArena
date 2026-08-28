@@ -5,12 +5,16 @@ The rewrite pipeline reimplements an operator in FlyDSL from its existing
 implementation (PORT, correctness only) and then optimizes the port with a
 nested forge-loop. This launcher adapts an Arena task to it:
 
-  1. Build a scratch workspace beside the task as an empty git repository with
-     an unborn HEAD. KernelForge reads the workspace's HEAD as the base commit
-     for framework apply-back and makes apply-back a success requirement when
-     one exists; an Arena task has no framework repository to patch, so the
-     scratch workspace must report no base commit -- and it needs its own .git
-     to stop git from walking up into the Arena workspace's repository.
+  1. Build a scratch workspace beside the task as its own git repository with
+     one commit. KernelForge's agent sessions require a git worktree with a
+     resolvable HEAD, and it must be the scratch directory's own repository so
+     that the framework base commit -- and therefore any apply-back patch -- is
+     never computed against the Arena task's files.
+
+     An Arena task has no framework repository to patch, so KernelForge reports
+     ``applyback_required: true`` and ``success: false`` for an otherwise good
+     port. This launcher therefore gates on ``port_ok``, and reserves nothing:
+     the pipeline itself keeps its last 20 minutes for the apply-back stage.
   2. Copy the port source (the baseline implementation's entry file) and the
      task's dual-path driver into it. The PORT prompt reports the source by
      basename only, so it has to be reachable from the rewrite workspace.
@@ -85,6 +89,32 @@ def _resolve_port_source(workspace: str, port_source: str) -> Path:
     )
 
 
+def _init_scratch_repository(root: Path) -> None:
+    """Make the scratch workspace its own git repository with one commit.
+
+    KernelForge's agent sessions run behind a workspace guard that snapshots the
+    repository to roll a session back, and for a writable session it requires a
+    git worktree with a resolvable HEAD: a plain directory fails its
+    ``rev-parse --show-toplevel`` and a repository with an unborn HEAD fails the
+    HEAD snapshot, either way ending every port attempt as an "agent session
+    error" before the agent does any work.
+
+    It has to be the scratch directory's OWN repository rather than the Arena
+    workspace's: git resolves a repository by walking up, so otherwise the
+    pipeline would read the Arena workspace's HEAD as the framework base commit
+    and any apply-back patch would be computed against the task's own files.
+    """
+    commands = (
+        ["git", "init", "--quiet", "."],
+        ["git", "config", "user.email", "forge-rewrite@local"],
+        ["git", "config", "user.name", "forge-rewrite"],
+        ["git", "add", "-A"],
+        ["git", "commit", "--quiet", "-m", "forge-rewrite: scratch workspace"],
+    )
+    for command in commands:
+        subprocess.run(command, cwd=root, capture_output=True, text=True, check=True)
+
+
 def _prepare_rewrite_workspace(
     workspace: str,
     port_source: Path,
@@ -107,20 +137,6 @@ def _prepare_rewrite_workspace(
     if root.exists():
         shutil.rmtree(root)
     root.mkdir(parents=True)
-
-    # An empty git repository, deliberately without a commit. git discovers a
-    # repository by walking up, so a scratch directory with no .git of its own
-    # resolves the Arena workspace's HEAD instead, and KernelForge reads that
-    # HEAD as the framework base commit -- which makes apply-back a success
-    # requirement for a task that has no framework repository to patch. An
-    # initialized repository with an unborn HEAD stops the upward walk and
-    # reports no base commit, while still letting the pipeline commit the port.
-    subprocess.run(
-        ["git", "init", "--quiet", str(root)],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
 
     for module in sorted(task_driver.parent.glob("*.py")):
         if module.name == port_target_name:
@@ -151,6 +167,10 @@ def _prepare_rewrite_workspace(
             f"{port_target_name}"
         )
     shutil.copy2(port_source, source_copy)
+
+    # Committed last, so the agent session starts from a clean worktree whose
+    # HEAD already contains the driver, its modules and the port source.
+    _init_scratch_repository(root)
 
     driver_copy = root / task_driver.name
     logger.info(f"forge_rewrite: rewrite workspace {root}")

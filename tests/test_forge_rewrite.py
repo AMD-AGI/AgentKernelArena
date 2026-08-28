@@ -125,25 +125,35 @@ def test_rewrite_workspace_carries_the_driver_and_its_modules(tmp_path):
     assert not (root / "kernel.py").exists()
 
 
-def test_rewrite_workspace_reports_no_base_commit_inside_a_git_parent(tmp_path):
-    # git discovers a repository by walking up, so without its own .git the
-    # scratch workspace would resolve the Arena workspace's HEAD and KernelForge
-    # would require a framework apply-back the task cannot satisfy.
+def test_rewrite_workspace_is_its_own_clean_repository(tmp_path):
+    # KernelForge's agent sessions require a git worktree with a resolvable HEAD,
+    # and it must be the scratch directory's own repository: git resolves a
+    # repository by walking up, so otherwise the framework base commit -- and any
+    # apply-back patch -- would be computed against the Arena task's files.
     workspace, source = _workspace(tmp_path)
     subprocess.run(["git", "init", "--quiet", str(workspace)], check=True)
     subprocess.run(
         ["git", "-c", "user.email=a@b", "-c", "user.name=a", "commit",
-         "--quiet", "--allow-empty", "-m", "base"],
+         "--quiet", "--allow-empty", "-m", "arena workspace base"],
         cwd=workspace, check=True, capture_output=True,
     )
+    arena_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=workspace, capture_output=True, text=True
+    ).stdout.strip()
 
     root, _, _ = _prepare_rewrite_workspace(str(workspace), source, "kernel.py", LOGGER)
 
     assert (root / ".git").is_dir()
-    head = subprocess.run(
+    scratch_head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True
     )
-    assert head.returncode != 0, "the scratch workspace must have an unborn HEAD"
+    assert scratch_head.returncode == 0, "the agent session needs a resolvable HEAD"
+    assert scratch_head.stdout.strip() != arena_head
+
+    status = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=root, capture_output=True, text=True
+    ).stdout
+    assert status == "", f"the session must start from a clean worktree, got: {status!r}"
 
 
 def test_rewrite_workspace_is_rebuilt_from_scratch(tmp_path):
