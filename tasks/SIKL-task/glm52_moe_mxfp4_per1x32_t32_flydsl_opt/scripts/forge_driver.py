@@ -50,10 +50,32 @@ from __future__ import annotations
 
 import argparse
 import math
-import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pathlib import Path
+
+_DRIVER_DIR = Path(__file__).resolve().parent
+
+
+def _task_modules_dir() -> Path:
+    """Locate the task's helper modules, whichever layout the driver was copied into.
+
+    Arena's forge launcher copies this driver to the workspace ROOT while the
+    task keeps its modules under scripts/; the rewrite launcher copies the driver
+    and its modules side by side into a scratch workspace. Both have to resolve,
+    and a driver that cannot import its modules exits non-zero in every mode,
+    which KernelForge reports as a non-conforming task rather than a path bug.
+    """
+    for candidate in (_DRIVER_DIR, _DRIVER_DIR / "scripts", _DRIVER_DIR.parent / "scripts"):
+        if (candidate / "task_inputs.py").is_file():
+            return candidate
+    raise RuntimeError(
+        f"task_inputs.py not found next to {_DRIVER_DIR}, in its scripts/ or in "
+        f"{_DRIVER_DIR.parent / 'scripts'}"
+    )
+
+
+sys.path.insert(0, str(_task_modules_dir()))
 
 import task_inputs
 
