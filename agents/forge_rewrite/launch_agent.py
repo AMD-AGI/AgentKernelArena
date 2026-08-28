@@ -58,6 +58,21 @@ REWRITE_WORKSPACE_DIR = "forge_rewrite_ws"
 RESULT_FILE = "forge_rewrite_result.json"
 STATUS_FILE = "arena_forge_rewrite_status.json"
 
+# Everything KernelForge itself creates inside the scratch repository while it
+# runs. The agent-session guard rejects a session that leaves new non-ignored
+# files behind, and the pipeline writes the seeded candidate, its bytecode cache
+# and its experiment tree into the workspace, so ignoring them is what lets a
+# port session end at all. The candidate is force-added when the pipeline
+# commits it, so ignoring .forge_rewrite/ does not hide the port.
+_SCRATCH_GITIGNORE = """\
+__pycache__/
+*.pyc
+*.log
+build/
+forge_experiments/
+.forge_rewrite/
+"""
+
 
 def _rewrite_config(task_config: dict[str, Any], task_config_dir: str) -> dict[str, Any]:
     """Read and validate the task's rewrite block."""
@@ -103,7 +118,13 @@ def _init_scratch_repository(root: Path) -> None:
     workspace's: git resolves a repository by walking up, so otherwise the
     pipeline would read the Arena workspace's HEAD as the framework base commit
     and any apply-back patch would be computed against the task's own files.
+
+    The same guard rejects a session that leaves new non-ignored files behind,
+    which is what the .gitignore is for: the pipeline writes the seeded
+    candidate and its experiment tree into this repository while the session
+    runs.
     """
+    (root / ".gitignore").write_text(_SCRATCH_GITIGNORE)
     commands = (
         ["git", "init", "--quiet", "."],
         ["git", "config", "user.email", "forge-rewrite@local"],

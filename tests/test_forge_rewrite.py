@@ -156,6 +156,27 @@ def test_rewrite_workspace_is_its_own_clean_repository(tmp_path):
     assert status == "", f"the session must start from a clean worktree, got: {status!r}"
 
 
+def test_scratch_repository_ignores_what_the_pipeline_writes(tmp_path):
+    # The agent-session guard rejects a session that leaves new non-ignored
+    # files behind, and the pipeline writes the seeded candidate, its bytecode
+    # cache and its experiment tree into the workspace while the session runs.
+    workspace, source = _workspace(tmp_path)
+    root, _, _ = _prepare_rewrite_workspace(str(workspace), source, "kernel.py", LOGGER)
+
+    attempt = root / ".forge_rewrite" / "20260828-000000-abcdef12"
+    attempt.mkdir(parents=True)
+    (attempt / "kernel.py").write_text("# seeded skeleton\n")
+    (attempt / "__pycache__").mkdir()
+    (attempt / "__pycache__" / "kernel.cpython-310.pyc").write_bytes(b"\x00")
+    (root / "forge_experiments").mkdir()
+    (root / "forge_experiments" / "result.json").write_text("{}\n")
+
+    status = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=root, capture_output=True, text=True
+    ).stdout
+    assert status == "", f"pipeline scratch must be ignored, got: {status!r}"
+
+
 def test_rewrite_workspace_is_rebuilt_from_scratch(tmp_path):
     workspace, source = _workspace(tmp_path)
     root, _, _ = _prepare_rewrite_workspace(str(workspace), source, "kernel.py", LOGGER)
