@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+# Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
+"""forge-loop measurement driver for the GLM-5.2 MXFP4 MoE FlyDSL kernels.
+
+WHAT YOU ARE OPTIMIZING
+    The GLM-5.2 routed-expert MoE layer as aiter ships it, in place. Per-rank
+    (TP=8): model_dim 6144, inter_dim 256, 257 experts (256 routed + 1 fused
+    shared), topk 9, MXFP4 group_size 32 (QuantType.per_1x32), SiLU, bf16 in and
+    out. This is the afp4_wfp4 path -- BOTH operands are MXFP4: the weights
+    arrive pre-quantized and preshuffled, the activation is quantized on the fly
+    once into stage 1 and again on the stage-1 output into stage 2.
+
+    The measured entry is aiter.fused_moe.fused_moe, resolved from the aiter
+    copy seeded into this workspace. Your edits to that copy are what this
+    driver measures; edits anywhere else are invisible.
+
+WHERE THE WORK IS (num_tokens=64, ~112 us of device time in 7 kernels)
+    61.8 us  mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32
+             aiter/ops/flydsl/kernels/mixed_moe_gemm_2stage.py:313
+    29.1 us  mfma_moe2_afp4_wfp4_bf16_cshuffle_..._persist_cu256_acc0
+             aiter/ops/flydsl/kernels/mixed_moe_gemm_2stage.py:7432
+     6.8 us  fused_mx_quant_moe_sort_kernel<bf16, fp4_t, 256, 32>   (HIP, not editable)
+     4.4 us  opus_moe_sorting_entry<P0_v2>                          (HIP, not editable)
+     4.1 us  fused_mx_quant_moe_sort_kernel<bf16, fp4_t, 64, 8>     (HIP, not editable)
+     3.9 us  moe_reduction_kernel_plain_bf16_topk9_md6144
+             aiter/ops/flydsl/kernels/moe_gemm_2stage.py
+     3.7 us  opus_moe_sorting_entry<P23>                            (HIP, not editable)
+
+    Dispatch runs through aiter/fused_moe.py:441 -> _flydsl_stage1_wrapper:1169 /
+    _flydsl_stage2_wrapper:1243 -> aiter/ops/flydsl/moe_kernels.py:1260 / :1645.
+    The kernel pair is chosen by the tuned table row for this shape in
+    aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, which is editable too:
+    picking a better-suited variant is a legitimate optimization.
+
+    Only FlyDSL sources and the dispatch around them are in the edit scope. The
+    HIP quant/sort kernels are out of scope for this task, and so is the
+    activation quantizer the correctness reference uses.
+
+MODES
+    (no flag)        correctness against scripts/task_reference.py, prints
+                     `allclose:` and `SNR: <db> dB`
+    --bench-mode     times the operator, prints `case_ms:` and `median_ms:`
+    --profile-run    warms the operator, prints no timing
+
+Timing uses Arena's canonical CUDA-graph helper, the same one that produces the
+task's score, so what this loop optimizes is what the task reports.
+"""
+
+from __future__ import annotations
+
+import argparse
+import math
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import task_inputs
+
+# Must precede the first `import aiter` anywhere in this process.
+task_inputs.use_workspace_aiter()
+
+import torch
+
+from _aka_benchmark import benchmark_cuda_graph_or_events
+
+import task_baseline
+import task_reference
+
+CASE_ID = "num_tokens_64"
+
+
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--bench-mode", action="store_true")
+    parser.add_argument("--profile-run", action="store_true")
+    parser.add_argument("--warmup", type=int, default=task_inputs.BENCH_WARMUP)
+    parser.add_argument("--iters", type=int, default=task_inputs.BENCH_REPETITION)
+    # Unknown flags are ignored by convention: forge-loop's tools pass arguments
+    # this driver does not define.
+    args, _unknown = parser.parse_known_args(argv)
+    return args
+
+
+def _prepare():
+    if not torch.cuda.is_available():
+        raise RuntimeError("this driver requires a ROCm device")
+    task_inputs.assert_aiter_is_workspace_copy()
+    inputs = task_inputs.build_inputs()
+    return task_inputs.call_kwargs(inputs)
+
+
+def _snr_db(reference: torch.Tensor, got: torch.Tensor) -> float:
+    reference_f32 = reference.float()
+    noise = got.float() - reference_f32
+    signal_power = reference_f32.pow(2).sum().item()
+    noise_power = noise.pow(2).sum().item()
+    if noise_power <= 0.0:
+        return float("inf")
+    if signal_power <= 0.0:
+        return float("-inf")
+    return 10.0 * math.log10(signal_power / noise_power)
+
+
+def run_correctness(kwargs: dict) -> int:
+    got = task_baseline.run(**kwargs)
+    torch.cuda.synchronize()
+    expected = task_reference.run(**kwargs)
+    torch.cuda.synchronize()
+
+    if got.shape != expected.shape:
+        print(f"shape mismatch: {tuple(got.shape)} vs {tuple(expected.shape)}")
+        print("allclose: False")
+        return 1
+
+    relative_error = task_inputs.relative_error(got, expected)
+    passed = bool(
+        torch.isfinite(got.float()).all().item()
+        and relative_error <= task_inputs.MAX_RELERR
+    )
+    print(f"# case {CASE_ID}:")
+    print(f"mean relative error: {relative_error:.6f} (gate {task_inputs.MAX_RELERR})")
+    print(f"SNR: {_snr_db(expected, got):.2f} dB")
+    print(f"allclose: {passed}")
+    return 0 if passed else 1
+
+
+def run_bench(kwargs: dict, warmup: int, iters: int) -> int:
+    execution_time_ms, metadata = benchmark_cuda_graph_or_events(
+        lambda: task_baseline.run(**kwargs),
+        warmup=max(0, warmup),
+        repetition=max(1, iters),
+        target_ms=task_inputs.BENCH_TARGET_MS,
+    )
+    print(f"case_ms: {CASE_ID} {execution_time_ms:.6f}")
+    print(f"median_ms: {execution_time_ms:.6f}")
+    print(f"benchmark_method: {metadata.get('benchmark_method')}")
+    return 0
+
+
+def run_profile(kwargs: dict) -> int:
+    for _ in range(3):
+        task_baseline.run(**kwargs)
+    torch.cuda.synchronize()
+    print(f"profile run complete for case {CASE_ID}")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    args = _parse_args(argv)
+    kwargs = _prepare()
+    if args.bench_mode:
+        return run_bench(kwargs, args.warmup, args.iters)
+    if args.profile_run:
+        return run_profile(kwargs)
+    return run_correctness(kwargs)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

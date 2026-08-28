@@ -1,0 +1,120 @@
+task_type: image_kernel
+
+# The operator ships inside aiter, so the editable source is the aiter tree the
+# image provides, seeded into the workspace per run. The sibling task
+# tasks/SIKL-task/glm52_moe_mxfp4_per1x32_t64 measures the same operator with the
+# same inputs, reference and baseline, but rewrites it in FlyDSL from scratch;
+# this one optimizes the FlyDSL implementation aiter already ships, so the two
+# scores answer the same question from opposite directions.
+image_repo_path: /sgl-workspace/aiter
+repo_subdir: aiter
+# Paths are matched REPO-RELATIVE and exactly, so the build scratch is
+# `aiter/jit/build`, not `jit/build`. Getting it wrong seeds an extra ~2.9 GB
+# into every run workspace; the prebuilt .so that matter live in aiter/jit
+# itself and are kept, which is also what keeps the FlyDSL cache warm.
+image_repo_exclude:
+  - __pycache__
+  - aiter/jit/build
+
+# Selects the FlyDSL cheatsheet and the Forge fellow.
+repository_language: flydsl
+
+# ALL PATHS ARE REPO-ROOT RELATIVE. `image_repo_path` is the aiter REPO ROOT, so
+# the Python package sits one level down and a package file is `aiter/<...>.py`.
+# Package-relative paths only resolve through a whole-tree rglob fallback, which
+# is a scan of a multi-GB tree per entry and a hard error the moment two files
+# share a suffix.
+#
+# ENTRY 0 IS THE FORGE ANCHOR: it is passed as `--kernel` and forge-loop's task
+# statement is literally "optimize the kernel at <that file>", so it must hold
+# the compute core rather than the dispatcher. mfma_moe1_silu_mul_* is defined
+# at :313 and mfma_moe2_*_cshuffle at :7432 of the anchor file.
+source_file_path:
+  - aiter/ops/flydsl/kernels/mixed_moe_gemm_2stage.py
+  - aiter/ops/flydsl/kernels/moe_gemm_2stage.py
+  - aiter/ops/flydsl/moe_kernels.py
+  - aiter/fused_moe.py
+
+# The rest of the FlyDSL MoE surface, plus the tuned table: picking a
+# better-suited kernel variant for this shape is a legitimate optimization.
+#
+# What is deliberately NOT editable: the HIP quant/sort kernels under csrc/
+# (this task is same-language FlyDSL optimization), and aiter/ops/quant.py,
+# which provides the MXFP4 quantizer the correctness reference uses -- an edit
+# there would move the operator and its oracle together.
+editable_sources:
+  - aiter/ops/flydsl/kernels/moe_sorting_kernel.py
+  - aiter/ops/flydsl/kernels/moe_gather_reduce.py
+  - aiter/ops/flydsl/kernels/moe_m_tile_map.py
+  - aiter/ops/flydsl/kernels/moe_route_maps.py
+  - aiter/ops/flydsl/mxfp4_kname.py
+  - aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv
+
+target_kernel_functions:
+  - fused_moe
+  - _flydsl_stage1_wrapper
+  - _flydsl_stage2_wrapper
+
+kernel_identity:
+  logical_operator: mxfp4_moe_2stage
+  kernel_kind: flydsl
+  source_owner: aiter
+  workload:
+    source: scripts/task_inputs.py
+    primary_case: num_tokens_64
+
+compile_command:
+  - python3 test_kernel_harness.py --compile
+correctness_command:
+  - python3 test_kernel_harness.py --correctness
+performance_command:
+  - python3 test_kernel_harness.py --full-benchmark
+
+compile_timeout: 1800
+correctness_timeout: 1800
+performance_timeout: 1800
+task_result_template: null
+
+platform_support:
+  required_arch: gfx950
+  status: active
+  skip_reason: null
+
+prompt:
+  source_code: null
+  cheatsheet: null
+  instructions: >-
+    Optimize the GLM-5.2 routed-expert MoE on MI355X/gfx950 by improving the
+    FlyDSL kernels aiter already ships. This is same-language optimization: keep
+    the implementation in FlyDSL, do not port it to HIP, Triton or CUDA, and do
+    not replace it with a torch or library call.
+
+    Per-rank (TP=8) configuration: model_dim=6144, inter_dim=256, 257 experts
+    (256 routed + 1 fused shared), topk=9, MXFP4 group_size=32
+    (QuantType.per_1x32), SiLU, bf16 in and out. This is the afp4_wfp4 path:
+    BOTH operands are MXFP4. The weights arrive pre-quantized and preshuffled
+    (shuffle_weight(w, (16,16)) plus e8m0_shuffle on the scales); the activation
+    is quantized to MXFP4 twice, once into stage 1 and again on the stage-1
+    output going into stage 2.
+
+    At the scored shape the timed call is ~112 us of device time across seven
+    kernels, and the two FlyDSL grouped GEMMs are ~91 us of it: stage 1
+    (mfma_moe1_silu_mul_*, mixed_moe_gemm_2stage.py:313) at ~62 us and stage 2
+    (mfma_moe2_*_cshuffle, :7432) at ~29 us. The FlyDSL reduction
+    (moe_reduction_kernel_plain_*) is ~4 us. The remaining ~23 us is the HIP
+    quant/sort family, which is out of scope here. M is small: 64 tokens x topk
+    9 = 576 rows spread over 257 experts, roughly two rows per expert, so
+    occupancy and per-expert tile efficiency dominate rather than raw FLOPs.
+
+    Useful levers: the MFMA pipeline and tile/block loop structure in
+    mixed_moe_gemm_2stage.py, stage-2's reduction strategy (atomic vs reduce vs
+    persist), the FlyDSL reduction kernel, the per-M-bucket kernel choice in
+    configs/model_configs/glm5_fp4_tuned_fmoe.csv, and the Python dispatch in
+    fused_moe.py. Preserve the dispatch contract: block_m / ksplit semantics,
+    moe_sorting behaviour, the separated gate/up layout implied by
+    shuffle_weight((16,16)), and doweight_stage1=False so the routing weights
+    are applied in the stage-2 reduction.
+
+    Correctness is measured against scripts/task_reference.py with a mean
+    relative error gate of 0.01; the shipped kernels measure 0.0016. Do not edit
+    the harness, the driver, or anything under scripts/.
