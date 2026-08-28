@@ -202,11 +202,11 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     counts, problems = audit_task_benchmark_entrypoints(ROOT)
     config_count = len(list((ROOT / "tasks").rglob("config.yaml")))
 
-    assert config_count == 426
+    assert config_count == 427
     assert problems == []
     assert sum(counts.values()) == config_count
     assert counts == {
-        "canonical_python": 220,
+        "canonical_python": 221,
         "native_graph_driver": 6,
         "rocmbench_adapter": 61,
         "vllm_adapter": 139,

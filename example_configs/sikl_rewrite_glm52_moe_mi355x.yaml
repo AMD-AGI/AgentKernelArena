@@ -1,0 +1,18 @@
+# SIKL rewrite-by-flydsl task: the GLM-5.2 MXFP4 MoE operator on MI355X.
+#
+# The forge_rewrite agent reimplements the operator in FlyDSL with KernelForge's
+# forge-rewrite-by-flydsl pipeline; Arena scores the port against the operator's
+# own production implementation (aiter.fused_moe).
+#
+# Requires KernelForge installed so `kernel-agents` is on PATH, and the LLM
+# gateway environment (ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN /
+# ANTHROPIC_CUSTOM_HEADERS).
+agent:
+  template: forge_rewrite
+
+tasks:
+  - SIKL-task/glm52_moe_mxfp4_per1x32_t64
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

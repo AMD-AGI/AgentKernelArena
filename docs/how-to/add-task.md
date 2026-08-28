@@ -26,6 +26,7 @@ The `task_type` field declares what kind of optimization the task represents.
 | `torch2flydsl` | Replace a PyTorch reference with a FlyDSL kernel |
 | `triton2flydsl` | Translate a Triton kernel to FlyDSL |
 | `flydsl2flydsl` | Optimize a FlyDSL kernel (requires FlyDSL) |
+| `rewrite_by_flydsl` | Reimplement a framework operator in FlyDSL, scored against the operator's own production implementation (requires FlyDSL) |
 | `repository` | Repository-level task |
 
 The repository ships task suites including `hip2hip` (gpumode and others),
@@ -72,9 +73,38 @@ correctness_command:
 
 # One of: hip2hip, cuda2hip, triton2triton, triton2flydsl,
 #         instruction2triton, torch2hip, torch2flydsl,
-#         flydsl2flydsl, repository
+#         flydsl2flydsl, rewrite_by_flydsl, repository
 task_type: hip2hip
 ```
+
+Rewrite tasks (`task_type: rewrite_by_flydsl`) are driven by the `forge_rewrite`
+agent, which runs KernelForge's `forge-rewrite-by-flydsl` pipeline. They add a
+`rewrite:` block naming the baseline implementation to reimplement, the file the
+port lands in, and the operator identity. The task must ship a dual-path
+measurement driver at `scripts/forge_driver.py`: KernelForge embeds it in the
+port prompt as the definition of the builder/launch interface, times the baseline
+under `--ref-bench-mode` and the candidate under `--bench-mode`, and checks
+correctness in the default mode. The port target is the only agent-editable file.
+
+```yaml
+task_type: rewrite_by_flydsl
+
+source_file_path:
+  - kernel.py                 # the port target; the only editable file
+target_kernel_functions:
+  - build_<operator>_module   # the builder symbol the port must expose
+
+rewrite:
+  port_source: /path/to/framework/entry.py   # baseline implementation entry
+  port_source_entry: fused_moe               # host callable that runs it
+  port_target: kernel.py
+  logical_operator: <stable operator identity>
+  source_owner: aiter                        # aiter | vllm | sglang
+  snr_threshold: 30.0                        # overrides the agent default
+  max_port_attempts: 5                       # overrides the agent default
+```
+
+See `tasks/SIKL-task/glm52_moe_mxfp4_per1x32_t64/` for a complete example.
 
 Repository-level tasks (`task_type: repository`) use a different shape because
 they clone and optimize an upstream project rather than a small source bundle.

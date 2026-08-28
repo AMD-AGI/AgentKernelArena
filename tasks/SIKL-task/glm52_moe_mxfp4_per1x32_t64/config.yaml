@@ -1,0 +1,80 @@
+task_type: rewrite_by_flydsl
+
+# The agent-editable file: the FlyDSL port lands here. Everything else in the
+# task (harness, driver, reference, baseline, input construction) is protected.
+source_file_path:
+  - kernel.py
+target_kernel_functions:
+  - build_glm52_mxfp4_moe_2stage_module
+
+# ---------------------------------------------------------------------------
+# Rewrite pipeline inputs (consumed by agents/forge/launch_rewrite_agent.py).
+#
+# port_source is the baseline implementation's entry file. It is read-only
+# reference material for the PORT phase; the driver owns the interface and the
+# measurement. The rewrite prompt embeds only the first 16000 characters of it,
+# so scripts/forge_driver.py carries the full implementation chain as pointers.
+# ---------------------------------------------------------------------------
+rewrite:
+  port_source: /sgl-workspace/aiter/aiter/fused_moe.py
+  port_source_entry: fused_moe
+  port_target: kernel.py
+  logical_operator: glm52_mxfp4_moe_2stage
+  source_owner: aiter
+  snr_threshold: 30.0
+  max_port_attempts: 5
+
+# ---------------------------------------------------------------------------
+# Workload identity. The numeric contract (axes, dtypes, seed, tolerance,
+# benchmark parameters) lives in scripts/task_inputs.py as the single source of
+# truth; duplicating it here would let the two drift.
+# ---------------------------------------------------------------------------
+workload:
+  definition: aiter_fused_moe_per_1x32_d6144_e257_topk9_n512_k3072_i128
+  case_uuid: bcb4276b91f86b96
+  num_tokens: 64
+
+compile_command:
+  - python3 test_kernel_harness.py --compile
+correctness_command:
+  - python3 test_kernel_harness.py --correctness
+performance_command:
+  - python3 test_kernel_harness.py --full-benchmark
+
+compile_timeout: 1800
+correctness_timeout: 1800
+performance_timeout: 1800
+task_result_template: null
+
+platform_support:
+  required_arch: gfx950
+  status: active
+  skip_reason: null
+
+prompt:
+  source_code: null
+  cheatsheet: null
+  instructions: >-
+    Implement the GLM-5.2 routed-expert MoE layer in FlyDSL for MI355X/gfx950,
+    replacing the production implementation the task measures as its baseline.
+
+    Per-rank (TP=8) configuration: model_dim=6144, inter_dim=256, 257 experts
+    (256 routed + 1 fused shared), topk=9, MXFP4 group_size=32
+    (QuantType.per_1x32), SiLU, bf16 in and out. This is the afp4_wfp4 path:
+    BOTH operands are MXFP4. The weights arrive pre-quantized and preshuffled
+    (shuffle_weight(w, (16,16)) on the packed weights, e8m0_shuffle on the
+    scales); the activation must be quantized to MXFP4 twice, once into stage 1
+    and again on the stage-1 output going into stage 2.
+
+    The interface you must expose, the exact tensor layouts, and the file paths
+    of the baseline implementation (aiter's entry, its FlyDSL stage kernels and
+    its HIP quant/sort/reduce kernels) are all documented at the top of
+    scripts/forge_driver.py. Read it first, then read the baseline sources it
+    points at.
+
+    Write the implementation in FlyDSL only. Do not call aiter, torch or any
+    other GPU library to compute the result -- that defeats the rewrite.
+    Correctness is measured against scripts/task_reference.py (mean relative
+    error gate 0.01, measured 0.0016 for the production baseline). Edit only
+    kernel.py; the harness, driver, reference, baseline and input construction
+    are protected.

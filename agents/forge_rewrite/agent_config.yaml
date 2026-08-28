@@ -1,0 +1,21 @@
+# KernelForge forge-rewrite-by-flydsl settings for the forge_rewrite agent.
+#
+# A task's `rewrite:` block overrides snr_threshold and max_port_attempts: the
+# task knows its operator's tolerance and how many correctness-only port
+# sessions it is worth.
+model: claude-opus-5
+
+# Arena's hard subprocess timeout. --max-hours is derived from it with a
+# shutdown margin so KernelForge self-stops before the kill.
+timeout_seconds: 7200
+
+permission_mode: acceptEdits
+snr_threshold: 30.0
+max_port_attempts: 3
+
+# OPTIMIZE supervisor backend on stall: codex or claude.
+supervisor_backend: codex
+
+# Read and publish rewrite recipes. Off by default so a first bring-up does not
+# depend on knowledge-store credentials.
+rewrite_kb: false

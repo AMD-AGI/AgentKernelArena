@@ -293,9 +293,10 @@ FAIL. Architecture skips are `SKIP/not_applicable`, not dependency failures.
 ## 1. config_schema
 
 Supported task types are `hip2hip`, `cuda2hip`, `triton2triton`, `triton2flydsl`,
-`torch2hip`, `torch2flydsl`, `instruction2triton`, `flydsl2flydsl`, `repository`,
-and `image_kernel`. All current task families require non-empty string lists for
-`compile_command`, `correctness_command`, and `performance_command`.
+`torch2hip`, `torch2flydsl`, `instruction2triton`, `flydsl2flydsl`,
+`rewrite_by_flydsl`, `repository`, and `image_kernel`. All current task families
+require non-empty string lists for `compile_command`, `correctness_command`, and
+`performance_command`.
 
 Normal kernel tasks require string-list `source_file_path` and
 `target_kernel_functions`. Legacy `instruction2triton` tasks with an empty source
