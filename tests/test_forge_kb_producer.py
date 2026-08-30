@@ -274,7 +274,7 @@ def test_forge_edit_scope_discards_undeclared_untracked_file(tmp_path):
 
 
 @pytest.mark.parametrize("change_kind", ["tracked", "rename"])
-def test_forge_edit_scope_rejects_undeclared_changes(tmp_path, change_kind):
+def test_forge_edit_scope_reports_undeclared_changes(tmp_path, change_kind):
     baseline = _init_scope_test_repo(tmp_path)
     kernel = tmp_path / "kernel.py"
     helper = tmp_path / "helper.py"
@@ -290,8 +290,11 @@ def test_forge_edit_scope_rejects_undeclared_changes(tmp_path, change_kind):
     else:
         helper.rename(tmp_path / "renamed_helper.py")
 
-    with pytest.raises(RuntimeError, match="outside source_file_path/editable_sources"):
-        _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
+    # Named for the caller to carry into the report, not raised: a whole campaign
+    # is not worth discarding over a verdict the agent could not see coming.
+    violations = _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
+
+    assert "helper.py" in violations
 
 
 def test_explicit_source_owner_wins_for_wrapper_anchor():

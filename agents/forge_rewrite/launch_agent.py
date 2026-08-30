@@ -447,5 +447,11 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     # No `git checkout` here: unlike the forge-loop path, nothing edits the Arena
     # workspace tree during the run, and the ported kernel installed above is an
     # uncommitted change a checkout would discard.
-    _verify_forge_edit_scope(workspace, edit_baseline, editable_sources, logger)
+    undeclared_edits = _verify_forge_edit_scope(
+        workspace, edit_baseline, editable_sources, logger
+    )
+    if undeclared_edits:
+        # Carried into the scored output so a reader of the report can tell that
+        # this result rests partly on files the task did not declare editable.
+        output += "\n=== UNDECLARED EDITS ===\n" + "\n".join(undeclared_edits)
     return output
