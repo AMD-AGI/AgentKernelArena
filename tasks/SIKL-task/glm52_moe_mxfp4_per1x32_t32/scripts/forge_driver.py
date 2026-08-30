@@ -63,11 +63,15 @@ MODES
     --profile-run      builds and warms the candidate, prints no timing
 
 Both bench modes use Arena's canonical benchmark helper (CUDA-graph replay with
-an event fallback), the same one that produces the task's score. Timing the
-operator eagerly instead would make per-call host dispatch dominate the ~112 us
-of device work, so a candidate that merely pre-builds for a fixed shape would
-report a large speedup while running identical kernels -- and the win would not
-exist in a graph-captured server.
+an event fallback) under the task's own warmup and repetition counts, the same
+helper and the same counts that produce the task's score, and they report it as
+`mean_ms:` because that helper averages its per-replay samples. `--warmup` and
+`--iters` are accepted for contract compatibility but do not change the protocol.
+
+Timing the operator eagerly instead would make per-call host dispatch dominate
+the ~112 us of device work, so a candidate that merely pre-builds for a fixed
+shape would report a large speedup while running identical kernels -- and the win
+would not exist in a graph-captured server.
 """
 
 from __future__ import annotations
@@ -119,8 +123,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--ref-bench-mode", action="store_true")
     parser.add_argument("--bench-mode", action="store_true")
     parser.add_argument("--profile-run", action="store_true")
-    parser.add_argument("--warmup", type=int, default=10)
-    parser.add_argument("--iters", type=int, default=30)
+    # Accepted for driver-contract compatibility and deliberately unused: the
+    # sampling protocol belongs to the task (see _timed_ms), so that every timing
+    # this driver prints is comparable with the one the task is scored on.
+    parser.add_argument("--warmup", type=int, default=task_inputs.BENCH_WARMUP)
+    parser.add_argument("--iters", type=int, default=task_inputs.BENCH_REPETITION)
     # Unknown flags are ignored by convention: the nested forge-loop tools pass
     # arguments this driver does not define, and refusing them would read as
     # "this driver does not support the mode".
@@ -175,19 +182,30 @@ def _call_candidate(launch, inputs: dict) -> torch.Tensor:
     )
 
 
-def _timed_ms(fn, warmup: int, iters: int) -> tuple[float, dict]:
-    """Time one implementation with Arena's canonical benchmark helper."""
+def _timed_ms(fn) -> tuple[float, dict]:
+    """Time one implementation the way the task is scored.
+
+    The sampling protocol is the task's, not the caller's: a candidate is only
+    worth keeping if it holds up under the protocol that decides the task's
+    score, and honouring a caller's smaller --warmup/--iters would report a
+    number that cannot be compared against it. The extra samples cost ~80ms of
+    device time against several seconds of process startup per invocation, so
+    pinning them is close to free.
+    """
     return benchmark_cuda_graph_or_events(
         fn,
-        warmup=max(0, warmup),
-        repetition=max(1, iters),
+        warmup=task_inputs.BENCH_WARMUP,
+        repetition=task_inputs.BENCH_REPETITION,
         target_ms=task_inputs.BENCH_TARGET_MS,
     )
 
 
 def _report_timing(ms: float, metadata: dict) -> None:
+    # `mean_ms`, not `median_ms`: Arena's helper averages its per-replay samples.
+    # The driver contract accepts either key and asks for the one that names the
+    # statistic actually computed.
     print(f"case_ms: {CASE_ID} {ms:.6f}")
-    print(f"median_ms: {ms:.6f}")
+    print(f"mean_ms: {ms:.6f}")
     print(f"benchmark_method: {metadata.get('benchmark_method')}")
 
 
@@ -229,15 +247,15 @@ def run_correctness(inputs: dict) -> int:
     return 0 if passed else 1
 
 
-def run_reference_bench(inputs: dict, warmup: int, iters: int) -> int:
+def run_reference_bench(inputs: dict) -> int:
     kwargs = task_inputs.call_kwargs(inputs)
-    _report_timing(*_timed_ms(lambda: task_baseline.run(**kwargs), warmup, iters))
+    _report_timing(*_timed_ms(lambda: task_baseline.run(**kwargs)))
     return 0
 
 
-def run_candidate_bench(inputs: dict, warmup: int, iters: int) -> int:
+def run_candidate_bench(inputs: dict) -> int:
     launch = _candidate_launch()
-    _report_timing(*_timed_ms(lambda: _call_candidate(launch, inputs), warmup, iters))
+    _report_timing(*_timed_ms(lambda: _call_candidate(launch, inputs)))
     return 0
 
 
@@ -257,9 +275,9 @@ def main(argv: list[str]) -> int:
     inputs = task_inputs.build_inputs()
 
     if args.ref_bench_mode:
-        return run_reference_bench(inputs, args.warmup, args.iters)
+        return run_reference_bench(inputs)
     if args.bench_mode:
-        return run_candidate_bench(inputs, args.warmup, args.iters)
+        return run_candidate_bench(inputs)
     if args.profile_run:
         return run_profile(inputs)
     return run_correctness(inputs)

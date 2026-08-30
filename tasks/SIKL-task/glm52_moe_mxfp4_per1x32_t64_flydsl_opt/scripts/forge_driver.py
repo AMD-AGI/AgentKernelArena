@@ -39,11 +39,13 @@ WHERE THE WORK IS (num_tokens=64, ~112 us of device time in 7 kernels)
 MODES
     (no flag)        correctness against scripts/task_reference.py, prints
                      `allclose:` and `SNR: <db> dB`
-    --bench-mode     times the operator, prints `case_ms:` and `median_ms:`
+    --bench-mode     times the operator, prints `case_ms:` and `mean_ms:`
     --profile-run    warms the operator, prints no timing
 
-Timing uses Arena's canonical CUDA-graph helper, the same one that produces the
-task's score, so what this loop optimizes is what the task reports.
+Timing uses Arena's canonical CUDA-graph helper under the task's own warmup and
+repetition counts, the same helper and the same counts that produce the task's
+score, so what this loop optimizes is what the task reports. `--warmup`/`--iters`
+are accepted for contract compatibility but do not change the protocol.
 """
 
 from __future__ import annotations
@@ -96,6 +98,9 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--bench-mode", action="store_true")
     parser.add_argument("--profile-run", action="store_true")
+    # Accepted for driver-contract compatibility and deliberately unused: the
+    # sampling protocol belongs to the task (see run_bench), so that every timing
+    # this driver prints is comparable with the one the task is scored on.
     parser.add_argument("--warmup", type=int, default=task_inputs.BENCH_WARMUP)
     parser.add_argument("--iters", type=int, default=task_inputs.BENCH_REPETITION)
     # Unknown flags are ignored by convention: forge-loop's tools pass arguments
@@ -147,15 +152,27 @@ def run_correctness(kwargs: dict) -> int:
     return 0 if passed else 1
 
 
-def run_bench(kwargs: dict, warmup: int, iters: int) -> int:
+def run_bench(kwargs: dict) -> int:
+    """Time the candidate the way the task is scored.
+
+    The sampling protocol is the task's, not the caller's: a candidate is only
+    worth keeping if it holds up under the protocol that decides the task's
+    score, and honouring a caller's smaller --warmup/--iters would report a
+    number that cannot be compared against it. The extra samples cost ~80ms of
+    device time against several seconds of process startup per invocation, so
+    pinning them is close to free.
+    """
     execution_time_ms, metadata = benchmark_cuda_graph_or_events(
         lambda: task_baseline.run(**kwargs),
-        warmup=max(0, warmup),
-        repetition=max(1, iters),
+        warmup=task_inputs.BENCH_WARMUP,
+        repetition=task_inputs.BENCH_REPETITION,
         target_ms=task_inputs.BENCH_TARGET_MS,
     )
+    # `mean_ms`, not `median_ms`: Arena's helper averages its per-replay samples.
+    # The driver contract accepts either key and asks for the one that names the
+    # statistic actually computed.
     print(f"case_ms: {CASE_ID} {execution_time_ms:.6f}")
-    print(f"median_ms: {execution_time_ms:.6f}")
+    print(f"mean_ms: {execution_time_ms:.6f}")
     print(f"benchmark_method: {metadata.get('benchmark_method')}")
     return 0
 
@@ -172,7 +189,7 @@ def main(argv: list[str]) -> int:
     args = _parse_args(argv)
     kwargs = _prepare()
     if args.bench_mode:
-        return run_bench(kwargs, args.warmup, args.iters)
+        return run_bench(kwargs)
     if args.profile_run:
         return run_profile(kwargs)
     return run_correctness(kwargs)
