@@ -17,6 +17,8 @@ max_port_attempts: 3
 # OPTIMIZE supervisor backend on stall: codex or claude.
 supervisor_backend: codex
 
-# Read and publish rewrite recipes. Off by default so a first bring-up does not
-# depend on knowledge-store credentials.
+# Read and publish rewrite recipes. KernelForge pins this KB to the KB_STORE
+# backend (cli.py, forge-rewrite-by-flydsl), so enabling it requires KB_STORE_URL
+# and KB_STORE_TOKEN -- a GBRAIN-only environment fails the preflight. With it
+# off, the experience store stays local and no remote credentials are validated.
 rewrite_kb: false
