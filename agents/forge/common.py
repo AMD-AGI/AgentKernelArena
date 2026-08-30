@@ -558,14 +558,27 @@ def _verify_forge_edit_scope(
     for relative in sorted(untracked - allowed):
         scratch = root / relative
         try:
-            scratch.unlink()
+            # git reports a directory when it holds only untracked files, and the
+            # loop's per-lane scratch trees arrive that way, so unlink alone raises.
+            if scratch.is_dir() and not scratch.is_symlink():
+                shutil.rmtree(scratch)
+            else:
+                scratch.unlink()
         except OSError as error:
-            raise RuntimeError(
-                f"Could not discard undeclared Forge scratch file: {relative}"
-            ) from error
+            # Leaving scratch behind costs disk; refusing to score costs the whole
+            # campaign. Two rewrite runs died here on a per-lane directory, so this
+            # reports and moves on.
+            if logger is not None:
+                logger.warning(
+                    "Could not discard undeclared Forge scratch path %s (%s); "
+                    "scoring proceeds and it stays on disk",
+                    relative,
+                    error,
+                )
+            continue
         if logger is not None:
             logger.warning(
-                "Discarded undeclared Forge scratch file before scoring: %s",
+                "Discarded undeclared Forge scratch path before scoring: %s",
                 relative,
             )
 
@@ -606,6 +619,7 @@ forge_experiments/
 forge_driver.py
 forge_rewrite_ws/
 .forge_rewrite/
+forge-lanes-*/
 .pytest_cache/
 *.log
 """

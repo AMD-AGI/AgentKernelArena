@@ -262,6 +262,23 @@ def test_forge_edit_scope_allows_ignored_runtime_artifacts(tmp_path):
     _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
 
 
+def test_forge_edit_scope_discards_undeclared_scratch_directory(tmp_path):
+    # The loop gives each lane its own git workspace, and git reports an embedded
+    # repository as one opaque directory entry rather than its files. unlink raises
+    # on that, which is what cost two rewrite runs their score.
+    baseline = _init_scope_test_repo(tmp_path)
+    kernel = tmp_path / "kernel.py"
+    lane = tmp_path / "forge-lanes-abc123" / "1"
+    lane.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "."], cwd=lane, check=True)
+    (lane / "candidate.py").write_text("def lane(): return 1\n")
+
+    violations = _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
+
+    assert not lane.exists()
+    assert violations == []
+
+
 def test_forge_edit_scope_discards_undeclared_untracked_file(tmp_path):
     baseline = _init_scope_test_repo(tmp_path)
     kernel = tmp_path / "kernel.py"
