@@ -664,7 +664,21 @@ def _build_forge_command(
     logical_operator: str,
     framework: str,
 ) -> list[str]:
-    """Build argv without shell parsing so task metadata is forwarded exactly."""
+    """Build argv without shell parsing so task metadata is forwarded exactly.
+
+    Targets KernelForge as it now ships inside Hyperloom (``src/kernelforge``).
+    Two options the pre-merge standalone repo took are gone there, and click
+    rejects an unknown option outright, so this argv does not run against that
+    older tree at all:
+
+      --max-iters  removed upstream; the loop is budgeted purely by time
+                   (``--max-hours`` plus its own deadline), so there is nothing
+                   to translate an iteration cap into.
+      --fellow     the fellow concept was removed; ``--kernel-backend`` is its
+                   replacement. Translated rather than dropped, because an unset
+                   backend falls back to flydsl -- which would quietly optimise
+                   a Triton kernel down a different path instead of failing.
+    """
     cmd = [
         forge_bin,
         "forge-loop",
@@ -680,16 +694,14 @@ def _build_forge_command(
         str(result_json),
         "--snr-threshold",
         str(agent_config.get("snr_threshold", 30.0)),
-        "--max-iters",
-        str(agent_config.get("max_iters", 2)),
         "--max-hours",
         str(_forge_max_hours(agent_config)),
         "--gpu-target",
         gpu_arch,
         "--gpu-type",
         gpu_type,
-        "--fellow",
-        fellow,
+        "--kernel-backend",
+        re.sub(r"-fellow$", "", fellow),
         "--git-branch",
         "forge-optimize",
         "--model",
@@ -976,11 +988,11 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logger.info(f"  gpu target:  {gpu_arch}")
     logger.info(f"  gpu type:    {gpu_type}")
     logger.info(f"  model:       {model}")
-    logger.info(f"  fellow:      {fellow} (resolved from task configuration)")
+    logger.info(f"  backend:     {fellow} (resolved from task configuration; sent as --kernel-backend)")
     logger.info(f"  operator:    {logical_operator or '<forge inference>'}")
     logger.info(f"  kernel kind: {kernel_kind}")
     logger.info(f"  source owner:{framework or '<unknown>'}")
-    logger.info(f"  budget:      {agent_config.get('max_iters')} iters / {_forge_max_hours(agent_config)}h")
+    logger.info(f"  budget:      {_forge_max_hours(agent_config)}h (time-budgeted; the loop has no iteration cap)")
     logger.info(f"  gateway:     {env.get('ANTHROPIC_BASE_URL', '<unset>')}")
     logger.info(f"Running command: {cmd}")
     logger.info("=" * 80)

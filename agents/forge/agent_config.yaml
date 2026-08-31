@@ -15,14 +15,15 @@ model: claude-opus-5
 #       triton2triton / instruction2triton -> triton-fellow
 #       hip2hip / cuda2hip / torch2hip      -> hip-fellow
 #       flydsl2flydsl                       -> flydsl-fellow
-# Arena forwards the resolved name without checking KernelForge's supported
-# backend set; KernelForge owns that validation. To force a specific fellow
-# regardless of the task, uncomment:
+# The resolved name is sent as `--kernel-backend` with the `-fellow` suffix
+# stripped, so `triton-fellow` reaches KernelForge as `triton`. Arena does not
+# check it against KernelForge's supported set; KernelForge owns that validation
+# -- note that it treats an unrecognised backend as flydsl rather than an error,
+# so a typo here degrades silently. To force one regardless of the task, uncomment:
 # fellow: triton-fellow
 
-# Loop budget: max_iters is intentionally high so a forge run is bounded by TIME
-# (see timeout_seconds below), not by an iteration count.
-max_iters: 1000
+# No iteration-count knob: KernelForge bounds a run purely by TIME (see
+# timeout_seconds below), which is what --max-hours is derived from.
 
 # Correctness gate (dB) used by the 5-stage validation pipeline.
 snr_threshold: 30.0

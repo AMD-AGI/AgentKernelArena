@@ -494,7 +494,11 @@ def test_tilelang_backend_is_forwarded_to_forge_without_substitution(tmp_path):
     fellow = _resolve_fellow(config, {})
 
     assert fellow == "tilelang-fellow"
-    assert _value(_command(tmp_path, fellow=fellow), "--fellow") == fellow
+    # Sent as --kernel-backend: KernelForge dropped --fellow, and an unset
+    # backend silently falls back to flydsl rather than erroring.
+    assert _value(_command(tmp_path, fellow=fellow), "--kernel-backend") == "tilelang"
+    assert "--fellow" not in _command(tmp_path, fellow=fellow)
+    assert "--max-iters" not in _command(tmp_path, fellow=fellow)
 
 
 def test_unified_attention_correctness_covers_2d_and_3d(monkeypatch):
