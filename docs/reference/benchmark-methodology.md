@@ -199,8 +199,4 @@ driver. An unrecognized benchmark entrypoint fails the check instead of quietly
 using an undocumented timer.
 
 Pull requests also run the CPU/mock unit suite and Python compilation audit in
-CI. `benchmark-gpu-smoke` exercises a stateful Graph workload, observable timed
-replay, forced-Event rejection, and native matrix/MLA replay validation with
-nonzero inputs. It retains the logs as artifacts. Repository administrators can
-set `AKA_GPU_CI_ENABLED=true` after registering an isolated self-hosted runner
-with the `rocm` and `gfx950` labels, then make this workflow a required check.
+CI.
