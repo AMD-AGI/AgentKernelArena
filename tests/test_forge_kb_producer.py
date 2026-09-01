@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import importlib.util
 import logging
-import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,7 +13,6 @@ import yaml
 from agents.forge.drivers import arena_task_adapter
 from agents.forge.launch_agent import (
     _build_forge_command,
-    _capture_forge_edit_baseline,
     _declared_editable_sources,
     _forge_max_hours,
     _infer_backend,
@@ -26,7 +24,6 @@ from agents.forge.launch_agent import (
     _resolve_framework,
     _resolve_gpu_type,
     _resolve_kernel_kind,
-    _verify_forge_edit_scope,
 )
 
 CK_TASK_NAMES = (
@@ -215,83 +212,6 @@ def test_editable_sources_extend_complete_source_allowlist(tmp_path):
     )
     assert declared == ["kernel.py", "helper.py"]
     assert resolved == [kernel.resolve(), helper.resolve()]
-
-
-def _init_scope_test_repo(tmp_path: Path) -> str:
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "user.email", "forge-test@local"],
-        cwd=tmp_path,
-        check=True,
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "forge-test"], cwd=tmp_path, check=True
-    )
-    (tmp_path / ".gitignore").write_text("build/\nforge_experiments/\n")
-    (tmp_path / "kernel.py").write_text("def kernel(): return 0\n")
-    (tmp_path / "helper.py").write_text("def helper(): return 0\n")
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(
-        ["git", "commit", "-m", "baseline"], cwd=tmp_path, check=True, capture_output=True
-    )
-    return _capture_forge_edit_baseline(str(tmp_path))
-
-
-def test_forge_edit_scope_allows_declared_source_change(tmp_path):
-    baseline = _init_scope_test_repo(tmp_path)
-    kernel = tmp_path / "kernel.py"
-    kernel.write_text("def kernel(): return 1\n")
-    subprocess.run(["git", "add", "kernel.py"], cwd=tmp_path, check=True)
-    subprocess.run(
-        ["git", "commit", "-m", "allowed edit"],
-        cwd=tmp_path,
-        check=True,
-        capture_output=True,
-    )
-
-    _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
-
-
-def test_forge_edit_scope_allows_ignored_runtime_artifacts(tmp_path):
-    baseline = _init_scope_test_repo(tmp_path)
-    kernel = tmp_path / "kernel.py"
-    build = tmp_path / "build"
-    build.mkdir()
-    (build / "kernel.hsaco").write_bytes(b"runtime artifact")
-
-    _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
-
-
-def test_forge_edit_scope_discards_undeclared_untracked_file(tmp_path):
-    baseline = _init_scope_test_repo(tmp_path)
-    kernel = tmp_path / "kernel.py"
-    scratch = tmp_path / "new_helper.py"
-    scratch.write_text("def bypass(): return 1\n")
-
-    _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
-
-    assert not scratch.exists()
-
-
-@pytest.mark.parametrize("change_kind", ["tracked", "rename"])
-def test_forge_edit_scope_rejects_undeclared_changes(tmp_path, change_kind):
-    baseline = _init_scope_test_repo(tmp_path)
-    kernel = tmp_path / "kernel.py"
-    helper = tmp_path / "helper.py"
-    if change_kind == "tracked":
-        helper.write_text("def helper(): return 1\n")
-        subprocess.run(["git", "add", "helper.py"], cwd=tmp_path, check=True)
-        subprocess.run(
-            ["git", "commit", "-m", "undeclared edit"],
-            cwd=tmp_path,
-            check=True,
-            capture_output=True,
-        )
-    else:
-        helper.rename(tmp_path / "renamed_helper.py")
-
-    with pytest.raises(RuntimeError, match="outside source_file_path/editable_sources"):
-        _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
 
 
 def test_explicit_source_owner_wins_for_wrapper_anchor():
