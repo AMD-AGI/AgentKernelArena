@@ -53,8 +53,54 @@ def test_materializes_vllm_adapter_and_sibling_helper(tmp_path):
     changed = materialize_perf_helpers_in_workspace(tmp_path)
 
     assert runner in changed
-    assert "from _aka_benchmark import benchmark_cuda_graph_or_events" in runner.read_text()
+    assert "_aka_benchmark_module()" in runner.read_text()
     assert (scripts / AKA_HELPER_FILE_NAME).read_text() == canonical_aka_helper(ROOT)
+
+
+def test_materialized_adapter_resolves_helper_when_loaded_by_path(tmp_path):
+    """The injected adapter must not depend on who imported the task runner.
+
+    Arena runs ``scripts/task_runner.py`` directly, so ``sys.path[0]`` is
+    ``scripts/`` and a bare ``import _aka_benchmark`` would resolve.  KernelForge
+    does not: its launcher copies a task-shipped ``scripts/forge_driver.py`` to
+    the workspace ROOT, and that driver loads the runner by path, leaving
+    ``sys.path[0]`` pointing at the root where no helper is materialized.  That
+    combination used to raise ``ModuleNotFoundError`` and crash the driver.
+    """
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "task_runner.py").write_text(
+        f"{MARK_START}\n{VLLM_HELPER_STUB_BLOCK}{MARK_END}\n"
+    )
+    (tmp_path / "config.yaml").write_text(
+        "performance_command:\n  - python3 scripts/task_runner.py performance\n"
+    )
+    materialize_perf_helpers_in_workspace(tmp_path)
+
+    # Stand in for the canonical helper so the probe needs no GPU stack.
+    (scripts / AKA_HELPER_FILE_NAME).write_text("SENTINEL = 'sibling-helper'\n")
+    # Mirror the launcher: the driver sits at the workspace root, the runner
+    # stays under scripts/, and the runner is loaded by path.
+    (tmp_path / "forge_driver.py").write_text(
+        "import importlib.util, sys\n"
+        "from pathlib import Path\n"
+        "runner = Path(__file__).resolve().parent / 'scripts' / 'task_runner.py'\n"
+        "spec = importlib.util.spec_from_file_location('_forge_task_runner', runner)\n"
+        "mod = importlib.util.module_from_spec(spec)\n"
+        "sys.modules['_forge_task_runner'] = mod\n"
+        "spec.loader.exec_module(mod)\n"
+        "print(mod._aka_benchmark_module().SENTINEL)\n"
+    )
+
+    proc = subprocess.run(
+        [sys.executable, "forge_driver.py"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "sibling-helper"
 
 
 def test_materializes_helper_beside_eval_tools_entrypoint(tmp_path):
