@@ -6,14 +6,58 @@ in the sibling materialized ``_aka_benchmark.py`` module.
 
 
 def _measure_cuda_event_fallback(fn, repetition, prepare_fn=None):
-    try:
-        from _aka_benchmark import benchmark_cuda_event_samples
-    except ModuleNotFoundError:  # Direct source-tree unit tests.
-        from src.tools.perf.aka_benchmark import benchmark_cuda_event_samples
-
-    return benchmark_cuda_event_samples(
+    return _aka_benchmark_module().benchmark_cuda_event_samples(
         fn, repetition=repetition, prepare_fn=prepare_fn
     )
+
+
+def _aka_benchmark_module():
+    """Resolve the materialized helper regardless of how this file was imported.
+
+    ``import _aka_benchmark`` only works when the helper's directory happens to
+    be on ``sys.path``, which is true when the process entry point sits beside
+    it -- Arena's own evaluation runs ``scripts/task_runner.py`` directly, so
+    ``sys.path[0]`` is ``scripts/`` and the bare import resolves.
+
+    KernelForge does not run it that way.  The forge launcher copies a
+    task-shipped ``scripts/forge_driver.py`` to the workspace ROOT, and that
+    driver loads ``scripts/task_runner.py`` by path via
+    ``spec_from_file_location``, which deliberately does not touch ``sys.path``.
+    So ``sys.path[0]`` is the workspace root, where no ``_aka_benchmark.py``
+    exists: the materializer only copies the helper beside files whose text
+    mentions it, and the root driver's text does not.  The old
+    ``src.tools.perf`` fallback does not save it either, because Arena's repo
+    root is not importable from the forge subprocess.  The bare import plus that
+    fallback therefore both raised, the driver exited 1, and forge's preflight
+    reported BENCH CRASHED and burned an LLM agent re-authoring the driver.
+
+    Resolving by path relative to ``__file__`` is what makes this independent of
+    the importer.  The ``src.tools.perf`` import stays as the last resort for
+    direct source-tree unit tests, where nothing has been materialized at all.
+
+    Imports are function-local on purpose: everything from the anchor down is
+    spliced into each task's ``scripts/task_runner.py``, so module-level imports
+    here would land in the middle of that file.
+    """
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    module = sys.modules.get("_aka_benchmark")
+    if module is not None:
+        return module
+    helper = Path(__file__).resolve().parent / "_aka_benchmark.py"
+    if helper.is_file():
+        spec = importlib.util.spec_from_file_location("_aka_benchmark", helper)
+        module = importlib.util.module_from_spec(spec)
+        # Register before exec so a re-entrant import sees the partial module
+        # rather than executing the helper a second time.
+        sys.modules["_aka_benchmark"] = module
+        spec.loader.exec_module(module)
+        return module
+    from src.tools.perf import aka_benchmark
+
+    return aka_benchmark
 
 
 class _TimedRun:
@@ -67,12 +111,7 @@ def _benchmark_cuda_graph_or_events(
     timed_run=None,
     prepare_fn=None,
 ):
-    try:
-        from _aka_benchmark import benchmark_cuda_graph_or_events
-    except ModuleNotFoundError:  # Direct source-tree unit tests.
-        from src.tools.perf.aka_benchmark import benchmark_cuda_graph_or_events
-
-    return benchmark_cuda_graph_or_events(
+    return _aka_benchmark_module().benchmark_cuda_graph_or_events(
         fn,
         warmup=warmup,
         repetition=repetition,
