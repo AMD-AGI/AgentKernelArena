@@ -10,7 +10,10 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+import agents.forge.launch_agent  # noqa: F401  (module, not the re-exported fn)
 from agents.forge.drivers import arena_task_adapter
+launch_agent = sys.modules["agents.forge.launch_agent"]
+
 from agents.forge.launch_agent import (
     _build_forge_command,
     _declared_editable_sources,
@@ -23,6 +26,7 @@ from agents.forge.launch_agent import (
     _resolve_fellow,
     _resolve_framework,
     _resolve_gpu_type,
+    _resolve_kernel_backend,
     _resolve_kernel_kind,
 )
 
@@ -113,7 +117,7 @@ def _command(tmp_path: Path, **overrides) -> list[str]:
         },
         "gpu_arch": "gfx950",
         "gpu_type": "mi355x",
-        "fellow": "triton-fellow",
+        "kernel_backend": "triton",
         "task_type": "image_kernel",
         "source_files": [tmp_path / "wrapper.py", tmp_path / "kernel.py"],
         "target_functions": ["dispatch", "_device_kernel"],
@@ -175,8 +179,94 @@ def test_configured_backend_resolution_is_forwarded_without_fallback():
         "repository_language": "tilelang",
         "kernel_identity": {"kernel_kind": "tilelang"},
     }
+    # Inference reports what the task declares. Reconciling that against what
+    # KernelForge actually serves belongs to _resolve_kernel_backend, below.
     assert _infer_backend(tilelang) == "tilelang"
     assert _resolve_fellow(tilelang, {}) == "tilelang-fellow"
+
+
+def _backend_registry(monkeypatch, names):
+    monkeypatch.setattr(
+        launch_agent, "_installed_kernel_backends", lambda: names
+    )
+
+
+def test_an_unserved_backend_fails_instead_of_becoming_flydsl(monkeypatch):
+    """The whole point of the translation: upstream would not have complained.
+
+    KernelForge maps an unknown --kernel-backend onto flydsl and says nothing, so
+    a typo or an upstream rename produces a run that starts, finishes, and
+    reports a speedup obtained under the wrong expertise prompt. Arena has the
+    registry in-process and can refuse before a GPU-day is spent.
+    """
+    _backend_registry(monkeypatch, {"triton", "flydsl", "hip", "ck"})
+    with pytest.raises(ValueError, match="does not serve the 'trtion' backend"):
+        _resolve_kernel_backend("trtion-fellow", logging.getLogger(__name__))
+
+
+def test_a_served_backend_passes_through_with_the_suffix_stripped(monkeypatch):
+    _backend_registry(monkeypatch, {"triton", "flydsl", "hip", "ck"})
+    logger = logging.getLogger(__name__)
+    assert _resolve_kernel_backend("triton-fellow", logger) == "triton"
+    assert _resolve_kernel_backend("ck-fellow", logger) == "ck"
+
+
+def test_tilelang_takes_the_deliberate_flydsl_alias_and_says_so(monkeypatch, caplog):
+    """tilelang has no upstream backend, so flydsl is a decision, not a default.
+
+    Asserting the alias rather than `--kernel-backend tilelang` is the fix for
+    the review on this file: the value Arena sends must be one KernelForge
+    serves. The alias stays deliberate -- and logged -- until upstream registers
+    tilelang, at which point the entry is deleted and this test with it.
+    """
+    _backend_registry(monkeypatch, {"triton", "flydsl", "hip", "ck"})
+    with caplog.at_level(logging.WARNING):
+        resolved = _resolve_kernel_backend(
+            "tilelang-fellow", logging.getLogger(__name__)
+        )
+    assert resolved == "flydsl"
+    assert "serves no 'tilelang' backend" in caplog.text
+
+
+def test_an_unreadable_registry_validates_nothing_rather_than_failing_everything(
+    monkeypatch, caplog
+):
+    """No registry means no grounds to reject, not grounds to reject everything."""
+    _backend_registry(monkeypatch, None)
+    with caplog.at_level(logging.WARNING):
+        resolved = _resolve_kernel_backend("triton-fellow", logging.getLogger(__name__))
+    assert resolved == "triton"
+    assert "unvalidated" in caplog.text
+
+
+def test_the_registry_is_read_from_kernelforge_not_copied_here(monkeypatch):
+    """A hardcoded list would drift silently, which is the bug being fixed.
+
+    Both layouts are probed: Hyperloom's src/kernelforge and the pre-merge
+    standalone src/kernel_agents.
+    """
+    modules = {
+        "kernelforge.kernel_backends.constants": SimpleNamespace(
+            KERNEL_BACKENDS=["Triton", "flydsl"]
+        ),
+        "kernel_agents.fellows.constants": SimpleNamespace(
+            FELLOW_BACKENDS=["hip", "intellikit"]
+        ),
+    }
+
+    def fake_import(name):
+        if name not in modules:
+            raise ModuleNotFoundError(name)
+        return modules[name]
+
+    monkeypatch.setattr(importlib, "import_module", fake_import)
+    assert launch_agent._installed_kernel_backends() == {"triton", "flydsl"}
+
+    modules.pop("kernelforge.kernel_backends.constants")
+    assert launch_agent._installed_kernel_backends() == {"hip", "intellikit"}
+
+    modules.clear()
+    assert launch_agent._installed_kernel_backends() is None
 
 
 def test_repository_backend_resolution_requires_explicit_language():
@@ -401,7 +491,7 @@ def test_unified_attention_metadata():
     }.issubset(config["target_kernel_functions"])
 
 
-def test_tilelang_backend_is_forwarded_to_forge_without_substitution(tmp_path):
+def test_the_real_tilelang_task_reaches_forge_as_the_flydsl_alias(tmp_path):
     root = Path(__file__).resolve().parents[1]
     config_path = (
         root
@@ -414,11 +504,15 @@ def test_tilelang_backend_is_forwarded_to_forge_without_substitution(tmp_path):
     fellow = _resolve_fellow(config, {})
 
     assert fellow == "tilelang-fellow"
-    # Sent as --kernel-backend: KernelForge dropped --fellow, and an unset
-    # backend silently falls back to flydsl rather than erroring.
-    assert _value(_command(tmp_path, fellow=fellow), "--kernel-backend") == "tilelang"
-    assert "--fellow" not in _command(tmp_path, fellow=fellow)
-    assert "--max-iters" not in _command(tmp_path, fellow=fellow)
+    # The task declares tilelang and the fellow name preserves that. What reaches
+    # KernelForge is the alias, because KernelForge serves no tilelang backend
+    # and would substitute flydsl on its own without saying so.
+    backend = _resolve_kernel_backend(fellow, logging.getLogger(__name__))
+    assert backend == "flydsl"
+    argv = _command(tmp_path, kernel_backend=backend)
+    assert _value(argv, "--kernel-backend") == "flydsl"
+    assert "--fellow" not in argv
+    assert "--max-iters" not in argv
 
 
 def test_unified_attention_correctness_covers_2d_and_3d(monkeypatch):

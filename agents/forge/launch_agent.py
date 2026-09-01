@@ -360,8 +360,9 @@ def _infer_backend(task_config: dict[str, Any]) -> str:
         torch2hip, flydsl2flydsl, instruction2triton, ...); the optimized kernel
         is in the TARGET language, i.e. the part after the last '2'.
 
-    Arena does not maintain KernelForge's supported-backend registry and does not
-    substitute an unknown backend. KernelForge owns support validation.
+    Reports what the task declares, nothing more: reconciling that against what
+    the installed KernelForge serves is ``_resolve_kernel_backend``'s job, and it
+    reads the registry from the package rather than keeping a copy here.
     """
     task_type = _normalize_fellow_backend(task_config.get("task_type"))
 
@@ -399,6 +400,88 @@ def _resolve_fellow(task_config: dict[str, Any], agent_config: dict[str, Any]) -
     if override:
         return str(override)
     return f"{_infer_backend(task_config)}-fellow"
+
+
+# Read KernelForge's backend registry from the installed package instead of
+# copying the names here. A copy drifts silently in the direction that hurts:
+# it keeps accepting a backend upstream has dropped, which is exactly the
+# failure this validation exists to catch.
+_BACKEND_REGISTRY_IMPORTS = (
+    ("kernelforge.kernel_backends.constants", "KERNEL_BACKENDS"),  # Hyperloom
+    ("kernel_agents.fellows.constants", "FELLOW_BACKENDS"),  # pre-merge standalone
+)
+
+# Backends upstream does not serve, mapped to the nearest one Arena has evidence
+# for. Different in kind from KernelForge's own unknown-name fallback: that one
+# is silent and treats a typo exactly like a deliberate gap.
+#
+# tilelang: neither KernelForge tree registers a tilelang backend, and neither
+# ships a languages/tilelang/ knowledge folder, so no correct value exists to
+# send. flydsl is what upstream's fallback has been selecting in production all
+# along, and the daily-CI record says it costs nothing measurable: across 12
+# runs of mi355x_sglang_tilelang_dsa_sparse_mla_glm5, 13/13 correct, mean 1.83x,
+# best 3.52x, forge still ahead of geak (1.83x vs 1.74x -- a margin in line with
+# the triton and hip benchmarks). No iteration in any of those runs mentions
+# FlyDSL: the agent reads the source and stays in TileLang, so the mismatched
+# expertise prompt is inert. Drop this entry once upstream registers tilelang.
+_DELIBERATE_BACKEND_ALIASES = {"tilelang": "flydsl"}
+
+
+def _installed_kernel_backends() -> set[str] | None:
+    """Backends the installed KernelForge serves, or None when unreadable.
+
+    None preserves the behaviour that predates this check. If the registry
+    cannot be read there is nothing to validate against, and refusing every run
+    would be a worse failure than the one being guarded.
+    """
+    import importlib
+
+    for module_path, attribute in _BACKEND_REGISTRY_IMPORTS:
+        try:
+            module = importlib.import_module(module_path)
+        except Exception:
+            continue
+        names = getattr(module, attribute, None)
+        if names:
+            return {str(name).strip().lower() for name in names}
+    return None
+
+
+def _resolve_kernel_backend(fellow: str, logger: logging.Logger) -> str:
+    """Translate a fellow name into a --kernel-backend value KernelForge serves.
+
+    Fails fast on anything the installed KernelForge does not register.
+    Upstream substitutes flydsl for an unknown name without saying so, so a typo
+    here -- or a backend upstream renames -- yields a run that starts, finishes,
+    and reports a plausible speedup reached under the wrong expertise prompt.
+    Nothing in the logs would connect the two.
+    """
+    backend = re.sub(r"-fellow$", "", str(fellow).strip())
+    alias = _DELIBERATE_BACKEND_ALIASES.get(backend.lower())
+    if alias:
+        logger.warning(
+            f"forge: KernelForge serves no {backend!r} backend; deliberately "
+            f"sending --kernel-backend {alias} instead "
+            "(see _DELIBERATE_BACKEND_ALIASES for the evidence)"
+        )
+        backend = alias
+
+    supported = _installed_kernel_backends()
+    if supported is None:
+        logger.warning(
+            "forge: could not read KernelForge's backend registry; sending "
+            f"--kernel-backend {backend} unvalidated"
+        )
+        return backend
+    if backend.lower() not in supported:
+        raise ValueError(
+            f"KernelForge does not serve the {backend!r} backend "
+            f"(registered: {', '.join(sorted(supported))}). Sending it anyway "
+            "would silently fall back to flydsl and optimise the kernel under "
+            "the wrong expertise prompt. Register the backend upstream, or add "
+            "a deliberate alias to _DELIBERATE_BACKEND_ALIASES in this file."
+        )
+    return backend
 
 
 def _task_kernel_identity(task_config: dict[str, Any]) -> dict[str, Any]:
@@ -581,7 +664,7 @@ def _build_forge_command(
     agent_config: dict[str, Any],
     gpu_arch: str,
     gpu_type: str,
-    fellow: str,
+    kernel_backend: str,
     task_type: str,
     source_files: list[Path],
     target_functions: list[str],
@@ -602,6 +685,9 @@ def _build_forge_command(
                    replacement. Translated rather than dropped, because an unset
                    backend falls back to flydsl -- which would quietly optimise
                    a Triton kernel down a different path instead of failing.
+                   ``kernel_backend`` arrives already validated against the
+                   installed registry by ``_resolve_kernel_backend``; do not
+                   derive it from the fellow name here.
     """
     cmd = [
         forge_bin,
@@ -625,7 +711,7 @@ def _build_forge_command(
         "--gpu-type",
         gpu_type,
         "--kernel-backend",
-        re.sub(r"-fellow$", "", fellow),
+        kernel_backend,
         "--git-branch",
         "forge-optimize",
         "--model",
@@ -834,6 +920,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     gpu_arch = _resolve_gpu_arch(eval_config)
     gpu_type = _resolve_gpu_type(eval_config)
     fellow = _resolve_fellow(task_config, agent_config)
+    kernel_backend = _resolve_kernel_backend(fellow, logger)
     logical_operator = _logical_operator(task_config)
     kernel_kind = _resolve_kernel_kind(task_config)
     framework = _resolve_framework(task_config)
@@ -893,7 +980,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         agent_config=agent_config,
         gpu_arch=gpu_arch,
         gpu_type=gpu_type,
-        fellow=fellow,
+        kernel_backend=kernel_backend,
         task_type=task_type,
         source_files=all_source_files,
         target_functions=target_funcs,
@@ -911,7 +998,10 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logger.info(f"  gpu target:  {gpu_arch}")
     logger.info(f"  gpu type:    {gpu_type}")
     logger.info(f"  model:       {model}")
-    logger.info(f"  backend:     {fellow} (resolved from task configuration; sent as --kernel-backend)")
+    logger.info(
+        f"  backend:     {kernel_backend} (from {fellow}, resolved from task "
+        "configuration and validated against the installed KernelForge)"
+    )
     logger.info(f"  operator:    {logical_operator or '<forge inference>'}")
     logger.info(f"  kernel kind: {kernel_kind}")
     logger.info(f"  source owner:{framework or '<unknown>'}")
