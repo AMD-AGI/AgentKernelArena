@@ -138,6 +138,41 @@ def test_rewrite_task_is_driven_by_the_rewrite_pipeline():
     assert rewrite["port_source"].endswith("aiter/fused_moe.py")
 
 
+@pytest.mark.parametrize("task", REWRITE_FAMILY, ids=lambda task: task.name)
+def test_rewrite_builder_symbol_agrees_with_kernelforge(task):
+    # KernelForge derives the required factory symbol from the task's logical
+    # operator and offers no override, while the harness looks up whatever
+    # workload.json names. If the two ever disagree the harness finds no factory
+    # and reports the aiter baseline as the port's score -- a silent pass. The
+    # operator carries the shape, so this also pins one KB identity per shape.
+    protocol = pytest.importorskip("kernelforge.rewrite_by_flydsl.protocol")
+    config = _config(task)
+    workload = json.loads((task / "workload.json").read_text())
+    operator = config["rewrite"]["logical_operator"]
+    declared = workload["builder_symbol"]
+
+    assert operator.endswith(f"_t{workload['num_tokens']}")
+    assert protocol.builder_symbol(operator) == declared
+    assert config["target_kernel_functions"] == [declared]
+
+
+def test_rewrite_stub_defines_no_shape_specific_factory():
+    # The stub is byte-identical across shapes while the factory name is not, so
+    # a hardcoded factory here could only ever match one shape.
+    stub = (REWRITE_TASK / "kernel.py").read_text()
+    assert "def build_" not in stub
+    for task in REWRITE_FAMILY:
+        declared = json.loads((task / "workload.json").read_text())["builder_symbol"]
+        assert declared not in stub
+
+
+@pytest.mark.parametrize("task", OPTIMIZE_FAMILY, ids=lambda task: task.name)
+def test_optimize_workload_declares_no_builder_symbol(task):
+    # The optimize family edits aiter in place and exposes no factory; carrying
+    # an unused symbol would leave a reader ruling it out.
+    assert "builder_symbol" not in json.loads((task / "workload.json").read_text())
+
+
 def test_optimize_task_edits_the_seeded_flydsl_sources_only():
     config = _config(OPTIMIZE_TASK)
     assert config["task_type"] == "image_kernel"

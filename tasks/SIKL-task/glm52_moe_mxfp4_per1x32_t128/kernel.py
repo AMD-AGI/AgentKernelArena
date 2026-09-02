@@ -2,38 +2,29 @@
 """FlyDSL port of the GLM-5.2 MXFP4 MoE operator -- starter stub.
 
 ``forge-rewrite-by-flydsl`` replaces this file with a FlyDSL implementation.
-The builder and launch signatures are defined by the measurement driver
-(``scripts/forge_driver.py``), which also documents the operator, the tensor
-layouts, and where the baseline implementation lives.
 
-While this stub is in place the harness scores the operator's own baseline
+The module must expose one factory, named by ``builder_symbol`` in the task's
+workload.json (the same value KernelForge passes to the driver as
+``KERNELFORGE_REWRITE_BUILDER_SYMBOL``, and the only name the harness looks up)::
+
+    build_<operator>_module(num_tokens, model_dim, inter_dim, num_experts, topk)
+        -> launch
+
+    launch(hidden_states, w1, w2, topk_weight, topk_ids,
+           w1_scale, w2_scale, activation, doweight_stage1)
+        -> out                          # bf16 [num_tokens, model_dim]
+
+where model_dim is the hidden size (6144), inter_dim the per-expert intermediate
+size (256, with w1 holding [gate | up]), num_experts the local expert count (257)
+and topk the experts per token (9).
+
+The name is per-shape, so this stub deliberately defines no factory rather than
+hardcoding one shape's symbol: ``scripts/forge_driver.py`` owns the operator
+definition, the tensor layouts and where the baseline implementation lives, and
+the factory is written here by the port session.
+
+While the factory is absent the harness scores the operator's own baseline
 (``aiter.fused_moe``), which is what Arena measures before the agent runs.
 """
 
 from __future__ import annotations
-
-
-def build_glm52_mxfp4_moe_2stage_module(
-    num_tokens: int,
-    model_dim: int,
-    inter_dim: int,
-    num_experts: int,
-    topk: int,
-):
-    """Return a launch callable for the fused MXFP4 MoE layer.
-
-    Args:
-        num_tokens: Rows of the activation for this call.
-        model_dim: Hidden size (6144).
-        inter_dim: Per-expert intermediate size (256); w1 holds [gate | up].
-        num_experts: Local experts on this rank (257).
-        topk: Experts per token (9).
-
-    Returns:
-        ``launch(hidden_states, w1, w2, topk_weight, topk_ids, w1_scale,
-        w2_scale, activation, doweight_stage1) -> bf16 [num_tokens, model_dim]``
-    """
-    raise NotImplementedError(
-        "FlyDSL port not implemented yet; see scripts/forge_driver.py for the "
-        "operator definition, the tensor layouts, and the required interface."
-    )

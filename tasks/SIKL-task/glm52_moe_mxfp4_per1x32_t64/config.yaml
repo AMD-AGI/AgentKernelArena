@@ -8,7 +8,7 @@ task_type: rewrite_by_flydsl
 source_file_path:
   - kernel.py
 target_kernel_functions:
-  - build_glm52_mxfp4_moe_2stage_module
+  - build_glm52_mxfp4_moe_2stage_t64_module
 
 # ---------------------------------------------------------------------------
 # Rewrite pipeline inputs (consumed by agents/forge_rewrite/launch_agent.py).
@@ -17,12 +17,18 @@ target_kernel_functions:
 # reference material for the PORT phase; the driver owns the interface and the
 # measurement. The rewrite prompt embeds only the first 16000 characters of it,
 # so scripts/forge_driver.py carries the full implementation chain as pointers.
+#
+# logical_operator carries the shape so each shape gets its own KB identity, and
+# KernelForge derives the builder symbol above from it. The two must agree with
+# workload.json's builder_symbol, which is what the harness scores against; a
+# disagreement makes the harness find no factory and silently score the aiter
+# baseline as if the port had never happened, so it is pinned by a test.
 # ---------------------------------------------------------------------------
 rewrite:
   port_source: /sgl-workspace/aiter/aiter/fused_moe.py
   port_source_entry: fused_moe
   port_target: kernel.py
-  logical_operator: glm52_mxfp4_moe_2stage
+  logical_operator: glm52_mxfp4_moe_2stage_t64
   source_owner: aiter
   snr_threshold: 30.0
   max_port_attempts: 5

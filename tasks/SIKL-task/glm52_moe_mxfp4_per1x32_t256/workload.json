@@ -5,6 +5,7 @@
   "seed": 29,
   "max_relerr": 0.09,
   "tolerance_reason": "The tuned stage-1 kernel for this shape fuses the MXFP4 quantization of its output into the epilogue and rounds the e8m0 block scale differently from the torch quantizer the reference uses, so aiter's own output sits 0.0341 from the reference. The gate is ~2x that floor. It is looser than the exact-contract shapes and would not catch a small accuracy regression; tightening it requires the reference to reproduce the kernel's epilogue rounding.",
+  "builder_symbol": "build_glm52_mxfp4_moe_2stage_t256_module",
   "measured": {
     "baseline_relerr_vs_reference": 0.03409,
     "baseline_ms_cuda_graph": 0.125229,

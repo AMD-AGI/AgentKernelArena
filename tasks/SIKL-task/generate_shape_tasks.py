@@ -80,6 +80,30 @@ SEED = 29
 EXACT_CONTRACT_GATE = 0.01
 FUSED_EPILOGUE_GATE = 0.09
 
+# The rewrite family's logical operator carries the shape, because KernelForge's
+# KB identity has no shape dimension: without it all six shapes would share one
+# canonical id and one champion pointer, and none of the warm-start content gates
+# could tell them apart (port_source, forge_driver.py and the builder symbol are
+# otherwise identical across shapes).
+#
+# KernelForge also derives the required Python builder symbol from that same name
+# (protocol.builder_symbol -> RewriteSpec.builder_symbol, with no CLI override),
+# so the two move together. Both are emitted as data -- into config.yaml and
+# workload.json -- and never recomputed by the harness; tests/test_sikl_tasks.py
+# pins them against KernelForge's own derivation, which is what catches the day a
+# longer operator name starts hitting its slug-truncation-plus-digest fallback.
+REWRITE_OPERATOR_BASE = "glm52_mxfp4_moe_2stage"
+
+
+def rewrite_logical_operator(num_tokens: int) -> str:
+    """The rewrite family's KB operator dimension for one shape."""
+    return f"{REWRITE_OPERATOR_BASE}_t{num_tokens}"
+
+
+def rewrite_builder_symbol(num_tokens: int) -> str:
+    """The FlyDSL factory symbol a ported kernel must expose for one shape."""
+    return f"build_{rewrite_logical_operator(num_tokens)}_module"
+
 TEMPLATE_SHAPE = 64
 REWRITE_TEMPLATE = HERE / f"glm52_moe_mxfp4_per1x32_t{TEMPLATE_SHAPE}"
 OPTIMIZE_TEMPLATE = HERE / f"glm52_moe_mxfp4_per1x32_t{TEMPLATE_SHAPE}_flydsl_opt"
@@ -126,7 +150,15 @@ def workload_cases() -> list[dict]:
     return sorted(parsed, key=lambda case: case["num_tokens"])
 
 
-def workload_json(case: dict) -> str:
+def workload_json(case: dict, *, builder_symbol: str = "") -> str:
+    """The per-task data contract. ``builder_symbol`` is rewrite-family only.
+
+    The rewrite harness reads the symbol from here (through task_inputs.py) so
+    the one place it is written down is the same place the task's config.yaml is
+    generated from. The optimize family edits aiter in place and exposes no such
+    factory, so its workload.json carries no symbol at all rather than an unused
+    one a reader would have to rule out.
+    """
     num_tokens = case["num_tokens"]
     measured = MEASUREMENTS[num_tokens]
     gate, reason = tolerance(num_tokens)
@@ -137,6 +169,7 @@ def workload_json(case: dict) -> str:
         "seed": SEED,
         "max_relerr": gate,
         "tolerance_reason": reason,
+        **({"builder_symbol": builder_symbol} if builder_symbol else {}),
         "measured": {
             "baseline_relerr_vs_reference": measured["relerr"],
             "baseline_ms_cuda_graph": measured["ms"],
@@ -152,6 +185,8 @@ def rewrite_config(case: dict) -> str:
     num_tokens = case["num_tokens"]
     measured = MEASUREMENTS[num_tokens]
     gate, _ = tolerance(num_tokens)
+    logical_operator = rewrite_logical_operator(num_tokens)
+    builder_symbol = rewrite_builder_symbol(num_tokens)
     return f"""\
 task_type: rewrite_by_flydsl
 
@@ -163,7 +198,7 @@ task_type: rewrite_by_flydsl
 source_file_path:
   - kernel.py
 target_kernel_functions:
-  - build_glm52_mxfp4_moe_2stage_module
+  - {builder_symbol}
 
 # ---------------------------------------------------------------------------
 # Rewrite pipeline inputs (consumed by agents/forge_rewrite/launch_agent.py).
@@ -172,12 +207,18 @@ target_kernel_functions:
 # reference material for the PORT phase; the driver owns the interface and the
 # measurement. The rewrite prompt embeds only the first 16000 characters of it,
 # so scripts/forge_driver.py carries the full implementation chain as pointers.
+#
+# logical_operator carries the shape so each shape gets its own KB identity, and
+# KernelForge derives the builder symbol above from it. The two must agree with
+# workload.json's builder_symbol, which is what the harness scores against; a
+# disagreement makes the harness find no factory and silently score the aiter
+# baseline as if the port had never happened, so it is pinned by a test.
 # ---------------------------------------------------------------------------
 rewrite:
   port_source: /sgl-workspace/aiter/aiter/fused_moe.py
   port_source_entry: fused_moe
   port_target: kernel.py
-  logical_operator: glm52_mxfp4_moe_2stage
+  logical_operator: {logical_operator}
   source_owner: aiter
   snr_threshold: 30.0
   max_port_attempts: 5
@@ -308,8 +349,13 @@ target_kernel_functions:
   - _flydsl_stage1_wrapper
   - _flydsl_stage2_wrapper
 
+# logical_operator carries the shape so the six shapes do not collapse onto one
+# KB canonical id (that identity has no shape dimension, so without the suffix a
+# warm start at one shape would rank and replay a solution tuned for another).
+# Safe here and not in the sibling rewrite task because forge-loop reads this
+# only as a KB identity dimension; nothing derives a Python symbol from it.
 kernel_identity:
-  logical_operator: mxfp4_moe_2stage
+  logical_operator: mxfp4_moe_2stage_t{num_tokens}
   kernel_kind: flydsl
   source_owner: aiter
   workload:
@@ -379,11 +425,15 @@ FAMILIES = (
         "template": REWRITE_TEMPLATE,
         "suffix": "",
         "config": rewrite_config,
+        # Only the rewrite family exposes a FlyDSL factory for the harness to
+        # look up, so only its workload.json names one.
+        "builder_symbol": rewrite_builder_symbol,
     },
     {
         "template": OPTIMIZE_TEMPLATE,
         "suffix": "_flydsl_opt",
         "config": optimize_config,
+        "builder_symbol": None,
     },
 )
 
@@ -421,7 +471,13 @@ def generate(root: Path) -> list[Path]:
                 if source.resolve() != target.resolve():
                     shutil.copyfile(source, target)
                 written.append(target)
-            (destination / "workload.json").write_text(workload_json(case))
+            resolve_symbol = family["builder_symbol"]
+            (destination / "workload.json").write_text(
+                workload_json(
+                    case,
+                    builder_symbol=resolve_symbol(case["num_tokens"]) if resolve_symbol else "",
+                )
+            )
             (destination / "config.yaml").write_text(family["config"](case))
             written.extend([destination / name for name in PER_TASK_FILES])
     return written

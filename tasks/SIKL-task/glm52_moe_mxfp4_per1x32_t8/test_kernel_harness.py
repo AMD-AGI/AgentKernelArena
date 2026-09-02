@@ -38,7 +38,7 @@ import task_reference
 
 CASE_ID = task_inputs.CASE_ID
 CANDIDATE_FILE = ROOT / "kernel.py"
-BUILDER_SYMBOL = "build_glm52_mxfp4_moe_2stage_module"
+BUILDER_SYMBOL = task_inputs.BUILDER_SYMBOL
 REPORT_PATH = ROOT / "build" / "performance_report.json"
 
 

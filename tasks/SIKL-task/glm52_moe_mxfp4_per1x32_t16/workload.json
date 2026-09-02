@@ -5,6 +5,7 @@
   "seed": 29,
   "max_relerr": 0.01,
   "tolerance_reason": "The tuned stage-1 kernel for this shape writes bf16 and the activation quantization follows the same contract as the reference, so aiter's own output sits 0.0016 from it. The gate is ~6x that floor.",
+  "builder_symbol": "build_glm52_mxfp4_moe_2stage_t16_module",
   "measured": {
     "baseline_relerr_vs_reference": 0.001647,
     "baseline_ms_cuda_graph": 0.073987,

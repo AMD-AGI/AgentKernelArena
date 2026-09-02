@@ -71,6 +71,13 @@ NUM_TOKENS = int(WORKLOAD["num_tokens"])
 SEED = int(WORKLOAD["seed"])
 MAX_RELERR = float(WORKLOAD["max_relerr"])
 CASE_ID = f"num_tokens_{NUM_TOKENS}"
+
+# The FlyDSL factory the port must expose. KernelForge derives it from the
+# task's logical operator and passes it to the driver in the environment, so the
+# harness reads the generated value rather than deriving it a second way: a
+# harness that looked for a different symbol than the pipeline asked the agent
+# to write would find no factory and score the aiter baseline as a port.
+BUILDER_SYMBOL = str(WORKLOAD["builder_symbol"])
 ACTIVATION = 0
 DOWEIGHT_STAGE1 = False
 

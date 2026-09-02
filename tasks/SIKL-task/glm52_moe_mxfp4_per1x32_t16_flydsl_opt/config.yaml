@@ -59,8 +59,13 @@ target_kernel_functions:
   - _flydsl_stage1_wrapper
   - _flydsl_stage2_wrapper
 
+# logical_operator carries the shape so the six shapes do not collapse onto one
+# KB canonical id (that identity has no shape dimension, so without the suffix a
+# warm start at one shape would rank and replay a solution tuned for another).
+# Safe here and not in the sibling rewrite task because forge-loop reads this
+# only as a KB identity dimension; nothing derives a Python symbol from it.
 kernel_identity:
-  logical_operator: mxfp4_moe_2stage
+  logical_operator: mxfp4_moe_2stage_t16
   kernel_kind: flydsl
   source_owner: aiter
   workload:
