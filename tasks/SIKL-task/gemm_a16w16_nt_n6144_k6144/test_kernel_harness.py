@@ -95,10 +95,7 @@ def run_correctness() -> int:
     expected, baseline_errors, gate = task_measure.reference_and_gate(inputs)
     name, calls = _resolve_calls(inputs)
     print(f"implementation: {name}")
-    print(
-        f"gate {gate:.8f} = worst baseline error {max(baseline_errors):.8f} "
-        f"x {task_inputs.GATE_MULTIPLIER:g}"
-    )
+    print(task_inputs.gate_explanation(baseline_errors))
 
     failed = []
     for record in task_measure.compare_cases(calls, expected):

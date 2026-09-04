@@ -202,10 +202,7 @@ def run_correctness(inputs: dict) -> int:
     """
     calls = _candidate_calls(inputs)
     expected, baseline_errors, gate = task_measure.reference_and_gate(inputs)
-    print(
-        f"# gate {gate:.8f} = worst baseline error {max(baseline_errors):.8f} "
-        f"x {task_inputs.GATE_MULTIPLIER:g}"
-    )
+    print(f"# {task_inputs.gate_explanation(baseline_errors)}")
 
     worst_snr = float("inf")
     passed = True

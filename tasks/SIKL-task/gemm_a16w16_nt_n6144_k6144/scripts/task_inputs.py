@@ -94,9 +94,11 @@ BENCH_REPETITION = int(WORKLOAD["bench"]["repetition"])
 BENCH_TARGET_MS = float(WORKLOAD["bench"]["target_ms"])
 
 # How much further from the fp32 reference a candidate may sit than the
-# production implementation does. This is the one correctness constant the task
-# fixes; the distance it multiplies is measured at run time.
+# production implementation does, and a floor under that measured distance.
+# These are the correctness constants the task fixes; the distance they act on
+# is measured at run time.
 GATE_MULTIPLIER = float(WORKLOAD["gate_multiplier"])
+GATE_FLOOR = float(WORKLOAD["gate_floor"])
 
 CASES: tuple[dict[str, Any], ...] = tuple(WORKLOAD["cases"])
 CASE_IDS: tuple[str, ...] = tuple(str(case["case_id"]) for case in CASES)
@@ -107,20 +109,36 @@ def derive_gate(baseline_errors: list[float]) -> float:
 
     The gate is derived, never stored. What the task fixes is the policy -- a
     candidate may be at most ``GATE_MULTIPLIER`` times as far from the fp32
-    reference as the production implementation itself is -- and the distance is
-    measured against the same inputs, on the same device, with the same
-    framework build that is about to score the candidate. A recorded number
-    would silently go stale the moment any of those changed.
+    reference as the production implementation itself is, but never held to a
+    distance tighter than ``GATE_FLOOR`` -- and the distance is measured against
+    the same inputs, on the same device, with the same framework build that is
+    about to score the candidate. A recorded number would silently go stale the
+    moment any of those changed.
 
-    It is deliberately ONE gate rather than one per case: the tuned baseline
-    selects a different kernel per M bucket and its own error moves by orders of
-    magnitude across them, so a per-case gate would demand that a port reproduce
-    whichever reduction strategy the baseline happened to be tuned into at that
-    shape rather than merely be correct.
+    The floor matters because the measured distance says as much about which
+    reduction strategy the baseline happens to use as about what correctness
+    requires. Where the tuned dispatch lands on a near-exact implementation at
+    every case the measurement collapses to around 1e-6, and a gate derived from
+    that alone would demand that a port reproduce the baseline's accumulation
+    order rather than merely be correct.
+
+    It is deliberately ONE gate rather than one per case for the same reason:
+    the baseline selects a different kernel per M bucket and its own error moves
+    by orders of magnitude across them.
     """
     if not baseline_errors:
         raise RuntimeError("no baseline error was measured, so no gate can be derived")
-    return max(baseline_errors) * GATE_MULTIPLIER
+    return max(max(baseline_errors), GATE_FLOOR) * GATE_MULTIPLIER
+
+
+def gate_explanation(baseline_errors: list[float]) -> str:
+    """One line naming which term set the gate, for the harness and the driver."""
+    worst = max(baseline_errors)
+    basis = "worst baseline error" if worst >= GATE_FLOOR else "floor"
+    return (
+        f"gate {derive_gate(baseline_errors):.8f} = max(worst baseline error "
+        f"{worst:.8f}, floor {GATE_FLOOR:g}) x {GATE_MULTIPLIER:g}, set by the {basis}"
+    )
 
 
 def build_inputs(device: str = "cuda") -> dict[str, Any]:
