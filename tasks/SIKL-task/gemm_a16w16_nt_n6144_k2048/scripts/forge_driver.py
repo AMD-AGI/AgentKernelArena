@@ -53,18 +53,22 @@ THE INTERFACE THE PORT MUST EXPOSE
         b      [n, k]  bfloat16      (trans_b: the product is a @ b.T)
         out    [m, n]  bfloat16      (returned, not written into an argument)
 
-RULES THE CANDIDATE MUST SATISFY (checked, not just stated)
-    The candidate may NOT import the framework under test. Importing aiter --
-    including its FlyDSL kernel modules under aiter/ops/flydsl/kernels/ -- means
-    launching the implementation this task exists to replace.
+WHAT THE CORRECTNESS SUITE CHECKS BEFORE SCORING
+    The product has to come out of kernels the candidate itself writes in
+    FlyDSL. Two ways of not doing that are checked mechanically, so they cost an
+    attempt rather than producing a score:
 
-    The candidate may NOT compute the product with torch: no `@`, no
-    torch.matmul / mm / bmm / einsum / addmm / F.linear. Those resolve to
-    hipBLASLt, which IS the baseline at the larger M cases, so a candidate using
-    them would tie the baseline while implementing no kernel at all. Use torch
-    only for tensor plumbing.
+    Importing aiter -- including its FlyDSL kernel modules under
+    aiter/ops/flydsl/kernels/ -- launches the implementation this task exists to
+    replace.
 
-    Write the kernels in FlyDSL: import flydsl (and torch for plumbing) only.
+    Computing the product with torch (`@`, torch.matmul / mm / bmm / einsum /
+    addmm / F.linear) resolves to hipBLASLt, which IS the baseline at the larger
+    M cases, so it would tie the baseline while implementing no kernel at all.
+    Torch is otherwise free to use for tensor plumbing.
+
+    Beyond that the implementation is open: any FlyDSL structure, tiling,
+    pipelining or per-shape dispatch you can make fast is fair game.
 
 MODES
     (no flag)          correctness: candidate vs task_reference over every case,

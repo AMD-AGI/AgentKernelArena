@@ -84,10 +84,12 @@ prompt:
     scripts/forge_driver.py. Read it first, then read the baseline sources it points
     at.
 
-    Write the implementation in FlyDSL only. Do not import aiter or call any other
-    GPU library to compute the result -- that defeats the rewrite, and it is
-    rejected before scoring. Correctness is measured against
-    scripts/task_reference.py; the gate is derived at run time from how far the
-    production implementation itself sits from that reference, so the bar is "no
-    worse than what ships". Edit only kernel.py; the harness, driver, reference,
-    baseline and input construction are protected.
+    The kernels that compute the layer are yours to write in FlyDSL, and how you get
+    there is your call. The correctness suite checks that much: it rejects a
+    candidate that imports aiter or hands the computation to another GPU library,
+    since that resolves to the implementation this task exists to replace.
+    Correctness is measured against scripts/task_reference.py; the gate is derived
+    at run time from how far the production implementation itself sits from that
+    reference, so the bar is "no worse than what ships". kernel.py is the file you
+    edit; the harness, driver, reference, baseline and input construction are
+    protected.

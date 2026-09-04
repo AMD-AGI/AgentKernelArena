@@ -69,14 +69,17 @@ THE INTERFACE THE PORT MUST EXPOSE
     w1 holds [gate | up] along its rows, which is what shuffle_weight((16, 16))
     implies together with doweight_stage1=False.
 
-RULES THE CANDIDATE MUST SATISFY (checked, not just stated)
-    The candidate may NOT import the framework under test. Importing aiter --
-    including its FlyDSL kernel modules under aiter/ops/flydsl/kernels/ -- means
-    launching the implementation this task exists to replace, so the port would
-    measure the baseline against itself.
+WHAT THE CORRECTNESS SUITE CHECKS BEFORE SCORING
+    The layer has to come out of kernels the candidate itself writes in FlyDSL.
+    Importing aiter -- including its FlyDSL kernel modules under
+    aiter/ops/flydsl/kernels/ -- launches the implementation this task exists to
+    replace, so the port would measure the baseline against itself; that is
+    checked mechanically and costs an attempt rather than producing a score. The
+    same goes for handing the computation to torch or another GPU library, which
+    is otherwise free to use for tensor plumbing.
 
-    Write the kernels in FlyDSL: import flydsl (and torch for tensor plumbing)
-    only. Do not call torch or any other GPU library to compute the result.
+    Beyond that the implementation is open: how you stage, fuse, quantize and
+    dispatch the layer in FlyDSL is your call.
 
 MODES
     (no flag)          correctness: candidate vs task_reference over every case,
