@@ -74,6 +74,19 @@ def audit_task_benchmark_entrypoints(root: pathlib.Path) -> tuple[dict[str, int]
             family = "rocmbench_adapter"
 
         if family is None:
+            # An entrypoint may delegate its timing to one of the task's own
+            # modules rather than call the canonical helper itself, which is how
+            # a task keeps a single timing implementation shared by its harness
+            # and any other driver it ships. setup_workspace() already
+            # materializes the helper beside whichever file imports it, so the
+            # task is on the canonical family wherever that import lives.
+            if any(
+                "_aka_benchmark" in module.read_text(errors="replace")
+                for module in sorted(task.rglob("*.py"))
+            ):
+                family = "canonical_python"
+
+        if family is None:
             relative = task.relative_to(root)
             resolved = [str(path.relative_to(task)) for path in sorted(entrypoints)]
             problems.append(
