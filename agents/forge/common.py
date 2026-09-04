@@ -507,8 +507,8 @@ def _verify_forge_edit_scope(
     baseline_commit: str,
     editable_sources: list[Path],
     logger: logging.Logger | None = None,
-) -> list[str]:
-    """Report how far Forge's edits reach outside Arena's declared allowlist.
+) -> None:
+    """Enforce Arena's declared source allowlist before final scoring.
 
     KernelForge treats ``--source-files`` as orientation and KB metadata rather
     than an edit boundary, so this is where Arena learns what actually moved: any
@@ -518,12 +518,10 @@ def _verify_forge_edit_scope(
     discarded, matching Arena's harness guard: they did not exist at baseline and
     cannot influence the score after removal.
 
-    Undeclared edits are logged, not fatal. Refusing to score threw away a whole
-    campaign's result on a verdict the agent only learned about after its budget
-    was spent, and a run that reaches this point has already passed the task's own
-    correctness gate on every kept candidate. The allowlist still means something:
-    the violations are named here and carried into the result, so a score whose
-    edits went outside it can be read as such rather than silently trusted.
+    The boundary is fail-closed. A correctness pass does not make an undeclared
+    source change fair: it can move dispatch, dependencies, or the implementation
+    being measured and make the resulting score describe more than the task's
+    declared optimization surface.
     """
     root = Path(workspace).resolve()
     allowed: set[str] = set()
@@ -565,17 +563,9 @@ def _verify_forge_edit_scope(
             else:
                 scratch.unlink()
         except OSError as error:
-            # Leaving scratch behind costs disk; refusing to score costs the whole
-            # campaign. Two rewrite runs died here on a per-lane directory, so this
-            # reports and moves on.
-            if logger is not None:
-                logger.warning(
-                    "Could not discard undeclared Forge scratch path %s (%s); "
-                    "scoring proceeds and it stays on disk",
-                    relative,
-                    error,
-                )
-            continue
+            raise RuntimeError(
+                f"Could not discard undeclared Forge scratch path: {relative}"
+            ) from error
         if logger is not None:
             logger.warning(
                 "Discarded undeclared Forge scratch path before scoring: %s",
@@ -583,14 +573,11 @@ def _verify_forge_edit_scope(
             )
 
     violations = sorted(changed - allowed)
-    if violations and logger is not None:
-        logger.warning(
-            "Forge changed %d file(s) outside source_file_path/editable_sources; "
-            "scoring proceeds and the result carries them: %s",
-            len(violations),
-            violations,
+    if violations:
+        raise RuntimeError(
+            "Forge changed files outside source_file_path/editable_sources; "
+            f"Arena refuses to score this result: {violations}"
         )
-    return violations
 
 
 # Build artifacts / regenerated reports / forge scaffolding must NOT be tracked:

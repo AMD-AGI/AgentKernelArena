@@ -297,6 +297,20 @@ def test_a_candidate_reusing_the_framework_is_rejected(task):
         task_inputs.assert_candidate_is_independent(source)
 
 
+@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
+@pytest.mark.parametrize(
+    "source",
+    (
+        "import task_baseline\n\ndef f(**kwargs):\n    return task_baseline.run(**kwargs)\n",
+        "from scripts.task_measure import baseline_calls\n",
+    ),
+)
+def test_a_candidate_importing_task_implementation_is_rejected(task, source):
+    task_inputs = _task_inputs(task)
+    with pytest.raises(RuntimeError, match="protected task"):
+        task_inputs.assert_candidate_is_independent(source)
+
+
 @pytest.mark.parametrize("task", GEMM_TASKS, ids=lambda task: task.name)
 def test_a_gemm_candidate_computing_with_torch_is_rejected(task):
     # torch's matmul IS the baseline at the larger M cases of a GEMM, so
@@ -308,10 +322,18 @@ def test_a_gemm_candidate_computing_with_torch_is_rejected(task):
         "    return a @ b.transpose(-1, -2)\n",
         "    return torch.matmul(a, b.transpose(-1, -2))\n",
         "    return torch.nn.functional.linear(a, b)\n",
+        "    product = torch.matmul\n    return product(a, b.transpose(-1, -2))\n",
     ):
         source = "import torch\nimport flydsl\n\n\ndef f(a, b):\n" + body
         with pytest.raises(RuntimeError, match="matrix"):
             task_inputs.assert_candidate_is_independent(source)
+
+    source = (
+        "from torch import matmul as product\nimport flydsl\n\n\n"
+        "def f(a, b):\n    return product(a, b.transpose(-1, -2))\n"
+    )
+    with pytest.raises(RuntimeError, match="matrix"):
+        task_inputs.assert_candidate_is_independent(source)
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)

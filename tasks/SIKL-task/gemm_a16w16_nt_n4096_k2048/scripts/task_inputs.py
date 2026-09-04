@@ -32,6 +32,13 @@ import torch
 # small-M cases, so importing it would measure the baseline against itself.
 BANNED_CANDIDATE_IMPORT_ROOTS = ("aiter",)
 
+# Candidates run with the task's scripts on sys.path. Importing one of those
+# modules can reach the baseline indirectly (for example, task_baseline.run)
+# while avoiding a direct aiter import.
+BANNED_CANDIDATE_TASK_MODULES = frozenset(
+    {"forge_driver", "test_kernel_harness"}
+)
+
 # A GEMM has a second cheat the MoE tasks do not: torch's own matmul is a real
 # hipBLASLt call, and it is literally the baseline this task dispatches to at
 # the larger M cases. A candidate that writes ``a @ b.T`` would tie the baseline
@@ -223,6 +230,23 @@ def _banned_candidate_findings(source: str) -> list[str]:
                 finding = f"imports the framework under test: {name}"
                 if finding not in findings:
                     findings.append(finding)
+            leaf = name.rsplit(".", 1)[-1]
+            if leaf.startswith("task_") or leaf in BANNED_CANDIDATE_TASK_MODULES:
+                finding = f"imports a protected task module: {name}"
+                if finding not in findings:
+                    findings.append(finding)
+
+        # Also catch aliases such as ``from torch import matmul as product``.
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and node.module.split(".", 1)[0] == "torch"
+        ):
+            for alias in node.names:
+                if alias.name in BANNED_CANDIDATE_CALL_ATTRS:
+                    finding = f"imports the library matrix product `{alias.name}`"
+                    if finding not in findings:
+                        findings.append(finding)
 
     for node in ast.walk(tree):
         # ``ast.MatMult`` only ever means the binary operator, so a decorator's
@@ -232,11 +256,10 @@ def _banned_candidate_findings(source: str) -> list[str]:
         elif isinstance(node, ast.AugAssign) and isinstance(node.op, ast.MatMult):
             finding = "uses the `@=` matrix-multiply operator"
         elif (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr in BANNED_CANDIDATE_CALL_ATTRS
+            isinstance(node, ast.Attribute)
+            and node.attr in BANNED_CANDIDATE_CALL_ATTRS
         ):
-            finding = f"calls the library matrix product `{node.func.attr}`"
+            finding = f"references the library matrix product `{node.attr}`"
         else:
             continue
         if finding not in findings:
@@ -251,7 +274,8 @@ def assert_candidate_is_independent(source: str) -> None:
     if findings:
         joined = "; ".join(findings)
         raise RuntimeError(
-            f"the candidate {joined}. Both defeat the rewrite: aiter's tuned "
+            f"the candidate {joined}. These defeat the rewrite: protected task "
+            "modules can call the baseline indirectly, aiter's tuned "
             "a16w16 path dispatches to aiter's own FlyDSL kernels at the small-M "
             "cases, and torch's matmul IS the baseline at the larger ones. "
             "Implement the GEMM in FlyDSL (import flydsl and torch only, and use "

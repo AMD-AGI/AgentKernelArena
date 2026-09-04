@@ -51,6 +51,13 @@ import torch
 # baseline, so it is not a way to tie the baseline without writing a kernel.
 BANNED_CANDIDATE_IMPORT_ROOTS = ("aiter",)
 
+# Candidates run with the task's scripts on sys.path. Importing one of those
+# modules can reach the baseline indirectly (for example, task_baseline.run)
+# while avoiding a direct aiter import.
+BANNED_CANDIDATE_TASK_MODULES = frozenset(
+    {"forge_driver", "test_kernel_harness"}
+)
+
 
 def _find_workload() -> Path:
     """Locate workload.json, whichever layout these modules were copied into.
@@ -286,7 +293,7 @@ def call_kwargs(inputs: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:
 
 
 def banned_candidate_imports(source: str) -> list[str]:
-    """Return the framework modules a candidate implementation must not import."""
+    """Return protected modules a candidate implementation must not import."""
     try:
         tree = ast.parse(source)
     except SyntaxError as error:
@@ -303,6 +310,11 @@ def banned_candidate_imports(source: str) -> list[str]:
             root = name.split(".", 1)[0]
             if root in BANNED_CANDIDATE_IMPORT_ROOTS and name not in found:
                 found.append(name)
+            leaf = name.rsplit(".", 1)[-1]
+            if (
+                leaf.startswith("task_") or leaf in BANNED_CANDIDATE_TASK_MODULES
+            ) and name not in found:
+                found.append(name)
     return found
 
 
@@ -311,8 +323,9 @@ def assert_candidate_is_independent(source: str) -> None:
     banned = banned_candidate_imports(source)
     if banned:
         raise RuntimeError(
-            f"the candidate imports the framework under test: {banned}. Reusing "
-            "its kernels measures the baseline against itself; implement the "
+            f"the candidate imports the framework under test or imports a protected task "
+            f"module: {banned}. "
+            "Reusing its baseline path measures the baseline against itself; implement the "
             "operator in FlyDSL (import flydsl and torch only)."
         )
 
