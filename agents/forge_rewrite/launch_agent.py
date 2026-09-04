@@ -24,7 +24,7 @@ nested forge-loop. This launcher adapts an Arena task to it:
 
 The task's ``rewrite:`` block supplies port_source, port_source_entry,
 port_target and logical_operator; see
-tasks/SIKL-task/glm52_moe_mxfp4_per1x32_t64/config.yaml.
+tasks/SIKL-task/gemm_a16w16_nt_n6144_k6144/config.yaml.
 """
 
 from __future__ import annotations
