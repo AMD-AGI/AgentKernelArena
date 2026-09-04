@@ -1,0 +1,22 @@
+{
+  "name": "kernel-forges_2a3a0a",
+  "definition": "gemm_a16w16_nt_n28672_k512",
+  "author": "kernel-forges",
+  "spec": {
+    "language": "",
+    "target_hardware": [
+      "MI355X"
+    ],
+    "entry_point": "",
+    "dependencies": [],
+    "destination_passing_style": false,
+    "binding": null
+  },
+  "sources": [
+    {
+      "path": "",
+      "content": ""
+    }
+  ],
+  "description": "kernel-forges kernel slot for gemm_a16w16_nt_n28672_k512 -- language, entry_point and sources to be filled in."
+}

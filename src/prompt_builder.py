@@ -4,6 +4,13 @@ import logging
 from pathlib import Path
 from src.prompts import task_type
 
+# Cheatsheet language for task types whose name does not encode the target
+# language after a '2'. Without an entry here the whole task_type string would be
+# used as the knowledge key, silently dropping the cheatsheet.
+EXPLICIT_TARGET_LANGUAGE = {
+    'rewrite_by_flydsl': 'flydsl',
+}
+
 
 def source_code(config: dict) -> str:
     """Generate a comprehensive task definition prompt for HIP kernel optimization."""
@@ -140,7 +147,8 @@ def _load_cheatsheet(task_type_name: str, target_gpu_model: str, project_root: P
             target_language = str(raw).lower().strip()
         else:
             target_language = (
-                task_type_name.split('2')[-1] if '2' in task_type_name else task_type_name
+                EXPLICIT_TARGET_LANGUAGE.get(task_type_name)
+                or (task_type_name.split('2')[-1] if '2' in task_type_name else task_type_name)
             ).lower()
         knowledge_override = arch_entry.get('knowledge_override', {}) if arch_entry else {}
         knowledge_map = cheatsheet_config.get('knowledge', {})
@@ -293,6 +301,8 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
         task_type_prompt = task_type.torch2flydsl_task_type()
     elif task_type_name == 'triton2flydsl':
         task_type_prompt = task_type.triton2flydsl_task_type()
+    elif task_type_name == 'rewrite_by_flydsl':
+        task_type_prompt = task_type.rewrite_by_flydsl_task_type()
     elif task_type_name == 'repository':
         task_type_prompt = task_type.repository_task_type()
     elif task_type_name == 'image_kernel':

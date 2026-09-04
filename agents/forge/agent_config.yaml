@@ -33,7 +33,7 @@ snr_threshold: 30.0
 # before this hard kill. NOTE: for API-launched runs the bootstrap overwrites
 # this per-run (e.g. 115200 for a 32h run); the value below is only the local
 # fallback default.
-timeout_seconds: 7200
+timeout_seconds: 87300
 
 # Claude permission mode. acceptEdits works under root; bypassPermissions is
 # blocked by Claude Code's security policy for root.

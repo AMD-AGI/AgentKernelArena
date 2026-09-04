@@ -1,0 +1,91 @@
+{
+  "definition": "aiter_fused_moe_per_1x32_d6144_e65_topk9_n4096_k3072_i1024",
+  "op_type": "moe",
+  "builder_symbol": "build_mxfp4_moe_e65_i1024_module",
+  "axes": {
+    "model_dim": 6144,
+    "num_experts": 65,
+    "topk": 9,
+    "w1_rows": 4096,
+    "w1_cols": 3072,
+    "w2_cols": 1024,
+    "w1_scale_cols": 192,
+    "w2_scale_cols": 64
+  },
+  "seed": 29,
+  "bench": {
+    "warmup": 20,
+    "repetition": 100,
+    "target_ms": 1.0
+  },
+  "gate_multiplier": 4.0,
+  "gate_floor": 0.0025,
+  "gate_policy": "A candidate must clear two gates at every case, and both are derived at run time rather than stored, so they cannot go stale against a different GPU or framework version: the harness measures how far the production implementation itself sits from the fp32 reference at every case and admits a candidate no worse than the worst of those by a fixed policy margin. The first gate bounds a mean relative error, within gate_multiplier times the worst measured value, floored at gate_floor. The floor matters because the measured distance says as much about which reduction strategy the baseline happens to use as about what correctness requires: a task whose baseline dispatches to a near-exact implementation at every case would otherwise derive a gate around 1e-6 and demand that a port reproduce that accumulation order rather than merely be correct. The second gate bounds SNR, and it exists because the first acts on a mean: an L1 statistic averages away error concentrated in a few elements, so a candidate can sit inside the first gate while being badly wrong on part of the output. It introduces no separate constants -- allowing the noise power to be gate_multiplier times larger is a fixed offset in dB, and gate_floor's role becomes a ceiling on how much accuracy may be demanded -- so it is the same policy restated for a statistic that sees concentration. Both are one gate for the operator rather than one per case, since the baseline dispatches differently across the var axis and its own accuracy moves by orders of magnitude across the cases.",
+  "cases": [
+    {
+      "case_id": "num_tokens_1",
+      "uuid": "a87754eb7a35ddc9",
+      "num_tokens": 1
+    },
+    {
+      "case_id": "num_tokens_2",
+      "uuid": "bd743b1848050ef9",
+      "num_tokens": 2
+    },
+    {
+      "case_id": "num_tokens_4",
+      "uuid": "7e67494c8e6cf749",
+      "num_tokens": 4
+    },
+    {
+      "case_id": "num_tokens_8",
+      "uuid": "89db9a9db6e72358",
+      "num_tokens": 8
+    },
+    {
+      "case_id": "num_tokens_16",
+      "uuid": "d04a29c96cc81d42",
+      "num_tokens": 16
+    },
+    {
+      "case_id": "num_tokens_32",
+      "uuid": "106e81246f9c4cc3",
+      "num_tokens": 32
+    },
+    {
+      "case_id": "num_tokens_64",
+      "uuid": "85bd1a4899aa0653",
+      "num_tokens": 64
+    },
+    {
+      "case_id": "num_tokens_128",
+      "uuid": "a7758e1d2591bdb8",
+      "num_tokens": 128
+    },
+    {
+      "case_id": "num_tokens_256",
+      "uuid": "c98ed376a4031494",
+      "num_tokens": 256
+    },
+    {
+      "case_id": "num_tokens_512",
+      "uuid": "0daad4e4f6407cbf",
+      "num_tokens": 512
+    },
+    {
+      "case_id": "num_tokens_1024",
+      "uuid": "23b5b15fe3a51a68",
+      "num_tokens": 1024
+    },
+    {
+      "case_id": "num_tokens_2048",
+      "uuid": "a3c960a0632566c4",
+      "num_tokens": 2048
+    },
+    {
+      "case_id": "num_tokens_4096",
+      "uuid": "488ee72269b52648",
+      "num_tokens": 4096
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "definition": "gemm_a16w16_nt_n6144_k6144",
+  "op_type": "gemm",
+  "builder_symbol": "build_gemm_a16w16_nt_n6144_k6144_module",
+  "axes": {
+    "n": 6144,
+    "k": 6144
+  },
+  "seed": 29,
+  "bench": {
+    "warmup": 20,
+    "repetition": 100,
+    "target_ms": 1.0
+  },
+  "gate_multiplier": 4.0,
+  "gate_floor": 0.0025,
+  "gate_policy": "A candidate must clear two gates at every case, and both are derived at run time rather than stored, so they cannot go stale against a different GPU or framework version: the harness measures how far the production implementation itself sits from the fp32 reference at every case and admits a candidate no worse than the worst of those by a fixed policy margin. The first gate bounds a mean relative error, within gate_multiplier times the worst measured value, floored at gate_floor. The floor matters because the measured distance says as much about which reduction strategy the baseline happens to use as about what correctness requires: a task whose baseline dispatches to a near-exact implementation at every case would otherwise derive a gate around 1e-6 and demand that a port reproduce that accumulation order rather than merely be correct. The second gate bounds SNR, and it exists because the first acts on a mean: an L1 statistic averages away error concentrated in a few elements, so a candidate can sit inside the first gate while being badly wrong on part of the output. It introduces no separate constants -- allowing the noise power to be gate_multiplier times larger is a fixed offset in dB, and gate_floor's role becomes a ceiling on how much accuracy may be demanded -- so it is the same policy restated for a statistic that sees concentration. Both are one gate for the operator rather than one per case, since the baseline dispatches differently across the var axis and its own accuracy moves by orders of magnitude across the cases.",
+  "cases": [
+    {
+      "case_id": "m_1",
+      "uuid": "adeae30c3ffbe807",
+      "m": 1
+    },
+    {
+      "case_id": "m_2",
+      "uuid": "72b6d263865122e3",
+      "m": 2
+    },
+    {
+      "case_id": "m_4",
+      "uuid": "8324820dfbc93f4c",
+      "m": 4
+    },
+    {
+      "case_id": "m_8",
+      "uuid": "ed8b5f4d3f0863c6",
+      "m": 8
+    },
+    {
+      "case_id": "m_16",
+      "uuid": "f5392bceaeae767d",
+      "m": 16
+    },
+    {
+      "case_id": "m_32",
+      "uuid": "f0705152bf6aa37a",
+      "m": 32
+    },
+    {
+      "case_id": "m_64",
+      "uuid": "7b93cb1e27bdea50",
+      "m": 64
+    },
+    {
+      "case_id": "m_128",
+      "uuid": "5a448d5bddb1b279",
+      "m": 128
+    },
+    {
+      "case_id": "m_256",
+      "uuid": "9271790bd6680e5a",
+      "m": 256
+    },
+    {
+      "case_id": "m_512",
+      "uuid": "bdc26a31651511f2",
+      "m": 512
+    },
+    {
+      "case_id": "m_1024",
+      "uuid": "864595f71102b0ad",
+      "m": 1024
+    },
+    {
+      "case_id": "m_2048",
+      "uuid": "2487cb54762aa585",
+      "m": 2048
+    },
+    {
+      "case_id": "m_4096",
+      "uuid": "1c94f6992cdffa3f",
+      "m": 4096
+    }
+  ],
+  "trans_b": true
+}

@@ -1,0 +1,21 @@
+# SIKL rewrite-by-flydsl task: an a16w16 GEMM from the GLM-5.2 workload schema.
+#
+# The forge_rewrite agent reimplements the operator in FlyDSL with KernelForge's
+# forge-rewrite-by-flydsl pipeline; Arena scores the port against the operator's
+# own production implementation (aiter.tuned_gemm.gemm_a16w16) over all 13 of
+# the schema's workload cases. Post-processing fills the task's SIKL solution
+# slot from the scored result.
+#
+# Requires KernelForge installed so `kernel-agents` is on PATH, and the LLM
+# gateway environment (ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN /
+# ANTHROPIC_CUSTOM_HEADERS).
+agent:
+  template: forge_rewrite
+
+# Select the whole suite with `- SIKL-task` once more operators are generated.
+tasks:
+  - SIKL-task/gemm_a16w16_nt_n6144_k6144
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace
