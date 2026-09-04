@@ -14,8 +14,10 @@ differently from the way the task is scored.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -26,6 +28,21 @@ SIKL_ROOT = ROOT / "tasks" / "SIKL-task"
 TASKS = sorted(path for path in SIKL_ROOT.glob("*") if (path / "config.yaml").is_file())
 
 VAR_AXIS = {"gemm": "m", "moe": "num_tokens"}
+
+# Files every task of an op_type carries byte-identical copies of. The suite is
+# generated from one template per op_type by tooling that lives with the
+# workload-schema bundle, outside this repository, so nothing in this repo can
+# check a task against the generator. What it can check is the invariant the
+# generator exists to maintain.
+SHARED_TEMPLATE_FILES = (
+    "kernel.py",
+    "test_kernel_harness.py",
+    "scripts/task_inputs.py",
+    "scripts/task_reference.py",
+    "scripts/task_baseline.py",
+    "scripts/task_measure.py",
+    "scripts/forge_driver.py",
+)
 
 
 def _config(task: Path) -> dict:
@@ -49,6 +66,30 @@ def test_the_suite_covers_both_operator_families():
     assert GEMM_TASKS, f"no gemm tasks found under {SIKL_ROOT}"
     assert MOE_TASKS, f"no moe tasks found under {SIKL_ROOT}"
     assert len(TASKS) == len(GEMM_TASKS) + len(MOE_TASKS)
+
+
+@pytest.mark.parametrize("relative", SHARED_TEMPLATE_FILES)
+@pytest.mark.parametrize("op_type", sorted(VAR_AXIS))
+def test_shared_files_are_identical_across_an_op_type(op_type, relative):
+    # Arena copies each task directory into its own workspace, so a task cannot
+    # import from a sibling and every one carries its own copy of the harness,
+    # the driver and the helpers. Editing one task's copy is the drift this
+    # catches: it would silently score that operator under a different regime
+    # than the rest of its family, and comparing it to the others would be
+    # meaningless. Every shape constant lives in workload.json precisely so
+    # these copies can stay identical.
+    tasks = _of_type(op_type)
+    digests: dict[str, list[str]] = {}
+    for task in tasks:
+        path = task / relative
+        assert path.is_file(), f"{task.name} is missing {relative}"
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        digests.setdefault(digest, []).append(task.name)
+    assert len(digests) == 1, (
+        f"{relative} differs across the {op_type} tasks; regenerate the suite "
+        f"from its op_type template instead of editing a single task: "
+        f"{ {digest[:8]: names for digest, names in digests.items()} }"
+    )
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
@@ -106,6 +147,55 @@ def test_the_workload_declares_cases_and_a_gate_policy(task):
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
+def test_both_gates_are_derived_from_one_policy(task):
+    # The SNR gate is the error gate restated for a statistic that sees error
+    # concentrated in a few elements rather than spread over the output, so it
+    # must not introduce policy constants of its own: a second knob is a second
+    # thing to keep consistent, and a hardcoded dB floor is exactly what fails
+    # the MoE baseline against its own reference.
+    task_inputs = _task_inputs(task)
+    assert task_inputs.SNR_MARGIN_DB == pytest.approx(
+        10.0 * math.log10(task_inputs.GATE_MULTIPLIER)
+    )
+    assert task_inputs.SNR_CEILING_DB == pytest.approx(
+        -20.0 * math.log10(task_inputs.GATE_FLOOR)
+    )
+
+
+@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
+def test_a_case_has_to_clear_both_correctness_gates(task):
+    # Either gate alone is passable by a wrong candidate: the error gate
+    # averages away localized error, and SNR alone says nothing about how far
+    # the operator's own implementations sit from the reference. Both are
+    # applied per case, in the one place that decides whether a case passed.
+    task_inputs = _task_inputs(task)
+    gates = task_inputs.derive_gates({"errors": [1e-3], "snrs": [60.0]})
+    assert set(gates) == {"error", "snr_db"}
+
+    measure = (task / "scripts" / "task_measure.py").read_text()
+    for expression in ('record["error"] <= gates["error"]', 'record["snr"] >= gates["snr_db"]'):
+        assert expression in measure, f"passes() does not apply {expression}"
+
+
+@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
+def test_the_port_filter_is_looser_than_the_scoring_gate(task):
+    # KernelForge drops a port below config.yaml's rewrite.snr_threshold before
+    # the optimize loop ever sees it. If that filter were stricter than the gate
+    # the task is scored on, PORT would discard candidates Arena would have
+    # accepted -- and for the MoE family a 30 dB filter rejects anything merely
+    # as accurate as the production implementation.
+    task_inputs = _task_inputs(task)
+    port_filter = float(_config(task)["rewrite"]["snr_threshold"])
+    # The scoring gate is derived from the baseline at run time; the worst it can
+    # demand is the ceiling case, and the filter has to stay under that.
+    strictest_scoring_gate = task_inputs.SNR_CEILING_DB - task_inputs.SNR_MARGIN_DB
+    assert port_filter <= strictest_scoring_gate, (
+        f"rewrite.snr_threshold={port_filter} dB can exceed the derived scoring "
+        f"gate, whose strictest value is {strictest_scoring_gate:.2f} dB"
+    )
+
+
+@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
 def test_the_workload_records_no_measurement(task):
     # Tolerances and baseline timings are derived at run time on the machine
     # that is about to score the candidate. Recording them here would pin
@@ -124,7 +214,7 @@ def test_the_workload_records_no_measurement(task):
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
 def test_the_gate_is_derived_from_the_baseline(task):
     measure = (task / "scripts" / "task_measure.py").read_text()
-    assert "task_inputs.derive_gate" in measure
+    assert "task_inputs.derive_gates" in measure
     assert "task_baseline.run" in measure
 
 

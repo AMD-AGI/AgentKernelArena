@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import ast
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -100,16 +101,37 @@ BENCH_TARGET_MS = float(WORKLOAD["bench"]["target_ms"])
 GATE_MULTIPLIER = float(WORKLOAD["gate_multiplier"])
 GATE_FLOOR = float(WORKLOAD["gate_floor"])
 
+# The second correctness gate, expressed in the L2 domain. The gate above acts
+# on a mean relative error, an L1 statistic that averages away error
+# concentrated in a few elements: a candidate can sit well inside it while being
+# badly wrong on part of the output. SNR is a power ratio and penalizes exactly
+# that concentration, so a case has to clear both.
+#
+# It introduces no new policy constants. It is the SAME policy as the error
+# gate, restated for a different statistic: allowing the noise power to be
+# GATE_MULTIPLIER times larger is a fixed offset in dB, and GATE_FLOOR's role --
+# never demand more accuracy than this -- becomes a ceiling on the SNR that may
+# be required. The mapping between an L1 relative error and an L2 power ratio is
+# an analogue rather than an identity, which is why these bound a derived
+# measurement instead of replacing it.
+#
+# A fixed floor was the wrong shape here. The MoE baseline's own worst case sits
+# below 30 dB against the fp32 reference, so any fixed threshold high enough to
+# be meaningful for this GEMM family would fail the production implementation
+# itself on the MoE tasks, capping every run at the compile score.
+SNR_MARGIN_DB = 10.0 * math.log10(GATE_MULTIPLIER)
+SNR_CEILING_DB = -20.0 * math.log10(GATE_FLOOR)
+
 CASES: tuple[dict[str, Any], ...] = tuple(WORKLOAD["cases"])
 CASE_IDS: tuple[str, ...] = tuple(str(case["case_id"]) for case in CASES)
 
 
-def derive_gate(baseline_errors: list[float]) -> float:
-    """Return the mean-relative-error gate for this run.
+def derive_gates(baseline: dict[str, list[float]]) -> dict[str, float]:
+    """Return both correctness gates for this run, from the measured baseline.
 
-    The gate is derived, never stored. What the task fixes is the policy -- a
+    The gates are derived, never stored. What the task fixes is the policy -- a
     candidate may be at most ``GATE_MULTIPLIER`` times as far from the fp32
-    reference as the production implementation itself is, but never held to a
+    reference as the production implementation itself is, but is never held to a
     distance tighter than ``GATE_FLOOR`` -- and the distance is measured against
     the same inputs, on the same device, with the same framework build that is
     about to score the candidate. A recorded number would silently go stale the
@@ -122,22 +144,34 @@ def derive_gate(baseline_errors: list[float]) -> float:
     that alone would demand that a port reproduce the baseline's accumulation
     order rather than merely be correct.
 
-    It is deliberately ONE gate rather than one per case for the same reason:
-    the baseline selects a different kernel per M bucket and its own error moves
-    by orders of magnitude across them.
+    Both are deliberately ONE gate for the operator rather than one per case,
+    for the same reason: the baseline selects a different kernel per bucket of
+    the var axis and its own accuracy moves by orders of magnitude across them.
+
+    The two act on different statistics on purpose. ``error`` bounds a mean, and
+    ``snr_db`` bounds a power ratio, which is what catches error concentrated in
+    a few elements rather than spread over the output.
     """
-    if not baseline_errors:
-        raise RuntimeError("no baseline error was measured, so no gate can be derived")
-    return max(max(baseline_errors), GATE_FLOOR) * GATE_MULTIPLIER
+    errors, snrs = baseline["errors"], baseline["snrs"]
+    if not errors or not snrs:
+        raise RuntimeError("no baseline accuracy was measured, so no gate can be derived")
+    return {
+        "error": max(max(errors), GATE_FLOOR) * GATE_MULTIPLIER,
+        "snr_db": min(min(snrs), SNR_CEILING_DB) - SNR_MARGIN_DB,
+    }
 
 
-def gate_explanation(baseline_errors: list[float]) -> str:
-    """One line naming which term set the gate, for the harness and the driver."""
-    worst = max(baseline_errors)
-    basis = "worst baseline error" if worst >= GATE_FLOOR else "floor"
+def gate_explanation(baseline: dict[str, list[float]]) -> str:
+    """One line naming both gates and what set each, for the harness and driver."""
+    gates = derive_gates(baseline)
+    worst_error, worst_snr = max(baseline["errors"]), min(baseline["snrs"])
+    error_basis = "worst baseline error" if worst_error >= GATE_FLOOR else "floor"
+    snr_basis = "worst baseline snr" if worst_snr <= SNR_CEILING_DB else "ceiling"
     return (
-        f"gate {derive_gate(baseline_errors):.8f} = max(worst baseline error "
-        f"{worst:.8f}, floor {GATE_FLOOR:g}) x {GATE_MULTIPLIER:g}, set by the {basis}"
+        f"gates: error {gates['error']:.8f} = max({worst_error:.8f}, "
+        f"{GATE_FLOOR:g}) x {GATE_MULTIPLIER:g} set by the {error_basis}; "
+        f"snr {gates['snr_db']:.2f} dB = min({worst_snr:.2f}, "
+        f"{SNR_CEILING_DB:.2f}) - {SNR_MARGIN_DB:.2f} set by the {snr_basis}"
     )
 
 

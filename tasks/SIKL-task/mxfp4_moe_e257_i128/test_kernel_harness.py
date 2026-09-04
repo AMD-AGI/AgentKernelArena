@@ -92,10 +92,10 @@ def run_compile() -> int:
 def run_correctness() -> int:
     _require_gpu()
     inputs = task_inputs.build_inputs()
-    expected, baseline_errors, gate = task_measure.reference_and_gate(inputs)
+    expected, baseline, gates = task_measure.reference_and_gate(inputs)
     name, calls = _resolve_calls(inputs)
     print(f"implementation: {name}")
-    print(task_inputs.gate_explanation(baseline_errors))
+    print(task_inputs.gate_explanation(baseline))
 
     failed = []
     for record in task_measure.compare_cases(calls, expected):
@@ -104,8 +104,11 @@ def run_correctness() -> int:
             got_shape, expected_shape = record["shape_mismatch"]
             print(f"case {case_id}: fail, shape {got_shape} != {expected_shape}")
         else:
-            print(f"case {case_id}: mean relative error {record['error']:.8f}")
-        if not task_measure.passes(record, gate):
+            print(
+                f"case {case_id}: mean relative error {record['error']:.8f}, "
+                f"snr {record['snr']:.2f} dB"
+            )
+        if not task_measure.passes(record, gates):
             failed.append(case_id)
 
     if failed:

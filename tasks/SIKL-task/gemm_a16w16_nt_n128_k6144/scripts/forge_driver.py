@@ -15,12 +15,15 @@ THE BASELINE IMPLEMENTATION TO REPLACE (read it, it is the real thing)
     `gemm_a16w16` is a tuned DISPATCH, not one kernel. It looks the shape up in
     aiter's merged bf16 tuned table (configs/bf16_tuned_gemm.csv merged with
     configs/model_configs/*_bf16_tuned_gemm.csv) and selects a libtype per M
-    bucket. On gfx950/256CU the winning libtype for much of the small-M range is
-    `flydsl` -- aiter's own FlyDSL kernels under
+    bucket. One libtype is `flydsl` -- aiter's own FlyDSL kernels under
     aiter/ops/flydsl/kernels/splitk_hgemm.py and small_m_hgemm.py, built through
-    aiter/ops/flydsl/kernels/hgemm_dispatch.py -- while the larger M cases fall
-    to `torch` (native matmul, i.e. hipBLASLt). Which one a given case faces is
-    not recorded anywhere in the task: query it with
+    aiter/ops/flydsl/kernels/hgemm_dispatch.py -- and the other is `torch`
+    (native matmul, i.e. hipBLASLt).
+
+    The selection is NOT monotonic in M, so do not assume a small-M / large-M
+    split: on gfx950/256CU at n=k=6144 it picks `flydsl` at m=1..128 and again at
+    m=512, and `torch` at m=256, 1024, 2048 and 4096. Which one a given case
+    faces is not recorded anywhere in the task: query it with
     `aiter.tuned_gemm.get_GEMM_A16W16_config(M=.., N=.., K=.., bias=False,
     dtype="torch.bfloat16", otype="torch.bfloat16")`, which is the same lookup
     the baseline performs.
@@ -205,8 +208,8 @@ def run_correctness(inputs: dict) -> int:
     contract learns which cases this path covered.
     """
     calls = _candidate_calls(inputs)
-    expected, baseline_errors, gate = task_measure.reference_and_gate(inputs)
-    print(f"# {task_inputs.gate_explanation(baseline_errors)}")
+    expected, baseline, gates = task_measure.reference_and_gate(inputs)
+    print(f"# {task_inputs.gate_explanation(baseline)}")
 
     worst_snr = float("inf")
     passed = True
@@ -219,7 +222,7 @@ def run_correctness(inputs: dict) -> int:
             print(f"#   mean relative error {record['error']:.8f}")
             print(f"#   snr {record['snr']:.2f} dB")
         worst_snr = min(worst_snr, record["snr"])
-        passed = passed and task_measure.passes(record, gate)
+        passed = passed and task_measure.passes(record, gates)
 
     print(f"SNR: {worst_snr:.2f} dB")
     print(f"allclose: {passed}")

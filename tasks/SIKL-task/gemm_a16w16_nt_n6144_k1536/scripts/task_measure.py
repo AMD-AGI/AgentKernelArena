@@ -60,23 +60,26 @@ def candidate_calls(inputs: dict[str, Any], launches: list) -> list[tuple[dict, 
     ]
 
 
-def reference_and_gate(inputs: dict[str, Any]) -> tuple[list, list[float], float]:
-    """Evaluate the reference and the production implementation, then derive the gate.
+def reference_and_gate(
+    inputs: dict[str, Any],
+) -> tuple[list, dict[str, list[float]], dict[str, float]]:
+    """Evaluate the reference and the production implementation, then derive the gates.
 
-    The gate is measured here rather than recorded so it always describes the
-    device, the framework build and the inputs that are about to score the
-    candidate.
+    Both statistics the gates act on are measured here rather than recorded, so
+    they always describe the device, the framework build and the inputs that are
+    about to score the candidate.
     """
     expected = []
-    baseline_errors = []
+    measured: dict[str, list[float]] = {"errors": [], "snrs": []}
     for case in inputs["cases"]:
         kwargs = task_inputs.call_kwargs(inputs, case)
         reference = task_reference.run(**kwargs)
         baseline = task_baseline.run(**kwargs)
         torch.cuda.synchronize()
         expected.append(reference)
-        baseline_errors.append(task_inputs.relative_error(baseline, reference))
-    return expected, baseline_errors, task_inputs.derive_gate(baseline_errors)
+        measured["errors"].append(task_inputs.relative_error(baseline, reference))
+        measured["snrs"].append(snr_db(reference, baseline))
+    return expected, measured, task_inputs.derive_gates(measured)
 
 
 def snr_db(reference: torch.Tensor, got: torch.Tensor) -> float:
@@ -117,12 +120,18 @@ def compare_cases(
     return results
 
 
-def passes(record: dict[str, Any], gate: float) -> bool:
-    """Whether one compared case clears the gate."""
+def passes(record: dict[str, Any], gates: dict[str, float]) -> bool:
+    """Whether one compared case clears both correctness gates.
+
+    The error gate acts on a mean, which averages away error concentrated in a
+    few elements. The SNR gate is a power ratio and catches exactly that, so a
+    case has to clear both rather than either.
+    """
     return (
         record["shape_mismatch"] is None
         and record.get("finite", False)
-        and record["error"] <= gate
+        and record["error"] <= gates["error"]
+        and record["snr"] >= gates["snr_db"]
     )
 
 

@@ -216,8 +216,8 @@ def run_correctness(inputs: dict) -> int:
     contract learns which cases this path covered.
     """
     calls = _candidate_calls(inputs)
-    expected, baseline_errors, gate = task_measure.reference_and_gate(inputs)
-    print(f"# {task_inputs.gate_explanation(baseline_errors)}")
+    expected, baseline, gates = task_measure.reference_and_gate(inputs)
+    print(f"# {task_inputs.gate_explanation(baseline)}")
 
     worst_snr = float("inf")
     passed = True
@@ -230,7 +230,7 @@ def run_correctness(inputs: dict) -> int:
             print(f"#   mean relative error {record['error']:.8f}")
             print(f"#   snr {record['snr']:.2f} dB")
         worst_snr = min(worst_snr, record["snr"])
-        passed = passed and task_measure.passes(record, gate)
+        passed = passed and task_measure.passes(record, gates)
 
     print(f"SNR: {worst_snr:.2f} dB")
     print(f"allclose: {passed}")
