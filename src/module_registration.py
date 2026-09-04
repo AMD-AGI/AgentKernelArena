@@ -115,7 +115,11 @@ def load_post_processing_handler(agent_type: AgentType, logger: logging.Logger) 
         from agents.task_validator.validation_postprocessing import validation_post_processing
         logger.info(f"Using validation_post_processing for agent: {agent_name}")
         return validation_post_processing
-    elif agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.GEAK_V4, AgentType.GEAK_V3, AgentType.GEAK_V3_TRITON, AgentType.MINI_SWE_TRITON, AgentType.FORGE, AgentType.FORGE_REWRITE]:
+    elif agent_type == AgentType.FORGE_REWRITE:
+        from agents.forge_rewrite.postprocessing import forge_rewrite_post_processing
+        logger.info(f"Using forge_rewrite_post_processing for agent: {agent_name}")
+        return forge_rewrite_post_processing
+    elif agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.GEAK_V4, AgentType.GEAK_V3, AgentType.GEAK_V3_TRITON, AgentType.MINI_SWE_TRITON, AgentType.FORGE]:
         logger.info(f"Using general_post_processing for agent: {agent_name}")
         return general_post_processing
     else:
