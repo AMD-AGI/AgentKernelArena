@@ -104,7 +104,7 @@ rewrite:
   max_port_attempts: 5                       # overrides the agent default
 ```
 
-See `tasks/SIKL-task/gemm_a16w16_nt_n6144_k6144/` for a complete example.
+See `tasks/SIKL-task/glm52_moe_mxfp4_per1x32_t64/` for a complete example.
 
 Repository-level tasks (`task_type: repository`) use a different shape because
 they clone and optimize an upstream project rather than a small source bundle.
