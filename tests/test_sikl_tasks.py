@@ -7,8 +7,8 @@ declares. The task carries the schema's unfilled ``kernel-forges`` solution slot
 so post-processing can fill it from the scored result.
 
 The checks here pin the couplings that fail silently rather than loudly: a
-factory symbol the harness looks up but the pipeline never asks for, a workload
-whose tolerance was never measured, or a driver that times the candidate
+factory symbol the harness looks up but the pipeline never asks for, a gate
+derived from a number nobody measured, or a driver that times the candidate
 differently from the way the task is scored.
 """
 
@@ -21,8 +21,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-SIKL_ROOT = Path(__file__).resolve().parents[1] / "tasks" / "SIKL-task"
+ROOT = Path(__file__).resolve().parents[1]
+SIKL_ROOT = ROOT / "tasks" / "SIKL-task"
 TASKS = sorted(path for path in SIKL_ROOT.glob("*") if (path / "config.yaml").is_file())
+
+VAR_AXIS = {"gemm": "m", "moe": "num_tokens"}
 
 
 def _config(task: Path) -> dict:
@@ -34,8 +37,18 @@ def _workload(task: Path) -> dict:
     return json.loads((task / "workload.json").read_text())
 
 
-def test_the_suite_is_not_empty():
-    assert TASKS, f"no SIKL tasks found under {SIKL_ROOT}"
+def _of_type(op_type: str) -> list[Path]:
+    return [task for task in TASKS if _workload(task)["op_type"] == op_type]
+
+
+GEMM_TASKS = _of_type("gemm")
+MOE_TASKS = _of_type("moe")
+
+
+def test_the_suite_covers_both_operator_families():
+    assert GEMM_TASKS, f"no gemm tasks found under {SIKL_ROOT}"
+    assert MOE_TASKS, f"no moe tasks found under {SIKL_ROOT}"
+    assert len(TASKS) == len(GEMM_TASKS) + len(MOE_TASKS)
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
@@ -58,9 +71,13 @@ def test_builder_symbol_agrees_with_kernelforge(task):
     protocol = pytest.importorskip("kernelforge.rewrite_by_flydsl.protocol")
     config = _config(task)
     declared = _workload(task)["builder_symbol"]
+    operator = config["rewrite"]["logical_operator"]
 
-    assert protocol.builder_symbol(config["rewrite"]["logical_operator"]) == declared
+    assert protocol.builder_symbol(operator) == declared
     assert config["target_kernel_functions"] == [declared]
+    # A longer name is folded into a truncation plus a digest, which is legal
+    # but unreadable and useless as a KB identity.
+    assert len(operator) <= 40, "logical operator would be truncated into a digest"
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
@@ -82,6 +99,9 @@ def test_the_workload_declares_cases_and_a_gate_policy(task):
     assert workload["gate_multiplier"] > 1, (
         "a gate at or below the baseline's own error is unpassable"
     )
+    assert workload["gate_floor"] > 0, (
+        "without a floor a near-exact baseline derives a gate no port can clear"
+    )
     assert workload["gate_policy"].strip()
 
 
@@ -94,8 +114,9 @@ def test_the_workload_records_no_measurement(task):
     workload = _workload(task)
     for key in ("max_relerr", "tolerance_reason"):
         assert key not in workload, f"{key} is a recorded measurement"
+    var_axis = VAR_AXIS[workload["op_type"]]
     for case in workload["cases"]:
-        assert set(case) == {"case_id", "uuid", "m"}, (
+        assert set(case) == {"case_id", "uuid", var_axis}, (
             f"{case['case_id']} carries more than the schema's case identity"
         )
 
@@ -173,8 +194,8 @@ def _task_inputs(task: Path):
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
 def test_a_candidate_reusing_the_framework_is_rejected(task):
-    # aiter's tuned dispatch resolves to aiter's own FlyDSL kernels at the
-    # small-M cases, so a port that imports them measures the baseline against
+    # aiter's tuned dispatch resolves to aiter's own FlyDSL kernels at many of
+    # the cases, so a port that imports them measures the baseline against
     # itself and reports the removal of per-call host dispatch as a speedup.
     task_inputs = _task_inputs(task)
     source = (
@@ -186,10 +207,12 @@ def test_a_candidate_reusing_the_framework_is_rejected(task):
         task_inputs.assert_candidate_is_independent(source)
 
 
-@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
-def test_a_candidate_computing_with_torch_is_rejected(task):
-    # torch's matmul IS the baseline at the larger M cases, so `a @ b.T` would
-    # tie it exactly while implementing no kernel at all.
+@pytest.mark.parametrize("task", GEMM_TASKS, ids=lambda task: task.name)
+def test_a_gemm_candidate_computing_with_torch_is_rejected(task):
+    # torch's matmul IS the baseline at the larger M cases of a GEMM, so
+    # `a @ b.T` would tie it exactly while implementing no kernel at all. The
+    # MoE tasks carry no such rule: a Python loop over experts is orders of
+    # magnitude slower than the fused baseline, so it is not a way to tie it.
     task_inputs = _task_inputs(task)
     for body in (
         "    return a @ b.transpose(-1, -2)\n",
@@ -203,8 +226,9 @@ def test_a_candidate_computing_with_torch_is_rejected(task):
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
 def test_a_flydsl_candidate_is_accepted(task):
-    # The ban is on the matrix product, not on torch: a port still needs torch
-    # for tensor plumbing, and `@` as a decorator must not be mistaken for one.
+    # The ban is on reusing the framework, not on torch: a port still needs
+    # torch for tensor plumbing, and `@` as a decorator must not be mistaken for
+    # a matrix product.
     task_inputs = _task_inputs(task)
     source = (
         "import functools\n"
@@ -213,9 +237,9 @@ def test_a_flydsl_candidate_is_accepted(task):
         "\n"
         "\n"
         "@functools.lru_cache\n"
-        "def build_op_module(m, n, k):\n"
-        "    def launch(a, b):\n"
-        "        return torch.empty((m, n), dtype=a.dtype, device=a.device)\n"
+        "def build_op_module(**axes):\n"
+        "    def launch(*args):\n"
+        "        return torch.empty(0)\n"
         "\n"
         "    return launch\n"
     )

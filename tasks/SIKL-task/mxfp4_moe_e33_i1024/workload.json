@@ -1,0 +1,91 @@
+{
+  "definition": "aiter_fused_moe_per_1x32_d6144_e33_topk9_n4096_k3072_i1024",
+  "op_type": "moe",
+  "builder_symbol": "build_mxfp4_moe_e33_i1024_module",
+  "axes": {
+    "model_dim": 6144,
+    "num_experts": 33,
+    "topk": 9,
+    "w1_rows": 4096,
+    "w1_cols": 3072,
+    "w2_cols": 1024,
+    "w1_scale_cols": 192,
+    "w2_scale_cols": 64
+  },
+  "seed": 29,
+  "bench": {
+    "warmup": 20,
+    "repetition": 100,
+    "target_ms": 1.0
+  },
+  "gate_multiplier": 4.0,
+  "gate_floor": 0.0025,
+  "gate_policy": "The correctness gate is derived at run time rather than stored, so it cannot go stale against a different GPU or framework version: the harness measures how far the production implementation sits from the fp32 reference at every case and admits a candidate within gate_multiplier times the worst of those, floored at gate_floor. The floor matters because the measured distance says as much about which reduction strategy the baseline happens to use as about what correctness requires: a task whose baseline dispatches to a near-exact implementation at every case would otherwise derive a gate around 1e-6 and demand that a port reproduce that accumulation order rather than merely be correct. It is one gate for the operator rather than one per case for the same reason, since the baseline dispatches differently across the var axis and its own error moves by orders of magnitude across the cases.",
+  "cases": [
+    {
+      "case_id": "num_tokens_1",
+      "uuid": "30d23d94d9ba1dbe",
+      "num_tokens": 1
+    },
+    {
+      "case_id": "num_tokens_2",
+      "uuid": "6f312260ad430ee3",
+      "num_tokens": 2
+    },
+    {
+      "case_id": "num_tokens_4",
+      "uuid": "f95418a0fbc6ac24",
+      "num_tokens": 4
+    },
+    {
+      "case_id": "num_tokens_8",
+      "uuid": "f576a01c012bb305",
+      "num_tokens": 8
+    },
+    {
+      "case_id": "num_tokens_16",
+      "uuid": "a25885fe53e5b7cd",
+      "num_tokens": 16
+    },
+    {
+      "case_id": "num_tokens_32",
+      "uuid": "d359ba2488e0c401",
+      "num_tokens": 32
+    },
+    {
+      "case_id": "num_tokens_64",
+      "uuid": "d940d9de84396c0a",
+      "num_tokens": 64
+    },
+    {
+      "case_id": "num_tokens_128",
+      "uuid": "a3c49f4c7b9f5cde",
+      "num_tokens": 128
+    },
+    {
+      "case_id": "num_tokens_256",
+      "uuid": "268bec06408bf478",
+      "num_tokens": 256
+    },
+    {
+      "case_id": "num_tokens_512",
+      "uuid": "ebab22e2a10985ed",
+      "num_tokens": 512
+    },
+    {
+      "case_id": "num_tokens_1024",
+      "uuid": "e583c8f79f073fbb",
+      "num_tokens": 1024
+    },
+    {
+      "case_id": "num_tokens_2048",
+      "uuid": "20608609642c1a64",
+      "num_tokens": 2048
+    },
+    {
+      "case_id": "num_tokens_4096",
+      "uuid": "2d03c2fd5e1f8e4c",
+      "num_tokens": 4096
+    }
+  ]
+}

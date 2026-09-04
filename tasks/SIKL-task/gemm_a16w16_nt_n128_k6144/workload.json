@@ -1,0 +1,86 @@
+{
+  "definition": "gemm_a16w16_nt_n128_k6144",
+  "op_type": "gemm",
+  "builder_symbol": "build_gemm_a16w16_nt_n128_k6144_module",
+  "axes": {
+    "n": 128,
+    "k": 6144
+  },
+  "seed": 29,
+  "bench": {
+    "warmup": 20,
+    "repetition": 100,
+    "target_ms": 1.0
+  },
+  "gate_multiplier": 4.0,
+  "gate_floor": 0.0025,
+  "gate_policy": "The correctness gate is derived at run time rather than stored, so it cannot go stale against a different GPU or framework version: the harness measures how far the production implementation sits from the fp32 reference at every case and admits a candidate within gate_multiplier times the worst of those, floored at gate_floor. The floor matters because the measured distance says as much about which reduction strategy the baseline happens to use as about what correctness requires: a task whose baseline dispatches to a near-exact implementation at every case would otherwise derive a gate around 1e-6 and demand that a port reproduce that accumulation order rather than merely be correct. It is one gate for the operator rather than one per case for the same reason, since the baseline dispatches differently across the var axis and its own error moves by orders of magnitude across the cases.",
+  "cases": [
+    {
+      "case_id": "m_1",
+      "uuid": "bd0face16150d1a6",
+      "m": 1
+    },
+    {
+      "case_id": "m_2",
+      "uuid": "a02375825a614566",
+      "m": 2
+    },
+    {
+      "case_id": "m_4",
+      "uuid": "5a7dbf69e92d2d91",
+      "m": 4
+    },
+    {
+      "case_id": "m_8",
+      "uuid": "9ce762309bb93af2",
+      "m": 8
+    },
+    {
+      "case_id": "m_16",
+      "uuid": "febb850f510201f4",
+      "m": 16
+    },
+    {
+      "case_id": "m_32",
+      "uuid": "c53be258057dfc3a",
+      "m": 32
+    },
+    {
+      "case_id": "m_64",
+      "uuid": "0e2967c02d80e791",
+      "m": 64
+    },
+    {
+      "case_id": "m_128",
+      "uuid": "b6a33d448e713c0f",
+      "m": 128
+    },
+    {
+      "case_id": "m_256",
+      "uuid": "cd72b17c3b7609ca",
+      "m": 256
+    },
+    {
+      "case_id": "m_512",
+      "uuid": "44d1a70bab2d8046",
+      "m": 512
+    },
+    {
+      "case_id": "m_1024",
+      "uuid": "f2a3b23599481378",
+      "m": 1024
+    },
+    {
+      "case_id": "m_2048",
+      "uuid": "2956e64464150cf3",
+      "m": 2048
+    },
+    {
+      "case_id": "m_4096",
+      "uuid": "2fcde804c691fe7d",
+      "m": 4096
+    }
+  ],
+  "trans_b": true
+}

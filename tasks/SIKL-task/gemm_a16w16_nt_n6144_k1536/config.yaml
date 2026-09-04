@@ -8,7 +8,7 @@ task_type: rewrite_by_flydsl
 source_file_path:
   - kernel.py
 target_kernel_functions:
-  - build_gemm_a16w16_nt_n6144_k6144_module
+  - build_gemm_a16w16_nt_n6144_k1536_module
 
 # ---------------------------------------------------------------------------
 # Rewrite pipeline inputs (consumed by agents/forge_rewrite/launch_agent.py).
@@ -27,7 +27,7 @@ rewrite:
   port_source: /sgl-workspace/aiter/aiter/tuned_gemm.py
   port_source_entry: gemm_a16w16
   port_target: kernel.py
-  logical_operator: gemm_a16w16_nt_n6144_k6144
+  logical_operator: gemm_a16w16_nt_n6144_k1536
   source_owner: aiter
   snr_threshold: 30.0
   max_port_attempts: 5
@@ -36,7 +36,7 @@ rewrite:
 # lives in workload.json and scripts/task_inputs.py as the single source of
 # truth; duplicating it here would let the two drift.
 workload:
-  definition: gemm_a16w16_nt_n6144_k6144
+  definition: gemm_a16w16_nt_n6144_k1536
   cases: 13
 
 compile_command:
@@ -66,7 +66,7 @@ prompt:
     production implementation the task measures as its baseline.
 
     The operator computes out = a @ b.T with bf16 in and out, a of shape
-    [m, 6144], b of shape [6144, 6144] stored transposed, and out of shape
+    [m, 1536], b of shape [6144, 1536] stored transposed, and out of shape
     [m, 6144]. One task scores all 13 workload cases, m from 1 to 4096 in
     powers of two, so a single tile or split-k choice will not do: the builder
     receives m and is called once per case, which is where the per-shape decision

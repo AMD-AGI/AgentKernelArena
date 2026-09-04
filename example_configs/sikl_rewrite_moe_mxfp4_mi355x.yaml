@@ -1,0 +1,24 @@
+# SIKL rewrite-by-flydsl task: an MXFP4 routed-expert MoE from the workload
+# schema.
+#
+# The forge_rewrite agent reimplements the operator in FlyDSL with KernelForge's
+# forge-rewrite-by-flydsl pipeline; Arena scores the port against the operator's
+# own production implementation (aiter.fused_moe.fused_moe) over all 13 of the
+# schema's workload cases. Post-processing fills the task's SIKL solution slot
+# from the scored result.
+#
+# Requires KernelForge installed so `kernel-agents` is on PATH, and the LLM
+# gateway environment (ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN /
+# ANTHROPIC_CUSTOM_HEADERS).
+agent:
+  template: forge_rewrite
+
+# The schema carries four MoE definitions; the others are mxfp4_moe_e257_i256,
+# mxfp4_moe_e33_i1024 and mxfp4_moe_e65_i1024. Select the whole suite with
+# `- SIKL-task`.
+tasks:
+  - SIKL-task/mxfp4_moe_e257_i128
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace
