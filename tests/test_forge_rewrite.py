@@ -31,7 +31,6 @@ AGENT_CONFIG = {
     "snr_threshold": 30.0,
     "max_port_attempts": 3,
     "supervisor_backend": "codex",
-    "rewrite_kb": False,
 }
 
 
@@ -223,7 +222,6 @@ def test_rewrite_command_forwards_the_task_contract(tmp_path):
 
     assert cmd[:2] == ["kernel-agents", "forge-rewrite-by-flydsl"]
     assert "--no-prepare-driver" in cmd
-    assert "--no-rewrite-kb" in cmd
     assert cmd[cmd.index("--source-kernel") + 1] == str(source_copy)
     assert cmd[cmd.index("--flydsl-kernel-name") + 1] == "kernel.py"
     assert cmd[cmd.index("--logical-op-name") + 1] == "glm52_mxfp4_moe_2stage"
@@ -241,7 +239,15 @@ def test_rewrite_command_forwards_the_task_contract(tmp_path):
     assert "--framework" not in cmd
 
 
-def test_rewrite_command_can_enable_the_recipe_store():
+def test_rewrite_command_leaves_the_recipe_store_to_the_environment():
+    """Arena must not decide whether the recipe store is on.
+
+    KernelForge resolves that from KNOWLEDGE_STORE_MODE and the KB_STORE
+    credentials, which is the only layer that knows what the environment has.
+    Passing either flag from here overrides that with a worse-informed answer,
+    so neither may appear -- including when a stale ``rewrite_kb`` key survives
+    in someone's agent config.
+    """
     config = _task_config()
     cmd = _build_rewrite_command(
         forge_bin="kernel-agents",
@@ -250,11 +256,11 @@ def test_rewrite_command_can_enable_the_recipe_store():
         driver_copy=Path("/tmp/ws/forge_driver.py"),
         result_json=Path("/tmp/ws/result.json"),
         rewrite=config["rewrite"],
-        agent_config={**AGENT_CONFIG, "rewrite_kb": True},
+        agent_config={**AGENT_CONFIG, "rewrite_kb": False},
         gpu_arch="gfx950",
         gpu_type="mi355x",
     )
-    assert "--rewrite-kb" in cmd
+    assert "--rewrite-kb" not in cmd
     assert "--no-rewrite-kb" not in cmd
 
 

@@ -212,7 +212,17 @@ def _build_rewrite_command(
     gpu_arch: str,
     gpu_type: str,
 ) -> list[str]:
-    """Build argv without shell parsing so task metadata is forwarded exactly."""
+    """Build argv without shell parsing so task metadata is forwarded exactly.
+
+    No ``--rewrite-kb`` / ``--no-rewrite-kb`` is passed, on purpose. Whether the
+    recipe store is reachable is a property of the environment rather than of
+    the task or the agent, and KernelForge already resolves it from
+    KNOWLEDGE_STORE_MODE and the KB_STORE credentials: unset means a local
+    store that needs no credentials, ``remote`` means a remote one and names the
+    missing variable if it is not configured. Forwarding a flag from Arena's own
+    config could only override that with a worse-informed answer -- as it did
+    while it defaulted the store off in environments that had it available.
+    """
     port_target = Path(str(rewrite["port_target"])).name
     source_entry = str(rewrite.get("port_source_entry") or "").strip()
     snr_threshold = rewrite.get("snr_threshold", agent_config.get("snr_threshold", 30.0))
@@ -254,7 +264,6 @@ def _build_rewrite_command(
         str(agent_config.get("permission_mode", "acceptEdits")),
         "--supervisor-backend",
         str(agent_config.get("supervisor_backend", "codex")),
-        "--rewrite-kb" if agent_config.get("rewrite_kb") else "--no-rewrite-kb",
     ]
     if source_entry:
         cmd.extend(["--source-entry", source_entry, "--target-functions", source_entry])

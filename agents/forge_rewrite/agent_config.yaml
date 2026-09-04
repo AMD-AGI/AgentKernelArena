@@ -17,12 +17,7 @@ max_port_attempts: 3
 # OPTIMIZE supervisor backend on stall: codex or claude.
 supervisor_backend: codex
 
-# Read and publish rewrite recipes, so a port carries over what earlier runs on
-# the same operator already learned. On matches KernelForge's own default.
-#
-# KernelForge pins this KB to the KB_STORE backend (cli.py,
-# forge-rewrite-by-flydsl), so it requires KB_STORE_URL and KB_STORE_TOKEN and
-# validates them during preflight: an environment that has only GBRAIN
-# credentials must set this to false, which keeps the experience store local and
-# stops the remote credentials from being validated at all.
-rewrite_kb: true
+# The rewrite recipe store is deliberately absent from this file: whether it is
+# reachable is a property of the environment, not of how this agent runs, so
+# KernelForge and KNOWLEDGE_STORE_MODE decide it between them and Arena passes
+# no flag either way. See _build_rewrite_command.
