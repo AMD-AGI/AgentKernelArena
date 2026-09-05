@@ -1,0 +1,31 @@
+# quality_loop is a repository-level audit workflow. It defaults to auditing all
+# tasks that are runnable on the selected target GPU.
+tasks:
+  - all
+target_gpu_model: MI300
+
+quality_loop:
+  backend:
+    name: codex
+    model: null                 # null uses the Codex CLI default/config
+    effort: xhigh
+    timeout_seconds: 3600
+  reviewer:
+    name: codex                 # independent, read-only Codex session
+    model: null
+    effort: xhigh
+    timeout_seconds: 1800
+
+  max_repair_attempts: 1
+  optimization_iterations: 1  # enforced; any other value is rejected
+  easy_speedup_threshold: 5.0
+  easy_confirmation_runs: 3
+  case_enhancement: true
+
+  artifact_root: quality_loop_runs
+  worktree_root: .quality_loop_worktrees
+
+  github:
+    publish: true
+    branch_prefix: quality-loop
+    base_branch: null           # null resolves the repository default branch

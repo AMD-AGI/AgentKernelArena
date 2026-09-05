@@ -8,6 +8,8 @@ PINNED_GFX950_IMAGE="lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705"
 PINNED_GFX950_IMMUTABLE_IMAGE="lmsysorg/sglang-rocm@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78"
 export PINNED_GFX950_IMMUTABLE_IMAGE
 OLD_GFX950_IMAGE="lmsysorg/sglang:v0.5.12-rocm720-mi35x"
+REAL_PYTHON3="$(command -v python3)"
+export REAL_PYTHON3
 
 fail() {
     echo "FAIL: $*" >&2
@@ -58,6 +60,45 @@ docker() {
         fi
         return 0
     fi
+    if [[ "${1:-}" == "run" && "${2:-}" == "-d" ]]; then
+        local index mount="" name="" socket_path=""
+        local -a docker_argv=("$@")
+        for ((index = 0; index < ${#docker_argv[@]}; index++)); do
+            case "${docker_argv[$index]}" in
+                --name) name="${docker_argv[$((index + 1))]}" ;;
+                -v)
+                    if [[ "${docker_argv[$((index + 1))]}" == *":/run/aka-eval-tools:rw" ]]; then
+                        mount="${docker_argv[$((index + 1))]}"
+                    fi
+                    ;;
+                --socket) socket_path="${docker_argv[$((index + 1))]}" ;;
+            esac
+        done
+        [[ -n "$mount" && -n "$socket_path" ]] \
+            || fail "fake sidecar launch did not receive a socket mount/path"
+        local socket_host_dir="${mount%:/run/aka-eval-tools:rw}"
+        "$REAL_PYTHON3" -c \
+            'import socket, sys; sock = socket.socket(socket.AF_UNIX); sock.bind(sys.argv[1]); sock.close()' \
+            "$socket_host_dir/${socket_path##*/}"
+        [[ -z "${FAKE_DOCKER_EVENTS:-}" ]] \
+            || printf 'sidecar-start:%s\n' "$name" >> "$FAKE_DOCKER_EVENTS"
+        printf 'fake-sidecar-id\n'
+        return 0
+    fi
+    if [[ "${1:-}" == "stop" ]]; then
+        [[ -z "${FAKE_DOCKER_EVENTS:-}" ]] \
+            || printf 'sidecar-stop:%s\n' "${!#}" >> "$FAKE_DOCKER_EVENTS"
+        return 0
+    fi
+    local value
+    for value in "$@"; do
+        if [[ "$value" == "agents.quality_loop" ]]; then
+            [[ -z "${FAKE_DOCKER_EVENTS:-}" ]] \
+                || printf 'quality-loop-container\n' >> "$FAKE_DOCKER_EVENTS"
+            [[ "${FAKE_SCORING_DOCKER_FAILURE:-0}" == "0" ]] || return 42
+            break
+        fi
+    done
     printf '%s\n' "$@"
 }
 export -f docker
@@ -97,7 +138,11 @@ assert_cache_args_absent() {
 
 TEST_HOME="$(mktemp -d)"
 PATH_TEST_PARENT="$ROOT/.eval-tool-runner-test-$$"
-trap 'rm -rf "$TEST_HOME" "$PATH_TEST_PARENT"' EXIT
+QUALITY_TEST_RUN_ID="runner-test-$$-${RANDOM:-0}"
+QUALITY_ARTIFACT_REL="quality_loop_runs/$QUALITY_TEST_RUN_ID"
+QUALITY_WORKTREE_REL=".quality_loop_worktrees/$QUALITY_TEST_RUN_ID"
+QUALITY_EVAL_ARTIFACT_DIR="$ROOT/.eval-tool-artifacts/quality-loop-$QUALITY_TEST_RUN_ID"
+trap 'rm -rf -- "$TEST_HOME" "$PATH_TEST_PARENT" "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL" "$QUALITY_EVAL_ARTIFACT_DIR"' EXIT
 UNRELATED_GEAK_WORKFLOW_DIR="$TEST_HOME/unrelated-geak-workflow"
 GEAK_SDK_PYTHONPATH="PYTHONPATH=/workspace/.aka-pyuserbase/geak-sdk"
 mkdir -p "$UNRELATED_GEAK_WORKFLOW_DIR"
@@ -240,6 +285,94 @@ assert_not_has "ANTHROPIC_BASE_URL" "${args[@]}"
 assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
 assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
+
+# quality_loop provisions only isolated Codex state, never GitHub CLI state, and
+# mounts the main checkout read-only while over-mounting only this run's state rw.
+QUALITY_HOME="$TEST_HOME/quality-home"
+QUALITY_PREFIX="$TEST_HOME/quality-node"
+QUALITY_BIN="$TEST_HOME/quality-bin"
+QUALITY_CONFIG="$TEST_HOME/quality-loop.yaml"
+QUALITY_DOCKER_EVENTS="$TEST_HOME/quality-docker-events"
+mkdir -p "$QUALITY_HOME/.codex" "$QUALITY_HOME/.config/gh" "$QUALITY_PREFIX/bin" "$QUALITY_BIN"
+touch "$QUALITY_PREFIX/bin/node" "$QUALITY_PREFIX/bin/codex"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$QUALITY_BIN/gh"
+chmod +x "$QUALITY_BIN/gh"
+printf '#!/usr/bin/env bash\ncase "$*" in *"agents.quality_loop.host start"*) echo "%s";; *"agents.quality_loop.host paths"*) printf "%%s\\n%%s\\n" "%s" "%s";; *"agents.quality_loop.host finalize"*) [[ -z "${FAKE_DOCKER_EVENTS:-}" ]] || printf "host-finalize\\n" >> "$FAKE_DOCKER_EVENTS"; echo test-pr;; *) exec "$REAL_PYTHON3" "$@";; esac\n' \
+    "$QUALITY_TEST_RUN_ID" "$QUALITY_ARTIFACT_REL" "$QUALITY_WORKTREE_REL" \
+    > "$QUALITY_BIN/python3"
+chmod +x "$QUALITY_BIN/python3"
+printf 'tasks:\n  - hip2hip/gpumode/GELU\ntarget_gpu_model: MI355X\nquality_loop: {}\nevaluation_tools:\n  enabled:\n    - gpu_asan\n  policy: advisory\n' > "$QUALITY_CONFIG"
+mkdir -p "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL"
+
+mapfile -t args < <(
+    env \
+        HOME="$QUALITY_HOME" \
+        PATH="$QUALITY_BIN:$PATH" \
+        AKA_NODE_PREFIX="$QUALITY_PREFIX" \
+        FAKE_DOCKER_EVENTS="$QUALITY_DOCKER_EVENTS" \
+        bash "$RUNNER" quality-loop --config "$QUALITY_CONFIG" 2>/dev/null
+)
+assert_has "$QUALITY_PREFIX:/opt/node:ro" "${args[@]}"
+assert_has "$QUALITY_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+assert_has "$ROOT:/workspace:ro" "${args[@]}"
+assert_has "$ROOT/$QUALITY_ARTIFACT_REL:/workspace/$QUALITY_ARTIFACT_REL" "${args[@]}"
+assert_has "$ROOT/$QUALITY_WORKTREE_REL:/workspace/$QUALITY_WORKTREE_REL" "${args[@]}"
+assert_not_has "$QUALITY_BIN/gh:$QUALITY_BIN/gh:ro" "${args[@]}"
+assert_not_has "$QUALITY_HOME/.config/gh:$QUALITY_HOME/.config/gh:ro" "${args[@]}"
+assert_has "python3" "${args[@]}"
+assert_has "agents.quality_loop" "${args[@]}"
+assert_has "--resume" "${args[@]}"
+assert_has "$QUALITY_TEST_RUN_ID" "${args[@]}"
+assert_has "--defer-github" "${args[@]}"
+assert_has "--skip-preflight" "${args[@]}"
+assert_has "$ROOT/.eval-tool-artifacts:/workspace/.eval-tool-artifacts:ro" "${args[@]}"
+assert_has "$QUALITY_EVAL_ARTIFACT_DIR:/workspace/.eval-tool-artifacts/quality-loop-$QUALITY_TEST_RUN_ID" "${args[@]}"
+assert_has "AKA_EVAL_TOOL_SOCKET_DIR=/run/aka-eval-tools" "${args[@]}"
+assert_has "AKA_EVAL_TOOLS_SELECTED=gpu_asan" "${args[@]}"
+assert_has "AKA_EVAL_TOOL_RUNTIME_REF_GPU_ASAN=sha256:pinned-image-id" "${args[@]}"
+quality_socket_mount=""
+for value in "${args[@]}"; do
+    if [[ "$value" == *":/run/aka-eval-tools:ro" ]]; then
+        quality_socket_mount="$value"
+        break
+    fi
+done
+[[ -n "$quality_socket_mount" ]] \
+    || fail "quality_loop container did not receive the read-only evaluation-tool socket mount"
+mapfile -t quality_events < "$QUALITY_DOCKER_EVENTS"
+[[ "${quality_events[0]}" == sidecar-start:*gpu-asan* ]] \
+    || fail "quality_loop did not start its configured evaluation-tool sidecar"
+[[ "${quality_events[1]}" == "quality-loop-container" ]] \
+    || fail "quality_loop container ran before its evaluation-tool sidecar"
+[[ "${quality_events[2]}" == sidecar-stop:*gpu-asan* ]] \
+    || fail "quality_loop did not stop its evaluation-tool sidecar"
+[[ "${quality_events[3]}" == "host-finalize" ]] \
+    || fail "quality_loop finalized before stopping its evaluation-tool sidecar"
+
+# A failed quality-loop container still triggers sidecar cleanup and does not
+# finalize/publish the incomplete run.
+rm -f -- "$QUALITY_DOCKER_EVENTS"
+rm -rf -- "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL" "$QUALITY_EVAL_ARTIFACT_DIR"
+mkdir -p "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL"
+if env \
+    HOME="$QUALITY_HOME" \
+    PATH="$QUALITY_BIN:$PATH" \
+    AKA_NODE_PREFIX="$QUALITY_PREFIX" \
+    FAKE_DOCKER_EVENTS="$QUALITY_DOCKER_EVENTS" \
+    FAKE_SCORING_DOCKER_FAILURE=1 \
+    bash "$RUNNER" quality-loop --config "$QUALITY_CONFIG" >/dev/null 2>&1; then
+    fail "quality_loop unexpectedly succeeded after its container failed"
+fi
+mapfile -t quality_failure_events < "$QUALITY_DOCKER_EVENTS"
+[[ "${quality_failure_events[0]}" == sidecar-start:*gpu-asan* ]] \
+    || fail "failed quality_loop did not start its configured evaluation-tool sidecar"
+[[ "${quality_failure_events[1]}" == "quality-loop-container" ]] \
+    || fail "failed quality_loop did not enter its scoring container"
+[[ "${quality_failure_events[2]}" == sidecar-stop:*gpu-asan* ]] \
+    || fail "failed quality_loop leaked its evaluation-tool sidecar"
+[[ "${#quality_failure_events[@]}" -eq 3 ]] \
+    || fail "failed quality_loop unexpectedly finalized/published its run"
+rm -rf -- "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL" "$QUALITY_EVAL_ARTIFACT_DIR"
 
 # A Codex-only config likewise receives neither Claude credentials nor GEAK's
 # dependency path/mount, even when both are configured on the host.
