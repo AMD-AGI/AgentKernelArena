@@ -1,0 +1,35 @@
+source_file_path:
+- src/aiter_meta/csrc/cpp_itfs/pa/pa_ragged.cpp.jinja
+- src/aiter_meta/csrc/cpp_itfs/pa/pa_ragged.cuh
+- src/aiter_meta/csrc/cpp_itfs/pa/pa_kernels.cuh
+- src/aiter_meta/csrc/cpp_itfs/pa/pa_common.cuh
+- src/aiter_meta/csrc/cpp_itfs/pa/pa_ragged.py
+target_kernel_functions:
+- paged_attention_ragged
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+roofline_probe_command:
+- env GEAK_PERF_LARGE=1 python3 scripts/task_runner.py performance
+task_type: hip2hip
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: Optimize the paged_attention_ragged AITER kernel. The kernel is a
+    jinja-templated HIP source under src/aiter_meta/csrc/cpp_itfs/ that compile_template_op
+    renders + builds on first call. CK headers are bundled. Tests generate inputs
+    from test_cases.json on the fly.
+  cheatsheet: null
+extracted_from:
+  engine: sglang
+  kernel_id: aiter.paged_attention_ragged
+  aiter_module: pa_ragged
+  fc_name: paged_attention_ragged
+  prebuilt_so: null
+  ck_dir_required: true
+  flavor: cpp_itfs
+  source: aiter_src_only:cpp_itfs
+  test_cases: 8
