@@ -280,6 +280,22 @@ detect_node_cli_prefix() {
     return 1
 }
 
+# Return the installation root for Codex's native standalone distribution.
+# The native installer places a launcher in ~/.local/bin and versioned binaries
+# below ~/.codex/packages/standalone. Unlike the npm installation it does not
+# require a host Node.js prefix.
+detect_standalone_codex_root() {
+    local cli_bin resolved root
+    cli_bin="$(command -v codex || true)"
+    [[ -n "$cli_bin" ]] || return 1
+
+    resolved="$(readlink -f "$cli_bin" 2>/dev/null || true)"
+    root="$HOST_HOME/.codex/packages/standalone"
+    [[ -n "$resolved" && "$resolved" == "$root/"* ]] || return 1
+    [[ -x "$resolved" ]] || return 1
+    printf '%s\n' "$root"
+}
+
 docker_args=()
 declare -A _MOUNTED_TARGETS=()
 
@@ -426,17 +442,31 @@ mount_agent() {
     local isolate="${AGENT_HOME_ISOLATION:-0}"
     case "$agent" in
         codex)
-            local node_prefix
-            node_prefix="$(detect_node_cli_prefix codex || true)"
-            if [[ -z "$node_prefix" ]]; then
-                [[ "$strict" == "1" ]] && die "npm-installed Codex not found on host PATH or under AKA_NODE_PREFIX"
-                warn "npm-installed Codex not found; skipping Codex agent mounts"
-                return 0
+            local node_prefix standalone_root
+            standalone_root="$(detect_standalone_codex_root || true)"
+            if [[ -n "$standalone_root" ]]; then
+                need_path "$HOST_HOME/.local/bin/codex" "native Codex launcher" "$strict" || return 0
+                need_path "$standalone_root" "native Codex installation" "$strict" || return 0
+                add_mount "$HOST_HOME/.local/bin" "$HOST_HOME/.local/bin" ro
+                # Isolated workers copy mutable auth/config into their temporary
+                # HOME. Keep the large native package tree mounted at its original
+                # absolute path so the launcher symlink remains valid without
+                # copying the installation for every worker.
+                if [[ "$isolate" == "1" ]]; then
+                    add_mount "$standalone_root" "$standalone_root" ro
+                fi
+            else
+                node_prefix="$(detect_node_cli_prefix codex || true)"
+                if [[ -z "$node_prefix" ]]; then
+                    [[ "$strict" == "1" ]] && die "Codex not found as a native standalone or npm installation on host PATH"
+                    warn "Codex not found as a native standalone or npm installation; skipping Codex agent mounts"
+                    return 0
+                fi
+                need_path "$node_prefix/bin/node" "host node" "$strict" || return 0
+                need_path "$node_prefix/bin/codex" "host codex" "$strict" || return 0
+                add_mount "$node_prefix" /opt/node ro
             fi
-            need_path "$node_prefix/bin/node" "host node" "$strict" || return 0
-            need_path "$node_prefix/bin/codex" "host codex" "$strict" || return 0
             need_path "$HOST_HOME/.codex" "Codex auth/config directory" "$strict" || return 0
-            add_mount "$node_prefix" /opt/node ro
             if [[ "$isolate" == "1" ]]; then
                 add_mount "$HOST_HOME/.codex" "$AGENT_STATE_MOUNT_ROOT/.codex" ro
             else
@@ -1007,7 +1037,12 @@ build_docker_args() {
 
     add_device_if_present /dev/kfd
     add_device_if_present /dev/dri
-    add_device_if_present /dev/mem
+    # Spur authorizes Docker device passthrough against the active allocation
+    # and rejects /dev/mem. It is not required by AgentKernelArena's kernel
+    # tasks, so the Slurm wrapper disables this optional mount explicitly.
+    if [[ "${AKA_SKIP_DEV_MEM:-0}" != "1" ]]; then
+        add_device_if_present /dev/mem
+    fi
 
     if [[ -n "$QUALITY_LOOP_ARTIFACT_REL" || -n "$QUALITY_LOOP_WORKTREE_REL" ]]; then
         [[ -n "$QUALITY_LOOP_ARTIFACT_REL" && -n "$QUALITY_LOOP_WORKTREE_REL" ]] \
@@ -1371,7 +1406,18 @@ container_prepare_worker_home() {
     mkdir -p "$HOME"
 
     if [[ -d "$state_root/.codex" && ! -e "$HOME/.codex" ]]; then
-        cp -a "$state_root/.codex" "$HOME/.codex"
+        mkdir -p "$HOME/.codex"
+        # Native Codex packages are immutable and can be hundreds of MB. The
+        # standalone package tree is mounted separately at its original path;
+        # copy only mutable auth/config/session state into the worker HOME.
+        (
+            shopt -s dotglob nullglob
+            local entry
+            for entry in "$state_root/.codex"/*; do
+                [[ "$(basename "$entry")" == "packages" ]] && continue
+                cp -a "$entry" "$HOME/.codex/"
+            done
+        )
         chmod -R u+rwX "$HOME/.codex" 2>/dev/null || true
     fi
 
@@ -1698,8 +1744,9 @@ case "${1:-}" in
         ;;
     smoke)
         select_runtime_for_host
-        REQUIRED_AGENTS="${AKA_AGENTS:-codex claude_code cursor}"
-        REQUIRED_AGENTS="${REQUIRED_AGENTS//,/ }"
+        # Runtime smoke checks need no agent credentials. Keeping the mount set
+        # empty also makes cluster smoke jobs safe to run before auth is wired.
+        REQUIRED_AGENTS=""
         AGENTS_STRICT=0
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_smoke
         ;;

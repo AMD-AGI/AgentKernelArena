@@ -286,6 +286,42 @@ assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
 assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
 
+# The native Codex installer uses a ~/.local/bin symlink into the standalone
+# package tree and does not provide a Node.js prefix. Isolated Slurm workers
+# mount the immutable package tree in place and copy auth/config state from the
+# read-only agent-state mount into their temporary HOME.
+NATIVE_CODEX_HOME="$TEST_HOME/native-codex-home"
+NATIVE_CODEX_RELEASE="$NATIVE_CODEX_HOME/.codex/packages/standalone/releases/0.147.0/bin"
+NATIVE_CODEX_CONFIG="$TEST_HOME/native-codex-config.yaml"
+mkdir -p "$NATIVE_CODEX_HOME/.local/bin" "$NATIVE_CODEX_RELEASE"
+touch "$NATIVE_CODEX_RELEASE/codex"
+chmod +x "$NATIVE_CODEX_RELEASE/codex"
+ln -s "$NATIVE_CODEX_RELEASE/codex" "$NATIVE_CODEX_HOME/.local/bin/codex"
+printf 'agent:\n  template: codex\n' > "$NATIVE_CODEX_CONFIG"
+
+mapfile -t args < <(run_check_args \
+    "$NATIVE_CODEX_HOME" \
+    "$NATIVE_CODEX_CONFIG" \
+    PATH="$NATIVE_CODEX_HOME/.local/bin:$PATH" \
+    AGENT_HOME_ISOLATION=1 \
+    AKA_CONTAINER_HOME=/tmp/native-codex-home)
+assert_has "$NATIVE_CODEX_HOME/.local/bin:$NATIVE_CODEX_HOME/.local/bin:ro" "${args[@]}"
+assert_has "$NATIVE_CODEX_HOME/.codex/packages/standalone:$NATIVE_CODEX_HOME/.codex/packages/standalone:ro" "${args[@]}"
+assert_has "$NATIVE_CODEX_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_ISOLATED_HOME=1" "${args[@]}"
+assert_not_has "/opt/node" "${args[@]}"
+
+NATIVE_CODEX_STATE="$TEST_HOME/native-codex-state"
+NATIVE_CODEX_WORKER_HOME="$TEST_HOME/native-codex-worker-home"
+mkdir -p "$NATIVE_CODEX_STATE/.codex/packages/standalone" "$NATIVE_CODEX_STATE/.codex/sessions"
+touch "$NATIVE_CODEX_STATE/.codex/auth.json" "$NATIVE_CODEX_STATE/.codex/packages/standalone/large-runtime"
+HOME="$NATIVE_CODEX_WORKER_HOME" \
+    AKA_AGENT_STATE_MOUNT_ROOT="$NATIVE_CODEX_STATE" \
+    bash "$RUNNER" _container_prepare_worker_home
+[[ -f "$NATIVE_CODEX_WORKER_HOME/.codex/auth.json" ]] || fail "native Codex auth state was not copied"
+[[ -d "$NATIVE_CODEX_WORKER_HOME/.codex/sessions" ]] || fail "native Codex session state was not copied"
+[[ ! -e "$NATIVE_CODEX_WORKER_HOME/.codex/packages" ]] || fail "native Codex packages were copied into worker HOME"
+
 # quality_loop provisions only isolated Codex state, never GitHub CLI state, and
 # mounts the main checkout read-only while over-mounting only this run's state rw.
 QUALITY_HOME="$TEST_HOME/quality-home"
