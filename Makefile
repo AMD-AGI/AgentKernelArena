@@ -6,7 +6,7 @@
 
 SHELL := /bin/bash
 
-.PHONY: help docker-shell docker-check-agents docker-smoke docker-run docker-parallel-run docker-setup-flydsl docker-setup-geak \
+.PHONY: help docker-shell docker-check-agents docker-smoke docker-run docker-parallel-run docker-quality-loop docker-setup-flydsl docker-setup-geak \
         slurm-shell slurm-smoke slurm-parallel-smoke slurm-check-agents slurm-run slurm-parallel-run slurm-submit slurm-parallel-submit \
         check-docker-runner check-slurm-runner check-evaluator check-held-out check-visualization \
         visualization-build visualization-serve visualization-run \
@@ -27,6 +27,8 @@ help:
 	@echo "                         Default CONFIG is the MI300/MI300X Claude quickstart"
 	@echo "                         On other GPUs, pass a matching CONFIG explicitly"
 	@echo "                         Images: gfx942->mi30x, gfx950->mi35x; override with AKA_DOCKER_IMAGE=..."
+	@echo "make docker-quality-loop CONFIG=example_configs/quality_loop_mi300.yaml - Audit and harden config-selected tasks, then open at most one draft PR"
+	@echo "                         Default quality-loop CONFIG is agents/quality_loop/agent_config.yaml"
 	@echo "make docker-setup-flydsl - Install FlyDSL when absent (for flydsl2flydsl, torch2flydsl, and triton2flydsl)"
 	@echo "make docker-setup-geak   - Install the Claude Agent SDK when absent (for the geak_v4 agent)"
 	@echo "make check-docker-runner - Check Docker runner syntax and runtime-specific arguments"
@@ -57,6 +59,7 @@ DOCKER_RUNNER := src/scripts/docker_benchmark.sh
 SLURM_RUNNER := src/scripts/slurm_benchmark.sh
 CONFIG ?= example_configs/quickstart_claude_mi300.yaml
 RUN_ARGS ?=
+QUALITY_LOOP_ARGS ?=
 AGENTS ?=
 WORKSPACES ?= $(WORKSPACE)
 TASKS ?= $(TASK)
@@ -116,6 +119,10 @@ docker-run:
 
 docker-parallel-run:
 	@GPU_IDS="$(GPU_IDS)" $(DOCKER_RUNNER) parallel-run --config_name $(CONFIG) $(RUN_ARGS)
+
+docker-quality-loop: CONFIG = agents/quality_loop/agent_config.yaml
+docker-quality-loop:
+	@$(DOCKER_RUNNER) quality-loop --config $(CONFIG) $(QUALITY_LOOP_ARGS)
 
 slurm-shell:
 	@$(SLURM_ENV) $(SLURM_RUNNER) shell

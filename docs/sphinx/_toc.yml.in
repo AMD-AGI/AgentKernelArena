@@ -37,6 +37,8 @@ subtrees:
       title: Add a task
     - file: how-to/task-validator
       title: Validate tasks
+    - file: how-to/quality-loop
+      title: Audit and harden tasks
     - file: how-to/held-out-evaluation
       title: Evaluate on held-out shapes
     - file: how-to/visualization
