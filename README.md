@@ -15,6 +15,7 @@ The platform provides:
 - **Isolated and reproducible execution**: Give every task its own timestamped workspace and preserve logs, modified sources, and structured results.
 - **Centralized evaluation**: Measure compilation, correctness, and GPU performance independently of the optimizing agent.
 - **Multi-GPU scheduling**: Start one isolated Docker worker per GPU and dynamically claim tasks from a shared queue.
+- **Slurm/Spur login-node workflow**: Allocate one or eight MI355X GPUs, then launch the same Docker runtime on the assigned compute node.
 - **Resumable experiments**: Resume a run without repeating tasks that already produced a completion report.
 - **Held-out evaluation**: Test optimized kernels on unseen shapes and measure the generalization gap.
 - **Task validation and visualization**: Validate task quality with a dedicated agent and compare local run reports in a dashboard.
@@ -261,6 +262,24 @@ The Docker parallel path is verified for `cursor`, `claude_code`, `codex`, and
 `task_validator`. Specialized GEAK/mini-swe integrations need their own
 dependencies and GPU-ID configuration before they are used with isolated
 workers.
+
+### Run From a Slurm/Spur Login Node
+
+When the login node has no GPU or Docker daemon, allocate the compute node
+before entering the existing Docker workflow:
+
+```bash
+# One-GPU development smoke/run
+make slurm-smoke
+make slurm-run CONFIG=config_codex_mi355x_spur.yaml
+
+# One node, eight GPUs, one isolated Docker worker per GPU
+make slurm-parallel-smoke
+make slurm-parallel-submit CONFIG=example_configs/benchmark_cursor_mi355x.yaml
+```
+
+See [Run on Slurm/Spur GPU nodes](docs/how-to/slurm-run.md) for synchronous,
+batch, interactive, resource-override, authentication, and logging details.
 
 ### Resume a Run
 

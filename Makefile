@@ -7,7 +7,8 @@
 SHELL := /bin/bash
 
 .PHONY: help docker-shell docker-check-agents docker-smoke docker-run docker-parallel-run docker-setup-flydsl docker-setup-geak \
-        check-docker-runner check-evaluator check-held-out check-visualization \
+        slurm-shell slurm-smoke slurm-parallel-smoke slurm-check-agents slurm-run slurm-parallel-run slurm-submit slurm-parallel-submit \
+        check-docker-runner check-slurm-runner check-evaluator check-held-out check-visualization \
         visualization-build visualization-serve visualization-run \
         sync-perf-helpers check-perf-helpers materialize-perf-workspace \
         materialize-perf-task cleanup-works install-cursor-agent vllm
@@ -29,6 +30,16 @@ help:
 	@echo "make docker-setup-flydsl - Install FlyDSL when absent (for flydsl2flydsl, torch2flydsl, and triton2flydsl)"
 	@echo "make docker-setup-geak   - Install the Claude Agent SDK when absent (for the geak_v4 agent)"
 	@echo "make check-docker-runner - Check Docker runner syntax and runtime-specific arguments"
+	@echo "make check-slurm-runner - Check Slurm/Spur resource and Docker handoff arguments"
+	@echo ""
+	@echo "Slurm/Spur workflow (Docker runs on the allocated GPU node):"
+	@echo "make slurm-shell         - Allocate one GPU and enter the runtime container"
+	@echo "make slurm-smoke         - Allocate one GPU and verify the Docker/ROCm runtime"
+	@echo "make slurm-parallel-smoke - Allocate 8 GPUs and verify one isolated container per GPU"
+	@echo "make slurm-check-agents CONFIG=config_codex_mi355x_spur.yaml - Check configured CLI/auth"
+	@echo "make slurm-run CONFIG=config_codex_mi355x_spur.yaml - Run synchronously on one GPU"
+	@echo "make slurm-submit CONFIG=config_codex_mi355x_spur.yaml - Submit a one-GPU batch run"
+	@echo "make slurm-parallel-submit CONFIG=... - Submit an 8-GPU, one-worker-per-GPU run"
 	@echo "make check-evaluator     - Run centralized evaluator unit tests"
 	@echo "make check-held-out      - Run held-out module unit tests"
 	@echo "make visualization-run   - Build and serve the local comparison dashboard"
@@ -43,6 +54,7 @@ help:
 	@echo "make install-cursor-agent - Install the Cursor Agent CLI on the host"
 
 DOCKER_RUNNER := src/scripts/docker_benchmark.sh
+SLURM_RUNNER := src/scripts/slurm_benchmark.sh
 CONFIG ?= example_configs/quickstart_claude_mi300.yaml
 RUN_ARGS ?=
 AGENTS ?=
@@ -54,6 +66,41 @@ VISUALIZATION_ARGS ?= --include-workspace-runs
 VISUALIZATION_HOST ?= 127.0.0.1
 VISUALIZATION_PORT ?= 8080
 MATERIALIZE_FORCE_ARG := $(if $(filter 1 true yes,$(FORCE)),--force,)
+
+SLURM_PARTITION ?= amd-spur
+SLURM_GPU_TYPE ?= mi355x
+SLURM_GPU_ARCH ?= gfx950
+SLURM_GPU_COUNT ?= 1
+SLURM_PARALLEL_GPU_COUNT ?= 8
+SLURM_CPUS ?= 16
+SLURM_MEM ?= 64G
+SLURM_TIME ?= 04:00:00
+SLURM_PARALLEL_CPUS ?= 64
+SLURM_PARALLEL_MEM ?= 512G
+SLURM_PARALLEL_TIME ?= 1-00:00:00
+SLURM_ACCOUNT ?=
+SLURM_QOS ?=
+SLURM_NODELIST ?=
+SLURM_EXCLUSIVE ?= 0
+SLURM_LOG_DIR ?= logs/slurm
+
+SLURM_ENV = \
+	AKA_SLURM_PARTITION="$(SLURM_PARTITION)" \
+	AKA_SLURM_GPU_TYPE="$(SLURM_GPU_TYPE)" \
+	AKA_SLURM_GPU_ARCH="$(SLURM_GPU_ARCH)" \
+	AKA_SLURM_GPU_COUNT="$(SLURM_GPU_COUNT)" \
+	AKA_SLURM_PARALLEL_GPU_COUNT="$(SLURM_PARALLEL_GPU_COUNT)" \
+	AKA_SLURM_CPUS="$(SLURM_CPUS)" \
+	AKA_SLURM_MEM="$(SLURM_MEM)" \
+	AKA_SLURM_TIME="$(SLURM_TIME)" \
+	AKA_SLURM_PARALLEL_CPUS="$(SLURM_PARALLEL_CPUS)" \
+	AKA_SLURM_PARALLEL_MEM="$(SLURM_PARALLEL_MEM)" \
+	AKA_SLURM_PARALLEL_TIME="$(SLURM_PARALLEL_TIME)" \
+	AKA_SLURM_ACCOUNT="$(SLURM_ACCOUNT)" \
+	AKA_SLURM_QOS="$(SLURM_QOS)" \
+	AKA_SLURM_NODELIST="$(SLURM_NODELIST)" \
+	AKA_SLURM_EXCLUSIVE="$(SLURM_EXCLUSIVE)" \
+	AKA_SLURM_LOG_DIR="$(SLURM_LOG_DIR)"
 
 docker-shell:
 	@$(DOCKER_RUNNER) shell
@@ -70,6 +117,30 @@ docker-run:
 docker-parallel-run:
 	@GPU_IDS="$(GPU_IDS)" $(DOCKER_RUNNER) parallel-run --config_name $(CONFIG) $(RUN_ARGS)
 
+slurm-shell:
+	@$(SLURM_ENV) $(SLURM_RUNNER) shell
+
+slurm-smoke:
+	@$(SLURM_ENV) $(SLURM_RUNNER) smoke
+
+slurm-parallel-smoke:
+	@$(SLURM_ENV) $(SLURM_RUNNER) parallel-smoke
+
+slurm-check-agents:
+	@$(SLURM_ENV) AKA_AGENTS="$(AGENTS)" $(SLURM_RUNNER) check-agents --config_name $(CONFIG)
+
+slurm-run:
+	@$(SLURM_ENV) $(SLURM_RUNNER) run --config_name $(CONFIG) $(RUN_ARGS)
+
+slurm-parallel-run:
+	@$(SLURM_ENV) $(SLURM_RUNNER) parallel-run --config_name $(CONFIG) $(RUN_ARGS)
+
+slurm-submit:
+	@$(SLURM_ENV) $(SLURM_RUNNER) submit --config_name $(CONFIG) $(RUN_ARGS)
+
+slurm-parallel-submit:
+	@$(SLURM_ENV) $(SLURM_RUNNER) parallel-submit --config_name $(CONFIG) $(RUN_ARGS)
+
 # Install FlyDSL into the container's persistent pip user-base when the selected
 # image does not ship it. Needed by all three FlyDSL task types.
 docker-setup-flydsl:
@@ -82,6 +153,9 @@ docker-setup-geak:
 
 check-docker-runner:
 	@bash tests/test_docker_benchmark.sh
+
+check-slurm-runner:
+	@bash tests/test_slurm_benchmark.sh
 
 check-evaluator:
 	@python3 -m unittest discover -s tests -p 'test_evaluator_*.py'
