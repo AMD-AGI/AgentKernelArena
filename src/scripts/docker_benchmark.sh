@@ -1655,7 +1655,13 @@ case "${1:-}" in
             quality_loop_container_args+=(--resume "$quality_loop_run_id")
         fi
         quality_loop_container_args+=(--defer-github --skip-preflight)
+        trap stop_eval_tool_sidecars EXIT
+        start_eval_tool_sidecars \
+            "$quality_loop_config" \
+            "quality-loop-${quality_loop_run_id}"
         docker_exec 0 python3 -m agents.quality_loop "${quality_loop_container_args[@]}"
+        stop_eval_tool_sidecars
+        trap - EXIT
         python3 -m agents.quality_loop.host finalize "$@" --run-id "$quality_loop_run_id"
         ;;
     preflight)
