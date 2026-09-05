@@ -57,6 +57,45 @@ def test_materializes_vllm_adapter_and_sibling_helper(tmp_path):
     assert (scripts / AKA_HELPER_FILE_NAME).read_text() == canonical_aka_helper(ROOT)
 
 
+def test_file_loaded_vllm_runner_finds_sibling_helper_from_workspace_root(tmp_path):
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    runner = scripts / "task_runner.py"
+    runner.write_text(f"{MARK_START}\n{VLLM_HELPER_STUB_BLOCK}{MARK_END}\n")
+    (tmp_path / "config.yaml").write_text(
+        "performance_command:\n  - python3 scripts/task_runner.py performance\n"
+    )
+    materialize_perf_helpers_in_workspace(tmp_path)
+
+    # Match forge's invocation shape: forge_driver.py runs at the workspace
+    # root and imports scripts/task_runner.py with spec_from_file_location().
+    probe = """
+import importlib.util
+from pathlib import Path
+
+runner = Path("scripts/task_runner.py").resolve()
+scripts = str(runner.parent)
+assert scripts not in __import__("sys").path
+spec = importlib.util.spec_from_file_location("_forge_task_runner", runner)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+helper = importlib.util.find_spec("_aka_benchmark")
+assert helper is not None
+print(Path(helper.origin).resolve())
+"""
+    result = subprocess.run(
+        [sys.executable, "-S", "-c", probe],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"PYTHONPATH": ""},
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert Path(result.stdout.strip()) == (scripts / AKA_HELPER_FILE_NAME).resolve()
+
+
 def test_materializes_helper_beside_eval_tools_entrypoint(tmp_path):
     eval_tools = tmp_path / "eval_tools"
     eval_tools.mkdir()
