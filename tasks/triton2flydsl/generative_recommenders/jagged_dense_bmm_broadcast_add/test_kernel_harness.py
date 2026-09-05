@@ -4,7 +4,7 @@
 Self-contained harness mirroring the triton2flydsl template:
   - compile      : ast-parse + import the standalone source, assert entry/kernel symbols
   - correctness  : run the Triton kernel on TEST_SHAPES, assert finite output (bf16)
-  - performance  : warmup + cuda-event timing, write build/performance_report.json
+  - performance  : graph-first GPU timing, write build/performance_report.json
 
 Jagged x dense batched matmul with broadcast bias add. Public entry:
 `triton_jagged_dense_bmm_add(...)`; @triton.jit kernel:
@@ -20,6 +20,7 @@ import json
 import time
 import argparse
 import importlib.util
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -246,32 +247,35 @@ def run_performance():
                 B, max_seq_len, K, N, elementwise, device, dtype
             )
 
+            def launch():
+                return mod.triton_jagged_dense_bmm_add(
+                    msl, seq_offsets, jagged, dense, bias, elementwise
+                )
+
+            _retry_oom(launch)
+
             for _ in range(WARMUP_ITERATIONS):
-                _call_kernel(mod, msl, seq_offsets, jagged, dense, bias, elementwise)
+                launch()
             torch.cuda.synchronize()
 
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-
-            for j in range(n_iter):
-                start_events[j].record()
-                _call_kernel(mod, msl, seq_offsets, jagged, dense, bias, elementwise)
-                end_events[j].record()
-
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
+            elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
+                launch,
+                warmup=0,
+                repetition=BENCHMARK_ITERATIONS,
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": elapsed_ms,
+                **bench_meta,
                 "params": params,
             })
         except Exception:
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
+                "benchmark_method": "benchmark_failed",
+                "benchmark_fallback_reason": "performance case failed before timing completed",
                 "params": params,
             })
     return test_cases

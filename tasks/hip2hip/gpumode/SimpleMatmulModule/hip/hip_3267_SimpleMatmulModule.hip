@@ -1,5 +1,6 @@
 // Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 #include <torch/extension.h>
+#include <ATen/hip/HIPContext.h>
 #include <hip/hip_runtime.h>
 
 // Tile sizes tuned for AMD wavefronts: 16x16 threads per block (256 threads)
@@ -116,7 +117,8 @@ torch::Tensor forward(torch::Tensor a, torch::Tensor b) {
               (unsigned)((M + TILE_M - 1) / TILE_M),
               (unsigned)B);
 
-    hipLaunchKernelGGL(batched_gemm_bplusb_kernel, grid, block, 0, 0,
+    hipStream_t stream = at::hip::getCurrentHIPStream();
+    hipLaunchKernelGGL(batched_gemm_bplusb_kernel, grid, block, 0, stream,
         a3.data_ptr<float>(), b3.data_ptr<float>(), out.data_ptr<float>(),
         (int)B, (int)M, (int)K, (int)N);
 
@@ -139,4 +141,3 @@ torch::Tensor forward(torch::Tensor a, torch::Tensor b) {
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &forward, "SimpleMatmulModule HIP forward (A @ (B+B))");
 }
-

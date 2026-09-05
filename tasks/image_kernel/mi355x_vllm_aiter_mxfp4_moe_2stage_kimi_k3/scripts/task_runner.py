@@ -48,12 +48,34 @@ def _configure() -> None:
     # Keep aiter's JIT output inside the run workspace so one run can never load a
     # module another run built.
     os.environ.setdefault("AITER_JIT_DIR", str(WORKSPACE / "build" / "jit"))
+    # Newer aiter also builds template-backed C++ interfaces under
+    # AITER_ROOT_DIR.  The Docker runner intentionally exposes a read-only HOME,
+    # so its default ~/.aiter location is neither writable nor run-isolated.
+    os.environ.setdefault(
+        "AITER_ROOT_DIR", str(WORKSPACE / "build" / "aiter_root")
+    )
+    # FlyDSL's defaults are also rooted under HOME. Keep runtime, diagnostic,
+    # and autotune caches writable and isolated without changing HOME itself.
+    os.environ.setdefault(
+        "FLYDSL_RUNTIME_CACHE_DIR", str(WORKSPACE / "build" / "flydsl_cache")
+    )
+    os.environ.setdefault(
+        "FLYDSL_DUMP_DIR", str(WORKSPACE / "build" / "flydsl_debug")
+    )
+    os.environ.setdefault(
+        "FLYDSL_AUTOTUNE_CACHE_DIR", str(WORKSPACE / "build" / "flydsl_autotune")
+    )
     # The agent edits the workspace-seeded copy of aiter, so it must shadow the
     # in-image install; otherwise `import aiter` resolves to
     # /usr/local/lib/python3.12/dist-packages/aiter and the edits are ignored.
     if (WORKSPACE / "aiter").is_dir():
         _link_aiter_meta()
-        sys.path.insert(0, str(WORKSPACE))
+        # image_repo_path seeds the repository as WORKSPACE/aiter, while the
+        # importable package is WORKSPACE/aiter/aiter.  Put the repository root
+        # on sys.path; adding WORKSPACE would expose only the outer repository
+        # directory as a namespace package and allow the image's editable-install
+        # finder to redirect imports back to /sgl-workspace/aiter.
+        sys.path.insert(0, str(WORKSPACE / "aiter"))
     os.environ.setdefault("AITER_META_DIR", str(_IMAGE_AITER_META))
     os.chdir(WORKSPACE)
 
@@ -210,6 +232,36 @@ def _torch():
 
 def _aiter():
     import aiter
+
+    # This image ships a pre-created, root-owned /tmp/aiter_configs directory.
+    # Current aiter normally merges every model CSV into that directory, which
+    # fails under the non-root validator user.  This task scores exactly the K3
+    # configuration, so resolve only AITER_CONFIG_FMOE to the declared editable
+    # K3 CSV.  Besides avoiding shared mutable state, this guarantees that edits
+    # to the task's tuned file are the ones exercised by the harness.
+    from aiter.jit import core as aiter_core
+
+    configs = aiter_core.AITER_CONFIGS
+    if not getattr(configs, "_aka_kimi_fmoe_config", False):
+        kimi_config = (
+            WORKSPACE
+            / "aiter"
+            / "aiter"
+            / "configs"
+            / "model_configs"
+            / "kimik3_fp4_tuned_fmoe.csv"
+        )
+        if not kimi_config.is_file():
+            raise FileNotFoundError(f"K3 tuned config is missing: {kimi_config}")
+        original_get_config_file = configs.get_config_file
+
+        def _get_config_file(env_name, default_file, tuned_file_name):
+            if env_name == "AITER_CONFIG_FMOE":
+                return str(kimi_config)
+            return original_get_config_file(env_name, default_file, tuned_file_name)
+
+        configs.get_config_file = _get_config_file
+        configs._aka_kimi_fmoe_config = True
 
     return aiter
 

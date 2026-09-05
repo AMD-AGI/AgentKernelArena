@@ -9,6 +9,7 @@ import subprocess
 import sys
 import venv
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
 
 TASK_NAME = "repository/aiter/unified_attention"
 REPO_SUBDIR = "aiter"
@@ -48,7 +49,30 @@ def _run(cmd: list[str], cwd: Path) -> None:
     subprocess.run(cmd, cwd=str(cwd), check=True)
 
 
+def _inherit_parent_site_packages(venv_python: Path) -> None:
+    """Expose packages from the image's parent venv inside the task venv."""
+
+    if Path(sys.executable).resolve() == venv_python.resolve():
+        return
+    child_site = subprocess.check_output(
+        [str(venv_python), "-c", "import sysconfig; print(sysconfig.get_paths()['purelib'])"],
+        text=True,
+    ).strip()
+    parent_sites = [
+        entry
+        for entry in sys.path
+        if "site-packages" in entry and Path(entry).is_dir()
+    ]
+    (Path(child_site) / "aka_parent_site_packages.pth").write_text(
+        "\n".join(
+            f"import site; site.addsitedir({entry!r})" for entry in parent_sites
+        ) + "\n"
+    )
+
+
 def _ensure_venv() -> None:
+    os.environ.setdefault("USER", "agentkernelarena")
+    os.environ.setdefault("LOGNAME", "agentkernelarena")
     venv_dir = _venv_dir()
     venv_python = _venv_python()
     ready_marker = venv_dir / ".ready"
@@ -57,6 +81,8 @@ def _ensure_venv() -> None:
     if not venv_python.exists():
         builder = venv.EnvBuilder(with_pip=True, system_site_packages=True)
         builder.create(str(venv_dir))
+
+    _inherit_parent_site_packages(venv_python)
 
     if not ready_marker.exists():
         _run(
@@ -78,6 +104,7 @@ def _ensure_venv() -> None:
         env = os.environ.copy()
         env.setdefault("ENABLE_CK", "0")
         env.setdefault("AITER_LOG_LEVEL", "WARNING")
+        env.setdefault("AITER_TRITON_ONLY", "1")
         existing = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = (
             f"{_repo_root()}{os.pathsep}{existing}" if existing else str(_repo_root())
@@ -92,29 +119,22 @@ def _ensure_venv() -> None:
 def _configure_runtime() -> None:
     os.environ.setdefault("ENABLE_CK", "0")
     os.environ.setdefault("AITER_LOG_LEVEL", "WARNING")
+    # This task imports only the Triton unified-attention implementation. Avoid
+    # eagerly importing or building unrelated C++/CK modules in the cloned aiter
+    # package; the pinned runtime does not provide module_aiter_core to the task
+    # venv, and no declared target needs it.
+    os.environ.setdefault("AITER_TRITON_ONLY", "1")
     repo_root = _repo_root()
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     os.chdir(repo_root)
 
 
-def _benchmark_ms(fn, warmup: int = 10, rep: int = 30) -> float:
-    import torch
-
-    for _ in range(warmup):
-        fn()
-    torch.cuda.synchronize()
-
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    samples: list[float] = []
-    for _ in range(rep):
-        start.record()
-        fn()
-        end.record()
-        torch.cuda.synchronize()
-        samples.append(start.elapsed_time(end))
-    return statistics.median(samples)
+def _benchmark_ms(fn, warmup: int = 10, rep: int = 30) -> tuple[float, dict]:
+    samples, metadata = benchmark_cuda_graph_or_events_samples(
+        fn, warmup=warmup, repetition=rep,
+    )
+    return statistics.median(samples), metadata
 
 
 def _write_performance_report(results: list[dict]) -> None:
@@ -193,6 +213,74 @@ def _make_case(
     }
 
 
+def _ref_paged_attn(
+    *,
+    query,
+    key_cache,
+    value_cache,
+    query_lens: list[int],
+    kv_lens: list[int],
+    block_tables,
+    scale: float,
+    out_dtype,
+    sliding_window: int | None = None,
+    sinks=None,
+):
+    """Small independent PyTorch reference for the task's correctness cases."""
+
+    import torch
+
+    block_tables = block_tables.cpu().numpy()
+    _, block_size, num_kv_heads, head_size = key_cache.shape
+    outputs = []
+    start_idx = 0
+    query = query.to(torch.float32)
+    key_cache = key_cache.to(torch.float32)
+    value_cache = value_cache.to(torch.float32)
+
+    for sequence_index, query_len in enumerate(query_lens):
+        kv_len = kv_lens[sequence_index]
+        q = query[start_idx : start_idx + query_len] * scale
+        num_kv_blocks = (kv_len + block_size - 1) // block_size
+        block_indices = block_tables[sequence_index, :num_kv_blocks]
+        k = key_cache[block_indices].view(-1, num_kv_heads, head_size)[:kv_len]
+        v = value_cache[block_indices].view(-1, num_kv_heads, head_size)[:kv_len]
+
+        if q.shape[1] != k.shape[1]:
+            repeat_factor = q.shape[1] // k.shape[1]
+            k = torch.repeat_interleave(k, repeat_factor, dim=1)
+            v = torch.repeat_interleave(v, repeat_factor, dim=1)
+
+        attention = torch.einsum("qhd,khd->hqk", q, k).float()
+        empty_mask = torch.ones(query_len, kv_len, device=q.device)
+        mask = torch.triu(
+            empty_mask, diagonal=kv_len - query_len + 1
+        ).bool()
+        if sliding_window is not None:
+            sliding_window_mask = (
+                torch.triu(
+                    empty_mask,
+                    diagonal=kv_len - (query_len + sliding_window) + 1,
+                )
+                .bool()
+                .logical_not()
+            )
+            mask |= sliding_window_mask
+        attention.masked_fill_(mask, float("-inf"))
+        if sinks is not None:
+            sink_scores = sinks[:, None, None].repeat_interleave(
+                attention.shape[-2], dim=-2
+            )
+            attention = torch.cat((attention, sink_scores), dim=-1)
+        attention = torch.softmax(attention, dim=-1).to(v.dtype)
+        if sinks is not None:
+            attention = attention[..., :-1]
+        outputs.append(torch.einsum("hqk,khd->qhd", attention, v))
+        start_idx += query_len
+
+    return torch.cat(outputs, dim=0).to(out_dtype)
+
+
 def _run_kernel(case: dict) -> None:
     from aiter.ops.triton.attention.unified_attention import unified_attention
 
@@ -240,7 +328,6 @@ def run_compile() -> None:
 
 def run_correctness() -> None:
     import torch
-    from op_tests.triton_tests.attention.test_unified_attention import ref_paged_attn
 
     cases = [
         _make_case(
@@ -263,7 +350,7 @@ def run_correctness() -> None:
 
     for idx, case in enumerate(cases):
         _run_kernel(case)
-        ref = ref_paged_attn(
+        ref = _ref_paged_attn(
             query=case["query"],
             key_cache=case["key_cache"],
             value_cache=case["value_cache"],
@@ -308,7 +395,7 @@ def run_performance() -> None:
     results: list[dict] = []
     for test_case_id, case in benchmark_cases:
         _run_kernel(case)
-        time_ms = _benchmark_ms(lambda: _run_kernel(case))
+        time_ms, benchmark_meta = _benchmark_ms(lambda: _run_kernel(case))
         params = case["params"]
         results.append(
             {
@@ -321,6 +408,7 @@ def run_performance() -> None:
                     max(k for _, k in params["seq_lens"]),
                 ],
                 "execution_time_ms": time_ms,
+                **benchmark_meta,
                 "metadata": params,
             }
         )

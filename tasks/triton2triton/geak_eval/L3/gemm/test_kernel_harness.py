@@ -4,6 +4,19 @@
 
 import os
 import sys
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+
+
+def benchmark_cuda_graph_or_events(*args, **kwargs):
+    samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
+    values = sorted(samples)
+    midpoint = len(values) // 2
+    median_ms = (
+        values[midpoint]
+        if len(values) % 2
+        else (values[midpoint - 1] + values[midpoint]) / 2.0
+    )
+    return median_ms, metadata
 
 # Only set GPU visibility if explicitly requested via GEAK_GPU_DEVICE.
 # Don't override HIP_VISIBLE_DEVICES if it's already set by the caller
@@ -118,15 +131,17 @@ def run_benchmark(indices):
     torch.manual_seed(42)
     print("Running benchmark...")
     latencies = []
+    methods = []
     for idx in indices:
         M, N, K = ALL_CONFIGS[idx]
         x, w, bias = _generate_inputs(M, N, K, DTYPE)
-        ms = triton.testing.do_bench(
+        ms, metadata = benchmark_cuda_graph_or_events(
             lambda: gemm_a16w16(x, w, bias),
             warmup=WARMUP,
-            rep=ITERATIONS,
+            repetition=ITERATIONS,
         )
         latencies.append(ms)
+        methods.append(metadata["benchmark_method"])
         print("  [{}] {}  {:.4f}ms".format(idx, _format_config(ALL_CONFIGS[idx]), ms))
         del x, w, bias
         torch.cuda.empty_cache()
@@ -137,6 +152,9 @@ def run_benchmark(indices):
 
     print("GEAK_SHAPES_USED={}".format(indices))
     print("GEAK_RESULT_LATENCY_MS={:.4f}".format(geo_mean))
+    print("GEAK_BENCHMARK_METHOD={}".format(
+        methods[0] if len(set(methods)) == 1 else "mixed:" + ",".join(sorted(set(methods)))
+    ))
 
 
 # ---------------------------------------------------------------------------

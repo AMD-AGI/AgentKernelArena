@@ -527,13 +527,13 @@ def test_unified_attention_correctness_covers_2d_and_3d(monkeypatch):
     assert calls == [
         {
             "case": case,
-            "correctness": True,
+            "correctness": False,
             "ctx_len": min(case["params"]["ctx_len"], 128),
             "expected_path": "2d",
         },
         {
             "case": case,
-            "correctness": True,
+            "correctness": False,
             "ctx_len": case["params"]["ctx_len"],
             "expected_path": "3d",
         },
@@ -563,7 +563,10 @@ def test_existing_mi355x_forge_drivers_reject_case_selectors():
         (root / "tasks" / "image_kernel").glob("mi355x_*/scripts/forge_driver.py")
     )
 
-    assert len(driver_paths) == 13
+    config_paths = sorted(
+        (root / "tasks" / "image_kernel").glob("mi355x_*/config.yaml")
+    )
+    assert len(driver_paths) == len(config_paths)
     for driver_path in driver_paths:
         source = driver_path.read_text()
         assert '"--shape"' not in source

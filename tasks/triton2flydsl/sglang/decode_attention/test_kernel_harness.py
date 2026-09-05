@@ -10,7 +10,7 @@ with grouped-query attention and paged page size = 1.
 Modes:
   --compile        : ast-parse + import source, assert symbols.
   --correctness    : Triton decode attn vs torch fp32 softmax SDPA, close.
-  --full-benchmark : cuda-event timing, write build/performance_report.json
+  --full-benchmark : graph-first GPU timing, write build/performance_report.json
 """
 import sys
 import os
@@ -18,6 +18,7 @@ import json
 import time
 import argparse
 import importlib.util
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -196,28 +197,27 @@ def run_performance():
             sm_scale = 1.0 / (cfg["Lk"] ** 0.5)
 
             def fn():
-                _retry_oom(lambda: mod.decode_attention_fwd(
+                mod.decode_attention_fwd(
                     q, k_buf, v_buf, o, kvp, kvi, al, alse, nks, MAX_KV_SPLITS,
-                    sm_scale, 1.0, 1.0))
+                    sm_scale, 1.0, 1.0)
 
+            _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
-            n = BENCHMARK_ITERATIONS
-            se = [torch.cuda.Event(enable_timing=True) for _ in range(n)]
-            ee = [torch.cuda.Event(enable_timing=True) for _ in range(n)]
-            for j in range(n):
-                se[j].record()
-                fn()
-                ee[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(se, ee)]
+            elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+            )
             test_cases.append({"test_case_id": f"perf{ti+1}",
-                               "execution_time_ms": sum(times)/len(times),
+                               "execution_time_ms": elapsed_ms,
+                               **bench_meta,
                                "params": params})
         except Exception:
             test_cases.append({"test_case_id": f"perf{ti+1}",
-                               "execution_time_ms": -1.0, "params": params})
+                               "execution_time_ms": -1.0,
+                               "benchmark_method": "benchmark_failed",
+                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "params": params})
     return test_cases
 
 

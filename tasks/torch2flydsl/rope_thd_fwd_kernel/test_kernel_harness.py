@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: MIT
-"""Test harness for the torch2flydsl rope_thd_fwd (model-only) task.
+"""Test harness for the torch2flydsl rope_thd_fwd task.
 
 ``model.py`` is the pure-torch reference (variable-length thd RoPE, bf16 I/O,
-fp32 rotation). No ``kernel.py`` ships: a clean standalone FlyDSL thd-RoPE kernel
-does not exist in aiter, so FlyDSL is GEAK's target.
+fp32 rotation). ``kernel.py`` is the editable FlyDSL target; its starter entry
+raises ``NotImplementedError`` until a solution is supplied.
 
-Model-only correctness: the reference in ``model.py`` is validated against the
-REAL AMD runtime op ``aiter.rope_thd_fwd`` (the ground truth). The harness MAY
-import aiter; ``model.py`` MUST NOT. The normalized worst-element error
-``max|truth - ref| / max|truth|`` must be <= REL_TOL.
+The reference in ``model.py`` is validated against the real AMD runtime op
+``aiter.rope_thd_fwd`` (the ground truth), and an implemented FlyDSL target is
+validated against the same oracle. The harness MAY import aiter; ``model.py``
+MUST NOT. The normalized worst-element error ``max|truth - ref| / max|truth|``
+must be <= REL_TOL.
 
 Modes:
   --compile         import model.py + aiter and report readiness
   --correctness     assert model.py matches aiter.rope_thd_fwd at the tight gate
-  --full-benchmark  time the torch reference and aiter op, write perf report
+  --full-benchmark  graph-first timing of FlyDSL (or starter fallback), reference,
+                    and aiter; write the performance report
 """
 import argparse
 import importlib.util
@@ -25,6 +27,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 KERNEL_FILE = "kernel.py"
 MODEL_FILE = "model.py"
@@ -123,6 +126,29 @@ def _aiter_op(input, cu_seqlens, freqs):
     return aiter.rope_thd_fwd(
         input, cu_seqlens, freqs, ROTATE_STYLE, REUSE_FREQS_FRONT_PART, NOPE_FIRST
     )
+
+
+def _make_reference_runner(model, input, freqs, cu_values):
+    """Build the exact Model reference without a timed device-to-host tolist()."""
+    import torch
+
+    seqlens = tuple(b - a for a, b in zip(cu_values, cu_values[1:]))
+    slices = []
+    start = 0
+    for length in seqlens:
+        slices.append((input[start : start + length], length))
+        start += length
+
+    def run_ref():
+        with torch.no_grad():
+            f = freqs.float()
+            outs = []
+            for xi, length in slices:
+                x = xi.float().unsqueeze(1)
+                outs.append(model._rope_sbhd(x, f[:length]).squeeze(1))
+            return torch.cat(outs).to(input.dtype)
+
+    return run_ref
 
 
 def _norm_max_err(ref, out):
@@ -237,50 +263,70 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
 
     mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
     assert mmod is not None, "cannot load model.py"
+    kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
+    has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
 
     latencies, report = [], []
-    print(f"{'Config':<20} {'TorchRef':>12} {'aiter':>12}")
-    print("-" * 48)
+    label = "FlyDSL" if has_kernel else "TorchRef"
+    print(f"{'Config':<20} {'TorchRef':>12} {label:>12} {'aiter':>12}")
+    print("-" * 62)
     for idx, shape in enumerate(SHAPES):
         model = mmod.Model(ROTATE_STYLE, REUSE_FREQS_FRONT_PART, NOPE_FIRST).eval()
         input, cu_seqlens, freqs = _make_inputs(mmod, shape)
-
-        def run_ref():
-            with torch.no_grad():
-                return model(input, cu_seqlens, freqs)
+        run_ref = _make_reference_runner(model, input, freqs, shape["cu"])
 
         def run_truth():
             return _aiter_op(input, cu_seqlens, freqs)
 
+        def run_kernel():
+            return kmod.flydsl_rope_thd_fwd(
+                input,
+                cu_seqlens,
+                freqs,
+                ROTATE_STYLE,
+                REUSE_FREQS_FRONT_PART,
+                NOPE_FIRST,
+            )
+
         _retry(run_truth, what=shape["name"])
         torch.cuda.synchronize()
 
-        def _mean(fn):
-            for _ in range(warmup):
-                fn()
+        if has_kernel:
+            try:
+                _retry(run_kernel, what=f"{shape['name']}:kernel")
+            except NotImplementedError:
+                has_kernel = False
+                label = "TorchRef"
+                if verbose:
+                    print(
+                        "SKIP: kernel.py FlyDSL target not implemented yet "
+                        "(benchmarking Model baseline instead)"
+                    )
             torch.cuda.synchronize()
-            ts = []
-            for _ in range(iters):
-                s = torch.cuda.Event(enable_timing=True)
-                e = torch.cuda.Event(enable_timing=True)
-                s.record()
-                fn()
-                e.record()
-                torch.cuda.synchronize()
-                ts.append(s.elapsed_time(e))
-            return sum(ts) / len(ts)
 
-        ref_ms = _mean(run_ref)
-        aiter_ms = _mean(run_truth)
-        latencies.append(ref_ms)
+        def _mean(fn):
+            return benchmark_cuda_graph_or_events(
+                fn, warmup=warmup, repetition=iters
+            )
+
+        ref_ms, ref_bench_meta = _mean(run_ref)
+        aiter_ms, _aiter_bench_meta = _mean(run_truth)
+        if has_kernel:
+            primary_ms, bench_meta = _mean(run_kernel)
+        else:
+            primary_ms, bench_meta = ref_ms, ref_bench_meta
+        latencies.append(primary_ms)
         t, h, d = input.shape
         # bytes moved: input + output (bf16) + freqs (bf16).
         bytes_total = (t * h * d * 2 * 2) + freqs.numel() * 2
-        gbps = bytes_total / (ref_ms * 1e-3) / 1e9
+        gbps = bytes_total / (primary_ms * 1e-3) / 1e9
         report.append(
             {
                 "test_case_id": f"test_case_{idx}",
-                "execution_time_ms": ref_ms,
+                "execution_time_ms": primary_ms,
+                **bench_meta,
+                "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+                "benchmark_method_consistent": bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
                 "shape": [t, h, d],
                 "params": {
                     "t": t,
@@ -289,12 +335,16 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
                     "num_seqs": len(shape["cu"]) - 1,
                     "dtype": "bf16",
                 },
+                "reference_execution_time_ms": ref_ms,
                 "aiter_ms": aiter_ms,
                 "gbps": gbps,
             }
         )
         if verbose:
-            print(f"{shape['name']:<20} {ref_ms:>10.4f}ms {aiter_ms:>10.4f}ms")
+            print(
+                f"{shape['name']:<20} {ref_ms:>10.4f}ms "
+                f"{primary_ms:>10.4f}ms {aiter_ms:>10.4f}ms"
+            )
         del model, input, cu_seqlens, freqs
         torch.cuda.empty_cache()
 
@@ -303,8 +353,8 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
     build_dir.mkdir(exist_ok=True)
     with open(build_dir / "performance_report.json", "w") as f:
         json.dump(report, f, indent=2)
-    print("-" * 48)
-    print(f"Geometric mean torch-reference latency: {geomean_latency:.4f} ms")
+    print("-" * 62)
+    print(f"Geometric mean primary latency: {geomean_latency:.4f} ms")
     return {"geomean_latency_ms": geomean_latency}
 
 
@@ -329,7 +379,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print("=" * 60)
-    print("torch2flydsl rope_thd_fwd (bf16, model-only)")
+    print("torch2flydsl rope_thd_fwd (bf16)")
     print("=" * 60)
 
     if args.compile:

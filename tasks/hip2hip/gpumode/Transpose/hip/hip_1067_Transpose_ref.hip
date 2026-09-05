@@ -1,5 +1,6 @@
 // Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 #include <torch/extension.h>
+#include <ATen/hip/HIPContext.h>
 #include <hip/hip_runtime.h>
 #include <vector>
 #include <algorithm>
@@ -111,11 +112,12 @@ torch::Tensor transpose_4d_hip(torch::Tensor input, int64_t dim1, int64_t dim2) 
     int64_t blocks64 = (numel + threads - 1) / threads;
     int blocks = static_cast<int>(std::min<int64_t>(blocks64, 65535));
     if (blocks <= 0) blocks = 1;
+    hipStream_t stream = at::hip::getCurrentHIPStream();
 
     AT_DISPATCH_FLOATING_TYPES_AND2(torch::kHalf, torch::kBFloat16, input.scalar_type(), "transpose_nd_contig_hip", [&] {
         hipLaunchKernelGGL(
             HIP_KERNEL_NAME(transpose_nd_contig_kernel<scalar_t>),
-            dim3(blocks), dim3(threads), 0, 0,
+            dim3(blocks), dim3(threads), 0, stream,
             input.data_ptr<scalar_t>(),
             output.data_ptr<scalar_t>(),
             d_out_strides.data_ptr<int64_t>(),
@@ -133,4 +135,3 @@ torch::Tensor transpose_4d_hip(torch::Tensor input, int64_t dim1, int64_t dim2) 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &transpose_4d_hip, "ND Transpose between two dims followed by contiguous (HIP)");
 }
-

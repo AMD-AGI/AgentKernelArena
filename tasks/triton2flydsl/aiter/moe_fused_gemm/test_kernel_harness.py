@@ -14,7 +14,7 @@ Modes:
   --compile         ast-parse + import the standalone source, assert entry/kernel symbols
   --correctness     run the Triton kernel on TEST_SHAPES, assert finite output
                     (flydsl-vs-triton comparison added when the FlyDSL target lands)
-  --full-benchmark  warmup + cuda-event timing, write build/performance_report.json
+  --full-benchmark  graph-first GPU timing, write build/performance_report.json
 """
 import argparse
 import ast
@@ -24,6 +24,7 @@ import math
 import os
 import sys
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 SOURCE_FILE = "moe_fused_gemm.py"
 ENTRY = "fused_moe"
@@ -73,7 +74,7 @@ def _make_inputs(M, K, N, E, top_k, device="cuda"):
     return A, B, topk_ids, topk_weights
 
 
-def _run_kernel(mod, A, B, topk_ids, topk_weights, top_k, mul_routed_weight):
+def _prepare_kernel(mod, A, B, topk_ids, topk_weights, top_k, mul_routed_weight):
     import torch
     import triton.language as tl
 
@@ -87,23 +88,34 @@ def _run_kernel(mod, A, B, topk_ids, topk_weights, top_k, mul_routed_weight):
         "BLOCK_SIZE_K": 32,
         "GROUP_SIZE_M": 8,
     }
-    mod.fused_moe(
-        A,
-        B,
-        C,
-        None,
-        None,
-        topk_weights,
-        topk_ids,
-        sorted_ids,
-        expert_ids,
-        num_post,
-        mul_routed_weight,
-        top_k,
-        tl.bfloat16,
-        config=config,
+
+    def run():
+        mod.fused_moe(
+            A,
+            B,
+            C,
+            None,
+            None,
+            topk_weights,
+            topk_ids,
+            sorted_ids,
+            expert_ids,
+            num_post,
+            mul_routed_weight,
+            top_k,
+            tl.bfloat16,
+            config=config,
+        )
+        return C
+
+    return run, C
+
+
+def _run_kernel(mod, A, B, topk_ids, topk_weights, top_k, mul_routed_weight):
+    run, _ = _prepare_kernel(
+        mod, A, B, topk_ids, topk_weights, top_k, mul_routed_weight
     )
-    return C
+    return run()
 
 
 # --- numerical reference -----------------------------------------------------
@@ -212,30 +224,26 @@ def run_benchmark(verbose=True):
         A, B, topk_ids, topk_weights = _make_inputs(
             shape["M"], shape["K"], shape["N"], shape["E"], shape["top_k"]
         )
-        fn = lambda: _run_kernel(  # noqa: E731
+        fn, output = _prepare_kernel(
             mod, A, B, topk_ids, topk_weights, shape["top_k"], True
         )
+        prepare_fn = output.zero_
         fn()
         torch.cuda.synchronize()
         for _ in range(WARMUP):
+            prepare_fn()
             fn()
         torch.cuda.synchronize()
-        times = []
-        for _ in range(ITERS):
-            s = torch.cuda.Event(enable_timing=True)
-            e = torch.cuda.Event(enable_timing=True)
-            s.record()
-            fn()
-            e.record()
-            torch.cuda.synchronize()
-            times.append(s.elapsed_time(e))
-        ms = sum(times) / len(times)
+        ms, bench_meta = benchmark_cuda_graph_or_events(
+            fn, warmup=0, repetition=ITERS, prepare_fn=prepare_fn
+        )
         latencies.append(ms)
         flops = 2.0 * shape["M"] * shape["top_k"] * shape["N"] * shape["K"]
         report.append(
             {
                 "test_case_id": f"perf{idx + 1}",
                 "execution_time_ms": ms,
+                **bench_meta,
                 "params": {k: shape[k] for k in ("M", "K", "N", "E", "top_k")},
                 "tflops": flops / (ms * 1e-3) / 1e12,
             }

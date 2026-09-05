@@ -1,7 +1,7 @@
 ---
 myst:
     html_meta:
-        "description": "Use the AgentKernelArena task_validator agent to run 10 automated quality checks before using GPU kernel tasks in shared experiments."
+        "description": "Use the AgentKernelArena task_validator agent to run 12 deterministic and review-based quality checks before using GPU kernel tasks in shared experiments."
         "keywords": "AgentKernelArena, task validator, GPU kernel, quality checks, ROCm, HIP, Triton, validation report"
 ---
 
@@ -53,8 +53,9 @@ make docker-parallel-run \
   RUN_ARGS="--run-suffix validator_parallel8"
 ```
 
-Parallel resume skips validator tasks whose workspace already contains
-`validation_report.yaml`.
+Parallel resume skips only validator tasks with a framework-finalized schema-v3
+report and matching completion digest. A partial, legacy, or manually copied
+`validation_report.yaml` is rerun.
 
 ## Validator configuration
 
@@ -64,7 +65,7 @@ the model unset so the selected CLI uses its default:
 
 ```yaml
 backend: claude_code          # claude_code | codex
-timeout_seconds: 1200         # max time per task validation (0 disables the timeout)
+timeout_seconds: 1200         # minimum outer limit; auto-raised for command budgets (0 disables)
 python_path: null             # null uses the framework/container Python
 
 # Optional model settings for the active backend.
@@ -77,6 +78,9 @@ compile_timeout: 600
 correctness_timeout: 600
 performance_timeout: 600
 ```
+
+Per-task timeout values in `config.yaml` override these defaults. The outer
+backend timeout is expanded to cover the three command budgets plus review time.
 
 ## `task_validator` checks
 
@@ -93,7 +97,9 @@ The `task_validator` runs the following checks in order.
 | 7 | `correctness_implementation_review` | The correctness check is meaningful, not trivially passing |
 | 8 | `self_contained` | No missing headers/imports; isolated tasks avoid undeclared external repos/paths, and repository tasks declare their upstream in `repo_url` |
 | 9 | `gpu_hang_check` | No command hangs or times out |
-| 10 | `result_template_compatibility` | Output maps to the standard `task_result_template.yaml` |
+| 10 | `result_template_compatibility` | Command and per-case output signals can be consumed by the centralized evaluator |
+| 11 | `benchmark_integrity` | Every case has scoreable device timing/method metadata, stable identity, and fair state/allocation boundaries; missing exact replay validation is WARN |
+| 12 | `harness_integrity` | Harness logic stays protected while co-located target and Triton-JIT implementation nodes remain editable |
 
 ## Overall status
 
@@ -101,7 +107,28 @@ The `task_validator` runs the following checks in order.
   prevent PASS.
 - **WARN:** no failures, but at least one warning (for example, a questionable
   correctness implementation). Acceptable with justification.
-- **FAIL:** at least one check failed; the task must be fixed before merging.
+- **FAIL:** a check failed/timed out, the backend failed, or the report contract is incomplete; the task must be fixed before merging.
+
+The framework normalizes every report and recomputes `overall_status`; it does
+not trust the agent's claimed aggregate. Compile/correctness/performance commands
+must exit zero, and stale JSON/YAML output cannot override a failure. The final
+CLI exits nonzero when any task validation fails. WARN is non-failing but requires
+review.
+
+For performance, `cuda_graph` and `cuda_event_fallback` are the only scoreable
+methods. CPU/host timing, missing or mixed methods, candidate-triggered fallback,
+invalid/partial cases, missing state restore, or demonstrably asymmetric timed work
+fail `benchmark_integrity`. Missing exact output validation from the captured Graph is
+WARN by itself; an observed incorrect/stale replay or a demonstrated unsafe state/reset
+interaction remains FAIL. The 10-warmup/100-sample pattern is a recommended default
+rather than a hard scoring rule.
+
+The validator receives trusted framework facts for the protected harness boundary and
+the pre/post scoring lifecycle. Baseline and candidate are separate invocations of the
+same protected performance entrypoint, so a task runner does not need an in-process
+reference timing path. Judgment-heavy WARN/FAIL results include source-line or runtime
+case evidence; genuinely unavailable evidence is reported as WARN rather than inferred
+as a failure.
 
 ## Result template
 

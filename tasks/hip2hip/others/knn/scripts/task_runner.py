@@ -11,8 +11,16 @@ sys.path.insert(0, TASK_DIR)
 os.chdir(TASK_DIR)
 
 import torch
+from _aka_benchmark import (
+    benchmark_cuda_graph_or_events,
+    hip_source_graph_capture_policy,
+)
 
 TASK_NAME = "hip2hip/knn"
+HIP_GRAPH_ENABLED, HIP_GRAPH_FALLBACK_REASON = hip_source_graph_capture_policy(
+    os.path.join(TASK_DIR, "src", "knn.cpp"),
+    os.path.join(TASK_DIR, "src", "knn_cuda.hip"),
+)
 
 # 5 test shapes: (B, N, M, k)
 TEST_SHAPES = [
@@ -64,17 +72,11 @@ def run_correctness():
 
 
 def _time_kernel(fn, n_warmup=10, n_iter=100):
-    for _ in range(n_warmup):
-        fn()
-    torch.cuda.synchronize()
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    start.record()
-    for _ in range(n_iter):
-        fn()
-    end.record()
-    torch.cuda.synchronize()
-    return start.elapsed_time(end) / n_iter
+    return benchmark_cuda_graph_or_events(
+        fn, warmup=n_warmup, repetition=n_iter,
+        use_cuda_graph=HIP_GRAPH_ENABLED,
+        fallback_reason=HIP_GRAPH_FALLBACK_REASON,
+    )
 
 
 def run_performance():
@@ -88,19 +90,20 @@ def run_performance():
         center_xyz = torch.randn(B, M, 3, device="cuda", dtype=torch.float32)
 
         # Perf1: standard layout knn (B, N, 3) query
-        ms_standard = _time_kernel(lambda: knn(k, xyz, center_xyz))
+        ms_standard, meta_standard = _time_kernel(lambda: knn(k, xyz, center_xyz))
 
         # Perf2: transposed layout knn (B, 3, N) query
         xyz_t = xyz.transpose(1, 2).contiguous()
         center_xyz_t = center_xyz.transpose(1, 2).contiguous()
-        ms_transposed = _time_kernel(lambda: knn(k, xyz_t, center_xyz_t, True))
+        ms_transposed, meta_transposed = _time_kernel(lambda: knn(k, xyz_t, center_xyz_t, True))
 
         # Perf3: self-query knn (center_xyz = xyz)
-        ms_self = _time_kernel(lambda: knn(k, xyz, xyz))
+        ms_self, meta_self = _time_kernel(lambda: knn(k, xyz, xyz))
 
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_standard",
             "execution_time_ms": ms_standard,
+            **meta_standard,
             "params": {
                 "B": B,
                 "N": N,
@@ -112,6 +115,7 @@ def run_performance():
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_transposed",
             "execution_time_ms": ms_transposed,
+            **meta_transposed,
             "params": {
                 "B": B,
                 "N": N,
@@ -123,6 +127,7 @@ def run_performance():
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_self_query",
             "execution_time_ms": ms_self,
+            **meta_self,
             "params": {
                 "B": B,
                 "N": N,

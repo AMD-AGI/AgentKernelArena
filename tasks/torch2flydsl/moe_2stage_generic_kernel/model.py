@@ -23,31 +23,56 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def _grouped_gemm_stage1(acts, weights, topk_ids):
+def prepare_expert_plan(topk_ids, num_experts):
+    """Resolve data-dependent routing indices once, outside graph capture."""
+    plan = []
+    for expert in range(num_experts):
+        token_id, topk_pos = torch.where(topk_ids == expert)
+        if token_id.numel():
+            plan.append((expert, token_id, topk_pos))
+    return tuple(plan)
+
+
+def _grouped_gemm_stage1(acts, weights, topk_ids, expert_plan=None):
     """Per-expert grouped GEMM: out[b, k] = acts[b] @ weights[topk_ids[b, k]].T."""
     acts = acts.float()
     B, D = acts.shape
     topk = topk_ids.shape[1]
     N = weights.shape[1]
-    h = acts.view(B, 1, D).repeat(1, topk, 1)
     out = torch.zeros(B, topk, N, dtype=torch.float32, device=acts.device)
-    for e in range(weights.shape[0]):
-        mask = topk_ids == e
-        if mask.any():
-            out[mask] = h[mask] @ weights[e].float().transpose(0, 1)
+    if expert_plan is None:
+        h = acts.view(B, 1, D).repeat(1, topk, 1)
+        for e in range(weights.shape[0]):
+            mask = topk_ids == e
+            if mask.any():
+                out[mask] = h[mask] @ weights[e].float().transpose(0, 1)
+    else:
+        for e, token_id, topk_pos in expert_plan:
+            out[token_id, topk_pos] = (
+                acts[token_id] @ weights[e].float().transpose(0, 1)
+            )
     return out
 
 
-def _grouped_gemm_stage2(acts, weights, topk_ids, topk_weights):
+def _grouped_gemm_stage2(
+    acts, weights, topk_ids, topk_weights, expert_plan=None
+):
     """Per-expert down GEMM with weighted top-k combine to a single output row."""
     acts = acts.float()
     B, topk = topk_ids.shape
     model_dim = weights.shape[1]
     out = torch.zeros(B, topk, model_dim, dtype=torch.float32, device=acts.device)
-    for e in range(weights.shape[0]):
-        mask = topk_ids == e
-        if mask.any():
-            out[mask] = acts[mask] @ weights[e].float().transpose(0, 1)
+    if expert_plan is None:
+        for e in range(weights.shape[0]):
+            mask = topk_ids == e
+            if mask.any():
+                out[mask] = acts[mask] @ weights[e].float().transpose(0, 1)
+    else:
+        for e, token_id, topk_pos in expert_plan:
+            out[token_id, topk_pos] = (
+                acts[token_id, topk_pos]
+                @ weights[e].float().transpose(0, 1)
+            )
     out = out * topk_weights.view(B, topk, 1)
     return out.sum(1)
 
@@ -85,12 +110,18 @@ class Model(nn.Module):
         )
 
     def forward(self, hidden_states):
-        I = self.inter_dim
-
         logits = self.gate(hidden_states)
         topk_weights, topk_ids = route_topk(logits, self.topk)
+        return self.forward_with_routing(hidden_states, topk_weights, topk_ids)
 
-        stage1 = _grouped_gemm_stage1(hidden_states, self.w1, topk_ids)
+    def forward_with_routing(
+        self, hidden_states, topk_weights, topk_ids, expert_plan=None
+    ):
+        I = self.inter_dim
+
+        stage1 = _grouped_gemm_stage1(
+            hidden_states, self.w1, topk_ids, expert_plan
+        )
         gate, up = stage1.split([I, I], dim=-1)
         if self.activation == "gelu":
             act = F.gelu(gate) * up
@@ -98,7 +129,9 @@ class Model(nn.Module):
             act = F.silu(gate) * up
         a2 = act.to(torch.bfloat16)
 
-        out = _grouped_gemm_stage2(a2, self.w2, topk_ids, topk_weights)
+        out = _grouped_gemm_stage2(
+            a2, self.w2, topk_ids, topk_weights, expert_plan
+        )
         return out.to(torch.bfloat16)
 
 

@@ -36,6 +36,13 @@ _MXFP4_VALUES = torch.tensor(
 )
 
 
+def prepare_mxfp4_values(device):
+    """Move the immutable decode table once, before a timed GPU callback."""
+    global _MXFP4_VALUES
+    if _MXFP4_VALUES.device != torch.device(device):
+        _MXFP4_VALUES = _MXFP4_VALUES.to(device)
+
+
 def _f32_to_e2m1_codes(x):
     """Round fp32 values to MXFP4 (e2m1) 4-bit codes, saturating out-of-range
     magnitudes and handling denormals (adapted from the torchao FP utilities)."""
@@ -127,7 +134,7 @@ def _emulate_mxfp4_act_prequant(a):
     quant_scale = torch.exp2(-scale_unbiased)
 
     codes = _f32_to_e2m1_codes(x2 * quant_scale)
-    table = _MXFP4_VALUES.to(a.device)
+    table = _MXFP4_VALUES
     values = table[codes.long()]
     a_deq = (values * torch.exp2(scale_unbiased)).reshape(m, k)
     return a_deq.to(torch.bfloat16)
@@ -154,7 +161,7 @@ def _dequant_mxfp4(w_packed, w_scale):
     codes = torch.empty(n, k, dtype=torch.uint8, device=w_packed.device)
     codes[:, ::2] = w_packed & 0xF
     codes[:, 1::2] = w_packed >> 4
-    table = _MXFP4_VALUES.to(w_packed.device)
+    table = _MXFP4_VALUES
     values = table[codes.long()].view(n, k // _SCALE_GROUP_SIZE, _SCALE_GROUP_SIZE)
     scale_dec = torch.exp2(w_scale.float() - 127.0).unsqueeze(-1)
     return (values * scale_dec).view(n, k)

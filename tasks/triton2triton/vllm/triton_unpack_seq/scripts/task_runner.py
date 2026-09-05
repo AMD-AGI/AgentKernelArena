@@ -125,17 +125,39 @@ def run_performance():
         try:
             torch.manual_seed(0)
             Lmax = max(lengths_list)
+            N = sum(lengths_list)
             packed = torch.randn(B, Lmax, D, device=device, dtype=dtype)
             lengths = torch.tensor(lengths_list, device=device, dtype=torch.int32)
+            out = torch.empty((N, D), device=device, dtype=dtype)
+
+            block_t = 64
+            block_d = 64
+            grid = (
+                B,
+                (Lmax + block_t - 1) // block_t,
+                (D + block_d - 1) // block_d,
+            )
 
             def _bench_fn():
-                mod.unpack_seq(packed, lengths)
+                # The public wrapper reads lengths.sum().item() and allocates the
+                # output.  Both values are fixed for this case, so launch the
+                # actual target kernel with a stable output buffer instead.
+                mod._unpack_seq_triton_kernel[grid](
+                    packed,
+                    out,
+                    lengths,
+                    B,
+                    Lmax,
+                    D,
+                    BLOCK_T=block_t,
+                    BLOCK_D=block_d,
+                    num_warps=4,
+                    num_stages=2,
+                )
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
                 _bench_fn,
                 warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS,
-                use_cuda_graph=False,
-                fallback_reason="source_wrapper_uses_host_scalar",
             )
 
             test_cases.append({

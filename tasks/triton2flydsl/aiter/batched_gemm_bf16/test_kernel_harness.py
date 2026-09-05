@@ -13,7 +13,7 @@ Modes:
   --correctness     run the Triton kernel on TEST_SHAPES, assert finite output AND
                     match the fp32 torch reference at the upstream tolerance
                     (atol=0.01, rtol=1e-2) [mirrors gemm/batched/test_batched_gemm_bf16.py:run_torch]
-  --full-benchmark  warmup + cuda-event timing, write build/performance_report.json
+  --full-benchmark  graph-first GPU timing, write build/performance_report.json
 """
 import argparse
 import ast
@@ -23,6 +23,7 @@ import math
 import os
 import sys
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 SOURCE_FILE = "batched_gemm_bf16.py"
 ENTRY = "batched_gemm_bf16"
@@ -147,22 +148,16 @@ def run_benchmark(verbose=True):
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
-        times = []
-        for _ in range(ITERS):
-            s = torch.cuda.Event(enable_timing=True)
-            e = torch.cuda.Event(enable_timing=True)
-            s.record()
-            fn()
-            e.record()
-            torch.cuda.synchronize()
-            times.append(s.elapsed_time(e))
-        ms = sum(times) / len(times)
+        ms, bench_meta = benchmark_cuda_graph_or_events(
+            fn, warmup=0, repetition=ITERS
+        )
         latencies.append(ms)
         flops = 2.0 * shape["B"] * shape["M"] * shape["N"] * shape["K"]
         report.append(
             {
                 "test_case_id": f"perf{idx + 1}",
                 "execution_time_ms": ms,
+                **bench_meta,
                 "params": {k: shape[k] for k in ("B", "M", "N", "K")},
                 "tflops": flops / (ms * 1e-3) / 1e12,
             }

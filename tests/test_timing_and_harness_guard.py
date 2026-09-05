@@ -49,6 +49,12 @@ def test_grouped_gemm_timed_run_rejects_event_fallback(monkeypatch):
     import torch
 
     runner = _load_grouped_gemm_runner()
+    from src.tools.perf.aka_benchmark import benchmark_cuda_graph_or_events
+
+    monkeypatch.setattr(
+        runner, "_benchmark_cuda_graph_or_events", benchmark_cuda_graph_or_events
+    )
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
 
     def _reject_stream():
@@ -56,7 +62,7 @@ def test_grouped_gemm_timed_run_rejects_event_fallback(monkeypatch):
 
     monkeypatch.setattr(torch.cuda, "Stream", _reject_stream)
 
-    with pytest.raises(RuntimeError, match="timed outputs cannot be validated"):
+    with pytest.raises(RuntimeError, match="timed_run cannot validate"):
         runner._benchmark_cuda_graph(
             lambda: None,
             warmup=0,
@@ -194,6 +200,24 @@ def test_harness_guard_allows_source_edits(tmp_path):
     kernel.write_text("def kernel(): return 1\n")
 
     verify_workspace_harness(snapshot)
+
+
+def test_harness_guard_ignores_runtime_environment_files(tmp_path):
+    from src.harness_guard import describe_workspace_harness
+
+    runtime_tests = tmp_path / ".task-venv" / "site-packages" / "pkg" / "tests"
+    runtime_tests.mkdir(parents=True)
+    (runtime_tests / "test_dependency.py").write_text("def test_dependency(): pass\n")
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "task_runner.py").write_text("print('protected')\n")
+
+    description = describe_workspace_harness(tmp_path)
+
+    assert "scripts/task_runner.py" in description["protected_paths"]
+    assert not any(
+        path.startswith(".task-venv/") for path in description["protected_paths"]
+    )
 
 
 def test_harness_guard_discards_agent_created_scratch_file(tmp_path):

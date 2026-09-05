@@ -7,7 +7,11 @@ import re
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from .testcases import TestCaseResult, parse_test_cases_from_json, parse_test_cases_from_stdout
+from .testcases import (
+    TestCaseResult,
+    parse_test_cases_from_json,
+    parse_test_cases_from_stdout,
+)
 from .evaluator_utils import run_command
 from .jit_rebuild import force_jit_rebuild
 
@@ -275,7 +279,7 @@ def measure_performance(
     workspace: Path,
     task_config: Dict[str, Any],
     logger: Optional[logging.Logger] = None,
-    is_baseline: bool = False
+    is_baseline: bool = False,
 ) -> List[TestCaseResult]:
     """
     Measure kernel execution time for all test cases.
@@ -290,7 +294,7 @@ def measure_performance(
         List of TestCaseResult objects (empty list if measurement failed)
     """
     log = logger or logging.getLogger(__name__)
-    rebuild_env = force_jit_rebuild(task_config, log, workspace)
+    rebuild_env = dict(force_jit_rebuild(task_config, log, workspace))
     performance_commands = task_config.get('performance_command', [])
     task_type = task_config.get('task_type')
     
@@ -353,7 +357,7 @@ def measure_baseline(
     log.info("Measuring baseline performance...")
     
     baseline_cases = measure_performance(workspace, task_config, logger, is_baseline=True)
-    
+
     if baseline_cases:
         # Save baseline results
         save_performance_results(baseline_cases, workspace, "baseline_perf.yaml", logger)

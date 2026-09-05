@@ -1,6 +1,7 @@
 // Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 #include <torch/extension.h>
 #include <ATen/ATen.h>
+#include <ATen/hip/HIPContext.h>
 #include <hip/hip_runtime.h>
 #include <vector>
 #include <limits>
@@ -182,12 +183,13 @@ torch::Tensor softmax_forward(torch::Tensor input, int64_t axis) {
     // This kernel is already wavefront-64 oriented, so use an explicit constant.
     constexpr int kWarpSize = 64;
     size_t num_warps = (threads + kWarpSize - 1) / kWarpSize;
+    hipStream_t stream = at::hip::getCurrentHIPStream();
 
     AT_DISPATCH_FLOATING_TYPES(in2d.scalar_type(), "softmax_rowwise_shuffle_kernel", [&] {
         size_t shmem_bytes = num_warps * sizeof(scalar_t);
         hipLaunchKernelGGL(
             HIP_KERNEL_NAME(softmax_rowwise_shuffle_kernel<scalar_t>),
-            dim3(blocks), dim3(threads), shmem_bytes, 0,
+            dim3(blocks), dim3(threads), shmem_bytes, stream,
             in2d.data_ptr<scalar_t>(),
             out2d.data_ptr<scalar_t>(),
             outer_size,

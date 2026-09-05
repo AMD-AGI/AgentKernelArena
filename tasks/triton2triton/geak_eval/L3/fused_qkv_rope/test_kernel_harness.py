@@ -4,17 +4,29 @@ Test harness for fused_qkv_split_qk_rope kernel (aiter reference).
 
 Modes: --correctness, --profile, --benchmark, --full-benchmark
 
-This file is structurally identical to the test harness embedded in
-kernel.py, except it imports the kernel from the aiter package rather
-than using the inlined implementation.
+The kernel and reference helpers are imported from the task-local
+``kernel.py`` so the materialized task has no external AITER dependency.
 """
 from __future__ import annotations
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+
+
+def benchmark_cuda_graph_or_events(*args, **kwargs):
+    samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
+    values = sorted(samples)
+    midpoint = len(values) // 2
+    median_ms = (
+        values[midpoint]
+        if len(values) % 2
+        else (values[midpoint - 1] + values[midpoint]) / 2.0
+    )
+    return median_ms, metadata
 
 # GEAK materialized harness bootstrap
 import importlib.util
+import json
 import os
 import sys
-import types
 from pathlib import Path
 
 def _find_baseline_kernel_dir():
@@ -67,72 +79,21 @@ def _resolve_geak_kernel_dir():
             return candidate
     return original_kernel_dir or os.getcwd()
 
-def _ensure_geak_package(module_name):
-    parts = module_name.split(".")
-    for idx in range(1, len(parts)):
-        prefix = ".".join(parts[:idx])
-        if prefix in sys.modules:
-            continue
-        pkg = types.ModuleType(prefix)
-        pkg.__path__ = []
-        sys.modules[prefix] = pkg
-
-def _ensure_geak_aiter_fp8_dtype(module):
-    fp8_value = getattr(module, "fp8_dtype", None)
-    if fp8_value is None:
-        return
-    aiter_mod = sys.modules.get("aiter")
-    if aiter_mod is None:
-        try:
-            import aiter as aiter_mod
-        except Exception:
-            _ensure_geak_package("aiter")
-            aiter_mod = sys.modules.get("aiter")
-    if aiter_mod is None:
-        return
-    dtypes_obj = getattr(aiter_mod, "dtypes", None)
-    if dtypes_obj is None:
-        dtypes_obj = types.SimpleNamespace()
-        setattr(aiter_mod, "dtypes", dtypes_obj)
-    if getattr(dtypes_obj, "fp8", None) is None:
-        setattr(dtypes_obj, "fp8", fp8_value)
-
-def _register_geak_aliases(kernel_dir):
-    aliases = ['fused_qkv_rope', 'aiter.ops.triton.fused_qkv_split_qk_rope', 'op_tests.triton_tests.test_fused_qk_concat', 'op_tests.test_rope']
-    entry_file = os.path.join(kernel_dir, "kernel.py")
-    if not os.path.isfile(entry_file):
-        return
-    for alias in aliases:
-        if alias in sys.modules:
-            continue
-        _ensure_geak_package(alias)
-        spec = importlib.util.spec_from_file_location(alias, entry_file)
-        if spec is None or spec.loader is None:
-            continue
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[alias] = module
-        spec.loader.exec_module(module)
-        _ensure_geak_aiter_fp8_dtype(module)
-
 _KERNEL_DIR = _resolve_geak_kernel_dir()
 if _KERNEL_DIR and _KERNEL_DIR not in sys.path:
     sys.path.insert(0, _KERNEL_DIR)
-_register_geak_aliases(_KERNEL_DIR)
 
 import argparse
 import math
-from enum import IntEnum
-
-import sys
-import os
 
 import torch
 
-sys.path.insert(0, os.environ.get("AITER_ROOT", "/sgl-workspace/aiter"))
-
-from aiter.ops.triton.fused_qkv_split_qk_rope import fused_qkv_split_qk_rope
-from op_tests.triton_tests.test_fused_qk_concat import generate_rope_cached_freqs
-from op_tests.test_rope import ref_rope_sbhd_fwd, RotateStyle
+from kernel import (
+    RotateStyle,
+    fused_qkv_split_qk_rope,
+    generate_rope_cached_freqs,
+    ref_rope_sbhd_fwd,
+)
 
 
 def triton_op(qkv, cos, sin, positions, qh, kvh, head_dim, is_neox,
@@ -352,6 +313,7 @@ def run_benchmark(configs=None, warmup=50, iters=200, verbose=True):
     latencies = []
     speedups = []
     results = []
+    benchmark_methods = []
 
     print(f"Running benchmark on {len(configs)} configs, {warmup} warmup, {iters} iterations each...")
     print(f"  Comparing kernel vs {ref_label}")
@@ -367,74 +329,102 @@ def run_benchmark(configs=None, warmup=50, iters=200, verbose=True):
         )
         ref_freqs = freqs[pos].squeeze(-2)
 
-        for _ in range(warmup):
-            fused_qkv_split_qk_rope(
+        def run_kernel():
+            return fused_qkv_split_qk_rope(
                 qkv, cos, sin, pos, QH_PER_KH * KH, KH, head_dim,
                 is_neox=(rs == RotateStyle.NEOX), reuse_freqs_front_part=reuse,
                 nope_first=nope_first,
             )
-        torch.cuda.synchronize()
 
-        triton_times = []
-        for _ in range(iters):
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            start.record()
-            fused_qkv_split_qk_rope(
-                qkv, cos, sin, pos, QH_PER_KH * KH, KH, head_dim,
-                is_neox=(rs == RotateStyle.NEOX), reuse_freqs_front_part=reuse,
-                nope_first=nope_first,
-            )
-            end.record()
-            torch.cuda.synchronize()
-            triton_times.append(start.elapsed_time(end))
+        triton_ms, triton_meta = benchmark_cuda_graph_or_events(
+            run_kernel, warmup=warmup, repetition=iters,
+        )
 
-        triton_ms = sorted(triton_times)[len(triton_times) // 2]
-
-        ref_times = []
-        for _ in range(iters):
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            start.record()
+        def run_reference():
             if baseline_fn is not None:
-                baseline_fn(
+                return baseline_fn(
                     qkv, cos, sin, pos, QH_PER_KH * KH, KH, head_dim,
                     is_neox=(rs == RotateStyle.NEOX), reuse_freqs_front_part=reuse,
                     nope_first=nope_first,
                 )
-            else:
-                torch_op(qkv, QH_PER_KH, KH, head_dim, ref_freqs, reuse, nope, nope_first, rs)
-            end.record()
-            torch.cuda.synchronize()
-            ref_times.append(start.elapsed_time(end))
+            return torch_op(
+                qkv, QH_PER_KH, KH, head_dim, ref_freqs,
+                reuse, nope, nope_first, rs,
+            )
 
-        ref_ms = sorted(ref_times)[len(ref_times) // 2]
-        speedup = ref_ms / triton_ms if triton_ms > 0 else 1.0
+        ref_ms, ref_meta = benchmark_cuda_graph_or_events(
+            run_reference, warmup=warmup, repetition=iters,
+        )
+        methods_match = triton_meta["benchmark_method"] == ref_meta["benchmark_method"]
+        speedup = ref_ms / triton_ms if methods_match and triton_ms > 0 else None
         latencies.append(triton_ms)
-        speedups.append(speedup)
+        if speedup is not None:
+            speedups.append(speedup)
+        benchmark_methods.append(triton_meta["benchmark_method"])
 
-        tag = f"B={B} QH={QH_PER_KH} KH={KH} D={D} {rs.name} nope={nope}"
-        results.append({"config": tag, "ref_ms": ref_ms, "triton_ms": triton_ms, "speedup": speedup})
+        tag = (
+            f"B={B} QH={QH_PER_KH} KH={KH} D={D} {rs.name} "
+            f"nope={nope} nope_first={nope_first} reuse={reuse}"
+        )
+        results.append({
+            "test_case_id": tag,
+            "params": {
+                "B": B,
+                "QH_PER_KH": QH_PER_KH,
+                "KH": KH,
+                "D": D,
+                "rotate_style": rs.name,
+                "nope": nope,
+                "nope_first": nope_first,
+                "reuse_freqs_front_part": reuse,
+            },
+            "execution_time_ms": triton_ms,
+            "ref_ms": ref_ms,
+            "speedup": speedup,
+            **triton_meta,
+            "reference_benchmark_method": ref_meta["benchmark_method"],
+            "benchmark_method_consistent": methods_match,
+        })
 
         if verbose:
-            marker = " *" if speedup > 1.0 else ""
-            print(f"{tag:<50} {ref_ms:>8.4f}ms {triton_ms:>8.4f}ms {speedup:>8.2f}x{marker}")
+            marker = " *" if speedup is not None and speedup > 1.0 else ""
+            speedup_text = f"{speedup:.2f}x" if speedup is not None else "N/A"
+            print(f"{tag:<50} {ref_ms:>8.4f}ms {triton_ms:>8.4f}ms {speedup_text:>9s}{marker}")
 
         del qkv
         torch.cuda.empty_cache()
 
+    report_path = Path("build/performance_report.json")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(results, indent=2))
+
     log_sum = sum(math.log(t) for t in latencies)
     geomean_latency = math.exp(log_sum / len(latencies))
 
-    log_sum_speedup = sum(math.log(s) for s in speedups)
-    geomean_speedup = math.exp(log_sum_speedup / len(speedups))
+    methods_consistent = len(speedups) == len(latencies)
+    geomean_speedup = (
+        math.exp(sum(math.log(s) for s in speedups) / len(speedups))
+        if methods_consistent else None
+    )
 
     if verbose:
         print("-" * 90)
         print(f"{'Geometric mean latency:':<50} {geomean_latency:.4f} ms")
-        print(f"{'Geometric mean speedup:':<50} {geomean_speedup:.2f}x")
+        print(
+            f"{'Geometric mean speedup:':<50} {geomean_speedup:.2f}x"
+            if geomean_speedup is not None else
+            f"{'Geometric mean speedup:':<50} N/A (timing methods differ)"
+        )
         print(f"GEAK_RESULT_LATENCY_MS={geomean_latency:.4f}")
-        print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}")
+        if geomean_speedup is not None:
+            print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}")
+
+    print(f"GEAK_BENCHMARK_METHOD_CONSISTENT={int(methods_consistent)}")
+
+    print("GEAK_BENCHMARK_METHOD={}".format(
+        benchmark_methods[0] if len(set(benchmark_methods)) == 1
+        else "mixed:" + ",".join(sorted(set(benchmark_methods)))
+    ))
 
     return {
         "geomean_latency_ms": geomean_latency,
@@ -487,7 +477,9 @@ if __name__ == "__main__":
 
     if args.correctness:
         print("\n[Correctness Mode]")
-        run_correctness(HARNESS_CONFIGS)
+        correctness = run_correctness(HARNESS_CONFIGS)
+        if not correctness["correct"]:
+            sys.exit(1)
     elif args.profile:
         print("\n[Profile Mode]")
         warmup = args.warmup if args.warmup is not None else 50

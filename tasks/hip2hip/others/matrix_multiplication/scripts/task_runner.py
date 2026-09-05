@@ -6,13 +6,14 @@ import os
 import json
 import argparse
 import subprocess
-import time
 
 TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "hip2hip/matrix_multiplication"
 BINARY = os.path.join(TASK_DIR, "hip_matrix_multiplication")
+BENCH_BINARY = os.path.join(TASK_DIR, "build", "native_graph_benchmark")
+BENCH_SOURCE = os.path.join(TASK_DIR, "scripts", "native", "benchmark_driver.hip")
 
 # 5 test shapes: (A_rows, A_cols, B_cols) - must be multiples of 16 (block_size)
 TEST_SHAPES = [
@@ -36,6 +37,20 @@ def run_compile():
             return False, f"make failed:\n{result.stderr}\n{result.stdout}"
         if not os.path.isfile(BINARY):
             return False, f"Binary {BINARY} not found after make"
+        os.makedirs(os.path.dirname(BENCH_BINARY), exist_ok=True)
+        result = subprocess.run(
+            [
+                os.environ.get("HIPCXX", "/opt/rocm/bin/hipcc"),
+                "-std=c++17", "-Wall", "-Wextra",
+                "-I", os.path.join(TASK_DIR, "Common"),
+                BENCH_SOURCE, "-o", BENCH_BINARY,
+            ],
+            cwd=TASK_DIR, capture_output=True, text=True, timeout=300,
+        )
+        if result.returncode != 0:
+            return False, f"native benchmark compile failed:\n{result.stderr}\n{result.stdout}"
+        if not os.path.isfile(BENCH_BINARY):
+            return False, f"Native benchmark {BENCH_BINARY} not found after compile"
         return True, None
     except Exception as e:
         return False, str(e)
@@ -63,45 +78,53 @@ def run_correctness():
     return True, None
 
 
+def _parse_native_result(output):
+    prefix = "AKA_BENCHMARK_RESULT "
+    for line in output.splitlines():
+        if not line.startswith(prefix):
+            continue
+        result = json.loads(line[len(prefix):])
+        if result.get("benchmark_method") not in {"cuda_graph", "cuda_event_fallback"}:
+            raise ValueError("native benchmark returned an invalid benchmark_method")
+        elapsed = float(result["execution_time_ms"])
+        if elapsed <= 0:
+            raise ValueError("native benchmark returned a non-positive execution time")
+        return result
+    raise ValueError("native benchmark did not emit AKA_BENCHMARK_RESULT")
+
+
 def run_performance():
-    if not os.path.isfile(BINARY):
-        return []
+    if not os.path.isfile(BENCH_BINARY):
+        return [], "Native benchmark binary not found. Run compile first."
 
     test_cases = []
-    
     for shape_idx, (rows, cols, bcols) in enumerate(TEST_SHAPES):
         try:
-            # Time multiple runs
-            n_warmup = 10
-            n_iter = 100
-            for _ in range(n_warmup):
-                subprocess.run(
-                    [BINARY, "--A_rows", str(rows), "--A_cols", str(cols), "--B_cols", str(bcols)],
-                    capture_output=True, timeout=60)
+            completed = subprocess.run(
+                [
+                    BENCH_BINARY,
+                    "--A_rows", str(rows),
+                    "--A_cols", str(cols),
+                    "--B_cols", str(bcols),
+                    "--samples", "100",
+                ],
+                capture_output=True, text=True, timeout=300,
+            )
+            output = completed.stdout + completed.stderr
+            if completed.returncode != 0:
+                return [], f"Shape {shape_idx} native benchmark failed:\n{output}"
+            result = _parse_native_result(output)
+            result["test_case_id"] = f"shape_{shape_idx}"
+            result["params"] = {
+                "A_rows": rows,
+                "A_cols": cols,
+                "B_cols": bcols,
+            }
+            test_cases.append(result)
+        except Exception as error:
+            return [], f"Shape {shape_idx} native benchmark failed: {error}"
 
-            total_ms = 0
-            for _ in range(n_iter):
-                t0 = time.perf_counter()
-                subprocess.run(
-                    [BINARY, "--A_rows", str(rows), "--A_cols", str(cols), "--B_cols", str(bcols)],
-                    capture_output=True, timeout=60)
-                t1 = time.perf_counter()
-                total_ms += (t1 - t0) * 1000
-
-            elapsed_ms = total_ms / n_iter
-            test_cases.append({
-                "test_case_id": f"shape_{shape_idx}",
-                "execution_time_ms": elapsed_ms,
-                "params": {
-                    "A_rows": rows,
-                    "A_cols": cols,
-                    "B_cols": bcols
-                }
-            })
-        except Exception:
-            continue
-    
-    return test_cases
+    return test_cases, None
 
 
 def main():
@@ -133,13 +156,15 @@ def main():
         sys.exit(0 if ok else 1)
 
     elif args.mode == "performance":
-        test_cases = run_performance()
-        report = {"test_cases": test_cases}
+        test_cases, err = run_performance()
+        report = {"test_cases": test_cases, "error": err}
         with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         for case in test_cases:
             print(f"Performance: {case['execution_time_ms']:.4f} ms ({case['test_case_id']})")
-        sys.exit(0)
+        if err:
+            print(f"Performance: FAIL\nError: {err}")
+        sys.exit(0 if test_cases and not err else 1)
 
 
 if __name__ == "__main__":

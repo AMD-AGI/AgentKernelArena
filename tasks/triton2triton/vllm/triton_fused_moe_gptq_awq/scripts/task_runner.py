@@ -207,6 +207,8 @@ def run_performance():
                 _bench_fn,
                 warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS,
+                use_cuda_graph=False,
+                fallback_reason="fused_moe_host_routing_and_dynamic_allocations",
             )
 
             test_cases.append({

@@ -11,8 +11,16 @@ sys.path.insert(0, TASK_DIR)
 os.chdir(TASK_DIR)
 
 import torch
+from _aka_benchmark import (
+    benchmark_cuda_graph_or_events,
+    hip_source_graph_capture_policy,
+)
 
 TASK_NAME = "hip2hip/roiaware_pool3d"
+HIP_GRAPH_ENABLED, HIP_GRAPH_FALLBACK_REASON = hip_source_graph_capture_policy(
+    os.path.join(TASK_DIR, "src", "roiaware_pool3d.cpp"),
+    os.path.join(TASK_DIR, "src", "roiaware_pool3d_kernel.hip"),
+)
 
 # 5 test shapes: (num_rois, num_pts, C, out_size)
 TEST_SHAPES = [
@@ -40,6 +48,7 @@ def cpu_roiaware_pool3d(rois, pts, pts_feature, out_size, mode='max'):
     C = pts_feature.shape[1]
     out_x = out_y = out_z = out_size
     pooled = torch.zeros(N, out_x, out_y, out_z, C, dtype=pts_feature.dtype)
+    counts = torch.zeros(N, out_x, out_y, out_z, dtype=torch.int32)
 
     for n in range(N):
         cx, cy, cz, dx, dy, dz, heading = rois[n]
@@ -75,9 +84,11 @@ def cpu_roiaware_pool3d(rois, pts, pts_feature, out_size, mode='max'):
                 pooled[n, vx, vy, vz] = torch.max(pooled[n, vx, vy, vz], pts_feature[p])
             else:  # avg - accumulate, we'll divide later
                 pooled[n, vx, vy, vz] += pts_feature[p]
+                counts[n, vx, vy, vz] += 1
 
-    # For avg mode, we'd need counts - but boundary effects make exact comparison difficult
-    # So we use sum-based comparison instead of exact match
+    if mode == 'avg':
+        nonempty = counts > 0
+        pooled[nonempty] /= counts[nonempty].to(pooled.dtype).unsqueeze(-1)
     return pooled
 
 
@@ -143,33 +154,34 @@ def run_correctness():
             return False, (f"Shape {i+1}: output shape {gpu_out_max.shape} "
                            f"!= expected {expected_shape}")
 
-        # Test avg pooling (just check shape and non-NaN)
+        # Test avg pooling against the independent CPU voxel/count reference.
         pool_avg = RoIAwarePool3d(out_size=out_size, max_pts_per_voxel=128, mode='avg')
         gpu_out_avg = pool_avg(rois_gpu, pts_gpu, feat_gpu)
         if gpu_out_avg.shape != expected_shape:
             return False, f"Shape {i+1}: avg pool output shape mismatch"
-        if torch.isnan(gpu_out_avg).any():
-            return False, f"Shape {i+1}: avg pool output contains NaN"
+        if not torch.isfinite(gpu_out_avg).all():
+            return False, f"Shape {i+1}: avg pool output contains NaN or Inf"
+        cpu_out_avg = cpu_roiaware_pool3d(
+            rois.float(), pts.float(), pts_feature.float(), out_size, mode='avg')
+        try:
+            torch.testing.assert_close(
+                gpu_out_avg.cpu(), cpu_out_avg, atol=1e-4, rtol=1e-3)
+        except AssertionError as exc:
+            return False, f"Shape {i+1}: avg pool mismatch: {exc}"
 
     return True, None
 
 
 def _time_kernel(fn, n_warmup=10, n_iter=100):
-    for _ in range(n_warmup):
-        fn()
-    torch.cuda.synchronize()
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    start.record()
-    for _ in range(n_iter):
-        fn()
-    end.record()
-    torch.cuda.synchronize()
-    return start.elapsed_time(end) / n_iter
+    return benchmark_cuda_graph_or_events(
+        fn, warmup=n_warmup, repetition=n_iter,
+        use_cuda_graph=HIP_GRAPH_ENABLED,
+        fallback_reason=HIP_GRAPH_FALLBACK_REASON,
+    )
 
 
 def run_performance():
-    from roiaware_pool3d_wrapper import RoIAwarePool3d
+    from kernel_loader import roiaware_pool3d_ext
 
     test_cases = []
     
@@ -180,17 +192,49 @@ def run_performance():
         pts = pts.float()
         pts_feature = pts_feature.float()
 
-        pool_max = RoIAwarePool3d(out_size=out_size, max_pts_per_voxel=128, mode='max')
-        pool_avg = RoIAwarePool3d(out_size=out_size, max_pts_per_voxel=128, mode='avg')
+        pooled_features = torch.empty(
+            (num_rois, out_size, out_size, out_size, C),
+            device="cuda", dtype=pts_feature.dtype,
+        )
+        argmax = torch.empty_like(pooled_features, dtype=torch.int)
+        pts_idx_of_voxels = torch.empty(
+            (num_rois, out_size, out_size, out_size, 128),
+            device="cuda", dtype=torch.int,
+        )
+        pts_mask = torch.empty(
+            (num_rois, num_pts), device="cuda", dtype=torch.int,
+        )
+
+        def prepare_outputs():
+            pooled_features.zero_()
+            argmax.zero_()
+            pts_idx_of_voxels.zero_()
+
+        def run_pool(pool_method):
+            return roiaware_pool3d_ext.forward(
+                rois, pts, pts_feature, argmax, pts_idx_of_voxels,
+                pooled_features, pts_mask, pool_method,
+            )
 
         # Perf1: max pooling
-        ms_max = _time_kernel(lambda: pool_max(rois, pts, pts_feature))
+        ms_max, meta_max = benchmark_cuda_graph_or_events(
+            lambda: run_pool(0), warmup=10, repetition=100,
+            use_cuda_graph=HIP_GRAPH_ENABLED,
+            fallback_reason=HIP_GRAPH_FALLBACK_REASON,
+            prepare_fn=prepare_outputs,
+        )
         # Perf2: avg pooling
-        ms_avg = _time_kernel(lambda: pool_avg(rois, pts, pts_feature))
+        ms_avg, meta_avg = benchmark_cuda_graph_or_events(
+            lambda: run_pool(1), warmup=10, repetition=100,
+            use_cuda_graph=HIP_GRAPH_ENABLED,
+            fallback_reason=HIP_GRAPH_FALLBACK_REASON,
+            prepare_fn=prepare_outputs,
+        )
 
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_maxpool",
             "execution_time_ms": ms_max,
+            **meta_max,
             "params": {
                 "num_rois": num_rois,
                 "num_pts": num_pts,
@@ -202,6 +246,7 @@ def run_performance():
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_avgpool",
             "execution_time_ms": ms_avg,
+            **meta_avg,
             "params": {
                 "num_rois": num_rois,
                 "num_pts": num_pts,

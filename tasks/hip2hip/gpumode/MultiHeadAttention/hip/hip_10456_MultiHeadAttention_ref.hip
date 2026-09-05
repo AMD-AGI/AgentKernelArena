@@ -2,6 +2,7 @@
 #include <hip/hip_runtime.h>
 #include <torch/extension.h>
 #include <ATen/ATen.h>
+#include <ATen/hip/HIPContext.h>
 #include <cmath>
 #include <cstdint>
 
@@ -136,8 +137,9 @@ torch::Tensor forward(
         const long long total = (long long)B * H * S_total * S_total;
         const int threads = 256;
         dim3 grid(div_up((int)total, threads));
+        hipStream_t stream = at::hip::getCurrentHIPStream();
         AT_DISPATCH_FLOATING_TYPES(scores4d.scalar_type(), "apply_mask_kernel", [&](){
-            hipLaunchKernelGGL(HIP_KERNEL_NAME(apply_mask_kernel<scalar_t>), grid, threads, 0, 0,
+            hipLaunchKernelGGL(HIP_KERNEL_NAME(apply_mask_kernel<scalar_t>), grid, threads, 0, stream,
                                scores4d.data_ptr<scalar_t>(), mask.data_ptr<uint8_t>(), (int)B, (int)H, (int)S_total);
         });
         scores = scores4d.view({BH, (int64_t)S_total, (int64_t)S_total});
@@ -168,4 +170,3 @@ torch::Tensor forward(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &forward, "MultiHeadAttention HIP forward (ROCm, optimized BLAS path)");
 }
-

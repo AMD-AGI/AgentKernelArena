@@ -12,6 +12,10 @@ from typing import Any, Dict, List, Tuple, Union
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from compile import clear_workdir
 from utils import load_function_from_path, load_hip_kernel, save_eval_result
+from _aka_benchmark import (
+    benchmark_cuda_graph_or_events,
+    hip_source_graph_capture_policy,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -141,42 +145,30 @@ def _write_perf_report(report: Dict[str, Any]) -> None:
         json.dump(report, f, indent=2)
 
 
-def cal_hip_latency(kernel_hip: Any, inputs: List[Any], hip_fn: Any, n_iter: int = 100, n_warmup: int = 10) -> float:
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-
-    for _ in range(n_warmup):
-        kernel_hip(*inputs, fn=hip_fn)
-
-    torch.cuda.synchronize()
-    start.record()
-    for _ in range(n_iter):
-        kernel_hip(*inputs, fn=hip_fn)
-    end.record()
-    torch.cuda.synchronize()
-
-    elapsed = start.elapsed_time(end)
-    avg_time = elapsed / n_iter
-    return avg_time
+def cal_hip_latency(kernel_hip: Any, inputs: List[Any], hip_fn: Any,
+                    n_iter: int = 100, n_warmup: int = 10,
+                    use_cuda_graph: bool = True,
+                    fallback_reason: str | None = None) -> Tuple[float, Dict[str, Any]]:
+    return benchmark_cuda_graph_or_events(
+        lambda: kernel_hip(*inputs, fn=hip_fn),
+        warmup=n_warmup,
+        repetition=n_iter,
+        use_cuda_graph=use_cuda_graph,
+        fallback_reason=fallback_reason,
+    )
 
 
-def cal_modu_latency(kernel_modu: Any, inputs: List[Any], n_iter: int = 100, n_warmup: int = 10) -> float:
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-
-    for _ in range(n_warmup):
-        kernel_modu(*inputs)
-
-    torch.cuda.synchronize()
-    start.record()
-    for _ in range(n_iter):
-        kernel_modu(*inputs)
-    end.record()
-    torch.cuda.synchronize()
-
-    elapsed = start.elapsed_time(end)
-    avg_time = elapsed / n_iter
-    return avg_time
+def cal_modu_latency(kernel_modu: Any, inputs: List[Any],
+                     n_iter: int = 100, n_warmup: int = 10,
+                     use_cuda_graph: bool = True,
+                     fallback_reason: str | None = None) -> Tuple[float, Dict[str, Any]]:
+    return benchmark_cuda_graph_or_events(
+        lambda: kernel_modu(*inputs),
+        warmup=n_warmup,
+        repetition=n_iter,
+        use_cuda_graph=use_cuda_graph,
+        fallback_reason=fallback_reason,
+    )
 
 
 def _normalize_get_inputs_result(inputs_result: Any) -> Any:
@@ -221,6 +213,11 @@ def cal_kernel_perf(
     baseline_only: bool = False,
 ) -> Tuple[Any, Any, Any]:
     failed_ret: Tuple[Any, Any, Any] = (None, None, None)
+    graph_enabled, graph_fallback_reason = (
+        (True, None)
+        if baseline_only
+        else hip_source_graph_capture_policy(hip_kernel_path)
+    )
 
     hip_dir = os.path.join(build_dir, "hip")
     os.makedirs(build_dir, exist_ok=True)
@@ -260,7 +257,12 @@ def cal_kernel_perf(
 
             inputs_modu_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
             try:
-                torch_time = cal_modu_latency(kernel_modu, inputs_modu_cuda)
+                torch_time, torch_meta = cal_modu_latency(
+                    kernel_modu,
+                    inputs_modu_cuda,
+                    use_cuda_graph=graph_enabled,
+                    fallback_reason=graph_fallback_reason,
+                )
                 report["test_cases"].append({
                     "case_idx": case_idx,
                     "correct": True,
@@ -268,6 +270,7 @@ def cal_kernel_perf(
                     "opt_time": None,
                     "speedup": None,
                     "params": params,
+                    **torch_meta,
                 })
                 print(f"[INFO] Case {case_idx}: torch={torch_time:.5f}ms")
             except Exception as e:
@@ -292,14 +295,22 @@ def cal_kernel_perf(
     hip_fn = load_hip_kernel(kernel_name, hip_dir, hip_file_name)
 
     torch_times = []
+    torch_metadata = []
     for case_idx, case in enumerate(input_cases):
         inputs_modu = copy.deepcopy(case)
         inputs_modu_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
         try:
-            torch_time = cal_modu_latency(kernel_modu, inputs_modu_cuda)
+            torch_time, torch_meta = cal_modu_latency(
+                kernel_modu,
+                inputs_modu_cuda,
+                use_cuda_graph=graph_enabled,
+                fallback_reason=graph_fallback_reason,
+            )
             torch_times.append(torch_time)
+            torch_metadata.append(torch_meta)
         except Exception as e:
             torch_times.append(None)
+            torch_metadata.append({})
             print(f"[Warning] {kernel_name} case {case_idx} PyTorch latency exception: {e}")
 
     valid_torch_times = [t for t in torch_times if t is not None]
@@ -330,6 +341,7 @@ def cal_kernel_perf(
     kernel_func.eval()
 
     hip_times = []
+    benchmark_method_consistencies = []
     all_correct = True
 
     for case_idx, case in enumerate(input_cases):
@@ -347,7 +359,7 @@ def cal_kernel_perf(
         case_entry: Dict[str, Any] = {
             "case_idx": case_idx,
             "correct": False,
-            "ori_time": round(torch_times[case_idx], 5) if case_idx < len(torch_times) else None,
+            "ori_time": round(torch_times[case_idx], 5) if case_idx < len(torch_times) and torch_times[case_idx] is not None else None,
             "opt_time": None,
             "speedup": None,
             "params": params,
@@ -377,13 +389,27 @@ def cal_kernel_perf(
             continue
 
         try:
-            hip_time = cal_hip_latency(kernel_func, inputs_func_cuda, hip_fn)
+            hip_time, hip_meta = cal_hip_latency(
+                kernel_func,
+                inputs_func_cuda,
+                hip_fn,
+                use_cuda_graph=graph_enabled,
+                fallback_reason=graph_fallback_reason,
+            )
             case_entry["opt_time"] = round(hip_time, 5)
+            case_entry.update(hip_meta)
+            reference_method = torch_metadata[case_idx].get("benchmark_method")
+            if reference_method:
+                case_entry["reference_benchmark_method"] = reference_method
+            methods_match = reference_method == hip_meta.get("benchmark_method")
+            case_entry["benchmark_method_consistent"] = methods_match
+            benchmark_method_consistencies.append(methods_match)
             torch_time = torch_times[case_idx] if case_idx < len(torch_times) else None
-            if torch_time and hip_time > 0:
+            if torch_time and hip_time > 0 and methods_match:
                 case_entry["speedup"] = round(torch_time / hip_time, 2)
             hip_times.append(hip_time)
-            print(f"[INFO] Case {case_idx}: torch={torch_time:.5f}ms, hip={hip_time:.5f}ms, speedup={case_entry.get('speedup', 'N/A')}x")
+            speedup_text = f"{case_entry['speedup']:.2f}x" if case_entry["speedup"] is not None else "N/A"
+            print(f"[INFO] Case {case_idx}: torch={torch_time:.5f}ms, hip={hip_time:.5f}ms, speedup={speedup_text}")
         except Exception as e:
             print(f"[Error] {kernel_name} case {case_idx} HIP latency exception: {e}")
             case_entry["error"] = f"hip_perf_exception: {e}"
@@ -409,19 +435,29 @@ def cal_kernel_perf(
             clear_workdir(hip_dir)
         return failed_ret
     else:
-        avg_speedup = avg_torch_time / avg_hip_time if avg_torch_time and avg_hip_time > 0 else None
+        methods_consistent = (
+            bool(benchmark_method_consistencies)
+            and all(benchmark_method_consistencies)
+        )
+        avg_speedup = (
+            avg_torch_time / avg_hip_time
+            if methods_consistent and avg_torch_time and avg_hip_time > 0
+            else None
+        )
 
         print(f"[INFO] HIP kernel {kernel_name} processed {len(hip_times)} test cases.")
-        print(f"[INFO] Average: torch={avg_torch_time:.5f}ms, hip={avg_hip_time:.5f}ms, speedup={avg_speedup:.2f}x")
+        avg_speedup_text = f"{avg_speedup:.2f}x" if avg_speedup is not None else "N/A"
+        print(f"[INFO] Average: torch={avg_torch_time:.5f}ms, hip={avg_hip_time:.5f}ms, speedup={avg_speedup_text}")
 
         report["status"] = "ok"
         report["message"] = f"Performance benchmark completed for {len(hip_times)} test cases"
+        report["benchmark_method_consistent"] = methods_consistent
         report["speedup"] = round(avg_speedup, 2) if avg_speedup else None
         _write_perf_report(report)
 
         if auto_cleanup:
             clear_workdir(hip_dir)
-        return round(avg_speedup, 2) if avg_speedup else None, round(avg_torch_time, 5), round(avg_hip_time, 5)
+        return round(avg_speedup, 2) if avg_speedup is not None else 0.0, round(avg_torch_time, 5), round(avg_hip_time, 5)
 
 
 if __name__ == "__main__":

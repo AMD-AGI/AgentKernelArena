@@ -1,0 +1,14 @@
+# This image_kernel task must be run with the Kimi-K3 SGLang image that owns
+# /sgl-workspace/aiter, rather than the default AgentKernelArena image.
+agent:
+  template: task_validator
+  backend: codex
+  model: gpt-5.6-luna
+  effort: xhigh
+
+tasks:
+  - image_kernel/mi355x_vllm_aiter_mxfp4_moe_2stage_kimi_k3
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

@@ -11,8 +11,16 @@ sys.path.insert(0, TASK_DIR)
 os.chdir(TASK_DIR)
 
 import torch
+from _aka_benchmark import (
+    benchmark_cuda_graph_or_events,
+    hip_source_graph_capture_policy,
+)
 
 TASK_NAME = "hip2hip/assign_score_withk"
+HIP_GRAPH_ENABLED, HIP_GRAPH_FALLBACK_REASON = hip_source_graph_capture_policy(
+    os.path.join(TASK_DIR, "src", "assign_score_withk.cpp"),
+    os.path.join(TASK_DIR, "src", "assign_score_withk_cuda.hip"),
+)
 
 # 5 test shapes: (B, N0, N1, M, K, O)
 # N0 = num source points, N1 = num query points (npoint), M = weight matrices, K = neighbors, O = out_dim
@@ -130,18 +138,13 @@ def run_correctness():
     return True, None
 
 
-def _time_kernel(fn, n_warmup=10, n_iter=100):
-    for _ in range(n_warmup):
-        fn()
-    torch.cuda.synchronize()
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    start.record()
-    for _ in range(n_iter):
-        fn()
-    end.record()
-    torch.cuda.synchronize()
-    return start.elapsed_time(end) / n_iter
+def _time_kernel(fn, n_warmup=10, n_iter=100, prepare_fn=None):
+    return benchmark_cuda_graph_or_events(
+        fn, warmup=n_warmup, repetition=n_iter,
+        use_cuda_graph=HIP_GRAPH_ENABLED,
+        fallback_reason=HIP_GRAPH_FALLBACK_REASON,
+        prepare_fn=prepare_fn,
+    )
 
 
 def run_performance():
@@ -157,7 +160,7 @@ def run_performance():
         knn_idx = torch.randint(0, N0, (B, N1, K), device="cuda", dtype=torch.int64)
 
         # Perf1: forward pass
-        ms_fwd = _time_kernel(lambda: assign_score_withk(scores, point_features, center_features, knn_idx, 'sum'))
+        ms_fwd, meta_fwd = _time_kernel(lambda: assign_score_withk(scores, point_features, center_features, knn_idx, 'sum'))
 
         # Perf2: backward pass
         def fwd_bwd():
@@ -165,12 +168,27 @@ def run_performance():
             loss = out.sum()
             loss.backward()
 
-        ms_fwd_bwd = _time_kernel(fwd_bwd)
+        # Materialize stable leaf-gradient buffers once.  Repeated backward
+        # otherwise accumulates into those buffers, so graph batching would
+        # benchmark a different logical state after the first invocation.
+        fwd_bwd()
+        torch.cuda.synchronize()
+
+        def reset_input_grads():
+            for tensor in (scores, point_features, center_features):
+                if tensor.grad is not None:
+                    tensor.grad.zero_()
+
+        reset_input_grads()
+        ms_fwd_bwd, meta_fwd_bwd = _time_kernel(
+            fwd_bwd, prepare_fn=reset_input_grads
+        )
 
         # Add test cases for this shape
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_forward",
             "execution_time_ms": ms_fwd,
+            **meta_fwd,
             "params": {
                 "B": B,
                 "N0": N0,
@@ -184,6 +202,7 @@ def run_performance():
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_forward_backward",
             "execution_time_ms": ms_fwd_bwd,
+            **meta_fwd_bwd,
             "params": {
                 "B": B,
                 "N0": N0,

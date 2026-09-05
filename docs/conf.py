@@ -9,8 +9,12 @@ version_number = "0.2.0"
 html_theme = "rocm_docs_theme"
 html_theme_options = {
     "flavor": "hyperloom",
+    "header_title": f"AgentKernelArena {version_number}",
+    "header_link": False,
     "use_repository_button": True,
     "use_issues_button": True,
+    "version_list_link": False,
+    "link_main_doc": False,
 }
 
 # This section turns on/off article info

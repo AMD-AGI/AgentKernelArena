@@ -7,7 +7,7 @@ of FP8 MQA-logits shapes.
 Modes:
   --compile        ast-parse + import the source, assert entry/kernel symbols exist
   --correctness    run the Triton kernel on TEST_SHAPES, assert finite in-window output
-  --full-benchmark warmup + cuda-event timing, write build/performance_report.json
+  --full-benchmark graph-first GPU timing, write build/performance_report.json
 
 The flydsl-vs-triton comparison will be added when the FlyDSL target lands.
 """
@@ -19,6 +19,8 @@ import math
 import os
 import sys
 from pathlib import Path
+
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 SOURCE_FILE = "fp8_mqa_logits.py"
 ENTRY = "fp8_mqa_logits"
@@ -276,23 +278,26 @@ def run_benchmark(verbose=True):
                 mod.fp8_mqa_logits(q, kv, kv_scales, weights, cu_starts, cu_ends)
             torch.cuda.synchronize()
 
-            starts = [torch.cuda.Event(enable_timing=True) for _ in range(BENCHMARK_ITERATIONS)]
-            ends = [torch.cuda.Event(enable_timing=True) for _ in range(BENCHMARK_ITERATIONS)]
-            for j in range(BENCHMARK_ITERATIONS):
-                starts[j].record()
-                mod.fp8_mqa_logits(q, kv, kv_scales, weights, cu_starts, cu_ends)
-                ends[j].record()
-            torch.cuda.synchronize()
-            times = [a.elapsed_time(b) for a, b in zip(starts, ends)]
-            ms = sum(times) / len(times)
+            ms, bench_meta = benchmark_cuda_graph_or_events(
+                lambda: mod.fp8_mqa_logits(
+                    q, kv, kv_scales, weights, cu_starts, cu_ends
+                ),
+                warmup=0,
+                repetition=BENCHMARK_ITERATIONS,
+            )
         except Exception as e:  # noqa: BLE001
             ms = -1.0
+            bench_meta = {
+                "benchmark_method": "benchmark_failed",
+                "benchmark_fallback_reason": str(e),
+            }
             if verbose:
                 print(f"  shape {idx+1} error: {str(e)[:120]}")
         latencies.append(ms)
         report.append({
             "test_case_id": f"perf{idx + 1}",
             "execution_time_ms": ms,
+            **bench_meta,
             "params": {"seq_len": s, "seq_len_kv": skv, "num_heads": h,
                        "head_size": d, "window": window},
         })

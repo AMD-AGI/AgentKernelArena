@@ -13,6 +13,19 @@ import torch
 import triton
 
 from kernel import gemm_a16wfp4
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+
+
+def benchmark_cuda_graph_or_events(*args, **kwargs):
+    samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
+    values = sorted(samples)
+    midpoint = len(values) // 2
+    median_ms = (
+        values[midpoint]
+        if len(values) % 2
+        else (values[midpoint - 1] + values[midpoint]) / 2.0
+    )
+    return median_ms, metadata
 
 
 # ============================================================================
@@ -276,6 +289,7 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
         return {"geomean_latency_ms": 0.0, "latencies": [], "skipped": True}
 
     latencies = []
+    benchmark_methods = []
 
     print(f"Running benchmark on {len(shapes)} shapes, {warmup} warmup, {iters} iterations each...")
     if verbose:
@@ -286,22 +300,15 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
         M, N, K = cfg
         x, w, w_kernel, w_scales, w_scales_kernel = generate_inputs(M, N, K, DTYPE)
 
-        for _ in range(warmup):
-            gemm_a16wfp4(x, w_kernel, w_scales_kernel, atomic_add=False, dtype=DTYPE)
-        torch.cuda.synchronize()
-
-        triton_times = []
-        for _ in range(iters):
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            start.record()
-            gemm_a16wfp4(x, w_kernel, w_scales_kernel, atomic_add=False, dtype=DTYPE)
-            end.record()
-            torch.cuda.synchronize()
-            triton_times.append(start.elapsed_time(end))
-
-        triton_ms = sorted(triton_times)[len(triton_times) // 2]
+        triton_ms, benchmark_meta = benchmark_cuda_graph_or_events(
+            lambda: gemm_a16wfp4(
+                x, w_kernel, w_scales_kernel, atomic_add=False, dtype=DTYPE,
+            ),
+            warmup=warmup,
+            repetition=iters,
+        )
         latencies.append(triton_ms)
+        benchmark_methods.append(benchmark_meta["benchmark_method"])
 
         if verbose:
             print(f"{_label(cfg):<22} {triton_ms:>8.4f}ms", flush=True)
@@ -315,6 +322,10 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
     print(f"{'Geometric mean latency:':<22} {geomean_latency:.4f} ms")
     print(f"GEAK_SHAPES_USED={_shape_indices(shapes)}")
     print(f"GEAK_RESULT_LATENCY_MS={geomean_latency:.4f}", flush=True)
+    print("GEAK_BENCHMARK_METHOD={}".format(
+        benchmark_methods[0] if len(set(benchmark_methods)) == 1
+        else "mixed:" + ",".join(sorted(set(benchmark_methods)))
+    ))
 
     return {"geomean_latency_ms": geomean_latency, "latencies": latencies}
 

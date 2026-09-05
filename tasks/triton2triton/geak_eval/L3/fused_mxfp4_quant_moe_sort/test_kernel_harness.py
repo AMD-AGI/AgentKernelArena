@@ -12,6 +12,19 @@ import itertools
 import math
 import os
 import sys
+from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+
+
+def benchmark_cuda_graph_or_events(*args, **kwargs):
+    samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
+    values = sorted(samples)
+    midpoint = len(values) // 2
+    median_ms = (
+        values[midpoint]
+        if len(values) % 2
+        else (values[midpoint - 1] + values[midpoint]) / 2.0
+    )
+    return median_ms, metadata
 
 # Ensure line-buffered stdout
 sys.stdout.reconfigure(line_buffering=True)
@@ -777,6 +790,7 @@ def run_correctness(indices):
 def run_benchmark(indices):
     print(f"Running benchmark on {len(indices)} configs...")
     latencies = []
+    methods = []
     for idx in indices:
         cfg = ALL_CONFIGS[idx]
         label = _cfg_label(cfg)
@@ -792,8 +806,11 @@ def run_benchmark(indices):
                 block_size=inp["block_size_M"],
             )
 
-        ms = triton.testing.do_bench(fn, warmup=WARMUP, rep=ITERATIONS)
+        ms, metadata = benchmark_cuda_graph_or_events(
+            fn, warmup=WARMUP, repetition=ITERATIONS
+        )
         latencies.append(ms)
+        methods.append(metadata["benchmark_method"])
         print(f"  [{idx}] {label}  {ms:.4f}ms")
 
     log_sum = sum(math.log(max(lat, 1e-12)) for lat in latencies)
@@ -801,6 +818,8 @@ def run_benchmark(indices):
 
     print(f"GEAK_SHAPES_USED={indices}")
     print(f"GEAK_RESULT_LATENCY_MS={geo_mean:.6f}")
+    method = methods[0] if len(set(methods)) == 1 else "mixed:" + ",".join(sorted(set(methods)))
+    print(f"GEAK_BENCHMARK_METHOD={method}")
     return geo_mean
 
 

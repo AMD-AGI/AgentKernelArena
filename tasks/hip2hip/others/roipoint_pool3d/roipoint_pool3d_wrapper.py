@@ -1,4 +1,5 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+import torch
 from torch import nn as nn
 from torch.autograd import Function
 
@@ -55,11 +56,20 @@ class RoIPointPool3dFunction(Function):
             (batch_size, boxes_num, num_sampled_points, 3 + feature_len))
         pooled_empty_flag = point_features.new_zeros(
             (batch_size, boxes_num)).int()
+        pts_assign = torch.empty(
+            (batch_size, points.shape[1], boxes_num),
+            device=points.device, dtype=torch.int,
+        )
+        pts_idx = torch.empty(
+            (batch_size, boxes_num, num_sampled_points),
+            device=points.device, dtype=torch.int,
+        )
 
         roipoint_pool3d_ext.forward(points.contiguous(),
                                     pooled_boxes3d.contiguous(),
                                     point_features.contiguous(),
-                                    pooled_features, pooled_empty_flag)
+                                    pooled_features, pooled_empty_flag,
+                                    pts_assign, pts_idx)
 
         return pooled_features, pooled_empty_flag
 

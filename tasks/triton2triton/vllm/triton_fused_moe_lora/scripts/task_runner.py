@@ -137,6 +137,230 @@ def make_test_data(M, K, num_experts, lora_rank, out_dim, num_loras, top_k, devi
             lora_rank, top_k, lora_ids, num_loras, adapter_enabled)
 
 
+def prepare_direct_launch(mod, output, qcurr_hidden_states, lora_a_stacked,
+                          lora_b_stacked, topk_weights, sorted_token_ids,
+                          expert_ids, num_tokens_post_padded,
+                          token_lora_mapping, max_lora_rank, top_k_num,
+                          lora_ids, num_active_loras, adapter_enabled,
+                          mul_routed_weight=False, offset=0):
+    """Prepare stable shrink/expand launches for graph-first benchmarking.
+
+    The public wrapper allocates pointer tables and an intermediate tensor on
+    every call. Those operations are deliberately hoisted here, along with all
+    views, grids, strides, scalar arguments, and Triton meta-parameters. The
+    returned callables only enqueue already-prepared device operations.
+    """
+    import torch
+
+    assert len(lora_a_stacked) == len(lora_b_stacked) > 0
+    assert topk_weights.dim() == qcurr_hidden_states.dim() == 2
+
+    device = qcurr_hidden_states.device
+    num_slices = len(lora_a_stacked)
+    w1_lora_a_stacked = lora_a_stacked[0]
+    w1_lora_b_stacked = lora_b_stacked[0]
+    num_experts = w1_lora_a_stacked.shape[1]
+    shrink_n = max_lora_rank
+    num_tokens_base = topk_weights.shape[0]
+    shrink_k = qcurr_hidden_states.shape[1]
+    num_tokens = num_tokens_base * top_k_num
+    output_dim = w1_lora_b_stacked.shape[2]
+
+    shrink_block_size_m = 64
+    shrink_block_size_n = min(64, mod._next_power_of_2(shrink_n))
+    shrink_block_size_k = 32
+    shrink_group_size_m = 8
+    shrink_num_warps = 4
+    shrink_num_stages = 3
+    shrink_split_k = 1
+
+    expand_block_size_m = 64
+    expand_block_size_n = 64
+    expand_block_size_k = max(16, min(32, mod._next_power_of_2(shrink_n)))
+    expand_group_size_m = 8
+    expand_num_warps = 4
+    expand_num_stages = 3
+
+    em = (
+        sorted_token_ids.shape[1]
+        if sorted_token_ids is not None
+        else num_tokens * shrink_block_size_m
+    )
+    grid_lora_dim, stride_tl, stride_el = mod._adjust_kernel_inputs(
+        num_active_loras, sorted_token_ids, expert_ids
+    )
+    grid_lora_dim2, stride_tl2, stride_el2 = mod._adjust_kernel_inputs(
+        num_active_loras, sorted_token_ids, expert_ids
+    )
+
+    # Both pointer tables and every tensor/view referenced by a captured graph
+    # must retain a stable address for the graph's full lifetime.
+    lora_a_ptrs = mod._get_ptr(lora_a_stacked, device)
+    lora_b_ptrs = mod._get_ptr(lora_b_stacked, device)
+    intermediate = torch.zeros(
+        (num_slices, num_tokens_base, top_k_num, max_lora_rank),
+        dtype=output.dtype,
+        device=device,
+    )
+    intermediate_flat = intermediate.view(-1, intermediate.shape[3])
+    out_view = output[:, :, offset: offset + num_slices * output_dim]
+
+    def _ceil_div(value, divisor):
+        return (value + divisor - 1) // divisor
+
+    shrink_grid = (
+        shrink_split_k
+        * _ceil_div(em, shrink_block_size_m)
+        * _ceil_div(shrink_n, shrink_block_size_n),
+        num_slices,
+        grid_lora_dim,
+    )
+    expand_grid = (
+        _ceil_div(em, expand_block_size_m)
+        * _ceil_div(output_dim, expand_block_size_n),
+        num_slices,
+        grid_lora_dim2,
+    )
+
+    shrink_args = (
+        qcurr_hidden_states,
+        lora_a_ptrs,
+        intermediate,
+        topk_weights,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        token_lora_mapping,
+        shrink_n,
+        shrink_k,
+        em,
+        num_tokens,
+        num_experts,
+        top_k_num,
+        lora_ids,
+        adapter_enabled,
+        w1_lora_a_stacked.shape[0],
+        qcurr_hidden_states.stride(0),
+        qcurr_hidden_states.stride(1),
+        w1_lora_a_stacked.stride(0),
+        w1_lora_a_stacked.stride(1),
+        w1_lora_a_stacked.stride(3),
+        w1_lora_a_stacked.stride(2),
+        intermediate.stride(2),
+        intermediate.stride(3),
+        stride_tl,
+        stride_el,
+    )
+    shrink_meta = {
+        "slice_a_size": qcurr_hidden_states.numel(),
+        "slice_c_size": intermediate.numel() // num_slices,
+        "num_slice_a": 1,
+        "num_slice_c": num_slices,
+        "token_mapping_factor": 1 if mul_routed_weight else top_k_num,
+        "naive_block_assignment": sorted_token_ids is None,
+        "MUL_ROUTED_WEIGHT": False,
+        "ADD_INPUTS": False,
+        "USE_B_L2_CACHE": True,
+        "IS_PRIMARY": True,
+        "BLOCK_SIZE_M": shrink_block_size_m,
+        "BLOCK_SIZE_N": shrink_block_size_n,
+        "BLOCK_SIZE_K": shrink_block_size_k,
+        "GROUP_SIZE_M": shrink_group_size_m,
+        "SPLIT_K": shrink_split_k,
+        "USE_GDC": False,
+        "launch_pdl": False,
+        "num_warps": shrink_num_warps,
+        "num_stages": shrink_num_stages,
+    }
+
+    expand_args = (
+        intermediate_flat,
+        lora_b_ptrs,
+        out_view,
+        topk_weights,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        token_lora_mapping,
+        output_dim,
+        max_lora_rank,
+        em,
+        num_tokens,
+        num_experts,
+        top_k_num,
+        lora_ids,
+        adapter_enabled,
+        w1_lora_b_stacked.shape[0],
+        intermediate_flat.stride(0),
+        intermediate_flat.stride(1),
+        w1_lora_b_stacked.stride(0),
+        w1_lora_b_stacked.stride(1),
+        w1_lora_b_stacked.stride(3),
+        w1_lora_b_stacked.stride(2),
+        out_view.stride(1),
+        out_view.stride(2),
+        stride_tl2,
+        stride_el2,
+    )
+    expand_meta = {
+        "slice_a_size": intermediate_flat.numel() // num_slices,
+        "slice_c_size": output_dim * out_view.stride(2),
+        "num_slice_a": num_slices,
+        "num_slice_c": num_slices,
+        "token_mapping_factor": 1,
+        "naive_block_assignment": sorted_token_ids is None,
+        "MUL_ROUTED_WEIGHT": mul_routed_weight,
+        "ADD_INPUTS": True,
+        "USE_B_L2_CACHE": True,
+        "IS_PRIMARY": False,
+        "BLOCK_SIZE_M": expand_block_size_m,
+        "BLOCK_SIZE_N": expand_block_size_n,
+        "BLOCK_SIZE_K": expand_block_size_k,
+        "GROUP_SIZE_M": expand_group_size_m,
+        "SPLIT_K": 1,
+        "USE_GDC": False,
+        "launch_pdl": False,
+        "num_warps": expand_num_warps,
+        "num_stages": expand_num_stages,
+    }
+
+    shrink_launcher = mod.fused_moe_lora_kernel[shrink_grid]
+    expand_launcher = mod.fused_moe_lora_kernel[expand_grid]
+    reset_output = output.zero_
+
+    def launch_shrink():
+        shrink_launcher(*shrink_args, **shrink_meta)
+
+    def launch_expand():
+        expand_launcher(*expand_args, **expand_meta)
+
+    def launch_reset_expand():
+        reset_output()
+        launch_expand()
+
+    def launch_fused_no_reset():
+        # Shrink uses SPLIT_K=1 and ADD_INPUTS=False, so it overwrites every
+        # intermediate row consumed by expand; no workspace reset is required.
+        launch_shrink()
+        launch_expand()
+
+    def launch_fused():
+        reset_output()
+        launch_fused_no_reset()
+
+    return {
+        "fused": launch_fused,
+        "fused_no_reset": launch_fused_no_reset,
+        "shrink": launch_shrink,
+        "reset_expand": launch_reset_expand,
+        "reset_output": reset_output,
+        "output": output,
+        "intermediate": intermediate,
+        "lora_a_ptrs": lora_a_ptrs,
+        "lora_b_ptrs": lora_b_ptrs,
+    }
+
+
 def run_compile():
     try:
         import ast
@@ -184,6 +408,22 @@ def run_correctness():
             if not torch.allclose(output.float(), ref.float(), atol=5e-2, rtol=5e-2):
                 max_diff = (output.float() - ref.float()).abs().max().item()
                 return False, f"Shape {i+1} (M={M},K={K}): max diff = {max_diff:.6f}"
+
+            direct = prepare_direct_launch(
+                mod, output, qcurr, lora_a, lora_b, topk_weights,
+                sorted_token_ids, expert_ids, num_tokens_post_padded,
+                token_lora_mapping, max_lora_rank, top_k_num, lora_ids,
+                num_active_loras, adapter_enabled,
+                mul_routed_weight=False, offset=0,
+            )
+            direct["fused"]()
+            torch.cuda.synchronize()
+            if not torch.allclose(output.float(), ref.float(), atol=5e-2, rtol=5e-2):
+                max_diff = (output.float() - ref.float()).abs().max().item()
+                return False, (
+                    f"Direct shape {i+1} (M={M},K={K}): "
+                    f"max diff = {max_diff:.6f}"
+                )
         except Exception as e:
             return False, f"Shape {i+1}: exception: {e}"
     return True, None
@@ -207,42 +447,20 @@ def run_performance():
              num_active_loras, adapter_enabled) = make_test_data(
                 M, K, num_experts, lora_rank, out_dim, num_loras, top_k, device, 0)
 
-            for _ in range(WARMUP_ITERATIONS):
-                output.zero_()
-                mod.fused_moe_lora(
-                    output, qcurr, lora_a, lora_b, topk_weights,
-                    sorted_token_ids, expert_ids, num_tokens_post_padded,
-                    token_lora_mapping, max_lora_rank, top_k_num, lora_ids,
-                    num_active_loras, adapter_enabled,
-                    mul_routed_weight=False, offset=0,
-                )
-            torch.cuda.synchronize()
+            direct = prepare_direct_launch(
+                mod, output, qcurr, lora_a, lora_b, topk_weights,
+                sorted_token_ids, expert_ids, num_tokens_post_padded,
+                token_lora_mapping, max_lora_rank, top_k_num, lora_ids,
+                num_active_loras, adapter_enabled,
+                mul_routed_weight=False, offset=0,
+            )
 
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
-                output.zero_()
-                start_events[j].record()
-                mod.fused_moe_lora(
-                    output, qcurr, lora_a, lora_b, topk_weights,
-                    sorted_token_ids, expert_ids, num_tokens_post_padded,
-                    token_lora_mapping, max_lora_rank, top_k_num, lora_ids,
-                    num_active_loras, adapter_enabled,
-                    mul_routed_weight=False, offset=0,
-                )
-                end_events[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "per_iteration_prepare_or_state_reset",
-            }
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                direct["fused_no_reset"],
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                prepare_fn=direct["reset_output"],
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

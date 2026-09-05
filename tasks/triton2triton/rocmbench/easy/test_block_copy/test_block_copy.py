@@ -210,8 +210,8 @@ def test_performance(dtypes_str_tuple, n, padding_option, request, device='cuda'
     # pid * BLOCK_SIZE can exceed N//2. This is handled by boundary_check in tl.load.
     # This seems correct for testing boundary checks.
     
-    grid = lambda meta: (triton.cdiv(n, meta["BLOCK_SIZE"]), ) # BLOCK_SIZE is a key for autotune if used
-                                                              # Here, it's a direct constexpr.
+    grid_elements = n if padding_option == "zero" else n // 2
+    grid = lambda meta: (triton.cdiv(grid_elements, meta["BLOCK_SIZE"]), )
 
     # --- Create op_lambda for benchmarking ---
     # BLOCK_SIZE and padding_option are constexpr in the kernel
@@ -233,9 +233,19 @@ def test_performance(dtypes_str_tuple, n, padding_option, request, device='cuda'
         "BLOCK_SIZE": FIXED_BLOCK_SIZE_FOR_PERF # Log the fixed block size
     }
 
+    # Match the candidate's logical prefix copy and optional zero-padding work.
+    dst_baseline = torch.empty_like(a)
+    if padding_option == "zero":
+        def baseline_callable():
+            dst_baseline[: n // 2].copy_(a[: n // 2])
+            dst_baseline[n // 2 :].zero_()
+    else:
+        baseline_callable = lambda: dst_baseline[: n // 2].copy_(a[: n // 2])
+
     benchmarker.run_benchmark(current_params_dict=current_params_for_logs_and_calc,
                               gbps_calculator=calculate_block_copy_gbps,
-                              tflops_calculator=None) # TFLOPS not relevant
+                              tflops_calculator=None,
+                              baseline_callable=baseline_callable) # TFLOPS not relevant
 
 ######################################## HELPERS for Eval ########################################     
 # --- Pytest hook to save the dictionary at the end of the session ---  

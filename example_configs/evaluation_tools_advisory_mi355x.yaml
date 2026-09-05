@@ -1,0 +1,55 @@
+# Experimental evaluation-tool template for MI355X (gfx950).
+#
+# This example is intentionally disabled. With host AKA_EVAL_TOOLS unset, it can
+# be copied and run without building or starting any sanitizer sidecars. Before
+# opting in:
+#   1. build and validate the pinned sidecar images;
+#   2. configure task-specific argv adapters and attestations;
+#   3. enable only applicable tools; and
+#   4. keep policy=advisory until each selected candidate path is qualified.
+#
+# The runner already uses one writable socket directory per tool and a narrow
+# repository-root `.eval-tool-artifacts/<label>` mount, explicitly RW-mounted
+# into scoring even when the broad repository mount is read-only. It still
+# starts sidecars in the same agent/scoring phase, so this is diagnostic rather
+# than a tamper-resistant reward boundary. Production gating requires a separate
+# post-agent evaluator phase, evaluator-only/authenticated RPC, and trusted
+# candidate/capsule provenance.
+agent:
+  template: claude_code
+
+tasks:
+  - hip2hip/gpumode/GELU
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace
+
+evaluation_tools:
+  # Replace false with a list such as [gpu_asan, rocjitsu] only after the
+  # selected tasks define matching adapters. `true` enables all four tools and
+  # is rarely appropriate for a heterogeneous run. Host AKA_EVAL_TOOLS, when
+  # set, authoritatively replaces this subset for both sidecar startup and plan.
+  enabled: false
+  policy: advisory
+  positive_control: required
+  timeout_s: 600
+
+  # These entries do not enable a tool. The host-side
+  # AKA_EVAL_TOOL_IMAGE_<TOOL> variable selects each image; the runner resolves
+  # and injects its immutable local image ID into the plan automatically.
+  # The scoring image must also resolve to the same immutable image ID as the
+  # pinned SGLang gfx950 content-addressed manifest reference; its selected
+  # reference and ID are added to plan source evidence.
+  # Do not place positive_control_required or any runtime binary/library/header
+  # path in options; those keys are reserved and configuration loading rejects
+  # them at both run and task level.
+  tools:
+    triton_fpsan:
+      options: {}
+    gpu_asan:
+      options: {}
+    rocjitsu:
+      options: {}
+    hip_fpsan:
+      options: {}

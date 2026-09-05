@@ -115,29 +115,16 @@ def run_performance():
             recovered = torch.randint(0, vocab_size, (total_tokens,), dtype=torch.int32, device=device)
             uniform = torch.rand(total_tokens, dtype=torch.float64, device=device)
             is_greedy = torch.zeros(batch_size, dtype=torch.bool, device=device)
-            for _ in range(WARMUP_ITERATIONS):
-                output = torch.full((batch_size, max_spec_len + 1), -1, dtype=torch.int32, device=device)
+            output = torch.full((batch_size, max_spec_len + 1), -1, dtype=torch.int32, device=device)
+
+            def _bench_fn():
                 mod.rejection_random_sample(output, cu, draft_ids, draft_probs, target_probs, bonus, recovered, uniform, is_greedy, max_spec_len, vocab_size)
-            torch.cuda.synchronize()
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
-                output = torch.full((batch_size, max_spec_len + 1), -1, dtype=torch.int32, device=device)
-                start_events[j].record()
-                mod.rejection_random_sample(output, cu, draft_ids, draft_probs, target_probs, bonus, recovered, uniform, is_greedy, max_spec_len, vocab_size)
-                end_events[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "per_iteration_prepare_or_state_reset",
-            }
+
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                _bench_fn,
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+            )
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": elapsed_ms,
@@ -153,6 +140,8 @@ def run_performance():
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
+                "benchmark_method": "benchmark_failed",
+                "benchmark_fallback_reason": "performance_case_exception",
                 "params": {
                     "batch_size": batch_size,
                     "max_draft": max_draft,

@@ -27,6 +27,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 KERNEL_FILE = "kernel.py"
 MODEL_FILE = "model.py"
@@ -111,23 +112,34 @@ def _build_model(mmod, shape, device="cuda"):
     return model, hidden
 
 
-def _aiter_op(mmod, model, hidden, topk):
-    """Drive the real aiter fused_moe (generic two-stage, bf16, no quant)."""
+def _make_prepared_aiter_op(model, hidden, topk_weights, topk_ids):
+    """Prepare shuffled weights and return the generic AITER kernel call."""
     from aiter import QuantType, ActivationType
     from aiter.fused_moe import fused_moe
     from aiter.ops.shuffle import shuffle_weight
 
-    logits = model.gate(hidden)
-    topk_weights, topk_ids = mmod.route_topk(logits, topk)
     act = (
         ActivationType.Gelu if model.activation == "gelu" else ActivationType.Silu
     )
     w1s = shuffle_weight(model.w1.detach(), layout=(16, 16))
     w2s = shuffle_weight(model.w2.detach(), layout=(16, 16))
-    return fused_moe(
-        hidden, w1s, w2s, topk_weights, topk_ids,
-        quant_type=QuantType.No, activation=act,
-    )
+
+    def device_op():
+        return fused_moe(
+            hidden, w1s, w2s, topk_weights, topk_ids,
+            quant_type=QuantType.No, activation=act,
+        )
+
+    return device_op
+
+
+def _aiter_op(mmod, model, hidden, topk):
+    """Drive the real aiter fused_moe (generic two-stage, bf16, no quant)."""
+    logits = model.gate(hidden)
+    topk_weights, topk_ids = mmod.route_topk(logits, topk)
+    return _make_prepared_aiter_op(
+        model, hidden, topk_weights, topk_ids
+    )()
 
 
 def _norm_worst(ref, out):
@@ -245,56 +257,71 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         model, hidden = _build_model(mmod, shape)
         topk = shape["topk"]
         with torch.no_grad():
-            if has_kernel:
-                logits = model.gate(hidden)
-                topk_weights, topk_ids = mmod.route_topk(logits, topk)
+            logits = model.gate(hidden)
+            topk_weights, topk_ids = mmod.route_topk(logits, topk)
+            expert_plan = mmod.prepare_expert_plan(topk_ids, model.experts)
 
+            if has_kernel:
                 def device_op():
                     return kmod.flydsl_moe_2stage_generic(
                         hidden, model.w1.detach(), model.w2.detach(),
                         topk_weights, topk_ids,
                     )
             else:
-                def device_op():
-                    return _aiter_op(mmod, model, hidden, topk)
+                device_op = _make_prepared_aiter_op(
+                    model, hidden, topk_weights, topk_ids
+                )
 
             _retry(device_op, what="benchmark warmup")
             torch.cuda.synchronize()
             for _ in range(warmup):
                 device_op()
             torch.cuda.synchronize()
-            ktimes = []
-            for _ in range(iters):
-                s = torch.cuda.Event(enable_timing=True)
-                e = torch.cuda.Event(enable_timing=True)
-                s.record(); device_op(); e.record(); torch.cuda.synchronize()
-                ktimes.append(s.elapsed_time(e))
-            kernel_ms = sum(ktimes) / len(ktimes)
+            kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+                device_op, warmup=0, repetition=iters
+            )
 
-            rtimes = []
-            for _ in range(iters):
-                s = torch.cuda.Event(enable_timing=True)
-                e = torch.cuda.Event(enable_timing=True)
-                s.record(); model(hidden); e.record(); torch.cuda.synchronize()
-                rtimes.append(s.elapsed_time(e))
-            ref_ms = sum(rtimes) / len(rtimes)
+            ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: model.forward_with_routing(
+                    hidden, topk_weights, topk_ids, expert_plan
+                ),
+                warmup=0,
+                repetition=iters,
+            )
 
-        speedup = ref_ms / kernel_ms if kernel_ms > 0 else 1.0
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
         latencies.append(kernel_ms)
-        speedups.append(speedup)
+        if speedup is not None:
+            speedups.append(speedup)
         report.append({
             "test_case_id": f"test_case_{idx}",
             "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
             "shape": [shape["tokens"], shape["model_dim"], shape["inter_dim"]],
             "params": {k: shape[k] for k in ("tokens", "model_dim", "inter_dim", "experts", "topk")},
         })
         if verbose:
-            print(f"{shape['name']:<26} {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup:>8.2f}x")
+            print(f"{shape['name']:<26} {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}")
         del model, hidden
         torch.cuda.empty_cache()
 
     geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
-    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups))
+    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
 
     build_dir = Path(_KERNEL_DIR) / "build"
     build_dir.mkdir(exist_ok=True)
@@ -303,7 +330,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
 
     print("-" * 60)
     print(f"Geometric mean latency: {geomean_latency:.4f} ms")
-    print(f"Geometric mean speedup: {geomean_speedup:.2f}x")
+    print(f"Geometric mean speedup: {geomean_speedup_display}")
     return {"geomean_latency_ms": geomean_latency, "geomean_speedup": geomean_speedup}
 
 

@@ -4,7 +4,7 @@
 Target device kernel : ``_mxfp8_linear_kernel``  (tl.dot_scaled, CDNA4/gfx950)
 Timed launcher       : ``_run_mxfp8_linear_kernel`` (inner GEMM only; excludes the
                        separate activation-quant kernel, matching the profiled hot leaf)
-Source               : sglang/kernels/ops/quantization/mxfp8_amd_gfx95.py
+Source               : sglang/srt/layers/quantization/mxfp8_amd_gfx95.py
 
 Shapes are the real MiniMax-M3-MXFP8 (TP=8) dense-linear families recovered from the
 2026-07-23 session GEAK capture + model config (see session_cases.json). MXFP8 contract:
@@ -25,6 +25,10 @@ CASES = SPEC["cases"]
 
 
 def _configure() -> None:
+    # Docker workers run under the host UID, which may not exist in /etc/passwd.
+    # Torch Inductor calls getpass.getuser() while importing SGLang.
+    os.environ.setdefault("USER", "agentkernelarena")
+    os.environ.setdefault("LOGNAME", "agentkernelarena")
     for key in ("GPU_ARCHS", "PYTORCH_ROCM_ARCH", "AMDGPU_TARGETS", "GPU_TARGETS"):
         os.environ.setdefault(key, "gfx950")
     # Prefer the workspace-seeded editable copy so the agent's edits take effect;
@@ -56,141 +60,51 @@ def _relerr(a, b) -> float:
 # amortizes host launch overhead so the measurement reflects device time only.
 # Falls back to per-call CUDA-event timing if graph capture is unavailable.
 # --------------------------------------------------------------------------- #
-def _measure_cuda_event(fn, repetition):
-    import torch
-
-    times_ms = []
-    for _ in range(max(1, int(repetition))):
-        torch.cuda.synchronize()
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        start.record()
-        fn()
-        end.record()
-        torch.cuda.synchronize()
-        times_ms.append(start.elapsed_time(end))
-    return times_ms
+# >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>
+def _measure_cuda_event_fallback(*args, **kwargs):
+    raise RuntimeError(
+        "CUDA-graph benchmark helpers were not materialized. "
+        "Run this task through AgentKernelArena so setup_workspace() can inject "
+        "src/tools/perf/vllm_cuda_graph_block.py into the workspace."
+    )
 
 
-class _TimedRun:
-    """Handle on the exact invocation the benchmark measured.
-
-    Timing and correctness are otherwise separate invocations, so a kernel can
-    tell them apart and do less work in the one that is scored. ``outputs``
-    aliases the buffers the timed unit last wrote, and ``rerun`` executes that
-    same unit again. Mirrors the shared helper in
-    src/tools/perf/vllm_cuda_graph_block.py; this task ships its own timer.
-    """
-
-    def __init__(self):
-        self._rerun = None
-        self.outputs = None
-
-    def _bind(self, rerun, outputs=None):
-        self._rerun = rerun
-        self.outputs = outputs
-
-    @property
-    def bound(self):
-        return self._rerun is not None
-
-    def rerun(self):
-        if self._rerun is None:
-            raise RuntimeError(
-                "timed run was never bound; the benchmark did not reach a "
-                "measurement path"
-            )
-        self.outputs = self._rerun()
-        return self.outputs
+def _benchmark_cuda_graph_or_events(*args, **kwargs):
+    raise RuntimeError(
+        "CUDA-graph benchmark helpers were not materialized. "
+        "Run this task through AgentKernelArena so setup_workspace() can inject "
+        "src/tools/perf/vllm_cuda_graph_block.py into the workspace."
+    )
+# <<< AKA-GENERATED <<<
 
 
-def _benchmark_cuda_graph(
-    fn, warmup=10, repetition=100, target_ms=1.0, max_graph_repeats=200, timed_run=None
-):
-    import torch
+if "_TimedRun" not in globals():
+    class _TimedRun:
+        """Source-tree fallback; workspace materialization supplies the real class."""
 
-    def _bind_direct_call():
-        # The fallback path allocates fresh outputs per call, so there is nothing
-        # to alias; the caller gets them by re-running the same unit once.
-        if timed_run is None:
-            return
+        def __init__(self):
+            self._rerun = None
+            self.outputs = None
 
-        def _call_once():
-            out = fn()
-            torch.cuda.synchronize()
-            return out
+        def _bind(self, rerun, outputs=None):
+            self._rerun = rerun
+            self.outputs = outputs
 
-        timed_run._bind(_call_once)
+        @property
+        def bound(self):
+            return self._rerun is not None
 
-    for _ in range(max(0, int(warmup))):
-        fn()
-    torch.cuda.synchronize()
+        def rerun(self):
+            if self._rerun is None:
+                raise RuntimeError("timed run was never bound")
+            self.outputs = self._rerun()
+            return self.outputs
 
-    meta = {"benchmark_target_ms": float(target_ms), "benchmark_samples": int(repetition)}
-    try:
-        stream = torch.cuda.Stream()
-        stream.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(stream):
-            est = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(est):
-                for _ in range(3):
-                    fn()
-            torch.cuda.synchronize()
-            s, e = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-            s.record(stream)
-            est.replay()
-            e.record(stream)
-            torch.cuda.synchronize()
-            est_ms = s.elapsed_time(e) / 3
-            repeats = min(max_graph_repeats, max(1, int(target_ms / max(est_ms, 1e-9))))
 
-            graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(graph):
-                captured_outputs = None
-                for _ in range(repeats):
-                    captured_outputs = fn()
-            torch.cuda.synchronize()
+def _benchmark_cuda_graph(*args, **kwargs):
+    """Compatibility name used by the task's standalone/forge drivers."""
 
-            times = []
-            for _ in range(max(1, int(repetition))):
-                s, e = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-                s.record(stream)
-                graph.replay()
-                e.record(stream)
-                torch.cuda.synchronize()
-                times.append(s.elapsed_time(e) / repeats)
-        mean_ms = sum(times) / len(times)
-        if mean_ms < 1e-5:
-            raise RuntimeError("empty_cuda_graph_capture")
-        meta.update(benchmark_method="cuda_graph", benchmark_effective_repeats=int(repeats))
-        if timed_run is not None:
-
-            def _replay_once():
-                # Callers stage work on their own stream before re-running (they
-                # perturb inputs and poison outputs). The capture stream must be
-                # ordered after that, or the replay races the staged writes and
-                # they land on top of the kernel's results.
-                stream.wait_stream(torch.cuda.current_stream())
-                with torch.cuda.stream(stream):
-                    graph.replay()
-                torch.cuda.synchronize()
-                return captured_outputs
-
-            timed_run._bind(_replay_once, captured_outputs)
-        return mean_ms, meta
-    except Exception as exc:
-        try:
-            torch.cuda.synchronize()
-        except Exception:
-            pass
-        times = _measure_cuda_event(fn, repetition)
-        meta.update(
-            benchmark_method="cuda_event_fallback",
-            benchmark_effective_repeats=int(repetition),
-            benchmark_fallback_reason=f"{type(exc).__name__}: {str(exc)[:160]}",
-        )
-        _bind_direct_call()
-        return sum(times) / len(times), meta
+    return _benchmark_cuda_graph_or_events(*args, **kwargs)
 
 
 # --------------------------------------------------------------------------- #
@@ -198,7 +112,7 @@ def _benchmark_cuda_graph(
 # --------------------------------------------------------------------------- #
 def _make(case: dict) -> dict:
     torch = _torch()
-    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import (
+    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import (
         _mxfp8_e4m3_quantize_torch,
         mxfp8_e4m3_quantize,
     )
@@ -224,7 +138,7 @@ def _make(case: dict) -> dict:
 
 def _run(inputs: dict):
     torch = _torch()
-    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import _run_mxfp8_linear_kernel
+    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import _run_mxfp8_linear_kernel
 
     return _run_mxfp8_linear_kernel(
         inputs["x_fp8"],
@@ -237,7 +151,7 @@ def _run(inputs: dict):
 
 def _reference(inputs: dict):
     torch = _torch()
-    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
+    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
 
     x = dequant_mxfp8_to_bf16(inputs["x_fp8"], inputs["x_scale"])
     w = dequant_mxfp8_to_bf16(inputs["w_fp8"], inputs["w_scale"])
@@ -263,7 +177,7 @@ def _perturb_inputs(inputs: dict) -> None:
     consistent; the weight stays fixed.
     """
     torch = _torch()
-    from sglang.kernels.ops.quantization.mxfp8_amd_gfx95 import mxfp8_e4m3_quantize
+    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import mxfp8_e4m3_quantize
 
     p = inputs["cfg"]["params"]
     torch.manual_seed(59)

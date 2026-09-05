@@ -10,7 +10,7 @@ branch; only the chunk-offset arithmetic differs.
 Modes:
   --compile        : ast-parse + import source, assert symbols.
   --correctness    : Triton fwd_h vs torch fp32 reference (h, v_new, final state).
-  --full-benchmark : cuda-event timing, write build/performance_report.json
+  --full-benchmark : graph-first GPU timing, write build/performance_report.json
 """
 import sys
 import os
@@ -18,6 +18,7 @@ import json
 import time
 import argparse
 import importlib.util
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -235,31 +236,37 @@ def run_performance():
             torch.manual_seed(42 + ti)
             inp = make_test_data(B, T, Hg, H, K, V, pool, "cuda", dtype)
             init = inp["init"]
+            bench_init = init.clone()
+
+            def prepare_fn():
+                bench_init.copy_(init)
 
             def fn():
-                _retry_oom(lambda: mod.chunk_gated_delta_rule_fwd_h(
+                mod.chunk_gated_delta_rule_fwd_h(
                     k=inp["k"], w=inp["w"], u=inp["u"], g=inp["g"],
-                    initial_state=init.clone(), initial_state_indices=inp["idx"],
-                    save_new_value=True, cu_seqlens=None))
+                    initial_state=bench_init, initial_state_indices=inp["idx"],
+                    save_new_value=True, cu_seqlens=None)
 
+            prepare_fn()
+            _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
+                prepare_fn()
                 fn()
             torch.cuda.synchronize()
-            n = BENCHMARK_ITERATIONS
-            se = [torch.cuda.Event(enable_timing=True) for _ in range(n)]
-            ee = [torch.cuda.Event(enable_timing=True) for _ in range(n)]
-            for j in range(n):
-                se[j].record()
-                fn()
-                ee[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(se, ee)]
+            elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS,
+                prepare_fn=prepare_fn,
+            )
             test_cases.append({"test_case_id": f"perf{ti+1}",
-                               "execution_time_ms": sum(times)/len(times),
+                               "execution_time_ms": elapsed_ms,
+                               **bench_meta,
                                "params": params})
         except Exception:
             test_cases.append({"test_case_id": f"perf{ti+1}",
-                               "execution_time_ms": -1.0, "params": params})
+                               "execution_time_ms": -1.0,
+                               "benchmark_method": "benchmark_failed",
+                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "params": params})
     return test_cases
 
 

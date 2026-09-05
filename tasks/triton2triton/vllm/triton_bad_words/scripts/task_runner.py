@@ -181,28 +181,17 @@ def run_performance():
             total_len = torch.full((batch,), 20, dtype=torch.int32, device=device)
             input_ids = torch.zeros(batch, dtype=torch.int32, device=device)
             local_pos = torch.zeros(batch, dtype=torch.int32, device=device)
-            for _ in range(WARMUP_ITERATIONS):
-                mod.apply_bad_words(logits.clone(), idx_mapping, bad_word_ids, offsets, num_bw, all_token_ids, prompt_len, total_len, input_ids, local_pos, nbw)
-            torch.cuda.synchronize()
-            n_iter = BENCHMARK_ITERATIONS
-            start_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            end_events = [torch.cuda.Event(enable_timing=True) for _ in range(n_iter)]
-            for j in range(n_iter):
-                l = logits.clone()
-                start_events[j].record()
-                mod.apply_bad_words(l, idx_mapping, bad_word_ids, offsets, num_bw, all_token_ids, prompt_len, total_len, input_ids, local_pos, nbw)
-                end_events[j].record()
-            torch.cuda.synchronize()
-            times = [s.elapsed_time(e) for s, e in zip(start_events, end_events)]
-            elapsed_ms = sum(times) / len(times)
-            benchmark_metadata = {
-                "benchmark_method": "cuda_event_fallback",
-                "benchmark_target_ms": 20.0,
-                "benchmark_retries": 1,
-                "benchmark_max_repeats": 1000,
-                "benchmark_effective_repeats": n_iter,
-                "benchmark_fallback_reason": "per_iteration_prepare_or_state_reset",
-            }
+            logits_work = logits.clone()
+            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                lambda: mod.apply_bad_words(
+                    logits_work, idx_mapping, bad_word_ids, offsets, num_bw,
+                    all_token_ids, prompt_len, total_len, input_ids, local_pos, nbw,
+                ),
+                warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS,
+                target_ms=20.0,
+                prepare_fn=lambda: logits_work.copy_(logits),
+            )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

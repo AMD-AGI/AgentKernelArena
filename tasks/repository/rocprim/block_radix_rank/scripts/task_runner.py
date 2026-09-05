@@ -4,9 +4,9 @@
 Task runner for repository/rocprim/block_radix_rank.
 
 This script provides a stable interface for AgentKernelArena's evaluator:
-  - `compile`      : configure & build rocPRIM benchmark/test targets
+  - `compile`      : configure/build rocPRIM tests and a protected native benchmark
   - `correctness`  : run `test_block_radix_rank`
-  - `performance`  : run `benchmark_block_radix_rank` and emit `build/performance_report.json`
+  - `performance`  : run graph-first native timing and emit `build/performance_report.json`
 """
 
 from __future__ import annotations
@@ -44,7 +44,10 @@ def _test_bin(ws: Path) -> Path:
     return _build_dir(ws) / "test" / "rocprim" / TEST_TARGET
 
 def _bench_bin(ws: Path) -> Path:
-    return _build_dir(ws) / "benchmark" / BENCH_TARGET
+    return _report_root(ws) / "native_graph_benchmark"
+
+def _bench_source(ws: Path) -> Path:
+    return ws / "scripts" / "native" / "benchmark_driver.hip"
 
 def _get_env() -> dict[str, str]:
     env = os.environ.copy()
@@ -162,7 +165,7 @@ def _cmake_configure(source_dir: Path, build_dir: Path) -> Tuple[bool, Optional[
     cmake_args = [
         "cmake", "-S", str(source_dir), "-B", str(build_dir),
         "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
-        "-DBUILD_BENCHMARK=ON", "-DBUILD_TEST=ON",
+        "-DBUILD_BENCHMARK=OFF", "-DBUILD_TEST=ON",
     ]
     if arch := _detect_arch():
         cmake_args.append(f"-DAMDGPU_TARGETS={arch}")
@@ -180,19 +183,55 @@ def _cmake_build(source_dir: Path, build_dir: Path, target: str) -> Tuple[bool, 
     return (True, None) if ok else (False, f"Build failed for '{target}'.\n{out}")
 
 
+def _compile_native_benchmark(ws: Path) -> Tuple[bool, Optional[str]]:
+    source = _bench_source(ws)
+    generated_header = source.parent / "hip_graph_benchmark.hpp"
+    include_dir = _source_root(ws) / "rocprim" / "include"
+    generated_include_dir = _build_dir(ws) / "rocprim" / "include"
+    if not source.is_file():
+        return False, f"Native benchmark source not found: {source}"
+    if not generated_header.is_file():
+        return False, (
+            f"Generated native benchmark helper not found: {generated_header}. "
+            "Run this task through AgentKernelArena workspace setup."
+        )
+    if not include_dir.is_dir():
+        return False, f"rocPRIM include directory not found: {include_dir}"
+    if not (generated_include_dir / "rocprim" / "rocprim_version.hpp").is_file():
+        return False, f"Generated rocPRIM headers not found: {generated_include_dir}"
+
+    output = _bench_bin(ws)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        os.environ.get("HIPCXX", "hipcc"),
+        "-O3", "-std=c++17", str(source),
+        "-I", str(include_dir), "-I", str(generated_include_dir / "rocprim"),
+        "-o", str(output),
+    ]
+    if arch := _detect_arch():
+        for target in re.split(r"[;,\s]+", arch):
+            if target:
+                cmd.append(f"--offload-arch={target}")
+    ok, out = _run(cmd, cwd=ws, timeout_s=3600)
+    if not ok:
+        return False, f"Native benchmark compile failed.\n{out}"
+    if not output.is_file():
+        return False, f"Native benchmark binary not found: {output}"
+    return True, None
+
+
 def _parse_benchmark_results(output: str) -> list[dict]:
-    pattern = re.compile(
-        r"^(?P<name>.+?)/manual_time\s+[\d\.]+\s*(?:ns|us|ms|s)\s+"
-        r"[\d\.]+\s*(?:ns|us|ms|s)\s+\d+\s+"
-        r"bytes_per_second=(?P<bps>[\d\.]+)(?P<unit>[GT])/s",
-        re.MULTILINE,
-    )
     results = []
-    for m in pattern.finditer(output):
-        bps = float(m.group("bps"))
-        if m.group("unit") == "T":
-            bps *= 1024.0
-        results.append({"test_case_id": m.group("name").strip(), "bytes_per_second_gs": bps})
+    prefix = "AKA_BENCHMARK_RESULT "
+    for line in output.splitlines():
+        if not line.startswith(prefix):
+            continue
+        case = json.loads(line[len(prefix):])
+        if case.get("benchmark_method") not in {"cuda_graph", "cuda_event_fallback"}:
+            raise ValueError("native benchmark returned an invalid benchmark_method")
+        if float(case.get("execution_time_ms", 0.0)) <= 0.0:
+            raise ValueError("native benchmark returned a non-positive execution time")
+        results.append(case)
     return results
 
 
@@ -205,12 +244,14 @@ def run_compile(ws: Path) -> Tuple[bool, Optional[str]]:
     if not ok:
         return False, err
 
-    for target in [TEST_TARGET, BENCH_TARGET]:
-        ok, err = _cmake_build(source_dir, build_dir, target)
-        if not ok:
-            return False, err
+    ok, err = _cmake_build(source_dir, build_dir, TEST_TARGET)
+    if not ok:
+        return False, err
+    ok, err = _compile_native_benchmark(ws)
+    if not ok:
+        return False, err
 
-    for name, path in [("Test", _test_bin(ws)), ("Benchmark", _bench_bin(ws))]:
+    for name, path in [("Test", _test_bin(ws)), ("Native benchmark", _bench_bin(ws))]:
         if not path.is_file():
             return False, f"{name} binary not found: {path}"
     return True, None
@@ -235,25 +276,25 @@ def run_correctness(ws: Path) -> Tuple[bool, Optional[str]]:
 def run_performance(ws: Path, trials: int) -> Tuple[list[dict], str]:
     bench_bin = _bench_bin(ws)
     if not bench_bin.is_file():
-        ok, err = _cmake_configure(_source_root(ws), _build_dir(ws))
-        if not ok:
-            return [], err
-        ok, err = _cmake_build(_source_root(ws), _build_dir(ws), BENCH_TARGET)
+        ok, err = _compile_native_benchmark(ws)
         if not ok:
             return [], err
 
     _print_phase(f"PERFORMANCE BENCHMARK (trials={trials})")
-    ok, out = _run([str(bench_bin), "--trials", str(trials)], cwd=ws, timeout_s=3600)
+    ok, out = _run([str(bench_bin), "--samples", str(trials)], cwd=ws, timeout_s=3600)
     _print_phase("PERFORMANCE BENCHMARK", end=True, status="SUCCESS" if ok else "FAILED")
 
     report_root = _report_root(ws)
     report_root.mkdir(parents=True, exist_ok=True)
-    (report_root / f"{BENCH_TARGET}.log").write_text(out)
+    (report_root / "native_graph_benchmark.log").write_text(out)
 
     if not ok:
         return [], f"Benchmark failed.\n{out}"
     
-    results = _parse_benchmark_results(out)
+    try:
+        results = _parse_benchmark_results(out)
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        return [], f"Failed to parse native benchmark results: {error}\n{out}"
     return (results, "") if results else ([], f"Failed to parse results.\n{out}")
 
 

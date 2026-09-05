@@ -29,18 +29,10 @@ build_topk_gating_softmax_module = _tk.build_topk_gating_softmax_module
 
 def run_perftest(func, *args, num_iters=20, num_warmup=3, **kwargs):
     """Minimal timing helper (replaces FlyDSL tests.test_common.run_perftest)."""
-    import time
-
-    for _ in range(num_warmup):
-        func()
-    torch.cuda.synchronize()
-    t0 = time.perf_counter()
-    for _ in range(num_iters):
-        func()
-    torch.cuda.synchronize()
-    t1 = time.perf_counter()
-    avg_us = (t1 - t0) / max(num_iters, 1) * 1e6
-    return None, avg_us
+    avg_ms, _bench_meta = benchmark_cuda_graph_or_events(
+        func, warmup=num_warmup, repetition=num_iters
+    )
+    return None, avg_ms * 1e3
 
 
 class PerfRow:
@@ -69,6 +61,7 @@ Validates:
 """
 
 import os
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 DTYPE_FP32 = torch.float32
 DTYPE_FP16 = torch.float16
@@ -131,8 +124,6 @@ def run_test(num_tokens, num_experts, topk, dtype_str, renormalize=True):
     topk_indices_dev = torch.empty((num_tokens, topk), device="cuda", dtype=torch.int32)
     token_expert_indices_dev = torch.empty((num_tokens, topk), device="cuda", dtype=torch.int32)
 
-    stream = torch.cuda.current_stream()
-
     def kernel_launch():
         launch_fn(
             gating_dev,
@@ -140,14 +131,14 @@ def run_test(num_tokens, num_experts, topk, dtype_str, renormalize=True):
             topk_indices_dev,
             token_expert_indices_dev,
             num_tokens,
-            stream=stream,
+            stream=torch.cuda.current_stream(),
         )
 
     kernel_launch()
     torch.cuda.synchronize()
 
     _, avg_us = run_perftest(
-        lambda: (kernel_launch(), torch.cuda.synchronize()),
+        kernel_launch,
         num_iters=BENCH_ITERS,
         num_warmup=WARMUP_ITERS,
     )
@@ -284,8 +275,6 @@ def run_geak_benchmark(warmup=10, iters=100):
         launch_fn = build_topk_gating_softmax_module(
             num_experts=num_experts, topk=topk, dtype_str=dtype_str, renormalize=True
         )
-        stream = torch.cuda.current_stream()
-
         def kernel_launch():
             launch_fn(
                 gating_dev,
@@ -293,27 +282,21 @@ def run_geak_benchmark(warmup=10, iters=100):
                 topk_indices_dev,
                 token_expert_indices_dev,
                 num_tokens,
-                stream=stream,
+                stream=torch.cuda.current_stream(),
             )
 
         for _ in range(warmup):
             kernel_launch()
         torch.cuda.synchronize()
-        times = []
-        for _ in range(iters):
-            s = torch.cuda.Event(enable_timing=True)
-            e = torch.cuda.Event(enable_timing=True)
-            s.record()
-            kernel_launch()
-            e.record()
-            torch.cuda.synchronize()
-            times.append(s.elapsed_time(e))
-        ms = sum(times) / len(times)
+        ms, bench_meta = benchmark_cuda_graph_or_events(
+            kernel_launch, warmup=0, repetition=iters
+        )
         latencies.append(ms)
         report_cases.append(
             {
                 "test_case_id": f"topk_{idx}",
                 "execution_time_ms": ms,
+                **bench_meta,
                 "shape": [num_tokens, num_experts, topk],
                 "params": {"num_tokens": num_tokens, "num_experts": num_experts, "topk": topk, "dtype": dtype_str},
             }

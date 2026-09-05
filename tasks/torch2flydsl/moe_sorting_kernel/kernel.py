@@ -645,6 +645,7 @@ def build_moe_sorting_module(num_experts, topk, max_tokens=16, unit_size=UNIT_SI
 
 
 _dummy_mask_cache = {}
+_moe_buf_cache = {}
 
 
 def flydsl_moe_sorting(topk_ids, topk_weights, num_experts, unit_size=UNIT_SIZE, model_dim=512):
@@ -675,7 +676,14 @@ def flydsl_moe_sorting(topk_ids, topk_weights, num_experts, unit_size=UNIT_SIZE,
     sorted_weights = torch.empty(max_num_tokens_padded, dtype=torch.float32, device=device)
     sorted_expert_ids = torch.empty(max_num_m_blocks, dtype=torch.int32, device=device)
     num_valid_ids = torch.empty(2, dtype=torch.int32, device=device)
-    moe_buf = torch.empty((M, model_dim), dtype=torch.bfloat16, device=device)
+    # ``moe_buf`` is scratch storage rather than a returned output.  Cache it so
+    # CUDA Graph capture measures the sorting kernel instead of allocator work.
+    stream_id = torch.cuda.current_stream(device).cuda_stream
+    moe_buf_key = (device, stream_id, M, model_dim)
+    moe_buf = _moe_buf_cache.get(moe_buf_key)
+    if moe_buf is None:
+        moe_buf = torch.empty((M, model_dim), dtype=torch.bfloat16, device=device)
+        _moe_buf_cache[moe_buf_key] = moe_buf
 
     moe_buf_i32 = moe_buf.view(torch.int32)
     moe_buf_elems = moe_buf_i32.numel()

@@ -27,6 +27,8 @@ subtrees:
       title: Run an experiment
     - file: how-to/slurm-run
       title: Run on Slurm/Spur GPU nodes
+    - file: how-to/use-evaluation-tools
+      title: Check kernels with evaluation tools
     - file: how-to/parallel-run
       title: Run tasks in parallel across multiple GPUs
     - file: how-to/agents

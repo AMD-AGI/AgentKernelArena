@@ -53,12 +53,11 @@ def _chained_dot(
 ):
     start_m = tl.program_id(0)
     off_z = tl.program_id(1)
-    qkv_offset = off_z * stride_qz
-    Q_block_ptr = tl.make_block_ptr(base=Q + qkv_offset, shape=(N, BLOCK_D), strides=(stride_qm, stride_qd),
+    Q_block_ptr = tl.make_block_ptr(base=Q + off_z * stride_qz, shape=(M, BLOCK_D), strides=(stride_qm, stride_qd),
                                     offsets=(start_m * BLOCK_M, 0), block_shape=(BLOCK_M, BLOCK_D), order=(1, 0))
-    K_block_ptr = tl.make_block_ptr(base=K + qkv_offset, shape=(BLOCK_D, N), strides=(stride_kd, stride_kn),
+    K_block_ptr = tl.make_block_ptr(base=K + off_z * stride_kz, shape=(BLOCK_D, N), strides=(stride_kd, stride_kn),
                                     offsets=(0, 0), block_shape=(BLOCK_D, BLOCK_N), order=(0, 1))
-    V_block_ptr = tl.make_block_ptr(base=V + qkv_offset, shape=(N, BLOCK_D), strides=(stride_vn, stride_vd),
+    V_block_ptr = tl.make_block_ptr(base=V + off_z * stride_vz, shape=(N, BLOCK_D), strides=(stride_vn, stride_vd),
                                     offsets=(0, 0), block_shape=(BLOCK_N, BLOCK_D), order=(0, 1))
 
     s_scale = q_desc * k_desc * s_sc
@@ -87,7 +86,7 @@ def _chained_dot(
     if USE_FP8:
         acc *= acc_scale
 
-    O_block_ptr = tl.make_block_ptr(base=Out + qkv_offset, shape=(N, BLOCK_D), strides=(stride_om, stride_od),
+    O_block_ptr = tl.make_block_ptr(base=Out + off_z * stride_oz, shape=(M, BLOCK_D), strides=(stride_om, stride_od),
                                     offsets=(start_m * BLOCK_M, 0), block_shape=(BLOCK_M, BLOCK_D), order=(1, 0))
     tl.store(O_block_ptr, acc.to(Out.type.element_ty))
 
@@ -110,7 +109,7 @@ float8: tl.constexpr = None if not TORCH_HAS_FP8E4 else torch.float8_e4m3fnuz
 
 
 result_gold = {}
-######################################## HELPERS for Eval ######################################## 
+######################################## HELPERS for Eval ########################################
 def set_seed(seed: int = 42) -> None:
     """
     Set the random seed for reproducibility across multiple libraries and configure PyTorch for deterministic behavior.
@@ -134,7 +133,7 @@ def set_seed(seed: int = 42) -> None:
     # Set environment variable for hash-based operations
     os.environ['PYTHONHASHSEED'] = str(seed)
 
-######################################## HELPERS for Eval ######################################## 
+######################################## HELPERS for Eval ########################################
 class chained_dot_fn(torch.autograd.Function):
 
     @staticmethod
@@ -197,13 +196,15 @@ def test_chained_dot(M, N, D, dtype, msize,request):
         k_f8, _, k_desc = to_float8(k)
         v_f8, _, v_desc = to_float8(v)
 
-        s = torch._scaled_mm(q_f8[0], k_f8[0].transpose(0, 1), out_dtype=torch.float32,
-                             scale_a=torch.tensor(q_desc, dtype=torch.float32, device="cuda"),
-                             scale_b=torch.tensor(k_desc, dtype=torch.float32, device="cuda"))
+        s = torch.matmul(
+            q_f8[0].float() * q_desc,
+            k_f8[0].float().transpose(0, 1) * k_desc,
+        )
         s_f8, s_sc, s_desc = to_float8(s)
-        ref = torch._scaled_mm(s_f8, v_f8[0].transpose(0, 1), out_dtype=torch.float32,
-                               scale_a=torch.tensor(s_desc, dtype=torch.float32, device="cuda"),
-                               scale_b=torch.tensor(v_desc, dtype=torch.float32, device="cuda"))
+        ref = torch.matmul(
+            s_f8.float() * s_desc,
+            v_f8[0].float().transpose(0, 1) * v_desc,
+        )
         ref_f8, ref_sc, _ = to_float8(ref)
 
         tri_out = chained_dot(q_f8, k_f8, v_f8, msize, q_desc, k_desc, v_desc, s_sc, s_desc, ref_sc)
@@ -313,20 +314,16 @@ def test_performance(test_config, request):
 
         # Derive s_sc_py, s_desc_py, o_sc_py using the reference path from original test
         # Use BATCH=0 for these calculations as original test did
-        s_ref_fp32 = torch._scaled_mm(
-            q_f8[0], k_f8[0].transpose(0, 1), 
-            out_dtype=torch.float32,
-            scale_a=torch.tensor(q_desc_py, dtype=torch.float32, device="cuda"), # _scaled_mm needs tensor scales
-            scale_b=torch.tensor(k_desc_py, dtype=torch.float32, device="cuda")
+        s_ref_fp32 = torch.matmul(
+            q_f8[0].float() * q_desc_py,
+            k_f8[0].float().transpose(0, 1) * k_desc_py,
         )
         _s_f8_ref, s_sc_float, s_desc_float = to_float8(s_ref_fp32)
         
         # v_f8[0] is (D, N_kv). Transpose to (N_kv, D) for S(M,N_kv) @ V.T(N_kv,D)
-        o_ref_fp32 = torch._scaled_mm(
-            _s_f8_ref, v_f8[0].transpose(0, 1), 
-            out_dtype=torch.float32, 
-            scale_a=torch.tensor(s_desc_float, dtype=torch.float32, device="cuda"), 
-            scale_b=torch.tensor(v_desc_float, dtype=torch.float32, device="cuda")
+        o_ref_fp32 = torch.matmul(
+            _s_f8_ref.float() * s_desc_float,
+            v_f8[0].float().transpose(0, 1) * v_desc_float,
         )
         _o_f8_ref, o_sc_float, _ = to_float8(o_ref_fp32)
 
@@ -355,7 +352,7 @@ def test_performance(test_config, request):
                               tflops_calculator=calculate_chained_dot_tflops,
                               baseline_callable=baseline_callable)
     
-######################################## HELPERS for Eval ########################################     
+######################################## HELPERS for Eval ########################################
 # --- Pytest hook to save the dictionary at the end of the session ---  
 def test_save_results():  
     """  
@@ -383,8 +380,8 @@ def test_save_performance_results():
 
     output_directory = os.path.join(os.path.dirname(__file__), "perf")  # Save in a "perf" subdirectory next to the test file
     os.makedirs(output_directory, exist_ok=True)
-    
+
     save_all_benchmark_results(output_directory)
     print(f"All benchmark results attempted to save to: {output_directory}")
 
-######################################## HELPERS for Eval ######################################## 
+######################################## HELPERS for Eval ########################################

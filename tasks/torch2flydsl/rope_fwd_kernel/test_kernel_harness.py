@@ -29,6 +29,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from _aka_benchmark import benchmark_cuda_graph_or_events
 
 KERNEL_FILE = "kernel.py"
 MODEL_FILE = "model.py"
@@ -360,24 +361,20 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         torch.cuda.synchronize()
 
         def _mean(fn):
-            for _ in range(warmup):
-                fn()
-            torch.cuda.synchronize()
-            ts = []
-            for _ in range(iters):
-                ev0 = torch.cuda.Event(enable_timing=True)
-                ev1 = torch.cuda.Event(enable_timing=True)
-                ev0.record()
-                fn()
-                ev1.record()
-                torch.cuda.synchronize()
-                ts.append(ev0.elapsed_time(ev1))
-            return sum(ts) / len(ts)
+            return benchmark_cuda_graph_or_events(
+                fn, warmup=warmup, repetition=iters
+            )
 
-        ref_ms = _mean(run_ref)
-        aiter_ms = _mean(run_truth)
-        target_ms = _mean(run_target) if target_implemented else None
+        ref_ms, ref_bench_meta = _mean(run_ref)
+        aiter_ms, _aiter_bench_meta = _mean(run_truth)
+        target_result = (
+            _mean(run_target) if target_implemented else (None, None)
+        )
+        target_ms, target_bench_meta = target_result
         primary_ms = target_ms if target_ms is not None else ref_ms
+        bench_meta = (
+            target_bench_meta if target_ms is not None else ref_bench_meta
+        )
         latencies.append(primary_ms)
         # bytes moved: input + output (bf16); cos/sin caches are small.
         bytes_total = s * b * h * d * 2 * 2
@@ -386,6 +383,9 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             {
                 "test_case_id": f"test_case_{idx}",
                 "execution_time_ms": primary_ms,
+                **bench_meta,
+                "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+                "benchmark_method_consistent": bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
                 "shape": [s, b, h, d],
                 "params": {
                     "s": s, "b": b, "h": h, "d": d,
