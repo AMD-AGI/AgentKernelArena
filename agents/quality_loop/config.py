@@ -43,25 +43,22 @@ class BackendConfig:
 @dataclass(frozen=True)
 class GitHubConfig:
     publish: bool = True
-    draft_pr: bool = True
-    issue_labels: tuple[str, ...] = ()
     branch_prefix: str = "quality-loop"
     base_branch: str | None = None
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any] | None) -> "GitHubConfig":
         raw = raw or {}
-        labels = raw.get("issue_labels", [])
-        if isinstance(labels, str):
-            labels = [labels]
+        if raw.get("draft_pr", True) is not True:
+            raise ValueError("quality_loop pull requests are always drafts")
+        if raw.get("issue_labels") not in (None, [], ()):
+            raise ValueError("quality_loop never creates GitHub issues")
         prefix = str(raw.get("branch_prefix", "quality-loop")).strip(" /-")
         if not prefix:
             raise ValueError("github.branch_prefix must not be empty")
         base = raw.get("base_branch")
         return cls(
             publish=bool(raw.get("publish", True)),
-            draft_pr=bool(raw.get("draft_pr", True)),
-            issue_labels=tuple(str(label) for label in labels),
             branch_prefix=prefix,
             base_branch=str(base) if base else None,
         )
@@ -81,11 +78,7 @@ class QualityLoopConfig:
     case_enhancement: bool = True
     artifact_root: str = "quality_loop_runs"
     worktree_root: str = ".quality_loop_worktrees"
-    promotion_task_types: tuple[str, ...] = (
-        "hip2hip",
-        "triton2triton",
-        "flydsl2flydsl",
-    )
+    evaluation_tools: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "QualityLoopConfig":
@@ -108,8 +101,8 @@ class QualityLoopConfig:
                 "optimization_iterations must be 1"
             )
         repair_attempts = int(audit.get("max_repair_attempts", 1))
-        if repair_attempts < 0 or repair_attempts > 1:
-            raise ValueError("max_repair_attempts must be 0 or 1")
+        if repair_attempts != 1:
+            raise ValueError("quality_loop requires exactly one repair attempt")
         confirmations = int(audit.get("easy_confirmation_runs", 3))
         if confirmations < 1:
             raise ValueError("easy_confirmation_runs must be at least 1")
@@ -117,10 +110,14 @@ class QualityLoopConfig:
         if threshold <= 1.0:
             raise ValueError("easy_speedup_threshold must be greater than 1.0")
 
-        promotion_types = audit.get(
-            "promotion_task_types",
-            ["hip2hip", "triton2triton", "flydsl2flydsl"],
-        )
+        if "promotion_task_types" in audit:
+            raise ValueError(
+                "quality_loop no longer restricts baseline promotion by task type; "
+                "select the intended tasks with the top-level tasks field"
+            )
+        evaluation_tools = raw.get("evaluation_tools") or {}
+        if not isinstance(evaluation_tools, dict):
+            raise ValueError("evaluation_tools must be a mapping")
         return cls(
             tasks=tuple(str(task) for task in tasks),
             target_gpu_model=target,
@@ -140,7 +137,7 @@ class QualityLoopConfig:
                 audit.get("worktree_root", ".quality_loop_worktrees"),
                 "quality_loop.worktree_root",
             ),
-            promotion_task_types=tuple(str(value) for value in promotion_types),
+            evaluation_tools=dict(evaluation_tools),
         )
 
 

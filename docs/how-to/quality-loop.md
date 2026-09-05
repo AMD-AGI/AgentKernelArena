@@ -2,7 +2,7 @@
 myst:
     html_meta:
         "description": "Audit, repair, harden, and publish AgentKernelArena tasks with the Codex-based quality_loop workflow."
-        "keywords": "AgentKernelArena, quality_loop, task audit, Codex, GitHub issues, pull request, GPU kernel"
+        "keywords": "AgentKernelArena, quality_loop, task audit, Codex, draft pull request, GPU kernel"
 ---
 
 # Audit and harden tasks with quality_loop
@@ -15,15 +15,16 @@ For every selected, platform-compatible task it:
 
 1. Runs the existing task validator in a fresh workspace.
 2. Records WARN results without repairing them.
-3. Attempts one repair for FAIL results, revalidates from a fresh copy, and files
-   a fingerprinted GitHub issue if the task remains invalid.
+3. Attempts one repair for FAIL results, revalidates from a fresh copy, and records
+   the unresolved failure locally if the task remains invalid.
 4. Runs exactly one Codex optimization iteration and the centralized evaluator.
 5. Starts a separate, read-only Codex session to review correctness evidence and
    case coverage.
 6. Promotes a first-iteration candidate only when three measurements have median
    speedup at least 5x and all correctness/method/case-count gates pass.
 7. Adds targeted cases only when both the original kernel and candidate pass them.
-8. Commits accepted task changes to one isolated branch and creates one draft PR.
+8. Commits accepted task changes to one isolated branch and creates at most one
+   draft PR. The workflow never creates GitHub issues.
 
 ## Prerequisites
 
@@ -41,7 +42,7 @@ the host. It mounts Codex state, but never mounts GitHub credentials into the GP
 container. The main checkout is mounted read-only, while only the current run's
 artifact and isolated worktree directories are writable. After the task campaign
 exits, a host-side deterministic publisher verifies the recorded diff, commits
-accepted task changes, creates issues, pushes the branch, and opens the draft PR.
+accepted task changes, pushes the branch, and opens the draft PR.
 
 ## Inspect a campaign
 
@@ -60,7 +61,7 @@ The output lists runnable and platform-deferred tasks. A task with
 
 ```bash
 make docker-quality-loop \
-  QUALITY_LOOP_CONFIG=example_configs/quality_loop_mi300.yaml
+  CONFIG=example_configs/quality_loop_mi300.yaml
 ```
 
 Select `example_configs/quality_loop_mi355x.yaml` on an MI355X host.
@@ -69,7 +70,7 @@ For a bounded smoke campaign:
 
 ```bash
 make docker-quality-loop \
-  QUALITY_LOOP_CONFIG=example_configs/quality_loop_mi300.yaml \
+  CONFIG=example_configs/quality_loop_mi300.yaml \
   QUALITY_LOOP_ARGS="--tasks hip2hip/gpumode/GELU triton2triton/vllm/triton_rms_norm"
 ```
 
@@ -77,12 +78,13 @@ Resume with the run ID printed in `quality_loop_runs/`:
 
 ```bash
 make docker-quality-loop \
-  QUALITY_LOOP_CONFIG=example_configs/quality_loop_mi300.yaml \
+  CONFIG=example_configs/quality_loop_mi300.yaml \
   QUALITY_LOOP_ARGS="--resume <run-id>"
 ```
 
 The crash-safe `state.yaml` skips terminal tasks. `audit_report.yaml` records every
-warning, failure, issue URL, speedup confirmation, accepted file change, and commit.
+warning, unresolved failure, speedup confirmation, accepted file change, and commit.
+If a run has no accepted changes, it does not open an empty pull request.
 
 ## Safety boundaries
 
@@ -98,8 +100,9 @@ warning, failure, issue URL, speedup confirmation, accepted file change, and com
   file invalidate the review.
 - External repository/image worktrees and generated benchmark helpers are never
   copied into a task commit.
-- Translation/authoring tasks do not promote a generated 5x solution as their new
-  baseline because that would change the task category.
+- The top-level `tasks` selectors define the complete audit scope. Baseline
+  promotion is attempted without a task-type allowlist and fails closed when the
+  selected task has no promotable committed source baseline.
 - If equivalence cannot be established against a committed original kernel, the
   baseline or case change is rejected.
 

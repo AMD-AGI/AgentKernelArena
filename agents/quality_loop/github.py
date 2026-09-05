@@ -102,9 +102,6 @@ class GitHubPublisher:
                 f"authenticated GitHub user lacks write permission for {slug} "
                 f"(viewer_permission={permission or 'unknown'})"
             )
-        if repo_data.get("has_issues") is False:
-            raise RuntimeError(f"GitHub issues are disabled for {slug}")
-
         default_branch = self.config.base_branch or repo_data.get("default_branch")
         if not default_branch:
             raise RuntimeError(f"could not determine the default branch for {slug}")
@@ -202,65 +199,6 @@ class GitHubPublisher:
                 f"unexpected={unexpected}, missing={missing}"
             )
 
-    @staticmethod
-    def issue_marker(task_id: str, fingerprint: str) -> str:
-        return f"<!-- quality-loop task={task_id} fingerprint={fingerprint} -->"
-
-    def ensure_issue(
-        self,
-        *,
-        repo_slug: str,
-        task_id: str,
-        fingerprint: str,
-        title: str,
-        body: str,
-        artifact_dir: Path,
-    ) -> str:
-        marker = self.issue_marker(task_id, fingerprint)
-        existing_raw = run_command(
-            [
-                "gh",
-                "issue",
-                "list",
-                "--repo",
-                repo_slug,
-                "--state",
-                "all",
-                "--limit",
-                "1000",
-                "--json",
-                "number,body,state,url",
-            ],
-            cwd=self.repo_root,
-        ).stdout
-        for issue in json.loads(existing_raw or "[]"):
-            if marker not in str(issue.get("body") or ""):
-                continue
-            if str(issue.get("state", "")).upper() == "CLOSED":
-                run_command(
-                    ["gh", "issue", "reopen", str(issue["number"]), "--repo", repo_slug],
-                    cwd=self.repo_root,
-                )
-            return str(issue.get("url") or "")
-
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-        body_path = artifact_dir / "issue_body.md"
-        body_path.write_text(f"{marker}\n\n{body.rstrip()}\n", encoding="utf-8")
-        args = [
-            "gh",
-            "issue",
-            "create",
-            "--repo",
-            repo_slug,
-            "--title",
-            title,
-            "--body-file",
-            str(body_path),
-        ]
-        for label in self.config.issue_labels:
-            args.extend(["--label", label])
-        return run_command(args, cwd=self.repo_root).stdout.strip()
-
     def publish_draft_pr(
         self,
         *,
@@ -317,9 +255,8 @@ class GitHubPublisher:
             title,
             "--body-file",
             str(body_path),
+            "--draft",
         ]
-        if self.config.draft_pr:
-            args.append("--draft")
         existing = json.loads(
             run_command(
                 [

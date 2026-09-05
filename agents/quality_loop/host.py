@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .config import QualityLoopConfig, load_config
 from .github import GitHubPublisher
-from .orchestrator import QualityLoop, _task_slug
+from .orchestrator import QualityLoop
 from .state import AuditState, resolve_worktree, stable_fingerprint, validate_run_id
 
 
@@ -144,21 +144,6 @@ def finalize(config: QualityLoopConfig, run_id: str, logger: logging.Logger) -> 
         record["commit"] = commit
         record["commit_pending"] = False
         state.save()
-
-    if config.github.publish:
-        for task_id, record in state.data.get("tasks", {}).items():
-            if record.get("state") != "issue_pending":
-                continue
-            request = record.get("issue_request") or {}
-            issue_url = publisher.ensure_issue(
-                repo_slug=str(state.data["repo_slug"]),
-                task_id=task_id,
-                fingerprint=str(request["fingerprint"]),
-                title=str(request["title"]),
-                body=str(request["body"]),
-                artifact_dir=artifact / "tasks" / _task_slug(task_id),
-            )
-            state.transition(task_id, "issue_filed", issue_url=issue_url)
 
     workflow = QualityLoop(REPO_ROOT, config, logger=logger, publisher=publisher)
     workflow.state = state

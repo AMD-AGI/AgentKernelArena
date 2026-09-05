@@ -25,17 +25,11 @@ LOGGER = logging.getLogger("quality-loop-test")
 
 class FakePublisher:
     def __init__(self):
-        self.issues = []
         self.commits = []
 
     def commit_task(self, worktree, task_id):
         self.commits.append(task_id)
         return "abc123"
-
-    def ensure_issue(self, **kwargs):
-        self.issues.append(kwargs)
-        return "https://github.com/AMD-AGI/AgentKernelArena/issues/999"
-
 
 class RepairBackend:
     def __init__(self, change_on_repair=True):
@@ -157,7 +151,6 @@ class QualityLoopTests(unittest.TestCase):
         self.assertEqual(config.backend.name, "codex")
         self.assertEqual(config.reviewer.name, "codex")
         self.assertEqual(config.optimization_iterations, 1)
-        self.assertTrue(config.github.draft_pr)
 
         with self.assertRaisesRegex(ValueError, "exactly one"):
             QualityLoopConfig.from_dict(
@@ -165,6 +158,38 @@ class QualityLoopTests(unittest.TestCase):
                     "tasks": ["all"],
                     "target_gpu_model": "MI300",
                     "quality_loop": {"optimization_iterations": 2},
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "always drafts"):
+            QualityLoopConfig.from_dict(
+                {
+                    "target_gpu_model": "MI300",
+                    "quality_loop": {"github": {"draft_pr": False}},
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "never creates GitHub issues"):
+            QualityLoopConfig.from_dict(
+                {
+                    "target_gpu_model": "MI300",
+                    "quality_loop": {"github": {"issue_labels": ["task-bug"]}},
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "exactly one repair"):
+            QualityLoopConfig.from_dict(
+                {
+                    "target_gpu_model": "MI300",
+                    "quality_loop": {"max_repair_attempts": 0},
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "top-level tasks field"):
+            QualityLoopConfig.from_dict(
+                {
+                    "target_gpu_model": "MI300",
+                    "quality_loop": {"promotion_task_types": ["hip2hip"]},
                 }
             )
 
@@ -195,6 +220,23 @@ class QualityLoopTests(unittest.TestCase):
         ):
             with self.subTest(remote=remote):
                 self.assertEqual(parse_github_slug(remote), "AMD-AGI/AgentKernelArena")
+
+    def test_yaml_task_selectors_define_the_complete_scope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for task_id in ("custom/selected", "hip2hip/not-selected"):
+                task = root / "tasks" / task_id
+                task.mkdir(parents=True)
+                (task / "config.yaml").write_text("task_type: custom\n")
+            config = QualityLoopConfig.from_dict(
+                {
+                    "tasks": ["custom/selected"],
+                    "target_gpu_model": "MI300",
+                    "quality_loop": {},
+                }
+            )
+            workflow = QualityLoop(root, config, logger=LOGGER)
+            self.assertEqual(list(workflow.discover_tasks(root)), ["custom/selected"])
 
     def test_preflight_rejects_missing_write_permission(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -366,6 +408,99 @@ class QualityLoopTests(unittest.TestCase):
                     expected_paths=set(),
                 )
 
+    def test_publisher_always_creates_at_most_one_draft_pr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            artifact = root / "artifacts"
+            config = QualityLoopConfig.from_dict(
+                {"target_gpu_model": "MI300", "quality_loop": {}}
+            )
+            publisher = GitHubPublisher(root, config.github, LOGGER)
+            calls = []
+            existing = False
+
+            def fake_run(args, **kwargs):
+                nonlocal existing
+                calls.append(list(args))
+                if args[:2] == ["git", "rev-list"]:
+                    stdout = "1\n"
+                elif args[:3] == ["gh", "pr", "list"]:
+                    stdout = (
+                        json.dumps([{"url": "https://example.invalid/pr/1"}])
+                        if existing
+                        else "[]"
+                    )
+                elif args[:3] == ["gh", "pr", "create"]:
+                    existing = True
+                    stdout = "https://example.invalid/pr/1\n"
+                else:
+                    stdout = ""
+                return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
+
+            with mock.patch(
+                "agents.quality_loop.github.run_command", side_effect=fake_run
+            ):
+                first = publisher.publish_draft_pr(
+                    worktree=root,
+                    repo_slug="AMD-AGI/AgentKernelArena",
+                    branch="quality-loop/run",
+                    base_branch="main",
+                    title="quality audit",
+                    body="summary",
+                    artifact_dir=artifact,
+                )
+                second = publisher.publish_draft_pr(
+                    worktree=root,
+                    repo_slug="AMD-AGI/AgentKernelArena",
+                    branch="quality-loop/run",
+                    base_branch="main",
+                    title="quality audit",
+                    body="summary",
+                    artifact_dir=artifact,
+                )
+
+            create_calls = [args for args in calls if args[:3] == ["gh", "pr", "create"]]
+            self.assertEqual(first, "https://example.invalid/pr/1")
+            self.assertEqual(second, first)
+            self.assertEqual(len(create_calls), 1)
+            self.assertIn("--draft", create_calls[0])
+            self.assertFalse(any(args[:2] == ["gh", "issue"] for args in calls))
+
+    def test_publisher_skips_pr_when_run_has_no_commits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            artifact = root / "artifacts"
+            config = QualityLoopConfig.from_dict(
+                {"target_gpu_model": "MI300", "quality_loop": {}}
+            )
+            publisher = GitHubPublisher(root, config.github, LOGGER)
+            calls = []
+
+            def fake_run(args, **kwargs):
+                calls.append(list(args))
+                if args[:2] == ["git", "rev-list"]:
+                    return subprocess.CompletedProcess(
+                        args, 0, stdout="0\n", stderr=""
+                    )
+                raise AssertionError(f"unexpected command after empty run: {args}")
+
+            with mock.patch(
+                "agents.quality_loop.github.run_command", side_effect=fake_run
+            ):
+                result = publisher.publish_draft_pr(
+                    worktree=root,
+                    repo_slug="AMD-AGI/AgentKernelArena",
+                    branch="quality-loop/run",
+                    base_branch="main",
+                    title="quality audit",
+                    body="summary",
+                    artifact_dir=artifact,
+                )
+
+            self.assertIsNone(result)
+            self.assertEqual(calls, [["git", "rev-list", "--count", "origin/main..HEAD"]])
+            self.assertFalse(artifact.exists())
+
     def test_reviewer_cannot_modify_evaluation_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -436,9 +571,8 @@ class QualityLoopTests(unittest.TestCase):
             self.assertEqual(workflow.state.task("hip2hip/sample")["state"], "completed")
             self.assertEqual(backend.roles, ["repair"])
             self.assertEqual(publisher.commits, ["hip2hip/sample"])
-            self.assertEqual(publisher.issues, [])
 
-    def test_unrepairable_failure_files_issue_without_touching_task(self):
+    def test_unrepairable_failure_is_reported_without_external_action(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             worktree = root / "worktree"
@@ -466,13 +600,12 @@ class QualityLoopTests(unittest.TestCase):
             workflow._process_task("hip2hip/sample", task)
 
             record = workflow.state.task("hip2hip/sample")
-            self.assertEqual(record["state"], "issue_filed")
-            self.assertTrue(record["issue_url"].endswith("/999"))
+            self.assertEqual(record["state"], "reported_failure")
+            self.assertEqual(record["validation_report"]["overall_status"], "FAIL")
             self.assertEqual((task / "kernel.py").read_text(), original)
-            self.assertEqual(len(publisher.issues), 1)
             self.assertEqual(publisher.commits, [])
 
-    def test_container_defers_issue_request_without_github_credentials(self):
+    def test_container_reports_unrepairable_failure_without_publication_request(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             worktree = root / "worktree"
@@ -500,10 +633,9 @@ class QualityLoopTests(unittest.TestCase):
             workflow._process_task("hip2hip/sample", task)
 
             record = workflow.state.task("hip2hip/sample")
-            self.assertEqual(record["state"], "issue_pending")
-            self.assertEqual(record["issue_url"], None)
-            self.assertEqual(record["issue_request"]["task_id"], "hip2hip/sample")
-            self.assertEqual(publisher.issues, [])
+            self.assertEqual(record["state"], "reported_failure")
+            self.assertNotIn("issue_request", record)
+            self.assertNotIn("issue_url", record)
 
     def test_container_defers_task_commit_to_host_finalizer(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -578,9 +710,8 @@ class QualityLoopTests(unittest.TestCase):
             self.assertEqual(record["state"], "completed")
             self.assertEqual(record["warnings"], ["performance: too few repeats"])
             self.assertNotIn("repair", backend.roles)
-            self.assertEqual(publisher.issues, [])
 
-    def test_easy_gate_is_fail_closed_and_not_used_for_authoring_tasks(self):
+    def test_easy_gate_is_fail_closed_and_task_type_agnostic(self):
         config = QualityLoopConfig.from_dict(
             {"target_gpu_model": "MI300", "quality_loop": {}}
         )
@@ -598,17 +729,7 @@ class QualityLoopTests(unittest.TestCase):
         }
         self.assertTrue(
             difficulty_is_easy(
-                task_type="hip2hip",
                 speedups=[5.1, 5.0, 6.0],
-                result=result,
-                review=review,
-                config=config,
-            )
-        )
-        self.assertFalse(
-            difficulty_is_easy(
-                task_type="torch2hip",
-                speedups=[10.0, 10.0, 10.0],
                 result=result,
                 review=review,
                 config=config,
@@ -617,7 +738,6 @@ class QualityLoopTests(unittest.TestCase):
         result["benchmark_method_consistent"] = False
         self.assertFalse(
             difficulty_is_easy(
-                task_type="hip2hip",
                 speedups=[6.0, 6.0, 6.0],
                 result=result,
                 review=review,

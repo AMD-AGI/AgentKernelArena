@@ -35,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-publish",
         action="store_true",
-        help="Run all hard preflights and audits but do not create issues, push, or open a PR",
+        help="Run all hard preflights and audits but do not push or open a PR",
     )
     parser.add_argument("--defer-github", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--skip-preflight", action="store_true", help=argparse.SUPPRESS)

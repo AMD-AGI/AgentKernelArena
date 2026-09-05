@@ -22,7 +22,5 @@ quality_loop:
   worktree_root: .quality_loop_worktrees
   github:
     publish: true
-    draft_pr: true
     branch_prefix: quality-loop
     base_branch: null
-    issue_labels: []

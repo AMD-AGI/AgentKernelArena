@@ -116,7 +116,6 @@ def _review_is_valid(review: Any) -> bool:
 
 def difficulty_is_easy(
     *,
-    task_type: str,
     speedups: list[float],
     result: dict[str, Any],
     review: dict[str, Any],
@@ -124,8 +123,7 @@ def difficulty_is_easy(
 ) -> bool:
     """Return true only for a reproducible, review-approved first-iteration 5x gain."""
     return bool(
-        task_type in config.promotion_task_types
-        and len(speedups) == config.easy_confirmation_runs
+        len(speedups) == config.easy_confirmation_runs
         and all(value > 0 for value in speedups)
         and statistics.median(speedups) >= config.easy_speedup_threshold
         and result.get("pass_compilation") is True
@@ -290,7 +288,7 @@ class QualityLoop:
             except Exception as exc:
                 self.logger.exception("quality_loop task failed: %s", task_id)
                 # Tooling/agent/runtime failures are not evidence that the task is
-                # defective. Keep them resumable and never file a task issue.
+                # defective. Keep them resumable without publishing task changes.
                 self.state.transition(task_id, "infrastructure_failed", error=str(exc))
 
         report_path = self._write_report()
@@ -344,9 +342,6 @@ class QualityLoop:
         warnings = _validation_warnings(validation)
 
         if original_validation_status == "FAIL":
-            if self.config.max_repair_attempts == 0:
-                self._handle_unrepairable(task_id, validation, task_artifacts)
-                return
             self.state.transition(task_id, "repairing", warnings=warnings)
             task_config = self._load_task_config(candidate_task)
             before = snapshot_tree(validation_workspace)
@@ -358,7 +353,7 @@ class QualityLoop:
                 before, after, repo_subdir=_repo_subdir(task_config)
             )
             if changes.empty:
-                self._handle_unrepairable(task_id, validation, task_artifacts)
+                self._handle_unrepairable(task_id, validation)
                 return
             apply_changes(validation_workspace, candidate_task, changes)
             restore_committed_perf_stubs(candidate_task)
@@ -367,7 +362,7 @@ class QualityLoop:
             )
             warnings = _validation_warnings(validation)
             if str(validation.get("overall_status", "FAIL")).upper() == "FAIL":
-                self._handle_unrepairable(task_id, validation, task_artifacts)
+                self._handle_unrepairable(task_id, validation)
                 return
 
         self.state.transition(task_id, "optimizing", warnings=warnings)
@@ -402,15 +397,15 @@ class QualityLoop:
                 )
 
         hardened = False
+        hardening_reason = "candidate did not meet the configured easy-task gate"
         task_config = self._load_task_config(candidate_task)
         if difficulty_is_easy(
-            task_type=str(task_config.get("task_type", "")),
             speedups=speedups,
             result=result,
             review=review,
             config=self.config,
         ):
-            hardened = self._promote_baseline(
+            hardened, hardening_reason = self._promote_baseline(
                 task_id,
                 original_task,
                 candidate_task,
@@ -462,6 +457,7 @@ class QualityLoop:
             speedups=speedups,
             reviewer=review,
             baseline_hardened=hardened,
+            baseline_hardening_reason=hardening_reason,
             cases_enhanced=cases_enhanced,
         )
 
@@ -621,15 +617,17 @@ class QualityLoop:
         candidate_task: Path,
         optimized_workspace: Path,
         task_artifacts: Path,
-    ) -> bool:
+    ) -> tuple[bool, str | None]:
         task_config = self._load_task_config(candidate_task)
         sources = _source_paths(task_config)
         if not sources or any(not (candidate_task / path).is_file() for path in sources):
-            self.logger.warning("Task %s has no promotable committed source baseline", task_id)
-            return False
+            reason = "task has no promotable committed source baseline"
+            self.logger.warning("Task %s %s", task_id, reason)
+            return False, reason
         if any(not (optimized_workspace / path).is_file() for path in sources):
-            self.logger.warning("Task %s optimizer omitted a declared source file", task_id)
-            return False
+            reason = "optimizer omitted a declared source file"
+            self.logger.warning("Task %s %s", task_id, reason)
+            return False, reason
         source_backup = task_artifacts / "baseline_before_promotion"
         self._reset_path(source_backup)
         source_backup.mkdir(parents=True)
@@ -640,7 +638,7 @@ class QualityLoop:
         for relative in sources:
             source = optimized_workspace / relative
             if not source.is_file():
-                return False
+                return False, f"optimizer omitted declared source file {relative}"
             destination = candidate_task / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
@@ -654,14 +652,15 @@ class QualityLoop:
             # candidate must never become the task baseline.
             for relative in sources:
                 shutil.copy2(source_backup / relative, candidate_task / relative)
-            return False
+            return False, "promoted baseline failed fresh task validation"
         accepted = self._dual_correctness_gate(
             task_id, original_task, candidate_task, task_artifacts / "hardening_gate"
         )
         if not accepted:
             for relative in sources:
                 shutil.copy2(source_backup / relative, candidate_task / relative)
-        return accepted
+            return False, "promoted baseline failed the dual correctness gate"
+        return True, None
 
     def _enhance_cases(
         self,
@@ -749,52 +748,13 @@ class QualityLoop:
                 return False
         return True
 
-    def _handle_unrepairable(
-        self, task_id: str, report: dict[str, Any], task_artifacts: Path
-    ) -> None:
+    def _handle_unrepairable(self, task_id: str, report: dict[str, Any]) -> None:
         assert self.state is not None
-        fingerprint = stable_fingerprint(
-            {
-                "task": task_id,
-                "base_sha": self.state.data["base_sha"],
-                "checks": report.get("checks"),
-            }
-        )
-        body = (
-            f"`quality_loop` could not repair task `{task_id}`.\n\n"
-            f"Base commit: `{self.state.data['base_sha']}`\n\n"
-            "Validator report:\n\n```yaml\n"
-            + yaml.safe_dump(report, sort_keys=False)
-            + "```"
-        )
-        issue_url = None
-        if self.defer_github and self.config.github.publish:
-            state = "issue_pending"
-        elif self.config.github.publish:
-            issue_url = self.publisher.ensure_issue(
-                repo_slug=str(self.state.data["repo_slug"]),
-                task_id=task_id,
-                fingerprint=fingerprint,
-                title=f"[quality_loop] Invalid task: {task_id}",
-                body=body,
-                artifact_dir=task_artifacts,
-            )
-            state = "issue_filed"
-        else:
-            state = "reported_failure"
         self.state.transition(
             task_id,
-            state,
-            issue_url=issue_url,
+            "reported_failure",
+            warnings=_validation_warnings(report),
             validation_report=report,
-            issue_request={
-                "task_id": task_id,
-                "fingerprint": fingerprint,
-                "title": f"[quality_loop] Invalid task: {task_id}",
-                "body": body,
-            }
-            if state == "issue_pending"
-            else None,
         )
 
     def _make_workspace(self, task_id: str, task_dir: Path, stage_dir: Path) -> Path:
@@ -874,14 +834,17 @@ class QualityLoop:
         records = self.state.data.get("tasks", {})
         completed = [task for task, value in records.items() if value.get("state") == "completed"]
         changed = [task for task in completed if records[task].get("changes")]
-        issues = [value.get("issue_url") for value in records.values() if value.get("issue_url")]
+        unresolved = [
+            task for task, value in records.items() if value.get("state") == "reported_failure"
+        ]
         warnings = sum(len(value.get("warnings") or []) for value in records.values())
+        report_relative = report_path.relative_to(self.repo_root)
         return f"""## Summary
 
 - Audited tasks: {len(records)}
 - Accepted task changes: {len(changed)}
 - Validator warnings recorded: {warnings}
-- Unrepairable task issues: {len(issues)}
+- Unresolved validation failures: {len(unresolved)}
 - Optimizer: Codex, exactly one iteration per task
 - Easy-task threshold: reproducible {self.config.easy_speedup_threshold:.1f}x
 
@@ -889,11 +852,11 @@ class QualityLoop:
 
 {chr(10).join(f'- `{task}`' for task in changed) or '- None'}
 
-## Issues
+## Unresolved validation failures
 
-{chr(10).join(f'- {url}' for url in issues) or '- None'}
+{chr(10).join(f'- `{task}`' for task in unresolved) or '- None'}
 
 The full machine-readable report is stored in the local run artifact
-`{report_path}`. Every promoted baseline and case change passed the fail-closed
+`{report_relative}`. Every promoted baseline and case change passed the fail-closed
 dual correctness gate against the pre-audit kernel.
 """

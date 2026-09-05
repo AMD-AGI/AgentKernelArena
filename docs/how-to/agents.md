@@ -41,8 +41,9 @@ state. Specialized integrations have additional setup and configuration under
 their respective `agents/<agent_name>/` directories.
 
 `quality_loop` is intentionally not an `agent.template`. It is a repository-level
-task maintenance workflow that invokes Codex roles across many tasks, files issues,
-and publishes one draft PR. See [Audit and harden tasks](quality-loop.md).
+task maintenance workflow that invokes Codex roles across the tasks selected by its
+run config and publishes at most one draft PR. It never creates GitHub issues. See
+[Audit and harden tasks](quality-loop.md).
 
 ## Models, providers, and agent settings
 

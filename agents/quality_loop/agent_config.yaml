@@ -22,20 +22,10 @@ quality_loop:
   easy_confirmation_runs: 3
   case_enhancement: true
 
-  # Only optimization tasks with a committed runnable baseline can promote a
-  # first-iteration 5x candidate into the new task baseline. Translation and
-  # authoring tasks still receive validation, optimization, review, and case audit.
-  promotion_task_types:
-    - hip2hip
-    - triton2triton
-    - flydsl2flydsl
-
   artifact_root: quality_loop_runs
   worktree_root: .quality_loop_worktrees
 
   github:
     publish: true
-    draft_pr: true
     branch_prefix: quality-loop
     base_branch: null           # null resolves the repository default branch
-    issue_labels: []            # labels must already exist in the repository

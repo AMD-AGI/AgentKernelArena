@@ -14,8 +14,6 @@ import yaml
 
 TERMINAL_TASK_STATES = {
     "completed",
-    "issue_filed",
-    "issue_pending",
     "reported_failure",
     "platform_deferred",
 }
@@ -113,7 +111,6 @@ class AuditState:
                 "events": [],
                 "warnings": [],
                 "changes": [],
-                "issue_url": None,
             },
         )
 

@@ -97,7 +97,10 @@ assert_cache_args_absent() {
 
 TEST_HOME="$(mktemp -d)"
 PATH_TEST_PARENT="$ROOT/.eval-tool-runner-test-$$"
-trap 'rm -rf "$TEST_HOME" "$PATH_TEST_PARENT" "$ROOT/quality_loop_runs/test-run" "$ROOT/.quality_loop_worktrees/test-run"' EXIT
+QUALITY_TEST_RUN_ID="runner-test-$$-${RANDOM:-0}"
+QUALITY_ARTIFACT_REL="quality_loop_runs/$QUALITY_TEST_RUN_ID"
+QUALITY_WORKTREE_REL=".quality_loop_worktrees/$QUALITY_TEST_RUN_ID"
+trap 'rm -rf -- "$TEST_HOME" "$PATH_TEST_PARENT" "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL"' EXIT
 UNRELATED_GEAK_WORKFLOW_DIR="$TEST_HOME/unrelated-geak-workflow"
 GEAK_SDK_PYTHONPATH="PYTHONPATH=/workspace/.aka-pyuserbase/geak-sdk"
 mkdir -p "$UNRELATED_GEAK_WORKFLOW_DIR"
@@ -251,10 +254,12 @@ mkdir -p "$QUALITY_HOME/.codex" "$QUALITY_HOME/.config/gh" "$QUALITY_PREFIX/bin"
 touch "$QUALITY_PREFIX/bin/node" "$QUALITY_PREFIX/bin/codex"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$QUALITY_BIN/gh"
 chmod +x "$QUALITY_BIN/gh"
-printf '#!/usr/bin/env bash\ncase "$*" in *"agents.quality_loop.host start"*) echo test-run;; *"agents.quality_loop.host paths"*) printf "quality_loop_runs/test-run\\n.quality_loop_worktrees/test-run\\n";; *"agents.quality_loop.host finalize"*) echo test-pr;; esac\n' > "$QUALITY_BIN/python3"
+printf '#!/usr/bin/env bash\ncase "$*" in *"agents.quality_loop.host start"*) echo "%s";; *"agents.quality_loop.host paths"*) printf "%%s\\n%%s\\n" "%s" "%s";; *"agents.quality_loop.host finalize"*) echo test-pr;; esac\n' \
+    "$QUALITY_TEST_RUN_ID" "$QUALITY_ARTIFACT_REL" "$QUALITY_WORKTREE_REL" \
+    > "$QUALITY_BIN/python3"
 chmod +x "$QUALITY_BIN/python3"
 printf 'tasks:\n  - hip2hip/gpumode/GELU\ntarget_gpu_model: MI300\nquality_loop: {}\n' > "$QUALITY_CONFIG"
-mkdir -p "$ROOT/quality_loop_runs/test-run" "$ROOT/.quality_loop_worktrees/test-run"
+mkdir -p "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL"
 
 mapfile -t args < <(
     env \
@@ -266,17 +271,17 @@ mapfile -t args < <(
 assert_has "$QUALITY_PREFIX:/opt/node:ro" "${args[@]}"
 assert_has "$QUALITY_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
 assert_has "$ROOT:/workspace:ro" "${args[@]}"
-assert_has "$ROOT/quality_loop_runs/test-run:/workspace/quality_loop_runs/test-run" "${args[@]}"
-assert_has "$ROOT/.quality_loop_worktrees/test-run:/workspace/.quality_loop_worktrees/test-run" "${args[@]}"
+assert_has "$ROOT/$QUALITY_ARTIFACT_REL:/workspace/$QUALITY_ARTIFACT_REL" "${args[@]}"
+assert_has "$ROOT/$QUALITY_WORKTREE_REL:/workspace/$QUALITY_WORKTREE_REL" "${args[@]}"
 assert_not_has "$QUALITY_BIN/gh:$QUALITY_BIN/gh:ro" "${args[@]}"
 assert_not_has "$QUALITY_HOME/.config/gh:$QUALITY_HOME/.config/gh:ro" "${args[@]}"
 assert_has "python3" "${args[@]}"
 assert_has "agents.quality_loop" "${args[@]}"
 assert_has "--resume" "${args[@]}"
-assert_has "test-run" "${args[@]}"
+assert_has "$QUALITY_TEST_RUN_ID" "${args[@]}"
 assert_has "--defer-github" "${args[@]}"
 assert_has "--skip-preflight" "${args[@]}"
-rm -rf "$ROOT/quality_loop_runs/test-run" "$ROOT/.quality_loop_worktrees/test-run"
+rm -rf -- "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL"
 
 # A Codex-only config likewise receives neither Claude credentials nor GEAK's
 # dependency path/mount, even when both are configured on the host.

@@ -23,10 +23,11 @@ help:
 	@echo "make docker-smoke        - Verify Docker Python, ROCm tools, imports, and GPU access"
 	@echo "make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml RUN_ARGS=\"--run-suffix test\" - Run an experiment in Docker"
 	@echo "make docker-parallel-run CONFIG=example_configs/benchmark_cursor_mi355x.yaml GPU_IDS=0,1 - Run an experiment across one worker container per GPU"
-	@echo "make docker-quality-loop QUALITY_LOOP_CONFIG=example_configs/quality_loop_mi300.yaml - Audit and harden tasks with Codex, then open one draft PR"
 	@echo "                         Default CONFIG is the MI300/MI300X Claude quickstart"
 	@echo "                         On other GPUs, pass a matching CONFIG explicitly"
 	@echo "                         Images: gfx942->mi30x, gfx950->mi35x; override with AKA_DOCKER_IMAGE=..."
+	@echo "make docker-quality-loop CONFIG=example_configs/quality_loop_mi300.yaml - Audit and harden config-selected tasks, then open at most one draft PR"
+	@echo "                         Default quality-loop CONFIG is agents/quality_loop/agent_config.yaml"
 	@echo "make docker-setup-flydsl - Install FlyDSL when absent (for flydsl2flydsl, torch2flydsl, and triton2flydsl)"
 	@echo "make docker-setup-geak   - Install the Claude Agent SDK when absent (for the geak_v4 agent)"
 	@echo "make check-docker-runner - Check Docker runner syntax and runtime-specific arguments"
@@ -46,7 +47,6 @@ help:
 DOCKER_RUNNER := src/scripts/docker_benchmark.sh
 CONFIG ?= example_configs/quickstart_claude_mi300.yaml
 RUN_ARGS ?=
-QUALITY_LOOP_CONFIG ?= agents/quality_loop/agent_config.yaml
 QUALITY_LOOP_ARGS ?=
 AGENTS ?=
 WORKSPACES ?= $(WORKSPACE)
@@ -73,8 +73,9 @@ docker-run:
 docker-parallel-run:
 	@GPU_IDS="$(GPU_IDS)" $(DOCKER_RUNNER) parallel-run --config_name $(CONFIG) $(RUN_ARGS)
 
+docker-quality-loop: CONFIG = agents/quality_loop/agent_config.yaml
 docker-quality-loop:
-	@$(DOCKER_RUNNER) quality-loop --config $(QUALITY_LOOP_CONFIG) $(QUALITY_LOOP_ARGS)
+	@$(DOCKER_RUNNER) quality-loop --config $(CONFIG) $(QUALITY_LOOP_ARGS)
 
 # Install FlyDSL into the container's persistent pip user-base when the selected
 # image does not ship it. Needed by all three FlyDSL task types.
