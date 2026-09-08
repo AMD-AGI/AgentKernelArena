@@ -33,6 +33,8 @@ subtrees:
       title: Configure agents and models
     - file: how-to/add-task
       title: Add a task
+    - file: how-to/sikl-task-builder
+      title: Generate tasks from SIKL data
     - file: how-to/task-validator
       title: Validate tasks
     - file: how-to/quality-loop

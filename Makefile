@@ -6,7 +6,7 @@
 
 SHELL := /bin/bash
 
-.PHONY: help docker-shell docker-check-agents docker-smoke docker-run docker-parallel-run docker-quality-loop docker-setup-flydsl docker-setup-geak \
+.PHONY: help docker-shell docker-check-agents docker-smoke docker-run docker-parallel-run docker-quality-loop docker-sikl-task-builder docker-setup-flydsl docker-setup-geak \
         check-docker-runner check-evaluator check-held-out check-visualization \
         visualization-build visualization-serve visualization-run \
         sync-perf-helpers check-perf-helpers materialize-perf-workspace \
@@ -28,6 +28,8 @@ help:
 	@echo "                         Images: gfx942->mi30x, gfx950->mi35x; override with AKA_DOCKER_IMAGE=..."
 	@echo "make docker-quality-loop CONFIG=example_configs/quality_loop_mi300.yaml - Audit and harden config-selected tasks, then open at most one draft PR"
 	@echo "                         Default quality-loop CONFIG is agents/quality_loop/agent_config.yaml"
+	@echo "make docker-sikl-task-builder INPUT=/path/to/bundle - Generate, repair and validate SIKL tasks"
+	@echo "                         Use SIKL_BUILDER_ARGS='resume --run-id ...' to resume"
 	@echo "make docker-setup-flydsl - Install FlyDSL when absent (for flydsl2flydsl, torch2flydsl, and triton2flydsl)"
 	@echo "make docker-setup-geak   - Install the Claude Agent SDK when absent (for the geak_v4 agent)"
 	@echo "make check-docker-runner - Check Docker runner syntax and runtime-specific arguments"
@@ -48,6 +50,8 @@ DOCKER_RUNNER := src/scripts/docker_benchmark.sh
 CONFIG ?= example_configs/quickstart_claude_mi300.yaml
 RUN_ARGS ?=
 QUALITY_LOOP_ARGS ?=
+SIKL_BUILDER_ARGS ?= run
+INPUT ?=
 AGENTS ?=
 WORKSPACES ?= $(WORKSPACE)
 TASKS ?= $(TASK)
@@ -76,6 +80,10 @@ docker-parallel-run:
 docker-quality-loop: CONFIG = agents/quality_loop/agent_config.yaml
 docker-quality-loop:
 	@$(DOCKER_RUNNER) quality-loop --config $(CONFIG) $(QUALITY_LOOP_ARGS)
+
+docker-sikl-task-builder: CONFIG = agents/sikl_task_builder/agent_config.yaml
+docker-sikl-task-builder:
+	@SIKL_INPUT="$(INPUT)" $(DOCKER_RUNNER) sikl-task-builder --config "$(CONFIG)" $(SIKL_BUILDER_ARGS)
 
 # Install FlyDSL into the container's persistent pip user-base when the selected
 # image does not ship it. Needed by all three FlyDSL task types.

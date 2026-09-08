@@ -416,6 +416,10 @@ def _resolve_backend_settings(
         run_agent = {}
 
     def _value(name: str, default: Any) -> Any:
+        # Explicit null selects the backend's own default. In particular a
+        # Codex run must not inherit a Claude model from the validator defaults.
+        if name in ("model", "effort") and name in run_agent:
+            return run_agent[name] or None
         configured = run_agent.get(name)
         return default if configured in (None, "") else configured
 

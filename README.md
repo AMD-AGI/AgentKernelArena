@@ -18,6 +18,7 @@ The platform provides:
 - **Resumable experiments**: Resume a run without repeating tasks that already produced a completion report.
 - **Held-out evaluation**: Test optimized kernels on unseen shapes and measure the generalization gap.
 - **Task validation and visualization**: Validate task quality with a dedicated agent and compare local run reports in a dashboard.
+- **SIKL task authoring**: Generate, repair, and validate standard Arena tasks from a dataset folder with [`sikl_task_builder`](docs/how-to/sikl-task-builder.md).
 
 AgentKernelArena supplies an environment and objective reward signals; it does not currently include an RL trainer, replay buffer, or policy-update loop. Its per-task workspaces provide reproducibility and concurrent-run separation, not a security sandbox: agent processes run permissively inside a privileged container and can access mounted repository and authentication state.
 
