@@ -184,6 +184,7 @@ else: raise AssertionError('candidate silently fell back to baseline')
 ])
 def test_validation_requires_commands_finalized_pass_and_same_files(emitted, tmp_path, monkeypatch, status, finalized, command_ok, changed):
     _, cfg, draft = emitted
+    check_name = "correctness_implementation_review" if status == "WARN" else "correctness"
     monkeypatch.setattr(validation, "runtime_identity", lambda c: {"arch": "gfx950"})
     def process(argv, cwd, log, timeout, env):
         if "--mode" in argv:
@@ -192,7 +193,8 @@ def test_validation_requires_commands_finalized_pass_and_same_files(emitted, tmp
         workspace = Path(request["workspace"])
         raw = _valid_raw_report("workspace")
         if status != "PASS":
-            raw["checks"]["correctness"]["status"] = status
+            raw["checks"][check_name]["status"] = status
+            raw["checks"][check_name]["evidence"] = [{"path": "scripts/workload.json", "finding": "Test diagnostic"}]
         (workspace / "validation_report.yaml").write_text(yaml.safe_dump(raw))
         if finalized:
             finalize_report(workspace, expected_task_name="workspace")
@@ -202,6 +204,8 @@ def test_validation_requires_commands_finalized_pass_and_same_files(emitted, tmp
     monkeypatch.setattr(validation, "run_process", process)
     result = validation.validate_task(draft, tmp_path / "validation", cfg)
     assert result["ok"] == (status == "PASS" and finalized and command_ok and not changed)
+    if status != "PASS" and finalized and command_ok:
+        assert any(d["check"] == check_name and d["status"] == status for d in result["diagnostics"])
 
 
 def test_install_rejects_stale_evidence_and_conflicts(emitted, tmp_path):

@@ -103,9 +103,15 @@ def validate_task(draft: Path, artifacts: Path, config: Config, timeout=None) ->
     added_code = [p for p in after if p not in runtime_files and
                   (p.startswith(("scripts/", "source/")) or p.endswith((".py", ".so", ".pth")))]
     unchanged = not changed and not added_code and task_digest(draft) == source_digest
+    diagnostics = [
+        {"check": name, "status": check.get("status"), "details": check.get("details", ""),
+         "evidence": check.get("evidence", [])}
+        for name, check in report.get("checks", {}).items() if check.get("status") != "PASS"
+    ]
     result = {"validation_id": validation_id, "task_digest": source_digest,
               "environment": environment, "commands": checks, "formal_process": formal,
               "report_complete": complete, "overall_status": report.get("overall_status", "FAIL"),
+              "diagnostics": diagnostics,
               "changed_files": changed + added_code, "workspace": str(workspace),
               "ok": bool(command_ok and formal["ok"] and complete and unchanged and
                          report.get("overall_status") == "PASS")}
