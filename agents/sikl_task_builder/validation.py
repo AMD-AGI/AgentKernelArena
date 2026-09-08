@@ -21,6 +21,16 @@ from .execution import run_process
 from .materialize import task_digest, task_tree
 
 
+def copy_task_files(draft: Path, workspace: Path) -> None:
+    # Validate the same file set that installation will publish. In particular,
+    # stale bytecode or draft build products cannot substitute for source code.
+    workspace.mkdir(parents=True, exist_ok=False)
+    for relative in task_tree(draft):
+        target = workspace / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(draft / relative, target)
+
+
 def runtime_identity(config: Config) -> dict:
     if os.environ.get("AGENT_KERNEL_ARENA_DOCKER") != "1":
         raise RuntimeError("Run GPU generation/validation through make docker-sikl-task-builder")
@@ -42,7 +52,7 @@ def check_task(draft: Path, artifacts: Path, config: Config, mode: str, timeout=
     runtime_identity(config)
     artifacts.mkdir(parents=True, exist_ok=True)
     workspace = (artifacts / "workspace").resolve()
-    shutil.copytree(draft, workspace)
+    copy_task_files(draft, workspace)
     materialize_perf_helpers_in_workspace(workspace)
     return run_process([sys.executable, "scripts/task_runner.py", "--mode", mode], workspace,
                        artifacts / f"{mode}.log", timeout or config.command_timeout,
@@ -55,7 +65,7 @@ def validate_task(draft: Path, artifacts: Path, config: Config, timeout=None) ->
     root = (artifacts / validation_id).resolve()
     workspace = root / "workspace"
     source_digest = task_digest(draft)
-    shutil.copytree(draft, workspace)
+    copy_task_files(draft, workspace)
     materialize_perf_helpers_in_workspace(workspace)
     runtime_files = task_tree(workspace)
     deadline = time.monotonic() + (timeout or config.max_task_seconds)

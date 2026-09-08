@@ -218,6 +218,20 @@ def test_install_rejects_stale_evidence_and_conflicts(emitted, tmp_path):
         install_task(draft, output, "task", evidence)
 
 
+def test_validation_copies_only_files_that_will_be_installed(emitted, tmp_path):
+    _, _, draft = emitted
+    (draft / "source/__pycache__").mkdir()
+    (draft / "source/__pycache__/kernel.pyc").write_bytes(b"stale bytecode")
+    (draft / "build").mkdir()
+    (draft / "build/undeclared.so").write_bytes(b"old build artifact")
+    workspace = tmp_path / "clean-validation"
+    validation.copy_task_files(draft, workspace)
+    installed = install_task(draft, tmp_path / "output", "task", {"ok": True, "task_digest": task_digest(draft)})
+    assert task_digest(workspace) == task_digest(installed)
+    assert not (workspace / "source/__pycache__").exists()
+    assert not (workspace / "build").exists()
+
+
 def test_controller_repairs_revalidates_installs_and_resumes(bundle, tmp_path):
     repo = tmp_path / "repo"
     cfg = Config(str(bundle))
