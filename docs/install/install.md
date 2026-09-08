@@ -52,6 +52,10 @@ Start an interactive shell in the same environment:
 make docker-shell
 ```
 
+On a Slurm/Spur cluster where the login node has no GPU or Docker daemon, use
+the scheduler wrapper instead. It allocates the GPU node before invoking this
+same Docker runtime. See [Run on Slurm/Spur GPU nodes](../how-to/slurm-run.md).
+
 Install and authenticate the agent selected by your configuration before
 starting an experiment; the next section covers the first-class host CLIs.
 
