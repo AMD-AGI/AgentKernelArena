@@ -37,6 +37,12 @@ through the runner's existing PATH. The build checks Python imports and compiler
 and profiler accessibility as an unprivileged UID, without exposing `/root`.
 Experiments still run as the invoking host UID; no runtime root initialization
 or host permission changes are required.
+The runner supplies `USER` and `LOGNAME` for Python libraries that resolve a
+username, since the host UID may have no entry in the image's passwd database.
+On `gfx1201`, `AITER_ROOT_DIR` and `AITER_JIT_DIR` point to separate
+container-local `/tmp` caches, with the runner's worker suffix when set, so
+repository and installed-package builds do not write under the unmounted host
+home directory.
 
 The `gfx1201` smoke check requires `hipcc` and `rocprofv3`. Other architectures
 retain the existing `hipcc` and `rocprof-compute` checks. Finding a profiler does
@@ -44,17 +50,31 @@ not imply that a task or candidate was profiled.
 
 ## Validation and limits
 
-Runtime checks have exercised existing HIP GELU, Triton RMSNorm, and BF16 GEMM
-tasks on a 16 GB `gfx1201` GPU. This is not a guarantee that every Arena task fits
-the device. In particular, the current vLLM persistent-matmul task can request
-96 KiB shared memory against the device's 64 KiB per-workgroup limit. Keep task
-shapes, correctness tolerances, and timing policy intact when investigating such
-failures; any tuning belongs in the permitted kernel implementation.
+Runtime checks have exercised existing HIP and Triton kernels and PyTorch
+baselines on a 16 GB `gfx1201` GPU. A passing baseline for a generation or
+conversion task does not validate a generated target kernel. Runtime command
+checks also do not replace a framework-finalized `task_validator` report.
 
-Only `gfx1201` is configured here. Other Radeon architectures, optional FlyDSL
-and AITER task dependencies, full vLLM serving, and evaluation-tool sidecars need
-separate qualification. Existing task contracts and benchmark helpers are
-unchanged. Agent availability and authentication are separate preflight checks.
+Known limits of existing tasks with this image include:
+
+- Device capacity: HIP Transpose's original correctness cases can exceed VRAM;
+  vLLM persistent matmul can request 96 KiB shared memory against the device's
+  64 KiB per-workgroup limit.
+- Native FlyDSL tasks: some use APIs absent from the bundled FlyDSL version;
+  others explicitly require a CDNA architecture in `platform_support`.
+- Image-bound tasks: existing `image_kernel` contracts can refer to source
+  trees and Python package paths from a different image. Those paths are not
+  interchangeable with this image's packages.
+- Repository tasks: some rocPRIM test instantiations require wave64 operations
+  unavailable on this wave32 device.
+
+Keep task shapes, correctness tolerances, and timing policy intact when
+investigating failures. Honor architecture restrictions, and qualify task or
+harness changes with the [task validator](../../docs/how-to/task-validator.md).
+Only `gfx1201` is configured here; this does not establish support for every task
+category, other Radeon architectures, full vLLM serving, or evaluation-tool
+sidecars. Existing task contracts and benchmark helpers are unchanged. Agent
+availability and authentication are separate preflight checks.
 
 ## Security and reproducibility review
 

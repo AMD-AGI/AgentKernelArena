@@ -927,6 +927,10 @@ build_docker_args() {
     local codex_home="${AKA_CODEX_HOME:-$container_home/.codex}"
     local cache_suffix="${AKA_CACHE_SUFFIX:-}"
     local cache_postfix=""
+    local container_username
+    # Arbitrary host UIDs need not exist in the image's passwd database.
+    # Python getpass (used by TorchInductor/AITER) also accepts USER/LOGNAME.
+    container_username="$(id -un 2>/dev/null)" || container_username="aka-$HOST_UID"
 
     if [[ -n "$cache_suffix" ]]; then
         cache_suffix="${cache_suffix//[^A-Za-z0-9_.-]/_}"
@@ -951,6 +955,8 @@ build_docker_args() {
         --security-opt=seccomp=unconfined
         --user "${HOST_UID}:${HOST_GID}"
         -e "HOME=${container_home}"
+        -e "USER=${container_username}"
+        -e "LOGNAME=${container_username}"
         -e "CODEX_HOME=${codex_home}"
         -e "XDG_CACHE_HOME=/tmp/agent-cache${cache_postfix}"
         -e "MPLCONFIGDIR=/tmp/matplotlib${cache_postfix}"
@@ -986,6 +992,15 @@ build_docker_args() {
             -e "AITER_JIT_DIR=/tmp/aiter-jit${cache_postfix}"
             -e "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache${cache_postfix}"
             --tmpfs "/tmp/aiter_configs:rw,uid=${HOST_UID},gid=${HOST_GID},mode=1777"
+        )
+    fi
+
+    if [[ "$SELECTED_GPU_ARCH" == "gfx1201" ]]; then
+        # AITER's repository and installed-package builds use separate caches.
+        # The host-UID container does not have a writable host-home mount.
+        docker_args+=(
+            -e "AITER_ROOT_DIR=/tmp/aiter-root${cache_postfix}"
+            -e "AITER_JIT_DIR=/tmp/aiter-jit${cache_postfix}"
         )
     fi
 

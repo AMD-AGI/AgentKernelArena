@@ -232,6 +232,7 @@ forwarded_agents="$(PATH="$FAKE_BIN:$PATH" bash "$RUNNER" _container_check_agent
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950)
 assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
+assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
 
 # A worker suffix must isolate both runtime cache directories.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_CACHE_SUFFIX=worker/3)
@@ -251,15 +252,36 @@ assert_cache_args_absent "${args[@]}"
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx942)
 assert_has "lmsysorg/sglang:v0.5.12-rocm720-mi30x" "${args[@]}"
 assert_cache_args_absent "${args[@]}"
+assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
 
 # RDNA4 selects its explicitly built image, keeps the host UID and standard
-# runtime paths, and receives no gfx950-specific cache or sidecar changes.
+# runtime paths, and receives no gfx950-specific FlyDSL cache or tmpfs mount.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201)
 assert_has "agent-kernel-arena:rdna4-rocm10-v1" "${args[@]}"
 assert_has "$(id -u):$(id -g)" "${args[@]}"
+expected_username="$(id -un 2>/dev/null)" || expected_username="aka-$(id -u)"
+assert_has "USER=$expected_username" "${args[@]}"
+assert_has "LOGNAME=$expected_username" "${args[@]}"
+assert_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
+assert_has "AITER_JIT_DIR=/tmp/aiter-jit" "${args[@]}"
 assert_has "AGENT_KERNEL_ARENA_GPU_ARCH=gfx1201" "${args[@]}"
 assert_has "PYTORCH_ROCM_ARCH=gfx1201" "${args[@]}"
-assert_cache_args_absent "${args[@]}"
+assert_not_has "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache" "${args[@]}"
+assert_not_has "/tmp/aiter_configs:rw,uid=$(id -u),gid=$(id -g),mode=1777" "${args[@]}"
+mapfile -t args < <(
+    id() {
+        # GNU id prints a numeric UID and exits nonzero when passwd has no name.
+        if [[ "$*" == "-un" ]]; then command id -u; return 1; fi
+        command id "$@"
+    }
+    export -f id
+    run_shell_args AKA_GPU_ARCH=gfx1201
+)
+assert_has "USER=aka-$(id -u)" "${args[@]}"
+assert_has "LOGNAME=aka-$(id -u)" "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201 AKA_CACHE_SUFFIX=worker-0)
+assert_has "AITER_ROOT_DIR=/tmp/aiter-root-worker-0" "${args[@]}"
+assert_has "AITER_JIT_DIR=/tmp/aiter-jit-worker-0" "${args[@]}"
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201 \
     AKA_DOCKER_IMAGE_GFX1201=example.invalid/rdna:custom)
 assert_has "example.invalid/rdna:custom" "${args[@]}"
