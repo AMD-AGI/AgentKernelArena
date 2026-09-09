@@ -6,13 +6,14 @@ Thanks for your interest in AgentKernelArena! This guide explains how to contrib
 
 - Read `README.md` to understand the project scope: controlled A/B experiments and RL-ready feedback for GPU kernel agents.
 - Skim the files under `example_configs/` for run-level agent/task/GPU selection and the relevant `agents/<name>/agent_config.yaml` for agent-specific model and runtime settings.
-- Ensure you have an AMD GPU with ROCm-compatible Docker access; the supported workflow uses the pinned ROCm/SGLang images documented in the compatibility matrix.
+- Ensure you have an AMD GPU with ROCm-compatible Docker access; use the architecture-specific runtime documented in the compatibility matrix.
 - Confirm that the selected agent integration and its authentication/dependencies are available.
 
 ## Development Setup
 
-Docker is the only supported path. All runs happen inside the pinned ROCm/SGLang
-container; see `docs/install/install.md`.
+Docker is the only supported path. All runs happen inside the selected GPU
+runtime container; see `docs/install/install.md` for image selection and the
+RDNA4 build step.
 
 ```bash
 # Verify the container can see Python, ROCm tools, and the GPU

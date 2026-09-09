@@ -148,7 +148,8 @@ The prompt system also recognizes `cuda2hip`; the current bundled task tree does
 - Git
 - Node.js 22+ and npm when using the alternative npm installation of Claude Code
   (or another npm-installed agent CLI)
-- The GPU-specific SGLang image: `gfx942` uses `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705`
+- For MI300/MI355X, use the GPU-specific SGLang image: `gfx942` uses `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705`
+- For RDNA4 `gfx1201`, build the [pinned RDNA4 runtime](docker/rdna4/README.md) with `make docker-build-rdna4`.
 - A supported agent CLI installed and logged in on the host, or the dependencies required by a specialized agent
 
 ### Setup
@@ -189,12 +190,13 @@ installation. The npm path requires Node.js 22+ and npm. See the
 [official Claude Code setup guide](https://code.claude.com/docs/en/installation)
 for the current alternatives.
 
-The repository provides three ready-to-use run configurations:
+The following configurations provide starting points for supported runtimes:
 
 | Configuration | Purpose |
 | --- | --- |
 | `example_configs/quickstart_claude_mi300.yaml` | One Claude Code GELU task on MI300/MI300X (`gfx942`); use this for a first run on MI300-series hardware. |
 | `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`); use this for a first run on MI355X. |
+| `example_configs/quickstart_claude_rdna4.yaml` | One Claude Code GELU task on RDNA4 (`gfx1201`); run `make docker-build-rdna4` first. |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
 
 Running `make docker-run` without `CONFIG` uses the MI300/MI300X Claude

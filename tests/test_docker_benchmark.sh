@@ -252,6 +252,33 @@ mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx942)
 assert_has "lmsysorg/sglang:v0.5.12-rocm720-mi30x" "${args[@]}"
 assert_cache_args_absent "${args[@]}"
 
+# RDNA4 selects its explicitly built image, keeps the host UID and standard
+# runtime paths, and receives no gfx950-specific cache or sidecar changes.
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201)
+assert_has "agent-kernel-arena:rdna4-rocm10-v1" "${args[@]}"
+assert_has "$(id -u):$(id -g)" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_GPU_ARCH=gfx1201" "${args[@]}"
+assert_has "PYTORCH_ROCM_ARCH=gfx1201" "${args[@]}"
+assert_cache_args_absent "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201 \
+    AKA_DOCKER_IMAGE_GFX1201=example.invalid/rdna:custom)
+assert_has "example.invalid/rdna:custom" "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201 \
+    AKA_DOCKER_IMAGE_GFX1201=example.invalid/rdna:custom \
+    AKA_DOCKER_IMAGE=example.invalid/global:override)
+assert_has "example.invalid/global:override" "${args[@]}"
+
+# Building is explicit, GPU-independent, and sends only docker/rdna4 as context.
+mapfile -t args < <(bash "$RUNNER" build-rdna4-image)
+assert_has "build" "${args[@]}"
+assert_has "--pull=false" "${args[@]}"
+assert_has "$ROOT/docker/rdna4/Dockerfile" "${args[@]}"
+assert_has "$ROOT/docker/rdna4" "${args[@]}"
+assert_not_has "$ROOT" "${args[@]}"
+mapfile -t args < <(AKA_DOCKER_IMAGE_GFX1201=example.invalid/rdna:build \
+    bash "$RUNNER" build-rdna4-image)
+assert_has "example.invalid/rdna:build" "${args[@]}"
+
 # Image equality alone is insufficient: the selected architecture must be gfx950.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx942 AKA_DOCKER_IMAGE="$PINNED_GFX950_IMAGE")
 assert_cache_args_absent "${args[@]}"

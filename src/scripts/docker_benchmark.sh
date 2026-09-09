@@ -6,6 +6,8 @@ GFX950_V0514_DOCKER_IMAGE="lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705"
 GFX950_V0514_MANIFEST_DIGEST="sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78"
 GFX950_V0514_IMMUTABLE_IMAGE="lmsysorg/sglang-rocm@${GFX950_V0514_MANIFEST_DIGEST}"
 DEFAULT_DOCKER_IMAGE_GFX950="${AKA_DOCKER_IMAGE_GFX950:-$GFX950_V0514_DOCKER_IMAGE}"
+# Built explicitly with `make docker-build-rdna4`; its Dockerfile pins the base.
+DEFAULT_DOCKER_IMAGE_GFX1201="${AKA_DOCKER_IMAGE_GFX1201:-agent-kernel-arena:rdna4-rocm10-v1}"
 CONTAINER_WORKDIR="${AKA_DOCKER_WORKDIR:-/workspace}"
 HOST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HOST_HOME="${HOME:?HOME must be set}"
@@ -53,6 +55,7 @@ Usage:
   src/scripts/docker_benchmark.sh check-agents [--config_name <run-config.yaml>]
   src/scripts/docker_benchmark.sh quality-loop [--config <quality-loop-config.yaml>] [quality_loop args...]
   src/scripts/docker_benchmark.sh smoke
+  src/scripts/docker_benchmark.sh build-rdna4-image
   src/scripts/docker_benchmark.sh eval-tools-smoke
   src/scripts/docker_benchmark.sh build-eval-tool-images
 
@@ -68,6 +71,7 @@ Environment overrides:
   AKA_DOCKER_IMAGE_<ARCH> Per-arch image override, e.g. AKA_DOCKER_IMAGE_GFX950=...
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
   AKA_DOCKER_IMAGE_GFX950 Default image for gfx950.
+  AKA_DOCKER_IMAGE_GFX1201 RDNA4 image (also the build-rdna4-image output tag).
   AKA_NODE_PREFIX         Host Node prefix containing bin/node and npm-installed agent CLI(s).
   AKA_AGENTS              Agent CLI(s) to check, comma/space separated; use all for all three.
   AKA_EVAL_TOOLS          Override evaluation_tools.enabled (comma/space separated).
@@ -115,6 +119,7 @@ docker_image_for_arch() {
     case "$arch" in
         gfx942) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_GFX942" ;;
         gfx950) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_GFX950" ;;
+        gfx1201) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_GFX1201" ;;
         *)
             die "No Docker image mapping for GPU arch '$arch'. Set AKA_DOCKER_IMAGE or ${env_name}."
             ;;
@@ -211,7 +216,7 @@ detect_host_gpu_arch() {
 
 select_runtime() {
     local arch="$1"
-    [[ -n "$arch" ]] || die "Could not infer GPU arch; set AKA_GPU_ARCH=gfx942 or AKA_GPU_ARCH=gfx950"
+    [[ -n "$arch" ]] || die "Could not infer GPU arch; set AKA_GPU_ARCH (for example gfx942, gfx950, or gfx1201)"
 
     SELECTED_GPU_ARCH="$(normalize_gpu_arch "$arch")"
     if [[ -n "${AKA_DOCKER_IMAGE:-}" ]]; then
@@ -1229,7 +1234,9 @@ import sys
 print(f"python={sys.executable}")
 print(f"version={sys.version.split()[0]}")
 
-for cmd in ("hipcc", "rocprof-compute"):
+selected_arch = os.environ.get("AGENT_KERNEL_ARENA_GPU_ARCH")
+profiler = "rocprofv3" if selected_arch == "gfx1201" else "rocprof-compute"
+for cmd in ("hipcc", profiler):
     path = shutil.which(cmd)
     if not path:
         raise SystemExit(f"missing command: {cmd}")
@@ -1250,7 +1257,6 @@ print(f"torch_cuda_available={torch.cuda.is_available()}")
 if not torch.cuda.is_available():
     raise SystemExit("torch.cuda.is_available() is False")
 print(f"torch_cuda_device={torch.cuda.get_device_name(0)}")
-selected_arch = os.environ.get("AGENT_KERNEL_ARENA_GPU_ARCH")
 actual_arch = getattr(torch.cuda.get_device_properties(0), "gcnArchName", "")
 if actual_arch:
     print(f"torch_cuda_arch={actual_arch}")
@@ -1741,6 +1747,13 @@ case "${1:-}" in
         REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"
         AGENTS_STRICT=1
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_check_agents $REQUIRED_AGENTS
+        ;;
+    build-rdna4-image)
+        # Build context contains only the recipe, normalizer, and package lock.
+        docker build --pull=false \
+            --file "$HOST_ROOT/docker/rdna4/Dockerfile" \
+            --tag "$DEFAULT_DOCKER_IMAGE_GFX1201" \
+            "$HOST_ROOT/docker/rdna4"
         ;;
     smoke)
         select_runtime_for_host
