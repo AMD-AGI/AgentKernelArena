@@ -6,7 +6,7 @@ GFX950_V0514_DOCKER_IMAGE="lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705"
 GFX950_V0514_MANIFEST_DIGEST="sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78"
 GFX950_V0514_IMMUTABLE_IMAGE="lmsysorg/sglang-rocm@${GFX950_V0514_MANIFEST_DIGEST}"
 DEFAULT_DOCKER_IMAGE_GFX950="${AKA_DOCKER_IMAGE_GFX950:-$GFX950_V0514_DOCKER_IMAGE}"
-# Built explicitly with `make docker-build-rdna4`; its Dockerfile pins the base.
+# Built on first use when absent; its Dockerfile pins the base.
 DEFAULT_DOCKER_IMAGE_GFX1201="${AKA_DOCKER_IMAGE_GFX1201:-agent-kernel-arena:rdna4-rocm10-v1}"
 CONTAINER_WORKDIR="${AKA_DOCKER_WORKDIR:-/workspace}"
 HOST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -234,6 +234,31 @@ select_runtime_for_config() {
 
 select_runtime_for_host() {
     select_runtime "$(detect_host_gpu_arch)"
+}
+
+build_rdna4_image() {
+    # Send only the recipe, normalizer, and package lock as build context.
+    docker build --pull=false \
+        --file "$HOST_ROOT/docker/rdna4/Dockerfile" \
+        --tag "$DEFAULT_DOCKER_IMAGE_GFX1201" \
+        "$HOST_ROOT/docker/rdna4"
+}
+
+ensure_runtime_image() {
+    # Custom images retain Docker's normal pull/run behavior, even if an
+    # override happens to equal our default tag. Never build over an override.
+    [[ "$SELECTED_GPU_ARCH" == "gfx1201" \
+        && -z "${AKA_DOCKER_IMAGE:-}" \
+        && -z "${AKA_DOCKER_IMAGE_GFX1201:-}" ]] || return 0
+    if docker image inspect "$SELECTED_IMAGE" >/dev/null 2>&1; then
+        return 0
+    fi
+    # An unavailable daemon is not evidence that the image is missing.
+    docker info >/dev/null \
+        || die "Cannot access Docker; check daemon access before building the RDNA4 runtime."
+    echo "RDNA4 image '$SELECTED_IMAGE' is missing; building the pinned runtime before launch. The first build may download the base image and locked packages." >&2
+    build_rdna4_image >&2 \
+        || die "RDNA4 runtime build failed; no experiment was started. Retry the command or run make docker-build-rdna4."
 }
 
 detect_node_prefix() {
@@ -938,6 +963,9 @@ build_docker_args() {
     fi
 
     [[ -n "$SELECTED_IMAGE" ]] || select_runtime_for_host
+    # Parallel runs finish their preflight before starting any workers, so the
+    # first container builds a missing default and subsequent containers reuse it.
+    ensure_runtime_image
 
     docker_args=(run --rm --entrypoint bash)
     unset _MOUNTED_TARGETS
@@ -1764,11 +1792,7 @@ case "${1:-}" in
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_check_agents $REQUIRED_AGENTS
         ;;
     build-rdna4-image)
-        # Build context contains only the recipe, normalizer, and package lock.
-        docker build --pull=false \
-            --file "$HOST_ROOT/docker/rdna4/Dockerfile" \
-            --tag "$DEFAULT_DOCKER_IMAGE_GFX1201" \
-            "$HOST_ROOT/docker/rdna4"
+        build_rdna4_image
         ;;
     smoke)
         select_runtime_for_host

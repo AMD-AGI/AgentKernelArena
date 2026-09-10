@@ -7,7 +7,6 @@ This recipe supports `gfx1201`. The base image and immutable digest live in
 From the repository root on the GPU host:
 
 ```bash
-make docker-build-rdna4
 make docker-smoke
 make docker-check-agents CONFIG=example_configs/quickstart_claude_rdna4.yaml
 make docker-run CONFIG=example_configs/quickstart_claude_rdna4.yaml
@@ -17,8 +16,20 @@ Install and authenticate the selected agent separately as described in the
 [installation guide](../../docs/install/install.md). The build and smoke steps
 do not need an agent or its credentials. `AKA_DOCKER_IMAGE_GFX1201` overrides
 both the build output tag and the architecture-specific runtime selection;
-`AKA_DOCKER_IMAGE` remains the global run override. Build the image on each
-Docker host before selecting it. There is no automatic image build on a run.
+`AKA_DOCKER_IMAGE` remains the global run override.
+
+The runner automatically builds the default image when it is absent from the
+Docker daemon, before launching the first container. This applies to smoke,
+shell, agent checks, and task runs; parallel runs complete this step during
+preflight before starting workers. The first build may download the base image
+and locked packages. Later invocations reuse the existing image without checking
+for recipe updates. Use `make docker-build-rdna4` to prebuild it or rebuild after
+recipe changes. A build failure stops the command before the experiment starts.
+
+Setting either image override disables automatic builds, even when its value
+equals the default tag. Custom images use Docker's normal run/pull behavior;
+build or publish them separately. To build this recipe under a custom tag, use
+`AKA_DOCKER_IMAGE_GFX1201=<tag> make docker-build-rdna4`.
 
 ## Runtime layout
 
@@ -99,8 +110,8 @@ availability and authentication are separate preflight checks.
 ## Security and reproducibility review
 
 External inputs are the digest-pinned upstream image and the hash-locked PyPI
-wheels. The explicit build sends only the Dockerfile, normalizer, and package
-lock from `docker/rdna4/` as its context. It installs only the locked wheels,
+wheels. Both automatic and explicit builds send only the Dockerfile, normalizer,
+and package lock from `docker/rdna4/` as their context. They install only the locked wheels,
 with no source builds, dependency resolution, or agent credentials. The normalizer
 refuses to replace existing runtime aliases and leaves `/root` private. The runner
 retains its existing host-UID execution, device mounts, privileged-container

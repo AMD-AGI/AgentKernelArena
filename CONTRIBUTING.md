@@ -13,7 +13,7 @@ Thanks for your interest in AgentKernelArena! This guide explains how to contrib
 
 Docker is the only supported path. All runs happen inside the selected GPU
 runtime container; see `docs/install/install.md` for image selection and the
-RDNA4 build step.
+RDNA4 image preparation.
 
 ```bash
 # Verify the container can see Python, ROCm tools, and the GPU

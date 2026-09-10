@@ -22,7 +22,7 @@ help:
 	@echo "                         Use CONFIG=... for another config; AGENTS=... overrides it"
 	@echo "                         AGENTS=all explicitly checks all three first-class CLIs"
 	@echo "make docker-smoke        - Verify Docker Python, ROCm tools, imports, and GPU access"
-	@echo "make docker-build-rdna4  - Build the pinned gfx1201 runtime for the host UID"
+	@echo "make docker-build-rdna4  - Prebuild/rebuild gfx1201 runtime (also builds on first use)"
 	@echo "make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml RUN_ARGS=\"--run-suffix test\" - Run an experiment in Docker"
 	@echo "make docker-parallel-run CONFIG=example_configs/benchmark_cursor_mi355x.yaml GPU_IDS=0,1 - Run an experiment across one worker container per GPU"
 	@echo "                         Default CONFIG is the MI300/MI300X Claude quickstart"

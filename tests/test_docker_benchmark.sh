@@ -51,6 +51,18 @@ assert_before() {
 # Capture the exact argv that the runner would pass to Docker without requiring
 # a daemon, GPU devices, or the benchmark images on this host.
 docker() {
+    if [[ -n "${FAKE_RUNTIME_DIR:-}" ]]; then
+        printf '%s\n' "$1" >> "$FAKE_RUNTIME_DIR/events"
+        case "$1" in
+            info) return "${FAKE_DOCKER_INFO_STATUS:-0}" ;;
+            build)
+                printf '%s\n' "$@" > "$FAKE_RUNTIME_DIR/build-args"
+                [[ "${FAKE_DOCKER_BUILD_STATUS:-0}" == "0" ]] || return 42
+                touch "$FAKE_RUNTIME_DIR/image-present"
+                ;;
+            image) [[ -f "$FAKE_RUNTIME_DIR/image-present" ]] || return 1 ;;
+        esac
+    fi
     if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
         local reference="${!#}"
         if [[ "$reference" == "$PINNED_GFX950_IMMUTABLE_IMAGE" ]]; then
@@ -254,7 +266,7 @@ assert_has "lmsysorg/sglang:v0.5.12-rocm720-mi30x" "${args[@]}"
 assert_cache_args_absent "${args[@]}"
 assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
 
-# RDNA4 selects its explicitly built image, keeps the host UID and standard
+# RDNA4 selects its derived image, keeps the host UID and standard
 # runtime paths, and receives no gfx950-specific FlyDSL cache or tmpfs mount.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201)
 assert_has "agent-kernel-arena:rdna4-rocm10-v1" "${args[@]}"
@@ -290,7 +302,7 @@ mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201 \
     AKA_DOCKER_IMAGE=example.invalid/global:override)
 assert_has "example.invalid/global:override" "${args[@]}"
 
-# Building is explicit, GPU-independent, and sends only docker/rdna4 as context.
+# Explicit prebuild/rebuild is GPU-independent and uses only docker/rdna4 as context.
 mapfile -t args < <(bash "$RUNNER" build-rdna4-image)
 assert_has "build" "${args[@]}"
 assert_has "--pull=false" "${args[@]}"
@@ -557,6 +569,83 @@ assert_has "_container_check_agents" "${args[@]}"
 assert_has "claude_code" "${args[@]}"
 assert_not_has "$CLAUDE_HOME/.local/share/claude:$CLAUDE_HOME/.local/share/claude:ro" "${args[@]}"
 assert_not_has "$CLAUDE_HOME/.codex:$CLAUDE_HOME/.codex" "${args[@]}"
+
+# First-use builds happen before any container, then reuse the image across
+# preflight, workers, and subsequent invocations. These are daemon-free tests.
+run_runtime_command() {
+    local mode="$1"
+    shift
+    env HOME="$CLAUDE_HOME" AKA_NODE_PREFIX="$CLAUDE_PREFIX" \
+        AKA_GPU_ARCH=gfx1201 GPU_IDS=0,1 AKA_EVAL_TOOLS= \
+        FAKE_RUNTIME_DIR="$RUNTIME_DIR" "$@" \
+        bash "$RUNNER" "$mode" \
+        --config_name example_configs/quickstart_claude_rdna4.yaml \
+        > "$RUNTIME_DIR/stdout" 2> "$RUNTIME_DIR/stderr"
+}
+
+for runtime_mode in shell smoke check-agents preflight run parallel-run; do
+    RUNTIME_DIR="$TEST_HOME/runtime-$runtime_mode"
+    mkdir -p "$RUNTIME_DIR"
+    run_runtime_command "$runtime_mode" || {
+        cat "$RUNTIME_DIR/stderr" >&2
+        fail "$runtime_mode failed on first use"
+    }
+    mapfile -t events < "$RUNTIME_DIR/events"
+    assert_before build run "${events[@]}"
+    [[ "$(awk '$0 == "build" {n++} END {print n+0}' "$RUNTIME_DIR/events")" == 1 ]] \
+        || fail "$runtime_mode built more than once"
+    mapfile -t args < "$RUNTIME_DIR/build-args"
+    assert_has "--pull=false" "${args[@]}"
+    assert_has "$ROOT/docker/rdna4/Dockerfile" "${args[@]}"
+    assert_has "$ROOT/docker/rdna4" "${args[@]}"
+    assert_has "agent-kernel-arena:rdna4-rocm10-v1" "${args[@]}"
+    assert_not_has "$ROOT" "${args[@]}"
+    assert_not_has "$CLAUDE_HOME" "${args[@]}"
+    if [[ "$runtime_mode" == parallel-run ]]; then
+        [[ "$(awk '$0 == "run" {n++} END {print n+0}' "$RUNTIME_DIR/events")" == 5 ]] \
+            || fail "parallel run did not launch preflight, init, two workers, and postprocess"
+    fi
+    : > "$RUNTIME_DIR/events"
+    run_runtime_command "$runtime_mode" || fail "$runtime_mode failed with a cached image"
+    mapfile -t events < "$RUNTIME_DIR/events"
+    assert_has run "${events[@]}"
+    assert_not_has build "${events[@]}"
+    assert_not_has info "${events[@]}"
+done
+
+# Build/daemon failures must propagate instead of launching a container.
+for failure in FAKE_DOCKER_BUILD_STATUS=42 FAKE_DOCKER_INFO_STATUS=1; do
+    RUNTIME_DIR="$TEST_HOME/runtime-failure-$failure"
+    mkdir -p "$RUNTIME_DIR"
+    if run_runtime_command run "$failure"; then
+        fail "$failure did not stop the run"
+    fi
+    mapfile -t events < "$RUNTIME_DIR/events"
+    assert_not_has run "${events[@]}"
+    [[ ! -f "$RUNTIME_DIR/image-present" ]] || fail "failed setup cached an image"
+    if [[ "$failure" == FAKE_DOCKER_INFO_STATUS=* ]]; then
+        assert_not_has build "${events[@]}"
+    else
+        assert_has build "${events[@]}"
+    fi
+    # A later invocation can recover without a stale success flag.
+    run_runtime_command run || fail "retry after $failure did not recover"
+done
+
+# Missing custom images and CDNA defaults keep the ordinary Docker run/pull
+# path. Even an explicit override equal to the default tag opts out of builds.
+for override in \
+    AKA_DOCKER_IMAGE=example.invalid/rdna:custom \
+    AKA_DOCKER_IMAGE_GFX1201=example.invalid/rdna:custom \
+    AKA_DOCKER_IMAGE=agent-kernel-arena:rdna4-rocm10-v1 \
+    AKA_DOCKER_IMAGE_GFX1201=agent-kernel-arena:rdna4-rocm10-v1 \
+    AKA_GPU_ARCH=gfx942 AKA_GPU_ARCH=gfx950; do
+    RUNTIME_DIR="$TEST_HOME/runtime-override-${override//\//_}"
+    mkdir -p "$RUNTIME_DIR"
+    run_runtime_command shell "$override" || fail "override failed: $override"
+    mapfile -t events < "$RUNTIME_DIR/events"
+    [[ "${events[*]}" == run ]] || fail "override attempted automatic image setup: $override"
+done
 
 # AGENTS=all is an explicit override and expands to all three first-class CLIs.
 ALL_HOME="$TEST_HOME/all-home"

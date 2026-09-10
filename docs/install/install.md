@@ -25,8 +25,8 @@ The following prerequisites are required before running AgentKernelArena.
   `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705`. The runner selects from
   `target_gpu_model` for experiment runs and from the visible host GPU for shell
   and smoke commands.
-  For `gfx1201`, build the [RDNA4 runtime](../../docker/rdna4/README.md) with
-  `make docker-build-rdna4` before running smoke or experiments.
+  For `gfx1201`, the runner automatically builds the default
+  [RDNA4 runtime](../../docker/rdna4/README.md) on first use if it is missing.
 - **Git**
 - **Node.js 22+ and npm**, when using the alternative npm installation of Claude
   Code or another npm-installed agent CLI.
@@ -64,13 +64,14 @@ starting an experiment; the next section covers the first-class host CLIs.
 ### RDNA4 (`gfx1201`)
 
 The RDNA4 image normalizes the upstream Python and ROCm SDK paths so the same
-runner can execute as the host user. Build it explicitly on the GPU host:
+runner can execute as the host user. On the GPU host, the first command builds
+the default image if it is missing, then checks the runtime:
 
 ```bash
-make docker-build-rdna4
 make docker-smoke
 ```
 
+You can also start a task directly; its preflight prepares the same image.
 After installing and authenticating Claude Code, use:
 
 ```bash
@@ -78,6 +79,10 @@ CONFIG_PATH=example_configs/quickstart_claude_rdna4.yaml
 make docker-check-agents CONFIG="$CONFIG_PATH"
 make docker-run CONFIG="$CONFIG_PATH"
 ```
+
+Existing images are reused. `make docker-build-rdna4` remains available for
+prebuilding or rebuilding after recipe changes. Explicit image overrides disable
+automatic builds; see the runtime guide for custom image handling.
 
 The smoke check requires `rocprofv3` on `gfx1201`; the CDNA profiler requirement
 is unchanged. See the [image recipe and limitations](../../docker/rdna4/README.md)
@@ -130,7 +135,7 @@ configuration is a longer 60-task Cursor Agent run.
 | --- | --- |
 | `example_configs/quickstart_claude_mi300.yaml` | First Claude Code run on MI300/MI300X (`gfx942`). |
 | `example_configs/quickstart_claude_mi355x.yaml` | First Claude Code run on MI355X (`gfx950`). |
-| `example_configs/quickstart_claude_rdna4.yaml` | First Claude Code run on RDNA4 (`gfx1201`); build its runtime first. |
+| `example_configs/quickstart_claude_rdna4.yaml` | First Claude Code run on RDNA4 (`gfx1201`); builds the default runtime on first use if missing. |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; requires an installed and authenticated Cursor Agent CLI. |
 
 The default `make docker-run` configuration is the MI300/MI300X quickstart.

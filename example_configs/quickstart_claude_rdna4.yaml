@@ -1,4 +1,4 @@
-# First run on RDNA4 gfx1201. Build the runtime with make docker-build-rdna4.
+# First run on RDNA4 gfx1201. The default runtime builds on first use if missing.
 agent:
   template: claude_code
 

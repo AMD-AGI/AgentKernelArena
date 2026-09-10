@@ -31,7 +31,7 @@ The following software versions are required or verified.
 | Profiler tools | Match runtime image | Smoke requires `rocprof-compute` on CDNA and `rocprofv3` on `gfx1201`. Tool availability does not establish candidate analysis. |
 | Docker | Current stable release | Required; serial experiments run through `make docker-run`; multi-GPU experiments run through `make docker-parallel-run`. |
 | SGLang runtime image | `lmsysorg/sglang:v0.5.12-rocm720-mi30x` for `gfx942`; `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705` for `gfx950` | The verified `gfx950` digest is `sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78`. Override with `AKA_DOCKER_IMAGE`, `AKA_DOCKER_IMAGE_GFX942`, or `AKA_DOCKER_IMAGE_GFX950`. |
-| RDNA4 runtime image | [Digest-pinned base and layout adapter](../../docker/rdna4/Dockerfile) | Build with `make docker-build-rdna4`. Override the local build/run tag with `AKA_DOCKER_IMAGE_GFX1201`. |
+| RDNA4 runtime image | [Digest-pinned base and layout adapter](../../docker/rdna4/Dockerfile) | Default image builds on first use if missing; `make docker-build-rdna4` prebuilds or rebuilds it. Image overrides disable automatic builds; see the [runtime guide](../../docker/rdna4/README.md). |
 | Python | Provided by the image | Bundled in the selected runtime image. |
 | Node.js and npm | Node.js 22 with a current npm | Required on the host only for the alternative npm installation of Claude Code or another npm-installed agent CLI. |
 | PyTorch | ROCm build bundled in the image | Provided by the selected runtime image. |
