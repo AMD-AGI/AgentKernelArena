@@ -116,6 +116,136 @@ extern "C" __global__ void weighted_context_kernel(
     }
 }
 
+// The task's hot path has four input features and four projected features.  A
+// wave owns one query position and its lanes own support positions, which turns
+// both softmax reductions and the four weighted sums into wave reductions.  A
+// workgroup contains four independent waves and needs no LDS or workgroup
+// barriers.
+__device__ __forceinline__ float wave_sum_64(float value)
+{
+    #pragma unroll
+    for (int offset = 32; offset > 0; offset >>= 1) {
+        value += __shfl_down(value, offset, 64);
+    }
+    return value;
+}
+
+__device__ __forceinline__ float wave_max_64(float value)
+{
+    #pragma unroll
+    for (int offset = 32; offset > 0; offset >>= 1) {
+        value = fmaxf(value, __shfl_down(value, offset, 64));
+    }
+    return value;
+}
+
+__device__ __forceinline__ float dot4_bias(
+    const float4 x, const float4 w, const float bias)
+{
+    return bias + (x.x * w.x + x.y * w.y + x.z * w.z + x.w * w.w);
+}
+
+__global__ __launch_bounds__(256) void item_query_attention_f4_h4_kernel(
+    const float* __restrict__ qs,      // [q, seq, 4]
+    const float* __restrict__ hs,      // [s, seq, 4]
+    const float* __restrict__ weight,  // [4, 4]
+    const float* __restrict__ bias,    // [4]
+    float* __restrict__ out,           // [q, s, seq, 4]
+    int s_size,
+    int seq_size)
+{
+    constexpr int wave_size = 64;
+    constexpr int waves_per_block = 4;
+
+    const int q = blockIdx.x;
+    const int s = blockIdx.y;
+    const int lane = threadIdx.x & (wave_size - 1);
+    const int wave = threadIdx.x >> 6;
+
+    // All tensor rows are 16-byte aligned for the specialized four-float path.
+    const float4 w0 = *reinterpret_cast<const float4*>(weight + 0);
+    const float4 w1 = *reinterpret_cast<const float4*>(weight + 4);
+    const float4 w2 = *reinterpret_cast<const float4*>(weight + 8);
+    const float4 w3 = *reinterpret_cast<const float4*>(weight + 12);
+    const float4 bv = *reinterpret_cast<const float4*>(bias);
+
+    // Each lane caches at most two support positions (seq_size <= 128).  These
+    // values and projections are reused for every query position handled by the
+    // wave, avoiding materialized projection tensors and repeated support work.
+    const int j0 = lane;
+    const int j1 = lane + wave_size;
+
+    float4 hs0 = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    float4 hs1 = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    float hp00 = 0.0f, hp01 = 0.0f, hp02 = 0.0f, hp03 = 0.0f;
+    float hp10 = 0.0f, hp11 = 0.0f, hp12 = 0.0f, hp13 = 0.0f;
+
+    const float* hs_base = hs + (size_t)s * seq_size * 4;
+    if (j0 < seq_size) {
+        hs0 = *reinterpret_cast<const float4*>(hs_base + (size_t)j0 * 4);
+        hp00 = dot4_bias(hs0, w0, bv.x);
+        hp01 = dot4_bias(hs0, w1, bv.y);
+        hp02 = dot4_bias(hs0, w2, bv.z);
+        hp03 = dot4_bias(hs0, w3, bv.w);
+    }
+    if (j1 < seq_size) {
+        hs1 = *reinterpret_cast<const float4*>(hs_base + (size_t)j1 * 4);
+        hp10 = dot4_bias(hs1, w0, bv.x);
+        hp11 = dot4_bias(hs1, w1, bv.y);
+        hp12 = dot4_bias(hs1, w2, bv.z);
+        hp13 = dot4_bias(hs1, w3, bv.w);
+    }
+
+    const float* qs_base = qs + (size_t)q * seq_size * 4;
+    for (int iq = wave; iq < seq_size; iq += waves_per_block) {
+        const float4 qv = *reinterpret_cast<const float4*>(qs_base + (size_t)iq * 4);
+        const float qp0 = dot4_bias(qv, w0, bv.x);
+        const float qp1 = dot4_bias(qv, w1, bv.y);
+        const float qp2 = dot4_bias(qv, w2, bv.z);
+        const float qp3 = dot4_bias(qv, w3, bv.w);
+
+        float score0 = -1.0e30f;
+        float score1 = -1.0e30f;
+        if (j0 < seq_size) {
+            score0 = tanhf(qp0 * hp00) + tanhf(qp1 * hp01)
+                   + tanhf(qp2 * hp02) + tanhf(qp3 * hp03);
+        }
+        if (j1 < seq_size) {
+            score1 = tanhf(qp0 * hp10) + tanhf(qp1 * hp11)
+                   + tanhf(qp2 * hp12) + tanhf(qp3 * hp13);
+        }
+
+        float max_score = wave_max_64(fmaxf(score0, score1));
+        max_score = __shfl(max_score, 0, 64);
+
+        const float e0 = j0 < seq_size ? expf(score0 - max_score) : 0.0f;
+        const float e1 = j1 < seq_size ? expf(score1 - max_score) : 0.0f;
+        float denom = wave_sum_64(e0 + e1);
+        denom = __shfl(denom, 0, 64);
+        const float inv_denom = 1.0f / denom;
+        const float p0 = e0 * inv_denom;
+        const float p1 = e1 * inv_denom;
+
+        float out0 = p0 * hs0.x + p1 * hs1.x;
+        float out1 = p0 * hs0.y + p1 * hs1.y;
+        float out2 = p0 * hs0.z + p1 * hs1.z;
+        float out3 = p0 * hs0.w + p1 * hs1.w;
+
+        #pragma unroll
+        for (int offset = 32; offset > 0; offset >>= 1) {
+            out0 += __shfl_down(out0, offset, 64);
+            out1 += __shfl_down(out1, offset, 64);
+            out2 += __shfl_down(out2, offset, 64);
+            out3 += __shfl_down(out3, offset, 64);
+        }
+
+        if (lane == 0) {
+            float* out_row = out + (((size_t)q * s_size + s) * seq_size + iq) * 4;
+            *reinterpret_cast<float4*>(out_row) = make_float4(out0, out1, out2, out3);
+        }
+    }
+}
+
 // Forward entry
 torch::Tensor forward(
     torch::Tensor qs,      // [q_size, seq_size, feature_size]
@@ -151,6 +281,25 @@ torch::Tensor forward(
     TORCH_CHECK(static_cast<int>(bias.size(0)) == hidden_size, "bias shape must be [hidden_size]");
 
     auto options = qs.options();
+    hipStream_t stream = c10::hip::getCurrentHIPStream().stream();
+
+    // Output tensor: [q, s, seq, feature]
+    at::Tensor out = at::empty({q_size, s_size, seq_size, feature_size}, options);
+
+    // All benchmark shapes use this path.  Keep the original general kernels
+    // below as a fallback so the public forward interface remains generic.
+    if (feature_size == 4 && hidden_size == 4 && seq_size > 0 && seq_size <= 128) {
+        dim3 grid(q_size, s_size);
+        hipLaunchKernelGGL(item_query_attention_f4_h4_kernel, grid, dim3(256), 0, stream,
+            qs.data_ptr<float>(),
+            hs.data_ptr<float>(),
+            weight.data_ptr<float>(),
+            bias.data_ptr<float>(),
+            out.data_ptr<float>(),
+            s_size, seq_size);
+        HIP_CHECK(hipGetLastError());
+        return out;
+    }
 
     // Linear transforms: qs_lin [q, seq, H], hs_lin [s, seq, H]
     at::Tensor qs_flat = qs.view({q_size * seq_size, feature_size});
@@ -163,7 +312,6 @@ torch::Tensor forward(
     int AB_q = q_size * seq_size;
     int AB_s = s_size * seq_size;
     int threads_lin = std::min(256, std::max(32, hidden_size));
-    hipStream_t stream = c10::hip::getCurrentHIPStream().stream();
 
     hipLaunchKernelGGL(linear_lastdim_kernel, dim3(AB_q), dim3(threads_lin), 0, stream,
         qs_flat.data_ptr<float>(), weight.data_ptr<float>(), bias.data_ptr<float>(), qs_lin_flat.data_ptr<float>(), AB_q, feature_size, hidden_size);
@@ -175,9 +323,6 @@ torch::Tensor forward(
 
     at::Tensor qs_lin = qs_lin_flat.view({q_size, seq_size, hidden_size}).contiguous();
     at::Tensor hs_lin = hs_lin_flat.view({s_size, seq_size, hidden_size}).contiguous();
-
-    // Output tensor: [q, s, seq, feature]
-    at::Tensor out = at::empty({q_size, s_size, seq_size, feature_size}, options);
 
     // Launch fused attention kernel
     int threads_att = std::min(256, std::max(32, feature_size));
