@@ -533,7 +533,7 @@ class QualityLoop:
                 raise RuntimeError(f"baseline compilation failed after validation: {error}")
             baseline_cases = measure_baseline(workspace, task_config, self.logger)
 
-        harness = snapshot_workspace_harness(workspace)
+        harness = snapshot_workspace_harness(workspace, task_root=task_dir)
         base_prompt = prompt_builder(
             str(task_dir / "config.yaml"),
             str(workspace),
@@ -581,6 +581,7 @@ class QualityLoop:
             tool_artifact_root=tool_report_root,
             gpu_arch=_resolve_gfx_arch(self.config.target_gpu_model),
         )
+        verify_workspace_harness(harness, logger=self.logger)
         write_task_result(
             workspace,
             evaluation,

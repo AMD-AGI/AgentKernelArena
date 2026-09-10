@@ -20,6 +20,7 @@ from .performance import measure_performance, measure_baseline
 from .testcases import (
     TestCaseResult,
     analyze_benchmark_method_consistency,
+    analyze_workload_consistency,
     calculate_average_speedup,
     collect_benchmark_methods,
     save_performance_results,
@@ -180,6 +181,8 @@ def evaluate_kernel(
         'speedup_calculation_error_message': None,
         'benchmark_method_consistent': False,
         'benchmark_method_mismatches': [],
+        'workload_consistent': False,
+        'workload_mismatches': [],
         'pass_tool_gate': True,
         'tool_policy_satisfied': True,
         'tool_evaluation': None,
@@ -296,6 +299,11 @@ def evaluate_kernel(
         )
         results['benchmark_method_consistent'] = method_consistent
         results['benchmark_method_mismatches'] = method_mismatches
+        workload_consistent, workload_mismatches = analyze_workload_consistency(
+            valid_baseline_cases, valid_optimized_cases, logger,
+        )
+        results['workload_consistent'] = workload_consistent
+        results['workload_mismatches'] = workload_mismatches
 
         if not valid_optimized_cases:
             results['best_optimized_execution_time'] = 0.0
@@ -319,7 +327,15 @@ def evaluate_kernel(
                     f"average time: {avg_baseline_time:.4f} ms"
                 )
 
-                if method_mismatches:
+                if not workload_consistent:
+                    error_msg = (
+                        "Cannot calculate speedup because baseline and optimized "
+                        "workloads differ or cases do not match completely: "
+                        f"{workload_mismatches}"
+                    )
+                    results['speedup_calculation_error_message'] = error_msg
+                    log.warning(error_msg)
+                elif method_mismatches:
                     mismatch_parts = []
                     for item in method_mismatches:
                         if item.get('reason') == 'ambiguous_mixed_aggregate':
@@ -439,12 +455,16 @@ def write_task_result(
     benchmark_method_consistent = bool(
         evaluation_results.get('benchmark_method_consistent', False)
     )
+    workload_consistent = evaluation_results.get('workload_consistent', True)
+    if not workload_consistent:
+        avg_speedup = 0.0
     
     # Use average speedup if available, otherwise calculate from average times
     if (
         avg_speedup == 0.0
         and not speedup_error
         and benchmark_method_consistent
+        and workload_consistent
         and avg_baseline_time > 0
         and optimized_time > 0
     ):
@@ -479,6 +499,8 @@ def write_task_result(
         'optimized_benchmark_methods': optimized_methods,
         'benchmark_method_consistent': benchmark_method_consistent,
         'benchmark_method_mismatches': benchmark_method_mismatches,
+        'workload_consistent': workload_consistent,
+        'workload_mismatches': evaluation_results.get('workload_mismatches', []),
         'valid_baseline_cases': len(valid_baseline_cases),
         'valid_optimized_cases': evaluation_results.get('valid_optimized_cases', 0),
         'speedup_calculation_error_message': speedup_error,
