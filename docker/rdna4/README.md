@@ -48,6 +48,22 @@ The `gfx1201` smoke check requires `hipcc` and `rocprofv3`. Other architectures
 retain the existing `hipcc` and `rocprof-compute` checks. Finding a profiler does
 not imply that a task or candidate was profiled.
 
+## Agent architecture guidance
+
+`target_gpu_model: RDNA4` selects the
+[gfx1201 architecture context](../../src/prompts/cheatsheet/RDNA4_architecture.md)
+and the existing HIP/Triton `knowledge_override` entries in
+[the cheatsheet map](../../src/prompts/cheatsheet/default_cheatsheet.yaml).
+This shared prompt route does not require a GEAK workflow. Other target
+languages retain their default guides; selecting one does not qualify its
+runtime dependencies on RDNA4.
+
+The guides distinguish hardware WMMA formats from installed compiler support,
+SIMD residency from CU/WGP totals, and tracing from hardware counters. Board
+capacity and launch limits must come from the actual device. The guide commands
+are for diagnostics inside this runtime; use the task's unchanged harness for
+scored timing. These prompt corrections do not establish a performance gain.
+
 ## Validation and limits
 
 Runtime checks have exercised existing HIP and Triton kernels and PyTorch
