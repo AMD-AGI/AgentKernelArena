@@ -15,6 +15,7 @@ TASK_NAME = "hip2hip/mla_decode"
 BINARY = os.path.join(TASK_DIR, "applications_mla_decode")
 BENCH_BINARY = os.path.join(TASK_DIR, "build", "native_graph_benchmark")
 BENCH_SOURCE = os.path.join(TASK_DIR, "scripts", "native", "benchmark_driver.hip")
+CANDIDATE_SOURCE = os.path.join(TASK_DIR, "mla_decode.hip")
 
 # 5 representative shapes covering the decode regime. The kernel is
 # hardcoded to NHEAD=128 / LK=576 / LV=512, so the only free axes are
@@ -51,8 +52,8 @@ def run_compile():
                 os.environ.get("HIPCXX", "hipcc"),
                 "-O3", "-ffast-math",
                 "--offload-arch=gfx950", "--offload-arch=gfx942",
-                "-munsafe-fp-atomics", "-std=c++17",
-                BENCH_SOURCE, "-o", BENCH_BINARY,
+                "-munsafe-fp-atomics", "-std=c++17", "-fopenmp",
+                BENCH_SOURCE, CANDIDATE_SOURCE, "-o", BENCH_BINARY,
             ],
             cwd=TASK_DIR, capture_output=True, text=True, timeout=600,
         )
@@ -66,13 +67,14 @@ def run_compile():
 
 
 def run_correctness():
-    if not os.path.isfile(BINARY):
-        return False, "Binary not found. Run compile first."
+    if not os.path.isfile(BENCH_BINARY):
+        return False, "Protected correctness binary not found. Run compile first."
 
     for i, (batch, ctx) in enumerate(TEST_SHAPES):
         try:
             result = subprocess.run(
-                [BINARY, "--batch", str(batch), "--ctx", str(ctx), "--mode", "check"],
+                [BENCH_BINARY, "--batch", str(batch), "--ctx", str(ctx),
+                 "--mode", "check"],
                 capture_output=True, text=True, timeout=900,
             )
             output = result.stdout + result.stderr
@@ -118,6 +120,7 @@ def run_performance():
                     "--batch", str(batch),
                     "--ctx", str(ctx),
                     "--samples", "100",
+                    "--mode", "bench",
                 ],
                 capture_output=True, text=True, timeout=300,
             )

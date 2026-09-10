@@ -7,8 +7,8 @@ import subprocess
 import sys
 from typing import Dict, Any
 
-from kernel_loader_template import kernel_loader_template
-from utils import save_eval_result
+from kernel_loader_template_harness import kernel_loader_template
+from utils_harness import save_eval_result
 
 
 def parse_args() -> argparse.Namespace:

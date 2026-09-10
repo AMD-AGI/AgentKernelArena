@@ -1,4 +1,5 @@
 // Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
+// Protected baseline implementation used by the performance harness.
 #include <torch/extension.h>
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
@@ -231,4 +232,3 @@ at::Tensor fused_leaky_relu_forward(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &fused_leaky_relu_forward, "FusedLeakyReLU forward (HIP, ROCm)");
 }
-

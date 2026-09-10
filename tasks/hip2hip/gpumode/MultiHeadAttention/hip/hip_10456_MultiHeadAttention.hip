@@ -34,6 +34,123 @@ __global__ void apply_mask_kernel(
     }
 }
 
+// The benchmark's D=4 case is too small for a sequence of BLAS calls to be
+// efficient.  Fuse projection, attention, softmax, value accumulation, and the
+// output projection into one workgroup per query token.  Each Wave64 owns one
+// of the two heads, so all attention reductions stay within a wavefront.
+__global__ __launch_bounds__(128) void fused_mha_d4_h2_kernel(
+    const float* __restrict__ q,
+    const float* __restrict__ k,
+    const float* __restrict__ v,
+    const float* __restrict__ q_weight,
+    const float* __restrict__ k_weight,
+    const float* __restrict__ v_weight,
+    const float* __restrict__ out_weight,
+    const float* __restrict__ out_bias,
+    float* __restrict__ output,
+    int S)
+{
+    const int tid = (int)threadIdx.x;
+    const int head = tid >> 6;
+    const int lane = tid & 63;
+    const int token = (int)blockIdx.x;
+    const int batch = token / S;
+    const int query_pos = token - batch * S;
+
+    __shared__ float q_projected[4];
+    __shared__ float attended[4];
+
+    // Four lanes cooperatively project the query once for both wavefronts.
+    if (tid < 4) {
+        const float4 qv = *reinterpret_cast<const float4*>(
+            q + ((long long)batch * S + query_pos) * 4);
+        const int col = tid;
+        float x = qv.x * q_weight[col];
+        x = fmaf(qv.y, q_weight[4 + col], x);
+        x = fmaf(qv.z, q_weight[8 + col], x);
+        x = fmaf(qv.w, q_weight[12 + col], x);
+        q_projected[col] = x;
+    }
+    __syncthreads();
+
+    const int col0 = head * 2;
+    const int col1 = col0 + 1;
+    float score = -INFINITY;
+    float4 vv = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+
+    if (lane < S) {
+        const long long row = ((long long)batch * S + lane) * 4;
+        const float4 kv = *reinterpret_cast<const float4*>(k + row);
+        vv = *reinterpret_cast<const float4*>(v + row);
+
+        float kp0 = kv.x * k_weight[col0];
+        kp0 = fmaf(kv.y, k_weight[4 + col0], kp0);
+        kp0 = fmaf(kv.z, k_weight[8 + col0], kp0);
+        kp0 = fmaf(kv.w, k_weight[12 + col0], kp0);
+
+        float kp1 = kv.x * k_weight[col1];
+        kp1 = fmaf(kv.y, k_weight[4 + col1], kp1);
+        kp1 = fmaf(kv.z, k_weight[8 + col1], kp1);
+        kp1 = fmaf(kv.w, k_weight[12 + col1], kp1);
+
+        score = fmaf(q_projected[col1], kp1,
+                     q_projected[col0] * kp0) * 0.7071067811865475244f;
+    }
+
+    float row_max = score;
+#pragma unroll
+    for (int offset = 32; offset > 0; offset >>= 1) {
+        row_max = fmaxf(row_max, __shfl_down(row_max, offset));
+    }
+    row_max = __shfl(row_max, 0);
+
+    const float probability_numerator = expf(score - row_max);
+    float row_sum = probability_numerator;
+#pragma unroll
+    for (int offset = 32; offset > 0; offset >>= 1) {
+        row_sum += __shfl_down(row_sum, offset);
+    }
+    row_sum = __shfl(row_sum, 0);
+    const float probability = probability_numerator / row_sum;
+
+    float vp0 = 0.0f;
+    float vp1 = 0.0f;
+    if (lane < S) {
+        vp0 = vv.x * v_weight[col0];
+        vp0 = fmaf(vv.y, v_weight[4 + col0], vp0);
+        vp0 = fmaf(vv.z, v_weight[8 + col0], vp0);
+        vp0 = fmaf(vv.w, v_weight[12 + col0], vp0);
+
+        vp1 = vv.x * v_weight[col1];
+        vp1 = fmaf(vv.y, v_weight[4 + col1], vp1);
+        vp1 = fmaf(vv.z, v_weight[8 + col1], vp1);
+        vp1 = fmaf(vv.w, v_weight[12 + col1], vp1);
+    }
+
+    float acc0 = probability * vp0;
+    float acc1 = probability * vp1;
+#pragma unroll
+    for (int offset = 32; offset > 0; offset >>= 1) {
+        acc0 += __shfl_down(acc0, offset);
+        acc1 += __shfl_down(acc1, offset);
+    }
+    if (lane == 0) {
+        attended[col0] = acc0;
+        attended[col1] = acc1;
+    }
+    __syncthreads();
+
+    // F.linear uses output = input @ out_weight.T + out_bias.
+    if (tid < 4) {
+        const int out_col = tid;
+        float x = fmaf(attended[0], out_weight[out_col * 4], out_bias[out_col]);
+        x = fmaf(attended[1], out_weight[out_col * 4 + 1], x);
+        x = fmaf(attended[2], out_weight[out_col * 4 + 2], x);
+        x = fmaf(attended[3], out_weight[out_col * 4 + 3], x);
+        output[(long long)token * 4 + out_col] = x;
+    }
+}
+
 // Main entry matching Python call order and semantics
 // q,k,v: arbitrary leading dims but last dim = d_model; flatten middle dims to S_total
 // q_linear1, k_linear1, v_linear1: [D,D]; out_weight: [D,D]; out_bias: [D]
@@ -87,6 +204,37 @@ torch::Tensor forward(
     }
     TORCH_CHECK(D % H == 0, "d_model must be divisible by number of heads");
     int d_k = (int)(D / H);
+
+    // Specialize the task's hot path.  The fallback below retains the full
+    // original behavior for masks, other dtypes, and general dimensions.
+    const bool no_mask = !mask_opt.has_value() || !mask_opt.value().defined();
+    const bool same_shape = k0.numel() == elems && v0.numel() == elems;
+    const bool all_float =
+        q0.scalar_type() == at::kFloat && k0.scalar_type() == at::kFloat &&
+        v0.scalar_type() == at::kFloat &&
+        q_linear1.scalar_type() == at::kFloat &&
+        k_linear1.scalar_type() == at::kFloat &&
+        v_linear1.scalar_type() == at::kFloat &&
+        out_weight.scalar_type() == at::kFloat &&
+        out_bias.scalar_type() == at::kFloat;
+    if (D == 4 && H == 2 && S_total > 0 && S_total <= 64 && no_mask &&
+        same_shape && all_float) {
+        auto qW = q_linear1.contiguous();
+        auto kW = k_linear1.contiguous();
+        auto vW = v_linear1.contiguous();
+        auto ow = out_weight.contiguous();
+        auto ob = out_bias.contiguous();
+        auto output = at::empty({B, S_total, D}, options);
+        hipStream_t stream = at::hip::getCurrentHIPStream();
+        hipLaunchKernelGGL(fused_mha_d4_h2_kernel, dim3(B * S_total), dim3(128),
+                           0, stream,
+                           q0.data_ptr<float>(), k0.data_ptr<float>(),
+                           v0.data_ptr<float>(), qW.data_ptr<float>(),
+                           kW.data_ptr<float>(), vW.data_ptr<float>(),
+                           ow.data_ptr<float>(), ob.data_ptr<float>(),
+                           output.data_ptr<float>(), (int)S_total);
+        return output;
+    }
 
     // Views as [B,S,D]
     auto q_bsd = q0.view({B, S_total, D});
