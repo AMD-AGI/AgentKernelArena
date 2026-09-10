@@ -23,6 +23,10 @@ GEAK_V4_RUNTIME=0
 # Only these host-validated, run-specific subdirectories are over-mounted rw.
 QUALITY_LOOP_ARTIFACT_REL=""
 QUALITY_LOOP_WORKTREE_REL=""
+SIKL_BUILDER_INPUT_HOST=""
+SIKL_BUILDER_CONFIG_HOST=""
+SIKL_BUILDER_ARTIFACT_REL=""
+SIKL_BUILDER_OUTPUT_REL=""
 EVAL_TOOL_SOCKET_CONTAINER_DIR="/run/aka-eval-tools"
 EVAL_TOOL_INPUT_CONTAINER_DIR="/input"
 EVAL_TOOL_FRAMEWORK_CONTAINER_ROOT="/opt/aka-eval-tools"
@@ -52,6 +56,7 @@ Usage:
   src/scripts/docker_benchmark.sh shell
   src/scripts/docker_benchmark.sh check-agents [--config_name <run-config.yaml>]
   src/scripts/docker_benchmark.sh quality-loop [--config <quality-loop-config.yaml>] [quality_loop args...]
+  src/scripts/docker_benchmark.sh sikl-task-builder [--config <config.yaml>] <inspect|run|resume> [args...]
   src/scripts/docker_benchmark.sh smoke
   src/scripts/docker_benchmark.sh eval-tools-smoke
   src/scripts/docker_benchmark.sh build-eval-tool-images
@@ -1044,7 +1049,16 @@ build_docker_args() {
         add_device_if_present /dev/mem
     fi
 
-    if [[ -n "$QUALITY_LOOP_ARTIFACT_REL" || -n "$QUALITY_LOOP_WORKTREE_REL" ]]; then
+    if [[ -n "$SIKL_BUILDER_INPUT_HOST" ]]; then
+        # The builder needs only its input bundle, drafts/evidence and explicit
+        # output directory. Keep framework code and source data read-only.
+        add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR" ro
+        add_mount "$SIKL_BUILDER_INPUT_HOST" /sikl-input ro
+        add_mount "$SIKL_BUILDER_CONFIG_HOST" /sikl-config.yaml ro
+        add_mount "$HOST_ROOT/$SIKL_BUILDER_ARTIFACT_REL" "$CONTAINER_WORKDIR/$SIKL_BUILDER_ARTIFACT_REL"
+        add_mount "$HOST_ROOT/$SIKL_BUILDER_OUTPUT_REL" "$CONTAINER_WORKDIR/$SIKL_BUILDER_OUTPUT_REL"
+        docker_args+=(-e "AGENT_KERNEL_ARENA_IMAGE=$SELECTED_IMAGE")
+    elif [[ -n "$QUALITY_LOOP_ARTIFACT_REL" || -n "$QUALITY_LOOP_WORKTREE_REL" ]]; then
         [[ -n "$QUALITY_LOOP_ARTIFACT_REL" && -n "$QUALITY_LOOP_WORKTREE_REL" ]] \
             || die "quality_loop requires both artifact and worktree mount paths"
         require_path "$HOST_ROOT/$QUALITY_LOOP_ARTIFACT_REL" "quality_loop artifact directory"
@@ -1667,6 +1681,52 @@ case "${1:-}" in
     parallel-run)
         shift
         run_parallel "$@"
+        ;;
+    sikl-task-builder)
+        shift
+        sikl_config="agents/sikl_task_builder/agent_config.yaml"
+        sikl_args=("$@")
+        [[ -z "${SIKL_INPUT:-}" ]] || sikl_args+=(--input-dir "$SIKL_INPUT")
+        sikl_mount_args=()
+        sikl_action=""
+        for ((sikl_index=0; sikl_index<${#sikl_args[@]}; sikl_index++)); do
+            sikl_arg="${sikl_args[$sikl_index]}"
+            case "$sikl_arg" in
+                --config|--input-dir|--run-id)
+                    sikl_value="${sikl_args[$((sikl_index+1))]:?option requires a value}"
+                    sikl_mount_args+=("$sikl_arg" "$sikl_value")
+                    [[ "$sikl_arg" != "--config" ]] || sikl_config="$sikl_value"
+                    sikl_index=$((sikl_index+1))
+                    ;;
+                --config=*) sikl_config="${sikl_arg#*=}"; sikl_mount_args+=("$sikl_arg") ;;
+                --input-dir=*|--run-id=*) sikl_mount_args+=("$sikl_arg") ;;
+                inspect|run|resume)
+                    [[ -z "$sikl_action" ]] || die "Specify exactly one builder action"
+                    sikl_action="$sikl_arg"
+                    ;;
+                *) die "Unknown sikl_task_builder argument: $sikl_arg" ;;
+            esac
+        done
+        [[ -n "$sikl_action" ]] || die "Specify inspect, run or resume"
+        if [[ "$sikl_action" == "inspect" ]]; then
+            python3 -m agents.sikl_task_builder "${sikl_args[@]}"
+            exit
+        fi
+        sikl_mount_output="$(python3 -m agents.sikl_task_builder mount-info "${sikl_mount_args[@]}")"
+        mapfile -t sikl_mounts <<< "$sikl_mount_output"
+        [[ "${#sikl_mounts[@]}" -eq 5 ]] || die "Invalid sikl_task_builder mount configuration"
+        SIKL_BUILDER_INPUT_HOST="${sikl_mounts[0]}"
+        SIKL_BUILDER_CONFIG_HOST="${sikl_mounts[1]}"
+        SIKL_BUILDER_ARTIFACT_REL="${sikl_mounts[2]}"
+        SIKL_BUILDER_OUTPUT_REL="${sikl_mounts[3]}"
+        REQUIRED_AGENTS="${sikl_mounts[4]}"
+        AGENTS_STRICT=1
+        AGENT_HOME_ISOLATION=1
+        AKA_CONTAINER_HOME="/tmp/aka-sikl-builder-${BASHPID}"
+        AKA_CACHE_SUFFIX="sikl-builder-${BASHPID}"
+        select_runtime_for_config "$sikl_config"
+        docker_exec 0 python3 -m agents.sikl_task_builder "${sikl_args[@]}" \
+            --config /sikl-config.yaml --input-dir /sikl-input
         ;;
     quality-loop)
         shift

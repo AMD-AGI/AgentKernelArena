@@ -1,0 +1,25 @@
+input_dir: tasks/third-party/sikl/glm52
+output_dir: tasks/SIKL-task
+artifact_root: sikl_task_builder_runs
+target_gpu_model: MI355X
+target_language: triton
+generator:
+  backend: codex
+  model: null
+validator:
+  backend: codex
+  model: null
+max_repair_attempts: 3
+agent_timeout: 1800
+command_timeout: 1800
+max_task_seconds: 14400
+# Fixed for the whole run. A failure cannot cause the agent to loosen this policy.
+# Check these tolerances against your operator before starting a campaign.
+policy:
+  version: 1
+  seed: 29
+  rtol: 0.02
+  atol: 0.02
+  warmup: 20
+  repetition: 100
+  target_ms: 1.0

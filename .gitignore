@@ -56,3 +56,5 @@ docs/_build/
 tasks/flydsl2flydsl/*/build/
 tasks/flydsl2flydsl/*/.rocprofv3/
 tasks/flydsl2flydsl/*/performance_report.json
+# SIKL generation drafts, source snapshots and validation evidence.
+sikl_task_builder_runs/

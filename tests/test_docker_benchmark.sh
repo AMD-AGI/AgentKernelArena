@@ -142,7 +142,7 @@ QUALITY_TEST_RUN_ID="runner-test-$$-${RANDOM:-0}"
 QUALITY_ARTIFACT_REL="quality_loop_runs/$QUALITY_TEST_RUN_ID"
 QUALITY_WORKTREE_REL=".quality_loop_worktrees/$QUALITY_TEST_RUN_ID"
 QUALITY_EVAL_ARTIFACT_DIR="$ROOT/.eval-tool-artifacts/quality-loop-$QUALITY_TEST_RUN_ID"
-trap 'rm -rf -- "$TEST_HOME" "$PATH_TEST_PARENT" "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL" "$QUALITY_EVAL_ARTIFACT_DIR"' EXIT
+trap 'rm -rf -- "$TEST_HOME" "$PATH_TEST_PARENT" "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL" "$QUALITY_EVAL_ARTIFACT_DIR" "$ROOT/tasks/.sikl-runner-test-$$"' EXIT
 UNRELATED_GEAK_WORKFLOW_DIR="$TEST_HOME/unrelated-geak-workflow"
 GEAK_SDK_PYTHONPATH="PYTHONPATH=/workspace/.aka-pyuserbase/geak-sdk"
 mkdir -p "$UNRELATED_GEAK_WORKFLOW_DIR"
@@ -769,5 +769,33 @@ assert_has \
     "${args[@]}"
 assert_has "$EVAL_SCORING_ARTIFACT_NAMESPACE:/workspace/.eval-tool-artifacts:ro" "${args[@]}"
 assert_has "$EVAL_QUALITY_ARTIFACT_DIR:/workspace/.eval-tool-artifacts/quality-test" "${args[@]}"
+
+# SIKL authoring is a pre-task workflow with explicit input/output mounts.
+# Argument values named "run" must survive host mount preflight unchanged.
+SIKL_TEST_CONFIG="$TEST_HOME/sikl config.yaml"
+SIKL_TEST_INPUT="$TEST_HOME/sikl input"
+mkdir -p "$SIKL_TEST_INPUT"
+"$REAL_PYTHON3" - "$SIKL_TEST_CONFIG" "$SIKL_TEST_INPUT" "${PATH_TEST_PARENT#"$ROOT/"}/sikl" "tasks/.sikl-runner-test-$$" <<'PYTHON'
+import sys, yaml
+from pathlib import Path
+Path(sys.argv[1]).write_text(yaml.safe_dump(dict(input_dir=sys.argv[2], artifact_root=sys.argv[3], output_dir=sys.argv[4], target_gpu_model='MI355X')))
+PYTHON
+sikl_output="$(env HOME="$QUALITY_HOME" AKA_NODE_PREFIX="$QUALITY_PREFIX" \
+    bash "$RUNNER" sikl-task-builder resume --run-id run --config="$SIKL_TEST_CONFIG" 2>/dev/null)"
+mapfile -t args <<< "$sikl_output"
+sikl_physical_input="$("$REAL_PYTHON3" -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$SIKL_TEST_INPUT")"
+sikl_physical_config="$("$REAL_PYTHON3" -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$SIKL_TEST_CONFIG")"
+assert_has "$ROOT:/workspace:ro" "${args[@]}"
+assert_has "$sikl_physical_input:/sikl-input:ro" "${args[@]}"
+assert_has "$sikl_physical_config:/sikl-config.yaml:ro" "${args[@]}"
+assert_has "$ROOT/tasks/.sikl-runner-test-$$:/workspace/tasks/.sikl-runner-test-$$" "${args[@]}"
+assert_has "$PATH_TEST_PARENT/sikl:/workspace/${PATH_TEST_PARENT#"$ROOT/"}/sikl" "${args[@]}"
+assert_has "agents.sikl_task_builder" "${args[@]}"
+assert_has "resume" "${args[@]}"
+assert_has "--run-id" "${args[@]}"
+assert_has "run" "${args[@]}"
+assert_has "/sikl-config.yaml" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_IMAGE=$PINNED_GFX950_IMAGE" "${args[@]}"
+assert_not_has "$QUALITY_HOME/.config/gh:$QUALITY_HOME/.config/gh:ro" "${args[@]}"
 
 echo "PASS: docker_benchmark runtime, agent-selection, and eval-tool isolation tests"
