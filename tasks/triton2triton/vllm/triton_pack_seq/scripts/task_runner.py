@@ -20,6 +20,32 @@ TEST_SHAPES = [
     (3, [64, 32, 48], 256),
     (6, [10, 20, 15, 5, 25, 12], 128),
 ]
+
+# Correctness-only coverage beyond the fixed performance shapes above.  Each
+# case combines related boundaries so the suite stays small while exercising
+# the public wrapper's full input contract.
+ADDITIONAL_CORRECTNESS_CASES = [
+    {
+        "name": "default_pad_odd_d_float32",
+        "lengths": [17, 5, 9],
+        "feature_shape": (70,),
+        "dtype": "float32",
+    },
+    {
+        "name": "zero_lengths_long_time_bfloat16",
+        "lengths": [0, 70, 13, 0],
+        "feature_shape": (65,),
+        "dtype": "bfloat16",
+        "pad_value": 2.5,
+    },
+    {
+        "name": "multidimensional_float16",
+        "lengths": [9, 0, 4],
+        "feature_shape": (3, 5),
+        "dtype": "float16",
+        "pad_value": -1.25,
+    },
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -51,15 +77,19 @@ def load_module():
 def reference_pack_seq(x, lengths, pad_value=-float("inf")):
     """CPU/PyTorch reference for pack_seq."""
     import torch
-    N, D = x.shape
     B = len(lengths)
     Lmax = max(lengths)
 
-    out = torch.full((B, Lmax, D), pad_value, device=x.device, dtype=x.dtype)
+    out = torch.full(
+        (B, Lmax) + tuple(x.shape[1:]),
+        pad_value,
+        device=x.device,
+        dtype=x.dtype,
+    )
     offset = 0
     for b in range(B):
         seq_len = lengths[b]
-        out[b, :seq_len, :] = x[offset:offset + seq_len]
+        out[b, :seq_len] = x[offset:offset + seq_len]
         offset += seq_len
     return out
 
@@ -108,6 +138,33 @@ def run_correctness():
                 )
         except Exception as e:
             return False, f"Shape {i+1} (B={B}, D={D}): exception: {e}"
+
+    for i, case in enumerate(ADDITIONAL_CORRECTNESS_CASES):
+        try:
+            torch.manual_seed(100 + i)
+
+            lengths_list = case["lengths"]
+            N = sum(lengths_list)
+            x = torch.randn(
+                (N,) + case["feature_shape"],
+                device=device,
+                dtype=getattr(torch, case["dtype"]),
+            )
+            lengths = torch.tensor(lengths_list, device=device, dtype=torch.int32)
+
+            if "pad_value" in case:
+                pad_value = case["pad_value"]
+                result = mod.pack_seq(x, lengths, pad_value=pad_value)
+                ref = reference_pack_seq(x, lengths_list, pad_value=pad_value)
+            else:
+                result = mod.pack_seq(x, lengths)
+                ref = reference_pack_seq(x, lengths_list)
+            torch.cuda.synchronize()
+
+            if not torch.allclose(result, ref, atol=1e-3, rtol=1e-3):
+                return False, f"Case {case['name']}: output differs from reference"
+        except Exception as e:
+            return False, f"Case {case['name']}: exception: {e}"
 
     return True, None
 
@@ -206,7 +263,11 @@ def main():
 
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(TEST_SHAPES) + len(ADDITIONAL_CORRECTNESS_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

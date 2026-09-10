@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Test harness for the identity kernel.
-
-Timing and correctness live HERE, not in kernel.py — the agent edits kernel.py,
-so an embedded benchmark there could be gamed. The harness owns the measurement
-and only imports the kernel-side building blocks (kernel, wrapper, input builder).
-"""
+"""Protected correctness and performance harness for the identity kernel."""
 import argparse
 import json
 import math
@@ -53,14 +48,51 @@ if _HARNESS_DIR not in sys.path:
     sys.path.insert(0, _HARNESS_DIR)
 
 import torch
+import triton
 
-from kernel import (
-    EVAL_CONFIGS,
-    PROFILE_CONFIGS,
-    get_inputs,
-    identity_triton,
-    identity_pytorch,
-)
+from kernel import _identity_kernel
+
+
+def identity_triton(input_tensor: torch.Tensor, output_tensor: torch.Tensor) -> torch.Tensor:
+    """Launch the editable kernel using the task's immutable call contract."""
+    xnumel = input_tensor.numel()
+    grid = lambda meta: (triton.cdiv(xnumel, meta["XBLOCK"]),)
+    _identity_kernel[grid](input_tensor, output_tensor, xnumel)
+    return output_tensor
+
+
+def identity_pytorch(input_tensor: torch.Tensor, output_tensor: torch.Tensor) -> torch.Tensor:
+    """Trusted reference implementation."""
+    output_tensor[...] = input_tensor
+    return output_tensor
+
+
+def get_inputs(size, seed=42, device="cuda"):
+    """Build deterministic representative inputs and a reusable output tensor."""
+    gen = torch.Generator(device=device)
+    gen.manual_seed(seed)
+    data = torch.empty(size, device=device, dtype=torch.float16)
+    data.uniform_(0, 1, generator=gen)
+    output = torch.empty_like(data)
+    return data, output
+
+
+EVAL_CONFIGS = [
+    # tests from task.yml
+    {"size": 127, "seed": 4242},
+    {"size": 128, "seed": 5236},
+    {"size": 129, "seed": 1001},
+    {"size": 256, "seed": 5531},
+    {"size": 512, "seed": 9173},
+    # benchmarks from task.yml
+    {"size": 1024, "seed": 54352},
+    {"size": 2048, "seed": 93246},
+    {"size": 4096, "seed": 6256},
+    {"size": 8192, "seed": 8841},
+    {"size": 16384, "seed": 6252},
+    {"size": 32768, "seed": 52624},
+    {"size": 65536, "seed": 125432},
+]
 
 WARMUP = 10
 ITERATIONS = int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "100"))

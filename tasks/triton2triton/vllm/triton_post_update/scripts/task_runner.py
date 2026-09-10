@@ -20,6 +20,7 @@ TEST_SHAPES = [
     (32, 2048, 1024, 4),
     (64, 4096, 2048, 3),
 ]
+NUM_TARGETED_CORRECTNESS_CASES = 1
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -162,6 +163,73 @@ def run_correctness():
         except Exception as e:
             return False, f"Shape {i+1}: exception: {e}"
 
+    # Exercise a second 64-request program and its tail while covering state
+    # layouts and updates that random identity-mapped cases do not reach.
+    case_label = "Targeted multi-program tail"
+    try:
+        num_reqs = 70
+        max_num_reqs = 149
+        vocab_size = 257
+        max_model_len = 96
+        max_num_sampled = 5
+        query_len = max_num_sampled
+
+        req_ids = torch.arange(num_reqs, dtype=torch.int32, device=device)
+        # This affine permutation is unique over the selected requests, but is
+        # deliberately shuffled and sparse within the larger state arrays.
+        idx_mapping = (req_ids * 43 + 17) % max_num_reqs
+        query_start_loc = torch.arange(
+            num_reqs + 1, dtype=torch.int32, device=device
+        ) * query_len
+
+        state_ids = torch.arange(max_num_reqs, dtype=torch.int32, device=device)
+        num_computed_tokens = 10 + state_ids % 40
+        last_sampled_tokens = (state_ids * 11 + 3) % vocab_size
+        output_bin_counts = torch.full(
+            (max_num_reqs, vocab_size), 3, dtype=torch.int32, device=device
+        )
+
+        repeated_tokens = ((req_ids * 13 + 5) % vocab_size).unsqueeze(1)
+        sampled_tokens = repeated_tokens.expand(
+            num_reqs, max_num_sampled
+        ).clone()
+        num_sampled = req_ids % (max_num_sampled + 1)
+        num_rejected = query_len - num_sampled
+
+        all_token_ids = torch.full(
+            (max_num_reqs, max_model_len), -1, dtype=torch.int32, device=device
+        )
+        total_len = 8 + state_ids % 17
+
+        nct_g = num_computed_tokens.clone()
+        lst_g = last_sampled_tokens.clone()
+        obc_g = output_bin_counts.clone()
+        ati_g = all_token_ids.clone()
+        tl_g = total_len.clone()
+
+        mod.post_update(
+            idx_mapping, nct_g, lst_g, obc_g, sampled_tokens,
+            num_sampled, num_rejected, query_start_loc, ati_g, tl_g,
+        )
+        torch.cuda.synchronize()
+
+        ref = reference_post_update(
+            idx_mapping.cpu(), num_computed_tokens.cpu(), last_sampled_tokens.cpu(),
+            output_bin_counts.cpu(), sampled_tokens.cpu(), num_sampled.cpu(),
+            num_rejected.cpu(), query_start_loc.cpu(), all_token_ids.cpu(), total_len.cpu(),
+        )
+
+        outputs = (nct_g, lst_g, obc_g, ati_g, tl_g)
+        output_names = (
+            "num_computed_tokens", "last_sampled_tokens", "output_bin_counts",
+            "all_token_ids", "total_len",
+        )
+        for name, actual, expected in zip(output_names, outputs, ref):
+            if not torch.equal(actual.cpu(), expected):
+                return False, f"{case_label}: {name} mismatch"
+    except Exception as e:
+        return False, f"{case_label}: exception: {e}"
+
     return True, None
 
 
@@ -268,7 +336,11 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(TEST_SHAPES) + NUM_TARGETED_CORRECTNESS_CASES,
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
