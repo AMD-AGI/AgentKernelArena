@@ -113,9 +113,31 @@ def run_correctness():
 
             results = mod.kda_dot_kkt_intra(*args, **kwargs)
             refs = reference(*args_cpu, **kwargs)
-            for idx, (r, ref) in enumerate(zip(results, refs)):
+            if not isinstance(results, tuple):
+                return False, (
+                    f"Shape {i+1}: expected a tuple of {len(refs)} outputs, "
+                    f"got {type(results).__name__}"
+                )
+            if len(results) != len(refs):
+                return False, (
+                    f"Shape {i+1}: expected {len(refs)} outputs, "
+                    f"got {len(results)}"
+                )
+
+            for idx, ref in enumerate(refs):
                 if ref is None:
                     continue
+                r = results[idx]
+                if not isinstance(r, torch.Tensor):
+                    return False, (
+                        f"Shape {i+1} output {idx}: expected a tensor, "
+                        f"got {type(r).__name__}"
+                    )
+                if r.shape != ref.shape:
+                    return False, (
+                        f"Shape {i+1} output {idx}: expected shape "
+                        f"{tuple(ref.shape)}, got {tuple(r.shape)}"
+                    )
                 r_cpu = r.float().cpu()
                 ref_f = ref.float()
                 if not torch.allclose(r_cpu, ref_f, atol=1e-2, rtol=1e-2):
