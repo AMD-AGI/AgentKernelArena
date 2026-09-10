@@ -12,14 +12,32 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2triton/triton_awq_dequantize"
 SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_awq_dequantize.py")
 
-# Test configurations: (K, N_packed, group_size)
+# Performance configurations: (K, N_packed, group_size)
 # qweight shape: [K, N_packed], scales shape: [K//G, N_packed*8], zeros shape: [K//G, N_packed]
-TEST_SHAPES = [
+PERFORMANCE_TEST_SHAPES = [
     (64, 8, 32),
     (128, 16, 32),
     (128, 16, 64),
     (256, 32, 128),
     (256, 32, 64),
+]
+
+# Correctness extends the benchmark shapes with focused boundary coverage. Keep
+# these separate so correctness hardening does not change performance scoring.
+CORRECTNESS_TEST_CASES = [
+    {"K": K, "N_packed": N_packed, "group_size": group_size}
+    for K, N_packed, group_size in PERFORMANCE_TEST_SHAPES
+] + [
+    {
+        "K": 33,
+        "N_packed": 9,
+        "group_size": 33,
+        "scale_dtype": "float32",
+        "signed_packed": True,
+    },
+    {"K": 96, "N_packed": 33, "group_size": 32, "scale_dtype": "bfloat16"},
+    {"K": 512, "N_packed": 65, "group_size": 64},
+    {"K": 1024, "N_packed": 128, "group_size": 128},
 ]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
@@ -79,6 +97,23 @@ def reference_awq_dequantize(qweight, scales, zeros, group_size):
     return result.to(scales.dtype)
 
 
+def make_packed_int32(shape, device, signed_top_nibbles=False):
+    """Create packed AWQ words, optionally covering every signed top nibble."""
+    import torch
+
+    if not signed_top_nibbles:
+        return torch.randint(0, 2**31, shape, device=device, dtype=torch.int32)
+
+    lower_bits = torch.randint(0, 2**28, shape, device=device, dtype=torch.int32)
+    top_nibbles = (
+        torch.arange(lower_bits.numel(), device=device, dtype=torch.int64)
+        .reshape(shape)
+        .remainder(8)
+        .add(8)
+    )
+    return (lower_bits.to(torch.int64) | (top_nibbles << 28)).to(torch.int32)
+
+
 def run_compile():
     try:
         import ast
@@ -101,18 +136,25 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    dtype = torch.float16
-
-    for i, (K, N_packed, group_size) in enumerate(TEST_SHAPES):
+    for i, case in enumerate(CORRECTNESS_TEST_CASES):
+        K = case["K"]
+        N_packed = case["N_packed"]
+        group_size = case["group_size"]
+        dtype = getattr(torch, case.get("scale_dtype", "float16"))
+        signed_packed = case.get("signed_packed", False)
         try:
             torch.manual_seed(42 + i)
             N = N_packed * 8
             num_groups = K // group_size
 
             # Create random packed weights (int32, each packing 8x 4-bit values)
-            qweight = torch.randint(0, 2**31, (K, N_packed), device=device, dtype=torch.int32)
+            qweight = make_packed_int32(
+                (K, N_packed), device, signed_top_nibbles=signed_packed
+            )
             scales = torch.randn(num_groups, N, device=device, dtype=dtype).abs() * 0.1 + 0.01
-            zeros = torch.randint(0, 2**31, (num_groups, N_packed), device=device, dtype=torch.int32)
+            zeros = make_packed_int32(
+                (num_groups, N_packed), device, signed_top_nibbles=signed_packed
+            )
 
             # Run Triton kernel
             result = mod.awq_dequantize_triton(qweight, scales, zeros)
@@ -125,12 +167,14 @@ def run_correctness():
             if not torch.allclose(result, ref, atol=1e-2, rtol=1e-2):
                 max_diff = (result - ref).abs().max().item()
                 return False, (
-                    f"Shape {i+1} (K={K}, N_packed={N_packed}, G={group_size}): "
+                    f"Shape {i+1} (K={K}, N_packed={N_packed}, G={group_size}, "
+                    f"dtype={dtype}, signed_packed={signed_packed}): "
                     f"max diff = {max_diff:.6f}"
                 )
         except Exception as e:
             return False, (
-                f"Shape {i+1} (K={K}, N_packed={N_packed}, G={group_size}): "
+                f"Shape {i+1} (K={K}, N_packed={N_packed}, G={group_size}, "
+                f"dtype={dtype}, signed_packed={signed_packed}): "
                 f"exception: {e}"
             )
 
@@ -148,7 +192,7 @@ def run_performance():
     dtype = torch.float16
     test_cases = []
 
-    for test_idx, (K, N_packed, group_size) in enumerate(TEST_SHAPES):
+    for test_idx, (K, N_packed, group_size) in enumerate(PERFORMANCE_TEST_SHAPES):
         try:
             N = N_packed * 8
             num_groups = K // group_size
@@ -210,7 +254,11 @@ def main():
 
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(CORRECTNESS_TEST_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
