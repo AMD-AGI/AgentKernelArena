@@ -632,8 +632,8 @@ def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, in_dtype_str, out_dtype_str, request
     f"Triton grad g:\n{grad_g_triton}\n\nPyTorch grad_g:\n{grad_g_ref}"
 
 
-# --- Define TFLOPS and GB/s calculators for RMSNorm Forward ---
-def calculate_rmsnorm_fwd_gbps(params: dict, ms: float) -> float:
+# --- Define TFLOPS and GB/s calculators for the RMSNorm backward target ---
+def calculate_rmsnorm_bwd_gbps(params: dict, ms: float) -> float:
     M, N = params['M'], params['N']
     dtype_str = params.get('dtype_str', 'fp16')
     if dtype_str == 'fp32': current_dtype = torch.float32
@@ -641,28 +641,20 @@ def calculate_rmsnorm_fwd_gbps(params: dict, ms: float) -> float:
     else: current_dtype = torch.float16
     element_size = torch.tensor([], dtype=current_dtype).element_size()
     
-    # Read x (M,N), g (N)
-    # Write y (M,N), rsigma (M)
-    bytes_read_x = M * N * element_size
-    bytes_read_g = N * element_size
-    bytes_write_y = M * N * element_size
-    bytes_write_rsigma = M * 4 # rsigma is usually float32
+    # Read grad_output (M,N), x (M,N), g (N), and rsigma (M).
+    # Write dx (M,N) and the fp32 intermediate dg (M,N).
+    bytes_read = 2 * M * N * element_size + N * element_size + M * 4
+    bytes_written = M * N * element_size + M * N * 4
 
-    total_bytes = bytes_read_x + bytes_read_g + bytes_write_y + bytes_write_rsigma
+    total_bytes = bytes_read + bytes_written
     gbps = total_bytes / (ms / 1000) / 1e9
     return gbps
 
-def calculate_rmsnorm_fwd_tflops(params: dict, ms: float) -> float:
+def calculate_rmsnorm_bwd_tflops(params: dict, ms: float) -> float:
     M, N = params['M'], params['N']
-    # FLOPs for RMSNorm forward:
-    # 1. Sum of squares: N squares, N-1 additions per row (2N-1 ops)
-    # 2. Mean square: 1 division per row (1 op)
-    # 3. rsqrt: (approx ~5-10 ops, let's say 5)
-    # 4. Normalize & Scale: N mult (x*rsigma), N mult (*g) per row (2N ops)
-    # (If ZERO_CENTERED_GAMMA, N additions for g = g+1)
-    # Total per row approx: (2N-1) + 1 + 5 + 2N = 4N + 5 ops
-    # If ZERO_CENTERED_GAMMA: add N ops => 5N + 5
-    flops_per_row = 4 * N + 5
+    # Per row: grad_sum uses 3N-1 ops, dx approximately 7N+3 ops,
+    # and dg uses 2N ops. Zero-centered gamma adds N additions.
+    flops_per_row = 12 * N + 2
     if params.get('ZERO_CENTERED_GAMMA', False):
         flops_per_row += N
     total_flops = M * flops_per_row
@@ -691,18 +683,15 @@ def test_performance(M, N, ZERO_CENTERED_GAMMA, dtype_str, request):
     elif dtype_str == 'bf16': current_dtype = torch.bfloat16
     else: current_dtype = torch.float16
 
-    # Prepare inputs and output buffers for RMSNorm.apply
+    # Prepare inputs and output buffers for rms_bwd_kernel.
     x = torch.randn(M, N, device='cuda', dtype=current_dtype)
     g = torch.rand(N, device='cuda', dtype=current_dtype) # Original test_rmsnorm used (1,N)
                                                        # Kernel expects g_ptr + col_offsets, so 1D g is fine.
-    y_buffer = torch.empty_like(x) # Output buffer for forward
-    rsigma_buffer = torch.empty(M, device='cuda', dtype=torch.float32) # rsigma output
-
-    # Dummy buffers for backward context (not used by fwd pass, but part of RMSNorm.apply signature)
-    # Their dtypes should match what backward pass would expect if it were called.
-    dx_dummy = torch.empty_like(x)
-    dg_dummy = torch.empty_like(g)
-    dg_tmp_dummy = torch.empty(M, N, device='cuda', dtype=torch.float32) # As per original test_rmsnorm
+    grad_output = torch.randn_like(x)
+    y_buffer = torch.empty_like(x)
+    rsigma_buffer = torch.empty(M, device='cuda', dtype=torch.float32)
+    dx_buffer = torch.empty_like(x)
+    dg_tmp_buffer = torch.empty(M, N, device='cuda', dtype=torch.float32)
 
     # Kernel launch parameters (from original test_rmsnorm)
     n_rows, n_cols = x.shape
@@ -716,13 +705,26 @@ def test_performance(M, N, ZERO_CENTERED_GAMMA, dtype_str, request):
     NUM_PRGMS_fwd = min(n_rows, get_num_sms()) if n_rows > 0 and get_num_sms() > 0 else 1
 
 
-    # --- Create op_lambda for benchmarking the forward pass ---
-    op_lambda = lambda: rmsnorm(
-        x, g, y_buffer, rsigma_buffer,
-        dx_dummy, dg_dummy, dg_tmp_dummy,
-        n_rows, n_cols, ZERO_CENTERED_GAMMA,
-        blk_size_fwd, USE_BLOCKED_fwd, NUM_PRGMS_fwd, eps
+    # Populate the saved forward statistic outside the timed region.
+    grid_fwd = lambda meta: (NUM_PRGMS_fwd, )
+    rms_kernel[grid_fwd](
+        y_buffer, x, g, rsigma_buffer, x.stride(0), y_buffer.stride(0),
+        n_rows, n_cols, eps, ZERO_CENTERED_GAMMA,
+        blk_size_fwd, USE_BLOCKED_fwd, NUM_PRGMS_fwd
     )
+
+    # Time exactly the declared editable target. Both outputs are fully
+    # overwritten on every invocation, so repeated samples need no state reset.
+    grid_bwd = lambda meta: (NUM_PRGMS_fwd, )
+
+    def op_lambda():
+        rms_bwd_kernel[grid_bwd](
+            grad_output, x, g, rsigma_buffer, dx_buffer, dg_tmp_buffer,
+            x.stride(0), grad_output.stride(0), n_rows, n_cols,
+            ZERO_CENTERED_GAMMA, blk_size_fwd, USE_BLOCKED_fwd,
+            NUM_PRGMS_fwd, num_warps=8
+        )
+        return dx_buffer, dg_tmp_buffer
 
     # --- Benchmarking ---
     bench_config = do_bench_config(warm_up=10, repetition=100)
@@ -739,8 +741,8 @@ def test_performance(M, N, ZERO_CENTERED_GAMMA, dtype_str, request):
     }
 
     benchmarker.run_benchmark(current_params_dict=current_params_for_logs_and_calc,
-                              gbps_calculator=calculate_rmsnorm_fwd_gbps,
-                              tflops_calculator=calculate_rmsnorm_fwd_tflops)
+                              gbps_calculator=calculate_rmsnorm_bwd_gbps,
+                              tflops_calculator=calculate_rmsnorm_bwd_tflops)
     
 ######################################## HELPERS for Eval ########################################     
 # --- Pytest hook to save the dictionary at the end of the session ---  
