@@ -20,6 +20,50 @@ TEST_SHAPES = [
     (32, 256, 16, 256),
     (64, 512, 32, 256),
 ]
+
+# Correctness-only coverage. Keep these separate from TEST_SHAPES so coverage
+# changes do not alter the performance workload.
+ADDITIONAL_CORRECTNESS_CASES = [
+    {
+        "name": "uneven_empty_permuted_int64",
+        "query_lengths": [0, 1, 9, 17, 3],
+        "idx_mapping": [6, 0, 4, 2, 7],
+        "position_starts": [0, 7, 31, 4093, 1024],
+        "block_size": 8,
+        "max_num_reqs": 8,
+        "max_num_blocks": 520,
+        "block_table_row_padding": 5,
+        "max_num_tokens": 47,
+        "index_dtype": "int64",
+        "block_table_dtype": "int64",
+    },
+    {
+        "name": "multi_tile_data_and_padding",
+        "query_lengths": [1025, 0, 6],
+        "idx_mapping": [2, 5, 1],
+        "position_starts": [8190, 0, 65533],
+        "block_size": 64,
+        "max_num_reqs": 6,
+        "max_num_blocks": 1025,
+        "block_table_row_padding": 7,
+        "max_num_tokens": 3082,
+        "index_dtype": "int32",
+        "block_table_dtype": "int32",
+    },
+    {
+        "name": "all_empty_multi_tile_padding",
+        "query_lengths": [0, 0, 0],
+        "idx_mapping": [2, 0, 1],
+        "position_starts": [0, 0, 0],
+        "block_size": 8,
+        "max_num_reqs": 3,
+        "max_num_blocks": 1,
+        "block_table_row_padding": 3,
+        "max_num_tokens": 2053,
+        "index_dtype": "int32",
+        "block_table_dtype": "int32",
+    },
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -67,6 +111,62 @@ def reference_compute_slot_mappings(idx_mapping, query_start_loc, positions,
             slot_mappings[t] = block_num * block_size + block_off
 
     return slot_mappings
+
+
+def validate_slot_mappings(result, ref, case_name):
+    """Validate the token prefix returned by compute_slot_mappings."""
+    import torch
+
+    if result.shape != ref.shape:
+        return f"{case_name}: output shape {tuple(result.shape)} expected {tuple(ref.shape)}"
+    if result.dtype != torch.int64:
+        return f"{case_name}: output dtype {result.dtype} expected torch.int64"
+
+    result_cpu = result.cpu()
+    if not torch.equal(result_cpu, ref):
+        diff_mask = result_cpu != ref
+        first_diff = diff_mask.nonzero(as_tuple=True)[0][0].item()
+        return (
+            f"{case_name}: mismatch at index {first_diff}, "
+            f"got {result_cpu[first_diff].item()} expected {ref[first_diff].item()}"
+        )
+
+    return None
+
+
+def validate_padding(mod, idx_mapping, query_start_loc, positions, block_table,
+                     block_size, max_num_tokens, case_name):
+    """Launch into a poisoned full buffer and directly validate all padding."""
+    import torch
+
+    num_tokens = positions.shape[0]
+    padding_poison = 123456789
+    full_result = torch.full(
+        (max_num_tokens,), padding_poison, dtype=torch.int64,
+        device=positions.device,
+    )
+    mod._compute_slot_mappings_kernel[(idx_mapping.shape[0] + 1,)](
+        num_tokens,
+        max_num_tokens,
+        idx_mapping,
+        query_start_loc,
+        positions,
+        block_table,
+        block_table.stride(0),
+        block_size,
+        full_result,
+        PAD_ID=-1,
+        TRITON_BLOCK_SIZE=1024,
+    )
+    padding = full_result[num_tokens:].cpu()
+    if not torch.all(padding == -1).item():
+        first_diff = (padding != -1).nonzero(as_tuple=True)[0][0].item()
+        return (
+            f"{case_name}: padding mismatch at index {num_tokens + first_diff}, "
+            f"got {padding[first_diff].item()} expected -1"
+        )
+
+    return None
 
 
 def run_compile():
@@ -123,12 +223,85 @@ def run_correctness():
                 block_table.cpu(), block_size,
             )
 
-            if not torch.equal(result.cpu(), ref):
-                diff_mask = result.cpu() != ref
-                first_diff = diff_mask.nonzero(as_tuple=True)[0][0].item()
-                return False, f"Shape {i+1}: mismatch at index {first_diff}, got {result.cpu()[first_diff].item()} expected {ref[first_diff].item()}"
+            error = validate_slot_mappings(result, ref, f"Shape {i+1}")
+            if error:
+                return False, error
         except Exception as e:
             return False, f"Shape {i+1}: exception: {e}"
+
+    for i, case in enumerate(ADDITIONAL_CORRECTNESS_CASES):
+        case_name = case["name"]
+        try:
+            torch.manual_seed(1042 + i)
+            query_lengths = case["query_lengths"]
+            query_start_values = [0]
+            for query_len in query_lengths:
+                query_start_values.append(query_start_values[-1] + query_len)
+
+            index_dtype = getattr(torch, case["index_dtype"])
+            idx_mapping = torch.tensor(
+                case["idx_mapping"], dtype=index_dtype, device=device
+            )
+            query_start_loc = torch.tensor(
+                query_start_values, dtype=index_dtype, device=device
+            )
+            position_values = []
+            for position_start, query_len in zip(
+                case["position_starts"], query_lengths
+            ):
+                position_values.extend(range(position_start, position_start + query_len))
+            positions = torch.tensor(
+                position_values, dtype=torch.int64, device=device
+            )
+
+            # Slice a wider allocation to retain a nonstandard row stride while
+            # keeping columns contiguous, as required by the kernel contract.
+            table_storage = torch.randint(
+                0,
+                10000,
+                (
+                    case["max_num_reqs"],
+                    case["max_num_blocks"] + case["block_table_row_padding"],
+                ),
+                dtype=getattr(torch, case["block_table_dtype"]),
+                device=device,
+            )
+            block_table = table_storage[:, :case["max_num_blocks"]]
+
+            result = mod.compute_slot_mappings(
+                idx_mapping,
+                query_start_loc,
+                positions,
+                block_table,
+                case["block_size"],
+                case["max_num_tokens"],
+            )
+            torch.cuda.synchronize()
+
+            ref = reference_compute_slot_mappings(
+                idx_mapping.cpu(),
+                query_start_loc.cpu(),
+                positions.cpu(),
+                block_table.cpu(),
+                case["block_size"],
+            )
+            error = validate_slot_mappings(result, ref, case_name)
+            if error:
+                return False, error
+            error = validate_padding(
+                mod,
+                idx_mapping,
+                query_start_loc,
+                positions,
+                block_table,
+                case["block_size"],
+                case["max_num_tokens"],
+                case_name,
+            )
+            if error:
+                return False, error
+        except Exception as e:
+            return False, f"{case_name}: exception: {e}"
 
     return True, None
 
@@ -213,7 +386,11 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(TEST_SHAPES) + len(ADDITIONAL_CORRECTNESS_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
