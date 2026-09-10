@@ -1,7 +1,7 @@
 {
   "definition": "aiter_fused_moe_per_1x32_d6144_e257_topk9_n1024_k3072_i256",
   "op_type": "moe",
-  "builder_symbol": "build_mxfp4_moe_e257_i256_module",
+  "builder_symbol": "build_mxfp4_moe_e257_i256_gpt_module",
   "axes": {
     "model_dim": 6144,
     "num_experts": 257,

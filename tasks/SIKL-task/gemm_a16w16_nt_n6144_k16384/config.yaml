@@ -10,7 +10,7 @@ task_type: rewrite_by_flydsl
 source_file_path:
   - kernel.py
 target_kernel_functions:
-  - build_gemm_a16w16_nt_n6144_k16384_module
+  - build_gemm_a16w16_nt_n6144_k16384_gpt_module
 
 # ---------------------------------------------------------------------------
 # Rewrite pipeline inputs (consumed by agents/forge_rewrite/launch_agent.py).
@@ -37,7 +37,7 @@ rewrite:
   port_source: /sgl-workspace/aiter/aiter/tuned_gemm.py
   port_source_entry: gemm_a16w16
   port_target: kernel.py
-  logical_operator: gemm_a16w16_nt_n6144_k16384
+  logical_operator: gemm_a16w16_nt_n6144_k16384_gpt
   source_owner: aiter
   snr_threshold: 30.0
   max_port_attempts: 5

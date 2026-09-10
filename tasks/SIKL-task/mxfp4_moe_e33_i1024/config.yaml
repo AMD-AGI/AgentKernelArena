@@ -10,7 +10,7 @@ task_type: rewrite_by_flydsl
 source_file_path:
   - kernel.py
 target_kernel_functions:
-  - build_mxfp4_moe_e33_i1024_module
+  - build_mxfp4_moe_e33_i1024_gpt_module
 
 # ---------------------------------------------------------------------------
 # Rewrite pipeline inputs (consumed by agents/forge_rewrite/launch_agent.py).
@@ -37,7 +37,7 @@ rewrite:
   port_source: /sgl-workspace/aiter/aiter/fused_moe.py
   port_source_entry: fused_moe
   port_target: kernel.py
-  logical_operator: mxfp4_moe_e33_i1024
+  logical_operator: mxfp4_moe_e33_i1024_gpt
   source_owner: aiter
   snr_threshold: 20.0
   max_port_attempts: 5

@@ -1,7 +1,7 @@
 {
   "definition": "gemm_a16w16_nt_n128_k6144",
   "op_type": "gemm",
-  "builder_symbol": "build_gemm_a16w16_nt_n128_k6144_module",
+  "builder_symbol": "build_gemm_a16w16_nt_n128_k6144_gpt_module",
   "axes": {
     "n": 128,
     "k": 6144

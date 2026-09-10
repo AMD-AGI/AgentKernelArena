@@ -1,0 +1,24 @@
+# The whole SIKL rewrite-by-flydsl suite: every a16w16 GEMM and MXFP4 MoE
+# operator the GLM-5.2 workload schema declares.
+#
+# The forge_rewrite agent reimplements each operator in FlyDSL with KernelForge's
+# forge-rewrite-by-flydsl pipeline; Arena scores every port against that
+# operator's own production implementation over all 13 of the schema's workload
+# cases. Post-processing fills each task's SIKL solution slot from the scored
+# result.
+#
+# Naming `SIKL-task` selects the whole category, so a newly generated operator
+# joins this run without editing the list.
+#
+# Requires KernelForge installed so `kernel-agents` is on PATH, and the LLM
+# gateway environment for whichever model agents/forge_rewrite/agent_config.yaml
+# names.
+agent:
+  template: forge_rewrite
+
+tasks:
+  - SIKL-task
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace
