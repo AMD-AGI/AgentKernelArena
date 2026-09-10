@@ -32,12 +32,71 @@ TEST_SHAPES = [
     (4, 2048, 128),
 ]
 
+# Correctness-only cases around the optimized launcher's two dispatch limits.
+# Keeping these separate ensures correctness coverage cannot alter benchmark
+# case identities or timing methodology.
+TARGETED_CASES = [
+    ("m255_ties_duplicates", 1, 5, 255),
+    ("bn2048_m257", 2, 1024, 257),
+    ("bn2049_m257", 3, 683, 257),
+]
+
 
 def cpu_reference(target, source):
     """Find 3 nearest neighbors and return sqrt(squared distances) and indices."""
     dist_sq = torch.cdist(target.float(), source.float()).pow(2)  # (B, N, M)
     dists_sq, idx = dist_sq.topk(3, dim=2, largest=False, sorted=True)
     return torch.sqrt(dists_sq), idx.int()
+
+
+def make_targeted_case(case_idx, B, N, M):
+    """Create float32 inputs with duplicate and equal-distance neighbors."""
+    generator = torch.Generator().manual_seed(1000 + case_idx)
+    target = torch.randn(B, N, 3, generator=generator, dtype=torch.float32)
+    # Keep the background points away from the engineered query at the origin.
+    source = torch.rand(B, M, 3, generator=generator, dtype=torch.float32) * 4.0 + 4.0
+
+    target[:, 0] = 0.0
+    source[:, 0] = 0.0
+    source[:, 65] = 0.0
+    source[:, 2] = torch.tensor([1.0, 0.0, 0.0])
+    source[:, 67] = torch.tensor([-1.0, 0.0, 0.0])
+    source[:, M - 1] = torch.tensor([0.0, 1.0, 0.0])
+    return target.contiguous(), source.contiguous()
+
+
+def check_case(name, target, source, three_nn):
+    """Compare one case with the CPU reference, allowing valid tie choices."""
+    gpu_dist, gpu_idx = three_nn(target.cuda(), source.cuda())
+    cpu_dist, cpu_idx = cpu_reference(target, source)
+    expected_shape = (target.shape[0], target.shape[1], 3)
+
+    if gpu_dist.shape != expected_shape or gpu_idx.shape != expected_shape:
+        return False, (f"{name} output shape mismatch: distances={tuple(gpu_dist.shape)}, "
+                       f"indices={tuple(gpu_idx.shape)}, expected={expected_shape}")
+    if gpu_dist.dtype != torch.float32 or gpu_idx.dtype != torch.int32:
+        return False, (f"{name} output dtype mismatch: distances={gpu_dist.dtype}, "
+                       f"indices={gpu_idx.dtype}")
+
+    gpu_dist_cpu = gpu_dist.cpu()
+    gpu_idx_cpu = gpu_idx.cpu()
+    if not torch.allclose(gpu_dist_cpu, cpu_dist, atol=ATOL, rtol=RTOL):
+        diff = torch.max(torch.abs(gpu_dist_cpu - cpu_dist)).item()
+        return False, f"{name} distances failed: max_diff={diff:.6e}"
+
+    # Equal-distance neighbors do not have a unique valid index ordering. If
+    # indices differ, require every selected point to have the reference
+    # distance for that rank.
+    if not torch.equal(gpu_idx_cpu, cpu_idx):
+        all_dists = torch.sqrt(torch.cdist(target.float(), source.float()).pow(2))
+        if torch.any(gpu_idx_cpu < 0) or torch.any(gpu_idx_cpu >= source.shape[1]):
+            return False, f"{name} returned an out-of-range source index"
+        selected_dists = torch.gather(all_dists, 2, gpu_idx_cpu.long())
+        if not torch.allclose(selected_dists, cpu_dist, atol=ATOL, rtol=RTOL):
+            diff = torch.max(torch.abs(selected_dists - cpu_dist)).item()
+            return False, f"{name} indices select incorrect distances: max_diff={diff:.6e}"
+
+    return True, None
 
 
 def run_compile():
@@ -56,30 +115,16 @@ def run_correctness():
         target = torch.randn(B, N, 3, device="cuda", dtype=torch.float32)
         source = torch.randn(B, M, 3, device="cuda", dtype=torch.float32)
 
-        gpu_dist, gpu_idx = three_nn(target, source)
-        cpu_dist, cpu_idx = cpu_reference(target.cpu(), source.cpu())
+        ok, err = check_case(f"Shape {i+1} (B={B},N={N},M={M})",
+                             target.cpu(), source.cpu(), three_nn)
+        if not ok:
+            return ok, err
 
-        # Compare distances
-        if not torch.allclose(gpu_dist.cpu(), cpu_dist, atol=ATOL, rtol=RTOL):
-            diff = torch.max(torch.abs(gpu_dist.cpu() - cpu_dist)).item()
-            return False, f"Shape {i+1} distances failed (B={B},N={N},M={M}): max_diff={diff:.6e}"
-
-        # Compare indices - if indices differ, verify the distances at those indices match
-        if not torch.all(gpu_idx.cpu() == cpu_idx):
-            # Fallback: check that gpu indices produce same distances as cpu indices
-            gpu_dists_check = torch.sqrt(
-                torch.cdist(target.cpu().float(), source.cpu().float()).pow(2)
-            )
-            for b in range(B):
-                for n in range(N):
-                    for k in range(3):
-                        g_idx = gpu_idx[b, n, k].cpu().item()
-                        c_idx = cpu_idx[b, n, k].item()
-                        if g_idx != c_idx:
-                            g_dist = gpu_dists_check[b, n, g_idx]
-                            c_dist = gpu_dists_check[b, n, c_idx]
-                            if abs(g_dist - c_dist) > ATOL:
-                                return False, f"Shape {i+1} indices differ with different distances at (b={b},n={n},k={k})"
+    for case_idx, (name, B, N, M) in enumerate(TARGETED_CASES):
+        target, source = make_targeted_case(case_idx, B, N, M)
+        ok, err = check_case(name, target, source, three_nn)
+        if not ok:
+            return ok, err
 
     return True, None
 
@@ -134,7 +179,12 @@ def main():
 
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(TEST_SHAPES) + len(TARGETED_CASES),
+            "num_targeted_cases": len(TARGETED_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
