@@ -82,6 +82,14 @@ They require `repo_url`, `repository_language`, `compile_command`, and
 `correctness_command`; `source_file_path` and `target_kernel_functions` are
 optional hints when the target files and symbols are known.
 
+Files shipped by the task outside its declared source/target files are treated
+as immutable evaluation inputs during optimization, including JSON case tables
+and reference modules. Declare additional editable implementation helpers in
+`editable_sources` (a list of task-relative file paths). Keep generated reports
+and build artifacts separate from these inputs. See the
+[benchmark methodology](../reference/benchmark-methodology.md) for the shared
+guard's scope and the function-level boundary in combined kernel/harness files.
+
 ```yaml
 repo_url: https://github.com/ROCm/rocPRIM.git
 # repo_subdir: rocPRIM        # optional; defaults from repo_url

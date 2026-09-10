@@ -149,11 +149,38 @@ target AST nodes, and complete top-level `@triton.jit`/`@jit` helper nodes.
 Benchmark/test functions, ordinary Python helpers, module constants, and
 executable harness statements remain protected.
 
+Normal optimization runs and `quality_loop` also snapshot the original task
+package's non-editable inputs before launching the optimizer. This includes
+case data such as `session_cases.json`, reference implementations, and helper
+files outside test directories. The snapshot is kept in framework memory and
+checked before evaluation and again before writing the final result. Editing,
+deleting, or renaming an original input rejects the run for every agent.
+`source_file_path`, `target_file_path`, and `editable_sources` identify editable
+files; the existing function-level harness protection still applies to
+colocated kernel/benchmark files. Runtime outputs under `build/`, `logs/`, and
+`perf/`, environment caches, and generated result reports are not task inputs.
+New preparation files are allowed unless they match protected harness patterns,
+in which case the existing scratch-file removal policy applies. Cloned or
+image-seeded dependency trees retain the existing harness-pattern protection;
+this input snapshot is not a blanket source allowlist for those repositories.
+
 ## Baseline and optimized fairness
 
 The evaluator matches baseline and optimized cases by unique explicit ID first,
-then by unique parameters or shape. Benchmark methods are then compared **per
-matched case**:
+then by unique parameters or shape. An ID establishes a pair but does not prove
+equal work: each pair must also have identical reported `shape`, `params`, and
+`dtype` fields. Changing or removing any of those fields prevents performance
+scoring, including for singleton/index-matched cases. Fields absent on both
+sides remain supported for legacy producers, with task inputs protected by the
+snapshot above. Nested `metadata.params` and `metadata.dtype` are normalized
+and these fields survive performance YAML round trips. Other diagnostic fields
+and adaptive timing repeat counts are not workload identity.
+
+Workload mismatches retain measured timings, produce zero speedup, suppress
+comparison plots, and are recorded in `workload_consistent` and
+`workload_mismatches` in `task_result.yaml`.
+
+Benchmark methods are then compared **per matched case**:
 
 - graph versus graph is comparable;
 - event fallback versus event fallback is comparable;
