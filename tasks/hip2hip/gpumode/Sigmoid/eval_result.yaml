@@ -1,0 +1,5 @@
+speedup: 1.0
+ori_time: 0.05701
+opt_time: 0.05714
+compiled: true
+correctness: true
