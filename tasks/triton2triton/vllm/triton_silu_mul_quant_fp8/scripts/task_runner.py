@@ -3,6 +3,7 @@
 import sys
 import os
 import json
+import math
 import argparse
 import importlib.util
 
@@ -19,6 +20,29 @@ TEST_SHAPES = [
     (256, 512),
     (256, 1024),
     (512, 1024),
+]
+
+# Targeted correctness-only cases. Keep these separate from TEST_SHAPES so
+# hardening correctness coverage does not alter the performance workload.
+CORRECTNESS_CASES = [
+    {
+        "name": "bfloat16_ue8m0",
+        "shape": (128, 256),
+        "input_dtype": "bfloat16",
+        "input_kind": "random",
+        "inject_wide_value": True,
+        "eps": 1e-6,
+        "use_ue8m0": True,
+    },
+    {
+        "name": "float32_edges_preallocated_output",
+        "shape": (128, 512),
+        "input_dtype": "float32",
+        "input_kind": "edge_values",
+        "eps": 1e-4,
+        "preallocate_output": True,
+        "exact_quantized": True,
+    },
 ]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
@@ -48,7 +72,13 @@ def load_module():
     return mod
 
 
-def reference_silu_mul_quant_fp8(input_t, fp8_dtype):
+def reference_silu_mul_quant_fp8(
+    input_t,
+    fp8_dtype,
+    *,
+    eps=1e-10,
+    use_ue8m0=False,
+):
     """CPU reference: silu(x[:,:N/2]) * x[:,N/2:], then quantize per group."""
     import torch
     GROUP_SIZE = 128
@@ -79,12 +109,87 @@ def reference_silu_mul_quant_fp8(input_t, fp8_dtype):
             start = g * GROUP_SIZE
             end = start + GROUP_SIZE
             group = y[row, start:end]
-            absmax = max(group.abs().max().item(), 1e-10)
-            scale = absmax / fp8_max
+            absmax = max(group.abs().max().item(), eps)
+            scale_raw = absmax / fp8_max
+            scale = (
+                2.0 ** math.ceil(math.log2(scale_raw))
+                if use_ue8m0
+                else scale_raw
+            )
             y_s[row, g] = scale
             y_q[row, start:end] = (group / scale).clamp(fp8_min, fp8_max)
 
     return y_q.to(fp8_dtype), y_s
+
+
+def _make_correctness_input(torch, case):
+    """Create deterministic inputs for the targeted correctness cases."""
+    dtype = getattr(torch, case["input_dtype"])
+    shape = case["shape"]
+    if case["input_kind"] == "random":
+        torch.manual_seed(123)
+        x = torch.randn(shape, device="cuda", dtype=dtype)
+        if case.get("inject_wide_value", False):
+            N_2 = shape[1] // 2
+            x[:, 0] = 1e5
+            x[:, N_2] = 1e-4
+        return x
+
+    # Group zero mixes tiny values with large finite products, while group one
+    # remains exactly zero so the non-default epsilon determines its scale.
+    x = torch.zeros(shape, device="cuda", dtype=dtype)
+    N_2 = shape[1] // 2
+    x[:, 0] = 1e-20
+    x[:, N_2] = 1.0
+    x[:, 1] = -1e-20
+    x[:, N_2 + 1] = 1.0
+    x[:, 2] = 1e5
+    x[:, N_2 + 2] = 0.064
+    x[:, 3] = 1e5
+    x[:, N_2 + 3] = -0.064
+    return x
+
+
+def _check_outputs(
+    torch,
+    case_name,
+    y_q,
+    y_s,
+    ref_q,
+    ref_s,
+    *,
+    exact_quantized=False,
+    scale_atol=1e-2,
+    scale_rtol=1e-1,
+):
+    """Compare scales and quantized results without changing task tolerances."""
+    if y_q.shape != ref_q.shape or y_s.shape != ref_s.shape:
+        return (
+            f"{case_name}: output shapes {(tuple(y_q.shape), tuple(y_s.shape))} "
+            f"do not match expected {(tuple(ref_q.shape), tuple(ref_s.shape))}"
+        )
+    if y_q.dtype != ref_q.dtype or y_s.dtype != ref_s.dtype:
+        return (
+            f"{case_name}: output dtypes {(y_q.dtype, y_s.dtype)} do not match "
+            f"expected {(ref_q.dtype, ref_s.dtype)}"
+        )
+
+    if not torch.allclose(y_s, ref_s, atol=scale_atol, rtol=scale_rtol):
+        max_diff = (y_s - ref_s).abs().max().item()
+        return f"{case_name}: scale max diff = {max_diff:.6g}"
+
+    if exact_quantized and not torch.equal(y_q.float(), ref_q.float()):
+        max_diff = (y_q.float() - ref_q.float()).abs().max().item()
+        return f"{case_name}: quantized max diff = {max_diff:.6g}"
+
+    GROUP_SIZE = 128
+    y_dq = y_q.float() * y_s.repeat_interleave(GROUP_SIZE, dim=-1)
+    ref_dq = ref_q.float() * ref_s.repeat_interleave(GROUP_SIZE, dim=-1)
+    if not torch.allclose(y_dq, ref_dq, atol=5e-1, rtol=1e-1):
+        max_diff = (y_dq - ref_dq).abs().max().item()
+        return f"{case_name}: dequant max diff = {max_diff:.6f}"
+
+    return None
 
 
 def run_compile():
@@ -125,26 +230,67 @@ def run_correctness():
             ref_q = ref_q.to(device)
             ref_s = ref_s.to(device)
 
-            # Check scales
-            if not torch.allclose(y_s, ref_s, atol=1e-2, rtol=1e-1):
-                max_diff = (y_s - ref_s).abs().max().item()
-                return False, (
-                    f"Shape {i+1} (M={M}, N={N}): scale max diff = {max_diff:.6f}"
-                )
-
-            # Check quantized via dequant
-            N_2 = N // 2
-            GROUP_SIZE = 128
-            y_dq = y_q.float() * y_s.repeat_interleave(GROUP_SIZE, dim=-1)
-            ref_dq = ref_q.float().to(device) * ref_s.repeat_interleave(GROUP_SIZE, dim=-1)
-
-            if not torch.allclose(y_dq, ref_dq, atol=5e-1, rtol=1e-1):
-                max_diff = (y_dq - ref_dq).abs().max().item()
-                return False, (
-                    f"Shape {i+1} (M={M}, N={N}): dequant max diff = {max_diff:.6f}"
-                )
+            case_name = f"Shape {i+1} (M={M}, N={N})"
+            error = _check_outputs(
+                torch, case_name, y_q, y_s, ref_q, ref_s
+            )
+            if error:
+                return False, error
         except Exception as e:
             return False, f"Shape {i+1} (M={M}, N={N}): exception: {e}"
+
+    for case in CORRECTNESS_CASES:
+        case_name = case["name"]
+        try:
+            x = _make_correctness_input(torch, case)
+            M, N = x.shape
+            eps = case.get("eps", 1e-10)
+            use_ue8m0 = case.get("use_ue8m0", False)
+
+            output = None
+            if case.get("preallocate_output", False):
+                output = torch.full(
+                    (M, N // 2),
+                    240.0,
+                    device=device,
+                    dtype=fp8_dtype,
+                )
+
+            y_q, y_s = mod.silu_mul_per_token_group_quant_fp8_colmajor(
+                x,
+                output=output,
+                use_ue8m0=use_ue8m0,
+                eps=eps,
+            )
+            torch.cuda.synchronize()
+
+            if output is not None and y_q.data_ptr() != output.data_ptr():
+                return False, f"{case_name}: returned a different output buffer"
+
+            ref_q, ref_s = reference_silu_mul_quant_fp8(
+                x,
+                fp8_dtype,
+                eps=eps,
+                use_ue8m0=use_ue8m0,
+            )
+            ref_q = ref_q.to(device)
+            ref_s = ref_s.to(device)
+
+            error = _check_outputs(
+                torch,
+                case_name,
+                y_q,
+                y_s,
+                ref_q,
+                ref_s,
+                exact_quantized=case.get("exact_quantized", False),
+                scale_atol=1e-8,
+                scale_rtol=1e-4,
+            )
+            if error:
+                return False, error
+        except Exception as e:
+            return False, f"{case_name}: exception: {e}"
 
     return True, None
 
@@ -214,7 +360,11 @@ def main():
 
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(TEST_SHAPES) + len(CORRECTNESS_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
