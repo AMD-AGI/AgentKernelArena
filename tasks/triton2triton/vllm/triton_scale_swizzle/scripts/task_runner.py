@@ -12,13 +12,17 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2triton/triton_scale_swizzle"
 SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_scale_swizzle.py")
 
-# Test configs: (rows, cols) - must be multiples of (128, 4) for the kernel
-TEST_SHAPES = [
+# Keep performance coverage stable; additional padding cases are correctness-only.
+PERFORMANCE_SHAPES = [
     (128, 4),
     (256, 8),
     (128, 16),
     (384, 12),
     (512, 8),
+]
+CORRECTNESS_SHAPES = PERFORMANCE_SHAPES + [
+    (129, 4),  # Row padding with packed columns.
+    (128, 5),  # Column padding with aligned rows.
 ]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
@@ -62,10 +66,8 @@ def reference_scale_swizzle(input_matrix):
     padded_rows = n_row_blocks * 128
     padded_cols = n_col_blocks * 4
 
-    padded = input_matrix
-    assert (rows, cols) == (padded_rows, padded_cols), (
-        f"Input must be padded to multiples of (128, 4), got ({rows}, {cols})"
-    )
+    padded = input_matrix.new_zeros((padded_rows, padded_cols))
+    padded[:rows, :cols] = input_matrix
 
     blocks = padded.view(n_row_blocks, 128, n_col_blocks, 4).permute(0, 2, 1, 3)
     rearranged = blocks.reshape(-1, 4, 32, 4).transpose(1, 2).reshape(-1, 32, 16)
@@ -96,7 +98,7 @@ def run_correctness():
 
     device = "cuda"
 
-    for i, (rows, cols) in enumerate(TEST_SHAPES):
+    for i, (rows, cols) in enumerate(CORRECTNESS_SHAPES):
         try:
             torch.manual_seed(42 + i)
 
@@ -131,7 +133,7 @@ def run_performance():
     device = "cuda"
     test_cases = []
 
-    for test_idx, (rows, cols) in enumerate(TEST_SHAPES):
+    for test_idx, (rows, cols) in enumerate(PERFORMANCE_SHAPES):
         try:
             torch.manual_seed(0)
             data = torch.randint(0, 256, (rows, cols), device=device, dtype=torch.uint8)
@@ -185,7 +187,11 @@ def main():
 
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(CORRECTNESS_SHAPES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
