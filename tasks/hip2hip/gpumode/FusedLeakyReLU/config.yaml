@@ -3,15 +3,15 @@ source_file_path:
 target_kernel_functions:
 - forward
 compile_command:
-- python3 eval_tools/compile.py --hip_file hip/hip_10190_FusedLeakyReLU.hip
+- python3 eval_tools/compile_harness.py --hip_file hip/hip_10190_FusedLeakyReLU.hip
 correctness_command:
-- python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_10190_FusedLeakyReLU.py
-  --py_func_file pytorch_code_functional/py_10190_FusedLeakyReLU_func.py --hip_file
+- python3 eval_tools/correctness_check_harness.py --py_modu_file scripts/pytorch_code_module/py_10190_FusedLeakyReLU.py
+  --py_func_file scripts/pytorch_code_functional/py_10190_FusedLeakyReLU_func.py --hip_file
   hip/hip_10190_FusedLeakyReLU.hip
 performance_command:
-- python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_10190_FusedLeakyReLU.py
-  --py_func_file pytorch_code_functional/py_10190_FusedLeakyReLU_func.py --hip_file
-  hip/hip_10190_FusedLeakyReLU.hip --ref_hip_file hip/hip_10190_FusedLeakyReLU_ref.hip
+- python3 eval_tools/cal_kernel_perf.py --py_modu_file scripts/pytorch_code_module/py_10190_FusedLeakyReLU.py
+  --py_func_file scripts/pytorch_code_functional/py_10190_FusedLeakyReLU_func.py --hip_file
+  hip/hip_10190_FusedLeakyReLU.hip --ref_hip_file scripts/hip/hip_10190_FusedLeakyReLU_ref.hip
 prompt:
   source_code: null
   instructions: You are a hip expert and good at gpu kernel implementation. Please

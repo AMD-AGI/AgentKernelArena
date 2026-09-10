@@ -10,8 +10,8 @@ import sys
 from typing import Any, Dict, List, Tuple
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from compile import clear_workdir
-from utils import load_function_from_path, load_hip_kernel, save_eval_result
+from compile_harness import clear_workdir
+from utils_harness import load_function_from_path, load_hip_kernel, save_eval_result
 
 
 def parse_args() -> argparse.Namespace:
