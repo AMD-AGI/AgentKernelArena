@@ -73,9 +73,13 @@ checks also do not replace a framework-finalized `task_validator` report.
 
 Known limits of existing tasks with this image include:
 
-- Device capacity: HIP Transpose's original correctness cases can exceed VRAM;
-  vLLM persistent matmul can request 96 KiB shared memory against the device's
-  64 KiB per-workgroup limit.
+- Device capacity (16 GB tested): HIP Transpose's original correctness cases
+  exceeded VRAM on the tested board. `gfx1201` covers boards with different
+  memory capacities; see [AMD GPU specifications](https://rocm.docs.amd.com/en/docs-10.0.0/reference/gpu-specs.html).
+  Larger-memory boards, including 32 GB models, have not been validated here.
+- Per-workgroup LDS (`gfx1201`): vLLM persistent matmul can request 96 KiB of
+  shared memory against the 64 KiB per-workgroup limit. Increasing board VRAM
+  does not increase this separate LDS limit.
 - Native FlyDSL tasks: some use APIs absent from the bundled FlyDSL version;
   others explicitly require a CDNA architecture in `platform_support`.
 - Image-bound tasks: existing `image_kernel` contracts can refer to source
