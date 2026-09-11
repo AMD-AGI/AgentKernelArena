@@ -419,7 +419,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     # The loop runs on the 'forge-optimize' branch; ensure no partial/uncommitted
     # revert leaves the tree dirty before Arena re-scores.
     _git(workspace, "checkout", "--", ".", logger=logger)
-    _verify_forge_edit_scope(
+    undeclared_edits = _verify_forge_edit_scope(
         workspace,
         edit_baseline,
         all_source_files,
@@ -427,6 +427,10 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     )
 
     output = "\n".join(stdout_lines)
+    if undeclared_edits:
+        # Carried into the scored output so a reader of the report can tell that
+        # this speedup rests partly on files the task did not declare editable.
+        output += "\n=== UNDECLARED EDITS ===\n" + "\n".join(undeclared_edits)
     if stderr_lines:
         output += "\n=== STDERR ===\n" + "\n".join(stderr_lines)
     forge_result = _read_forge_result(result_json, "\n".join(stdout_lines))
