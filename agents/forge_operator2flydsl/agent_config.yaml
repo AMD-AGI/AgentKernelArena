@@ -1,8 +1,9 @@
-# KernelForge forge-rewrite-by-flydsl settings for the forge_rewrite agent.
+# KernelForge forge-rewrite-by-flydsl settings for the forge_operator2flydsl agent.
 #
-# A task's `rewrite:` block overrides snr_threshold and max_port_attempts: the
-# task knows its operator's tolerance and how many correctness-only port
-# sessions it is worth.
+# Every search control lives here and nowhere else. How many correctness-only
+# port sessions a campaign is worth, and where its coarse filter sits, describe
+# how this agent searches rather than what the operator computes or how Arena
+# scores it -- another agent implementing operator2flydsl may have neither.
 model: claude-opus-5
 
 # Arena's hard subprocess timeout. --max-hours is derived from it with a 900s
@@ -11,8 +12,13 @@ model: claude-opus-5
 timeout_seconds: 87300
 
 permission_mode: acceptEdits
+
+# KernelForge's coarse filter on a port before it enters the optimize loop. The
+# SIKL drivers print no `SNR:` line, so it never fires for them: their verdict
+# is the schema bundle's comparison callback. It stays for tasks whose driver
+# does report one.
 snr_threshold: 30.0
-max_port_attempts: 3
+max_port_attempts: 5
 
 # OPTIMIZE supervisor backend on stall: codex or claude.
 supervisor_backend: codex

@@ -96,13 +96,19 @@ def test_shared_files_are_identical_across_an_op_type(op_type, relative):
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
 def test_task_is_driven_by_the_rewrite_pipeline(task):
+    # The task type names its target language and the task carries exactly one
+    # field beyond Arena's existing ones. Everything else an operator2flydsl
+    # provider needs -- where the port lands, who owns the source, what the
+    # operator is called -- is already an Arena field, so a second provider
+    # reads the same task without knowing anything about KernelForge.
     config = _config(task)
-    rewrite = config["rewrite"]
-    assert config["task_type"] == "rewrite_by_flydsl"
+    assert config["task_type"] == "operator2flydsl"
     assert config["source_file_path"] == ["kernel.py"]
-    assert rewrite["port_target"] == "kernel.py"
-    assert Path(rewrite["port_source"]).is_absolute()
-    assert rewrite["source_owner"]
+    assert config["rewrite_source_file"]
+    assert config["kernel_identity"]["source_owner"]
+    assert "rewrite" not in config, "the rewrite block is replaced by Arena fields"
+    for key in ("snr_threshold", "max_port_attempts"):
+        assert key not in config, f"{key} is agent search policy, not task data"
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
@@ -114,7 +120,7 @@ def test_builder_symbol_agrees_with_kernelforge(task):
     protocol = pytest.importorskip("kernelforge.rewrite_by_flydsl.protocol")
     config = _config(task)
     declared = _workload(task)["builder_symbol"]
-    operator = config["rewrite"]["logical_operator"]
+    operator = config["kernel_identity"]["logical_operator"]
 
     assert protocol.builder_symbol(operator) == declared
     assert config["target_kernel_functions"] == [declared]
@@ -204,7 +210,7 @@ def test_the_callback_verdict_is_the_pipeline_verdict(task):
     assert driver.count('"SNR: ') + driver.count("'SNR: ") == 0, (
         "the driver prints an SNR aggregate, which overrides its own verdict"
     )
-    assert "snr_threshold" not in _config(task)["rewrite"], (
+    assert "snr_threshold" not in _config(task), (
         "a PORT filter the driver's output can never reach is dead configuration"
     )
 

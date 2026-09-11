@@ -17,7 +17,7 @@ that loop's contract:
 After this returns, Arena re-materializes its perf helpers and re-scores the
 kernel with the task's own compile/correctness/performance commands.
 
-Machinery shared with the ``forge_rewrite`` agent (GPU identity, git workspace,
+Machinery shared with the ``forge_operator2flydsl`` agent (GPU identity, git workspace,
 subprocess streaming, result parsing) lives in ``common.py``; it is imported
 here so this module stays the single import surface for the forge-loop path.
 """

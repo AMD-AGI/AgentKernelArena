@@ -1,5 +1,5 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
-"""Tests for the forge_rewrite agent and the rewrite_by_flydsl task type."""
+"""Tests for the forge_operator2flydsl agent and the operator2flydsl task type."""
 
 import logging
 import subprocess
@@ -13,16 +13,16 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from agents.forge.common import _GITIGNORE, _infer_backend, _resolve_fellow
-from agents.forge_rewrite.launch_agent import (
+from agents.forge_operator2flydsl.launch_agent import (
     REWRITE_WORKSPACE_DIR,
     _build_rewrite_command,
     _locate_ported_kernel,
+    _port_target,
     _prepare_rewrite_workspace,
-    _resolve_port_source,
-    _rewrite_config,
+    _resolve_source_file,
 )
 
-LOGGER = logging.getLogger("test_forge_rewrite")
+LOGGER = logging.getLogger("test_forge_operator2flydsl")
 
 AGENT_CONFIG = {
     "model": "claude-opus-5",
@@ -35,14 +35,18 @@ AGENT_CONFIG = {
 
 
 def _task_config(**overrides):
-    rewrite = {
-        "port_source": "/does/not/matter/fused_moe.py",
-        "port_source_entry": "fused_moe",
-        "port_target": "kernel.py",
-        "logical_operator": "glm52_mxfp4_moe_2stage",
+    config = {
+        "task_type": "operator2flydsl",
+        "source_file_path": ["kernel.py"],
+        "rewrite_source_file": "/does/not/matter/fused_moe.py",
+        "rewrite_source_entry": "fused_moe",
+        "kernel_identity": {
+            "logical_operator": "glm52_mxfp4_moe_2stage",
+            "source_owner": "aiter",
+        },
     }
-    rewrite.update(overrides)
-    return {"task_type": "rewrite_by_flydsl", "rewrite": rewrite}
+    config.update(overrides)
+    return config
 
 
 def _workspace(
@@ -68,8 +72,10 @@ def _workspace(
     return workspace, source
 
 
-def test_rewrite_by_flydsl_maps_to_the_flydsl_fellow():
-    config = {"task_type": "rewrite_by_flydsl"}
+def test_operator2flydsl_maps_to_the_flydsl_fellow():
+    # The name carries its own target, so no task type needs a special case in
+    # the backend map or the cheatsheet map any more.
+    config = {"task_type": "operator2flydsl"}
     assert _infer_backend(config) == "flydsl"
     assert _resolve_fellow(config, {}) == "flydsl-fellow"
 
@@ -81,26 +87,32 @@ def test_gitignore_hides_the_rewrite_scratch_from_the_edit_scope_check():
     assert ".forge_rewrite/" in _GITIGNORE
 
 
-def test_rewrite_config_requires_the_pipeline_fields():
-    with pytest.raises(RuntimeError, match="no 'rewrite' mapping"):
-        _rewrite_config({"task_type": "rewrite_by_flydsl"}, "config.yaml")
-
-    config = _task_config()
-    del config["rewrite"]["port_target"]
-    with pytest.raises(RuntimeError, match="port_target"):
-        _rewrite_config(config, "config.yaml")
+def test_the_port_lands_in_the_declared_editable_source():
+    # The task declares one editable file; naming it twice would let the two
+    # disagree and install the port somewhere Arena does not score.
+    assert _port_target(_task_config(), "config.yaml") == "kernel.py"
+    with pytest.raises(RuntimeError, match="source_file_path"):
+        _port_target({"task_type": "operator2flydsl"}, "config.yaml")
 
 
-def test_port_source_resolves_absolute_and_workspace_relative(tmp_path):
+def test_the_source_file_resolves_task_relative_first(tmp_path):
+    # Task-relative is where it belongs; absolute still resolves while the SIKL
+    # sources come from the runtime image with nothing materializing them.
     workspace, source = _workspace(tmp_path)
-    assert _resolve_port_source(str(workspace), str(source)) == source.resolve()
+    config = _task_config(rewrite_source_file=str(source))
+    assert _resolve_source_file(str(workspace), config, "config.yaml") == source.resolve()
 
     local = workspace / "operator_entry.py"
     local.write_text("# entry\n")
-    assert _resolve_port_source(str(workspace), "operator_entry.py") == local.resolve()
+    config = _task_config(rewrite_source_file="operator_entry.py")
+    assert _resolve_source_file(str(workspace), config, "config.yaml") == local.resolve()
 
-    with pytest.raises(RuntimeError, match="Port source not found"):
-        _resolve_port_source(str(workspace), "missing.py")
+    config = _task_config(rewrite_source_file="missing.py")
+    with pytest.raises(RuntimeError, match="rewrite_source_file not found"):
+        _resolve_source_file(str(workspace), config, "config.yaml")
+
+    with pytest.raises(RuntimeError, match="declares no rewrite_source_file"):
+        _resolve_source_file(str(workspace), {"task_type": "operator2flydsl"}, "config.yaml")
 
 
 def test_rewrite_workspace_carries_the_driver_and_its_modules(tmp_path):
@@ -206,15 +218,17 @@ def test_rewrite_command_forwards_the_task_contract(tmp_path):
     root, source_copy, driver_copy = _prepare_rewrite_workspace(
         str(workspace), source, "kernel.py", LOGGER
     )
-    config = _task_config(snr_threshold=42.0, max_port_attempts=5)
+    config = _task_config()
 
     cmd = _build_rewrite_command(
         forge_bin="kernel-agents",
         rewrite_root=root,
         source_copy=source_copy,
         driver_copy=driver_copy,
-        result_json=root / "forge_experiments" / "forge_rewrite_result.json",
-        rewrite=config["rewrite"],
+        result_json=root / "forge_experiments" / "forge_operator2flydsl_result.json",
+        port_target=_port_target(config, "config.yaml"),
+        source_entry=config["rewrite_source_entry"],
+        logical_operator=config["kernel_identity"]["logical_operator"],
         agent_config=AGENT_CONFIG,
         gpu_arch="gfx950",
         gpu_type="mi355x",
@@ -229,9 +243,10 @@ def test_rewrite_command_forwards_the_task_contract(tmp_path):
     assert cmd[cmd.index("--target-functions") + 1] == "fused_moe"
     assert cmd[cmd.index("--gpu-target") + 1] == "gfx950"
     assert cmd[cmd.index("--gpu-type") + 1] == "mi355x"
-    # The task's tolerance and attempt budget override the agent defaults.
-    assert cmd[cmd.index("--snr-threshold") + 1] == "42.0"
-    assert cmd[cmd.index("--max-port-attempts") + 1] == "5"
+    # Search controls come from the agent config and are not readable from a
+    # task: they describe how this provider searches, not what is being scored.
+    assert cmd[cmd.index("--snr-threshold") + 1] == "30.0"
+    assert cmd[cmd.index("--max-port-attempts") + 1] == "3"
     # 7200s minus the 900s shutdown margin.
     assert cmd[cmd.index("--max-hours") + 1] == "1.75"
     # apply-back is deliberately not requested: an Arena task has no framework
@@ -255,7 +270,9 @@ def test_rewrite_command_leaves_the_recipe_store_to_the_environment():
         source_copy=Path("/tmp/ws/fused_moe.py"),
         driver_copy=Path("/tmp/ws/forge_driver.py"),
         result_json=Path("/tmp/ws/result.json"),
-        rewrite=config["rewrite"],
+        port_target="kernel.py",
+        source_entry="fused_moe",
+        logical_operator="glm52_mxfp4_moe_2stage",
         agent_config={**AGENT_CONFIG, "rewrite_kb": False},
         gpu_arch="gfx950",
         gpu_type="mi355x",

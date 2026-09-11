@@ -81,13 +81,13 @@ def fill_solution(workspace: Path, task_source: Path, logger: logging.Logger) ->
     """Fill one workspace's solution slot; return the path written, or None."""
     template_path = task_source / SOLUTION_FILENAME
     if not template_path.is_file():
-        logger.info("forge_rewrite: %s ships no %s; nothing to fill",
+        logger.info("forge_operator2flydsl: %s ships no %s; nothing to fill",
                     task_source.name, SOLUTION_FILENAME)
         return None
 
     result_path = workspace / TASK_RESULT_FILENAME
     if not result_path.is_file():
-        logger.warning("forge_rewrite: %s has no %s; skipping solution backfill",
+        logger.warning("forge_operator2flydsl: %s has no %s; skipping solution backfill",
                        workspace.name, TASK_RESULT_FILENAME)
         return None
 
@@ -95,7 +95,7 @@ def fill_solution(workspace: Path, task_source: Path, logger: logging.Logger) ->
     builder_symbol = str(workload["builder_symbol"])
     port_path = workspace / "kernel.py"
     if not port_path.is_file():
-        logger.warning("forge_rewrite: %s has no kernel.py; skipping solution backfill",
+        logger.warning("forge_operator2flydsl: %s has no kernel.py; skipping solution backfill",
                        workspace.name)
         return None
 
@@ -104,7 +104,7 @@ def fill_solution(workspace: Path, task_source: Path, logger: logging.Logger) ->
         # The workspace still holds the task's stub, so the run produced no
         # implementation. Publishing it would file a placeholder as a solution.
         logger.info(
-            "forge_rewrite: %s left kernel.py without %s (no port); skipping "
+            "forge_operator2flydsl: %s left kernel.py without %s (no port); skipping "
             "solution backfill", workspace.name, builder_symbol,
         )
         return None
@@ -122,7 +122,7 @@ def fill_solution(workspace: Path, task_source: Path, logger: logging.Logger) ->
 
     destination = workspace / SOLUTION_FILENAME
     destination.write_text(json.dumps(solution, indent=2) + "\n")
-    logger.info("forge_rewrite: wrote %s (%s)", destination, solution["name"])
+    logger.info("forge_operator2flydsl: wrote %s (%s)", destination, solution["name"])
     return destination
 
 
@@ -139,11 +139,11 @@ def backfill_solutions(workspace_paths: list[str], logger: logging.Logger) -> No
                 task_result = yaml.safe_load(handle) or {}
             task_name = str(task_result.get("task_name") or "")
             if not task_name:
-                logger.warning("forge_rewrite: %s records no task_name; skipping "
+                logger.warning("forge_operator2flydsl: %s records no task_name; skipping "
                                "solution backfill", workspace.name)
                 continue
             fill_solution(workspace, arena_root / "tasks" / task_name, logger)
         except Exception:
             # Backfill is a reporting step: a failure here must not lose the run.
-            logger.error("forge_rewrite: solution backfill failed for %s",
+            logger.error("forge_operator2flydsl: solution backfill failed for %s",
                          workspace, exc_info=True)

@@ -1,7 +1,12 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
-"""Forge rewrite agent — bridges Arena to `kernel-agents forge-rewrite-by-flydsl`.
+"""operator2flydsl via KernelForge's `kernel-agents forge-rewrite-by-flydsl`.
 
-The rewrite pipeline reimplements an operator in FlyDSL from its existing
+This is one provider of the ``operator2flydsl`` task type, not the definition of
+it: the task says which operator to reimplement in FlyDSL and where it is scored,
+and this agent adapts that to KernelForge's CLI. A different provider would read
+the same task and never mention a port attempt or a rewrite pipeline.
+
+That pipeline reimplements an operator in FlyDSL from its existing
 implementation (PORT, correctness only) and then optimizes the port with a
 nested forge-loop. This launcher adapts an Arena task to it:
 
@@ -19,12 +24,16 @@ nested forge-loop. This launcher adapts an Arena task to it:
      task's dual-path driver into it. The PORT prompt reports the source by
      basename only, so it has to be reachable from the rewrite workspace.
   3. Shell out to the rewrite CLI (streaming output).
-  4. Copy the ported FlyDSL kernel back onto the task's declared port target so
-     Arena's own compile/correctness/performance commands score it.
+  4. Copy the ported FlyDSL kernel back onto the task's single declared editable
+     source so Arena's own compile/correctness/performance commands score it.
 
-The task's ``rewrite:`` block supplies port_source, port_source_entry,
-port_target and logical_operator; see
-tasks/SIKL-task/gemm_a16w16_nt_n6144_k6144/config.yaml.
+Everything it reads from the task is a structured field, and all but one of them
+already existed: ``source_file_path[0]`` is where the port lands,
+``kernel_identity.logical_operator`` is the operator's identity, and
+``rewrite_source_file`` -- the one field this task type adds -- names the
+production implementation to port from. How the campaign searches (attempt
+count, coarse filter, budget, model) is agent configuration and is never read
+from a task. See tasks/SIKL-task/gemm_a16w16_nt_n6144_k6144/config.yaml.
 """
 
 from __future__ import annotations
@@ -45,6 +54,7 @@ from agents.forge.common import (
     _declared_editable_sources,
     _forge_max_hours,
     _init_git_workspace,
+    _logical_operator,
     _read_forge_result,
     _resolve_all_source_files,
     _resolve_gpu_arch,
@@ -54,9 +64,9 @@ from agents.forge.common import (
     run_forge_subprocess,
 )
 
-REWRITE_WORKSPACE_DIR = "forge_rewrite_ws"
-RESULT_FILE = "forge_rewrite_result.json"
-STATUS_FILE = "arena_forge_rewrite_status.json"
+REWRITE_WORKSPACE_DIR = "forge_operator2flydsl_ws"
+RESULT_FILE = "forge_operator2flydsl_result.json"
+STATUS_FILE = "arena_forge_operator2flydsl_status.json"
 
 # Everything KernelForge itself creates inside the scratch repository while it
 # runs. The agent-session guard rejects a session that leaves new non-ignored
@@ -74,33 +84,41 @@ forge_experiments/
 """
 
 
-def _rewrite_config(task_config: dict[str, Any], task_config_dir: str) -> dict[str, Any]:
-    """Read and validate the task's rewrite block."""
-    block = task_config.get("rewrite")
-    if not isinstance(block, dict):
+def _port_target(task_config: dict[str, Any], task_config_dir: str) -> str:
+    """The file the port lands in: the task's single declared editable source."""
+    declared = task_config.get("source_file_path") or []
+    if not isinstance(declared, list) or not declared:
         raise RuntimeError(
-            f"Task config has no 'rewrite' mapping: {task_config_dir}. A "
-            "rewrite_by_flydsl task must declare port_source, port_target and "
-            "logical_operator."
+            f"Task config declares no source_file_path: {task_config_dir}. An "
+            "operator2flydsl task makes exactly one file editable, and the port "
+            "lands in it."
         )
-    missing = [
-        key for key in ("port_source", "port_target", "logical_operator")
-        if not str(block.get(key) or "").strip()
-    ]
-    if missing:
-        raise RuntimeError(f"Task rewrite block is missing: {', '.join(missing)}")
-    return block
+    return Path(str(declared[0])).name
 
 
-def _resolve_port_source(workspace: str, port_source: str) -> Path:
-    """Locate the port source, absolute or workspace-relative."""
-    candidates = [Path(port_source), Path(workspace) / port_source]
+def _resolve_source_file(
+    workspace: str, task_config: dict[str, Any], task_config_dir: str
+) -> Path:
+    """Locate the production implementation the operator is ported from.
+
+    Task-relative first, which is where it belongs: an absolute path binds the
+    task to one image layout and defeats Arena's isolated-workspace contract.
+    Absolute paths still resolve while the SIKL sources come from the runtime
+    image, because nothing materializes them into the workspace yet.
+    """
+    declared = str(task_config.get("rewrite_source_file") or "").strip()
+    if not declared:
+        raise RuntimeError(
+            f"Task config declares no rewrite_source_file: {task_config_dir}. An "
+            "operator2flydsl task must name the production implementation it "
+            "ports from."
+        )
+    candidates = [Path(workspace) / declared, Path(declared)]
     for candidate in candidates:
         if candidate.is_file():
             return candidate.resolve()
     raise RuntimeError(
-        f"Port source not found: tried {[str(c) for c in candidates]}. It must be "
-        "the baseline implementation's entry file."
+        f"rewrite_source_file not found: tried {[str(c) for c in candidates]}"
     )
 
 
@@ -127,10 +145,10 @@ def _init_scratch_repository(root: Path) -> None:
     (root / ".gitignore").write_text(_SCRATCH_GITIGNORE)
     commands = (
         ["git", "init", "--quiet", "."],
-        ["git", "config", "user.email", "forge-rewrite@local"],
-        ["git", "config", "user.name", "forge-rewrite"],
+        ["git", "config", "user.email", "forge-operator2flydsl@local"],
+        ["git", "config", "user.name", "forge-operator2flydsl"],
         ["git", "add", "-A"],
-        ["git", "commit", "--quiet", "-m", "forge-rewrite: scratch workspace"],
+        ["git", "commit", "--quiet", "-m", "forge-operator2flydsl: scratch workspace"],
     )
     for command in commands:
         subprocess.run(command, cwd=root, capture_output=True, text=True, check=True)
@@ -151,7 +169,7 @@ def _prepare_rewrite_workspace(
     task_driver = Path(workspace) / "scripts" / "forge_driver.py"
     if not task_driver.is_file():
         raise RuntimeError(
-            f"A rewrite_by_flydsl task must ship a dual-path driver at {task_driver}"
+            f"An operator2flydsl task must ship a dual-path driver at {task_driver}"
         )
 
     root = Path(workspace) / REWRITE_WORKSPACE_DIR
@@ -164,7 +182,7 @@ def _prepare_rewrite_workspace(
             # The candidate must be the only importable module of that name:
             # KernelForge rejects a driver whose directory shadows the port.
             logger.warning(
-                "forge_rewrite: not copying %s into the rewrite workspace; it "
+                "forge_operator2flydsl: not copying %s into the rewrite workspace; it "
                 "would shadow the FlyDSL candidate", module.name,
             )
             continue
@@ -194,9 +212,9 @@ def _prepare_rewrite_workspace(
     _init_scratch_repository(root)
 
     driver_copy = root / task_driver.name
-    logger.info(f"forge_rewrite: rewrite workspace {root}")
-    logger.info(f"forge_rewrite:   port source  {source_copy}")
-    logger.info(f"forge_rewrite:   driver       {driver_copy}")
+    logger.info(f"forge_operator2flydsl: rewrite workspace {root}")
+    logger.info(f"forge_operator2flydsl:   port source  {source_copy}")
+    logger.info(f"forge_operator2flydsl:   driver       {driver_copy}")
     return root, source_copy, driver_copy
 
 
@@ -207,12 +225,20 @@ def _build_rewrite_command(
     source_copy: Path,
     driver_copy: Path,
     result_json: Path,
-    rewrite: dict[str, Any],
+    port_target: str,
+    source_entry: str,
+    logical_operator: str,
     agent_config: dict[str, Any],
     gpu_arch: str,
     gpu_type: str,
 ) -> list[str]:
     """Build argv without shell parsing so task metadata is forwarded exactly.
+
+    Every search control comes from the agent config, never from the task. How
+    many correctness-only attempts a campaign is worth and where its coarse
+    filter sits describe how this agent searches, not what the operator computes
+    or how Arena scores it; another agent implementing operator2flydsl may have
+    no notion of either.
 
     No ``--rewrite-kb`` / ``--no-rewrite-kb`` is passed, on purpose. Whether the
     recipe store is reachable is a property of the environment rather than of
@@ -222,13 +248,14 @@ def _build_rewrite_command(
     missing variable if it is not configured. Forwarding a flag from Arena's own
     config could only override that with a worse-informed answer -- as it did
     while it defaulted the store off in environments that had it available.
+
+    No ``--source-language`` either: KernelForge infers it from the source file,
+    and this launcher has no better information. Guessing it from the suffix
+    would be worse than silence, since these tasks port from a Python dispatch
+    rather than from a Triton kernel.
     """
-    port_target = Path(str(rewrite["port_target"])).name
-    source_entry = str(rewrite.get("port_source_entry") or "").strip()
-    snr_threshold = rewrite.get("snr_threshold", agent_config.get("snr_threshold", 30.0))
-    max_port_attempts = int(
-        rewrite.get("max_port_attempts", agent_config.get("max_port_attempts", 3))
-    )
+    snr_threshold = agent_config.get("snr_threshold", 30.0)
+    max_port_attempts = int(agent_config.get("max_port_attempts", 3))
 
     cmd = [
         forge_bin,
@@ -239,7 +266,7 @@ def _build_rewrite_command(
         str(driver_copy),
         "--no-prepare-driver",
         "--logical-op-name",
-        str(rewrite["logical_operator"]),
+        logical_operator,
         "--workspace",
         str(rewrite_root),
         "--experiments-dir",
@@ -267,12 +294,6 @@ def _build_rewrite_command(
     ]
     if source_entry:
         cmd.extend(["--source-entry", source_entry, "--target-functions", source_entry])
-    source_language = str(rewrite.get("port_source_language") or "").strip()
-    if source_language:
-        cmd.extend(["--source-language", source_language])
-    shapes = rewrite.get("shapes")
-    if shapes:
-        cmd.extend(["--shapes-json", json.dumps(shapes)])
     return cmd
 
 
@@ -324,7 +345,7 @@ def _write_rewrite_status(
     return summary
 
 
-@register_agent("forge_rewrite")
+@register_agent("forge_operator2flydsl")
 def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: str) -> str:
     """Run one KernelForge rewrite-by-flydsl campaign over an Arena task.
 
@@ -351,9 +372,16 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 
     with open(task_config_dir, "r") as f:
         task_config = yaml.safe_load(f) or {}
-    rewrite = _rewrite_config(task_config, task_config_dir)
-    port_target_name = Path(str(rewrite["port_target"])).name
-    port_source = _resolve_port_source(workspace, str(rewrite["port_source"]))
+    port_target_name = _port_target(task_config, task_config_dir)
+    port_source = _resolve_source_file(workspace, task_config, task_config_dir)
+    logical_operator = _logical_operator(task_config)
+    if not logical_operator:
+        raise RuntimeError(
+            f"Task config declares no kernel_identity.logical_operator: "
+            f"{task_config_dir}. It is the operator's KB identity and what "
+            "KernelForge derives the builder symbol from."
+        )
+    source_entry = str(task_config.get("rewrite_source_entry") or "").strip()
 
     editable_sources = _resolve_all_source_files(
         workspace,
@@ -383,18 +411,20 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         source_copy=source_copy,
         driver_copy=driver_copy,
         result_json=result_json,
-        rewrite=rewrite,
+        port_target=port_target_name,
+        source_entry=source_entry,
+        logical_operator=logical_operator,
         agent_config=agent_config,
         gpu_arch=gpu_arch,
         gpu_type=gpu_type,
     )
 
-    logger.info("Forge Rewrite Preflight")
+    logger.info("Forge operator2flydsl Preflight")
     logger.info(f"  forge bin:   {forge_bin}")
     logger.info(f"  port source: {source_copy} (from {port_source})")
     logger.info(f"  port target: {port_target_name}")
     logger.info(f"  driver:      {driver_copy}")
-    logger.info(f"  operator:    {rewrite['logical_operator']}")
+    logger.info(f"  operator:    {logical_operator}")
     logger.info(f"  gpu target:  {gpu_arch}")
     logger.info(f"  gpu type:    {gpu_type}")
     logger.info(f"  model:       {agent_config.get('model')}")
@@ -437,7 +467,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         # through the task's stub path and report it as an unimproved result,
         # which reads as "the port worked and was not faster".
         raise RuntimeError(
-            "forge_rewrite produced no FlyDSL port "
+            "forge_operator2flydsl produced no FlyDSL port "
             f"(port_ok={status['port_ok']}, failure_class="
             f"{status['failure_class'] or '<none>'}, detail="
             f"{status['failure_detail'] or '<none>'})"
@@ -445,9 +475,9 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 
     destination = Path(workspace) / port_target_name
     shutil.copy2(ported_kernel, destination)
-    logger.info(f"forge_rewrite: installed ported kernel -> {destination}")
+    logger.info(f"forge_operator2flydsl: installed ported kernel -> {destination}")
     logger.info(
-        "forge_rewrite result: source_ms=%s flydsl_best_ms=%s speedup=%s",
+        "forge_operator2flydsl result: source_ms=%s flydsl_best_ms=%s speedup=%s",
         status["source_ms"],
         status["flydsl_best_ms"],
         status["speedup"],

@@ -1,7 +1,7 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 """Shared machinery for the KernelForge-backed Arena agents.
 
-``forge`` drives ``kernel-agents forge-loop`` and ``forge_rewrite`` drives
+``forge`` drives ``kernel-agents forge-loop`` and ``forge_operator2flydsl`` drives
 ``kernel-agents forge-rewrite-by-flydsl``. Both resolve the same GPU identity,
 prepare the same kind of git workspace, stream and hard-kill the same kind of
 subprocess tree, and read the same ``__FORGE_RESULT__`` contract, so that part
@@ -32,13 +32,6 @@ _GPU_TYPE_ALIASES = {
     # aliases before they become distinct, non-interoperable recipe identities.
     "mi300": "mi300x",
     "mi325": "mi325x",
-}
-
-# Task types whose name does not encode the FlyDSL/HIP/Triton target after a
-# '2'. Without an entry the whole task_type string would be used as the fellow
-# backend, producing a fellow KernelForge does not define.
-_EXPLICIT_BACKEND = {
-    "rewrite_by_flydsl": "flydsl",
 }
 
 
@@ -344,16 +337,15 @@ def _normalize_fellow_backend(value: Any) -> str:
 def _infer_backend(task_config: dict[str, Any]) -> str:
     """Resolve the configured backend name that Arena forwards to KernelForge.
 
-    Three task families need different signals:
+    Two task families need different signals:
 
       * Repository / image_kernel tasks ship a whole source tree, not a
         "<src>2<dst>" pair, so their explicit ``kernel_kind`` wins when present;
         otherwise ``repository_language`` describes the editable source language.
-      * Task types that name their target explicitly (``rewrite_by_flydsl``) map
-        through ``_EXPLICIT_BACKEND``.
       * Snippet tasks are "<source>2<target>" (triton2triton, cuda2hip,
-        torch2hip, flydsl2flydsl, instruction2triton, ...); the optimized kernel
-        is in the TARGET language, i.e. the part after the last '2'.
+        torch2hip, flydsl2flydsl, operator2flydsl, instruction2triton, ...); the
+        optimized kernel is in the TARGET language, i.e. the part after the last
+        '2'.
 
     Reports what the task declares, nothing more: reconciling that against what
     the installed KernelForge serves is ``_resolve_kernel_backend``'s job, and it
@@ -382,10 +374,6 @@ def _infer_backend(task_config: dict[str, Any]) -> str:
             f"Task type {task_type!r} requires kernel_identity.kernel_kind, "
             "kernel_kind, or repository_language to select a Forge fellow"
         )
-
-    explicit = _EXPLICIT_BACKEND.get(task_type)
-    if explicit:
-        return explicit
 
     target = task_type.rsplit("2", 1)[-1] if "2" in task_type else task_type
     if not target:
@@ -710,7 +698,7 @@ performance_report.json
 perf_report.json
 forge_experiments/
 forge_driver.py
-forge_rewrite_ws/
+forge_operator2flydsl_ws/
 .forge_rewrite/
 forge-lanes-*/
 .pytest_cache/
