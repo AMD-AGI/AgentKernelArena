@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import ast
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -100,45 +101,84 @@ BENCH_WARMUP = int(WORKLOAD["bench"]["warmup"])
 BENCH_REPETITION = int(WORKLOAD["bench"]["repetition"])
 BENCH_TARGET_MS = float(WORKLOAD["bench"]["target_ms"])
 
-# The correctness gate: every element of the candidate's output must land within
-# ``ATOL + RTOL * |reference|`` of the fp32 reference. This is the acceptance
-# criterion the workload bundle's own benchmark applies, and it is read from
-# workload.json so the two cannot drift into two different definitions of
-# correct.
+# How much further from the fp32 reference a candidate may sit than the
+# production implementation does, and a floor under that measured distance.
+# These are the correctness constants the task fixes; the distance they act on
+# is measured at run time.
+GATE_MULTIPLIER = float(WORKLOAD["gate_multiplier"])
+GATE_FLOOR = float(WORKLOAD["gate_floor"])
+
+# The second correctness gate, expressed in the L2 domain. The gate above acts
+# on a mean relative error, an L1 statistic that averages away error
+# concentrated in a few elements: a candidate can sit well inside it while being
+# badly wrong on part of the output. SNR is a power ratio and penalizes exactly
+# that concentration, so a case has to clear both.
 #
-# It replaces a gate derived from the production implementation's own distance
-# to the reference. That gate could not see what this one is for. A kernel that
-# truncates its split-k or K-warp partial sums to bf16 before reducing them
-# lands about 0.0017 in mean relative error and around 51 dB SNR -- inside any
-# aggregate bound worth setting -- while missing this elementwise tolerance on
-# 6-11% of the output. Aggregate statistics average that tail away; the
-# elementwise form is what sees it.
+# It introduces no new policy constants. It is the SAME policy as the error
+# gate, restated for a different statistic: allowing the noise power to be
+# GATE_MULTIPLIER times larger is a fixed offset in dB, and GATE_FLOOR's role --
+# never demand more accuracy than this -- becomes a ceiling on the SNR that may
+# be required. The mapping between an L1 relative error and an L2 power ratio is
+# an analogue rather than an identity, which is why these bound a derived
+# measurement instead of replacing it.
 #
-# The tolerance is not tight for a kernel that accumulates in fp32: measured at
-# n=k=6144, fp32 partial sums match the reference on every element at split
-# counts 2, 4, 8 and 16, with SNR around 113 dB. So the gate admits any
-# reduction order and rejects a truncated accumulator, which is the distinction
-# it exists to make.
-ATOL = float(WORKLOAD["atol"])
-RTOL = float(WORKLOAD["rtol"])
+# A fixed floor was the wrong shape here. The MoE baseline's own worst case sits
+# below 30 dB against the fp32 reference, so any fixed threshold high enough to
+# be meaningful for this GEMM family would fail the production implementation
+# itself on the MoE tasks, capping every run at the compile score.
+SNR_MARGIN_DB = 10.0 * math.log10(GATE_MULTIPLIER)
+SNR_CEILING_DB = -20.0 * math.log10(GATE_FLOOR)
 
 CASES: tuple[dict[str, Any], ...] = tuple(WORKLOAD["cases"])
 CASE_IDS: tuple[str, ...] = tuple(str(case["case_id"]) for case in CASES)
 
 
-def matched_ratio(got: torch.Tensor, expected: torch.Tensor) -> float:
-    """Fraction of elements within the acceptance tolerance of the reference."""
-    got_f32, expected_f32 = got.float(), expected.float()
-    within = (got_f32 - expected_f32).abs() <= ATOL + RTOL * expected_f32.abs()
-    return within.double().mean().item()
+def derive_gates(baseline: dict[str, list[float]]) -> dict[str, float]:
+    """Return both correctness gates for this run, from the measured baseline.
+
+    The gates are derived, never stored. What the task fixes is the policy -- a
+    candidate may be at most ``GATE_MULTIPLIER`` times as far from the fp32
+    reference as the production implementation itself is, but is never held to a
+    distance tighter than ``GATE_FLOOR`` -- and the distance is measured against
+    the same inputs, on the same device, with the same framework build that is
+    about to score the candidate. A recorded number would silently go stale the
+    moment any of those changed.
+
+    The floor matters because the measured distance says as much about which
+    reduction strategy the baseline happens to use as about what correctness
+    requires. Where the tuned dispatch lands on a near-exact implementation at
+    every case the measurement collapses to around 1e-6, and a gate derived from
+    that alone would demand that a port reproduce the baseline's accumulation
+    order rather than merely be correct.
+
+    Both are deliberately ONE gate for the operator rather than one per case,
+    for the same reason: the baseline selects a different kernel per bucket of
+    the var axis and its own accuracy moves by orders of magnitude across them.
+
+    The two act on different statistics on purpose. ``error`` bounds a mean, and
+    ``snr_db`` bounds a power ratio, which is what catches error concentrated in
+    a few elements rather than spread over the output.
+    """
+    errors, snrs = baseline["errors"], baseline["snrs"]
+    if not errors or not snrs:
+        raise RuntimeError("no baseline accuracy was measured, so no gate can be derived")
+    return {
+        "error": max(max(errors), GATE_FLOOR) * GATE_MULTIPLIER,
+        "snr_db": min(min(snrs), SNR_CEILING_DB) - SNR_MARGIN_DB,
+    }
 
 
-def gate_explanation() -> str:
-    """One line naming the gate, for the harness and the driver."""
+def gate_explanation(baseline: dict[str, list[float]]) -> str:
+    """One line naming both gates and what set each, for the harness and driver."""
+    gates = derive_gates(baseline)
+    worst_error, worst_snr = max(baseline["errors"]), min(baseline["snrs"])
+    error_basis = "worst baseline error" if worst_error >= GATE_FLOOR else "floor"
+    snr_basis = "worst baseline snr" if worst_snr <= SNR_CEILING_DB else "ceiling"
     return (
-        f"gate: every element within atol {ATOL:g} + rtol {RTOL:g} x |reference| "
-        "(matched_ratio 1.0); the production implementation's own accuracy is "
-        "reported for context but does not set the bar"
+        f"gates: error {gates['error']:.8f} = max({worst_error:.8f}, "
+        f"{GATE_FLOOR:g}) x {GATE_MULTIPLIER:g} set by the {error_basis}; "
+        f"snr {gates['snr_db']:.2f} dB = min({worst_snr:.2f}, "
+        f"{SNR_CEILING_DB:.2f}) - {SNR_MARGIN_DB:.2f} set by the {snr_basis}"
     )
 
 

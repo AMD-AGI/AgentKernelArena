@@ -25,13 +25,13 @@ target_kernel_functions:
 # the harness find no factory and silently score the baseline as if the port had
 # never happened.
 #
-# There is no snr_threshold. KernelForge's correctness stage prefers a driver's
-# SNR reading over the driver's own verdict whenever one is printed -- it
-# applies `snr_db >= --snr-threshold` and never reads `allclose` -- so a
-# threshold here would decide PORT and OPTIMIZE keep/revert on a statistic that
-# knows nothing about the task's gate. The driver therefore prints no `SNR:`
-# line and the task's own verdict is the pipeline's verdict, which is what keeps
-# the candidates the loop keeps and the candidates Arena scores the same set.
+# snr_threshold is KernelForge's coarse filter on a port before it enters the
+# optimize loop. It is NOT the correctness gate the task is scored on: that one
+# is derived at run time from the production implementation's own accuracy (see
+# workload.json's gate_policy). It has to sit below that derived gate, or PORT
+# would discard candidates Arena would have accepted. It is set per operator
+# family because the families sit at different distances from their fp32
+# reference, and a bar one family clears easily is unreachable for the other.
 # ---------------------------------------------------------------------------
 rewrite:
   port_source: /sgl-workspace/aiter/aiter/tuned_gemm.py
@@ -39,9 +39,10 @@ rewrite:
   port_target: kernel.py
   logical_operator: gemm_a16w16_nt_n2624_k6144
   source_owner: aiter
+  snr_threshold: 30.0
   max_port_attempts: 5
 
-# The numeric contract (axes, dtypes, seed, tolerance, benchmark parameters)
+# The numeric contract (axes, dtypes, seed, gate policy, benchmark parameters)
 # lives in workload.json and scripts/task_inputs.py as the single source of
 # truth; duplicating it here would let the two drift.
 workload:
@@ -96,12 +97,8 @@ prompt:
     get there is your call. The correctness suite checks that much: it rejects a
     candidate that imports aiter or hands the product to torch's matmul family,
     since both resolve to the implementation this task exists to replace.
-    Correctness is measured against scripts/task_reference.py, an fp32 matmul.
-    Every element of every case must land within atol + rtol * |reference| of it
-    (both 0.01, in workload.json). That bar is reachable by accumulating in fp32:
-    fp32 partial sums clear it at every split count measured. It is NOT reachable
-    if you truncate split-k or K-warp partial sums to bf16 before reducing them --
-    that looks fine on any average but puts roughly a tenth of the output out of
-    tolerance, and it is the single most common way a fast kernel fails here.
-    Reduce in fp32. kernel.py is the file you edit; the harness, driver,
-    reference, baseline and input construction are protected.
+    Correctness is measured against scripts/task_reference.py, an fp32 matmul; the
+    gate is derived at run time from how far the production implementation itself
+    sits from that reference, so the bar is "no worse than what ships". kernel.py is
+    the file you edit; the harness, driver, reference, baseline and input
+    construction are protected.

@@ -126,17 +126,12 @@ def compare_cases(
         if got.shape != expected.shape:
             record.update(
                 shape_mismatch=(tuple(got.shape), tuple(expected.shape)),
-                matched_ratio=0.0,
                 error=float("inf"),
                 snr=float("-inf"),
             )
         else:
             record.update(
                 shape_mismatch=None,
-                # Reported, not gated: the workload bundle's acceptance run
-                # scores this family on a routing statistic rather than on this
-                # one, so recording it is what lets the two be compared at all.
-                matched_ratio=task_inputs.matched_ratio(got, expected),
                 error=task_inputs.relative_error(got, expected),
                 snr=snr_db(expected, got),
                 finite=bool(torch.isfinite(got.float()).all().item()),

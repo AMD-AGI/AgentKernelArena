@@ -37,11 +37,6 @@ CORRECTNESS GATE
     that fuse the output quantization into their epilogue sit an order of
     magnitude further from the reference than the others.
 
-    The elementwise `matched_ratio` the workload bundle applies to the GEMM
-    family is measured and printed for every case here too, but it does not
-    gate: the bundle's acceptance run scores this family on a routing statistic
-    instead, and that statistic is not reproducible from what the bundle ships.
-
 THE INTERFACE THE PORT MUST EXPOSE
     The FlyDSL candidate module must define the builder symbol named by
     KERNELFORGE_REWRITE_BUILDER_SYMBOL:
@@ -88,8 +83,8 @@ WHAT THE CORRECTNESS SUITE CHECKS BEFORE SCORING
 
 MODES
     (no flag)          correctness: candidate vs task_reference over every case,
-                       prints one `allclose:` verdict and no `SNR:` line (see
-                       run_correctness for why)
+                       prints one `SNR: <db> dB` (the worst case) and one
+                       `allclose:` verdict
     --ref-bench-mode   times the baseline (task_baseline = aiter.fused_moe)
     --bench-mode       times the FlyDSL candidate
     --profile-run      builds and warms the candidate, prints no timing
@@ -215,20 +210,16 @@ def _report_timings(samples: list[dict]) -> None:
 def run_correctness(inputs: dict) -> int:
     """Compare the candidate against the reference on every scored case.
 
-    Exactly one `allclose:` line is printed and no `SNR:` line, on purpose.
-    KernelForge's correctness stage prefers an SNR reading over the driver's own
-    verdict whenever one is present -- it applies `snr_db >= --snr-threshold`
-    and never looks at `allclose` -- so printing an SNR here would hand the
-    keep/revert decision to a threshold that knows nothing about this task's
-    gate. Withholding it makes the task's verdict the pipeline's verdict, which
-    is the only way PORT and OPTIMIZE keep candidates Arena will also score.
-    The per-case detail, SNR included, stays in `# case <id>:` comments, which
-    is also how the contract learns which cases this path covered.
+    Only one `SNR:` line and one `allclose:` line are printed: the contract reads
+    the first match of each, so the aggregate has to be unambiguous. The
+    per-case detail is emitted as `# case <id>:` comments, which is also how the
+    contract learns which cases this path covered.
     """
     calls = _candidate_calls(inputs)
     expected, baseline, gates = task_measure.reference_and_gate(inputs)
     print(f"# {task_inputs.gate_explanation(baseline)}")
 
+    worst_snr = float("inf")
     passed = True
     for record in task_measure.compare_cases(calls, expected):
         print(f"# case {record['case_id']}:")
@@ -236,11 +227,12 @@ def run_correctness(inputs: dict) -> int:
             got_shape, expected_shape = record["shape_mismatch"]
             print(f"#   shape mismatch: candidate {got_shape} vs reference {expected_shape}")
         else:
-            print(f"#   matched_ratio {record['matched_ratio']:.6f}")
             print(f"#   mean relative error {record['error']:.8f}")
-            print(f"#   snr_db {record['snr']:.2f}")
+            print(f"#   snr {record['snr']:.2f} dB")
+        worst_snr = min(worst_snr, record["snr"])
         passed = passed and task_measure.passes(record, gates)
 
+    print(f"SNR: {worst_snr:.2f} dB")
     print(f"allclose: {passed}")
     return 0 if passed else 1
 
