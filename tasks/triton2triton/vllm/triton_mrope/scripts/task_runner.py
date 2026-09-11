@@ -20,6 +20,33 @@ TEST_SHAPES = [
     (256, 16, 16, 64, 64, [16, 8, 8]),
     (16, 8, 2, 128, 64, [16, 8, 8]),
 ]
+
+# Correctness-only cases exercise branches and padding outside the fixed
+# performance matrix. Each section split sums to rotary_dim // 2.
+CORRECTNESS_CASES = [
+    {
+        "shape": shape,
+        "mrope_interleaved": False,
+        "dtype": "float16",
+    }
+    for shape in TEST_SHAPES
+] + [
+    {
+        "shape": (17, 28, 3, 128, 128, [24, 20, 20]),
+        "mrope_interleaved": True,
+        "dtype": "float16",
+    },
+    {
+        "shape": (1, 7, 5, 96, 96, [1, 23, 24]),
+        "mrope_interleaved": False,
+        "dtype": "bfloat16",
+    },
+    {
+        "shape": (9, 3, 5, 64, 32, [14, 1, 1]),
+        "mrope_interleaved": False,
+        "dtype": "float16",
+    },
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -48,7 +75,16 @@ def load_module():
     return mod
 
 
-def reference_mrope(q, k, cos, sin, mrope_section, head_size, rotary_dim):
+def reference_mrope(
+    q,
+    k,
+    cos,
+    sin,
+    mrope_section,
+    head_size,
+    rotary_dim,
+    mrope_interleaved,
+):
     """CPU/PyTorch reference for MRoPE.
 
     q: [num_tokens, num_q_heads * head_size]
@@ -64,21 +100,25 @@ def reference_mrope(q, k, cos, sin, mrope_section, head_size, rotary_dim):
     n_kv_head = k.shape[1] // head_size
     half_rd = rotary_dim // 2
 
-    # Build combined cos/sin from sections (non-interleaved)
     t_sec, h_sec, w_sec = mrope_section
-    # cos/sin shape: [3, num_tokens, rotary_dim // 2]
-    # Section t: indices [0, t_sec), from cos[0]
-    # Section h: indices [t_sec, t_sec+h_sec), from cos[1]
-    # Section w: indices [t_sec+h_sec, half_rd), from cos[2]
-    combined_cos = torch.zeros(num_tokens, half_rd, device=q.device, dtype=cos.dtype)
-    combined_sin = torch.zeros(num_tokens, half_rd, device=q.device, dtype=sin.dtype)
+    offsets = torch.arange(half_rd, device=q.device)
+    if mrope_interleaved:
+        h_mask = ((offsets % 3) == 1) & (offsets <= 3 * h_sec)
+        w_mask = ((offsets % 3) == 2) & (offsets <= 3 * w_sec)
+        t_mask = ~(h_mask | w_mask)
+    else:
+        t_end = t_sec
+        h_end = t_end + h_sec
+        t_mask = offsets < t_end
+        h_mask = (t_end <= offsets) & (offsets < h_end)
+        w_mask = h_end <= offsets
 
-    combined_cos[:, :t_sec] = cos[0, :, :t_sec]
-    combined_sin[:, :t_sec] = sin[0, :, :t_sec]
-    combined_cos[:, t_sec:t_sec + h_sec] = cos[1, :, t_sec:t_sec + h_sec]
-    combined_sin[:, t_sec:t_sec + h_sec] = sin[1, :, t_sec:t_sec + h_sec]
-    combined_cos[:, t_sec + h_sec:half_rd] = cos[2, :, t_sec + h_sec:half_rd]
-    combined_sin[:, t_sec + h_sec:half_rd] = sin[2, :, t_sec + h_sec:half_rd]
+    combined_cos = torch.where(
+        t_mask, cos[0], torch.where(h_mask, cos[1], cos[2])
+    )
+    combined_sin = torch.where(
+        t_mask, sin[0], torch.where(h_mask, sin[1], sin[2])
+    )
 
     # Apply rotary embedding to q
     q_out = q.clone()
@@ -127,9 +167,17 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    dtype = torch.float16
-
-    for i, (num_tokens, n_qh, n_kh, head_size, rotary_dim, mrope_section) in enumerate(TEST_SHAPES):
+    for i, case in enumerate(CORRECTNESS_CASES):
+        (
+            num_tokens,
+            n_qh,
+            n_kh,
+            head_size,
+            rotary_dim,
+            mrope_section,
+        ) = case["shape"]
+        mrope_interleaved = case["mrope_interleaved"]
+        dtype = getattr(torch, case["dtype"])
         try:
             torch.manual_seed(42 + i)
             q = torch.randn(num_tokens, n_qh * head_size, device=device, dtype=dtype)
@@ -146,13 +194,20 @@ def run_correctness():
             k_triton = k.clone()
             mod.triton_mrope(
                 q_triton, k_triton, cos, sin, mrope_section,
-                head_size, rotary_dim, False
+                head_size, rotary_dim, mrope_interleaved
             )
             torch.cuda.synchronize()
 
             # Reference
             q_expected, k_expected = reference_mrope(
-                q_ref, k_ref, cos, sin, mrope_section, head_size, rotary_dim
+                q_ref,
+                k_ref,
+                cos,
+                sin,
+                mrope_section,
+                head_size,
+                rotary_dim,
+                mrope_interleaved,
             )
 
             if not torch.allclose(q_triton, q_expected, atol=1e-2, rtol=1e-2):
@@ -277,7 +332,11 @@ def main():
 
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(CORRECTNESS_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
