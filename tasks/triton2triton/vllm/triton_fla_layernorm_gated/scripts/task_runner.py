@@ -20,6 +20,19 @@ TEST_CASES = [
     (160, 80, "swish", True, False, False),
     (64, 48, "sigmoid", False, False, True),
 ]
+
+# Keep the scored performance workload above unchanged.  Correctness also covers
+# tail tiles, a wider range of feature sizes, supported low-precision dtypes,
+# non-default eps values, and the SiLU spelling accepted by the public wrapper.
+# (T, D, activation, is_rms_norm, has_weight, has_bias, dtype, eps)
+CORRECTNESS_TEST_CASES = [
+    (*case, "float32", 1e-5) for case in TEST_CASES
+] + [
+    (1, 1, "silu", False, True, True, "float16", 1e-6),
+    (7, 31, "sigmoid", True, False, False, "bfloat16", 1e-4),
+    (9, 129, "swish", False, False, True, "float16", 1e-3),
+    (33, 1025, "sigmoid", True, True, False, "bfloat16", 1e-2),
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -53,6 +66,7 @@ def reference(x, g, weight=None, bias=None, activation='swish', eps=1e-5, is_rms
     import torch
     x_f = x.float().cpu()
     g_f = g.float().cpu()
+    mean = None
     if is_rms_norm:
         var = (x_f * x_f).mean(dim=-1, keepdim=True)
         rstd = 1.0 / torch.sqrt(var + eps)
@@ -72,18 +86,26 @@ def reference(x, g, weight=None, bias=None, activation='swish', eps=1e-5, is_rms
         y = x_hat * torch.sigmoid(g_f)
     else:
         y = x_hat
-    return y
+    mean = mean.squeeze(-1) if mean is not None else None
+    return y.to(x.dtype), mean, rstd.squeeze(-1)
 
 
-def gen_inputs(seed, case_idx, device):
+def gen_inputs(seed, test_case, device):
     import torch
     torch.manual_seed(seed)
-    T, D, activation, is_rms_norm, has_weight, has_bias = TEST_CASES[case_idx]
-    x = torch.randn(T, D, device=device, dtype=torch.float32)
-    g = torch.randn(T, D, device=device, dtype=torch.float32)
-    w = torch.randn(D, device=device, dtype=torch.float32) if has_weight else None
-    b = torch.randn(D, device=device, dtype=torch.float32) if has_bias else None
-    kwargs = {"weight": w, "bias": b, "activation": activation, "is_rms_norm": is_rms_norm}
+    T, D, activation, is_rms_norm, has_weight, has_bias, dtype_name, eps = test_case
+    dtype = getattr(torch, dtype_name)
+    x = torch.randn(T, D, device=device, dtype=dtype)
+    g = torch.randn(T, D, device=device, dtype=dtype)
+    w = torch.randn(D, device=device, dtype=dtype) if has_weight else None
+    b = torch.randn(D, device=device, dtype=dtype) if has_bias else None
+    kwargs = {
+        "weight": w,
+        "bias": b,
+        "activation": activation,
+        "eps": eps,
+        "is_rms_norm": is_rms_norm,
+    }
     return (x, g), kwargs
 
 
@@ -109,23 +131,49 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    for i, test_case in enumerate(TEST_CASES):
+    for i, test_case in enumerate(CORRECTNESS_TEST_CASES):
         try:
-            args, kwargs = gen_inputs(42 + i, i, device)
-            args_cpu = tuple(a.float().cpu() if isinstance(a, torch.Tensor) else a for a in args)
+            args, kwargs = gen_inputs(42 + i, test_case, device)
+            args_cpu = tuple(a.cpu() if isinstance(a, torch.Tensor) else a for a in args)
 
             result_tuple = mod.layer_norm_gated_fwd(*args, **kwargs)
-            result = result_tuple[0] if isinstance(result_tuple, tuple) else result_tuple
-            ref = reference(
+            if not isinstance(result_tuple, tuple) or len(result_tuple) != 3:
+                return False, f"Case {i+1} {test_case}: expected (y, mean, rstd) tuple"
+            result, mean, rstd = result_tuple
+            ref_result, ref_mean, ref_rstd = reference(
                 args_cpu[0], args_cpu[1],
                 weight=kwargs["weight"], bias=kwargs["bias"],
-                activation=kwargs["activation"], is_rms_norm=kwargs["is_rms_norm"]
+                activation=kwargs["activation"], eps=kwargs["eps"],
+                is_rms_norm=kwargs["is_rms_norm"]
             )
-            r_cpu = result.float().cpu()
-            ref_f = ref.float()
-            if not torch.allclose(r_cpu, ref_f, atol=1e-3, rtol=1e-3):
-                max_diff = (r_cpu - ref_f).abs().max().item()
-                return False, f"Case {i+1} {test_case}: max diff = {max_diff:.6f}"
+            for name, actual, expected, expected_dtype in (
+                ("y", result, ref_result, args[0].dtype),
+                ("mean", mean, ref_mean, torch.float32),
+                ("rstd", rstd, ref_rstd, torch.float32),
+            ):
+                if expected is None:
+                    if actual is not None:
+                        return False, f"Case {i+1} {test_case}: expected {name}=None"
+                    continue
+                if actual is None:
+                    return False, f"Case {i+1} {test_case}: {name} is None"
+                if actual.dtype != expected_dtype:
+                    return False, (
+                        f"Case {i+1} {test_case}: {name} dtype "
+                        f"{actual.dtype} != {expected_dtype}"
+                    )
+                actual_f = actual.float().cpu()
+                expected_f = expected.float()
+                if actual_f.shape != expected_f.shape:
+                    return False, (
+                        f"Case {i+1} {test_case}: {name} shape "
+                        f"{tuple(actual_f.shape)} != {tuple(expected_f.shape)}"
+                    )
+                if not torch.allclose(actual_f, expected_f, atol=1e-3, rtol=1e-3):
+                    max_diff = (actual_f - expected_f).abs().max().item()
+                    return False, (
+                        f"Case {i+1} {test_case}: {name} max diff = {max_diff:.6f}"
+                    )
 
             torch.cuda.synchronize()
         except Exception as e:
@@ -146,7 +194,10 @@ def run_performance():
     for test_idx, test_case in enumerate(TEST_CASES):
         try:
             T, D, activation, is_rms_norm, has_weight, has_bias = test_case
-            args, kwargs = gen_inputs(42 + test_idx, test_idx, device)
+            args, kwargs = gen_inputs(
+                42 + test_idx, (*test_case, "float32", 1e-5), device
+            )
+            kwargs.pop("eps")  # Preserve the original default-eps benchmark call.
 
             def _bench_fn():
                 mod.layer_norm_gated_fwd(*args, **kwargs)
@@ -205,7 +256,11 @@ def main():
 
     elif args_parsed.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_CASES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(CORRECTNESS_TEST_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
