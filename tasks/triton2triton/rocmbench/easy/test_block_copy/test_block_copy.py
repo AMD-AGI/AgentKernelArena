@@ -92,6 +92,10 @@ def set_seed(seed: int = 42) -> None:
                        ("float32", "float32"), ("bfloat16", "bfloat16"))
     for n in (64, 128, 256, 512, 1024)
     for padding in (None, "zero", "nan")  #
+] + [
+    (("float32", "float32"), 63, None),
+    (("int32", "int32"), 65, "zero"),
+    (("float16", "float16"), 127, "nan"),
 ])
 def test_block_copy(dtypes_str, n, padding_option, request, device='cuda'):
     src_dtype_str = dtypes_str[0]
