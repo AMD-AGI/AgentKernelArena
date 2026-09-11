@@ -64,10 +64,8 @@ def copy_and_expand_eagle_inputs_kernel(
     out_idx = output_start + j
 
     in_idx = query_start_loc + input_offset + j
-    in_idx_clamped = tl.minimum(in_idx, total_input_tokens - 1)
-
     token_ids = tl.load(
-        target_token_ids_ptr + in_idx_clamped, mask=is_valid_region & in_bounds, other=0
+        target_token_ids_ptr + in_idx, mask=is_valid_region, other=0
     )
 
     start_pos = tl.load(target_positions_ptr + query_start_loc)
@@ -82,9 +80,6 @@ def copy_and_expand_eagle_inputs_kernel(
     positions = start_pos + j
     positions = tl.where(is_rejected_region, 0, positions)
 
-    is_rejected_out = is_rejected_region & in_bounds
-    is_masked_out = is_parallel_draft_region & in_bounds
-
     is_new_token_region = (j >= num_valid_tokens) & (
         j < num_valid_tokens + num_padding_slots_per_request
     )
@@ -93,21 +88,60 @@ def copy_and_expand_eagle_inputs_kernel(
         request_idx * num_padding_slots_per_request + new_token_local_idx
     )
 
-    if shift_input_ids:
-        num_input_tokens_this_request = next_query_start_loc - query_start_loc
-        is_input_region = j < num_input_tokens_this_request
-        src_idx = query_start_loc + j
-        tl.store(out_hidden_state_mapping_ptr + src_idx, out_idx, mask=is_input_region)
+    num_input_tokens_this_request = next_query_start_loc - query_start_loc
+    is_input_region = j < num_input_tokens_this_request
+    src_idx = query_start_loc + j
+    hidden_state_idx = tl.where(shift_input_ids, out_idx, 0)
+    tl.store(
+        out_hidden_state_mapping_ptr + src_idx,
+        hidden_state_idx,
+        mask=is_input_region,
+    )
 
     tl.store(out_input_ids_ptr + out_idx, token_ids, mask=in_bounds)
     tl.store(out_positions_ptr + out_idx, positions, mask=in_bounds)
-    tl.store(out_is_rejected_token_mask_ptr + out_idx, is_rejected_out, mask=in_bounds)
-    tl.store(out_is_masked_token_mask_ptr + out_idx, is_masked_out, mask=in_bounds)
+    tl.store(
+        out_is_rejected_token_mask_ptr + out_idx,
+        is_rejected_region,
+        mask=in_bounds,
+    )
+    tl.store(
+        out_is_masked_token_mask_ptr + out_idx,
+        is_parallel_draft_region,
+        mask=in_bounds,
+    )
     tl.store(
         out_new_token_indices_ptr + new_token_out_idx,
         out_idx,
-        mask=is_new_token_region & in_bounds,
+        mask=is_new_token_region,
     )
+
+    # The wrapper reserves ten extra elements per request.  Initialize that
+    # otherwise-unused tail here so all output allocations can be allocation-
+    # only and the graph needs no standalone memset kernels.  Shifting compacts
+    # each request by one element, adding that element to the zero tail.
+    num_requests = tl.num_programs(axis=0)
+    if shift_input_ids:
+        output_data_end = total_input_tokens + num_requests * (
+            num_padding_slots_per_request - 1
+        )
+        tail_idx = output_data_end + request_idx * 11 + j
+        tail_mask = (token_batch_idx == 0) & (j < 11)
+        tl.store(out_input_ids_ptr + tail_idx, 0, mask=tail_mask)
+        tl.store(out_positions_ptr + tail_idx, 0, mask=tail_mask)
+        tl.store(out_is_rejected_token_mask_ptr + tail_idx, 0, mask=tail_mask)
+        tl.store(out_is_masked_token_mask_ptr + tail_idx, 0, mask=tail_mask)
+    else:
+        output_data_end = (
+            total_input_tokens
+            + num_requests * num_padding_slots_per_request
+        )
+        tail_idx = output_data_end + request_idx * 10 + j
+        tail_mask = (token_batch_idx == 0) & (j < 10)
+        tl.store(out_input_ids_ptr + tail_idx, 0, mask=tail_mask)
+        tl.store(out_positions_ptr + tail_idx, 0, mask=tail_mask)
+        tl.store(out_is_rejected_token_mask_ptr + tail_idx, 0, mask=tail_mask)
+        tl.store(out_is_masked_token_mask_ptr + tail_idx, 0, mask=tail_mask)
 
 
 def copy_and_expand_eagle_inputs(
@@ -144,16 +178,18 @@ def copy_and_expand_eagle_inputs(
     total_out = total_input + num_reqs * (num_padding_slots_per_request + 10)
 
     device = target_token_ids.device
-    out_input_ids = torch.zeros(total_out, dtype=torch.int32, device=device)
-    out_positions = torch.zeros(total_out, dtype=torch.int32, device=device)
-    out_is_rejected = torch.zeros(total_out, dtype=torch.bool, device=device)
-    out_is_masked = torch.zeros(total_out, dtype=torch.bool, device=device)
-    out_new_token_indices = torch.zeros(
+    out_input_ids = torch.empty(total_out, dtype=torch.int32, device=device)
+    out_positions = torch.empty(total_out, dtype=torch.int32, device=device)
+    out_is_rejected = torch.empty(total_out, dtype=torch.bool, device=device)
+    out_is_masked = torch.empty(total_out, dtype=torch.bool, device=device)
+    out_new_token_indices = torch.empty(
         num_padding_slots_per_request * num_reqs, dtype=torch.int32, device=device
     )
-    out_hidden_state_mapping = torch.zeros(total_input, dtype=torch.int32, device=device)
+    out_hidden_state_mapping = torch.empty(
+        total_input, dtype=torch.int32, device=device
+    )
 
-    BLOCK_SIZE_TOKENS = 128
+    BLOCK_SIZE_TOKENS = 32
     num_token_blocks = (max_output_tokens_per_req + BLOCK_SIZE_TOKENS - 1) // BLOCK_SIZE_TOKENS
     grid = (num_reqs, num_token_blocks)
 
@@ -175,6 +211,7 @@ def copy_and_expand_eagle_inputs(
         num_padding_slots_per_request,
         shift_input_ids,
         BLOCK_SIZE_TOKENS=BLOCK_SIZE_TOKENS,
+        num_warps=1,
     )
     return (out_input_ids, out_positions, out_is_rejected, out_is_masked,
             out_new_token_indices, out_hidden_state_mapping)
