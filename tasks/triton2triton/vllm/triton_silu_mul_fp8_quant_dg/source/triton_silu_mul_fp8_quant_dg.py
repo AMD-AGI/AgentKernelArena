@@ -46,46 +46,49 @@ def _silu_mul_fp8_quant_deep_gemm(
     Input layout: [..., 2*H] where first H elements are gate, second H are up.
     Output: fp8 quantized y = silu(gate) * up, with per-group scales.
 
-    Grid: (E * G,) where G = H // GROUP_SIZE
-    Each program handles one (expert, group) pair, iterating over tokens.
+    Grid: (G, T, E) where G = H // GROUP_SIZE.
+    Each program handles one (expert, token, group) tuple.  Keeping tokens in
+    the launch grid exposes enough independent wavefronts to occupy the GPU;
+    the former token loop left the MI355X severely under-subscribed.
     """
-    G = H // GROUP_SIZE
+    g = tl.program_id(0)
+    t = tl.program_id(1)
+    e = tl.program_id(2)
 
-    pid = tl.program_id(0)
-    e = pid // G
-    g = pid % G
+    n_tokens = tl.load(counts_ptr + e * stride_counts_e)
 
-    e = e.to(tl.int64)
-    g = g.to(tl.int64)
+    cols = tl.arange(0, BLOCK)
+    mask = (t < n_tokens) & (cols < GROUP_SIZE) & (g * GROUP_SIZE + cols < H)
 
-    n_tokens = tl.load(counts_ptr + e * stride_counts_e).to(tl.int64)
-
-    cols = tl.arange(0, BLOCK).to(tl.int64)
-    mask = cols < BLOCK
-
-    base_input_offset = e * stride_i_e + g * GROUP_SIZE * stride_i_h
+    base_input_offset = (
+        e * stride_i_e + t * stride_i_t + g * GROUP_SIZE * stride_i_h
+    )
     base_gate_offset = base_input_offset + cols * stride_i_h
     base_up_offset = base_input_offset + H * stride_i_h + cols * stride_i_h
-    base_yq_offset = e * stride_yq_e + g * GROUP_SIZE * stride_yq_h + cols * stride_yq_h
-    base_ys_offset = e * stride_ys_e + g * stride_ys_g
+    base_yq_offset = (
+        e * stride_yq_e
+        + t * stride_yq_t
+        + g * GROUP_SIZE * stride_yq_h
+        + cols * stride_yq_h
+    )
+    base_ys_offset = e * stride_ys_e + t * stride_ys_t + g * stride_ys_g
 
-    for t in tl.range(0, n_tokens, num_stages=NUM_STAGES):
-        gate = tl.load(
-            input_ptr + base_gate_offset + t * stride_i_t, mask=mask, other=0.0
-        ).to(tl.float32)
-        up = tl.load(input_ptr + base_up_offset + t * stride_i_t, mask=mask, other=0.0)
+    gate = tl.load(input_ptr + base_gate_offset, mask=mask, other=0.0).to(
+        tl.float32
+    )
+    up = tl.load(input_ptr + base_up_offset, mask=mask, other=0.0)
 
-        gate = gate * (1.0 / (1.0 + tl.exp(-gate)))
-        y = gate * up
+    gate = gate * (1.0 / (1.0 + tl.exp(-gate)))
+    y = gate * up
 
-        y_s = tl.maximum(tl.max(tl.abs(y)), eps) / fp8_max
-        if ceil_ue8m0:
-            y_s = tl.exp2(tl.ceil(tl.log2(y_s)))
+    y_s = tl.maximum(tl.max(tl.abs(y)), eps) / fp8_max
+    if ceil_ue8m0:
+        y_s = tl.exp2(tl.ceil(tl.log2(y_s)))
 
-        y_q = tl.clamp(y / y_s, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
+    y_q = tl.clamp(y / y_s, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
 
-        tl.store(y_q_ptr + base_yq_offset + t * stride_yq_t, y_q, mask=mask)
-        tl.store(y_s_ptr + base_ys_offset + t * stride_ys_t, y_s)
+    tl.store(y_q_ptr + base_yq_offset, y_q, mask=mask)
+    tl.store(y_s_ptr + base_ys_offset, y_s, mask=t < n_tokens)
 
 
 def silu_mul_fp8_quant(
@@ -138,7 +141,7 @@ def silu_mul_fp8_quant(
     stride_i_e, stride_i_t, stride_i_h = y.stride()
     stride_yq_e, stride_yq_t, stride_yq_h = y_q.stride()
 
-    grid = (E * G,)
+    grid = (G, T, E)
     _silu_mul_fp8_quant_deep_gemm[grid](
         y, y_q, y_s, tokens_per_expert,
         H, group_size,
@@ -149,7 +152,7 @@ def silu_mul_fp8_quant(
         eps, fp8_min, fp8_max,
         ceil_ue8m0=False,
         BLOCK=group_size,
-        NUM_STAGES=4,
+        NUM_STAGES=1,
         num_warps=1,
     )
     return y_q, y_s

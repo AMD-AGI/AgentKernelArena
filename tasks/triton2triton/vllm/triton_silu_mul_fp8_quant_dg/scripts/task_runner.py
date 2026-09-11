@@ -15,6 +15,14 @@ TEST_SHAPES = [
     (8, 64, 1024, 128),
     (16, 64, 1024, 128),
 ]
+# (E, T, H, group_size, input_dtype, non_contiguous)
+# Keep performance shapes above unchanged; these additions exercise only correctness.
+CORRECTNESS_CASES = [
+    (*shape, "float16", False) for shape in TEST_SHAPES
+] + [
+    (4, 9, 320, 64, "bfloat16", True),
+    (4, 7, 768, 256, "float16", False),
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -43,31 +51,40 @@ def load_module():
     return mod
 
 
-def reference_silu_mul_fp8(y, tokens_per_expert, group_size):
-    """CPU reference: silu(gate) * up with per-group scale."""
+def reference_silu_mul_fp8(y, tokens_per_expert, group_size, fp8_dtype):
+    """CPU reference for the activation, scales, and quantized output."""
     import torch
     E, T, H2 = y.shape
     H = H2 // 2
-    G = H // group_size
-
-    try:
-        fp8_dtype = torch.float8_e4m3fnuz
-        _ = torch.tensor([1.0]).to(fp8_dtype)
-    except (RuntimeError, AttributeError):
-        fp8_dtype = torch.float8_e4m3fn
+    G = (H + group_size - 1) // group_size
 
     fp8_max = torch.finfo(fp8_dtype).max
     results_float = torch.zeros(E, T, H, dtype=torch.float32)
+    results_q = torch.zeros(E, T, H, dtype=fp8_dtype)
+    results_s = torch.zeros(E, T, G, dtype=torch.float32)
 
     for e in range(E):
         nt = tokens_per_expert[e].item()
-        for t in range(nt):
-            gate = y[e, t, :H].float()
-            up = y[e, t, H:].float()
-            silu_gate = gate * torch.sigmoid(gate)
-            results_float[e, t] = silu_gate * up
+        if nt == 0:
+            continue
 
-    return results_float
+        gate = y[e, :nt, :H].float()
+        up = y[e, :nt, H:].float()
+        results_float[e, :nt] = gate * torch.sigmoid(gate) * up
+
+        for g in range(G):
+            start = g * group_size
+            end = min(start + group_size, H)
+            values = results_float[e, :nt, start:end]
+            scale = values.abs().amax(dim=-1).clamp_min(1e-10) / fp8_max
+            results_s[e, :nt, g] = scale
+            results_q[e, :nt, start:end] = torch.clamp(
+                values / scale[:, None],
+                torch.finfo(fp8_dtype).min,
+                fp8_max,
+            ).to(fp8_dtype)
+
+    return results_float, results_q, results_s
 
 
 def run_compile():
@@ -92,33 +109,89 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    for i, (E, T, H, group_size) in enumerate(TEST_SHAPES):
+    try:
+        expected_fp8_dtype = torch.float8_e4m3fnuz
+        _ = torch.tensor([1.0]).to(expected_fp8_dtype)
+    except (RuntimeError, AttributeError):
+        expected_fp8_dtype = torch.float8_e4m3fn
+
+    for i, case in enumerate(CORRECTNESS_CASES):
+        E, T, H, group_size, dtype_name, non_contiguous = case
         try:
             torch.manual_seed(42 + i)
-            y = torch.randn(E, T, 2 * H, device=device, dtype=torch.float16) * 0.5
-            tokens_per_expert = torch.randint(1, T + 1, (E,), device=device, dtype=torch.int32)
+            input_dtype = getattr(torch, dtype_name)
+            if non_contiguous:
+                backing = torch.randn(
+                    T, E, 4 * H, device=device, dtype=input_dtype
+                ) * 0.5
+                y = backing.permute(1, 0, 2)[..., ::2]
+                if y.is_contiguous():
+                    return False, f"Shape {i+1}: input unexpectedly became contiguous"
+            else:
+                y = torch.randn(
+                    E, T, 2 * H, device=device, dtype=input_dtype
+                ) * 0.5
+
+            # Cover no work, the first-token boundary, a late boundary, and T.
+            boundary_counts = torch.tensor(
+                [0, 1, T - 1, T], device=device, dtype=torch.int32
+            )
+            tokens_per_expert = boundary_counts.repeat((E + 3) // 4)[:E]
 
             y_q, y_s = mod.silu_mul_fp8_quant(y, tokens_per_expert, group_size)
             torch.cuda.synchronize()
 
-            ref_float = reference_silu_mul_fp8(y.cpu(), tokens_per_expert.cpu(), group_size)
+            G = (H + group_size - 1) // group_size
+            if y_q.shape != (E, T, H) or y_s.shape != (E, T, G):
+                return False, (
+                    f"Shape {i+1}: output shapes are {tuple(y_q.shape)} and "
+                    f"{tuple(y_s.shape)}, expected {(E, T, H)} and {(E, T, G)}"
+                )
+            if y_q.dtype != expected_fp8_dtype:
+                return False, (
+                    f"Shape {i+1}: quantized dtype is {y_q.dtype}, "
+                    f"expected {expected_fp8_dtype}"
+                )
+            if y_s.dtype != torch.float32:
+                return False, (
+                    f"Shape {i+1}: scale dtype is {y_s.dtype}, "
+                    "expected torch.float32"
+                )
 
-            # Check that dequantized output is close to reference
-            y_q_float = y_q.float()
-            for e in range(E):
-                nt = tokens_per_expert[e].item()
-                if nt == 0:
-                    continue
-                for t in range(min(nt, 4)):  # spot-check
-                    for g in range(H // group_size):
-                        s = y_s[e, t, g].item()
-                        start = g * group_size
-                        end = start + group_size
-                        deq = y_q_float[e, t, start:end].cpu() * s
-                        ref_slice = ref_float[e, t, start:end]
-                        if not torch.allclose(deq, ref_slice, atol=0.5, rtol=0.2):
-                            max_diff = (deq - ref_slice).abs().max().item()
-                            return False, f"Shape {i+1}: e={e},t={t},g={g} max_diff={max_diff:.4f}"
+            ref_float, ref_q, ref_s = reference_silu_mul_fp8(
+                y.cpu(), tokens_per_expert.cpu(), group_size, expected_fp8_dtype
+            )
+            valid_tokens = (
+                torch.arange(T)[None, :] < tokens_per_expert.cpu()[:, None]
+            )
+
+            # Validate both complete outputs over their defined (valid-token) domain.
+            actual_q = y_q.float().cpu()[valid_tokens]
+            expected_q = ref_q.float()[valid_tokens]
+            q_mismatch = actual_q != expected_q
+            if torch.any(q_mismatch):
+                mismatch_count = q_mismatch.sum().item()
+                max_diff = (actual_q - expected_q).abs().max().item()
+                return False, (
+                    f"Shape {i+1}: y_q has {mismatch_count} mismatches "
+                    f"(max_diff={max_diff:.4f})"
+                )
+
+            actual_s = y_s.cpu()[valid_tokens]
+            expected_s = ref_s[valid_tokens]
+            if not torch.allclose(actual_s, expected_s, atol=1e-8, rtol=1e-5):
+                max_diff = (actual_s - expected_s).abs().max().item()
+                return False, f"Shape {i+1}: y_s max_diff={max_diff:.4e}"
+
+            expanded_s = y_s.cpu().repeat_interleave(group_size, dim=-1)[..., :H]
+            deq = y_q.float().cpu() * expanded_s
+            if not torch.allclose(
+                deq[valid_tokens], ref_float[valid_tokens], atol=0.5, rtol=0.2
+            ):
+                max_diff = (
+                    deq[valid_tokens] - ref_float[valid_tokens]
+                ).abs().max().item()
+                return False, f"Shape {i+1}: dequantized output max_diff={max_diff:.4f}"
         except Exception as e:
             return False, f"Shape {i+1}: exception: {e}"
     return True, None
@@ -189,7 +262,7 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(CORRECTNESS_CASES)}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
