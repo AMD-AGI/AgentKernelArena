@@ -15,6 +15,10 @@ TEST_SHAPES = [
     (32, 64),
     (64, 128),
 ]
+DETERMINISTIC_CORRECTNESS_CASES = [
+    ("boundary_counts_5_experts", (0, 127, 128, 129, 1)),
+    ("multi_tile_counts_3_experts", (255, 256, 257)),
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -88,29 +92,45 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
+
+    def check_case(case_name, tokens_per_expert):
+        num_experts = tokens_per_expert.shape[0]
+        aligned_counts = [round_up_128(t.item()) for t in tokens_per_expert]
+        total = sum(aligned_counts)
+
+        expert_start_loc = torch.empty(num_experts, device=device, dtype=torch.int32)
+        m_indices = torch.full((total,), -1, device=device, dtype=torch.int32)
+
+        mod.ep_scatter_1(tokens_per_expert, expert_start_loc, m_indices)
+        torch.cuda.synchronize()
+
+        ref_starts, ref_m_indices = reference_scatter_1(tokens_per_expert.cpu())
+
+        if not torch.equal(expert_start_loc.cpu(), ref_starts):
+            return f"Case {case_name}: expert_start_loc mismatch"
+        if not torch.equal(m_indices.cpu(), ref_m_indices):
+            return f"Case {case_name}: m_indices mismatch"
+        return None
+
     for i, (num_experts, max_tpe) in enumerate(TEST_SHAPES):
         try:
             torch.manual_seed(42 + i)
             tokens_per_expert = torch.randint(0, max_tpe + 1, (num_experts,), device=device, dtype=torch.int32)
-
-            # Compute total aligned size
-            aligned_counts = [round_up_128(t.item()) for t in tokens_per_expert]
-            total = sum(aligned_counts)
-
-            expert_start_loc = torch.empty(num_experts, device=device, dtype=torch.int32)
-            m_indices = torch.full((total,), -1, device=device, dtype=torch.int32)
-
-            mod.ep_scatter_1(tokens_per_expert, expert_start_loc, m_indices)
-            torch.cuda.synchronize()
-
-            ref_starts, ref_m_indices = reference_scatter_1(tokens_per_expert.cpu())
-
-            if not torch.equal(expert_start_loc.cpu(), ref_starts):
-                return False, f"Shape {i+1}: expert_start_loc mismatch"
-            if not torch.equal(m_indices.cpu(), ref_m_indices):
-                return False, f"Shape {i+1}: m_indices mismatch"
+            error = check_case(f"seeded_shape_{i + 1}", tokens_per_expert)
+            if error:
+                return False, error
         except Exception as e:
-            return False, f"Shape {i+1}: exception: {e}"
+            return False, f"Case seeded_shape_{i + 1}: exception: {e}"
+
+    for case_name, token_counts in DETERMINISTIC_CORRECTNESS_CASES:
+        try:
+            tokens_per_expert = torch.tensor(token_counts, device=device, dtype=torch.int32)
+            error = check_case(case_name, tokens_per_expert)
+            if error:
+                return False, error
+        except Exception as e:
+            return False, f"Case {case_name}: exception: {e}"
+
     return True, None
 
 
@@ -182,7 +202,11 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(TEST_SHAPES) + len(DETERMINISTIC_CORRECTNESS_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
