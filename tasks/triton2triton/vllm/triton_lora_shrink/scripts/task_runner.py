@@ -15,6 +15,26 @@ TEST_SHAPES = [
     (128, 512, 32, 8, 1),
     (256, 1024, 32, 8, 2),
 ]
+
+# Keep correctness-only coverage separate so performance methodology remains
+# unchanged.  For M >= 128 the launch uses BLOCK_K=32 and SPLIT_K=8; the two
+# extra K values exercise mixed active/inactive split boundaries.
+CORRECTNESS_CASES = [
+    {"name": f"default_{i + 1}", "shape": shape}
+    for i, shape in enumerate(TEST_SHAPES)
+] + [
+    {
+        "name": "mixed_split_first_partial",
+        "shape": (128, 33, 16, 4, 1),
+    },
+    {
+        "name": "mixed_split_last_inactive_bfloat16_4d_inactive_lora",
+        "shape": (128, 223, 16, 4, 2),
+        "dtype": "bfloat16",
+        "weight_ndim": 4,
+        "include_inactive_lora": True,
+    },
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -73,15 +93,20 @@ def reference_lora_shrink(inputs, lora_a_weights, token_indices, num_tokens_per_
     return output.to(inputs.dtype)
 
 
-def make_test_data(M, hidden_size, lora_rank, num_loras, num_slices, device, seed):
+def make_test_data(M, hidden_size, lora_rank, num_loras, num_slices, device, seed,
+                   dtype="float16", weight_ndim=3, include_inactive_lora=False):
     import torch
     torch.manual_seed(seed)
 
-    inputs = torch.randn(M, hidden_size, device=device, dtype=torch.float16) * 0.1
+    tensor_dtype = getattr(torch, dtype)
+    inputs = torch.randn(M, hidden_size, device=device, dtype=tensor_dtype) * 0.1
 
     lora_a_weights = []
     for _ in range(num_slices):
-        w = torch.randn(num_loras, lora_rank, hidden_size, device=device, dtype=torch.float16) * 0.1
+        weight_shape = (num_loras, lora_rank, hidden_size)
+        if weight_ndim == 4:
+            weight_shape = (num_loras, 1, lora_rank, hidden_size)
+        w = torch.randn(*weight_shape, device=device, dtype=tensor_dtype) * 0.1
         lora_a_weights.append(w)
 
     output_tensor = torch.zeros(num_slices, M, lora_rank, device=device, dtype=torch.float32)
@@ -89,6 +114,9 @@ def make_test_data(M, hidden_size, lora_rank, num_loras, num_slices, device, see
     token_lora_mapping = torch.randint(0, num_loras, (M,), device=device, dtype=torch.int64)
 
     lora_ids_list = list(range(num_loras))
+    if include_inactive_lora:
+        token_lora_mapping[0] = -1
+        lora_ids_list.insert(0, -1)
     lora_ids = torch.tensor(lora_ids_list, device=device, dtype=torch.int64)
 
     sorted_indices = []
@@ -106,7 +134,7 @@ def make_test_data(M, hidden_size, lora_rank, num_loras, num_slices, device, see
         cumsum.append(cumsum[-1] + n)
     lora_token_start_loc = torch.tensor(cumsum, device=device, dtype=torch.int64)
 
-    num_active_loras = num_loras
+    num_active_loras = len(lora_ids_list)
     scaling = 0.5
 
     return (inputs, lora_a_weights, output_tensor, token_lora_mapping,
@@ -136,12 +164,17 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    for i, (M, hidden_size, lora_rank, num_loras, num_slices) in enumerate(TEST_SHAPES):
+    for i, case in enumerate(CORRECTNESS_CASES):
+        M, hidden_size, lora_rank, num_loras, num_slices = case["shape"]
         try:
             (inputs, lora_a_weights, output_tensor, token_lora_mapping,
              token_indices_sorted, num_tokens_per_lora, lora_token_start_loc,
              lora_ids, num_active_loras, scaling) = make_test_data(
-                M, hidden_size, lora_rank, num_loras, num_slices, device, 42 + i)
+                M, hidden_size, lora_rank, num_loras, num_slices, device, 42 + i,
+                dtype=case.get("dtype", "float16"),
+                weight_ndim=case.get("weight_ndim", 3),
+                include_inactive_lora=case.get("include_inactive_lora", False),
+            )
 
             mod.lora_shrink(
                 inputs, lora_a_weights, output_tensor, token_lora_mapping,
@@ -156,9 +189,9 @@ def run_correctness():
 
             if not torch.allclose(output_tensor.float(), ref.float(), atol=5e-2, rtol=5e-2):
                 max_diff = (output_tensor.float() - ref.float()).abs().max().item()
-                return False, f"Shape {i+1} (M={M}): max diff = {max_diff:.6f}"
+                return False, f"Case {case['name']} (M={M}, K={hidden_size}): max diff = {max_diff:.6f}"
         except Exception as e:
-            return False, f"Shape {i+1}: exception: {e}"
+            return False, f"Case {case['name']}: exception: {e}"
     return True, None
 
 
@@ -291,7 +324,7 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(CORRECTNESS_CASES)}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

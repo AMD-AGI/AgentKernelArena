@@ -192,8 +192,8 @@ def run_correctness(shapes, atol=1e-2, rtol=1e-2):
     """Run correctness tests matching the eval test cases exactly.
 
     Mirrors test_fast_rms_layernorm_with_backward():
-      test_case_1: backward grad for gemma=False
-      test_case_2: backward grad for gemma=True
+      test_case_1: forward output and backward grad for gemma=False
+      test_case_2: forward output and backward grad for gemma=True
     """
     set_seed(42)
     print(f"Running correctness tests on {len(shapes)} shapes (atol={atol}, rtol={rtol})...")
@@ -205,6 +205,16 @@ def run_correctness(shapes, atol=1e-2, rtol=1e-2):
         layernorm = SimpleLayerNorm(hidden_dim, eps=1e-5).to('cuda')
 
         output = fast_rms_layernorm(layernorm, x, gemma=False)
+        expected_output = rms_layernorm_reference(
+            x.detach(), layernorm.weight.detach(), eps=1e-5
+        )
+        try:
+            torch.testing.assert_close(output, expected_output, rtol=rtol, atol=atol)
+            print(f"  PASS: {shape} gemma=False forward")
+        except AssertionError as e:
+            print(f"  FAIL: {shape} gemma=False forward: {e}")
+            all_passed = False
+
         output.mean().backward()
         grad1 = x.grad.clone()
         x.grad.zero_()
@@ -219,6 +229,16 @@ def run_correctness(shapes, atol=1e-2, rtol=1e-2):
             all_passed = False
 
         output_g = fast_rms_layernorm(layernorm, x, gemma=True)
+        expected_output_g = gemma_rms_layernorm_reference(
+            x.detach(), layernorm.weight.detach(), eps=1e-5
+        )
+        try:
+            torch.testing.assert_close(output_g, expected_output_g, rtol=rtol, atol=atol)
+            print(f"  PASS: {shape} gemma=True forward")
+        except AssertionError as e:
+            print(f"  FAIL: {shape} gemma=True forward: {e}")
+            all_passed = False
+
         output_g.mean().backward()
         grad2 = x.grad.clone()
 
