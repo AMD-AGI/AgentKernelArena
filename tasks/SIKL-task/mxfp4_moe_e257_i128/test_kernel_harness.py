@@ -105,7 +105,8 @@ def run_correctness() -> int:
             print(f"case {case_id}: fail, shape {got_shape} != {expected_shape}")
         else:
             print(
-                f"case {case_id}: mean relative error {record['error']:.8f}, "
+                f"case {case_id}: matched {record['matched_ratio']:.6f}, "
+                f"mean relative error {record['error']:.8f}, "
                 f"snr {record['snr']:.2f} dB"
             )
         if not task_measure.passes(record, gates):

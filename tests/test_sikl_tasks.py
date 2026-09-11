@@ -17,7 +17,6 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
-import math
 from pathlib import Path
 
 import pytest
@@ -137,61 +136,56 @@ def test_the_workload_declares_cases_and_a_gate_policy(task):
     assert workload["cases"], "a task must score at least one workload case"
     for case in workload["cases"]:
         assert case["uuid"], f"{case['case_id']} carries no schema case uuid"
-    assert workload["gate_multiplier"] > 1, (
-        "a gate at or below the baseline's own error is unpassable"
-    )
-    assert workload["gate_floor"] > 0, (
-        "without a floor a near-exact baseline derives a gate no port can clear"
+    assert 0 < workload["atol"] and 0 < workload["rtol"], (
+        "the acceptance tolerance is the gate; it cannot be absent or zero"
     )
     assert workload["gate_policy"].strip()
 
 
-@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
-def test_both_gates_are_derived_from_one_policy(task):
-    # The SNR gate is the error gate restated for a statistic that sees error
-    # concentrated in a few elements rather than spread over the output, so it
-    # must not introduce policy constants of its own: a second knob is a second
-    # thing to keep consistent, and a hardcoded dB floor is exactly what fails
-    # the MoE baseline against its own reference.
+@pytest.mark.parametrize("task", GEMM_TASKS, ids=lambda task: task.name)
+def test_the_gemm_gate_is_the_bundle_tolerance_and_nothing_else(task):
+    # The acceptance run this family is verified against admits a candidate only
+    # when every element is within atol + rtol * |reference|. Deriving a second
+    # bar from the production implementation is what let a kernel truncating its
+    # partial sums to bf16 pass here and fail there, so the derived constants
+    # must be gone rather than merely unused.
+    workload = _workload(task)
+    for key in ("gate_multiplier", "gate_floor"):
+        assert key not in workload, f"{key} is a second correctness policy"
     task_inputs = _task_inputs(task)
-    assert task_inputs.SNR_MARGIN_DB == pytest.approx(
-        10.0 * math.log10(task_inputs.GATE_MULTIPLIER)
-    )
-    assert task_inputs.SNR_CEILING_DB == pytest.approx(
-        -20.0 * math.log10(task_inputs.GATE_FLOOR)
-    )
+    assert not hasattr(task_inputs, "derive_gates")
+    assert task_inputs.ATOL == workload["atol"]
+    assert task_inputs.RTOL == workload["rtol"]
 
 
-@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
-def test_a_case_has_to_clear_both_correctness_gates(task):
-    # Either gate alone is passable by a wrong candidate: the error gate
-    # averages away localized error, and SNR alone says nothing about how far
-    # the operator's own implementations sit from the reference. Both are
-    # applied per case, in the one place that decides whether a case passed.
+@pytest.mark.parametrize("task", GEMM_TASKS, ids=lambda task: task.name)
+def test_a_gemm_case_passes_only_when_every_element_is_in_tolerance(task):
     task_inputs = _task_inputs(task)
-    gates = task_inputs.derive_gates({"errors": [1e-3], "snrs": [60.0]})
-    assert set(gates) == {"error", "snr_db"}
-
     measure = (task / "scripts" / "task_measure.py").read_text()
-    for expression in ('record["error"] <= gates["error"]', 'record["snr"] >= gates["snr_db"]'):
-        assert expression in measure, f"passes() does not apply {expression}"
+    assert 'record["matched_ratio"] >= 1.0' in measure, (
+        "passes() does not require every element to be within tolerance"
+    )
+    # An aggregate must not be able to admit a case on its own: those are the
+    # statistics that cannot see a truncated accumulator.
+    for expression in ('record["error"] <=', 'record["snr"] >='):
+        assert expression not in measure, f"passes() still gates on {expression}"
+    assert hasattr(task_inputs, "matched_ratio")
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
-def test_the_port_filter_is_looser_than_the_scoring_gate(task):
-    # KernelForge drops a port below config.yaml's rewrite.snr_threshold before
-    # the optimize loop ever sees it. If that filter were stricter than the gate
-    # the task is scored on, PORT would discard candidates Arena would have
-    # accepted -- and for the MoE family a 30 dB filter rejects anything merely
-    # as accurate as the production implementation.
-    task_inputs = _task_inputs(task)
-    port_filter = float(_config(task)["rewrite"]["snr_threshold"])
-    # The scoring gate is derived from the baseline at run time; the worst it can
-    # demand is the ceiling case, and the filter has to stay under that.
-    strictest_scoring_gate = task_inputs.SNR_CEILING_DB - task_inputs.SNR_MARGIN_DB
-    assert port_filter <= strictest_scoring_gate, (
-        f"rewrite.snr_threshold={port_filter} dB can exceed the derived scoring "
-        f"gate, whose strictest value is {strictest_scoring_gate:.2f} dB"
+def test_the_task_verdict_is_the_pipeline_verdict(task):
+    # KernelForge's correctness stage applies `snr_db >= --snr-threshold` and
+    # never reads `allclose` whenever the driver prints an SNR, so an `SNR:`
+    # line here would hand PORT and OPTIMIZE keep/revert to a threshold that
+    # knows nothing about this task's gate. Withholding it is what keeps the
+    # candidates the loop keeps and the candidates Arena scores the same set.
+    driver = (task / "scripts" / "forge_driver.py").read_text()
+    assert driver.count('"SNR: ') + driver.count("'SNR: ") == 0, (
+        "the driver prints an SNR aggregate, which overrides its own verdict"
+    )
+    assert "rewrite" in _config(task)
+    assert "snr_threshold" not in _config(task)["rewrite"], (
+        "a PORT filter the driver's output can never reach is dead configuration"
     )
 
 
@@ -212,10 +206,15 @@ def test_the_workload_records_no_measurement(task):
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
-def test_the_gate_is_derived_from_the_baseline(task):
+def test_the_production_implementation_is_measured_beside_the_candidate(task):
+    # The gate no longer comes from the baseline, but a failure is unreadable
+    # without it: only the baseline's own reading separates a candidate that is
+    # wrong from one that misses the elements the shipped kernel also misses.
+    # That reading is what showed the acceptance run rejects production at 64 of
+    # its 221 GEMM points.
     measure = (task / "scripts" / "task_measure.py").read_text()
-    assert "task_inputs.derive_gates" in measure
     assert "task_baseline.run" in measure
+    assert "task_inputs.matched_ratio" in measure
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)

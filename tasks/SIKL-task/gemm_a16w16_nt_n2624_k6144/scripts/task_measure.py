@@ -60,26 +60,34 @@ def candidate_calls(inputs: dict[str, Any], launches: list) -> list[tuple[dict, 
     ]
 
 
-def reference_and_gate(
+def reference_and_baseline(
     inputs: dict[str, Any],
-) -> tuple[list, dict[str, list[float]], dict[str, float]]:
-    """Evaluate the reference and the production implementation, then derive the gates.
+) -> tuple[list, list[dict[str, Any]]]:
+    """Evaluate the fp32 reference, and the production implementation beside it.
 
-    Both statistics the gates act on are measured here rather than recorded, so
-    they always describe the device, the framework build and the inputs that are
-    about to score the candidate.
+    The gate is fixed by the task, so the baseline is measured for context
+    rather than to set the bar: it is the only way a reader can tell a candidate
+    that is genuinely wrong from one that misses the same elements the shipped
+    kernel misses. Both readings describe the device, the framework build and
+    the inputs that are about to score the candidate.
     """
     expected = []
-    measured: dict[str, list[float]] = {"errors": [], "snrs": []}
+    measured: list[dict[str, Any]] = []
     for case in inputs["cases"]:
         kwargs = task_inputs.call_kwargs(inputs, case)
         reference = task_reference.run(**kwargs)
         baseline = task_baseline.run(**kwargs)
         torch.cuda.synchronize()
         expected.append(reference)
-        measured["errors"].append(task_inputs.relative_error(baseline, reference))
-        measured["snrs"].append(snr_db(reference, baseline))
-    return expected, measured, task_inputs.derive_gates(measured)
+        measured.append(
+            {
+                "case_id": str(case["case_id"]),
+                "matched_ratio": task_inputs.matched_ratio(baseline, reference),
+                "error": task_inputs.relative_error(baseline, reference),
+                "snr": snr_db(reference, baseline),
+            }
+        )
+    return expected, measured
 
 
 def snr_db(reference: torch.Tensor, got: torch.Tensor) -> float:
@@ -106,12 +114,14 @@ def compare_cases(
         if got.shape != expected.shape:
             record.update(
                 shape_mismatch=(tuple(got.shape), tuple(expected.shape)),
+                matched_ratio=0.0,
                 error=float("inf"),
                 snr=float("-inf"),
             )
         else:
             record.update(
                 shape_mismatch=None,
+                matched_ratio=task_inputs.matched_ratio(got, expected),
                 error=task_inputs.relative_error(got, expected),
                 snr=snr_db(expected, got),
                 finite=bool(torch.isfinite(got.float()).all().item()),
@@ -120,18 +130,19 @@ def compare_cases(
     return results
 
 
-def passes(record: dict[str, Any], gates: dict[str, float]) -> bool:
-    """Whether one compared case clears both correctness gates.
+def passes(record: dict[str, Any]) -> bool:
+    """Whether one compared case clears the correctness gate.
 
-    The error gate acts on a mean, which averages away error concentrated in a
-    few elements. The SNR gate is a power ratio and catches exactly that, so a
-    case has to clear both rather than either.
+    Every element has to be within tolerance. ``error`` and ``snr`` are carried
+    on the record for diagnosis only: both are aggregates, and the failure this
+    task most needs to catch -- partial sums truncated to bf16 before reduction
+    -- leaves both of them looking healthy while a tenth of the output is out of
+    tolerance.
     """
     return (
         record["shape_mismatch"] is None
         and record.get("finite", False)
-        and record["error"] <= gates["error"]
-        and record["snr"] >= gates["snr_db"]
+        and record["matched_ratio"] >= 1.0
     )
 
 

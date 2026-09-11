@@ -4,7 +4,7 @@
 
 THE OPERATOR
     A 16-bit GEMM with a transposed weight: ``out = a @ b.T``. The constant axes
-    (n, k), the list of scored m cases, the seed and the gate policy all live in
+    (n, k), the list of scored m cases, the seed and the tolerance all live in
     the task's workload.json; scripts/task_inputs.py is the single place that
     reads them, and both this driver and the Arena harness build their inputs
     through it.
@@ -29,10 +29,20 @@ THE BASELINE IMPLEMENTATION TO REPLACE (read it, it is the real thing)
     the baseline performs.
 
 CORRECTNESS GATE
-    Derived, not fixed. This driver measures the production implementation's own
-    distance to the fp32 reference at every case and admits a candidate within
-    `gate_multiplier` (workload.json) times the worst of those. So the bar is
-    "no worse than what ships", evaluated on the machine you are running on.
+    Every element of every case must land within `atol + rtol * |reference|` of
+    the fp32 reference (both in workload.json, both 0.01). This is the workload
+    bundle's own acceptance criterion, not a bar this task invents.
+
+    It is not tight for a kernel that accumulates in fp32: measured here, fp32
+    partial sums match the reference on every element at split counts 2, 4, 8
+    and 16. What it rejects is truncating split-k or K-warp partial sums to bf16
+    before reducing them, which misses the tolerance on 6-11% of the output
+    while leaving mean relative error near 0.0017 and SNR near 51 dB -- healthy
+    by any aggregate measure, which is why the gate is elementwise.
+
+    The production implementation's own accuracy is measured and printed beside
+    each case, so a failure can be read against what ships, but it does not move
+    the bar.
 
 THE INTERFACE THE PORT MUST EXPOSE
     The FlyDSL candidate module must define the builder symbol named by
@@ -75,8 +85,8 @@ WHAT THE CORRECTNESS SUITE CHECKS BEFORE SCORING
 
 MODES
     (no flag)          correctness: candidate vs task_reference over every case,
-                       prints one `SNR: <db> dB` (the worst case) and one
-                       `allclose:` verdict
+                       prints one `allclose:` verdict and no `SNR:` line (see
+                       run_correctness for why)
     --ref-bench-mode   times the baseline (task_baseline = aiter.tuned_gemm)
     --bench-mode       times the FlyDSL candidate
     --profile-run      builds and warms the candidate, prints no timing
@@ -202,16 +212,25 @@ def _report_timings(samples: list[dict]) -> None:
 def run_correctness(inputs: dict) -> int:
     """Compare the candidate against the reference on every scored case.
 
-    Only one `SNR:` line and one `allclose:` line are printed: the contract reads
-    the first match of each, so the aggregate has to be unambiguous. The
-    per-case detail is emitted as `# case <id>:` comments, which is also how the
-    contract learns which cases this path covered.
+    Exactly one `allclose:` line is printed and no `SNR:` line, on purpose.
+    KernelForge's correctness stage prefers an SNR reading over the driver's own
+    verdict whenever one is present -- it applies `snr_db >= --snr-threshold`
+    and never looks at `allclose` -- so printing an SNR here would hand the
+    keep/revert decision to a threshold that knows nothing about this task's
+    gate. Withholding it makes the task's verdict the pipeline's verdict, which
+    is the only way PORT and OPTIMIZE keep candidates Arena will also score.
+    The per-case detail, SNR included, stays in `# case <id>:` comments, which
+    is also how the contract learns which cases this path covered.
     """
     calls = _candidate_calls(inputs)
-    expected, baseline, gates = task_measure.reference_and_gate(inputs)
-    print(f"# {task_inputs.gate_explanation(baseline)}")
+    expected, baseline = task_measure.reference_and_baseline(inputs)
+    print(f"# {task_inputs.gate_explanation()}")
+    for record in baseline:
+        print(
+            f"# baseline {record['case_id']}: matched {record['matched_ratio']:.6f}, "
+            f"snr_db {record['snr']:.2f}"
+        )
 
-    worst_snr = float("inf")
     passed = True
     for record in task_measure.compare_cases(calls, expected):
         print(f"# case {record['case_id']}:")
@@ -219,12 +238,11 @@ def run_correctness(inputs: dict) -> int:
             got_shape, expected_shape = record["shape_mismatch"]
             print(f"#   shape mismatch: candidate {got_shape} vs reference {expected_shape}")
         else:
+            print(f"#   matched_ratio {record['matched_ratio']:.6f}")
             print(f"#   mean relative error {record['error']:.8f}")
-            print(f"#   snr {record['snr']:.2f} dB")
-        worst_snr = min(worst_snr, record["snr"])
-        passed = passed and task_measure.passes(record, gates)
+            print(f"#   snr_db {record['snr']:.2f}")
+        passed = passed and task_measure.passes(record)
 
-    print(f"SNR: {worst_snr:.2f} dB")
     print(f"allclose: {passed}")
     return 0 if passed else 1
 

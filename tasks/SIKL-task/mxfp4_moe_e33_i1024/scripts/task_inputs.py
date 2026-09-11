@@ -147,11 +147,32 @@ GATE_FLOOR = float(WORKLOAD["gate_floor"])
 SNR_MARGIN_DB = 10.0 * math.log10(GATE_MULTIPLIER)
 SNR_CEILING_DB = -20.0 * math.log10(GATE_FLOOR)
 
+# The workload bundle's elementwise tolerance. Reported per case, not gated on:
+# the bundle's acceptance run scores the GEMM family on it but scores this
+# family on a routing statistic that is not reproducible from what the bundle
+# ships, so the derived gate above stays in force here until that statistic is
+# available. Carrying the reading is what keeps an Arena result comparable with
+# an acceptance result.
+ATOL = float(WORKLOAD["atol"])
+RTOL = float(WORKLOAD["rtol"])
+
 CASES: tuple[dict[str, Any], ...] = tuple(WORKLOAD["cases"])
 CASE_IDS: tuple[str, ...] = tuple(str(case["case_id"]) for case in CASES)
 
-_WEIGHT_SCALE = 0.125
-_ACT_SCALE = 0.25
+# Input scaling, matching the workload bundle's own benchmark: the activation is
+# standard normal and each expert weight is drawn at 1/sqrt(its unpacked fan-in)
+# before quantization. Fan-in is the reduction length the weight is contracted
+# over -- MODEL_DIM for w1, INTER_DIM for w2 -- counted in logical elements
+# rather than in the bytes MXFP4 packs them into.
+#
+# This replaces a pair of flat constants (0.125 and 0.25) chosen only to keep
+# dequantized weights inside bf16 accumulation. Both distributions do that, but
+# only this one produces the per-element magnitudes the acceptance run measures,
+# and a correctness bar derived under a different distribution describes a
+# different operator.
+_W1_SCALE = MODEL_DIM ** -0.5
+_W2_SCALE = INTER_DIM ** -0.5
+_ACT_SCALE = 1.0
 
 
 def derive_gates(baseline: dict[str, list[float]]) -> dict[str, float]:
@@ -220,11 +241,11 @@ def build_inputs(device: str = "cuda") -> dict[str, Any]:
     generator = torch.Generator(device=device)
     generator.manual_seed(SEED)
 
-    w1_bf16 = _WEIGHT_SCALE * torch.randn(
+    w1_bf16 = _W1_SCALE * torch.randn(
         (NUM_EXPERTS, W1_ROWS, MODEL_DIM), device=device, dtype=torch.bfloat16,
         generator=generator,
     )
-    w2_bf16 = _WEIGHT_SCALE * torch.randn(
+    w2_bf16 = _W2_SCALE * torch.randn(
         (NUM_EXPERTS, MODEL_DIM, INTER_DIM), device=device, dtype=torch.bfloat16,
         generator=generator,
     )
@@ -328,6 +349,20 @@ def assert_candidate_is_independent(source: str) -> None:
             "Reusing its baseline path measures the baseline against itself; implement the "
             "operator in FlyDSL (import flydsl and torch only)."
         )
+
+
+def matched_ratio(got: torch.Tensor, expected: torch.Tensor) -> float:
+    """Fraction of elements within ``ATOL + RTOL * |reference|``.
+
+    Reported beside every case but not gated on. The GEMM family scores on this
+    statistic because it is what the workload bundle's acceptance run applies
+    there; that run gates this family on a routing statistic instead, which is
+    not reproducible from what the bundle ships. Recording it here is what makes
+    an Arena result and an acceptance result comparable in the meantime.
+    """
+    got_f32, expected_f32 = got.float(), expected.float()
+    within = (got_f32 - expected_f32).abs() <= ATOL + RTOL * expected_f32.abs()
+    return within.double().mean().item()
 
 
 def relative_error(got: torch.Tensor, expected: torch.Tensor) -> float:
