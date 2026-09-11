@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Test harness for the FP8 block-scale GEMM kernel.
 
-Timing and correctness live HERE, not in kernel.py — the agent edits kernel.py,
-so an embedded benchmark there could be gamed. The harness owns the measurement
-and only imports the kernel-side building blocks (kernels, wrappers, inputs).
+Timing, inputs, cases, tolerances, and the reference implementation live HERE,
+not in kernel.py, because the agent edits kernel.py. The harness imports only
+the candidate operation from the editable module.
 """
 import argparse
 import math
@@ -29,19 +29,103 @@ if _HARNESS_DIR not in sys.path:
 
 import torch
 
-from kernel import (
-    EVAL_CONFIGS,
-    RTOL,
-    ATOL,
-    get_inputs,
-    fp8_blockwise_mm_triton,
-    fp8_blockwise_mm_pytorch,
-)
+from kernel import fp8_blockwise_mm_triton
 
 WARMUP = 50
 ITERATIONS = int(os.environ.get("GEAK_BENCHMARK_ITERATIONS", "200"))
+BLOCK_SHAPE_N = 128
+BLOCK_SHAPE_K = 128
+RTOL, ATOL = 2e-2, 1e-3
 
-ALL_CONFIGS = EVAL_CONFIGS
+TEST_CONFIGS = [
+    {"m": 64, "n": 64, "k": 128, "seed": 6635},
+    {"m": 64, "n": 1536, "k": 7168, "seed": 6635},
+    {"m": 64, "n": 3072, "k": 1536, "seed": 1236},
+    {"m": 64, "n": 576, "k": 7168, "seed": 542},
+    {"m": 96, "n": 7168, "k": 256, "seed": 1234},
+    {"m": 96, "n": 7168, "k": 2048, "seed": 4153},
+    {"m": 96, "n": 4608, "k": 7168, "seed": 412},
+    {"m": 128, "n": 7168, "k": 2304, "seed": 624},
+    {"m": 128, "n": 512, "k": 7168, "seed": 2514},
+    {"m": 512, "n": 4096, "k": 512, "seed": 543},
+    {"m": 512, "n": 1536, "k": 7168, "seed": 12341},
+]
+
+BENCHMARK_CONFIGS = [
+    {"m": 1024, "n": 1536, "k": 7168, "seed": 8135},
+    {"m": 1024, "n": 3072, "k": 1536, "seed": 6251},
+    {"m": 1024, "n": 576, "k": 7168, "seed": 12346},
+    {"m": 1024, "n": 7168, "k": 256, "seed": 5364},
+    {"m": 1024, "n": 7168, "k": 2048, "seed": 6132},
+    {"m": 1024, "n": 4608, "k": 7168, "seed": 7531},
+    {"m": 1024, "n": 7168, "k": 2304, "seed": 12345},
+    {"m": 1024, "n": 512, "k": 7168, "seed": 6563},
+    {"m": 1024, "n": 4096, "k": 512, "seed": 17512},
+    {"m": 6144, "n": 1536, "k": 7168, "seed": 6543},
+    {"m": 6144, "n": 3072, "k": 1536, "seed": 234},
+    {"m": 6144, "n": 576, "k": 7168, "seed": 9863},
+    {"m": 6144, "n": 7168, "k": 256, "seed": 764243},
+    {"m": 6144, "n": 7168, "k": 2048, "seed": 76547},
+    {"m": 6144, "n": 4608, "k": 7168, "seed": 65436},
+    {"m": 6144, "n": 7168, "k": 2304, "seed": 452345},
+    {"m": 6144, "n": 512, "k": 7168, "seed": 12341},
+    {"m": 6144, "n": 4096, "k": 512, "seed": 45245},
+]
+
+ALL_CONFIGS = TEST_CONFIGS + BENCHMARK_CONFIGS
+
+
+def get_inputs(m, n, k, seed=42, device="cuda"):
+    """Build representative inputs independently of the editable candidate."""
+    gen = torch.Generator(device=device)
+    gen.manual_seed(seed)
+    scale_n = (n + BLOCK_SHAPE_N - 1) // BLOCK_SHAPE_N
+    scale_k = (k + BLOCK_SHAPE_K - 1) // BLOCK_SHAPE_K
+
+    a = torch.randn((k, m), dtype=torch.bfloat16, device=device, generator=gen).to(
+        torch.float8_e4m3fnuz
+    )
+    b = torch.randn((k, n), dtype=torch.bfloat16, device=device, generator=gen).to(
+        torch.float8_e4m3fnuz
+    )
+    a_scale = torch.randn(
+        [scale_k, m], dtype=torch.float32, device=device, generator=gen
+    )
+    b_scale = torch.randn(
+        [scale_k, scale_n], dtype=torch.float32, device=device, generator=gen
+    )
+    c = torch.zeros((m, n), dtype=torch.bfloat16, device=device)
+    return (a.T, b.T, a_scale.T, b_scale.T, c)
+
+
+def fp8_blockwise_mm_pytorch(a, b, a_scale, b_scale, c):
+    """Protected PyTorch reference for the blockwise-scaled multiplication."""
+    a_c = a.contiguous()
+    a_s = a_scale.contiguous()
+    b_s = b_scale.contiguous()
+
+    m, k = a_c.shape
+    n = b.shape[0]
+    sn, sk = b_s.shape
+
+    a_sc = (
+        a_s.unsqueeze(-1)
+        .repeat(1, 1, BLOCK_SHAPE_K)
+        .reshape(m, sk * BLOCK_SHAPE_K)[:, :k]
+    )
+    a_deq = a_c.to(a_sc.dtype) * a_sc
+
+    b_sc = (
+        b_s.view(-1, 1)
+        .repeat(1, BLOCK_SHAPE_N * BLOCK_SHAPE_K)
+        .view(sn, sk, BLOCK_SHAPE_N, BLOCK_SHAPE_K)
+        .permute(0, 2, 1, 3)
+        .reshape(sn * BLOCK_SHAPE_N, sk * BLOCK_SHAPE_K)
+    )[:n, :k]
+    b_deq = b.to(b_sc.dtype) * b_sc
+
+    c[...] = (a_deq @ b_deq.T).to(torch.bfloat16)
+    return c
 
 
 def _pick(configs, count):

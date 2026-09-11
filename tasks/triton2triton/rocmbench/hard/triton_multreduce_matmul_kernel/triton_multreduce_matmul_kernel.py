@@ -346,10 +346,10 @@ def multreduce_matmul_triton_wrapper(a_tensor, b_tensor, c_buffer, bias_tensor,
                                      block_m_const, block_n_const, block_k_const_tile, # block_k_const_tile is K-tile for kernel
                                      use_bias_flag, num_warps_launch, num_stages_launch): # num_stages for launch
     grid = (triton.cdiv(M_dim, block_m_const) * triton.cdiv(N_dim, block_n_const), )
-    even_k_flag = (K_dim % block_k_const_tile == 0)
 
-    # Call the CORE kernel directly, not the autotuned one, to avoid meta-param conflict
-    triton_matmul_kernel[grid]( # Calling the non-autotuned version
+    # Launch the declared target's heuristic/JIT layer so each benchmark case can
+    # retain its fixed launch parameters without conflicting with its autotuner.
+    triton_multreduce_matmul_kernel.fn[grid](
         a_tensor, b_tensor, c_buffer, bias_tensor,
         M_dim, N_dim, K_dim,
         a_tensor.stride(0), a_tensor.stride(1),
@@ -360,8 +360,6 @@ def multreduce_matmul_triton_wrapper(a_tensor, b_tensor, c_buffer, bias_tensor,
         BLOCK_SIZE_N=block_n_const, 
         BLOCK_SIZE_K=block_k_const_tile, # This is the K-tile size
         USE_BIAS=use_bias_flag, 
-        USE_DOT=False, # Explicitly set for "multreduce" behavior
-        EVEN_K=even_k_flag,
         num_warps=num_warps_launch,
         num_stages=num_stages_launch # Pass num_stages
     )

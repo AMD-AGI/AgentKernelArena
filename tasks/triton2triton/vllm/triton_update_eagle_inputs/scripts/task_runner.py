@@ -15,6 +15,12 @@ TEST_SHAPES = [
     (32, 1024, 8192),
     (64, 2048, 8192),
 ]
+CORRECTNESS_CASES = [
+    *((shape, False) for shape in TEST_SHAPES),
+    # Exercise both transitions onto and attempts to advance past the clamp
+    # boundaries. 1536 also covers a masked second block above BLOCK_SIZE.
+    ((4, 1536, 2048), True),
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -43,7 +49,9 @@ def load_module():
     return mod
 
 
-def make_inputs(num_reqs, hidden_size, max_model_len, device="cpu"):
+def make_inputs(
+    num_reqs, hidden_size, max_model_len, device="cpu", boundary_values=False
+):
     import torch
     torch.manual_seed(42)
     draft_tokens = torch.randint(0, 32000, (num_reqs,), dtype=torch.int64)
@@ -52,6 +60,18 @@ def make_inputs(num_reqs, hidden_size, max_model_len, device="cpu"):
     positions = torch.randint(0, max_model_len - 2, (num_reqs,), dtype=torch.int32)
     input_hs = torch.zeros(num_reqs, hidden_size, dtype=torch.float16)
     seq_lens = torch.randint(1, max_model_len - 1, (num_reqs,), dtype=torch.int32)
+
+    if boundary_values:
+        if num_reqs < 4:
+            raise ValueError("boundary cases require at least four requests")
+        positions[:4] = torch.tensor(
+            [max_model_len - 2, max_model_len - 1, 0, max_model_len - 3],
+            dtype=positions.dtype,
+        )
+        seq_lens[:4] = torch.tensor(
+            [max_model_len - 1, max_model_len, 1, max_model_len - 2],
+            dtype=seq_lens.dtype,
+        )
 
     if device != "cpu":
         draft_tokens = draft_tokens.to(device)
@@ -102,10 +122,10 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    for i, (nr, hs, mml) in enumerate(TEST_SHAPES):
+    for i, ((nr, hs, mml), boundary_values) in enumerate(CORRECTNESS_CASES):
         try:
-            gpu_inputs = make_inputs(nr, hs, mml, device)
-            cpu_inputs = make_inputs(nr, hs, mml, "cpu")
+            gpu_inputs = make_inputs(nr, hs, mml, device, boundary_values)
+            cpu_inputs = make_inputs(nr, hs, mml, "cpu", boundary_values)
 
             mod.update_eagle_inputs(
                 gpu_inputs[0], gpu_inputs[1], gpu_inputs[2],
@@ -198,7 +218,11 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(CORRECTNESS_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

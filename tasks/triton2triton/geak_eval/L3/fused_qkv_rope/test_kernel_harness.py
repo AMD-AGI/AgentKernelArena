@@ -4,8 +4,9 @@ Test harness for fused_qkv_split_qk_rope kernel (aiter reference).
 
 Modes: --correctness, --profile, --benchmark, --full-benchmark
 
-The kernel and reference helpers are imported from the task-local
-``kernel.py`` so the materialized task has no external AITER dependency.
+Only the declared Triton kernel is imported from editable ``kernel.py``.
+Launch policy, output allocation, and the PyTorch oracle stay in this protected
+harness so candidate edits cannot change the measured contract or reference.
 """
 from __future__ import annotations
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
@@ -21,6 +22,23 @@ def benchmark_cuda_graph_or_events(*args, **kwargs):
         else (values[midpoint - 1] + values[midpoint]) / 2.0
     )
     return median_ms, metadata
+
+
+class CapturedGraphRun:
+    """Handle populated by the benchmark helper with the exact timed graph."""
+
+    def __init__(self):
+        self._replay = None
+        self.output = None
+
+    def _bind(self, replay, output):
+        self._replay = replay
+        self.output = output
+
+    def replay(self):
+        if self._replay is None:
+            raise RuntimeError("captured graph replay was not bound")
+        return self._replay()
 
 # GEAK materialized harness bootstrap
 import importlib.util
@@ -85,15 +103,91 @@ if _KERNEL_DIR and _KERNEL_DIR not in sys.path:
 
 import argparse
 import math
+from enum import IntEnum
 
 import torch
+import triton
 
-from kernel import (
-    RotateStyle,
-    fused_qkv_split_qk_rope,
-    generate_rope_cached_freqs,
-    ref_rope_sbhd_fwd,
-)
+from kernel import _fused_qkv_split_qk_rope_kernel
+
+
+def fused_qkv_split_qk_rope(
+    qkv,
+    cos,
+    sin,
+    positions,
+    qh,
+    kvh,
+    head_dim,
+    is_neox=True,
+    offsets=None,
+    reuse_freqs_front_part=True,
+    nope_first=False,
+):
+    """Protected allocation and launch contract for the editable kernel."""
+    T = qkv.shape[0]
+    q_size = qh * head_dim
+    kv_size = kvh * head_dim
+
+    assert qh >= kvh and qh % kvh == 0, "qh must be mutiple of kvh"
+
+    q = torch.empty((T, qh, head_dim), dtype=qkv.dtype, device=qkv.device)
+    k = torch.empty((T, kvh, head_dim), dtype=qkv.dtype, device=qkv.device)
+    v = torch.empty((T, kvh, head_dim), dtype=qkv.dtype, device=qkv.device)
+
+    if cos.shape[-1] == head_dim // 2:
+        have_nope = not reuse_freqs_front_part
+    elif cos.shape[-1] == head_dim // 4:
+        have_nope = True
+    else:
+        have_nope = False
+
+    assert qkv.shape[-1] == q_size + 2 * kv_size, "Shape error"
+    effective_head_dim = head_dim // (2 if have_nope else 1)
+    assert effective_head_dim == triton.next_power_of_2(
+        effective_head_dim
+    ), "head_dim should be power of 2"
+
+    if have_nope:
+        block_d = head_dim // 2
+        block_d_half = head_dim // 4
+    else:
+        block_d = head_dim
+        block_d_half = head_dim // 2
+
+    block_t = 32
+    grid = (triton.cdiv(T, block_t), qh, 1)
+    _fused_qkv_split_qk_rope_kernel[grid](
+        qkv,
+        cos,
+        sin,
+        positions,
+        offsets,
+        q,
+        k,
+        v,
+        T,
+        *qkv.stride(),
+        cos.stride(0),
+        cos.stride(-1),
+        *positions.stride(),
+        *q.stride(),
+        *k.stride(),
+        HAVE_NOPE=have_nope,
+        NOPE_FIRST=nope_first,
+        REUSE_FREQS_FRONT_PART=reuse_freqs_front_part,
+        IS_NEOX=is_neox,
+        HAVE_POS=(positions is not None),
+        HAVE_OFFS=(offsets is not None),
+        QH=qh,
+        KVH=kvh,
+        BLOCK_T=block_t,
+        BLOCK_D=block_d,
+        BLOCK_D_HALF=block_d_half,
+        num_warps=4,
+        waves_per_eu=0,
+    )
+    return q, k, v
 
 
 def triton_op(qkv, cos, sin, positions, qh, kvh, head_dim, is_neox,
@@ -109,6 +203,62 @@ def triton_op(qkv, cos, sin, positions, qh, kvh, head_dim, is_neox,
 # ============================================================================
 # REFERENCE IMPLEMENTATIONS
 # ============================================================================
+
+
+class RotateStyle(IntEnum):
+    NEOX = 0
+    GPTJ = 1
+
+
+def rotate_half_neox(x):
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
+
+
+def rotate_half_gptj(x):
+    x1 = x[..., ::2]
+    x2 = x[..., 1::2]
+    return torch.stack((-x2, x1), dim=-1).flatten(-2)
+
+
+def ref_rope_sbhd_fwd(
+    x_,
+    freqs_,
+    rotate_style,
+    reuse_freqs_front_part,
+    nope_first,
+):
+    rotate_half = (
+        rotate_half_neox if rotate_style == RotateStyle.NEOX else rotate_half_gptj
+    )
+    rotate_dim = freqs_.shape[-1] * (2 if reuse_freqs_front_part else 1)
+    if nope_first:
+        d = x_.shape[-1]
+        x, x_forward = x_[..., d - rotate_dim :], x_[..., : d - rotate_dim]
+    else:
+        x, x_forward = x_[..., :rotate_dim], x_[..., rotate_dim:]
+
+    freqs = freqs_
+    if reuse_freqs_front_part:
+        if rotate_style == RotateStyle.NEOX:
+            freqs = freqs.repeat([1] * (freqs.dim() - 1) + [2])
+        else:
+            freqs = freqs.repeat_interleave(2, dim=-1)
+    x_embed = x * torch.cos(freqs) + rotate_half(x) * torch.sin(freqs)
+    if nope_first:
+        return torch.cat((x_forward, x_embed), dim=-1).to(dtype=x_.dtype)
+    return torch.cat((x_embed, x_forward), dim=-1).to(dtype=x_.dtype)
+
+
+def generate_rope_cached_freqs(B, max_embed_positions, freqs_D, dtype):
+    pos = torch.randint(0, max_embed_positions, (B,), device="cuda")
+    freqs = torch.randn(
+        (max_embed_positions, 1, 1, freqs_D), dtype=dtype, device="cuda"
+    )
+    cos = torch.cos(freqs)
+    sin = torch.sin(freqs)
+    return pos, freqs, cos, sin
 
 
 def generate_qkv_inputs(
@@ -336,9 +486,26 @@ def run_benchmark(configs=None, warmup=50, iters=200, verbose=True):
                 nope_first=nope_first,
             )
 
+        timed_run = CapturedGraphRun()
         triton_ms, triton_meta = benchmark_cuda_graph_or_events(
-            run_kernel, warmup=warmup, repetition=iters,
+            run_kernel, warmup=warmup, repetition=iters, timed_run=timed_run,
         )
+
+        # Poison the graph-owned outputs, replay the exact executable that was
+        # timed, and compare those outputs with the protected oracle. This
+        # catches captures that omit work or fail to overwrite an output.
+        q_expected, k_expected, v_expected = torch_op(
+            qkv, QH_PER_KH, KH, head_dim, ref_freqs,
+            reuse, nope, nope_first, rs,
+        )
+        if not isinstance(timed_run.output, tuple) or len(timed_run.output) != 3:
+            raise AssertionError("timed graph did not expose Q/K/V outputs")
+        for output in timed_run.output:
+            output.fill_(float("nan"))
+        q_replayed, k_replayed, v_replayed = timed_run.replay()
+        torch.testing.assert_close(q_expected, q_replayed, atol=ATOL, rtol=RTOL)
+        torch.testing.assert_close(k_expected, k_replayed, atol=ATOL, rtol=RTOL)
+        torch.testing.assert_close(v_expected, v_replayed, atol=ATOL, rtol=RTOL)
 
         def run_reference():
             if baseline_fn is not None:
