@@ -1,31 +1,36 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
-"""Deterministic input construction for an a16w16 GEMM workload.
+"""Input construction for an a16w16 GEMM workload.
 
-Extracted from the workload-schema definition named by ``workload.json``. Both
-tensor inputs are ``type: random`` and the declared layout is ``a [m, k]``,
-``b [n, k]`` with ``trans_b`` -- the operator computes ``a @ b.T``.
+The buffers are allocated here and filled by ``task_initialize``, which is the
+schema bundle's own ``initialize`` callback: ``a`` is standard normal and ``b``
+is drawn at 1/sqrt(k), its logical fan-in. Nothing about the distribution is
+decided in this file, because the acceptance run that verifies a result uses
+that callback and a second implementation of it here would be a second operator.
+
+Each case is built on its own, from a generator re-seeded to ``seed`` for that
+case, because the bundle initializes one workload point at a time. ``a`` carries
+the case's m and is drawn first, so ``b`` lands at a different point in the
+stream for every case -- the cases do not share a weight and cannot be built
+from one pass.
 
 Every constant that varies between tasks in this family lives in
 ``workload.json``, so the whole ``scripts/`` tree plus the harness and the
 driver stay byte-identical across the GEMM tasks. Arena copies each task
 directory into its own workspace, so a task cannot import from a sibling and
 every task has to carry its own copy of these modules.
-
-Case ordering matters: the shared ``b`` and then every case's ``a`` are drawn
-from one generator seeded once, in the order ``workload.json`` declares the
-cases. That order is the workload schema's order, so the inputs are
-reproducible from the schema alone.
 """
 
 from __future__ import annotations
 
 import ast
 import json
-import math
 from pathlib import Path
 from typing import Any
 
 import torch
+
+import task_compare
+import task_initialize
 
 # A candidate implementation may not import the framework under test. aiter's
 # tuned a16w16 dispatch resolves to aiter's own FlyDSL kernels for most of the
@@ -101,113 +106,33 @@ BENCH_WARMUP = int(WORKLOAD["bench"]["warmup"])
 BENCH_REPETITION = int(WORKLOAD["bench"]["repetition"])
 BENCH_TARGET_MS = float(WORKLOAD["bench"]["target_ms"])
 
-# How much further from the fp32 reference a candidate may sit than the
-# production implementation does, and a floor under that measured distance.
-# These are the correctness constants the task fixes; the distance they act on
-# is measured at run time.
-GATE_MULTIPLIER = float(WORKLOAD["gate_multiplier"])
-GATE_FLOOR = float(WORKLOAD["gate_floor"])
-
-# The second correctness gate, expressed in the L2 domain. The gate above acts
-# on a mean relative error, an L1 statistic that averages away error
-# concentrated in a few elements: a candidate can sit well inside it while being
-# badly wrong on part of the output. SNR is a power ratio and penalizes exactly
-# that concentration, so a case has to clear both.
-#
-# It introduces no new policy constants. It is the SAME policy as the error
-# gate, restated for a different statistic: allowing the noise power to be
-# GATE_MULTIPLIER times larger is a fixed offset in dB, and GATE_FLOOR's role --
-# never demand more accuracy than this -- becomes a ceiling on the SNR that may
-# be required. The mapping between an L1 relative error and an L2 power ratio is
-# an analogue rather than an identity, which is why these bound a derived
-# measurement instead of replacing it.
-#
-# A fixed floor was the wrong shape here. The MoE baseline's own worst case sits
-# below 30 dB against the fp32 reference, so any fixed threshold high enough to
-# be meaningful for this GEMM family would fail the production implementation
-# itself on the MoE tasks, capping every run at the compile score.
-SNR_MARGIN_DB = 10.0 * math.log10(GATE_MULTIPLIER)
-SNR_CEILING_DB = -20.0 * math.log10(GATE_FLOOR)
-
 CASES: tuple[dict[str, Any], ...] = tuple(WORKLOAD["cases"])
 CASE_IDS: tuple[str, ...] = tuple(str(case["case_id"]) for case in CASES)
 
+GATE_EXPLANATION = (
+    "gate: scripts/task_compare.py, the schema bundle's own comparison callback. "
+    "It admits a candidate when every element is within its tolerance, and it "
+    "owns that tolerance -- nothing here sets or relaxes it."
+)
 
-def derive_gates(baseline: dict[str, list[float]]) -> dict[str, float]:
-    """Return both correctness gates for this run, from the measured baseline.
 
-    The gates are derived, never stored. What the task fixes is the policy -- a
-    candidate may be at most ``GATE_MULTIPLIER`` times as far from the fp32
-    reference as the production implementation itself is, but is never held to a
-    distance tighter than ``GATE_FLOOR`` -- and the distance is measured against
-    the same inputs, on the same device, with the same framework build that is
-    about to score the candidate. A recorded number would silently go stale the
-    moment any of those changed.
+def build_case_inputs(case: dict[str, Any], device: str = "cuda") -> dict[str, Any]:
+    """Allocate one case's declared buffers and let the bundle fill them.
 
-    The floor matters because the measured distance says as much about which
-    reduction strategy the baseline happens to use as about what correctness
-    requires. Where the tuned dispatch lands on a near-exact implementation at
-    every case the measurement collapses to around 1e-6, and a gate derived from
-    that alone would demand that a port reproduce the baseline's accumulation
-    order rather than merely be correct.
-
-    Both are deliberately ONE gate for the operator rather than one per case,
-    for the same reason: the baseline selects a different kernel per bucket of
-    the var axis and its own accuracy moves by orders of magnitude across them.
-
-    The two act on different statistics on purpose. ``error`` bounds a mean, and
-    ``snr_db`` bounds a power ratio, which is what catches error concentrated in
-    a few elements rather than spread over the output.
+    The bundle's callback writes preallocated buffers in place and validates
+    their dtype, shape, contiguity and non-overlap before it writes anything, so
+    allocating them is the whole of this task's share of input construction.
     """
-    errors, snrs = baseline["errors"], baseline["snrs"]
-    if not errors or not snrs:
-        raise RuntimeError("no baseline accuracy was measured, so no gate can be derived")
-    return {
-        "error": max(max(errors), GATE_FLOOR) * GATE_MULTIPLIER,
-        "snr_db": min(min(snrs), SNR_CEILING_DB) - SNR_MARGIN_DB,
+    inputs = {
+        "a": torch.empty((int(case["m"]), K), dtype=torch.bfloat16, device=device),
+        "b": torch.empty((N, K), dtype=torch.bfloat16, device=device),
     }
+    return task_initialize.run(inputs, seed=SEED)
 
 
-def gate_explanation(baseline: dict[str, list[float]]) -> str:
-    """One line naming both gates and what set each, for the harness and driver."""
-    gates = derive_gates(baseline)
-    worst_error, worst_snr = max(baseline["errors"]), min(baseline["snrs"])
-    error_basis = "worst baseline error" if worst_error >= GATE_FLOOR else "floor"
-    snr_basis = "worst baseline snr" if worst_snr <= SNR_CEILING_DB else "ceiling"
-    return (
-        f"gates: error {gates['error']:.8f} = max({worst_error:.8f}, "
-        f"{GATE_FLOOR:g}) x {GATE_MULTIPLIER:g} set by the {error_basis}; "
-        f"snr {gates['snr_db']:.2f} dB = min({worst_snr:.2f}, "
-        f"{SNR_CEILING_DB:.2f}) - {SNR_MARGIN_DB:.2f} set by the {snr_basis}"
-    )
-
-
-def build_inputs(device: str = "cuda") -> dict[str, Any]:
-    """Build one instance of every workload case in the declared layout.
-
-    ``b`` depends only on the constant axes, so all cases share it; only ``a``
-    carries the ``m`` axis. That is what keeps a whole-family task affordable:
-    one 75 MB weight plus roughly 100 MB of activations covers all 13 cases.
-    """
-    generator = torch.Generator(device=device)
-    generator.manual_seed(SEED)
-
-    b = torch.randn((N, K), device=device, dtype=torch.bfloat16, generator=generator)
-
-    cases = []
-    for case in CASES:
-        m = int(case["m"])
-        a = torch.randn(
-            (m, K), device=device, dtype=torch.bfloat16, generator=generator
-        )
-        cases.append({"case_id": str(case["case_id"]), "m": m, "a": a})
-
-    return {"b": b, "cases": cases}
-
-
-def call_kwargs(inputs: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:
+def call_kwargs(inputs: dict[str, Any]) -> dict[str, Any]:
     """The operator's full argument set, in the schema's input order."""
-    return {"a": case["a"], "b": inputs["b"]}
+    return {"a": inputs["a"], "b": inputs["b"]}
 
 
 def _banned_candidate_findings(source: str) -> list[str]:
@@ -283,9 +208,21 @@ def assert_candidate_is_independent(source: str) -> None:
         )
 
 
-def relative_error(got: torch.Tensor, expected: torch.Tensor) -> float:
-    """Mean relative error against the reference, in fp32."""
-    got_f32 = got.float()
-    expected_f32 = expected.float()
-    denominator = expected_f32.abs().mean().clamp_min(torch.finfo(torch.float32).tiny)
-    return ((got_f32 - expected_f32).abs().mean() / denominator).item()
+def verdict(got: torch.Tensor, expected: torch.Tensor) -> tuple[bool, str]:
+    """Apply the bundle's comparison callback and report what it decided.
+
+    The callback raises AssertionError for a candidate that fails its contract
+    or its tolerance, and ValueError for a reference it considers invalid. Only
+    the first is a candidate verdict, so only the first is caught: an invalid
+    reference is this task's bug and has to stop the run rather than be scored
+    as a failed port.
+
+    No metric is recomputed here. The callback's own message carries the numbers
+    it rejected on, and a second implementation of them would be the thing this
+    whole file exists to avoid.
+    """
+    try:
+        task_compare.run(got, expected)
+    except AssertionError as failure:
+        return False, str(failure)
+    return True, "within tolerance"

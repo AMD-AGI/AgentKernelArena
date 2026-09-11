@@ -1,182 +1,263 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
-"""Correctness reference for the MXFP4 fused-MoE workload.
+"""Correctness reference for this workload, copied from the schema bundle.
 
-Transcribed from the workload schema's ``reference`` solution for this operator
-(``solutions/reference/moe/*/fused_moe_torch_reference_*.json``, entry point
-``main.py::run``): a dense per-expert MoE in fp32 that un-shuffles and
-dequantizes the stored MXFP4 weights itself, and quantizes both activations
-because ``per_1x32`` is the afp4_wfp4 path.
+Everything below this docstring is the definition's ``reference`` callback, taken
+without edit from schema v2 so that this task and the acceptance run that
+verifies its result apply one implementation rather than two that agree today.
+Do not edit it here: change it in the bundle and copy it down again, or the two
+silently diverge -- which is exactly the failure this file exists to prevent.
 
-Three documented divergences from the schema source, so a future comparison
-against the bundle knows what to expect:
-
-1. ``from typing import Optional`` is added. The schema source annotates the
-   scale arguments with it and never imports it; that survives there only
-   because ``from __future__ import annotations`` keeps annotations
-   unevaluated.
-2. The schema source's unused ``math`` and ``torch.nn.functional`` imports are
-   dropped.
-3. The activation quantizer is ``aiter.get_torch_quant(QuantType.per_1x32)``
-   applied to a bf16 cast, not ``aiter.ops.triton.quant.dynamic_mxfp4_quant``.
-   See :func:`_quantize_activation` for the measurement that decided it.
-
-Divergence 3 is not cosmetic. The correctness gate is derived from how far the
-production implementation sits from this reference, so a reference that
-disagrees with the operator's own quantization inflates the baseline's apparent
-error and, with it, the gate that admits a candidate.
+``run`` is the entry point the bundle exports.
 """
 
 from __future__ import annotations
+from typing import Optional as Optional
+import torch as torch
 
-from typing import Optional
-
-import torch
-
-
-# ----- reference dependencies -----
-def _unshuffle_weight(w: torch.Tensor, layout=(16, 16)) -> torch.Tensor:
-    """Invert aiter's ``shuffle_weight`` (generic, non-guinterleave) layout.
-
-    aiter preshuffles MoE weights once at load time for the CK/asm gemm
-    kernels (``aiter/ops/shuffle.py::shuffle_weight``), permuting
-    ``[..., N, K] -> [..., N//BN, K//BK, BK//K, BN, K]`` (BN, BK derived from
-    ``layout``) then flattening back to ``[..., N, K]``. Shape is unchanged,
-    only element order is, so this is the exact inverse permutation.
-    """
-    x_type = w.dtype
-    w = w.view(torch.uint8) if x_type == getattr(torch, "float4_e2m1fn_x2", None) else w
-    IN, IK = layout
-    BK = IK * 2
-    K = 16 // w.element_size()
-    BN = IN
-    batch = w.numel() // (w.shape[-2] * w.shape[-1])
-    w_ = w.view(batch, w.shape[-2] // BN, w.shape[-1] // BK, BK // K, BN, K)
-    w_ = w_.permute(0, 1, 4, 2, 3, 5).contiguous()
-    return w_.view(*w.shape).view(x_type)
-
-
-def _unshuffle_scale(scale: torch.Tensor) -> torch.Tensor:
-    """Invert aiter's ``shuffle_scale`` (generic, non-guinterleave) layout.
-
-    Same idea as :func:`_unshuffle_weight` but for the per-block e8m0 scale,
-    applied per expert on a ``[N, K//32]`` slice (``aiter/ops/shuffle.py::
-    shuffle_scale``). Assumes N is a multiple of 256 and K//32 a multiple of
-    8, so no padding was introduced on the way in -- true for every shape
-    this schema declares.
-    """
-    x_type = scale.dtype
-    scale = scale.view(torch.uint8) if x_type == getattr(torch, "float8_e8m0fnu", None) else scale
-    num_experts, sm, sn = scale.shape
-    if sm % 256 != 0 or sn % 8 != 0:
-        raise ValueError(
-            f"unexpected mxfp4 scale layout: N={sm}, K//32={sn}. "
-            "shuffle_scale pads N to a multiple of 256 and K//32 to a "
-            "multiple of 8; un-padding is not implemented."
-        )
-    s_ = scale.view(num_experts, sm // 32, sn // 8, 4, 16, 2, 2)
-    s_ = s_.permute(0, 1, 6, 4, 2, 5, 3).contiguous()
-    return s_.view(*scale.shape).view(x_type)
-
-
-def _act_and_mul(x: torch.Tensor, activation: int) -> torch.Tensor:
+def _apply_gated_activation(x: torch.Tensor, activation: int) -> torch.Tensor:
     """SwiGLU-style gate/up split; w1 stores [gate | up] along its rows."""
     gate, up = x.chunk(2, dim=-1)
+    activation = getattr(activation, "value", activation)
     if activation == 1:
         gate = torch.nn.functional.gelu(gate)
-    else:
+    elif activation in (None, 0):
         gate = torch.nn.functional.silu(gate)
+    else:
+        raise ValueError(f"unsupported MoE activation: {activation}")
     return gate * up
-
-
-def _mxfp4_to_f32(x: torch.Tensor) -> torch.Tensor:
-    """Unpack two e2m1 values per byte, low nibble first."""
-    lut = [0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0,
-           -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0, -6.0]
-    x = x.view(torch.uint8).repeat_interleave(2, dim=-1)
-    x[..., ::2] = x[..., ::2] & 0xF
-    x[..., 1::2] = x[..., 1::2] >> 4
-    table = torch.tensor(lut, dtype=torch.float32, device=x.device)
-    return table[x.long()]
 
 
 def _e8m0_to_f32(scale: torch.Tensor) -> torch.Tensor:
     """Biased exponent byte -> fp32 power of two."""
-    scale = scale.view(torch.uint8)
-    zero_case = scale == 0
-    nan_case = scale == 0xFF
-    bits = scale.to(torch.int32) << 23
-    bits[zero_case] = 0x00400000
-    bits[nan_case] = 0x7F800001
-    return bits.view(torch.float32)
+    return scale.view(torch.float8_e8m0fnu).to(torch.float32)
 
 
-def _to_f32(w: torch.Tensor, scale: Optional[torch.Tensor], block: int = 32) -> torch.Tensor:
-    """Weights as fp32: plain cast, or mxfp4 dequant when scales are given.
+def _n_ones(n: int) -> int:
+    return (1 << n) - 1
 
-    ``w`` (and ``scale``, if given) are assumed preshuffled -- that's the
-    layout aiter's real fused_moe kernel requires, so it's what every call
-    captured from a live model actually carries. Un-shuffle first.
-    """
-    w = _unshuffle_weight(w)
+
+def _floatx_unpacked_to_f32(x: torch.Tensor, ebits: int, mbits: int) -> torch.Tensor:
+    """Decode sub-byte codes from the low bits of uint8 into FP32."""
+    EBITS_F32, MBITS_F32 = 8, 23
+    F32_EXP_BIAS = _n_ones(EBITS_F32 - 1)
+
+    assert x.dtype == torch.uint8
+    assert 1 + ebits + mbits <= 8
+
+    sign_mask = 1 << (ebits + mbits)
+    exp_bias = _n_ones(ebits - 1)
+    mantissa_mask = _n_ones(mbits)
+
+    sign_lp = x & sign_mask
+
+    x_pos = x ^ sign_lp
+
+    zero_mask = x_pos == 0
+
+    denormal_mask = torch.logical_and((x_pos > 0), ((x_pos >> mbits) == 0))
+
+    # Rebuild the FP32 exponent and mantissa.
+    exp_biased_lp = x_pos >> mbits
+    exp_biased_f32 = exp_biased_lp - exp_bias + F32_EXP_BIAS
+    exp_biased_f32 = exp_biased_f32.to(torch.int32) << MBITS_F32
+
+    mantissa_lp_int32 = (x_pos & mantissa_mask).to(torch.int32)
+    mantissa_f32 = mantissa_lp_int32 << (MBITS_F32 - mbits)
+    result = exp_biased_f32 | mantissa_f32
+
+    result[zero_mask] = 0
+
+    denormal_exp_biased = 1 - exp_bias + F32_EXP_BIAS
+
+    if mbits == 1:
+        result[denormal_mask] = (denormal_exp_biased - mbits) << MBITS_F32
+
+    else:
+        # Normalize each subnormal mantissa before inserting its exponent.
+        for i in range(mbits):
+            for mantissa_cmp in range(1 << i, 1 << (i + 1)):
+                left_shift = mbits - i
+                mantissa_f32 = (mantissa_cmp - (1 << i)) << (
+                    left_shift + MBITS_F32 - mbits
+                )
+                exp_biased_f32 = (denormal_exp_biased - left_shift) << MBITS_F32
+
+                # Addition supports mixed SymInt/int operands in torch.compile.
+                mantissa_lp_int32[mantissa_lp_int32 == mantissa_cmp] = (
+                    exp_biased_f32 + mantissa_f32
+                )
+
+        result = torch.where(denormal_mask, mantissa_lp_int32, result)
+
+    sign_f32 = sign_lp.to(torch.int32) << (MBITS_F32 - mbits + EBITS_F32 - ebits)
+    result = result | sign_f32
+
+    return result.view(torch.float)
+
+
+def _mxfp4_to_f32(x: torch.Tensor) -> torch.Tensor:
+    """Unpack two e2m1 values per byte, low nibble first."""
+    x = x.view(torch.uint8).contiguous()
+    shape = x.shape
+    first_elements = (x & 0b1111).to(torch.uint8)
+    second_elements = (x >> 4).to(torch.uint8)
+    unpacked = torch.stack([first_elements, second_elements], dim=-1).view(
+        *shape[:-1], shape[-1] * 2
+    )
+    return _floatx_unpacked_to_f32(unpacked, ebits=2, mbits=1)
+
+
+def _unshuffle_scale(scale: torch.Tensor) -> torch.Tensor:
+    """Invert the unpadded per-expert [N, K//32] shuffle_scale layout."""
+    dtype = scale.dtype
+    if dtype == getattr(torch, "float8_e8m0fnu", None):
+        scale = scale.view(torch.uint8)
+    num_experts, rows, cols = scale.shape
+    if rows % 256 != 0 or cols % 8 != 0:
+        raise ValueError(
+            f"unexpected mxfp4 scale layout: N={rows}, K//32={cols}. "
+            "shuffle_scale pads N to a multiple of 256 and K//32 to a "
+            "multiple of 8; un-padding is not implemented."
+        )
+    unshuffled = scale.view(num_experts, rows // 32, cols // 8, 4, 16, 2, 2)
+    unshuffled = unshuffled.permute(0, 1, 6, 4, 2, 5, 3).contiguous()
+    return unshuffled.view(*scale.shape).view(dtype)
+
+
+def _unshuffle_weight(weight: torch.Tensor, layout=(16, 16)) -> torch.Tensor:
+    """Invert the generic, non-guinterleaved ``shuffle_weight`` layout."""
+    dtype = weight.dtype
+    if dtype == getattr(torch, "float4_e2m1fn_x2", None):
+        weight = weight.view(torch.uint8)
+    block_n, block_k = layout
+    block_k *= 2
+    vector_size = 16 // weight.element_size()
+    rows, cols = weight.shape[-2:]
+    batch = weight.numel() // (rows * cols)
+    unshuffled = weight.view(
+        batch,
+        rows // block_n,
+        cols // block_k,
+        block_k // vector_size,
+        block_n,
+        vector_size,
+    )
+    unshuffled = unshuffled.permute(0, 1, 4, 2, 3, 5).contiguous()
+    return unshuffled.view(*weight.shape).view(dtype)
+
+
+def _dequantize_weight(
+    weight: torch.Tensor, scale: torch.Tensor | None, block: int = 32
+) -> torch.Tensor:
+    """Unshuffle weights/scales, then cast or MXFP4-dequantize to fp32."""
+    weight = _unshuffle_weight(weight)
     if scale is None:
-        return w.to(torch.float32)
-    w = _mxfp4_to_f32(w)
+        return weight.to(torch.float32)
+    weight = _mxfp4_to_f32(weight)
     scale = _e8m0_to_f32(_unshuffle_scale(scale))
-    if scale.shape[-1] * block != w.shape[-1]:
+    if scale.shape[-1] * block != weight.shape[-1]:
         raise ValueError(
             "unexpected mxfp4 scale layout: "
-            f"weight K={w.shape[-1]}, scale K={scale.shape[-1]}, block={block}."
+            f"weight K={weight.shape[-1]}, scale K={scale.shape[-1]}, block={block}."
         )
-    return w * scale.repeat_interleave(block, dim=-1)
+    return weight * scale.repeat_interleave(block, dim=-1)
 
 
-# ----- reference -----
-_ACTIVATION_QUANT = None
+def _f32_to_floatx_unpacked(x: torch.Tensor, ebits: int, mbits: int) -> torch.Tensor:
+    """Convert FP32 to saturated sub-byte codes with round-to-nearest-even."""
+
+    # FP4 conversion and packing adapted from torchao 0.17.0.
+    EBITS_F32, MBITS_F32 = 8, 23
+    F32_EXP_BIAS = _n_ones(EBITS_F32 - 1)
+
+    assert x.dtype == torch.float
+    assert 1 + ebits + mbits <= 8
+
+    exp_bias = _n_ones(ebits - 1)
+    max_int = _n_ones(ebits + mbits)
+    sign_mask = 1 << (ebits + mbits)
+
+    magic_adder = _n_ones(MBITS_F32 - mbits - 1)
+
+    max_normal = 2 ** (_n_ones(ebits) - exp_bias) * (_n_ones(mbits + 1) / (2**mbits))
+
+    min_normal = 2 ** (1 - exp_bias)
+
+    denorm_exp = (F32_EXP_BIAS - exp_bias) + (MBITS_F32 - mbits) + 1
+    denorm_mask_int = denorm_exp << MBITS_F32
+
+    denorm_mask_float = torch.tensor(denorm_mask_int, dtype=torch.int32).view(
+        torch.float32
+    )
+
+    # CPU bit shifts require int32 rather than uint32.
+    x = x.view(torch.int32)
+    sign = x & 0x80000000
+
+    x = x ^ sign
+
+    x = x.view(torch.float)
+
+    saturate_mask = x >= max_normal
+    denormal_mask = torch.logical_and(torch.logical_not(saturate_mask), x < min_normal)
+    normal_mask = torch.logical_not(torch.logical_or(saturate_mask, denormal_mask))
+
+    # Adding the exponent offset rounds subnormals to nearest-even.
+    denormal_x = x + denorm_mask_float
+    denormal_x = denormal_x.view(torch.int32)
+    denormal_x -= denorm_mask_int
+    denormal_x = denormal_x.to(torch.uint8)
+
+    # Adjust the exponent and round the retained mantissa to nearest-even.
+    normal_x = x.view(torch.int32)
+    mant_odd = (normal_x >> (MBITS_F32 - mbits)) & 1
+    val_to_add = ((exp_bias - F32_EXP_BIAS) << MBITS_F32) + magic_adder
+    normal_x += val_to_add
+    normal_x += mant_odd
+    normal_x = normal_x >> (MBITS_F32 - mbits)
+    normal_x = normal_x.to(torch.uint8)
+
+    x = torch.full_like(x, max_int, dtype=torch.uint8)
+    x = torch.where(denormal_mask, denormal_x, x)
+    x = torch.where(normal_mask, normal_x, x)
+
+    sign_lp = sign >> (MBITS_F32 + EBITS_F32 - mbits - ebits)
+    sign_lp = sign_lp.to(torch.uint8)
+    # Discard sign extension from the signed right shift.
+    sign_lp = sign_lp & sign_mask
+    x = x | sign_lp
+
+    return x.to(torch.uint8)
+
+
+def _quantize_mxfp4(
+    x: torch.Tensor, block: int = 32, min_amax: float = 0.0
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Pack nearest-even E2M1 values with upward-rounded E8M0 block scales."""
+    values = x.to(torch.float32).unflatten(-1, (-1, block))
+    amax = values.abs().amax(dim=-1, keepdim=True)
+    is_finite = torch.isfinite(amax)
+    values = torch.where(is_finite, values, 0.0)
+    amax = torch.where(is_finite, amax, 0.0).clamp_min(min_amax)
+    # frexp preserves subnormal maxima; 6 = 0.75 * 2**3.
+    mantissa, exponent = torch.frexp(amax)
+    exponent = exponent - 3 + (mantissa > 0.75).to(torch.int32)
+    exponent = torch.where(amax == 0, -127, exponent).clamp(-127, 127)
+    biased_exponent = exponent + 127
+    scaled = values * torch.exp2(exponent.neg().to(torch.float32))
+    codes = _f32_to_floatx_unpacked(scaled, ebits=2, mbits=1).flatten(-2)
+    shape = codes.shape
+    assert shape[-1] % 2 == 0
+    codes = codes.contiguous().view(-1)
+    packed = (codes[::2] | codes[1::2] << 4).view(*shape[:-1], shape[-1] // 2)
+    scales = torch.where(is_finite, biased_exponent, 0xFF).to(torch.uint8).squeeze(-1)
+    return packed, scales
 
 
 def _quantize_activation(x: torch.Tensor, block: int = 32) -> torch.Tensor:
-    """Round activations through mxfp4, the way the kernel does internally.
-
-    ``per_1x32`` is a4w4, not a16w4: aiter's ``fused_moe`` leaves the caller's
-    activations in bf16 and dynamic-quantizes them to MXFP4 *inside* the kernel
-    (``aiter/fused_moe.py``: for a Silu + mxfp4-weight call ``q_dtype_a`` is
-    ``fp4x2``). Computing the matmuls in fp32 would model a different operator.
-
-    The quantizer is ``aiter.get_torch_quant(QuantType.per_1x32)`` -- the one
-    aiter validates ``fused_moe`` against -- applied to a bf16 cast, because
-    that is what the operator receives. The schema source instead calls
-    ``aiter.ops.triton.quant.dynamic_mxfp4_quant``, which rounds the e8m0 block
-    scale differently. Measured on this definition, distance between the
-    production implementation and this reference:
-
-        num_tokens                            64        128
-        dynamic_mxfp4_quant               0.1457     0.1459
-        get_torch_quant, no bf16 cast     0.0346     0.0035
-        get_torch_quant, bf16 cast        0.0016     0.0328
-
-    Only the last row is a property of the kernels rather than of a mismatched
-    quantizer: it tracks which tuned stage-1 variant the M bucket selects (the
-    ``kw2_fp4`` variants fuse the output quantization into the epilogue and sit
-    an order of magnitude further out). The other two rows are the reference
-    disagreeing with the operator's own quantization contract.
-
-    Grouping and rounding are part of what the definition *is* -- the checkpoint
-    declares ``input_tensors`` as fp4, dynamic, per-group-32, e8m0 -- not part
-    of the kernel under test. Everything that is being checked --
-    dequantization, the per-expert matmuls, the activation, the routing -- stays
-    in this file.
-    """
-    global _ACTIVATION_QUANT
-    if _ACTIVATION_QUANT is None:
-        import aiter
-
-        _ACTIVATION_QUANT = aiter.get_torch_quant(aiter.QuantType.per_1x32)
-
-    from aiter import dtypes
-
-    packed, scale = _ACTIVATION_QUANT(x.to(torch.bfloat16), quant_dtype=dtypes.fp4x2)
-    values = _mxfp4_to_f32(packed)
-    return values * _e8m0_to_f32(scale).repeat_interleave(block, dim=-1)
+    """Round-trip MXFP4 with a 1e-10 amax floor and NaN propagation."""
+    packed, scales = _quantize_mxfp4(x, block, min_amax=1e-10)
+    return _mxfp4_to_f32(packed) * _e8m0_to_f32(scales).repeat_interleave(block, dim=-1)
 
 
 def _fused_moe_reference(
@@ -185,36 +266,48 @@ def _fused_moe_reference(
     w2: torch.Tensor,
     topk_weights: torch.Tensor,
     topk_ids: torch.Tensor,
-    w1_scale: Optional[torch.Tensor] = None,
-    w2_scale: Optional[torch.Tensor] = None,
     activation: int = 0,
     doweight_stage1: bool = False,
+    w1_scale: Optional[torch.Tensor] = None,
+    w2_scale: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    """Dense per-expert MoE. ``w1``/``w2``/scales are assumed preshuffled
-    (aiter's real weight layout, see ``_to_f32``); mxfp4 weights are
-    un-shuffled and dequantized first, and both matmuls take mxfp4 activations
-    (see ``_quantize_activation``) and accumulate in fp32."""
-    w1 = _to_f32(w1, w1_scale)
-    w2 = _to_f32(w2, w2_scale)
+    """Compute FP32 MoE with quantized activation inputs when scales exist."""
+    if (w1_scale is None) != (w2_scale is None):
+        raise ValueError("both MoE weight scales must be present or absent")
+    is_quantized = w1_scale is not None
+    w1 = _dequantize_weight(w1, w1_scale)
+    w2 = _dequantize_weight(w2, w2_scale)
     num_tokens, model_dim = hidden_states.shape
     topk = topk_ids.shape[1]
-    x = _quantize_activation(hidden_states)
-    weight = topk_weights.to(torch.float32)
-    out = torch.zeros((num_tokens, topk, model_dim), dtype=torch.float32, device=x.device)
-    for expert in range(w1.shape[0]):
-        mask = topk_ids == expert
+    activations = (
+        _quantize_activation(hidden_states)
+        if is_quantized
+        else hidden_states.to(torch.float32)
+    )
+    routing_weights = topk_weights.to(torch.float32)
+    out = torch.zeros(
+        (num_tokens, topk, model_dim), dtype=torch.float32, device=activations.device
+    )
+    for expert_id in range(w1.shape[0]):
+        mask = topk_ids == expert_id
         if not mask.any():
             continue
-        rows = mask.nonzero(as_tuple=True)[0]
-        act_out = _act_and_mul(x[rows] @ w1[expert].transpose(0, 1), activation)
+        token_indices = mask.nonzero(as_tuple=True)[0]
+        projected = activations[token_indices] @ w1[expert_id].transpose(0, 1)
         if doweight_stage1:
-            act_out = act_out * weight[mask].unsqueeze(-1)
-        out[mask] = _quantize_activation(act_out) @ w2[expert].transpose(0, 1)
+            # Stage-1 routing weights apply before the gated activation.
+            projected = projected * routing_weights[mask].unsqueeze(-1)
+        intermediate = _apply_gated_activation(projected, activation)
+        if is_quantized:
+            intermediate = _quantize_activation(intermediate.to(hidden_states.dtype))
+        out[mask] = intermediate @ w2[expert_id].transpose(0, 1)
     if not doweight_stage1:
-        out = out * weight.view(num_tokens, topk, 1)
+        out = out * routing_weights.view(num_tokens, topk, 1)
     return out.sum(dim=1).to(hidden_states.dtype)
 
 
-# ----- entry point -----
+_callable = _fused_moe_reference
+
+
 def run(*args, **kwargs):
-    return _fused_moe_reference(*args, **kwargs)
+    return _callable(*args, **kwargs)

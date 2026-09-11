@@ -25,13 +25,12 @@ target_kernel_functions:
 # the harness find no factory and silently score the baseline as if the port had
 # never happened.
 #
-# snr_threshold is KernelForge's coarse filter on a port before it enters the
-# optimize loop. It is NOT the correctness gate the task is scored on: that one
-# is derived at run time from the production implementation's own accuracy (see
-# workload.json's gate_policy). It has to sit below that derived gate, or PORT
-# would discard candidates Arena would have accepted. It is set per operator
-# family because the families sit at different distances from their fp32
-# reference, and a bar one family clears easily is unreachable for the other.
+# There is no snr_threshold. KernelForge's correctness stage prefers a driver's
+# SNR reading over the driver's own verdict whenever one is printed -- it
+# applies `snr_db >= --snr-threshold` and never reads `allclose` -- so a
+# threshold here would decide PORT and OPTIMIZE keep/revert on a statistic the
+# schema's comparison callback does not use. The driver therefore prints no
+# `SNR:` line, and the callback's verdict is the pipeline's verdict.
 # ---------------------------------------------------------------------------
 rewrite:
   port_source: /sgl-workspace/aiter/aiter/tuned_gemm.py
@@ -39,10 +38,9 @@ rewrite:
   port_target: kernel.py
   logical_operator: gemm_a16w16_nt_n4096_k2048
   source_owner: aiter
-  snr_threshold: 30.0
   max_port_attempts: 5
 
-# The numeric contract (axes, dtypes, seed, gate policy, benchmark parameters)
+# The numeric contract (axes, dtypes, seed, benchmark parameters)
 # lives in workload.json and scripts/task_inputs.py as the single source of
 # truth; duplicating it here would let the two drift.
 workload:
@@ -97,8 +95,9 @@ prompt:
     get there is your call. The correctness suite checks that much: it rejects a
     candidate that imports aiter or hands the product to torch's matmul family,
     since both resolve to the implementation this task exists to replace.
-    Correctness is measured against scripts/task_reference.py, an fp32 matmul; the
-    gate is derived at run time from how far the production implementation itself
-    sits from that reference, so the bar is "no worse than what ships". kernel.py is
-    the file you edit; the harness, driver, reference, baseline and input
-    construction are protected.
+    Correctness is scripts/task_compare.py against scripts/task_reference.py, an
+    fp32 matmul. Both are the workload schema's own callbacks, as is
+    scripts/task_initialize.py, which builds the inputs: the same three files
+    decide whether your result is accepted after the run, so the bar here is the
+    bar there. kernel.py is the file you edit; the harness, driver, reference,
+    baseline, comparison and input construction are protected.

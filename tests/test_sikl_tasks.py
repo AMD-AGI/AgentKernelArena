@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
-import math
+import sys
 from pathlib import Path
 
 import pytest
@@ -38,6 +38,8 @@ SHARED_TEMPLATE_FILES = (
     "kernel.py",
     "test_kernel_harness.py",
     "scripts/task_inputs.py",
+    "scripts/task_initialize.py",
+    "scripts/task_compare.py",
     "scripts/task_reference.py",
     "scripts/task_baseline.py",
     "scripts/task_measure.py",
@@ -137,61 +139,73 @@ def test_the_workload_declares_cases_and_a_gate_policy(task):
     assert workload["cases"], "a task must score at least one workload case"
     for case in workload["cases"]:
         assert case["uuid"], f"{case['case_id']} carries no schema case uuid"
-    assert workload["gate_multiplier"] > 1, (
-        "a gate at or below the baseline's own error is unpassable"
-    )
-    assert workload["gate_floor"] > 0, (
-        "without a floor a near-exact baseline derives a gate no port can clear"
-    )
     assert workload["gate_policy"].strip()
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
-def test_both_gates_are_derived_from_one_policy(task):
-    # The SNR gate is the error gate restated for a statistic that sees error
-    # concentrated in a few elements rather than spread over the output, so it
-    # must not introduce policy constants of its own: a second knob is a second
-    # thing to keep consistent, and a hardcoded dB floor is exactly what fails
-    # the MoE baseline against its own reference.
+def test_the_numeric_contract_comes_from_the_schema_callbacks(task):
+    # The whole point of this suite's second revision: input construction and
+    # the correctness verdict are the bundle's own callbacks, shipped as files
+    # rather than reimplemented. A task that derives either from the production
+    # implementation cannot promise that a candidate it accepts is a candidate
+    # the acceptance run accepts, which is how 92 of 273 points came back
+    # rejected after passing here.
+    for name in ("task_initialize", "task_compare"):
+        assert (task / "scripts" / f"{name}.py").is_file(), f"{name}.py is missing"
+    workload = _workload(task)
+    for key in ("gate_multiplier", "gate_floor", "atol", "rtol", "snr_threshold"):
+        assert key not in workload, (
+            f"{key} is a tolerance the task would own; the callback owns it"
+        )
     task_inputs = _task_inputs(task)
-    assert task_inputs.SNR_MARGIN_DB == pytest.approx(
-        10.0 * math.log10(task_inputs.GATE_MULTIPLIER)
-    )
-    assert task_inputs.SNR_CEILING_DB == pytest.approx(
-        -20.0 * math.log10(task_inputs.GATE_FLOOR)
-    )
+    for name in ("derive_gates", "GATE_MULTIPLIER", "GATE_FLOOR", "SNR_CEILING_DB"):
+        assert not hasattr(task_inputs, name), f"{name} is a second correctness policy"
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
-def test_a_case_has_to_clear_both_correctness_gates(task):
-    # Either gate alone is passable by a wrong candidate: the error gate
-    # averages away localized error, and SNR alone says nothing about how far
-    # the operator's own implementations sit from the reference. Both are
-    # applied per case, in the one place that decides whether a case passed.
-    task_inputs = _task_inputs(task)
-    gates = task_inputs.derive_gates({"errors": [1e-3], "snrs": [60.0]})
-    assert set(gates) == {"error", "snr_db"}
-
+def test_the_verdict_is_the_callback_and_nothing_else(task):
+    # The verdict must be "did the callback raise", not a metric recomputed from
+    # its inputs: a second implementation of the comparison is the drift this
+    # revision exists to remove. AssertionError is the candidate's failure and
+    # ValueError is the task's, so only the first may be caught.
+    inputs = (task / "scripts" / "task_inputs.py").read_text()
+    assert "task_compare.run(got, expected)" in inputs
+    assert "except AssertionError" in inputs
+    assert "except ValueError" not in inputs, (
+        "an invalid reference is this task's bug and must not be scored as a "
+        "failed candidate"
+    )
     measure = (task / "scripts" / "task_measure.py").read_text()
-    for expression in ('record["error"] <= gates["error"]', 'record["snr"] >= gates["snr_db"]'):
-        assert expression in measure, f"passes() does not apply {expression}"
+    assert "task_inputs.verdict" in measure
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
-def test_the_port_filter_is_looser_than_the_scoring_gate(task):
-    # KernelForge drops a port below config.yaml's rewrite.snr_threshold before
-    # the optimize loop ever sees it. If that filter were stricter than the gate
-    # the task is scored on, PORT would discard candidates Arena would have
-    # accepted -- and for the MoE family a 30 dB filter rejects anything merely
-    # as accurate as the production implementation.
+def test_inputs_are_built_one_case_at_a_time(task):
+    # The bundle initializes one workload point at a time and draws the
+    # activation before the weights, so a case's weights depend on its var axis.
+    # Building every case from one pass would hand the operator a weight no
+    # acceptance run ever uses.
     task_inputs = _task_inputs(task)
-    port_filter = float(_config(task)["rewrite"]["snr_threshold"])
-    # The scoring gate is derived from the baseline at run time; the worst it can
-    # demand is the ceiling case, and the filter has to stay under that.
-    strictest_scoring_gate = task_inputs.SNR_CEILING_DB - task_inputs.SNR_MARGIN_DB
-    assert port_filter <= strictest_scoring_gate, (
-        f"rewrite.snr_threshold={port_filter} dB can exceed the derived scoring "
-        f"gate, whose strictest value is {strictest_scoring_gate:.2f} dB"
+    assert hasattr(task_inputs, "build_case_inputs")
+    assert not hasattr(task_inputs, "build_inputs"), (
+        "a whole-suite builder cannot reproduce the bundle's per-point seeding"
+    )
+    source = (task / "scripts" / "task_inputs.py").read_text()
+    assert "task_initialize.run(inputs, seed=SEED)" in source
+
+
+@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
+def test_the_callback_verdict_is_the_pipeline_verdict(task):
+    # KernelForge's correctness stage applies `snr_db >= --snr-threshold` and
+    # never reads `allclose` whenever the driver prints an SNR, so an `SNR:`
+    # line here would hand PORT and OPTIMIZE keep/revert to a threshold the
+    # bundle's comparison does not use.
+    driver = (task / "scripts" / "forge_driver.py").read_text()
+    assert driver.count('"SNR: ') + driver.count("'SNR: ") == 0, (
+        "the driver prints an SNR aggregate, which overrides its own verdict"
+    )
+    assert "snr_threshold" not in _config(task)["rewrite"], (
+        "a PORT filter the driver's output can never reach is dead configuration"
     )
 
 
@@ -212,10 +226,13 @@ def test_the_workload_records_no_measurement(task):
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
-def test_the_gate_is_derived_from_the_baseline(task):
+def test_the_production_implementation_is_judged_beside_the_candidate(task):
+    # The bar no longer comes from the baseline, but a failure is unreadable
+    # without it: only the shipped implementation's own verdict separates a
+    # candidate that is wrong from one that misses a bar production also misses.
     measure = (task / "scripts" / "task_measure.py").read_text()
-    assert "task_inputs.derive_gates" in measure
     assert "task_baseline.run" in measure
+    assert "baseline_passed" in measure
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
@@ -273,12 +290,21 @@ def _task_inputs(task: Path):
     """Load one task's task_inputs under a unique module name.
 
     Every task ships its own copy under the same file name, so a plain import
-    would bind whichever task ran first for the whole session.
+    would bind whichever task ran first for the whole session. Its siblings are
+    imported by bare name the way the harness and the driver import them, so the
+    task's own scripts/ has to lead sys.path while it loads.
     """
+    scripts = str((task / "scripts").resolve())
     path = task / "scripts" / "task_inputs.py"
     spec = importlib.util.spec_from_file_location(f"task_inputs_{task.name}", path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.path.insert(0, scripts)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.remove(scripts)
+        for name in ("task_compare", "task_initialize"):
+            sys.modules.pop(name, None)
     return module
 
 

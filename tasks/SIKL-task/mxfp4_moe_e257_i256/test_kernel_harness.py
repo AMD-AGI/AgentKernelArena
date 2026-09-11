@@ -65,12 +65,10 @@ def _candidate_builder():
     return getattr(module, BUILDER_SYMBOL, None)
 
 
-def _resolve_calls(inputs):
-    """Return (name, calls) for the implementation the workspace holds."""
-    launches = task_measure.build_launches(_candidate_builder(), inputs)
-    if launches is None:
-        return BASELINE_NAME, task_measure.baseline_calls(inputs)
-    return PORT_NAME, task_measure.candidate_calls(inputs, launches)
+def _resolve_launches():
+    """Return (name, launches) for the implementation the workspace holds."""
+    launches = task_measure.build_launches(_candidate_builder())
+    return (BASELINE_NAME, None) if launches is None else (PORT_NAME, launches)
 
 
 def _require_gpu() -> None:
@@ -81,8 +79,7 @@ def _require_gpu() -> None:
 def run_compile() -> int:
     """Import every task module and build each case without launching it."""
     _require_gpu()
-    inputs = {"cases": task_inputs.CASES}
-    if task_measure.build_launches(_candidate_builder(), inputs) is None:
+    if task_measure.build_launches(_candidate_builder()) is None:
         print(f"compile ok: kernel.py has no usable {BUILDER_SYMBOL} yet (stub state)")
         return 0
     print(f"compile ok: FlyDSL candidate built for {len(task_inputs.CASES)} cases")
@@ -91,41 +88,42 @@ def run_compile() -> int:
 
 def run_correctness() -> int:
     _require_gpu()
-    inputs = task_inputs.build_inputs()
-    expected, baseline, gates = task_measure.reference_and_gate(inputs)
-    name, calls = _resolve_calls(inputs)
+    name, launches = _resolve_launches()
     print(f"implementation: {name}")
-    print(task_inputs.gate_explanation(baseline))
+    print(task_inputs.GATE_EXPLANATION)
 
+    records = task_measure.compare_cases(launches)
     failed = []
-    for record in task_measure.compare_cases(calls, expected):
+    for record in records:
         case_id = record["case_id"]
-        if record["shape_mismatch"] is not None:
-            got_shape, expected_shape = record["shape_mismatch"]
-            print(f"case {case_id}: fail, shape {got_shape} != {expected_shape}")
-        else:
-            print(
-                f"case {case_id}: mean relative error {record['error']:.8f}, "
-                f"snr {record['snr']:.2f} dB"
-            )
-        if not task_measure.passes(record, gates):
+        print(
+            f"case {case_id}: {'pass' if record['passed'] else 'fail'} -- "
+            f"{record['detail']}"
+        )
+        # Reported, never applied: the bar is the bundle's, and the shipped
+        # implementation does not clear it at every shape.
+        print(
+            f"  production implementation: "
+            f"{'pass' if record['baseline_passed'] else 'fail'} -- "
+            f"{record['baseline_detail']}"
+        )
+        if not record["passed"]:
             failed.append(case_id)
 
     if failed:
-        print(f"correctness: fail ({len(failed)}/{len(calls)} cases: {', '.join(failed)})")
+        print(f"correctness: fail ({len(failed)}/{len(records)} cases: {', '.join(failed)})")
         return 1
-    print(f"correctness: pass ({len(calls)} cases)")
+    print(f"correctness: pass ({len(records)} cases)")
     return 0
 
 
 def run_full_benchmark() -> int:
     _require_gpu()
-    inputs = task_inputs.build_inputs()
-    name, calls = _resolve_calls(inputs)
+    name, launches = _resolve_launches()
     print(f"implementation: {name}")
 
     rows = []
-    for sample in task_measure.time_cases(calls):
+    for sample in task_measure.time_cases(launches):
         row = {
             "test_case_id": sample["case_id"],
             "execution_time_ms": sample["execution_time_ms"],

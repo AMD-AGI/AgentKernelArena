@@ -7,10 +7,10 @@ THE OPERATOR
     (QuantType.per_1x32), SiLU, bf16 in and out. Both operands are MXFP4
     (afp4_wfp4): the weights arrive pre-quantized and preshuffled, the
     activation is quantized on the fly, once into stage 1 and again on the
-    stage-1 output into stage 2. The axes, the list of scored cases, the seed
-    and the gate policy live in the task's workload.json; scripts/task_inputs.py
-    is the single place that reads them, and both this driver and the Arena
-    harness build their inputs through it.
+    stage-1 output into stage 2. The axes, the list of scored cases and the seed
+    live in the task's workload.json; scripts/task_inputs.py is the single place
+    that reads them, and both this driver and the Arena harness build their
+    inputs through it.
 
 THE BASELINE IMPLEMENTATION TO REPLACE (read these, they are the real thing)
     entry            /sgl-workspace/aiter/aiter/fused_moe.py  fused_moe
@@ -29,13 +29,20 @@ THE BASELINE IMPLEMENTATION TO REPLACE (read these, they are the real thing)
     AITER_LOG_TUNED_CONFIG to have aiter report the resolved kernel names.
 
 CORRECTNESS GATE
-    Derived, not fixed. This driver measures the production implementation's own
-    distance to the reference at every case and admits a candidate within
-    `gate_multiplier` (workload.json) times the worst of those. So the bar is
-    "no worse than what ships", evaluated on the machine you are running on.
-    That distance is not uniform across the cases: the tuned stage-1 variants
-    that fuse the output quantization into their epilogue sit an order of
-    magnitude further from the reference than the others.
+    scripts/task_compare.py, which is the workload schema's own comparison
+    callback, copied from the bundle without edit. It owns the threshold and the
+    task does not set, scale or relax it -- the acceptance run that verifies a
+    submitted result applies the same file, so a candidate this driver keeps is
+    a candidate that run accepts.
+
+    scripts/task_initialize.py is the bundle's input callback on the same terms;
+    it also owns the MXFP4 quantization, so no aiter quantizer sits between the
+    weights you are given and the weights the acceptance run generates. Inputs
+    are built one case at a time because the bundle initializes one workload
+    point at a time.
+
+    The production implementation is judged by the same callback beside every
+    case and the result is printed, but it does not move the bar.
 
 THE INTERFACE THE PORT MUST EXPOSE
     The FlyDSL candidate module must define the builder symbol named by
@@ -83,8 +90,8 @@ WHAT THE CORRECTNESS SUITE CHECKS BEFORE SCORING
 
 MODES
     (no flag)          correctness: candidate vs task_reference over every case,
-                       prints one `SNR: <db> dB` (the worst case) and one
-                       `allclose:` verdict
+                       prints one `allclose:` verdict and no `SNR:` line (see
+                       run_correctness for why)
     --ref-bench-mode   times the baseline (task_baseline = aiter.fused_moe)
     --bench-mode       times the FlyDSL candidate
     --profile-run      builds and warms the candidate, prints no timing
@@ -180,15 +187,15 @@ def _load_candidate_builder():
     return builder
 
 
-def _candidate_calls(inputs: dict):
+def _candidate_launches():
     """Build the candidate for every case, refusing an unimplemented skeleton."""
-    launches = task_measure.build_launches(_load_candidate_builder(), inputs)
+    launches = task_measure.build_launches(_load_candidate_builder())
     if launches is None:
         raise RuntimeError(
             "the FlyDSL candidate is still an unimplemented skeleton; its launch "
             "raises NotImplementedError"
         )
-    return task_measure.candidate_calls(inputs, launches)
+    return launches
 
 
 def _report_timings(samples: list[dict]) -> None:
@@ -207,53 +214,56 @@ def _report_timings(samples: list[dict]) -> None:
     print(f"benchmark_method: {','.join(methods)}")
 
 
-def run_correctness(inputs: dict) -> int:
+def run_correctness() -> int:
     """Compare the candidate against the reference on every scored case.
 
-    Only one `SNR:` line and one `allclose:` line are printed: the contract reads
-    the first match of each, so the aggregate has to be unambiguous. The
-    per-case detail is emitted as `# case <id>:` comments, which is also how the
-    contract learns which cases this path covered.
+    Exactly one `allclose:` line is printed and no `SNR:` line, on purpose.
+    KernelForge's correctness stage prefers an SNR reading over the driver's own
+    verdict whenever one is present -- it applies `snr_db >= --snr-threshold`
+    and never looks at `allclose` -- so printing an SNR here would hand the
+    keep/revert decision to a threshold that knows nothing about the bundle's
+    comparison. Withholding it makes the bundle's verdict the pipeline's
+    verdict, which is the only way PORT and OPTIMIZE keep candidates that the
+    acceptance run will also accept. The per-case detail stays in
+    `# case <id>:` comments, which is also how the contract learns which cases
+    this path covered.
     """
-    calls = _candidate_calls(inputs)
-    expected, baseline, gates = task_measure.reference_and_gate(inputs)
-    print(f"# {task_inputs.gate_explanation(baseline)}")
+    launches = _candidate_launches()
+    print(f"# {task_inputs.GATE_EXPLANATION}")
 
-    worst_snr = float("inf")
     passed = True
-    for record in task_measure.compare_cases(calls, expected):
+    for record in task_measure.compare_cases(launches):
         print(f"# case {record['case_id']}:")
-        if record["shape_mismatch"] is not None:
-            got_shape, expected_shape = record["shape_mismatch"]
-            print(f"#   shape mismatch: candidate {got_shape} vs reference {expected_shape}")
-        else:
-            print(f"#   mean relative error {record['error']:.8f}")
-            print(f"#   snr {record['snr']:.2f} dB")
-        worst_snr = min(worst_snr, record["snr"])
-        passed = passed and task_measure.passes(record, gates)
+        print(f"#   candidate: {'pass' if record['passed'] else 'fail'} -- {record['detail']}")
+        print(
+            f"#   production: {'pass' if record['baseline_passed'] else 'fail'} -- "
+            f"{record['baseline_detail']}"
+        )
+        passed = passed and record["passed"]
 
-    print(f"SNR: {worst_snr:.2f} dB")
     print(f"allclose: {passed}")
     return 0 if passed else 1
 
 
-def run_reference_bench(inputs: dict) -> int:
-    _report_timings(task_measure.time_cases(task_measure.baseline_calls(inputs)))
+def run_reference_bench() -> int:
+    _report_timings(task_measure.time_cases(None))
     return 0
 
 
-def run_candidate_bench(inputs: dict) -> int:
-    _report_timings(task_measure.time_cases(_candidate_calls(inputs)))
+def run_candidate_bench() -> int:
+    _report_timings(task_measure.time_cases(_candidate_launches()))
     return 0
 
 
-def run_profile(inputs: dict) -> int:
-    calls = _candidate_calls(inputs)
-    for _case, call in calls:
+def run_profile() -> int:
+    launches = _candidate_launches()
+    for case, launch in zip(task_inputs.CASES, launches):
+        inputs = task_inputs.build_case_inputs(case)
+        call = task_measure.case_call(inputs, launch)
         for _ in range(3):
             call()
     torch.cuda.synchronize()
-    print(f"profile run complete for {len(calls)} cases")
+    print(f"profile run complete for {len(launches)} cases")
     return 0
 
 
@@ -261,15 +271,13 @@ def main(argv: list[str]) -> int:
     args = _parse_args(argv)
     if not torch.cuda.is_available():
         raise RuntimeError("this driver requires a ROCm device")
-    inputs = task_inputs.build_inputs()
-
     if args.ref_bench_mode:
-        return run_reference_bench(inputs)
+        return run_reference_bench()
     if args.bench_mode:
-        return run_candidate_bench(inputs)
+        return run_candidate_bench()
     if args.profile_run:
-        return run_profile(inputs)
-    return run_correctness(inputs)
+        return run_profile()
+    return run_correctness()
 
 
 if __name__ == "__main__":

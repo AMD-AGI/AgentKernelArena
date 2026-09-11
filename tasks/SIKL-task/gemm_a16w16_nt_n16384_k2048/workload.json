@@ -6,15 +6,13 @@
     "n": 16384,
     "k": 2048
   },
-  "seed": 29,
+  "seed": 0,
   "bench": {
     "warmup": 20,
     "repetition": 100,
     "target_ms": 1.0
   },
-  "gate_multiplier": 4.0,
-  "gate_floor": 0.0025,
-  "gate_policy": "A candidate must clear two gates at every case, and both are derived at run time rather than stored, so they cannot go stale against a different GPU or framework version: the harness measures how far the production implementation itself sits from the fp32 reference at every case and admits a candidate no worse than the worst of those by a fixed policy margin. The first gate bounds a mean relative error, within gate_multiplier times the worst measured value, floored at gate_floor. The floor matters because the measured distance says as much about which reduction strategy the baseline happens to use as about what correctness requires: a task whose baseline dispatches to a near-exact implementation at every case would otherwise derive a gate around 1e-6 and demand that a port reproduce that accumulation order rather than merely be correct. The second gate bounds SNR, and it exists because the first acts on a mean: an L1 statistic averages away error concentrated in a few elements, so a candidate can sit inside the first gate while being badly wrong on part of the output. It introduces no separate constants -- allowing the noise power to be gate_multiplier times larger is a fixed offset in dB, and gate_floor's role becomes a ceiling on how much accuracy may be demanded -- so it is the same policy restated for a statistic that sees concentration. Both are one gate for the operator rather than one per case, since the baseline dispatches differently across the var axis and its own accuracy moves by orders of magnitude across the cases.",
+  "gate_policy": "Correctness is scripts/task_compare.py and input construction is scripts/task_initialize.py, both copied without edit from the workload schema's own definition callbacks. The task fixes no tolerance, no threshold and no distribution of its own, so the bar a candidate clears here is by construction the bar the acceptance run applies to the result -- which a gate derived in this file could never guarantee, and did not: a run of all 21 solutions rejected 92 of 273 points these tasks had passed. The production implementation is judged by the same callback beside every case and the verdict is reported, but it does not move the bar and it does not clear it at every shape.",
   "cases": [
     {
       "case_id": "m_1",
