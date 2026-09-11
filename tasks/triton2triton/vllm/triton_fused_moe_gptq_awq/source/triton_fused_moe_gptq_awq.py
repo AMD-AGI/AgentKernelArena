@@ -56,33 +56,38 @@ def fused_moe_kernel_gptq_awq(
     scales and optional zero points.
     """
     pid = tl.program_id(axis=0)
-    num_pid_m = tl.cdiv(EM, BLOCK_SIZE_M)
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
-    num_pid_in_group = GROUP_SIZE_M * num_pid_n
-    group_id = pid // num_pid_in_group
-    first_pid_m = group_id * GROUP_SIZE_M
-    group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
-    pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
-    pid_n = (pid % num_pid_in_group) // group_size_m
+    # Consecutive programs cover N tiles of the same routed-token block.  Unlike
+    # a dense GEMM, neighboring M blocks usually belong to different experts,
+    # so the usual grouped-M ordering cannot reuse their weights.
+    pid_m = pid // num_pid_n
+    pid_n = pid % num_pid_n
 
     num_tokens_post_padded = tl.load(num_tokens_post_padded_ptr)
     if pid_m * BLOCK_SIZE_M >= num_tokens_post_padded:
         return
 
-    offs_token_id = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M).to(tl.int64)
-    offs_token = tl.load(sorted_token_ids_ptr + offs_token_id).to(tl.int64)
+    offs_token_id = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_token = tl.load(sorted_token_ids_ptr + offs_token_id)
     token_mask = offs_token < num_valid_tokens
 
-    off_experts = tl.load(expert_ids_ptr + pid_m).to(tl.int64)
+    off_experts = tl.load(expert_ids_ptr + pid_m)
     if off_experts == -1:
         offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
         c_ptrs = c_ptr + stride_cm * offs_token[:, None] + stride_cn * offs_cn[None, :]
-        c_mask = token_mask[:, None] & (offs_cn[None, :] < N)
+        if N % BLOCK_SIZE_N == 0:
+            c_mask = token_mask[:, None]
+        else:
+            c_mask = token_mask[:, None] & (offs_cn[None, :] < N)
         zeros = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=compute_type)
         tl.store(c_ptrs, zeros, mask=c_mask)
         return
 
-    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)) % N
+    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    if N % BLOCK_SIZE_N == 0:
+        offs_bn = offs_cn
+    else:
+        offs_bn = offs_cn % N
     offs_k = tl.arange(0, BLOCK_SIZE_K)
     a_ptrs = a_ptr + (
         offs_token[:, None] // top_k * stride_am + offs_k[None, :] * stride_ak
@@ -113,52 +118,86 @@ def fused_moe_kernel_gptq_awq(
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        if not block_k_diviable:
-            k_mask = offs_k[:, None] < K - k * BLOCK_SIZE_K
-            k_other = 0.0
+        if block_k_diviable:
+            a = tl.load(a_ptrs, mask=token_mask[:, None], other=0.0)
+            b = tl.load(b_ptrs)
         else:
-            k_mask = None
-            k_other = None
-
-        a = tl.load(
-            a_ptrs,
-            mask=token_mask[:, None] & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
-            other=0.0,
-        )
-        b = tl.load(b_ptrs)
+            k_mask = offs_k[:, None] < K - k * BLOCK_SIZE_K
+            a = tl.load(
+                a_ptrs,
+                mask=token_mask[:, None] & k_mask.T,
+                other=0.0,
+            )
+            b = tl.load(b_ptrs, mask=k_mask, other=0)
         if use_int4_w4a16:
             b = (b >> b_shifter) & 0xF
 
-        b_scale_ptrs = (
-            b_scale_ptr
-            + off_experts * stride_bse
-            + offs_bn[None, :] * stride_bsn
-            + ((offs_k[:, None] + BLOCK_SIZE_K * k) // group_size) * stride_bsk
-        )
-        b_scale = tl.load(b_scale_ptrs, mask=k_mask, other=k_other)
-        b_scale = b_scale.to(tl.float32)
+        # All production groups in this kernel are aligned to a K tile.  Load
+        # scale/ZP once per output column and broadcast along K, instead of
+        # issuing BLOCK_SIZE_K duplicate loads for the same quantization group.
+        if group_size >= BLOCK_SIZE_K and group_size % BLOCK_SIZE_K == 0:
+            scale_group = (BLOCK_SIZE_K * k) // group_size
+            b_scale_ptrs = (
+                b_scale_ptr
+                + off_experts * stride_bse
+                + scale_group * stride_bsk
+                + offs_bn * stride_bsn
+            )
+            b_scale = tl.load(b_scale_ptrs).to(tl.float32)
 
-        if has_zp and use_int4_w4a16:
+            if has_zp and use_int4_w4a16:
+                b_zp_ptrs = (
+                    b_zp_ptr
+                    + off_experts * stride_bze
+                    + scale_group * stride_bzk
+                    + (offs_bn // 2) * stride_bzn
+                )
+                b_zp = tl.load(b_zp_ptrs)
+                b_zp = ((b_zp >> b_zp_shifter) & 0xF).to(tl.float32)
+            elif has_zp and use_int8_w8a16:
+                b_zp_ptrs = (
+                    b_zp_ptr
+                    + off_experts * stride_bze
+                    + scale_group * stride_bzk
+                    + offs_bn * stride_bzn
+                )
+                b_zp = tl.load(b_zp_ptrs).to(tl.float32)
+        else:
             offs_k_true = (offs_k[:, None] + BLOCK_SIZE_K * k) // group_size
-            b_zp_ptrs = (
-                b_zp_ptr
-                + off_experts * stride_bze
-                + (offs_bn[None, :] // 2) * stride_bzn
-                + offs_k_true * stride_bzk
+            b_scale_ptrs = (
+                b_scale_ptr
+                + off_experts * stride_bse
+                + offs_k_true * stride_bsk
+                + offs_bn[None, :] * stride_bsn
             )
-            b_zp = tl.load(b_zp_ptrs, mask=k_mask, other=k_other)
-            b_zp = (b_zp >> b_zp_shifter) & 0xF
-            b_zp = b_zp.to(tl.float32)
-        elif has_zp and use_int8_w8a16:
-            offs_k_true = (offs_k[:, None] + BLOCK_SIZE_K * k) // group_size
-            b_zp_ptrs = (
-                b_zp_ptr
-                + off_experts * stride_bze
-                + offs_bn[None, :] * stride_bzn
-                + offs_k_true * stride_bzk
-            )
-            b_zp = tl.load(b_zp_ptrs, mask=k_mask, other=k_other)
-            b_zp = b_zp.to(tl.float32)
+            if block_k_diviable:
+                b_scale = tl.load(b_scale_ptrs).to(tl.float32)
+            else:
+                b_scale = tl.load(b_scale_ptrs, mask=k_mask, other=0.0).to(tl.float32)
+
+            if has_zp and use_int4_w4a16:
+                b_zp_ptrs = (
+                    b_zp_ptr
+                    + off_experts * stride_bze
+                    + offs_k_true * stride_bzk
+                    + (offs_bn[None, :] // 2) * stride_bzn
+                )
+                if block_k_diviable:
+                    b_zp = tl.load(b_zp_ptrs)
+                else:
+                    b_zp = tl.load(b_zp_ptrs, mask=k_mask, other=0)
+                b_zp = ((b_zp >> b_zp_shifter) & 0xF).to(tl.float32)
+            elif has_zp and use_int8_w8a16:
+                b_zp_ptrs = (
+                    b_zp_ptr
+                    + off_experts * stride_bze
+                    + offs_k_true * stride_bzk
+                    + offs_bn[None, :] * stride_bzn
+                )
+                if block_k_diviable:
+                    b_zp = tl.load(b_zp_ptrs).to(tl.float32)
+                else:
+                    b_zp = tl.load(b_zp_ptrs, mask=k_mask, other=0.0).to(tl.float32)
 
         if has_zp:
             b = ((b.to(tl.float32) - b_zp) * b_scale).to(compute_type)
@@ -177,41 +216,100 @@ def fused_moe_kernel_gptq_awq(
         accumulator = accumulator * moe_weight[:, None]
 
     accumulator = accumulator.to(compute_type)
-    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     c_ptrs = c_ptr + stride_cm * offs_token[:, None] + stride_cn * offs_cn[None, :]
-    c_mask = token_mask[:, None] & (offs_cn[None, :] < N)
+    if N % BLOCK_SIZE_N == 0:
+        c_mask = token_mask[:, None]
+    else:
+        c_mask = token_mask[:, None] & (offs_cn[None, :] < N)
     tl.store(c_ptrs, accumulator, mask=c_mask)
 
 
+@triton.jit
+def _prepare_moe_routing_kernel(
+    topk_ids_ptr,
+    sorted_token_ids_ptr,
+    expert_ids_ptr,
+    num_tokens_post_padded_ptr,
+    num_tokens: tl.constexpr,
+    num_experts: tl.constexpr,
+    block_size_m: tl.constexpr,
+    BLOCK_TOKENS: tl.constexpr,
+    MAX_BLOCKS_PER_EXPERT: tl.constexpr,
+):
+    """Stable expert grouping and padding in one asynchronous device pass."""
+    token_offsets = tl.arange(0, BLOCK_TOKENS)
+    token_mask = token_offsets < num_tokens
+    expert_for_token = tl.load(
+        topk_ids_ptr + token_offsets, mask=token_mask, other=-1
+    )
+    padding_offsets = tl.arange(0, block_size_m)
+    expert_block_offsets = tl.arange(0, MAX_BLOCKS_PER_EXPERT)
+    output_offset = 0
+
+    for expert in tl.static_range(0, num_experts):
+        is_expert = token_mask & (expert_for_token == expert)
+        token_rank = tl.cumsum(is_expert.to(tl.int32), axis=0) - 1
+        token_count = tl.sum(is_expert.to(tl.int32), axis=0)
+        padded_count = ((token_count + block_size_m - 1) // block_size_m) * block_size_m
+        num_blocks = padded_count // block_size_m
+
+        # The prefix rank makes this the same stable ordering produced by
+        # nonzero() in the original routing path.
+        tl.store(
+            sorted_token_ids_ptr + output_offset + token_rank,
+            token_offsets,
+            mask=is_expert,
+        )
+        tl.store(
+            sorted_token_ids_ptr + output_offset + token_count + padding_offsets,
+            num_tokens,
+            mask=padding_offsets < padded_count - token_count,
+        )
+        tl.store(
+            expert_ids_ptr + output_offset // block_size_m + expert_block_offsets,
+            expert,
+            mask=expert_block_offsets < num_blocks,
+        )
+        output_offset += padded_count
+
+    tl.store(num_tokens_post_padded_ptr, output_offset)
+
+
 def _prepare_moe_routing(topk_ids, num_experts, block_size_m):
-    """Prepare sorted_token_ids, expert_ids, num_tokens_post_padded."""
-    num_tokens = topk_ids.shape[0]
-    topk = topk_ids.shape[1]
-    device = topk_ids.device
+    """Prepare routing metadata without per-expert PyTorch launches or syncs."""
     flat_ids = topk_ids.flatten()
+    num_tokens = flat_ids.numel()
+    max_num_tokens_padded = num_tokens + num_experts * (block_size_m - 1)
+    max_num_blocks = triton.cdiv(max_num_tokens_padded, block_size_m)
 
-    sorted_token_ids_list = []
-    expert_ids_list = []
-    for e in range(num_experts):
-        indices = (flat_ids == e).nonzero(as_tuple=False).flatten()
-        n = len(indices)
-        if n == 0:
-            continue
-        padded_n = ((n + block_size_m - 1) // block_size_m) * block_size_m
-        padded_indices = torch.full((padded_n,), num_tokens * topk, device=device, dtype=torch.int64)
-        padded_indices[:n] = indices
-        sorted_token_ids_list.append(padded_indices)
-        expert_ids_list.extend([e] * (padded_n // block_size_m))
+    sorted_token_ids = torch.empty(
+        max_num_tokens_padded, device=topk_ids.device, dtype=torch.int32
+    )
+    expert_ids = torch.empty(
+        max_num_blocks, device=topk_ids.device, dtype=torch.int32
+    )
+    num_tokens_post_padded = torch.empty(
+        1, device=topk_ids.device, dtype=torch.int32
+    )
 
-    if not sorted_token_ids_list:
-        sorted_token_ids = torch.full((block_size_m,), num_tokens * topk, device=device, dtype=torch.int64)
-        expert_ids = torch.zeros(1, device=device, dtype=torch.int32)
-        num_tokens_post_padded = torch.tensor([block_size_m], device=device, dtype=torch.int32)
-    else:
-        sorted_token_ids = torch.cat(sorted_token_ids_list)
-        expert_ids = torch.tensor(expert_ids_list, device=device, dtype=torch.int32)
-        num_tokens_post_padded = torch.tensor([len(sorted_token_ids)], device=device, dtype=torch.int32)
-
+    block_tokens = triton.next_power_of_2(num_tokens)
+    max_blocks_per_expert = triton.next_power_of_2(
+        triton.cdiv(num_tokens, block_size_m)
+    )
+    route_num_warps = min(4, max(1, block_tokens // 64))
+    _prepare_moe_routing_kernel[(1,)](
+        flat_ids,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        num_tokens=num_tokens,
+        num_experts=num_experts,
+        block_size_m=block_size_m,
+        BLOCK_TOKENS=block_tokens,
+        MAX_BLOCKS_PER_EXPERT=max_blocks_per_expert,
+        num_warps=route_num_warps,
+        num_stages=1,
+    )
     return sorted_token_ids, expert_ids, num_tokens_post_padded
 
 
@@ -247,8 +345,8 @@ def fused_moe_gptq_awq(
     N = scales.shape[2]
     topk = topk_ids.shape[1]
 
-    BLOCK_SIZE_M = 64
-    BLOCK_SIZE_N = 64
+    BLOCK_SIZE_M = 16
+    BLOCK_SIZE_N = 64 if N == 64 else 128
     BLOCK_SIZE_K = 32
 
     sorted_token_ids, expert_ids, num_tokens_post_padded = _prepare_moe_routing(
@@ -292,5 +390,7 @@ def fused_moe_gptq_awq(
         has_zp=has_zp,
         use_int4_w4a16=use_int4,
         use_int8_w8a16=not use_int4,
+        num_warps=4,
+        num_stages=2,
     )
     return output
