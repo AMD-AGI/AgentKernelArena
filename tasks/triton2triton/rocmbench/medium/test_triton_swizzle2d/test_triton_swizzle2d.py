@@ -9,10 +9,23 @@ import triton.language as tl
 
 @triton.jit
 def swizzle2d_kernel(output, size_i, size_j, size_g):
-    for i in tl.range(0, size_i, 1):
-        for j in tl.range(0, size_j, 1):
-            new_i, new_j = tl.swizzle2d(i, j, size_i, size_j, size_g)
-            tl.store(output + new_i * size_j + new_j, i * size_j + j)
+    row_offsets = tl.arange(0, 16)[:, None]
+    col_offsets = tl.arange(0, 64)[None, :]
+
+    for row_start in tl.range(0, size_i, 16):
+        rows = row_start + row_offsets
+        group_start = (rows // size_g) * size_g
+        group_rows = tl.minimum(size_i - group_start, size_g)
+        rows_in_group = rows - group_start
+
+        for col_start in tl.range(0, size_j, 64):
+            cols = col_start + col_offsets
+            output_offsets = rows * size_j + cols
+            input_offsets = (
+                group_start * size_j + cols * group_rows + rows_in_group
+            )
+            mask = (rows < size_i) & (cols < size_j)
+            tl.store(output + output_offsets, input_offsets, mask=mask)
 
 ##################################################################################################################################################  
 
@@ -61,18 +74,40 @@ def set_seed(seed: int = 42) -> None:
 
 
 
+def swizzle2d_reference(size_i, size_j, size_g, dtype):
+    """Construct the grouped column-major ordering independently on the CPU."""
+    groups = []
+    for group_start in range(0, size_i, size_g):
+        group_rows = min(size_g, size_i - group_start)
+        group = torch.arange(
+            group_start * size_j,
+            (group_start + group_rows) * size_j,
+            dtype=dtype,
+        )
+        groups.append(group.reshape(size_j, group_rows).T.contiguous())
+    return torch.cat(groups, dim=0)
+
+
 @pytest.mark.interpreter
-@pytest.mark.parametrize("size_i, size_j, size_g", [[5, 7, 3]])
-def test_swizzle2d(size_i, size_j, size_g, request, device='cuda'):
-    # Output tensor to store results, initialized to a value like -1 to see what's written
+@pytest.mark.parametrize(
+    "size_i, size_j, size_g, output_dtype",
+    [
+        pytest.param(5, 7, 3, torch.float32, id="tail_non_power_of_two_float32"),
+        pytest.param(128, 128, 16, torch.int32, id="multi_tile_int32"),
+        pytest.param(64, 512, 8, torch.int64, id="multi_tile_int64"),
+    ],
+)
+def test_swizzle2d(size_i, size_j, size_g, output_dtype, request, device='cuda'):
+    # Initialize to a sentinel so missed masked/tiled stores cannot pass silently.
 
     set_seed()
-    
-    output = torch.zeros(size_i, size_j).to(device)
+
+    output = torch.full((size_i, size_j), -1, dtype=output_dtype, device=device)
     swizzle2d_kernel[(1, )](output, size_i, size_j, size_g)
-    expected_order = torch.tensor([[0, 3, 6, 9, 12, 15, 18], [1, 4, 7, 10, 13, 16, 19], [2, 5, 8, 11, 14, 17, 20],
-                                   [21, 23, 25, 27, 29, 31, 33], [22, 24, 26, 28, 30, 32, 34]]).to(device)
-    
+    expected_order = swizzle2d_reference(
+        size_i, size_j, size_g, output_dtype
+    ).to(device)
+
     result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
 
     ################### save tri_out in result_gold ###################
@@ -81,7 +116,7 @@ def test_swizzle2d(size_i, size_j, size_g, request, device='cuda'):
     result_gold[sanitized_key_name] = output.clone().detach().cpu()
     ################################################################### 
 
-    assert (output == expected_order).all(), (output, expected_order)
+    torch.testing.assert_close(output, expected_order, rtol=0, atol=0)
 
 
 # --- Python wrapper for the kernel for benchmarking ---
