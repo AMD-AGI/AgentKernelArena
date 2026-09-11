@@ -20,6 +20,29 @@ TEST_SHAPES = [
     (32, 1024, 256),
     (64, 2048, 512),
 ]
+
+# Correctness-only cases. Keep these separate from TEST_SHAPES so correctness
+# coverage can grow without changing the scored performance workload.
+CORRECTNESS_CASES = [
+    {
+        "name": "variable_lengths_sparse_mapping",
+        "max_num_reqs": 16,
+        "max_seq_len": 512,
+        "idx_mapping": [9, 2, 14, 5, 11, 0],
+        "query_lens": [0, 1, 7, 64, 255, 257],
+        "prefill_lens": [6, 14, 37, 95, 297, 310],
+        "num_computed_tokens": [5, 13, 29, 31, 41, 53],
+    },
+    {
+        "name": "completed_prefill_early_return",
+        "max_num_reqs": 12,
+        "max_seq_len": 64,
+        "idx_mapping": [8, 1, 10, 4],
+        "query_lens": [3, 0, 5, 2],
+        "prefill_lens": [12, 15, 19, 12],
+        "num_computed_tokens": [12, 16, 20, 9],
+    },
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -56,7 +79,7 @@ def reference_prepare_prefill_inputs(
     num_reqs = idx_mapping.shape[0]
     total_tokens = int(query_start_loc[-1].item())
     input_ids = torch.zeros(total_tokens, dtype=torch.int32, device="cpu")
-    next_prefill_tokens = torch.zeros(idx_mapping.max().item() + 1, dtype=torch.int32, device="cpu")
+    next_prefill_tokens = torch.zeros(all_token_ids.shape[0], dtype=torch.int32, device="cpu")
 
     for b in range(num_reqs):
         req_state_idx = idx_mapping[b].item()
@@ -130,11 +153,73 @@ def run_correctness():
 
             if not torch.equal(input_ids.cpu(), ref_ids):
                 return False, f"Shape {i+1}: input_ids mismatch"
-            if not torch.equal(next_prefill_tokens.cpu()[:num_reqs], ref_next[:num_reqs]):
+            if not torch.equal(next_prefill_tokens.cpu(), ref_next):
                 return False, f"Shape {i+1}: next_prefill_tokens mismatch"
 
         except Exception as e:
             return False, f"Shape {i+1}: exception: {e}"
+
+    for case in CORRECTNESS_CASES:
+        name = case["name"]
+        try:
+            max_num_reqs = case["max_num_reqs"]
+            max_seq_len = case["max_seq_len"]
+            idx_mapping = torch.tensor(
+                case["idx_mapping"], dtype=torch.int32, device=device
+            )
+            query_lens = torch.tensor(
+                case["query_lens"], dtype=torch.int32, device=device
+            )
+            query_start_loc = torch.zeros(
+                len(case["query_lens"]) + 1, dtype=torch.int32, device=device
+            )
+            query_start_loc[1:] = torch.cumsum(query_lens, dim=0)
+
+            all_token_ids = (
+                torch.arange(
+                    max_num_reqs * max_seq_len,
+                    dtype=torch.int32,
+                    device=device,
+                ).reshape(max_num_reqs, max_seq_len)
+                % 31999
+            ) + 1
+            prefill_len = torch.full(
+                (max_num_reqs,), max_seq_len, dtype=torch.int32, device=device
+            )
+            num_computed_tokens = torch.zeros(
+                max_num_reqs, dtype=torch.int32, device=device
+            )
+            prefill_len[idx_mapping.long()] = torch.tensor(
+                case["prefill_lens"], dtype=torch.int32, device=device
+            )
+            num_computed_tokens[idx_mapping.long()] = torch.tensor(
+                case["num_computed_tokens"], dtype=torch.int32, device=device
+            )
+
+            total_tokens = int(query_start_loc[-1].item())
+            input_ids = torch.zeros(total_tokens, dtype=torch.int32, device=device)
+            next_prefill_tokens = torch.zeros(
+                max_num_reqs, dtype=torch.int32, device=device
+            )
+
+            mod.prepare_prefill_inputs(
+                input_ids, next_prefill_tokens, idx_mapping, query_start_loc,
+                all_token_ids, prefill_len, num_computed_tokens,
+            )
+            torch.cuda.synchronize()
+
+            ref_ids, ref_next = reference_prepare_prefill_inputs(
+                idx_mapping.cpu(), query_start_loc.cpu(), all_token_ids.cpu(),
+                prefill_len.cpu(), num_computed_tokens.cpu(),
+            )
+
+            if not torch.equal(input_ids.cpu(), ref_ids):
+                return False, f"Case {name}: input_ids mismatch"
+            if not torch.equal(next_prefill_tokens.cpu(), ref_next):
+                return False, f"Case {name}: next_prefill_tokens mismatch"
+
+        except Exception as e:
+            return False, f"Case {name}: exception: {e}"
 
     return True, None
 
@@ -217,7 +302,11 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(TEST_SHAPES) + len(CORRECTNESS_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
