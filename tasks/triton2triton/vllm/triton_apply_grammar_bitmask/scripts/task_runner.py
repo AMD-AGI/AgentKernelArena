@@ -20,6 +20,15 @@ TEST_SHAPES = [
     (32, 32000),
     (64, 65536),
 ]
+
+# Correctness-only cases are kept separate so benchmark coverage is unchanged.
+# A missing indices entry means the identity mapping used by the original cases.
+CORRECTNESS_CASES = [
+    (*shape, None) for shape in TEST_SHAPES
+] + [
+    (3, 37, (5, 1, 3)),
+    (4, 8209, (6, 2, 5, 0)),
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -86,12 +95,15 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    for i, (num_masks, vocab_size) in enumerate(TEST_SHAPES):
+    for i, (num_masks, vocab_size, indices) in enumerate(CORRECTNESS_CASES):
         try:
             torch.manual_seed(42 + i)
             num_total_logits = num_masks + 4
             logits = torch.randn(num_total_logits, vocab_size, device=device, dtype=torch.float32)
-            logits_indices = torch.arange(num_masks, dtype=torch.int32, device=device)
+            if indices is None:
+                logits_indices = torch.arange(num_masks, dtype=torch.int32, device=device)
+            else:
+                logits_indices = torch.tensor(indices, dtype=torch.int32, device=device)
             bitmask_words = (vocab_size + 31) // 32
             # Random bitmask with ~50% bits set
             bitmask = torch.randint(0, 2**31, (num_masks, bitmask_words), dtype=torch.int32, device=device)
@@ -103,18 +115,26 @@ def run_correctness():
             ref = reference_apply_grammar_bitmask(
                 logits.cpu(), logits_indices.cpu(), bitmask.cpu(), vocab_size
             )
+            logits_gpu_cpu = logits_gpu.cpu()
 
             # Check: where ref is -inf, gpu should be -inf; where ref is not -inf, gpu should match
             ref_neginf = ref.isinf() & (ref < 0)
-            gpu_neginf = logits_gpu.cpu().isinf() & (logits_gpu.cpu() < 0)
-            if not torch.equal(ref_neginf[:num_masks], gpu_neginf[:num_masks]):
+            gpu_neginf = logits_gpu_cpu.isinf() & (logits_gpu_cpu < 0)
+            if not torch.equal(ref_neginf, gpu_neginf):
                 return False, f"Shape {i+1}: bitmask application mismatch"
 
             # Non-inf values should be unchanged
-            non_inf_mask = ~ref_neginf[:num_masks]
-            if not torch.allclose(logits_gpu.cpu()[:num_masks][non_inf_mask],
-                                   ref[:num_masks][non_inf_mask]):
+            non_inf_mask = ~ref_neginf
+            if not torch.allclose(logits_gpu_cpu[non_inf_mask],
+                                  ref[non_inf_mask]):
                 return False, f"Shape {i+1}: non-masked values changed"
+
+            # Rows not named by logits_indices must remain completely untouched.
+            selected_rows = torch.zeros(num_total_logits, dtype=torch.bool)
+            selected_rows[logits_indices.cpu().to(torch.long)] = True
+            if not torch.equal(logits_gpu_cpu[~selected_rows],
+                               logits.cpu()[~selected_rows]):
+                return False, f"Shape {i+1}: unselected logits rows changed"
 
         except Exception as e:
             return False, f"Shape {i+1}: exception: {e}"
@@ -191,7 +211,7 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(CORRECTNESS_CASES)}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

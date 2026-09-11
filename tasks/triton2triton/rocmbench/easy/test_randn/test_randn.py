@@ -208,6 +208,62 @@ def test_rand(size, seed, dtype, const_seed,  request, device='cuda'):
     assert ks_stat < 0.01
 
 
+def philox_rand_reference(seed, size):
+    """Return Triton's expected tl.rand sequence for offsets [0, size)."""
+    generator = CustomPhilox4x(seed, config=PHILOX_32)
+    raw = np.fromiter(
+        (generator.random_raw()[0] for _ in range(size)),
+        dtype=np.uint32,
+        count=size,
+    )
+    signed = raw.view(np.int32).astype(np.int64)
+    magnitude = np.where(signed < 0, -signed - 1, signed)
+    scale = np.float32(4.6566127342e-10)
+    return torch.from_numpy((magnitude.astype(np.float32) * scale).astype(np.float32))
+
+
+def launch_randn(size, seed, dtype, const_seed, device='cuda'):
+    output = torch.empty(size, dtype=torch.float32, device=device)
+    grid = (triton.cdiv(size, BLOCK),)
+    if const_seed:
+        randn_kernel_const_seed[grid](
+            output, size, seed=seed, dtype=getattr(tl, dtype)
+        )
+    else:
+        randn_kernel_runtime_seed[grid](
+            output, size, seed, dtype=getattr(tl, dtype)
+        )
+    return output
+
+
+@pytest.mark.parametrize(
+    'size, seed, dtype, const_seed',
+    [
+        pytest.param(1, 0, 'int32', True, id='single-const-int32'),
+        pytest.param(7, 42, 'int64', False, id='small-runtime-int64'),
+        pytest.param(1023, 124, 'int64', True, id='block-minus-one-const-int64'),
+        pytest.param(1024, 54, 'int32', False, id='one-block-runtime-int32'),
+        pytest.param(1025, 42, 'int32', True, id='block-plus-one-const-int32'),
+    ],
+)
+def test_rand_seeded_sequence_and_repeatability(size, seed, dtype, const_seed):
+    first = launch_randn(size, seed, dtype, const_seed)
+    second = launch_randn(size, seed, dtype, const_seed)
+    expected = philox_rand_reference(seed, size)
+
+    torch.testing.assert_close(first.cpu(), expected, rtol=0, atol=0)
+    assert torch.equal(first, second)
+
+
+@pytest.mark.parametrize('dtype', ['int32', 'int64'])
+@pytest.mark.parametrize('const_seed', [True, False])
+def test_rand_seed_differentiation(dtype, const_seed):
+    seed_zero = launch_randn(17, 0, dtype, const_seed)
+    seed_one = launch_randn(17, 1, dtype, const_seed)
+
+    assert not torch.equal(seed_zero, seed_one)
+
+
 
 # tl.rand() should never produce >=1.0
 

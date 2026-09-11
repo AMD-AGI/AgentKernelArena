@@ -17,6 +17,17 @@ TEST_SHAPES = [
 ]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
+CORRECTNESS_ATOL = 1.0
+CORRECTNESS_RTOL = 0.5
+
+# (use_int4, has_zero_points, mul_routed_weight, pass_topk_weights)
+CORRECTNESS_VARIANTS = [
+    (True, True, True, True),
+    (True, False, True, True),
+    (False, True, True, True),
+    (False, False, False, False),
+    (True, True, False, True),
+]
 
 
 # >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>
@@ -57,16 +68,19 @@ def run_compile():
         return False, str(e)
 
 
-def reference_fused_moe_int4(input_t, qweight, scales, zeros, topk_ids,
-                             topk_weights, mul_routed_weight, group_size):
-    """CPU reference for INT4 (GPTQ/AWQ) weight-only MoE.
+def reference_fused_moe(input_t, qweight, scales, zeros, topk_ids,
+                        topk_weights, mul_routed_weight, group_size,
+                        use_int4):
+    """CPU reference for INT4/INT8 (GPTQ/AWQ) weight-only MoE.
 
-    The Triton kernel packs 2 x int4 values per uint8 element along the K
-    dimension:
-        qweight: [E, K//2, N]  uint8  – low nibble = even k, high nibble = odd k
+    In INT4 mode the Triton kernel packs two values per uint8 element along K:
+        qweight: [E, K//2, N] uint8, low nibble = even k, high = odd k
         scales:  [E, K//group_size, N] fp16
         zeros:   [E, K//group_size, N//2] uint8 (packed 4-bit zero points per N)
                  or None (default zp = 8)
+
+    In INT8 mode qweight is [E, K, N], zeros (when present) is
+    [E, K//group_size, N], and the default zero point is 128.
     """
     import torch
     M, K = input_t.shape
@@ -79,27 +93,32 @@ def reference_fused_moe_int4(input_t, qweight, scales, zeros, topk_ids,
     qw_cpu = qweight.cpu().to(torch.int16)  # promote to avoid sign issues
     scales_cpu = scales.cpu().float()
 
-    # Unpack weights: 2 x int4 per uint8 along K dim  -> [E, K, N]
-    K_packed = qweight.shape[1]  # K // 2
-    w_lo = (qw_cpu & 0xF).float()          # even k indices
-    w_hi = ((qw_cpu >> 4) & 0xF).float()   # odd k indices
-    # Interleave: w_unpacked[:, 0::2, :] = lo, w_unpacked[:, 1::2, :] = hi
-    w_unpacked = torch.zeros(E, K, N, dtype=torch.float32)
-    w_unpacked[:, 0::2, :] = w_lo
-    w_unpacked[:, 1::2, :] = w_hi
+    if use_int4:
+        # Unpack weights: 2 x int4 per uint8 along K dim -> [E, K, N].
+        w_lo = (qw_cpu & 0xF).float()
+        w_hi = ((qw_cpu >> 4) & 0xF).float()
+        w_unpacked = torch.zeros(E, K, N, dtype=torch.float32)
+        w_unpacked[:, 0::2, :] = w_lo
+        w_unpacked[:, 1::2, :] = w_hi
+    else:
+        w_unpacked = qw_cpu.float()
 
     # Unpack zero points
     num_groups = K // group_size
     if zeros is not None:
         zp_cpu = zeros.cpu().to(torch.int16)
-        # zeros: [E, K//group_size, N//2] – packed along N dim
-        zp_lo = (zp_cpu & 0xF).float()
-        zp_hi = ((zp_cpu >> 4) & 0xF).float()
-        zp_unpacked = torch.zeros(E, num_groups, N, dtype=torch.float32)
-        zp_unpacked[:, :, 0::2] = zp_lo
-        zp_unpacked[:, :, 1::2] = zp_hi
+        if use_int4:
+            # INT4 zero points are packed along N.
+            zp_lo = (zp_cpu & 0xF).float()
+            zp_hi = ((zp_cpu >> 4) & 0xF).float()
+            zp_unpacked = torch.zeros(E, num_groups, N, dtype=torch.float32)
+            zp_unpacked[:, :, 0::2] = zp_lo
+            zp_unpacked[:, :, 1::2] = zp_hi
+        else:
+            zp_unpacked = zp_cpu.float()
     else:
-        zp_unpacked = torch.full((E, num_groups, N), 8.0)
+        default_zp = 8.0 if use_int4 else 128.0
+        zp_unpacked = torch.full((E, num_groups, N), default_zp)
 
     # Dequantize: w_float = (w_int4 - zp) * scale
     w_deq = torch.zeros(E, K, N, dtype=torch.float32)
@@ -120,9 +139,22 @@ def reference_fused_moe_int4(input_t, qweight, scales, zeros, topk_ids,
                 continue
             row = x @ w_deq[expert_id]
             if mul_routed_weight:
-                row *= topk_weights[flat_idx].item()
+                if topk_weights is not None:
+                    row *= topk_weights[flat_idx].item()
             output[flat_idx] = row
     return output
+
+
+def _outputs_match(result, reference):
+    """Apply the task tolerance while explicitly rejecting omitted writes."""
+    import torch
+
+    if not torch.count_nonzero(result).item():
+        return False
+    return torch.allclose(
+        result.float(), reference.float(),
+        atol=CORRECTNESS_ATOL, rtol=CORRECTNESS_RTOL,
+    )
 
 
 def run_correctness():
@@ -133,39 +165,53 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    for i, (M, K, E, N, topk, group_size) in enumerate(TEST_SHAPES):
+    for i, ((M, K, E, N, topk, group_size), variant) in enumerate(
+        zip(TEST_SHAPES, CORRECTNESS_VARIANTS)
+    ):
         try:
+            use_int4, has_zp, mul_routed_weight, pass_topk_weights = variant
             torch.manual_seed(42 + i)
-            input_tensor = torch.randn(M, K, device=device, dtype=torch.float16) * 0.1
+            input_tensor = torch.randn(M, K, device=device, dtype=torch.float16) * 0.5
 
-            # INT4 quantized weights packed 2 per uint8 along K dim: [E, K//2, N]
-            qweight = torch.randint(0, 255, (E, K // 2, N), device=device,
+            packed_k = K // 2 if use_int4 else K
+            qweight = torch.randint(0, 256, (E, packed_k, N), device=device,
                                     dtype=torch.int32).to(torch.uint8)
             num_groups = K // group_size
             scales_t = (torch.randn(E, num_groups, N, device=device,
-                                    dtype=torch.float16).abs() * 0.01 + 0.001)
+                                    dtype=torch.float16).abs() * 0.05 + 0.02)
 
-            # Zero points packed 2 per uint8 along N dim: [E, K//group_size, N//2]
-            zeros_t = torch.randint(0, 255, (E, num_groups, N // 2), device=device,
-                                    dtype=torch.int32).to(torch.uint8)
+            zeros_t = None
+            if has_zp:
+                zero_n = N // 2 if use_int4 else N
+                zeros_t = torch.randint(
+                    0, 256, (E, num_groups, zero_n), device=device,
+                    dtype=torch.int32,
+                ).to(torch.uint8)
 
             topk_ids = torch.randint(0, E, (M, topk), device=device, dtype=torch.int32)
             topk_weights_flat = torch.randn(M * topk, device=device,
                                             dtype=torch.float32).abs()
+            topk_weights_arg = topk_weights_flat if pass_topk_weights else None
 
             result = mod.fused_moe_gptq_awq(
                 input_tensor, qweight, scales_t, zeros_t, topk_ids,
-                topk_weights_flat, mul_routed_weight=True,
-                group_size=group_size, use_int4=True,
+                topk_weights_arg, mul_routed_weight=mul_routed_weight,
+                group_size=group_size, use_int4=use_int4,
             )
             torch.cuda.synchronize()
 
-            ref = reference_fused_moe_int4(
+            ref = reference_fused_moe(
                 input_tensor, qweight, scales_t, zeros_t, topk_ids,
-                topk_weights_flat, True, group_size,
+                topk_weights_arg, mul_routed_weight, group_size, use_int4,
             ).to(device).to(torch.float16)
 
-            if not torch.allclose(result.float(), ref.float(), atol=1.0, rtol=0.5):
+            if torch.allclose(
+                torch.zeros_like(ref).float(), ref.float(),
+                atol=CORRECTNESS_ATOL, rtol=CORRECTNESS_RTOL,
+            ):
+                return False, f"Shape {i+1}: reference signal is too small"
+
+            if not _outputs_match(result, ref):
                 max_diff = (result.float() - ref.float()).abs().max().item()
                 return False, f"Shape {i+1}: max diff = {max_diff:.6f}"
         except Exception as e:
@@ -186,23 +232,40 @@ def run_performance():
     for test_idx, (M, K, E, N, topk, group_size) in enumerate(TEST_SHAPES):
         try:
             torch.manual_seed(42 + test_idx)
-            input_tensor = torch.randn(M, K, device=device, dtype=torch.float16) * 0.1
+            input_tensor = torch.randn(M, K, device=device, dtype=torch.float16) * 0.5
 
             # INT4 packed weights: [E, K//2, N] uint8
-            qweight = torch.randint(0, 255, (E, K // 2, N), device=device,
+            qweight = torch.randint(0, 256, (E, K // 2, N), device=device,
                                     dtype=torch.int32).to(torch.uint8)
             num_groups = K // group_size
             scales_t = (torch.randn(E, num_groups, N, device=device,
-                                    dtype=torch.float16).abs() * 0.01 + 0.001)
-            zeros_t = torch.randint(0, 255, (E, num_groups, N // 2), device=device,
+                                    dtype=torch.float16).abs() * 0.05 + 0.02)
+            zeros_t = torch.randint(0, 256, (E, num_groups, N // 2), device=device,
                                     dtype=torch.int32).to(torch.uint8)
             topk_ids = torch.randint(0, E, (M, topk), device=device, dtype=torch.int32)
             topk_weights_flat = torch.randn(M * topk, device=device, dtype=torch.float32).abs()
 
+            # Build the independent reference before any measured invocation.
+            reference = reference_fused_moe(
+                input_tensor, qweight, scales_t, zeros_t, topk_ids,
+                topk_weights_flat, True, group_size, True,
+            ).to(device).to(torch.float16)
+            if torch.allclose(
+                torch.zeros_like(reference).float(), reference.float(),
+                atol=CORRECTNESS_ATOL, rtol=CORRECTNESS_RTOL,
+            ):
+                raise RuntimeError("performance reference signal is too small")
+            timed_output = [None]
+
             def _bench_fn():
-                mod.fused_moe_gptq_awq(input_tensor, qweight, scales_t, zeros_t,
-                                        topk_ids, topk_weights_flat,
-                                        True, group_size, use_int4=True)
+                result = mod.fused_moe_gptq_awq(
+                    input_tensor, qweight, scales_t, zeros_t,
+                    topk_ids, topk_weights_flat,
+                    True, group_size, use_int4=True,
+                )
+                timed_output[0] = result
+                return result
+
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
                 _bench_fn,
                 warmup=WARMUP_ITERATIONS,
@@ -210,6 +273,10 @@ def run_performance():
                 use_cuda_graph=False,
                 fallback_reason="fused_moe_host_routing_and_dynamic_allocations",
             )
+            if timed_output[0] is None or not _outputs_match(
+                timed_output[0], reference
+            ):
+                raise RuntimeError("timed invocation output failed validation")
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
