@@ -20,6 +20,29 @@ TEST_SHAPES = [
     (32, 256, 1024, True),
     (64, 16, 2048, False),
 ]
+TARGETED_CORRECTNESS_CASES = [
+    {
+        "name": "mixed_mapped_boundary_lengths",
+        "max_model_len": 64,
+        "idx_mapping": [6, 2, 7, 0, 5, 3],
+        "query_lens": [0, 1, 3, 1, 0, 7],
+        # Per-batch values are scattered through idx_mapping below. These cover
+        # zero, the final prefill position, and the exact decode boundary.
+        "prefill_lens": [5, 9, 12, 1, 4, 11],
+        "num_computed_tokens": [0, 8, 12, 1, 4, 4],
+    },
+    {
+        "name": "mixed_multi_tile_requests",
+        "max_model_len": 4096,
+        "idx_mapping": [3, 0],
+        "query_lens": [1025, 2051],
+        # Both requests cross the kernel's 1024-element tile. The prefill
+        # request ends at the last valid lookup entry; decode starts exactly at
+        # its prefill length and remains within max_model_len.
+        "prefill_lens": [4096, 2045],
+        "num_computed_tokens": [3071, 2045],
+    },
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -80,6 +103,110 @@ def reference_prepare_mrope(mrope_positions, prefill_mrope_positions, max_model_
     return mrope_positions
 
 
+def check_mrope_case(mod, case_name, mrope_positions, prefill_mrope_positions,
+                     max_model_len, prefill_mrope_delta, idx_mapping,
+                     query_start_loc, prefill_lens, num_computed_tokens):
+    import torch
+
+    ref = reference_prepare_mrope(
+        mrope_positions.cpu(), prefill_mrope_positions.cpu(), max_model_len,
+        prefill_mrope_delta.cpu(), idx_mapping.cpu(), query_start_loc.cpu(),
+        prefill_lens.cpu(), num_computed_tokens.cpu(),
+    )
+    mod.prepare_mrope_positions(
+        mrope_positions, prefill_mrope_positions, max_model_len,
+        prefill_mrope_delta, idx_mapping, query_start_loc, prefill_lens,
+        num_computed_tokens,
+    )
+    torch.cuda.synchronize()
+
+    actual = mrope_positions.cpu()
+    if torch.equal(actual, ref):
+        return True, None
+
+    first_diff = (actual != ref).nonzero()[0]
+    dim = first_diff[0].item()
+    token = first_diff[1].item()
+    return False, (
+        f"{case_name}: mismatch at [{dim},{token}] "
+        f"got {actual[dim, token].item()} expected {ref[dim, token].item()}"
+    )
+
+
+def run_targeted_correctness_case(mod, case, seed):
+    import torch
+
+    device = "cuda"
+    idx_mapping_values = case["idx_mapping"]
+    query_lens = case["query_lens"]
+    prefill_lens_by_batch = case["prefill_lens"]
+    num_computed_by_batch = case["num_computed_tokens"]
+    max_model_len = case["max_model_len"]
+    num_reqs = len(idx_mapping_values)
+
+    if not (
+        len(query_lens) == len(prefill_lens_by_batch)
+        == len(num_computed_by_batch) == num_reqs
+    ):
+        raise ValueError("targeted case arrays must have one entry per request")
+    if len(set(idx_mapping_values)) != num_reqs:
+        raise ValueError("targeted cases require unique request-state mappings")
+
+    max_num_reqs = max(num_reqs + 8, max(idx_mapping_values) + 1)
+    idx_mapping = torch.tensor(
+        idx_mapping_values, dtype=torch.int32, device=device
+    )
+    query_starts = [0]
+    for query_len in query_lens:
+        if query_len < 0:
+            raise ValueError("query lengths must be nonnegative")
+        query_starts.append(query_starts[-1] + query_len)
+    query_start_loc = torch.tensor(
+        query_starts, dtype=torch.int32, device=device
+    )
+
+    prefill_lens = torch.zeros(
+        max_num_reqs, dtype=torch.int32, device=device
+    )
+    num_computed_tokens = torch.zeros(
+        max_num_reqs, dtype=torch.int32, device=device
+    )
+    for batch_idx, req_state_idx in enumerate(idx_mapping_values):
+        prefill_len = prefill_lens_by_batch[batch_idx]
+        num_computed = num_computed_by_batch[batch_idx]
+        query_len = query_lens[batch_idx]
+        if not (0 <= prefill_len <= max_model_len):
+            raise ValueError("prefill length is outside max_model_len")
+        if not (0 <= num_computed <= max_model_len):
+            raise ValueError("num_computed is outside max_model_len")
+        if num_computed + query_len > max_model_len:
+            raise ValueError("request tokens exceed max_model_len")
+        if num_computed < prefill_len and num_computed + query_len > prefill_len:
+            raise ValueError("prefill query extends beyond its prefill length")
+        prefill_lens[req_state_idx] = prefill_len
+        num_computed_tokens[req_state_idx] = num_computed
+
+    torch.manual_seed(seed)
+    prefill_mrope_positions = torch.randint(
+        0, max_model_len, (max_num_reqs * 3, max_model_len),
+        dtype=torch.int32, device=device,
+    )
+    prefill_mrope_delta = torch.randint(
+        -10, 10, (max_num_reqs,), dtype=torch.int32, device=device
+    )
+    # The int64-only sentinel also verifies that empty requests and the output
+    # guard element remain untouched.
+    mrope_positions = torch.full(
+        (3, query_starts[-1] + 1), -(1 << 40),
+        dtype=torch.int64, device=device,
+    )
+    return check_mrope_case(
+        mod, case["name"], mrope_positions, prefill_mrope_positions,
+        max_model_len, prefill_mrope_delta, idx_mapping, query_start_loc,
+        prefill_lens, num_computed_tokens,
+    )
+
+
 def run_compile():
     try:
         import ast
@@ -129,29 +256,24 @@ def run_correctness():
             )
             mrope_positions = torch.zeros(3, total_tokens + 1, dtype=torch.int64, device=device)
 
-            mod.prepare_mrope_positions(
-                mrope_positions, prefill_mrope_positions, max_model_len,
-                prefill_mrope_delta, idx_mapping, query_start_loc,
-                prefill_lens, num_computed_tokens,
+            ok, err = check_mrope_case(
+                mod, f"Shape {i + 1}", mrope_positions,
+                prefill_mrope_positions, max_model_len, prefill_mrope_delta,
+                idx_mapping, query_start_loc, prefill_lens,
+                num_computed_tokens,
             )
-            torch.cuda.synchronize()
-
-            ref = reference_prepare_mrope(
-                torch.zeros(3, total_tokens + 1, dtype=torch.int64),
-                prefill_mrope_positions.cpu(), max_model_len,
-                prefill_mrope_delta.cpu(), idx_mapping.cpu(), query_start_loc.cpu(),
-                prefill_lens.cpu(), num_computed_tokens.cpu(),
-            )
-
-            if not torch.equal(mrope_positions.cpu()[:, :total_tokens], ref[:, :total_tokens]):
-                diff = (mrope_positions.cpu()[:, :total_tokens] != ref[:, :total_tokens])
-                first_diff = diff.nonzero()
-                if len(first_diff) > 0:
-                    fd = first_diff[0]
-                    return False, f"Shape {i+1}: mismatch at [{fd[0]},{fd[1]}] got {mrope_positions.cpu()[fd[0],fd[1]].item()} expected {ref[fd[0],fd[1]].item()}"
-                return False, f"Shape {i+1}: mismatch"
+            if not ok:
+                return False, err
         except Exception as e:
             return False, f"Shape {i+1}: exception: {e}"
+
+    for i, case in enumerate(TARGETED_CORRECTNESS_CASES):
+        try:
+            ok, err = run_targeted_correctness_case(mod, case, 100 + i)
+            if not ok:
+                return False, err
+        except Exception as e:
+            return False, f"Case {case['name']}: exception: {e}"
 
     return True, None
 
@@ -177,8 +299,21 @@ def run_performance():
                 query_start_loc[r + 1] = query_start_loc[r] + query_len
             total_tokens = int(query_start_loc[-1].item())
 
-            prefill_lens = torch.full((max_num_reqs,), max_model_len, dtype=torch.int32, device=device)
-            num_computed_tokens = torch.zeros(max_num_reqs, dtype=torch.int32, device=device)
+            if is_prefill:
+                prefill_lens = torch.full(
+                    (max_num_reqs,), max_model_len,
+                    dtype=torch.int32, device=device,
+                )
+                num_computed_tokens = torch.zeros(
+                    max_num_reqs, dtype=torch.int32, device=device
+                )
+            else:
+                prefill_lens = torch.full(
+                    (max_num_reqs,), 10, dtype=torch.int32, device=device
+                )
+                num_computed_tokens = torch.full(
+                    (max_num_reqs,), 50, dtype=torch.int32, device=device
+                )
             prefill_mrope_positions = torch.randint(
                 0, max_model_len, (max_num_reqs * 3, max_model_len),
                 dtype=torch.int32, device=device
@@ -243,7 +378,11 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(TEST_SHAPES) + len(TARGETED_CORRECTNESS_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
