@@ -15,6 +15,13 @@ TEST_SHAPES = [
     (32, 512, 1024, 8192, 64),
     (64, 1024, 2048, 8192, 128),
 ]
+
+# Correctness-only boundary cases. Keep these separate so hardening coverage does
+# not change the benchmark workload.
+CORRECTNESS_TEST_SHAPES = TEST_SHAPES + [
+    (16, 256, 2049, 8192, 256),
+    (17, 272, 4096, 8192, 257),
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -133,7 +140,7 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    for i, (nr, tt, hs, mml, mnr) in enumerate(TEST_SHAPES):
+    for i, (nr, tt, hs, mml, mnr) in enumerate(CORRECTNESS_TEST_SHAPES):
         try:
             inputs_gpu = make_inputs(nr, tt, hs, mml, mnr, device)
             inputs_cpu = make_inputs(nr, tt, hs, mml, mnr, "cpu")
@@ -248,7 +255,11 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(CORRECTNESS_TEST_SHAPES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
