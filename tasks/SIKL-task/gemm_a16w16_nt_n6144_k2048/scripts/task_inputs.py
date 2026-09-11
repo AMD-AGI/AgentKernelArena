@@ -2,10 +2,17 @@
 """Input construction for an a16w16 GEMM workload.
 
 The buffers are allocated here and filled by ``task_initialize``, which is the
-schema bundle's own ``initialize`` callback: ``a`` is standard normal and ``b``
-is drawn at 1/sqrt(k), its logical fan-in. Nothing about the distribution is
-decided in this file, because the acceptance run that verifies a result uses
-that callback and a second implementation of it here would be a second operator.
+schema bundle's own ``initialize`` callback: both ``a`` and ``b`` are standard
+normal. Nothing about the distribution is decided in this file, because the
+acceptance run that verifies a result uses that callback and a second
+implementation of it here would be a second operator.
+
+That the distribution is not ours to pick is not an abstraction for its own
+sake. An earlier revision of the bundle drew ``b`` at 1/sqrt(k), which put the
+output at unit scale and therefore inside the comparison's absolute tolerance
+everywhere -- a kernel that truncated its partial sums to bf16 matched on every
+element under it and missed roughly a tenth of the output under this one. The
+task followed the bundle in both directions without a line of policy here.
 
 Each case is built on its own, from a generator re-seeded to ``seed`` for that
 case, because the bundle initializes one workload point at a time. ``a`` carries

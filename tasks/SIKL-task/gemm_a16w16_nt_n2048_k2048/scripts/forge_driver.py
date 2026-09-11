@@ -35,8 +35,14 @@ CORRECTNESS GATE
     a candidate that run accepts.
 
     scripts/task_initialize.py is the bundle's input callback on the same terms:
-    `a` is standard normal, `b` is drawn at 1/sqrt(k). Inputs are built one case
-    at a time because the bundle initializes one workload point at a time.
+    `a` and `b` are both standard normal. Inputs are built one case at a time
+    because the bundle initializes one workload point at a time.
+
+    The distribution is worth knowing when you choose an accumulator. At this
+    scale the output runs to a standard deviation in the tens, so the
+    comparison's absolute term stops mattering and its relative term governs:
+    truncating split-k or K-warp partial sums to bf16 puts roughly a tenth of
+    the output out of tolerance. Reduce in fp32.
 
     The production implementation is judged by the same callback beside every
     case and the result is printed, but it does not move the bar: it does not

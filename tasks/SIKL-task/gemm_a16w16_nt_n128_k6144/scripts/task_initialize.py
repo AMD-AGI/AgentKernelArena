@@ -139,66 +139,6 @@ class ConstantInit(Initializer):
         )
 
 
-@dataclass(frozen=True)
-class NormalInit(Initializer):
-    """Normal activations, sampled natively where torch supports the dtype."""
-
-    mean: float = 0.0
-    std: float = 1.0
-
-    def validate(self, tensor):
-        _require_float(tensor)
-        _finite_parameter("mean", self.mean)
-        _finite_parameter("std", self.std)
-        if self.std < 0:
-            raise ValueError("std must be nonnegative")
-        limit = torch.finfo(tensor.dtype).max
-        if abs(self.mean) > limit or self.std > limit:
-            raise ValueError("normal parameters exceed the target dtype range")
-
-    def initialize(self, tensor, *, generator):
-        native = tensor.dtype in (
-            torch.float16,
-            torch.bfloat16,
-            torch.float32,
-            torch.float64,
-        )
-        work = tensor if native else torch.empty_like(tensor, dtype=torch.float32)
-        work.normal_(mean=self.mean, std=self.std, generator=generator)
-        limit = torch.finfo(tensor.dtype).max
-        work.nan_to_num_(nan=0.0, posinf=limit, neginf=-limit).clamp_(-limit, limit)
-        if not native:
-            tensor.copy_(work)
-
-
-@dataclass(frozen=True)
-class FanInNormal(Initializer):
-    """Projection weights with std=gain/sqrt(logical fan-in), never packed bytes."""
-
-    fan_in: int | None = None
-    dim: int = -1
-    gain: float = 1.0
-
-    def _normal(self, tensor):
-        fan_in = self.fan_in
-        if fan_in is None:
-            if type(self.dim) is not int or not -tensor.ndim <= self.dim < tensor.ndim:
-                raise ValueError("dim must select a logical reduction axis")
-            fan_in = tensor.shape[self.dim]
-        if type(fan_in) is not int or fan_in <= 0:
-            raise ValueError("fan_in must be a positive integer")
-        _finite_parameter("gain", self.gain)
-        if self.gain < 0:
-            raise ValueError("gain must be nonnegative")
-        return NormalInit(std=self.gain / math.sqrt(fan_in))
-
-    def validate(self, tensor):
-        self._normal(tensor).validate(tensor)
-
-    def initialize(self, tensor, *, generator):
-        self._normal(tensor).initialize(tensor, generator=generator)
-
-
 @dataclass(frozen=True, init=False, repr=False)
 class InputInitializer:
     """Bind tensor names to strategies and validate all buffers before in-place writes."""
@@ -269,9 +209,41 @@ class InputInitializer:
             )
 
 
+@dataclass(frozen=True)
+class NormalInit(Initializer):
+    """Normal activations, sampled natively where torch supports the dtype."""
+
+    mean: float = 0.0
+    std: float = 1.0
+
+    def validate(self, tensor):
+        _require_float(tensor)
+        _finite_parameter("mean", self.mean)
+        _finite_parameter("std", self.std)
+        if self.std < 0:
+            raise ValueError("std must be nonnegative")
+        limit = torch.finfo(tensor.dtype).max
+        if abs(self.mean) > limit or self.std > limit:
+            raise ValueError("normal parameters exceed the target dtype range")
+
+    def initialize(self, tensor, *, generator):
+        native = tensor.dtype in (
+            torch.float16,
+            torch.bfloat16,
+            torch.float32,
+            torch.float64,
+        )
+        work = tensor if native else torch.empty_like(tensor, dtype=torch.float32)
+        work.normal_(mean=self.mean, std=self.std, generator=generator)
+        limit = torch.finfo(tensor.dtype).max
+        work.nan_to_num_(nan=0.0, posinf=limit, neginf=-limit).clamp_(-limit, limit)
+        if not native:
+            tensor.copy_(work)
+
+
 @torch.no_grad()
 def initialize_gemm_inputs(inputs, *, seed=0, trans_b=True):
-    """Normal activations and fan-in weights; optional zero bias, NT or NN."""
+    """Standard normal matrices and optional zero bias, NT or NN."""
     check_init_buffers(inputs, ("a", "b"), seed)
     if inputs.keys() not in ({"a", "b"}, {"a", "b", "bias"}):
         raise ValueError("expected GEMM buffers a, b and optionally bias")
@@ -286,7 +258,7 @@ def initialize_gemm_inputs(inputs, *, seed=0, trans_b=True):
         raise ValueError(
             "expected matching BF16/FP16 matrices with the same reduction extent"
         )
-    strategies = {"a": NormalInit(), "b": FanInNormal(dim=-1 if trans_b else -2)}
+    strategies = {"a": NormalInit(), "b": NormalInit()}
     if "bias" in inputs:
         if not isinstance(inputs["bias"], torch.Tensor) or inputs["bias"].shape != (
             b.shape[0 if trans_b else 1],
