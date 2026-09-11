@@ -136,18 +136,19 @@ def _build_metadata_from_case(
     """Build metadata dict and normalize canonical benchmark provenance.
 
     Some task runners keep task-specific fields under a nested ``metadata``
-    mapping while older runners write canonical ``benchmark_*`` fields at the
-    row level.  Scoring consumes the canonical fields from
-    ``TestCaseResult.metadata`` directly, so promote nested benchmark fields
-    without discarding the original task metadata.  Explicit row-level values
-    win when both representations are present.
+    mapping while older runners write canonical fields at the row level.
+    Scoring consumes ``benchmark_*``, ``params``, and ``dtype`` from
+    ``TestCaseResult.metadata`` directly, so promote those nested fields without
+    discarding the original task metadata. Explicit row-level values win when
+    both representations are present.
     """
     metadata = {k: v for k, v in case.items() if k not in exclude_keys}
 
     nested_metadata = case.get('metadata')
     if isinstance(nested_metadata, dict):
         for key, value in nested_metadata.items():
-            if key.startswith('benchmark_') and key not in metadata:
+            canonical = key.startswith('benchmark_') or key in {'params', 'dtype'}
+            if canonical and key not in metadata:
                 metadata[key] = value
     
     # Always include params if present
@@ -588,6 +589,14 @@ def calculate_average_speedup(
             f"matched={len(matched)}, baseline={len(baseline_cases)}, optimized={len(optimized_cases)}"
         )
         return 0.0
+
+    workload_mismatches = _workload_mismatches(matched)
+    if workload_mismatches:
+        log.warning(
+            "Workload changed between baseline and optimized cases: %s",
+            workload_mismatches,
+        )
+        return 0.0
     
     method_mismatches = _benchmark_method_mismatches(matched)
     if method_mismatches:
@@ -684,6 +693,62 @@ def _benchmark_method_mismatches(
     return mismatches
 
 
+def _workload_mismatches(
+    matched_cases: List[Tuple[TestCaseResult, TestCaseResult]],
+) -> List[Dict[str, Any]]:
+    """An ID pairs results; it does not prove their workloads are identical.
+
+    Compare every workload field reported by either side, including removal of
+    baseline metadata. Fields absent on both sides remain legacy-compatible;
+    file integrity checks protect task inputs even for those older producers.
+    Timing/profiling metadata is deliberately outside this comparison.
+    """
+    def workload(case: TestCaseResult) -> Dict[str, Any]:
+        metadata = case.metadata or {}
+        fields = {
+            key: metadata[key] for key in ('params', 'dtype') if key in metadata
+        }
+        if case.shape is not None:
+            fields['shape'] = case.shape
+        return fields
+
+    mismatches = []
+    for base_case, opt_case in matched_cases:
+        base = workload(base_case)
+        opt = workload(opt_case)
+        changed = sorted(
+            key for key in base.keys() | opt.keys()
+            if key not in base or key not in opt or base[key] != opt[key]
+        )
+        if changed:
+            mismatches.append({
+                'test_case_id': base_case.test_case_id,
+                'optimized_test_case_id': opt_case.test_case_id,
+                'reason': 'workload_changed',
+                'fields': changed,
+                'baseline_workload': base,
+                'optimized_workload': opt,
+            })
+    return mismatches
+
+
+def analyze_workload_consistency(
+    baseline_cases: List[TestCaseResult],
+    optimized_cases: List[TestCaseResult],
+    logger: Optional[logging.Logger] = None,
+) -> Tuple[bool, List[Dict[str, Any]]]:
+    """Require complete case pairing and equal declared workloads."""
+    matched = match_test_cases(
+        baseline_cases, optimized_cases, logger,
+        allow_index_fallback=len(baseline_cases) == len(optimized_cases) == 1,
+    )
+    mismatches = _workload_mismatches(matched)
+    complete = (
+        bool(matched) and len(matched) == len(baseline_cases) == len(optimized_cases)
+    )
+    return complete and not mismatches, mismatches
+
+
 def analyze_benchmark_method_consistency(
     baseline_cases: List[TestCaseResult],
     optimized_cases: List[TestCaseResult],
@@ -727,7 +792,7 @@ def save_performance_results(
     """
     Save test case results to YAML file.
     
-    Saves identifying fields, timing, params, and canonical ``benchmark_*``
+    Saves identifying fields, timing, params, dtype, and canonical ``benchmark_*``
     metadata. Other task-specific metadata is excluded to keep the file compact.
     
     Args:
@@ -747,11 +812,13 @@ def save_performance_results(
             'test_case_id': case.test_case_id,
             'execution_time_ms': case.execution_time_ms
         }
-        if case.shape:
+        if case.shape is not None:
             case_dict['shape'] = case.shape
-        # Only include params from metadata, exclude everything else
-        if case.metadata and 'params' in case.metadata:
-            case_dict['params'] = case.metadata['params']
+        # Preserve workload identity as well as the timing diagnostics below.
+        if case.metadata:
+            for key in ('params', 'dtype'):
+                if key in case.metadata:
+                    case_dict[key] = case.metadata[key]
         # Persist all canonical benchmark metadata so baseline and optimized
         # measurements can be audited and compared after workspace reload.
         if case.metadata:

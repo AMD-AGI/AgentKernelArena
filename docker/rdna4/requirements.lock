@@ -1,0 +1,9 @@
+# Missing AKA plotting dependencies for the digest-pinned base in Dockerfile.
+# Wheel hashes target Linux x86_64 / CPython 3.14. Install with --no-deps:
+# numpy, packaging, pillow, python-dateutil and six come from the pinned base.
+contourpy==1.3.3 --hash=sha256:f64836de09927cba6f79dcd00fdd7d5329f3fccc633468507079c829ca4db4e3
+cycler==0.12.1 --hash=sha256:85cef7cff222d8644161529808465972e51340599459b8ac3ccbac5a854e0d30
+fonttools==4.64.0 --hash=sha256:b4a7af455ffed980925bc0ebf5b8d6239e6c3e797d9d755b6db192fb3080d614
+kiwisolver==1.5.1 --hash=sha256:18a0cfb124546a4c2e6087c5f3029c7f44b37c85b142e0ced71f73a7599ac208
+matplotlib==3.11.1 --hash=sha256:5af0dcda57d471440a7b5b623e70e0a61003518443d9098f211a96ecfbbc25be
+pyparsing==3.3.2 --hash=sha256:850ba148bd908d7e2411587e247a1e4f0327839c40e2e5e6d05a007ecc69911d

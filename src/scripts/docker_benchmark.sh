@@ -6,6 +6,8 @@ GFX950_V0514_DOCKER_IMAGE="lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705"
 GFX950_V0514_MANIFEST_DIGEST="sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78"
 GFX950_V0514_IMMUTABLE_IMAGE="lmsysorg/sglang-rocm@${GFX950_V0514_MANIFEST_DIGEST}"
 DEFAULT_DOCKER_IMAGE_GFX950="${AKA_DOCKER_IMAGE_GFX950:-$GFX950_V0514_DOCKER_IMAGE}"
+# Built on first use when absent; its Dockerfile pins the base.
+DEFAULT_DOCKER_IMAGE_GFX1201="${AKA_DOCKER_IMAGE_GFX1201:-agent-kernel-arena:rdna4-rocm10-v1}"
 CONTAINER_WORKDIR="${AKA_DOCKER_WORKDIR:-/workspace}"
 HOST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HOST_HOME="${HOME:?HOME must be set}"
@@ -19,6 +21,10 @@ DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
 # separate from REQUIRED_AGENTS because geak_v4 is normalized to claude_code
 # before Docker arguments are built.
 GEAK_V4_RUNTIME=0
+# quality_loop keeps the repository checkout read-only in the agent container.
+# Only these host-validated, run-specific subdirectories are over-mounted rw.
+QUALITY_LOOP_ARTIFACT_REL=""
+QUALITY_LOOP_WORKTREE_REL=""
 EVAL_TOOL_SOCKET_CONTAINER_DIR="/run/aka-eval-tools"
 EVAL_TOOL_INPUT_CONTAINER_DIR="/input"
 EVAL_TOOL_FRAMEWORK_CONTAINER_ROOT="/opt/aka-eval-tools"
@@ -47,7 +53,9 @@ Usage:
   src/scripts/docker_benchmark.sh preflight [--config_name <run-config.yaml>]
   src/scripts/docker_benchmark.sh shell
   src/scripts/docker_benchmark.sh check-agents [--config_name <run-config.yaml>]
+  src/scripts/docker_benchmark.sh quality-loop [--config <quality-loop-config.yaml>] [quality_loop args...]
   src/scripts/docker_benchmark.sh smoke
+  src/scripts/docker_benchmark.sh build-rdna4-image
   src/scripts/docker_benchmark.sh eval-tools-smoke
   src/scripts/docker_benchmark.sh build-eval-tool-images
 
@@ -63,6 +71,7 @@ Environment overrides:
   AKA_DOCKER_IMAGE_<ARCH> Per-arch image override, e.g. AKA_DOCKER_IMAGE_GFX950=...
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
   AKA_DOCKER_IMAGE_GFX950 Default image for gfx950.
+  AKA_DOCKER_IMAGE_GFX1201 RDNA4 image (also the build-rdna4-image output tag).
   AKA_NODE_PREFIX         Host Node prefix containing bin/node and npm-installed agent CLI(s).
   AKA_AGENTS              Agent CLI(s) to check, comma/space separated; use all for all three.
   AKA_EVAL_TOOLS          Override evaluation_tools.enabled (comma/space separated).
@@ -110,6 +119,7 @@ docker_image_for_arch() {
     case "$arch" in
         gfx942) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_GFX942" ;;
         gfx950) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_GFX950" ;;
+        gfx1201) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_GFX1201" ;;
         *)
             die "No Docker image mapping for GPU arch '$arch'. Set AKA_DOCKER_IMAGE or ${env_name}."
             ;;
@@ -206,7 +216,7 @@ detect_host_gpu_arch() {
 
 select_runtime() {
     local arch="$1"
-    [[ -n "$arch" ]] || die "Could not infer GPU arch; set AKA_GPU_ARCH=gfx942 or AKA_GPU_ARCH=gfx950"
+    [[ -n "$arch" ]] || die "Could not infer GPU arch; set AKA_GPU_ARCH (for example gfx942, gfx950, or gfx1201)"
 
     SELECTED_GPU_ARCH="$(normalize_gpu_arch "$arch")"
     if [[ -n "${AKA_DOCKER_IMAGE:-}" ]]; then
@@ -224,6 +234,31 @@ select_runtime_for_config() {
 
 select_runtime_for_host() {
     select_runtime "$(detect_host_gpu_arch)"
+}
+
+build_rdna4_image() {
+    # Send only the recipe, normalizer, and package lock as build context.
+    docker build --pull=false \
+        --file "$HOST_ROOT/docker/rdna4/Dockerfile" \
+        --tag "$DEFAULT_DOCKER_IMAGE_GFX1201" \
+        "$HOST_ROOT/docker/rdna4"
+}
+
+ensure_runtime_image() {
+    # Custom images retain Docker's normal pull/run behavior, even if an
+    # override happens to equal our default tag. Never build over an override.
+    [[ "$SELECTED_GPU_ARCH" == "gfx1201" \
+        && -z "${AKA_DOCKER_IMAGE:-}" \
+        && -z "${AKA_DOCKER_IMAGE_GFX1201:-}" ]] || return 0
+    if docker image inspect "$SELECTED_IMAGE" >/dev/null 2>&1; then
+        return 0
+    fi
+    # An unavailable daemon is not evidence that the image is missing.
+    docker info >/dev/null \
+        || die "Cannot access Docker; check daemon access before building the RDNA4 runtime."
+    echo "RDNA4 image '$SELECTED_IMAGE' is missing; building the pinned runtime before launch. The first build may download the base image and locked packages." >&2
+    build_rdna4_image >&2 \
+        || die "RDNA4 runtime build failed; no experiment was started. Retry the command or run make docker-build-rdna4."
 }
 
 detect_node_prefix() {
@@ -273,6 +308,22 @@ detect_node_cli_prefix() {
         fi
     fi
     return 1
+}
+
+# Return the installation root for Codex's native standalone distribution.
+# The native installer places a launcher in ~/.local/bin and versioned binaries
+# below ~/.codex/packages/standalone. Unlike the npm installation it does not
+# require a host Node.js prefix.
+detect_standalone_codex_root() {
+    local cli_bin resolved root
+    cli_bin="$(command -v codex || true)"
+    [[ -n "$cli_bin" ]] || return 1
+
+    resolved="$(readlink -f "$cli_bin" 2>/dev/null || true)"
+    root="$HOST_HOME/.codex/packages/standalone"
+    [[ -n "$resolved" && "$resolved" == "$root/"* ]] || return 1
+    [[ -x "$resolved" ]] || return 1
+    printf '%s\n' "$root"
 }
 
 docker_args=()
@@ -421,17 +472,31 @@ mount_agent() {
     local isolate="${AGENT_HOME_ISOLATION:-0}"
     case "$agent" in
         codex)
-            local node_prefix
-            node_prefix="$(detect_node_cli_prefix codex || true)"
-            if [[ -z "$node_prefix" ]]; then
-                [[ "$strict" == "1" ]] && die "npm-installed Codex not found on host PATH or under AKA_NODE_PREFIX"
-                warn "npm-installed Codex not found; skipping Codex agent mounts"
-                return 0
+            local node_prefix standalone_root
+            standalone_root="$(detect_standalone_codex_root || true)"
+            if [[ -n "$standalone_root" ]]; then
+                need_path "$HOST_HOME/.local/bin/codex" "native Codex launcher" "$strict" || return 0
+                need_path "$standalone_root" "native Codex installation" "$strict" || return 0
+                add_mount "$HOST_HOME/.local/bin" "$HOST_HOME/.local/bin" ro
+                # Isolated workers copy mutable auth/config into their temporary
+                # HOME. Keep the large native package tree mounted at its original
+                # absolute path so the launcher symlink remains valid without
+                # copying the installation for every worker.
+                if [[ "$isolate" == "1" ]]; then
+                    add_mount "$standalone_root" "$standalone_root" ro
+                fi
+            else
+                node_prefix="$(detect_node_cli_prefix codex || true)"
+                if [[ -z "$node_prefix" ]]; then
+                    [[ "$strict" == "1" ]] && die "Codex not found as a native standalone or npm installation on host PATH"
+                    warn "Codex not found as a native standalone or npm installation; skipping Codex agent mounts"
+                    return 0
+                fi
+                need_path "$node_prefix/bin/node" "host node" "$strict" || return 0
+                need_path "$node_prefix/bin/codex" "host codex" "$strict" || return 0
+                add_mount "$node_prefix" /opt/node ro
             fi
-            need_path "$node_prefix/bin/node" "host node" "$strict" || return 0
-            need_path "$node_prefix/bin/codex" "host codex" "$strict" || return 0
             need_path "$HOST_HOME/.codex" "Codex auth/config directory" "$strict" || return 0
-            add_mount "$node_prefix" /opt/node ro
             if [[ "$isolate" == "1" ]]; then
                 add_mount "$HOST_HOME/.codex" "$AGENT_STATE_MOUNT_ROOT/.codex" ro
             else
@@ -887,6 +952,10 @@ build_docker_args() {
     local codex_home="${AKA_CODEX_HOME:-$container_home/.codex}"
     local cache_suffix="${AKA_CACHE_SUFFIX:-}"
     local cache_postfix=""
+    local container_username
+    # Arbitrary host UIDs need not exist in the image's passwd database.
+    # Python getpass (used by TorchInductor/AITER) also accepts USER/LOGNAME.
+    container_username="$(id -un 2>/dev/null)" || container_username="aka-$HOST_UID"
 
     if [[ -n "$cache_suffix" ]]; then
         cache_suffix="${cache_suffix//[^A-Za-z0-9_.-]/_}"
@@ -894,6 +963,9 @@ build_docker_args() {
     fi
 
     [[ -n "$SELECTED_IMAGE" ]] || select_runtime_for_host
+    # Parallel runs finish their preflight before starting any workers, so the
+    # first container builds a missing default and subsequent containers reuse it.
+    ensure_runtime_image
 
     docker_args=(run --rm --entrypoint bash)
     unset _MOUNTED_TARGETS
@@ -911,6 +983,8 @@ build_docker_args() {
         --security-opt=seccomp=unconfined
         --user "${HOST_UID}:${HOST_GID}"
         -e "HOME=${container_home}"
+        -e "USER=${container_username}"
+        -e "LOGNAME=${container_username}"
         -e "CODEX_HOME=${codex_home}"
         -e "XDG_CACHE_HOME=/tmp/agent-cache${cache_postfix}"
         -e "MPLCONFIGDIR=/tmp/matplotlib${cache_postfix}"
@@ -946,6 +1020,15 @@ build_docker_args() {
             -e "AITER_JIT_DIR=/tmp/aiter-jit${cache_postfix}"
             -e "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache${cache_postfix}"
             --tmpfs "/tmp/aiter_configs:rw,uid=${HOST_UID},gid=${HOST_GID},mode=1777"
+        )
+    fi
+
+    if [[ "$SELECTED_GPU_ARCH" == "gfx1201" ]]; then
+        # AITER's repository and installed-package builds use separate caches.
+        # The host-UID container does not have a writable host-home mount.
+        docker_args+=(
+            -e "AITER_ROOT_DIR=/tmp/aiter-root${cache_postfix}"
+            -e "AITER_JIT_DIR=/tmp/aiter-jit${cache_postfix}"
         )
     fi
 
@@ -1002,9 +1085,28 @@ build_docker_args() {
 
     add_device_if_present /dev/kfd
     add_device_if_present /dev/dri
-    add_device_if_present /dev/mem
+    # Spur authorizes Docker device passthrough against the active allocation
+    # and rejects /dev/mem. It is not required by AgentKernelArena's kernel
+    # tasks, so the Slurm wrapper disables this optional mount explicitly.
+    if [[ "${AKA_SKIP_DEV_MEM:-0}" != "1" ]]; then
+        add_device_if_present /dev/mem
+    fi
 
-    add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR"
+    if [[ -n "$QUALITY_LOOP_ARTIFACT_REL" || -n "$QUALITY_LOOP_WORKTREE_REL" ]]; then
+        [[ -n "$QUALITY_LOOP_ARTIFACT_REL" && -n "$QUALITY_LOOP_WORKTREE_REL" ]] \
+            || die "quality_loop requires both artifact and worktree mount paths"
+        require_path "$HOST_ROOT/$QUALITY_LOOP_ARTIFACT_REL" "quality_loop artifact directory"
+        require_path "$HOST_ROOT/$QUALITY_LOOP_WORKTREE_REL" "quality_loop worktree"
+        add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR" ro
+        add_mount \
+            "$HOST_ROOT/$QUALITY_LOOP_ARTIFACT_REL" \
+            "$CONTAINER_WORKDIR/$QUALITY_LOOP_ARTIFACT_REL"
+        add_mount \
+            "$HOST_ROOT/$QUALITY_LOOP_WORKTREE_REL" \
+            "$CONTAINER_WORKDIR/$QUALITY_LOOP_WORKTREE_REL"
+    else
+        add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR"
+    fi
     # A scoring container receives the per-worker Unix-socket directory and its
     # dedicated report tree. Tool images, credentials, Docker access, and the
     # rest of the experiments/workspace tree never enter a sidecar writable.
@@ -1125,6 +1227,46 @@ extract_config_name() {
     printf '%s\n' "$config"
 }
 
+extract_quality_loop_config() {
+    local config="agents/quality_loop/agent_config.yaml"
+    local arg
+    while [[ $# -gt 0 ]]; do
+        arg="$1"
+        case "$arg" in
+            --config)
+                shift
+                [[ $# -gt 0 ]] || die "--config requires a value"
+                config="$1"
+                ;;
+            --config=*)
+                config="${arg#--config=}"
+                ;;
+        esac
+        shift || true
+    done
+    printf '%s\n' "$config"
+}
+
+extract_quality_loop_resume() {
+    local arg
+    while [[ $# -gt 0 ]]; do
+        arg="$1"
+        case "$arg" in
+            --resume)
+                shift
+                [[ $# -gt 0 ]] || die "--resume requires a run ID"
+                printf '%s\n' "$1"
+                return
+                ;;
+            --resume=*)
+                printf '%s\n' "${arg#--resume=}"
+                return
+                ;;
+        esac
+        shift || true
+    done
+}
+
 container_smoke() {
     python - <<'PY'
 import importlib
@@ -1135,7 +1277,9 @@ import sys
 print(f"python={sys.executable}")
 print(f"version={sys.version.split()[0]}")
 
-for cmd in ("hipcc", "rocprof-compute"):
+selected_arch = os.environ.get("AGENT_KERNEL_ARENA_GPU_ARCH")
+profiler = "rocprofv3" if selected_arch == "gfx1201" else "rocprof-compute"
+for cmd in ("hipcc", profiler):
     path = shutil.which(cmd)
     if not path:
         raise SystemExit(f"missing command: {cmd}")
@@ -1156,7 +1300,6 @@ print(f"torch_cuda_available={torch.cuda.is_available()}")
 if not torch.cuda.is_available():
     raise SystemExit("torch.cuda.is_available() is False")
 print(f"torch_cuda_device={torch.cuda.get_device_name(0)}")
-selected_arch = os.environ.get("AGENT_KERNEL_ARENA_GPU_ARCH")
 actual_arch = getattr(torch.cuda.get_device_properties(0), "gcnArchName", "")
 if actual_arch:
     print(f"torch_cuda_arch={actual_arch}")
@@ -1312,7 +1455,18 @@ container_prepare_worker_home() {
     mkdir -p "$HOME"
 
     if [[ -d "$state_root/.codex" && ! -e "$HOME/.codex" ]]; then
-        cp -a "$state_root/.codex" "$HOME/.codex"
+        mkdir -p "$HOME/.codex"
+        # Native Codex packages are immutable and can be hundreds of MB. The
+        # standalone package tree is mounted separately at its original path;
+        # copy only mutable auth/config/session state into the worker HOME.
+        (
+            shopt -s dotglob nullglob
+            local entry
+            for entry in "$state_root/.codex"/*; do
+                [[ "$(basename "$entry")" == "packages" ]] && continue
+                cp -a "$entry" "$HOME/.codex/"
+            done
+        )
         chmod -R u+rwX "$HOME/.codex" 2>/dev/null || true
     fi
 
@@ -1563,6 +1717,48 @@ case "${1:-}" in
         shift
         run_parallel "$@"
         ;;
+    quality-loop)
+        shift
+        quality_loop_config="$(extract_quality_loop_config "$@")"
+        [[ -f "$quality_loop_config" ]] || die "quality_loop config file not found: $quality_loop_config"
+        if has_arg --plan "$@"; then
+            python3 -m agents.quality_loop "$@"
+            exit
+        fi
+        quality_loop_resume="$(extract_quality_loop_resume "$@" || true)"
+        if [[ -n "$quality_loop_resume" ]]; then
+            quality_loop_run_id="$(python3 -m agents.quality_loop.host check "$@")"
+        else
+            quality_loop_run_id="$(python3 -m agents.quality_loop.host start "$@")"
+        fi
+        echo "quality_loop run ID: $quality_loop_run_id" >&2
+        mapfile -t quality_loop_paths < <(
+            python3 -m agents.quality_loop.host paths "$@" --run-id "$quality_loop_run_id"
+        )
+        [[ "${#quality_loop_paths[@]}" -eq 2 ]] \
+            || die "quality_loop host returned invalid runtime paths"
+        QUALITY_LOOP_ARTIFACT_REL="${quality_loop_paths[0]}"
+        QUALITY_LOOP_WORKTREE_REL="${quality_loop_paths[1]}"
+        select_runtime_for_config "$quality_loop_config"
+        REQUIRED_AGENTS="codex"
+        AGENTS_STRICT=1
+        AGENT_HOME_ISOLATION=1
+        AKA_CONTAINER_HOME="/tmp/aka-quality-loop-${quality_loop_run_id}"
+        AKA_CACHE_SUFFIX="quality-loop-${quality_loop_run_id}"
+        quality_loop_container_args=("$@")
+        if [[ -z "$quality_loop_resume" ]]; then
+            quality_loop_container_args+=(--resume "$quality_loop_run_id")
+        fi
+        quality_loop_container_args+=(--defer-github --skip-preflight)
+        trap stop_eval_tool_sidecars EXIT
+        start_eval_tool_sidecars \
+            "$quality_loop_config" \
+            "quality-loop-${quality_loop_run_id}"
+        docker_exec 0 python3 -m agents.quality_loop "${quality_loop_container_args[@]}"
+        stop_eval_tool_sidecars
+        trap - EXIT
+        python3 -m agents.quality_loop.host finalize "$@" --run-id "$quality_loop_run_id"
+        ;;
     preflight)
         shift
         config_name="$(extract_config_name "$@")"
@@ -1595,10 +1791,14 @@ case "${1:-}" in
         AGENTS_STRICT=1
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_check_agents $REQUIRED_AGENTS
         ;;
+    build-rdna4-image)
+        build_rdna4_image
+        ;;
     smoke)
         select_runtime_for_host
-        REQUIRED_AGENTS="${AKA_AGENTS:-codex claude_code cursor}"
-        REQUIRED_AGENTS="${REQUIRED_AGENTS//,/ }"
+        # Runtime smoke checks need no agent credentials. Keeping the mount set
+        # empty also makes cluster smoke jobs safe to run before auth is wired.
+        REQUIRED_AGENTS=""
         AGENTS_STRICT=0
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_smoke
         ;;

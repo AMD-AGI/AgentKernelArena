@@ -8,6 +8,8 @@ PINNED_GFX950_IMAGE="lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705"
 PINNED_GFX950_IMMUTABLE_IMAGE="lmsysorg/sglang-rocm@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78"
 export PINNED_GFX950_IMMUTABLE_IMAGE
 OLD_GFX950_IMAGE="lmsysorg/sglang:v0.5.12-rocm720-mi35x"
+REAL_PYTHON3="$(command -v python3)"
+export REAL_PYTHON3
 
 fail() {
     echo "FAIL: $*" >&2
@@ -49,6 +51,18 @@ assert_before() {
 # Capture the exact argv that the runner would pass to Docker without requiring
 # a daemon, GPU devices, or the benchmark images on this host.
 docker() {
+    if [[ -n "${FAKE_RUNTIME_DIR:-}" ]]; then
+        printf '%s\n' "$1" >> "$FAKE_RUNTIME_DIR/events"
+        case "$1" in
+            info) return "${FAKE_DOCKER_INFO_STATUS:-0}" ;;
+            build)
+                printf '%s\n' "$@" > "$FAKE_RUNTIME_DIR/build-args"
+                [[ "${FAKE_DOCKER_BUILD_STATUS:-0}" == "0" ]] || return 42
+                touch "$FAKE_RUNTIME_DIR/image-present"
+                ;;
+            image) [[ -f "$FAKE_RUNTIME_DIR/image-present" ]] || return 1 ;;
+        esac
+    fi
     if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
         local reference="${!#}"
         if [[ "$reference" == "$PINNED_GFX950_IMMUTABLE_IMAGE" ]]; then
@@ -58,6 +72,45 @@ docker() {
         fi
         return 0
     fi
+    if [[ "${1:-}" == "run" && "${2:-}" == "-d" ]]; then
+        local index mount="" name="" socket_path=""
+        local -a docker_argv=("$@")
+        for ((index = 0; index < ${#docker_argv[@]}; index++)); do
+            case "${docker_argv[$index]}" in
+                --name) name="${docker_argv[$((index + 1))]}" ;;
+                -v)
+                    if [[ "${docker_argv[$((index + 1))]}" == *":/run/aka-eval-tools:rw" ]]; then
+                        mount="${docker_argv[$((index + 1))]}"
+                    fi
+                    ;;
+                --socket) socket_path="${docker_argv[$((index + 1))]}" ;;
+            esac
+        done
+        [[ -n "$mount" && -n "$socket_path" ]] \
+            || fail "fake sidecar launch did not receive a socket mount/path"
+        local socket_host_dir="${mount%:/run/aka-eval-tools:rw}"
+        "$REAL_PYTHON3" -c \
+            'import socket, sys; sock = socket.socket(socket.AF_UNIX); sock.bind(sys.argv[1]); sock.close()' \
+            "$socket_host_dir/${socket_path##*/}"
+        [[ -z "${FAKE_DOCKER_EVENTS:-}" ]] \
+            || printf 'sidecar-start:%s\n' "$name" >> "$FAKE_DOCKER_EVENTS"
+        printf 'fake-sidecar-id\n'
+        return 0
+    fi
+    if [[ "${1:-}" == "stop" ]]; then
+        [[ -z "${FAKE_DOCKER_EVENTS:-}" ]] \
+            || printf 'sidecar-stop:%s\n' "${!#}" >> "$FAKE_DOCKER_EVENTS"
+        return 0
+    fi
+    local value
+    for value in "$@"; do
+        if [[ "$value" == "agents.quality_loop" ]]; then
+            [[ -z "${FAKE_DOCKER_EVENTS:-}" ]] \
+                || printf 'quality-loop-container\n' >> "$FAKE_DOCKER_EVENTS"
+            [[ "${FAKE_SCORING_DOCKER_FAILURE:-0}" == "0" ]] || return 42
+            break
+        fi
+    done
     printf '%s\n' "$@"
 }
 export -f docker
@@ -97,7 +150,11 @@ assert_cache_args_absent() {
 
 TEST_HOME="$(mktemp -d)"
 PATH_TEST_PARENT="$ROOT/.eval-tool-runner-test-$$"
-trap 'rm -rf "$TEST_HOME" "$PATH_TEST_PARENT"' EXIT
+QUALITY_TEST_RUN_ID="runner-test-$$-${RANDOM:-0}"
+QUALITY_ARTIFACT_REL="quality_loop_runs/$QUALITY_TEST_RUN_ID"
+QUALITY_WORKTREE_REL=".quality_loop_worktrees/$QUALITY_TEST_RUN_ID"
+QUALITY_EVAL_ARTIFACT_DIR="$ROOT/.eval-tool-artifacts/quality-loop-$QUALITY_TEST_RUN_ID"
+trap 'rm -rf -- "$TEST_HOME" "$PATH_TEST_PARENT" "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL" "$QUALITY_EVAL_ARTIFACT_DIR"' EXIT
 UNRELATED_GEAK_WORKFLOW_DIR="$TEST_HOME/unrelated-geak-workflow"
 GEAK_SDK_PYTHONPATH="PYTHONPATH=/workspace/.aka-pyuserbase/geak-sdk"
 mkdir -p "$UNRELATED_GEAK_WORKFLOW_DIR"
@@ -187,6 +244,7 @@ forwarded_agents="$(PATH="$FAKE_BIN:$PATH" bash "$RUNNER" _container_check_agent
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950)
 assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
+assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
 
 # A worker suffix must isolate both runtime cache directories.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_CACHE_SUFFIX=worker/3)
@@ -206,6 +264,54 @@ assert_cache_args_absent "${args[@]}"
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx942)
 assert_has "lmsysorg/sglang:v0.5.12-rocm720-mi30x" "${args[@]}"
 assert_cache_args_absent "${args[@]}"
+assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
+
+# RDNA4 selects its derived image, keeps the host UID and standard
+# runtime paths, and receives no gfx950-specific FlyDSL cache or tmpfs mount.
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201)
+assert_has "agent-kernel-arena:rdna4-rocm10-v1" "${args[@]}"
+assert_has "$(id -u):$(id -g)" "${args[@]}"
+expected_username="$(id -un 2>/dev/null)" || expected_username="aka-$(id -u)"
+assert_has "USER=$expected_username" "${args[@]}"
+assert_has "LOGNAME=$expected_username" "${args[@]}"
+assert_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
+assert_has "AITER_JIT_DIR=/tmp/aiter-jit" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_GPU_ARCH=gfx1201" "${args[@]}"
+assert_has "PYTORCH_ROCM_ARCH=gfx1201" "${args[@]}"
+assert_not_has "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache" "${args[@]}"
+assert_not_has "/tmp/aiter_configs:rw,uid=$(id -u),gid=$(id -g),mode=1777" "${args[@]}"
+mapfile -t args < <(
+    id() {
+        # GNU id prints a numeric UID and exits nonzero when passwd has no name.
+        if [[ "$*" == "-un" ]]; then command id -u; return 1; fi
+        command id "$@"
+    }
+    export -f id
+    run_shell_args AKA_GPU_ARCH=gfx1201
+)
+assert_has "USER=aka-$(id -u)" "${args[@]}"
+assert_has "LOGNAME=aka-$(id -u)" "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201 AKA_CACHE_SUFFIX=worker-0)
+assert_has "AITER_ROOT_DIR=/tmp/aiter-root-worker-0" "${args[@]}"
+assert_has "AITER_JIT_DIR=/tmp/aiter-jit-worker-0" "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201 \
+    AKA_DOCKER_IMAGE_GFX1201=example.invalid/rdna:custom)
+assert_has "example.invalid/rdna:custom" "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201 \
+    AKA_DOCKER_IMAGE_GFX1201=example.invalid/rdna:custom \
+    AKA_DOCKER_IMAGE=example.invalid/global:override)
+assert_has "example.invalid/global:override" "${args[@]}"
+
+# Explicit prebuild/rebuild is GPU-independent and uses only docker/rdna4 as context.
+mapfile -t args < <(bash "$RUNNER" build-rdna4-image)
+assert_has "build" "${args[@]}"
+assert_has "--pull=false" "${args[@]}"
+assert_has "$ROOT/docker/rdna4/Dockerfile" "${args[@]}"
+assert_has "$ROOT/docker/rdna4" "${args[@]}"
+assert_not_has "$ROOT" "${args[@]}"
+mapfile -t args < <(AKA_DOCKER_IMAGE_GFX1201=example.invalid/rdna:build \
+    bash "$RUNNER" build-rdna4-image)
+assert_has "example.invalid/rdna:build" "${args[@]}"
 
 # Image equality alone is insufficient: the selected architecture must be gfx950.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx942 AKA_DOCKER_IMAGE="$PINNED_GFX950_IMAGE")
@@ -240,6 +346,130 @@ assert_not_has "ANTHROPIC_BASE_URL" "${args[@]}"
 assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
 assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
+
+# The native Codex installer uses a ~/.local/bin symlink into the standalone
+# package tree and does not provide a Node.js prefix. Isolated Slurm workers
+# mount the immutable package tree in place and copy auth/config state from the
+# read-only agent-state mount into their temporary HOME.
+NATIVE_CODEX_HOME="$TEST_HOME/native-codex-home"
+NATIVE_CODEX_RELEASE="$NATIVE_CODEX_HOME/.codex/packages/standalone/releases/0.147.0/bin"
+NATIVE_CODEX_CONFIG="$TEST_HOME/native-codex-config.yaml"
+mkdir -p "$NATIVE_CODEX_HOME/.local/bin" "$NATIVE_CODEX_RELEASE"
+touch "$NATIVE_CODEX_RELEASE/codex"
+chmod +x "$NATIVE_CODEX_RELEASE/codex"
+ln -s "$NATIVE_CODEX_RELEASE/codex" "$NATIVE_CODEX_HOME/.local/bin/codex"
+printf 'agent:\n  template: codex\n' > "$NATIVE_CODEX_CONFIG"
+
+mapfile -t args < <(run_check_args \
+    "$NATIVE_CODEX_HOME" \
+    "$NATIVE_CODEX_CONFIG" \
+    PATH="$NATIVE_CODEX_HOME/.local/bin:$PATH" \
+    AGENT_HOME_ISOLATION=1 \
+    AKA_CONTAINER_HOME=/tmp/native-codex-home)
+assert_has "$NATIVE_CODEX_HOME/.local/bin:$NATIVE_CODEX_HOME/.local/bin:ro" "${args[@]}"
+assert_has "$NATIVE_CODEX_HOME/.codex/packages/standalone:$NATIVE_CODEX_HOME/.codex/packages/standalone:ro" "${args[@]}"
+assert_has "$NATIVE_CODEX_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_ISOLATED_HOME=1" "${args[@]}"
+assert_not_has "/opt/node" "${args[@]}"
+
+NATIVE_CODEX_STATE="$TEST_HOME/native-codex-state"
+NATIVE_CODEX_WORKER_HOME="$TEST_HOME/native-codex-worker-home"
+mkdir -p "$NATIVE_CODEX_STATE/.codex/packages/standalone" "$NATIVE_CODEX_STATE/.codex/sessions"
+touch "$NATIVE_CODEX_STATE/.codex/auth.json" "$NATIVE_CODEX_STATE/.codex/packages/standalone/large-runtime"
+HOME="$NATIVE_CODEX_WORKER_HOME" \
+    AKA_AGENT_STATE_MOUNT_ROOT="$NATIVE_CODEX_STATE" \
+    bash "$RUNNER" _container_prepare_worker_home
+[[ -f "$NATIVE_CODEX_WORKER_HOME/.codex/auth.json" ]] || fail "native Codex auth state was not copied"
+[[ -d "$NATIVE_CODEX_WORKER_HOME/.codex/sessions" ]] || fail "native Codex session state was not copied"
+[[ ! -e "$NATIVE_CODEX_WORKER_HOME/.codex/packages" ]] || fail "native Codex packages were copied into worker HOME"
+
+# quality_loop provisions only isolated Codex state, never GitHub CLI state, and
+# mounts the main checkout read-only while over-mounting only this run's state rw.
+QUALITY_HOME="$TEST_HOME/quality-home"
+QUALITY_PREFIX="$TEST_HOME/quality-node"
+QUALITY_BIN="$TEST_HOME/quality-bin"
+QUALITY_CONFIG="$TEST_HOME/quality-loop.yaml"
+QUALITY_DOCKER_EVENTS="$TEST_HOME/quality-docker-events"
+mkdir -p "$QUALITY_HOME/.codex" "$QUALITY_HOME/.config/gh" "$QUALITY_PREFIX/bin" "$QUALITY_BIN"
+touch "$QUALITY_PREFIX/bin/node" "$QUALITY_PREFIX/bin/codex"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$QUALITY_BIN/gh"
+chmod +x "$QUALITY_BIN/gh"
+printf '#!/usr/bin/env bash\ncase "$*" in *"agents.quality_loop.host start"*) echo "%s";; *"agents.quality_loop.host paths"*) printf "%%s\\n%%s\\n" "%s" "%s";; *"agents.quality_loop.host finalize"*) [[ -z "${FAKE_DOCKER_EVENTS:-}" ]] || printf "host-finalize\\n" >> "$FAKE_DOCKER_EVENTS"; echo test-pr;; *) exec "$REAL_PYTHON3" "$@";; esac\n' \
+    "$QUALITY_TEST_RUN_ID" "$QUALITY_ARTIFACT_REL" "$QUALITY_WORKTREE_REL" \
+    > "$QUALITY_BIN/python3"
+chmod +x "$QUALITY_BIN/python3"
+printf 'tasks:\n  - hip2hip/gpumode/GELU\ntarget_gpu_model: MI355X\nquality_loop: {}\nevaluation_tools:\n  enabled:\n    - gpu_asan\n  policy: advisory\n' > "$QUALITY_CONFIG"
+mkdir -p "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL"
+
+mapfile -t args < <(
+    env \
+        HOME="$QUALITY_HOME" \
+        PATH="$QUALITY_BIN:$PATH" \
+        AKA_NODE_PREFIX="$QUALITY_PREFIX" \
+        FAKE_DOCKER_EVENTS="$QUALITY_DOCKER_EVENTS" \
+        bash "$RUNNER" quality-loop --config "$QUALITY_CONFIG" 2>/dev/null
+)
+assert_has "$QUALITY_PREFIX:/opt/node:ro" "${args[@]}"
+assert_has "$QUALITY_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+assert_has "$ROOT:/workspace:ro" "${args[@]}"
+assert_has "$ROOT/$QUALITY_ARTIFACT_REL:/workspace/$QUALITY_ARTIFACT_REL" "${args[@]}"
+assert_has "$ROOT/$QUALITY_WORKTREE_REL:/workspace/$QUALITY_WORKTREE_REL" "${args[@]}"
+assert_not_has "$QUALITY_BIN/gh:$QUALITY_BIN/gh:ro" "${args[@]}"
+assert_not_has "$QUALITY_HOME/.config/gh:$QUALITY_HOME/.config/gh:ro" "${args[@]}"
+assert_has "python3" "${args[@]}"
+assert_has "agents.quality_loop" "${args[@]}"
+assert_has "--resume" "${args[@]}"
+assert_has "$QUALITY_TEST_RUN_ID" "${args[@]}"
+assert_has "--defer-github" "${args[@]}"
+assert_has "--skip-preflight" "${args[@]}"
+assert_has "$ROOT/.eval-tool-artifacts:/workspace/.eval-tool-artifacts:ro" "${args[@]}"
+assert_has "$QUALITY_EVAL_ARTIFACT_DIR:/workspace/.eval-tool-artifacts/quality-loop-$QUALITY_TEST_RUN_ID" "${args[@]}"
+assert_has "AKA_EVAL_TOOL_SOCKET_DIR=/run/aka-eval-tools" "${args[@]}"
+assert_has "AKA_EVAL_TOOLS_SELECTED=gpu_asan" "${args[@]}"
+assert_has "AKA_EVAL_TOOL_RUNTIME_REF_GPU_ASAN=sha256:pinned-image-id" "${args[@]}"
+quality_socket_mount=""
+for value in "${args[@]}"; do
+    if [[ "$value" == *":/run/aka-eval-tools:ro" ]]; then
+        quality_socket_mount="$value"
+        break
+    fi
+done
+[[ -n "$quality_socket_mount" ]] \
+    || fail "quality_loop container did not receive the read-only evaluation-tool socket mount"
+mapfile -t quality_events < "$QUALITY_DOCKER_EVENTS"
+[[ "${quality_events[0]}" == sidecar-start:*gpu-asan* ]] \
+    || fail "quality_loop did not start its configured evaluation-tool sidecar"
+[[ "${quality_events[1]}" == "quality-loop-container" ]] \
+    || fail "quality_loop container ran before its evaluation-tool sidecar"
+[[ "${quality_events[2]}" == sidecar-stop:*gpu-asan* ]] \
+    || fail "quality_loop did not stop its evaluation-tool sidecar"
+[[ "${quality_events[3]}" == "host-finalize" ]] \
+    || fail "quality_loop finalized before stopping its evaluation-tool sidecar"
+
+# A failed quality-loop container still triggers sidecar cleanup and does not
+# finalize/publish the incomplete run.
+rm -f -- "$QUALITY_DOCKER_EVENTS"
+rm -rf -- "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL" "$QUALITY_EVAL_ARTIFACT_DIR"
+mkdir -p "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL"
+if env \
+    HOME="$QUALITY_HOME" \
+    PATH="$QUALITY_BIN:$PATH" \
+    AKA_NODE_PREFIX="$QUALITY_PREFIX" \
+    FAKE_DOCKER_EVENTS="$QUALITY_DOCKER_EVENTS" \
+    FAKE_SCORING_DOCKER_FAILURE=1 \
+    bash "$RUNNER" quality-loop --config "$QUALITY_CONFIG" >/dev/null 2>&1; then
+    fail "quality_loop unexpectedly succeeded after its container failed"
+fi
+mapfile -t quality_failure_events < "$QUALITY_DOCKER_EVENTS"
+[[ "${quality_failure_events[0]}" == sidecar-start:*gpu-asan* ]] \
+    || fail "failed quality_loop did not start its configured evaluation-tool sidecar"
+[[ "${quality_failure_events[1]}" == "quality-loop-container" ]] \
+    || fail "failed quality_loop did not enter its scoring container"
+[[ "${quality_failure_events[2]}" == sidecar-stop:*gpu-asan* ]] \
+    || fail "failed quality_loop leaked its evaluation-tool sidecar"
+[[ "${#quality_failure_events[@]}" -eq 3 ]] \
+    || fail "failed quality_loop unexpectedly finalized/published its run"
+rm -rf -- "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL" "$QUALITY_EVAL_ARTIFACT_DIR"
 
 # A Codex-only config likewise receives neither Claude credentials nor GEAK's
 # dependency path/mount, even when both are configured on the host.
@@ -339,6 +569,83 @@ assert_has "_container_check_agents" "${args[@]}"
 assert_has "claude_code" "${args[@]}"
 assert_not_has "$CLAUDE_HOME/.local/share/claude:$CLAUDE_HOME/.local/share/claude:ro" "${args[@]}"
 assert_not_has "$CLAUDE_HOME/.codex:$CLAUDE_HOME/.codex" "${args[@]}"
+
+# First-use builds happen before any container, then reuse the image across
+# preflight, workers, and subsequent invocations. These are daemon-free tests.
+run_runtime_command() {
+    local mode="$1"
+    shift
+    env HOME="$CLAUDE_HOME" AKA_NODE_PREFIX="$CLAUDE_PREFIX" \
+        AKA_GPU_ARCH=gfx1201 GPU_IDS=0,1 AKA_EVAL_TOOLS= \
+        FAKE_RUNTIME_DIR="$RUNTIME_DIR" "$@" \
+        bash "$RUNNER" "$mode" \
+        --config_name example_configs/quickstart_claude_rdna4.yaml \
+        > "$RUNTIME_DIR/stdout" 2> "$RUNTIME_DIR/stderr"
+}
+
+for runtime_mode in shell smoke check-agents preflight run parallel-run; do
+    RUNTIME_DIR="$TEST_HOME/runtime-$runtime_mode"
+    mkdir -p "$RUNTIME_DIR"
+    run_runtime_command "$runtime_mode" || {
+        cat "$RUNTIME_DIR/stderr" >&2
+        fail "$runtime_mode failed on first use"
+    }
+    mapfile -t events < "$RUNTIME_DIR/events"
+    assert_before build run "${events[@]}"
+    [[ "$(awk '$0 == "build" {n++} END {print n+0}' "$RUNTIME_DIR/events")" == 1 ]] \
+        || fail "$runtime_mode built more than once"
+    mapfile -t args < "$RUNTIME_DIR/build-args"
+    assert_has "--pull=false" "${args[@]}"
+    assert_has "$ROOT/docker/rdna4/Dockerfile" "${args[@]}"
+    assert_has "$ROOT/docker/rdna4" "${args[@]}"
+    assert_has "agent-kernel-arena:rdna4-rocm10-v1" "${args[@]}"
+    assert_not_has "$ROOT" "${args[@]}"
+    assert_not_has "$CLAUDE_HOME" "${args[@]}"
+    if [[ "$runtime_mode" == parallel-run ]]; then
+        [[ "$(awk '$0 == "run" {n++} END {print n+0}' "$RUNTIME_DIR/events")" == 5 ]] \
+            || fail "parallel run did not launch preflight, init, two workers, and postprocess"
+    fi
+    : > "$RUNTIME_DIR/events"
+    run_runtime_command "$runtime_mode" || fail "$runtime_mode failed with a cached image"
+    mapfile -t events < "$RUNTIME_DIR/events"
+    assert_has run "${events[@]}"
+    assert_not_has build "${events[@]}"
+    assert_not_has info "${events[@]}"
+done
+
+# Build/daemon failures must propagate instead of launching a container.
+for failure in FAKE_DOCKER_BUILD_STATUS=42 FAKE_DOCKER_INFO_STATUS=1; do
+    RUNTIME_DIR="$TEST_HOME/runtime-failure-$failure"
+    mkdir -p "$RUNTIME_DIR"
+    if run_runtime_command run "$failure"; then
+        fail "$failure did not stop the run"
+    fi
+    mapfile -t events < "$RUNTIME_DIR/events"
+    assert_not_has run "${events[@]}"
+    [[ ! -f "$RUNTIME_DIR/image-present" ]] || fail "failed setup cached an image"
+    if [[ "$failure" == FAKE_DOCKER_INFO_STATUS=* ]]; then
+        assert_not_has build "${events[@]}"
+    else
+        assert_has build "${events[@]}"
+    fi
+    # A later invocation can recover without a stale success flag.
+    run_runtime_command run || fail "retry after $failure did not recover"
+done
+
+# Missing custom images and CDNA defaults keep the ordinary Docker run/pull
+# path. Even an explicit override equal to the default tag opts out of builds.
+for override in \
+    AKA_DOCKER_IMAGE=example.invalid/rdna:custom \
+    AKA_DOCKER_IMAGE_GFX1201=example.invalid/rdna:custom \
+    AKA_DOCKER_IMAGE=agent-kernel-arena:rdna4-rocm10-v1 \
+    AKA_DOCKER_IMAGE_GFX1201=agent-kernel-arena:rdna4-rocm10-v1 \
+    AKA_GPU_ARCH=gfx942 AKA_GPU_ARCH=gfx950; do
+    RUNTIME_DIR="$TEST_HOME/runtime-override-${override//\//_}"
+    mkdir -p "$RUNTIME_DIR"
+    run_runtime_command shell "$override" || fail "override failed: $override"
+    mapfile -t events < "$RUNTIME_DIR/events"
+    [[ "${events[*]}" == run ]] || fail "override attempted automatic image setup: $override"
+done
 
 # AGENTS=all is an explicit override and expands to all three first-class CLIs.
 ALL_HOME="$TEST_HOME/all-home"

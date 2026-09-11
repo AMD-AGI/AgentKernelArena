@@ -4,6 +4,17 @@ This file is injected between AKA-GENERATED markers.  The implementation lives
 in the sibling materialized ``_aka_benchmark.py`` module.
 """
 
+import sys as _aka_sys
+from pathlib import Path as _AkaPath
+
+
+# Task-provided forge drivers are copied to the workspace root and load this
+# runner by file path.  Python does not add a file-loaded module's directory to
+# sys.path, so make the sibling materialized helper discoverable explicitly.
+_AKA_HELPER_DIR = str(_AkaPath(__file__).resolve().parent)
+if _AKA_HELPER_DIR not in _aka_sys.path:
+    _aka_sys.path.insert(0, _AKA_HELPER_DIR)
+
 
 def _measure_cuda_event_fallback(fn, repetition, prepare_fn=None):
     try:

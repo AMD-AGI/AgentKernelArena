@@ -15,6 +15,7 @@ The platform provides:
 - **Isolated and reproducible execution**: Give every task its own timestamped workspace and preserve logs, modified sources, and structured results.
 - **Centralized evaluation**: Measure compilation, correctness, and GPU performance independently of the optimizing agent.
 - **Multi-GPU scheduling**: Start one isolated Docker worker per GPU and dynamically claim tasks from a shared queue.
+- **Slurm/Spur login-node workflow**: Allocate one or eight MI355X GPUs, then launch the same Docker runtime on the assigned compute node.
 - **Resumable experiments**: Resume a run without repeating tasks that already produced a completion report.
 - **Held-out evaluation**: Test optimized kernels on unseen shapes and measure the generalization gap.
 - **Task validation and visualization**: Validate task quality with a dedicated agent and compare local run reports in a dashboard.
@@ -147,7 +148,8 @@ The prompt system also recognizes `cuda2hip`; the current bundled task tree does
 - Git
 - Node.js 22+ and npm when using the alternative npm installation of Claude Code
   (or another npm-installed agent CLI)
-- The GPU-specific SGLang image: `gfx942` uses `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705`
+- For MI300/MI355X, use the GPU-specific SGLang image: `gfx942` uses `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705`
+- For RDNA4 `gfx1201`, the runner automatically builds the default [pinned RDNA4 runtime](docker/rdna4/README.md) on first use if it is missing.
 - A supported agent CLI installed and logged in on the host, or the dependencies required by a specialized agent
 
 ### Setup
@@ -188,12 +190,13 @@ installation. The npm path requires Node.js 22+ and npm. See the
 [official Claude Code setup guide](https://code.claude.com/docs/en/installation)
 for the current alternatives.
 
-The repository provides three ready-to-use run configurations:
+The following configurations provide starting points for supported runtimes:
 
 | Configuration | Purpose |
 | --- | --- |
 | `example_configs/quickstart_claude_mi300.yaml` | One Claude Code GELU task on MI300/MI300X (`gfx942`); use this for a first run on MI300-series hardware. |
 | `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`); use this for a first run on MI355X. |
+| `example_configs/quickstart_claude_rdna4.yaml` | One Claude Code GELU task on RDNA4 (`gfx1201`); builds the default runtime on first use if missing. |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
 
 Running `make docker-run` without `CONFIG` uses the MI300/MI300X Claude
@@ -261,6 +264,24 @@ The Docker parallel path is verified for `cursor`, `claude_code`, `codex`, and
 `task_validator`. Specialized GEAK/mini-swe integrations need their own
 dependencies and GPU-ID configuration before they are used with isolated
 workers.
+
+### Run From a Slurm/Spur Login Node
+
+When the login node has no GPU or Docker daemon, allocate the compute node
+before entering the existing Docker workflow:
+
+```bash
+# One-GPU development smoke/run
+make slurm-smoke
+make slurm-run CONFIG=config_codex_mi355x_spur.yaml
+
+# One node, eight GPUs, one isolated Docker worker per GPU
+make slurm-parallel-smoke
+make slurm-parallel-submit CONFIG=example_configs/benchmark_cursor_mi355x.yaml
+```
+
+See [Run on Slurm/Spur GPU nodes](docs/how-to/slurm-run.md) for synchronous,
+batch, interactive, resource-override, authentication, and logging details.
 
 ### Resume a Run
 

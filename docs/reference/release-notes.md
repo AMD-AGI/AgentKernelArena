@@ -33,8 +33,10 @@ execution, and RL-ready GPU kernel evaluation.
 #### Docker-first execution
 
 - Docker is now the supported execution path; the legacy host virtual-environment workflow has been removed.
+- Added a Slurm/Spur wrapper that allocates one or eight MI355X GPUs before launching Docker on the assigned compute node.
 - Added architecture-aware ROCm/SGLang runtime selection for gfx942 and gfx950.
 - Added GPU, agent CLI, authentication-state, and writable runtime-cache provisioning.
+- Added native standalone Codex mounting alongside the existing npm installation path.
 - Improved environment handling for PyTorch, Triton, MIOpen, HIP, and repository-level tasks.
 - Stopped mounting host SSH credentials into benchmark containers.
 

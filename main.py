@@ -545,7 +545,9 @@ def run_task(
                 logger.info("Measuring baseline performance...")
                 baseline_cases = measure_baseline(workspace_path, task_config, logger)
 
-        harness_snapshot = snapshot_workspace_harness(workspace_path)
+        harness_snapshot = snapshot_workspace_harness(
+            workspace_path, task_root=Path(task_config_dir).parent
+        )
 
         logger.info(f"Launching agent: {agent.value}")
         agent_launcher(
@@ -603,6 +605,7 @@ def run_task(
                 tool_artifact_root=tool_artifact_root,
                 gpu_arch=os.environ.get("PYTORCH_ROCM_ARCH"),
             )
+            verify_workspace_harness(harness_snapshot, logger=logger)
             write_task_result(
                 workspace_path,
                 evaluation_results,

@@ -456,6 +456,12 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     # No `git checkout` here: unlike the forge-loop path, nothing edits the Arena
     # workspace tree during the run, and the ported kernel installed above is an
     # uncommitted change a checkout would discard.
+    #
+    # That same property is why this path still checks the edit scope at all
+    # where forge-loop no longer can. This pipeline runs with
+    # --no-prepare-driver inside its own gitignored scratch repository, so it
+    # authors no scaffolding here and Arena's pre-launch snapshot still
+    # describes exactly what the agent was given.
     undeclared_edits = _verify_forge_edit_scope(
         workspace, edit_baseline, editable_sources, logger
     )

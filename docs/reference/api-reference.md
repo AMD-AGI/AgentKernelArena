@@ -324,6 +324,8 @@ Each task produces a `task_result.yaml` in its workspace:
 | `baseline_benchmark_methods` | Timing methods observed while measuring the baseline |
 | `optimized_benchmark_methods` | Timing methods observed while measuring the optimized kernel |
 | `benchmark_method_consistent` | Whether baseline and optimized timing methods matched |
+| `workload_consistent` | Whether every baseline/optimized case paired and reported the same shape, parameters, and dtype |
+| `workload_mismatches` | Per-case workload differences; mismatches disable performance scoring |
 | `valid_baseline_cases` | Number of baseline test cases with usable timing results |
 | `valid_optimized_cases` | Number of optimized test cases with usable timing results |
 | `speedup_calculation_error_message` | Error text if speedup could not be calculated, else `null` |
