@@ -16,6 +16,9 @@ class MetaData():
         self.sorted_token_ids = sorted_token_ids  
         self.expert_ids = expert_ids  
         self.num_tokens_post_padded = num_tokens_post_padded  
+        # This value is static launch metadata. Cache it while constructing the
+        # inputs so GPU-event samples contain only the kernel invocation.
+        self.num_tokens_post_padded_host = num_tokens_post_padded.item()
         self.config = config  
   
     def set_use_fp8_w8a8(self, a_descale, b_descale, fp8_type):  
@@ -173,7 +176,7 @@ def moe_gemm(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, metadata: MetaDa
     # TODO shard M dim  
     metadata.check_args(a, b, c)  
   
-    num_tokens_post_padded, topk_weights, sorted_token_ids, expert_ids, config = metadata.num_tokens_post_padded, metadata.topk_weights, metadata.sorted_token_ids, metadata.expert_ids, metadata.config  
+    topk_weights, sorted_token_ids, expert_ids, config = metadata.topk_weights, metadata.sorted_token_ids, metadata.expert_ids, metadata.config  
   
     use_fp8_w8a8, use_int8_w8a16, use_int8_w8a8 = metadata.use_fp8_w8a8, metadata.use_int8_w8a16, metadata.use_int8_w8a8  
     a_descale, b_descale = None, None  
@@ -187,7 +190,7 @@ def moe_gemm(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, metadata: MetaDa
   
     top_k = metadata.top_k  
   
-    EM = num_tokens_post_padded.item()  
+    EM = metadata.num_tokens_post_padded_host  
     _, N, K = b.shape  
     grid = lambda META: (triton.cdiv(EM, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']), )  
   
@@ -898,7 +901,8 @@ def test_performance(M_orig, N, K, top_k, E, routed_weight, dtype_str, request):
     bench_config = do_bench_config(warm_up=10, repetition=100) # MoE can be slower
     benchmarker = PytestBenchmarker(op_callable=op_lambda,
                                     op_name=OP_NAME_FOR_BENCHMARK,
-                                    config=bench_config)
+                                    config=bench_config,
+                                    use_cuda_graph=False)
 
     current_params_for_logs_and_calc = {
         "M_orig": M_orig, "N": N, "K": K, "top_k": top_k, "E": E,
@@ -913,6 +917,23 @@ def test_performance(M_orig, N, K, top_k, E, routed_weight, dtype_str, request):
     benchmarker.run_benchmark(current_params_dict=current_params_for_logs_and_calc,
                               gbps_calculator=calculate_moe_gemm_gbps,
                               tflops_calculator=calculate_moe_gemm_tflops)
+
+    # Event timing leaves c_for_kernel holding the exact output of the final
+    # measured invocation. Validate that output without adding reference work
+    # to the timed callable. Build the reference expert-by-expert to avoid the
+    # very large temporary produced by indexing all expert matrices at once.
+    ref_out = torch.empty_like(c_for_kernel)
+    for expert_id in range(E):
+        token_ids, topk_slots = torch.where(metadata.topk_ids == expert_id)
+        if token_ids.numel() == 0:
+            continue
+        expert_out = torch.matmul(
+            a[token_ids].float(), b[expert_id].float().transpose(0, 1)
+        )
+        if routed_weight:
+            expert_out *= metadata.topk_weights[token_ids, topk_slots].unsqueeze(1)
+        ref_out[token_ids, topk_slots] = expert_out.to(current_dtype)
+    torch.testing.assert_close(c_for_kernel, ref_out, atol=1e-2, rtol=1e-2)
     
 ######################################## HELPERS for Eval ########################################     
 # --- Pytest hook to save the dictionary at the end of the session ---  
