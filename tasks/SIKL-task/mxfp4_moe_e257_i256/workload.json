@@ -1,0 +1,89 @@
+{
+  "definition": "aiter_fused_moe_per_1x32_d6144_e257_topk9_n1024_k3072_i256",
+  "op_type": "moe",
+  "builder_symbol": "build_mxfp4_moe_e257_i256_module",
+  "axes": {
+    "model_dim": 6144,
+    "num_experts": 257,
+    "topk": 9,
+    "w1_rows": 1024,
+    "w1_cols": 3072,
+    "w2_cols": 256,
+    "w1_scale_cols": 192,
+    "w2_scale_cols": 16
+  },
+  "seed": 0,
+  "bench": {
+    "warmup": 20,
+    "repetition": 100,
+    "target_ms": 1.0
+  },
+  "gate_policy": "Correctness is scripts/task_compare.py and input construction is scripts/task_initialize.py, both copied without edit from the workload schema's own definition callbacks. The task fixes no tolerance, no threshold and no distribution of its own, so the bar a candidate clears here is by construction the bar the acceptance run applies to the result -- which a gate derived in this file could never guarantee, and did not: a run of all 21 solutions rejected 92 of 273 points these tasks had passed. The production implementation is judged by the same callback beside every case and the verdict is reported, but it does not move the bar and it does not clear it at every shape.",
+  "cases": [
+    {
+      "case_id": "num_tokens_1",
+      "uuid": "a948bed915a0e87a",
+      "num_tokens": 1
+    },
+    {
+      "case_id": "num_tokens_2",
+      "uuid": "378ad494e13c0165",
+      "num_tokens": 2
+    },
+    {
+      "case_id": "num_tokens_4",
+      "uuid": "b0fc5905e1ed872a",
+      "num_tokens": 4
+    },
+    {
+      "case_id": "num_tokens_8",
+      "uuid": "80aa6269700f21ef",
+      "num_tokens": 8
+    },
+    {
+      "case_id": "num_tokens_16",
+      "uuid": "40a6faaa22068a05",
+      "num_tokens": 16
+    },
+    {
+      "case_id": "num_tokens_32",
+      "uuid": "7f42eeb30bdab62e",
+      "num_tokens": 32
+    },
+    {
+      "case_id": "num_tokens_64",
+      "uuid": "417dbedf7bb7d950",
+      "num_tokens": 64
+    },
+    {
+      "case_id": "num_tokens_128",
+      "uuid": "cfaf9df7e2a02b2a",
+      "num_tokens": 128
+    },
+    {
+      "case_id": "num_tokens_256",
+      "uuid": "3c490109a8b97e4f",
+      "num_tokens": 256
+    },
+    {
+      "case_id": "num_tokens_512",
+      "uuid": "cbeef0462e63b148",
+      "num_tokens": 512
+    },
+    {
+      "case_id": "num_tokens_1024",
+      "uuid": "e464fe92868baec1",
+      "num_tokens": 1024
+    },
+    {
+      "case_id": "num_tokens_2048",
+      "uuid": "f89e741ad41999c2",
+      "num_tokens": 2048
+    },
+    {
+      "case_id": "num_tokens_4096",
+      "uuid": "706ef54211a1d0c8",
+      "num_tokens": 4096
+    }
+  ]
+}

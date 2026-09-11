@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from agents.forge.launch_agent import (
+from agents.forge.common import (
     _DELIBERATE_BACKEND_ALIASES,
     _infer_backend,
     _resolve_kernel_backend,
@@ -104,10 +104,11 @@ def test_each_alias_is_still_needed(declared):
 
 def test_the_tilelang_alias_is_what_the_launcher_actually_sends(monkeypatch):
     """Ties the tree-level guard to the value that reaches the CLI."""
-    # By module object, not by dotted string: agents.forge re-exports the
-    # launch_agent *function*, so the string form resolves to that, not here.
+    # Patch where the function is defined, not where the launcher imports it
+    # from: _resolve_kernel_backend resolves the registry lookup against
+    # common.py's globals, so patching the launcher's namespace does nothing.
     monkeypatch.setattr(
-        sys.modules["agents.forge.launch_agent"],
+        sys.modules["agents.forge.common"],
         "_installed_kernel_backends",
         lambda: KNOWN_BACKENDS,
     )
