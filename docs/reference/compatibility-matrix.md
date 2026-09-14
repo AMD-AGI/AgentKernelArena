@@ -37,7 +37,7 @@ The following software versions are required or verified.
 | PyTorch | ROCm build bundled in the image | Provided by the selected runtime image. |
 | Triton | Bundled with the image's ROCm PyTorch | Required for Triton task categories. |
 | AITER | `0.1.17.dev110+g9127c94a1` in the verified `gfx950` image | Required by AITER-backed task oracles and kernels. |
-| FlyDSL | `0.2.2` in the verified `gfx950` image (or `make docker-setup-flydsl` when absent) | Required for `flydsl2flydsl`, `torch2flydsl`, and `triton2flydsl` tasks. |
+| FlyDSL | `0.2.2` in the verified `gfx950` image (or `make docker-setup-flydsl` when absent) | Required for `flydsl2flydsl`, `torch2flydsl`, `triton2flydsl`, and `operator2flydsl` tasks. |
 
 ## Evaluation-tool sidecars
 

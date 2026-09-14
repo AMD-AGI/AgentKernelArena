@@ -168,10 +168,10 @@ cp "$CONFIG_PATH" my_experiment.yaml
 
 ## FlyDSL tasks (optional)
 
-`flydsl2flydsl`, `torch2flydsl`, and `triton2flydsl` tasks need the `flydsl`
-package inside the container. The selected image may already ship it
-(`make docker-smoke` prints `flydsl=ok <version>` when present). If yours does
-not, install it once into the container's persistent pip user-base:
+`flydsl2flydsl`, `torch2flydsl`, `triton2flydsl`, and `operator2flydsl` tasks
+need the `flydsl` package inside the container. The selected image may already
+ship it (`make docker-smoke` prints `flydsl=ok <version>` when present). If
+yours does not, install it once into the container's persistent pip user-base:
 
 ```bash
 make docker-setup-flydsl

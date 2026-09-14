@@ -26,12 +26,85 @@ The `task_type` field declares what kind of optimization the task represents.
 | `torch2flydsl` | Replace a PyTorch reference with a FlyDSL kernel |
 | `triton2flydsl` | Translate a Triton kernel to FlyDSL |
 | `flydsl2flydsl` | Optimize a FlyDSL kernel (requires FlyDSL) |
+| `operator2flydsl` | Reimplement a production operator in FlyDSL and optimize it |
 | `repository` | Repository-level task |
 
 The repository ships task suites including `hip2hip` (gpumode and others),
 `triton2triton` (vLLM and ROCmBench), `torch2hip`, `instruction2triton`,
-`torch2flydsl`, `triton2flydsl`, and `flydsl2flydsl`, plus repository-level
-tasks under `tasks/repository/`.
+`torch2flydsl`, `triton2flydsl`, and `flydsl2flydsl`, plus `operator2flydsl`
+tasks under `tasks/SIKL-task/` and repository-level tasks under
+`tasks/repository/`.
+
+## `operator2flydsl` tasks
+
+An `operator2flydsl` task points at an operator that already runs in production
+and asks for a FlyDSL implementation of it, scored against that production
+implementation. Unlike `triton2flydsl` or `torch2flydsl`, nothing in the name
+constrains the source: it may be written in any language and may ship inside a
+larger project rather than as a self-contained file.
+
+The task adds exactly one field to the isolated-kernel schema:
+
+```yaml
+task_type: operator2flydsl
+
+# The single editable file. The implementation lands here, and the harness
+# scores whatever it finds.
+source_file_path:
+  - kernel.py
+target_kernel_functions:
+  - build_gemm_a16w16_nt_n6144_k6144_module
+
+# The only field this task type adds: the production implementation to
+# reimplement. Read-only reference material for the agent, and task-relative --
+# an absolute path into the runtime image would escape the workspace.
+rewrite_source_file: aiter_source/aiter/tuned_gemm.py
+
+# When that source lives in the runtime image rather than in the task, declare
+# it and Arena seeds it into the workspace before the agent starts. Same
+# mechanism image_kernel tasks use.
+image_repo_path: /sgl-workspace/aiter
+repo_subdir: aiter_source
+image_repo_exclude:
+  - jit
+
+kernel_identity:
+  logical_operator: gemm_a16w16_nt_n6144_k6144
+  source_owner: aiter
+```
+
+Everything else an agent needs is an existing field. The implementation lands in
+`source_file_path[0]`, and `kernel_identity` carries the operator's identity and
+its owner.
+
+Pick a `repo_subdir` that cannot shadow the package being seeded. A directory
+named `aiter` at the workspace root would sit on `sys.path` ahead of the real
+package for every command the task runs.
+
+Two things deliberately stay out of the task. How an agent searches for the
+implementation -- attempt counts, intermediate filters, time budgets -- is agent
+configuration, because a second agent implementing this task type may have no
+such notion. And the source's host entry point is prose: name it in
+`prompt.instructions` or in the driver's docstring rather than adding a field,
+so nothing has to parse it back out.
+
+## `kernel_identity`
+
+`kernel_identity` is a shared contract, not a per-agent field. Both KernelForge
+integrations read it through one resolver, and any agent that publishes to a
+knowledge base should read it the same way.
+
+| Key | Description |
+| --- | --- |
+| `logical_operator` | Stable name for the operator, independent of shape or file. Agents use it as the knowledge-base identity, and some derive the required factory symbol from it -- keep it consistent with whatever the harness looks up. |
+| `source_owner` | The framework that owns the production implementation (`aiter`, `vllm`, `sglang`). |
+| `kernel_kind` | Optional. The editable source language for tasks whose type does not encode it. |
+
+`source_owner` is worth declaring even when an agent could guess it. Inference
+generally reads the owner out of the source file's path, and an agent that
+copies the source into a scratch workspace destroys exactly that evidence, so
+the guess degrades to "unknown" and any recipe the run publishes is filed under
+an owner nothing looks for.
 
 ## Directory layout
 
@@ -72,7 +145,7 @@ correctness_command:
 
 # One of: hip2hip, cuda2hip, triton2triton, triton2flydsl,
 #         instruction2triton, torch2hip, torch2flydsl,
-#         flydsl2flydsl, repository
+#         flydsl2flydsl, operator2flydsl, repository
 task_type: hip2hip
 ```
 

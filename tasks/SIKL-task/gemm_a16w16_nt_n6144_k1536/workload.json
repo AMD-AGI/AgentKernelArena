@@ -1,0 +1,84 @@
+{
+  "definition": "gemm_a16w16_nt_n6144_k1536",
+  "op_type": "gemm",
+  "builder_symbol": "build_gemm_a16w16_nt_n6144_k1536_module",
+  "axes": {
+    "n": 6144,
+    "k": 1536
+  },
+  "seed": 0,
+  "bench": {
+    "warmup": 20,
+    "repetition": 100,
+    "target_ms": 1.0
+  },
+  "gate_policy": "Correctness is scripts/task_compare.py and input construction is scripts/task_initialize.py, both copied without edit from the workload schema's own definition callbacks. The task fixes no tolerance, no threshold and no distribution of its own, so the bar a candidate clears here is by construction the bar the acceptance run applies to the result -- which a gate derived in this file could never guarantee, and did not: a run of all 21 solutions rejected 92 of 273 points these tasks had passed. The production implementation is judged by the same callback beside every case and the verdict is reported, but it does not move the bar and it does not clear it at every shape.",
+  "cases": [
+    {
+      "case_id": "m_1",
+      "uuid": "bec05da0f2276501",
+      "m": 1
+    },
+    {
+      "case_id": "m_2",
+      "uuid": "b07424b8ddc1d20e",
+      "m": 2
+    },
+    {
+      "case_id": "m_4",
+      "uuid": "d642b3ac952b29d2",
+      "m": 4
+    },
+    {
+      "case_id": "m_8",
+      "uuid": "b8b0a332636f9545",
+      "m": 8
+    },
+    {
+      "case_id": "m_16",
+      "uuid": "4491cda3a3d75f33",
+      "m": 16
+    },
+    {
+      "case_id": "m_32",
+      "uuid": "e29486d8f6d4fe86",
+      "m": 32
+    },
+    {
+      "case_id": "m_64",
+      "uuid": "d6b121714775a714",
+      "m": 64
+    },
+    {
+      "case_id": "m_128",
+      "uuid": "3d692210492e6c5f",
+      "m": 128
+    },
+    {
+      "case_id": "m_256",
+      "uuid": "1d3ec4169a8fc5bc",
+      "m": 256
+    },
+    {
+      "case_id": "m_512",
+      "uuid": "d39a741c8f3401b4",
+      "m": 512
+    },
+    {
+      "case_id": "m_1024",
+      "uuid": "7593e84b37a7fc7a",
+      "m": 1024
+    },
+    {
+      "case_id": "m_2048",
+      "uuid": "0fdb2d034473003b",
+      "m": 2048
+    },
+    {
+      "case_id": "m_4096",
+      "uuid": "d9053fbac438ef9f",
+      "m": 4096
+    }
+  ],
+  "trans_b": true
+}

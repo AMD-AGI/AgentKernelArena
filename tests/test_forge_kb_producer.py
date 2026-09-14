@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,10 +11,17 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-import agents.forge.launch_agent  # noqa: F401  (module, not the re-exported fn)
+# The module object, so a test can monkeypatch the globals the functions under
+# test resolve against. They live in common.py and are only re-exported through
+# the launcher, so patching the launcher's namespace would have no effect.
+import agents.forge.common  # noqa: F401
 from agents.forge.drivers import arena_task_adapter
-launch_agent = sys.modules["agents.forge.launch_agent"]
+forge_common = sys.modules["agents.forge.common"]
 
+from agents.forge.common import (
+    _capture_forge_edit_baseline,
+    _verify_forge_edit_scope,
+)
 from agents.forge.launch_agent import (
     _build_forge_command,
     _declared_editable_sources,
@@ -187,7 +195,7 @@ def test_configured_backend_resolution_is_forwarded_without_fallback():
 
 def _backend_registry(monkeypatch, names):
     monkeypatch.setattr(
-        launch_agent, "_installed_kernel_backends", lambda: names
+        forge_common, "_installed_kernel_backends", lambda: names
     )
 
 
@@ -260,13 +268,13 @@ def test_the_registry_is_read_from_kernelforge_not_copied_here(monkeypatch):
         return modules[name]
 
     monkeypatch.setattr(importlib, "import_module", fake_import)
-    assert launch_agent._installed_kernel_backends() == {"triton", "flydsl"}
+    assert forge_common._installed_kernel_backends() == {"triton", "flydsl"}
 
     modules.pop("kernelforge.kernel_backends.constants")
-    assert launch_agent._installed_kernel_backends() == {"hip", "intellikit"}
+    assert forge_common._installed_kernel_backends() == {"hip", "intellikit"}
 
     modules.clear()
-    assert launch_agent._installed_kernel_backends() is None
+    assert forge_common._installed_kernel_backends() is None
 
 
 def test_repository_backend_resolution_requires_explicit_language():
@@ -302,6 +310,103 @@ def test_editable_sources_extend_complete_source_allowlist(tmp_path):
     )
     assert declared == ["kernel.py", "helper.py"]
     assert resolved == [kernel.resolve(), helper.resolve()]
+
+
+def _init_scope_test_repo(tmp_path: Path) -> str:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "forge-test@local"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "forge-test"], cwd=tmp_path, check=True
+    )
+    (tmp_path / ".gitignore").write_text("build/\nforge_experiments/\n")
+    (tmp_path / "kernel.py").write_text("def kernel(): return 0\n")
+    (tmp_path / "helper.py").write_text("def helper(): return 0\n")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "baseline"], cwd=tmp_path, check=True, capture_output=True
+    )
+    return _capture_forge_edit_baseline(str(tmp_path))
+
+
+def test_forge_edit_scope_allows_declared_source_change(tmp_path):
+    baseline = _init_scope_test_repo(tmp_path)
+    kernel = tmp_path / "kernel.py"
+    kernel.write_text("def kernel(): return 1\n")
+    subprocess.run(["git", "add", "kernel.py"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "allowed edit"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+
+    _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
+
+
+def test_forge_edit_scope_allows_ignored_runtime_artifacts(tmp_path):
+    baseline = _init_scope_test_repo(tmp_path)
+    kernel = tmp_path / "kernel.py"
+    build = tmp_path / "build"
+    build.mkdir()
+    (build / "kernel.hsaco").write_bytes(b"runtime artifact")
+
+    _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
+
+
+def test_forge_edit_scope_discards_undeclared_scratch_directory(tmp_path):
+    # The loop gives each lane its own git workspace, and git reports an embedded
+    # repository as one opaque directory entry rather than its files. unlink raises
+    # on that, which is what cost two rewrite runs their score.
+    baseline = _init_scope_test_repo(tmp_path)
+    kernel = tmp_path / "kernel.py"
+    lane = tmp_path / "forge-lanes-abc123" / "1"
+    lane.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "."], cwd=lane, check=True)
+    (lane / "candidate.py").write_text("def lane(): return 1\n")
+
+    violations = _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
+
+    assert not lane.exists()
+    assert violations == []
+
+
+def test_forge_edit_scope_discards_undeclared_untracked_file(tmp_path):
+    baseline = _init_scope_test_repo(tmp_path)
+    kernel = tmp_path / "kernel.py"
+    scratch = tmp_path / "new_helper.py"
+    scratch.write_text("def bypass(): return 1\n")
+
+    _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
+
+    assert not scratch.exists()
+
+
+@pytest.mark.parametrize("change_kind", ["tracked", "rename"])
+def test_forge_edit_scope_reports_undeclared_changes(tmp_path, change_kind):
+    baseline = _init_scope_test_repo(tmp_path)
+    kernel = tmp_path / "kernel.py"
+    helper = tmp_path / "helper.py"
+    if change_kind == "tracked":
+        helper.write_text("def helper(): return 1\n")
+        subprocess.run(["git", "add", "helper.py"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "undeclared edit"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+    else:
+        helper.rename(tmp_path / "renamed_helper.py")
+
+    # Named for the caller to carry into the report, not raised: a whole campaign
+    # is not worth discarding over a verdict the agent could not see coming.
+    violations = _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
+
+    assert "helper.py" in violations
 
 
 def test_explicit_source_owner_wins_for_wrapper_anchor():

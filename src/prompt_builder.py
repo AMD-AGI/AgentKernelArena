@@ -293,6 +293,8 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
         task_type_prompt = task_type.torch2flydsl_task_type()
     elif task_type_name == 'triton2flydsl':
         task_type_prompt = task_type.triton2flydsl_task_type()
+    elif task_type_name == 'operator2flydsl':
+        task_type_prompt = task_type.operator2flydsl_task_type()
     elif task_type_name == 'repository':
         task_type_prompt = task_type.repository_task_type()
     elif task_type_name == 'image_kernel':

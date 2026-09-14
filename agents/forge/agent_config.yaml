@@ -25,7 +25,7 @@ model: claude-opus-5
 #
 # One deliberate exception: `tilelang` is sent as `flydsl`, because upstream
 # registers no tilelang backend. See _DELIBERATE_BACKEND_ALIASES in
-# launch_agent.py for the measurements behind that choice.
+# common.py for the measurements behind that choice.
 #
 # To force a backend regardless of the task, uncomment:
 # fellow: triton-fellow
@@ -42,7 +42,7 @@ snr_threshold: 30.0
 # before this hard kill. NOTE: for API-launched runs the bootstrap overwrites
 # this per-run (e.g. 115200 for a 32h run); the value below is only the local
 # fallback default.
-timeout_seconds: 7200
+timeout_seconds: 87300
 
 # Claude permission mode. acceptEdits works under root; bypassPermissions is
 # blocked by Claude Code's security policy for root.

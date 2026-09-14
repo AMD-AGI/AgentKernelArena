@@ -183,6 +183,27 @@ passes or substitutes output, a conditional raise, a missing symbol, or a failed
 oracle is FAIL. An accepted starter must still exercise its independent baseline path;
 candidate performance is `SKIP/starter_stub`.
 """
+    if task_type == "operator2flydsl":
+        return """
+### operator2flydsl stub-candidate policy
+
+The shipped package leaves its single editable source on a stub, so the harness has
+no port to grade and runs the production implementation in the candidate's place,
+against the schema bundle's own comparison callback -- a bar that implementation
+does not clear at every shape. A nonzero `correctness_command` exit is therefore
+expected in this state and is `SKIP/stub_candidate`, not FAIL, but only when the run
+reports an `implementation:` line naming the production baseline rather than the
+port, a verdict for every declared workload case, and the same pass/fail verdict on
+each case and on its `production implementation:` line. Those two lines may report
+different error counts for one case: the production kernels do not reduce
+deterministically, and that difference is not a defect to report. A crash, a
+timeout, a missing case, or a case whose two verdicts disagree is FAIL.
+
+An accepted stub must still run the configured performance command and validate its
+full case report; performance is never `SKIP/dependency_failed` under this
+exception. Do not extend it to a package whose editable source already defines the
+builder symbol, where a correctness failure is the candidate's own.
+"""
     return ""
 
 
@@ -293,9 +314,10 @@ FAIL. Architecture skips are `SKIP/not_applicable`, not dependency failures.
 ## 1. config_schema
 
 Supported task types are `hip2hip`, `cuda2hip`, `triton2triton`, `triton2flydsl`,
-`torch2hip`, `torch2flydsl`, `instruction2triton`, `flydsl2flydsl`, `repository`,
-and `image_kernel`. All current task families require non-empty string lists for
-`compile_command`, `correctness_command`, and `performance_command`.
+`torch2hip`, `torch2flydsl`, `instruction2triton`, `flydsl2flydsl`,
+`operator2flydsl`, `repository`, and `image_kernel`. All current task families
+require non-empty string lists for `compile_command`, `correctness_command`, and
+`performance_command`.
 
 Normal kernel tasks require string-list `source_file_path` and
 `target_kernel_functions`. Legacy `instruction2triton` tasks with an empty source
@@ -305,7 +327,11 @@ WARN that new configs should use separate list entries.
 
 `repository` requires `repo_url` and `repository_language`; source/target hints are
 optional. `image_kernel` requires `image_repo_path`, `repository_language`, source,
-targets, and commands. Validate optional `repo_subdir`, `harness_path`,
+targets, and commands. `operator2flydsl` requires `rewrite_source_file`, and that
+path must be task-relative: an absolute image path is a FAIL, since it escapes the
+workspace. Such a task may also declare `image_repo_path` to materialize the
+production source it points at; that is the supported way to make the path
+resolve. Validate optional `repo_subdir`, `harness_path`,
 `target_file_path`, `editable_sources`, `kernel_identity`, `source_origin`, and
 positive integer command timeouts. `post_clone_install` may be a string or string
 list and its mode is `after_clone` or `every_setup`. `image_repo_exclude` may be a

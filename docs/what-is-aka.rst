@@ -47,8 +47,9 @@ AgentKernelArena includes the following key features.
   Docker images selected from the target GPU architecture.
 * **Task categories**: HIP (``hip2hip``), CUDA-to-HIP (``cuda2hip``), Triton
   (``triton2triton``, ``instruction2triton``), Torch-to-HIP (``torch2hip``),
-  Torch/Triton-to-FlyDSL (``torch2flydsl``, ``triton2flydsl``), and FlyDSL
-  (``flydsl2flydsl``), plus repository-level tasks.
+  Torch/Triton-to-FlyDSL (``torch2flydsl``, ``triton2flydsl``), FlyDSL
+  (``flydsl2flydsl``), and production-operator-to-FlyDSL
+  (``operator2flydsl``), plus repository-level tasks.
 * **Objective metrics**: Automated compilation, correctness, and real GPU
   performance speedups.
 * **Performance timing provenance**: Timing method metadata is recorded for

@@ -779,6 +779,41 @@ def _event_fallback(
     return values, _fallback_metadata(metadata, repetition, reason)
 
 
+class TimedRun:
+    """Handle on the exact invocation a benchmark measured.
+
+    Timing and correctness are otherwise separate invocations, so a kernel can
+    tell them apart and do less work in the one that is scored. Passing this
+    collector to the benchmark makes the scored invocation itself observable:
+    ``outputs`` aliases the buffers the timed unit last wrote, and ``rerun``
+    executes that same unit again.
+
+    Under CUDA-graph timing the buffers are captured once and every replay
+    writes to those same addresses, so ``outputs`` keeps tracking replays. Under
+    event-timing fallback the measured outputs cannot be observed reliably, so a
+    benchmark that requests this collector fails closed instead of validating a
+    separate post-timing invocation.
+    """
+
+    def __init__(self) -> None:
+        self._rerun: Callable[[], Any] | None = None
+        self.outputs: Any = None
+
+    def _bind(self, rerun: Callable[[], Any], outputs: Any = None) -> None:
+        self._rerun = rerun
+        self.outputs = outputs
+
+    @property
+    def bound(self) -> bool:
+        return self._rerun is not None
+
+    def rerun(self) -> Any:
+        if self._rerun is None:
+            raise RuntimeError("timed run was never bound")
+        self.outputs = self._rerun()
+        return self.outputs
+
+
 def benchmark_cuda_graph_or_events_samples(
     fn: Callable[[], Any],
     warmup: int = 10,
