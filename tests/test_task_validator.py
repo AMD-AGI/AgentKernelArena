@@ -433,11 +433,23 @@ class ValidationLauncherTests(unittest.TestCase):
             "/tmp/validator-workspace",
             {"agent": {}},
         )
+        operator2flydsl_prompt = build_validation_prompt(
+            str(repo_root / "tasks/SIKL-task/gemm_a16w16_nt_n6144_k6144/config.yaml"),
+            "/tmp/validator-workspace",
+            {"agent": {}},
+        )
 
         self.assertIn("torch2hip generation placeholder policy", torch2hip_prompt)
         self.assertNotIn("torch2flydsl starter policy", torch2hip_prompt)
         self.assertNotIn("torch2hip generation placeholder policy", hip2hip_prompt)
         self.assertNotIn("torch2flydsl starter policy", hip2hip_prompt)
+
+        # The shipped package grades its production baseline as the candidate, so a
+        # correctness failure there is the baseline's and must not fail the task.
+        self.assertIn("operator2flydsl stub-candidate policy", operator2flydsl_prompt)
+        self.assertIn("SKIP/stub_candidate", operator2flydsl_prompt)
+        self.assertNotIn("operator2flydsl stub-candidate policy", torch2hip_prompt)
+        self.assertNotIn("operator2flydsl stub-candidate policy", hip2hip_prompt)
 
 
 if __name__ == "__main__":
