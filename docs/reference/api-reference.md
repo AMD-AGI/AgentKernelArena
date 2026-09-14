@@ -186,8 +186,8 @@ Each task is defined by a `config.yaml` in its directory. Command fields are
 *lists*.
 
 For isolated-kernel tasks (`hip2hip`, `cuda2hip`, `triton2triton`,
-`triton2flydsl`, `instruction2triton`, `torch2hip`, `torch2flydsl`, and
-`flydsl2flydsl`):
+`triton2flydsl`, `instruction2triton`, `torch2hip`, `torch2flydsl`,
+`flydsl2flydsl`, and `operator2flydsl`):
 
 | Field | Required | Description |
 | --- | --- | --- |
@@ -195,12 +195,14 @@ For isolated-kernel tasks (`hip2hip`, `cuda2hip`, `triton2triton`,
 | `target_kernel_functions` | Yes | Kernel function names that must be defined in the source |
 | `compile_command` | Yes | Command(s) to compile or build-check |
 | `correctness_command` | Yes | Command(s) to validate correctness |
-| `task_type` | Yes | One of `hip2hip`, `cuda2hip`, `triton2triton`, `triton2flydsl`, `instruction2triton`, `torch2hip`, `torch2flydsl`, or `flydsl2flydsl` |
+| `task_type` | Yes | One of `hip2hip`, `cuda2hip`, `triton2triton`, `triton2flydsl`, `instruction2triton`, `torch2hip`, `torch2flydsl`, `flydsl2flydsl`, or `operator2flydsl` |
 | `performance_command` | No | Command(s) to measure performance |
 | `compile_timeout` | No | Per-command compilation timeout in seconds (default `3600`) |
 | `correctness_timeout` | No | Per-command correctness timeout in seconds (default `3600`) |
 | `performance_timeout` | No | Per-command performance timeout in seconds (default `3600`) |
 | `task_result_template` | No | Legacy compatibility field. The centralized evaluator writes the standard result schema regardless of this value |
+| `rewrite_source_file` | `operator2flydsl` only | The production implementation to reimplement, as a task-relative path |
+| `kernel_identity` | No | Shared operator identity: `logical_operator`, `source_owner`, optional `kernel_kind`. See [Add a task](../how-to/add-task.md) |
 | `platform_support` | No | Optional run-gating metadata; see below |
 | `prompt.source_code` | No | Override the prompt's source-code section |
 | `prompt.instructions` | No | Custom prompt instructions |
@@ -224,6 +226,8 @@ For repository-level tasks (`task_type: repository`):
 | `repo_subdir` | No | Workspace subdirectory for the clone; defaults to the repository name derived from `repo_url` |
 | `source_file_path` | No | Optional target source-file hints, relative to the cloned repository root |
 | `target_kernel_functions` | No | Optional target function or kernel-symbol hints |
+| `rewrite_source_file` | `operator2flydsl` only | The production implementation to reimplement, as a task-relative path |
+| `kernel_identity` | No | Shared operator identity: `logical_operator`, `source_owner`, optional `kernel_kind`. See [Add a task](../how-to/add-task.md) |
 | `platform_support` | No | Optional run-gating metadata; see below |
 | `prompt.instructions` | No | Custom prompt instructions |
 | `prompt.cheatsheet` | No | Reference/cheatsheet content for the prompt |
