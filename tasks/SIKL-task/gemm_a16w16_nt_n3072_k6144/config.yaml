@@ -13,15 +13,31 @@ target_kernel_functions:
   - build_gemm_a16w16_nt_n3072_k6144_module
 
 # ---------------------------------------------------------------------------
+# The production implementation is materialized into the task workspace before
+# the agent starts, using Arena's existing in-image seeding. That is what keeps
+# rewrite_source_file task-relative: an absolute image path would bind the task
+# to one image layout, leave the aiter version it read unrecorded, and put the
+# thing being handed to the agent somewhere a reviewer cannot see.
+#
+# jit/ is excluded because it is a build cache rather than source. Measured on
+# the installed package it holds 1823 .pkl, 1823 .lock and 108 .so against 15
+# .py, and accounts for 3.1 GB of a 3.2 GB tree; nothing the driver points at
+# lives there. The seeded copy is read-only reference material either way -- the
+# operator under test is still imported from the installed aiter, and a
+# candidate may not import aiter at all.
+#
+# repo_subdir is deliberately not `aiter`: a directory of that name at the
+# workspace root would sit on sys.path ahead of the real package for every
+# command the task runs.
+image_repo_path: /sgl-workspace/aiter
+repo_subdir: aiter_source
+image_repo_exclude:
+  - jit
+  - __pycache__
+
 # The one field this task type adds. It names the production implementation the
 # operator is ported from -- read-only reference material for the agent, while
 # the driver owns the interface and the measurement.
-#
-# It should resolve inside the task workspace. This path does not yet: the SIKL
-# sources come from the runtime image, and nothing materializes them into the
-# workspace, so the task is still bound to one image layout. The launcher tries
-# the workspace-relative form first, so only this value changes once a declared
-# setup mechanism exists.
 #
 # Everything else the agent needs is an existing Arena field: the port lands in
 # source_file_path[0], and kernel_identity carries the operator's identity and
@@ -33,7 +49,7 @@ target_kernel_functions:
 # driver owns how the reference and the baseline are invoked. It is named in the
 # instructions below and in the driver docstring, which is where prose belongs.
 # ---------------------------------------------------------------------------
-rewrite_source_file: /sgl-workspace/aiter/aiter/tuned_gemm.py
+rewrite_source_file: aiter_source/aiter/tuned_gemm.py
 
 # logical_operator is the task's KB identity and is also what KernelForge
 # derives target_kernel_functions above from. It must agree with workload.json's

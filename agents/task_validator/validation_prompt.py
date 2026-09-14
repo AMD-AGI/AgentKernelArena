@@ -306,7 +306,11 @@ WARN that new configs should use separate list entries.
 
 `repository` requires `repo_url` and `repository_language`; source/target hints are
 optional. `image_kernel` requires `image_repo_path`, `repository_language`, source,
-targets, and commands. Validate optional `repo_subdir`, `harness_path`,
+targets, and commands. `operator2flydsl` requires `rewrite_source_file`, and that
+path must be task-relative: an absolute image path is a FAIL, since it escapes the
+workspace. Such a task may also declare `image_repo_path` to materialize the
+production source it points at; that is the supported way to make the path
+resolve. Validate optional `repo_subdir`, `harness_path`,
 `target_file_path`, `editable_sources`, `kernel_identity`, `source_origin`, and
 positive integer command timeouts. `post_clone_install` may be a string or string
 list and its mode is `after_clone` or `every_setup`. `image_repo_exclude` may be a

@@ -117,6 +117,30 @@ def test_task_is_driven_by_the_rewrite_pipeline(task):
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
+def test_the_production_source_is_materialized_into_the_workspace(task):
+    # An absolute image path escapes the isolated workspace: it binds the task
+    # to one image layout, leaves the version it read unrecorded, and puts what
+    # the agent was handed somewhere a reviewer cannot see. The source is seeded
+    # instead, through the same mechanism image_kernel tasks use.
+    config = _config(task)
+    source = config["rewrite_source_file"]
+    assert not Path(source).is_absolute(), f"{source} escapes the task workspace"
+
+    subdir = config["repo_subdir"]
+    assert source.startswith(f"{subdir}/"), (
+        f"{source} does not resolve inside the seeded tree at {subdir}/"
+    )
+    assert Path(config["image_repo_path"]).is_absolute()
+    # The seeded directory must not shadow the package it contains: it lands at
+    # the workspace root, which leads sys.path for every command the task runs.
+    assert subdir != Path(config["image_repo_path"]).name
+    for driver_path in (task / "scripts" / "forge_driver.py",):
+        assert "/sgl-workspace" not in driver_path.read_text(), (
+            "the driver still sends the agent to an absolute image path"
+        )
+
+
+@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
 def test_the_source_entry_is_documented_where_it_now_lives(task):
     # Dropping the field only costs nothing because the information stays
     # reachable: the prompt sends the agent to the driver, and the driver names

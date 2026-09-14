@@ -9,7 +9,7 @@ THE OPERATOR
     and both this driver and the Arena harness build their inputs through it.
 
 THE BASELINE IMPLEMENTATION TO REPLACE (read it, it is the real thing)
-    entry    /sgl-workspace/aiter/aiter/tuned_gemm.py:354  gemm_a16w16
+    entry    aiter_source/aiter/tuned_gemm.py:354  gemm_a16w16
 
     `gemm_a16w16` is a tuned DISPATCH, not one kernel. It looks the shape up in
     aiter's merged bf16 tuned table (configs/bf16_tuned_gemm.csv merged with

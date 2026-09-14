@@ -56,8 +56,17 @@ target_kernel_functions:
   - build_gemm_a16w16_nt_n6144_k6144_module
 
 # The only field this task type adds: the production implementation to
-# reimplement. Read-only reference material for the agent.
-rewrite_source_file: sources/tuned_gemm.py
+# reimplement. Read-only reference material for the agent, and task-relative --
+# an absolute path into the runtime image would escape the workspace.
+rewrite_source_file: aiter_source/aiter/tuned_gemm.py
+
+# When that source lives in the runtime image rather than in the task, declare
+# it and Arena seeds it into the workspace before the agent starts. Same
+# mechanism image_kernel tasks use.
+image_repo_path: /sgl-workspace/aiter
+repo_subdir: aiter_source
+image_repo_exclude:
+  - jit
 
 kernel_identity:
   logical_operator: gemm_a16w16_nt_n6144_k6144
@@ -67,6 +76,10 @@ kernel_identity:
 Everything else an agent needs is an existing field. The implementation lands in
 `source_file_path[0]`, and `kernel_identity` carries the operator's identity and
 its owner.
+
+Pick a `repo_subdir` that cannot shadow the package being seeded. A directory
+named `aiter` at the workspace root would sit on `sys.path` ahead of the real
+package for every command the task runs.
 
 Two things deliberately stay out of the task. How an agent searches for the
 implementation -- attempt counts, intermediate filters, time budgets -- is agent

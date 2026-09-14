@@ -13,15 +13,15 @@ THE OPERATOR
     inputs through it.
 
 THE BASELINE IMPLEMENTATION TO REPLACE (read these, they are the real thing)
-    entry            /sgl-workspace/aiter/aiter/fused_moe.py  fused_moe
-    stage dispatch   /sgl-workspace/aiter/aiter/fused_moe.py  _flydsl_stage1_wrapper
-                     /sgl-workspace/aiter/aiter/fused_moe.py  _flydsl_stage2_wrapper
-    stage entries    /sgl-workspace/aiter/aiter/ops/flydsl/moe_kernels.py
+    entry            aiter_source/aiter/fused_moe.py  fused_moe
+    stage dispatch   aiter_source/aiter/fused_moe.py  _flydsl_stage1_wrapper
+                     aiter_source/aiter/fused_moe.py  _flydsl_stage2_wrapper
+    stage entries    aiter_source/aiter/ops/flydsl/moe_kernels.py
                        flydsl_moe_stage1 / flydsl_moe_stage2
-    FlyDSL kernels   /sgl-workspace/aiter/aiter/ops/flydsl/kernels/mixed_moe_gemm_2stage.py
-    FlyDSL reduce    /sgl-workspace/aiter/aiter/ops/flydsl/kernels/moe_gemm_2stage.py
-    HIP quant/sort   /sgl-workspace/aiter/csrc/kernels/quant_kernels.cu
-                     /sgl-workspace/aiter/csrc/include/moe_sorting_opus.h
+    FlyDSL kernels   aiter_source/aiter/ops/flydsl/kernels/mixed_moe_gemm_2stage.py
+    FlyDSL reduce    aiter_source/aiter/ops/flydsl/kernels/moe_gemm_2stage.py
+    HIP quant/sort   aiter_source/csrc/kernels/quant_kernels.cu
+                     aiter_source/csrc/include/moe_sorting_opus.h
 
     fused_moe is a tuned DISPATCH, not one kernel: it selects a stage-1 and a
     stage-2 kernel per M bucket out of aiter/configs/model_configs. Which pair a
