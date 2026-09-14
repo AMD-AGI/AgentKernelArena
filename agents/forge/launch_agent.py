@@ -58,6 +58,7 @@ from agents.forge.common import (
     _task_kernel_identity,
     _terminate_process_group,
     forge_environment,
+    resolve_forge_binary,
     run_forge_subprocess,
 )
 
@@ -293,12 +294,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     """
     logger = logging.getLogger(__name__)
 
-    forge_bin = shutil.which("kernel-agents")
-    if not forge_bin:
-        raise RuntimeError(
-            "Command 'kernel-agents' not found. Install KernelForge "
-            "(pip install -e KernelForge) so the forge-loop CLI is on PATH."
-        )
+    forge_bin = resolve_forge_binary()
 
     # Agent config
     config_path = Path(__file__).with_name("agent_config.yaml")

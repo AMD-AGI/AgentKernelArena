@@ -834,6 +834,26 @@ def run_forge_subprocess(
     return process, stdout_lines, stderr_lines, timed_out
 
 
+# KernelForge renamed its console script to `kernelforge` and, one release later,
+# dropped the `kernel-agents` alias entirely. Both names can be on PATH depending
+# on how old the installed package is, so prefer the current one and keep the old
+# one working rather than pinning either.
+FORGE_BINARY_NAMES = ("kernelforge", "kernel-agents")
+
+
+def resolve_forge_binary() -> str:
+    """Locate KernelForge's CLI, whichever name the installed release ships."""
+    for name in FORGE_BINARY_NAMES:
+        found = shutil.which(name)
+        if found:
+            return found
+    names = " or ".join(f"'{name}'" for name in FORGE_BINARY_NAMES)
+    raise RuntimeError(
+        f"Neither {names} is on PATH. Install KernelForge (pip install -e "
+        "Hyperloom) so its CLI is available."
+    )
+
+
 def forge_environment() -> dict[str, str]:
     """The environment every KernelForge subprocess inherits.
 

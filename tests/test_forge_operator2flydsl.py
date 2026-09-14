@@ -17,6 +17,7 @@ from agents.forge.common import (
     _infer_backend,
     _resolve_fellow,
     _resolve_framework,
+    resolve_forge_binary,
 )
 from agents.forge_operator2flydsl.launch_agent import (
     REWRITE_WORKSPACE_DIR,
@@ -310,3 +311,31 @@ def test_no_ported_kernel_reports_missing(tmp_path):
     root = tmp_path / REWRITE_WORKSPACE_DIR
     (root / ".forge_rewrite").mkdir(parents=True)
     assert _locate_ported_kernel(root, None, "kernel.py") is None
+
+
+def _stub_binaries(tmp_path, *names):
+    for name in names:
+        binary = tmp_path / name
+        binary.write_text("#!/bin/sh\nexit 0\n")
+        binary.chmod(0o755)
+    return str(tmp_path)
+
+
+def test_forge_binary_prefers_the_current_cli_name(tmp_path, monkeypatch):
+    # KernelForge renamed the script to `kernelforge`; an install old enough to
+    # still ship both must resolve to the current name.
+    monkeypatch.setenv("PATH", _stub_binaries(tmp_path, "kernelforge", "kernel-agents"))
+    assert Path(resolve_forge_binary()).name == "kernelforge"
+
+
+def test_forge_binary_accepts_the_legacy_cli_name(tmp_path, monkeypatch):
+    monkeypatch.setenv("PATH", _stub_binaries(tmp_path, "kernel-agents"))
+    assert Path(resolve_forge_binary()).name == "kernel-agents"
+
+
+def test_forge_binary_absent_names_both_candidates(tmp_path, monkeypatch):
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(RuntimeError) as failure:
+        resolve_forge_binary()
+    assert "kernelforge" in str(failure.value)
+    assert "kernel-agents" in str(failure.value)
