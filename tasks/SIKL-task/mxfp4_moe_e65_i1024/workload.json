@@ -1,5 +1,5 @@
 {
-  "definition": "aiter_fused_moe_per_1x32_d6144_e65_topk9_n4096_k3072_i1024",
+  "definition": "fused_moe_per_1x32_d6144_e65_topk9_n4096_k3072_i1024",
   "op_type": "moe",
   "builder_symbol": "build_mxfp4_moe_e65_i1024_module",
   "axes": {
@@ -22,67 +22,67 @@
   "cases": [
     {
       "case_id": "num_tokens_1",
-      "uuid": "a87754eb7a35ddc9",
+      "uuid": "a5cd8804653e7c77",
       "num_tokens": 1
     },
     {
       "case_id": "num_tokens_2",
-      "uuid": "bd743b1848050ef9",
+      "uuid": "74f0663302f89091",
       "num_tokens": 2
     },
     {
       "case_id": "num_tokens_4",
-      "uuid": "7e67494c8e6cf749",
+      "uuid": "74c268f46f660efa",
       "num_tokens": 4
     },
     {
       "case_id": "num_tokens_8",
-      "uuid": "89db9a9db6e72358",
+      "uuid": "0d9511ce55c4b9ad",
       "num_tokens": 8
     },
     {
       "case_id": "num_tokens_16",
-      "uuid": "d04a29c96cc81d42",
+      "uuid": "f0f2c7333dda4b61",
       "num_tokens": 16
     },
     {
       "case_id": "num_tokens_32",
-      "uuid": "106e81246f9c4cc3",
+      "uuid": "7a8ad87cdcae68f7",
       "num_tokens": 32
     },
     {
       "case_id": "num_tokens_64",
-      "uuid": "85bd1a4899aa0653",
+      "uuid": "51825e3386b871e3",
       "num_tokens": 64
     },
     {
       "case_id": "num_tokens_128",
-      "uuid": "a7758e1d2591bdb8",
+      "uuid": "7a10d7f6f703c74a",
       "num_tokens": 128
     },
     {
       "case_id": "num_tokens_256",
-      "uuid": "c98ed376a4031494",
+      "uuid": "accd9a58c30c5881",
       "num_tokens": 256
     },
     {
       "case_id": "num_tokens_512",
-      "uuid": "0daad4e4f6407cbf",
+      "uuid": "e4fa769420ccd927",
       "num_tokens": 512
     },
     {
       "case_id": "num_tokens_1024",
-      "uuid": "23b5b15fe3a51a68",
+      "uuid": "d5f93e4ef5f5eac8",
       "num_tokens": 1024
     },
     {
       "case_id": "num_tokens_2048",
-      "uuid": "a3c960a0632566c4",
+      "uuid": "5bd84bc176603019",
       "num_tokens": 2048
     },
     {
       "case_id": "num_tokens_4096",
-      "uuid": "488ee72269b52648",
+      "uuid": "43186af96e7a1da5",
       "num_tokens": 4096
     }
   ]

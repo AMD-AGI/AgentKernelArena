@@ -1,11 +1,14 @@
 {
   "name": "kernel-forges_5847dd",
-  "definition": "aiter_fused_moe_per_1x32_d6144_e33_topk9_n4096_k3072_i1024",
+  "definition": "fused_moe_per_1x32_d6144_e33_topk9_n4096_k3072_i1024",
   "author": "kernel-forges",
   "spec": {
     "language": "",
-    "target_hardware": [
-      "MI355X"
+    "target": [
+      {
+        "arch": "gfx950",
+        "hardware_id": "MI355X"
+      }
     ],
     "entry_point": "",
     "dependencies": [],
@@ -18,5 +21,5 @@
       "content": ""
     }
   ],
-  "description": "kernel-forges kernel slot for aiter_fused_moe_per_1x32_d6144_e33_topk9_n4096_k3072_i1024 -- language, entry_point and sources to be filled in."
+  "description": "kernel-forges kernel slot for fused_moe_per_1x32_d6144_e33_topk9_n4096_k3072_i1024 -- language, entry_point and sources to be filled in."
 }

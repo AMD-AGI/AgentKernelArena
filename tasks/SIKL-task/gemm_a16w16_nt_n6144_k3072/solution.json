@@ -4,8 +4,11 @@
   "author": "kernel-forges",
   "spec": {
     "language": "",
-    "target_hardware": [
-      "MI355X"
+    "target": [
+      {
+        "arch": "gfx950",
+        "hardware_id": "MI355X"
+      }
     ],
     "entry_point": "",
     "dependencies": [],

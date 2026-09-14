@@ -70,7 +70,7 @@ kernel_identity:
 # lives in workload.json and scripts/task_inputs.py as the single source of
 # truth; duplicating it here would let the two drift.
 workload:
-  definition: aiter_fused_moe_per_1x32_d6144_e257_topk9_n512_k3072_i128
+  definition: fused_moe_per_1x32_d6144_e257_topk9_n512_k3072_i128
   cases: 13
 
 compile_command:

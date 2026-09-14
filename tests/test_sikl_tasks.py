@@ -325,10 +325,26 @@ def test_task_ships_the_unfilled_solution_slot(task):
     # from.
     solution = json.loads((task / "solution.json").read_text())
     assert solution["author"] == "kernel-forges"
-    assert solution["definition"] == _workload(task)["definition"]
     assert solution["name"]
     assert solution["spec"]["entry_point"] == ""
     assert solution["sources"] == [{"path": "", "content": ""}]
+
+    # One definition name, in all three places that carry it. The schema renamed
+    # the MoE operators, and a task that agreed with itself but not with the
+    # bundle would file its result against a definition nobody is looking for.
+    definition = _workload(task)["definition"]
+    assert solution["definition"] == definition
+    assert _config(task)["workload"]["definition"] == definition
+    assert not definition.startswith("aiter_"), (
+        "the schema dropped the framework prefix from its operator names"
+    )
+
+    # The slot's spec follows the schema's target shape, not the earlier flat
+    # hardware list: a filled slot is read back by the bundle.
+    assert "target_hardware" not in solution["spec"]
+    assert solution["spec"]["target"] == [
+        {"arch": _config(task)["platform_support"]["required_arch"], "hardware_id": "MI355X"}
+    ]
 
 
 def _task_inputs(task: Path):
