@@ -22,6 +22,7 @@ TEST_SHAPES = [
 ]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
+OUTPUT_SENTINEL = -1
 
 
 # >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>
@@ -99,8 +100,14 @@ def run_correctness():
                 query_start_loc[r + 1] = query_start_loc[r] + query_len
             total_tokens = int(query_start_loc[-1].item())
             num_computed_tokens = torch.full((max_num_reqs,), nc_base, dtype=torch.int32, device=device)
-            pos = torch.zeros(total_tokens, dtype=torch.int64, device=device)
-            seq_lens = torch.zeros(max_num_reqs, dtype=torch.int32, device=device)
+            # A non-output sentinel makes every required store observable,
+            # including the zero stores for unused seq_lens entries.
+            pos = torch.full(
+                (total_tokens,), OUTPUT_SENTINEL, dtype=torch.int64, device=device
+            )
+            seq_lens = torch.full(
+                (max_num_reqs,), OUTPUT_SENTINEL, dtype=torch.int32, device=device
+            )
 
             mod.prepare_pos_seq_lens(idx_mapping, query_start_loc, num_computed_tokens, pos, seq_lens)
             torch.cuda.synchronize()
@@ -138,16 +145,44 @@ def run_performance():
                 query_start_loc[r + 1] = query_start_loc[r] + query_len
             total_tokens = int(query_start_loc[-1].item())
             num_computed_tokens = torch.full((max_num_reqs,), nc_base, dtype=torch.int32, device=device)
-            pos = torch.zeros(total_tokens, dtype=torch.int64, device=device)
-            seq_lens = torch.zeros(max_num_reqs, dtype=torch.int32, device=device)
+            pos = torch.full(
+                (total_tokens,), OUTPUT_SENTINEL, dtype=torch.int64, device=device
+            )
+            seq_lens = torch.full(
+                (max_num_reqs,), OUTPUT_SENTINEL, dtype=torch.int32, device=device
+            )
+
+            ref_pos, ref_seq = reference_prepare_pos_seq_lens(
+                idx_mapping.cpu(),
+                query_start_loc.cpu(),
+                num_computed_tokens.cpu(),
+                max_num_reqs,
+            )
+
+            def _prepare_outputs():
+                pos.fill_(OUTPUT_SENTINEL)
+                seq_lens.fill_(OUTPUT_SENTINEL)
 
             def _bench_fn():
                 mod.prepare_pos_seq_lens(idx_mapping, query_start_loc, num_computed_tokens, pos, seq_lens)
+                return pos, seq_lens
+
+            timed_run = _TimedRun()
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
                 _bench_fn,
                 warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS,
+                prepare_fn=_prepare_outputs,
+                timed_run=timed_run,
             )
+
+            timed_pos, timed_seq_lens = timed_run.rerun()
+            if not torch.equal(timed_pos.cpu(), ref_pos):
+                raise RuntimeError("captured replay produced incorrect pos output")
+            if not torch.equal(timed_seq_lens.cpu(), ref_seq):
+                raise RuntimeError(
+                    "captured replay produced incorrect seq_lens output"
+                )
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

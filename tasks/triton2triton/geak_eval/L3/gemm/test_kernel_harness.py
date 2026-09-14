@@ -4,6 +4,8 @@
 
 import os
 import sys
+import json
+from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
 
 
@@ -132,6 +134,7 @@ def run_benchmark(indices):
     print("Running benchmark...")
     latencies = []
     methods = []
+    report_cases = []
     for idx in indices:
         M, N, K = ALL_CONFIGS[idx]
         x, w, bias = _generate_inputs(M, N, K, DTYPE)
@@ -142,9 +145,29 @@ def run_benchmark(indices):
         )
         latencies.append(ms)
         methods.append(metadata["benchmark_method"])
+        report_cases.append(
+            {
+                "test_case_id": "case={} {}".format(
+                    idx, _format_config(ALL_CONFIGS[idx])
+                ),
+                "params": {
+                    "case_index": idx,
+                    "M": M,
+                    "N": N,
+                    "K": K,
+                    "dtype": str(DTYPE),
+                },
+                "execution_time_ms": ms,
+                **metadata,
+            }
+        )
         print("  [{}] {}  {:.4f}ms".format(idx, _format_config(ALL_CONFIGS[idx]), ms))
         del x, w, bias
         torch.cuda.empty_cache()
+
+    report_path = Path("build/performance_report.json")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report_cases, indent=2))
 
     # Geometric mean
     log_sum = sum(math.log(lat) for lat in latencies)

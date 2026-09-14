@@ -8,12 +8,22 @@ TASK_NAME = "triton2triton/triton_moe_mmk"
 SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_moe_mmk.py")
 
 # (M, K, N)
-TEST_SHAPES = [
+PERFORMANCE_SHAPES = [
     (32, 64, 32),
     (64, 128, 64),
     (128, 256, 128),
     (256, 512, 256),
     (512, 1024, 512),
+]
+
+# Keep the scored benchmark set stable while exercising correctness-only tails
+# independently in each dimension. K=63 and K=65 cover both sides of the
+# K=64 block-size selection threshold.
+CORRECTNESS_SHAPES = PERFORMANCE_SHAPES + [
+    (33, 64, 64),
+    (64, 64, 47),
+    (64, 63, 32),
+    (32, 65, 64),
 ]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
@@ -65,7 +75,7 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    for i, (M, K, N) in enumerate(TEST_SHAPES):
+    for i, (M, K, N) in enumerate(CORRECTNESS_SHAPES):
         try:
             torch.manual_seed(42 + i)
             A = torch.randn(M, K, device=device, dtype=torch.float16) * 0.1
@@ -93,7 +103,7 @@ def run_performance():
     device = "cuda"
     test_cases = []
 
-    for test_idx, (M, K, N) in enumerate(TEST_SHAPES):
+    for test_idx, (M, K, N) in enumerate(PERFORMANCE_SHAPES):
         try:
             torch.manual_seed(42 + test_idx)
             A = torch.randn(M, K, device=device, dtype=torch.float16) * 0.1
@@ -147,7 +157,7 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(CORRECTNESS_SHAPES)}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

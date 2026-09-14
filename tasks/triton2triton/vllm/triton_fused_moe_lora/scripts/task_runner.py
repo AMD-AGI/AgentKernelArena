@@ -15,6 +15,43 @@ TEST_SHAPES = [
     (64, 512, 8, 32, 256, 4, 2),
     (128, 1024, 8, 32, 512, 4, 2),
 ]
+
+# Targeted correctness-only coverage. Keep performance tied to TEST_SHAPES so
+# hardening the harness does not change the benchmark methodology.
+CORRECTNESS_CASES = [
+    {
+        "name": "naive_irregular_slices_offset",
+        "shape": (7, 70, 5, 13, 45, 3, 3),
+        "num_slices": 2,
+        "offset": 5,
+        "dtype": "float16",
+        "sorted_assignment": False,
+        "mul_routed_weight": False,
+        "include_invalid_routes": True,
+    },
+    {
+        "name": "sorted_routed_weight_bfloat16",
+        "shape": (9, 65, 3, 17, 33, 3, 3),
+        "num_slices": 1,
+        "offset": 0,
+        "dtype": "bfloat16",
+        "sorted_assignment": True,
+        "mul_routed_weight": True,
+        "include_invalid_routes": True,
+    },
+    {
+        "name": "split_k2_no_l2_cache",
+        "shape": (5, 70, 3, 11, 37, 2, 2),
+        "num_slices": 1,
+        "offset": 0,
+        "dtype": "float16",
+        "sorted_assignment": False,
+        "mul_routed_weight": False,
+        "include_invalid_routes": False,
+        "shrink_split_k": 2,
+        "use_b_l2_cache": False,
+    },
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -47,9 +84,10 @@ def reference_fused_moe_lora(qcurr_hidden_states, lora_a_stacked, lora_b_stacked
                               topk_weights, expert_ids, token_lora_mapping,
                               top_k_num, adapter_enabled, mul_routed_weight):
     """CPU reference: per-token shrink then expand with MoE expert routing.
-    Uses naive (non-sorted) assignment for simplicity."""
+    expert_ids contains the canonical flat route-to-expert mapping, regardless
+    of whether the kernel launch uses naive or sorted assignment."""
     import torch
-    M = qcurr_hidden_states.shape[0]
+    M = topk_weights.shape[0]
     K = qcurr_hidden_states.shape[1]
     num_slices = len(lora_a_stacked)
     max_lora_rank = lora_a_stacked[0].shape[2]
@@ -73,7 +111,8 @@ def reference_fused_moe_lora(qcurr_hidden_states, lora_a_stacked, lora_b_stacked
             exp_id = expert_ids[flat_idx].item()
             if exp_id == -1:
                 continue
-            inp = qcurr_hidden_states[token_idx].float()
+            input_idx = flat_idx if mul_routed_weight else token_idx
+            inp = qcurr_hidden_states[input_idx].float()
             for s in range(num_slices):
                 # lora_a: [max_loras, num_experts, max_lora_rank, K]
                 wa = lora_a_stacked[s][lora_id, exp_id].float()  # [rank, K]
@@ -137,12 +176,161 @@ def make_test_data(M, K, num_experts, lora_rank, out_dim, num_loras, top_k, devi
             lora_rank, top_k, lora_ids, num_loras, adapter_enabled)
 
 
+def _make_sorted_assignment(route_expert_ids, token_lora_mapping, num_loras,
+                            block_size, device):
+    """Pack flat token routes into the block-sorted format consumed by the kernel."""
+    import torch
+
+    num_routes = route_expert_ids.numel()
+    top_k = num_routes // token_lora_mapping.numel()
+    rows = []
+    expert_rows = []
+    padded_counts = []
+
+    route_experts_cpu = route_expert_ids.cpu().tolist()
+    token_loras_cpu = token_lora_mapping.cpu().tolist()
+    for lora_id in range(num_loras):
+        row = []
+        row_experts = []
+        grouped_routes = {}
+        for route_id, expert_id in enumerate(route_experts_cpu):
+            token_id = route_id // top_k
+            if token_loras_cpu[token_id] == lora_id:
+                grouped_routes.setdefault(expert_id, []).append(route_id)
+
+        for expert_id in sorted(grouped_routes):
+            routes = grouped_routes[expert_id]
+            for start in range(0, len(routes), block_size):
+                block = routes[start: start + block_size]
+                row.extend(block)
+                row.extend([num_routes] * (block_size - len(block)))
+                row_experts.append(expert_id)
+
+        rows.append(row)
+        expert_rows.append(row_experts)
+        padded_counts.append(len(row))
+
+    max_blocks = max(1, max(len(row) for row in expert_rows))
+    row_width = max_blocks * block_size
+    sorted_token_ids = torch.full(
+        (num_loras, row_width), num_routes, dtype=torch.int64, device=device
+    )
+    sorted_expert_ids = torch.full(
+        (num_loras, max_blocks), -1, dtype=torch.int64, device=device
+    )
+    for lora_id, (row, row_experts) in enumerate(zip(rows, expert_rows)):
+        if row:
+            sorted_token_ids[lora_id, :len(row)] = torch.tensor(
+                row, dtype=torch.int64, device=device
+            )
+            sorted_expert_ids[lora_id, :len(row_experts)] = torch.tensor(
+                row_experts, dtype=torch.int64, device=device
+            )
+
+    num_tokens_post_padded = torch.tensor(
+        padded_counts, dtype=torch.int32, device=device
+    )
+    return sorted_token_ids, sorted_expert_ids, num_tokens_post_padded
+
+
+def make_correctness_data(case, device, seed):
+    """Build a correctness-only case without changing benchmark inputs."""
+    import torch
+
+    M, K, num_experts, lora_rank, out_dim, num_loras, top_k = case["shape"]
+    num_slices = case["num_slices"]
+    mul_routed_weight = case["mul_routed_weight"]
+    dtype = getattr(torch, case["dtype"])
+
+    torch.manual_seed(seed)
+    input_rows = M * top_k if mul_routed_weight else M
+    value_scale = 0.2
+    qcurr = torch.randn(input_rows, K, device=device, dtype=dtype) * value_scale
+    topk_weights = torch.linspace(
+        0.2, 1.1, M * top_k, device=device, dtype=torch.float32
+    ).reshape(M, top_k)
+    lora_a = [
+        torch.randn(
+            num_loras, num_experts, lora_rank, K, device=device, dtype=dtype
+        ) * value_scale
+        for _ in range(num_slices)
+    ]
+    lora_b = [
+        torch.randn(
+            num_loras, num_experts, out_dim, lora_rank,
+            device=device, dtype=dtype,
+        ) * value_scale
+        for _ in range(num_slices)
+    ]
+
+    route_expert_ids = (
+        torch.arange(M * top_k, device=device, dtype=torch.int64) % num_experts
+    )
+    token_lora_mapping = (
+        torch.arange(M, device=device, dtype=torch.int64) % num_loras
+    )
+    adapter_enabled = torch.ones(num_loras, device=device, dtype=torch.int32)
+
+    if case["include_invalid_routes"]:
+        # Exercise all three early exits: absent adapter, disabled adapter, and
+        # an invalid expert. Keep other routes valid so the case is nontrivial.
+        token_lora_mapping[0] = -1
+        if num_loras > 1:
+            token_lora_mapping[1] = 1
+            adapter_enabled[1] = 0
+        route_expert_ids[2 * top_k + (top_k - 1)] = -1
+
+    if case["sorted_assignment"]:
+        sorted_token_ids, expert_ids, num_tokens_post_padded = (
+            _make_sorted_assignment(
+                route_expert_ids, token_lora_mapping, num_loras, 64, device
+            )
+        )
+        # Exercise lora_ids indirection rather than relying on identity order.
+        active_ids = [num_loras - 1] + list(range(num_loras - 1))
+        lora_ids = torch.tensor(active_ids, device=device, dtype=torch.int64)
+        num_active_loras = len(active_ids)
+    else:
+        sorted_token_ids = None
+        expert_ids = route_expert_ids
+        num_tokens_post_padded = None
+        lora_ids = torch.arange(num_loras, device=device, dtype=torch.int64)
+        num_active_loras = num_loras
+
+    offset = case["offset"]
+    target_width = num_slices * out_dim
+    output_width = offset + target_width + (3 if offset else 0)
+    output = torch.full(
+        (M, top_k, output_width), -0.75, device=device, dtype=dtype
+    )
+    output[:, :, offset: offset + target_width] = 0
+
+    return {
+        "output": output,
+        "qcurr": qcurr,
+        "lora_a": lora_a,
+        "lora_b": lora_b,
+        "topk_weights": topk_weights,
+        "sorted_token_ids": sorted_token_ids,
+        "expert_ids": expert_ids,
+        "reference_expert_ids": route_expert_ids,
+        "num_tokens_post_padded": num_tokens_post_padded,
+        "token_lora_mapping": token_lora_mapping,
+        "max_lora_rank": lora_rank,
+        "top_k_num": top_k,
+        "lora_ids": lora_ids,
+        "num_active_loras": num_active_loras,
+        "adapter_enabled": adapter_enabled,
+    }
+
+
 def prepare_direct_launch(mod, output, qcurr_hidden_states, lora_a_stacked,
                           lora_b_stacked, topk_weights, sorted_token_ids,
                           expert_ids, num_tokens_post_padded,
                           token_lora_mapping, max_lora_rank, top_k_num,
                           lora_ids, num_active_loras, adapter_enabled,
-                          mul_routed_weight=False, offset=0):
+                          mul_routed_weight=False, offset=0,
+                          shrink_split_k=1, use_b_l2_cache=True):
     """Prepare stable shrink/expand launches for graph-first benchmarking.
 
     The public wrapper allocates pointer tables and an intermediate tensor on
@@ -172,8 +360,6 @@ def prepare_direct_launch(mod, output, qcurr_hidden_states, lora_a_stacked,
     shrink_group_size_m = 8
     shrink_num_warps = 4
     shrink_num_stages = 3
-    shrink_split_k = 1
-
     expand_block_size_m = 64
     expand_block_size_n = 64
     expand_block_size_k = max(16, min(32, mod._next_power_of_2(shrink_n)))
@@ -260,7 +446,7 @@ def prepare_direct_launch(mod, output, qcurr_hidden_states, lora_a_stacked,
         "naive_block_assignment": sorted_token_ids is None,
         "MUL_ROUTED_WEIGHT": False,
         "ADD_INPUTS": False,
-        "USE_B_L2_CACHE": True,
+        "USE_B_L2_CACHE": use_b_l2_cache,
         "IS_PRIMARY": True,
         "BLOCK_SIZE_M": shrink_block_size_m,
         "BLOCK_SIZE_N": shrink_block_size_n,
@@ -311,7 +497,7 @@ def prepare_direct_launch(mod, output, qcurr_hidden_states, lora_a_stacked,
         "naive_block_assignment": sorted_token_ids is None,
         "MUL_ROUTED_WEIGHT": mul_routed_weight,
         "ADD_INPUTS": True,
-        "USE_B_L2_CACHE": True,
+        "USE_B_L2_CACHE": use_b_l2_cache,
         "IS_PRIMARY": False,
         "BLOCK_SIZE_M": expand_block_size_m,
         "BLOCK_SIZE_N": expand_block_size_n,
@@ -327,6 +513,7 @@ def prepare_direct_launch(mod, output, qcurr_hidden_states, lora_a_stacked,
     shrink_launcher = mod.fused_moe_lora_kernel[shrink_grid]
     expand_launcher = mod.fused_moe_lora_kernel[expand_grid]
     reset_output = output.zero_
+    reset_intermediate = intermediate.zero_
 
     def launch_shrink():
         shrink_launcher(*shrink_args, **shrink_meta)
@@ -339,13 +526,18 @@ def prepare_direct_launch(mod, output, qcurr_hidden_states, lora_a_stacked,
         launch_expand()
 
     def launch_fused_no_reset():
-        # Shrink uses SPLIT_K=1 and ADD_INPUTS=False, so it overwrites every
-        # intermediate row consumed by expand; no workspace reset is required.
+        # The benchmark-default SPLIT_K=1 overwrites every intermediate row.
+        # Correctness callers selecting split-K accumulation use launch_fused,
+        # which resets the workspace first.
         launch_shrink()
         launch_expand()
 
     def launch_fused():
         reset_output()
+        if shrink_split_k > 1:
+            # Split-K uses atomic accumulation, so its destination must start
+            # from zero for each independent correctness invocation.
+            reset_intermediate()
         launch_fused_no_reset()
 
     return {
@@ -354,6 +546,7 @@ def prepare_direct_launch(mod, output, qcurr_hidden_states, lora_a_stacked,
         "shrink": launch_shrink,
         "reset_expand": launch_reset_expand,
         "reset_output": reset_output,
+        "reset_intermediate": reset_intermediate,
         "output": output,
         "intermediate": intermediate,
         "lora_a_ptrs": lora_a_ptrs,
@@ -426,6 +619,66 @@ def run_correctness():
                 )
         except Exception as e:
             return False, f"Shape {i+1}: exception: {e}"
+
+    for i, case in enumerate(CORRECTNESS_CASES):
+        name = case["name"]
+        try:
+            data = make_correctness_data(case, device, 100 + i)
+            output = data["output"]
+            offset = case["offset"]
+
+            ref = reference_fused_moe_lora(
+                data["qcurr"], data["lora_a"], data["lora_b"],
+                data["topk_weights"], data["reference_expert_ids"],
+                data["token_lora_mapping"], data["top_k_num"],
+                data["adapter_enabled"], case["mul_routed_weight"],
+            ).to(device)
+            target_width = ref.shape[2]
+            expected = output.clone()
+            expected[:, :, offset: offset + target_width] = ref
+
+            mod.fused_moe_lora(
+                output, data["qcurr"], data["lora_a"], data["lora_b"],
+                data["topk_weights"], data["sorted_token_ids"],
+                data["expert_ids"], data["num_tokens_post_padded"],
+                data["token_lora_mapping"], data["max_lora_rank"],
+                data["top_k_num"], data["lora_ids"],
+                data["num_active_loras"], data["adapter_enabled"],
+                mul_routed_weight=case["mul_routed_weight"], offset=offset,
+            )
+            torch.cuda.synchronize()
+
+            if not torch.allclose(
+                output.float(), expected.float(), atol=5e-2, rtol=5e-2
+            ):
+                max_diff = (output.float() - expected.float()).abs().max().item()
+                return False, f"Case {name}: wrapper max diff = {max_diff:.6f}"
+
+            direct = prepare_direct_launch(
+                mod, output, data["qcurr"], data["lora_a"], data["lora_b"],
+                data["topk_weights"], data["sorted_token_ids"],
+                data["expert_ids"], data["num_tokens_post_padded"],
+                data["token_lora_mapping"], data["max_lora_rank"],
+                data["top_k_num"], data["lora_ids"],
+                data["num_active_loras"], data["adapter_enabled"],
+                mul_routed_weight=case["mul_routed_weight"], offset=offset,
+                shrink_split_k=case.get("shrink_split_k", 1),
+                use_b_l2_cache=case.get("use_b_l2_cache", True),
+            )
+            direct["fused"]()
+            torch.cuda.synchronize()
+
+            direct_expected = torch.zeros_like(output)
+            direct_expected[:, :, offset: offset + target_width] = ref
+            if not torch.allclose(
+                output.float(), direct_expected.float(), atol=5e-2, rtol=5e-2
+            ):
+                max_diff = (
+                    output.float() - direct_expected.float()
+                ).abs().max().item()
+                return False, f"Case {name}: direct max diff = {max_diff:.6f}"
+        except Exception as e:
+            return False, f"Case {name}: exception: {e}"
     return True, None
 
 
@@ -510,7 +763,11 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(TEST_SHAPES) + len(CORRECTNESS_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

@@ -114,6 +114,10 @@ def set_seed(seed: int = 42) -> None:
     [64, 128, 32, 1, 4, False, True, True],
     [128, 128, 64, 1, 4, False, True, False],
     [128, 128, 64, 1, 4, False, True, True],
+    [64, 64, 16, 1, 4, True, True, False],
+    [64, 64, 128, 1, 4, False, False, False],
+    [64, 64, 128, 1, 4, False, False, True],
+    [32, 32, 256, 1, 4, False, False, True],
 ])
 def test_tma_load_store(M, N, K, NUM_CTAS, NUM_WARPS, TRANS_A, TRANS_B, OUTPUT_F16, request):
     set_seed()

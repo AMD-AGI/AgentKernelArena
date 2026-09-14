@@ -1,4 +1,6 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
+"""Protected shared utilities for task compilation and evaluation."""
+
 import os
 import yaml
 import importlib.util

@@ -136,7 +136,12 @@ import math
 import torch
 import torch.nn.functional as F
 
-from aiter.ops.triton.fused_fp8_quant import fused_rms_fp8_group_quant
+from aiter.ops.triton.fused_fp8_quant import (
+    fused_flatten_fp8_group_quant,
+    fused_reduce_act_mul_fp8_group_quant,
+    fused_reduce_rms_fp8_group_quant,
+    fused_rms_fp8_group_quant,
+)
 import aiter
 
 fp8_dtype = aiter.dtypes.fp8
@@ -257,6 +262,104 @@ def run_torch_rms_fp8_group_quant(
     return (y1_q, y1_s), y1.to(x1.dtype), y2.to(x1.dtype), s.to(x1.dtype)
 
 
+def assert_group_quant_close(actual, expected, group_size=128):
+    actual_q, actual_scale = actual
+    expected_q, expected_scale = expected
+    torch.testing.assert_close(
+        actual_scale, expected_scale, atol=1e-5, rtol=RTOL
+    )
+    actual_upcast = upcast(
+        actual_q, actual_scale, dtype=torch.float32, group_size=group_size
+    )
+    expected_upcast = upcast(
+        expected_q, expected_scale, dtype=torch.float32, group_size=group_size
+    )
+    torch.testing.assert_close(
+        actual_upcast, expected_upcast, atol=ATOL, rtol=RTOL
+    )
+
+
+def check_flatten_fp8_group_quant(dtype, group_size):
+    torch.manual_seed(43)
+    x = (torch.randn((3, 2, 256), dtype=dtype) / 10).to("cuda")
+    actual = fused_flatten_fp8_group_quant(
+        x, group_size=group_size, dtype_quant=fp8_dtype
+    )
+    flattened = x.reshape(x.shape[0], -1).to(torch.float32)
+    expected = per_token_fp8_group_quant(flattened, fp8_dtype, group_size)
+    assert_group_quant_close(actual, expected, group_size)
+
+
+def check_reduce_act_mul_fp8_group_quant(dtype, group_size):
+    torch.manual_seed(44)
+    split_k, M, N, N2 = 3, 3, 256, 128
+    x = (torch.randn((split_k, M, 2 * N), dtype=dtype) / 10).to("cuda")
+    x2 = (torch.randn((split_k, M, N2), dtype=dtype) / 10).to("cuda")
+
+    actual, actual_y2 = fused_reduce_act_mul_fp8_group_quant(
+        x,
+        activation="silu",
+        x2=x2,
+        group_size=group_size,
+        dtype_quant=fp8_dtype,
+        dtype=dtype,
+    )
+
+    reduced = x.to(torch.float32).sum(dim=0)
+    expected_unquantized = F.silu(reduced[:, :N]) * reduced[:, N:]
+    expected = per_token_fp8_group_quant(
+        expected_unquantized, fp8_dtype, group_size
+    )
+    expected_y2 = x2.to(torch.float32).sum(dim=0).to(dtype)
+    assert_group_quant_close(actual, expected, group_size)
+    torch.testing.assert_close(actual_y2, expected_y2, atol=ATOL, rtol=RTOL)
+
+
+def check_reduce_rms_fp8_group_quant(dtype, group_size):
+    torch.manual_seed(45)
+    split_k, M, N1, N2, N3 = 3, 2, 256, 256, 128
+    inp1 = (torch.randn((split_k, M, N1), dtype=dtype) / 10).to("cuda")
+    inp2 = (torch.randn((split_k, M, N2), dtype=dtype) / 10).to("cuda")
+    inp3 = (torch.randn((split_k, M, N3), dtype=dtype) / 10).to("cuda")
+    res1 = (torch.randn((M, N1), dtype=dtype) / 10).to("cuda")
+    weight1 = torch.linspace(0.5, 1.5, N1, dtype=torch.float32).to("cuda")
+    weight2 = torch.linspace(1.5, 0.5, N2, dtype=torch.float32).to("cuda")
+
+    actual, actual_y1, actual_y2, actual_res1, actual_y3 = \
+        fused_reduce_rms_fp8_group_quant(
+            inp1,
+            weight1,
+            1e-6,
+            inp2=inp2,
+            inp2_weight=weight2,
+            inp2_epsilon=1e-6,
+            inp3=inp3,
+            group_size=group_size,
+            dtype_quant=fp8_dtype,
+            dtype=dtype,
+            res1=res1,
+            output_unquantized_inp1=True,
+        )
+
+    expected_res1_fp32 = inp1.to(torch.float32).sum(dim=0) + res1.to(torch.float32)
+    expected_y1_fp32 = rmsnorm(expected_res1_fp32, weight1, 1e-6)
+    expected = per_token_fp8_group_quant(
+        expected_y1_fp32, fp8_dtype, group_size
+    )
+    expected_y2 = rmsnorm(inp2.to(torch.float32).sum(dim=0), weight2, 1e-6).to(dtype)
+    expected_y3 = inp3.to(torch.float32).sum(dim=0).to(dtype)
+
+    assert_group_quant_close(actual, expected, group_size)
+    torch.testing.assert_close(
+        actual_y1, expected_y1_fp32.to(dtype), atol=ATOL, rtol=RTOL
+    )
+    torch.testing.assert_close(
+        actual_res1, expected_res1_fp32.to(dtype), atol=ATOL, rtol=RTOL
+    )
+    torch.testing.assert_close(actual_y2, expected_y2, atol=ATOL, rtol=RTOL)
+    torch.testing.assert_close(actual_y3, expected_y3, atol=ATOL, rtol=RTOL)
+
+
 # ============================================================================
 # INPUT GENERATION
 # ============================================================================
@@ -330,10 +433,28 @@ def run_correctness(shapes=None, verbose=True):
             if verbose:
                 print(f"  FAIL: ({M}, {N1}, {N2}) - {str(e)[:50]}")
 
+    additional_checks = [
+        ("flatten_fp8_group_quant", check_flatten_fp8_group_quant),
+        ("reduce_act_mul_fp8_group_quant", check_reduce_act_mul_fp8_group_quant),
+        ("reduce_rms_fp8_group_quant", check_reduce_rms_fp8_group_quant),
+    ]
+    for name, check in additional_checks:
+        try:
+            check(dtype, group_size)
+            results.append({"config": name, "correct": True})
+            if verbose:
+                print(f"  PASS: {name}")
+        except Exception as e:
+            failures.append({"config": name, "error": str(e)})
+            if verbose:
+                print(f"  FAIL: {name} - {str(e)[:120]}")
+        finally:
+            torch.cuda.empty_cache()
+
     if verbose:
         print("-" * 62)
         print(
-            f"{'Status:':<22} {'ALL PASS' if not failures else f'FAILED ({len(failures)}/{len(shapes)})'}"
+            f"{'Status:':<22} {'ALL PASS' if not failures else f'FAILED ({len(failures)}/{len(shapes) + len(additional_checks)})'}"
         )
 
     return {
@@ -537,7 +658,9 @@ if __name__ == "__main__":
 
     if args.correctness:
         print("\n[Correctness Mode]")
-        run_correctness(HARNESS_SHAPES)
+        correctness = run_correctness(HARNESS_SHAPES)
+        if not correctness["correct"]:
+            raise SystemExit(1)
     elif args.profile:
         print("\n[Profile Mode]")
         run_profile(PROFILE_SHAPES, warmup=args.warmup, iters=args.iterations)

@@ -9,9 +9,11 @@ triton kernels are inlined from aiter (op_tests + aiter.utility.fp4_utils).
 
 import argparse
 import itertools
+import json
 import math
 import os
 import sys
+from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
 
 
@@ -791,6 +793,7 @@ def run_benchmark(indices):
     print(f"Running benchmark on {len(indices)} configs...")
     latencies = []
     methods = []
+    report_cases = []
     for idx in indices:
         cfg = ALL_CONFIGS[idx]
         label = _cfg_label(cfg)
@@ -811,7 +814,27 @@ def run_benchmark(indices):
         )
         latencies.append(ms)
         methods.append(metadata["benchmark_method"])
+        report_cases.append(
+            {
+                "test_case_id": f"case={idx} {label}",
+                "params": {
+                    "case_index": idx,
+                    "hidden_dim": inp["hidden_dim"],
+                    "token_num": inp["token_num"],
+                    "token_num_sort": inp["token_num_sort"],
+                    "num_valid_ids_0": inp["num_valid_ids_0"],
+                    "topk": inp["topk"],
+                    "dtype": str(inp["dtype"]),
+                },
+                "execution_time_ms": ms,
+                **metadata,
+            }
+        )
         print(f"  [{idx}] {label}  {ms:.4f}ms")
+
+    report_path = Path("build/performance_report.json")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report_cases, indent=2))
 
     log_sum = sum(math.log(max(lat, 1e-12)) for lat in latencies)
     geo_mean = math.exp(log_sum / len(latencies))

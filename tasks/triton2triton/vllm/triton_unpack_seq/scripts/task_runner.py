@@ -12,13 +12,41 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2triton/triton_unpack_seq"
 SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_unpack_seq.py")
 
-# Test configurations: (B, lengths_list, D)
+# Performance configurations: (B, lengths_list, D). Keep these stable so
+# correctness-only coverage does not change the benchmark workload.
 TEST_SHAPES = [
     (4, [8, 12, 6, 10], 64),
     (2, [32, 16], 128),
     (8, [4, 8, 2, 16, 6, 10, 3, 7], 64),
     (3, [64, 32, 48], 256),
     (6, [10, 20, 15, 5, 25, 12], 128),
+]
+
+# Correctness configurations exercise the public wrapper as well as the kernel.
+# Optional values use the wrapper defaults.
+CORRECTNESS_CASES = [
+    {
+        "packed_shape": (B, max(lengths_list), D),
+        "lengths": lengths_list,
+    }
+    for B, lengths_list, D in TEST_SHAPES
+] + [
+    {
+        # Cover zero-length sequences and both sides of a BLOCK_T boundary.
+        "packed_shape": (5, 17, 70),
+        "lengths": [0, 7, 8, 9, 17],
+        "dtype": "float32",
+        "lengths_dtype": "int64",
+        "block_t": 8,
+        "block_d": 32,
+    },
+    {
+        # The wrapper must flatten and restore multiple feature dimensions.
+        "packed_shape": (3, 9, 2, 3, 5),
+        "lengths": [9, 0, 4],
+        "block_t": 16,
+        "block_d": 16,
+    },
 ]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
@@ -51,9 +79,11 @@ def load_module():
 def reference_unpack_seq(packed, lengths_list):
     """CPU/PyTorch reference for unpack_seq."""
     import torch
-    B, Lmax, D = packed.shape
+    B, Lmax = packed.shape[:2]
     N = sum(lengths_list)
-    out = torch.empty(N, D, device=packed.device, dtype=packed.dtype)
+    out = torch.empty(
+        (N,) + packed.shape[2:], device=packed.device, dtype=packed.dtype
+    )
     offset = 0
     for b in range(B):
         seq_len = lengths_list[b]
@@ -84,28 +114,50 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    dtype = torch.float16
-
-    for i, (B, lengths_list, D) in enumerate(TEST_SHAPES):
+    for i, case in enumerate(CORRECTNESS_CASES):
+        packed_shape = case["packed_shape"]
+        lengths_list = case["lengths"]
+        dtype = getattr(torch, case.get("dtype", "float16"))
+        lengths_dtype = getattr(torch, case.get("lengths_dtype", "int32"))
+        block_t = case.get("block_t", 64)
+        block_d = case.get("block_d", 64)
+        case_description = (
+            f"shape={packed_shape}, lengths={lengths_list}, "
+            f"dtype={dtype}, block_t={block_t}, block_d={block_d}"
+        )
         try:
             torch.manual_seed(42 + i)
 
-            Lmax = max(lengths_list)
-            packed = torch.randn(B, Lmax, D, device=device, dtype=dtype)
-            lengths = torch.tensor(lengths_list, device=device, dtype=torch.int32)
+            packed = torch.randn(*packed_shape, device=device, dtype=dtype)
+            lengths = torch.tensor(
+                lengths_list, device=device, dtype=lengths_dtype
+            )
 
-            result = mod.unpack_seq(packed, lengths)
+            result = mod.unpack_seq(
+                packed, lengths, block_t=block_t, block_d=block_d
+            )
             torch.cuda.synchronize()
 
             ref = reference_unpack_seq(packed, lengths_list)
 
+            if result.shape != ref.shape:
+                return False, (
+                    f"Case {i+1} ({case_description}): output shape "
+                    f"{tuple(result.shape)} != {tuple(ref.shape)}"
+                )
+            if result.dtype != ref.dtype:
+                return False, (
+                    f"Case {i+1} ({case_description}): output dtype "
+                    f"{result.dtype} != {ref.dtype}"
+                )
             if not torch.allclose(result, ref, atol=1e-3, rtol=1e-3):
                 max_diff = (result - ref).abs().max().item()
                 return False, (
-                    f"Shape {i+1} (B={B}, D={D}): max diff = {max_diff:.6f}"
+                    f"Case {i+1} ({case_description}): "
+                    f"max diff = {max_diff:.6f}"
                 )
         except Exception as e:
-            return False, f"Shape {i+1} (B={B}, D={D}): exception: {e}"
+            return False, f"Case {i+1} ({case_description}): exception: {e}"
 
     return True, None
 
@@ -203,7 +255,11 @@ def main():
 
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(CORRECTNESS_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

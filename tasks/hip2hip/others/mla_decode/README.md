@@ -7,7 +7,7 @@ skill.
 
 ## Shape contract
 
-Hardcoded in `mla_decode.hip`; do not change.
+Fixed by the protected native driver; do not change.
 
 | Dim | Value | Source |
 | --- | --- | --- |
@@ -24,7 +24,9 @@ Q dtype: `bf16`. KV dtype: `fp8 e4m3fn` (bias = 7, saturating). O dtype:
 
 ## Files
 
-- `mla_decode.hip` — kernel + main + host fp32 reference + bench loop.
+- `mla_decode.hip` — editable kernel and implementation helpers.
+- `scripts/native/benchmark_driver.hip` — protected workload contract, host
+  FP32 reference, correctness decision, launch geometry, and graph benchmark.
 - `Makefile` — `hipcc -O3 --offload-arch=gfx950 --offload-arch=gfx942`.
 - `scripts/task_runner.py` — `compile / correctness / performance` modes.
 - `config.yaml` — Arena task descriptor (`task_type: hip2hip`).
@@ -36,8 +38,8 @@ Five representative shapes (`batch`, `ctx`):
 
 ## Bar
 
-- **Correctness:** `max_abs <= 5e-2 OR max_rel <= 1e-1` against the in-binary
-  fp32 host reference, on every shape. The baseline meets this.
+- **Correctness:** `max_abs <= 5e-2 OR max_rel <= 1e-1` against the protected
+  FP32 host reference, on every shape. The baseline meets this.
 - **Performance:** mean device-time per shape across 100 measured iterations
   (10 warmup). The baseline is naive (no MFMA, full-FP32 inner loop); the
   optimization headroom is huge.

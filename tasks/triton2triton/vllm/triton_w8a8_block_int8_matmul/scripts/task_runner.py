@@ -20,6 +20,23 @@ TEST_SHAPES = [
     (256, 512, 512, 128, 128),
     (128, 256, 512, 128, 128),
 ]
+
+# Correctness cases: (A shape, N, block_n, block_k, output dtype name).
+# Keep these separate from TEST_SHAPES so correctness coverage does not alter
+# the scored performance workload.
+CORRECTNESS_CASES = [
+    ((64, 128), 128, 128, 128, "float16"),
+    ((128, 256), 256, 128, 128, "float16"),
+    ((64, 256), 128, 128, 128, "float16"),
+    ((256, 512), 512, 128, 128, "float16"),
+    ((128, 512), 256, 128, 128, "float16"),
+    # Exercise partial M, N, and K tiles with the default quantization blocks.
+    ((65, 130), 193, 128, 128, "float16"),
+    # Exercise another legal block size and the float32 output path.
+    ((67, 95), 79, 64, 64, "float32"),
+    # Exercise flattened batched A/As inputs and the bfloat16 output path.
+    ((2, 3, 95), 79, 64, 64, "bfloat16"),
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -52,12 +69,14 @@ def reference_w8a8_block_int8_matmul(A, B, As, Bs, block_size, output_dtype):
     """CPU reference: block-wise dequantize INT8 then matmul."""
     import torch
     block_n, block_k = block_size
-    M, K = A.shape
+    output_shape = A.shape[:-1] + (B.shape[0],)
+    K = A.shape[-1]
+    M = A.numel() // K
     N = B.shape[0]
 
-    A_f = A.cpu().float()
+    A_f = A.cpu().float().reshape(M, K)
     B_f = B.cpu().float()
-    As_f = As.cpu().float()
+    As_f = As.cpu().float().reshape(M, -1)
     Bs_f = Bs.cpu().float()
 
     # Dequantize A
@@ -79,7 +98,7 @@ def reference_w8a8_block_int8_matmul(A, B, As, Bs, block_size, output_dtype):
             B_dq[start_n:end_n, start_k:end_k] = B_f[start_n:end_n, start_k:end_k] * Bs_f[ng, kg]
 
     result = A_dq @ B_dq.T
-    return result.to(output_dtype)
+    return result.reshape(output_shape).to(output_dtype)
 
 
 def run_compile():
@@ -105,36 +124,47 @@ def run_correctness():
 
     device = "cuda"
 
-    for i, (M, N, K, block_n, block_k) in enumerate(TEST_SHAPES):
+    for i, (a_shape, N, block_n, block_k, dtype_name) in enumerate(CORRECTNESS_CASES):
         try:
             torch.manual_seed(42 + i)
             import triton as _triton
+            K = a_shape[-1]
+            output_dtype = getattr(torch, dtype_name)
 
             # Create INT8 tensors
-            A = torch.randint(-128, 127, (M, K), device=device, dtype=torch.int8)
+            A = torch.randint(-128, 127, a_shape, device=device, dtype=torch.int8)
             B = torch.randint(-128, 127, (N, K), device=device, dtype=torch.int8)
 
             # Scales
-            As = torch.rand(M, _triton.cdiv(K, block_k), device=device, dtype=torch.float32) * 0.1 + 0.01
+            As = torch.rand(
+                a_shape[:-1] + (_triton.cdiv(K, block_k),),
+                device=device,
+                dtype=torch.float32,
+            ) * 0.1 + 0.01
             Bs = torch.rand(_triton.cdiv(N, block_n), _triton.cdiv(K, block_k),
                            device=device, dtype=torch.float32) * 0.1 + 0.01
 
             result = mod.w8a8_block_int8_matmul(
-                A, B, As, Bs, [block_n, block_k], output_dtype=torch.float16
+                A, B, As, Bs, [block_n, block_k], output_dtype=output_dtype
             )
             torch.cuda.synchronize()
 
             ref = reference_w8a8_block_int8_matmul(
-                A, B, As, Bs, [block_n, block_k], torch.float16
+                A, B, As, Bs, [block_n, block_k], output_dtype
             ).to(device)
 
             if not torch.allclose(result, ref, atol=1e-1, rtol=1e-1):
                 max_diff = (result - ref).abs().max().item()
                 return False, (
-                    f"Shape {i+1} (M={M}, N={N}, K={K}): max diff = {max_diff:.6f}"
+                    f"Shape {i+1} (A={a_shape}, N={N}, K={K}, "
+                    f"blocks=({block_n}, {block_k}), dtype={dtype_name}): "
+                    f"max diff = {max_diff:.6f}"
                 )
         except Exception as e:
-            return False, f"Shape {i+1} (M={M}, N={N}, K={K}): exception: {e}"
+            return False, (
+                f"Shape {i+1} (A={a_shape}, N={N}, K={K}, "
+                f"blocks=({block_n}, {block_k}), dtype={dtype_name}): exception: {e}"
+            )
 
     return True, None
 
@@ -214,7 +244,11 @@ def main():
 
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {
+            "status": "ok" if ok else "fail",
+            "error": err,
+            "num_shapes": len(CORRECTNESS_CASES),
+        }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

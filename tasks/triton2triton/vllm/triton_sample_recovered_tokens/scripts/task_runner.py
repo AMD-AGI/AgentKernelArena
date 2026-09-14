@@ -32,6 +32,11 @@ TEST_SHAPES = [
     (32, 6, 512),
     (64, 8, 1024),
 ]
+CORRECTNESS_EDGE_CASES = [
+    (1, 1, 3, [1]),
+    (5, 3, 511, [0, 1, 0, 3, 0]),
+]
+NUM_CORRECTNESS_CASES = len(TEST_SHAPES) + len(CORRECTNESS_EDGE_CASES) + 1
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -104,6 +109,92 @@ def run_correctness():
             assert result.min() >= 0 and result.max() < vocab_size
         except Exception as e:
             return False, f"Shape {i+1}: exception: {e}"
+
+    for i, (batch_size, max_draft, vocab_size, num_per_req) in enumerate(
+        CORRECTNESS_EDGE_CASES
+    ):
+        case_name = f"Edge shape {i+1}"
+        try:
+            torch.manual_seed(100 + i)
+            cu = torch.cumsum(
+                torch.tensor(num_per_req, dtype=torch.int32, device=device), dim=0
+            )
+            total = sum(num_per_req)
+            draft_ids = torch.randint(
+                0, vocab_size, (total,), dtype=torch.int32, device=device
+            )
+            draft_probs = torch.rand(total, vocab_size, device=device)
+            draft_probs = draft_probs / draft_probs.sum(-1, keepdim=True)
+            target_probs = torch.rand(total, vocab_size, device=device)
+            target_probs = target_probs / target_probs.sum(-1, keepdim=True)
+            q = torch.empty(batch_size, vocab_size, device=device).exponential_()
+
+            result = mod.sample_recovered_tokens(
+                cu, draft_ids, draft_probs, target_probs, q,
+                max_draft, vocab_size,
+            )
+            ref = reference_sample_recovered_tokens(
+                cu, draft_ids, draft_probs, target_probs, q, vocab_size
+            )
+            if not torch.equal(result, ref):
+                return False, f"{case_name}: mismatch with draft_probs path"
+
+            result_no_draft = mod.sample_recovered_tokens(
+                cu, draft_ids, None, target_probs, q, max_draft, vocab_size
+            )
+            ref_no_draft = reference_sample_recovered_tokens(
+                cu, draft_ids, None, target_probs, q, vocab_size
+            )
+            if not torch.equal(result_no_draft, ref_no_draft):
+                return False, f"{case_name}: mismatch with NO_DRAFT_PROBS path"
+            torch.cuda.synchronize()
+            assert result.shape == (total,), f"Wrong shape: {result.shape}"
+            assert result.min() >= 0 and result.max() < vocab_size
+        except Exception as e:
+            return False, f"{case_name}: exception: {e}"
+
+    # Use sparse, normalized distributions to make the expected argmax exact.
+    # Row 0 ties at tokens 1 and 3, row 1 has no positive adjusted probability,
+    # and row 2 selects the final valid token before power-of-two padding.
+    try:
+        batch_size, max_draft, vocab_size = 3, 2, 513
+        cu = torch.tensor([1, 1, 3], dtype=torch.int32, device=device)
+        draft_ids = torch.tensor([0, 5, 0], dtype=torch.int32, device=device)
+        draft_probs = torch.zeros(3, vocab_size, device=device)
+        target_probs = torch.zeros_like(draft_probs)
+        draft_probs[0, 0] = 1.0
+        target_probs[0, 1] = 0.5
+        target_probs[0, 3] = 0.5
+        draft_probs[1, 5] = 1.0
+        target_probs[1, 5] = 1.0
+        draft_probs[2, 0] = 1.0
+        target_probs[2, vocab_size - 1] = 1.0
+        q = torch.ones(batch_size, vocab_size, device=device)
+        expected = torch.tensor([1, 0, vocab_size - 1], dtype=torch.int32, device=device)
+
+        ref = reference_sample_recovered_tokens(
+            cu, draft_ids, draft_probs, target_probs, q, vocab_size
+        )
+        ref_no_draft = reference_sample_recovered_tokens(
+            cu, draft_ids, None, target_probs, q, vocab_size
+        )
+        if not torch.equal(ref, expected) or not torch.equal(ref_no_draft, expected):
+            return False, "Tie/padding case: reference did not produce expected tokens"
+
+        result = mod.sample_recovered_tokens(
+            cu, draft_ids, draft_probs, target_probs, q,
+            max_draft, vocab_size,
+        )
+        if not torch.equal(result, expected):
+            return False, "Tie/padding case: mismatch with draft_probs path"
+        result_no_draft = mod.sample_recovered_tokens(
+            cu, draft_ids, None, target_probs, q, max_draft, vocab_size
+        )
+        if not torch.equal(result_no_draft, expected):
+            return False, "Tie/padding case: mismatch with NO_DRAFT_PROBS path"
+        torch.cuda.synchronize()
+    except Exception as e:
+        return False, f"Tie/padding case: exception: {e}"
     return True, None
 
 def run_performance():
@@ -171,7 +262,7 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": NUM_CORRECTNESS_CASES}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f: json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
         if err: print(f"Error: {err}")

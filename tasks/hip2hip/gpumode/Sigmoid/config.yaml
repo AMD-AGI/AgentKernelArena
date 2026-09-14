@@ -3,14 +3,14 @@ source_file_path:
 target_kernel_functions:
 - forward
 compile_command:
-- python3 eval_tools/compile.py --hip_file hip/hip_11184_Sigmoid.hip
+- python3 scripts/compile.py --hip_file hip/hip_11184_Sigmoid.hip
 correctness_command:
-- python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_11184_Sigmoid.py
-  --py_func_file pytorch_code_functional/py_11184_Sigmoid_func.py --hip_file hip/hip_11184_Sigmoid.hip
+- python3 scripts/correctness_check.py --py_modu_file scripts/pytorch_code_module/py_11184_Sigmoid.py
+  --py_func_file scripts/pytorch_code_functional/py_11184_Sigmoid_func.py --hip_file hip/hip_11184_Sigmoid.hip
 performance_command:
-- python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_11184_Sigmoid.py
-  --py_func_file pytorch_code_functional/py_11184_Sigmoid_func.py --hip_file hip/hip_11184_Sigmoid.hip
-  --ref_hip_file hip/hip_11184_Sigmoid_ref.hip
+- python3 scripts/cal_kernel_perf.py --py_modu_file scripts/pytorch_code_module/py_11184_Sigmoid.py
+  --py_func_file scripts/pytorch_code_functional/py_11184_Sigmoid_func.py --hip_file hip/hip_11184_Sigmoid.hip
+  --ref_hip_file scripts/hip/hip_11184_Sigmoid_ref.hip
 prompt:
   source_code: null
   instructions: You are a hip expert and good at gpu kernel implementation. Please
