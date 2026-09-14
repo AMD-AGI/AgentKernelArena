@@ -90,6 +90,15 @@ push and PR creation. `--plan` is the only intentionally offline mode.
    accepted per-task paths recorded in `state.yaml`; unexpected edits abort
    publication.
 
+Task proposals exclude runtime reports, ROCmBench `*_py.pt` outputs, materialized
+benchmark helpers, compiled objects/libraries, and ELF executables (including
+extensionless binaries). Ordinary tensor/input fixtures and executable scripts
+remain eligible for review. Reviewer snapshots still observe report mutations.
+The host checks for generated outputs again before committing, even when an older
+campaign manifest lists them as accepted changes; it refuses publication without
+deleting the experiment artifacts. Keep raw results in the run artifact directory
+and share summaries and artifact links in the PR instead of committing outputs.
+
 Run artifacts are written under `quality_loop_runs/<run-id>/`; the isolated audit
 branch lives under `.quality_loop_worktrees/<run-id>/`. Both are ignored by Git.
 Tasks pinned to another GPU architecture are reported as `platform_deferred`; run

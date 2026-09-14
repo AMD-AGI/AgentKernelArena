@@ -7,8 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src.perf_helper_materialization import (
+    AKA_HELPER_FILE_NAME,
     MARK_END,
     MARK_STARTS,
+    NATIVE_HIP_MATERIALIZED,
     ROCMBENCH_HELPER_STUB,
     VLLM_HELPER_STUB_BLOCK,
     replace_marked_region,
@@ -22,7 +24,16 @@ GENERATED_NAMES = {
     "optimized_perf.yaml",
     "quality_loop_review.yaml",
     "performance_report.json",
+    "perf_report.json",
     "compile_report.json",
+    "correctness_report.json",
+    "benchmark_results.json",
+    "eval_result.yaml",
+    AKA_HELPER_FILE_NAME,
+    NATIVE_HIP_MATERIALIZED.name,
+}
+GENERATED_SUFFIXES = {
+    ".o", ".obj", ".so", ".a", ".dll", ".dylib", ".exe", ".hsaco", ".pyc", ".pyo",
 }
 GENERATED_DIRS = {
     ".git",
@@ -79,14 +90,32 @@ def diff_trees(before: dict[str, str], after: dict[str, str]) -> TreeChanges:
     )
 
 
-def is_generated_path(relative: str, *, repo_subdir: str | None = None) -> bool:
+def is_generated_path(
+    relative: str, *, repo_subdir: str | None = None, root: Path | None = None
+) -> bool:
+    """Identify run outputs without excluding arbitrary tensor/input fixtures.
+
+    ROCmBench writes ``<source>_py.pt``; other .pt/.bin files may be legitimate
+    task inputs. Inspect ELF magic when a root is available to catch native
+    executables whose names have no extension. Never execute an artifact.
+    """
     path = Path(relative)
     if path.name in GENERATED_NAMES:
         return True
+    if path.suffix in GENERATED_SUFFIXES or path.name.endswith("_py.pt"):
+        return True
     if any(part in GENERATED_DIRS for part in path.parts):
         return True
-    if repo_subdir and path.parts and path.parts[0] == repo_subdir:
-        return True
+    if repo_subdir:
+        dependency_root = Path(repo_subdir)
+        if path == dependency_root or dependency_root in path.parents:
+            return True
+    if root is not None:
+        source = root / path
+        if source.is_file() and not source.is_symlink():
+            with source.open("rb") as stream:
+                if stream.read(4) == b"\x7fELF":
+                    return True
     return False
 
 

@@ -80,16 +80,17 @@ def _filtered_changes(
     after: dict[str, str],
     *,
     repo_subdir: str | None,
+    source_root: Path,
 ) -> TreeChanges:
     changes = diff_trees(before, after)
+
+    def keep(path: str) -> bool:
+        return not is_generated_path(path, repo_subdir=repo_subdir, root=source_root)
+
     return TreeChanges(
-        added=tuple(p for p in changes.added if not is_generated_path(p, repo_subdir=repo_subdir)),
-        modified=tuple(
-            p for p in changes.modified if not is_generated_path(p, repo_subdir=repo_subdir)
-        ),
-        deleted=tuple(
-            p for p in changes.deleted if not is_generated_path(p, repo_subdir=repo_subdir)
-        ),
+        added=tuple(p for p in changes.added if keep(p)),
+        modified=tuple(p for p in changes.modified if keep(p)),
+        deleted=tuple(p for p in changes.deleted if keep(p)),
     )
 
 
@@ -355,7 +356,8 @@ class QualityLoop:
             )
             after = snapshot_tree(validation_workspace)
             changes = _filtered_changes(
-                before, after, repo_subdir=_repo_subdir(task_config)
+                before, after, repo_subdir=_repo_subdir(task_config),
+                source_root=validation_workspace,
             )
             if changes.empty:
                 self._handle_unrepairable(task_id, validation)
@@ -439,6 +441,7 @@ class QualityLoop:
             original_tree,
             candidate_tree,
             repo_subdir=_repo_subdir(task_config),
+            source_root=candidate_task,
         )
         commit = None
         commit_pending = False
@@ -729,7 +732,8 @@ class QualityLoop:
         )
         after = snapshot_tree(case_workspace)
         changes = _filtered_changes(
-            before, after, repo_subdir=_repo_subdir(task_config)
+            before, after, repo_subdir=_repo_subdir(task_config),
+            source_root=case_workspace,
         )
         if changes.empty:
             return False
