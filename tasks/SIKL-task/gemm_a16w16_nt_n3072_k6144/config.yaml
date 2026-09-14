@@ -27,15 +27,25 @@ target_kernel_functions:
 # source_file_path[0], and kernel_identity carries the operator's identity and
 # owner. How a campaign searches -- attempt counts, coarse filters, budget --
 # is agent configuration, not task data.
+#
+# The source's host entry point is deliberately not a field. KernelForge treats
+# it as a hint for the port agent and does not fail without one, because the
+# driver owns how the reference and the baseline are invoked. It is named in the
+# instructions below and in the driver docstring, which is where prose belongs.
 # ---------------------------------------------------------------------------
 rewrite_source_file: /sgl-workspace/aiter/aiter/tuned_gemm.py
-rewrite_source_entry: gemm_a16w16
 
 # logical_operator is the task's KB identity and is also what KernelForge
 # derives target_kernel_functions above from. It must agree with workload.json's
 # builder_symbol, which is what the harness scores against; a disagreement makes
 # the harness find no factory and silently score the baseline as if the port had
 # never happened.
+#
+# source_owner is forwarded as the KB's owning framework. It is not decoration:
+# KernelForge would otherwise read the owner out of the source file's path, and
+# by the time it looks, the source is a copy in a scratch workspace with no
+# framework in its path -- so the recipes this task produces would be filed
+# under 'unknown'.
 kernel_identity:
   logical_operator: gemm_a16w16_nt_n3072_k6144
   source_owner: aiter

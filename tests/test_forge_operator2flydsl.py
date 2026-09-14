@@ -12,7 +12,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from agents.forge.common import _GITIGNORE, _infer_backend, _resolve_fellow
+from agents.forge.common import (
+    _GITIGNORE,
+    _infer_backend,
+    _resolve_fellow,
+    _resolve_framework,
+)
 from agents.forge_operator2flydsl.launch_agent import (
     REWRITE_WORKSPACE_DIR,
     _build_rewrite_command,
@@ -39,7 +44,6 @@ def _task_config(**overrides):
         "task_type": "operator2flydsl",
         "source_file_path": ["kernel.py"],
         "rewrite_source_file": "/does/not/matter/fused_moe.py",
-        "rewrite_source_entry": "fused_moe",
         "kernel_identity": {
             "logical_operator": "glm52_mxfp4_moe_2stage",
             "source_owner": "aiter",
@@ -227,8 +231,8 @@ def test_rewrite_command_forwards_the_task_contract(tmp_path):
         driver_copy=driver_copy,
         result_json=root / "forge_experiments" / "forge_operator2flydsl_result.json",
         port_target=_port_target(config, "config.yaml"),
-        source_entry=config["rewrite_source_entry"],
         logical_operator=config["kernel_identity"]["logical_operator"],
+        source_owner=_resolve_framework(config),
         agent_config=AGENT_CONFIG,
         gpu_arch="gfx950",
         gpu_type="mi355x",
@@ -239,8 +243,6 @@ def test_rewrite_command_forwards_the_task_contract(tmp_path):
     assert cmd[cmd.index("--source-kernel") + 1] == str(source_copy)
     assert cmd[cmd.index("--flydsl-kernel-name") + 1] == "kernel.py"
     assert cmd[cmd.index("--logical-op-name") + 1] == "glm52_mxfp4_moe_2stage"
-    assert cmd[cmd.index("--source-entry") + 1] == "fused_moe"
-    assert cmd[cmd.index("--target-functions") + 1] == "fused_moe"
     assert cmd[cmd.index("--gpu-target") + 1] == "gfx950"
     assert cmd[cmd.index("--gpu-type") + 1] == "mi355x"
     # Search controls come from the agent config and are not readable from a
@@ -249,9 +251,19 @@ def test_rewrite_command_forwards_the_task_contract(tmp_path):
     assert cmd[cmd.index("--max-port-attempts") + 1] == "3"
     # 7200s minus the 900s shutdown margin.
     assert cmd[cmd.index("--max-hours") + 1] == "1.75"
-    # apply-back is deliberately not requested: an Arena task has no framework
-    # repository to patch.
-    assert "--framework" not in cmd
+    # The task's declared owner reaches the KB. Without it KernelForge reads the
+    # owner out of the source path, which by then is a scratch copy with no
+    # framework in it, and files every recipe under "unknown". It does not
+    # request apply-back: that is decided by whether the workspace has a
+    # resolvable HEAD.
+    assert cmd[cmd.index("--framework") + 1] == "aiter"
+
+    # The source host entry is a prompt hint KernelForge does not require, so it
+    # is documented in the task instructions and the driver docstring instead of
+    # being a second machine-readable field. --target-functions goes with it,
+    # which is only safe because --framework above feeds the same inference.
+    for absent in ("--source-entry", "--target-functions"):
+        assert absent not in cmd, f"{absent} is prose, not task configuration"
 
 
 def test_rewrite_command_leaves_the_recipe_store_to_the_environment():
@@ -271,8 +283,8 @@ def test_rewrite_command_leaves_the_recipe_store_to_the_environment():
         driver_copy=Path("/tmp/ws/forge_driver.py"),
         result_json=Path("/tmp/ws/result.json"),
         port_target="kernel.py",
-        source_entry="fused_moe",
         logical_operator="glm52_mxfp4_moe_2stage",
+        source_owner="aiter",
         agent_config={**AGENT_CONFIG, "rewrite_kb": False},
         gpu_arch="gfx950",
         gpu_type="mi355x",

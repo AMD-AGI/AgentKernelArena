@@ -109,6 +109,21 @@ def test_task_is_driven_by_the_rewrite_pipeline(task):
     assert "rewrite" not in config, "the rewrite block is replaced by Arena fields"
     for key in ("snr_threshold", "max_port_attempts"):
         assert key not in config, f"{key} is agent search policy, not task data"
+    # rewrite_source_file is the only field this task type adds. The source's
+    # host entry was the second one; KernelForge treats it as a prompt hint and
+    # does not fail without it, so it belongs in prose.
+    added = [key for key in config if key.startswith("rewrite_")]
+    assert added == ["rewrite_source_file"], f"extra task-type fields: {added}"
+
+
+@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
+def test_the_source_entry_is_documented_where_it_now_lives(task):
+    # Dropping the field only costs nothing because the information stays
+    # reachable: the prompt sends the agent to the driver, and the driver names
+    # the production entry point.
+    assert "forge_driver.py" in _config(task)["prompt"]["instructions"]
+    driver = (task / "scripts" / "forge_driver.py").read_text()
+    assert "    entry " in driver, "the driver no longer names the production entry point"
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)

@@ -29,9 +29,11 @@ nested forge-loop. This launcher adapts an Arena task to it:
 
 Everything it reads from the task is a structured field, and all but one of them
 already existed: ``source_file_path[0]`` is where the port lands,
-``kernel_identity.logical_operator`` is the operator's identity, and
-``rewrite_source_file`` -- the one field this task type adds -- names the
-production implementation to port from. How the campaign searches (attempt
+``kernel_identity`` carries the operator's identity and its owning framework,
+and ``rewrite_source_file`` -- the one field this task type adds -- names the
+production implementation to port from. The source's host entry point is not a
+field: KernelForge treats it as a prompt hint and does not fail without one, so
+the task documents it in its instructions and in the driver docstring. How the campaign searches (attempt
 count, coarse filter, budget, model) is agent configuration and is never read
 from a task. See tasks/SIKL-task/gemm_a16w16_nt_n6144_k6144/config.yaml.
 """
@@ -55,6 +57,7 @@ from agents.forge.common import (
     _forge_max_hours,
     _init_git_workspace,
     _logical_operator,
+    _resolve_framework,
     _read_forge_result,
     _resolve_all_source_files,
     _resolve_gpu_arch,
@@ -226,8 +229,8 @@ def _build_rewrite_command(
     driver_copy: Path,
     result_json: Path,
     port_target: str,
-    source_entry: str,
     logical_operator: str,
+    source_owner: str,
     agent_config: dict[str, Any],
     gpu_arch: str,
     gpu_type: str,
@@ -253,6 +256,22 @@ def _build_rewrite_command(
     and this launcher has no better information. Guessing it from the suffix
     would be worse than silence, since these tasks port from a Python dispatch
     rather than from a Triton kernel.
+
+    ``--framework`` carries the task's declared source owner, and it is not
+    optional here even though KernelForge can infer one. Inference reads the
+    framework out of the source file's path, and by this point the source is a
+    copy inside the scratch workspace: the ``aiter`` component of
+    ``/sgl-workspace/aiter/aiter/tuned_gemm.py`` is gone, so inference would
+    fall back to ``unknown`` and file every recipe these tasks produce under an
+    owner nothing looks for. It does not request apply-back -- that is decided
+    by whether the workspace has a resolvable HEAD, not by this flag.
+
+    No ``--source-entry`` or ``--target-functions``. The entry is a hint shown
+    to the port agent; KernelForge says so and does not fail when it is absent,
+    because the driver owns how the reference and the baseline are invoked. The
+    task documents it in its instructions and in the driver docstring, which is
+    where prose belongs. Dropping ``--target-functions`` with it is only safe
+    because ``--framework`` is set above: it feeds the same owner inference.
     """
     snr_threshold = agent_config.get("snr_threshold", 30.0)
     max_port_attempts = int(agent_config.get("max_port_attempts", 3))
@@ -292,8 +311,8 @@ def _build_rewrite_command(
         "--supervisor-backend",
         str(agent_config.get("supervisor_backend", "codex")),
     ]
-    if source_entry:
-        cmd.extend(["--source-entry", source_entry, "--target-functions", source_entry])
+    if source_owner:
+        cmd.extend(["--framework", source_owner])
     return cmd
 
 
@@ -381,7 +400,14 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             f"{task_config_dir}. It is the operator's KB identity and what "
             "KernelForge derives the builder symbol from."
         )
-    source_entry = str(task_config.get("rewrite_source_entry") or "").strip()
+    source_owner = _resolve_framework(task_config)
+    if not source_owner:
+        logger.warning(
+            "no kernel_identity.source_owner; KernelForge will infer the owning "
+            "framework from the source path, which is a scratch copy by then and "
+            "resolves to 'unknown' -- every recipe this run publishes lands under "
+            "an owner nothing looks for"
+        )
 
     editable_sources = _resolve_all_source_files(
         workspace,
@@ -412,8 +438,8 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         driver_copy=driver_copy,
         result_json=result_json,
         port_target=port_target_name,
-        source_entry=source_entry,
         logical_operator=logical_operator,
+        source_owner=source_owner,
         agent_config=agent_config,
         gpu_arch=gpu_arch,
         gpu_type=gpu_type,
@@ -425,6 +451,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logger.info(f"  port target: {port_target_name}")
     logger.info(f"  driver:      {driver_copy}")
     logger.info(f"  operator:    {logical_operator}")
+    logger.info(f"  source owner:{source_owner or '<unset, KB owner will be unknown>'}")
     logger.info(f"  gpu target:  {gpu_arch}")
     logger.info(f"  gpu type:    {gpu_type}")
     logger.info(f"  model:       {agent_config.get('model')}")
