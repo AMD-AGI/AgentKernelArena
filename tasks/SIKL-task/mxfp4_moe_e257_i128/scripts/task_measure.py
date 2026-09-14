@@ -23,7 +23,7 @@ from typing import Any, Callable
 
 import torch
 
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
 
 import task_baseline
 import task_inputs
@@ -106,6 +106,43 @@ def compare_cases(launches: list | None) -> list[dict[str, Any]]:
     return results
 
 
+def verify_timed_invocation(inputs: dict[str, Any], timed: TimedRun) -> None:
+    """Hold the invocation that was timed to the result it reported.
+
+    A case is timed over one set of input buffers: the call is built once and
+    every warmup, capture and replay reads those same objects. An implementation can
+    answer the first call and serve the rest from a cache keyed on their
+    identity, and the capture then records the cached path, so every replay
+    measures a lookup. Correctness would not notice, and not by accident: it
+    builds fresh inputs per case and calls once, which is always a miss. The two
+    modes are separate invocations, so an implementation can tell which one is
+    scored.
+
+    Closing that means asking the timed unit itself, after the ground has moved:
+    the buffers are redrawn, the output it wrote is poisoned, and the same graph
+    is replayed. Its answer is judged by the comparison callback that judges
+    everything else. A replay that recomputes produces the new result; one that
+    replays a cached answer produces the old one or the poison.
+    """
+    if not timed.bound:
+        raise RuntimeError(
+            "the benchmark did not expose the invocation it timed, so nothing "
+            "here can tell whether the scored path computed the operator"
+        )
+    task_inputs.refill_case_inputs(inputs)
+    if isinstance(timed.outputs, torch.Tensor):
+        timed.outputs.fill_(float("nan"))
+    got = timed.rerun()
+    torch.cuda.synchronize()
+    expected = task_reference.run(**task_inputs.call_kwargs(inputs))
+    passed, detail = task_inputs.verdict(got, expected)
+    if not passed:
+        raise RuntimeError(
+            "the timed invocation does not compute the operator from its "
+            f"inputs: replaying it over a fresh draw gives {detail}"
+        )
+
+
 def time_cases(launches: list | None) -> list[dict[str, Any]]:
     """Time every case under the task's own sampling protocol.
 
@@ -116,12 +153,15 @@ def time_cases(launches: list | None) -> list[dict[str, Any]]:
     for index, case in enumerate(task_inputs.CASES):
         inputs = task_inputs.build_case_inputs(case)
         call = case_call(inputs, None if launches is None else launches[index])
+        timed = TimedRun()
         execution_time_ms, metadata = benchmark_cuda_graph_or_events(
             call,
             warmup=task_inputs.BENCH_WARMUP,
             repetition=task_inputs.BENCH_REPETITION,
             target_ms=task_inputs.BENCH_TARGET_MS,
+            timed_run=timed,
         )
+        verify_timed_invocation(inputs, timed)
         samples.append(
             {
                 "case_id": str(case["case_id"]),

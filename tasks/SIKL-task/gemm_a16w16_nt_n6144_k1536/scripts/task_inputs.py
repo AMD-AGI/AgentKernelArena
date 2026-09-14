@@ -98,6 +98,11 @@ K = int(WORKLOAD["axes"]["k"])
 TRANS_B = bool(WORKLOAD["trans_b"])
 SEED = int(WORKLOAD["seed"])
 
+# The draw used to re-arm a timed invocation. It only has to differ from SEED:
+# the point is that the values a captured graph replays over are ones no earlier
+# call in this process has seen, not that they come from a second distribution.
+REFILL_SEED = SEED + 1
+
 # The FlyDSL factory the port must expose. KernelForge derives it from the
 # task's logical operator and passes it to the driver in the environment, so the
 # harness reads the generated value rather than deriving it a second way: a
@@ -135,6 +140,18 @@ def build_case_inputs(case: dict[str, Any], device: str = "cuda") -> dict[str, A
         "b": torch.empty((N, K), dtype=torch.bfloat16, device=device),
     }
     return task_initialize.run(inputs, seed=SEED)
+
+
+def refill_case_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
+    """Redraw a case's buffers in place, keeping their storage.
+
+    The bundle's callback writes preallocated buffers rather than allocating
+    them, so redrawing through it changes the values while leaving every
+    property the operator depends on untouched. A CUDA graph captured over these
+    buffers therefore reads the new draw on its next replay, which is what makes
+    the timed invocation answerable for a result it cannot have precomputed.
+    """
+    return task_initialize.run(inputs, seed=REFILL_SEED)
 
 
 def call_kwargs(inputs: dict[str, Any]) -> dict[str, Any]:

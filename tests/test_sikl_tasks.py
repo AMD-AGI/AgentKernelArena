@@ -300,6 +300,26 @@ def test_driver_and_harness_share_one_measurement_implementation(task):
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
+def test_the_timed_invocation_is_held_to_its_result(task):
+    # A case is timed over one set of buffers, so an implementation can answer
+    # the first call and serve every replay from a cache keyed on their
+    # identity. Correctness cannot see it -- fresh inputs per case are always a
+    # miss -- so the timed unit itself is re-run over a redrawn input and judged.
+    measure = (task / "scripts" / "task_measure.py").read_text()
+    inputs = (task / "scripts" / "task_inputs.py").read_text()
+
+    assert "timed_run=timed" in measure
+    assert "verify_timed_invocation(inputs, timed)" in measure
+    # Requesting the collector also makes an unobservable capture fatal, which
+    # is what closes the variant that returns a cached tensor and runs nothing.
+    assert "TimedRun" in measure
+    assert "refill_case_inputs" in measure
+    assert 'fill_(float("nan"))' in measure
+    assert "def refill_case_inputs" in inputs
+    assert "REFILL_SEED" in inputs
+
+
+@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
 def test_driver_supports_the_dual_path_contract(task):
     driver = (task / "scripts" / "forge_driver.py").read_text()
     for flag in ("--ref-bench-mode", "--bench-mode", "--profile-run"):
