@@ -120,26 +120,43 @@ def verify_timed_invocation(inputs: dict[str, Any], timed: TimedRun) -> None:
 
     Closing that means asking the timed unit itself, after the ground has moved:
     the buffers are redrawn, the output it wrote is poisoned, and the same graph
-    is replayed. Its answer is judged by the comparison callback that judges
-    everything else. A replay that recomputes produces the new result; one that
-    replays a cached answer produces the old one or the poison.
+    is replayed. What the replay has to show is that it recomputed -- it wrote
+    over the poison, and it did not reproduce the answer it gave for the draw
+    before. Neither test involves a tolerance, deliberately: the production
+    implementation does not clear the bundle's bar at every shape, and on the
+    small-M cases it does not even agree with itself run to run, so any accuracy
+    criterion here would reject the baseline this task is scored against.
     """
     if not timed.bound:
         raise RuntimeError(
             "the benchmark did not expose the invocation it timed, so nothing "
             "here can tell whether the scored path computed the operator"
         )
+    previous = (
+        timed.outputs.detach().clone()
+        if isinstance(timed.outputs, torch.Tensor)
+        else None
+    )
     task_inputs.refill_case_inputs(inputs)
     if isinstance(timed.outputs, torch.Tensor):
         timed.outputs.fill_(float("nan"))
     got = timed.rerun()
     torch.cuda.synchronize()
-    expected = task_reference.run(**task_inputs.call_kwargs(inputs))
-    passed, detail = task_inputs.verdict(got, expected)
-    if not passed:
+    if not isinstance(got, torch.Tensor):
         raise RuntimeError(
-            "the timed invocation does not compute the operator from its "
-            f"inputs: replaying it over a fresh draw gives {detail}"
+            f"the timed invocation returned {type(got).__name__}, so its output "
+            "cannot be inspected for whether the replay produced it"
+        )
+    if not torch.isfinite(got).all():
+        raise RuntimeError(
+            "the timed invocation left part of its output unwritten: the poison "
+            "survived the replay, so the measured work does not produce the result"
+        )
+    if previous is not None and torch.equal(got, previous):
+        raise RuntimeError(
+            "the timed invocation reproduced its previous output bit for bit "
+            "over a fresh draw, so what was measured is a replay of a cached "
+            "answer rather than the operator"
         )
 
 
