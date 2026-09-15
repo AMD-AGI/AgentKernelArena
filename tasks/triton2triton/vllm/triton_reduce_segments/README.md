@@ -44,3 +44,11 @@ tolerances, full-wrapper timing, 10 warmups and 100 samples.
 Additional unscored public-branch controls from PR105: Packed variable queries, zero denominator/extreme maxima and FP32 output.
 These use explicit `control-upstream-*` manifest rows. Original scored inputs,
 numerical gates, seeds, warmups and sample counts remain unchanged.
+
+The protected oracle maps packed queries through `cu_seqlens_q`, includes only
+the active segments selected by sequence length and tile size, and returns zero
+when their rescaled denominator is zero. It accumulates reference values in
+FP32 and rounds to the supplied output dtype. For the five original fully active
+workloads and their replay inputs, this preserves the original FP16 reference
+values; the same shape, dtype, in-place return, and read-only checks also apply
+to the additional controls.

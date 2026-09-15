@@ -1,6 +1,9 @@
 """Preserve the in-place output contract and check actual timed reductions."""
 from contextlib import contextmanager
+from functools import lru_cache
+import importlib.util
 import inspect
+from pathlib import Path
 
 
 def snapshots(values):
@@ -14,11 +17,23 @@ def unchanged(values, saved):
             raise AssertionError("Segment reduction modified a read-only input")
 
 
-def reference(harness, inputs, output):
-    # The five original workloads use every segment. Keep their original
-    # independent logsumexp reference, run on pristine CPU inputs.
-    partial, maxima, exp_sums = (v.cpu() for v in inputs[:3])
-    return harness.reference_reduce(partial, maxima, exp_sums, output.shape[-1]).to(
+@lru_cache(maxsize=1)
+def reference_module():
+    # Bind this task's protected reference by path, without a generic module
+    # name that could resolve to another task's controls in the same process.
+    spec = importlib.util.spec_from_file_location(
+        '_reduce_segments_reference', Path(__file__).with_name('_upstream_controls.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def reference(harness, inputs, output, tile_size=16):
+    partial, maxima, exp_sums, lengths, starts = (v.cpu() for v in inputs)
+    # Respect packed query routing, active segments and zero denominators.
+    # Original fully active FP32-input/FP16-output cases retain the same values.
+    return reference_module().reference_reduce(
+        partial, maxima, exp_sums, output.shape[-1], lengths, starts, tile_size).to(
         device=output.device, dtype=output.dtype)
 
 
@@ -45,7 +60,7 @@ def checked_modules(harness):
         def checked(partial, maxima, sums, output, lengths, starts, tile_size=16):
             inputs = (partial, maxima, sums, lengths, starts)
             pristine = snapshots(inputs)
-            expected = reference(harness, pristine, output)
+            expected = reference(harness, pristine, output, tile_size)
             result = original(partial, maxima, sums, output, lengths, starts, tile_size)
             unchanged(inputs, pristine)
             check_output(output, expected)
