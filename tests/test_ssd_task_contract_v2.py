@@ -173,3 +173,78 @@ def test_protocol_manifest_controls_and_failed_performance(task,monkeypatch):
     assert all(r['reason']=='replay rejected' for r in failed['cases'])
     parsed=parse_command_result('ARENA_EVAL_RESULT='+json.dumps(failed),role='candidate',action='performance',returncode=1)
     manifest.validate(parsed)
+
+
+@pytest.mark.parametrize('fault', ['none', 'wrong_measured', 'cached_replay', 'timed_input_write'])
+def test_real_performance_runner_wires_collector_and_rejects_bad_paths(task, monkeypatch, fault):
+    """Execute the actual runner on CPU tensors with explicitly fake device timing."""
+    root,h,_,_=task
+    from src.tools.perf.aka_benchmark import TimedRun
+    for name in ('randn','rand','arange','zeros'):
+        original=getattr(torch,name)
+        def factory(*args,_original=original,_name=name,**kwargs):
+            if kwargs.get('device')=='cuda':kwargs['device']='cpu'
+            value = _original(*args,**kwargs)
+            # Large CPU fixture signals distinguish stale results even at the
+            # retained chunk-state atol=.5; this is not a scored workload.
+            return value * 10 if _name == "randn" else value
+        monkeypatch.setattr(torch,name,factory)
+    original_to=torch.Tensor.to
+    def cpu_to(self,*args,**kwargs):
+        if args and args[0]=='cuda':args=('cpu',*args[1:])
+        if kwargs.get('device')=='cuda':kwargs['device']='cpu'
+        return original_to(self,*args,**kwargs)
+    monkeypatch.setattr(torch.Tensor,'to',cpu_to)
+    if root.name=='triton_ssd_chunk_cumsum':
+        shape=(4,2,2,True,False)
+        def op(dt,A,chunk_size,cu,dt_bias=None,dt_softplus=False):
+            return h.reference(dt,A,chunk_size,cu,dt_bias,dt_softplus)
+        name='chunk_cumsum_fwd'
+    elif root.name=='triton_ssd_chunk_scan':
+        shape=(4,2,2,1,2,2)
+        def op(cb,x,dt,dA,C,states,cu,out,seq):
+            out.copy_(h.reference_chunk_scan(cb,x,dt,dA,C,states,seq,dt.shape[-1]))
+        name='chunk_scan_fwd'
+    elif root.name=='triton_ssd_chunk_state':
+        shape=(4,2,2,1,2,2)
+        def op(B,x,dt,dA,cu):return h.reference(B,x,dt,dA,cu)
+        name='chunk_state_fwd'
+    elif root.name=='triton_ssd_chunk_state_varlen':
+        shape=(8,2,2,2,1,2,2)
+        def op(B,x,dt,dA,cu,states):return h.reference_chunk_state_varlen(B,x,dt,dA,cu,states,dt.shape[-1])
+        name='chunk_state_varlen'
+    else:
+        shape=(2,2,2,2)
+        def op(states,dA,cu,seq):return h.reference(states,dA,seq)
+        name='state_passing_fwd'
+    monkeypatch.setattr(h,'TEST_SHAPES',[shape])
+    monkeypatch.setattr(h,'load_module',lambda:types.SimpleNamespace(**{name:op}))
+    monkeypatch.setitem(sys.modules,'_aka_benchmark',types.SimpleNamespace(TimedRun=TimedRun))
+    calls=[]
+    def fake_benchmark(fn,*,warmup,repetition,timed_run):
+        assert (warmup,repetition)==(10,100)
+        output=fn();assert output is not None
+        values=output if isinstance(output,tuple) else (output,)
+        saved=tuple(v.clone() for v in values)
+        def replay():
+            if fault=='cached_replay':
+                for out,old in zip(values,saved):out.copy_(old)
+                return output
+            return fn()
+        timed_run._bind(replay,output)
+        if fault=='wrong_measured':
+            for out in values:out.add_(100)
+        if fault=='timed_input_write':
+            target=next(c.cell_contents for c in fn.__closure__ if isinstance(c.cell_contents,torch.Tensor) and
+                        c.cell_contents.is_floating_point() and all(c.cell_contents is not o for o in values))
+            target.add_(1)
+        calls.append(True)
+        return 1.0,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph','cpu_fixture':True}
+    monkeypatch.setattr(h,'_benchmark_cuda_graph_or_events',fake_benchmark)
+    records=h.run_performance()
+    assert len(records)==1 and calls
+    if fault=='none':
+        assert records[0]['execution_time_ms']==1.
+        assert records[0]['timed_output_correctness']=='PASS' and records[0]['replay_correctness']=='PASS'
+    else:
+        assert records[0]['execution_time_ms']<0 and records[0].get('error')
