@@ -314,6 +314,47 @@ def test_zero_subnormal_is_rejected():
         replay.check(harness,contract,bad,answer,args)
 
 
+@pytest.mark.parametrize('dtype,integer,sign', [(torch.float16,torch.int16,-(1<<15)),
+                                              (torch.float32,torch.int32,-(1<<31))])
+def test_zero_bit_gate_rejects_each_subnormal_sign_without_float_comparison(dtype,integer,sign):
+    replay,contract,harness=modules('write_zeros_to_output')
+    control=contract.residual_input(dtype,'cpu')
+    assert control.shape==(1,7)
+    assert control.view(integer)[0,:4].tolist()==[1,sign+1,2,sign+2]
+    for index in range(7):
+        bad=control[:,index:index+1].contiguous()
+        with pytest.raises(AssertionError,match='nonzero bit pattern'):
+            replay.check(harness,contract,bad,torch.zeros_like(bad),(bad,))
+    signed_zeros=torch.tensor([[0,sign]],dtype=integer).view(dtype)
+    replay.check(harness,contract,signed_zeros,torch.zeros_like(signed_zeros),(signed_zeros,))
+    for value in (float('nan'),float('inf'),-float('inf')):
+        bad=torch.tensor([[value]],dtype=dtype)
+        with pytest.raises(AssertionError,match='nonzero bit pattern'):
+            replay.check(harness,contract,bad,torch.zeros_like(bad),(bad,))
+    contract.verify_subnormal_rejection('cpu')
+
+
+def test_zero_on_device_negative_control_fails_if_checker_stops_rejecting(monkeypatch):
+    _,contract,_=modules('write_zeros_to_output')
+    monkeypatch.setattr(contract,'check',lambda *args:None)
+    with pytest.raises(AssertionError,match='accepted a subnormal'):
+        contract.verify_subnormal_rejection('cpu')
+
+
+def test_zero_manifest_records_actual_2d_residual_storage():
+    _,contract,harness=modules('write_zeros_to_output')
+    manifest=json.loads((TASKS/'triton_write_zeros_to_output/workloads.json').read_text())
+    declared=manifest['cases'][-1]['params']['control_inputs']
+    inputs=list(contract.control_inputs(harness))
+    assert len(inputs)==len(declared)==3
+    for (value,),row in zip(inputs,declared):
+        assert list(value.shape)==row['shape'] and str(value.dtype)=='torch.'+row['dtype']
+        if 'storage_values' in row:
+            assert value.view(getattr(torch,row['storage_dtype'])).flatten().tolist()==row['storage_values']
+        else:
+            assert value.tolist()==row['values']
+
+
 def test_topk_original_boundary_allowance_preserved_but_large_error_rejected():
     replay, contract, harness = modules('topk_topp')
     args = (torch.arange(256,dtype=torch.float32)[None,:],torch.tensor([8],dtype=torch.int32),None,-torch.inf)

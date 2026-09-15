@@ -30,6 +30,6 @@ Canonical benchmark helpers must be materialized by Arena; do not edit their gen
 
 ## Protected evaluation controls
 
-Zero output is checked exactly, including subnormal residuals. Replay poisons output with ones; this constant-output operator does not claim an input-dependent cache control.
+Zero output is checked by integer IEEE magnitude bits, ignoring only the sign of zero. Correctness controls use genuine positive/negative float16 and float32 subnormals in valid 2D tensors, and run an on-device negative control proving those residuals are rejected. This avoids dependence on GPU floating-point flush-to-zero behavior. Replay poisons output with ones; this constant-output operator does not claim an input-dependent cache control.
 
 The task-local `_arena_contract.py` and `_arena_replay.py` are protected evaluation code. Original cases, seeds, tolerances, warmups, sample counts, allocations and preparation boundaries remain in `scripts/task_runner.py`. The extra `contract_controls` manifest row is correctness-only. Both the frozen baseline and candidate receive the same checks. The measured graph exposes its real outputs; an untimed replay changes a domain-valid input, recomputes the CPU oracle and restores all input buffers in `finally`. For the zero operator the replay control instead poisons its output. References and snapshots are outside device timing. Failure to observe or replay the measured invocation is an error, never an accepted timing sample.

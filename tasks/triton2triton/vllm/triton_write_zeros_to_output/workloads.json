@@ -125,7 +125,63 @@
       ],
       "params": {
         "case_index": 5,
-        "coverage": "Zero output is checked exactly, including subnormal residuals. Replay poisons output with ones; this constant-output operator does not claim an input-dependent cache control."
+        "coverage": "Zero output is checked exactly, including subnormal residuals. Replay poisons output with ones; this constant-output operator does not claim an input-dependent cache control.",
+        "control_inputs": [
+          {
+            "shape": [
+              2,
+              3
+            ],
+            "dtype": "float32",
+            "values": [
+              [
+                1,
+                -2,
+                3
+              ],
+              [
+                4,
+                5,
+                -6
+              ]
+            ]
+          },
+          {
+            "shape": [
+              1,
+              7
+            ],
+            "dtype": "float32",
+            "storage_dtype": "int32",
+            "storage_values": [
+              1,
+              -2147483647,
+              2,
+              -2147483646,
+              8388607,
+              -2139095041,
+              8388608
+            ]
+          },
+          {
+            "shape": [
+              1,
+              7
+            ],
+            "dtype": "float16",
+            "storage_dtype": "int16",
+            "storage_values": [
+              1,
+              -32767,
+              2,
+              -32766,
+              1023,
+              -31745,
+              1024
+            ]
+          }
+        ],
+        "exact_zero_check": "Integer IEEE magnitude bits must be zero; either zero sign accepted. Both signs of the smallest float16/float32 subnormal are independently rejected on the evaluation device before candidate controls."
       }
     }
   ],
