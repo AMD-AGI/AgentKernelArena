@@ -51,3 +51,11 @@ Do not edit `test_kernel_harness.py`, `_arena_*.py`, `workloads.json`, or genera
 next to the original harness even though the public runner is `_arena_eval.py`.
 Unsupported hardware or missing dependencies return a failing envelope; use a
 compatible image/GPU before scheduling this task.
+
+The protected adapter now checks the output of the actual measured invocation,
+then perturbs Q/K/V, poisons output and intermediate scratch, and verifies a
+replay against the same paged reference. Read-only page mappings and inputs are
+checked; input and scratch state are restored even after failure. The original
+lock-zeroing preparation remains outside timing and is reused for replay.
+The original 11 correctness cases, 7 performance cases, 50 warmups, 200 samples,
+median reduction, numerical thresholds and timed wrapper remain unchanged.

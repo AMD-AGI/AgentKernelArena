@@ -1,6 +1,9 @@
 """Explicit task actions. Public evaluation dispatch is independent of agents."""
 import os
 import test_kernel_harness as h
+from _arena_checks import install
+
+install(h)
 
 
 def inputs():
