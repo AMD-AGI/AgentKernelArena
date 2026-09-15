@@ -358,7 +358,8 @@ establish an improvement in performance: command durations include JIT/setup,
 and a matched repeated scoring campaign has not been run. HIP `TanH` was compiled
 on the new image in the earlier CPU-only job, but HIP GPU correctness, MoE,
 agent integration, sanitizer compatibility and the full migrated suite remain
-outside this probe's coverage. The earlier ROCm 10 candidate has no GPU results.
+outside this legacy probe's coverage. The later v2 comparison below supplies
+GPU evidence for both ROCm 10 candidates.
 
 The SIKL stub routes to the production AITER baseline. Its successful execution
 validates that baseline path, not a generated FlyDSL candidate. Compile phases
@@ -366,6 +367,49 @@ mean the task's declared compile check; JIT compilation may occur in correctness
 The follow-up runs all original cases, with an outer 120-second per-command
 probe cap; a cap expiry is recorded as a probe timeout, never a task pass. No
 threshold, workload, warmup, timing boundary, or scoring policy is changed.
+
+### Migrated v2 representatives on both ROCm 10 candidates
+
+Job **139982**, on 2026-09-15, completed successfully in 9m28s using one
+MI355X on node100. It ran the immutable 0.5.18 and then 0.5.19 manifests from the
+registry table on the same physical GPU, UUID
+`36376430-3032-3037-6366-633933643165`. Each container verified one visible GPU,
+more than 256 GiB free memory, checked tensor computation and the actual
+`docker_benchmark.sh _container_smoke` entrypoint. Both smoke checks passed.
+
+The read-only source snapshot was `85050b1f`. Each image independently
+materialized these v2 tasks, validated their initial baseline, then ran the
+unchanged candidate through the shared final evaluator:
+
+| Task | Complete scored cases | 0.5.18 | 0.5.19 | Device timing |
+| --- | ---: | --- | --- | --- |
+| `hip2hip/gpumode/TanH` | 11 | PASS | PASS | CUDA graph |
+| `triton2triton/geak_eval/L1/fused_append_shared_experts` | 18 | PASS | PASS | CUDA graph |
+| `flydsl2flydsl/fp8_gemm_4wave_kernel` | 5 | PASS | PASS | CUDA graph |
+
+An independent artifact audit checked every action's successful exit and
+`arena-eval-v1` envelope, final compilation/correctness/workload/timing flags,
+case coverage, runtime digest and candidate source hashes. Both images used
+identical candidate bytes from the snapshot and identical case manifests.
+Baseline and candidate timings are retained in the raw reports; one sequential
+comparison does not establish a performance improvement or its variance.
+
+Artifacts are under `logs/image-v2-gpu-validation/139982/`, including per-image
+`gpu.json`, `image.json`, `smoke.log`, `task-comparison.json`, session actions
+and framework-owned `task_result.yaml` files. The consolidated audit is
+`runtime-comparison-audit.json`, SHA256
+`e4f45d04e7072848d50c6d0d22d815d89d0d0127b2c079cffcc2666826edb80e`.
+The snapshot and launch bundle were verified before execution. No task source,
+case, tolerance, timing parameter or installed package changed between images.
+
+This is real GPU qualification of the listed v2 action/final-evaluation paths,
+not an LLM task-validator run or an optimization campaign. FlyDSL was 0.3.1 in
+0.5.18 and 0.3.2 in 0.5.19; both retained the previously recorded PyTorch/Triton
+versions. Both reported `rocprof-compute=optional-missing`. These representatives
+do not exercise AITER-dependent MoE or all image-backed tasks, and do not qualify
+profiler counters, sanitizers or arbitrary default cache paths. Containers used
+explicit private temporary paths and a writable AITER config mount. No credentials
+or agent installations were mounted. The scoring default remains unchanged.
 
 ## Profiler capability policy
 
