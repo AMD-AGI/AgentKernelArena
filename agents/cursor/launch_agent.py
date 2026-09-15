@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 import yaml
 from agents import register_agent
+from agents.run_budget import append_run_budget
 from src.module_registration import AgentType, load_prompt_builder
 from src.runtime_env import PYTHON_ENV_VAR, build_subprocess_env
 
@@ -99,6 +100,7 @@ def integrate_agent_config(prompt, agent_config: dict[str, Any], python_path: st
     max_iters = agent_config.get("max_iterations")
     if max_iters is not None:
         prompt = prompt.rstrip() + f"\n\nFor this optimization, you must iterate up to {max_iters} versions."
+    prompt = append_run_budget(prompt, agent_config.get("timeout_seconds"))
     if python_path:
         prompt = prompt.rstrip() + f"\n\nUse this Python interpreter: `{python_path}`."
     return prompt

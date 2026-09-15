@@ -62,6 +62,17 @@ prompt guidance, not a CLI-enforced turn limit. An explicit `model: null` omits
 the model argument and delegates selection to the CLI; omitting the field uses
 Arena's checked-in default. Explicit `effort: null` similarly omits that flag.
 
+All three CLI prompts also expose the resolved per-invocation time budget and
+ask the agent to retain its best implementation at the declared delivery paths,
+allow time for its required checks, and finish within that budget. This is
+guidance, not a guarantee of timely delivery. The subprocess timeout still
+applies independently, and Arena still checks the files actually delivered.
+An agent timeout and a passing retained candidate are recorded separately;
+scratch experiments alone are not a delivered implementation. This guidance
+was added after real Claude runs exhausted a 1,800-second budget while tuning
+temporary files, including one whose final HIP target remained empty. Those
+historical failures remain recorded; new runs must qualify the changed prompt.
+
 ```yaml
 agent:
   template: claude_code

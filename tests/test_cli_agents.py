@@ -177,6 +177,11 @@ def test_launch_forwards_literal_argv_and_run_settings(launcher, fake_cli, caplo
         assert prompt not in args
     assert delivered_prompt.startswith(prompt)
     assert "up to" not in delivered_prompt
+    # The actual subprocess must see the run override, not a task timeout or
+    # the launcher's default. All three CLI transports share this guidance.
+    assert "budget for this agent invocation is 10 seconds" in delivered_prompt
+    assert "task's declared candidate paths" in delivered_prompt
+    assert "3600 seconds" not in delivered_prompt
     assert invocation["cwd"] == str(workspace)
     assert invocation["python"] == sys.executable
     assert not (workspace / "SHELL_RAN").exists()
