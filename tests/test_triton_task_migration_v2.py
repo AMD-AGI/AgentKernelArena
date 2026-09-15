@@ -587,6 +587,53 @@ ROCM = sorted([*(ROOT/'tasks/triton2triton/rocmbench').rglob('config.yaml'),
                *(ROOT/'tasks/instruction2triton').rglob('config.yaml')])
 
 
+@pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/gemm',
+                                    'tasks/triton2triton/rocmbench/hard/gemm'])
+def test_rocm_gemm_scope_retains_original_scored_cases_and_numerical_gate(relative,monkeypatch):
+    task=ROOT/relative
+    source=task/'gemm.py'
+    original=subprocess.check_output(['git','show',f'{BASE}:{source.relative_to(ROOT).as_posix()}'],cwd=ROOT)
+    assert source.read_bytes()==original
+    shapes=pure_functions(source,['get_x_vals']).get_x_vals()
+    assert shapes==[(1024*v,1024*v,1024*v) for v in range(1,9)]+[
+        (4864,4096,8192),(9728,8192,65536),(4864,8192,4160)]
+    rows=json.loads((task/'workloads.json').read_text())['cases']
+    assert len(rows)==22 and sum('performance' in r['checks'] for r in rows)==11
+    for function,suffix in [('test_correctness',''),('test_performance','_str')]:
+        selected=[r['params']['arguments'] for r in rows if r['params']['function']==function]
+        assert {(r['M'],r['N'],r['K']) for r in selected}==set(shapes)
+        assert len(selected)==11
+        for args in selected:
+            assert all(args[name+suffix]=='fp16' for name in ('in_dtype_a','in_dtype_b','out_dtype'))
+            assert args['col_a'] is False and args['col_b'] is False
+    # Independent small known answer, then a negative control, through both
+    # original protected correctness and the added performance-input oracle.
+    a=torch.tensor([[1.,2.],[3.,4.]],dtype=torch.float16)
+    b=torch.tensor([[5.,6.],[7.,8.]],dtype=torch.float16)
+    expected=torch.tensor([[19.,22.],[43.,50.]],dtype=torch.float16)
+    context={'current_scale_a8_b8':None,'a':a,'b':b,'c':expected.clone()}
+    reference=module_at(task/'_arena_reference.py',monkeypatch)
+    check=reference.prepare(context,None)
+    check(None)
+    context['c'].zero_()
+    with pytest.raises(reference.NumericalMismatch):check(None)
+    def generator(m,n,dtype,col,seed,device):
+        assert dtype==torch.float16 and col is False and device=='cuda'
+        value=a if seed==1 else b
+        return value,value.float(),None
+    result=expected.clone()
+    def candidate(a,b,c,*args,**kwargs):
+        assert kwargs==dict(a_scale=None,b_scale=None,scale_a8_b8=None,activation='')
+        c.copy_(result)
+    protected=pure_functions(source,['get_x_vals','test_correctness'],dict(
+        pytest=pytest,set_seed=lambda:None,name_to_torch_types={'fp16':torch.float16},gen_input=generator,
+        dtype_is_8_bit=lambda dtype:False,matmul=candidate,result_gold={}))
+    args=(2,2,2,False,False,'fp16','fp16','fp16',SimpleNamespace(node=SimpleNamespace(name='known-answer')))
+    protected.test_correctness(*args)
+    result.zero_()
+    with pytest.raises(AssertionError):protected.test_correctness(*args)
+
+
 @pytest.mark.parametrize('path', ROCM, ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
 def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path):
     task=path.parent

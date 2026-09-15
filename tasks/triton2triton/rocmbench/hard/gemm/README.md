@@ -7,6 +7,28 @@ of this directory's historical suite name. Edit only the declared function scope
 references, input generation, assertions, test parameters and timing policy.
 Deliver edits to those files; a fenced code block alone is not a submission.
 
+## Workload scope and implementation interface
+
+This Arena task measures **row-major FP16 GEMM**, `C = A @ B`, with FP16
+inputs and output, `APPLY_SCALE=None` and `ACTIVATION=""`. Its workload is the
+original protected pytest selection in `gemm.py` and `workloads.json`: eight
+square `(M,N,K)=(1024*v,1024*v,1024*v)` shapes for `v=1..8`, plus
+`(4864,4096,8192)`, `(9728,8192,65536)` and `(4864,8192,4160)`. These cover
+different matrix sizes, rectangular GEMM and both long and tile-dependent tail
+reductions. Each shape retains its original correctness and performance case.
+The numerical gate is unchanged: `atol=5e-3`, `rtol=1e-2`, with the original
+FP16 PyTorch result and the additional protected tensor-contract checks.
+
+The implementation API is broader than this selected workload. Its dtype,
+stride, scaling and activation arguments and existing behavior must be preserved.
+The historical API documentation below explains those arguments; it does not
+claim that this task benchmarks every supported combination. The original pytest
+selection excludes alternate dtypes, column-major layouts and activation/scaling
+modes; the optional standalone plotting CLI is separate from Arena's configured
+pytest evaluation. A PASS for this task certifies the declared workload only,
+not those additional API paths or arbitrary M/N-tail shapes. No original case,
+assertion or implementation branch is removed by this scope clarification.
+
 ## Evaluation contract
 
 Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|candidate compile|correctness|performance`
@@ -201,7 +223,6 @@ def matmul_kernel(
                                 Used for PID remapping across XCDs.
     """
     # Your code here.
-
 
 
 

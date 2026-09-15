@@ -1,5 +1,5 @@
 schema_version: 2
-description: Implement or improve the declared Triton functions for gemm; preserve all harness semantics.
+description: Optimize the declared row-major FP16 GEMM workloads; preserve the full implementation interface and protected harness semantics.
 candidate:
   language: triton
   initial_state: implemented
