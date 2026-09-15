@@ -217,3 +217,15 @@ are read-only and inputs/poisoned outputs restore in `finally`, outside timing.
 The added tail controls use signed deterministic Q/K/V with nonzero K/V offsets.
 The independent answer is checked to be nonzero before launching the candidate,
 so a cached zero result cannot make the sign-flip replay control vacuous.
+
+### FP8 zero-padding compiler compatibility
+
+Pinned Triton's block-pointer `padding_option="zero"` lowers to an integer
+constant, which cannot be numerically cast directly to E4M3FNUZ. FP8 input
+loads therefore reinterpret the same byte addresses as uint8, apply the same
+M/N bounds with byte zero padding, and bitcast the result back to the original
+FP8 element type. Byte zero encodes FP8 +0; all valid input encodings are
+preserved exactly. FP16 loads, arithmetic, scale operations, public launch
+arguments, cases, references and numerical gates are unchanged. This corrects
+the previous masked-load revision's compilation failure; a fresh baseline is
+required for this revision.

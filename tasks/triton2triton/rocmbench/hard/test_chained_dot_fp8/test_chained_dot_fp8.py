@@ -53,17 +53,25 @@ def _chained_dot(
 ):
     start_m = tl.program_id(0)
     off_z = tl.program_id(1)
-    Q_block_ptr = tl.make_block_ptr(base=Q + off_z * stride_qz, shape=(M, BLOCK_D), strides=(stride_qm, stride_qd),
+    # Block-pointer zero padding lowers to an integer zero in pinned Triton.
+    # Read FP8 as bytes so that padding is legal, then reinterpret unchanged bits.
+    # One FP8 element is one byte, hence strides and addresses are unchanged.
+    Q_load = Q.to(tl.pointer_type(tl.uint8)) if USE_FP8 else Q
+    K_load = K.to(tl.pointer_type(tl.uint8)) if USE_FP8 else K
+    V_load = V.to(tl.pointer_type(tl.uint8)) if USE_FP8 else V
+    Q_block_ptr = tl.make_block_ptr(base=Q_load + off_z * stride_qz, shape=(M, BLOCK_D), strides=(stride_qm, stride_qd),
                                     offsets=(start_m * BLOCK_M, 0), block_shape=(BLOCK_M, BLOCK_D), order=(1, 0))
-    K_block_ptr = tl.make_block_ptr(base=K + off_z * stride_kz, shape=(BLOCK_D, N), strides=(stride_kd, stride_kn),
+    K_block_ptr = tl.make_block_ptr(base=K_load + off_z * stride_kz, shape=(BLOCK_D, N), strides=(stride_kd, stride_kn),
                                     offsets=(0, 0), block_shape=(BLOCK_D, BLOCK_N), order=(0, 1))
-    V_block_ptr = tl.make_block_ptr(base=V + off_z * stride_vz, shape=(N, BLOCK_D), strides=(stride_vn, stride_vd),
+    V_block_ptr = tl.make_block_ptr(base=V_load + off_z * stride_vz, shape=(N, BLOCK_D), strides=(stride_vn, stride_vd),
                                     offsets=(0, 0), block_shape=(BLOCK_N, BLOCK_D), order=(0, 1))
 
     s_scale = q_desc * k_desc * s_sc
     acc_scale = s_desc * v_desc * o_sc
 
     q = tl.load(Q_block_ptr, boundary_check=(0,), padding_option="zero")
+    if USE_FP8:
+        q = q.to(Q.type.element_ty, bitcast=True)
 
     acc = tl.zeros([BLOCK_M, BLOCK_D], dtype=tl.float32)
     lo, hi = 0, N
@@ -71,6 +79,8 @@ def _chained_dot(
         start_n = tl.multiple_of(start_n, BLOCK_N)
 
         k = tl.load(K_block_ptr, boundary_check=(1,), padding_option="zero")
+        if USE_FP8:
+            k = k.to(K.type.element_ty, bitcast=True)
         s = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
         s += tl.dot(q, k)
 
@@ -78,6 +88,8 @@ def _chained_dot(
             s *= s_scale
 
         v = tl.load(V_block_ptr, boundary_check=(0,), padding_option="zero")
+        if USE_FP8:
+            v = v.to(V.type.element_ty, bitcast=True)
         acc += tl.dot(s.to(v.dtype), v)
 
         K_block_ptr = tl.advance(K_block_ptr, (0, BLOCK_N))

@@ -127,7 +127,28 @@ def test_original_classes_scored_cases_gates_and_reviewed_masks(task,monkeypatch
             assert kw['boundary_check']==expected[pointer]
             if ast.unparse(node.func)=='tl.load':assert kw['padding_option']=='zero'
             seen.add(pointer);node.keywords=[]
-    assert seen==set(expected) and hashlib.sha256(ast.dump(kernel).encode()).hexdigest()==old['kernel_ast']
+    assert seen==set(expected)
+    pointer_casts={f"{p}_load":f"{p}.to(tl.pointer_type(tl.uint8)) if USE_FP8 else {p}" for p in "QKV"}
+    seen_casts=set();seen_bits=set()
+    class NormalizeByteLoads(ast.NodeTransformer):
+        def visit_Assign(self,node):
+            if len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id in pointer_casts:
+                name=node.targets[0].id;assert ast.unparse(node.value)==pointer_casts[name];seen_casts.add(name);return None
+            return self.generic_visit(node)
+        def visit_If(self,node):
+            if ast.unparse(node.test)=='USE_FP8' and len(node.body)==1 and isinstance(node.body[0],ast.Assign):
+                assignment=node.body[0];name=ast.unparse(assignment.targets[0])
+                if name in ['q','k','v']:
+                    assert not node.orelse
+                    assert ast.unparse(assignment.value)==f'{name}.to({name.upper()}.type.element_ty, bitcast=True)'
+                    seen_bits.add(name);return None
+            return self.generic_visit(node)
+        def visit_Name(self,node):
+            if node.id in pointer_casts:node.id=node.id[0]
+            return node
+    kernel=NormalizeByteLoads().visit(kernel)
+    assert seen_casts==set(pointer_casts) and seen_bits=={'q','k','v'}
+    assert hashlib.sha256(ast.dump(kernel).encode()).hexdigest()==old['kernel_ast']
     rows=json.loads((path/'workloads.json').read_text())['cases'];assert len(rows)==26 and sum('performance' in r['checks'] for r in rows)==20
     assert hashlib.sha256(json.dumps(rows[:24],sort_keys=True,separators=(',',':')).encode()).hexdigest()==old['rows']
     assert all(r['checks']==['correctness'] for r in rows[24:])
@@ -204,3 +225,16 @@ ORIGINAL = {'tasks/instruction2triton/rocmbench/test_chained_dot_fp8': {'classes
                                                                            'to_float8': 'a34b908ef8251af63976f13730cd53555bd8b6a1a7b993ea62d719db263a56a1'},
                                                              'kernel_ast': '617e279d290073c1216a5a1fe96a252ca144c63ac1134c4175eb22d8c496f791',
                                                              'rows': '55983a50e5b62794c270f6b35ac45082d76d77b2684bb8adf7567e1ec9b28f8d'}}
+
+
+def test_fp8_padded_byte_load_preserves_all_encodings_and_zero(task):
+    _,ref=task
+    raw=torch.arange(256,dtype=torch.uint8)
+    original=raw.view(torch.float8_e4m3fnuz)
+    # Exhaust all bit patterns, including the NaN bit, without numerical casts.
+    padded=torch.cat([raw,torch.zeros(35,dtype=torch.uint8)]).view(torch.float8_e4m3fnuz)
+    assert ref.equal_bytes(original,padded[:256])
+    assert bool(torch.isfinite(padded[256:].float()).all())
+    assert torch.equal(padded[256:].float(),torch.zeros(35))
+    # Numeric uint8 -> FP8 conversion would silently corrupt signed encodings.
+    assert not ref.equal_bytes(original,raw.float().to(original.dtype))
