@@ -105,3 +105,11 @@ def add_kernel(
 
 
 
+
+Performance validation uses the canonical per-call samples and shared timing
+statistics, preserving the original benchmark configuration and mean device
+latency. It retains the actual add output buffer from the canonical TimedRun
+collector. After timing, it changes both inputs, poisons the output and
+checks the same graph replay against the original add tolerance. Original inputs,
+seeds, cases, warmups and samples are unchanged during timing. An unobservable
+event fallback cannot satisfy this replay check and fails explicitly.

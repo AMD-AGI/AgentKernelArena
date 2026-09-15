@@ -873,32 +873,82 @@ def test_oracle_distinguishes_output_contract_failure_from_numerical_error(monke
         reference.compare(torch.tensor([float('nan')]),torch.zeros(1),atol=1e-3,rtol=1e-2)
 
 
-def test_timed_wrong_path_rejected_by_rocm_adapter(monkeypatch):
-    task=ROOT/'tasks/instruction2triton/rocmbench/test_add_kernel'
+@pytest.mark.parametrize('relative',['tasks/instruction2triton/rocmbench/test_add_kernel','tasks/triton2triton/rocmbench/easy/test_add_kernel'])
+@pytest.mark.parametrize('mode',['correct','incorrect_timed','stale','no_write','changing_wrong','event_fallback',
+                                'zero_inputs_and_output_timed','zero_inputs_and_output_replay'])
+def test_add_canonical_samples_observe_exact_replay_and_reject_wrong_output(monkeypatch,relative,mode):
+    # Use the actual PytestBenchmarker configuration and statistics helper,
+    # with a CPU graph simulator only at the canonical device-timing boundary.
+    task=ROOT/relative
     adapter=module_at(task/'_arena_eval.py',monkeypatch)
     reference=module_at(task/'_arena_reference.py',monkeypatch)
-    import sys
-    monkeypatch.setitem(sys.modules,'_arena_reference',reference)
-    plugin=SimpleNamespace(action='performance',current_row={'test_case_id':'synthetic-cpu'},exercised=set())
-    class Base:
-        def __init__(self,op_callable,**kwargs):self.op_callable=op_callable;self.prepare_fn=None
-        def run_benchmark(self,*args,**kwargs):
-            self.op_callable()
-            return {'timing_ms':{'mean':1.0},'benchmark_method':'cuda_graph'}
-    Checked=adapter.benchmark_type(Base,plugin,None)
-    def scenario():
-        x=torch.ones(4);y=torch.ones(4);output=torch.empty_like(x)
-        calls=[]
-        def op():
-            output.copy_(x+y if not calls else torch.zeros_like(x))
-            calls.append(1)
-        return Checked(op_callable=op)
-    benchmark=scenario()
-    with pytest.raises(reference.NumericalMismatch):benchmark.run_benchmark()
-    assert not plugin.exercised
+    monkeypatch.setitem(__import__('sys').modules,'_arena_reference',reference)
+    class Timed:
+        outputs=None
+        def _bind(self,rerun,outputs):self.outputs=outputs;self.rerun=rerun
+    calls=[]
+    def timer(fn,*,timed_run=None,**kwargs):
+        assert timed_run is not None
+        assert kwargs['warmup']==10 and kwargs['repetition']==100
+        calls.append(kwargs)
+        if mode=='event_fallback':raise RuntimeError('timed_run requires an observable CUDA-graph replay')
+        output=fn();saved=output.clone()
+        if mode=='incorrect_timed':output.zero_()
+        def replay():
+            if mode=='correct' or mode.startswith('zero_inputs'):fn()
+            elif mode=='stale':output.copy_(saved)
+            elif mode=='changing_wrong':output.fill_(123)
+            return output
+        timed_run._bind(replay,output)
+        return [0.25]*100,dict(benchmark_method='cuda_graph',benchmark_warmup=10,benchmark_samples=100)
+    monkeypatch.setitem(__import__('sys').modules,'_aka_benchmark',SimpleNamespace(
+        TimedRun=Timed,benchmark_cuda_graph_or_events_samples=timer))
+    helper=module_at(ROOT/'src/tools/perf/performance_utils_pytest.py',monkeypatch)
+    monkeypatch.setitem(__import__('sys').modules,'performance_utils_pytest',helper)
+    plugin=SimpleNamespace(action='performance',current_row={'test_case_id':'cpu-replay'},exercised=set())
+    Checked=adapter.benchmark_type(helper.PytestBenchmarker,plugin,None)
+    def make():
+        x=torch.tensor([2.,4.,6.]);y=torch.tensor([1.,3.,5.]);output=torch.empty_like(x)
+        launches=[]
+        def launch():
+            launches.append(None)
+            output.copy_(x+y)
+            if (mode=='zero_inputs_and_output_timed' and len(launches)>=2 or
+                    mode=='zero_inputs_and_output_replay' and len(launches)>=3):
+                x.zero_();y.zero_();output.zero_()
+            return 'compiled-kernel-handle'
+        return Checked(op_callable=launch,op_name='add',config=helper.do_bench_config(warm_up=10,repetition=100))
+    benchmark=make();original=benchmark.op_callable
+    if mode=='correct':
+        record=benchmark.run_benchmark(current_params_dict={})
+        assert record['timing_ms']['mean']==0.25
+        assert plugin.current_row['metadata']['perturbed_input_replay_checked']
+        assert plugin.current_row['metadata']['device_timing']['benchmark_samples']==100
+        assert plugin.exercised=={'cpu-replay'}
+        # Compare effective public-timer arguments with the actual old helper
+        # path, including defaults hidden behind the task's direct sample call.
+        import inspect
+        prior=[]
+        monkeypatch.setattr(helper,'benchmark_cuda_graph_or_events_samples',
+                            lambda fn,**options:(prior.append(options) or [0.25],{}))
+        helper._measure_times(original,benchmark.config,prepare_fn=benchmark.prepare_fn,
+                              use_cuda_graph=benchmark.use_cuda_graph,fallback_reason=benchmark.fallback_reason)
+        canonical=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch)
+        signature=inspect.signature(canonical.benchmark_cuda_graph_or_events_samples)
+        def effective(options):
+            bound=signature.bind_partial(None,**options);bound.apply_defaults()
+            return {k:v for k,v in bound.arguments.items() if k not in ('fn','timed_run')}
+        assert effective(calls[0])==effective(prior[0])
+    elif mode=='event_fallback':
+        with pytest.raises(RuntimeError,match='observable'):benchmark.run_benchmark(current_params_dict={})
+    else:
+        with pytest.raises((reference.NumericalMismatch,ValueError)):
+            benchmark.run_benchmark(current_params_dict={})
+    if mode!='correct':assert not plugin.exercised
+    assert benchmark.op_callable is original and len(calls)==1
 
 
-@pytest.mark.parametrize('path', ROCM, ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
+@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name!='test_add_kernel'], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
 def test_rocm_timing_evidence_retains_canonical_fallback_reason(monkeypatch, path):
     adapter = module_at(path.parent/'_arena_eval.py', monkeypatch)
     expected = torch.tensor([2.])
