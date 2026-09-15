@@ -193,3 +193,19 @@ sources, while Python dispatch, test inputs and references stay protected.
 The task adapter verifies that `import aiter` resolves to this materialized
 package. An installed image package is not a fallback. Each action still uses a
 fresh build directory and must record compilation of a declared candidate source.
+
+
+## Serving-independent cache preparation
+
+The protected harness constructs the public ROCm paged-cache layout directly:
+keys `[block, head, dim / x, offset, x]`, values `[block, head, dim, offset]`,
+where `x = 16 / element_size`. It scatters BF16 keys/values using the existing
+physical slot mapping with task-owned PyTorch indexing before timing.
+The attention implementation remains `aiter.paged_attention_rocm`; no serving
+engine is imported merely to create its input buffers. This removes the missing
+vLLM binary dependency in the SGLang runtime without changing any measured
+attention work, allocation boundary, case, seed, tolerance or warmup.
+The recorded vLLM image and historical timings above remain provenance, not a
+claim that the new runtime has passed qualification. Scalar cache-layout
+controls cover non-contiguous slots, padding and refresh behavior; fresh full
+GPU validation is still required.

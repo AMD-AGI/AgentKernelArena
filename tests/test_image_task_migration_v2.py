@@ -1301,3 +1301,77 @@ def test_ck_replay_checks_original_inputs_and_restores_on_failures(name, monkeyp
         h._assert_output_contract(inputs, reference(inputs).float())
     with pytest.raises(AssertionError, match="shape"):
         h._assert_output_contract(inputs, reference(inputs).flatten())
+
+
+@pytest.mark.parametrize("dtype_name", ["bfloat16", "float16"])
+def test_hip_paged_cache_layout_matches_scalar_slot_mapping(dtype_name):
+    import torch
+    h = load_module(TASKS / "mi355x_vllm_hip_paged_attention_decode/scripts/task_runner.py")
+    dtype = getattr(torch, dtype_name)
+    heads, dim, block_size, blocks = 2, 16, 4, 5
+    x = 16 // torch.empty((), dtype=dtype).element_size()
+    slots = torch.tensor([9, 2, 15, 4, 0])
+    keys = torch.arange(5 * heads * dim).reshape(5, heads, dim).to(dtype)
+    values = -keys - 1
+    key_cache = torch.full((blocks, heads, dim // x, block_size, x), -99., dtype=dtype)
+    value_cache = torch.full((blocks, heads, dim, block_size), -99., dtype=dtype)
+    inputs = dict(num_kv_heads=heads, head_size=dim, block_size=block_size,
+                  slot_mapping=slots, key=keys, value=values,
+                  key_cache=key_cache, value_cache=value_cache)
+    expected_key, expected_value = key_cache.clone(), value_cache.clone()
+    for token, slot in enumerate(slots.tolist()):
+        for head in range(heads):
+            for d in range(dim):
+                expected_key[slot // block_size, head, d // x, slot % block_size, d % x] = keys[token, head, d]
+                expected_value[slot // block_size, head, d, slot % block_size] = values[token, head, d]
+    h._fill_kv_cache(inputs)
+    torch.testing.assert_close(key_cache, expected_key, rtol=0, atol=0)
+    torch.testing.assert_close(value_cache, expected_value, rtol=0, atol=0)
+    # Refresh really replaces populated slots; untouched padding stays untouched.
+    inputs["key"] = keys + 5
+    h._fill_kv_cache(inputs)
+    assert not torch.equal(key_cache, expected_key)
+    assert torch.equal(value_cache, expected_value)
+    assert torch.equal(key_cache[4], expected_key[4])
+
+
+@pytest.mark.parametrize("quant,expected_block,expected_split", [(1,64,3),(2,32,3),(3,32,0)])
+def test_ck_dispatch_binds_both_stages_and_keeps_quant_contract(monkeypatch, quant, expected_block, expected_split):
+    from types import SimpleNamespace
+    h = load_module(TASKS / "mi355x_vllm_ck_moe_2stage/scripts/ck_dispatch.py")
+    qtype = SimpleNamespace(per_1x128=1, per_1x32=2)
+    class EnumValue(int):
+        @property
+        def value(self): return int(self)
+    stage1, stage2 = lambda: None, lambda: None
+    original_meta = SimpleNamespace(stage1="flydsl",stage2="asm",run_1stage=True)
+    calls = []
+    def impl(*args, **kw):
+        selected = kw["_metadata_transform"](original_meta)
+        assert selected.stage1.func is stage1 and selected.stage2.func is stage2
+        assert selected.run_1stage is False
+        assert selected.block_m == expected_block and selected.ksplit == expected_split
+        assert selected.stage1.keywords["quant_type"] == quant
+        assert selected.stage2.keywords["kernelName"] == ""
+        assert kw["_q_dtype_a"] == "original-activation-dtype"
+        assert kw["w1_scale"] is w1_scale and kw["w2_scale"] is w2_scale
+        assert args == (hidden,w1,w2,weights,ids)
+        calls.append(selected)
+        return "ck-result"
+    aiter = SimpleNamespace(QuantType=qtype,ck_moe_stage2_fwd=stage2)
+    moe = SimpleNamespace(get_padded_M=lambda m:m,get_inter_dim=lambda *a:(8,4096,1792),
+        get_block_size_M=lambda *a:32,get_ksplit=lambda *a:3,use_nt=lambda *a:False,
+        MOEMetadata=SimpleNamespace,ck_moe_stage1=stage1,_fused_moe_impl=impl)
+    modules={"aiter":aiter,"aiter.fused_moe":moe}
+    monkeypatch.setattr(h.importlib,"import_module",lambda name:modules[name])
+    hidden, w1, w2, ids = [SimpleNamespace(shape=s) for s in ((64,4096),(8,3584,4096),(8,4096,1792),(64,2))]
+    weights,w1_scale,w2_scale = object(),object(),object()
+    assert h.run_ck_moe(hidden,w1,w2,weights,ids,w1_scale=w1_scale,w2_scale=w2_scale,
+        quant_type=EnumValue(quant),activation=EnumValue(0),dtype="bf16",
+        activation_dtype="original-activation-dtype") == "ck-result"
+    assert len(calls)==1 and original_meta.stage1=="flydsl"
+    # Missing runtime hook must fail, never execute the broad dispatcher.
+    del moe._fused_moe_impl
+    with pytest.raises(AttributeError):
+        h.run_ck_moe(hidden,w1,w2,weights,ids,w1_scale=w1_scale,w2_scale=w2_scale,
+            quant_type=EnumValue(quant),activation=EnumValue(0),dtype="bf16",activation_dtype="a")

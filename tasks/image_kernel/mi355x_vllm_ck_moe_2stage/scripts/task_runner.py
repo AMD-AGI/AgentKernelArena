@@ -599,9 +599,9 @@ def _prepare_moe(case: dict, correctness: bool = False) -> dict:
 
 
 def _run_moe(inputs: dict):
-    from aiter.fused_moe import fused_moe
+    from ck_dispatch import run_ck_moe
 
-    return fused_moe(
+    return run_ck_moe(
         inputs["hidden"],
         inputs["w1"],
         inputs["w2"],
@@ -612,6 +612,7 @@ def _run_moe(inputs: dict):
         quant_type=inputs["quant_type"],
         activation=inputs["activation"],
         dtype=_torch().bfloat16,
+        activation_dtype=inputs["activation_dtype"],
     )
 
 

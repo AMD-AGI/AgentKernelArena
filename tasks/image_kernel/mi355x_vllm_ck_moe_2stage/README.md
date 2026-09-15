@@ -96,3 +96,19 @@ original timed output is checked first. Every read-only input tensor is compared
 byte-for-byte before and after replay; input contamination fails. Input buffers
 are restored in `finally`, including when replay or a comparison fails. All
 snapshot, reference, comparison and restoration work remains outside timing.
+
+## CK dispatch on the current runtime
+
+New AITER tuning defaults can choose FlyDSL or one-stage ASM for these cases,
+which bypasses the declared CK candidate. The protected `ck_dispatch.py` binds
+both roles to CK stage 1 and CK stage 2 through AITER's metadata transform hook.
+It uses the upstream untuned CK shape heuristics and preserves AITER sorting,
+quantization, activation, reduction and output allocation. Activation dtype is
+explicitly taken from the existing case contract. Every action still rebuilds
+and attests the declared CK source; a missing hook or unsupported specialization
+fails instead of falling back to another backend.
+
+This restores the named CK task's execution path on the new runtime. It is not a
+claim that today's untuned launch configuration reproduces historical production
+dispatch timings. Baseline and candidate use the same protected selection;
+original cases, reference gates, warmups and sampling remain unchanged.

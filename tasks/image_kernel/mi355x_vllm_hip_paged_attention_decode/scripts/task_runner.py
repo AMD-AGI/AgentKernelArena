@@ -196,11 +196,7 @@ def _make(case: dict) -> dict:
         device="cuda",
         dtype=dtype,
     )
-    from vllm.v1.attention.ops.paged_attn import PagedAttention
-
-    key_cache, value_cache = PagedAttention.split_kv_cache(
-        kv_cache, num_kv_heads, head_size
-    )
+    key_cache, value_cache = _split_kv_cache(kv_cache, num_kv_heads, head_size)
 
     block_table = torch.arange(
         num_seqs * pages_per_seq, device="cuda", dtype=torch.int32
@@ -257,6 +253,14 @@ def _make(case: dict) -> dict:
     return inputs
 
 
+def _split_kv_cache(kv_cache, num_kv_heads, head_size):
+    # This is the public ROCm cache ABI, independent of the serving package.
+    x = 16 // kv_cache.element_size()
+    num_blocks = kv_cache.shape[1]
+    return (kv_cache[0].view(num_blocks, num_kv_heads, head_size // x, -1, x),
+            kv_cache[1].view(num_blocks, num_kv_heads, head_size, -1))
+
+
 def _fill_kv_cache(inputs: dict) -> None:
     """Page the contiguous key/value into the cache the kernel reads.
 
@@ -264,20 +268,18 @@ def _fill_kv_cache(inputs: dict) -> None:
     so the two have to be refreshed together or they stop describing the same
     workload.
     """
-    import vllm._custom_ops as ops
-
     num_kv_heads = inputs["num_kv_heads"]
     head_size = inputs["head_size"]
-    ops.reshape_and_cache(
-        inputs["key"].reshape(-1, num_kv_heads, head_size),
-        inputs["value"].reshape(-1, num_kv_heads, head_size),
-        inputs["key_cache"],
-        inputs["value_cache"],
-        inputs["slot_mapping"],
-        "auto",
-        inputs["one"],
-        inputs["one"],
-    )
+    block_size = inputs["block_size"]
+    slots = inputs["slot_mapping"]
+    blocks, offsets = slots // block_size, slots % block_size
+    x = inputs["key_cache"].shape[-1]
+    # Input preparation is outside measured attention. All declared cases use
+    # BF16/auto caches and unique nonnegative slots, with no quantization step.
+    keys = inputs["key"].reshape(-1, num_kv_heads, head_size // x, x)
+    values = inputs["value"].reshape(-1, num_kv_heads, head_size)
+    inputs["key_cache"][blocks, :, :, offsets, :] = keys
+    inputs["value_cache"][blocks, :, :, offsets] = values
 
 
 def _perturb_inputs(inputs: dict) -> None:
