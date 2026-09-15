@@ -152,6 +152,21 @@ implementation subtree, not its tests or build/evaluation policy. Broad tree
 access must not override a protected harness path. Generated build artifacts
 are not editable source declarations.
 
+Symbol-scoped Python targets and new helpers pass a definition-policy check
+before their implementation is excluded from the harness digest. Ordinary
+functions and passive helper classes are supported; compiler decorators must
+resolve through the protected imports (currently Triton `jit`, `autotune`, and
+`heuristics`, including aliases). New pytest fixtures/test hooks, unknown or
+dynamic decorators, executable defaults/annotations, and executable helper-class
+bodies/metaclasses are not implementation helpers. The guard reports its
+allowed compiler decorators in the context. Calls in their arguments use
+supported Triton configuration operations, unshadowed `range`, or original
+task configuration factories, not newly introduced definition-time factories.
+Original factory bodies remain subject to semantic review. The guard reports its
+effective policy in the validator context. It is a structural integrity check,
+not isolation of arbitrary Python code; reference/test manipulation remains
+forbidden and subject to semantic review.
+
 Entrypoint files must lie within the candidate boundary. Declared symbols must
 exist in the final candidate. Initial validation verifies the starting
 implementation's interface; a translation may intentionally introduce a new

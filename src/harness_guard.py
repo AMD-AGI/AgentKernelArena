@@ -102,17 +102,148 @@ def _top_level_names(path: Path) -> frozenset[str]:
     return frozenset(names)
 
 
+_COMPILER_DECORATORS = frozenset({"triton.jit", "triton.autotune", "triton.heuristics"})
+_TEST_LIFECYCLE_NAMES = frozenset({
+    "setup_module", "teardown_module", "setup_function", "teardown_function",
+    "setup_class", "teardown_class", "setup_method", "teardown_method",
+})
+
+
+def _import_bindings(tree: ast.Module) -> dict[str, str]:
+    bindings = {}
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                bindings[alias.asname or alias.name.split(".")[0]] = (
+                    alias.name if alias.asname else alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            for alias in node.names:
+                if alias.name != "*":
+                    bindings[alias.asname or alias.name] = node.module + "." + alias.name
+    return bindings
+
+
+def _qualified_import(node: ast.AST, bindings: dict[str, str]) -> str | None:
+    if isinstance(node, ast.Name):
+        return bindings.get(node.id)
+    if isinstance(node, ast.Attribute):
+        parent = _qualified_import(node.value, bindings)
+        return parent + "." + node.attr if parent else None
+    return None
+
+
+def _passive_expression(node: ast.AST | None) -> bool:
+    # Defaults, annotations and class attributes execute while definitions are
+    # imported. They must not register fixtures through calls/walrus expressions.
+    # Function bodies remain candidate implementation, not a Python sandbox.
+    return node is None or not any(isinstance(item, (
+        ast.Call, ast.NamedExpr, ast.Await, ast.Yield, ast.YieldFrom,
+        ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp,
+    )) for item in ast.walk(node))
+
+
+def _definition_calls(node: ast.AST):
+    if isinstance(node, ast.Lambda):
+        # Lambda bodies are deferred implementation; their defaults are not.
+        for value in [*node.args.defaults, *node.args.kw_defaults]:
+            if value is not None:
+                yield from _definition_calls(value)
+        return
+    if isinstance(node, ast.Call):
+        yield node
+    for child in ast.iter_child_nodes(node):
+        yield from _definition_calls(child)
+
+
+def _validate_editable_definition(node: ast.AST, bindings: dict[str, str], *,
+                                  initial_names: frozenset[str], definition_names: set[str],
+                                  new_helper: bool, method: bool = False) -> None:
+    name = node.name
+    if new_helper and (name.startswith(("test", "Test", "pytest_"))
+                       or name in _TEST_LIFECYCLE_NAMES):
+        raise ValueError(f"New helper {name!r} is a test or test lifecycle hook")
+    for decorator in node.decorator_list:
+        target = decorator.func if isinstance(decorator, ast.Call) else decorator
+        qualified = _qualified_import(target, bindings)
+        plain_method = (method and isinstance(decorator, ast.Name)
+                        and decorator.id in {"staticmethod", "classmethod", "property"}
+                        and decorator.id not in bindings)
+        if qualified not in _COMPILER_DECORATORS and not plain_method:
+            raise ValueError(f"Unsupported decorator on editable definition {name!r}: "
+                             f"{ast.unparse(decorator)}; only compiler decorators are allowed")
+        # A compiler wrapper must not hide a fixture call in its arguments.
+        if any((_qualified_import(item, bindings) or "").split(".")[0]
+               in {"pytest", "unittest", "pluggy"} for item in ast.walk(decorator)):
+            raise ValueError(f"Test environment reference in decorator on {name!r}")
+        if isinstance(decorator, ast.Call):
+            for value in [*decorator.args, *[kw.value for kw in decorator.keywords]]:
+                if any(isinstance(item, ast.NamedExpr) for item in ast.walk(value)):
+                    raise ValueError(f"Decorator on {name!r} contains a binding expression")
+                for call in _definition_calls(value):
+                    imported = _qualified_import(call.func, bindings)
+                    original_factory = (isinstance(call.func, ast.Name)
+                                        and call.func.id in initial_names
+                                        and call.func.id not in bindings)
+                    builtin_range = (isinstance(call.func, ast.Name) and call.func.id == "range"
+                                     and "range" not in initial_names | definition_names)
+                    if not (imported in {"triton.Config", "triton.cdiv", "triton.next_power_of_2"}
+                            or original_factory or builtin_range):
+                        raise ValueError(f"Unapproved definition-time factory in decorator on {name!r}: "
+                                         f"{ast.unparse(call.func)}")
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        args = node.args
+        expressions = [*args.defaults, *args.kw_defaults, node.returns]
+        expressions.extend(arg.annotation for arg in [
+            *args.posonlyargs, *args.args, *args.kwonlyargs,
+            *([args.vararg] if args.vararg else []), *([args.kwarg] if args.kwarg else []),
+        ])
+        if not all(_passive_expression(expr) for expr in expressions):
+            raise ValueError(f"Editable definition {name!r} has executable defaults or annotations")
+    else:
+        # A new class body executes at import time too. Plain data/method helper
+        # classes remain usable; metaclasses, executable bodies and test classes
+        # do not become an unguarded extension of the test environment.
+        if node.keywords or any(not isinstance(base, ast.Name) or base.id != "object"
+                                for base in node.bases):
+            raise ValueError(f"Editable helper class {name!r} has executable bases/metaclass")
+        for child in node.body:
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                _validate_editable_definition(child, bindings, initial_names=initial_names,
+                                              definition_names=definition_names,
+                                              new_helper=True, method=True)
+            elif isinstance(child, ast.Pass):
+                continue
+            elif isinstance(child, ast.Expr) and isinstance(child.value, ast.Constant):
+                continue
+            elif (isinstance(child, ast.Assign) and all(isinstance(t, ast.Name) for t in child.targets)
+                  and _passive_expression(child.value)):
+                continue
+            elif (isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name)
+                  and _passive_expression(child.value) and _passive_expression(child.annotation)):
+                continue
+            else:
+                raise ValueError(f"Editable helper class {name!r} has an executable class body")
+
+
 def _v2_symbol_digest(path: Path, edit: EditScope, initial_names: frozenset[str]) -> str:
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, SyntaxError):
         return "invalid-python:" + _sha256(path)
     kept = []
+    bindings = _import_bindings(tree)
+    definition_names = {node.name for node in tree.body
+                        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            if node.name in edit.symbols:
-                continue
-            if edit.allow_new_helpers and node.name not in initial_names:
+            new_helper = node.name not in initial_names
+            if node.name in edit.symbols or (edit.allow_new_helpers and new_helper):
+                try:
+                    _validate_editable_definition(node, bindings, initial_names=initial_names,
+                                                  definition_names=definition_names,
+                                                  new_helper=new_helper)
+                except ValueError as exc:
+                    raise RuntimeError(f"Protected test/harness policy rejected {path.name}: {exc}") from exc
                 continue
         kept.append(node)
     tree.body = kept
@@ -424,6 +555,8 @@ def _describe_v2_snapshot(snapshot: WorkspaceSnapshot) -> dict[str, object]:
             "editable_symbols": list(edit.symbols) if edit else [],
             "allow_new_helpers": edit.allow_new_helpers if edit else False,
             "initial_top_level_names": sorted(snapshot.initial_symbols.get(path, ())),
+            "definition_policy": "compiler_decorators_no_test_hooks_v1" if edit else "byte_protected",
+            "allowed_compiler_decorators": sorted(_COMPILER_DECORATORS) if edit else [],
         }
     return {
         "enforced_during_optimization": True,

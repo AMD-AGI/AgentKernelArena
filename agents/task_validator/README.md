@@ -89,6 +89,23 @@ this additive field. Membership in `protected_paths` does not itself imply a
 whole-file lock. The metadata clarifies enforcement; it never overrides a
 semantic reviewer FAIL or relaxes the guard.
 
+Symbol-scoped definitions also declare
+`definition_policy: compiler_decorators_no_test_hooks_v1` and their
+`allowed_compiler_decorators`. Before excluding a target/helper from the digest,
+the guard checks its definition: only compiler decorators resolved through
+protected imports are accepted (currently Triton `jit`, `autotune`, `heuristics`).
+Unknown/dynamic decorators, pytest fixtures and new test/lifecycle hook names
+are rejected. Defaults/annotations cannot execute calls, and new helper classes
+must have passive bodies without metaclasses or executable bases. Ordinary
+functions, async helpers and passive helper classes remain usable. Calls in
+decorator arguments must use supported Triton
+configuration operations, unshadowed `range`, or original task configuration
+factories; a newly added factory cannot hide fixture installation inside a
+compiler decorator argument. Original factory bodies remain implementation
+code subject to semantic review. This rejects the described definition-time
+test hooks; it is not a sandbox for arbitrary Python function
+bodies or a replacement for semantic review of implementation dependencies.
+
 Successful action records contain `invocation_id`, `phase`, merged `result`, and
 actual `commands` (`argv`, `returncode`, `stdout`, `stderr`, `elapsed_s`). Failed
 execution records contain `role`, `action`, `phase`, `execution_error`, and available
