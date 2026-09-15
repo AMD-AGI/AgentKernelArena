@@ -16,7 +16,6 @@ from flydsl._mlir.dialects import builtin
 from flydsl._mlir.dialects import gpu as _gpu
 from flydsl._mlir.dialects import llvm as _llvm
 from flydsl._mlir.dialects import scf as _scf
-from flydsl.expr import buffer_ops
 from flydsl.expr.typing import T
 from flydsl.runtime.device import get_rocm_arch, is_rdna_arch
 
@@ -75,6 +74,7 @@ def get_warp_size(arch=None):
 
 
 def _create_llvm_ptr(value, address_space: int = 1):
+    from flydsl.expr import buffer_ops
     value = buffer_ops._unwrap_value(value)
     if isinstance(value.type, ir.IndexType):
         i64_type = T.i64

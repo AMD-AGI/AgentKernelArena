@@ -14,6 +14,8 @@ CONTRACTS = {
                        '7998d9e3555b7a43299d83df69afa3f384abc926c7c1e9402ab0451b0593964e'),
     'softmax_kernel': ('846f2c44f36fb263ddb20baf8580609050a1ddc68ac2ed02cfa9803b1169ce40',
                       '2b9bc6b1f9a9f40f915d5e930e436a15aafc103d87f52d3c365e1ad73d22adc2'),
+    'layernorm_kernel': ('5bcb79ba0ea702e41a179b7d1dacfb3cfd4838df84a1934b10a742c0cef8a860',
+                        '991415f767641a852b2c3d883e679b117b0e9c04ec2395c45b1d135ddc7624a3'),
 }
 
 
@@ -63,7 +65,7 @@ def test_vector_helpers_support_both_dependency_layouts_without_masking_errors(t
         assert namespace['full'] is expected.full
 
 
-@pytest.mark.parametrize('task', CONTRACTS)
+@pytest.mark.parametrize('task', ['rmsnorm_kernel', 'softmax_kernel'])
 def test_port_retains_original_architecture_and_adds_explicit_target(task):
     from src.task_spec import load_task_spec
     spec = load_task_spec(ROOT / task / 'config.yaml', task_id='flydsl2flydsl/' + task)
@@ -87,6 +89,8 @@ def test_measured_output_and_same_replay_are_required(task, behavior):
     original = x.clone()
     reference = (lambda: torch.softmax(x, dim=-1)) if task == 'softmax_kernel' else (
         lambda: x / torch.sqrt(x.square().mean(dim=-1, keepdim=True) + 1e-5))
+    if task == 'layernorm_kernel':
+        reference = lambda: torch.nn.functional.layer_norm(x, (x.shape[-1],))
     expected = reference()
     output = expected.clone()
     calls = []

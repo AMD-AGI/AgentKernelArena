@@ -50,3 +50,15 @@ Any older validation reports in this directory predate this migration and do not
 qualify the v2 runner. The parent integration schedules new GPU validation.
 
 Upstream source: {"commit": "28a18d328b4882c999864b2df2f8f9fe3fcc8b47", "date": "2026-06-01", "path": "kernels/topk_gating_softmax_kernel.py", "repo": "https://github.com/ROCm/FlyDSL"}.
+
+## Port preparation and measured replay checks
+
+The original gfx942 declaration remains until full gfx950 qualification. The port
+uses current FlyDSL vector helpers while preserving the original operator and
+legacy runtime path. Unused legacy pointer helpers load their dependency lazily.
+
+The public benchmark checks its actual measured output, then changes input in place,
+poisons every output, and replays the same captured graph. Both roles retain their
+original shapes, tolerances, warmups, samples, and timed launches; input restoration
+and checks occur outside timing. Routing also rejects nonfinite weights, invalid or
+duplicate indices, and weights associated with the wrong expert.

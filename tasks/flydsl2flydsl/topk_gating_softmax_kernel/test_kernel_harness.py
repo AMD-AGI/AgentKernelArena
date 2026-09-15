@@ -61,7 +61,8 @@ Validates:
 """
 
 import os
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import verify_topk_timed_run, require_topk_output
 
 DTYPE_FP32 = torch.float32
 DTYPE_FP16 = torch.float16
@@ -157,6 +158,9 @@ def run_test(num_tokens, num_experts, topk, dtype_str, renormalize=True):
     print(f"Kernel avg time: {avg_ms:.4f} ms (warmup={WARMUP_ITERS}, iters={BENCH_ITERS})")
     if flydsl_gpu_us is not None:
         print(f"[Perf] FlyDSL topk_gating_softmax gpu: {flydsl_gpu_us:.1f} us")
+
+    require_topk_output((topk_weights_dev, topk_indices_dev, token_expert_indices_dev),
+                        gating_dev, topk, dtype_str, renormalize, reference_topk)
 
     # --- Verification ---
     atol_weight = 2e-2 if dtype_str in ("bf16", "f16") else 1e-5
@@ -411,6 +415,7 @@ def arena_benchmark(warmup=10, iters=100):
         torch.manual_seed(42)
         gating_fp32 = (torch.rand((num_tokens, num_experts), device="cuda", dtype=DTYPE_FP32) * 4.0) - 2.0
         gating_dev = gating_fp32.to(torch_dtype).contiguous()
+        original = gating_dev.clone()
         topk_weights_dev = torch.empty((num_tokens, topk), device="cuda", dtype=DTYPE_FP32)
         topk_indices_dev = torch.empty((num_tokens, topk), device="cuda", dtype=torch.int32)
         token_expert_indices_dev = torch.empty((num_tokens, topk), device="cuda", dtype=torch.int32)
@@ -426,13 +431,18 @@ def arena_benchmark(warmup=10, iters=100):
                 num_tokens,
                 stream=torch.cuda.current_stream(),
             )
+            return topk_weights_dev, topk_indices_dev, token_expert_indices_dev
 
         for _ in range(warmup):
             kernel_launch()
         torch.cuda.synchronize()
+        timed = TimedRun()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            kernel_launch, warmup=0, repetition=iters
+            kernel_launch, warmup=0, repetition=iters, timed_run=timed,
         )
+        bench_meta.update(verify_topk_timed_run(
+            timed, gating_dev, original, topk, dtype_str, True, reference_topk,
+        ))
         latencies.append(ms)
         report_cases.append(
             {
