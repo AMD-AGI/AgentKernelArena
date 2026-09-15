@@ -1027,6 +1027,7 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
 '''
         expected_source = expected_source.replace(anchor, anchor + addition.encode())
     reviewed_matmul_bodies = {
+        'test_batched_vecmat': ({'test_vecmat'}, {'test_partial_m_n_k_control'}),
         'test_gemm_no_scf': ({'test_gemm_no_scf'}, {'test_transposed_left_control'}),
         'test_iv_dependent_matmul': ({'test_iv_dependent_matmul'}, {'test_partial_tile_control'}),
         'test_chained_matmul': ({'test_chained_matmul'}, {'test_signed_partial_m_control'}),
@@ -1042,6 +1043,7 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
         # of the rewritten correctness bodies, plus every remaining source AST.
         rewritten, added = reviewed_matmul_bodies[task.name]
         repaired_kernels = {
+            'test_batched_vecmat': ('batched_vecmat', '8d592a7bb4da730aeeb5343ddfc710d49f543241fca6b38a9a1e3f5299df5452'),
             'test_iv_dependent_matmul': ('iv_dependent_matmul', '32aa40116bcef34a66544bda60ce024c6db2282e1abc42993fdefd86e2fe6485'),
             'multreduce_matmul_dot_kernel': ('triton_matmul_kernel', '5281e0dd6e6cc02ecfe827a1e54ffe17a4ba3cd13b9c02b9a9e966ed368fb788'),
         }
@@ -1064,6 +1066,12 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
                     continue
                 if node.name in rewritten:
                     node.body = [ast.Pass()]
+                elif task.name == 'test_batched_vecmat' and node.name == 'test_performance':
+                    # Tail masks now execute the original N=32/block_N=64
+                    # cases. Preserve every other statement and timer option.
+                    node.body = [n for n in node.body if not (
+                        isinstance(n, ast.If)
+                        and ast.unparse(n.test) == 'M % block_m != 0 or N % block_n != 0')]
                 elif task.name == 'test_iv_dependent_matmul' and node.name == 'test_performance':
                     # Remove only the reviewed obsolete K-size/smem heuristics;
                     # actual compilation failures remain failures in the runner.
@@ -1078,6 +1086,34 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
                             for t in n.targets))]
             return ast.dump(tree, include_attributes=False)
         assert matmul_original_contract(source.read_bytes()) == matmul_original_contract(expected_source)
+    elif task.name == 'rmsnorm_bwd':
+        # The Triton task accidentally timed forward. Its corrected performance
+        # body and counters are the original instruction task's backward path;
+        # dedicated tests independently pin that path and all original kernels,
+        # autograd gates, parameter rows, dtypes and timer options.
+        current = source.read_text()
+        current_nodes = {n.name: n for n in ast.parse(current).body
+                         if isinstance(n, ast.FunctionDef)}
+        reviewed = {
+            'test_rmsnorm': '40c9e0d5bae7d90468cf37308c14e202864ebfb2f17ca84bcbaa26bc7dc97b5c',
+            'test_performance': '98e2c027a61ecfa120d97db3678c7c4d5afbb685c84f5948bfcba6d9bf11ead5',
+            'calculate_rmsnorm_bwd_gbps': 'a72db096973f29220e3793002d11daa7bdbf855be605224f56a44894934eac77',
+            'calculate_rmsnorm_bwd_tflops': 'ebdb5620cc5f91ef56734f9af13da223aa96e0faac5ebb0c90cc00e009012010',
+        }
+        for name, expected_hash in reviewed.items():
+            assert hashlib.sha256(ast.get_source_segment(current, current_nodes[name]).encode()).hexdigest() == expected_hash
+        def rms_original_contract(raw):
+            tree = ast.parse(raw)
+            if 'triton2triton' in task.parts:
+                tree.body = [n for n in tree.body if not isinstance(n, ast.FunctionDef)
+                             or n.name not in {'calculate_rmsnorm_bwd_gbps', 'calculate_rmsnorm_bwd_tflops'}]
+            for node in tree.body:
+                if isinstance(node, ast.FunctionDef) and (
+                        node.name == 'test_rmsnorm'
+                        or node.name == 'test_performance' and 'triton2triton' in task.parts):
+                    node.body = [ast.Pass()]
+            return ast.dump(tree, include_attributes=False)
+        assert rms_original_contract(current) == rms_original_contract(expected_source)
     elif task.name == 'test_cast_matmul':
         # The reviewed rewrite executes the previously skipped valid dtype
         # combinations and adds pristine/output checks plus three unscored
@@ -1258,8 +1294,11 @@ def test_rms_backward_reference_matches_autograd_and_rejects_wrong_gradients(mon
     y=x*torch.rsqrt((x*x).mean(-1,keepdim=True)+1e-5)*(g+1)
     y.backward(go)
     dx=x.grad.clone();dg=g.grad.clone()
+    rsigma=torch.rsqrt(x.detach().square().mean(-1)+1e-5)
+    per_row_dg=go*x.detach()*rsigma[:,None]
+    torch.testing.assert_close(per_row_dg.sum(0),dg)
     context={'x':x.detach(),'g':g.detach(),'grad_output':go,'ZERO_CENTERED_GAMMA':True,'eps':1e-5,
-             'dx_bench':dx,'dg_tmp_bench':torch.stack([dg,torch.zeros_like(dg)])}
+             'rsigma_buffer':rsigma,'dx_bench':dx,'dg_tmp_bench':per_row_dg}
     check=reference.prepare(context,None);check(None)
     dx.zero_()
     with pytest.raises(reference.NumericalMismatch):check(None)
@@ -1358,7 +1397,7 @@ def test_add_canonical_samples_observe_exact_replay_and_reject_wrong_output(monk
 
 # These adapters use actual TimedRun outputs; their dedicated contract modules
 # exercise event metadata, changed inputs and rejected fallback paths.
-@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_add_kernel', 'test_block_copy', 'test_randn', 'test_load_reduce', 'softmax', 'naive_softmax', 'test_cast_matmul', 'test_gemm_no_scf', 'test_iv_dependent_matmul', 'test_chained_matmul', 'multreduce_matmul_dot_kernel'} and not (p.parent.name == 'test_matmul_MXFP' and 'triton2triton' in p.parts)], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
+@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_add_kernel', 'test_block_copy', 'test_randn', 'test_load_reduce', 'softmax', 'naive_softmax', 'test_cast_matmul', 'test_gemm_no_scf', 'test_iv_dependent_matmul', 'test_chained_matmul', 'multreduce_matmul_dot_kernel', 'test_batched_vecmat', 'rmsnorm_bwd'} and not (p.parent.name == 'test_matmul_MXFP' and 'triton2triton' in p.parts)], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
 def test_rocm_timing_evidence_retains_canonical_fallback_reason(monkeypatch, path):
     adapter = module_at(path.parent/'_arena_eval.py', monkeypatch)
     expected = torch.tensor([2.])
