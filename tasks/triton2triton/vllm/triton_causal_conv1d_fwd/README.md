@@ -23,3 +23,17 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+The protected checks validate both the returned tensor and the updated convolution
+cache. For the original five workloads (widths 3/4, non-padding cache slots and
+sequences at least `width-1` tokens long), each cache slot must contain exactly
+the corresponding input sequence's last `width-1` tokens. Output shape, dtype,
+device and finiteness are checked; output arithmetic keeps atol=1e-1, rtol=1e-1.
+References are computed from pristine inputs before invoking the candidate.
+
+Performance still launches the original kernel directly with its precomputed
+launch map and restores the initial state using the original `prepare_fn`.
+After timing, protected checks verify both actual output buffers, perturb inputs
+and initial state, poison outputs, then verify the same captured graph again.
+Diagnostic changes to inputs and initial state are restored even on failure.
+No case, seed, warmup, repetition, launch parameter or timed allocation changes.

@@ -1308,3 +1308,121 @@ def test_rocm_implementation_helpers_editable_without_exposing_tests_or_referenc
     lines.insert(test.body[0].lineno-1,'    _arena_forbidden_test_change = 1\n')
     source.write_text(''.join(lines))
     with pytest.raises(RuntimeError):verify_workspace_harness(snapshot)
+
+
+def conv_fwd_inputs():
+    x=torch.tensor([[1.,2.,3.,4.,5.,6.],[7.,8.,9.,10.,11.,12.]])
+    weight=torch.tensor([[1.,2.,3.],[1.,-1.,2.]])
+    bias=torch.tensor([1.,-1.])
+    state=torch.tensor([[[10.,20.],[30.,40.]],[[50.,60.],[70.,80.]]])
+    starts=torch.tensor([0,3,6],dtype=torch.int32)
+    indices=torch.tensor([0,1],dtype=torch.int32)
+    has_init=torch.ones(2,dtype=torch.int32)
+    return x,weight,bias,state,starts,indices,has_init
+
+
+def independent_conv_fwd(x,weight,bias,state,starts,indices,has_init,activation=None):
+    # An independent grouped-convolution implementation for the CPU controls.
+    result=torch.empty_like(x)
+    for i,slot in enumerate(indices.tolist()):
+        start,end=starts[i:i+2].tolist()
+        prefix=state[slot].clone() if has_init[i] else torch.zeros_like(state[slot])
+        sequence=torch.cat((prefix,x[:,start:end]),dim=1)
+        values=torch.nn.functional.conv1d(sequence.unsqueeze(0),weight.unsqueeze(1),bias,groups=x.shape[0])[0]
+        if activation in ('silu','swish'):values=torch.nn.functional.silu(values)
+        result[:,start:end]=values
+        state[slot].copy_(sequence[:,-state.shape[-1]:])
+    return result
+
+
+def test_conv_fwd_original_reference_and_state_have_independent_known_answers(monkeypatch):
+    task=ROOT/'tasks/triton2triton/vllm/triton_causal_conv1d_fwd'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    args=conv_fwd_inputs()
+    expected=torch.tensor([[54.,29.,15.,183.,84.,33.],[3.,48.,16.,9.,91.,22.]])
+    state_expected=torch.tensor([[[2.,3.],[8.,9.]],[[5.,6.],[11.,12.]]])
+    actual=checks.references(harness,*args,None)
+    assert torch.equal(actual[0],expected) and torch.equal(actual[1],state_expected)
+    output=independent_conv_fwd(*args)
+    assert torch.equal(output,expected) and torch.equal(args[3],state_expected)
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_state','no_state_write','wrong_output','dtype','shape','nonfinite','mutate_input'])
+def test_conv_fwd_correctness_checks_output_state_and_pristine_input_oracles(monkeypatch,mode):
+    task=ROOT/'tasks/triton2triton/vllm/triton_causal_conv1d_fwd'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    args=conv_fwd_inputs()
+    def candidate(x,w,b,state,starts,indices,has_init,activation=None):
+        saved=state.clone()
+        out=independent_conv_fwd(x,w,b,state,starts,indices,has_init,activation)
+        if mode=='wrong_state':state[1,0,0]=0
+        elif mode=='no_state_write':state.copy_(saved)
+        elif mode=='wrong_output':out.zero_()
+        elif mode=='dtype':out=out.double()
+        elif mode=='shape':out=out[:1]
+        elif mode=='nonfinite':state[0,0,0]=float('nan')
+        elif mode=='mutate_input':x.zero_();out.zero_();state.zero_()
+        return out
+    module=SimpleNamespace(causal_conv1d_fwd=candidate)
+    original_load=lambda:module
+    harness.load_module=original_load
+    with checks.checked_modules(harness):
+        if mode=='correct':harness.load_module().causal_conv1d_fwd(*args)
+        else:
+            with pytest.raises(AssertionError):harness.load_module().causal_conv1d_fwd(*args)
+    assert harness.load_module is original_load and module.causal_conv1d_fwd is candidate
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed_state','stale','no_write','wrong_replay_state','wrong_replay_output','mutate_input','replay_raises'])
+def test_conv_fwd_actual_timed_output_state_and_replay_restore(monkeypatch,mode):
+    task=ROOT/'tasks/triton2triton/vllm/triton_causal_conv1d_fwd'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    harness._TimedRun=SimpleNamespace
+    x,weight,bias_t,conv_states,query_start_loc,cache_indices,has_init=conv_fwd_inputs()
+    out=torch.empty_like(x);activation='silu'
+    initial_conv_states=conv_states.clone()
+    batch_ptr=torch.tensor([0,1],dtype=torch.int32)
+    token_chunk_offset_ptr=torch.zeros(2,dtype=torch.int32)
+    source=(x,weight,bias_t,conv_states,query_start_loc,cache_indices,has_init,initial_conv_states,batch_ptr,token_chunk_offset_ptr)
+    pristine=tuple(value.clone() for value in source)
+    def fn():
+        assert batch_ptr.numel()==token_chunk_offset_ptr.numel()==2
+        out.copy_(independent_conv_fwd(x,weight,bias_t,conv_states,query_start_loc,cache_indices,has_init,activation))
+    def prepare():conv_states.copy_(initial_conv_states)
+    options=[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        options.append(kwargs)
+        kwargs['prepare_fn']();outputs=measured();saved=tuple(value.clone() for value in outputs)
+        if mode=='wrong_timed_state':conv_states.zero_()
+        def replay():
+            kwargs['prepare_fn']()
+            if mode=='replay_raises':raise RuntimeError('injected replay failure')
+            if mode=='stale':
+                for value,cached in zip(outputs,saved):value.copy_(cached)
+            elif mode!='no_write':
+                measured()
+                if mode=='wrong_replay_state':conv_states.zero_()
+                elif mode=='wrong_replay_output':out.zero_()
+                elif mode=='mutate_input':x.zero_();out.zero_();conv_states.zero_()
+            return outputs
+        timed_run.outputs=outputs;timed_run.rerun=replay
+        return 0.25,dict(benchmark_method='cuda_graph')
+    call=lambda:checks.checked_benchmark(harness,benchmark,fn,warmup=10,repetition=100,prepare_fn=prepare)
+    if mode=='correct':
+        ms,metadata=call()
+        assert ms==0.25 and metadata['cached_state_checked'] and metadata['perturbed_input_replay_checked']
+    elif mode=='replay_raises':
+        with pytest.raises(RuntimeError,match='injected replay failure'):call()
+    else:
+        with pytest.raises(AssertionError):call()
+    assert options==[dict(warmup=10,repetition=100,prepare_fn=prepare)]
+    assert all(torch.equal(value,saved) for value,saved in zip(source,pristine))
+
+
+def test_conv_fwd_adapter_installs_output_state_and_timing_checks(monkeypatch):
+    adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_causal_conv1d_fwd/_arena_eval.py',monkeypatch)
+    harness=adapter.load_harness()
+    assert harness.run_correctness.__module__==harness.run_performance.__module__=='_conv_fwd_checks'
