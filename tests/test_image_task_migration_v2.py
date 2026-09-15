@@ -1550,3 +1550,22 @@ def test_kda_measured_state_requires_observation_and_rejects_corruption(mode, mo
         with pytest.raises(AssertionError, match='replay count'):
             h._assert_timed_outputs(inp, timed, {'benchmark_effective_repeats': 2}, check)
         restored()
+
+
+def test_kda_vector_reference_checks_state_orientation_and_component_gates(monkeypatch):
+    torch = pytest.importorskip('torch')
+    h = load_module(KDA_TASK / 'scripts/task_runner.py')
+    controls = load_module(KDA_TASK / 'scripts/reference_controls.py')
+    monkeypatch.setattr(h, '_torch', lambda: torch)
+    controls.check_vector_recurrence(h)
+    golden = h._golden
+    def transpose_state(inputs, **kwargs):
+        out, states = golden(inputs, **kwargs)
+        return out, [s.transpose(-1,-2) for s in states]
+    monkeypatch.setattr(h, '_golden', transpose_state)
+    with pytest.raises(AssertionError): controls.check_vector_recurrence(h)
+    def reverse_output(inputs, **kwargs):
+        out, states = golden(inputs, **kwargs)
+        return out.flip(-1), states
+    monkeypatch.setattr(h, '_golden', reverse_output)
+    with pytest.raises(AssertionError): controls.check_vector_recurrence(h)

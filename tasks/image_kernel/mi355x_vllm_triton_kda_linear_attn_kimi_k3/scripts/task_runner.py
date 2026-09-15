@@ -164,8 +164,8 @@ def _prepare(case: dict) -> dict:
         inp["seg_state0"] = [state[n + 1].double().clone() for n in range(num_seqs)]
         inp["segments"] = [(n, n + 1) for n in range(num_seqs)]
 
-    # Both kernels update the state in place, so the golden's starting state is
-    # snapshotted above (seg_state0) BEFORE any kernel touches it.
+    # Snapshot state before either kernel executes. Decode updates its cache;
+    # chunk returns a separate final state and leaves this input unchanged.
     inp["state"] = state
     return inp
 
