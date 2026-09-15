@@ -2,6 +2,7 @@
 import hashlib
 import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,6 +23,12 @@ from src.task_spec import TaskConfigError, load_task_spec
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+@pytest.fixture(autouse=True)
+def cpu_protocol_runtime(monkeypatch):
+    monkeypatch.setattr("src.task_runtime._runtime_identity", lambda: {
+        "gpu_arch": "gfx950", "gpu_name": "CPU protocol fixture, no GPU"})
 
 
 def make_task(root, *, language='flydsl', state='unimplemented', baseline='provided'):
@@ -85,9 +92,13 @@ def copied_workspace(monkeypatch, loop):
     monkeypatch.setattr(loop, '_make_workspace', make)
 
 
-def write_report(workspace, task_id, *, age=0, framework_error=None):
+def write_report(workspace, task_id, *, settings, age=0, framework_error=None):
     """Exercise the real normalizer/marker, not a claimed overall_status alone."""
-    checks = {name: {'status': 'PASS', 'details': 'fixture evidence'} for name in CHECK_NAMES}
+    from agents.task_validator.report_v2 import V2_REPORT_SCHEMA_VERSION, DRAFT_FILENAME
+    from agents.task_validator.trusted_evidence import snapshot_task_evidence
+    context = json.loads(Path(os.environ['ARENA_VALIDATION_CONTEXT']).read_text())
+    checks = {name: {'status': 'PASS', 'details': 'fixture evidence',
+                     'evidence': [{'path': 'runner.py', 'finding': 'CPU fixture review'}]} for name in CHECK_NAMES}
     for name in ('compilation', 'correctness', 'performance'):
         checks[name]['attempts'] = [{'command': 'python3 runner.py', 'exit_code': 0, 'timed_out': False}]
     checks['benchmark_integrity'].update({
@@ -97,11 +108,15 @@ def write_report(workspace, task_id, *, age=0, framework_error=None):
                             'replay_validation_valid', 'representative_inputs_valid', 'timing_boundaries_valid')},
     })
     checks['harness_integrity'].update(guard_coverage_reviewed=True, editable_targets_preserved=True)
-    raw = {'validation_schema_version': REPORT_SCHEMA_VERSION, 'task_name': task_id,
+    raw = {'validation_schema_version': V2_REPORT_SCHEMA_VERSION, 'task_name': task_id,
+           'validation_request_id': settings['_task_validation_request_id'],
+           'task_evidence_sha256': snapshot_task_evidence(context, task_id=context['task_id']).sha256,
            'validation_timestamp': (datetime.now(timezone.utc)-timedelta(seconds=age)).isoformat(),
            'overall_status': 'PASS', 'checks': checks, 'summary': 'CPU report fixture only'}
-    (workspace / 'validation_report.yaml').write_text(yaml.safe_dump(raw))
-    return finalize_report(workspace, expected_task_name=task_id, framework_error=framework_error)
+    (workspace / DRAFT_FILENAME).write_text(yaml.safe_dump(raw))
+    return finalize_report(workspace, expected_task_name=context['task_id'], framework_error=framework_error,
+                           trusted_task_evidence=context, task_schema_version=2,
+                           validation_request_id=settings['_task_validation_request_id'])
 
 
 def test_plan_uses_v2_state_and_platform_not_directory(tmp_path):
@@ -185,6 +200,7 @@ def test_validator_cannot_pass_missing_stale_or_untrusted_evidence(tmp_path,monk
         if failure=='raw':
             (workspace/'validation_report.yaml').write_text('overall_status: PASS\n');return
         write_report(workspace,'other/task' if failure=='wrong_id' else 'suite/task',
+                     settings=settings,
                      age=120 if failure=='stale' else -120 if failure=='future' else 0,
                      framework_error='failed command' if failure=='framework' else None)
         if failure=='tampered': (workspace/'validation_report.yaml').write_text('overall_status: PASS\n')
@@ -200,7 +216,7 @@ def test_validator_uses_stable_identity_and_real_completion_gate(tmp_path,monkey
         assert str(config_path).endswith('/tasks/SIKL/group/operator/config.yaml')
         assert settings['agent']['template']=='task_validator'
         seen.append(settings['task_id'])
-        write_report(Path(workspace),settings['task_id'])
+        write_report(Path(workspace),settings['task_id'],settings=settings)
     loop=workflow(tmp_path,validator_launcher=validator);copied_workspace(monkeypatch,loop)
     _,report=loop._validate('SIKL/group/operator',task,tmp_path/'validation')
     assert report['overall_status']=='PASS' and seen==['SIKL/group/operator']
@@ -255,7 +271,7 @@ def test_each_measurement_uses_same_session_and_checks_identity(tmp_path):
 def test_resume_requires_unchanged_task_and_finalized_evidence(tmp_path, monkeypatch, corruption):
     task = make_task(tmp_path/'task')
     def validator(settings, config, workspace):
-        write_report(Path(workspace), settings['task_id'])
+        write_report(Path(workspace), settings['task_id'], settings=settings)
     loop = workflow(tmp_path, validator_launcher=validator)
     copied_workspace(monkeypatch, loop)
     workspace, _ = loop._validate('suite/task', task, tmp_path/'validation')
@@ -342,7 +358,7 @@ def test_case_enhancement_uses_declared_workloads_and_preserves_empty_candidate(
             assert role == 'case_enhancer'
             (workspace/'cases.json').write_text('[1, 3, 5]')
     def validator(settings, config, workspace):
-        write_report(Path(workspace), settings['task_id'])
+        write_report(Path(workspace), settings['task_id'], settings=settings)
     loop = workflow(tmp_path, backend=CaseBackend(), validator_launcher=validator)
     copied_workspace(monkeypatch, loop)
     assert loop._enhance_cases('suite/task', original, candidate, 'missing x=5',

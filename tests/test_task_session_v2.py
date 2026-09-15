@@ -160,3 +160,62 @@ def test_internal_absolute_links_are_rebound_to_the_frozen_root(tmp_path):
     (workspace / "source.py").write_text("def compute(): return 9\n")
     assert "return 3" in (session.baseline_workspace / "kernel.py").read_text()
     assert (session.baseline_workspace / "kernel.py").resolve() == session.baseline_workspace / "source.py"
+
+
+def test_resume_preserves_baseline_and_requires_fresh_candidate_checks(tmp_path):
+    session = create(tmp_path)
+    assert session.validate_initial().accepted
+    session.candidate_action("compile")
+    session.candidate_action("correctness")
+    (session.workspace / "kernel.py").write_text("def compute(): return 9\n")
+    resumed = TaskSession.load(session.spec, session.workspace, session.state_directory)
+    assert resumed.initial_validation.accepted
+    assert "return 3" in (resumed.baseline_workspace / "kernel.py").read_text()
+    with pytest.raises(TaskExecutionError, match="recompile"):
+        resumed.candidate_action("performance")
+    assert resumed.candidate_action("compile").result.passed
+    assert not resumed.candidate_action("correctness").result.passed
+
+
+def test_resume_rejects_stale_config_and_forged_lifecycle_pass(tmp_path):
+    session = create(tmp_path)
+    assert session.validate_initial().accepted
+    other = session.spec.to_mapping()
+    other["candidate"]["language"] = "other_backend"
+    with pytest.raises(TaskExecutionError, match="configuration"):
+        TaskSession.load(TaskSpec.from_mapping(other, task_id=session.spec.task_id), session.workspace, session.state_directory)
+    path = session.state_directory / "initial_validation.json"
+    raw = json.loads(path.read_text())
+    raw["baseline_numerical_status"] = "FAIL"
+    path.write_text(json.dumps(raw))
+    with pytest.raises(TaskExecutionError, match="verdict contradicts"):
+        TaskSession.load(session.spec, session.workspace, session.state_directory)
+
+
+def test_resume_rejects_result_tampering_even_when_lifecycle_report_says_pass(tmp_path):
+    session = create(tmp_path)
+    assert session.validate_initial().accepted
+    path = next(session.state_directory.glob("action-*-baseline-performance.json"))
+    raw = json.loads(path.read_text())
+    raw["result"]["cases"][0]["execution_time_ms"] = 10000
+    path.write_text(json.dumps(raw))
+    with pytest.raises(TaskExecutionError, match="contradicts its command"):
+        TaskSession.load(session.spec, session.workspace, session.state_directory)
+
+
+def test_failed_initial_validation_still_produces_validator_context(tmp_path):
+    session = create(tmp_path, empty=True, provided=4)
+    assert not session.validate_initial().accepted
+    context = json.loads((session.state_directory / "validation_context.json").read_text())
+    assert context["version"] == 1
+    assert context["initial_validation"]["baseline_numerical_status"] == "FAIL"
+    assert context["actions"][-1]["result"]["status"] == "FAIL"
+
+
+def test_resume_cannot_recapture_modified_harness_as_original(tmp_path):
+    session = create(tmp_path)
+    assert session.validate_initial().accepted
+    harness = session.workspace / "evaluate.py"
+    harness.write_text(harness.read_text() + "\n# changed protected check\n")
+    with pytest.raises(RuntimeError, match="Protected test/harness"):
+        TaskSession.load(session.spec, session.workspace, session.state_directory)

@@ -28,6 +28,9 @@ class EvaluationSession:
         return self.session.agent_context_path
 
     def prepare(self) -> None:
+        from src.task_runtime import bind_session_runtime
+
+        bind_session_runtime(self.session)
         initial = self.session.validate_initial()
         if not initial.accepted:
             raise InitialValidationRejected("Initial task validation failed: " + "; ".join(initial.errors))

@@ -236,3 +236,20 @@ def baseline_correctness_accepted(result: ActionResult, *, baseline: BaselineSpe
         return False
     failed = [row for row in result.cases if row["status"] == "FAIL"]
     return bool(failed) and all(row.get("failure_kind") == "numerical_mismatch" for row in failed)
+
+
+def performance_cases(result: ActionResult) -> list:
+    """Convert validated v2 timing evidence into the existing scoring input."""
+    from .testcases import TestCaseResult
+
+    if result.action != "performance" or not result.passed:
+        _fail("Scoring requires a passing performance action")
+    cases = []
+    for row in result.cases:
+        metadata = deepcopy(row.get("metadata", {}))
+        for key in ("dtype", "params", "metrics", "benchmark_method"):
+            if key in row:
+                metadata[key] = deepcopy(row[key])
+        cases.append(TestCaseResult(row["test_case_id"], deepcopy(row.get("shape")),
+                                    row["execution_time_ms"], metadata))
+    return cases

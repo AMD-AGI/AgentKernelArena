@@ -13,18 +13,17 @@ contract and replaces the previous task-family-specific configuration guidance.
 
 ## Status and scope
 
-**Schema v2 is being implemented; task migration is not yet enabled.** The
-shared declaration parser (`src/task_spec.py`), result validation
-(`src/task_protocol.py`), and argv action executor (`src/task_execution.py`)
-have focused CPU coverage. `src/task_session.py` also provides independent
-baseline snapshots, initial-state checking, lifecycle gating, and action
-evidence retention. Discovery, orchestration, validator, and task harness
-migration must be completed before live tasks can use them. The existing run path still consumes legacy
-fields such as `task_type`, `source_file_path`, and `compile_command`. The v2
-examples below specify the implementation target; they are not drop-in runnable
-configs for the current loader. See [Migration](#migration) before changing an
-executable task. The validator's report schema version is independent of the
-task config version.
+**Schema v2 execution is wired; task migration and GPU qualification are in
+progress.** The shared declaration parser, action/result protocol, materialization,
+baseline session, evaluator and validator are connected through
+`src/task_run.py`. Normal runs and quality_loop use the same final evaluation
+and initial validation entrypoints. CPU process fixtures cover their integration;
+this does not certify GPU task quality or an agent's optimization capability.
+The 21 SIKL tasks use v2; other families are being migrated and still use the
+legacy path until their runners are converted. Do not replace a config without
+implementing its task-owned actions. See [Migration](#migration) before changing
+an executable task. Task config version 2, runner protocol 1 and validator report
+version 4 are separate contracts.
 
 The design uses one task `config.yaml`, task-owned evaluation scripts, and
 optional workload data. It does not require a second `definition.yaml`, an
@@ -293,11 +292,11 @@ candidate performance manifests must match exactly by ID, shape, dtype, and
 semantic parameters. The framework must obtain the manifest independently of
 the candidate's claimed performance rows.
 
-### Structured command results (v2 implementation target)
+### Structured command results
 
 Alongside human-readable logs, each invocation must emit exactly one stdout
 line beginning with `ARENA_EVAL_RESULT=` followed by a JSON object. This envelope
-is part of v2 and is not yet understood by the legacy parsers. Its fields are:
+is parsed by the v2 executor; legacy parsers do not accept it. Its fields are:
 
 | Field | Meaning |
 | --- | --- |
@@ -389,10 +388,20 @@ unavailable dependencies are not covered by this policy. Candidate correctness
 always uses the full task rule. Establish evidence that a valid candidate can
 satisfy the task; baseline executability alone does not establish feasibility.
 
-Implement lifecycle decisions in the deterministic validator/report normalizer
-as well as prompts. A new prompt-only `SKIP` reason is insufficient. This
-change does not add an implemented v2 skip code to the existing report schema;
-the migration must wire and test that contract before using it.
+The deterministic validator/report normalizer derives lifecycle decisions from
+the captured session evidence. A verified empty starting candidate uses
+`candidate_unimplemented` in the version-4 report. The model reviews task
+semantics and writes `validation_report.draft.yaml`; the framework verifies its
+request/evidence identity and writes the official report. A new prompt-only
+`SKIP` reason is insufficient.
+
+Session state, the original harness boundary and action evidence are retained
+outside the candidate workspace. Resume verifies that state and preserves the
+original baseline; it does not capture a modified candidate as a fresh baseline.
+Optimization completion records bind the final report to the delivered candidate.
+An agent CLI failure is recorded independently, and any retained candidate still
+receives the ordinary final checks. Export failures remain separate from numeric
+scores and make the delivery incomplete.
 
 ## Benchmark and edit-boundary contracts
 
@@ -655,12 +664,12 @@ as documentation; they do not qualify any task on GPU.
 
 ### Current runtime versus the selected contract
 
-The existing orchestration still uses legacy command fields and task-family dispatch in
-workspace setup, prompts, evaluation, and validation. The current evaluator
-reads `compile_command`/`correctness_command`, and timing consumes existing
-per-case formats. The new `TaskSpec` and `ARENA_EVAL_RESULT` parser are available
-to the migration, but are not yet wired into that run path. Their CPU tests
-do not qualify the existing Forge integrations, SIKL harnesses, or GPU tools.
+Orchestration selects the v2 path by `schema_version: 2`. That path uses
+`TaskSpec`, bounded materialization, `TaskSession`, `ARENA_EVAL_RESULT`, the
+shared evaluator and captured-evidence validator. Remaining legacy configs still
+use `compile_command`/`correctness_command` and their existing timing formats.
+Integration tests do not qualify Forge/GEAK workflows, SIKL GPU numerical
+behavior, or optional GPU tools; those require their own runtime evidence.
 
 For executable work before migration, retain the task's working legacy fields
 and use nearby tasks plus the implementation as reference. Legacy command
@@ -690,7 +699,7 @@ behavior or translate it deliberately. The current validator has a verified
 
 ### Runtime migration acceptance
 
-Before enabling v2, implement and verify the following together:
+Before declaring the migration complete, verify the following together:
 
 - One shared schema/path normalization used by discovery, workspace setup,
   prompting, edit-boundary enforcement, evaluator, validator, and agents.

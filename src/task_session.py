@@ -17,8 +17,12 @@ import shutil
 
 from .evaluator_utils import _is_unimplemented_target_stub
 from .task_execution import ExecutedAction, TaskExecutionError, run_action
-from .task_protocol import CaseManifest, baseline_correctness_accepted
+from .task_protocol import (
+    CaseManifest, baseline_correctness_accepted, merge_command_results, parse_command_result,
+)
+from .task_execution import CommandEvidence
 from .task_spec import TaskConfigError, TaskSpec, resolve_task_path
+from .harness_guard import WorkspaceSnapshot, snapshot_workspace_harness, verify_workspace_harness
 
 
 def _write_json(path: Path, value: dict) -> None:
@@ -90,6 +94,7 @@ class TaskSession:
         self.results: dict[tuple[str, str, str], ExecutedAction] = {}
         self._invocations = 0
         self._candidate_identity: dict[str, str] | None = None
+        self.harness: WorkspaceSnapshot | None = None
 
     @classmethod
     def create(cls, spec: TaskSpec, workspace: Path, state_directory: Path,
@@ -99,10 +104,118 @@ class TaskSession:
         if state_directory.is_relative_to(workspace) or workspace.is_relative_to(state_directory):
             raise TaskConfigError("Task session state and candidate workspace must be separate directories")
         state_directory.mkdir(parents=True, exist_ok=False)
+        harness = snapshot_workspace_harness(workspace, task_spec=spec)
         sources = _snapshot(workspace, state_directory / "baseline")
         _write_json(state_directory / "initial_sources.json", sources)
         _write_json(state_directory / "task_spec.json", spec.to_mapping())
-        return cls(spec, workspace, state_directory, sources, logger)
+        _write_json(state_directory / "session.json", {
+            "version": 1, "task_id": spec.task_id, "workspace": str(workspace),
+        })
+        _write_json(state_directory / "harness.json", {
+            "digests": harness.digests,
+            "initial_symbols": {key: sorted(names) for key, names in harness.initial_symbols.items()},
+        })
+        session = cls(spec, workspace, state_directory, sources, logger)
+        session.harness = harness
+        return session
+
+    @classmethod
+    def load(cls, spec: TaskSpec, workspace: Path, state_directory: Path,
+             logger: logging.Logger | None = None) -> "TaskSession":
+        """Resume from original state, validating saved process evidence again."""
+        workspace = Path(workspace).resolve(strict=True)
+        state_directory = Path(state_directory).resolve(strict=True)
+        descriptor = json.loads((state_directory / "session.json").read_text())
+        saved_spec = json.loads((state_directory / "task_spec.json").read_text())
+        if (descriptor != {"version": 1, "task_id": spec.task_id, "workspace": str(workspace)}
+                or saved_spec != spec.to_mapping()):
+            raise TaskExecutionError("Resume task identity/configuration does not match original session")
+        sources = json.loads((state_directory / "initial_sources.json").read_text())
+        if not isinstance(sources, dict) or not sources:
+            raise TaskExecutionError("Original baseline source evidence is missing")
+        session = cls(spec, workspace, state_directory, sources, logger)
+        saved_harness = json.loads((state_directory / "harness.json").read_text())
+        session.harness = WorkspaceSnapshot(
+            workspace, saved_harness["digests"], spec,
+            {key: frozenset(names) for key, names in saved_harness["initial_symbols"].items()},
+        )
+        session.verify_baseline_sources()
+        session.verify_candidate_harness()
+        records = sorted(state_directory.glob("action-*.json"))
+        for path in records:
+            number = int(path.name.split("-", 2)[1])
+            session._invocations = max(session._invocations, number)
+            raw = json.loads(path.read_text())
+            if "execution_error" in raw:
+                key = (raw["phase"], raw["role"], raw["action"])
+                session.results.pop(key, None)
+                if key == ("task_validation", "task", "validate-task"):
+                    session.task_evidence = None
+                    session.manifest = None
+                continue
+            result = raw["result"]
+            commands = tuple(CommandEvidence(tuple(item["argv"]), item["returncode"],
+                                             item["stdout"], item["stderr"], item["elapsed_s"])
+                             for item in raw["commands"])
+            parsed = merge_command_results(parse_command_result(
+                command.stdout, role=result["role"], action=result["action"], returncode=command.returncode,
+            ) for command in commands)
+            if parsed.to_mapping() != result:
+                raise TaskExecutionError(f"Saved result contradicts its command evidence: {path.name}")
+            key = (raw["phase"], parsed.role, parsed.action)
+            session.results[key] = ExecutedAction(raw["invocation_id"], parsed, commands)
+            if key == ("task_validation", "task", "validate-task"):
+                session.task_evidence = session.results[key]
+                if parsed.passed:
+                    session.manifest = CaseManifest.from_result(parsed)
+            elif session.manifest is not None:
+                session.manifest.validate(parsed)
+        report_path = state_directory / "initial_validation.json"
+        if report_path.exists():
+            raw = json.loads(report_path.read_text())
+            raw["errors"] = tuple(raw["errors"])
+            report = InitialValidation(**raw)
+            if report.accepted:
+                session._verify_saved_initial_validation(report)
+            session.initial_validation = report
+        return session
+
+    def _verify_saved_initial_validation(self, report: InitialValidation) -> None:
+        if self.manifest is None or self.task_evidence is None or not self.task_evidence.result.passed:
+            raise TaskExecutionError("Accepted initial report has no valid task manifest evidence")
+        self._verify_initial_state(self.task_evidence)
+        for action in ("compile", "correctness", "performance"):
+            evidence = self.results.get(("task_validation", "baseline", action))
+            if evidence is None:
+                raise TaskExecutionError(f"Accepted initial report lacks baseline {action} evidence")
+            result = evidence.result
+            self.manifest.validate(result)
+            accepted = result.passed if action != "correctness" else baseline_correctness_accepted(
+                result, baseline=self.spec.baseline, phase="task_validation", manifest=self.manifest)
+            if not accepted:
+                raise TaskExecutionError(f"Saved baseline {action} does not satisfy the task policy")
+        correctness = self.results[("task_validation", "baseline", "correctness")].result
+        expected_candidate = "candidate_unimplemented"
+        if self.spec.candidate.initial_state == "implemented":
+            expected_candidate = "verified_as_frozen_baseline"
+            if self.spec.baseline.kind == "provided":
+                expected_candidate = "PASS"
+                for action in ("compile", "correctness", "performance"):
+                    evidence = self.results.get(("task_validation", "candidate", action))
+                    if evidence is None or not evidence.result.passed:
+                        raise TaskExecutionError(f"Saved initial candidate lacks passing {action}")
+                    self.manifest.validate(evidence.result)
+        expected = InitialValidation(True, correctness.status, not correctness.passed,
+                                     self.spec.candidate.initial_state, expected_candidate, ())
+        if report != expected:
+            raise TaskExecutionError("Saved lifecycle verdict contradicts original command evidence")
+
+    def _verify_initial_state(self, task: ExecutedAction) -> None:
+        states = {metadata.get("candidate_state") for metadata in
+                  (task.result.metadata or {}).get("commands", [])
+                  if isinstance(metadata, dict) and "candidate_state" in metadata}
+        if states != {self.spec.candidate.initial_state}:
+            raise TaskExecutionError("Task check must verify candidate_state against the actual initial files")
 
     def verify_baseline_sources(self) -> None:
         for relative, digest in self.baseline_sources.items():
@@ -110,8 +223,15 @@ class TaskSession:
             if not (path.is_file() or path.is_symlink()) or _source_digest(path) != digest:
                 raise TaskExecutionError(f"Frozen baseline source changed: {relative}")
 
+    def verify_candidate_harness(self) -> None:
+        if self.harness is None:
+            raise TaskExecutionError("Original harness evidence is missing")
+        verify_workspace_harness(self.harness, logger=self.logger)
+
     def _execute(self, role: str, action: str, phase: str) -> ExecutedAction:
-        workspace = self.baseline_workspace if role in ("task", "baseline") else self.workspace
+        # Initial checks always inspect the preserved starting package, even
+        # when recovering a partially executed session whose candidate changed.
+        workspace = self.baseline_workspace if phase == "task_validation" or role == "baseline" else self.workspace
         self._invocations += 1
         record = self.state_directory / f"action-{self._invocations:04d}-{role}-{action}.json"
         self.verify_baseline_sources()
@@ -119,6 +239,7 @@ class TaskSession:
             executed = run_action(self.spec, workspace, role=role, action=action, phase=phase,
                                   manifest=None if role == "task" else self.manifest, logger=self.logger)
         except TaskExecutionError as exc:
+            self.results.pop((phase, role, action), None)
             _write_json(record, {"role": role, "action": action, "phase": phase,
                                  "execution_error": str(exc),
                                  "commands": [asdict(c) for c in exc.commands]})
@@ -143,11 +264,7 @@ class TaskSession:
             self.task_evidence = task
             if not task.result.passed:
                 raise TaskExecutionError(task.result.reason or "Task validation failed")
-            states = {metadata.get("candidate_state") for metadata in
-                      (task.result.metadata or {}).get("commands", [])
-                      if isinstance(metadata, dict) and "candidate_state" in metadata}
-            if states != {self.spec.candidate.initial_state}:
-                raise TaskExecutionError("Task check must verify candidate_state against the actual initial files")
+            self._verify_initial_state(task)
             self.manifest = CaseManifest.from_result(task.result)
             for action in ("compile", "correctness", "performance"):
                 result = self._execute("baseline", action, phase).result
@@ -176,7 +293,30 @@ class TaskSession:
         _write_json(self.state_directory / "initial_validation.json", asdict(self.initial_validation))
         if not errors:
             self._write_agent_context()
+        _write_json(self.state_directory / "validation_context.json", self.validation_context())
         return self.initial_validation
+
+    def validation_context(self) -> dict:
+        """Trusted input to the validator, including failed initial executions."""
+        from .harness_guard import describe_workspace_harness
+
+        if self.initial_validation is None:
+            raise TaskExecutionError("Initial task validation has not completed")
+        actions = []
+        for path in sorted(self.state_directory.glob("action-*.json")):
+            record = json.loads(path.read_text())
+            if record.get("phase") == "task_validation":
+                actions.append(record)
+        return {
+            "version": 1,
+            "task_id": self.spec.task_id,
+            "task_config": self.spec.to_mapping(),
+            "workspace": str(self.workspace),
+            "baseline_workspace": str(self.baseline_workspace),
+            "initial_validation": asdict(self.initial_validation),
+            "actions": actions,
+            "harness": describe_workspace_harness(self.workspace),
+        }
 
     def _write_agent_context(self) -> None:
         assert self.task_evidence is not None
@@ -227,6 +367,7 @@ class TaskSession:
     def candidate_action(self, action: str) -> ExecutedAction:
         if self.initial_validation is None or not self.initial_validation.accepted:
             raise TaskExecutionError("Candidate evaluation requires accepted initial task validation")
+        self.verify_candidate_harness()
         self._check_candidate_files()
         phase = "candidate_evaluation"
         prerequisites = {"compile": (), "correctness": ("compile",), "performance": ("compile", "correctness")}
@@ -247,15 +388,19 @@ class TaskSession:
             if previous is None or not previous.result.passed:
                 raise TaskExecutionError(f"Candidate {action} requires successful {required}")
         executed = self._execute("candidate", action, phase)
+        self.verify_candidate_harness()
         if self._candidate_sources() != identity:
             raise TaskExecutionError("Evaluation command modified candidate source")
         return executed
 
-    def _candidate_sources(self) -> dict[str, str]:
+    def _candidate_sources(self, *, allow_missing: bool = False) -> dict[str, str]:
         sources = {}
         runtime_dirs = {"__pycache__", ".pytest_cache", ".git", "build"}
         for edit in self.spec.candidate.editable:
-            path = resolve_task_path(self.workspace, edit.path, must_exist=True)
+            path = resolve_task_path(self.workspace, edit.path, must_exist=not allow_missing)
+            if not path.exists():
+                sources[edit.path] = "missing"
+                continue
             paths = path.rglob("*") if edit.scope == "tree" else [path]
             for source in paths:
                 if not source.is_file():

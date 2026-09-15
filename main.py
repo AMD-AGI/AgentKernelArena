@@ -485,6 +485,18 @@ def run_task(
     logger.info("=" * 80)
 
     try:
+        with open(task_config_dir, "r") as handle:
+            declaration = yaml.safe_load(handle) or {}
+        if "schema_version" in declaration:
+            if type(declaration["schema_version"]) is not int or declaration["schema_version"] != 2:
+                raise ValueError(f"Unsupported task schema version: {declaration['schema_version']!r}")
+            from src.task_run import run_task_v2
+
+            return run_task_v2(
+                eval_config=eval_config, agent=agent, agent_launcher=agent_launcher,
+                task_name=task_name, task_config_dir=task_config_dir,
+                run_directory=run_directory, timestamp=timestamp, logger=logger,
+            )
         workspace_path = setup_workspace(
             task_config_dir,
             run_directory,

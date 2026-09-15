@@ -409,7 +409,7 @@ def describe_workspace_harness(root: Path) -> dict[str, object]:
 
 
 def snapshot_workspace_harness(
-    root: Path, *, task_root: Path | None = None
+    root: Path, *, task_root: Path | None = None, task_spec: TaskSpec | None = None
 ) -> WorkspaceSnapshot:
     """Capture harness digests and, when supplied, immutable task-package inputs.
 
@@ -419,8 +419,8 @@ def snapshot_workspace_harness(
 
     root = Path(root)
     config = _task_config(root)
-    if config.get("schema_version") == 2:
-        spec = TaskSpec.from_mapping(config, task_id="workspace")
+    if task_spec is not None or config.get("schema_version") == 2:
+        spec = task_spec or TaskSpec.from_mapping(config, task_id="workspace")
         protected = _v2_protected_paths(root, spec)
         initial_symbols = {}
         for edit in spec.candidate.editable:

@@ -156,7 +156,7 @@ in the session state directory outside the candidate workspace. Confirmation
 measurements reuse this same session, never snapshot an optimized candidate as
 its own baseline.
 
-The parent runtime integration must also supply:
+The shared runtime provides:
 
 - v2 materialization through `src.preprocessing.setup_workspace`, including all
   declared `workspace.sources`, without modifying committed task packages;
@@ -167,12 +167,13 @@ The parent runtime integration must also supply:
   writes a fresh `session.workspace / "task_result.yaml"`, and returns the same
   report mapping (including `task_name`, case counts, method consistency,
   compilation/correctness/tool gates and speedup);
-- the v2 task validator launcher, including run-level validator model/effort and
-  wall-clock timeout settings, and the framework-finalized report contract.
+- `src.task_run.validate_task_session`, which executes initial actions, passes
+  captured evidence to the validator, and re-finalizes its semantic review with
+  the original in-memory context. Validator model/effort and timeout settings
+  remain independent of the optimizer.
 
 A missing session/evaluator entrypoint raises an actionable error. There is no
-fallback to legacy commands, local scoring or a model-authored PASS. These shared
-changes must be integrated before a live campaign. The focused CPU tests use
+fallback to legacy commands, local scoring or a model-authored PASS. The focused CPU tests use
 synthetic timing rows only to exercise protocol plumbing; they are not GPU timing
 or task validation evidence.
 
@@ -189,8 +190,8 @@ git diff --check
 Against worker base `deefc493`, 51 tests and three subtests passed; seven shared
 lifecycle/prompt tests skipped because those parent-owned modules postdate the
 base. Loading the actual shared `src` modules from integration commit `d88c9c55`
-produced 58 passed tests, three passed subtests and no skips. The optimizer wiring
-test substitutes only the pending session scoring entrypoint, explicitly marks
-its score as synthetic, and runs real shared initial/final command gates. The CLI
+produced 58 passed tests, three passed subtests and no skips. Subsequent integration
+coverage in `tests/test_task_run_v2.py` exercises the actual shared scoring and
+validator paths with CPU processes and synthetic timing rows. The CLI
 tests use local fake processes, including a child-process timeout test; no new
 paid inference or GPU work was submitted in this change.

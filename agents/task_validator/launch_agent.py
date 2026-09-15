@@ -262,7 +262,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     its own TaskSession memory snapshot. A failure still writes a complete FAIL.
     """
     logger = logging.getLogger(__name__)
-    expected_task_name = _expected_task_name(task_config_dir)
+    expected_task_name = eval_config.get("_task_id") or _expected_task_name(task_config_dir)
     trusted = None
     request_id = None
     is_v2 = False

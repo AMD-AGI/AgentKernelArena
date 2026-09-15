@@ -170,6 +170,24 @@ def test_evidence_detects_tampering(tmp_path: Path) -> None:
         evidence.verify()
 
 
+def test_frozen_original_snapshot_remains_bound_to_current_candidate(tmp_path):
+    candidate, baseline = tmp_path / "candidate", tmp_path / "baseline"
+    candidate.mkdir()
+    baseline.mkdir()
+    (baseline / "kernel.py").write_text("original = 1\n")
+    (candidate / "kernel.py").write_text("optimized = 2\n")
+    evidence = capture_submission_evidence(
+        candidate, {"source_file_path": ["kernel.py"]}, tmp_path / "state",
+        original_workspace=baseline)
+    assert (evidence.files_dir / "kernel.py").read_text() == "original = 1\n"
+    assert evidence.workspace == candidate
+    before = evidence.candidate_fingerprint()
+    (candidate / "kernel.py").write_text("optimized = 3\n")
+    loaded = load_submission_evidence(evidence.storage_dir)
+    assert loaded.candidate_fingerprint() != before
+    assert (loaded.files_dir / "kernel.py").read_text() == "original = 1\n"
+
+
 def test_manifest_tampering_is_detected(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()

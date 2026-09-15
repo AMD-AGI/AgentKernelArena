@@ -17,6 +17,7 @@ from src.perf_helper_materialization import (
 
 GENERATED_NAMES = {
     "validation_report.yaml",
+    "validation_report.draft.yaml",
     "task_result.yaml",
     "baseline_perf.yaml",
     "optimized_perf.yaml",

@@ -319,31 +319,36 @@ def capture_submission_evidence(
     storage_dir: Path,
     *,
     protected_paths: Iterable[str] = (),
+    original_workspace: Path | None = None,
 ) -> SubmissionEvidence:
     """Capture candidate and protected files outside the mutable workspace.
 
     Pass the shared harness/task-package protected-file manifest through
     ``protected_paths``. Paths are already relative to the materialized workspace;
     this includes indirect helpers outside conventional scripts/tests locations.
+    ``original_workspace`` may name the framework's frozen starting snapshot;
+    current candidate fingerprints still use ``workspace``. This supports
+    evaluating a retained session without recapturing modified code as original.
     """
     workspace = workspace.resolve()
+    original = Path(original_workspace).resolve(strict=True) if original_workspace is not None else workspace
     storage_dir = storage_dir.resolve()
-    if storage_dir.is_relative_to(workspace):
+    if storage_dir.is_relative_to(workspace) or storage_dir.is_relative_to(original):
         raise ValueError("submission evidence storage must be outside the task workspace")
     if storage_dir.exists():
         raise FileExistsError(f"submission evidence already exists: {storage_dir}")
     roots: dict[str, dict[str, str]] = {}
     for declared in declared_submission_paths(task_config):
-        lexical, _ = _submission_location(workspace, declared, task_config)
-        roots[lexical.relative_to(workspace).as_posix()] = {
+        lexical, _ = _submission_location(original, declared, task_config)
+        roots[lexical.relative_to(original).as_posix()] = {
             "declared_path": declared,
-            "workspace_relative_path": lexical.relative_to(workspace).as_posix(),
+            "workspace_relative_path": lexical.relative_to(original).as_posix(),
         }
     for declared in protected_paths:
         relative = _relative_path(declared)
         roots[relative] = {"declared_path": relative, "workspace_relative_path": relative}
     root_list = [roots[key] for key in sorted(roots)]
-    entries = _collect_entries(workspace, root_list)
+    entries = _collect_entries(original, root_list)
     files_dir = storage_dir / "files"
     files_dir.mkdir(parents=True)
     for entry in entries:
@@ -352,7 +357,7 @@ def capture_submission_evidence(
         if entry["kind"] == "directory":
             destination.mkdir(parents=True, exist_ok=True)
         elif entry["kind"] == "file":
-            source = workspace / entry["resolved_workspace_relative_path"]
+            source = original / entry["resolved_workspace_relative_path"]
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
     manifest_body = {

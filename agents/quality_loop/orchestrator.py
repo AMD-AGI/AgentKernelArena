@@ -505,7 +505,16 @@ class QualityLoop:
         before = snapshot_tree(workspace)
         started = time.time_ns()
         settings = self._eval_config(task_id=task_id, validator=True)
-        self.validator_launcher(settings, str(package / "config.yaml"), str(workspace))
+        from src.task_session import TaskSession
+        from src.task_run import validate_task_session
+
+        session = TaskSession.create(spec, workspace, stage_dir / "validation-session", self.logger)
+        # The shared runner passes the captured manifest, initial-state and
+        # baseline evidence before the semantic reviewer starts.
+        def launch(*, eval_config, task_config_dir, workspace):
+            return self.validator_launcher(eval_config, task_config_dir, workspace)
+        validate_task_session(session, eval_config=settings, task_config_dir=str(package / "config.yaml"),
+                              agent_launcher=launch)
         if not validation_report_is_complete(workspace):
             raise RuntimeError(f"validator did not finalize a complete report for {task_id}")
         if report_path.is_symlink() or marker_path.is_symlink():
