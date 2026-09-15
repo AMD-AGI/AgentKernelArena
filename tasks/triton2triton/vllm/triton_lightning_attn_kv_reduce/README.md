@@ -33,3 +33,21 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+
+## Prefix carry, in-place outputs and timed state
+
+All five original shapes, seeds, FP32 inputs and `atol=rtol=0.01` comparisons
+remain. An additional unscored 273-token diagnostic covers two blocks, a
+17-token partial final block, nonzero history, zero/nonzero decay, and the
+public four-dimensional slope input. Both returned buffers must preserve the
+specified shapes, dtypes, devices and in-place storage; the slope is read-only.
+
+Timing retains the original 10 warmups, 100 samples and original `prepare_fn`
+that copies the source KV/history into the work buffers before each invocation.
+Checks observe the actual timed in-place result. An unscored exact replay uses
+changed slope, source KV and nonzero source history through the same preparation.
+Both updated buffers must match the independent recurrence. In-place state is
+also input, so this diagnostic changes valid input state instead of poisoning
+values the operator must read. The caller-owned sources and work buffers are
+restored even after a failed replay. No additional case is added to scoring.

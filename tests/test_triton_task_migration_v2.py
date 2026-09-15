@@ -5960,3 +5960,119 @@ def test_merged_inverse_original_timing_exact_replay_restores_inputs(monkeypatch
 def test_merged_inverse_adapter_installs_checks(monkeypatch,width):
     h=module_at(ROOT/f'tasks/triton2triton/vllm/triton_merge_16x16_to_{width}x{width}/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_merge_inverse_checks'
+
+
+def _kv_reduce_cpu(s,kv,history,n,BLOCK=256):
+    # Closed-form weighted history, independently of the iterative reference.
+    slope=s.reshape(1,-1,1,1).double();initial=history.double().clone();parts=kv.double().clone()
+    lengths=[min(n-i*BLOCK,BLOCK) for i in range(kv.shape[2])]
+    prefixes=[]
+    for i in range(len(lengths)+1):
+        value=initial*torch.exp(-slope*sum(lengths[:i]))
+        for j in range(i):value=value+parts[:,:,j]*torch.exp(-slope*sum(lengths[j+1:i]))
+        prefixes.append(value)
+    kv.copy_(torch.stack(prefixes[:-1],dim=2));history.copy_(prefixes[-1])
+    return kv,history
+
+
+def _kv_reduce_cpu_harness(monkeypatch):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'lightning_attn_kv_reduce')
+    for name in ('rand','zeros'):
+        factory=getattr(torch,name)
+        monkeypatch.setattr(torch,name,lambda *a,_factory=factory,**kw:_factory(*a,**{**kw,'device':'cpu'}))
+    return h,checks
+
+
+def test_kv_reduce_independent_known_two_block_carry_and_partial_decay(monkeypatch):
+    import math
+    h,checks=_kv_reduce_cpu_harness(monkeypatch)
+    s=torch.tensor([0.,math.log(2)],dtype=torch.float32).reshape(1,2,1,1)
+    kv=torch.tensor([2.,3.,4.,5.]).reshape(1,2,2,1,1);history=torch.tensor([1.,2.]).reshape(1,2,1,1)
+    expected=(torch.tensor([1.,3.,2.,4.5]).reshape(1,2,2,1,1),torch.tensor([6.,7.25]).reshape(1,2,1,1))
+    for actual,wanted in zip(checks.reference(h,s,kv,history,3,2),expected):
+        torch.testing.assert_close(actual,wanted,atol=1e-6,rtol=0)
+    result=_kv_reduce_cpu(s,kv,history,3,2);checks.check_outputs(result,(kv,history),expected)
+
+
+@pytest.mark.parametrize('mode',['correct','first_block_only','wrong_partial_decay','ignore_history',
+    'mutate_slope','none_return','return_copies','wrong_shape','wrong_dtype','nonfinite','wrong_kv','wrong_history'])
+def test_kv_reduce_original_correctness_and_multiblock_interface(monkeypatch,mode):
+    h,checks=_kv_reduce_cpu_harness(monkeypatch);calls=[]
+    def public(s,kv,history,n,BLOCK=256):
+        calls.append((s.shape,kv.shape,n,BLOCK))
+        if mode=='mutate_slope':s.zero_()
+        if mode=='ignore_history':history.zero_()
+        if mode=='first_block_only' and kv.shape[2]>1:
+            _kv_reduce_cpu(s,kv[:,:,:1],history,min(n,BLOCK),BLOCK);result=(kv,history)
+        else:result=_kv_reduce_cpu(s,kv,history,kv.shape[2]*BLOCK if mode=='wrong_partial_decay' else n,BLOCK)
+        if mode=='none_return':return None
+        if mode=='return_copies':return tuple(v.clone() for v in result)
+        if mode=='wrong_shape':return result[0].flatten(),result[1]
+        if mode=='wrong_dtype':return result[0].half(),result[1]
+        if mode=='nonfinite':history.fill_(float('nan'))
+        if mode=='wrong_kv':kv.add_(1)
+        if mode=='wrong_history':history.add_(1)
+        return result
+    mod=SimpleNamespace(lightning_attn_kv_reduce_forward=public);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
+    if mode=='correct':
+        original=[v for v in calls if v[2]!=273]
+        assert len(original)==5 and [v[2] for v in original]==[c[2] for c in h.TEST_SHAPES]
+        assert len([v for v in calls if v[2]==273])==1
+        assert calls[1][0]==torch.Size([1,2,1,1]) and calls[1][1][2]==2
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','skip_prepare','wrong_replay',
+    'mutate_timed_slope','mutate_timed_source','mutate_replay_source','zero_input_and_outputs','raise_replay'])
+def test_kv_reduce_actual_prepared_timing_preserves_mutable_input_semantics(monkeypatch,mode):
+    import inspect
+    h,checks=_kv_reduce_cpu_harness(monkeypatch)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(lightning_attn_kv_reduce_forward=_kv_reduce_cpu);h.load_module=lambda:mod
+    all_buffers,all_saved,options,replays=[],[],[],[]
+    def benchmark(measured,*,timed_run,prepare_fn,**kwargs):
+        options.append(kwargs);fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        base=inspect.getclosurevars(prepare_fn).nonlocals
+        buffers=(state['s'],base['kv'],base['kv_history'],state['kv_work'],state['history_work'])
+        all_buffers.append(buffers);all_saved.append(checks.snapshot(buffers))
+        for _ in range(3):
+            prepare_fn()
+            assert torch.equal(buffers[3],buffers[1]) and torch.equal(buffers[4],buffers[2])
+            output=measured()
+        cached=checks.snapshot(output)
+        if mode=='wrong_timed':output[1].zero_()
+        if mode=='mutate_timed_slope':buffers[0].zero_()
+        if mode=='mutate_timed_source':buffers[1].zero_()
+        if mode=='zero_input_and_outputs':
+            for v in buffers:v.zero_()
+        def replay():
+            replays.append(True)
+            assert torch.equal(buffers[0],all_saved[-1][0]*.5)
+            assert torch.equal(buffers[1],all_saved[-1][1]*-.5+.25)
+            assert torch.equal(buffers[2],torch.full_like(buffers[2],.75))
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='skip_prepare':prepare_fn()
+            # These buffers are valid non-poisoned recurrence inputs.
+            assert all(torch.isfinite(v).all() for v in buffers)
+            if mode not in ('no_write','stale'):measured()
+            if mode=='stale':
+                for dest,source in zip(output,cached):dest.copy_(source)
+            if mode=='wrong_replay':output[0].zero_()
+            if mode=='mutate_replay_source':buffers[2].zero_()
+            return output
+        timed_run._bind(replay,output)
+        return .125,{'benchmark_method':'cuda_graph','calls_per_replay':1}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h)
+    rows=h.run_performance()
+    assert options==[dict(warmup=10,repetition=100)]*5
+    for cfg,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('batch','heads','seq','d_model','e_model'),cfg))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for values,saved in zip(all_buffers,all_saved):checks.unchanged(values,saved)
+    assert len(replays)==(0 if mode in ['wrong_timed','mutate_timed_slope','mutate_timed_source','zero_input_and_outputs'] else 5)
+    assert mod.lightning_attn_kv_reduce_forward is _kv_reduce_cpu
+
+
+def test_kv_reduce_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_lightning_attn_kv_reduce/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_kv_reduce_checks'
