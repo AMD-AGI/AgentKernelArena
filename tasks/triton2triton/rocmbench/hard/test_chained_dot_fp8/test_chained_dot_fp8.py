@@ -63,21 +63,21 @@ def _chained_dot(
     s_scale = q_desc * k_desc * s_sc
     acc_scale = s_desc * v_desc * o_sc
 
-    q = tl.load(Q_block_ptr)
+    q = tl.load(Q_block_ptr, boundary_check=(0,), padding_option="zero")
 
     acc = tl.zeros([BLOCK_M, BLOCK_D], dtype=tl.float32)
     lo, hi = 0, N
     for start_n in range(lo, hi, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
 
-        k = tl.load(K_block_ptr)
+        k = tl.load(K_block_ptr, boundary_check=(1,), padding_option="zero")
         s = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
         s += tl.dot(q, k)
 
         if USE_FP8:
             s *= s_scale
 
-        v = tl.load(V_block_ptr)
+        v = tl.load(V_block_ptr, boundary_check=(0,), padding_option="zero")
         acc += tl.dot(s.to(v.dtype), v)
 
         K_block_ptr = tl.advance(K_block_ptr, (0, BLOCK_N))
@@ -88,7 +88,7 @@ def _chained_dot(
 
     O_block_ptr = tl.make_block_ptr(base=Out + off_z * stride_oz, shape=(M, BLOCK_D), strides=(stride_om, stride_od),
                                     offsets=(start_m * BLOCK_M, 0), block_shape=(BLOCK_M, BLOCK_D), order=(1, 0))
-    tl.store(O_block_ptr, acc.to(Out.type.element_ty))
+    tl.store(O_block_ptr, acc.to(Out.type.element_ty), boundary_check=(0,))
 
 ##################################################################################################################################################  
 
@@ -207,31 +207,70 @@ def test_chained_dot(M, N, D, dtype, msize,request):
         )
         ref_f8, ref_sc, _ = to_float8(ref)
 
-        tri_out = chained_dot(q_f8, k_f8, v_f8, msize, q_desc, k_desc, v_desc, s_sc, s_desc, ref_sc)
-        result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
-        ################### save tri_out in result_gold ###################
-        test_case_name = request.node.name
-        sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_") + "_fwd"
-        result_gold[sanitized_key_name] = tri_out[0].float().clone().detach().cpu()
-        ###################################################################
+        from _arena_reference import DotCheck
+        check = DotCheck(q_f8, k_f8, v_f8, (q_desc, k_desc, v_desc, s_sc, s_desc, ref_sc), strict=True)
+        try:
+            tri_out = chained_dot(q_f8, k_f8, v_f8, msize, q_desc, k_desc, v_desc, s_sc, s_desc, ref_sc)
+            result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
+            ################### save tri_out in result_gold ###################
+            test_case_name = request.node.name
+            sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_") + "_fwd"
+            result_gold[sanitized_key_name] = tri_out[0].float().clone().detach().cpu()
+            ###################################################################
 
 
-        assert tri_out.isnan().sum() == 0
-        torch.testing.assert_close(tri_out[0].float(), ref_f8.float(), atol=1e-2, rtol=0)
+            assert tri_out.isnan().sum() == 0
+            torch.testing.assert_close(tri_out[0].float(), ref_f8.float(), atol=1e-2, rtol=0)
+
+            check(tri_out)
+            check.fresh(tri_out)
+            check(chained_dot(q_f8, k_f8, v_f8, msize, q_desc, k_desc, v_desc, s_sc, s_desc, ref_sc))
+            request.node.user_properties.append(("dot_contract", {"readonly_input_checked": True, "full_output_checked": True, "fresh_input_replay_checked": True, "original_fp8_gate_checked": True}))
+        finally:
+            check.restore()
 
     else:
         s = torch.matmul(q, k.transpose(1, 2))
         ref = torch.matmul(s, v.transpose(1, 2))
 
-        tri_out = chained_dot(q, k, v, msize)
-        result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
-        ################### save tri_out in result_gold ###################
-        test_case_name = request.node.name
-        sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
-        result_gold[sanitized_key_name] = tri_out.clone().detach().cpu()
-        ###################################################################
+        from _arena_reference import DotCheck
+        check = DotCheck(q, k, v, strict=True)
+        try:
+            tri_out = chained_dot(q, k, v, msize)
+            result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
+            ################### save tri_out in result_gold ###################
+            test_case_name = request.node.name
+            sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
+            result_gold[sanitized_key_name] = tri_out.clone().detach().cpu()
+            ###################################################################
 
-        torch.testing.assert_close(tri_out, ref, atol=1e-2, rtol=0)
+            torch.testing.assert_close(tri_out, ref, atol=1e-2, rtol=0)
+
+            check(tri_out)
+            request.node.user_properties.append(("dot_contract", {"readonly_input_checked": True, "full_output_checked": True, "original_fp16_gate_checked": True}))
+        finally:
+            check.restore()
+
+
+@pytest.mark.parametrize("dtype_str", ["fp16", "fp8"])
+def test_batched_tail_and_scale_control(dtype_str, request):
+    from _arena_reference import DotCheck
+    dtype = float8 if dtype_str == "fp8" else torch.float16
+    BATCH, M, N, D = 2, 17, 35, 16
+    q = ((torch.arange(BATCH * M * D, device="cuda") % 9 - 4).reshape(BATCH, M, D) * .125).to(dtype)
+    k = ((torch.arange(BATCH * N * D, device="cuda") % 7 - 3).reshape(BATCH, N, D) * .25 + .125).to(dtype)
+    v = ((torch.arange(BATCH * D * N, device="cuda") % 5 - 2).reshape(BATCH, D, N) * .125 + .125).to(dtype)
+    scales = (.5, .5, 2., 2., .5, .5) if dtype_str == "fp8" else (1.,) * 6
+    check = DotCheck(q, k, v, scales)
+    assert bool((check.expected.float().abs() > .02).any()), "Replay control must have a nonzero independent answer"
+    try:
+        out = chained_dot(q, k, v, 16, *scales)
+        check(out)
+        check.fresh(out)
+        check(chained_dot(q, k, v, 16, *scales))
+        request.node.user_properties.append(("dot_contract", {"readonly_input_checked": True, "full_output_checked": True, "fresh_input_replay_checked": True, "both_batches_checked": True}))
+    finally:
+        check.restore()
 
 # --- Define TFLOPS and GB/s calculators ---
 def calculate_chained_dot_tflops(params: dict, ms: float) -> float:

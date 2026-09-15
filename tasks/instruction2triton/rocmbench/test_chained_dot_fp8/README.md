@@ -13,9 +13,9 @@ Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|
 with one role and one action. Submitted checks use `ARENA_EVAL_PHASE=candidate_evaluation`.
 The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
 `workloads.json` retains 24 original collected cases, including 20 performance cases.
-Collection is checked against this independent manifest. Original correctness
-functions run unchanged. Performance inputs additionally run the task-local
-oracle in `_arena_reference.py`, before timing and against observed timed output.
+Collection is checked against this independent manifest. Original collected FP8 correctness
+cases and their absolute gate remain, with immutable inputs. Performance inputs additionally run the task-local
+oracle in `_arena_reference.py`, before timing, against actual TimedRun output and after fresh-input replay.
 Seeds, case parameters, original assertions/tolerances, launch parameters,
 prepare/reset callbacks, warmups and sample counts are unchanged.
 
@@ -182,3 +182,38 @@ def _chained_dot(
 
 
 
+
+
+## Scaled FP8 and FP16 contract
+
+The four original collected correctness cases are FP8. Their `atol=1e-2, rtol=0`
+reference comparison remains, as does the scaled FP8 performance gate. Actual
+output dtype/shape/device are checked **before** floating conversion for the
+comparison, so returning an unquantized FP32 answer cannot satisfy FP8 output.
+Both batches and every output element are checked.
+
+The original performance suite also added random FP16 cases without a numerical
+gate. Those use a private FP64 two-GEMM oracle with the mandatory FP16
+intermediate/output. FP32 accumulation bounds are gamma(2*D) and gamma(2*N),
+where gamma(n)=n*2^-24/(1-n*2^-24); intermediate rounding intervals propagate
+through abs(V), then final endpoints round to FP16. This is the same explicit
+rounding model as chained_matmul, never a tolerance fitted to observed errors.
+Any original FP16 correctness branch's existing absolute assertion is retained.
+
+All 24 original identities and 20 scored workloads, batch counts, RNG seeds,
+scale selection, shapes, tile/warp/stage/instruction settings, allocating wrapper,
+warmup 10, repetition 100 and canonical timer remain. Two unscored controls add
+BATCH=2/M=17/N=35/D=16, signed values and meaningful non-unit FP8 scale products,
+for 26 correctness cases. Block-pointer boundary checks and zero padding repair
+unsafe public M/N tails without changing valid arithmetic or launch parameters.
+Both roles freeze/evaluate this repaired kernel revision; old timings identify
+an earlier baseline version.
+
+Timed output is checked in full and replayed after fresh input plus NaN output
+poison. FP8 replay negates Q exactly through its dtype, preserving range with
+fixed scales; FP16 replay changes Q/K and recomputes the reference. All inputs
+are read-only and inputs/poisoned outputs restore in `finally`, outside timing.
+
+The added tail controls use signed deterministic Q/K/V with nonzero K/V offsets.
+The independent answer is checked to be nonzero before launching the candidate,
+so a cached zero result cannot make the sign-flip replay control vacuous.

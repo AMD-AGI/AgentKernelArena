@@ -472,6 +472,78 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "test_batched_tail_and_scale_control/6c7bb0561c4b150a08b3",
+      "params": {
+        "function": "test_batched_tail_and_scale_control",
+        "arguments": {
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS",
+      "coverage": {
+        "BATCH": 2,
+        "M": 17,
+        "N": 35,
+        "D": 16,
+        "dtype": "fp16",
+        "matrix_instr_nonkdim": 16,
+        "scales": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "scored": false,
+        "inputs": {
+          "q": "(arange%9-4)*0.125",
+          "k": "(arange%7-3)*0.25+0.125",
+          "v": "(arange%5-2)*0.125+0.125",
+          "replay": "FP8 Q exact sign flip; FP16 Q sign/column flip plus row offsets and K column flip; recompute oracle"
+        }
+      }
+    },
+    {
+      "test_case_id": "test_batched_tail_and_scale_control/72af88dfcfdd1b2e546d",
+      "params": {
+        "function": "test_batched_tail_and_scale_control",
+        "arguments": {
+          "dtype_str": "fp8"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS",
+      "coverage": {
+        "BATCH": 2,
+        "M": 17,
+        "N": 35,
+        "D": 16,
+        "dtype": "fp8",
+        "matrix_instr_nonkdim": 16,
+        "scales": [
+          0.5,
+          0.5,
+          2.0,
+          2.0,
+          0.5,
+          0.5
+        ],
+        "scored": false,
+        "inputs": {
+          "q": "(arange%9-4)*0.125",
+          "k": "(arange%7-3)*0.25+0.125",
+          "v": "(arange%5-2)*0.125+0.125",
+          "replay": "FP8 Q exact sign flip; FP16 Q sign/column flip plus row offsets and K column flip; recompute oracle"
+        }
+      }
     }
   ],
   "migration": {
