@@ -818,7 +818,8 @@ def test_declared_gpu_constraints_are_retained_without_unverified_widening():
     # Full task_validator qualification is tracked separately per source/runtime;
     # this CPU assertion is not GPU evidence itself.
     for name in ("rmsnorm_kernel", "softmax_kernel", "layernorm_kernel", "topk_gating_softmax_kernel",
-                 "flash_attn_func_kernel", "hgemm_splitk_kernel", "fused_rope_cache_kernel", "silu_and_mul_fq_kernel"):
+                 "flash_attn_func_kernel", "hgemm_splitk_kernel", "fused_rope_cache_kernel", "silu_and_mul_fq_kernel",
+                 "moe_sorting_kernel", "pa_decode_swa_kernel"):
         expected["flydsl2flydsl/" + name] = ["gfx942", "gfx950"]
     assert observed == expected
 
