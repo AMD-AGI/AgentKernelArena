@@ -25,3 +25,13 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+Protected checks enforce both output shapes, the platform FP8 dtype, FP32 scales,
+finite values, positive scales. The original scale gate remains
+atol=1e-5, rtol=1e-3; the dequantized output gate remains atol=rtol=0.1.
+References read pristine input. Unscored diagnostics cover padded rows, group-size
+17 tails, zero groups, a non-default epsilon, and the public power-of-two scale mode.
+All five scored cases and seeds remain unchanged and time the original default
+quantization mode. The exact timed invocation is observed and replayed with changed
+input and poisoned outputs. Input and hooks are restored even on failure; 10 warmups,
+100 samples, full-wrapper timing and original source/harness are preserved.

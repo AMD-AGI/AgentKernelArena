@@ -4583,3 +4583,152 @@ def test_int8_quant_adapters_install_task_local_checks(monkeypatch, symbol):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm'/('triton_'+symbol)/'_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_int8_quant_checks'
+
+
+_FP8_GROUP_TASKS = ['per_token_group_quant_fp8', 'per_token_group_quant_fp8_colmajor']
+
+
+def _fp8_group_cpu(x, group_size, eps=1e-10, dtype=None, use_ue8m0=False, *, colmajor=False):
+    dtype = dtype or torch.float8_e4m3fnuz
+    limit = 240. if dtype == torch.float8_e4m3fnuz else torch.finfo(dtype).max
+    grouped = x.float().reshape(x.shape[0], -1, group_size)
+    scales = grouped.abs().amax(-1).clamp_min(eps)/limit
+    if use_ue8m0: scales = torch.pow(2., scales.log2().ceil())
+    quant = (grouped/scales.unsqueeze(-1)).clamp(-limit, limit).to(dtype).reshape(x.shape)
+    if colmajor:
+        transposed = torch.empty((scales.shape[1], scales.shape[0]), dtype=torch.float32)
+        transposed.copy_(scales.t()); scales = transposed.t()
+    return quant, scales
+
+
+def _fp8_group_cpu_harness(monkeypatch, symbol):
+    task = ROOT/'tasks/triton2triton/vllm'/('triton_'+symbol)
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    for name in ('randn', 'arange'):
+        factory = getattr(torch, name)
+        monkeypatch.setattr(torch, name, lambda *a, _factory=factory, **kw: _factory(*a, **{**kw, 'device':'cpu'}))
+    original = torch.Tensor.to
+    def cpu_to(value, *args, **kwargs):
+        if args and isinstance(args[0], str) and args[0].startswith('cuda'): args = ('cpu', *args[1:])
+        return original(value, *args, **kwargs)
+    monkeypatch.setattr(torch.Tensor, 'to', cpu_to)
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    return h, checks
+
+
+@pytest.mark.parametrize('symbol', _FP8_GROUP_TASKS)
+def test_fp8_group_independent_known_answers_and_original_tolerance(monkeypatch, symbol):
+    h, checks = _fp8_group_cpu_harness(monkeypatch, symbol)
+    x = torch.tensor([[0., .5, -1., 0.], [0., 0., 0., 0.]], dtype=torch.float16)
+    expected_q = torch.tensor([[0., 240., -240., 0.], [0., 0., 0., 0.]]).to(torch.float8_e4m3fnuz)
+    expected_s = torch.tensor([[.5/240, 1/240], [1e-10/240, 1e-10/240]])
+    ref = checks.reference(h, x, dict(group_size=2))
+    torch.testing.assert_close(ref[0].float(), expected_q.float(), atol=0, rtol=0)
+    torch.testing.assert_close(ref[1], expected_s, atol=0, rtol=0)
+    actual = _fp8_group_cpu(x, 2, colmajor=checks.COLUMN_MAJOR)
+    checks.check_outputs(actual, (expected_q, expected_s), 2)
+    # An FP8 rounding step remains allowed by the original dequantized threshold.
+    changed = actual[0].float(); changed[0, 1] = 224
+    checks.check_outputs((changed.to(actual[0].dtype), actual[1]), ref, 2)
+    changed[0, 1] = 0
+    with pytest.raises(AssertionError): checks.check_outputs((changed.to(actual[0].dtype), actual[1]), ref, 2)
+    rounded = checks.reference(h, x, dict(group_size=2, eps=.5, use_ue8m0=True))
+    torch.testing.assert_close(rounded[1], torch.tensor([[1/256, 1/128], [1/256, 1/256]]), atol=0, rtol=0)
+
+
+@pytest.mark.parametrize('symbol,mode', [
+    (symbol, mode) for symbol in _FP8_GROUP_TASKS
+    for mode in ['correct', 'q_dtype', 'spoof_dtype_helper', 'scale_dtype', 'q_shape', 'scale_shape',
+                 'nonfinite_q', 'nonfinite_scale', 'empty_tuple', 'missing_scale', 'wrong_q',
+                 'wrong_scale', 'mutate_input', 'zero_scales', 'ignore_eps', 'ignore_ue8m0',
+                 'truncate_tail', 'contiguous_scales']
+    if mode != 'contiguous_scales' or symbol.endswith('colmajor')
+])
+def test_fp8_group_original_correctness_output_contract_and_public_modes(monkeypatch, symbol, mode):
+    h, checks = _fp8_group_cpu_harness(monkeypatch, symbol)
+    calls = []
+    def public(x, group_size, **kwargs):
+        calls.append((tuple(x.shape), x.stride(), group_size, dict(kwargs)))
+        if mode == 'mutate_input': x.zero_()
+        if mode == 'ignore_eps': kwargs['eps'] = 1e-10
+        if mode == 'ignore_ue8m0': kwargs['use_ue8m0'] = False
+        quant, scales = _fp8_group_cpu(x, group_size, **kwargs, colmajor=checks.COLUMN_MAJOR)
+        if mode in ('q_dtype', 'spoof_dtype_helper'): quant = quant.half()
+        if mode == 'scale_dtype': scales = scales.half()
+        if mode == 'q_shape': quant = quant.flatten()
+        if mode == 'scale_shape': scales = scales.flatten()
+        if mode == 'nonfinite_q': quant.copy_(torch.full_like(x, float('nan')).to(quant.dtype))
+        if mode == 'nonfinite_scale': scales.fill_(float('nan'))
+        if mode == 'empty_tuple': return ()
+        if mode == 'missing_scale': return (quant,)
+        if mode == 'wrong_q': quant.copy_(torch.zeros_like(x).to(quant.dtype))
+        if mode == 'wrong_scale': scales.mul_(2)
+        if mode == 'zero_scales': scales[x.abs().amax(-1)==0] = 0
+        if mode == 'truncate_tail' and group_size == 17:
+            bad = quant.float(); bad[:, -1] = -240; quant.copy_(bad.to(quant.dtype))
+        if mode == 'contiguous_scales': scales = scales.contiguous()
+        return quant, scales
+    mod = SimpleNamespace(**{symbol:public, '_get_fp8_dtype':lambda: torch.float16 if mode == 'spoof_dtype_helper' else torch.float8_e4m3fnuz})
+    h.load_module = lambda: mod
+    checks.install(h)
+    ok, reason = h.run_correctness()
+    assert ok is (mode == 'correct'), reason
+    if mode == 'correct':
+        original = [c for c in calls if c[0] != (3, 34)]
+        assert [(c[0][0], c[0][1], c[2]) for c in original] == h.TEST_SHAPES
+        diagnostic = [c for c in calls if c[0] == (3, 34)]
+        assert len(diagnostic) == 2
+        assert all(c[1] == (68, 1) and c[2] == 17 and c[3]['eps'] == .5 for c in diagnostic)
+        assert diagnostic[-1][3]['use_ue8m0']
+    assert getattr(mod, symbol) is public
+
+
+@pytest.mark.parametrize('symbol', _FP8_GROUP_TASKS)
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'omit_q', 'omit_scale',
+                                 'wrong_replay', 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_fp8_group_original_timing_validates_both_outputs_and_restores_input(monkeypatch, symbol, mode):
+    import inspect
+    h, checks = _fp8_group_cpu_harness(monkeypatch, symbol)
+    h._TimedRun = module_at(ROOT/'src/tools/perf/aka_benchmark.py', monkeypatch).TimedRun
+    def public(x, group_size, **kwargs):
+        return _fp8_group_cpu(x, group_size, **kwargs, colmajor=checks.COLUMN_MAJOR)
+    mod = SimpleNamespace(**{symbol:public}); h.load_module = lambda: mod
+    inputs, pristine, options = [], [], []
+    def benchmark(measured, *, timed_run, **kwargs):
+        fn = inspect.getclosurevars(measured).nonlocals['fn']
+        state = inspect.getclosurevars(fn).nonlocals
+        x = state['x']; inputs.append(x); pristine.append(x.clone()); options.append(kwargs)
+        outputs = measured(); cached = tuple(v.clone() for v in outputs)
+        if mode == 'wrong_timed': outputs[0].copy_(torch.zeros_like(x).to(outputs[0].dtype))
+        if mode == 'mutate_timed': x.zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('Replay failed')
+            if mode != 'no_write':
+                computed = cached if mode == 'stale' else measured()
+                for i, (out, value) in enumerate(zip(outputs, computed)):
+                    if mode == 'omit_q' and i == 0 or mode == 'omit_scale' and i == 1: continue
+                    out.copy_(value)
+            if mode == 'wrong_replay': outputs[0].copy_(torch.zeros_like(x).to(outputs[0].dtype))
+            if mode == 'mutate_replay': x.zero_()
+            return outputs
+        timed_run._bind(replay, outputs)
+        return .125, {'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == 5 and options == [dict(warmup=10, repetition=100)]*5
+    for case, row in zip(h.TEST_SHAPES, rows):
+        assert row['params'] == dict(M=case[0], N=case[1], group_size=case[2])
+        assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
+        if mode == 'correct': assert row['perturbed_input_replay_checked']
+    for x, saved in zip(inputs, pristine): checks.unchanged(x, saved)
+    assert getattr(mod, symbol) is public
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+@pytest.mark.parametrize('symbol', _FP8_GROUP_TASKS)
+def test_fp8_group_adapters_install_task_local_checks(monkeypatch, symbol):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm'/('triton_'+symbol)/'_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_fp8_group_checks'
