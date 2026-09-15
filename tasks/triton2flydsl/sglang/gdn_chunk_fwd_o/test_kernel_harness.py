@@ -17,7 +17,8 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -25,6 +26,7 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2flydsl/sglang/gdn_chunk_fwd_o"
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
+ENTRY = 'chunk_fwd_o'
 BT = 64  # CHUNK_SIZE
 
 # Test configs: (B, T, Hg, H, K, V). real Qwen3.5-35B GDN prefill: Hg=8, H=16,
@@ -151,6 +153,44 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_combine_output(output, expected):
+    import torch
+    require_tensor_contract(output, expected)
+    if not bool(torch.isfinite(output).all()):
+        raise AssertionError("Non-finite operator output")
+
+
+def _compare_combine_output(actual, expected, dtype):
+    import torch
+    _checked_combine_output(actual, expected)
+    if not bool(torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite reference output")
+    atol = 1e-4 if dtype == torch.float32 else 3e-2
+    rtol = 1e-4 if dtype == torch.float32 else 1e-2
+    isclose = torch.isclose(actual.float(), expected.float(), atol=atol, rtol=rtol)
+    err_ratio = (~isclose).float().mean().item()
+    # Preserve the original task-specific allowance; finiteness is mandatory.
+    if err_ratio > 0.02:
+        raise AssertionError(f"Numerical mismatch: GDN output err_ratio={err_ratio}")
+
+
+def _combine_replay_validator(inp):
+    inputs = tuple(inp[key] for key in ("q", "k", "v", "h", "g"))
+    originals = tuple(v.clone() for v in inputs)
+    expected = reference_o(inp)
+    def perturb():
+        inp["q"].neg_()
+    def replay_reference():
+        return reference_o(inp)
+    def compare(actual, expected):
+        _compare_combine_output(actual, expected, inp["v"].dtype)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=replay_reference, compare=compare)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -166,10 +206,14 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             inp = make_test_data(B, T, Hg, H, K, V, "cuda", dtype)
+            protected_inputs = tuple(inp[key] for key in ("q", "k", "v", "h", "g"))
+            originals = tuple(v.clone() for v in protected_inputs)
             o_t = _retry_oom(lambda: mod.chunk_fwd_o(
                 q=inp["q"], k=inp["k"], v=inp["v"], h=inp["h"], g=inp["g"],
                 scale=inp["scale"], cu_seqlens=None))
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_combine_output(o_t, inp["v"])
             o_r = reference_o(inp)
             diff = (o_t.float() - o_r.float()).abs().max().item()
             # robust closeness: allow small fraction of mismatched elems (bf16 matmul)
@@ -201,9 +245,10 @@ def run_performance():
         try:
             torch.manual_seed(42 + ti)
             inp = make_test_data(B, T, Hg, H, K, V, "cuda", dtype)
+            replay_validate = _combine_replay_validator(inp)
 
             def fn():
-                mod.chunk_fwd_o(
+                return mod.chunk_fwd_o(
                     q=inp["q"], k=inp["k"], v=inp["v"], h=inp["h"], g=inp["g"],
                     scale=inp["scale"], cu_seqlens=None)
 
@@ -211,18 +256,20 @@ def run_performance():
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 

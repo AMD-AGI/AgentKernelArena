@@ -19,7 +19,8 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -27,6 +28,7 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2flydsl/sglang/experts_combine"
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
+ENTRY = 'experts_combine_triton'
 SQRT2 = 1.4142135623730951
 
 # [num_tokens, combine_k, hidden_dim]; combine_k=1 => 2D pre-combined path.
@@ -117,6 +119,65 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_combine_output(output, expected):
+    import torch
+    require_tensor_contract(output, expected)
+    if not bool(torch.isfinite(output).all()):
+        raise AssertionError("Non-finite operator output")
+
+
+def _compare_combine_output(actual, expected, cfg):
+    import torch
+    _checked_combine_output(actual, expected)
+    if not bool(torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite reference output")
+    if cfg["dtype"] == "fp32":
+        close = torch.allclose(actual.float(), expected.float(), atol=1e-4, rtol=1e-4)
+    else:
+        diff = (actual.float() - expected.float()).abs().max().item()
+        denom = expected.float().abs().max().item()
+        rel = diff / denom if denom > 0 else diff
+        close = rel <= 1e-2
+    if not close:
+        raise AssertionError("Numerical mismatch: original experts-combine gate")
+
+
+def _check_output_buffer(mod, moe, mlp, cfg, expected):
+    import torch
+    inputs = (moe, mlp)
+    originals = tuple(v.clone() for v in inputs)
+    nbytes = mlp.numel() * mlp.element_size()
+    buffer = torch.full((nbytes + 16,), 165, dtype=torch.uint8, device=mlp.device)
+    # The public API accepts a raw storage buffer, including excess capacity.
+    buffer[:nbytes].view(mlp.dtype).fill_(float("nan"))
+    actual = mod.experts_combine_triton(moe, mlp, output_buffer=buffer)
+    _compare_combine_output(actual, expected, cfg)
+    if actual.data_ptr() != buffer.data_ptr():
+        raise AssertionError("Return must alias the supplied output buffer prefix")
+    _compare_combine_output(buffer[:nbytes].view(mlp.dtype).reshape_as(mlp), expected, cfg)
+    if not bool((buffer[nbytes:] == 165).all()):
+        raise AssertionError("Operator overwrote output buffer excess capacity")
+    require_unchanged(inputs, originals)
+
+
+def _combine_replay_validator(moe, mlp, cfg):
+    inputs = (moe, mlp)
+    originals = tuple(v.clone() for v in inputs)
+    expected = reference(moe, mlp)
+    def perturb():
+        moe.neg_()
+        mlp.neg_()
+    def replay_reference():
+        return reference(moe, mlp)
+    def compare(actual, expected):
+        _compare_combine_output(actual, expected, cfg)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=replay_reference, compare=compare)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -135,9 +196,14 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             moe, mlp = make_inputs(cfg, "cuda")
+            protected_inputs = (moe, mlp)
+            originals = tuple(v.clone() for v in protected_inputs)
             o_t = _retry_oom(lambda: mod.experts_combine_triton(moe, mlp))
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_combine_output(o_t, mlp)
             o_r = reference(moe, mlp)
+            _check_output_buffer(mod, moe, mlp, cfg, o_r)
             finite = bool(torch.isfinite(o_t).all().item())
             diff = (o_t.float() - o_r.float()).abs().max().item()
             denom = o_r.float().abs().max().item()
@@ -174,26 +240,29 @@ def run_performance():
         try:
             torch.manual_seed(42 + ti)
             moe, mlp = make_inputs(cfg, "cuda")
+            replay_validate = _combine_replay_validator(moe, mlp, cfg)
 
             def fn():
-                mod.experts_combine_triton(moe, mlp)
+                return mod.experts_combine_triton(moe, mlp)
 
             _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 

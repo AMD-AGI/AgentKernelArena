@@ -52,3 +52,21 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All eight original BF16 cases remain, with regular full chunks, explicit decay
+gating, grouped q/k heads and unequal K/V widths. The declared task covers
+cu_seqlens=None; alternate variable-length/chunk-size modes are not benchmarked.
+Output must have v's full [B,T,H,V]shape, dtype and device, and be entirely finite.
+The original numerical rule is explicitly retained: at most2% of elements may
+miss atol=0.03,rtol=0.01. This fraction rule applies to finite values only; it is
+not a universal all-elements tolerance. Correctness and replay use the same rule.
+All five tensor inputs are read-only. Replay negates q, so both the causal
+intra-chunk contribution and previous-state contribution change sign while the
+negative-decay gating distribution remains unchanged.
+
+The actual measured output and same captured graph replay must satisfy the
+original reference and numerical gate. Reference work, input perturbation,
+poisoning and restoration happen outside timing. Originalseed42+i, ten external
+warmups and100graphsamples are unchanged. Final FlyDSL candidate calls are
+audited separately; the original Triton algorithm remains the frozen baseline.

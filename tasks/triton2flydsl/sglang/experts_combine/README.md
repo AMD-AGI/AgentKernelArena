@@ -52,3 +52,20 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All eight original cases remain, including 2D precombined and 3D top-k expert
+inputs, hidden sizes not powers of two, and BF16/FP16/FP32 dtypes. Output must
+match mlp shape/dtype/device and be finite. The original rule remains normalized
+maximum error <=0.01 for BF16/FP16 and FP32 allclose atol=rtol=0.0001 for FP32.
+Correctness additionally exercises output_buffer on every original case: the
+returned tensor must alias and fill its prefix, preserve excess capacity, and
+satisfy the same numerical gate. The timed workload still uses the original
+allocated-output call, for both roles. MoE and MLP inputs are read-only;
+replay negates both and checks the corresponding result.
+
+The actual measured output and same captured graph replay must satisfy the
+original reference and numerical gate. Reference work, input perturbation,
+poisoning and restoration happen outside timing. Originalseed42+i, ten external
+warmups and100graphsamples are unchanged. Final FlyDSL candidate calls are
+audited separately; the original Triton algorithm remains the frozen baseline.
