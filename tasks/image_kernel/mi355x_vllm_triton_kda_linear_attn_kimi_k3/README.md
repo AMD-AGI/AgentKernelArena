@@ -241,15 +241,33 @@ state across graph replays. It does not reset the state or force one invocation
 per graph. Before candidate execution, the harness saves private copies of all
 input tensors. The canonical helper must call the optional collector
 `before_sample(calls_per_replay)` on the measurement stream, before the start
-event of each actual measured sample. The task only clones decode state there;
+event of each actual measured sample. The task clones decode state or chunk
+`v` there;
 it does not execute the reference or alter input state inside the timed interval.
 
 After timing, the harness evaluates the independent recurrence for the observed
 number of invocations from that private starting state and checks the original
-measured output and final state. Chunk's original reference is computed before
-any candidate execution because its initial state is read-only. A second check
-perturbs Q, gates and state from the original private copies, then validates the
-same captured replay. Read-only input mutation fails and all input tensors are
+measured output and final state. The pinned public chunk implementation passes
+`o=v` to its final output kernel: output aliases and overwrites the BF16 value
+input, while the initial state remains read-only. Its reference therefore feeds
+the BF16-rounded output into the next invocation's value input for the actual
+reported repeat count. The harness requires this output alias and validates its
+complete numerical contents; it does not poison that alias before replay,
+because doing so would corrupt the new input. The separate returned state is
+still poisoned. This preserves the original graph batching and allocation work.
+A second check perturbs Q, gates, state and chunk values from original private
+copies, then validates the same captured replay. All other input mutation fails
+and all input tensors are
 restored in `finally`, including on replay or comparison failures. Missing
 observer support fails explicitly; a replay-only check cannot certify the
 original stateful measured path.
+
+
+Job 139646 passed all five full-shape correctness cases and the actual timed
+decode output/state check, but failed chunk performance because the harness
+incorrectly treated `v` as read-only. That failure remains recorded. The alias
+contract above follows the explicit `o=v` call in the declared public source,
+not a general exemption from input checking. CPU scalar controls independently
+verify repeated BF16 value updates and reject a single-invocation answer and an
+output that does not alias `v`. Fresh full GPU validation is required for this
+correction; the passing decode helper before/after experiment is separate.

@@ -273,6 +273,8 @@ def _assert_state_result(inp, result, expected_states, before):
         torch.testing.assert_close(state[mask], before[mask], rtol=0, atol=0)
     else:
         assert state.shape == inp["state"].shape
+        assert output.data_ptr() == inp["v"].data_ptr(), "Chunk output must alias v"
+        assert output.stride() == inp["v"].stride(), "Wrong chunk output layout"
         # Chunk returns the final state. Its caller performs cache scattering;
         # that external model operation is outside this operator's timing scope.
         torch.testing.assert_close(inp["state"], before, rtol=0, atol=0)
@@ -291,11 +293,16 @@ def _reference_state_inputs(inputs, state):
 
 def _repeated_reference(inputs, state, repeats):
     reference = _reference_state_inputs(inputs, state)
-    count = repeats if inputs["mode"] == "packed_decode" else 1
-    assert type(count) is int and count > 0
-    for _ in range(count):
+    assert type(repeats) is int and repeats > 0
+    for _ in range(repeats):
         expected, states = _golden(reference, return_state=True)
-        reference["seg_state0"] = states
+        if inputs["mode"] == "packed_decode":
+            reference["seg_state0"] = states
+        else:
+            # Public chunk.py writes output into v (o=v). Each subsequent
+            # invocation consumes that BF16-rounded value; initial state stays
+            # unchanged. Reproduce the existing evolving-input graph exactly.
+            reference["v"] = expected.to(inputs["v"].dtype)
     return expected, states
 
 
@@ -304,29 +311,28 @@ def _prepare_timed_check(inp):
     originals = {key: value for key, value in inp.items() if isinstance(value, torch.Tensor)}
     snapshots = {key: value.detach().clone() for key, value in originals.items()}
     private = {**inp, **snapshots}
-    check = dict(originals=originals, snapshots=snapshots, private=private, sample=None)
-    if inp["mode"] == "chunk":
-        check["original_expected"] = _repeated_reference(private, snapshots["state"], 1)
-    return check
+    return dict(originals=originals, snapshots=snapshots, private=private, sample=None)
 
 
 def _observe_timed_sample(inp, check, calls_per_replay):
     # Called by the canonical helper on the measurement stream, before its
-    # start event. Retain only the last measured sample's private starting state.
+    # start event. Retain only the last measured sample's private starting
+    # mutable tensor.
     # Unlike prepare_fn, this observes state without resetting it or forcing R=1.
-    if inp["mode"] == "packed_decode":
-        assert type(calls_per_replay) is int and calls_per_replay > 0
-        check["sample"] = (inp["state"].detach().clone(), calls_per_replay)
+    assert type(calls_per_replay) is int and calls_per_replay > 0
+    mutable = "state" if inp["mode"] == "packed_decode" else "v"
+    check["sample"] = (inp[mutable].detach().clone(), calls_per_replay)
 
 
 def _assert_readonly_inputs(inp, check, expected):
     torch = _torch()
     for key, original in check["originals"].items():
-        if key == "state" and inp["mode"] == "packed_decode":
-            continue
-        assert inp[key] is original, "Readonly KDA input replaced: " + key
+        assert inp[key] is original, "KDA input replaced: " + key
         assert original.dtype == expected[key].dtype and original.shape == expected[key].shape
         assert original.device == expected[key].device
+        mutable = "state" if inp["mode"] == "packed_decode" else "v"
+        if key == mutable:
+            continue  # The output/state contract verifies this actual mutation.
         assert torch.equal(original.contiguous().view(torch.uint8),
                            expected[key].contiguous().view(torch.uint8)), "Readonly KDA input changed: " + key
 
@@ -337,14 +343,14 @@ def _assert_timed_outputs(inp, timed, metadata, check):
         _assert_readonly_inputs(inp, check, check["snapshots"])
         repeats = int(metadata["benchmark_effective_repeats"])
         assert repeats > 0
-        if inp["mode"] == "packed_decode":
-            assert check["sample"] is not None, "Canonical timing helper did not observe measured KDA state"
-            before, observed_repeats = check["sample"]
-            assert repeats == observed_repeats, "Observed KDA replay count differs from measured count"
-            expected, states = _repeated_reference(check["private"], before, repeats)
-        else:
-            before = check["snapshots"]["state"]
-            expected, states = check["original_expected"]
+        assert check["sample"] is not None, "Canonical timing helper did not observe measured KDA state"
+        sample, observed_repeats = check["sample"]
+        assert repeats == observed_repeats, "Observed KDA replay count differs from measured count"
+        private = dict(check["private"])
+        before = sample if inp["mode"] == "packed_decode" else check["snapshots"]["state"]
+        if inp["mode"] == "chunk":
+            private["v"] = sample
+        expected, states = _repeated_reference(private, before, repeats)
         _assert_state_result(inp, timed.outputs, states, before)
         _assert_numerics(timed.outputs[0], expected, inp["cfg"]["params"])
 
@@ -352,14 +358,18 @@ def _assert_timed_outputs(inp, timed, metadata, check):
         # from pre-candidate snapshots, never from candidate-modified values.
         changed = dict(check["snapshots"])
         key = "mixed_qkv" if inp["mode"] == "packed_decode" else "q"
-        for name in (key, "raw_g", "state"):
+        changed_names = (key, "raw_g", "state") + (("v",) if inp["mode"] == "chunk" else ())
+        for name in changed_names:
             changed[name] = -check["snapshots"][name]
             inp[name].copy_(changed[name])
         private = {**check["private"], **changed}
         expected, states = _repeated_reference(private, changed["state"], repeats)
-        timed.outputs[0].fill_(float("nan"))
         if inp["mode"] == "chunk":
+            # Output aliases v, so poisoning it would destroy the new input.
+            # Check the complete aliased output against the independent oracle.
             timed.outputs[1].fill_(float("nan"))
+        else:
+            timed.outputs[0].fill_(float("nan"))
         observed = timed.rerun()
         _assert_readonly_inputs(inp, check, changed)
         _assert_state_result(inp, observed, states, changed["state"])

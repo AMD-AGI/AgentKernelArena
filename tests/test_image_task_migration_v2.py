@@ -1408,7 +1408,10 @@ def test_kda_state_reference_and_output_contract(mode, monkeypatch):
     if mode=='packed_decode':
         inp['state'][1].copy_(states[0]);result_state=inp['state']
     else:result_state=torch.stack(states).float()
-    result=(out.bfloat16(),result_state)
+    output = out.bfloat16()
+    if mode == 'chunk':
+        inp['v'].copy_(output);output = inp['v']
+    result=(output,result_state)
     h._assert_state_result(inp,result,states,before)
     with pytest.raises(AssertionError,match='BF16'):
         h._assert_state_result(inp,(out.float(),result_state),states,before)
@@ -1508,6 +1511,8 @@ def test_kda_measured_state_requires_observation_and_rejects_corruption(mode, mo
             state = inp['state']
         else:
             state = torch.stack(states).float()
+            inp['v'].copy_(out.bfloat16())
+            return (inp['v'], state)
         return (out.bfloat16(), state)
 
     def measured():
@@ -1544,15 +1549,14 @@ def test_kda_measured_state_requires_observation_and_rejects_corruption(mode, mo
     with pytest.raises(RuntimeError, match='replay failed'):
         h._assert_timed_outputs(inp, timed, metadata, check)
     restored()
-    if mode == 'packed_decode':
-        timed = measured(); check['sample'] = None
-        with pytest.raises(AssertionError, match='did not observe'):
-            h._assert_timed_outputs(inp, timed, metadata, check)
-        restored()
-        timed = measured()
-        with pytest.raises(AssertionError, match='replay count'):
-            h._assert_timed_outputs(inp, timed, {'benchmark_effective_repeats': 2}, check)
-        restored()
+    timed = measured(); check['sample'] = None
+    with pytest.raises(AssertionError, match='did not observe'):
+        h._assert_timed_outputs(inp, timed, metadata, check)
+    restored()
+    timed = measured()
+    with pytest.raises(AssertionError, match='replay count'):
+        h._assert_timed_outputs(inp, timed, {'benchmark_effective_repeats': 2}, check)
+    restored()
 
 
 def test_kda_vector_reference_checks_state_orientation_and_component_gates(monkeypatch):
@@ -1708,3 +1712,31 @@ def test_hip_paged_attention_imports_declared_package_first(tmp_path, monkeypatc
         assert sys.path.count(str(workspace)) == 1
     finally:
         sys.modules.pop("aiter", None)
+
+
+def test_kda_chunk_repeats_use_bf16_output_as_next_value(monkeypatch):
+    import math
+    torch = pytest.importorskip('torch')
+    h = load_module(KDA_TASK / 'scripts/task_runner.py')
+    monkeypatch.setattr(h, '_torch', lambda: torch)
+    inp = _kda_scalar_fixture(torch, 'chunk')
+    original_v = inp['v'].clone(); original_state = inp['state'].clone()
+    n = math.sqrt(1. + 1e-6)
+    value = 2.
+    for _ in range(4):
+        state = 3. * math.exp(-2.5)
+        state += (value - state / n) * .5 / n
+        output = state / n
+        value = float(torch.tensor(output, dtype=torch.bfloat16))
+    out, states = h._repeated_reference(inp, inp['state'], 4)
+    torch.testing.assert_close(out.flatten(), torch.tensor([output], dtype=torch.float64))
+    torch.testing.assert_close(states[0].flatten(), torch.tensor([state], dtype=torch.float64))
+    single, _ = h._repeated_reference(inp, inp['state'], 1)
+    with pytest.raises(AssertionError): h._assert_numerics(single, out, inp['cfg']['params'])
+    torch.testing.assert_close(inp['v'], original_v, rtol=0, atol=0)
+    torch.testing.assert_close(inp['state'], original_state, rtol=0, atol=0)
+    inp['v'].copy_(out.bfloat16())
+    final_state = torch.stack(states).float()
+    h._assert_state_result(inp, (inp['v'],final_state),states,original_state)
+    with pytest.raises(AssertionError, match='alias v'):
+        h._assert_state_result(inp, (inp['v'].clone(),final_state),states,original_state)
