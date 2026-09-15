@@ -47,6 +47,10 @@ next to the original harness even though the public runner is `_arena_eval.py`.
 Unsupported hardware or missing dependencies return a failing envelope; use a
 compatible image/GPU before scheduling this task.
 
+The harness supports both standalone text streams and Arena's captured action
+logs. It enables line buffering only when the output stream exposes
+`reconfigure`; log capture does not require that terminal-specific method.
+
 ## Reference correction found during migration
 
 An independent E8M0 known-answer check found incorrect NaN decoding: code `134`

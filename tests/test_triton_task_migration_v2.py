@@ -1045,6 +1045,38 @@ def test_geak_v2_preserves_original_functions_and_freezes_the_complete_manifest(
         assert parsed.status=='PASS',run.stdout+run.stderr
 
 
+@pytest.mark.parametrize('stream_kind',['captured','text','reconfigure_error'])
+def test_quant_sort_harness_bootstrap_supports_captured_stdout(monkeypatch,stream_kind):
+    import io,sys
+    from contextlib import redirect_stdout
+    path=ROOT/'tasks/triton2triton/geak_eval/L3/fused_mxfp4_quant_moe_sort/test_kernel_harness.py'
+    tree=ast.parse(path.read_text())
+    # Execute the actual entire import/bootstrap prefix up to GPU dependencies.
+    end=next(i for i,node in enumerate(tree.body) if isinstance(node,ast.Import)
+             and any(alias.name=='torch' for alias in node.names))
+    prefix=compile(ast.Module(body=tree.body[:end],type_ignores=[]),str(path),'exec')
+    monkeypatch.setitem(sys.modules,'_aka_benchmark',SimpleNamespace(benchmark_cuda_graph_or_events_samples=None))
+    class FaultyStream(io.StringIO):
+        def reconfigure(self,**kwargs):raise RuntimeError('broken text stream')
+    stream=(io.TextIOWrapper(io.BytesIO()) if stream_kind=='text' else
+            FaultyStream() if stream_kind=='reconfigure_error' else io.StringIO())
+    try:
+        with redirect_stdout(stream):
+            if stream_kind=='reconfigure_error':
+                with pytest.raises(RuntimeError,match='broken text stream'):exec(prefix,{})
+            else:exec(prefix,{})
+        if stream_kind=='text':assert stream.line_buffering
+        if stream_kind=='captured':
+            before=subprocess.check_output(['git','show',f'{BASE}:{path.relative_to(ROOT).as_posix()}'],cwd=ROOT,text=True)
+            old=next(node for node in ast.parse(before).body if isinstance(node,ast.Expr)
+                     and isinstance(node.value,ast.Call) and isinstance(node.value.func,ast.Attribute)
+                     and node.value.func.attr=='reconfigure')
+            with pytest.raises(AttributeError,match='reconfigure'):
+                exec(compile(ast.Module(body=[old],type_ignores=[]),str(path),'exec'),
+                     {'sys':SimpleNamespace(stdout=stream)})
+    finally:stream.close()
+
+
 def test_geak_boolean_integer_and_skipped_result_contracts(monkeypatch):
     adapter=module_at(GEAK[0].parent/'_arena_eval.py',monkeypatch)
     adapter.require_success(None,'none',1)

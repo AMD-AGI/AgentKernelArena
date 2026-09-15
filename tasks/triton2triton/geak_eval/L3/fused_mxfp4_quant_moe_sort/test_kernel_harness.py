@@ -26,8 +26,10 @@ def benchmark_cuda_graph_or_events(*args, **kwargs):
     )
     return median_ms, metadata
 
-# Ensure line-buffered stdout
-sys.stdout.reconfigure(line_buffering=True)
+# Use line buffering for terminal/file streams. Arena captures action logs in
+# StringIO, which has no reconfigure method and already writes synchronously.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
 
 import torch
 import triton
