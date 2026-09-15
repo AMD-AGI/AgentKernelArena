@@ -5,7 +5,7 @@ implementation in a separate workspace for baseline evaluation. Candidate action
 always use this workspace's declared source; they never search other workspaces.
 
 Optimize the FlyDSL fused TopK gating softmax kernel for AMD MI300X-class CDNA GPUs.
-The kernel fuses softmax over expert logits, top-K expert selection, optional
+The kernel fuses softmax over expert logits, top-K expert selection,
 renormalization of weights, and token_expert_indices in FlyDSL.
 You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
 You MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,
@@ -20,6 +20,11 @@ reference/model/harness code to compute the submitted operator is not allowed.
 Bundled `kernels/` modules are protected implementation utilities, not reference
 solutions. Do not introduce dynamic imports, subprocess kernels or native dispatch
 bypasses. Passing numerical tests alone does not waive the FlyDSL requirement.
+
+This configured Arena task fixes `renormalize=True`. All five correctness cases
+and both performance cases use that setting. The upstream builder retains its
+`renormalize=False` option, which is outside this task's selected workload; this
+port does not claim validation for that additional upstream branch.
 
 `cases.json` declares 5 correctness cases and 2 performance cases
 before candidate execution. Original correctness order/seeds, all numerical gates,

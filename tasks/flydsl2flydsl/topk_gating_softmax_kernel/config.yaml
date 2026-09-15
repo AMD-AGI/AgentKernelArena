@@ -1,10 +1,13 @@
 schema_version: 2
-description: "Optimize the FlyDSL fused TopK gating softmax kernel for AMD MI300X-class CDNA GPUs.\nThe\
-  \ kernel fuses softmax over expert logits, top-K expert selection, optional\nrenormalization of weights,\
-  \ and token_expert_indices in FlyDSL.\nYou MUST keep the kernel in FlyDSL \u2014 do NOT rewrite it in\
-  \ HIP, CUDA, or Triton.\nYou MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,\n\
-  or any wrapper that bypasses JitFunction.__call__. Only optimize the GPU kernel\ncomputation itself\
-  \ (e.g. tile sizes, vectorization, memory access patterns, math)."
+description: |
+  Optimize the FlyDSL fused TopK gating softmax kernel for AMD MI300X-class CDNA GPUs.
+  The kernel fuses softmax over expert logits, top-K expert selection,
+  renormalization of weights, and token_expert_indices in FlyDSL.
+  You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
+  You MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,
+  or any wrapper that bypasses JitFunction.__call__. Only optimize the GPU kernel
+  computation itself (e.g. tile sizes, vectorization, memory access patterns, math).
+  This Arena task fixes renormalize=True for every declared correctness and performance case. The upstream builder also exposes False, which is outside this task's selected workload and is not covered by this qualification.
 instructions:
 - README.md
 candidate:
