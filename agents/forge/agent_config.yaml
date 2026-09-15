@@ -1,49 +1,13 @@
-# Configuration for the KernelForge "forge" agent.
-#
-# This agent bridges AgentKernelArena to KernelForge's `kernel-agents forge-loop`:
-# an autonomous optimization loop (baseline -> agent edit -> 5-stage validate ->
-# bench -> keep/revert) running as a hard-killable subprocess.
-
-# Model passed to KernelForge (exported as KERNEL_AGENTS_MODEL). Must be served
-# by the configured Anthropic gateway (ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN).
+# One Forge integration for all v2 tasks. These are agent search controls.
+workflow: auto
 model: claude-opus-5
-
-# Backend expertise (fellow) is resolved by the launcher, per task family:
-#   * image_kernel tasks             -> explicit `kernel_kind` first, then
-#     `repository_language`.
-#   * snippet "<src>2<dst>" tasks     -> the target side picks the fellow
-#       triton2triton / instruction2triton -> triton-fellow
-#       hip2hip / cuda2hip / torch2hip      -> hip-fellow
-#       flydsl2flydsl                       -> flydsl-fellow
-# The resolved name is sent as `--kernel-backend` with the `-fellow` suffix
-# stripped, so `triton-fellow` reaches KernelForge as `triton`. The launcher
-# validates it first against the registry it reads out of the installed
-# KernelForge, and REFUSES the run on a name upstream does not serve. Do not rely
-# on KernelForge's own handling: it substitutes flydsl for an unknown backend
-# without saying so, so a typo below would otherwise produce a full run whose
-# speedup was reached under the wrong expertise prompt.
-#
-# One deliberate exception: `tilelang` is sent as `flydsl`, because upstream
-# registers no tilelang backend. See _DELIBERATE_BACKEND_ALIASES in
-# common.py for the measurements behind that choice.
-#
-# To force a backend regardless of the task, uncomment:
-# fellow: triton-fellow
-
-# No iteration-count knob: KernelForge bounds a run purely by TIME (see
-# timeout_seconds below), which is what --max-hours is derived from.
-
-# Correctness gate (dB) used by the 5-stage validation pipeline.
-snr_threshold: 30.0
-
-# The single time budget for a forge run: a hard wall-clock cap (seconds) on the
-# forge-loop subprocess. The loop's own --max-hours is derived from this
-# (timeout_seconds / 3600 minus a ~15min margin) so the loop self-stops just
-# before this hard kill. NOTE: for API-launched runs the bootstrap overwrites
-# this per-run (e.g. 115200 for a 32h run); the value below is only the local
-# fallback default.
-timeout_seconds: 87300
-
-# Claude permission mode. acceptEdits works under root; bypassPermissions is
-# blocked by Claude Code's security policy for root.
+agent_backend: claude
 permission_mode: acceptEdits
+# Shared wall-clock cap: setup, checks, PORT and nested OPTIMIZE together.
+timeout_seconds: 87300
+session_timeout_seconds: 3600
+max_port_attempts: 3
+# Empty follows agent_backend; no accidental provider/model mismatch.
+supervisor_backend: ""
+# Optional executable for an environment with Hyperloom[forge] installed.
+# python: /opt/forge/bin/python

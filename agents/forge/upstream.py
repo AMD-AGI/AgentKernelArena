@@ -1,0 +1,292 @@
+"""Process-local compatibility layer for Hyperloom's two KernelForge CLIs.
+
+No installed package or shared source tree is edited. The changes below bind
+upstream's private interfaces to a declared Arena task. The probe checks those
+interfaces before any campaign starts; incompatible releases fail explicitly.
+"""
+from __future__ import annotations
+
+import asyncio
+import ast
+from dataclasses import replace
+import hashlib
+import importlib.metadata
+import inspect
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+from types import SimpleNamespace
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from agents.forge.bridge import bound_candidate_root, load_plan
+from agents.forge.task_context import TaskContext
+from agents.forge.bundles import allow_candidate_paths, candidate_files, protected_paths
+
+ADAPTER_API = 1
+
+
+def _modules():
+    from kernelforge import cli
+    from kernelforge.kernel_backends.constants import KERNEL_BACKENDS
+    from kernelforge.loop import canonical_correctness
+    from kernelforge.loop import new_path_allowlist
+    from kernelforge.orchestrator import agent
+    from kernelforge.rewrite_by_flydsl import driver_contract, optimize, port_loop, protocol, runner, seed, spec
+    return SimpleNamespace(**locals())
+
+
+def probe() -> dict:
+    modules = _modules()
+    required = {
+        "forge-loop": {"kernel", "driver", "workspace_dir", "deadline_unix", "prepare_task",
+                       "source_files", "target_functions", "baseline_json", "lanes", "profiling_enabled"},
+        "forge-rewrite-by-flydsl": {"source_kernel", "driver", "workspace_dir", "deadline_unix",
+                                   "prepare_driver", "flydsl_kernel_name", "rewrite_kb"},
+    }
+    # Click parameter names can differ from Python argument names, so test
+    # public option spellings for booleans whose dest has changed upstream.
+    for name, parameters in required.items():
+        command = modules.cli.main.commands.get(name)
+        if command is None:
+            raise RuntimeError(f"Installed KernelForge lacks {name}")
+        names = {parameter.name for parameter in command.params}
+        if "profiling" in names:
+            names.add("profiling_enabled")
+        missing = parameters - names
+        if missing:
+            raise RuntimeError(f"KernelForge {name} lacks adapter-required parameters: {sorted(missing)}")
+    required_hooks = [
+        (modules.canonical_correctness, "_run_canonical_suite", {"workspace_dir", "timeout_cap_sec"}),
+        (modules.seed, "generate_seed", {"spec", "dest"}),
+        (modules.port_loop, "build_port_program_md", {"spec", "driver_path"}),
+        (modules.runner, "_ensure_git_committed", {"workspace", "message", "paths", "branch"}),
+        (modules.agent, "make_agent_fn", {"source_files", "target_functions", "task_type"}),
+        (modules.optimize, "_forge_loop_argv", set()),
+        (modules.new_path_allowlist, "matches_commit_new_paths", {"path", "patterns"}),
+    ]
+    for module, name, parameters in required_hooks:
+        function = getattr(module, name, None)
+        if not callable(function) or not parameters <= inspect.signature(function).parameters.keys():
+            raise RuntimeError(f"Incompatible KernelForge adapter interface: {module.__name__}.{name}")
+    try:
+        version = importlib.metadata.version("hyperloom-inference_optimizer")
+    except importlib.metadata.PackageNotFoundError:
+        version = "source-checkout"
+    sources = {}
+    for name in ("cli", "canonical_correctness", "driver_contract", "runner", "port_loop", "optimize", "seed", "spec"):
+        module = getattr(modules, name)
+        sources[module.__name__] = hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
+    return {"adapter_api": ADAPTER_API, "version": version,
+            "backends": sorted(modules.KERNEL_BACKENDS), "rewrite_target": "flydsl", "sources": sources}
+
+
+def program_text(plan: dict, *, prefix: str = "", port: bool = False) -> str:
+    context = TaskContext.load(plan["context"])
+    spec = context.spec
+
+    config = spec.to_mapping()
+    declarations = config["candidate"].copy()
+    instructions = [config.get("description", "")]
+    for name in dict.fromkeys(["README.md", *config.get("instructions", [])]):
+        path = Path(plan["template"]) / name
+        if path.is_file():
+            instructions.append(f"\n## {name}\n" + path.read_text())
+    return "\n".join([
+        "# Arena task contract", "Task: " + spec.task_id,
+        "Implement the task using " + spec.candidate.language + ".",
+        "The following paths are relative to " + (prefix or "the workspace root") + ".",
+        "Editable declarations and real entrypoints (do not invent a factory convention):",
+        json.dumps(declarations, indent=2),
+        "The protected driver calls the task's compile and complete correctness commands.",
+        "Correctness uses the task's own reference and comparison, not a generic SNR threshold.",
+        "Run python3 arena_forge_driver.py for correctness; --bench-mode for candidate timing;",
+        "--ref-bench-mode for the independent baseline. Task-owned cases and warmups are fixed.",
+        "The driver reports allclose from the task verdict. Do not modify task configuration,",
+        "harnesses, inputs, references, or import protected implementations into your candidate.",
+        "PORT first produces a correct implementation; the nested loop then optimizes it." if port else
+        "Optimize the existing candidate. Keep all declared entrypoints and dependent source files.",
+        *instructions,
+    ])
+
+
+def install_hooks(plan: dict) -> None:
+    modules = _modules()
+    context = TaskContext.load(plan["context"])
+    spec = context.spec
+
+    # The upstream CLI has only single-directory globs. Use the task's already
+    # validated declarations to admit newly authored nested helpers in a tree.
+    # Upstream still applies its protected-measurement exclusions afterward.
+    original_matches = modules.new_path_allowlist.matches_commit_new_paths
+    def matches(path, patterns):
+        relative = Path(path)
+        if plan["workflow"] == "rewrite":
+            if len(relative.parts) < 3 or relative.parts[0] != ".forge_rewrite":
+                return False
+            relative = Path(*relative.parts[2:])
+        value = relative.as_posix()
+        if relative.is_absolute() or ".." in relative.parts or value in protected_paths(spec):
+            return False
+        return any(scope.contains(value) for scope in spec.candidate.editable)
+    # Update imports taken before hook installation as well as future imports.
+    for module in tuple(sys.modules.values()):
+        if module and getattr(module, "__name__", "").startswith("kernelforge."):
+            if getattr(module, "matches_commit_new_paths", None) is original_matches:
+                module.matches_commit_new_paths = matches
+
+    async def canonical(workspace_dir, *, timeout_cap_sec):
+        root = Path(workspace_dir).resolve()
+        # Canonical acceptance is a trusted subprocess bridge, including when
+        # upstream uses a copied lane. It does not read legacy config fields.
+        command = [sys.executable, "-c",
+                   "from agents.forge.bridge import run_managed as run; import sys; "
+                   "raise SystemExit(run(sys.argv[1], sys.argv[2], []))",
+                   os.environ["ARENA_FORGE_PLAN"], str(root)]
+        process = await asyncio.create_subprocess_exec(*command, cwd=root,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                    start_new_session=True)
+        from kernelforge.mcp_server.tools._subprocess import communicate_process_group
+        try:
+            stdout, stderr = await communicate_process_group(process, timeout=timeout_cap_sec)
+        except asyncio.TimeoutError:
+            return modules.canonical_correctness.CanonicalCorrectnessResult(
+                passed=False, detail="Arena v2 correctness timed out", outcome="timeout")
+        output = (stdout + stderr).decode(errors="replace")
+        return modules.canonical_correctness.CanonicalCorrectnessResult(
+            passed=process.returncode == 0,
+            detail="Arena v2 compile + correctness", output=output[-4000:])
+
+    modules.canonical_correctness._run_canonical_suite = canonical
+    if plan["workflow"] != "rewrite":
+        return
+
+    # These are upstream hints only. No factory is derived from an operator ID.
+    entry_symbol = next((entry.symbol for entry in spec.candidate.entrypoints if entry.symbol), "")
+    modules.protocol.builder_symbol = lambda _operator: entry_symbol
+
+    def seed(rewrite_spec, dest):
+        destination = Path(dest)
+        attempt = destination
+        for _ in Path(plan["anchor"]).parts:
+            attempt = attempt.parent
+        files = candidate_files(spec, Path(plan["template"]), required=False)
+        for relative, source in files.items():
+            target = attempt / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(source.read_bytes())
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        # Cross-language starting implementations cannot pass the candidate
+        # probe merely by calling their original backend. The task source copy
+        # remains available for orientation; generation starts explicitly empty.
+        scope = next(scope for scope in spec.candidate.editable if scope.contains(plan["anchor"]))
+        if scope.scope == "symbols":
+            # Preserve a colocated harness. Only stub the explicitly editable
+            # definitions; the port must not reconstruct protected tests.
+            tree = ast.parse(destination.read_text())
+            for node in tree.body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name in scope.symbols:
+                    node.body = ast.parse('raise NotImplementedError("Arena candidate is not implemented")').body
+            destination.write_text(ast.unparse(tree) + "\n")
+        else:
+            destination.write_text('"""Implement the declared Arena interface in FlyDSL."""\n'
+                                   'raise NotImplementedError("Arena candidate is not implemented")\n')
+        return str(destination)
+
+    modules.seed.generate_seed = seed
+    def port_program(rewrite_spec, driver_path):
+        relative = Path(rewrite_spec.flydsl_kernel).relative_to(rewrite_spec.workspace)
+        prefix = Path(*relative.parts[:-len(Path(plan["anchor"]).parts)])
+        return program_text(plan, prefix=str(prefix), port=True)
+
+    modules.port_loop.build_port_program_md = port_program
+    original_agent = modules.agent.make_agent_fn
+
+    def make_agent(*args, **kwargs):
+        root = Path(os.environ.get("KERNELFORGE_REWRITE_CANDIDATE_KERNEL", ""))
+        if root.is_absolute():
+            for _ in Path(plan["anchor"]).parts:
+                root = root.parent
+            kwargs["source_files"] = [str(path) for path in candidate_files(spec, root, required=False).values()]
+            kwargs["target_functions"] = [entry.symbol for entry in spec.candidate.entrypoints if entry.symbol]
+            kwargs["task_type"] = "image_kernel"  # upstream's internal multi-file switch, never a task dispatch
+        return original_agent(*args, **kwargs)
+
+    modules.agent.make_agent_fn = make_agent
+    original_commit = modules.runner._ensure_git_committed
+
+    def commit(workspace, message, paths, *, branch=""):
+        root = bound_candidate_root(plan, Path(workspace))
+        if message == "forge-rewrite: initial correct flydsl port":
+            allow_candidate_paths(Path(workspace), spec, prefix=root.relative_to(workspace).as_posix())
+            paths = [*paths, str(Path(workspace) / ".gitignore")]
+        paths = list(dict.fromkeys([*paths, *(str(path) for path in candidate_files(spec, root, required=False).values())]))
+        value = original_commit(workspace, message, paths, branch=branch)
+        if message == "forge-rewrite: initial correct flydsl port":
+            plan["port_commit"] = subprocess.run(["git", "rev-parse", "HEAD"], cwd=workspace,
+                                                  capture_output=True, text=True, check=True).stdout.strip()
+        return value
+
+    modules.runner._ensure_git_committed = commit
+    modules.optimize._forge_loop_argv = lambda: [sys.executable, str(Path(__file__).resolve())]
+
+    # Arena owns delivery; applying a patch to an upstream framework is not a
+    # task requirement. Explicitly record it as unrequested, never as passed.
+    modules.runner.DEFAULT_REWRITE_BUDGET = replace(modules.runner.DEFAULT_REWRITE_BUDGET,
+                                                    applyback_reserve_sec=0)
+    modules.runner.generate_applyback_patch = lambda *args, **kwargs: SimpleNamespace(
+        ok=False, error="not_requested_by_arena", to_dict=lambda: {"ok": False, "error": "not_requested_by_arena"})
+    original_result = modules.runner.report.build_result
+
+    def result(**kwargs):
+        kwargs["applyback_required"] = False
+        if kwargs.get("port_ok") and plan.get("port_commit"):
+            optimized = dict(kwargs.get("optimize_result") or {})
+            if not optimized.get("best_commit"):
+                optimized["best_commit"] = plan["port_commit"]
+            kwargs["optimize_result"] = optimized
+        return original_result(**kwargs)
+
+    modules.runner.report.build_result = result
+
+
+def configure_nested_loop(plan: dict, argv: list[str]) -> list[str]:
+    if not argv or argv[0] != "forge-loop" or plan["workflow"] != "rewrite":
+        return argv
+    argv = list(argv)
+    root = bound_candidate_root(plan, Path(plan["engine_root"]))
+    context = TaskContext.load(plan["context"])
+    sources = candidate_files(context.spec, root)
+    Path(plan["program"]).write_text(program_text(plan, prefix=str(root.relative_to(plan["engine_root"]))))
+    for flag, value in (("--source-files", ",".join(map(str, sources.values()))),
+                        ("--task-type", "image_kernel"), ("--target-functions", ",".join(
+                            entry.symbol for entry in context.spec.candidate.entrypoints if entry.symbol))):
+        if flag in argv:
+            argv[argv.index(flag) + 1] = value
+        else:
+            argv.extend([flag, value])
+    argv.extend(["--lanes", "1", "--no-profiling", "--no-specialist-probe",
+                 "--program-md-file", plan["program"]])
+    return argv
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv == ["--arena-probe"]:
+        print(json.dumps(probe()))
+        return 0
+    plan = load_plan(Path(os.environ["ARENA_FORGE_PLAN"]))
+    probe()  # Reject unrecognized engine interfaces before patching anything.
+    install_hooks(plan)
+    from kernelforge.cli import main as cli
+    from agents.forge.process_tree import managed_children
+    with managed_children():
+        cli(args=configure_nested_loop(plan, argv))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
