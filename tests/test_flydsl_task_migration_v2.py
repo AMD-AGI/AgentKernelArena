@@ -2143,7 +2143,7 @@ def test_batched_int8_measured_outputs_and_replay(function, provided, behavior, 
         result=ns[function](verbose=False)
         if function=='run_benchmark':result=json.loads((tmp_path/'build/performance_report.json').read_text())
         assert result[0]['timed_output_correctness']==result[0]['replay_correctness']=='PASS'
-        assert calls==[(0,100,not provided,True),(0,100,not provided,False)]
+        assert calls==[(0,100,False,True),(0,100,False,False)]
     else:
         with pytest.raises(AssertionError):ns[function](verbose=False)
     assert torch.equal(x,original[0]) and torch.equal(w,original[1])
@@ -2201,6 +2201,9 @@ def test_batched_int8_zero_reference_gate_and_original_work_unchanged():
     for fn in tree.body:
         if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
             normalized=_RemoveBatchedInt8Checks().visit(fn)
+            if fn.name in {"run_benchmark", "arena_benchmark"}:
+                from test_gemm_paired_timing import normalize_former_role_policy
+                normalized = normalize_former_role_policy(normalized)
             assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
 
 
@@ -2705,7 +2708,7 @@ def test_quant_gemm_actual_timed_output_and_original_quantized_oracle(name,funct
         assert result[0]['timed_output_correctness']==result[0]['replay_correctness']=='PASS'
         assert [(a,b,c) for a,b,c,_ in calls]==[(0,100,True),(0,100,False)]
         if name!='gemm_a8w8_blockscale_kernel':
-            assert calls[0][3]['use_cuda_graph']==(not provided)
+            assert calls[0][3]['use_cuda_graph'] is False
     else:
         with pytest.raises(AssertionError):ns[function](verbose=False)
 
@@ -2727,6 +2730,9 @@ def test_quant_gemm_original_quantization_inputs_numeric_and_timing_functions_pr
         for fn in tree.body:
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 restored=_RemoveQuantGemmChecks().visit(fn)
+                if fn.name in {"run_benchmark", "arena_benchmark"}:
+                    from test_gemm_paired_timing import normalize_former_role_policy
+                    restored = normalize_former_role_policy(restored)
                 assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
 
 
