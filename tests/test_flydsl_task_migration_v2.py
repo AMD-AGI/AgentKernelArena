@@ -518,7 +518,7 @@ def test_torch_numerical_gates_cases_and_models_preserved():
             fn = _RemoveAddedReplayChecks().visit(fn)
         if name in {"layernorm2d_kernel", "layernorm2d_with_add_kernel"}:
             fn = _RemoveLayernormChecks().visit(fn)
-        if name in _STANDARD_QUANT_NAMES:
+        if name in _STANDARD_QUANT_NAMES or name == "quant_mxfp4_kernel":
             fn = _RemoveStandardQuantChecks().visit(fn)
         if name in _QUANT_GEMM_CONTROL_NAMES:
             fn = _RemoveQuantGemmChecks().visit(fn)
