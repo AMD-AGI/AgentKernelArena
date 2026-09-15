@@ -6,9 +6,9 @@ Each task has explicit task / baseline / candidate actions using `arena-eval-v1`
 No task imports the Arena framework or an agent. This is a CPU migration audit,
 not evidence that the tasks passed GPU validation.
 
-The extension tasks preserve their original Python module and functional
-reference, inputs, HIP files, correctness and performance implementations,
-seeds, tolerances, warmups, repetitions, and state-reset callbacks. The new
+The migration preserved the original Python module and functional reference,
+inputs, seeds, tolerances, warmups, repetitions, and state-reset callbacks.
+Post-migration GPU validator repairs are explicitly listed below. The new
 runner binds the declared model class and compiles the original nested source
 path, so filename guessing and scratch basename copies cannot change the
 contract. A missing final candidate fails; it never selects a baseline.
@@ -17,7 +17,8 @@ The 22 extension tasks use their separately provided HIP reference as the
 performance baseline. The 10 native tasks freeze the initial HIP candidate.
 For matrix multiplication and MLA, the original device implementation was
 extracted verbatim into `source/kernel.hpp`, included by the protected host
-program. Host references, numerical gates and native replay drivers are unchanged.
+program. The migration preserved host references, numerical gates and native replay
+drivers; the later matrix coverage repair below supplements that initial state.
 
 For the 8 native extension tasks, `scripts/reference_checks.py` adds analytical
 CPU known answers and zero-output negative controls. Correctness also covers
@@ -45,6 +46,23 @@ extension tasks, `scripts/_aka_benchmark.py` for native Python harnesses), and
 are supplied by the framework; task authors must not hand-edit generated files.
 The new runner may call another protected module, so helper discovery cannot
 inspect only the first command file or dispatch from a legacy `task_type`.
+
+## Repairs found by real GPU validation
+
+Job 139005 on MI355X produced finalized reports of FAIL for HIP GELU and matrix
+multiplication. GELU aliased caller-owned input although its public reference is
+out-of-place. Its provided HIP baseline and initial candidate now both use
+separate contiguous output storage, and checks enforce input preservation and
+non-aliasing. This intentionally adds the same copy/allocation work to both
+roles. The timed graph output is checked against the protected reference before
+and after output poisoning and exact replay, outside timed samples.
+
+Matrix multiplication retains its constant-input host check and now also checks
+all output cells for the existing nonuniform benchmark inputs in correctness
+and exact replay. Its original replay tolerance, five shapes and timing settings
+are preserved. CPU known answers and negative controls cover this added reference.
+These changes require fresh finalized GPU reports; successful initial actions
+or CPU regressions alone do not establish task-validator PASS.
 
 | Task | Cases | Initial candidate | Baseline | Editable file |
 |---|---:|---|---|---|

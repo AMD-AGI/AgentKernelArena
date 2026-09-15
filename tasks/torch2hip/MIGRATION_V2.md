@@ -86,3 +86,14 @@ inspect only the first command file or dispatch from a legacy `task_type`.
 | [kernelbench/level3/l3n31_VisionAttention](kernelbench/level3/l3n31_VisionAttention/config.yaml) | 5 | unimplemented | provided / pytorch | `hip/hip_l3n31_VisionAttention.hip` |
 | [kernelbench/level3/l3n43_MinGPTCausalAttention](kernelbench/level3/l3n43_MinGPTCausalAttention/config.yaml) | 5 | unimplemented | provided / pytorch | `hip/hip_l3n43_MinGPTCausalAttention.hip` |
 | [kernelbench/level3/l3n44_MiniGPTBlock](kernelbench/level3/l3n44_MiniGPTBlock/config.yaml) | 5 | unimplemented | provided / pytorch | `hip/hip_l3n44_MiniGPTBlock.hip` |
+
+## Repairs found by real GPU validation
+
+Job 139005 on MI355X finalized GELU as WARN because the exact timed replay had
+no numerical validation. GELU now checks the observed timed output, poisons its
+storage, replays the same graph and checks the full reference output plus the
+read-only input contract. Checks run outside timing with original tolerances,
+cases and sampling parameters. Event fallback remains unsupported by the
+canonical TimedRun collector; it cannot be certified as replay-validated.
+The empty HIP candidate remains empty and is never accepted as a final solution.
+A fresh finalized validator report is required after this repair.
