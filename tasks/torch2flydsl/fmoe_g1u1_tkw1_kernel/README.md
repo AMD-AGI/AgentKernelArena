@@ -67,3 +67,10 @@ replay changes hidden and both weight tensors, then restores all inputs.
 Candidate-only dependency/dispatch auditing requires FlyDSL computation while
 allowing host launch preparation. GPU before/after timing-boundary qualification
 is required; this maintenance correction is not an optimization speedup.
+
+Correctness records each completed case separately, including normalized and
+absolute baseline errors and the original tolerance. If one case fails, other
+completed cases retain their actual PASS status. Only a failed numerical gate
+receives `numerical_mismatch`; launch errors, invalid outputs and input mutation
+remain execution/contract failures. Baseline correctness is still required;
+these diagnostics do not grant a numerical exception or widen tolerances.

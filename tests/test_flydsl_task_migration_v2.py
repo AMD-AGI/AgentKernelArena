@@ -2353,16 +2353,19 @@ def test_silu_only_requires_the_executed_public_operator(tmp_path):
 
 
 class _RemoveFmoeTimingChecks(_RemoveAddedReplayChecks):
+    def visit_Global(self,node):
+        if node.names==["ARENA_CORRECTNESS_RESULTS"]:return None
+        return node
     def visit_Expr(self,node):
         call=node.value
         if isinstance(call,ast.Call):
-            if getattr(call.func,'id',None)=='_checked_fmoe_output':return None
+            if getattr(call.func,'id',None) in {'_checked_fmoe_output','_record_fmoe_case'}:return None
             if isinstance(call.func,ast.Attribute) and call.func.attr=='update' and call.args and isinstance(call.args[0],ast.Call) and getattr(call.args[0].func,'id',None)=='replay_validate':return None
         return super().visit_Expr(node)
     def visit_Assign(self,node):
         if len(node.targets)==1:
             target=node.targets[0]
-            if isinstance(target,ast.Name) and target.id in {'routing_originals','replay_validate'}:return None
+            if isinstance(target,ast.Name) and target.id in {'routing_originals','replay_validate','ARENA_CORRECTNESS_RESULTS'}:return None
             if isinstance(target,ast.Subscript) and isinstance(target.slice,ast.Constant) and target.slice.value=='operator_timing_inputs':return None
         return super().visit_Assign(node)
     def visit_Call(self,node):
@@ -2576,3 +2579,48 @@ def test_fused_add_rmsnorm_original_numeric_and_timing_work_preserved():
         if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
             restored=_RemoveAddRmsnormChecks().visit(fn)
             assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
+
+
+@pytest.mark.parametrize('name',_FMOE_REPLAY_NAMES)
+@pytest.mark.parametrize('fault',['numerical','dtype','launch'])
+def test_fmoe_case_evidence_preserves_real_passes_and_failure_kind(name,fault,monkeypatch,capsys):
+    import torch,types
+    t=ROOT/'tasks/torch2flydsl'/name;runtime=module(t/'task_runtime.py');actions=module(t/'scripts/task_actions.py');checks=module(t/'scripts/replay_checks.py')
+    candidate_checks=module(t/'scripts/candidate_checks.py');monkeypatch.setitem(sys.modules,'scripts.candidate_checks',candidate_checks)
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    h=types.ModuleType('controlled_fmoe_harness');h.__dict__.update(ARENA_PROVIDED_BASELINE=True,
+        _KERNEL_DIR='.',MODEL_FILE='model.py',KERNEL_FILE='kernel.py',KERNEL_ENTRY='flydsl_'+name.removesuffix('_kernel'),
+        SHAPES=actions.EXPECTED_CASES,TOL=.035 if 'tkw1' in name else .01,
+        require_tensor_contract=checks.require_tensor_contract,require_unchanged=checks.require_unchanged)
+    class Model:
+        def __init__(self,i):self.i=i;self.w1=torch.ones((1,2,2),dtype=torch.bfloat16);self.w2=self.w1.clone()
+        def __call__(self,hidden):return hidden.clone()
+    def build(m,shape):return Model(h.SHAPES.index(shape)),torch.tensor([[1.,2.],[3.,4.]],dtype=torch.bfloat16)
+    def baseline(m,model,hidden,k):
+        if model.i==0:
+            if fault=='launch':raise RuntimeError('controlled GPU launch failure')
+            if fault=='dtype':return hidden.float()
+            return hidden+1
+        return hidden.clone()
+    h._build_model=build;h._aiter_op=baseline;h._retry=lambda fn,**kw:fn();h._load_module=lambda directory,filename,alias:None if filename=='kernel.py' else types.SimpleNamespace()
+    _harness_functions(t,{'run_correctness','_fmoe_inputs','_checked_fmoe_output','_norm_worst','_cos_diff','_record_fmoe_case'},h.__dict__)
+    real_loader=runtime.load_module
+    monkeypatch.setattr(runtime,'load_module',lambda key,path:h if key=='arena_harness' else actions if key=='arena_task_actions' else real_loader(key,path))
+    assert runtime.run(['baseline','correctness'])==1
+    report=json.loads(next(line.split('=',1)[1] for line in capsys.readouterr().out.splitlines() if line.startswith('ARENA_EVAL_RESULT=')))
+    assert report['status']=='FAIL'
+    assert [row['status'] for row in report['cases']]==['FAIL','PASS','PASS']
+    first=report['cases'][0]
+    if fault=='numerical':
+        assert report['failure_kind']==first['failure_kind']=='numerical_mismatch'
+        assert first['metadata']['baseline_max_abs_error']==1.
+        assert first['metadata']['baseline_normalized_max_error']==.25
+        assert first['metadata']['tolerance']==h.TOL
+    else:
+        assert report.get('failure_kind')!='numerical_mismatch'
+        assert first['failure_kind']=='execution_or_contract_error'
+    for row in report['cases'][1:]:
+        assert 'failure_kind' not in row and 'reason' not in row
+        assert row['metadata']['baseline_normalized_max_error']==0.
+    manifest=runtime.manifest()
+    assert [{k:row[k] for k in ('test_case_id','params')} for row in report['cases']]==[{k:row[k] for k in ('test_case_id','params')} for row in manifest]

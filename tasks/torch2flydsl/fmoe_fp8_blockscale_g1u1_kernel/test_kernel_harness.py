@@ -222,7 +222,22 @@ def _fmoe_replay_validator(model, hidden, weights, ids, expert_plan):
     return validate
 
 
+def _record_fmoe_case(shape, status, *, metrics=None, error=None):
+    row = {"status": status}
+    if metrics is not None:
+        row["metadata"] = metrics
+        if status == "FAIL":
+            row.update(failure_kind="numerical_mismatch",
+                       reason="Fused MoE normalized error exceeds the original tolerance")
+    if error is not None:
+        row.update(failure_kind="execution_or_contract_error",
+                   reason=f"{type(error).__name__}: {error}")
+    ARENA_CORRECTNESS_RESULTS[shape["name"]] = row
+
+
 def run_correctness(verbose=True):
+    global ARENA_CORRECTNESS_RESULTS
+    ARENA_CORRECTNESS_RESULTS = {}
     import torch
 
     mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
@@ -279,6 +294,11 @@ def run_correctness(verbose=True):
                     ok = ok and kok
                     note = f" | kernel norm={knorm:.4g} {'ok' if kok else 'BAD'}"
 
+            _record_fmoe_case(shape, "PASS" if ok else "FAIL", metrics={
+                "baseline_max_abs_error": worst, "baseline_normalized_max_error": norm,
+                "tolerance": TOL,
+                **({"candidate_normalized_max_error": knorm} if has_kernel else {}),
+            })
             if verbose:
                 print(
                     f"  {'PASS' if ok else 'FAIL'}: {shape['name']} "
@@ -292,6 +312,7 @@ def run_correctness(verbose=True):
             torch.cuda.empty_cache()
         except Exception as e:  # noqa: BLE001
             failures.append(shape["name"])
+            _record_fmoe_case(shape, "FAIL", error=e)
             if verbose:
                 print(f"  FAIL: {shape['name']} - {str(e)[:200]}")
 

@@ -9,10 +9,20 @@ def select_role(h, role, provided):
 
 def check(h):
     from scripts.candidate_checks import audit_candidate_calls
-    with audit_candidate_calls(h) as observed:
-        if h.run_correctness(verbose=True) is not True:
-            raise RuntimeError("Correctness/output-contract check failed")
+    try:
+        with audit_candidate_calls(h) as observed:
+            if h.run_correctness(verbose=True) is not True:
+                raise RuntimeError("Correctness/output-contract check failed")
+    except Exception as exc:
+        # Evidence comes from the protected harness after each real case check.
+        measured = getattr(h, "ARENA_CORRECTNESS_RESULTS", {})
+        exc.arena_case_results = {
+            f"case_{i:04d}": measured[case["name"]]
+            for i, case in enumerate(EXPECTED_CASES) if case["name"] in measured
+        }
+        raise
     return sorted(observed)
+
 
 def performance(h):
     return h.arena_benchmark(warmup=10, iters=100, verbose=True)

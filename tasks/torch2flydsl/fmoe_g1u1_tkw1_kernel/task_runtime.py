@@ -248,6 +248,18 @@ def run(argv):
         # A caught harness assertion can include a launch/runtime failure. Never
         # label it numerical_mismatch without separately attested numeric evidence.
         for row in report["cases"]: row.update(status="FAIL",reason=report["reason"])
+        evidence = getattr(exc, "arena_case_results", {})
+        if evidence and action in {"correctness", "performance"}:
+            # Preserve independently completed cases even when another case fails.
+            for row in report["cases"]:
+                case = evidence.get(row["test_case_id"])
+                if case is not None:
+                    row.pop("reason", None)
+                    row.update(copy.deepcopy(case))
+            failed = [row for row in report["cases"] if row["status"] == "FAIL"]
+            if failed and all(row.get("failure_kind") == "numerical_mismatch" for row in failed):
+                report["failure_kind"] = "numerical_mismatch"
+
     try:
         encoded = json.dumps(report, allow_nan=False, sort_keys=True)
     except (ValueError,TypeError) as exc:
