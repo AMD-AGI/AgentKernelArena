@@ -615,6 +615,52 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "test_partial_m_n_k_control/af463ef8dd7ae912a04e",
+      "params": {
+        "function": "test_partial_m_n_k_control",
+        "arguments": {
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS",
+      "coverage": {
+        "M": 17,
+        "N": 19,
+        "K": 35,
+        "block_m": 16,
+        "block_n": 32,
+        "block_k": 64,
+        "dtype": "fp32",
+        "scored": false
+      }
+    },
+    {
+      "test_case_id": "test_partial_m_n_k_control/6c7bb0561c4b150a08b3",
+      "params": {
+        "function": "test_partial_m_n_k_control",
+        "arguments": {
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS",
+      "coverage": {
+        "M": 17,
+        "N": 19,
+        "K": 35,
+        "block_m": 16,
+        "block_n": 32,
+        "block_k": 64,
+        "dtype": "fp16",
+        "scored": false
+      }
     }
   ],
   "migration": {

@@ -13,9 +13,9 @@ Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|
 with one role and one action. Submitted checks use `ARENA_EVAL_PHASE=candidate_evaluation`.
 The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
 `workloads.json` retains 31 original collected cases, including 30 performance cases.
-Collection is checked against this independent manifest. Original correctness
-functions run unchanged. Performance inputs additionally run the task-local
-oracle in `_arena_reference.py`, before timing and against observed timed output.
+Collection is checked against this independent manifest. Original NumPy correctness
+case and gate are retained, with private input snapshots. Performance inputs additionally run the task-local
+oracle in `_arena_reference.py`, before timing, against actual TimedRun output and after fresh-input replay.
 Seeds, case parameters, original assertions/tolerances, launch parameters,
 prepare/reset callbacks, warmups and sample counts are unchanged.
 
@@ -108,3 +108,27 @@ def batched_vecmat(
 
 
 
+
+
+## Reduction and tail repair
+
+The numerical gate remains `atol=1e-3, rtol=1e-2`, including the original NumPy
+comparison on seeded FP32 integer inputs. FP16 multiplication still rounds to
+FP16; the reduction and loop accumulator now use FP32, with final storage in
+the input dtype. This matches the existing task-local product-then-sum oracle
+without relaxing its gate. The previous implicit FP16 reduction and accumulator
+rounded each tree/block sum, causing the declared random FP16 cases to fail.
+This is an explicit repaired baseline revision, not a fitted tolerance.
+
+The original two N=32/block_n=64 scored cases are now actually executed. Operand
+and output M/N masks, a ceiling K loop and final K masks make tail accesses safe;
+no shape, case ID, block setting, seed or scored work is removed. All 31 original
+case IDs and 30 original performance rows remain. Two unscored signed fractional
+controls add simultaneous M/N/K tails (17,19,35), for 33 correctness cases.
+
+The original allocating wrapper and all warmup/sample/timer settings remain.
+Private snapshots protect A/B; full outputs are checked against the numerical
+oracle after ordinary execution, actual timed execution, and changed-input
+replay. Inputs and poisoned output snapshots are restored in `finally` on
+success or failure. Historical timings describe the prior kernel revision;
+current baseline and candidate both use the repaired revision.
