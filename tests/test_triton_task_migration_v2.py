@@ -23,6 +23,9 @@ BASE = '5c9f8ef2'
 # preserve original kernels, references, input generation, cases, gates and
 # timer settings, and reject incorrect measured/replay output through real runners.
 VLLM_CHECKED_RUNNERS = {
+    'triton_fla_fused_recurrent': 'f028ca83214c262c7f4f0794aea0f62d972b10c4cc04b3e7f4f7850aaf8aae6b',
+    'triton_linear_attn_decode': '653524a072b76627937ee522b830873375ee3bc92d80309d39676754e08d1419',
+    'triton_selective_scan_update': '6c3e00b7b9c296646d533f074452d57658bf221c2540f2dff26ecac05d7a6aab',
     'triton_ssd_bmm': '1f667162405be9f689057897819c41c98a9c25b92765c2bb958194ed5cf13f90',
     'triton_kda_gate': '6aa814dab0b9edc1cffcf2d9aba210c073653d83573dfc3bf00f031e27515b64',
     'triton_fla_scaled_dot_kkt': 'bef5cab3278a985409d5cfc94d88aaa7a8a3eff3a468d665b4493ce02e56af46',
@@ -3332,6 +3335,9 @@ def test_mean_known_answer_optional_arguments_and_negative_controls(monkeypatch,
     task = ROOT/'tasks/triton2triton/vllm/triton_mean'
     h = module_at(task/'scripts/task_runner.py', monkeypatch)
     checks = module_at(task/'_arena_checks.py', monkeypatch)
+    # This fixture tests numerical/state behavior using a CPU Torch double.
+    # Genuine Triton dispatch is exercised separately in the backend tests.
+    monkeypatch.setattr(checks, 'checked_candidate_call', lambda mod, fn, *a, **kw: fn(*a, **kw))
     x = torch.arange(30, dtype=torch.float16).reshape(2, 3, 5)
     expected = torch.tensor([[[2.], [7.], [12.]], [[17.], [22.], [27.]]])
     torch.testing.assert_close(checks.reference(x, -1, True, torch.float32), expected, atol=0, rtol=0)
@@ -3363,6 +3369,9 @@ def test_mean_original_scored_performance_and_actual_replay(monkeypatch, mode):
     task = ROOT/'tasks/triton2triton/vllm/triton_mean'
     h = module_at(task/'scripts/task_runner.py', monkeypatch)
     checks = module_at(task/'_arena_checks.py', monkeypatch)
+    # This fixture tests numerical/state behavior using a CPU Torch double.
+    # Genuine Triton dispatch is exercised separately in the backend tests.
+    monkeypatch.setattr(checks, 'checked_candidate_call', lambda mod, fn, *a, **kw: fn(*a, **kw))
     h._TimedRun = SimpleNamespace
     factory = torch.randn
     monkeypatch.setattr(torch, 'randn', lambda *args, **kwargs: factory(*args, **{**kwargs, 'device': 'cpu'}))
