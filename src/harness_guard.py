@@ -14,13 +14,14 @@ from __future__ import annotations
 
 import ast
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
 import yaml
 
 from .perf_helper_materialization import configured_performance_entrypoints
+from .task_spec import EditScope, TaskSpec, resolve_task_path
 
 
 _HARNESS_DIRS = {
@@ -59,6 +60,88 @@ class WorkspaceSnapshot:
 
     root: Path
     digests: dict[str, str]
+    task_spec: TaskSpec | None = None
+    initial_symbols: dict[str, frozenset[str]] = field(default_factory=dict)
+
+
+_V2_OUTPUT_NAMES = {
+    "task_result.yaml", "validation_report.yaml", ".validation_complete",
+    "baseline_perf.yaml", "optimized_perf.yaml",
+}
+_V2_RUNTIME_DIRS = _IGNORED_RUNTIME_DIRS | {"build", "logs", "perf", ".pytest_cache"}
+
+
+def _v2_files(root: Path) -> Iterable[Path]:
+    for path in root.rglob("*"):
+        relative = path.relative_to(root)
+        if (path.is_file() and not set(relative.parts[:-1]) & _V2_RUNTIME_DIRS
+                and path.name not in _V2_OUTPUT_NAMES):
+            yield path
+
+
+def _v2_protected_paths(root: Path, spec: TaskSpec) -> set[str]:
+    protected = set()
+    for path in _v2_files(root):
+        relative = path.relative_to(root)
+        edits = [edit for edit in spec.candidate.editable if edit.contains(relative.as_posix())]
+        if (not edits or edits[0].scope == "symbols" or _is_protected_path(relative)):
+            protected.add(relative.as_posix())
+    return protected
+
+
+def _top_level_names(path: Path) -> frozenset[str]:
+    names = set()
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            names.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            names.update(item.id for target in targets for item in ast.walk(target) if isinstance(item, ast.Name))
+    return frozenset(names)
+
+
+def _v2_symbol_digest(path: Path, edit: EditScope, initial_names: frozenset[str]) -> str:
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError):
+        return "invalid-python:" + _sha256(path)
+    kept = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.name in edit.symbols:
+                continue
+            if edit.allow_new_helpers and node.name not in initial_names:
+                continue
+        kept.append(node)
+    tree.body = kept
+    return hashlib.sha256(ast.dump(tree, include_attributes=False).encode("utf-8")).hexdigest()
+
+
+def _v2_digests(root: Path, spec: TaskSpec, paths: Iterable[str],
+                 initial_symbols: dict[str, frozenset[str]]) -> dict[str, str]:
+    scopes = {edit.path: edit for edit in spec.candidate.editable if edit.scope == "symbols"}
+    selected = set(paths)
+    # Keep the existing policy for newly created files matching protected
+    # patterns. Use the original TaskSpec, never an agent-modified config.
+    selected.update(p.relative_to(root).as_posix() for p in _v2_files(root)
+                    if _is_protected_path(p.relative_to(root)))
+    result = {}
+    for relative in sorted(selected):
+        try:
+            path = resolve_task_path(root, relative)
+        except ValueError as exc:
+            raise RuntimeError(f"Protected task path escaped workspace: {relative}") from exc
+        if not path.is_file():
+            continue
+        if relative in scopes:
+            if path.suffix != ".py":
+                raise ValueError(f"Symbol-scoped protection currently requires Python: {relative}")
+            result[relative] = _v2_symbol_digest(path, scopes[relative], initial_symbols.get(relative, frozenset()))
+        else:
+            result[relative] = _sha256(path)
+    return result
 
 
 def _is_protected_path(rel: Path) -> bool:
@@ -300,6 +383,16 @@ def describe_workspace_harness(root: Path) -> dict[str, object]:
     """
 
     root = Path(root)
+    config = _task_config(root)
+    if config.get("schema_version") == 2:
+        spec = TaskSpec.from_mapping(config, task_id="workspace")
+        return {
+            "enforced_during_optimization": True,
+            "protected_paths": sorted(_v2_protected_paths(root, spec)),
+            "editable_entrypoint_targets": {
+                edit.path: list(edit.symbols) for edit in spec.candidate.editable if edit.scope == "symbols"
+            },
+        }
     editable_entrypoints = _editable_entrypoint_targets(root)
     return {
         "enforced_during_optimization": True,
@@ -325,6 +418,24 @@ def snapshot_workspace_harness(
     """
 
     root = Path(root)
+    config = _task_config(root)
+    if config.get("schema_version") == 2:
+        spec = TaskSpec.from_mapping(config, task_id="workspace")
+        protected = _v2_protected_paths(root, spec)
+        initial_symbols = {}
+        for edit in spec.candidate.editable:
+            if edit.scope == "symbols":
+                path = resolve_task_path(root, edit.path, must_exist=True)
+                initial_symbols[edit.path] = _top_level_names(path)
+        if task_root is not None:
+            # Missing shipped inputs cannot disappear from the snapshot merely
+            # because a preparation step deleted them.
+            protected.update(_v2_protected_paths(Path(task_root), spec))
+        missing = sorted(relative for relative in protected if not (root / relative).is_file())
+        if missing:
+            raise RuntimeError(f"Task inputs missing before agent execution: {missing}")
+        digests = _v2_digests(root, spec, protected, initial_symbols)
+        return WorkspaceSnapshot(root, digests, spec, initial_symbols)
     task_inputs = (
         _task_input_paths(root, Path(task_root)) if task_root is not None else set()
     )
@@ -355,6 +466,8 @@ def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None) -> None:
         # files. A raw SHA here would reject legitimate target-function edits.
         # Recheck the original paths even when their names do not match a
         # harness pattern (e.g. session_cases.json or a reference module).
+        if snapshot.task_spec is not None:
+            return _v2_digests(snapshot.root, snapshot.task_spec, snapshot.digests, snapshot.initial_symbols)
         return _protected_digests(snapshot.root, snapshot.digests)
 
     before = snapshot.digests
