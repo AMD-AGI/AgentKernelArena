@@ -42,3 +42,10 @@ The runner is task-local and does not import the Arena source tree or an agent.
 ## Original task instructions
 
 You are a hip expert and good at gpu kernel implementation. Please implemnt a target HIP kernel code corresponding to pytorch modullle code provided as followings, which includes hip kernel, kernel laucher and python bliding code for the hip launcher.
+
+The performance adapter checks the complete observed timed output against the
+protected functional reference, poisons output storage and replays the exact
+measured graph. It also checks the public non-aliasing and unchanged-input
+contract. Validation runs outside measured samples with the existing tolerance,
+cases, warmups and repetition counts. Canonical TimedRun does not support Event
+fallback; an unsupported fallback cannot be reported as replay-validated.

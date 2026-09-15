@@ -401,8 +401,9 @@ ORIGINAL_SOURCE_DIGESTS = {'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (10
 
 # Repairs justified by finalized real-GPU validator job 139005: GELU must be
 # out-of-place and validate timed replay; matrix must validate every output.
-# The original digest remains the gate for all other 86 tasks.
-GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '0b72fe68a7c9bb4ef696ce876f80f0de9ed3a0dd434acd8f499f679e0188975c'), 'torch2hip/gpumode/14539_GELU': (10, '6988f6cace9f3c9a1f8da275789518c8667ba249b5c9431c6b05a57dd67d9e36'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab')}
+# Job 139100 additionally found missing replay checks in FusedLeakyReLU and GRU.
+# The original digest remains the gate for all other 84 tasks.
+GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '0b72fe68a7c9bb4ef696ce876f80f0de9ed3a0dd434acd8f499f679e0188975c'), 'torch2hip/gpumode/14539_GELU': (10, '6988f6cace9f3c9a1f8da275789518c8667ba249b5c9431c6b05a57dd67d9e36'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (11, '2e76a63ae4a0f16eadc664b81c60d5d9779104ce66304d9bac85f5d5c90e70e7'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, '434697dcc5596fee2141040bbcb1b404b5614f555a58bc8d729b190da194adfd')}
 
 
 @pytest.mark.parametrize('path', CONFIGS, ids=lambda p: p.parent.name)
@@ -695,7 +696,8 @@ def test_matrix_additional_checks_cover_all_original_shapes(monkeypatch):
         helper.check_additional_paths(harness)
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/gpumode/GELU', 'torch2hip/gpumode/14539_GELU'])
+@pytest.mark.parametrize('relative', ['hip2hip/gpumode/GELU', 'torch2hip/gpumode/14539_GELU',
+                                         'hip2hip/gpumode/FusedLeakyReLU', 'hip2hip/gpumode/GateGRUSelectionLayer'])
 @pytest.mark.parametrize('behavior', ['correct', 'wrong_replay', 'input_mutation', 'input_alias'])
 def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypatch):
     root = ROOT / 'tasks' / relative
@@ -732,3 +734,33 @@ def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypa
         with pytest.raises((ValueError, AssertionError)):
             perf.cal_hip_latency(module, inputs, candidate)
     assert observed[0]['warmup'] == 10 and observed[0]['repetition'] == 100
+
+
+@pytest.mark.parametrize('name', ['FusedLeakyReLU', 'GateGRUSelectionLayer'])
+def test_added_replay_tasks_reference_known_answer_and_readonly_inputs(name):
+    root = ROOT / 'tasks/hip2hip/gpumode' / name
+    args = options(yaml.safe_load((root / 'config.yaml').read_text()))
+    for filename in [args.module, args.functional]:
+        cls = getattr(import_path(root / filename), name)
+        if name == 'FusedLeakyReLU':
+            model = cls(channel=2, negative_slope=.2, scale=2.).eval()
+            with torch.no_grad(): model.bias.copy_(torch.tensor([1., -2.]))
+            inputs = [torch.tensor([[[[-3., 2.]], [[1., 4.]]]])]
+            expected = torch.tensor([[[[-.8, 6.]], [[-.4, 4.]]]])
+        else:
+            model = cls(dim_model=2, dim_ff=4, prob_dropout=.5).eval()
+            with torch.no_grad():
+                for p in model.parameters(): p.zero_()
+            inputs = [torch.tensor([[[[2., 4.]]]]), torch.tensor([[[[9., -3.]]]])]
+            # Zero reset/update/proposal linear layers => update=.5, proposal=0.
+            expected = inputs[0] / 2
+        before_inputs = copy.deepcopy(inputs)
+        before_state = copy.deepcopy(model.state_dict())
+        actual = model(*inputs)
+        torch.testing.assert_close(actual, expected)
+        assert not torch.allclose(actual, torch.zeros_like(actual))
+        for before, after in zip(before_inputs, inputs):
+            torch.testing.assert_close(before, after, rtol=0, atol=0)
+            assert actual.untyped_storage().data_ptr() != after.untyped_storage().data_ptr()
+        for key, value in model.state_dict().items():
+            torch.testing.assert_close(before_state[key], value, rtol=0, atol=0)
