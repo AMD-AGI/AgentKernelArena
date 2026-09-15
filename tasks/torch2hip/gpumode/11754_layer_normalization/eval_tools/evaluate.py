@@ -124,9 +124,12 @@ def check_case_identity(row, inputs):
 
 
 def validate_task(args, rows):
+    from case_controls import validate_controls, self_test
+    validate_controls(rows)
     import torch
     module = load_module(local_path(args.module), "arena_reference")
     functional = load_module(local_path(args.functional), "arena_functional")
+    self_test(module, functional, args.model_class)
     forward = getattr(functional, args.model_class).forward
     default = inspect.signature(forward).parameters["fn"].default
     if not callable(default):
@@ -168,6 +171,8 @@ def correctness(args, role, rows):
         check_case_identity(rows[index], inputs)
         inputs = list(inputs) if isinstance(inputs, (tuple, list)) else [inputs]
         reference_inputs = [value.to("cuda") if isinstance(value, torch.Tensor) else value for value in inputs]
+        from case_controls import configure_models
+        configure_models((module, functional), reference_inputs)
         torch.manual_seed(1337 + index)
         torch.cuda.manual_seed_all(1337 + index)
         expected = module(*copy.deepcopy(reference_inputs))

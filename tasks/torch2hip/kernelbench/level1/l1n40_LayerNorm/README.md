@@ -57,3 +57,14 @@ values are restored in `finally`, including on exceptions, so a failed role
 cannot alter the next role's starting state. Snapshot, checks and final cleanup
 run outside the reported samples; existing per-invocation prepare callbacks
 and the baseline's graph/Event policy retain their timing boundaries.
+
+Every declared case now uses nonidentity affine parameters: flat element j
+(starting at 1) has gamma `0.5 + j/(numel+1)` and beta
+`(-1)^j * beta_amplitude * (1 + j/numel)`. The per-case positive amplitude is
+explicit in `workload.json`. Both roles receive the same state before checking
+and timing; setup consumes no RNG and stays outside measured calls. Existing
+input shapes/values, case IDs, seeds, normalization equation/epsilon, tolerances,
+warmups and sample counts are preserved. These states reject implementations
+that omit scale or shift; an independent four-number CPU control checks both
+reference forms. They are explicit coverage changes from the former identity
+state, so old-workload speedups are not directly comparable.

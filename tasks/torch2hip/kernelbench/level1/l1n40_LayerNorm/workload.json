@@ -21,7 +21,12 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1337
+        "correctness_seed": 1337,
+        "operator": {
+          "gamma": "0.5_plus_flat_index_fraction",
+          "beta": "alternating_flat_ramp",
+          "beta_amplitude": 0.0625
+        }
       }
     },
     {
@@ -45,7 +50,12 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1338
+        "correctness_seed": 1338,
+        "operator": {
+          "gamma": "0.5_plus_flat_index_fraction",
+          "beta": "alternating_flat_ramp",
+          "beta_amplitude": 0.125
+        }
       }
     },
     {
@@ -69,7 +79,12 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1339
+        "correctness_seed": 1339,
+        "operator": {
+          "gamma": "0.5_plus_flat_index_fraction",
+          "beta": "alternating_flat_ramp",
+          "beta_amplitude": 0.1875
+        }
       }
     },
     {
@@ -93,7 +108,12 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1340
+        "correctness_seed": 1340,
+        "operator": {
+          "gamma": "0.5_plus_flat_index_fraction",
+          "beta": "alternating_flat_ramp",
+          "beta_amplitude": 0.25
+        }
       }
     },
     {
@@ -117,7 +137,12 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1341
+        "correctness_seed": 1341,
+        "operator": {
+          "gamma": "0.5_plus_flat_index_fraction",
+          "beta": "alternating_flat_ramp",
+          "beta_amplitude": 0.3125
+        }
       }
     }
   ]
