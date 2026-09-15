@@ -132,6 +132,7 @@ def test_declaring_flydsl_without_executing_it_is_rejected():
 
 
 CANDIDATE_AUDIT_TASKS = [ROOT / "tasks/torch2flydsl" / name for name in (
+    "quant_mxfp4_kernel",
     "moe_biased_grouped_topk_kernel",
     'per_tensor_fp8_quant_kernel', 'per_token_fp8_quant_kernel', 'per_1x128_fp8_quant_kernel', 'per_token_i8_quant_kernel',
     "layernorm2d_kernel", "layernorm2d_with_add_kernel",
@@ -3285,3 +3286,87 @@ def test_fmoe_failed_correctness_precheck_cannot_emit_passing_performance_rows(n
     result=parse_command_result(capsys.readouterr().out,role='baseline',action='performance',returncode=1)
     assert not result.passed and all(row['status']=='FAIL' and 'execution_time_ms' not in row for row in result.cases)
     assert result.metadata['correctness_precheck_cases']==evidence
+
+
+@pytest.mark.parametrize('function',['run_benchmark','arena_benchmark'])
+@pytest.mark.parametrize('provided',[True,False])
+@pytest.mark.parametrize('behavior',['correct','measured_wrong','replay_wrong','cached_codes','cached_scale','input_modified','shape','code_dtype','scale_dtype','nonfinite'])
+def test_mxfp4_actual_measured_pair_and_exact_replay(function,provided,behavior,monkeypatch,tmp_path):
+    import math,types,torch
+    name='quant_mxfp4_kernel'
+    t=ROOT/'tasks/torch2flydsl'/name;checks=module(t/'scripts/replay_checks.py');real_model=module(t/'model.py');oracle=real_model.Model()
+    # CPU plumbing test: real original quantization produces the expected
+    # codes/scales for each changed input. Deliberately wrong paths must fail;
+    # full GPU task checks still compare independently against AITER.
+    inp=torch.linspace(-8,7,512,dtype=torch.float32).reshape(2,256).to(torch.bfloat16);original=inp.clone();cached=oracle(inp);phase={'name':'setup'}
+    def compute(is_model):
+        y,scale=oracle(inp)
+        if is_model==provided:
+            if behavior==phase['name']+'_wrong':y.view(torch.uint8).zero_()
+            if phase['name']=='replay':
+                if behavior=='cached_codes':y=cached[0].clone()
+                if behavior=='cached_scale':scale=cached[1].clone()
+                if behavior=='input_modified':inp.add_(1)
+            if phase['name']=='measured':
+                if behavior=='shape':scale=scale.reshape(-1) if scale.ndim==2 else scale.reshape(1,1)
+                if behavior=='code_dtype':y=y.view(torch.int8)
+                if behavior=='scale_dtype':scale=scale.view(torch.int8)
+                if behavior=='nonfinite':scale.view(torch.uint8).fill_(255)
+        return y,scale
+    class Model:
+        def to(self,*a):return self
+        def __call__(self,*a):return compute(True)
+    mmod=types.SimpleNamespace(Model=Model,get_init_inputs=lambda:[],_FP4X2=real_model._FP4X2,_FP8_E8M0=real_model._FP8_E8M0);kmod=types.SimpleNamespace(**{'flydsl_'+name.removesuffix('_kernel'):lambda *a,**kw:compute(False)})
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run):
+        calls.append((warmup,repetition));phase['name']='measured';timed_run.outputs=fn();timed_run.bound=True;phase['name']='setup'
+        def replay():
+            phase['name']='replay'
+            try:return fn()
+            finally:phase['name']='setup'
+        timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':benchmark,'require_unchanged':checks.require_unchanged,
+        'GROUP_SIZE':32,'_aiter_op':oracle,'_make_inputs':lambda shape:inp if name=='per_token_i8_quant_kernel' else (inp,),
+        '_load_module':lambda directory,filename,alias:mmod if filename=='model.py' else None if provided else kmod,
+        '_KERNEL_DIR':str(tmp_path),'MODEL_FILE':'model.py','KERNEL_FILE':'kernel.py','KERNEL_ENTRY':'flydsl_'+name.removesuffix('_kernel'),
+        'SHAPES':[{'name':'controlled','m':2,'n':256}], 'math':math,'json':json,'Path':Path}
+    _harness_functions(t,{function,'_mean_ms','_compare','_checked_quant_pair','_compare_quant_outputs','_quant_replay_validator'},ns)
+    if behavior=='correct':
+        report=ns[function](verbose=False)
+        if function=='run_benchmark':report=json.loads((tmp_path/'build/performance_report.json').read_text())
+        assert report[0]['timed_output_correctness']==report[0]['replay_correctness']=='PASS'
+        assert calls==[(10,100)]*(2 if provided else 3)
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+    assert torch.equal(inp,original)
+
+
+@pytest.mark.parametrize('wrong',['one_code_bit','one_scale_bit','scale_nan','shape','device','code_dtype'])
+def test_mxfp4_original_byte_exact_gate_and_output_contract(wrong):
+    import torch
+    t=ROOT/'tasks/torch2flydsl/quant_mxfp4_kernel';mmod=module(t/'model.py');x=torch.linspace(-4,6,128).reshape(2,64).to(torch.bfloat16)
+    expected=mmod.Model()(x);actual=[v.clone() for v in expected];ns={'GROUP_SIZE':32}
+    _harness_functions(t,{'_compare','_checked_quant_pair','_compare_quant_outputs'},ns)
+    ns['_compare_quant_outputs'](actual,expected,(x,),mmod)
+    if wrong=='one_code_bit':actual[0].view(torch.uint8)[0,0]^=1
+    if wrong=='one_scale_bit':actual[1].view(torch.uint8)[0,0]^=1
+    if wrong=='scale_nan':actual[1].view(torch.uint8)[0,0]=255
+    if wrong=='shape':actual[0]=actual[0].reshape(-1)
+    if wrong=='device':actual[0]=actual[0].to('meta')
+    if wrong=='code_dtype':actual[0]=actual[0].view(torch.int8)
+    with pytest.raises(AssertionError):ns['_compare_quant_outputs'](actual,expected,(x,),mmod)
+
+
+def test_mxfp4_original_math_inputs_and_timing_preserved():
+    hashes={'_make_inputs': '17800253aebd6dc6f79a2f102d9127e1bf787de9708ee39e29e408d421377b3d', '_aiter_op': 'b0cf4572a62ec1dd55f0d724b867f34f659fee1168defdee1e5ec18ff5a91fd1', '_compare': '7c1418c398e1df2b3e5ec14b1ab311b37694b2fc766b52dfebb452a1033d6acb', 'run_correctness': '204f18a5d399f889da36f10ae1056a4ba9d80854e1b7d05d3fb89b5e7b424fc9', '_mean_ms': 'd577e74039d622acefe0c724d81ab5149f872772160fc2a2c7b229700fb428be', 'run_benchmark': '99ad3efe2c60267a7aebbc308d6d4885b8986ec1d1a84f480c136c0338478889', 'arena_benchmark': '3c4c85b24ef9f8f6aef8f8ae22207c0882054c964c8a3bf4bd23c4ad6befce0d'}
+    task=ROOT/'tasks/torch2flydsl/quant_mxfp4_kernel';tree=ast.parse((task/'test_kernel_harness.py').read_text())
+    for fn in tree.body:
+        if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
+            normalized=_RemoveStandardQuantChecks().visit(fn)
+            assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
+    cfg=yaml.safe_load((task/'config.yaml').read_text())
+    assert [e['symbol'] for e in cfg['candidate']['entrypoints']]==['flydsl_quant_mxfp4']
+    assert cfg['platform_support']['required_arch']=='gfx950'

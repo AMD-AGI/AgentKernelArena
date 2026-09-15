@@ -12,9 +12,6 @@ candidate:
   - file: kernel.py
     kind: function
     symbol: flydsl_quant_mxfp4
-  - file: kernel.py
-    kind: builder
-    symbol: build_quant_mxfp4_module
 baseline:
   kind: provided
   correctness_policy: required

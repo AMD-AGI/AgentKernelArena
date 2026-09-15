@@ -50,3 +50,19 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+
+The public operator returns packed E2M1 codes `[m, n/2]` and E8M0 block scales
+`[m, n/32]`, using the typed dtypes in protected `model.py` (uint8 fallback only
+where the runtime lacks those dtypes), both on the input device. Inputs are
+read-only. E8M0 byte255 is invalid for these finite inputs; every E2M1 nibble is
+finite. The original gate remains exact byte equality for BOTH codes and scales.
+No unused builder callback is required; only `flydsl_quant_mxfp4` is public.
+
+The primary baseline remains the protected PyTorch model, with AITER serving as
+the independent oracle and diagnostic timing. Both roles keep10 warmups and100
+CUDA-graph samples. The actual measured pair is checked, then input is negated
+and halved, packed bytes inverted and scales poisoned before replaying the same
+captured graph and comparing against AITER. These checks and input restoration
+run outside timing. Runtime profile/dispatch checks apply only to candidate
+correctness, require real FlyDSL calls and reject PyTorch operator replacements.

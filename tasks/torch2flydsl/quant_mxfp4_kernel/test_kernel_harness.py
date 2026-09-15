@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: MIT
 """Build / correctness / performance harness for the quant_mxfp4 task.
 
-Model-only task: there is no shipped FlyDSL ``kernel.py`` (FlyDSL is the agent's
-target). Correctness validates the pure-torch reference in ``model.py`` against
+The committed ``kernel.py`` is an unimplemented FlyDSL starter.
+Correctness validates the pure-torch reference in ``model.py`` against
 AMD's real runtime op (``aiter.quant_mxfp4_hip`` / ``per_1x32_f4_quant``,
 project default round mode RoundUp) as ground truth. ``model.py`` imports no
 ``aiter``/``flydsl``; only this harness may.
@@ -28,7 +28,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -146,6 +147,64 @@ def run_compile(verbose=True):
     return True
 
 
+def _checked_quant_pair(pair, inp, mmod):
+    import torch
+    if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+        raise AssertionError("Quantizer must return exactly (codes, scale)")
+    input = inp[0]
+    code_shape = (input.shape[0], input.shape[1] // 2)
+    scale_shape = (input.shape[0], input.shape[1] // GROUP_SIZE)
+    for value, expected_shape, expected_dtype in zip(
+        pair, (code_shape, scale_shape), (mmod._FP4X2, mmod._FP8_E8M0)
+    ):
+        if not isinstance(value, torch.Tensor):
+            raise AssertionError("Quantizer output must be a Tensor")
+        if tuple(value.shape) != expected_shape or value.dtype != expected_dtype or value.device != input.device:
+            raise AssertionError("Quantizer output shape/dtype/device violates the contract")
+    # All packed E2M1 nibbles are finite; E8M0 byte255 denotes NaN.
+    # Byte inspection also works when this runtime uses uint8 typed fallbacks.
+    if bool((pair[1].view(torch.uint8) == 255).any()):
+        raise AssertionError("Non-finite E8M0 block scale")
+    return pair
+
+
+def _compare_quant_outputs(actual, expected, inp, mmod):
+    _checked_quant_pair(actual, inp, mmod)
+    _checked_quant_pair(expected, inp, mmod)
+    if not _compare(actual, expected)[0]:
+        raise AssertionError("Numerical mismatch: quantizer codes or scale")
+
+
+def _quant_replay_validator(mmod, inp):
+    import torch
+    originals = tuple(x.clone() for x in inp)
+    expected = _checked_quant_pair(_aiter_op(*inp), inp, mmod)
+    require_unchanged(inp, originals)
+    def validate(timed):
+        if not timed.bound:
+            raise RuntimeError("Benchmark did not expose measured quantization outputs")
+        require_unchanged(inp, originals)
+        _compare_quant_outputs(timed.outputs, expected, inp, mmod)
+        try:
+            inp[0].neg_().mul_(0.5)
+            changed = tuple(x.clone() for x in inp)
+            replay_expected = _checked_quant_pair(_aiter_op(*inp), inp, mmod)
+            codes, scale = timed.outputs
+            # FP4 has no NaN encoding. Invert the actual measured code bytes;
+            # poison E8M0 scales with their NaN sentinel before the same replay.
+            codes.view(torch.uint8).bitwise_xor_(255)
+            scale.view(torch.uint8).fill_(255)
+            replayed = timed.rerun()
+            require_unchanged(inp, changed)
+            _compare_quant_outputs(replayed, replay_expected, inp, mmod)
+        finally:
+            for value, original in zip(inp, originals):
+                value.copy_(original)
+        return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+                "replay_inputs_perturbed": True, "replay_output_poisoned": True}
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -157,12 +216,16 @@ def run_correctness(verbose=True):
     failures = []
     for shape in SHAPES:
         inp = _make_inputs(shape)
+        originals = tuple(x.clone() for x in inp)
         model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
         with torch.no_grad():
             ref = model(*inp)
             truth = _retry(lambda: _aiter_op(*inp), what="aiter quant_mxfp4")
         torch.cuda.synchronize()
 
+        require_unchanged(inp, originals)
+        _checked_quant_pair(ref, inp, mmod)
+        _checked_quant_pair(truth, inp, mmod)
         ok, pmax, ppct, smax, spct = _compare(ref, truth)
         if verbose:
             print(
@@ -189,6 +252,8 @@ def run_correctness(verbose=True):
                 kout = None
             if kout is not None:
                 torch.cuda.synchronize()
+                require_unchanged(inp, originals)
+                _checked_quant_pair(kout, inp, mmod)
                 k_ok, kp, kpp, ks, ksp = _compare(kout, truth)
                 if verbose:
                     print(
@@ -209,10 +274,12 @@ def run_correctness(verbose=True):
     return True
 
 
-def _mean_ms(fn, warmup, iters):
+def _mean_ms(fn, warmup, iters, *, validate):
+    timed = TimedRun()
     mean_ms, bench_meta = benchmark_cuda_graph_or_events(
-        fn, warmup=warmup, repetition=iters
+        fn, warmup=warmup, repetition=iters, timed_run=timed
     )
+    bench_meta.update(validate(timed))
     _mean_ms.benchmark_metadata = bench_meta
     return mean_ms
 
@@ -244,15 +311,17 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
     print("-" * 56)
     for idx, shape in enumerate(SHAPES):
         inp = _make_inputs(shape)
+        originals = tuple(x.clone() for x in inp)
         model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
         with torch.no_grad():
-            op_ms = _mean_ms(lambda: _aiter_op(*inp), warmup, iters)
-            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters)
+            validate = _quant_replay_validator(mmod, inp)
+            op_ms = _mean_ms(lambda: _aiter_op(*inp), warmup, iters, validate=validate)
+            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters, validate=validate)
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = (
                 _mean_ms(
                     lambda: kmod.flydsl_quant_mxfp4(*inp, group_size=GROUP_SIZE),
-                    warmup, iters,
+                    warmup, iters, validate=validate,
                 )
                 if has_kernel
                 else None
@@ -376,15 +445,17 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
     print("-" * 56)
     for idx, shape in enumerate(SHAPES):
         inp = _make_inputs(shape)
+        originals = tuple(x.clone() for x in inp)
         model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
         with torch.no_grad():
-            op_ms = _mean_ms(lambda: _aiter_op(*inp), warmup, iters)
-            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters)
+            validate = _quant_replay_validator(mmod, inp)
+            op_ms = _mean_ms(lambda: _aiter_op(*inp), warmup, iters, validate=validate)
+            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters, validate=validate)
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = (
                 _mean_ms(
                     lambda: kmod.flydsl_quant_mxfp4(*inp, group_size=GROUP_SIZE),
-                    warmup, iters,
+                    warmup, iters, validate=validate,
                 )
                 if has_kernel
                 else None
