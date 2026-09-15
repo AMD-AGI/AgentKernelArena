@@ -7252,3 +7252,133 @@ def test_ep_scatter2_actual_raw_launch_timing_uses_original_prepare_and_restores
 def test_ep_scatter2_adapter_installs_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_ep_scatter_2/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_ep_scatter2_checks'
+
+
+def _silu_fp8_dg_cpu(y,counts,group_size=128,swap=False):
+    gate,up=y.double().chunk(2,dim=-1)
+    if swap:gate,up=up,gate
+    values=(gate/(1+(-gate).exp())*up).float()
+    E,T,H=values.shape;G=H//group_size;dtype=torch.float8_e4m3fnuz
+    maximum=torch.finfo(dtype).max
+    scales=values.reshape(E,T,G,group_size).abs().amax(-1).clamp_min(1e-10)/maximum
+    q=(values/scales.repeat_interleave(group_size,-1)).clamp(-maximum,maximum).to(dtype)
+    valid=torch.arange(T)[None,:]<counts[:,None]
+    q.view(torch.uint8)[~valid]=128
+    scales[~valid]=float('nan')
+    column_major=torch.empty_strided((E,T,G),(T*G,1,T),dtype=torch.float32)
+    column_major.copy_(scales)
+    return q,column_major
+
+
+def _silu_fp8_dg_cpu_harness(monkeypatch):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'silu_mul_fp8_quant_dg')
+    for name in ('randint','tensor','full'):
+        factory=getattr(torch,name)
+        monkeypatch.setattr(torch,name,lambda *a,_factory=factory,**kw:_factory(*a,**{**kw,'device':'cpu'}))
+    return h,checks
+
+
+def test_silu_fp8_dg_independent_known_answers_original_gate_and_undefined_rows(monkeypatch):
+    h,checks=_silu_fp8_dg_cpu_harness(monkeypatch)
+    y=torch.tensor([0.,32.]*4+[2.,.5]*4,dtype=torch.float16).reshape(1,1,16).expand(2,3,16).clone()
+    counts=torch.tensor([0,2],dtype=torch.int32)
+    expected=torch.zeros(2,3,8);expected[1,:2]=torch.tensor([0.,16.]*4)
+    torch.testing.assert_close(checks.reference(h,(y,counts),8),expected,atol=1e-6,rtol=0)
+    pair=_silu_fp8_dg_cpu(y,counts,8);checks.check_outputs(pair,expected,(y,counts),8)
+    assert torch.isnan(pair[0].float()[0]).all() and torch.isnan(pair[1][1,2]).all()
+    for bad in [(pair[0].float(),pair[1]),(pair[0],pair[1].double()),(pair[0].flatten(),pair[1]),
+                (pair[0].to('meta'),pair[1]),(pair[0],),[pair[0],pair[1]],(*pair,pair[1])]:
+        with pytest.raises(AssertionError):checks.check_outputs(bad,expected,(y,counts),8)
+    # Original absolute tolerance is .5 and relative tolerance .2, not an
+    # invented exact quantization/scale rule.
+    zero=torch.zeros(1,1,8);inputs=(torch.zeros(1,1,16),torch.tensor([1]))
+    scales=torch.ones(1,1,1)
+    checks.check_outputs((torch.full((1,1,8),.5).to(pair[0].dtype),scales),zero,inputs,8)
+    with pytest.raises(AssertionError):checks.check_outputs((torch.ones(1,1,8).to(pair[0].dtype),scales),zero,inputs,8)
+
+
+@pytest.mark.parametrize('mode',['correct','q_dtype','s_dtype','q_shape','s_shape','nan_q','nan_s','zero_scale',
+    'negative_scale','wrong_scale','zero_q','first4_only','omit_last_group','swap_gate','ignore_strides',
+    'mutate_y','mutate_counts'])
+def test_silu_fp8_dg_actual_fivecase_correctness_checks_all_valid_rows_and_strided_groups(monkeypatch,mode):
+    h,checks=_silu_fp8_dg_cpu_harness(monkeypatch);calls=[];saved_inputs=[]
+    def public(y,counts,group_size=128):
+        calls.append((y.shape,counts.tolist(),group_size,y.stride()))
+        saved_inputs.append(((y,counts),checks.snapshot((y,counts))))
+        if mode=='mutate_y':y.zero_()
+        if mode=='mutate_counts':counts.zero_()
+        q,s=_silu_fp8_dg_cpu(y,counts,group_size,swap=mode=='swap_gate')
+        if mode=='q_dtype':q=q.float()
+        if mode=='s_dtype':s=s.double()
+        if mode=='q_shape':q=q.flatten()
+        if mode=='s_shape':s=s.flatten()
+        if mode=='nan_q':q.view(torch.uint8).fill_(128)
+        if mode=='nan_s':s.fill_(float('nan'))
+        if mode=='zero_scale':s.zero_()
+        if mode=='negative_scale':s.mul_(-1)
+        if mode=='wrong_scale':s.mul_(3)
+        if mode=='zero_q':q.view(torch.uint8).zero_()
+        if mode=='first4_only':q.view(torch.uint8)[:,4:].zero_()
+        if mode=='omit_last_group':q.view(torch.uint8)[...,-group_size:].zero_()
+        if mode=='ignore_strides' and not y.is_contiguous():q.view(torch.uint8).zero_()
+        return q,s
+    mod=SimpleNamespace(silu_mul_fp8_quant=public);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
+    if ok:
+        assert [v[0][0] for v in calls]==[4,3,3,4,8,8,16]
+        assert [(v[0],v[1],v[2]) for v in calls[1:3]]==[(torch.Size((3,7,512)),[0,5,7],128),(torch.Size((3,7,384)),[0,5,7],64)]
+        assert calls[1][3][-1]==calls[2][3][-1]==2
+    for inputs,saved in saved_inputs:checks.unchanged(inputs,saved)
+    assert mod.silu_mul_fp8_quant is public
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed_q','wrong_timed_s','stale','no_write','skip_q','skip_s',
+    'wrong_replay','mutate_timed_y','mutate_timed_counts','mutate_replay_y','mutate_replay_counts',
+    'zero_inputs_and_outputs','raise_replay'])
+def test_silu_fp8_dg_actual_timing_valid_pair_poison_replay_and_input_restore(monkeypatch,mode):
+    import inspect
+    h,checks=_silu_fp8_dg_cpu_harness(monkeypatch)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(silu_mul_fp8_quant=_silu_fp8_dg_cpu);h.load_module=lambda:mod
+    all_inputs,all_saved,options,replays=[],[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        inputs=(state['y'],state['tokens_per_expert']);saved=checks.snapshot(inputs)
+        all_inputs.append(inputs);all_saved.append(saved);options.append(kwargs)
+        E,T,H,G=h.TEST_SHAPES[len(options)-1];generator=torch.Generator().manual_seed(0)
+        checks.unchanged(inputs,(torch.randn(E,T,2*H,dtype=torch.float16,generator=generator)*.5,torch.full((E,),T,dtype=torch.int32)))
+        outputs=measured();cache=checks.snapshot(outputs)
+        if mode=='wrong_timed_q':outputs[0].view(torch.uint8).zero_()
+        if mode=='wrong_timed_s':outputs[1].mul_(3)
+        if mode.startswith('mutate_timed_'):inputs[1 if mode.endswith('counts') else 0].zero_()
+        if mode=='zero_inputs_and_outputs':
+            for value in inputs:value.zero_()
+            outputs[0].view(torch.uint8).zero_();outputs[1].fill_(1)
+        def replay():
+            replays.append(True)
+            counts=T-torch.arange(E)%T;counts[0]=0
+            checks.unchanged(inputs,(saved[0]*-3+4,counts.to(torch.int32)))
+            assert torch.isnan(outputs[0].float()).all() and torch.isnan(outputs[1]).all()
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='no_write':
+                fresh=cache if mode=='stale' else measured()
+                if mode!='skip_q':outputs[0].copy_(fresh[0])
+                if mode!='skip_s':outputs[1].copy_(fresh[1])
+            if mode=='wrong_replay':outputs[0].view(torch.uint8).zero_()
+            if mode.startswith('mutate_replay_'):inputs[1 if mode.endswith('counts') else 0].zero_()
+            return outputs
+        timed_run._bind(replay,outputs)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h);rows=h.run_performance()
+    assert options==[dict(warmup=10,repetition=100)]*5
+    for cfg,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('E','T','H','group_size'),cfg))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for inputs,saved in zip(all_inputs,all_saved):checks.unchanged(inputs,saved)
+    assert len(replays)==(0 if mode.startswith(('wrong_timed_','mutate_timed_')) or mode=='zero_inputs_and_outputs' else 5)
+    assert mod.silu_mul_fp8_quant is _silu_fp8_dg_cpu
+
+
+def test_silu_fp8_dg_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_silu_mul_fp8_quant_dg/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_silu_fp8_dg_checks'
