@@ -109,7 +109,13 @@ def test_complete_manifest_from_protected_generator(path):
     manifest = json.loads(path.with_name('workload.json').read_text())['cases']
     assert len(manifest) == len(metadata)
     for i, (row, value) in enumerate(zip(manifest, metadata)):
-        assert row == {'test_case_id': f'case_{i}', 'params': {'inputs': value, 'model_init_seed': 0, 'correctness_seed': 1337 + i}}
+        expected_params = {'inputs': value, 'model_init_seed': 0, 'correctness_seed': 1337 + i}
+        if path.parent.name in {'FusedLeakyReLU', '10190_FusedLeakyReLU'}:
+            expected_params['operator'] = {
+                'bias': {'pattern': 'alternating_channel', 'offset': .125, 'step': 1/128},
+                'negative_slope': [.1, .2, .35, .5, .75][i],
+                'scale': [.5, math.sqrt(2), 1.25, 2., 3.][i]}
+        assert row == {'test_case_id': f'case_{i}', 'params': expected_params}
 
 
 @pytest.mark.parametrize('path', NATIVE, ids=lambda p: p.parent.name)
@@ -404,7 +410,7 @@ ORIGINAL_SOURCE_DIGESTS = {'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (10
 # Job 139100 additionally found missing replay checks in FusedLeakyReLU, GRU and item attention.
 # MaskedLanguageModel also needed its transposed weight launch axes corrected.
 # The original digest remains the gate for all other 73 tasks.
-GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '0b72fe68a7c9bb4ef696ce876f80f0de9ed3a0dd434acd8f499f679e0188975c'), 'torch2hip/gpumode/14539_GELU': (10, '6988f6cace9f3c9a1f8da275789518c8667ba249b5c9431c6b05a57dd67d9e36'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (11, '2e76a63ae4a0f16eadc664b81c60d5d9779104ce66304d9bac85f5d5c90e70e7'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, '434697dcc5596fee2141040bbcb1b404b5614f555a58bc8d729b190da194adfd'), 'hip2hip/gpumode/ItemQueryAttention': (11, '5625fb2aa11b57597f56893f70bb70d5e5cf8ccafa43977f2bc2a95ac563f8a0'), 'hip2hip/gpumode/MaskedLanguageModel': (10, '17834ed93fcdbec6f9d64f2450fc14bf161eb37f69844c731d39055e57d62d96'), 'hip2hip/gpumode/SiLU': (11, 'c590823050ac4c044cddc3113def4b6866f153f92a54d9775f168856843a9ecf'), 'hip2hip/gpumode/Sigmoid': (11, 'dad77fe3e8c52bf73f6e6d86acfdc9fcaf82262cb07a40fe39f212052f6758c5'), 'torch2hip/gpumode/10190_FusedLeakyReLU': (10, '7870f18fd233a1f462391676dfb0ed8aa1fd6730ffa323cad140043f5d204465'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '4c41c855bbf75c472fcd5ae17f7a1709d841fe133d67f482669f37a68e4dbb25'), 'torch2hip/gpumode/102_ItemQueryAttention': (10, 'aa6bbf7f1997f037a682a9705fc6eafd0ec30e2a0aecd8066bef80024bfd60ca'), 'torch2hip/gpumode/16636_SiLU': (10, '709a7f37523e955d65e56755e0a80cf678062bb178f104b42ca2f6423af16f0a'), 'torch2hip/gpumode/11184_Sigmoid': (10, 'da01ac4fa506921c5f5e8bb6e35222dda47a05a608b8667d84cad00394f1d050'), 'hip2hip/gpumode/TanH': (11, '417c0618e1d83cc7d574e0dcd746e4da001a6af3237c1b74ec131ec95b4f551b'), 'torch2hip/gpumode/11178_TanH': (10, '6c162a2f6cc5f7accda98123ad09b806f0079f31d894779dfe86d95bcb4b2e5e')}
+GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '0b72fe68a7c9bb4ef696ce876f80f0de9ed3a0dd434acd8f499f679e0188975c'), 'torch2hip/gpumode/14539_GELU': (10, '6988f6cace9f3c9a1f8da275789518c8667ba249b5c9431c6b05a57dd67d9e36'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (12, '8b09aa169f4aab575af30b00c06191335d1d9a4f4e425da584b41701bdffe8c0'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, '434697dcc5596fee2141040bbcb1b404b5614f555a58bc8d729b190da194adfd'), 'hip2hip/gpumode/ItemQueryAttention': (11, '5625fb2aa11b57597f56893f70bb70d5e5cf8ccafa43977f2bc2a95ac563f8a0'), 'hip2hip/gpumode/MaskedLanguageModel': (10, '17834ed93fcdbec6f9d64f2450fc14bf161eb37f69844c731d39055e57d62d96'), 'hip2hip/gpumode/SiLU': (11, 'c590823050ac4c044cddc3113def4b6866f153f92a54d9775f168856843a9ecf'), 'hip2hip/gpumode/Sigmoid': (11, 'dad77fe3e8c52bf73f6e6d86acfdc9fcaf82262cb07a40fe39f212052f6758c5'), 'torch2hip/gpumode/10190_FusedLeakyReLU': (11, 'e989d4b07f82669a567a8653765d64812956b021c93decc83045edcec67bdfff'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '4c41c855bbf75c472fcd5ae17f7a1709d841fe133d67f482669f37a68e4dbb25'), 'torch2hip/gpumode/102_ItemQueryAttention': (10, 'aa6bbf7f1997f037a682a9705fc6eafd0ec30e2a0aecd8066bef80024bfd60ca'), 'torch2hip/gpumode/16636_SiLU': (10, '709a7f37523e955d65e56755e0a80cf678062bb178f104b42ca2f6423af16f0a'), 'torch2hip/gpumode/11184_Sigmoid': (10, 'da01ac4fa506921c5f5e8bb6e35222dda47a05a608b8667d84cad00394f1d050'), 'hip2hip/gpumode/TanH': (11, '417c0618e1d83cc7d574e0dcd746e4da001a6af3237c1b74ec131ec95b4f551b'), 'torch2hip/gpumode/11178_TanH': (10, '6c162a2f6cc5f7accda98123ad09b806f0079f31d894779dfe86d95bcb4b2e5e')}
 
 
 @pytest.mark.parametrize('path', CONFIGS, ids=lambda p: p.parent.name)
@@ -865,3 +871,58 @@ def test_priority_activation_references_have_independent_known_answers(name, fam
         assert not torch.allclose(actual,torch.zeros_like(actual))
         torch.testing.assert_close(inputs,before,rtol=0,atol=0)
         assert actual.untyped_storage().data_ptr()!=inputs.untyped_storage().data_ptr()
+
+
+@pytest.mark.parametrize('relative', ['hip2hip/gpumode/FusedLeakyReLU',
+                                      'torch2hip/gpumode/10190_FusedLeakyReLU'])
+def test_fused_manifest_states_exercise_bias_channels_slope_and_scale(relative):
+    root = ROOT / 'tasks' / relative
+    helper = import_path(root / 'eval_tools/case_controls.py')
+    rows = json.loads((root / 'workload.json').read_text())['cases']
+    helper.validate_controls(rows)
+    args = options(yaml.safe_load((root / 'config.yaml').read_text()))
+    module = import_path(root / args.module).FusedLeakyReLU(channel=256)
+    functional = import_path(root / args.functional).FusedLeakyReLU(channel=256)
+    failures = dict.fromkeys(['omit_bias', 'wrong_channel', 'fixed_slope', 'fixed_scale'], 0)
+    x = torch.tensor([-1., -.1, .2, 1.]).reshape(1, 1, 1, 4).expand(1, 4, 1, 4).clone()
+    independent_bias = torch.tensor([(-1)**c * (1/8 + (c+1)/128) for c in range(4)]).reshape(1,4,1,1)
+    pristine = x.clone()
+    for row in rows:
+        rng = torch.random.get_rng_state().clone()
+        # Metadata-only tensors use the real shapes without CPU/GPU allocation.
+        declared = [torch.empty(row['params']['inputs'][0]['shape'], device='meta')]
+        control = helper.configure_models((module, functional), declared)
+        torch.testing.assert_close(torch.random.get_rng_state(), rng, rtol=0, atol=0)
+        assert control == row['params']['operator']
+        torch.testing.assert_close(module.bias, functional.bias, rtol=0, atol=0)
+        assert module.negative_slope == functional.negative_slope == control['negative_slope']
+        assert module.scale == functional.scale == control['scale']
+        assert torch.count_nonzero(module.bias) == 256
+        assert torch.unique(module.bias).numel() == 256
+        shifted = x + independent_bias
+        expected = torch.where(shifted >= 0, shifted, shifted * control['negative_slope']) * control['scale']
+        torch.testing.assert_close(module(x), expected, rtol=1e-4, atol=1e-5)
+        torch.testing.assert_close(functional(x), expected, rtol=1e-4, atol=1e-5)
+        for defect in failures:
+            def bad(inputs, bias, negative_slope, scale):
+                b = bias.roll(1) if defect == 'wrong_channel' else bias
+                v = inputs if defect == 'omit_bias' else inputs + b[:4].reshape(1,4,1,1)
+                alpha = .2 if defect == 'fixed_slope' else negative_slope
+                factor = math.sqrt(2) if defect == 'fixed_scale' else scale
+                return torch.where(v >= 0, v, v * alpha) * factor
+            actual = functional(x, fn=bad)
+            failures[defect] += not torch.allclose(actual, expected, rtol=1e-4, atol=1e-5)
+        torch.testing.assert_close(x, pristine, rtol=0, atol=0)
+    assert failures == {'omit_bias': 5, 'wrong_channel': 5, 'fixed_slope': 4, 'fixed_scale': 4}
+    with pytest.raises(ValueError, match='declared workload shape'):
+        helper.configure_models((module, functional), [torch.empty(1,4,1,4,device='meta')])
+    collapsed = copy.deepcopy(rows)
+    for row in collapsed:
+        row['params']['operator']['negative_slope'] = .2
+        row['params']['operator']['scale'] = 1.
+    with pytest.raises(ValueError, match='multiple slopes and scales'):
+        helper.validate_controls(collapsed)
+    zero = copy.deepcopy(rows)
+    zero[0]['params']['operator']['bias'].update(offset=0., step=0.)
+    with pytest.raises(ValueError, match='nonzero bias'):
+        helper.validate_controls(zero)

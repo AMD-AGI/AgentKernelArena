@@ -21,7 +21,16 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1337
+        "correctness_seed": 1337,
+        "operator": {
+          "bias": {
+            "pattern": "alternating_channel",
+            "offset": 0.125,
+            "step": 0.0078125
+          },
+          "negative_slope": 0.1,
+          "scale": 0.5
+        }
       }
     },
     {
@@ -45,7 +54,16 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1338
+        "correctness_seed": 1338,
+        "operator": {
+          "bias": {
+            "pattern": "alternating_channel",
+            "offset": 0.125,
+            "step": 0.0078125
+          },
+          "negative_slope": 0.2,
+          "scale": 1.4142135623730951
+        }
       }
     },
     {
@@ -69,7 +87,16 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1339
+        "correctness_seed": 1339,
+        "operator": {
+          "bias": {
+            "pattern": "alternating_channel",
+            "offset": 0.125,
+            "step": 0.0078125
+          },
+          "negative_slope": 0.35,
+          "scale": 1.25
+        }
       }
     },
     {
@@ -93,7 +120,16 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1340
+        "correctness_seed": 1340,
+        "operator": {
+          "bias": {
+            "pattern": "alternating_channel",
+            "offset": 0.125,
+            "step": 0.0078125
+          },
+          "negative_slope": 0.5,
+          "scale": 2.0
+        }
       }
     },
     {
@@ -117,7 +153,16 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1341
+        "correctness_seed": 1341,
+        "operator": {
+          "bias": {
+            "pattern": "alternating_channel",
+            "offset": 0.125,
+            "step": 0.0078125
+          },
+          "negative_slope": 0.75,
+          "scale": 3.0
+        }
       }
     }
   ]

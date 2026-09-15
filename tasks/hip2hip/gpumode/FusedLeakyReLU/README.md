@@ -55,3 +55,20 @@ may have identical source to the provided HIP baseline. Both are compiled from
 their own declared files and checked against the independent PyTorch reference.
 Every candidate action must execute its own compiled entrypoint; protected
 baseline/reference imports, calls and data access remain prohibited.
+
+## Explicit parameter coverage
+
+The five existing case IDs, tensor shapes, input seeds, numerical tolerances,
+and timing policy are retained. `workload.json` now declares nonzero model state:
+`bias[c] = (-1)^c * (1/8 + (c+1)/128)`, with slope/scale pairs
+`(0.1, 0.5)`, `(0.2, sqrt(2))`, `(0.35, 1.25)`, `(0.5, 2)`, `(0.75, 3)`.
+This intentionally replaces zero-only bias coverage; it is a task-quality repair,
+not a comparable optimization result against the former zero-bias workload.
+
+The protected `case_controls.py` applies the manifest state before each
+correctness case and before each baseline/candidate timing call. Both roles
+evaluate identical operator parameters. State construction is outside the
+measured calls; graph capture, 10 warmups, 100 samples, input allocation and
+restoration, and the full-reference timed replay checks retain their boundaries.
+Nonzero channels and varied slopes/scales make omitted bias, wrong channel
+indexing, or hardcoded activation parameters detectable.
