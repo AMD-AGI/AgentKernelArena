@@ -292,6 +292,14 @@ def test_original_f2f_numerical_gates_and_output_contracts_unchanged():
             fn=ast.Module(fn.body[start:],type_ignores=[])
         if name in {"fp8_gemm_4wave_kernel", "fp8_gemm_8wave_kernel", "blockscale_preshuffle_gemm_kernel", "preshuffle_gemm_v2_kernel", "pa_decode_fp8_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
+        if name in {"hgemm_splitk_kernel", "moe_sorting_kernel"}:
+            added_check = ("compare_output(c, ref, RTOL, torch_dtype)" if name == "hgemm_splitk_kernel"
+                           else "compare_outputs((gpu_ids, gpu_w, gpu_eids, gpu_nvalid, gpu_moe_buf), (ref_ids, ref_w, ref_eids, ref_nvalid), token_count=T, topk=topk, unit_size=unit_size)")
+            class RemovePortOutputCheck(ast.NodeTransformer):
+                def visit_Expr(self, node):
+                    return None if ast.unparse(node.value) == added_check else self.generic_visit(node)
+            assert sum(isinstance(n, ast.Expr) and ast.unparse(n.value) == added_check for n in ast.walk(fn)) == 1
+            fn = RemovePortOutputCheck().visit(fn)
         actual=ast.dump(fn,include_attributes=False).replace("build_flash_attn_func_module_primary","build_flash_attn_func_module")
         assert hashlib.sha256(actual.encode()).hexdigest()==expected,name
         original=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ("run_benchmark","run_geak_benchmark"))
@@ -303,7 +311,9 @@ def test_original_f2f_numerical_gates_and_output_contracts_unchanged():
                 if not isinstance(node,ast.Call) or getattr(node.func,"id","") not in {"benchmark_cuda_graph_or_events","_time_mean_ms","_mean_ms"}:
                     continue
                 call=copy.deepcopy(node)
-                if name in {"layernorm_kernel", "rmsnorm_kernel", "softmax_kernel", "topk_gating_softmax_kernel"} and fn is direct:
+                if name in {"layernorm_kernel", "rmsnorm_kernel", "softmax_kernel", "topk_gating_softmax_kernel",
+                            "flash_attn_func_kernel", "hgemm_splitk_kernel", "fused_rope_cache_kernel",
+                            "silu_and_mul_fq_kernel", "moe_sorting_kernel", "pa_decode_swa_kernel"} and fn is direct:
                     # These reviewed ports expose the original launch's outputs
                     # to TimedRun. Preserve comparison of the launch expression
                     # and every sampling/timing argument, ignoring only the
@@ -312,13 +322,19 @@ def test_original_f2f_numerical_gates_and_output_contracts_unchanged():
                         if kw.arg=="timed_run":
                             assert isinstance(kw.value,ast.Name) and kw.value.id=="timed"
                     call.keywords=[kw for kw in call.keywords if kw.arg!="timed_run"]
-                    if isinstance(call.args[0],ast.Name) and call.args[0].id=="launch":
+                    if name != "moe_sorting_kernel" and isinstance(call.args[0],ast.Name) and call.args[0].id=="launch":
                         launch=next(n for n in ast.walk(fn) if isinstance(n,ast.FunctionDef) and n.name=="launch")
                         assert not launch.args.args and len(launch.body)==2
                         assert isinstance(launch.body[0],ast.Expr) and isinstance(launch.body[0].value,ast.Call)
                         assert isinstance(launch.body[1],ast.Return)
-                        assert ast.unparse(launch.body[1].value)=="output"
-                        call.args[0]=ast.Lambda(args=copy.deepcopy(launch.args),body=copy.deepcopy(launch.body[0].value))
+                        expected_output = {"flash_attn_func_kernel": "o_flat", "hgemm_splitk_kernel": "c",
+                                           "silu_and_mul_fq_kernel": "(out_buf, out_scale)"}.get(name, "output")
+                        assert ast.unparse(launch.body[1].value)==expected_output
+                        if name == "pa_decode_swa_kernel":
+                            assert ast.unparse(launch.body[0].value) == "run_fn()"
+                            call.args[0] = ast.Name(id="run_fn", ctx=ast.Load())
+                        else:
+                            call.args[0]=ast.Lambda(args=copy.deepcopy(launch.args),body=copy.deepcopy(launch.body[0].value))
                 collected.append(ast.dump(call,include_attributes=False))
             return collected
         assert calls(original)==calls(direct),name
@@ -798,9 +814,11 @@ def test_declared_gpu_constraints_are_retained_without_unverified_widening():
         arch=cfg.get("platform_support",{}).get("required_arch")
         if arch:observed[str(task.relative_to(ROOT/"tasks"))]=arch
     expected = dict(ORIGINAL_REQUIRED_ARCH)
-    # Explicit ports retain gfx942 and add gfx950 after real action and full
-    # validator qualification; this CPU assertion is not GPU evidence itself.
-    for name in ("rmsnorm_kernel", "softmax_kernel", "layernorm_kernel", "topk_gating_softmax_kernel"):
+    # Explicit ports retain gfx942 and add gfx950 after real GPU actions.
+    # Full task_validator qualification is tracked separately per source/runtime;
+    # this CPU assertion is not GPU evidence itself.
+    for name in ("rmsnorm_kernel", "softmax_kernel", "layernorm_kernel", "topk_gating_softmax_kernel",
+                 "flash_attn_func_kernel", "hgemm_splitk_kernel", "fused_rope_cache_kernel", "silu_and_mul_fq_kernel"):
         expected["flydsl2flydsl/" + name] = ["gfx942", "gfx950"]
     assert observed == expected
 
