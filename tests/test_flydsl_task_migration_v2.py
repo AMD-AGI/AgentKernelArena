@@ -197,6 +197,7 @@ def test_provided_baseline_does_not_import_working_candidate(name,tmp_path):
 import types,sys
 bench=types.ModuleType('_aka_benchmark')
 bench.benchmark_cuda_graph_or_events=lambda *a,**k: (_ for _ in ()).throw(AssertionError('GPU timing not allowed in CPU test'))
+bench.TimedRun=bench.benchmark_cuda_graph_or_events
 sys.modules['_aka_benchmark']=bench
 import test_kernel_harness as h
 h.ARENA_PROVIDED_BASELINE=True
@@ -219,7 +220,9 @@ def test_none_and_conditional_stub_outputs_are_real_failures(tmp_path):
     (task/"kernel.py").write_text('def flydsl_silu_and_mul(x, *args):\n    if x: raise NotImplementedError("case unavailable")\n    return None\n')
     script='''
 import types,sys
-bench=types.ModuleType('_aka_benchmark');bench.benchmark_cuda_graph_or_events=lambda *a,**k:None
+bench=types.ModuleType('_aka_benchmark')
+bench.benchmark_cuda_graph_or_events=lambda *a,**k: (_ for _ in ()).throw(AssertionError('GPU timing not allowed in CPU test'))
+bench.TimedRun=bench.benchmark_cuda_graph_or_events
 sys.modules['_aka_benchmark']=bench
 import test_kernel_harness as h
 m=h._load_module(h._KERNEL_DIR,h.KERNEL_FILE,'candidate')
