@@ -60,6 +60,10 @@ def adapt_lane(source: str) -> str:
                             "return 0;\n  }\n  return DEADLINE_EPOCH - r.epoch;")
     source = source.replace("treating time as unlimited for this check.",
                             "stopping new rounds because the clock check failed.")
+    # Upstream publication is independent of warm_start/update_experience.
+    # Disable its producer gate, even if a role reports a real GPU identity.
+    source = source.replace("const KB_WRITE_OK = KB_ROOT_OK && !!KB_ARTIFACTS_DIR;",
+                            "const KB_WRITE_OK = false; // Arena forbids external publication")
     return source
 
 
@@ -152,6 +156,7 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
         "deadline_epoch": bridge.job["deadline_epoch"],
         "agent_timeout_ms": max(1, int(bridge.remaining() * 1000)),
         "warm_start": "off", "update_experience": "off", "use_learned_kb": "false",
+        "kb_remote": "off",
         "dra_enabled": "false", "use_expert_skills": "false", "frozen_oracle": "false",
         "arena_contract": contract, "task": contract,
         "arena_setup": {"eval_dir": str(bridge.eval_dir),

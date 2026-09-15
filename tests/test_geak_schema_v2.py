@@ -406,6 +406,8 @@ def test_pinned_upstream_preparation(task_factory, upstream, language, state):
     assert "roleAgent('author_engineer'" in lane
     assert "roleAgent('director', 'validate'" in lane
     assert "A.arena_contract" in lane
+    assert "const KB_WRITE_OK = false;" in lane
+    assert args["kb_remote"] == "off"
     # Verify preparation never mutates the engine being shared with other runs.
     verify_upstream(upstream)
 
@@ -433,13 +435,13 @@ const globals = {
     if (!prompt.includes('Arena task contract')) throw Error('missing task contract');
     if (label.startsWith('author:')) return {authored: true, correctness: 'pass'};
     if (label === 'tech_lead:analyze') return {kernel_type:'arbitrary', roadmap_summary:'probe'};
-    if (label.includes('profile_engineer')) return {bottleneck:'unknown',top_opportunities:[],device:''};
+    if (label.includes('profile_engineer')) return {bottleneck:'unknown',top_opportunities:[],device:'gfx950'};
     if (label.startsWith('tech_lead:plan')) return {stop:false,directions:[{id:'cpu',specialty:'compute'}]};
     if (label.startsWith('eng ')) return {status:'ok',speedup_geomean:2};
     if (label.startsWith('verify ')) return {status:'verified',correctness:'pass',verified_geomean:2};
     if (label.startsWith('commit ')) return {committed:true};
     if (label === 'tech_lead:report') return {final_patch:input.args.eval_dir+'/final_patch.diff',final_speedup_geomean:0.5};
-    if (label === 'director:validate') return {validation_status:'accepted',correctness:'pass',director_verified_speedup_geomean:0.5};
+    if (label === 'director:validate') return {validation_status:'accepted',correctness:'pass',director_verified_speedup_geomean:2};
     return {};
   },
   parallel: async (thunks) => Promise.all(thunks.map(t => t())),
@@ -475,6 +477,7 @@ run(input.script_path,input.args).then(result=>{
     assert "director:validate" in result["calls"]
     assert "director:setup" not in result["calls"]
     assert "benchmark_engineer" not in result["calls"]
+    assert not any(label.startswith("kb:") or label == "update_experience" for label in result["calls"])
 
 
 def test_initial_language_translation_uses_author_mode(task_factory, upstream):
