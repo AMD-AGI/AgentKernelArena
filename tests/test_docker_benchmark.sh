@@ -156,7 +156,7 @@ QUALITY_WORKTREE_REL=".quality_loop_worktrees/$QUALITY_TEST_RUN_ID"
 QUALITY_EVAL_ARTIFACT_DIR="$ROOT/.eval-tool-artifacts/quality-loop-$QUALITY_TEST_RUN_ID"
 trap 'rm -rf -- "$TEST_HOME" "$PATH_TEST_PARENT" "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL" "$QUALITY_EVAL_ARTIFACT_DIR"' EXIT
 UNRELATED_GEAK_WORKFLOW_DIR="$TEST_HOME/unrelated-geak-workflow"
-GEAK_SDK_PYTHONPATH="PYTHONPATH=/workspace/.aka-pyuserbase/geak-sdk"
+GEAK_SDK_PYTHONPATH="AKA_GEAK_SDK_PATH=/workspace/.aka-pyuserbase/geak-sdk"
 mkdir -p "$UNRELATED_GEAK_WORKFLOW_DIR"
 touch "$UNRELATED_GEAK_WORKFLOW_DIR/kernel_workflow.js"
 
@@ -730,6 +730,23 @@ for geak_template in geak geak_v3 geak_v3_triton; do
     assert_has "claude_code" "${args[@]}"
 done
 printf 'agent:\n  template: geak_v4\n' > "$GEAK_CONFIG"
+
+# Run the actual container bootstrap in a CPU shell. GEAK's dependency prefix
+# must retain an image-owned source path such as AITER's import root.
+for ((bootstrap_index=0; bootstrap_index<${#args[@]}; bootstrap_index++)); do
+    if [[ "${args[$bootstrap_index]}" == "-lc" ]]; then
+        bootstrap_script="${args[$((bootstrap_index+1))]}"
+        break
+    fi
+done
+combined_pythonpath="$(env \
+    AGENT_KERNEL_ARENA_WORKDIR="$ROOT" \
+    AGENT_KERNEL_ARENA_ISOLATED_HOME=0 \
+    AKA_GEAK_SDK_PATH=/runtime/geak-sdk \
+    PYTHONPATH=/runtime/image-aiter \
+    bash -c "$bootstrap_script" _ python3 -c 'import os; print(os.environ["PYTHONPATH"])')"
+[[ "$combined_pythonpath" == /runtime/geak-sdk:/runtime/image-aiter ]] \
+    || fail "GEAK bootstrap lost the image's Python import path"
 
 # The explicit setup command has no run config or required agent CLI, but still
 # needs the GEAK-only dependency path and workflow mount for its container check.
