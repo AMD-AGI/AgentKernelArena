@@ -820,6 +820,28 @@ def test_mxfp8_linear_guard_preserves_input_quantizers(tmp_path, protected):
         verify_workspace_harness(snapshot)
 
 
+@pytest.mark.parametrize("violation", ["dtype", "shape", "device"])
+def test_kimi_moe_comparison_rejects_wrong_output_contract(violation):
+    torch = pytest.importorskip("torch")
+    directory = TASKS / "mi355x_vllm_aiter_mxfp4_moe_2stage_kimi_k3"
+    h = load_module(directory / "scripts/task_runner.py")
+    h._torch = lambda: torch
+    expected = torch.tensor([[1., 2.], [3., 4.]], dtype=torch.bfloat16)
+    cos, error = h._moe_deviation(expected, expected)
+    assert cos > 0.999 and error == 0
+    bad = {"dtype": lambda: expected.float(), "shape": lambda: expected.flatten(),
+           "device": lambda: torch.empty_like(expected, device="meta")}[violation]()
+    with pytest.raises(AssertionError):
+        h._moe_deviation(bad, expected)
+    # Captured replay invokes the same contract before comparing numeric error.
+    h._perturb_moe_inputs = lambda inputs: None
+    h._reference = lambda inputs: expected
+    if violation != "device":
+        timed = SimpleNamespace(bound=True, outputs=None, rerun=lambda: bad)
+        with pytest.raises(AssertionError):
+            h._assert_timed_outputs({"id": "contract", "params": {}}, {}, timed)
+
+
 def test_reduced_ck_checks_do_not_claim_scored_shape_coverage(monkeypatch):
     directory = TASKS / "mi355x_vllm_ck_a8w8_blockscale_gemm"
     adapter = load_module(directory / "scripts/task_adapter.py")

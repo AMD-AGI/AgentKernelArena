@@ -72,5 +72,7 @@ def check_reference(h):
     equal(actual,expected)
     case={"id":"reference-control","params":{"min_cosine":0.999,"max_rel_norm_err":0.05}}
     good=h._moe_deviation(expected,expected);h._assert_moe_within_tolerance(case,*good,"known answer")
+    rejects(lambda bad: h._moe_deviation(bad, expected), expected.float())
+    rejects(lambda bad: h._moe_deviation(bad, expected), expected.flatten())
     rejects(lambda bad:h._assert_moe_within_tolerance(case,*h._moe_deviation(bad,expected),"negative control"),torch.zeros_like(expected))
     return {"known_answer": "PASS", "negative_control": "PASS", "scored": False}

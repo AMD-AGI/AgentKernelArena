@@ -1,8 +1,17 @@
 # mi355x-kimi-k3-aiter-mxfp4-moe-2stage-20260728
 
-Faithful `image_kernel` reproduction of the **Kimi-K3 routed-expert MoE 2-stage
-GEMM** as it actually ran in Hyperloom session `20260728T091437Z` on MI355X/gfx950
+An `image_kernel` task derived from the **Kimi-K3 routed-expert MoE 2-stage
+GEMM** in Hyperloom session `20260728T091437Z` on MI355X/gfx950
 (session archived at `_archive/Kimi-K3_20260728T091437Z_pod_restart_disk_quota`).
+
+The current task benchmarks deterministic synthetic tensors at the documented
+model geometry. The prefill shape was recorded; decode token=62 is a representative
+reconstruction with the evidence and limits described below. Its measured latency
+is for this declared workload, not an exact replay of an unavailable decode
+trace. Both scored cases and all numerical gates are retained. Historical
+session dispatch statements below describe that original build; current runs
+record their own image/source identity and actual tuned kernel pair, which must
+agree between correctness and performance.
 
 ## Which hot kernels this covers
 
@@ -99,6 +108,9 @@ accumulate in fp32 — a real independent implementation of the op, not a wrappe
 around the kernel under test. Gate: `cos > 0.999` and relative norm error `< 0.05`,
 taken as the **worst of 3 runs** (stage2 reduces with atomics, so a single pass
 can be lucky).
+The output must also have the reference's exact shape/device and BF16 dtype,
+including on the captured path. Casting to FP32 for error metrics must not accept
+an FP32 public output.
 
 ### Every M bucket is checked, at its real token count
 
@@ -186,7 +198,7 @@ python3 scripts/evaluate.py candidate performance   # CUDA-graph timed -> build/
 
 ## Effective task instructions
 
-Faithful reproduction of the Kimi-K3 routed-expert MoE 2-stage GEMM as it actually executed in Hyperloom session 20260728T091437Z on MI355X/gfx950. This is the aiter MoE path behind hot kernels k001 (moe_gemm1_0, decode-graph stage1 gate/up), k002 (moe_gemm2_0, decode-graph stage2 down), k003 (moe_flydsl_stage1) and k006 (moe_flydsl_stage2, eager/prefill FlyDSL). Config: bf16 activation x fp4 (mxfp4-pack, group_size=32 -> QuantType.per_1x32) weight, g1u1, SiTUv2 activation with beta=4.0 / linear_beta=25.0, per-rank (TP=8) dims model_dim=3584 / inter_dim=384 / experts=896 / topk=16. Exact shapes and dtypes are trace-recorded in session_cases.json (from the forge invocation_spec); the harness reproduces the session's own FlyDSL kernel dispatch for both M buckets. The compute core is a FlyDSL MLIR builder (ops/flydsl/kernels/mixed_moe_gemm_2stage.py, compile_mixed_moe_gemm1_a16w4 / compile_mixed_moe_gemm2_a16w4) and is part of this task's edit surface. The full edit surface also includes the tuned Kimi-K3 CSV and the aiter Python dispatch in fused_moe.py, ops/flydsl/moe_kernels.py, and ops/shuffle.py. Useful levers are the MFMA pipeline, tile/block loop structure, LDS usage, stage2 atomic reduction, 2-stage kernel selection, and tuned-config lookup. The 864 a16w4 variants are keyed by tile_m/tile_n/tile_k plus w*/bnt*/xcd*/kw* suffixes. Preserve the per-M-bucket dispatch contract, block_m / ksplit semantics, and moe_sorting behavior. Do not edit the harness. The harness enforces five invariants that a valid patch must keep: correctness and performance must dispatch the same FlyDSL kernel pair; dispatch must stay on the tuned path rather than the heuristic fallback; w2_scale must use the same e8m0_shuffle path as vLLM; nLane must stay 16 (vLLM hardcodes it); and correctness is the worst of 3 runs because stage2 reduces with atomics. All 14 reachable M buckets are correctness-checked. Two contract details that must be preserved: K3's SiTU a16w4 path runs GateMode.SEPARATED, so weights and scales are shuffled with gate_up=False (gate_up=True is the gpt-oss INTERLEAVE layout and silently produces garbage); and the SiTUv2 beta/linear_beta must stay at the session values, since aiter's kernel and torch-reference defaults disagree with each other and with K3. Correctness compares against aiter's dequantized torch_moe_stage1/stage2 reference. Preserve all correctness cases and improve the CUDA-graph measured performance.
+Optimize the Kimi-K3 routed-expert MoE 2-stage GEMM using the protected synthetic workloads derived from Hyperloom session 20260728T091437Z on MI355X/gfx950. This is the aiter MoE path behind hot kernels k001 (moe_gemm1_0, decode-graph stage1 gate/up), k002 (moe_gemm2_0, decode-graph stage2 down), k003 (moe_flydsl_stage1) and k006 (moe_flydsl_stage2, eager/prefill FlyDSL). Config: bf16 activation x fp4 (mxfp4-pack, group_size=32 -> QuantType.per_1x32) weight, g1u1, SiTUv2 activation with beta=4.0 / linear_beta=25.0, per-rank (TP=8) dims model_dim=3584 / inter_dim=384 / experts=896 / topk=16. The prefill shape and model geometry are trace-recorded in session_cases.json; decode token=62 is a documented reconstruction, not an exact archived trace shape. Current dispatch comes from the selected immutable runtime and must match between correctness and timing for each M bucket. The compute core is a FlyDSL MLIR builder (ops/flydsl/kernels/mixed_moe_gemm_2stage.py, compile_mixed_moe_gemm1_a16w4 / compile_mixed_moe_gemm2_a16w4) and is part of this task's edit surface. The full edit surface also includes the tuned Kimi-K3 CSV and the aiter Python dispatch in fused_moe.py, ops/flydsl/moe_kernels.py, and ops/shuffle.py. Useful levers are the MFMA pipeline, tile/block loop structure, LDS usage, stage2 atomic reduction, 2-stage kernel selection, and tuned-config lookup. The 864 a16w4 variants are keyed by tile_m/tile_n/tile_k plus w*/bnt*/xcd*/kw* suffixes. Preserve the per-M-bucket dispatch contract, block_m / ksplit semantics, and moe_sorting behavior. Do not edit the harness. The harness enforces five invariants that a valid patch must keep: correctness and performance must dispatch the same FlyDSL kernel pair; dispatch must stay on the tuned path rather than the heuristic fallback; w2_scale must use the same e8m0_shuffle path as vLLM; nLane must stay 16 (vLLM hardcodes it); and correctness is the worst of 3 runs because stage2 reduces with atomics. All 14 reachable M buckets are correctness-checked. Two contract details that must be preserved: K3's SiTU a16w4 path runs GateMode.SEPARATED, so weights and scales are shuffled with gate_up=False (gate_up=True is the gpt-oss INTERLEAVE layout and silently produces garbage); and the SiTUv2 beta/linear_beta must stay at the session values, since aiter's kernel and torch-reference defaults disagree with each other and with K3. Correctness compares against aiter's dequantized torch_moe_stage1/stage2 reference. Preserve all correctness cases and improve the CUDA-graph measured performance.
 
 ## Arena v2 contract
 

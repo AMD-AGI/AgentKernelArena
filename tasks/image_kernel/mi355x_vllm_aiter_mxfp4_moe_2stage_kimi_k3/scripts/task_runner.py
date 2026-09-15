@@ -508,6 +508,11 @@ def run_correctness() -> None:
 
 def _moe_deviation(got, expected):
     torch = _torch()
+    # Enforce the public output contract before float conversion can erase a
+    # dtype mismatch. This helper is shared by ordinary and captured checks.
+    assert got.dtype == expected.dtype == torch.bfloat16, "MoE output must be BF16"
+    assert got.device == expected.device, "MoE output device differs from reference"
+    assert got.shape == expected.shape, "MoE output shape differs from reference"
     g, e = got.float().flatten(), expected.float().flatten()
     cos = torch.nn.functional.cosine_similarity(g, e, dim=0).item()
     err = ((g - e).norm() / e.norm().clamp_min(1e-8)).item()
