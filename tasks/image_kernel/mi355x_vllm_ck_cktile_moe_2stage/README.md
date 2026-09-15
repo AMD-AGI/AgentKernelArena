@@ -82,6 +82,10 @@ scales for the independent reference. The operator, quantization, inputs, seeds,
 numerical gates and timing calls are unchanged. This compatibility correction
 has CPU preparation coverage; fresh GPU qualification is still required.
 
+The independent two-token/two-expert known-answer control also exercises this
+task's GPT-OSS SwiGLU (`alpha=1.702`, `up+1`) and BF16 intermediate rounding.
+The former SiLU-only control did not test the declared activation branch.
+
 The declared runtime provides both `aiter/` (Python dispatch and JIT utilities)
 and `aiter_meta/` (C++ sources and bundled compiler dependencies). They are
 siblings inside each role's workspace. Code generation resolves helpers such as

@@ -605,8 +605,8 @@ def test_public_profiling_case_selection_survives_driver_removal(task_name, case
      [[4.0, -0.50390625], [-1.390625, 0.2177734375]]),
     ("mi355x_vllm_ck_moe_2stage", "silu",
      [[4.3125, -0.5859375], [-1.421875, 0.22265625]]),
-    ("mi355x_vllm_ck_cktile_moe_2stage", "silu",
-     [[4.3125, -0.5859375], [-1.421875, 0.22265625]]),
+    ("mi355x_vllm_ck_cktile_moe_2stage", "swiglu",
+     [[9.375, -1.640625], [-0.12353515625, -0.2470703125]]),
 ])
 def test_two_stage_moe_known_answer_includes_bf16_intermediate(name, activation, expected):
     torch = pytest.importorskip("torch")
@@ -617,6 +617,9 @@ def test_two_stage_moe_known_answer_includes_bf16_intermediate(name, activation,
     assert answer.dtype == torch.bfloat16
     torch.testing.assert_close(answer.float(), torch.tensor(expected), rtol=0, atol=0)
     controls.rejects(lambda bad: controls.equal(bad, answer), torch.zeros_like(answer))
+    if activation == "swiglu":
+        # SiLU lacks both GPT-OSS's alpha=1.702 and its up+1 term.
+        controls.rejects(lambda bad: controls.equal(bad, answer), controls.moe_data("silu")[1])
 
 
 @pytest.mark.parametrize("directory", DIRECTORIES, ids=lambda d: d.name)

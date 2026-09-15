@@ -40,6 +40,7 @@ def moe_data(activation):
             e=int(ids[t,slot]);a,b=map(float,x[t]);gate,up=(a,b) if e==0 else (b,a)
             if activation=='gelu_tanh':g=0.5*gate*(1+math.tanh(math.sqrt(2/math.pi)*(gate+0.044715*gate**3)))*up
             elif activation=='situv2':g=4*math.tanh(gate/4)/(1+math.exp(-gate))*25*math.tanh(up/25)
+            elif activation=='swiglu':g=gate/(1+math.exp(-1.702*gate))*(up+1)
             else:g=gate/(1+math.exp(-gate))*up
             # This reference stores stage1 as BF16 before the down projection.
             # Round the independent scalar answer at the same public boundary.
@@ -63,8 +64,10 @@ def assert_relative_error(h,got,expected,tol):
 def check_reference(h):
     import aiter
     from aiter.fused_moe import torch_moe_stage1,torch_moe_stage2
-    inputs,expected=moe_data('silu')
-    activation=aiter.ActivationType.Silu
+    # Exercise the actual GPT-OSS activation, including its up+1 term.
+    # The former SiLU control did not cover this task's SwiGLU reference path.
+    inputs,expected=moe_data('swiglu')
+    activation=aiter.ActivationType.Swiglu
     kwargs={"dtype":torch.bfloat16,"activation":activation,"quant_type":aiter.QuantType.No}
     a=torch_moe_stage1(inputs["x"],inputs["w1"],inputs["w2"],inputs["topk_weights"],inputs["topk_ids"],**kwargs)
     actual=torch_moe_stage2(a,inputs["w1"],inputs["w2"],inputs["topk_weights"],inputs["topk_ids"],dtype=torch.bfloat16,quant_type=aiter.QuantType.No)
