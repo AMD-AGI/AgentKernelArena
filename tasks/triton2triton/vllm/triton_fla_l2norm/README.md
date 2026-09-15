@@ -30,3 +30,14 @@ The protected manifest requires the declared kernel symbols to remain Triton JIT
 functions, including kernels originally decorated with `@triton.jit()`. Removing
 the decorator is rejected before compilation. This structural check supplements
 the numerical and timed-path checks; it does not by itself attest every dispatch.
+
+The scored workload remains the five original FP32 (512, 128) seed cases with
+atol=rtol=1e-4. The protected checker requires the original output shape, dtype
+and device and finite values, and checks input immutability. An extra unscored
+(2, 3, 17) case covers flattening and feature/row tails; zero and near-zero rows
+with nondefault epsilon make the epsilon behavior observable.
+
+The original full wrapper is timed with 10 warmups and 100 samples. Actual
+captured outputs and a poisoned replay with perturbed inputs must satisfy the
+same reference gate. Input restoration runs even when replay fails. These
+checks execute outside the measured region and retain all scored cases.

@@ -2753,3 +2753,95 @@ def test_chunk_cumsum_adapter_installs_checks(monkeypatch, name):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm'/name/'_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_cumsum_checks'
+
+
+def _l2norm_cpu(x, eps=1e-6):
+    # Independent norm operator, rather than the harness's sum(x*x).
+    return x / torch.sqrt(torch.linalg.vector_norm(x, dim=-1, keepdim=True).square() + eps)
+
+
+def test_fla_l2norm_reference_known_answer_and_epsilon(monkeypatch):
+    h = module_at(ROOT/'tasks/triton2triton/vllm/triton_fla_l2norm/scripts/task_runner.py', monkeypatch)
+    x = torch.tensor([[3., 4.], [0., 0.], [1e-4, 0.]])
+    expected = torch.tensor([[3/26**0.5, 4/26**0.5], [0., 0.], [1e-4/(1+1e-8)**0.5, 0.]])
+    torch.testing.assert_close(h.reference(x, 1.), expected, atol=1e-7, rtol=1e-7)
+    torch.testing.assert_close(_l2norm_cpu(x, 1.), expected, atol=1e-7, rtol=1e-7)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'dtype', 'shape', 'nonfinite', 'mutate_input',
+                                 'ignores_eps', 'fixed_geometry'])
+def test_fla_l2norm_actual_correctness_orchestration(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_fla_l2norm'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    generator = h.gen_inputs
+    h.gen_inputs = lambda seed, device: generator(seed, 'cpu')
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    calls = []
+    def candidate(x, eps=1e-6):
+        calls.append((tuple(x.shape), eps))
+        if mode == 'mutate_input': x.zero_()
+        value = _l2norm_cpu(x, 1e-6 if mode == 'ignores_eps' else eps)
+        if mode == 'dtype': value = value.double()
+        if mode == 'shape': value = value[..., :1]
+        if mode == 'nonfinite': value.fill_(float('nan'))
+        if mode == 'fixed_geometry' and x.shape != (512, 128): value.zero_()
+        return value
+    mod = SimpleNamespace(l2norm_fwd=candidate)
+    h.load_module = lambda: mod
+    checks.install(h)
+    ok, reason = h.run_correctness()
+    assert ok is (mode == 'correct'), reason
+    if mode == 'correct':
+        assert calls == [((2, 3, 17), 1e-3), ((512, 128), 1e-6)] * 5
+    assert mod.l2norm_fwd is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'wrong_replay',
+                                 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_fla_l2norm_actual_performance_replay_restores_inputs(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_fla_l2norm'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h._TimedRun = SimpleNamespace
+    generator = h.gen_inputs
+    inputs, pristine, options = [], [], []
+    def gen_inputs(seed, device):
+        args, kwargs = generator(seed, 'cpu')
+        inputs.append(args[0]); pristine.append(args[0].clone())
+        return args, kwargs
+    h.gen_inputs = gen_inputs
+    mod = SimpleNamespace(l2norm_fwd=_l2norm_cpu)
+    h.load_module = lambda: mod
+    def benchmark(measured, *, timed_run, **kwargs):
+        options.append(kwargs)
+        output = measured(); cached = output.clone(); x = inputs[-1]
+        if mode == 'wrong_timed': output.zero_()
+        if mode == 'mutate_timed': x.zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay failed')
+            if mode == 'stale': output.copy_(cached)
+            elif mode != 'no_write': output.copy_(measured())
+            if mode == 'wrong_replay': output.zero_()
+            if mode == 'mutate_replay': x.zero_()
+            return output
+        timed_run.outputs, timed_run.rerun = output, replay
+        return 0.125, {'benchmark_method': 'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == 5
+    assert options == [dict(warmup=10, repetition=100)] * 5
+    assert all(row['execution_time_ms'] == (0.125 if mode == 'correct' else -1.) for row in rows)
+    if mode == 'correct':
+        assert all(row['timed_output_checked'] and row['perturbed_input_replay_checked'] for row in rows)
+    for x, saved in zip(inputs, pristine):
+        torch.testing.assert_close(x, saved, atol=0, rtol=0)
+    assert mod.l2norm_fwd is _l2norm_cpu
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_fla_l2norm_adapter_installs_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_fla_l2norm/_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_l2norm_checks'
