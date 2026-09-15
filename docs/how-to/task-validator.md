@@ -14,10 +14,10 @@ using them in controlled comparisons or RL data collection.
 
 Before adding or modifying a task, read
 [Task definition, schema, and authoring](add-task.md). That guide owns the task
-schema and authoring rules. Schema-v2 tasks use the shared TaskSession lifecycle
-and validator report version 4. Legacy tasks retain report version 3 while
-migration is in progress. A task config version is separate from a validator
-report schema version.
+schema and authoring rules. All retained tasks use schema v2, the shared
+TaskSession lifecycle, and validator report version 4. Report version 3 remains
+supported for legacy external task configurations and historical workspaces.
+A task config version is separate from a validator report schema version.
 
 ## Run the validator
 
@@ -88,8 +88,9 @@ performance_timeout: 600
 
 For v2, the shared executor runs task actions with their declared
 `evaluation.*.timeout_s` budgets before the model reviews the captured evidence.
-The backend timeout covers semantic review. Legacy command timeout overrides
-and the corresponding expanded outer budget remain supported during migration.
+The backend timeout covers semantic review. For legacy external configurations,
+command timeout overrides and the corresponding expanded outer budget remain
+supported; they do not control v2 action budgets.
 
 ## `task_validator` checks
 

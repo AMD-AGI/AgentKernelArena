@@ -414,10 +414,11 @@ docker image inspect --format '{{.Id}}' <selected-image>
 ## Add a task adapter
 
 Read [Task definition, schema, and authoring](add-task.md) before changing a task
-or its analysis harness. That guide defines the selected v2 command-based task
-contract. This page documents the current tool implementation. The shared
-profile/evidence adapters now accept v2 candidate declarations. End-to-end task
-orchestration and harness migration are tracked separately in the task guide.
+or its analysis harness. All retained tasks use that v2 command-based contract.
+The shared evaluator invokes optional tools after candidate correctness and
+before performance; the profile/evidence adapters read the task's v2 candidate
+and protected-file declarations. This page documents tool configuration,
+evidence requirements, and capability limits.
 
 Run-level configuration chooses tools, policy, optional image-identity
 assertions, and maximum timeout. A task may register adapters for known tools,
@@ -820,10 +821,10 @@ does not by itself change resume scheduling.
 
 The top-level `--resume-run` and `--resume-latest` paths verify a v2 task's saved
 session, completion record, result digest, and candidate source identity before
-treating it as complete. Legacy tasks still use the existence of
-`task_result.yaml`. Neither path currently rebuilds the tool plan from this
-run's tool configuration and calls the fingerprint check. Until that check is
-wired into run scheduling:
+treating it as complete. Legacy optimization workspaces without v2 state retain
+the `task_result.yaml` existence check. Neither path currently rebuilds the tool
+plan from this run's tool configuration and calls the fingerprint check. Until
+that check is wired into run scheduling:
 
 - use a new `--run-suffix` after changing tool configuration, plugin code,
   sidecar image, adapter, source declaration, or positive-control policy;

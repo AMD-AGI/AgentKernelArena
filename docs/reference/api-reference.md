@@ -23,17 +23,22 @@ A run configuration defines a single experiment. Start from a file under
 | `log_directory` | string | Directory for run logs. |
 | `workspace_directory_prefix` | string | Prefix for the workspace directory. The full name is `<prefix>_<gpu>_<agent>`. |
 
-Specialized GEAK and mini-swe integrations also accept some optional top-level
-fields:
+Specialized integrations accept these integration-specific top-level fields:
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `gpu_ids` | string | Comma-separated GPU IDs exposed to specialized internal workers. This is separate from the host runner's `GPU_IDS` variable. |
-| `num_parallel` | integer | Number of GEAK sub-agents/worktrees to run in parallel. mini-swe configures this under its agent config instead. |
-| `run_mode` | string | `geak_v3_triton` mode override, such as `quick` or `full`. |
+| `gpu_ids` | string | Comma-separated process-visible GPU IDs for GEAK/mini-swe workers. This is separate from the host runner's `GPU_IDS` variable; a masked worker uses logical IDs. |
+| `num_parallel` | integer | Legacy v1 GEAK sub-agent/worktree count. mini-swe configures this under its agent config instead. |
+| `run_mode` | string | Legacy v1 `geak_v3_triton` mode override, such as `quick` or `full`. |
 
-Agent-specific settings remain in `agents/<agent_name>/agent_config.yaml`; see
-the selected integration's directory for precedence rules and additional fields.
+V2 GEAK search settings use the `agent` mapping in the
+[GEAK guide](../../agents/geak/README.md#runtime-setup); the legacy
+`num_parallel` and `run_mode` controls do not configure its Workflow engine.
+
+Agent-specific defaults live in `agents/<agent_name>/agent_config.yaml`.
+Supported fields in the run config's `agent` mapping override those defaults;
+see [agent settings](../how-to/agents.md#models-providers-and-agent-settings)
+and the selected integration's directory for supported fields and precedence.
 
 Example:
 
@@ -163,7 +168,7 @@ The following Make targets are available for running experiments.
 | `make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml` | Run tasks serially in one Docker container |
 | `make docker-parallel-run CONFIG=example_configs/benchmark_cursor_mi355x.yaml GPU_IDS=0,1` | Run one Docker worker per listed GPU, using a shared dynamic task queue |
 | `make docker-smoke` | Verify Docker, ROCm runtime visibility, Python imports, and GPU access |
-| `make docker-check-agents CONFIG=example_configs/quickstart_claude_mi300.yaml` | Verify the first-class host CLI selected by the config inside Docker (`task_validator` resolves to its backend). Override with `AGENTS=claude_code,codex`; use `AGENTS=all` for all three. Specialized integrations use their own checks |
+| `make docker-check-agents CONFIG=example_configs/quickstart_claude_mi300.yaml` | Verify the first-class host CLI selected by the config inside Docker (`task_validator` resolves to its backend; GEAK and its v2 aliases resolve to Claude Code). Override with `AGENTS=claude_code,codex`; use `AGENTS=all` for all three. Engine/SDK checks are separate from this CLI check |
 | `make docker-shell` | Open an interactive shell in the experiment runtime |
 
 `docker-parallel-run` accepts these environment variables:

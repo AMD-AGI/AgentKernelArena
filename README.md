@@ -16,7 +16,7 @@ The platform provides:
 - **Centralized evaluation**: Measure compilation, correctness, and GPU performance independently of the optimizing agent.
 - **Multi-GPU scheduling**: Start one isolated Docker worker per GPU and dynamically claim tasks from a shared queue.
 - **Slurm/Spur login-node workflow**: Allocate one or eight MI355X GPUs, then launch the same Docker runtime on the assigned compute node.
-- **Resumable experiments**: Resume a run without repeating tasks that already produced a completion report.
+- **Resumable experiments**: Resume a run without repeating tasks whose framework completion and source evidence remain valid.
 - **Held-out evaluation**: Test optimized kernels on unseen shapes and measure the generalization gap.
 - **Task validation and visualization**: Validate task quality with a dedicated agent and compare local run reports in a dashboard.
 
@@ -122,12 +122,18 @@ Each run selects one `agent.template`. Repeated runs can compare different agent
 | `codex` | Codex CLI integration |
 | `forge` | KernelForge search through the shared task interface; initialize, translate, or optimize as required |
 | `geak` | GEAK multi-agent Workflow engine through the shared v2 task interface |
-| `geak_v3` | GEAK optimization for HIP tasks |
-| `geak_v3_triton` | GEAK optimization for Triton tasks |
+| `geak_v3` | Compatibility name for `geak` on v2; legacy HIP flow for v1 |
+| `geak_v3_triton` | Compatibility name for `geak` on v2; legacy Triton flow for v1 |
 | `mini_swe_triton` | mini-swe-agent-based Triton optimization |
 | `task_validator` | Task quality validation; does not optimize kernels |
 
-Agent-specific models, effort settings, iteration guidance, timeouts, and provider configuration live under `agents/<agent_name>/agent_config.yaml` or in the selected agent CLI. Specialized agents may require additional setup; inspect their directories and agent-specific README files where present.
+The registry also retains `geak_v4` (delegating v2 tasks to `geak`) and
+`forge_operator2flydsl` (delegating to `forge`) as compatibility names. See
+[`src/module_registration.py`](src/module_registration.py) for selectable names
+and the [GEAK](agents/geak/README.md) and [Forge](agents/forge/README.md) guides
+for their shared v2 interfaces and runtime requirements.
+
+Agent-specific defaults live under `agents/<agent_name>/agent_config.yaml` or in the selected agent CLI. Supported run-level overrides take precedence over agent-local defaults. Specialized agents may require additional setup; inspect their directories and agent-specific README files where present.
 
 See [CLI agent defaults and verification](docs/reference/agent-model-defaults.md)
 for tested CLI/model versions, run-level overrides, and the scope of live checks.
@@ -240,9 +246,11 @@ the copy:
 cp example_configs/quickstart_claude_mi300.yaml my_experiment.yaml
 ```
 
-Run agent-specific settings such as `model`, `effort`, `max_iterations`, and
-`timeout_seconds` are configured in the selected agent's `agent_config.yaml`,
-not in the run configuration.
+For Codex and Claude Code, the run config's `agent` mapping can override
+`model`, `effort`, `max_iterations`, and `timeout_seconds` from the selected
+agent's `agent_config.yaml`. Cursor accepts the same overrides except a
+standalone `effort`. See [run-level overrides](docs/reference/agent-model-defaults.md#run-level-overrides)
+for exact semantics; other integrations define their own supported settings.
 
 For a Cursor, Claude Code, Codex, or task-validator config, verify only the
 selected first-class host CLI (the validator resolves to its configured backend):
@@ -254,8 +262,9 @@ make docker-check-agents CONFIG="$CONFIG_PATH"
 
 Use `AGENTS=claude_code,codex` to check an explicit subset or `AGENTS=all` to
 check Cursor, Claude Code, and Codex together. Specialized integrations such as
-GEAK and mini-swe have their own dependency checks and are not handled by this
-command.
+Forge and mini-swe have their own dependency checks. GEAK and its v2 aliases
+resolve to Claude Code for this CLI check; a normal run additionally checks the
+pinned GEAK engine and SDK.
 
 ### Run Serially
 
@@ -386,8 +395,9 @@ Then:
 
 Read [Task definition, schema, and authoring](docs/how-to/add-task.md) before
 changing task code, config, references, or harnesses. Follow its
-[authoring workflow](docs/how-to/add-task.md#how-to-add-or-modify-a-task) and
-check the [migration status](docs/how-to/add-task.md#migration).
+[authoring workflow](docs/how-to/add-task.md#how-to-add-or-modify-a-task).
+When converting an external legacy task, also read the
+[compatibility and migration guidance](docs/how-to/add-task.md#migration).
 
 New tasks and material task-contract/harness changes require a fresh
 framework-finalized `validation_report.yaml` on compatible GPU hardware before

@@ -20,11 +20,13 @@ For every selected, platform-compatible task it:
 4. Runs exactly one Codex optimization iteration and the centralized evaluator.
 5. Starts a separate, read-only Codex session to review correctness evidence and
    case coverage.
-6. Promotes a first-iteration candidate only when three measurements have median
-   speedup at least 5x and all correctness/method/case-count gates pass.
+6. Promotes a first-iteration candidate only for an implemented initial-candidate
+   baseline, when three measurements have median speedup at least 5x and all
+   correctness/method/case-count gates pass. Provided baselines remain independent.
 7. Adds targeted cases only when both the original kernel and candidate pass them.
-8. Commits accepted task changes to one isolated branch and creates at most one
-   draft PR. The workflow never creates GitHub issues.
+8. Requires fresh framework-finalized validator PASS evidence for material task
+   changes before applying them, then commits accepted changes to one isolated
+   branch and creates at most one draft PR. The workflow never creates GitHub issues.
 
 ## Prerequisites
 

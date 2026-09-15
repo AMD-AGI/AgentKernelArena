@@ -21,10 +21,18 @@ The following agents are available.
 | `cursor` | Cursor Agent CLI |
 | `claude_code` | Anthropic Claude Code CLI |
 | `codex` | OpenAI Codex CLI |
-| `geak_v3` | Specialized GEAK integration for HIP optimization |
-| `geak_v3_triton` | Specialized GEAK integration for Triton optimization |
+| `forge` | KernelForge through the shared v2 task interface |
+| `geak` | GEAK Workflow engine through the shared v2 task interface |
+| `geak_v3` | Compatibility name for `geak` on v2; legacy HIP flow for v1 |
+| `geak_v3_triton` | Compatibility name for `geak` on v2; legacy Triton flow for v1 |
 | `mini_swe_triton` | mini-swe-agent-based Triton optimization |
 | `task_validator` | Task quality validator; does not optimize kernels (see [Validate tasks](task-validator.md)) |
+
+The [registry](../../src/module_registration.py) also retains `geak_v4`, which
+delegates v2 tasks to `geak`, and `forge_operator2flydsl`, which delegates to
+`forge`. See the [GEAK](../../agents/geak/README.md) and
+[Forge](../../agents/forge/README.md) guides for runtime requirements. Registry
+availability alone does not establish GPU or model qualification.
 
 Select one in a run configuration:
 
@@ -47,10 +55,13 @@ run config and publishes at most one draft PR. It never creates GitHub issues. S
 
 ## Models, providers, and agent settings
 
-AgentKernelArena has no shared model/provider field in the run configuration.
-The selected integration controls its own model, provider, authentication,
-effort, timeout, and iteration settings through its CLI and
-`agents/<agent_name>/agent_config.yaml`.
+The selected integration controls model, provider, authentication, effort,
+timeout, and iteration settings. Its defaults live in its CLI and
+`agents/<agent_name>/agent_config.yaml`; supported fields in the run config's
+`agent` mapping override those defaults. See
+[CLI run-level overrides](../reference/agent-model-defaults.md#run-level-overrides)
+and each specialized integration's guide for supported fields and precedence.
+These settings do not belong in task configurations.
 
 For Cursor, Claude Code, and Codex, authenticate with the host CLI. A normal run
 preflights only the selected CLI. When the config selects one of these
@@ -63,9 +74,10 @@ make docker-check-agents CONFIG="$CONFIG_PATH"
 ```
 
 Use `AGENTS=<comma-separated names>` for an explicit subset or `AGENTS=all` for
-all three first-class CLIs and login states. Specialized integrations are not
-handled by this command; their README files document their own dependencies,
-API keys, and endpoint configuration.
+all three first-class CLIs and login states. GEAK and its v2 aliases resolve to
+Claude Code for this check; normal runs also check the pinned GEAK engine and
+SDK. Other specialized integrations have their own checks; their README files
+document dependencies and provider configuration.
 
 `make vllm` starts an OpenAI-compatible local endpoint on port `30001`, but it
 does not automatically reconfigure an agent. Point the selected integration at
