@@ -670,13 +670,28 @@ def test_triton_manifest_covers_every_original_variant():
     assert variants("rope_fwd","style")=={"NEOX","GPTJ"}
 
 
-def test_triton_actions_reject_partial_or_failed_correctness():
+def test_triton_actions_reject_partial_or_failed_correctness(monkeypatch):
     import types
     task=ROOT/"tasks/triton2flydsl/sglang/gdn_chunk_fwd_h"
     actions=module(task/"scripts/task_actions.py")
-    for result in (False,None,(True,None,[]),(False,"wrong state",[{}]*actions.CORRECTNESS_COUNT)):
-        with pytest.raises(RuntimeError):actions.check(types.SimpleNamespace(run_correctness=lambda:result))
-    actions.check(types.SimpleNamespace(run_correctness=lambda:(True,None,[{}]*actions.CORRECTNESS_COUNT)))
+    checks=module(task/"scripts/candidate_checks.py")
+    monkeypatch.setitem(sys.modules,"scripts.candidate_checks",checks)
+    records=[{"shape_id":i+1,"passed":True} for i in range(actions.CORRECTNESS_COUNT)]
+    invalid_records=[[],records[:-1],[{}]*actions.CORRECTNESS_COUNT]
+    for update in ({"shape_id":2},{"passed":False},{"error":"failed case"}):
+        altered=copy.deepcopy(records)
+        altered[0].update(update)
+        invalid_records.append(altered)
+    results=[False,None,(False,"wrong state",records)]
+    results.extend((True,None,rows) for rows in invalid_records)
+    for result in results:
+        # Exercise the real initial-Triton audit path; CPU records do not
+        # establish that a final FlyDSL candidate launched any GPU kernels.
+        h=types.SimpleNamespace(ARENA_FINAL_CANDIDATE=False,run_correctness=lambda:result)
+        with pytest.raises(RuntimeError):
+            actions.check(h)
+    h=types.SimpleNamespace(ARENA_FINAL_CANDIDATE=False,run_correctness=lambda:(True,None,records))
+    assert actions.check(h)==[]
 
 
 def test_real_moe_host_dtype_bridge_preserves_original_triton_tokens():
