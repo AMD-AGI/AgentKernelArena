@@ -3685,3 +3685,116 @@ def test_fla_norm_adapter_installs_full_contract_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_fla_layernorm/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_fla_layernorm_checks'
+
+
+def _gdn_gate_cpu(A_log, a, b, dt_bias, beta=1., threshold=20.):
+    x = a.double() + dt_bias.double()
+    softplus = torch.where(beta*x > threshold, x, torch.logaddexp(torch.zeros_like(x), beta*x)/beta)
+    g = (-A_log.double().exp() * softplus).float().unsqueeze(0)
+    gate = (1/(1+(-b.double()).exp())).to(b.dtype).unsqueeze(0)
+    return g, gate
+
+
+def test_gdn_gate_independent_known_threshold_answer(monkeypatch):
+    import math
+    task = ROOT/'tasks/triton2triton/vllm/triton_fused_gdn_gating'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    inputs = torch.zeros(3), torch.tensor([[-4., 0., 6.]], dtype=torch.float16), torch.zeros(1, 3, dtype=torch.float16), torch.zeros(3)
+    expected = (torch.tensor([[[-2*math.log1p(math.exp(-2)), -2*math.log(2), -6.]]]),
+                torch.full((1, 1, 3), .5, dtype=torch.float16))
+    options = dict(beta=.5, threshold=2.)
+    checks.check_outputs(checks.reference(h, inputs, options), expected)
+    checks.check_outputs(_gdn_gate_cpu(*inputs, **options), expected)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'g_dtype', 'beta_dtype', 'device', 'shape', 'nonfinite',
+                                 'missing_beta', 'wrong_g', 'wrong_beta', 'mutate_input',
+                                 'ignore_beta', 'ignore_threshold', 'ignore_tail'])
+def test_gdn_gate_actual_correctness_complete_contract(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_fused_gdn_gating'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    generator = h.make_inputs
+    h.make_inputs = lambda batch, nh, device='cpu': generator(batch, nh, 'cpu')
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    calls = []
+    def candidate(A, a, b, bias, beta=1., threshold=20.):
+        calls.append((tuple(a.shape), beta, threshold))
+        if mode == 'mutate_input': a.zero_()
+        outputs = list(_gdn_gate_cpu(A, a, b, bias,
+                       1. if mode == 'ignore_beta' else beta,
+                       20. if mode == 'ignore_threshold' else threshold))
+        if mode == 'g_dtype': outputs[0] = outputs[0].half()
+        if mode == 'beta_dtype': outputs[1] = outputs[1].float()
+        if mode == 'device': outputs[1] = torch.empty_like(outputs[1], device='meta')
+        if mode == 'shape': outputs[0] = outputs[0].squeeze(0)
+        if mode == 'nonfinite': outputs[1].fill_(float('inf'))
+        if mode == 'missing_beta': outputs = outputs[:1]
+        if mode == 'wrong_g': outputs[0].zero_()
+        if mode == 'wrong_beta': outputs[1].zero_()
+        if mode == 'ignore_tail' and a.shape[-1] % 8: outputs[0][..., -1] = 0
+        return tuple(outputs)
+    mod = SimpleNamespace(fused_gdn_gating=candidate)
+    h.load_module = lambda: mod
+    checks.install(h)
+    ok, reason = h.run_correctness()
+    assert ok is (mode == 'correct'), reason
+    if mode == 'correct':
+        assert [v for v in calls if v[0] != (2, 11)] == [(shape, 1., 20.) for shape in h.TEST_SHAPES]
+        assert [v for v in calls if v[0] == (2, 11)] == [((2, 11), .5, 2.)]
+    assert mod.fused_gdn_gating is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'omit_g',
+                                 'omit_beta', 'wrong_replay', 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_gdn_gate_actual_timed_outputs_replay_and_restore(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_fused_gdn_gating'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h._TimedRun = SimpleNamespace
+    generator = h.make_inputs
+    inputs, pristine, options = [], [], []
+    def make_inputs(batch, nh, device='cpu'):
+        values = generator(batch, nh, 'cpu')
+        assert tuple(x.dtype for x in values) == (torch.float32, torch.float16, torch.float16, torch.float32)
+        inputs.append(values); pristine.append(checks.snapshots(values))
+        return values
+    h.make_inputs = make_inputs
+    mod = SimpleNamespace(fused_gdn_gating=_gdn_gate_cpu)
+    h.load_module = lambda: mod
+    def benchmark(measured, *, timed_run, **kwargs):
+        options.append(kwargs)
+        outputs = measured(); cached = checks.snapshots(outputs)
+        if mode == 'wrong_timed': outputs[1].zero_()
+        if mode == 'mutate_timed': inputs[-1][0].zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay failed')
+            if mode != 'no_write':
+                computed = cached if mode == 'stale' else measured()
+                for i, (value, calculated) in enumerate(zip(outputs, computed)):
+                    if not (mode == 'omit_g' and i == 0 or mode == 'omit_beta' and i == 1):
+                        value.copy_(calculated)
+            if mode == 'wrong_replay': outputs[1].zero_()
+            if mode == 'mutate_replay': inputs[-1][2].zero_()
+            return outputs
+        timed_run.outputs, timed_run.rerun = outputs, replay
+        return .125, {'benchmark_method': 'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == 5
+    assert options == [dict(warmup=10, repetition=100)] * 5
+    for (batch, nh), row in zip(h.TEST_SHAPES, rows):
+        assert row['params'] == dict(batch=batch, num_heads=nh)
+        assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
+        if mode == 'correct': assert row['perturbed_input_replay_checked']
+    for values, saved in zip(inputs, pristine): checks.unchanged(values, saved)
+    assert mod.fused_gdn_gating is _gdn_gate_cpu
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_gdn_gate_adapter_installs_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_fused_gdn_gating/_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_gdn_gate_checks'

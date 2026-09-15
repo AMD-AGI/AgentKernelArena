@@ -31,3 +31,16 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+
+Protected checks require the exact `(g, beta_output)` interface: `[1, batch,
+num_heads]` tensors, FP32 `g`, `beta_output` with the dtype of `b`, correct
+devices and finite values. Both results use the existing independent CPU
+softplus/exp/sigmoid reference and atol=rtol=1e-3 gate. The five scored cases,
+seed 42, FP16 a/b inputs, full wrapper, 10 warmups and 100 samples are unchanged.
+
+An unscored 2x11-head diagnostic checks the masked tail, softplus beta=.5 and
+threshold=2, and finite inputs on both sides of the stable softplus branch.
+Actual timed outputs and a poisoned replay after changing all four inputs must
+match the reference. Inputs are compared to pristine copies and restored even
+on replay or validation failure. Added checks are outside the timed interval.
