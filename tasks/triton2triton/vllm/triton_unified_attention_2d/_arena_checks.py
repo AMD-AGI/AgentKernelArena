@@ -291,9 +291,17 @@ def install(harness):
     performance_original = harness.run_performance
     load_original = harness.load_module
 
+    loaded = None
+
     def load():
-        with candidate_preparation_only():
-            return load_original()
+        nonlocal loaded
+        # Keep one candidate module (and its compiled Triton kernels) alive
+        # throughout this action. Collecting a prior case's module during a
+        # later graph capture may call HIP unload_module, invalidating capture.
+        if loaded is None:
+            with candidate_preparation_only():
+                loaded = load_original()
+        return loaded
 
     harness.load_module = load
 
@@ -311,3 +319,68 @@ def install(harness):
 
     harness.run_correctness = correctness
     harness.run_performance = performance
+    install_controls(harness)
+
+
+CONTRACT_CASES = {'ragged_permuted_window_softcap': {'batch': 2,
+                                    'query_heads': 8,
+                                    'kv_heads': 2,
+                                    'head_dim': 64,
+                                    'seed': 927,
+                                    'dtypes': {'data': 'float16',
+                                               'statistics': 'float32',
+                                               'routing': 'int32'},
+                                    'contract_case': 'ragged_permuted_window_softcap',
+                                    'sequence_lengths': [19, 7],
+                                    'query_lengths': [3, 1],
+                                    'block_size': 16,
+                                    'sliding_window': 12,
+                                    'softcap': 2.0,
+                                    'input_shapes': {'q': [4, 8, 64],
+                                                     'key_cache': [8, 16, 2, 64],
+                                                     'value_cache': [8, 16, 2, 64],
+                                                     'block_table': [2, 2],
+                                                     'cu_seqlens_q': [3],
+                                                     'seqused_k': [2]},
+                                    'output_shapes': {'output': [4, 8, 64]},
+                                    'page_mapping': 'reversed physical page order'}}
+
+
+def control_inputs(h,case,device="cuda"):
+    import torch
+    c=CONTRACT_CASES[case]
+    torch.manual_seed(c["seed"])
+    generated=h.make_test_data(2,2,19,8,2,64,16,device,torch.float16)
+    q,kc,vc=generated[:3]
+    out,pages,starts,lengths,scale=generated[3:]
+    pages.copy_((kc.shape[0]-1-torch.arange(pages.numel(),device=device).reshape_as(pages)).int())
+    starts.copy_(torch.tensor([0,3,4],device=device,dtype=torch.int32))
+    lengths.copy_(torch.tensor(c['sequence_lengths'],device=device,dtype=torch.int32))
+    kwargs={'sliding_window':c['sliding_window'],'softcap':c['softcap']}
+    return (q,kc,vc,out,pages,starts,lengths,scale),kwargs
+
+
+def install_controls(harness):
+    harness.CONTRACT_CASES = CONTRACT_CASES
+
+    def correctness(case):
+        with checked_modules(harness):
+            module = harness.load_module()
+            args, kwargs = control_inputs(harness, case)
+            getattr(module, SYMBOL)(*args, **kwargs)
+        return True, None
+
+    def performance():
+        rows = []
+        for case in CONTRACT_CASES:
+            mod = harness.load_module()
+            args, kwargs = control_inputs(harness, case)
+            def fn():
+                getattr(mod, SYMBOL)(*args, **kwargs)
+            ms, metadata = checked_benchmark(harness, harness._benchmark_cuda_graph_or_events, fn,
+                        warmup=harness.WARMUP_ITERATIONS, repetition=harness.BENCHMARK_ITERATIONS)
+            rows.append({'test_case_id':case, 'execution_time_ms':ms, **metadata, 'params':CONTRACT_CASES[case]})
+        return rows
+
+    harness.run_contract_correctness = correctness
+    harness.run_contract_performance = performance

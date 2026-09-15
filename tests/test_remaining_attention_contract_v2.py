@@ -258,7 +258,24 @@ def test_paged_oracle_reconstructs_actual_cache_and_page_indirection(monkeypatch
     changed = permuted | {5:permuted[5]+3}
     assert not torch.allclose(checks.expected_outputs(h, changed)[0], expected)
 
-ORIGINALS.update({'triton_chunked_prefill_paged_decode/source/triton_chunked_prefill_paged_decode.py': '3fca551b8f21dbfca500e5ee003112c88ddce8c364f1c2c8e16a0596d08bdf08', 'triton_chunked_prefill_paged_decode/config.yaml': '9c2299ba86847d816573c626c13821ac00d26ed527a83001ef2491b04a5e8865', 'triton_chunked_prefill_paged_decode/workloads.json': '4b1cf48ca65f51159d17a2e6de9ff6f2d1436296c6954e3c2325b6ace7fde6c3', 'triton_chunked_prefill_paged_decode/scripts/task_runner.py': '7c0a87b6374ea88b3f45cbe0d73005acc6716734fb51393f71f1b79711d2b71b', 'triton_flash_prefill_attention/source/triton_flash_prefill_attention.py': '7f0a141fd36716f848ab95b4be9df3655b5b6da11e07654466076b701c9d3b5b', 'triton_flash_prefill_attention/config.yaml': '2fbb4c96d9705a85dd42753c9a1638b67212d87639dbc53e36a072b9bee90fff', 'triton_flash_prefill_attention/workloads.json': '27e121b368b9055d59746c784d17954d5b33fe277b24872d2d9406e025698b49', 'triton_flash_prefill_attention/scripts/task_runner.py': '58cad2d8c55e3a37e6dbc18417d8885b205998d8300ae869b8d5adc3af2df961', 'triton_paged_prefix_prefill/source/triton_paged_prefix_prefill.py': 'c02a77c038191ab04f635d861e1395074ca77c049917fb0c2641b7a503affb76', 'triton_paged_prefix_prefill/config.yaml': '6140359155f3f66e00bb28378ae9675f04b48a3c51a1ab21ff546d5b963a8269', 'triton_paged_prefix_prefill/workloads.json': '4b8b6c0d12a4bdc6c6781ca188ed425ccd67e2d280ba7f9a37625f452389d92b', 'triton_paged_prefix_prefill/scripts/task_runner.py': '8a7f02a4464bd0c32fb19a5ed599a10d17324cb4b9c8004f1f48ec4bed51877b', 'triton_paged_prefix_prefill_alibi/source/triton_paged_prefix_prefill_alibi.py': '127615ac25ecda18318d2328176e92f0fd344c3eba78bb9a295d95fbd8ddc742', 'triton_paged_prefix_prefill_alibi/config.yaml': 'b6b06a0041f97d27c626a5c477ae7751cdaa29683130ebe9be687c91e888eb40', 'triton_paged_prefix_prefill_alibi/workloads.json': '45ec8809c90266475f1ff222d49e89e5eeadeab114e4e770471e9109cecd0e23', 'triton_paged_prefix_prefill_alibi/scripts/task_runner.py': '3958ecfc8e2db1508da60aeaef5e1e08af71f24069967a6ad558c695103258ed', 'triton_unified_attention_2d/source/triton_unified_attention_2d.py': '38efd85c3e716f0a689f0b464dc7a108f885d5b2bd5f8ca5674a138a271a259f', 'triton_unified_attention_2d/config.yaml': '31b6b7d72a8c6703ad5eb6f956febd0b5f4f64c682f11b643aed2328dcc2a294', 'triton_unified_attention_2d/workloads.json': '836278af56678a6bb601e7986b7acec804ba7d1fc14a873b690b4b77664be7dc', 'triton_unified_attention_2d/scripts/task_runner.py': '20c714a0b1b51a99ab03ee65c14533c84b4e7c089afbd37c51b66b3f16ba801b', 'triton_unified_attention_3d/source/triton_unified_attention_3d.py': '715800906a4d9244c2045871a6cc0168c4b68f8806e2d97dd66ea71d83ad79b8', 'triton_unified_attention_3d/config.yaml': 'b20d3a7328cf9dfdb3a6c404c86fd8d1431c23e55def172ba5e372bdf3016156', 'triton_unified_attention_3d/workloads.json': '0073fec446196304235c29632d1701083eb13710fcd0b6c9f69105da9951b578', 'triton_unified_attention_3d/scripts/task_runner.py': 'daa9393587de7abb630f2cc4b981c9b11d1e6546686980912c56f168c7c3b4a5'})
+ORIGINALS.update({'triton_chunked_prefill_paged_decode/source/triton_chunked_prefill_paged_decode.py': '3fca551b8f21dbfca500e5ee003112c88ddce8c364f1c2c8e16a0596d08bdf08',
+ 'triton_chunked_prefill_paged_decode/config.yaml': '9c2299ba86847d816573c626c13821ac00d26ed527a83001ef2491b04a5e8865',
+ 'triton_chunked_prefill_paged_decode/scripts/task_runner.py': '7c0a87b6374ea88b3f45cbe0d73005acc6716734fb51393f71f1b79711d2b71b',
+ 'triton_flash_prefill_attention/source/triton_flash_prefill_attention.py': '7f0a141fd36716f848ab95b4be9df3655b5b6da11e07654466076b701c9d3b5b',
+ 'triton_flash_prefill_attention/config.yaml': '2fbb4c96d9705a85dd42753c9a1638b67212d87639dbc53e36a072b9bee90fff',
+ 'triton_flash_prefill_attention/scripts/task_runner.py': '58cad2d8c55e3a37e6dbc18417d8885b205998d8300ae869b8d5adc3af2df961',
+ 'triton_paged_prefix_prefill/source/triton_paged_prefix_prefill.py': 'c02a77c038191ab04f635d861e1395074ca77c049917fb0c2641b7a503affb76',
+ 'triton_paged_prefix_prefill/config.yaml': '6140359155f3f66e00bb28378ae9675f04b48a3c51a1ab21ff546d5b963a8269',
+ 'triton_paged_prefix_prefill/scripts/task_runner.py': '8a7f02a4464bd0c32fb19a5ed599a10d17324cb4b9c8004f1f48ec4bed51877b',
+ 'triton_paged_prefix_prefill_alibi/source/triton_paged_prefix_prefill_alibi.py': '127615ac25ecda18318d2328176e92f0fd344c3eba78bb9a295d95fbd8ddc742',
+ 'triton_paged_prefix_prefill_alibi/config.yaml': 'b6b06a0041f97d27c626a5c477ae7751cdaa29683130ebe9be687c91e888eb40',
+ 'triton_paged_prefix_prefill_alibi/scripts/task_runner.py': '3958ecfc8e2db1508da60aeaef5e1e08af71f24069967a6ad558c695103258ed',
+ 'triton_unified_attention_2d/source/triton_unified_attention_2d.py': '38efd85c3e716f0a689f0b464dc7a108f885d5b2bd5f8ca5674a138a271a259f',
+ 'triton_unified_attention_2d/config.yaml': '31b6b7d72a8c6703ad5eb6f956febd0b5f4f64c682f11b643aed2328dcc2a294',
+ 'triton_unified_attention_2d/scripts/task_runner.py': '20c714a0b1b51a99ab03ee65c14533c84b4e7c089afbd37c51b66b3f16ba801b',
+ 'triton_unified_attention_3d/source/triton_unified_attention_3d.py': '715800906a4d9244c2045871a6cc0168c4b68f8806e2d97dd66ea71d83ad79b8',
+ 'triton_unified_attention_3d/config.yaml': 'b20d3a7328cf9dfdb3a6c404c86fd8d1431c23e55def172ba5e372bdf3016156',
+ 'triton_unified_attention_3d/scripts/task_runner.py': 'daa9393587de7abb630f2cc4b981c9b11d1e6546686980912c56f168c7c3b4a5'})
 
 LEGACY_DECODE_MANIFESTS = {'triton_decode_attn_stage1': '3f2b49294c8dfbb1ccb626c1717ee04c1733f1d3dfe5eec9adce057d79d2cd94', 'triton_decode_attn_grouped_stage1': '51ef726f3c855fa16ad97211ca17904d5e154728c43f5a2d6741cd4c4e9e7f96', 'triton_decode_attn_stage2': '0da34b7bcc9922d25217f269f32ad4aa2903f32c465e446655b5d57160a2d591'}
 
@@ -320,7 +337,7 @@ def test_stage1_cap_reference_is_not_uncapped_and_inactive_state_is_exact(name, 
         plan.check((corrupted,))
 
 
-@pytest.mark.parametrize('name', FIRST[1:])
+@pytest.mark.parametrize('name', FIRST[1:]+REMAINING)
 def test_protocol_extra_correctness_failure_cannot_pass_vacuously(name, monkeypatch):
     import json
     monkeypatch.chdir(ROOT)
@@ -339,3 +356,132 @@ def test_protocol_extra_correctness_failure_cannot_pass_vacuously(name, monkeypa
     assert calls == list(checks.CONTRACT_CASES)
     assert all(row['status']=='PASS' for row in result['cases'][:5])
     assert all(row['status']=='FAIL' for row in result['cases'][5:])
+
+LEGACY_OTHER_MANIFESTS = {'triton_chunked_prefill_paged_decode': 'cadb6c57285e44d55a0294bed40a9f496b972cb5ccb54a2243c29e137c7d491e', 'triton_flash_prefill_attention': '31630d88bd4c076e3ea9ee8335dd451c1317776ab463fc597ecc79ed0ce65d31', 'triton_paged_prefix_prefill': '7a6c3d33fdff13eb18d526dbb785bdd2eeb0b44ce029678e5ba15d36c0e39c0a', 'triton_paged_prefix_prefill_alibi': '41a468593bb8ca3585a290771df7746300628040b5c9af89521017693736c80b', 'triton_unified_attention_2d': '2ec625748194bc92a4fb9df92b390b489200fabfb4513f4b42e8623b37f263c6', 'triton_unified_attention_3d': 'dabafba2a1b3a95d507199a2b206139342b2585837f851bed25945b55cf726ef'}
+
+def test_other_attention_controls_preserve_every_original_scored_case():
+    import json
+    for name,digest in LEGACY_OTHER_MANIFESTS.items():
+        data=json.loads((TASKS/name/'workloads.json').read_text())
+        assert data['cases'][5:]
+        data['cases']=data['cases'][:5]
+        assert hashlib.sha256(json.dumps(data,sort_keys=True,separators=(',',':')).encode()).hexdigest()==digest
+
+
+@pytest.mark.parametrize('name', FIRST[1:]+REMAINING)
+def test_action_retains_one_candidate_module_across_case_captures(name, monkeypatch):
+    monkeypatch.chdir(ROOT)
+    checks=load(TASKS/name/'_arena_checks.py')
+    modules=[]
+    def initialize():
+        module=SimpleNamespace()
+        modules.append(module)
+        return module
+    h=SimpleNamespace(load_module=initialize,run_correctness=lambda:None,run_performance=lambda:None)
+    checks.install(h)
+    first=h.load_module()
+    for _ in range(3): assert h.load_module() is first
+    assert len(modules)==1
+
+
+@pytest.mark.parametrize('name', REMAINING)
+def test_optional_attention_controls_are_real_and_numerically_discriminating(name, monkeypatch):
+    import sys
+    monkeypatch.chdir(ROOT)
+    monkeypatch.setitem(sys.modules,'triton',SimpleNamespace(next_power_of_2=lambda n:1 << (n-1).bit_length()))
+    checks,h=load(TASKS/name/'_arena_checks.py'),load(TASKS/name/'scripts/task_runner.py')
+    for case,config in checks.CONTRACT_CASES.items():
+        args,kwargs=checks.control_inputs(h,case,'cpu')
+        plan=checks.CallPlan(h,args,kwargs)
+        assert args[0].shape[0] == next(iter(config['input_shapes'].values()))[0]
+        plan.check(plan.expected)
+        missing=dict(kwargs)
+        for key in ('sliding_window','softcap','sliding_window_q','sliding_window_k'):missing.pop(key,None)
+        for key in ('softmax_scale','sm_scale','alibi_slopes'):missing.pop(key,None)
+        if name==REMAINING[3]: missing['alibi_slopes']=torch.zeros_like(kwargs['alibi_slopes'])
+        if name==REMAINING[1]:missing['is_causal']=True
+        wrong=checks.expected_outputs(h,dict(enumerate(args))|missing)
+        assert any(not torch.allclose(a,b,atol=.01,rtol=.01) for a,b in zip(plan.expected,wrong)),case
+        with pytest.raises(AssertionError):plan.check(wrong)
+
+
+def test_mixed_decode_filter_retains_caller_state_and_reserved_scale_behavior(monkeypatch):
+    monkeypatch.chdir(ROOT)
+    name=REMAINING[0];checks,h=load(TASKS/name/'_arena_checks.py'),load(TASKS/name/'scripts/task_runner.py')
+    case=next(iter(checks.CONTRACT_CASES));args,kwargs=checks.control_inputs(h,case,'cpu')
+    plan=checks.CallPlan(h,args,kwargs);expected=plan.expected[0]
+    active=checks.output_write_mask(dict(enumerate(args))|kwargs)
+    assert active[0].all() and not active[1:].any()
+    assert expected[~active].eq(23.5).all()
+    unit=checks.expected_outputs(h,dict(enumerate(args))|kwargs|{'k_scale':1.,'v_scale':1.})[0]
+    torch.testing.assert_close(expected,unit,atol=0,rtol=0)
+    corrupt=expected.clone()
+    corrupt[~active]=torch.nextafter(corrupt[~active],torch.full_like(corrupt[~active],float('inf')))
+    with pytest.raises(AssertionError,match='filtered caller-owned'):plan.check((corrupt,))
+    plan.perturb()
+    moved=checks.output_write_mask(plan.values)
+    assert moved[3].all() and not moved[:3].any()
+
+
+@pytest.mark.parametrize('name', REMAINING)
+def test_optional_controls_use_installed_correctness_guard(name, monkeypatch):
+    monkeypatch.chdir(ROOT)
+    checks,h=load(TASKS/name/'_arena_checks.py'),load(TASKS/name/'scripts/task_runner.py')
+    install_numerical_double(monkeypatch,checks)
+    inputs=checks.control_inputs
+    good=numerical_candidate(checks,h)
+    h.load_module=lambda:SimpleNamespace(**{checks.SYMBOL:good})
+    monkeypatch.setattr(checks,'control_inputs',lambda h,case:inputs(h,case,'cpu'))
+    checks.install_controls(h)
+    for case in checks.CONTRACT_CASES:assert h.run_contract_correctness(case)==(True,None)
+
+ORIGINALS.pop("triton_paged_prefix_prefill/source/triton_paged_prefix_prefill.py")
+PREFIX_ORIGINAL_AST_SHA256 = '28235795082c5af8e1d0d83cd5a7557f56c6468bce56a5bee526af116fe4d7e1'
+
+def test_prefix_tail_page_load_is_masked_and_no_other_kernel_ast_changed():
+    import ast
+    source=(TASKS/'triton_paged_prefix_prefill/source/triton_paged_prefix_prefill.py').read_text()
+    tree=ast.parse(source)
+    found=[]
+    for node in ast.walk(tree):
+        if not isinstance(node,ast.Call) or ast.unparse(node.func)!='tl.load':continue
+        if not node.args or 'bn_logical_indices' not in ast.unparse(node.args[0]):continue
+        assert {k.arg:ast.unparse(k.value) for k in node.keywords}=={
+            'mask':'token_indices < cur_batch_ctx_len','other':'0'}
+        found.append(node)
+        node.keywords=[]
+    assert len(found)==1
+    assert hashlib.sha256(ast.dump(tree,include_attributes=False).encode()).hexdigest()==PREFIX_ORIGINAL_AST_SHA256
+    # Concrete address-domain reproducer: final row has only ceil(19/24)=1 page.
+    context,physical_block,tile=19,24,32
+    unguarded={position//physical_block for position in range(tile)}
+    guarded={position//physical_block for position in range(tile) if position<context}
+    assert unguarded=={0,1} and guarded=={0}
+    assert max(guarded)<(context+physical_block-1)//physical_block
+
+
+@pytest.mark.parametrize('name', FIRST[1:]+REMAINING)
+def test_control_manifest_shapes_match_actual_tensors_and_full_outputs(name, monkeypatch):
+    monkeypatch.chdir(ROOT)
+    checks,h=load(TASKS/name/'_arena_checks.py'),load(TASKS/name/'scripts/task_runner.py')
+    keys={
+        FIRST[1]:{'mid_o':0,'q':1,'v_buffer':4,'b_seqlen':5},
+        FIRST[2]:{'q':0,'k_buffer':1,'v_buffer':2,'req_to_tokens':4,'b_seqlen':5},
+        FIRST[3]:{'q':0,'k_buffer':1,'v_buffer':2,'req_to_tokens':4,'b_seqlen':5},
+        REMAINING[0]:{'query':0,'key_cache':2,'value_cache':3,'block_table':4,'seq_lens':5,'query_start_loc':6,'alibi_slopes':'alibi_slopes'},
+        REMAINING[1]:{'q':0,'k':1,'v':2,'b_start_loc':4,'b_seq_len':5},
+        REMAINING[2]:{'q':0,'k':1,'v':2,'k_cache':4,'v_cache':5,'b_loc':6,'b_start_loc':7,'b_seq_len':8},
+        REMAINING[3]:{'q':0,'k':1,'v':2,'k_cache':4,'v_cache':5,'b_loc':6,'b_start_loc':7,'b_seq_len':8,'alibi_slopes':'alibi_slopes'},
+        REMAINING[4]:{'q':0,'key_cache':1,'value_cache':2,'block_table':4,'cu_seqlens_q':5,'seqused_k':6},
+        REMAINING[5]:{'q':0,'key_cache':1,'value_cache':2,'block_table':3,'cu_seqlens_q':4,'seqused_k':5},
+    }[name]
+    for case,c in checks.CONTRACT_CASES.items():
+        args,kwargs=checks.control_inputs(h,case,'cpu');values=dict(enumerate(args))|kwargs
+        assert set(keys)==set(c['input_shapes'])
+        for key,slot in keys.items():
+            value=values[slot]
+            assert list(value.shape)==c['input_shapes'][key]
+            expected_dtype=torch.float32 if key in ('mid_o','alibi_slopes') else torch.float16 if value.is_floating_point() else torch.int32
+            assert value.dtype==expected_dtype
+        outputs=checks.expected_outputs(h,values)
+        assert [list(v.shape) for v in outputs]==list(c['output_shapes'].values())

@@ -9,27 +9,35 @@ PERTURB_KEYS = (0, 1, 2, 4, 5)
 
 def expected_outputs(h, a):
     import torch
-    q, k, v, kc, vc, pages, starts, lengths = (a[i] for i in (0, 1, 2, 4, 5, 6, 7, 8))
-    block_size, x = kc.shape[3], kc.shape[4]
+    q,k,v,kc,vc,pages,starts,lengths = (a[i] for i in (0,1,2,4,5,6,7,8))
     result = torch.empty_like(q)
-    # Reconstruct dense context from the actual pristine cache and page table,
-    # rather than the independent generator's old dense tensors. This also
-    # binds performance/replay to cache data changed between invocations.
-    for batch in range(len(lengths)):
-        lo, hi = int(starts[batch]), int(starts[batch + 1])
-        qlen = hi - lo
-        context = int(lengths[batch]) - qlen
-        positions = torch.arange(context, device=q.device)
-        blocks = pages[batch, positions // block_size].long()
-        offsets = positions % block_size
-        # Advanced indexing collects [context, heads, D/x, x] and [context, heads, D].
-        dense_k = kc[blocks, :, :, offsets, :].reshape(1, context, k.shape[1], q.shape[2])
-        dense_v = vc[blocks, :, :, offsets].reshape(1, context, v.shape[1], q.shape[2])
-        local_starts = torch.zeros(1, dtype=starts.dtype, device=starts.device)
-        local_lengths = lengths[batch:batch + 1]
-        result[lo:hi] = h.reference_attention_alibi(
-            q[lo:hi], k[lo:hi], v[lo:hi], dense_k, dense_v, local_starts, local_lengths,
-            a['alibi_slopes'], 1, context, qlen, q.shape[1], k.shape[1], q.shape[2])
+    scale = a.get('sm_scale',q.shape[-1]**-0.5)
+    slopes, window = a.get('alibi_slopes'), a.get('sliding_window',0) or 0
+    for b in range(len(lengths)):
+        lo,hi = int(starts[b]),int(starts[b+1]); qlen=hi-lo
+        context = int(lengths[b])-qlen
+        positions = torch.arange(context,device=q.device)
+        blocks,offsets = pages[b,positions//kc.shape[3]].long(),positions%kc.shape[3]
+        dense_k = kc[blocks,:,:,offsets,:].reshape(context,k.shape[1],q.shape[2])
+        dense_v = vc[blocks,:,:,offsets].reshape(context,v.shape[1],q.shape[2])
+        # Default-domain comparisons preserve the original FP16-reference rule.
+        if 'sm_scale' not in a and window == 0:
+            local_starts = torch.zeros(1,device=q.device,dtype=starts.dtype)
+            if slopes is None:
+                result[lo:hi] = h.reference_paged_attention(q[lo:hi],k[lo:hi],v[lo:hi],dense_k[None],dense_v[None],local_starts,lengths[b:b+1],1,context,qlen,q.shape[1],k.shape[1],q.shape[2])
+            else:
+                result[lo:hi] = h.reference_attention_alibi(q[lo:hi],k[lo:hi],v[lo:hi],dense_k[None],dense_v[None],local_starts,lengths[b:b+1],slopes,1,context,qlen,q.shape[1],k.shape[1],q.shape[2])
+            continue
+        keys,values = torch.cat((dense_k,k[lo:hi])),torch.cat((dense_v,v[lo:hi]))
+        qp = context+torch.arange(qlen,device=q.device)[:,None]
+        kp = torch.arange(context+qlen,device=q.device)[None,:]
+        allowed = kp <= qp
+        if window > 0: allowed &= qp-kp < window
+        for head in range(q.shape[1]):
+            kh = head//(q.shape[1]//k.shape[1])
+            logits = q[lo:hi,head].float() @ keys[:,kh].float().T * scale
+            if slopes is not None: logits += slopes[head]*(kp-qp)
+            result[lo:hi,head] = (torch.softmax(logits.masked_fill(~allowed,float('-inf')),1) @ values[:,kh].float()).to(q.dtype)
     return (result,)
 
 # Only allocation, same-device conversion/copy and views belong in the host
@@ -312,9 +320,17 @@ def install(harness):
     performance_original = harness.run_performance
     load_original = harness.load_module
 
+    loaded = None
+
     def load():
-        with candidate_preparation_only():
-            return load_original()
+        nonlocal loaded
+        # Keep one candidate module (and its compiled Triton kernels) alive
+        # throughout this action. Collecting a prior case's module during a
+        # later graph capture may call HIP unload_module, invalidating capture.
+        if loaded is None:
+            with candidate_preparation_only():
+                loaded = load_original()
+        return loaded
 
     harness.load_module = load
 
@@ -332,3 +348,82 @@ def install(harness):
 
     harness.run_correctness = correctness
     harness.run_performance = performance
+    install_controls(harness)
+
+
+CONTRACT_CASES = {'ragged_permuted_alibi_scale': {'batch': 2,
+                                 'query_heads': 8,
+                                 'kv_heads': 2,
+                                 'head_dim': 64,
+                                 'seed': 927,
+                                 'dtypes': {'data': 'float16',
+                                            'statistics': 'float32',
+                                            'routing': 'int32',
+                                            'alibi_slopes': 'float32'},
+                                 'contract_case': 'ragged_permuted_alibi_scale',
+                                 'context_lengths': [19, 7],
+                                 'query_lengths': [5, 3],
+                                 'sequence_lengths': [24, 10],
+                                 'sm_scale': 0.17,
+                                 'block_size': 16,
+                                 'alibi_slopes': [0.5,
+                                                  0.25,
+                                                  0.125,
+                                                  0.0625,
+                                                  0.5,
+                                                  0.25,
+                                                  0.125,
+                                                  0.0625],
+                                 'input_shapes': {'q': [8, 8, 64],
+                                                  'k': [8, 2, 64],
+                                                  'v': [8, 2, 64],
+                                                  'k_cache': [8, 2, 8, 16, 8],
+                                                  'v_cache': [8, 2, 64, 16],
+                                                  'b_loc': [2, 2],
+                                                  'b_start_loc': [3],
+                                                  'b_seq_len': [2],
+                                                  'alibi_slopes': [8]},
+                                 'output_shapes': {'o': [8, 8, 64]},
+                                 'page_mapping': 'reversed physical page order'}}
+
+
+def control_inputs(h,case,device="cuda"):
+    import torch
+    c=CONTRACT_CASES[case]
+    torch.manual_seed(c["seed"])
+    kc,vc,pages,_,_=h.setup_paged_kv_cache(2,19,2,64,16,device,torch.float16)
+    # Fill padding blocks as ordinary finite cache data before non-identity routing.
+    kc.copy_(torch.randn_like(kc));vc.copy_(torch.randn_like(vc))
+    q=torch.randn(8,8,64,device=device,dtype=torch.float16)
+    k=torch.randn(8,2,64,device=device,dtype=torch.float16);v=torch.randn_like(k)
+    pages.copy_((kc.shape[0]-1-torch.arange(pages.numel(),device=device).reshape_as(pages)).int())
+    kwargs={'max_input_len':5,'sm_scale':c['sm_scale']}
+    if 'alibi_slopes' in c:kwargs['alibi_slopes']=torch.tensor(c['alibi_slopes'],device=device,dtype=torch.float32)
+    if 'sliding_window' in c:kwargs['sliding_window']=c['sliding_window']
+    return (q,k,v,torch.zeros_like(q),kc,vc,pages,torch.tensor([0,5,8],device=device,dtype=torch.int32),torch.tensor(c['sequence_lengths'],device=device,dtype=torch.int32)),kwargs
+
+
+def install_controls(harness):
+    harness.CONTRACT_CASES = CONTRACT_CASES
+
+    def correctness(case):
+        with checked_modules(harness):
+            module = harness.load_module()
+            args, kwargs = control_inputs(harness, case)
+            getattr(module, SYMBOL)(*args, **kwargs)
+        return True, None
+
+    def performance():
+        rows = []
+        for case in CONTRACT_CASES:
+            mod = harness.load_module()
+            args, kwargs = control_inputs(harness, case)
+            def fn():
+                getattr(mod, SYMBOL)(*args, **kwargs)
+            ms, metadata = checked_benchmark(harness, harness._benchmark_cuda_graph_or_events, fn,
+                        warmup=harness.WARMUP_ITERATIONS, repetition=harness.BENCHMARK_ITERATIONS)
+            rows.append({'test_case_id':case, 'execution_time_ms':ms, **metadata, 'params':CONTRACT_CASES[case]})
+        return rows
+
+    harness.run_contract_correctness = correctness
+    harness.run_contract_performance = performance

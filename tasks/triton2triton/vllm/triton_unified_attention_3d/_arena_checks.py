@@ -8,8 +8,47 @@ OUTPUT_KEYS = ()
 PERTURB_KEYS = (0, 1, 2)
 
 def expected_outputs(h, a):
-    return h.reference_attention_3d(a[0], a[1], a[2], a[3], a[4], a[5], a[6],
-                                    a[1].shape[1], a.get('num_segments', 2))
+    if not a.get('sliding_window',0) and not a.get('softcap',0):
+        return h.reference_attention_3d(a[0],a[1],a[2],a[3],a[4],a[5],a[6],a[1].shape[1],a.get('num_segments',2))
+    import torch
+    q,kc,vc,pages,starts,lengths,scale = (a[i] for i in range(7))
+    segments = a.get('num_segments',2); dim=q.shape[-1]; padded=1 << (dim-1).bit_length()
+    output=torch.zeros(q.shape[0],q.shape[1],segments,padded,device=q.device,dtype=torch.float32)
+    maxima=torch.full(output.shape[:3],float('-inf'),device=q.device,dtype=torch.float32)
+    sums=torch.zeros_like(maxima)
+    for b in range(len(lengths)):
+        lo,hi,length=int(starts[b]),int(starts[b+1]),int(lengths[b]); context=length-(hi-lo)
+        positions=torch.arange(length,device=q.device)
+        blocks,offsets=pages[b,positions//kc.shape[1]].long(),positions%kc.shape[1]
+        keys,values=kc[blocks,offsets].float(),vc[blocks,offsets].float()
+        segment_size=((length+segments*16-1)//(segments*16))*16
+        for row in range(lo,hi):
+            qpos=context+row-lo
+            for head in range(q.shape[1]):
+                kh=head//(q.shape[1]//kc.shape[2])
+                logits=q[row,head].float() @ keys[:,kh].T * scale
+                cap=a.get('softcap',0.0)
+                if cap>0: logits=cap*torch.tanh(logits/cap)
+                allowed=positions<=qpos
+                window=a.get('sliding_window',0)
+                if window>0: allowed &= qpos-positions<window
+                for part in range(segments):
+                    begin,end=part*segment_size,min((part+1)*segment_size,length)
+                    if begin>=end: continue
+                    selected=logits[begin:end].masked_fill(~allowed[begin:end],float('-inf'))
+                    if not allowed[begin:end].any():
+                        # The original recurrence uses zero as its finite anchor
+                        # when it visits a segment containing only masked logits.
+                        maxima[row,head,part]=0
+                        continue
+                    maximum=selected.max()
+                    # Empty leading tiles establish that same finite anchor.
+                    if not allowed[begin:min(begin+16,end)].any(): maximum=maximum.clamp_min(0)
+                    weights=torch.exp(selected-maximum)
+                    maxima[row,head,part]=maximum
+                    sums[row,head,part]=weights.sum()
+                    output[row,head,part,:dim]=weights @ values[begin:end,kh]
+    return output,maxima,sums
 
 # Only allocation, same-device conversion/copy and views belong in the host
 # wrapper. The reduction itself must execute the declared Triton kernel.
@@ -291,9 +330,17 @@ def install(harness):
     performance_original = harness.run_performance
     load_original = harness.load_module
 
+    loaded = None
+
     def load():
-        with candidate_preparation_only():
-            return load_original()
+        nonlocal loaded
+        # Keep one candidate module (and its compiled Triton kernels) alive
+        # throughout this action. Collecting a prior case's module during a
+        # later graph capture may call HIP unload_module, invalidating capture.
+        if loaded is None:
+            with candidate_preparation_only():
+                loaded = load_original()
+        return loaded
 
     harness.load_module = load
 
@@ -311,3 +358,72 @@ def install(harness):
 
     harness.run_correctness = correctness
     harness.run_performance = performance
+    install_controls(harness)
+
+
+CONTRACT_CASES = {'ragged_permuted_segment_controls': {'batch': 2,
+                                      'query_heads': 8,
+                                      'kv_heads': 2,
+                                      'head_dim': 64,
+                                      'seed': 927,
+                                      'dtypes': {'data': 'float16',
+                                                 'statistics': 'float32',
+                                                 'routing': 'int32'},
+                                      'contract_case': 'ragged_permuted_segment_controls',
+                                      'sequence_lengths': [19, 7],
+                                      'query_lengths': [3, 1],
+                                      'block_size': 16,
+                                      'sliding_window': 12,
+                                      'softcap': 2.0,
+                                      'num_segments': 3,
+                                      'input_shapes': {'q': [4, 8, 64],
+                                                       'key_cache': [8, 16, 2, 64],
+                                                       'value_cache': [8, 16, 2, 64],
+                                                       'block_table': [2, 2],
+                                                       'cu_seqlens_q': [3],
+                                                       'seqused_k': [2]},
+                                      'output_shapes': {'segm_output': [4, 8, 3, 64],
+                                                        'segm_max': [4, 8, 3],
+                                                        'segm_expsum': [4, 8, 3]},
+                                      'page_mapping': 'reversed physical page order'}}
+
+
+def control_inputs(h,case,device="cuda"):
+    import torch
+    c=CONTRACT_CASES[case]
+    torch.manual_seed(c["seed"])
+    generated=h.make_test_data(2,2,19,8,2,64,16,device,torch.float16)
+    q,kc,vc=generated[:3]
+    pages,starts,lengths,scale=generated[3:]
+    pages.copy_((kc.shape[0]-1-torch.arange(pages.numel(),device=device).reshape_as(pages)).int())
+    starts.copy_(torch.tensor([0,3,4],device=device,dtype=torch.int32))
+    lengths.copy_(torch.tensor(c['sequence_lengths'],device=device,dtype=torch.int32))
+    kwargs={'sliding_window':c['sliding_window'],'softcap':c['softcap']}
+    kwargs['num_segments']=c['num_segments']
+    return (q,kc,vc,pages,starts,lengths,scale),kwargs
+
+
+def install_controls(harness):
+    harness.CONTRACT_CASES = CONTRACT_CASES
+
+    def correctness(case):
+        with checked_modules(harness):
+            module = harness.load_module()
+            args, kwargs = control_inputs(harness, case)
+            getattr(module, SYMBOL)(*args, **kwargs)
+        return True, None
+
+    def performance():
+        rows = []
+        for case in CONTRACT_CASES:
+            mod = harness.load_module()
+            args, kwargs = control_inputs(harness, case)
+            def fn():
+                getattr(mod, SYMBOL)(*args, **kwargs)
+            ms, metadata = checked_benchmark(harness, harness._benchmark_cuda_graph_or_events, fn,
+                        warmup=harness.WARMUP_ITERATIONS, repetition=harness.BENCHMARK_ITERATIONS)
+            rows.append({'test_case_id':case, 'execution_time_ms':ms, **metadata, 'params':CONTRACT_CASES[case]})
+        return rows
+
+    harness.run_contract_correctness = correctness
+    harness.run_contract_performance = performance

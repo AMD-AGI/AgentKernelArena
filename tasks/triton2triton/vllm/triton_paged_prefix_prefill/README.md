@@ -64,3 +64,21 @@ and every output poisoned, then the same captured graph is replayed and fully
 compared against a new reference. Inputs are restored afterward. No reference,
 poisoning, comparison, or extra GPU check is added inside the timed invocation.
 A timing fallback that cannot expose the actual measured outputs fails closed.
+
+Additional scored controls are declared with concrete shapes, dtypes, sequence
+lengths, optional arguments and seeds in `workloads.json`; the protected evaluator
+requires those parameters to match the actual generator. All original scored
+cases remain unchanged. Each added case runs the real public wrapper with the
+same 0.01 gates, ten warmups, 100 samples and checked captured-graph replay.
+The control covers ragged context/query lengths, non-identity physical pages, a
+nondefault attention scale, and the wrapper's window or ALiBi path. The oracle
+reconstructs context from actual cache bytes and independently forms the masked
+attention operation; cached generator outputs cannot substitute for this check.
+
+A second ragged control uses physical block size 24 to exercise the original
+non-power-of-two dispatch; its dimensions and device timing remain explicit.
+
+The plain-prefix context page-table load now masks tokens beyond the context
+length, matching its existing masked K/V loads. This fixes an out-of-bounds
+metadata read for a partial tile with non-power-of-two physical page sizes;
+all other original kernel operations remain unchanged.

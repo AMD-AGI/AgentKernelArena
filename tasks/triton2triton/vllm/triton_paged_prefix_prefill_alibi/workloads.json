@@ -166,6 +166,104 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "ragged_permuted_alibi_scale",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "batch": 2,
+        "query_heads": 8,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "seed": 927,
+        "dtypes": {
+          "data": "float16",
+          "statistics": "float32",
+          "routing": "int32",
+          "alibi_slopes": "float32"
+        },
+        "contract_case": "ragged_permuted_alibi_scale",
+        "context_lengths": [
+          19,
+          7
+        ],
+        "query_lengths": [
+          5,
+          3
+        ],
+        "sequence_lengths": [
+          24,
+          10
+        ],
+        "sm_scale": 0.17,
+        "block_size": 16,
+        "alibi_slopes": [
+          0.5,
+          0.25,
+          0.125,
+          0.0625,
+          0.5,
+          0.25,
+          0.125,
+          0.0625
+        ],
+        "input_shapes": {
+          "q": [
+            8,
+            8,
+            64
+          ],
+          "k": [
+            8,
+            2,
+            64
+          ],
+          "v": [
+            8,
+            2,
+            64
+          ],
+          "k_cache": [
+            8,
+            2,
+            8,
+            16,
+            8
+          ],
+          "v_cache": [
+            8,
+            2,
+            64,
+            16
+          ],
+          "b_loc": [
+            2,
+            2
+          ],
+          "b_start_loc": [
+            3
+          ],
+          "b_seq_len": [
+            2
+          ],
+          "alibi_slopes": [
+            8
+          ]
+        },
+        "output_shapes": {
+          "o": [
+            8,
+            8,
+            64
+          ]
+        },
+        "page_mapping": "reversed physical page order"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

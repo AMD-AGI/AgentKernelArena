@@ -54,3 +54,17 @@ and every output poisoned, then the same captured graph is replayed and fully
 compared against a new reference. Inputs are restored afterward. No reference,
 poisoning, comparison, or extra GPU check is added inside the timed invocation.
 A timing fallback that cannot expose the actual measured outputs fails closed.
+
+Additional scored controls are declared with concrete shapes, dtypes, sequence
+lengths, optional arguments and seeds in `workloads.json`; the protected evaluator
+requires those parameters to match the actual generator. All original scored
+cases remain unchanged. Each added case runs the real public wrapper with the
+same 0.01 gates, ten warmups, 100 samples and checked captured-graph replay.
+The mixed-query control includes decode and prefill requests, non-identity pages,
+ALiBi and a sliding window. With query-length filtering enabled, prefill output
+slots are intentionally untouched by this decode kernel; those caller-owned
+slots must preserve their finite initial values byte-for-byte. Replay exchanges
+query lengths so a different row becomes active. Only required writes are
+poisoned. The original FP16 source accepts `k_scale` and `v_scale` as ABI
+placeholders but does not apply them; non-unit values explicitly test that
+retained behavior. This task does not claim scaled or quantized KV-cache support.

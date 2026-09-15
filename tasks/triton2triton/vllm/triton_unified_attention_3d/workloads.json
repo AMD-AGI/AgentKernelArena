@@ -176,6 +176,88 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "ragged_permuted_segment_controls",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "batch": 2,
+        "query_heads": 8,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "seed": 927,
+        "dtypes": {
+          "data": "float16",
+          "statistics": "float32",
+          "routing": "int32"
+        },
+        "contract_case": "ragged_permuted_segment_controls",
+        "sequence_lengths": [
+          19,
+          7
+        ],
+        "query_lengths": [
+          3,
+          1
+        ],
+        "block_size": 16,
+        "sliding_window": 12,
+        "softcap": 2.0,
+        "num_segments": 3,
+        "input_shapes": {
+          "q": [
+            4,
+            8,
+            64
+          ],
+          "key_cache": [
+            8,
+            16,
+            2,
+            64
+          ],
+          "value_cache": [
+            8,
+            16,
+            2,
+            64
+          ],
+          "block_table": [
+            2,
+            2
+          ],
+          "cu_seqlens_q": [
+            3
+          ],
+          "seqused_k": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "segm_output": [
+            4,
+            8,
+            3,
+            64
+          ],
+          "segm_max": [
+            4,
+            8,
+            3
+          ],
+          "segm_expsum": [
+            4,
+            8,
+            3
+          ]
+        },
+        "page_mapping": "reversed physical page order"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

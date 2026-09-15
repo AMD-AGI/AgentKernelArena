@@ -118,7 +118,9 @@ def _fwd_kernel(
         bn_logical_indices = token_indices // PHYSICAL_BLOCK_SIZE
 
         bn = tl.load(
-            B_Loc + cur_batch * stride_b_loc_b + bn_logical_indices * stride_b_loc_s
+            B_Loc + cur_batch * stride_b_loc_b + bn_logical_indices * stride_b_loc_s,
+            mask=token_indices < cur_batch_ctx_len,
+            other=0,
         ).to(tl.int64)
 
         internal_offsets = token_indices % PHYSICAL_BLOCK_SIZE

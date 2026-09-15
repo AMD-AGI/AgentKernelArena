@@ -8,7 +8,26 @@ OUTPUT_KEYS = (3,)
 PERTURB_KEYS = (0, 1, 2)
 
 def expected_outputs(h, a):
-    return (h.reference_attention(a[0], a[1], a[2], a[4], a[5], is_causal=a.get('is_causal', True)),)
+    # Keep the original reference for its original default domain.
+    if not any(k in a for k in ('softmax_scale','sliding_window_q','sliding_window_k')):
+        return (h.reference_attention(a[0],a[1],a[2],a[4],a[5],is_causal=a.get('is_causal',True)),)
+    import torch
+    q,k,v,out,starts,lengths = (a[i] for i in range(6))
+    result = torch.empty_like(out)
+    scale = a.get('softmax_scale',q.shape[-1]**-0.5)
+    for b in range(len(lengths)):
+        start,length = int(starts[b]),int(lengths[b])
+        qp = torch.arange(length,device=q.device)[:,None]
+        kp = torch.arange(length,device=q.device)[None,:]
+        allowed = torch.ones((length,length),device=q.device,dtype=torch.bool)
+        if a.get('is_causal',True): allowed &= qp >= kp
+        if a.get('sliding_window_q',0)>0: allowed &= qp-kp <= a['sliding_window_q']
+        if a.get('sliding_window_k',0)>0: allowed &= kp-qp <= a['sliding_window_k']
+        for head in range(q.shape[1]):
+            kh = head//(q.shape[1]//k.shape[1])
+            logits = q[start:start+length,head].float() @ k[start:start+length,kh].float().T * scale
+            result[start:start+length,head] = (torch.softmax(logits.masked_fill(~allowed,float('-inf')),1) @ v[start:start+length,kh].float()).to(q.dtype)
+    return (result,)
 
 # Only allocation, same-device conversion/copy and views belong in the host
 # wrapper. The reduction itself must execute the declared Triton kernel.
@@ -290,9 +309,17 @@ def install(harness):
     performance_original = harness.run_performance
     load_original = harness.load_module
 
+    loaded = None
+
     def load():
-        with candidate_preparation_only():
-            return load_original()
+        nonlocal loaded
+        # Keep one candidate module (and its compiled Triton kernels) alive
+        # throughout this action. Collecting a prior case's module during a
+        # later graph capture may call HIP unload_module, invalidating capture.
+        if loaded is None:
+            with candidate_preparation_only():
+                loaded = load_original()
+        return loaded
 
     harness.load_module = load
 
@@ -310,3 +337,79 @@ def install(harness):
 
     harness.run_correctness = correctness
     harness.run_performance = performance
+    install_controls(harness)
+
+
+CONTRACT_CASES = {'ragged_causal_scale': {'batch': 2,
+                         'query_heads': 8,
+                         'kv_heads': 2,
+                         'head_dim': 64,
+                         'seed': 927,
+                         'dtypes': {'data': 'float16', 'statistics': 'float32', 'routing': 'int32'},
+                         'contract_case': 'ragged_causal_scale',
+                         'sequence_lengths': [7, 13],
+                         'softmax_scale': 0.17,
+                         'is_causal': True,
+                         'sliding_window_q': 0,
+                         'sliding_window_k': 0,
+                         'input_shapes': {'q': [20, 8, 64],
+                                          'k': [20, 2, 64],
+                                          'v': [20, 2, 64],
+                                          'b_start_loc': [2],
+                                          'b_seq_len': [2]},
+                         'output_shapes': {'o': [20, 8, 64]}},
+ 'ragged_bidirectional_windows': {'batch': 2,
+                                  'query_heads': 8,
+                                  'kv_heads': 2,
+                                  'head_dim': 64,
+                                  'seed': 927,
+                                  'dtypes': {'data': 'float16',
+                                             'statistics': 'float32',
+                                             'routing': 'int32'},
+                                  'contract_case': 'ragged_bidirectional_windows',
+                                  'sequence_lengths': [7, 13],
+                                  'softmax_scale': 0.17,
+                                  'is_causal': False,
+                                  'sliding_window_q': 3,
+                                  'sliding_window_k': 5,
+                                  'input_shapes': {'q': [20, 8, 64],
+                                                   'k': [20, 2, 64],
+                                                   'v': [20, 2, 64],
+                                                   'b_start_loc': [2],
+                                                   'b_seq_len': [2]},
+                                  'output_shapes': {'o': [20, 8, 64]}}}
+
+
+def control_inputs(h,case,device="cuda"):
+    import torch
+    c=CONTRACT_CASES[case]
+    torch.manual_seed(c["seed"])
+    q=torch.randn(20,8,64,device=device,dtype=torch.float16)
+    k=torch.randn(20,2,64,device=device,dtype=torch.float16);v=torch.randn_like(k)
+    return (q,k,v,torch.zeros_like(q),torch.tensor([0,7],device=device,dtype=torch.int32),torch.tensor(c['sequence_lengths'],device=device,dtype=torch.int32)), {'max_input_len':13,**{k:c[k] for k in ('is_causal','softmax_scale','sliding_window_q','sliding_window_k')}}
+
+
+def install_controls(harness):
+    harness.CONTRACT_CASES = CONTRACT_CASES
+
+    def correctness(case):
+        with checked_modules(harness):
+            module = harness.load_module()
+            args, kwargs = control_inputs(harness, case)
+            getattr(module, SYMBOL)(*args, **kwargs)
+        return True, None
+
+    def performance():
+        rows = []
+        for case in CONTRACT_CASES:
+            mod = harness.load_module()
+            args, kwargs = control_inputs(harness, case)
+            def fn():
+                getattr(mod, SYMBOL)(*args, **kwargs)
+            ms, metadata = checked_benchmark(harness, harness._benchmark_cuda_graph_or_events, fn,
+                        warmup=harness.WARMUP_ITERATIONS, repetition=harness.BENCHMARK_ITERATIONS)
+            rows.append({'test_case_id':case, 'execution_time_ms':ms, **metadata, 'params':CONTRACT_CASES[case]})
+        return rows
+
+    harness.run_contract_correctness = correctness
+    harness.run_contract_performance = performance

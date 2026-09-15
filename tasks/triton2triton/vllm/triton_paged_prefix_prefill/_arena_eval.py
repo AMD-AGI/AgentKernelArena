@@ -73,6 +73,10 @@ def evaluate(role, action):
         actual = json.loads(json.dumps(getattr(harness, data['case_table'])))
         if actual != data['input_table']:
             raise ValueError('Harness case table disagrees with protected workload manifest')
+        controls = getattr(harness, 'CONTRACT_CASES', {})
+        declared_controls = {r['test_case_id']:r['params'] for r in data['cases'] if 'contract_case' in r['params']}
+        if declared_controls != controls:
+            raise ValueError('Contract control manifest differs from actual input generation')
         if action == 'validate-task':
             for dependency in ('torch','triton'):
                 if importlib.util.find_spec(dependency) is None:
@@ -85,14 +89,17 @@ def evaluate(role, action):
         elif action == 'correctness':
             for index, row in enumerate(cases):
                 try:
-                    ok, error = harness.run_correctness(case_index=row['params'].get('case_index', index))
+                    if 'contract_case' in row['params']:
+                        ok, error = harness.run_contract_correctness(row['params']['contract_case'])
+                    else:
+                        ok, error = harness.run_correctness(case_index=row['params'].get('case_index', index))
                     if not ok:
                         raise RuntimeError(error or 'Original numerical/output contract rejected candidate')
                     row['metrics']={'original_case_checks_passed':True}
                 except BaseException as exc:
                     row.update(status='FAIL', reason=f'{type(exc).__name__}: {exc}', failure_kind='correctness_failure')
         elif action == 'performance':
-            measured = harness.run_performance()
+            measured = harness.run_performance() + harness.run_contract_performance()
             if len(measured) != len(cases):
                 raise RuntimeError('Performance omitted declared cases')
             rows_by_id = {r['test_case_id']:r for r in measured}

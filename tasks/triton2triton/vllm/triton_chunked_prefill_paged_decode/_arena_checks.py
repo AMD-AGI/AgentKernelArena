@@ -8,7 +8,41 @@ OUTPUT_KEYS = (1,)
 PERTURB_KEYS = (0, 2, 3)
 
 def expected_outputs(h, a):
-    return (h.reference_attention(a[0], a[2], a[3], a[4], a[5], a[7], a[2].shape[3], a[2].shape[4]),)
+    import torch
+    query, output, kc, vc, pages, lengths, starts, scale = (a[i] for i in range(8))
+    result = output.clone()
+    filtering = a.get('filter_by_query_len', True)
+    window, slopes = a.get('sliding_window', 0), a.get('alibi_slopes')
+    for b in range(len(lengths)):
+        if filtering and int(starts[b+1]-starts[b]) > 1:
+            continue
+        row = int(starts[b]) if filtering else b
+        length = int(lengths[b]); positions = torch.arange(length, device=query.device)
+        blocks, offsets = pages[b, positions//kc.shape[3]].long(), positions%kc.shape[3]
+        k = kc[blocks,:,:,offsets,:].reshape(length, kc.shape[1], query.shape[-1]).float()
+        v = vc[blocks,:,:,offsets].float()
+        for head in range(query.shape[1]):
+            kv_head = head // (query.shape[1]//kc.shape[1])
+            logits = query[row,head].float() @ k[:,kv_head].T * scale
+            if window > 0:
+                logits = logits.masked_fill(length-1-positions >= window, float('-inf'))
+            if slopes is not None:
+                logits = logits + slopes[head] * (positions-(length-1))
+            # k_scale/v_scale are ABI placeholders in this original FP16 source;
+            # it never applies them. Non-unit values are tested for that behavior.
+            result[row,head] = (torch.softmax(logits,0) @ v[:,kv_head]).to(query.dtype)
+    return (result,)
+
+
+def output_write_mask(a):
+    import torch
+    active = torch.zeros(a[1].shape[0], device=a[1].device, dtype=torch.bool)
+    for b in range(len(a[5])):
+        if not a.get('filter_by_query_len', True):
+            active[b] = True
+        elif int(a[6][b+1]-a[6][b]) <= 1:
+            active[int(a[6][b])] = True
+    return active[:,None,None].expand_as(a[1])
 
 # Only allocation, same-device conversion/copy and views belong in the host
 # wrapper. The reduction itself must execute the declared Triton kernel.
@@ -184,14 +218,19 @@ class CallPlan:
             # assert_close rejects NaN and requires matching signed infinities;
             # ordinary finite cases therefore reject unwritten poison everywhere.
             torch.testing.assert_close(actual, wanted, atol=0.01, rtol=0.01, equal_nan=False)
+            inactive=~output_write_mask(self.values)
+            if not torch.equal(_tensor_bytes(actual[inactive]),_tensor_bytes(self.saved[1][inactive])):
+                raise AssertionError('Attention modified filtered caller-owned output slots')
 
     def poison(self, outputs):
-        for output in outputs:
-            output.fill_(float('nan'))
+        outputs[0].masked_fill_(output_write_mask(self.values), float('nan'))
 
     def perturb(self):
         for key in PERTURB_KEYS:
             self.values[key].mul_(-0.75).add_(0.3125)
+        lengths=self.values[6][1:]-self.values[6][:-1]
+        self.values[6][1:].copy_(lengths.flip(0).cumsum(0))
+        self.values[4].copy_(self.values[4].roll(1,dims=1))
         # New source snapshot is the reference input and read-only replay guard.
         self.saved = {k: self.values[k].clone() for k in self.saved}
         return expected_outputs(self.harness, self.values | self.saved)
@@ -290,9 +329,17 @@ def install(harness):
     performance_original = harness.run_performance
     load_original = harness.load_module
 
+    loaded = None
+
     def load():
-        with candidate_preparation_only():
-            return load_original()
+        nonlocal loaded
+        # Keep one candidate module (and its compiled Triton kernels) alive
+        # throughout this action. Collecting a prior case's module during a
+        # later graph capture may call HIP unload_module, invalidating capture.
+        if loaded is None:
+            with candidate_preparation_only():
+                loaded = load_original()
+        return loaded
 
     harness.load_module = load
 
@@ -310,3 +357,81 @@ def install(harness):
 
     harness.run_correctness = correctness
     harness.run_performance = performance
+    install_controls(harness)
+
+
+CONTRACT_CASES = {'mixed_filtered_alibi_window': {'batch': 2,
+                                 'query_heads': 8,
+                                 'kv_heads': 2,
+                                 'head_dim': 64,
+                                 'seed': 927,
+                                 'dtypes': {'data': 'float16',
+                                            'statistics': 'float32',
+                                            'routing': 'int32',
+                                            'alibi_slopes': 'float32'},
+                                 'contract_case': 'mixed_filtered_alibi_window',
+                                 'sequence_lengths': [19, 7],
+                                 'query_lengths': [1, 3],
+                                 'block_size': 16,
+                                 'x_factor': 8,
+                                 'filter_by_query_len': True,
+                                 'sliding_window': 8,
+                                 'alibi_slopes': [0.5,
+                                                  0.25,
+                                                  0.125,
+                                                  0.0625,
+                                                  0.5,
+                                                  0.25,
+                                                  0.125,
+                                                  0.0625],
+                                 'k_scale': 0.75,
+                                 'v_scale': 1.25,
+                                 'initial_output_value': 23.5,
+                                 'input_shapes': {'query': [4, 8, 64],
+                                                  'key_cache': [8, 2, 8, 16, 8],
+                                                  'value_cache': [8, 2, 64, 16],
+                                                  'block_table': [2, 2],
+                                                  'seq_lens': [2],
+                                                  'query_start_loc': [3],
+                                                  'alibi_slopes': [8]},
+                                 'output_shapes': {'output': [4, 8, 64]},
+                                 'page_mapping': 'reversed physical page order'}}
+
+
+def control_inputs(h,case,device="cuda"):
+    import torch
+    c=CONTRACT_CASES[case]
+    torch.manual_seed(c["seed"])
+    q,out,kc,vc,pages,lengths,starts,scale = h.make_test_data(2,19,8,2,64,16,8,device,torch.float16)
+    q=torch.randn(4,8,64,device=device,dtype=torch.float16)
+    out=torch.full_like(q,c['initial_output_value'])
+    lengths.copy_(torch.tensor(c['sequence_lengths'],device=device,dtype=torch.int32))
+    starts=torch.tensor([0,1,4],device=device,dtype=torch.int32)
+    pages.copy_((kc.shape[0]-1-torch.arange(pages.numel(),device=device).reshape_as(pages)).int())
+    return (q,out,kc,vc,pages,lengths,starts,scale), {k:(torch.tensor(c[k],device=device,dtype=torch.float32) if k=='alibi_slopes' else c[k]) for k in ('filter_by_query_len','sliding_window','alibi_slopes','k_scale','v_scale')}
+
+
+def install_controls(harness):
+    harness.CONTRACT_CASES = CONTRACT_CASES
+
+    def correctness(case):
+        with checked_modules(harness):
+            module = harness.load_module()
+            args, kwargs = control_inputs(harness, case)
+            getattr(module, SYMBOL)(*args, **kwargs)
+        return True, None
+
+    def performance():
+        rows = []
+        for case in CONTRACT_CASES:
+            mod = harness.load_module()
+            args, kwargs = control_inputs(harness, case)
+            def fn():
+                getattr(mod, SYMBOL)(*args, **kwargs)
+            ms, metadata = checked_benchmark(harness, harness._benchmark_cuda_graph_or_events, fn,
+                        warmup=harness.WARMUP_ITERATIONS, repetition=harness.BENCHMARK_ITERATIONS)
+            rows.append({'test_case_id':case, 'execution_time_ms':ms, **metadata, 'params':CONTRACT_CASES[case]})
+        return rows
+
+    harness.run_contract_correctness = correctness
+    harness.run_contract_performance = performance

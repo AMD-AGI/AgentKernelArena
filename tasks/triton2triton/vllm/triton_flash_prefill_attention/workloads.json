@@ -146,6 +146,126 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "ragged_causal_scale",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "batch": 2,
+        "query_heads": 8,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "seed": 927,
+        "dtypes": {
+          "data": "float16",
+          "statistics": "float32",
+          "routing": "int32"
+        },
+        "contract_case": "ragged_causal_scale",
+        "sequence_lengths": [
+          7,
+          13
+        ],
+        "softmax_scale": 0.17,
+        "is_causal": true,
+        "sliding_window_q": 0,
+        "sliding_window_k": 0,
+        "input_shapes": {
+          "q": [
+            20,
+            8,
+            64
+          ],
+          "k": [
+            20,
+            2,
+            64
+          ],
+          "v": [
+            20,
+            2,
+            64
+          ],
+          "b_start_loc": [
+            2
+          ],
+          "b_seq_len": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "o": [
+            20,
+            8,
+            64
+          ]
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "ragged_bidirectional_windows",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "batch": 2,
+        "query_heads": 8,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "seed": 927,
+        "dtypes": {
+          "data": "float16",
+          "statistics": "float32",
+          "routing": "int32"
+        },
+        "contract_case": "ragged_bidirectional_windows",
+        "sequence_lengths": [
+          7,
+          13
+        ],
+        "softmax_scale": 0.17,
+        "is_causal": false,
+        "sliding_window_q": 3,
+        "sliding_window_k": 5,
+        "input_shapes": {
+          "q": [
+            20,
+            8,
+            64
+          ],
+          "k": [
+            20,
+            2,
+            64
+          ],
+          "v": [
+            20,
+            2,
+            64
+          ],
+          "b_start_loc": [
+            2
+          ],
+          "b_seq_len": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "o": [
+            20,
+            8,
+            64
+          ]
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

@@ -57,3 +57,12 @@ and every output poisoned, then the same captured graph is replayed and fully
 compared against a new reference. Inputs are restored afterward. No reference,
 poisoning, comparison, or extra GPU check is added inside the timed invocation.
 A timing fallback that cannot expose the actual measured outputs fails closed.
+
+Additional scored controls are declared with concrete shapes, dtypes, sequence
+lengths, optional arguments and seeds in `workloads.json`; the protected evaluator
+requires those parameters to match the actual generator. All original scored
+cases remain unchanged. Each added case runs the real public wrapper with the
+same 0.01 gates, ten warmups, 100 samples and checked captured-graph replay.
+The controls cover ragged packed sequences, a nondefault softmax scale, causal
+attention and noncausal bidirectional windows. The independent FP32 reference
+applies causal/window masks before softmax and compares every output element.
