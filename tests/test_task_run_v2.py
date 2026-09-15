@@ -136,6 +136,27 @@ def test_changed_harness_is_rejected_by_official_evaluation(tmp_path):
     assert report["score"] == 0
 
 
+def test_escaping_candidate_retains_a_failed_report_without_evaluating_it(tmp_path):
+    path = package(tmp_path)
+    outside = tmp_path / "external.py"
+    outside.write_text("raise AssertionError('external code must not run')\n")
+
+    def launcher(**kwargs):
+        target = Path(kwargs["workspace"]) / "kernel.py"
+        target.unlink()
+        target.symlink_to(outside)
+
+    complete, workspace = run(tmp_path, path, launcher)
+    report = read_report(workspace)
+    assert complete and report["score"] == 0
+    assert not report["candidate_accepted"]
+    assert report["evaluated_candidate_sources"] is None
+    assert "within workspace" in report["candidate_source_error"]
+    state = workspace.parent / ".task-sessions" / workspace.name
+    assert not list(state.glob("action-*-candidate-*.json"))
+    assert json.loads((state / "completion.json").read_text())["candidate_source_error"]
+
+
 def test_resume_retains_original_baseline_and_performs_new_candidate_checks(tmp_path):
     path = package(tmp_path)
     _, workspace = run(tmp_path, path, lambda **_: None)

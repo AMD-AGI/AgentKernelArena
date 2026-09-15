@@ -511,7 +511,12 @@ def evaluate_task_session(session: "TaskSession", *, eval_config: dict,
                       compilation_error_message=str(exc), benchmark_method_consistent=False)
     result.update(task_schema_version=2, runtime_identity=runtime,
                   initial_task_validation=asdict(initial) if initial is not None else None)
-    result["evaluated_candidate_sources"] = session._candidate_sources(allow_missing=True)
+    source_evidence = session.candidate_source_evidence()
+    result["evaluated_candidate_sources"] = source_evidence["sources"]
+    if source_evidence["error"]:
+        result.update(candidate_source_error=source_evidence["error"],
+                      pass_compilation=False, pass_correctness=False, average_speedup=0.0,
+                      best_optimized_execution_time=0.0, benchmark_method_consistent=False)
     correctness = session.results.get(("task_validation", "baseline", "correctness"))
     if correctness is not None:
         result["baseline_correctness"] = correctness.result.to_mapping()
@@ -626,7 +631,7 @@ def write_task_result(
     for field in (
         'task_schema_version', 'runtime_identity', 'initial_task_validation',
         'baseline_correctness', 'agent_execution', 'framework_error',
-        'evaluated_candidate_sources',
+        'evaluated_candidate_sources', 'candidate_source_error',
     ):
         if field in evaluation_results:
             task_result[field] = evaluation_results[field]

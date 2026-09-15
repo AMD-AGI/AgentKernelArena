@@ -247,6 +247,9 @@ All other task paths are relative to the task workspace root after setup.
 Reject absolute paths, traversal, and symlink resolutions escaping that root.
 Keep directory components when installing generated candidates: a declaration
 of `source/kernel.py` must not be installed as root-level `kernel.py`.
+An invalid submitted path must still produce a failed evaluation report. The
+framework records `candidate_source_error` instead of following an escaping
+path to hash it; that submission cannot receive acceptance or a speedup.
 Repository destinations also count toward paths: `upstream/src/kernel.hip`
 always refers to that path from the workspace root, never an implicitly changed
 repository working directory. Source destinations must not overwrite task

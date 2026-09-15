@@ -42,6 +42,15 @@ def _state_directory(workspace: Path) -> Path:
     return workspace.parent / ".task-sessions" / workspace.name
 
 
+def _completion_record(session: TaskSession, agent_name: str) -> dict:
+    evidence = session.candidate_source_evidence()
+    record = {"version": 1, "task_id": session.spec.task_id, "agent": agent_name,
+              "result_sha256": _result_digest(session.workspace), "candidate_sources": evidence["sources"]}
+    if evidence["error"]:
+        record["candidate_source_error"] = evidence["error"]
+    return record
+
+
 def task_run_is_complete(workspace: Path, expected_task_name: str, agent_name: str) -> bool:
     """A report's mere existence is not a completed framework evaluation."""
     try:
@@ -49,9 +58,7 @@ def task_run_is_complete(workspace: Path, expected_task_name: str, agent_name: s
         completion = json.loads((state / "completion.json").read_text())
         spec = TaskSpec.from_mapping(json.loads((state / "task_spec.json").read_text()), task_id=expected_task_name)
         session = TaskSession.load(spec, workspace, state)
-        return completion == {"version": 1, "task_id": expected_task_name, "agent": agent_name,
-                              "result_sha256": _result_digest(workspace),
-                              "candidate_sources": session._candidate_sources(allow_missing=True)}
+        return completion == _completion_record(session, agent_name)
     except (OSError, ValueError, TypeError, KeyError, RuntimeError, yaml.YAMLError):
         return False
 
@@ -115,10 +122,12 @@ def _run_exports(session: TaskSession, harness, logger: logging.Logger) -> list[
         try:
             verify_workspace_harness(harness, logger=logger)
             session.verify_baseline_sources()
-            if session._candidate_sources(allow_missing=True) != original_candidate:
-                record.update(status="FAIL", error="Exporter modified the evaluated candidate", candidate_unchanged=False)
         except Exception as exc:
             record.update(status="FAIL", error=f"Exporter changed protected task state: {exc}")
+        evidence = session.candidate_source_evidence()
+        if evidence["error"] or evidence["sources"] != original_candidate:
+            record.update(status="FAIL", error=evidence["error"] or "Exporter modified the evaluated candidate",
+                          candidate_unchanged=False)
         results.append(record)
     return results
 
@@ -215,7 +224,5 @@ def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
     if any(row.get("candidate_unchanged") is False for row in exports):
         result["candidate_accepted"] = False
     (workspace / "task_result.yaml").write_text(yaml.safe_dump(result, sort_keys=False))
-    _json_file(state / "completion.json", {"version": 1, "task_id": task_name,
-                                          "agent": agent.value, "result_sha256": _result_digest(workspace),
-                                          "candidate_sources": session._candidate_sources(allow_missing=True)})
+    _json_file(state / "completion.json", _completion_record(session, agent.value))
     return True, workspace

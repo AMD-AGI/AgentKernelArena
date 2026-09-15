@@ -403,10 +403,24 @@ class TaskSession:
                 continue
             paths = path.rglob("*") if edit.scope == "tree" else [path]
             for source in paths:
+                relative = source.relative_to(self.workspace)
+                # A tree declaration does not exempt nested symlinks from the
+                # same containment rule as an individually declared file.
+                resolve_task_path(self.workspace, relative.as_posix())
                 if not source.is_file():
                     continue
-                relative = source.relative_to(self.workspace)
                 if set(relative.parts[:-1]) & runtime_dirs:
                     continue
                 sources[relative.as_posix()] = _source_digest(source)
         return sources
+
+    def candidate_source_evidence(self) -> dict:
+        """Retain a failed submission report even when its paths are invalid.
+
+        An error is explicit and cannot identify an accepted candidate. Never
+        follow an escaping path merely to produce report/completion metadata.
+        """
+        try:
+            return {"sources": self._candidate_sources(allow_missing=True), "error": None}
+        except (OSError, ValueError, RuntimeError) as exc:
+            return {"sources": None, "error": f"{type(exc).__name__}: {exc}"}
