@@ -17,7 +17,8 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run, verify_timed_pair
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -25,6 +26,7 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2flydsl/sglang/extend_attention"
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
+ENTRY = "extend_attention_fwd"
 
 # Per-batch (prefix_len, extend_len) plus head config. Lk == Lq (q/k share head
 # dim); Lv may differ (MLA: Lq=Lk=192, Lv=128 exercises the BLOCK_DPE rope-PE path).
@@ -168,6 +170,40 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_extend_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected, dtype=torch.bfloat16)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite extend-attention output/reference")
+
+
+def _compare_extend_output(actual, expected):
+    import torch
+    _checked_extend_output(actual, expected)
+    diff = (actual.float() - expected.float()).abs().max().item()
+    denom = expected.float().abs().max().item()
+    rel = diff / denom if denom > 0 else diff
+    frac = torch.isclose(actual.float(), expected.float(), atol=1e-2, rtol=1e-2).float().mean().item()
+    if not (frac >= 0.999 or rel <= 1e-2):
+        raise AssertionError(f"Numerical mismatch: original extend gate: rel={rel}, frac={frac}")
+
+
+def _extend_replay_validator(inputs, cfg):
+    q, k, v, kb, vb, qo, kvp, kvi = inputs
+    originals = tuple(value.clone() for value in inputs)
+    def oracle():
+        return reference(q, k, v, kb, vb, kvi, cfg)
+    expected = oracle()
+    def perturb():
+        v.neg_()
+        vb.neg_()
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=oracle, compare=_compare_extend_output)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -184,11 +220,16 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             (q_e, k_e, v_e, o_e, k_buf, v_buf, qo, kvp, kvi, mle) = make_inputs(cfg, "cuda")
+            protected_inputs = (q_e, k_e, v_e, k_buf, v_buf, qo, kvp, kvi)
+            originals = tuple(v.clone() for v in protected_inputs)
+            o_e.fill_(float("nan"))
             _retry_oom(lambda: mod.extend_attention_fwd(
                 q_e, k_e, v_e, o_e, k_buf, v_buf, qo, kvp, kvi,
                 None, cfg["causal"], None, mle, 1.0, 1.0))
             torch.cuda.synchronize()
             ref = reference(q_e, k_e, v_e, k_buf, v_buf, kvi, cfg)
+            require_unchanged(protected_inputs, originals)
+            _checked_extend_output(o_e, ref)
             finite = bool(torch.isfinite(o_e).all().item())
             diff = (o_e.float() - ref.float()).abs().max().item()
             denom = ref.float().abs().max().item()
@@ -222,27 +263,33 @@ def run_performance():
             torch.manual_seed(42 + ti)
             (q_e, k_e, v_e, o_e, k_buf, v_buf, qo, kvp, kvi, mle) = make_inputs(cfg, "cuda")
 
+            replay_validate = _extend_replay_validator((q_e, k_e, v_e, k_buf, v_buf, qo, kvp, kvi), cfg)
+            o_e.fill_(float("nan"))
+
             def fn():
                 mod.extend_attention_fwd(
                     q_e, k_e, v_e, o_e, k_buf, v_buf, qo, kvp, kvi,
                     None, cfg["causal"], None, mle, 1.0, 1.0)
+                return o_e
 
             _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 

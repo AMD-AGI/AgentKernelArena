@@ -52,3 +52,22 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+The original seven BF16 workloads retain prefix/causal/bidirectional/GQA/MLA
+variants, all dimensions and seed42+i. The public function writes the supplied
+BF16[sum(extend),head,Lv] output on the input device; returning another tensor
+does not replace this write contract. Poison the supplied output before checking
+it. Q/K/V, cached K/V, both indptr arrays and cache indices are read-only.
+The finite AND (>=99.9% isclose at1e-2/1e-2 OR normalized max error<=1e-2)
+gate is retained exactly, including raw max error for a zero reference.
+The measured callable returns that same supplied output to the collector; no
+additional candidate call produces the result used as timing evidence. Negate
+both cached and extended values outside timing, poison output and replay the
+same measured call against the original independent attention reference.
+The original10external warmups and100samples remain, with the same graph-first
+collector and allocation boundary for both roles. Final candidate FlyDSL calls
+are audited individually during correctness, outside timing and oracle calls.
+Both declared interfaces (where present) must run FlyDSL operator computation;
+host allocation/layout preparation is allowed, substitute PyTorch/AITER/Triton
+operator execution and protected reference imports are rejected.

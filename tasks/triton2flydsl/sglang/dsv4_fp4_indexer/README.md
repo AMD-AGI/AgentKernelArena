@@ -52,3 +52,24 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+The six original N/dtype cases and seed42+i remain. Quantization must return
+INT8[N,64] packed codes and INT32[N] packed scales on the input device, both
+bit-exact to the original reference. Input x is read-only. The second required
+store entry is still checked on every original case: original random locations,
+pages and bit-exact full cache (including unchanged zero padding). It must not
+modify x or locations. The source quantization thresholds/rounding and reference
+bit expressions are unchanged.
+The original performance scope is quantization only; cache store remains part
+of correctness, and is not silently added to timed work. Check both actual
+measured outputs, then negate x and multiply by4 outside timing so both signed
+codes and scale exponents change; poison both output buffers and replay under
+bit-exact comparison. Restore x before continuing. A cached code or stale scale
+cannot qualify merely because the other output changes.
+The original10external warmups and100samples remain, with the same graph-first
+collector and allocation boundary for both roles. Final candidate FlyDSL calls
+are audited individually during correctness, outside timing and oracle calls.
+Both declared interfaces (where present) must run FlyDSL operator computation;
+host allocation/layout preparation is allowed, substitute PyTorch/AITER/Triton
+operator execution and protected reference imports are rejected.
