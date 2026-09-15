@@ -1012,6 +1012,57 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul_strided/0d8c4cff855c365df5d6",
+      "params": {
+        "function": "test_cast_matmul_strided",
+        "arguments": {
+          "M": 17,
+          "K": 35,
+          "N": 19,
+          "a_dtype": "float64",
+          "b_dtype": "float16",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "test_cast_matmul_strided/fc776da40ae862c238f9",
+      "params": {
+        "function": "test_cast_matmul_strided",
+        "arguments": {
+          "M": 145,
+          "K": 63,
+          "N": 33,
+          "a_dtype": "float16",
+          "b_dtype": "float32",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "test_cast_matmul_strided/43fb831cd1a801e4f25b",
+      "params": {
+        "function": "test_cast_matmul_strided",
+        "arguments": {
+          "M": 7,
+          "K": 17,
+          "N": 9,
+          "a_dtype": "float32",
+          "b_dtype": "float32",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ]
     }
   ],
   "migration": {

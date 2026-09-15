@@ -118,8 +118,6 @@ def set_seed(seed: int = 42) -> None:
 def test_cast_matmul(M, K, N, w_dtype, x_dtype, out_dtype, request):
     set_seed()
 
-    if x_dtype == w_dtype:
-        pytest.skip("skip the same input dtype")
     device = torch.cuda.current_device()
     x_dtype = getattr(torch, x_dtype)
     w_dtype = getattr(torch, w_dtype)
@@ -130,29 +128,39 @@ def test_cast_matmul(M, K, N, w_dtype, x_dtype, out_dtype, request):
     out_torch = torch.matmul(a.to(torch_dtype), b.to(torch_dtype))
     out_triton = torch.empty((M, N), device=device, dtype=torch_dtype)
 
-    # launch kernel
-    BLOCK_M, BLOCK_N, BLOCK_K = 16, 16, 32
-    grid = ((triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N)), 1)
+    from _arena_reference import CastMatmulCheck
+    check = CastMatmulCheck(a, b, out_triton)
+    try:
+        # launch kernel
+        BLOCK_M, BLOCK_N, BLOCK_K = 16, 16, 32
+        grid = ((triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N)), 1)
 
-    matmul_kernel[grid](
-        a, b, out_triton, M, N, K,  #
-        a.stride(0), a.stride(1),  #
-        b.stride(0), b.stride(1),  #
-        out_triton.stride(0), out_triton.stride(1), dot_out_dtype=triton_dtype,  #
-        GROUP_M=8,  #
-        BLOCK_M=BLOCK_M,  #
-        BLOCK_N=BLOCK_N,  #
-        BLOCK_K=BLOCK_K)
+        matmul_kernel[grid](
+            a, b, out_triton, M, N, K,  #
+            a.stride(0), a.stride(1),  #
+            b.stride(0), b.stride(1),  #
+            out_triton.stride(0), out_triton.stride(1), dot_out_dtype=triton_dtype,  #
+            GROUP_M=8,  #
+            BLOCK_M=BLOCK_M,  #
+            BLOCK_N=BLOCK_N,  #
+            BLOCK_K=BLOCK_K)
 
-    ################### save tri_out in result_gold ###################
-    test_case_name = request.node.name
-    sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
-    result_gold[sanitized_key_name] = out_triton.clone().detach().cpu()
-    ###################################################################
+        ################### save tri_out in result_gold ###################
+        test_case_name = request.node.name
+        sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
+        result_gold[sanitized_key_name] = out_triton.clone().detach().cpu()
+        ###################################################################
 
-    result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
-    
-    torch.testing.assert_close(out_torch, out_triton, atol=0.3, rtol=0.01)
+        result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
+
+        torch.testing.assert_close(out_torch, out_triton, atol=0.3, rtol=0.01)
+        check(out_triton)
+        request.node.user_properties.append(('cast_matmul_contract', {
+            'readonly_input_checked': True, 'independent_input_snapshot': True,
+            'full_output_checked': True, 'original_numeric_gate': True}))
+    finally:
+        check.restore()
+
 
 # --- Python wrapper for the kernel ---
 def cast_matmul_triton_wrapper(a_tensor, b_tensor, out_tensor, # out_tensor is C
@@ -253,10 +261,7 @@ def test_performance(M, K, N, a_dtype_str, b_dtype_str, c_dtype_str, dot_acc_tl_
     set_seed()
     device = torch.cuda.current_device() # Use current device
 
-    # Skip same input dtypes as per original test logic for functional part
-    # For performance, we might want to test them, but let's follow original skip.
-    if a_dtype_str == b_dtype_str:
-        pytest.skip("Skipping same input dtypes for A and B for this performance test.")
+    # Equal input dtypes are also valid: both operands are cast to C dtype.
 
     a_torch_dtype = get_torch_dtype(a_dtype_str)
     b_torch_dtype = get_torch_dtype(b_dtype_str)
@@ -336,3 +341,34 @@ def test_save_performance_results():
 
 
 ######################################## HELPERS for Eval ########################################
+
+@pytest.mark.parametrize("M,K,N,a_dtype,b_dtype,out_dtype", [
+    (17, 35, 19, "float64", "float16", "float16"),
+    (145, 63, 33, "float16", "float32", "float32"),
+    (7, 17, 9, "float32", "float32", "float16"),
+])
+def test_cast_matmul_strided(M, K, N, a_dtype, b_dtype, out_dtype, request):
+    """Unscored public stride/tail/group controls; original scored rows unchanged."""
+    from _arena_reference import CastMatmulCheck
+    set_seed()
+    a = torch.randn((M, 2*K), device='cuda', dtype=getattr(torch, a_dtype))[:, ::2]
+    b = torch.randn((K, 2*N), device='cuda', dtype=getattr(torch, b_dtype))[:, ::2]
+    backing = torch.full((M, 2*N+3), -97, device='cuda', dtype=getattr(torch, out_dtype))
+    output = backing[:, 1:2*N:2]
+    protected = torch.ones_like(backing, dtype=torch.bool)
+    protected[:, 1:2*N:2] = False
+    pristine_backing = backing.clone()
+    check = CastMatmulCheck(a, b, output)
+    try:
+        result = cast_matmul_triton_wrapper(a, b, output, M, N, K,
+            getattr(tl, out_dtype), 16, 16, 32, 8, 4)
+        check(result)
+        if not torch.equal(backing[protected], pristine_backing[protected]):
+            raise ValueError('Output padding or prefix was overwritten')
+        request.node.user_properties.append(('cast_matmul_contract', {
+            'readonly_input_checked': True, 'independent_input_snapshot': True,
+            'full_output_checked': True, 'padding_checked': True,
+            'original_numeric_gate': True, 'unscored_public_branch_control': True}))
+    finally:
+        check.restore()
+        backing.copy_(pristine_backing)

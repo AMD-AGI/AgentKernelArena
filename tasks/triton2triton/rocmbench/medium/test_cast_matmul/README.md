@@ -1,35 +1,48 @@
-# test_cast_matmul
+# Cast-before-matmul contract
 
-The on-disk starting functions contain implemented Triton code. The v2 declaration
-therefore uses `implemented` and a frozen `initial_candidate` baseline, regardless
-of this directory's historical suite name. Edit only the declared function scopes
-(and permitted implementation helpers) in `test_cast_matmul.py`. Preserve signatures,
-references, input generation, assertions, test parameters and timing policy.
-Deliver edits to those files; a fenced code block alone is not a submission.
+The initial Triton kernel is implemented. Arena freezes it as the independent
+`initial_candidate` baseline; final submissions must implement the declared
+Triton symbol, with no baseline or reference fallback. Only the configured
+`matmul_kernel` scope and permitted implementation helpers are editable.
 
-## Evaluation contract
+Both A[M,K] and B[K,N] are cast to C's dtype **before** multiplication.
+Input dtypes are float16/float32/float64; output dtypes float16/float32.
+The declared dot accumulator dtype remains a separate kernel parameter.
+Inputs are read-only; C is the complete M-by-N output, and the protected public
+wrapper returns that buffer. All output elements, metadata and finiteness are
+checked against the independent PyTorch product of private input snapshots.
+The original numerical rule remains `atol=0.3, rtol=0.01`.
 
-Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|candidate compile|correctness|performance`
-with one role and one action. Submitted checks use `ARENA_EVAL_PHASE=candidate_evaluation`.
-The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
-`workloads.json` retains 54 original collected cases, including 18 performance cases.
-Collection is checked against this independent manifest. Original correctness
-functions run unchanged. Performance inputs additionally run the task-local
-oracle in `_arena_reference.py`, before timing and against observed timed output.
-Seeds, case parameters, original assertions/tolerances, launch parameters,
-prepare/reset callbacks, warmups and sample counts are unchanged.
+## Cases and timing
 
-Arena times the same Triton path in its independently frozen baseline workspace
-and the edited candidate workspace. The old benchmark helper's optional PyTorch
-peer timing is not an Arena baseline and is omitted by this adapter. Candidate
-measurements still use the canonical helper and its original mean device latency.
-Do not edit `performance_utils_pytest.py` or generated benchmark helpers.
+`workloads.json` retains all 54 original collected cases (36 functional and
+18 scored performance cases), their identities and parameters. Three additional unscored controls cover odd
+M/N/K tails, partial GROUP_M, stride-two inputs, output prefix/padding and
+noncontiguous output strides, yielding 57 total correctness cases. The original
+same-input-dtype skips were a test selection preference, not an invalid kernel
+argument: conversion is defined when operands share a dtype too. Those 24 rows
+now execute real kernels and original numerical checks; none is a skipped pass.
+No shape, seed, kernel, block/grid parameter or accumulator mode was changed.
+Original functional assertions remain, with input-integrity checks and restoration.
 
-Existing skip conditions are retained as visible failures for the complete
-manifest: missing hardware features, unsupported combinations, missing references
-or incomplete execution cannot qualify this task. These require explicit task
-qualification/repair before a campaign; the migration is not a GPU validation.
-A missing/empty final kernel never falls back to a reference or starting kernel.
+Every performance input is checked, then the actual canonical `TimedRun` output
+is checked in full. Untimed replay reverses/perturbs private input values,
+recomputes the oracle, poisons C with NaNs, and replays the captured invocation.
+Inputs and output are restored in `finally`, including failure paths. Timed work
+remains the original preallocated-output wrapper, warmup10/repetition100 and mean
+device latency with canonical graph/event fallback. The optional old PyTorch
+peer benchmark is not Arena's frozen baseline and is not scored. Do not edit
+`performance_utils_pytest.py` or generated helpers. Newly executed formerly
+skipped rows have no historical timing; do not claim an unchanged historical score.
+
+## Running checks
+
+Use `python3 _arena_eval.py validate-task`, or
+`python3 _arena_eval.py baseline|candidate compile|correctness|performance`
+(one role/action). Final submission checks use `ARENA_EVAL_PHASE=candidate_evaluation`.
+Every action emits `arena-eval-v1`; only Arena writes final score/validation reports.
+Deliver files under the configured edit boundary, not just a fenced code block.
+Missing kernels, altered manifests, skips, failed checks and invalid timing fail.
 
 ## Original operator instructions
 
