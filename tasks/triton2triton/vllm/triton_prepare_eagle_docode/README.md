@@ -27,6 +27,17 @@ Triton invocation: replacing it with PyTorch work while retaining an unused JIT
 symbol does not satisfy this task. This boundary changes no input, numerical
 check, allocation, or measured call.
 
+The target must have exactly one innermost `@triton.jit` decorator. Optional
+outer `@triton.autotune(...)` and `@triton.heuristics(...)` decorators may tune
+the native kernel; arbitrary host launcher decorators are forbidden. Tuning
+must preserve the existing mutable-buffer semantics. The task checks the
+loaded object against the runtime's actual JIT/tuning classes, native launch
+methods and declared source function before compile, correctness and performance
+actions. A same-named Python class, subclass or host proxy does not qualify.
+These loading checks run outside timing and apply equally to the frozen baseline
+and candidate. They complement the shared guard; they do not replace numerical
+checks or establish a general Python security sandbox.
+
 
 ## Evaluation contract
 

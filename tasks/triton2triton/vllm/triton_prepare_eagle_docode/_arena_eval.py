@@ -13,6 +13,13 @@ ROOT = Path(__file__).resolve().parent
 MANIFEST = ROOT / 'workloads.json'
 
 
+def kernel_policy():
+    spec = importlib.util.spec_from_file_location('_eagle_kernel_policy', ROOT / '_arena_kernel_policy.py')
+    policy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(policy)
+    return policy
+
+
 def load_manifest():
     data = json.loads(MANIFEST.read_text())
     control_tree = ast.parse((ROOT / '_upstream_controls.py').read_text())
@@ -44,10 +51,8 @@ def inspect_candidate(data, *, require_implemented=False):
                 isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant) and n.value.value is Ellipsis)
                 for n in body) or (len(body)==1 and isinstance(body[0],ast.Raise))
             states.append(not empty)
-            if target['jit'] and node is not None and not any(
-                    ast.unparse(d).endswith('.jit') or ast.unparse(d).startswith('triton.jit(')
-                    for d in node.decorator_list):
-                raise ValueError(f'{source}:{target["name"]} must remain a Triton JIT kernel')
+            if target['jit'] and node is not None:
+                kernel_policy().inspect_definition(node)
     if not states or (any(states) and not all(states)):
         raise ValueError('Missing or partially implemented declared candidate')
     state = 'implemented' if all(states) else 'unimplemented'
