@@ -77,3 +77,15 @@ fixed metadata,10external warmups/100samples, diagnostic reference10warmups and
 graph policy are unchanged. No metadata construction moves into timed work.
 The unchanged source uses older FlyDSL APIs; record its pinned compatible image
 in full GPU qualification, and do not infer support for another runtime.
+
+
+The candidate audit permits the original launch-metadata calculation: slices
+and int32/int64 conversions of the protected `seq_offsets`, pairwise subtraction
+of those integer offsets, the maximum group length, and scalar extraction.
+The public entry and separately prepared entry pass their actual offset argument
+as the sole provenance root. Only integer views/conversions derived from that
+root inherit this permission. Arbitrary integer allocations, dense/jagged/bias
+values, and float casts cannot use this arithmetic exception; overwriting tracked
+metadata is rejected. Both candidate paths still require a FlyDSL launch and
+retain their ordinary output/input checks. The original group sizes, mathematical
+reference, numerical gate and prepared timing scope are unchanged.

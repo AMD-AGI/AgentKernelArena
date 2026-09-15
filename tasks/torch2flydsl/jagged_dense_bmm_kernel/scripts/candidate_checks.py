@@ -25,25 +25,67 @@ PREPARATION_OPS = frozenset({
 })
 
 
+# Only these value-preserving operations carry the caller's integer offset
+# provenance. Allocation/fill/copy and float conversions do not create metadata.
+METADATA_VIEWS = frozenset({
+    "aten::view", "aten::_unsafe_view", "aten::reshape", "aten::alias",
+    "aten::detach", "aten::as_strided", "aten::transpose", "aten::t",
+    "aten::permute", "aten::unsqueeze", "aten::squeeze", "aten::slice",
+    "aten::select", "aten::expand", "aten::narrow", "aten::contiguous",
+    "aten::to", "aten::_to_copy", "aten::clone",
+})
+METADATA_ARITHMETIC = frozenset({
+    ("aten::sub", "Tensor"), ("aten::max", ""),
+    ("aten::_local_scalar_dense", ""),
+})
+
+
 @contextmanager
-def candidate_preparation_only():
+def candidate_preparation_only(metadata_inputs=()):
+    import torch
     from torch.utils._python_dispatch import TorchDispatchMode
+    from torch.utils._pytree import tree_leaves
+
+    integer_types = {torch.int32, torch.int64}
+    # Strong references prevent object-ID reuse; versions invalidate aliases
+    # whose contents were overwritten after deriving them from the offsets.
+    tracked = {}
+    def remember(value):
+        if isinstance(value, torch.Tensor) and value.dtype in integer_types:
+            tracked[id(value)] = (value, value._version)
+    for value in metadata_inputs:
+        remember(value)
 
     class PreparationOnly(TorchDispatchMode):
         def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+            kwargs = kwargs or {}
             name = func._schema.name
-            if name not in PREPARATION_OPS:
+            tensors = [x for x in tree_leaves((args, kwargs)) if isinstance(x, torch.Tensor)]
+            def is_metadata(value):
+                entry = tracked.get(id(value))
+                return (entry is not None and entry[0] is value
+                        and value.dtype in integer_types and entry[1] == value._version)
+            metadata_only = bool(tensors) and all(is_metadata(x) for x in tensors)
+            operation = (name, func._schema.overload_name)
+            metadata_arithmetic = metadata_only and operation in METADATA_ARITHMETIC
+            if func._schema.is_mutable and any(id(x) in tracked for x in tensors):
+                raise RuntimeError("Candidate attempted to overwrite protected offset metadata")
+            if name not in PREPARATION_OPS and not metadata_arithmetic:
                 raise RuntimeError(
                     f"Candidate issued non-preparation PyTorch operation {name}; "
                     "operator computation must use FlyDSL kernels"
                 )
-            return func(*args, **(kwargs or {}))
+            result = func(*args, **kwargs)
+            if metadata_only and (name in METADATA_VIEWS or metadata_arithmetic):
+                for value in tree_leaves(result):
+                    remember(value)
+            return result
 
     with PreparationOnly():
         yield
 
 
-def checked_candidate_invocation(fn, observed, *args, **kwargs):
+def checked_candidate_invocation(fn, observed, *args, _metadata_inputs=(), **kwargs):
     """Require FlyDSL launch evidence from this candidate call, not the oracle."""
     seen = set()
     previous = sys.getprofile()
@@ -55,7 +97,7 @@ def checked_candidate_invocation(fn, observed, *args, **kwargs):
             seen.add(frame.f_globals["__name__"] + "." + owner)
     try:
         sys.setprofile(profile)
-        with candidate_preparation_only():
+        with candidate_preparation_only(_metadata_inputs):
             result = fn(*args, **kwargs)
     finally:
         sys.setprofile(previous)
@@ -91,8 +133,17 @@ def audit_candidate_calls(h):
                 if not (name.startswith("flydsl_") or name == "jagged_dense_bmm") or not callable(target):
                     continue
                 @wraps(target)
-                def checked(*args, __target=target, **kwargs):
-                    return checked_candidate_invocation(__target, observed, *args, **kwargs)
+                def checked(*args, __target=target, __entry=name, **kwargs):
+                    # These positions belong to the protected public/prepared
+                    # interfaces. Dense/jagged/bias tensors never become roots.
+                    offset_position, offset_name = {
+                        "flydsl_jagged_dense_bmm": (3, "seq_offsets"),
+                        "jagged_dense_bmm": (4, "SEQ_OFFSETS"),
+                    }.get(__entry, (None, None))
+                    offsets = (args[offset_position] if offset_position is not None
+                               and len(args) > offset_position else kwargs.get(offset_name))
+                    return checked_candidate_invocation(
+                        __target, observed, *args, _metadata_inputs=(offsets,), **kwargs)
                 setattr(proxy, name, checked)
             return proxy
         return mod

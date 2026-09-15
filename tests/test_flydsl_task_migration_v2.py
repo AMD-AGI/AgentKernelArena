@@ -7076,7 +7076,7 @@ def test_jagged_audit_proxy_keeps_internal_calls_and_checks_lowlevel_prepared_en
     def public():lowlevel()
     original=types.SimpleNamespace(jagged_dense_bmm=lowlevel,flydsl_jagged_dense_bmm=public)
     h=types.SimpleNamespace(ARENA_PROVIDED_BASELINE=False,KERNEL_FILE='kernel.py',_load_module=lambda *a:original)
-    def checked(fn,observed,*a,**kw):
+    def checked(fn,observed,*a,_metadata_inputs=(),**kw):
         observed.add(fn.__name__)
         return fn(*a,**kw)
     real_checked=audit.checked_candidate_invocation
@@ -7145,3 +7145,62 @@ def test_qk_import_lifetime_survives_alias_reload_until_action_end(tmp_path):
     # the keeper lasts for the action, not an indefinite global framework cache.
     alive.clear();gc.collect();assert ref() is None
     sys.modules.pop('qk_lifetime_fixture',None)
+
+
+@pytest.mark.parametrize("dtype", ["int32", "int64"])
+def test_jagged_offset_provenance_permits_original_group_length_expression(dtype):
+    import torch
+    audit = module(ROOT/'tasks/torch2flydsl/jagged_dense_bmm_kernel/scripts/candidate_checks.py')
+    offsets = torch.tensor([0, 0, 2, 7, 8], dtype=getattr(torch, dtype))
+    with audit.candidate_preparation_only((offsets,)):
+        derived = offsets.clone().view(-1)
+        lengths = derived[1:].to(torch.int64) - derived[:-1].to(torch.int64)
+        assert int(lengths.max().item()) == 5
+
+
+@pytest.mark.parametrize("bad", ["unmarked_integer", "dense_float", "jagged_float", "bias_float",
+    "float_cast", "float_roundtrip", "mixed_sources", "copied_dense", "overwritten_derived",
+    "float_alias_overwrite", "unrelated_max", "unrelated_item", "offset_sum"])
+def test_jagged_offset_provenance_does_not_admit_tensor_compute(bad):
+    import torch
+    audit = module(ROOT/'tasks/torch2flydsl/jagged_dense_bmm_kernel/scripts/candidate_checks.py')
+    offsets = torch.tensor([0, 2, 4], dtype=torch.int32)
+    dense = torch.ones(3)
+    integer = torch.ones(3, dtype=torch.int64)
+    with pytest.raises(RuntimeError, match="non-preparation|overwrite protected"):
+        with audit.candidate_preparation_only((offsets,)):
+            if bad == "unmarked_integer": integer - integer
+            elif bad in {"dense_float", "jagged_float", "bias_float"}: dense - dense
+            elif bad == "float_cast": offsets.float() - offsets.float()
+            elif bad == "float_roundtrip": offsets.float().to(torch.int64) - offsets.to(torch.int64)
+            elif bad == "mixed_sources": offsets.to(torch.int64) - integer
+            elif bad == "copied_dense":
+                target = offsets.clone(); target.copy_(dense); target - offsets
+            elif bad == "overwritten_derived":
+                target = offsets.clone(); target.fill_(1); target - offsets
+            elif bad == "float_alias_overwrite":
+                target = offsets.clone(); target.view(torch.float32).fill_(1); target - offsets
+            elif bad == "unrelated_max": integer.max()
+            elif bad == "unrelated_item": integer[0].item()
+            elif bad == "offset_sum": offsets.sum()
+
+
+@pytest.mark.parametrize("entry,position,key", [("flydsl_jagged_dense_bmm",3,"seq_offsets"), ("jagged_dense_bmm",4,"SEQ_OFFSETS")])
+@pytest.mark.parametrize("keyword", [False, True])
+def test_jagged_proxy_supplies_only_actual_protected_offset_argument(entry, position, key, keyword, monkeypatch):
+    import torch,types
+    audit=module(ROOT/'tasks/torch2flydsl/jagged_dense_bmm_kernel/scripts/candidate_checks.py')
+    offsets=torch.tensor([0,2,4],dtype=torch.int32);data=torch.ones(4)
+    def target(*args,**kw): return None
+    original=types.SimpleNamespace(**{entry:target})
+    h=types.SimpleNamespace(ARENA_PROVIDED_BASELINE=False,KERNEL_FILE='kernel.py',_load_module=lambda *a:original)
+    def checked(fn,observed,*a,_metadata_inputs=(),**kw):
+        assert len(_metadata_inputs)==1 and _metadata_inputs[0] is offsets
+        with audit.candidate_preparation_only(_metadata_inputs):
+            assert int((offsets[1:]-offsets[:-1]).max().item())==2
+            with pytest.raises(RuntimeError,match='non-preparation'): data-data
+    monkeypatch.setattr(audit,'checked_candidate_invocation',checked)
+    with audit.audit_candidate_calls(h):
+        proxy=h._load_module(None,'kernel.py',None)
+        if keyword: getattr(proxy,entry)(*[data]*position,**{key:offsets})
+        else: getattr(proxy,entry)(*[data]*position,offsets)
