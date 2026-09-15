@@ -31,6 +31,12 @@ def install_cli_auth() -> None:
         return ['model_provider="openai"']
 
     original_environment = codex.CodexBackend._child_environment
+    original_thread_options = codex.CodexBackend._thread_start_options
+    def thread_options(self, sdk, spec):
+        options = original_thread_options(self, sdk, spec)
+        options["model_provider"] = "openai"
+        return options
+
     def child_environment(self, base=None):
         env = original_environment(self, base)
         destination = Path(env["CODEX_HOME"]) / "auth.json"
@@ -46,3 +52,4 @@ def install_cli_auth() -> None:
 
     codex._provider_overrides = native_provider
     codex.CodexBackend._child_environment = child_environment
+    codex.CodexBackend._thread_start_options = thread_options

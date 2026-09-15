@@ -18,7 +18,7 @@ import json, os, sys
 from pathlib import Path
 from agents.forge.codex_auth import install_cli_auth
 from agents.forge.upstream import verify_release
-from kernelforge.agent_backends.base import AgentRuntimeConfig
+from kernelforge.agent_backends.base import AgentRuntimeConfig, AgentRunSpec
 from kernelforge.agent_backends.codex import CodexBackend
 from kernelforge.agent_backends import codex
 from kernelforge.llm import LlmGateway
@@ -63,6 +63,9 @@ else:
         assert copied.read_text() == 'refreshed by SDK'
         assert json.loads((source/'auth.json').read_text()) == payload
         assert codex._provider_overrides(LlmGateway()) == ['model_provider="openai"']
+        options = backend._thread_start_options(codex._load_codex_sdk(),
+                    AgentRunSpec(cwd=str(isolated), model='test', user_prompt='test', system_prompt='test'))
+        assert options['model_provider'] == 'openai'
         try:
             codex._provider_overrides(LlmGateway(base_url='https://example.invalid', key_env='OTHER'))
         except RuntimeError:
