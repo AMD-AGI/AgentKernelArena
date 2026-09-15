@@ -57,3 +57,23 @@ operator is `flydsl_jagged_dense_bmm`; any additional declared callables used by
 remain required. Legacy build/compile helpers are optional implementation details;
 no builder return protocol is required by this task. A candidate may choose its
 own internal compilation helpers, while implementing all tested work in FlyDSL.
+
+
+The original five jagged-group cases (including empty groups), BF16 source/model,
+N=K=128, seed20260601 and normalized max error<=0.01 remain unchanged. Zero
+reference uses raw maximum error. Output must be finite BF16[total_M,N] on the
+input device; jagged rows, dense weights, biases and INT32 offsets are read-only.
+The original performance entry is the prepared `jagged_dense_bmm` launch, while
+ordinary correctness also calls `flydsl_jagged_dense_bmm`. Both paths now run
+correctness checks under the original model/gate; final FlyDSL auditing covers
+both calls. The module proxy keeps their internal calls intact. Preserve the
+existing prepared launch interface: BLOCK_M, flyc.from_dlpack and fx.Stream
+are used for stable padded output/operand views before timing; the low-level
+function receives these views, dense/bias data and fixed group metadata.
+Check the actual measured prepared-launch output, then negate dense weights
+and biases outside timing, poison output and replay the same measured call.
+Restore all inputs afterwards. The prepared function, padded output allocation,
+fixed metadata,10external warmups/100samples, diagnostic reference10warmups and
+graph policy are unchanged. No metadata construction moves into timed work.
+The unchanged source uses older FlyDSL APIs; record its pinned compatible image
+in full GPU qualification, and do not infer support for another runtime.

@@ -527,6 +527,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
             fn = _RemoveStandardQuantChecks().visit(fn)
         if name in {"rmsnorm2d_dynamicquant_kernel", "rmsnorm2d_smoothquant_kernel"}:
             fn = _RemoveRmsDynamicQuantChecks().visit(fn)
+        if name == "jagged_dense_bmm_kernel":
+            fn = _RemoveJaggedChecks().visit(fn)
         if name == "moe_sorting_kernel":
             fn = _RemoveSortingChecks().visit(fn)
         if name == "qk_norm_rope_quant_kernel":
@@ -6990,3 +6992,106 @@ def test_sorting_original_known_answers_sources_and_timing_fingerprints():
     result=invoke(task,'validate-task');assert result.passed,result.reason
     for rel in ['scripts/candidate_checks.py','task_runtime.py']:assert (task/rel).read_bytes()==(ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'/rel).read_bytes()
     assert (task/'scripts/replay_checks.py').read_bytes()==(ROOT/'tasks/triton2flydsl/sglang/merge_state/scripts/replay_checks.py').read_bytes()
+
+
+class _RemoveJaggedChecks(_RemoveSglangElementwiseChecks):
+    def visit_Expr(self,node):
+        if isinstance(node.value,ast.Call) and getattr(node.value.func,'id',None) in {'_checked_jagged_output','_check_prepared_jagged'}:return None
+        return super().visit_Expr(node)
+
+
+@pytest.mark.parametrize('function,behavior',[(fn,bad) for fn in ['run_correctness','run_benchmark','arena_benchmark'] for bad in ['correct','prepared_wrong','no_write','wrong','shape','dtype','nan','jagged_modified','dense_modified','bias_modified','offsets_modified','measured_wrong','replay_wrong','cached'] if (fn!='run_correctness' or bad not in {'measured_wrong','replay_wrong','cached'}) and (fn=='run_correctness' or bad not in {'shape','dtype'})])
+def test_jagged_public_and_actual_prepared_launch_contracts(function,behavior,monkeypatch,tmp_path):
+    import torch,types,math
+    task=ROOT/'tasks/torch2flydsl/jagged_dense_bmm_kernel';real=module(task/'model.py');checks=module(task/'scripts/replay_checks.py')
+    torch.manual_seed(4);a=torch.randn(3,4,dtype=torch.bfloat16);b=torch.randn(3,4,4,dtype=torch.bfloat16);bias=torch.randn(3,4,dtype=torch.bfloat16);offsets=torch.tensor([0,0,2,3],dtype=torch.int32);inputs=(a,b,bias,offsets);originals=tuple(x.clone() for x in inputs);model=real.Model();cached=model(*inputs);phase={'name':'setup','prepared':0}
+    class View:
+        def __init__(self,t):self.tensor=t
+        def mark_layout_dynamic(self,**kw):return self
+    def compute(prepared):
+        out=model(*inputs)
+        if function=='run_correctness' or phase['name']=='measured':
+            if behavior=='wrong' or prepared and behavior=='prepared_wrong':out.fill_(100)
+            if behavior=='nan':out.fill_(float('nan'))
+            if behavior=='jagged_modified':a.add_(1)
+            if behavior=='dense_modified':b.add_(1)
+            if behavior=='bias_modified':bias.add_(1)
+            if behavior=='offsets_modified':offsets[1]=1
+            if not prepared:
+                if behavior=='shape':out=out.reshape(-1)
+                if behavior=='dtype':out=out.float()
+        if behavior==phase['name']+'_wrong':out.fill_(100)
+        if phase['name']=='replay' and behavior=='cached':out=cached.clone()
+        return out
+    def lowlevel(c,av,dense,biasflat,seq,batches,maxlen,**kw):
+        phase['prepared']+=1
+        if behavior!='no_write':c.tensor[:3].copy_(compute(True))
+    kmod=types.SimpleNamespace(BLOCK_M=4,flyc=types.SimpleNamespace(from_dlpack=View),fx=types.SimpleNamespace(Stream=lambda x:x),jagged_dense_bmm=lowlevel,flydsl_jagged_dense_bmm=lambda *a:compute(False))
+    class Model:
+        def to(self,*a):return self
+        def eval(self):return self
+        def __call__(self,*a):return model(*a)
+    mmod=types.SimpleNamespace(Model=Model,get_init_inputs=lambda:[])
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run=None):
+        calls.append((warmup,repetition));phase['name']='measured'
+        if timed_run is None:fn()
+        else:
+            timed_run.outputs=fn();timed_run.bound=True
+            def replay():
+                phase['name']='replay'
+                try:return fn()
+                finally:phase['name']='setup'
+            timed_run.rerun=replay
+        phase['name']='setup'
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None);monkeypatch.setattr(torch.cuda,'current_stream',lambda:None)
+    ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':benchmark,'require_tensor_contract':checks.require_tensor_contract,'require_unchanged':checks.require_unchanged,'verify_timed_run':checks.verify_timed_run,'math':math,'json':json,'Path':Path,'N':4,'K':4,'REL_GATE':.01,
+        '_KERNEL_DIR':str(tmp_path),'KERNEL_FILE':'kernel.py','MODEL_FILE':'model.py','_load_module':lambda directory,filename,alias:mmod if filename=='model.py' else kmod,'_make_inputs':lambda *a:inputs,'SHAPES':[dict(name='controlled',m_per_group=[0,2,1])]}
+    _harness_functions(task,{function,'_make_candidate_runner','_make_reference_runner','_checked_jagged_output','_check_prepared_jagged','_jagged_replay_validator'},ns)
+    if behavior=='correct':
+        result=ns[function](verbose=False)
+        assert phase['prepared']>0
+        if function!='run_correctness':
+            report=json.loads((tmp_path/'build/performance_report.json').read_text()) if function=='run_benchmark' else result
+            assert report[0]['timed_output_correctness']==report[0]['replay_correctness']=='PASS'
+            assert calls==[(0,100),(10,100)]
+        checks.require_unchanged(inputs,originals)
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+
+
+def test_jagged_audit_proxy_keeps_internal_calls_and_checks_lowlevel_prepared_entry(monkeypatch):
+    import types,torch
+    task=ROOT/'tasks/torch2flydsl/jagged_dense_bmm_kernel';audit=module(task/'scripts/candidate_checks.py')
+    observed_calls=[]
+    def lowlevel():observed_calls.append('original lowlevel')
+    def public():lowlevel()
+    original=types.SimpleNamespace(jagged_dense_bmm=lowlevel,flydsl_jagged_dense_bmm=public)
+    h=types.SimpleNamespace(ARENA_PROVIDED_BASELINE=False,KERNEL_FILE='kernel.py',_load_module=lambda *a:original)
+    def checked(fn,observed,*a,**kw):
+        observed.add(fn.__name__)
+        return fn(*a,**kw)
+    real_checked=audit.checked_candidate_invocation
+    monkeypatch.setattr(audit,'checked_candidate_invocation',checked)
+    with audit.audit_candidate_calls(h) as seen:
+        proxy=h._load_module(None,'kernel.py',None);assert proxy is not original
+        proxy.flydsl_jagged_dense_bmm();proxy.jagged_dense_bmm()
+    assert seen=={'public','lowlevel'} and observed_calls==['original lowlevel']*2
+    assert original.flydsl_jagged_dense_bmm is public and original.jagged_dense_bmm is lowlevel
+    # Real dispatch guard for the separately prepared entry, no profiler claim.
+    with pytest.raises(RuntimeError,match='non-preparation'):
+        real_checked(lambda:torch.ones(2)+1,set())
+
+
+def test_jagged_original_group_model_metadata_allocation_and_timing_unchanged():
+    hashes={'_resolve_kernel_dir': 'ebfabcdd05c1a3f254b035e42b1783890c241f92613bda21ccb77fa064039f1a', '_load_module': 'caae8222257891caee15a695bfc7cff029ec363f792c4331f20ff92c86efb520', '_make_inputs': '1ae141808afc58ff64fe26b83c2f135e2ed979ad81430e1a4a7d541fb0a25078', '_make_candidate_runner': '9960a352d160ccd8d0650d18c52331555d4a87721a6866ace146e847ebac61ba', '_make_reference_runner': 'ec656ea369ffe469d588c3f9aff130255ec73d0c725d0f35d231660a8dc8df23', 'run_correctness': '674878b422bb6d6a7259225898d3ed954676ff55f0a7ad05c65391f5e65aec8c', 'run_benchmark': '90f2bcf3ef7f094872a8eb79b87b6c707668edcd7721867428cf2692d55b5ae4', '_require_candidate_outputs': 'e5f69466d2ec4497fe192bf53ce8d7b034bb14cd59272fc7b1dea160a574e09e', 'arena_benchmark': 'c9cf2369799a39a93e2b9c6768c4a2020887b123e00dfef122f7391f4c71cdbc'}
+    task=ROOT/'tasks/torch2flydsl/jagged_dense_bmm_kernel'
+    for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
+        if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
+            normalized=_RemoveJaggedChecks().visit(fn)
+            assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
+    result=invoke(task,'validate-task');assert result.passed,result.reason;assert len(result.cases)==5
+    peer=ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'
+    for rel in ['scripts/replay_checks.py','task_runtime.py']:assert (task/rel).read_bytes()==(peer/rel).read_bytes()

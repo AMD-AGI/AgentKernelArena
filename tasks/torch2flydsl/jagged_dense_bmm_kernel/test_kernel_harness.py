@@ -19,7 +19,8 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -145,6 +146,43 @@ def _make_reference_runner(jagged, dense, bias, m_per_group):
     return launch
 
 
+def _checked_jagged_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite jagged GEMM output/reference")
+    delta = (actual.float() - expected.float()).abs().max().item()
+    denom = expected.float().abs().max().item()
+    rel = delta / denom if denom > 0 else delta
+    if rel > REL_GATE:
+        raise AssertionError(f"Numerical mismatch: original jagged gate: rel={rel}")
+
+
+def _check_prepared_jagged(kmod, inputs, expected, shape):
+    originals = tuple(value.clone() for value in inputs)
+    run = _make_candidate_runner(kmod, *inputs, max(shape["m_per_group"]))
+    actual = run()
+    require_unchanged(inputs, originals)
+    _checked_jagged_output(actual, expected)
+
+
+def _jagged_replay_validator(model, inputs):
+    originals = tuple(value.clone() for value in inputs)
+    def oracle():
+        return model(*inputs)
+    expected = oracle()
+    def perturb():
+        # Flip both product and bias, preserving original group offsets and
+        # the prepared metadata, allocation and launch boundaries.
+        inputs[1].neg_()
+        inputs[2].neg_()
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=oracle, compare=_checked_jagged_output)
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -162,11 +200,16 @@ def run_correctness(verbose=True):
     for shape in SHAPES:
         try:
             jagged, dense, bias, seq_offsets = _make_inputs(shape["m_per_group"])
+            protected_inputs = (jagged, dense, bias, seq_offsets)
+            originals = tuple(v.clone() for v in protected_inputs)
             with torch.no_grad():
                 ref = model(jagged, dense, bias, seq_offsets)
             out = kmod.flydsl_jagged_dense_bmm(jagged, dense, bias, seq_offsets)
             torch.cuda.synchronize()
 
+            require_unchanged(protected_inputs, originals)
+            _checked_jagged_output(out, ref)
+            _check_prepared_jagged(kmod, protected_inputs, ref, shape)
             ref_f, out_f = ref.float(), out.float()
             denom = ref_f.abs().max().item()
             max_delta = (ref_f - out_f).abs().max().item()
@@ -212,6 +255,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
     print("-" * 56)
     for idx, shape in enumerate(SHAPES):
         jagged, dense, bias, seq_offsets = _make_inputs(shape["m_per_group"])
+        replay_validate = _jagged_replay_validator(model, (jagged, dense, bias, seq_offsets))
         B = len(shape["m_per_group"])
         total_M = sum(shape["m_per_group"])
         run_kernel = _make_candidate_runner(
@@ -232,9 +276,12 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             run_kernel()
         torch.cuda.synchronize()
 
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            run_kernel, warmup=0, repetition=iters
+            run_kernel, warmup=0, repetition=iters, timed_run=timed
         )
+
+        kernel_bench_meta.update(replay_validate(timed))
 
         with torch.no_grad():
             ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
@@ -349,6 +396,7 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
     print("-" * 56)
     for idx, shape in enumerate(SHAPES):
         jagged, dense, bias, seq_offsets = _make_inputs(shape["m_per_group"])
+        replay_validate = _jagged_replay_validator(model, (jagged, dense, bias, seq_offsets))
         B = len(shape["m_per_group"])
         total_M = sum(shape["m_per_group"])
         run_kernel = _make_candidate_runner(
@@ -369,9 +417,12 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
             run_kernel()
         torch.cuda.synchronize()
 
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            run_kernel, warmup=0, repetition=iters
+            run_kernel, warmup=0, repetition=iters, timed_run=timed
         )
+
+        kernel_bench_meta.update(replay_validate(timed))
 
         with torch.no_grad():
             ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
