@@ -85,6 +85,7 @@ def probe() -> dict:
         (modules.canonical_correctness, "_run_canonical_suite", {"workspace_dir", "timeout_cap_sec"}),
         (modules.seed, "generate_seed", {"spec", "dest"}),
         (modules.port_loop, "build_port_program_md", {"spec", "driver_path"}),
+        (modules.port_loop, "run_port_loop", {"spec", "driver_path", "config", "stop_at_unix"}),
         (modules.runner, "_ensure_git_committed", {"workspace", "message", "paths", "branch"}),
         (modules.agent, "make_agent_fn", {"source_files", "target_functions", "task_type", "correctness_only",
                                           "usage", "insession_gate", "interposed_driver_path"}),
@@ -278,6 +279,9 @@ def install_hooks(plan: dict) -> None:
         return program_text(plan, prefix=str(prefix), port=True)
 
     modules.port_loop.build_port_program_md = port_program
+    from agents.forge.port_budget import bound_port
+    modules.port_loop.run_port_loop = bound_port(modules.port_loop.run_port_loop, plan)
+    modules.runner.run_port_loop = modules.port_loop.run_port_loop
     original_commit = modules.runner._ensure_git_committed
 
     def commit(workspace, message, paths, *, branch=""):

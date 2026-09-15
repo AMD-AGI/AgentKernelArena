@@ -464,7 +464,8 @@ def test_installed_upstream_probe_and_real_rewrite_orchestration(tmp_path):
     context, plan, plan_path = fixture_task(tmp_path, initial_state="unimplemented")
     engine = Path(plan["engine_root"])
     plan.update(workflow="rewrite", deadline_unix=time.time()+3600,
-                program=str(engine / "arena_program.md"))
+                program=str(engine / "arena_program.md"),
+                agent_config={"initialization_budget_fraction": .4})
     plan_path.write_text(json.dumps(plan))
     for file in (engine / "source").glob("*.py"):
         file.unlink()
@@ -477,17 +478,18 @@ import asyncio, json, os, subprocess
 from pathlib import Path
 from agents.forge import upstream, bridge
 from kernelforge.config import Config
-from kernelforge.rewrite_by_flydsl import runner
+from kernelforge.rewrite_by_flydsl import runner, port_loop
 from kernelforge.rewrite_by_flydsl.port_loop import PortResult
 from kernelforge.loop import canonical_correctness
 plan = json.loads(Path(os.environ["ARENA_FORGE_PLAN"]).read_text())
 root = Path(plan["engine_root"])
 assert upstream.probe()["rewrite_target"] == "flydsl"
-upstream.install_hooks(plan)
-async def port(spec, driver_path, config, **kwargs):
+async def port(spec, driver_path, config, *, stop_at_unix=None, **kwargs):
     # Real seed + preflight have already run. Inspect the adapter's program and
     # materialize two simple files for the CPU-only task evaluator.
     prompt = upstream.program_text(plan, port=True)
+    assert stop_at_unix == plan['phase_deadline_unix']
+    assert stop_at_unix < plan['deadline_unix'] - 1800
     assert "not_a_builder" in prompt
     assert "build_arbitrary" not in prompt
     candidate = Path(spec.flydsl_kernel)
@@ -511,7 +513,10 @@ def optimize(spec, driver_path, config, **kwargs):
         source_files=[str(root/'kernel.py'), str(root/'helper.py')], program_md_file=plan['program'],
         target_functions=['not_a_builder'], gpu_target='gfx950', gpu_type='mi355x', kernel_backend='flydsl', task_type='image_kernel')
     return {"best_ms":2, "mean_case_speedup":2, "llm_usage_complete":True}
-runner.run_port_loop = port
+port_loop.run_port_loop = port
+upstream.install_hooks(plan)
+assert runner.run_port_loop is port_loop.run_port_loop
+assert runner.run_port_loop.__wrapped__ is port
 runner.run_optimize = optimize
 result = runner.run_rewrite(op_name="operator-different-from-function", source_kernel=str(root / "arena_source_hint.py"),
         driver=str(root / "arena_forge_driver.py"), workspace=str(root), experiments_dir=str(root / "forge_experiments"),
@@ -522,6 +527,9 @@ assert result["port_ok"], result
 assert result["success"], result
 assert result["applyback_required"] is False
 assert result["builder_symbol"] == "not_a_builder"
+assert 'phase_deadline_unix' not in plan
+budget = json.loads(Path(plan['result']).with_name('port_budget.json').read_text())
+assert budget['status'] == 'PASS' and budget['attempts'] == 1
 print("UPSTREAM_ADAPTER_CPU_TEST_PASS")
 '''
     env = os.environ.copy()

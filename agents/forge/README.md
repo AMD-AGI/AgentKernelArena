@@ -32,6 +32,13 @@ another Arena agent or require a task-specific driver, category, factory name,
 or initialization command. `rewrite` explicitly requests initialization and
 selects the appropriate path for the declared target language.
 
+`initialization_budget_fraction` bounds both FlyDSL PORT and HIP/Triton
+initialization against the remaining shared campaign time. It reserves the
+remainder for native search, whose own initial measurements, analysis and round
+admission also take time. FlyDSL's `port_budget.json` records the phase deadline
+and outcome. A correct PORT is still not evidence of a completed search round;
+the native iteration records and final Arena acceptance establish that.
+
 ### HIP/Triton initialization
 
 The examined loop can continue after its initial candidate benchmark fails when
