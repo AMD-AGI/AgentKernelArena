@@ -926,3 +926,64 @@ def test_fused_manifest_states_exercise_bias_channels_slope_and_scale(relative):
     zero[0]['params']['operator']['bias'].update(offset=0., step=0.)
     with pytest.raises(ValueError, match='nonzero bias'):
         helper.validate_controls(zero)
+
+
+@pytest.mark.parametrize('relative', ['hip2hip/gpumode/FusedLeakyReLU',
+                                      'torch2hip/gpumode/10190_FusedLeakyReLU'])
+@pytest.mark.parametrize('defect', ['none', 'omit_bias', 'wrong_channel', 'fixed_slope', 'fixed_scale'])
+def test_fused_timed_replay_uses_nonzero_manifest_reference(relative, defect, monkeypatch):
+    """A correct eager call cannot excuse wrong fused math on the timed replay.
+
+    CPU control-plane test: the bound replay stands in for the captured graph;
+    real graph capture and HIP execution require the separate GPU validator.
+    """
+    root = ROOT / 'tasks' / relative
+    controls = import_path(root / 'eval_tools/case_controls.py')
+    replay = import_path(root / 'eval_tools/replay_validation.py')
+    runner = import_path(root / 'eval_tools/evaluate.py')
+    args = options(yaml.safe_load((root / 'config.yaml').read_text()))
+    model = import_path(root / args.functional).FusedLeakyReLU(channel=256).eval()
+    timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
+    monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    x = torch.tensor([-1., -.1, .2, 1.]).reshape(1, 1, 1, 4).expand(1, 4, 1, 4).clone()
+    pristine = x.clone()
+    rows = json.loads((root / 'workload.json').read_text())['cases']
+    reruns = []
+
+    def benchmark(invoke, **kwargs):
+        assert kwargs['warmup'] == 10 and kwargs['repetition'] == 100
+        output = invoke().detach()  # Eager candidate is always correct.
+
+        def captured():
+            assert torch.isnan(output).all()
+            reruns.append(defect)
+            with torch.no_grad():
+                bias = model.bias.roll(1) if defect == 'wrong_channel' else model.bias
+                shifted = x if defect == 'omit_bias' else x + bias[:4].reshape(1, 4, 1, 1)
+                slope = .2 if defect == 'fixed_slope' else model.negative_slope
+                scale = math.sqrt(2) if defect == 'fixed_scale' else model.scale
+                output.copy_(torch.where(shifted >= 0, shifted, shifted * slope) * scale)
+            return output
+
+        kwargs['timed_run']._bind(captured, output)
+        return .25, {'benchmark_method': 'cuda_graph'}
+
+    def cal_kernel_perf(rtol=1e-4, atol=1e-5): pass
+    perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf,
+        benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)
+    replay.install(perf, runner.output_contract)
+    for index, row in enumerate(rows):
+        controls.apply_control(model, row['params']['operator'])
+        before_state = copy.deepcopy(model.state_dict())
+        accepted = defect == 'none' or (defect in ('fixed_slope', 'fixed_scale') and index == 1)
+        if accepted:
+            elapsed, metadata = perf.cal_hip_latency(model, [x])
+            assert elapsed == .25 and metadata['replay_validation_valid'] is True
+        else:
+            with pytest.raises(ValueError, match='protected reference'):
+                perf.cal_hip_latency(model, [x])
+        torch.testing.assert_close(x, pristine, rtol=0, atol=0)
+        for name, value in model.state_dict().items():
+            torch.testing.assert_close(value, before_state[name], rtol=0, atol=0)
+    assert len(reruns) == 5
