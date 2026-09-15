@@ -47,7 +47,7 @@ for the conditional stages, artifact locations and full smoke limitations.
 
 ## Agent matrix checkpoint
 
-The independently verified snapshot at **20:52:20 UTC** counts unique selected
+The independently verified snapshot at **21:01:09 UTC** counts unique selected
 `(agent, task)` pairs with a completed native optimization attempt. It keeps
 candidate acceptance separate from completion and retains each run's source.
 Retries, probes and saved-candidate reevaluations add no distinct pairs.
@@ -56,11 +56,11 @@ Retries, probes and saved-candidate reevaluations add no distinct pairs.
 | --- | ---: | ---: | ---: |
 | Codex | 45 | 45 | 45 |
 | Claude Code | 22 | 21 | 45 |
-| Forge | 44 | 40 | 45 |
+| Forge | 45 | 41 | 45 |
 | GEAK | 5 | 5 | 45 |
-| **Total** | **116** | **111** | **180** |
+| **Total** | **117** | **112** | **180** |
 
-There are **64 distinct pairs remaining** against the completion target. This is
+There are **63 distinct pairs remaining** against the completion target. This is
 a verified checkpoint, not a live counter or a claim of 180 accepted speedups.
 The historical GEAK source-39 evidence includes SDK typed completion metadata,
 but lacks full original tool-ID/session correlation; it must not be relabelled
@@ -90,7 +90,7 @@ These files are in the campaign evidence bundle under
 - `verified-final-combined-27f-cpu.json`
 - `verified-quality-loop-27f-smoke.json` and `verified-quality27f-review-locators.json`
 - `verified-guard87-preparation.json`
-- `verified-matrix-completed116-accepted111.json`
+- `verified-matrix-completed117-accepted112.json`
 - `observed-geak141010-quota-hold-2050.json`
 
 The separate immutable 87 checkout retains its command, dependency/source
