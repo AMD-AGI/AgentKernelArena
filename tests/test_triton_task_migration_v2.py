@@ -1820,3 +1820,90 @@ def test_eagle_adapter_installs_correctness_and_timing_checks(monkeypatch):
     adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_copy_and_expand_eagle_inputs/_arena_eval.py',monkeypatch)
     harness=adapter.load_harness()
     assert harness.run_correctness.__module__==harness.run_performance.__module__=='_eagle_checks'
+
+
+def slot_mapping_inputs():
+    return (torch.tensor([2,0],dtype=torch.int32),torch.tensor([0,1,4],dtype=torch.int32),
+            torch.tensor([3,4,1,7],dtype=torch.int64),
+            torch.tensor([[10,20],[30,40],[50,60]],dtype=torch.int32))
+
+
+def independent_slot_mapping(mapping,starts,positions,table,block_size,max_num_tokens):
+    owners=torch.repeat_interleave(mapping.long(),(starts[1:]-starts[:-1]).long())
+    return (table[owners,torch.div(positions,block_size,rounding_mode='floor')].long()*block_size+
+            positions.remainder(block_size))
+
+
+def test_slot_mapping_reference_ragged_permuted_known_answer(monkeypatch):
+    task=ROOT/'tasks/triton2triton/vllm/triton_compute_slot_mappings'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    args=slot_mapping_inputs();expected=torch.tensor([203,80,41,83],dtype=torch.int64)
+    assert torch.equal(checks.reference(harness,args,4),expected)
+    assert torch.equal(independent_slot_mapping(*args,4,68),expected)
+
+
+@pytest.mark.parametrize('mode',['correct','ignore_mapping','uniform_segments','zero_based_positions','dtype','wrong_output','mutate_inputs'])
+def test_slot_mapping_correctness_sensitizes_routing_and_boundaries(monkeypatch,mode):
+    task=ROOT/'tasks/triton2triton/vllm/triton_compute_slot_mappings'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    args=(torch.tensor([0,1],dtype=torch.int32),torch.tensor([0,2,4],dtype=torch.int32),
+          torch.tensor([0,1,0,1]),slot_mapping_inputs()[3])
+    def candidate(mapping,starts,positions,table,bs,max_tokens):
+        m,s,p=mapping,starts,positions
+        if mode=='ignore_mapping':m=torch.arange(mapping.numel(),dtype=mapping.dtype)
+        elif mode=='uniform_segments':s=torch.arange(mapping.numel()+1,dtype=starts.dtype)*(positions.numel()//mapping.numel())
+        elif mode=='zero_based_positions':p=torch.arange(positions.numel())%(positions.numel()//mapping.numel())
+        output=independent_slot_mapping(m,s,p,table,bs,max_tokens)
+        if mode=='dtype':output=output.int()
+        elif mode=='wrong_output':output.zero_()
+        elif mode=='mutate_inputs':table.zero_();output.zero_()
+        return output
+    module=SimpleNamespace(compute_slot_mappings=candidate);load=lambda:module;harness.load_module=load
+    with checks.checked_modules(harness):
+        call=lambda:harness.load_module().compute_slot_mappings(*args,4,68)
+        if mode=='correct':call()
+        else:
+            with pytest.raises(AssertionError):call()
+    assert harness.load_module is load and module.compute_slot_mappings is candidate
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay','mutate_inputs','replay_raises'])
+def test_slot_mapping_exact_timed_replay_and_input_restore(monkeypatch,mode):
+    task=ROOT/'tasks/triton2triton/vllm/triton_compute_slot_mappings'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch);harness._TimedRun=SimpleNamespace
+    idx_mapping,query_start_loc,positions,block_table=slot_mapping_inputs();block_size=4;max_num_tokens=68
+    inputs=(idx_mapping,query_start_loc,positions,block_table);pristine=tuple(value.clone() for value in inputs)
+    mod=SimpleNamespace(compute_slot_mappings=independent_slot_mapping);original=mod.compute_slot_mappings
+    def fn():mod.compute_slot_mappings(idx_mapping,query_start_loc,positions,block_table,block_size,max_num_tokens)
+    options=[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        options.append(kwargs);output=measured();cached=output.clone()
+        if mode=='wrong_timed':output.zero_()
+        def replay():
+            if mode=='replay_raises':raise RuntimeError('injected replay failure')
+            if mode=='stale':output.copy_(cached)
+            elif mode!='no_write':
+                output.copy_(measured())
+                if mode=='wrong_replay':output.zero_()
+                elif mode=='mutate_inputs':block_table.zero_();output.zero_()
+            return output
+        timed_run.outputs=output;timed_run.rerun=replay
+        return 0.25,dict(benchmark_method='cuda_graph')
+    call=lambda:checks.checked_benchmark(harness,benchmark,fn,warmup=10,repetition=100)
+    if mode=='correct':
+        ms,metadata=call();assert ms==0.25 and metadata['ragged_permuted_mapping_checked']
+    elif mode=='replay_raises':
+        with pytest.raises(RuntimeError,match='injected replay failure'):call()
+    else:
+        with pytest.raises(AssertionError):call()
+    assert options==[dict(warmup=10,repetition=100)] and mod.compute_slot_mappings is original
+    assert all(torch.equal(value,saved) for value,saved in zip(inputs,pristine))
+
+
+def test_slot_mapping_adapter_installs_correctness_and_timing_checks(monkeypatch):
+    adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_compute_slot_mappings/_arena_eval.py',monkeypatch)
+    harness=adapter.load_harness()
+    assert harness.run_correctness.__module__==harness.run_performance.__module__=='_slot_mapping_checks'

@@ -36,3 +36,17 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+Protected checks preserve the original exact integer oracle and five scored
+workloads. They additionally enforce output shape/dtype/device and validate
+unscored diagnostic copies with reversed request-state mappings, a shifted
+request boundary (unequal segment lengths), and nonzero positions crossing block
+boundaries. The number of requests/tokens, allocated launch bound and scored input
+seeds are unchanged. Returned tensors follow the actual wrapper's `num_tokens`
+slice; internal padding capacity does not change the public result shape.
+
+The actual timed output must match a pristine reference. After timing, the same
+captured graph is replayed with those perturbed inputs and a poisoned output.
+Both correctness and replay reject modified input buffers; perturbations are
+restored in `finally`, including on failure. Original kernel, protected runner,
+warmup/sample policy, case manifest and generated helpers remain unchanged.

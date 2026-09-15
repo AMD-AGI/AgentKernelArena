@@ -54,6 +54,10 @@ def load_harness():
     spec = importlib.util.spec_from_file_location('_task_harness', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    check_spec = importlib.util.spec_from_file_location('_slot_mapping_checks', ROOT / '_arena_checks.py')
+    checks = importlib.util.module_from_spec(check_spec)
+    check_spec.loader.exec_module(checks)
+    checks.install(module)
     return module
 
 
