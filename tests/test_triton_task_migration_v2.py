@@ -7569,3 +7569,241 @@ def test_mrope_actual_raw_timing_replays_prepared_rotation_and_restores_six_buff
 def test_mrope_adapter_installs_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_mrope/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_mrope_checks'
+
+
+_LORA_VARIANTS=('expand','shrink')
+
+
+def _lora_cpu_compute(variant,args,options=None,raw=False):
+    options={} if options is None else options
+    inputs,weights,output,_,indices,counts,starts,ids,active=args[:9]
+    result=output.double().clone() if variant=='expand' else torch.zeros_like(output,dtype=torch.float64)
+    offset=options.get('offset_start',0);add=options.get('add_inputs',False)
+    scaling=args[9] if len(args)>9 else options.get('scaling',.5)
+    for slot in range(active):
+        lid=int(ids[slot])
+        if lid<0:continue
+        tokens=indices[int(starts[slot]):int(starts[slot])+int(counts[slot])].long()
+        column=offset
+        for s,w in enumerate(weights):
+            w=w.squeeze(1) if w.ndim==4 else w
+            if variant=='expand':
+                values=inputs[s,tokens].double()@w[lid].double().t();width=w.shape[1]
+                if add:result[tokens,column:column+width]+=values
+                else:result[tokens,column:column+width]=values
+                column+=width
+            else:result[s,tokens]=scaling*(inputs[tokens].double()@w[lid].double().t())
+    if variant=='shrink' and raw:output.add_(result.to(output.dtype))
+    else:output.copy_(result.to(output.dtype))
+
+
+def _lora_cpu_harness(monkeypatch,variant):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'lora_'+variant)
+    for name in ('randint','tensor','full','zeros'):
+        factory=getattr(torch,name)
+        monkeypatch.setattr(torch,name,lambda *a,_factory=factory,**kw:_factory(*a,**{**kw,'device':'cpu'}))
+    return h,checks
+
+
+def _lora_plain_pointer_helper(variant):
+    tree=ast.parse((ROOT/f'tasks/triton2triton/vllm/triton_lora_{variant}/source/triton_lora_{variant}.py').read_text())
+    name='_get_lora_b_ptr' if variant=='expand' else '_get_lora_a_ptr'
+    node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name==name)
+    namespace={'torch':torch};exec(compile(ast.Module(body=[node],type_ignores=[]),'<original_lora_pointer_helper>','exec'),namespace)
+    return namespace[name]
+
+
+@pytest.mark.parametrize('variant',_LORA_VARIANTS)
+def test_lora_independent_known_answer_disabled_adapter_and_original_dtype_gate(monkeypatch,variant):
+    h,checks=_lora_cpu_harness(monkeypatch,variant)
+    inputs=torch.tensor([[1.,2.],[3.,4.],[5.,6.]],dtype=torch.float16)
+    if variant=='expand':inputs=inputs[None]
+    weights=[torch.tensor([[[1.,0.],[0.,2.]],[[2.,0.],[0.,3.]]],dtype=torch.float16)]
+    output=torch.full((3,2) if variant=='expand' else (1,3,2),7.,dtype=torch.float16 if variant=='expand' else torch.float32)
+    mapping=torch.tensor([1,-1,0]);indices=torch.tensor([2,1,0]);counts=torch.tensor([1,1,1]);starts=torch.tensor([0,1,2,3]);ids=torch.tensor([0,-1,1])
+    args=(inputs,weights,output,mapping,indices,counts,starts,ids,3)
+    options={'add_inputs':True} if variant=='expand' else {'scaling':.5}
+    expected=torch.tensor([[9.,13.],[7.,7.],[12.,19.]],dtype=torch.float16) if variant=='expand' else torch.tensor([[[1.,3.],[0.,0.],[2.5,6.]]])
+    case=checks.capture(args,options);wanted=checks.expected(h,case)
+    torch.testing.assert_close(wanted.float(),expected.float(),atol=0,rtol=0)
+    _lora_cpu_compute(variant,args,options);checks.check_output(output,wanted,case['saved']['output'])
+    assert output.dtype==(torch.float16 if variant=='expand' else torch.float32)
+    template=torch.zeros(1,dtype=output.dtype)
+    checks.check_output(template+.049,torch.zeros(1),template)
+    with pytest.raises(AssertionError):checks.check_output(template+.051,torch.zeros(1),template)
+
+
+@pytest.mark.parametrize('variant',_LORA_VARIANTS)
+@pytest.mark.parametrize('mode',['correct','zero','wrong_last_slice','ignore_ids','mutate_input','mutate_weight',
+    'mutate_mapping','mutate_indices','mutate_counts','mutate_starts','mutate_ids','replace_weight_list',
+    'omit_k_tail','omit_m_tail','omit_n_tail','ignore_disabled'])
+def test_lora_original_fivecase_correctness_pristine_operands_and_partial_diagnostics(monkeypatch,variant,mode):
+    h,checks=_lora_cpu_harness(monkeypatch,variant);calls=[];records=[]
+    def public(*args,**kwargs):
+        case=checks.capture(args,kwargs);records.append(case);calls.append((args[0].shape,dict(case['options'])))
+        target={'mutate_input':'inputs','mutate_mapping':'mapping','mutate_indices':'indices','mutate_counts':'counts','mutate_starts':'starts','mutate_ids':'ids'}.get(mode)
+        if target:case[target].zero_()
+        if mode=='mutate_weight':case['weights'][0].zero_()
+        if mode=='replace_weight_list':case['weights'][0]=case['weights'][0].clone()
+        M=case['inputs'].shape[1 if variant=='expand' else 0]
+        compute_args=args
+        if mode=='omit_k_tail' and M==83:
+            compute_args=(args[0][...,:-3],[w[...,:-3] for w in args[1]],*args[2:])
+        _lora_cpu_compute(variant,compute_args,kwargs)
+        out=case['output']
+        if mode=='zero':out.zero_()
+        if mode=='wrong_last_slice':out[..., -1].add_(10)
+        if mode=='ignore_ids':out.add_(1)
+        if mode=='omit_m_tail' and M==83:
+            token=int(case['indices'][64]);out[token].zero_() if variant=='expand' else out[:,token].zero_()
+        if mode=='omit_n_tail' and M==83:
+            if variant=='expand':out[:,9+17+32].zero_()
+            else:out[...,-1].zero_()
+        if mode=='ignore_disabled' and M==83:
+            disabled=case['indices'][65:78]
+            if variant=='expand':out[disabled]=10
+            else:out[:,disabled]=10
+    mod=SimpleNamespace(**{checks.SYMBOL:public});h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
+    if ok:
+        expected_sizes=[16,83,83,32,64,128,256] if variant=='expand' else [16,83,32,64,128,256]
+        assert [shape[1 if variant=='expand' else 0] for shape,_ in calls]==expected_sizes
+        if variant=='expand':assert [opts for shape,opts in calls if shape[1]==83]==[{'offset_start':9,'add_inputs':False},{'offset_start':9,'add_inputs':True}]
+        else:assert calls[1][1]=={'scaling':1.25}
+    for case in records:checks.unchanged(case)
+    assert getattr(mod,checks.SYMBOL) is public
+
+
+@pytest.mark.parametrize('variant,mode',[(v,m) for v in _LORA_VARIANTS for m in [
+    'correct','prepare_mutate_weight','prepare_replace_list','prepare_raise',
+    'wrong_timed','stale','no_write','wrong_replay','mutate_timed_input','mutate_timed_weight',
+    'mutate_replay_input','mutate_replay_weight','mutate_replay_routing','raise_replay']]
+    +[('shrink','skip_prepare')])
+def test_lora_actual_raw_timing_checks_original_pointer_tables_and_restores_preparation_failures(monkeypatch,variant,mode):
+    import inspect
+    h,checks=_lora_cpu_harness(monkeypatch,variant)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    real_factory=h.make_test_data;cases=[];registry={};pointer_helper=_lora_plain_pointer_helper(variant)
+    def factory(*args,**kwargs):
+        data=real_factory(*args,**kwargs);cases.append(checks.capture(data));return data
+    h.make_test_data=factory
+    def pointers(weights,*args):
+        for w in weights:registry[w.data_ptr()]=w
+        if mode=='prepare_mutate_weight':weights[0].zero_()
+        if mode=='prepare_replace_list':weights[0]=weights[0].clone()
+        if mode=='prepare_raise':weights[0].zero_();raise RuntimeError('Pointer preparation failed')
+        return pointer_helper(weights,*args)
+    launches=[]
+    class Raw:
+        def __getitem__(self,grid):
+            def launch(*args,**kwargs):
+                assert kwargs==dict(num_warps=4,num_stages=2,launch_pdl=False)
+                x,ptr,out,M,N,K,indices,counts,starts,ids=args[:10]
+                slices=grid[1];weights=[registry[int(p)] for p in ptr.tolist()] if slices>1 else [ptr]
+                if variant=='expand':
+                    assert args[20:24]==(64,max(64,1<<((128//slices)-1).bit_length()),16,K%16==0)
+                    assert args[24] is False and args[26]==slices and args[28] is False
+                    assert grid==(((M+63)//64)*((N+args[21]-1)//args[21]),slices,len(ids))
+                    low=(x,weights,out,None,indices,counts,starts,ids,len(ids));opts={'add_inputs':False}
+                else:
+                    split=64 if M<128 else 8;bk=256 if M<128 else 32
+                    assert args[19:26]==(32,16,bk,K%(bk*split)==0,split,8,slices)
+                    assert args[26] is False and grid==(split*((M+31)//32)*((N+15)//16),slices,len(ids))
+                    low=(x,weights,out,None,indices,counts,starts,ids,len(ids),args[10]);opts={}
+                launches.append(M);_lora_cpu_compute(variant,low,opts,raw=True)
+            return launch
+    mod=SimpleNamespace(triton=SimpleNamespace(cdiv=lambda a,b:(a+b-1)//b),_next_power_of_2=lambda v:1<<(v-1).bit_length())
+    setattr(mod,'_get_lora_b_ptr' if variant=='expand' else '_get_lora_a_ptr',pointers)
+    setattr(mod,'_lora_'+variant+'_kernel',Raw());h.load_module=lambda:mod
+    options=[];replays=[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        case=cases[-1];options.append(kwargs)
+        if variant=='shrink':
+            assert kwargs['prepare_fn'].__self__ is case['output'] and kwargs['prepare_fn'].__name__=='zero_'
+            kwargs['prepare_fn']()
+        else:assert 'prepare_fn' not in kwargs
+        out=measured();cache=out.clone()
+        if mode=='wrong_timed':out.add_(10)
+        if mode=='mutate_timed_input':case['inputs'].zero_()
+        if mode=='mutate_timed_weight':case['weights'][0].zero_()
+        def replay():
+            replays.append(True)
+            assert torch.isnan(out).all()
+            assert not torch.equal(case['inputs'],case['saved']['inputs'])
+            assert all(not torch.equal(v,s) for v,s in zip(case['weights'],case['saved']['weights']))
+            assert not torch.equal(case['ids'],case['saved']['ids'])
+            assert sorted(case['indices'].tolist())==list(range(len(case['mapping'])))
+            assert int(case['counts'].sum())==len(case['mapping'])
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if variant=='shrink' and mode!='skip_prepare':kwargs['prepare_fn']()
+            if mode=='stale':out.copy_(cache)
+            elif mode!='no_write':measured()
+            if mode=='wrong_replay':out.add_(10)
+            if mode=='mutate_replay_input':case['inputs'].zero_()
+            if mode=='mutate_replay_weight':case['weights'][0].zero_()
+            if mode=='mutate_replay_routing':case['ids'].zero_()
+            return out
+        timed_run._bind(replay,out);return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h);rows=h.run_performance()
+    assert len(rows)==5
+    assert len(options)==(0 if mode.startswith('prepare_') else 5)
+    for kw in options:assert kw['warmup']==10 and kw['repetition']==100
+    for shape,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('M','hidden_size','lora_rank','num_loras','num_slices'),shape))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for case in cases:checks.unchanged(case);assert torch.equal(case['output'],case['saved']['output'])
+    assert len(replays)==(0 if mode.startswith(('prepare_','mutate_timed_')) or mode=='wrong_timed' else 5)
+
+
+@pytest.mark.parametrize('variant',_LORA_VARIANTS)
+def test_lora_adapter_installs_checks(monkeypatch,variant):
+    h=module_at(ROOT/f'tasks/triton2triton/vllm/triton_lora_{variant}/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_lora_checks'
+
+
+@pytest.mark.parametrize('add,values',[(False,[7.,8.,15.,18.,7.]),(True,[7.,15.,22.,25.,7.])])
+def test_lora_expand_heterogeneous_slices_use_cumulative_known_column_offsets(monkeypatch,add,values):
+    h,checks=_lora_cpu_harness(monkeypatch,'expand')
+    inputs=torch.tensor([[[2.]],[[3.]]],dtype=torch.float16)
+    weights=[torch.tensor([[[[4.]]]],dtype=torch.float16),torch.tensor([[[[5.],[6.]]]],dtype=torch.float16)]
+    output=torch.full((1,5),7.,dtype=torch.float16)
+    args=(inputs,weights,output,torch.tensor([0]),torch.tensor([0]),torch.tensor([1]),torch.tensor([0,1]),torch.tensor([0]),1)
+    options=dict(offset_start=1,add_inputs=add);case=checks.capture(args,options)
+    expected=torch.tensor([values],dtype=torch.float16)
+    torch.testing.assert_close(checks.expected(h,case),expected,atol=0,rtol=0)
+    _lora_cpu_compute('expand',args,options)
+    torch.testing.assert_close(output,expected,atol=0,rtol=0)
+
+
+@pytest.mark.parametrize('variant,mode',[
+    ('expand','ignore_add'),('expand','ignore_offset'),('expand','uniform_offsets'),
+    ('shrink','ignore_scaling'),('shrink','omit_public_reset')])
+def test_lora_public_optional_modes_have_independent_negative_controls(monkeypatch,variant,mode):
+    h,checks=_lora_cpu_harness(monkeypatch,variant);triggered=[]
+    def public(*args,**kwargs):
+        options=dict(kwargs);M=args[0].shape[1 if variant=='expand' else 0]
+        if mode=='ignore_add' and kwargs.get('add_inputs'):
+            options['add_inputs']=False;triggered.append(True)
+        if mode=='ignore_offset' and kwargs.get('offset_start'):
+            options['offset_start']=0;triggered.append(True)
+        if mode=='ignore_scaling' and M==83:
+            args=(*args[:9],.5);triggered.append(True)
+        if mode=='uniform_offsets' and M==83:
+            # The old equal-width oracle uses offset + i * current_width,
+            # which places heterogeneous slices in the wrong columns.
+            x,weights,out,_,indices,counts,starts,ids,active=args[:9]
+            for slot in range(active):
+                lid=int(ids[slot])
+                if lid<0:continue
+                tokens=indices[int(starts[slot]):int(starts[slot])+int(counts[slot])]
+                for i,w in enumerate(weights):
+                    w=w.squeeze(1);width=w.shape[1];col=options['offset_start']+i*width
+                    end=min(col+width,out.shape[1])
+                    values=(x[i,tokens].double()@w[lid].double().t())[:,:end-col].to(out.dtype)
+                    out[tokens,col:end]=out[tokens,col:end]+values if options['add_inputs'] else values
+            triggered.append(True);return
+        if mode=='omit_public_reset' and M==83:triggered.append(True)
+        _lora_cpu_compute(variant,args,options,raw=mode=='omit_public_reset')
+    h.load_module=lambda:SimpleNamespace(**{checks.SYMBOL:public});checks.install(h)
+    ok,reason=h.run_correctness()
+    assert not ok and reason and triggered
