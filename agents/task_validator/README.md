@@ -109,6 +109,13 @@ This rejects the described definition-time
 test hooks; it is not a sandbox for arbitrary Python function
 bodies or a replacement for semantic review of implementation dependencies.
 
+Benchmark review uses the task's declared scored unit, protected performance
+function and captured actions. A kernel-only benchmark may additionally check
+public-wrapper correctness without timing that wrapper. Both roles must retain
+the same declared inputs, preparation, reset and measurement boundary; a candidate
+cannot narrow a full-operator task to a cheaper fragment. Ambiguous scope needs
+evidence, and this clarification does not override a recorded reviewer FAIL.
+
 Successful action records contain `invocation_id`, `phase`, merged `result`, and
 actual `commands` (`argv`, `returncode`, `stdout`, `stderr`, `elapsed_s`). Failed
 execution records contain `role`, `action`, `phase`, `execution_error`, and available

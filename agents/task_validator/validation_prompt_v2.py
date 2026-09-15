@@ -172,9 +172,16 @@ the listed cases alone does not establish those properties.
    that reported cases and device times correspond to actual computed work.
 6. benchmark_integrity: verify baseline/candidate workload symmetry, inputs, state
    reset, warmup/sample/synchronization policy, and equivalent timed work. It is
-   valid to measure baseline and candidate in separate action invocations. Required
-   per-invocation intermediates that implement the documented public operator must
-   execute within its measured work; allocation of a reusable scratch/intermediate
+   valid to measure baseline and candidate in separate action invocations. Establish
+   the declared scored unit from the initial task contract, protected performance
+   function and captured action evidence. A task may explicitly score a raw kernel
+   while also correctness-testing a public wrapper. Do not require unscored wrapper
+   or setup costs merely because that wrapper receives correctness coverage, provided
+   the declared kernel-only boundary, inputs, preparation and resets are equivalent
+   for both roles. An entrypoint name alone is not sufficient evidence of that scope.
+   If the declared scored unit is the complete operator, its required per-invocation
+   stages must execute within measured work. A candidate may not narrow the original
+   scored unit or hoist required work asymmetrically. Allocation of a reusable scratch/intermediate
    buffer may be hoisted if equivalent for both. Distinguish Python executed once
    while constructing/capturing a graph from device work performed on every replay.
    For graph timing, inspect the actual timed replay path, including mutated inputs

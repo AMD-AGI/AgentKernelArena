@@ -431,6 +431,11 @@ def test_v2_prompt_excludes_task_instructions_and_uses_no_family_policy(tmp_path
     assert "forge" not in prompt.lower()
     assert "operator2flydsl" not in prompt
     assert "task validation report as evidence" in prompt
+    policy = " ".join(prompt.split())
+    assert "task may explicitly score a raw kernel" in policy
+    assert "An entrypoint name alone is not sufficient evidence" in policy
+    assert "A candidate may not narrow the original scored unit" in policy
+    assert "A semantic FAIL blocks task acceptance" in policy
 
 
 def test_large_guard_is_indexed_without_discarding_trusted_evidence(tmp_path):
