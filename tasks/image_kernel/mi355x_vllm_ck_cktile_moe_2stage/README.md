@@ -77,3 +77,15 @@ sources, while Python dispatch, test inputs and references stay protected.
 The task adapter verifies that `import aiter` resolves to this materialized
 package. An installed image package is not a fallback. Each action still uses a
 fresh build directory and must record compilation of a declared candidate source.
+
+
+## Timed output verification
+
+After collecting the original graph/event measurements, the harness changes
+inputs in their existing storage, poisons the captured output and replays the
+actual timed graph. It checks BF16 output shape/device, finiteness and the same
+reference/tolerance used for ordinary correctness. GEMM uses a positive-scale
+stress input; MoE negates hidden states. The stress input is checked after timing
+and adds no score point. A stale answer, unwritten buffer or detached correctness
+invocation is not accepted. Warmups, repetitions and graph-repeat limits remain
+unchanged; a fallback that cannot expose its timed outputs fails explicitly.

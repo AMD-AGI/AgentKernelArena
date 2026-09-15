@@ -634,7 +634,7 @@ def test_original_cases_numerical_policy_and_benchmark_unchanged(directory):
         if name == "run_performance":
             assert isinstance(function.body[-1], ast.Return)
             function.body.pop()  # Return the fresh rows to v2.
-            if directory.name.startswith("mi300x_"):
+            if directory.name.startswith("mi300x_") or directory.name.startswith("mi355x_vllm_ck_"):
                 # Post-migration fix: captured-output correctness after timing.
                 # Remove only the three reviewed additions before comparing the
                 # original measurement body, preserving all timing constants.
@@ -650,8 +650,15 @@ def test_original_cases_numerical_policy_and_benchmark_unchanged(directory):
                 calls = [n for n in ast.walk(loop) if isinstance(n, ast.Call)
                          and isinstance(n.func, ast.Name) and n.func.id == "_benchmark_cuda_graph_or_events"]
                 assert len(calls) == 1
-                assert [k.arg for k in calls[0].keywords] == ["timed_run"]
-                calls[0].keywords = []
+                assert [k.arg for k in calls[0].keywords].count("timed_run") == 1
+                calls[0].keywords = [k for k in calls[0].keywords if k.arg != "timed_run"]
+        if name == "run_correctness" and directory.name.startswith("mi355x_vllm_ck_"):
+            loop = next(n for n in function.body if isinstance(n, ast.For))
+            checks = [n for n in loop.body if isinstance(n, ast.Expr)
+                      and isinstance(n.value, ast.Call) and isinstance(n.value.func, ast.Name)
+                      and n.value.func.id == "_assert_output_contract"]
+            assert len(checks) == 1
+            loop.body.remove(checks[0])
         assert digest(ast.dump(function, include_attributes=False)) == expected
     for name, expected in evidence["numbers"].items():
         actual = [n.value for n in ast.walk(functions[name])
@@ -1224,3 +1231,41 @@ def test_hip_package_binding_rejects_installed_dispatch(name, tmp_path, monkeypa
         adapter.prepare(harness)
     imported.__file__ = str(tmp_path / "aiter/__init__.py")
     assert adapter.prepare(harness) is marker
+
+
+@pytest.mark.parametrize("name", [
+    "mi355x_vllm_ck_a8w8_blockscale_gemm", "mi355x_vllm_ck_cktile_moe_2stage",
+    "mi355x_vllm_ck_moe_2stage",
+])
+def test_ck_replay_checks_changed_inputs_and_observed_output(name, monkeypatch):
+    torch = pytest.importorskip("torch")
+    h = load_module(TASKS / name / "scripts/task_runner.py")
+    monkeypatch.setattr(h, "_torch", lambda: torch)
+    if h.OPERATOR == "a8w8_blockscale_gemm":
+        inputs = {"shape": [2, 2, 128], "x": torch.ones(2,128),
+                  "weight": torch.full((2,128), 2.),
+                  "x_scale": torch.full((2,1), .01), "w_scale": torch.full((1,1), .01)}
+        reference = h._gemm_reference
+    else:
+        inputs = {"hidden": torch.tensor([[1.,2.],[-3.,4.]], dtype=torch.bfloat16)}
+        reference = lambda inp: (inp["hidden"].float() * 2).to(torch.bfloat16)
+        monkeypatch.setattr(h, "_moe_reference", reference)
+    initial = {key: value.clone() if isinstance(value, torch.Tensor) else value for key,value in inputs.items()}
+    stale = reference(inputs).clone()
+    output = stale.clone()
+    timed = SimpleNamespace(bound=True, outputs=output)
+    def replay():
+        assert torch.isnan(output).all()
+        output.copy_(reference(inputs))
+        return output
+    timed.rerun = replay
+    h._assert_timed_outputs(inputs, timed)
+    for bad in (stale, torch.zeros_like(output), torch.full_like(output, float("nan"))):
+        for key,value in initial.items():
+            if isinstance(value, torch.Tensor): inputs[key].copy_(value)
+        timed.rerun = lambda bad=bad: bad
+        with pytest.raises(AssertionError): h._assert_timed_outputs(inputs, timed)
+    with pytest.raises(AssertionError, match="BF16"):
+        h._assert_output_contract(inputs, reference(inputs).float())
+    with pytest.raises(AssertionError, match="shape"):
+        h._assert_output_contract(inputs, reference(inputs).flatten())

@@ -724,12 +724,51 @@ def run_compile() -> None:
     print(f"{OPERATOR} compile smoke: PASS")
 
 
+def _assert_output_contract(inputs, output):
+    torch = _torch()
+    if OPERATOR == "a8w8_blockscale_gemm":
+        source = inputs["x"]
+        expected_shape = tuple(inputs["shape"][:2])
+    else:
+        source = inputs["hidden"]
+        expected_shape = tuple(source.shape)
+    assert tuple(output.shape) == expected_shape, "Wrong CK output shape"
+    assert output.dtype == torch.bfloat16, "CK output must be BF16"
+    assert output.device == source.device, "Wrong CK output device"
+    assert torch.isfinite(output).all(), "Nonfinite CK output"
+
+
+def _assert_timed_outputs(inputs, timed):
+    assert timed.bound, "Timing must expose its captured invocation"
+    torch = _torch()
+    if OPERATOR == "a8w8_blockscale_gemm":
+        # Positive scale stress also exposes a zero-output implementation that
+        # can fit inside the original absolute tolerance on tiny random inputs.
+        # This runs after timing, with the same original comparison thresholds.
+        inputs["x_scale"].mul_(64)
+        inputs["w_scale"].mul_(64)
+        expected = _gemm_reference(inputs)
+    else:
+        inputs["hidden"].neg_()
+        expected = _moe_reference(inputs)
+    timed.outputs.fill_(float("nan"))
+    observed = timed.rerun()
+    _assert_output_contract(inputs, observed)
+    if OPERATOR == "a8w8_blockscale_gemm":
+        torch.testing.assert_close(observed, expected, atol=0.15, rtol=0.12)
+    else:
+        error = 1 - torch.nn.functional.cosine_similarity(
+            observed.float().flatten(), expected.float().flatten(), dim=0)
+        assert float(error) < 0.03, "Incorrect CK MoE timed output"
+
+
 def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
         inputs = _make(case, correctness=True)
         got = _run(inputs)
         torch.cuda.synchronize()
+        _assert_output_contract(inputs, got)
         if OPERATOR == "unified_attention":
             torch.testing.assert_close(
                 got, _attention_reference(inputs), atol=0.08, rtol=0.08
@@ -788,13 +827,16 @@ def run_performance() -> None:
         inputs = _make(case, correctness=False)
         _run(inputs)
         _torch().cuda.synchronize()
+        timed = _TimedRun()
         execution_time_ms, bench_meta = _benchmark_cuda_graph_or_events(
             lambda: _run(inputs),
             warmup=3,
             repetition=20,
             target_ms=1.0,
             max_graph_repeats=100,
+            timed_run=timed,
         )
+        _assert_timed_outputs(inputs, timed)
         metadata = {
             **case["params"],
             "model": case["model"],
