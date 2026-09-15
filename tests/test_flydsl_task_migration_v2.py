@@ -352,7 +352,7 @@ def test_torch_numerical_gates_cases_and_models_preserved():
                 assert isinstance(handler.body[0],ast.Raise)
                 assert "no baseline fallback" in ast.unparse(handler.body[0])
                 handler.body.pop(0)
-        if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel"}:
+        if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel", "moe_topk_softplus_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
         if name in {"gelu_fast_kernel", "gelu_and_mul_kernel", "gelu_tanh_and_mul_kernel", "swiglu_and_mul_kernel"}:
             fn = _RemoveActivationReplayChecks().visit(fn)
@@ -1594,14 +1594,20 @@ def test_rmsnorm_output_contract_and_original_normalized_gate(bad):
 @pytest.mark.parametrize("function", ["run_benchmark", "arena_benchmark"])
 @pytest.mark.parametrize("provided", [False, True])
 @pytest.mark.parametrize("behavior", ["correct", "measured_wrong", "replay_wrong", "cached", "input_modified", "bad_ids", "nonfinite"])
-def test_moe_routing_benchmark_checks_both_real_timed_outputs(function, provided, behavior, monkeypatch, tmp_path):
+@pytest.mark.parametrize("routing", ["softmax", "sigmoid", "softplus"])
+def test_moe_routing_benchmark_checks_both_real_timed_outputs(routing, function, provided, behavior, monkeypatch, tmp_path):
     import math
     import types
     import torch
-    task=ROOT/"tasks/torch2flydsl/moe_topk_softmax_kernel"
+    task=ROOT/"tasks/torch2flydsl"/("moe_topk_"+routing+"_kernel")
     checks=module(task/"scripts/replay_checks.py")
     mmod=module(task/"model.py")
-    model=mmod.Model(6,2,1.,False)
+    model = {"softmax": lambda: mmod.Model(6,2,1.,False),
+             "sigmoid": lambda: mmod.Model(6,2),
+             "softplus": lambda: mmod.Model(6,2,True,2.5)}[routing]()
+    if routing == "softplus":
+        with torch.no_grad(): model.correction_bias.copy_(torch.tensor([.05,.1,0.,.15,.2,.25]))
+    original_bias = model.correction_bias.detach().clone() if routing == "softplus" else None
     gating=torch.tensor([[1.,3.,2.,5.,6.,4.],[6.,2.,4.,3.,1.,5.]],dtype=torch.bfloat16)
     original=gating.clone();cached=model(gating)
     phase={"value":"setup"}
@@ -1619,8 +1625,8 @@ def test_moe_routing_benchmark_checks_both_real_timed_outputs(function, provided
         return w,ids
     def aiter_op(w,ids,*args,**kwargs):
         actual_w,actual_ids=compute();w.copy_(actual_w);ids.copy_(actual_ids)
-    monkeypatch.setitem(sys.modules,"aiter",types.SimpleNamespace(topk_gating=aiter_op))
-    kmod=types.SimpleNamespace(flydsl_topk_softmax=lambda *args:compute())
+    monkeypatch.setitem(sys.modules,"aiter",types.SimpleNamespace(topk_gating=aiter_op,topk_softplus=aiter_op))
+    kmod=types.SimpleNamespace(**{"flydsl_topk_"+routing:lambda *args:compute()})
     class Collector:
         bound=False
         outputs=None
@@ -1637,8 +1643,8 @@ def test_moe_routing_benchmark_checks_both_real_timed_outputs(function, provided
         return .1,{"benchmark_method":"cuda_graph","benchmark_timed_run_kind":"captured_graph"}
     ns={"TimedRun":Collector,"benchmark_cuda_graph_or_events":benchmark,"require_unchanged":checks.require_unchanged,
         "math":math,"json":json,"Path":Path,"_KERNEL_DIR":str(tmp_path),"MODEL_FILE":"model.py","KERNEL_FILE":"kernel.py",
-        "_TIE_TOL":1e-4,"_WEIGHT_ATOL":1e-2,"_BIAS_ID_ERR_TOL":.05,
-        "SHAPES":[{"name":"controlled","tokens":2,"experts":6,"topk":2,"route_scale":1.,"use_bias":False}],
+        "_TIE_TOL":1e-4,"_WEIGHT_ATOL":1e-2,"_BIAS_ID_ERR_TOL":.05,"REL_TOL":1e-2,
+        "SHAPES":[{"name":"controlled","tokens":2,"experts":6,"topk":2,"route_scale":2.5 if routing=="softplus" else 1.,"use_bias":False,"renormalize":True}],
         "_load_module":lambda directory,filename,alias:mmod if filename=="model.py" else (None if provided else kmod),
         "_build_model":lambda *args:(model,gating),"_retry":lambda fn,**kwargs:fn()}
     _harness_functions(task,{function,"_require_routing_contract","_routing_reference","_verify_routing_timed","_compare_routing"},ns)
@@ -1652,11 +1658,14 @@ def test_moe_routing_benchmark_checks_both_real_timed_outputs(function, provided
         with pytest.raises(AssertionError):ns[function](verbose=False)
     assert torch.equal(gating,original)
 
+    if original_bias is not None: assert torch.equal(model.correction_bias, original_bias)
+
 
 @pytest.mark.parametrize("bad", ["shape", "weight_dtype", "id_dtype", "device", "out_of_range", "duplicate", "nonfinite"])
-def test_moe_routing_contract_rejects_invalid_outputs_even_with_bias_allowance(bad):
+@pytest.mark.parametrize("routing", ["softmax", "sigmoid", "softplus"])
+def test_moe_routing_contract_rejects_invalid_outputs_even_with_bias_allowance(routing, bad):
     import torch
-    task=ROOT/"tasks/torch2flydsl/moe_topk_softmax_kernel"
+    task=ROOT/"tasks/torch2flydsl"/("moe_topk_"+routing+"_kernel")
     ns={}
     _harness_functions(task,{"_require_routing_contract"},ns)
     gating=torch.zeros(2,4,dtype=torch.bfloat16)
@@ -1681,3 +1690,15 @@ def test_moe_routing_original_tie_weight_policy_and_benchmark_work_preserved():
         fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function)
         fn = _RemoveAddedReplayChecks().visit(fn)
         assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == expected_hash
+
+
+_OTHER_MOE_ROUTING_ORIGINAL_FUNCTIONS = {('sigmoid', '_compare_routing'): '633545e95be340bac4c9750e9a2be314b79d118723b5e233f46e1f821331a5af', ('sigmoid', 'run_benchmark'): 'c72855278a7ddc458fe3cd89290d2236efae0db51812659e2724e80b3720a5ab', ('sigmoid', 'arena_benchmark'): 'ac343e5c79731541b946538b2de1e74ada082f41952400f7bcc992b374d3d2eb', ('softplus', '_compare_routing'): '633545e95be340bac4c9750e9a2be314b79d118723b5e233f46e1f821331a5af', ('softplus', 'run_benchmark'): 'c73426d4d99892d1e90f6f88f9098166342365b5966aca1b424974001e865ff5', ('softplus', 'arena_benchmark'): '260c5a769350229dca4f07831c8cb71a6c5b34957c649e699f738c7aa04891a4'}
+
+
+def test_other_moe_original_tie_weight_policy_and_benchmark_work_preserved():
+    for (routing, function), expected in _OTHER_MOE_ROUTING_ORIGINAL_FUNCTIONS.items():
+        task = ROOT / "tasks/torch2flydsl" / ("moe_topk_" + routing + "_kernel")
+        fn = next(n for n in ast.parse((task / "test_kernel_harness.py").read_text()).body
+                  if isinstance(n, ast.FunctionDef) and n.name == function)
+        fn = _RemoveAddedReplayChecks().visit(fn)
+        assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == expected

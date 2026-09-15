@@ -50,3 +50,13 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+Both the actual measured weights/expert IDs and the measured invocation's replay
+are checked with the original tie-aware ID comparison and normalized maximum
+weight-error gate. Shape, FP32 weights, INT32 IDs, device, finite values, valid
+unique IDs and read-only inputs are enforced. Replay permutes expert identities,
+recomputes the protected reference and poisons both outputs outside timing;
+original inputs are restored afterward. The provided AITER baseline and final
+candidate use the same controls and retain all original cases, seeds, warmups,
+sample counts and timing-method selection. Graph evidence means captured replay;
+explicit Event evidence means re-invocation of the same eager callable.
