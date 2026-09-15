@@ -75,6 +75,7 @@ def _run_exports(session: TaskSession, harness, logger: logging.Logger) -> list[
     results = []
     report_path = session.workspace / "task_result.yaml"
     finalized_bytes = report_path.read_bytes()
+    original_candidate = session._candidate_sources(allow_missing=True)
     for declaration in declarations:
         try:
             output = resolve_task_path(session.workspace, declaration["output"])
@@ -114,6 +115,8 @@ def _run_exports(session: TaskSession, harness, logger: logging.Logger) -> list[
         try:
             verify_workspace_harness(harness, logger=logger)
             session.verify_baseline_sources()
+            if session._candidate_sources(allow_missing=True) != original_candidate:
+                record.update(status="FAIL", error="Exporter modified the evaluated candidate", candidate_unchanged=False)
         except Exception as exc:
             record.update(status="FAIL", error=f"Exporter changed protected task state: {exc}")
         results.append(record)
@@ -209,6 +212,8 @@ def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
     result.update(candidate_accepted=accepted, exports=exports,
                   delivery_status=("COMPLETE" if all(row["status"] == "PASS" for row in exports)
                                    else "INCOMPLETE") if accepted else "NOT_ACCEPTED")
+    if any(row.get("candidate_unchanged") is False for row in exports):
+        result["candidate_accepted"] = False
     (workspace / "task_result.yaml").write_text(yaml.safe_dump(result, sort_keys=False))
     _json_file(state / "completion.json", {"version": 1, "task_id": task_name,
                                           "agent": agent.value, "result_sha256": _result_digest(workspace),

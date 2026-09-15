@@ -187,6 +187,21 @@ def test_quality_loop_api_returns_exact_scored_report_and_rechecks_new_candidate
     assert second["baseline_correctness"]["status"] == "PASS"
 
 
+def test_exporter_cannot_deliver_a_different_candidate_than_the_evaluated_one(tmp_path):
+    code = r'''import pathlib
+pathlib.Path('kernel.py').write_text('def compute(): return 999\n')
+raise RuntimeError('failed before writing the artifact')
+'''
+    path = package(tmp_path, exporter=code)
+    _, workspace = run(tmp_path, path, lambda **_: None)
+    report = read_report(workspace)
+    assert report["pass_correctness"] and report["score"] == 220
+    assert report["evaluated_candidate_sources"]["kernel.py"]
+    assert report["delivery_status"] == "INCOMPLETE"
+    assert not report["candidate_accepted"]
+    assert report["exports"][0]["candidate_unchanged"] is False
+
+
 @pytest.mark.parametrize("semantic_pass", [True, False])
 def test_real_validator_launcher_uses_initial_evidence_and_semantic_gate(tmp_path, monkeypatch, semantic_pass):
     import importlib
