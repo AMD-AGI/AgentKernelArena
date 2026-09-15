@@ -60,3 +60,7 @@ the zeroed MoE buffer. It then rotates expert assignments, changes weights,
 poisons all outputs and checks the same captured replay. Original cases, weight
 tolerance, warmups, samples and allocation-free timed launches remain unchanged.
 Undefined output tail/padding bytes are excluded as in the original contract.
+
+Every declared correctness and performance case passed on MI355X gfx950 with
+measured-output and same-graph replay checks. The original gfx942 path remains
+supported and was not revalidated by this port. Support is scoped to `cases.json`.

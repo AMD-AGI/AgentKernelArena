@@ -64,3 +64,7 @@ pin and license are included. Performance checks the actual measured decode
 output, changes query values in place, poisons output and replays the same graph
 against the unchanged independent reference. All original shapes, tolerance,
 warmups, samples, allocations and timed stage/reduction calls are preserved.
+
+Every declared correctness and performance case passed on MI355X gfx950 with
+measured-output and same-graph replay checks. The original gfx942 path remains
+supported and was not revalidated by this port. Support is scoped to `cases.json`.
