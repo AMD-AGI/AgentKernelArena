@@ -260,4 +260,6 @@ capture-unsafe reference reason. Updated results additionally recorded
 `eager_callable`, `timed_output_correctness: PASS` and `replay_correctness: PASS`
 for all five cases. These sequential runs verify timing boundaries and output
 checks; they do not establish a performance improvement. Action-level evidence
-is distinct from the separately finalized full task-validator report.
+is distinct from the full task-validator report. That separate HGEMM report
+was subsequently framework-finalized as `PASS` in the same job, with an
+implemented frozen initial candidate and no baseline diagnostic exemption.
