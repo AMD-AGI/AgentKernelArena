@@ -1030,6 +1030,7 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
         'test_gemm_no_scf': ({'test_gemm_no_scf'}, {'test_transposed_left_control'}),
         'test_iv_dependent_matmul': ({'test_iv_dependent_matmul'}, {'test_partial_tile_control'}),
         'test_chained_matmul': ({'test_chained_matmul'}, {'test_signed_partial_m_control'}),
+        'multreduce_matmul_dot_kernel': ({'test_matmul'}, {'test_nonzero_row_bias_control'}),
         'test_matmul_MXFP': ({'test_mxfp_to_bf16_numerical_correctness', 'test_pipeline_matmul'},
                              {'test_converter_encoding_control'}),
     }
@@ -1040,6 +1041,20 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
         # controls. Here also preserve original signatures and parametrization
         # of the rewritten correctness bodies, plus every remaining source AST.
         rewritten, added = reviewed_matmul_bodies[task.name]
+        repaired_kernels = {
+            'test_iv_dependent_matmul': ('iv_dependent_matmul', '32aa40116bcef34a66544bda60ce024c6db2282e1abc42993fdefd86e2fe6485'),
+            'multreduce_matmul_dot_kernel': ('triton_matmul_kernel', '5281e0dd6e6cc02ecfe827a1e54ffe17a4ba3cd13b9c02b9a9e966ed368fb788'),
+        }
+        if task.name in repaired_kernels:
+            # Explicitly reviewed repairs: smaller internal FP32 K tiles, or
+            # M/N operand masks. Dedicated tests reverse only these edits to
+            # compare with the original kernel AST, and exercise their semantics.
+            kernel_name, reviewed_hash = repaired_kernels[task.name]
+            current_source = source.read_text()
+            node = next(n for n in ast.parse(current_source).body
+                        if isinstance(n, ast.FunctionDef) and n.name == kernel_name)
+            assert hashlib.sha256(ast.get_source_segment(current_source, node).encode()).hexdigest() == reviewed_hash
+            rewritten = rewritten | {kernel_name}
         def matmul_original_contract(raw):
             tree = ast.parse(raw)
             tree.body = [n for n in tree.body if not isinstance(n, ast.FunctionDef)
@@ -1343,7 +1358,7 @@ def test_add_canonical_samples_observe_exact_replay_and_reject_wrong_output(monk
 
 # These adapters use actual TimedRun outputs; their dedicated contract modules
 # exercise event metadata, changed inputs and rejected fallback paths.
-@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_add_kernel', 'test_block_copy', 'test_randn', 'test_load_reduce', 'softmax', 'naive_softmax', 'test_cast_matmul', 'test_gemm_no_scf', 'test_iv_dependent_matmul', 'test_chained_matmul'} and not (p.parent.name == 'test_matmul_MXFP' and 'triton2triton' in p.parts)], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
+@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_add_kernel', 'test_block_copy', 'test_randn', 'test_load_reduce', 'softmax', 'naive_softmax', 'test_cast_matmul', 'test_gemm_no_scf', 'test_iv_dependent_matmul', 'test_chained_matmul', 'multreduce_matmul_dot_kernel'} and not (p.parent.name == 'test_matmul_MXFP' and 'triton2triton' in p.parts)], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
 def test_rocm_timing_evidence_retains_canonical_fallback_reason(monkeypatch, path):
     adapter = module_at(path.parent/'_arena_eval.py', monkeypatch)
     expected = torch.tensor([2.])
