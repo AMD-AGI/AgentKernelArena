@@ -51,6 +51,10 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
     loop.body.pop(0)
     assert ast.dump(correction, include_attributes=False) == ast.dump(bf['run_correctness'], include_attributes=False)
     for name in bf.keys()-{'run_correctness'}:
+        if task.name == 'triton_pack_bitmatrix' and name == 'reference_pack_bitmatrix':
+            # Explicit semantic repair: old oracle counted tile-padding slots
+            # as expert31. Known answers and old-source controls below cover it.
+            continue
         assert ast.get_source_segment(before,bf[name]) == ast.get_source_segment(after,af[name])
     manifest = json.loads((task/'workloads.json').read_text())
     for source, targets in manifest['candidate_symbols'].items():
@@ -69,6 +73,12 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
     for edit in spec.candidate.editable:
         source = task/edit.path
         original = subprocess.check_output(['git','show',f'{BASE}:{source.relative_to(ROOT).as_posix()}'],cwd=ROOT)
+        if task.name == 'triton_pack_bitmatrix':
+            old = b'div[:, :, None] == offs[None, None, :], (one << rem)[:, :, None], 0'
+            new = (b'mask[:, :, None] & (indices[:, :, None] >= 0) & (div[:, :, None] == offs[None, None, :]),\n'
+                   b'            (one << rem)[:, :, None], 0')
+            assert original.count(old) == 1
+            original = original.replace(old, new)
         assert source.read_bytes() == original
     assert 'Evaluation contract' in (task/'README.md').read_text()
 
@@ -3416,3 +3426,134 @@ def test_log_softmax_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_log_softmax/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_logsoftmax_checks'
+
+
+def _bitmatrix_cpu(ids, experts):
+    rows = []
+    for assignments in ids.tolist():
+        rows.append([sum(1 << bit for bit in {eid % 32 for eid in assignments if eid // 32 == col})
+                     for col in range((experts+31)//32)])
+    return torch.tensor(rows, dtype=torch.uint32, device=ids.device)
+
+
+def _evaluate_pack_kernel_bit_expression(source, ids, experts):
+    """Execute the actual packing expression with CPU Triton arithmetic stand-ins."""
+    node = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Assign)
+                and any(isinstance(t, ast.Name) and t.id == 'x' for t in n.targets))
+    indices = torch.full((len(ids), 32), -1, dtype=torch.int64)
+    indices[:, :ids.shape[1]] = ids.long()
+    mask = torch.arange(32)[None, :].expand_as(indices) < ids.shape[1]
+    class UInt32One:
+        def __lshift__(self, shift):
+            return torch.ones_like(shift) << (shift & 31)
+    columns = []
+    for col in range((experts+31)//32):
+        scope = dict(tl=SimpleNamespace(where=torch.where), indices=indices, mask=mask,
+                     div=torch.div(indices, 32, rounding_mode='trunc'), rem=torch.fmod(indices, 32),
+                     one=UInt32One(), offs=torch.tensor([col]))
+        values = eval(compile(ast.Expression(node.value), '<actual packing expression>', 'eval'), scope)
+        packed = torch.zeros(len(ids), dtype=torch.int64)
+        for k in range(32): packed |= values[:, k, 0]
+        columns.append(packed)
+    return torch.stack(columns, dim=1).to(torch.uint32)
+
+
+@pytest.mark.parametrize('experts,assignments,expected', [
+    (8, [[0, 1], [2, 7]], [[3], [132]]),
+    (64, [[0, 1], [31, 32], [63, 63]], [[3, 0], [2147483648, 1], [0, 2147483648]]),
+    (33, [[0, 32], [31, 31]], [[1, 1], [2147483648, 0]]),
+])
+def test_pack_bitmatrix_real_membership_known_answers_reject_padding_bit(monkeypatch, experts, assignments, expected):
+    task = ROOT/'tasks/triton2triton/vllm/triton_pack_bitmatrix'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    ids = torch.tensor(assignments, dtype=torch.int16)
+    known = torch.tensor(expected, dtype=torch.uint32)
+    current = (task/'source/triton_pack_bitmatrix.py').read_text()
+    old_source = subprocess.check_output(['git', 'show', f'{BASE}:{(task/"source/triton_pack_bitmatrix.py").relative_to(ROOT)}'], cwd=ROOT, text=True)
+    for output in (h.reference_pack_bitmatrix(ids, experts), _bitmatrix_cpu(ids, experts),
+                   _evaluate_pack_kernel_bit_expression(current, ids, experts)):
+        torch.testing.assert_close(output, known, atol=0, rtol=0)
+    original_harness = subprocess.check_output(['git', 'show', f'{BASE}:{(task/"scripts/task_runner.py").relative_to(ROOT)}'], cwd=ROOT, text=True)
+    reference_node = next(n for n in ast.parse(original_harness).body
+                          if isinstance(n, ast.FunctionDef) and n.name == 'reference_pack_bitmatrix')
+    scope = {}
+    exec(compile(ast.Module(body=[reference_node], type_ignores=[]), '<old reference>', 'exec'), scope)
+    old_result = scope['reference_pack_bitmatrix'](ids, experts)
+    torch.testing.assert_close(_evaluate_pack_kernel_bit_expression(old_source, ids, experts), old_result, atol=0, rtol=0)
+    assert not torch.equal(old_result, known), 'Old reference accepted a nonexistent expert assignment'
+
+
+@pytest.mark.parametrize('mode', ['correct', 'forced_padding_bit', 'dtype', 'shape', 'mutate_source'])
+def test_pack_bitmatrix_output_contract_and_old_bug_negative_control(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_pack_bitmatrix'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    ids = torch.tensor([[0, 1], [2, 7]], dtype=torch.int16)
+    expected = torch.tensor([[3], [132]], dtype=torch.uint32)
+    def candidate(ids, experts):
+        if mode == 'mutate_source': ids.zero_()
+        out = _bitmatrix_cpu(ids, experts)
+        if mode == 'forced_padding_bit':
+            signed = out.view(torch.int32)
+            signed[:, 0] |= -2147483648
+        if mode == 'dtype': out = out.long()
+        if mode == 'shape': out = out[:1]
+        return out
+    mod = SimpleNamespace(pack_topk_to_bitmatrix=candidate)
+    h.load_module = lambda: mod
+    with checks.checked_modules(h):
+        call = h.load_module().pack_topk_to_bitmatrix
+        if mode == 'correct': torch.testing.assert_close(call(ids, 8), expected, atol=0, rtol=0)
+        else:
+            with pytest.raises(AssertionError): call(ids, 8)
+    assert mod.pack_topk_to_bitmatrix is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'wrong_replay',
+                                 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_pack_bitmatrix_original_performance_and_captured_replay(monkeypatch, mode):
+    import inspect
+    task = ROOT/'tasks/triton2triton/vllm/triton_pack_bitmatrix'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h._TimedRun = SimpleNamespace
+    factory = torch.randint
+    monkeypatch.setattr(torch, 'randint', lambda *args, **kwargs: factory(*args, **{**kwargs, 'device': 'cpu'}))
+    inputs, pristine, options = [], [], []
+    mod = SimpleNamespace(pack_topk_to_bitmatrix=_bitmatrix_cpu)
+    h.load_module = lambda: mod
+    def benchmark(measured, *, timed_run, **kwargs):
+        options.append(kwargs)
+        fn = inspect.getclosurevars(measured).nonlocals['fn']
+        ids = inspect.getclosurevars(fn).nonlocals['topk_ids']
+        inputs.append(ids); pristine.append(ids.clone())
+        output = measured(); cached = output.clone()
+        if mode == 'wrong_timed': output.zero_()
+        if mode == 'mutate_timed': ids.zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay failed')
+            if mode == 'stale': output.copy_(cached)
+            elif mode != 'no_write': output.copy_(measured())
+            if mode == 'wrong_replay': output.zero_()
+            if mode == 'mutate_replay': ids.zero_()
+            return output
+        timed_run.outputs, timed_run.rerun = output, replay
+        return .125, {'benchmark_method': 'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == len(h.TEST_SHAPES) == 5
+    assert options == [dict(warmup=10, repetition=100)] * 5
+    for row, (rows_count, experts, topk) in zip(rows, h.TEST_SHAPES):
+        assert row['params'] == dict(n_rows=rows_count, num_experts=experts, topk=topk)
+        assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
+        if mode == 'correct': assert row['perturbed_input_replay_checked']
+    for ids, saved in zip(inputs, pristine): checks.unchanged(ids, saved)
+    assert mod.pack_topk_to_bitmatrix is _bitmatrix_cpu
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_pack_bitmatrix_adapter_installs_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_pack_bitmatrix/_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_bitmatrix_checks'

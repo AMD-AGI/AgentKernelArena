@@ -30,3 +30,18 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+The reference encodes actual expert membership: for valid IDs in
+`[0, num_experts)`, set bit `id % 32` in word `id // 32`; duplicate IDs set a
+single bit. Tile-padding slots must set no bits. The original implementation
+and reference incorrectly added bit31 for padded top-k slots: with 8 experts,
+IDs `[0, 1]` produced `2147483651` instead of `3`. The kernel now masks padded
+assignments and the independent reference follows the documented membership
+semantics. This is an explicit semantic bugfix, not a tolerance change.
+
+All five original cases, shapes, seeds and exact-equality gates remain. Output
+must have the complete `(rows, ceil(num_experts/32))` uint32 shape and input
+device. Pristine input IDs are checked before any candidate mutation could
+change the oracle. The full original wrapper, 10 warmups and 100 samples remain;
+actual captured output and a poisoned replay with rotated valid IDs must match
+the reference. Inputs are restored even on replay failure; checks are untimed.

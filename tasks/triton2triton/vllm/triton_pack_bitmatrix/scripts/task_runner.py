@@ -44,34 +44,16 @@ def load_module():
 
 
 def reference_pack_bitmatrix(topk_ids, num_experts):
-    """CPU reference: pack topk_ids into bitmatrix.
-
-    Mirrors the Triton kernel exactly, including its treatment of padding
-    slots.  The kernel loads BLOCK_SIZE_K (=32) entries per row; positions
-    beyond the real topk are filled with -1 (the ``other`` value of
-    ``tl.load``).  Because Triton uses C-style truncated integer division,
-    -1 // 32 == 0 and -1 % 32 == -1.  The hardware shift ``1u << -1``
-    (i.e. ``1u << 31``) then sets bit-31 in column 0 for every row.  The
-    reference must reproduce this behaviour to match the kernel output.
-    """
+    """Independent CPU expert-membership oracle; padding is not an assignment."""
     import torch
     n_rows, topk = topk_ids.shape
-    BLOCK_SIZE_K = 32
-    bm_cols = (num_experts + 31) // 32
-    bitmatrix = torch.zeros(n_rows, bm_cols, dtype=torch.uint32)
+    bitmatrix = torch.zeros(n_rows, (num_experts + 31) // 32, dtype=torch.uint32)
     for row in range(n_rows):
-        for k in range(BLOCK_SIZE_K):
-            eid = topk_ids[row, k].item() if k < topk else -1
-            if eid >= 0:
-                col = eid // 32
-                bit = eid % 32
-            else:
-                # C-style truncated division: -1 / 32 == 0, -1 % 32 == -1
-                # Hardware: uint32(1) << -1 wraps to 1 << 31
-                col = 0
-                bit = 31
-            if 0 <= col < bm_cols:
-                bitmatrix[row, col] = bitmatrix[row, col].item() | (1 << bit)
+        for eid in topk_ids[row].tolist():
+            if not 0 <= eid < num_experts:
+                raise ValueError("Expert ID is outside the declared expert range")
+            col, bit = divmod(eid, 32)
+            bitmatrix[row, col] = bitmatrix[row, col].item() | (1 << bit)
     return bitmatrix
 
 
