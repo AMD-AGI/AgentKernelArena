@@ -6087,3 +6087,117 @@ def test_kv_reduce_actual_prepared_timing_preserves_mutable_input_semantics(monk
 def test_kv_reduce_adapter_installs_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_lightning_attn_kv_reduce/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_kv_reduce_checks'
+
+
+def _diag_attention_cpu(q,k,v,s,BLOCK=256,CBLOCK=32):
+    # Independent full attention matrix with causal and block-membership masks;
+    # no reuse of the harness's nested sub-block accumulation reference.
+    length=q.shape[-2];indices=torch.arange(length,device=q.device)
+    distance=indices[:,None]-indices[None,:]
+    mask=(distance>=0)&(indices[:,None]//BLOCK==indices[None,:]//BLOCK)
+    decay=torch.exp(-s.reshape(1,-1,1,1).double()*distance.clamp_min(0))
+    weights=(q.double()@k.double().transpose(-1,-2))*decay*mask
+    return (weights@v.double()).to(q.dtype)
+
+
+def _diag_attention_cpu_harness(monkeypatch):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'lightning_attn_diag')
+    for name in ('rand','zeros','arange','tensor'):
+        factory=getattr(torch,name)
+        monkeypatch.setattr(torch,name,lambda *a,_factory=factory,**kw:_factory(*a,**{**kw,'device':'cpu'}))
+    return h,checks
+
+
+def test_diag_attention_independent_causal_decay_block_reset_and_original_gate(monkeypatch):
+    import math
+    h,checks=_diag_attention_cpu_harness(monkeypatch)
+    q=torch.ones(1,2,5,1,dtype=torch.float16);k=q.clone()
+    v=torch.tensor([1.,2.,4.,8.,16.],dtype=q.dtype).reshape(1,1,5,1).expand(1,2,5,1).clone()
+    s=torch.tensor([0.,math.log(2)]).reshape(1,2,1,1)
+    expected=torch.tensor([[1.,3.,4.,12.,16.],[1.,2.5,4.,10.,16.]]).reshape(1,2,5,1)
+    reference=checks.reference(h,(q,k,v,s),2,1)
+    torch.testing.assert_close(reference,expected,atol=1e-6,rtol=0)
+    checks.check_output(_diag_attention_cpu(q,k,v,s,2,1),expected,q.dtype)
+    # The actual gate is 0.05 + 0.005 * |FP32 reference|, not README's old 0.01.
+    checks.check_output(torch.tensor([.049],dtype=q.dtype),torch.tensor([0.]),q.dtype)
+    with pytest.raises(AssertionError):
+        checks.check_output(torch.tensor([.051],dtype=q.dtype),torch.tensor([0.]),q.dtype)
+    assert reference.dtype == torch.float32
+    # Decay produces FP32 reference values which are not representable in FP16.
+    s.fill_(.03)
+    unrounded=checks.reference(h,(q,k,v,s),2,1)
+    assert not torch.equal(unrounded,unrounded.half().float())
+
+
+@pytest.mark.parametrize('mode',['correct','dtype','shape','device','nonfinite','wrong',
+    'first_block_only','omit_tail','ignore_block','ignore_decay','mutate_q','mutate_k','mutate_v','mutate_s'])
+def test_diag_attention_actual_fivecase_correctness_and_public_block_tail_controls(monkeypatch,mode):
+    h,checks=_diag_attention_cpu_harness(monkeypatch);calls=[];all_inputs=[]
+    def public(q,k,v,s,BLOCK=256,CBLOCK=32):
+        calls.append((tuple(q.shape),tuple(s.shape),BLOCK,CBLOCK));inputs=(q,k,v,s)
+        all_inputs.append((inputs,checks.snapshots(inputs)))
+        if mode.startswith('mutate_'):inputs[('q','k','v','s').index(mode[7:])].zero_()
+        result=_diag_attention_cpu(q,k,v,s,256 if mode=='ignore_block' else BLOCK,CBLOCK)
+        if mode=='ignore_decay':result=_diag_attention_cpu(q,k,v,torch.zeros_like(s),BLOCK,CBLOCK)
+        if mode=='first_block_only' and q.shape[-2]>256:result[:,:,256:].zero_()
+        if mode=='omit_tail' and q.shape[-2]%CBLOCK:result[:,:,-1].zero_()
+        if mode=='dtype':result=result.float()
+        if mode=='shape':result=result.flatten()
+        if mode=='device':result=result.to('meta')
+        if mode=='nonfinite':result.fill_(float('nan'))
+        if mode=='wrong':result.zero_()
+        return result
+    mod=SimpleNamespace(lightning_attn_diag_forward=public);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
+    if mode=='correct':
+        assert [c[0] for c in calls if c[0][2]!=273]==[tuple(v[:4]) for v in h.TEST_SHAPES]
+        assert [c[1:] for c in calls if c[0][2]==273]==[((1,2,1,1),256,32),((1,2,1,1),64,16)]
+    for values,saved in all_inputs:checks.unchanged(values,saved)
+    assert mod.lightning_attn_diag_forward is public
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay',
+    'mutate_timed_q','mutate_timed_k','mutate_timed_v','mutate_timed_s',
+    'mutate_replay_q','mutate_replay_k','mutate_replay_v','mutate_replay_s',
+    'zero_inputs_and_output','raise_replay'])
+def test_diag_attention_original_timing_exact_poisoned_replay_restores_all_inputs(monkeypatch,mode):
+    import inspect
+    h,checks=_diag_attention_cpu_harness(monkeypatch)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(lightning_attn_diag_forward=_diag_attention_cpu);h.load_module=lambda:mod
+    all_inputs,all_saved,options,replays=[],[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        inputs=tuple(state[n] for n in ('q','k','v','s'));saved=checks.snapshots(inputs)
+        all_inputs.append(inputs);all_saved.append(saved);options.append(kwargs)
+        output=measured();cached=output.clone()
+        if mode=='wrong_timed':output.zero_()
+        if mode.startswith('mutate_timed_'):inputs[('q','k','v','s').index(mode[-1])].zero_()
+        if mode=='zero_inputs_and_output':
+            for value in (*inputs,output):value.zero_()
+        def replay():
+            replays.append(True)
+            expected_inputs=(saved[0]*-.5,saved[1]*.75+.125,saved[2]*-.25+.5,saved[3]*.5+.02)
+            checks.unchanged(inputs,expected_inputs)
+            assert torch.isnan(output).all()
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='no_write':output.copy_(cached if mode=='stale' else measured())
+            if mode=='wrong_replay':output.zero_()
+            if mode.startswith('mutate_replay_'):inputs[('q','k','v','s').index(mode[-1])].zero_()
+            return output
+        timed_run._bind(replay,output)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h)
+    rows=h.run_performance()
+    assert options==[dict(warmup=10,repetition=100)]*5
+    for cfg,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('batch','heads','seq','d_model','e_model'),cfg))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for values,saved in zip(all_inputs,all_saved):checks.unchanged(values,saved)
+    assert len(replays)==(0 if mode=='wrong_timed' or mode.startswith('mutate_timed_') or mode=='zero_inputs_and_output' else 5)
+    assert mod.lightning_attn_diag_forward is _diag_attention_cpu
+
+
+def test_diag_attention_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_lightning_attn_diag/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_diag_attention_checks'

@@ -19,7 +19,8 @@ Key parameters:
 
 Constraints:
 - Must maintain the same function signature for `lightning_attn_diag_forward`
-- Output must match reference within atol=1e-2, rtol=1e-2 for float16
+- FP16 output, compared in FP32 against the original FP32 reference, must match
+  within atol=5e-2, rtol=5e-3 (the protected harness's existing gate).
 - The kernel must handle arbitrary sequence lengths
 
 
@@ -34,3 +35,11 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+`_arena_checks.py` checks output shape, dtype, device, finiteness, and numerical
+values against pristine inputs; Q, K, V and slope are read-only. Additional
+unscored checks cover 273 tokens (a second main block and a partial sub-block),
+zero/nonzero decay, the public 4D slope form, and BLOCK=64/CBLOCK=16.
+All five scored cases, seeds, 10 warmups and 100 timing samples are unchanged.
+The benchmark checks the actual `TimedRun` output, changes all four inputs,
+poisons that output, and numerically checks the exact captured replay outside
+timing. Caller inputs are restored even when replay or verification fails.
