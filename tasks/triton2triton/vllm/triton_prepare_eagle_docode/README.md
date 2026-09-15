@@ -1,6 +1,6 @@
 # triton_prepare_eagle_docode
 
-The starting candidate is implemented Triton. Improve the declared source files in place;
+The starting candidate is implemented Triton. Improve the declared kernel in place;
 the framework freezes the initial implementation as the baseline. Baseline and candidate
 actions execute only this workspace, with no fallback to another implementation.
 
@@ -19,6 +19,13 @@ Constraints:
 - Must maintain the same function signature for `prepare_eagle_decode`
 - Output must match reference within atol=1e-5, rtol=1e-5 for hidden states
 - Integer outputs must match exactly
+
+Only `_prepare_eagle_docode_kernel` and new implementation helpers are editable.
+The existing `prepare_eagle_decode` wrapper, imports, and launch setup are
+protected by the shared symbol-scoped harness guard. Keep the wrapper's actual
+Triton invocation: replacing it with PyTorch work while retaining an unused JIT
+symbol does not satisfy this task. This boundary changes no input, numerical
+check, allocation, or measured call.
 
 
 ## Evaluation contract

@@ -4,7 +4,10 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_prepare_eagle_docode.py
+  - path: source/triton_prepare_eagle_docode.py
+    scope: symbols
+    symbols: [_prepare_eagle_docode_kernel]
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_prepare_eagle_docode.py
     kind: function
