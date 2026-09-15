@@ -1405,7 +1405,7 @@ def test_rocm_missing_candidate_fails_every_applicable_case(tmp_path,monkeypatch
 GEAK_CHECKED_FUNCTIONS = {'L1/mla_decode': {'benchmark_kernel': '27083c2b36ba81b35e596c66318e2ef540faaebf4c667e678be47796dd251679',
                    'check_correctness_val': 'cbda42d75c7d25b6d52beb3f3fcce08538ca4752d8d86c53dd2c648fe6fb1414',
                    'mode_correctness': '50fd9568bcef9bf5872b7c0132626516d666c8921c04cd28d546493f73dee42c'},
- 'L1/moe_routing_sigmoid_top1': {'run_benchmark': '43126ce6f43ff1c0b4dc6b2fbc4b2ed2afaade21de8db3c201e492d399b024d8',
+ 'L1/moe_routing_sigmoid_top1': {'run_benchmark': '7ac90aa4609640f1546af529fc8874d2da831452bcda5517553190492992d08f',
                                  'run_correctness': '51d7c7674e07e3453bb30e6fa14124e87e92e9d711137ade0537f293e0e50655'},
  'L1/refk_fp8_blockwise_mm': {'_bench_one': 'c58e7e40a4c5aa352a53cdd766816628e43d317cf29946291b1a79d8fad048da',
                               'check_correctness': 'cb98fc10a0e4dfb323a92c1f095b975a17021e56a23e08d0be8cea86fa833ca5'},
