@@ -2445,3 +2445,81 @@ def test_grammar_adapter_installs_correctness_and_timing_checks(monkeypatch):
     adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_apply_grammar_bitmask/_arena_eval.py',monkeypatch)
     harness=adapter.load_harness()
     assert harness.run_correctness.__module__==harness.run_performance.__module__=='_grammar_checks'
+
+
+def _expert_counts_cpu(ids, experts):
+    valid = ids[(ids >= 0) & (ids < experts)].to(torch.int64)
+    return torch.bincount(valid, minlength=experts).to(torch.int32)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_values', 'dtype', 'shape', 'mutate_input', 'count_invalid_as_zero'])
+def test_expert_count_reference_and_output_contract(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_count_expert_tokens'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    ids = torch.tensor([[0, 1, 2], [2, -1, -1]], dtype=torch.int32)
+    expected = torch.tensor([1, 1, 2, 0], dtype=torch.int32)
+    torch.testing.assert_close(h.reference_count(ids, 4), expected, atol=0, rtol=0)
+    def candidate(ids, experts):
+        if mode == 'mutate_input': ids.zero_()
+        value = _expert_counts_cpu(ids.clamp_min(0) if mode == 'count_invalid_as_zero' else ids, experts)
+        if mode == 'wrong_values': value.zero_()
+        if mode == 'dtype': value = value.float()
+        if mode == 'shape': value = value[:-1]
+        return value
+    mod = SimpleNamespace(count_expert_num_tokens=candidate)
+    h.load_module = lambda: mod
+    with checks.checked_modules(h):
+        checked = h.load_module().count_expert_num_tokens
+        if mode == 'correct': torch.testing.assert_close(checked(ids, 4), expected)
+        else:
+            with pytest.raises(AssertionError): checked(ids, 4)
+    assert mod.count_expert_num_tokens is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'wrong_replay',
+                                 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_expert_count_captured_replay_and_restoration(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_count_expert_tokens'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h._TimedRun = SimpleNamespace
+    topk_ids = torch.tensor([[0, 1, 2], [2, 3, 1]], dtype=torch.int32)
+    pristine = topk_ids.clone()
+    num_experts = 4
+    mod = SimpleNamespace(count_expert_num_tokens=_expert_counts_cpu)
+    invocations = []
+    def fn():
+        invocations.append(True)
+        mod.count_expert_num_tokens(topk_ids, num_experts)
+    options = []
+    def benchmark(measured, *, timed_run, **kwargs):
+        options.append(kwargs)
+        output = measured(); cached = output.clone()
+        assert len(invocations) == 1
+        if mode == 'wrong_timed': output.zero_()
+        if mode == 'mutate_timed': topk_ids.zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay failed')
+            if mode == 'stale': output.copy_(cached)
+            elif mode != 'no_write': output.copy_(measured())
+            if mode == 'wrong_replay': output.zero_()
+            if mode == 'mutate_replay': topk_ids.zero_()
+            return output
+        timed_run.outputs, timed_run.rerun = output, replay
+        return 0.125, {'benchmark_method': 'cuda_graph'}
+    run = lambda: checks.checked_benchmark(h, benchmark, fn, warmup=10, repetition=100)
+    if mode == 'correct':
+        ms, metadata = run()
+        assert ms == 0.125 and metadata['perturbed_input_replay_checked']
+    else:
+        with pytest.raises((AssertionError, RuntimeError)): run()
+    assert options == [dict(warmup=10, repetition=100)]
+    torch.testing.assert_close(topk_ids, pristine)
+    assert mod.count_expert_num_tokens is _expert_counts_cpu
+
+
+def test_expert_count_adapter_installs_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_count_expert_tokens/_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_expert_count_checks'

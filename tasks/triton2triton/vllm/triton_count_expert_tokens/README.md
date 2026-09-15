@@ -29,3 +29,11 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+The protected checks require int32 counts on the input device with exactly one
+count per expert, and compare against a reference made from pristine IDs.
+Correctness also exercises the documented -1 invalid assignment. Performance
+checks the actual captured output, poisons it and replays after changing expert
+assignments and introducing invalid IDs. Inputs and the public callable are
+restored even if replay fails. Original five cases, seeds, full wrapper/allocation
+boundary, 10 warmups, 100 samples and exact integer comparison are unchanged.
