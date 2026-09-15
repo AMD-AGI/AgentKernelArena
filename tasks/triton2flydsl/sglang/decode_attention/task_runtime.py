@@ -84,13 +84,60 @@ def source_state(cfg):
     return "implemented" if any(states) else "unimplemented", states
 
 
+def _allowed_aiter_helpers():
+    """Read task-owned exceptions; never grant access to an operator namespace."""
+    path = local_path("scripts/dependency_policy.json")
+    if not path.exists():
+        return {}
+    policy = json.loads(path.read_text())
+    if not isinstance(policy, dict) or set(policy) != {"version", "helpers"} or type(policy["version"]) is not int or policy["version"] != 1:
+        raise ValueError("Invalid protected candidate dependency policy")
+    if not isinstance(policy["helpers"], list):
+        raise ValueError("Dependency policy helpers must be a list")
+    allowed = {}
+    for item in policy["helpers"]:
+        if not isinstance(item, dict) or set(item) != {"symbol", "file", "function"}:
+            raise ValueError("Expected an exact helper symbol, candidate file and function")
+        symbol, function = item["symbol"], item["function"]
+        if (not isinstance(symbol, str) or not symbol.startswith("aiter.")
+                or not all(part.isidentifier() for part in symbol.split("."))
+                or not isinstance(function, str) or not function.isidentifier()):
+            raise ValueError("Invalid candidate helper identity")
+        source = local_path(item["file"])
+        allowed.setdefault(symbol, set()).add((source, function))
+    return allowed
+
+
 def check_dependencies(paths, final_language=True):
-    """Enforce declared implementation dependencies, including from X import Y."""
+    """Reject external operator delegation before importing candidate code.
+
+    Final FlyDSL arithmetic cannot be supplied by AITER (including its FlyDSL
+    kernels), other backend operators or native launch shortcuts. An existing
+    task-owned helper exception permits only an exact named import and direct
+    calls in the declared function; it never exposes an AITER module object.
+    Initial Triton / provided baseline evaluation keeps its original backend.
+    """
     forbidden = {"src", "agents", "model", "test_kernel_harness", "task_runtime", "task_reference", "task_baseline", "reference_controls", "scripts"}
+    external = {"triton", "cupy", "numba", "aiter", "ctypes", "subprocess"}
+    loaders = {"eval", "exec", "__import__", "builtins.eval", "builtins.exec", "builtins.__import__",
+               "importlib.import_module", "importlib.util.spec_from_file_location"}
+    native_dispatch = ("torch.ops", "torch.classes", "torch.utils.cpp_extension")
+    helpers = _allowed_aiter_helpers() if final_language else {}
     backend_seen = False
     for path in paths:
+        path = Path(path)
         tree = ast.parse(path.read_text(), filename=str(path))
         aliases = {}
+        helper_bindings = []
+        parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+
+        def enclosing_function(node):
+            while node in parents:
+                node = parents[node]
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                    return node
+            return None
+
         for node in ast.walk(tree):
             imported = []
             if isinstance(node, ast.Import):
@@ -102,23 +149,50 @@ def check_dependencies(paths, final_language=True):
                 imported = [module] + [f"{module}.{a.name}" for a in node.names]
                 for a in node.names:
                     aliases[a.asname or a.name] = f"{module}.{a.name}"
+                owner = enclosing_function(node)
+                if (final_language and node.level == 0 and module.startswith("aiter.") and owner is not None
+                        and all((path.resolve(), owner.name) in helpers.get(f"{module}.{a.name}", set()) for a in node.names)):
+                    helper_bindings.extend((a.asname or a.name, owner) for a in node.names)
+                    imported = []
             for module in imported:
                 parts = set(module.split("."))
                 if parts & forbidden:
                     raise ValueError(f"Protected dependency in candidate: {module}")
-                if final_language and module.split(".")[0] in {"triton", "cupy", "numba"}:
+                if final_language and module.lstrip(".").split(".")[0] in external:
                     raise ValueError(f"Final operator must execute FlyDSL, not {module}")
+                if final_language and any(module == prefix or module.startswith(prefix + ".") for prefix in native_dispatch):
+                    raise ValueError(f"External native operator dispatch in candidate: {module}")
                 backend_seen |= module == "flydsl" or module.startswith("flydsl.")
+
+        # An allowed helper must not become an indirect route to its globals,
+        # module, or another operator. Import aliases are supported; exporting
+        # the callable, introspecting it, and passing it elsewhere are not.
+        for name, owner in helper_bindings:
+            for node in ast.walk(owner):
+                if isinstance(node, (ast.Global, ast.Nonlocal)) and name in node.names:
+                    raise ValueError("AITER helper binding must remain local to its declared task function")
+                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id == name:
+                    parent = parents.get(node)
+                    if not (isinstance(parent, ast.Call) and parent.func is node and enclosing_function(node) is owner):
+                        raise ValueError("AITER helper must be called directly in its declared task function")
+
         def dotted(node):
             if isinstance(node, ast.Name): return aliases.get(node.id, node.id)
             if isinstance(node, ast.Attribute): return dotted(node.value) + "." + node.attr
             return ""
+
         for node in ast.walk(tree):
+            name = dotted(node)
+            if final_language and isinstance(getattr(node, "ctx", None), ast.Load):
+                if name in loaders:
+                    raise ValueError(f"Dynamic implementation loading is not allowed: {name}")
+                if any(name == prefix or name.startswith(prefix + ".") for prefix in native_dispatch):
+                    raise ValueError(f"External native operator dispatch in candidate: {name}")
             if not isinstance(node, ast.Call): continue
             name = dotted(node.func)
             if final_language and (name in {"torch.mm", "torch.bmm", "torch.matmul", "torch.einsum", "torch.softmax", "torch.log_softmax", "torch.layer_norm", "torch.rms_norm"} or name.startswith("torch.nn.functional.")):
                 raise ValueError(f"Library operator shortcut in candidate: {name}")
-            if name in {"eval", "exec", "__import__", "importlib.import_module", "importlib.util.spec_from_file_location"}:
+            if name in loaders:
                 raise ValueError(f"Dynamic implementation loading is not allowed: {name}")
     if final_language and not backend_seen:
         raise ValueError("Candidate does not declare a FlyDSL implementation dependency")

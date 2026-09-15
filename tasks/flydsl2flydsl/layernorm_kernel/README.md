@@ -60,3 +60,14 @@ The public benchmark checks its actual measured output, then changes input in pl
 poisons every output, and replays the same captured graph. Both roles retain their
 original shapes, tolerances, warmups, samples, and timed launches; input restoration
 and checks occur outside timing.
+
+Candidate dependency enforcement runs before candidate import for compile,
+correctness and performance. AITER package/operator imports are forbidden,
+including `aiter.ops.flydsl` implementations; a FlyDSL runtime call from an
+imported operator is not candidate-owned arithmetic. Import aliases and
+`from ... import ...` do not change this rule. External backend/native dispatch
+(`ctypes`, subprocesses, or `torch.ops`) and dynamic implementation loading are
+also forbidden. Ordinary Python utilities, PyTorch allocation/layout operations,
+and the task's bundled `kernels/` helpers remain available under the existing
+numerical and timing contract. Baseline checks retain their declared initial
+backend; the final candidate must use FlyDSL.

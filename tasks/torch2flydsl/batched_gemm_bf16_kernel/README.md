@@ -73,3 +73,14 @@ cases, numerical gates, warmups and sample counts. It does not accept a runtime
 capture failure as permission to switch methods. Diagnostic reference timing
 uses the same fixed method. Prior results from mismatched methods are not valid
 speedups; changed task sources require fresh GPU qualification.
+
+Candidate dependency enforcement runs before candidate import for compile,
+correctness and performance. AITER package/operator imports are forbidden,
+including `aiter.ops.flydsl` implementations; a FlyDSL runtime call from an
+imported operator is not candidate-owned arithmetic. Import aliases and
+`from ... import ...` do not change this rule. External backend/native dispatch
+(`ctypes`, subprocesses, or `torch.ops`) and dynamic implementation loading are
+also forbidden. Ordinary Python utilities, PyTorch allocation/layout operations,
+and the task's bundled `kernels/` helpers remain available under the existing
+numerical and timing contract. Baseline checks retain their declared initial
+backend; the final candidate must use FlyDSL.

@@ -62,3 +62,14 @@ from the bundled legacy preshuffle source. This avoids importing an unrelated
 legacy kernel solely to read its constant table. The algorithm, tile lookup,
 scaling order, supported cases and numerical gate are unchanged. Import checks
 alone do not establish GPU compilation or numerical correctness.
+
+Candidate dependency enforcement runs before candidate import for compile,
+correctness and performance. AITER package/operator imports are forbidden,
+including `aiter.ops.flydsl` implementations; a FlyDSL runtime call from an
+imported operator is not candidate-owned arithmetic. Import aliases and
+`from ... import ...` do not change this rule. External backend/native dispatch
+(`ctypes`, subprocesses, or `torch.ops`) and dynamic implementation loading are
+also forbidden. Ordinary Python utilities, PyTorch allocation/layout operations,
+and the task's bundled `kernels/` helpers remain available under the existing
+numerical and timing contract. Baseline checks retain their declared initial
+backend; the final candidate must use FlyDSL.

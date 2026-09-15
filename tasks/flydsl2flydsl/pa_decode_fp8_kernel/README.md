@@ -15,6 +15,7 @@ entrypoints and their call signatures as exercised by `test_kernel_harness.py`.
 The final operator computation must execute FlyDSL GPU kernels. Python/PyTorch may
 allocate, reshape, pack inputs and launch kernels; calling PyTorch, Triton, AITER,
 reference/model/harness code to compute the submitted operator is not allowed.
+The exact existing PA metadata/reduce support exception is documented below.
 Bundled `kernels/` modules are protected implementation utilities, not reference
 solutions. Do not introduce dynamic imports, subprocess kernels or native dispatch
 bypasses. Passing numerical tests alone does not waive the FlyDSL requirement.
@@ -64,3 +65,26 @@ Replay restoration writes each shared storage location once; it does not replace
 those views with contiguous tensors or change the captured kernel arguments.
 Read-only checks still compare every logical element before and after replay.
 All eight original cases, seeds, absolute-error gate and graph timing remain.
+
+Candidate dependency enforcement runs before candidate import for compile,
+correctness and performance. AITER package/operator imports are forbidden,
+including `aiter.ops.flydsl` implementations; a FlyDSL runtime call from an
+imported operator is not candidate-owned arithmetic. Import aliases and
+`from ... import ...` do not change this rule. External backend/native dispatch
+(`ctypes`, subprocesses, or `torch.ops`) and dynamic implementation loading are
+also forbidden. Ordinary Python utilities, PyTorch allocation/layout operations,
+and the task's bundled `kernels/` helpers remain available under the existing
+numerical and timing contract. Baseline checks retain their declared initial
+backend; the final candidate must use FlyDSL.
+
+This task retains three existing AITER helpers, declared precisely in protected
+`scripts/dependency_policy.json`: `get_pa_metadata_info_v1` and
+`get_pa_metadata_v1` inside `get_pa_metadata`, and `pa_reduce_v1` inside
+`pa_decode_ps_launch`. These prepare scheduling metadata and combine the
+candidate's FlyDSL partial outputs; their original arguments, semantics and
+allocation/timing boundaries remain in the kernel and harness. Use exact named
+imports from `aiter.ops.attention`; import aliases are allowed. The imported
+helpers may only be called directly in those functions in `kernel.py`, not
+exported, introspected, or used as access to another AITER operator. Other AITER
+operators and namespace imports remain forbidden. This preserves the existing
+metadata/reduce glue and does not permit delegating attention computation.

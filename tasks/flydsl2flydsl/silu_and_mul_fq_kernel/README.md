@@ -63,3 +63,14 @@ remain outside timing. Unused scale padding is outside the numerical output.
 Every declared case passed on MI355X gfx950 with the unchanged MXFP4 rule and
 measured payload/scale replay checks. The original gfx942 path is retained;
 gfx942 was not revalidated by this port. Support is scoped to `cases.json`.
+
+Candidate dependency enforcement runs before candidate import for compile,
+correctness and performance. AITER package/operator imports are forbidden,
+including `aiter.ops.flydsl` implementations; a FlyDSL runtime call from an
+imported operator is not candidate-owned arithmetic. Import aliases and
+`from ... import ...` do not change this rule. External backend/native dispatch
+(`ctypes`, subprocesses, or `torch.ops`) and dynamic implementation loading are
+also forbidden. Ordinary Python utilities, PyTorch allocation/layout operations,
+and the task's bundled `kernels/` helpers remain available under the existing
+numerical and timing contract. Baseline checks retain their declared initial
+backend; the final candidate must use FlyDSL.
