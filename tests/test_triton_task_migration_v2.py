@@ -1054,7 +1054,7 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
         # of the rewritten correctness bodies, plus every remaining source AST.
         rewritten, added = reviewed_matmul_bodies[task.name]
         repaired_kernels = {
-            'test_chained_dot_fp8': ('_chained_dot', 'e33dc2f5cd76ffe76bf564e1685e951e4e71c053e4423fea34eb3256886a36a1'),
+            'test_chained_dot_fp8': ('_chained_dot', 'bc43aa5087aa0cf21f2c23972f6b552fc502cb34b87306841b0e0020b781ede1'),
             'test_batched_vecmat': ('batched_vecmat', '8d592a7bb4da730aeeb5343ddfc710d49f543241fca6b38a9a1e3f5299df5452'),
             'test_iv_dependent_matmul': ('iv_dependent_matmul', '32aa40116bcef34a66544bda60ce024c6db2282e1abc42993fdefd86e2fe6485'),
             'multreduce_matmul_dot_kernel': ('triton_matmul_kernel', '5281e0dd6e6cc02ecfe827a1e54ffe17a4ba3cd13b9c02b9a9e966ed368fb788'),
