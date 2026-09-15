@@ -2632,3 +2632,124 @@ def test_padded_eagle_adapter_installs_checks(monkeypatch, name):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm'/name/'_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_eagle_padded_checks'
+
+
+CUMSUM_TASKS = ['triton_fla_cumsum_scalar', 'triton_fla_cumsum_vector']
+
+
+def _chunk_cumsum_cpu(g, chunk_size, reverse=False):
+    # Deliberately separate scalar recurrence from the harness's torch.cumsum.
+    result = torch.empty_like(g, dtype=torch.float32)
+    for start in range(0, g.shape[1], chunk_size):
+        indices = list(range(start, min(start + chunk_size, g.shape[1])))
+        if reverse:
+            indices.reverse()
+        total = torch.zeros_like(g[:, 0], dtype=torch.float32)
+        for i in indices:
+            total = total + g[:, i]
+            result[:, i] = total
+    return result
+
+
+@pytest.mark.parametrize('name', CUMSUM_TASKS)
+@pytest.mark.parametrize('reverse', [False, True])
+def test_chunk_cumsum_reference_independent_known_answer(monkeypatch, name, reverse):
+    h = module_at(ROOT/'tasks/triton2triton/vllm'/name/'scripts/task_runner.py', monkeypatch)
+    g = torch.arange(1, 6, dtype=torch.float32).reshape(1, 5, 1)
+    expected = torch.tensor([10, 9, 7, 4, 5] if reverse else [1, 3, 6, 10, 5]).reshape(1, 5, 1).float()
+    if name.endswith('vector'):
+        g = torch.stack((g, -2*g), dim=-1)
+        expected = torch.stack((expected, -2*expected), dim=-1)
+    torch.testing.assert_close(h.reference(g, 4, reverse), expected, atol=0, rtol=0)
+    torch.testing.assert_close(_chunk_cumsum_cpu(g, 4, reverse), expected, atol=0, rtol=0)
+
+
+@pytest.mark.parametrize('name', CUMSUM_TASKS)
+@pytest.mark.parametrize('mode', ['correct', 'dtype', 'shape', 'nonfinite', 'mutate_input',
+                                 'ignores_reverse', 'fixed_chunk', 'fixed_geometry'])
+def test_chunk_cumsum_original_correctness_orchestration(monkeypatch, name, mode):
+    task = ROOT/'tasks/triton2triton/vllm'/name
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    original_inputs = h.gen_inputs
+    # Keep all five original seeds and original tensor geometries, on CPU.
+    h.gen_inputs = lambda seed, device: original_inputs(seed, 'cpu')
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    calls = []
+    def candidate(g, chunk_size, reverse=False):
+        calls.append((tuple(g.shape), chunk_size, reverse))
+        if mode == 'mutate_input': g.zero_()
+        value = _chunk_cumsum_cpu(g, 64 if mode == 'fixed_chunk' else chunk_size,
+                                  False if mode == 'ignores_reverse' else reverse)
+        if mode == 'dtype': value = value.double()
+        if mode == 'shape': value = value[:, :1]
+        if mode == 'nonfinite': value.fill_(float('inf'))
+        if mode == 'fixed_geometry' and g.shape[0] != 2: value.zero_()
+        return value
+    mod = SimpleNamespace(**{checks.SYMBOL: candidate})
+    h.load_module = lambda: mod
+    checks.install(h)
+    ok, reason = h.run_correctness()
+    assert ok is (mode == 'correct'), reason
+    if mode == 'correct':
+        assert len(calls) == 10
+        assert all(shape[:3] == (2, 128, 4) and chunk == 64 and not rev
+                   for shape, chunk, rev in calls[1::2])
+        assert all(shape[:3] == (1, 125, 2) and chunk == 32 and rev
+                   for shape, chunk, rev in calls[::2])
+        if name.endswith('vector'):
+            assert all(shape[-1] == 17 for shape, _, _ in calls[::2])
+    assert getattr(mod, checks.SYMBOL) is candidate
+
+
+@pytest.mark.parametrize('name', CUMSUM_TASKS)
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'wrong_replay',
+                                 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_chunk_cumsum_original_performance_replay_and_restoration(monkeypatch, name, mode):
+    task = ROOT/'tasks/triton2triton/vllm'/name
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h._TimedRun = SimpleNamespace
+    original_inputs = h.gen_inputs
+    inputs, originals, options = [], [], []
+    def gen_inputs(seed, device):
+        args, kwargs = original_inputs(seed, 'cpu')
+        inputs.append(args[0]); originals.append(args[0].clone())
+        return args, kwargs
+    h.gen_inputs = gen_inputs
+    mod = SimpleNamespace(**{checks.SYMBOL: _chunk_cumsum_cpu})
+    h.load_module = lambda: mod
+    def benchmark(measured, *, timed_run, **kwargs):
+        options.append(kwargs)
+        output = measured(); cached = output.clone()
+        g = inputs[-1]
+        if mode == 'wrong_timed': output.zero_()
+        if mode == 'mutate_timed': g.zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay failed')
+            if mode == 'stale': output.copy_(cached)
+            elif mode != 'no_write': output.copy_(measured())
+            if mode == 'wrong_replay': output.zero_()
+            if mode == 'mutate_replay': g.zero_()
+            return output
+        timed_run.outputs, timed_run.rerun = output, replay
+        return 0.125, {'benchmark_method': 'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    cases = h.run_performance()
+    assert len(cases) == 5
+    assert options == [dict(warmup=10, repetition=100)] * 5
+    assert all(case['execution_time_ms'] == (0.125 if mode == 'correct' else -1.0) for case in cases)
+    if mode == 'correct':
+        assert all(case['perturbed_input_replay_checked'] and case['source_buffers_unchanged'] for case in cases)
+    for value, saved in zip(inputs, originals):
+        torch.testing.assert_close(value, saved, atol=0, rtol=0)
+    assert h._benchmark_cuda_graph_or_events is benchmark
+    assert getattr(mod, checks.SYMBOL) is _chunk_cumsum_cpu
+
+
+@pytest.mark.parametrize('name', CUMSUM_TASKS)
+def test_chunk_cumsum_adapter_installs_checks(monkeypatch, name):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm'/name/'_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_cumsum_checks'

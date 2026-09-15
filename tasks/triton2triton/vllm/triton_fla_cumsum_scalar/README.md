@@ -30,3 +30,16 @@ The protected manifest requires the declared kernel symbols to remain Triton JIT
 functions, including kernels originally decorated with `@triton.jit()`. Removing
 the decorator is rejected before compilation. This structural check supplements
 the numerical and timed-path checks; it does not by itself attest every dispatch.
+
+The scored workload remains the five original FP32 seeds at the original shape
+and chunk size 64. Protected checks now enforce complete output shape, FP32
+dtype, input device and finite values at the original atol=rtol=0.0001.
+An unscored contiguous-slice diagnostic changes batch/head counts, uses a
+partial final chunk, halves the chunk size, and exercises reverse accumulation.
+The vector task also exercises a feature dimension not divisible by its tile.
+No original input, scored case or tolerance is replaced by these diagnostics.
+
+Performance still times the original full wrapper with 10 warmups and 100
+samples. Both the actual captured output and a poisoned replay with changed
+input values must satisfy the same numerical gate. Pristine inputs and the
+public callable are restored even on failure; validation is outside timing.
