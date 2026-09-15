@@ -21,7 +21,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -122,6 +123,48 @@ def _norm_max_err(ref, out):
     return max_abs / denom, max_abs, denom
 
 
+def _checked_qk_outputs(actual, expected):
+    import torch
+    if not isinstance(actual, (tuple, list)) or len(actual) != 4:
+        raise AssertionError("quant=False requires (BF16 Q, BF16 KV, None, None)")
+    if actual[2] is not None or actual[3] is not None:
+        raise AssertionError("quant=False must not return quantization scales")
+    for out, ref in zip(actual[:2], expected):
+        require_tensor_contract(out, ref)
+        if not bool(torch.isfinite(out).all() and torch.isfinite(ref).all()):
+            raise AssertionError("Non-finite Q/KV output/reference")
+        if _norm_max_err(ref, out)[0] > REL_TOL:
+            raise AssertionError("Numerical mismatch: Q/KV normalized max error exceeds original gate")
+
+
+def _qk_replay_validator(model, inputs):
+    originals = tuple(value.clone() for value in inputs)
+    expected = model(*inputs)
+    def validate(timed):
+        if not timed.bound:
+            raise RuntimeError("Benchmark did not expose its measured invocation")
+        require_unchanged(inputs, originals)
+        _checked_qk_outputs(timed.outputs, expected)
+        try:
+            # RMSNorm/RoPE preserve this sign change without changing the
+            # declared BF16 domain or the original strided KV allocation.
+            inputs[0].neg_()
+            inputs[1].neg_()
+            changed = tuple(value.clone() for value in inputs)
+            replay_expected = model(*inputs)
+            for output in timed.outputs[:2]:
+                output.fill_(float("nan"))
+            replay_output = timed.rerun()
+            require_unchanged(inputs, changed)
+            _checked_qk_outputs(replay_output, replay_expected)
+        finally:
+            for value, original in zip(inputs, originals):
+                value.copy_(original)
+        return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+                "replay_inputs_perturbed": True, "replay_output_poisoned": True}
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -150,6 +193,8 @@ def run_correctness(verbose=True):
         try:
             model = mmod.Model(H, D, RD, G).to("cuda").eval()
             q, kv, kv_weight, cos, sin, positions = _make_inputs(mmod, shape)
+            protected_inputs = (q, kv, kv_weight, cos, sin, positions)
+            originals = tuple(v.clone() for v in protected_inputs)
 
             with torch.no_grad():
                 ref_q, ref_kv = model(q, kv, kv_weight, cos, sin, positions)
@@ -164,6 +209,8 @@ def run_correctness(verbose=True):
             out_q, out_kv, qs, ks = _retry(_run, what=shape["name"])
             torch.cuda.synchronize()
 
+            require_unchanged(protected_inputs, originals)
+            _checked_qk_outputs((out_q, out_kv, qs, ks), (ref_q, ref_kv))
             err_q, ma_q, _ = _norm_max_err(ref_q, out_q)
             err_kv, ma_kv, _ = _norm_max_err(ref_kv, out_kv)
             err = max(err_q, err_kv)
@@ -211,6 +258,8 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         model = mmod.Model(H, D, RD, G).to("cuda").eval()
         q, kv, kv_weight, cos, sin, positions = _make_inputs(mmod, shape)
 
+        replay_validate = _qk_replay_validator(model, (q, kv, kv_weight, cos, sin, positions))
+
         def run_kernel():
             return kmod.flydsl_qk_norm_rope_quant(
                 q, kv, kv_weight, cos, sin, positions,
@@ -223,9 +272,12 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             run_kernel()
         torch.cuda.synchronize()
 
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            run_kernel, warmup=0, repetition=iters
+            run_kernel, warmup=0, repetition=iters, timed_run=timed
         )
+
+        kernel_bench_meta.update(replay_validate(timed))
 
         with torch.no_grad():
             ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
@@ -342,6 +394,8 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         model = mmod.Model(H, D, RD, G).to("cuda").eval()
         q, kv, kv_weight, cos, sin, positions = _make_inputs(mmod, shape)
 
+        replay_validate = _qk_replay_validator(model, (q, kv, kv_weight, cos, sin, positions))
+
         def run_kernel():
             return kmod.flydsl_qk_norm_rope_quant(
                 q, kv, kv_weight, cos, sin, positions,
@@ -354,9 +408,12 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
             run_kernel()
         torch.cuda.synchronize()
 
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            run_kernel, warmup=0, repetition=iters
+            run_kernel, warmup=0, repetition=iters, timed_run=timed
         )
+
+        kernel_bench_meta.update(replay_validate(timed))
 
         with torch.no_grad():
             ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(

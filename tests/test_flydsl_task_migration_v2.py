@@ -527,6 +527,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
             fn = _RemoveStandardQuantChecks().visit(fn)
         if name in {"rmsnorm2d_dynamicquant_kernel", "rmsnorm2d_smoothquant_kernel"}:
             fn = _RemoveRmsDynamicQuantChecks().visit(fn)
+        if name == "qk_norm_rope_quant_kernel":
+            fn = _RemoveQkChecks().visit(fn)
         if name == "gemm_a8w8_bpreshuffle_kernel":
             fn = _RemoveBpreshuffleChecks().visit(fn)
         if name == "moe_2stage_generic_kernel":
@@ -6823,3 +6825,93 @@ def test_final_sglang_original_inputs_refs_cases_bit_rules_gates_and_sampling():
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
         for rel in ['scripts/candidate_checks.py','task_runtime.py']:assert (task/rel).read_bytes()==(ROOT/'tasks/triton2flydsl/aiter/mla'/rel).read_bytes()
         assert (task/'scripts/replay_checks.py').read_bytes()==(ROOT/'tasks/triton2flydsl/sglang/merge_state/scripts/replay_checks.py').read_bytes()
+
+
+class _RemoveQkChecks(_RemoveSglangElementwiseChecks):
+    def visit_Expr(self,node):
+        if isinstance(node.value,ast.Call) and getattr(node.value.func,'id',None)=='_checked_qk_outputs':return None
+        return super().visit_Expr(node)
+
+
+@pytest.mark.parametrize('function,behavior',[(fn,bad) for fn in ['run_correctness','run_benchmark','arena_benchmark'] for bad in ['correct','wrong_q','wrong_kv','shape','dtype','nonfinite','scales','q_modified','kv_modified','weight_modified','position_modified','measured_wrong','replay_wrong','cached_q','cached_kv','replay_scales'] if fn!='run_correctness' or bad not in {'measured_wrong','replay_wrong','cached_q','cached_kv','replay_scales'}])
+def test_qk_norm_rope_actual_four_result_contract_and_timed_replay(function,behavior,monkeypatch,tmp_path):
+    import torch,types,math
+    task=ROOT/'tasks/torch2flydsl/qk_norm_rope_quant_kernel';real=module(task/'model.py');checks=module(task/'scripts/replay_checks.py');phase={'name':'setup'}
+    torch.manual_seed(3);q=torch.randn(2,16,dtype=torch.bfloat16);backing=torch.randn(2,12,dtype=torch.bfloat16);kv=backing[:,4:];weight=torch.linspace(.5,1.5,8).to(q.dtype);c,s=real._build_cos_sin(4,4);positions=torch.tensor([1,3]);inputs=(q,kv,weight,c,s,positions);originals=tuple(x.clone() for x in inputs);stride=kv.stride();original_prefix=backing[:,:4].clone()
+    model=real.Model(2,8,4,32);cached=model(*inputs)
+    class Model:
+        def __init__(self,*a):pass
+        def to(self,*a):return self
+        def eval(self):return self
+        def __call__(self,*a):return model(*a)
+    def compute(*args,**kw):
+        oq,ok=model(*inputs);qs=ks=None
+        if function=='run_correctness' or phase['name']=='measured':
+            if behavior=='wrong_q':oq.fill_(100)
+            if behavior=='wrong_kv':ok.fill_(100)
+            if behavior=='shape':oq=oq.reshape(2,-1)
+            if behavior=='dtype':oq=oq.float()
+            if behavior=='nonfinite':ok.fill_(float('nan'))
+            if behavior=='scales':qs=torch.ones(2)
+            if behavior=='q_modified':q.add_(1)
+            if behavior=='kv_modified':kv.add_(1)
+            if behavior=='weight_modified':weight.add_(1)
+            if behavior=='position_modified':positions.zero_()
+        if behavior==phase['name']+'_wrong':oq.fill_(100)
+        if phase['name']=='replay':
+            if behavior=='cached_q':oq=cached[0].clone()
+            if behavior=='cached_kv':ok=cached[1].clone()
+            if behavior=='replay_scales':ks=torch.ones(2)
+        return oq,ok,qs,ks
+    mmod=types.SimpleNamespace(Model=Model,get_init_inputs=lambda:[2,8,4,32],get_inputs=lambda:inputs);kmod=types.SimpleNamespace(flydsl_qk_norm_rope_quant=compute)
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run=None):
+        calls.append((warmup,repetition));phase['name']='measured'
+        if timed_run is None:fn()
+        else:
+            timed_run.outputs=fn();timed_run.bound=True
+            def replay():
+                phase['name']='replay'
+                try:return fn()
+                finally:phase['name']='setup'
+            timed_run.rerun=replay
+        phase['name']='setup'
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    original_to=torch.Tensor.to
+    monkeypatch.setattr(torch.Tensor,'to',lambda self,*a,**kw:self if a and a[0]=='cuda' else original_to(self,*a,**kw))
+    ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':benchmark,'require_tensor_contract':checks.require_tensor_contract,'require_unchanged':checks.require_unchanged,'math':math,'json':json,'Path':Path,'REL_TOL':.01,
+        '_KERNEL_DIR':str(tmp_path),'KERNEL_FILE':'kernel.py','MODEL_FILE':'model.py','_load_module':lambda directory,filename,alias:mmod if filename=='model.py' else kmod,'_make_inputs':lambda *a:inputs,'_retry':lambda fn,**kw:fn(),'SHAPES':[dict(name='controlled',T=2,H=2,D=8,RD=4,group_size=32)]}
+    _harness_functions(task,{function,'_norm_max_err','_checked_qk_outputs','_qk_replay_validator'},ns)
+    if behavior=='correct':
+        result=ns[function](verbose=False)
+        if function!='run_correctness':
+            report=json.loads((tmp_path/'build/performance_report.json').read_text()) if function=='run_benchmark' else result
+            assert report[0]['timed_output_correctness']==report[0]['replay_correctness']=='PASS'
+            assert calls==[(0,100),(10,100)]
+        checks.require_unchanged(inputs,originals);assert kv.stride()==stride and torch.equal(backing[:,:4],original_prefix)
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+
+
+def test_qk_original_gate_and_real_known_answer_controls():
+    import torch
+    task=ROOT/'tasks/torch2flydsl/qk_norm_rope_quant_kernel';checks=module(task/'scripts/replay_checks.py')
+    ns=_harness_functions(task,{'_norm_max_err','_checked_qk_outputs'},{'REL_TOL':.01,'require_tensor_contract':checks.require_tensor_contract})
+    expected=(torch.tensor([1.,100.],dtype=torch.bfloat16),torch.ones(2,dtype=torch.bfloat16))
+    actual=(torch.tensor([1.5,100.],dtype=torch.bfloat16),expected[1].clone(),None,None);ns['_checked_qk_outputs'](actual,expected)
+    for bad in [(actual[0],actual[1],None,torch.ones(1)),(actual[0],actual[1].float(),None,None),(actual[0],actual[1]*2,None,None)]:
+        with pytest.raises(AssertionError):ns['_checked_qk_outputs'](bad,expected)
+    result=invoke(task,'validate-task');assert result.passed,result.reason;assert len(result.cases)==6
+
+
+def test_qk_original_model_strided_inputs_rotary_scope_and_timing_preserved():
+    hashes={'_resolve_kernel_dir': 'ebfabcdd05c1a3f254b035e42b1783890c241f92613bda21ccb77fa064039f1a', '_load_module': 'caae8222257891caee15a695bfc7cff029ec363f792c4331f20ff92c86efb520', '_retry': 'fcef3f3d7f904af49c79f1a81e6eff2f8cfbbebc651c459cbbc27878c84c996c', '_make_inputs': '61320f67dd6771fb6da56d843860b1b093cf8b96fec653b8870530c29eb75ffd', '_norm_max_err': '4a246cb0fdae72a9345aaab71f28ef7c45772bdb2e8a281a1ec97626598bf271', 'run_correctness': '14156307fd446e4177cb2208a81fe7698a27750f5808ab4a36c384c8d2bdd465', 'run_benchmark': '3f0e00ecec5108f1514ee57b453598acfba6810623f664a6d3df418685e7b11a', '_require_candidate_outputs': 'e5f69466d2ec4497fe192bf53ce8d7b034bb14cd59272fc7b1dea160a574e09e', 'arena_benchmark': '83ceeba22d5b861af471b2a27866108218574b87ba16e647ea160e04f8fe5323'}
+    task=ROOT/'tasks/torch2flydsl/qk_norm_rope_quant_kernel'
+    for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
+        if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
+            normalized=_RemoveQkChecks().visit(fn)
+            assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
+    peer=ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'
+    for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py','task_runtime.py']:assert (task/rel).read_bytes()==(peer/rel).read_bytes()

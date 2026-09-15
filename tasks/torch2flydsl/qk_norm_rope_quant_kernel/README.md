@@ -57,3 +57,22 @@ operator is `flydsl_qk_norm_rope_quant`; any additional declared callables used 
 remain required. Legacy build/compile helpers are optional implementation details;
 no builder return protocol is required by this task. A candidate may choose its
 own internal compilation helpers, while implementing all tested work in FlyDSL.
+
+
+The six original cases exercise the BF16 `quant=False` path: output must be
+(BF16 Q[T,H,D], BF16 KV[T,D], None, None), on the input device. Quantization
+scales must remain None. Q/KV, KV weight, cosine/sine tables and positions are
+read-only; the original strided KV input remains strided. Preserve headwise
+RMSNorm eps1e-6, KV-only gamma and GPT-J paired rotation of the RD tail, with
+the original normalized max-error gate<=1e-2 independently for Q and KV
+(denominator max_abs_reference+1e-9). The allclose percentages are diagnostic.
+Validate all four values of the actual measured tuple, then negate Q and KV
+outside timing, poison both output tensors and replay the same measured
+invocation against the unchanged model. Recheck the two None scale slots on
+replay too, and restore the inputs. Baseline/candidate retain the original
+10external warmups,100samples and graph timing; diagnostic model timing retains
+its original10warmups. Source kernel, model, cases, group-size variants and seed
+are unchanged. Final candidate arithmetic must run FlyDSL; the candidate-only
+auditor permits host preparation and checks operator calls outside timing.
+This original source uses the older FlyDSL buffer_ops API, so its full GPU
+qualification requires the pinned compatible image recorded with the report.
