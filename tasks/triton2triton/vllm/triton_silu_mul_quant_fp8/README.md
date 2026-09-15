@@ -26,3 +26,14 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+Protected checks validate the complete platform-FP8 output and FP32 column-major
+scale pair, shape/device, finite data and positive scales. The existing FP32
+SiLU/multiply reference and tolerances are retained: scale atol=1e-2, rtol=1e-1;
+dequantized result atol=0.5, rtol=1e-1. The public output-buffer, epsilon and
+UE8M0 options have unscored diagnostics; a supplied output must be written and
+returned, and UE8M0 scales must be powers of two. Diagnostics retain the public
+M%128 and N%256 constraints. All five scored workloads use the original default
+mode, source/harness, seeds, 10 warmups, 100 samples and full-wrapper timing.
+The exact timed invocation is numerically replayed with changed inputs and both
+outputs poisoned. Read-only input is checked and restored even on replay failure.

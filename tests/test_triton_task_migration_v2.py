@@ -4732,3 +4732,119 @@ def test_fp8_group_adapters_install_task_local_checks(monkeypatch, symbol):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm'/('triton_'+symbol)/'_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_fp8_group_checks'
+
+
+def _silu_fp8_cpu(x, output=None, use_ue8m0=False, eps=1e-10):
+    gate, up = x.float().chunk(2, dim=-1)
+    # Reproduce the public implementation's fp16 activation rounding;
+    # the task reference remains independent fp32, with the original gate.
+    values = (torch.nn.functional.silu(gate).to(x.dtype) * up.to(x.dtype)).float()
+    quant, scales = _fp8_group_cpu(values, 128, eps=eps, use_ue8m0=use_ue8m0, colmajor=True)
+    if output is not None: output.copy_(quant); quant = output
+    return quant, scales
+
+
+def _silu_fp8_cpu_harness(monkeypatch):
+    h, checks = _fp8_group_cpu_harness(monkeypatch, 'silu_mul_quant_fp8')
+    return h, checks
+
+
+def test_silu_fp8_independent_constant_known_answer_and_power_two_scale(monkeypatch):
+    import math
+    h, checks = _silu_fp8_cpu_harness(monkeypatch)
+    x = torch.ones(128, 256, dtype=torch.float16); x[0].zero_()
+    expected_q = torch.full((128, 128), 240.); expected_q[0].zero_()
+    expected_s = torch.full((128, 1), (1/(1+math.exp(-1)))/240); expected_s[0] = 1e-10/240
+    ref = checks.reference(h, x, {})
+    torch.testing.assert_close(ref[0].float(), expected_q, atol=0, rtol=0)
+    torch.testing.assert_close(ref[1], expected_s, atol=1e-9, rtol=0)
+    checks.check_outputs(_silu_fp8_cpu(x), ref)
+    reference_ue = checks.reference(h, x, dict(eps=16, use_ue8m0=True))
+    torch.testing.assert_close(reference_ue[1], torch.full((128, 1), .125), atol=0, rtol=0)
+    actual = _silu_fp8_cpu(x, eps=16, use_ue8m0=True)
+    checks.check_outputs(actual, reference_ue, use_ue8m0=True)
+    actual[1].mul_(1.01)
+    # This error remains within the old numerical tolerance but violates UE8M0.
+    checks.check_outputs(actual, reference_ue)
+    with pytest.raises(AssertionError, match='power-of-two'): checks.check_outputs(actual, reference_ue, use_ue8m0=True)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'q_dtype', 'scale_dtype', 'scale_layout', 'q_shape', 'scale_shape',
+                                 'nonfinite_q', 'nonfinite_scale', 'missing_scale', 'wrong_q', 'wrong_scale',
+                                 'mutate_input', 'zero_scales', 'ignore_eps', 'ignore_ue8m0', 'ignore_output'])
+def test_silu_fp8_original_correctness_and_public_output_options(monkeypatch, mode):
+    h, checks = _silu_fp8_cpu_harness(monkeypatch)
+    calls = []
+    def public(x, output=None, use_ue8m0=False, eps=1e-10):
+        calls.append((tuple(x.shape), output is not None, use_ue8m0, eps))
+        if mode == 'mutate_input': x.zero_()
+        if mode == 'ignore_eps': eps = 1e-10
+        if mode == 'ignore_ue8m0': use_ue8m0 = False
+        if mode == 'ignore_output': output = None
+        quant, scales = _silu_fp8_cpu(x, output, use_ue8m0, eps)
+        if mode == 'q_dtype': quant = quant.half()
+        if mode == 'scale_dtype': scales = scales.half()
+        if mode == 'scale_layout': scales = scales.contiguous()
+        if mode == 'q_shape': quant = quant.flatten()
+        if mode == 'scale_shape': scales = scales.flatten()
+        if mode == 'nonfinite_q': quant.copy_(torch.full_like(quant, float('nan'), dtype=torch.float32).to(quant.dtype))
+        if mode == 'nonfinite_scale': scales.fill_(float('nan'))
+        if mode == 'missing_scale': return (quant,)
+        if mode == 'wrong_q': quant.copy_(torch.zeros_like(quant, dtype=torch.float32).to(quant.dtype))
+        if mode == 'wrong_scale': scales.mul_(10)
+        if mode == 'zero_scales': scales[x.abs().amax(-1)==0] = 0
+        return quant, scales
+    mod = SimpleNamespace(**{checks.SYMBOL:public, '_get_fp8_dtype':lambda:torch.float8_e4m3fnuz})
+    h.load_module = lambda: mod
+    checks.install(h)
+    ok, reason = h.run_correctness()
+    assert ok is (mode == 'correct'), reason
+    if mode == 'correct':
+        assert [c[0] for c in calls if not c[1]] == h.TEST_SHAPES
+        assert [c for c in calls if c[1]] == [((128,512),True,False,16.),((128,512),True,True,16.)]
+    assert getattr(mod, checks.SYMBOL) is public
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'omit_q', 'omit_scale',
+                                 'wrong_replay', 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_silu_fp8_original_measured_pair_and_replay_restores_input(monkeypatch, mode):
+    import inspect
+    h, checks = _silu_fp8_cpu_harness(monkeypatch)
+    h._TimedRun = module_at(ROOT/'src/tools/perf/aka_benchmark.py', monkeypatch).TimedRun
+    mod = SimpleNamespace(**{checks.SYMBOL:_silu_fp8_cpu}); h.load_module = lambda: mod
+    inputs, pristine, options = [], [], []
+    def benchmark(measured, *, timed_run, **kwargs):
+        fn = inspect.getclosurevars(measured).nonlocals['fn']
+        state = inspect.getclosurevars(fn).nonlocals
+        x = state['x']; inputs.append(x); pristine.append(x.clone()); options.append(kwargs)
+        outputs = measured(); cached = tuple(v.clone() for v in outputs)
+        def zero_q(): outputs[0].copy_(torch.zeros_like(outputs[0], dtype=torch.float32).to(outputs[0].dtype))
+        if mode == 'wrong_timed': zero_q()
+        if mode == 'mutate_timed': x.zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('Replay failed')
+            if mode != 'no_write':
+                computed = cached if mode == 'stale' else measured()
+                for i, (out, value) in enumerate(zip(outputs, computed)):
+                    if mode == 'omit_q' and i == 0 or mode == 'omit_scale' and i == 1: continue
+                    out.copy_(value)
+            if mode == 'wrong_replay': zero_q()
+            if mode == 'mutate_replay': x.zero_()
+            return outputs
+        timed_run._bind(replay, outputs)
+        return .125, {'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == 5 and options == [dict(warmup=10, repetition=100)]*5
+    for case, row in zip(h.TEST_SHAPES, rows):
+        assert row['params'] == dict(M=case[0],N=case[1])
+        assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
+    for x, saved in zip(inputs, pristine): checks.unchanged(x,saved)
+    assert getattr(mod, checks.SYMBOL) is _silu_fp8_cpu
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_silu_fp8_adapter_installs_task_local_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_silu_mul_quant_fp8/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_silu_fp8_checks'
