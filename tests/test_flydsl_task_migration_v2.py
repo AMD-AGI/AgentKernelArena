@@ -352,7 +352,7 @@ def test_torch_numerical_gates_cases_and_models_preserved():
                 assert isinstance(handler.body[0],ast.Raise)
                 assert "no baseline fallback" in ast.unparse(handler.body[0])
                 handler.body.pop(0)
-        if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel", "rmsnorm2d_kernel"}:
+        if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
         if name in {"gelu_fast_kernel", "gelu_and_mul_kernel", "gelu_tanh_and_mul_kernel", "swiglu_and_mul_kernel"}:
             fn = _RemoveActivationReplayChecks().visit(fn)
@@ -678,12 +678,12 @@ class _RemoveAddedReplayChecks(ast.NodeTransformer):
     def visit_Expr(self, node):
         value = node.value
         if isinstance(value, ast.Call):
-            if isinstance(value.func, ast.Name) and value.func.id in {"require_tensor_contract", "require_unchanged", "_validate_pa_contract", "_checked_gemm_output", "_checked_rms_output"}:
+            if isinstance(value.func, ast.Name) and value.func.id in {"require_tensor_contract", "require_unchanged", "_validate_pa_contract", "_checked_gemm_output", "_checked_rms_output", "_require_routing_contract"}:
                 return None
             if (isinstance(value.func, ast.Attribute) and value.func.attr == "update"
                     and len(value.args) == 1 and isinstance(value.args[0], ast.Call)
                     and isinstance(value.args[0].func, ast.Name)
-                    and value.args[0].func.id == "verify_timed_run"):
+                    and value.args[0].func.id in {"verify_timed_run", "_verify_routing_timed"}):
                 return None
         return self.generic_visit(node)
 
@@ -1589,3 +1589,95 @@ def test_rmsnorm_output_contract_and_original_normalized_gate(bad):
     if bad=="device":actual=actual.to("meta")
     if bad=="nonfinite":actual[0,0]=float("nan")
     with pytest.raises(AssertionError):ns["_compare_rms_output"](actual,expected)
+
+
+@pytest.mark.parametrize("function", ["run_benchmark", "arena_benchmark"])
+@pytest.mark.parametrize("provided", [False, True])
+@pytest.mark.parametrize("behavior", ["correct", "measured_wrong", "replay_wrong", "cached", "input_modified", "bad_ids", "nonfinite"])
+def test_moe_routing_benchmark_checks_both_real_timed_outputs(function, provided, behavior, monkeypatch, tmp_path):
+    import math
+    import types
+    import torch
+    task=ROOT/"tasks/torch2flydsl/moe_topk_softmax_kernel"
+    checks=module(task/"scripts/replay_checks.py")
+    mmod=module(task/"model.py")
+    model=mmod.Model(6,2,1.,False)
+    gating=torch.tensor([[1.,3.,2.,5.,6.,4.],[6.,2.,4.,3.,1.,5.]],dtype=torch.bfloat16)
+    original=gating.clone();cached=model(gating)
+    phase={"value":"setup"}
+    monkeypatch.setattr(torch.cuda,"synchronize",lambda:None)
+    monkeypatch.setattr(torch.cuda,"empty_cache",lambda:None)
+    def compute():
+        w,ids=model(gating)
+        if behavior==phase["value"]+"_wrong":w=w+1.
+        if phase["value"]=="replay":
+            if behavior=="cached":w,ids=(x.clone() for x in cached)
+            if behavior=="input_modified":gating.add_(1)
+        if phase["value"]=="measured":
+            if behavior=="bad_ids":ids[:,0]=-1
+            if behavior=="nonfinite":w[:,0]=float("nan")
+        return w,ids
+    def aiter_op(w,ids,*args,**kwargs):
+        actual_w,actual_ids=compute();w.copy_(actual_w);ids.copy_(actual_ids)
+    monkeypatch.setitem(sys.modules,"aiter",types.SimpleNamespace(topk_gating=aiter_op))
+    kmod=types.SimpleNamespace(flydsl_topk_softmax=lambda *args:compute())
+    class Collector:
+        bound=False
+        outputs=None
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run=None):
+        calls.append((warmup,repetition,timed_run is not None))
+        phase["value"]="measured";out=fn()
+        if timed_run is not None:
+            timed_run.outputs=out;timed_run.bound=True
+            def replay():
+                phase["value"]="replay";result=fn();phase["value"]="setup";return result
+            timed_run.rerun=replay
+        phase["value"]="setup"
+        return .1,{"benchmark_method":"cuda_graph","benchmark_timed_run_kind":"captured_graph"}
+    ns={"TimedRun":Collector,"benchmark_cuda_graph_or_events":benchmark,"require_unchanged":checks.require_unchanged,
+        "math":math,"json":json,"Path":Path,"_KERNEL_DIR":str(tmp_path),"MODEL_FILE":"model.py","KERNEL_FILE":"kernel.py",
+        "_TIE_TOL":1e-4,"_WEIGHT_ATOL":1e-2,"_BIAS_ID_ERR_TOL":.05,
+        "SHAPES":[{"name":"controlled","tokens":2,"experts":6,"topk":2,"route_scale":1.,"use_bias":False}],
+        "_load_module":lambda directory,filename,alias:mmod if filename=="model.py" else (None if provided else kmod),
+        "_build_model":lambda *args:(model,gating),"_retry":lambda fn,**kwargs:fn()}
+    _harness_functions(task,{function,"_require_routing_contract","_routing_reference","_verify_routing_timed","_compare_routing"},ns)
+    if behavior=="correct":
+        result=ns[function](verbose=False)
+        if function=="run_benchmark":result=json.loads((tmp_path/"build/performance_report.json").read_text())
+        assert result[0]["timed_output_correctness"]==result[0]["replay_correctness"]=="PASS"
+        assert result[0]["replay_checked_outputs"]==["weights","expert_ids"]
+        assert calls==[(0,100,True),(0,100,False)]
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+    assert torch.equal(gating,original)
+
+
+@pytest.mark.parametrize("bad", ["shape", "weight_dtype", "id_dtype", "device", "out_of_range", "duplicate", "nonfinite"])
+def test_moe_routing_contract_rejects_invalid_outputs_even_with_bias_allowance(bad):
+    import torch
+    task=ROOT/"tasks/torch2flydsl/moe_topk_softmax_kernel"
+    ns={}
+    _harness_functions(task,{"_require_routing_contract"},ns)
+    gating=torch.zeros(2,4,dtype=torch.bfloat16)
+    w=torch.ones(2,2,dtype=torch.float32);ids=torch.tensor([[1,2],[2,3]],dtype=torch.int32)
+    ns["_require_routing_contract"](w,ids,gating,2)
+    if bad=="shape":w=w[:1]
+    if bad=="weight_dtype":w=w.bfloat16()
+    if bad=="id_dtype":ids=ids.long()
+    if bad=="device":w=w.to("meta")
+    if bad=="out_of_range":ids[0,0]=4
+    if bad=="duplicate":ids[0,0]=ids[0,1]
+    if bad=="nonfinite":w[0,0]=float("nan")
+    with pytest.raises(AssertionError):ns["_require_routing_contract"](w,ids,gating,2)
+
+
+_MOE_ROUTING_ORIGINAL_PROTECTED_FUNCTIONS = {'_compare_routing': 'ae7b784aee35b1eed3868157123f5b9dd5be69c15eb3b489f7d6996d9b8edd14', 'run_benchmark': '833ba05fe35dc7b25512a7fbbf74d34955c40a63a63d385dffab17ec158dad06', 'arena_benchmark': 'a096d9bad6085aaeee32e01f2b49bebdcec7cd7f8d7c3fe36bcf317b0949d858'}
+
+
+def test_moe_routing_original_tie_weight_policy_and_benchmark_work_preserved():
+    tree = ast.parse((ROOT / "tasks/torch2flydsl/moe_topk_softmax_kernel/test_kernel_harness.py").read_text())
+    for function, expected_hash in _MOE_ROUTING_ORIGINAL_PROTECTED_FUNCTIONS.items():
+        fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function)
+        fn = _RemoveAddedReplayChecks().visit(fn)
+        assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == expected_hash

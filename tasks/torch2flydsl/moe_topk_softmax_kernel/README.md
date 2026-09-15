@@ -50,3 +50,13 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+The provided scored baseline calls AITER `topk_gating(score_func="softmax")`;
+the protected PyTorch model supplies independent routing outputs. Correctness
+and measured/replayed outputs must contain FP32 weights and INT32 expert ids,
+both `[tokens, topk]` on the input device. Weights must be finite and ids valid
+and unique per token. Timing checks preserve the original tie threshold, biased
+routing mismatch allowance and matched-id weight tolerance. The harness poisons
+both output tensors and permutes the expert columns (including bias) before
+replaying, then compares both outputs using fresh reference results. All checks
+are outside timing; original cases, seeds, sampling and allocation remain.
