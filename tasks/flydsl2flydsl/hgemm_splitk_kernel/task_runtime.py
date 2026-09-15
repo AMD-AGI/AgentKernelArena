@@ -204,7 +204,8 @@ def run(argv):
         report["cases"] = [dict(copy.deepcopy(r), status="FAIL") for r in selected]
         for row in report["cases"]:
             if action != "validate-task": row.pop("checks",None)
-        state, defined = source_state(cfg)
+        provided = role == "baseline" and cfg["baseline"]["kind"] == "provided"
+        state, defined = (None, []) if provided else source_state(cfg)
         if role == "task":
             report["metadata"] = {"candidate_state":state}
             if state != cfg["candidate"]["initial_state"]: raise ValueError("Actual candidate state disagrees with config")
@@ -237,7 +238,7 @@ def run(argv):
         report["status"] = "PASS"
         for row in report["cases"]: row["status"] = "PASS"
         json.dumps(report, allow_nan=False)
-    except Exception as exc:
+    except (Exception, SystemExit) as exc:
         report.update(status="FAIL",reason=f"{type(exc).__name__}: {exc}")
         # A caught harness assertion can include a launch/runtime failure. Never
         # label it numerical_mismatch without separately attested numeric evidence.

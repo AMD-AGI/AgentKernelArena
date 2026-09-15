@@ -23,21 +23,19 @@ import time
 from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, KERNEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, KERNEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -49,6 +47,8 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
@@ -305,3 +305,110 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name.startswith("flydsl_") and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return result
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+
+    kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
+    mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
+    assert kmod is not None and mmod is not None, "cannot load kernel.py / model.py"
+
+    latencies, speedups, report = [], [], []
+    print(f"{'Config':<24} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10}")
+    print("-" * 60)
+    for idx, shape in enumerate(SHAPES):
+        T, H, D, RD, G = (
+            shape["T"], shape["H"], shape["D"], shape["RD"], shape["group_size"]
+        )
+        model = mmod.Model(H, D, RD, G).to("cuda").eval()
+        q, kv, kv_weight, cos, sin, positions = _make_inputs(mmod, shape)
+
+        def run_kernel():
+            return kmod.flydsl_qk_norm_rope_quant(
+                q, kv, kv_weight, cos, sin, positions,
+                num_q_heads=H, head_dim=D, rope_head_dim=RD, quant=False,
+            )
+
+        _retry(run_kernel, what=shape["name"])
+        torch.cuda.synchronize()
+        for _ in range(warmup):
+            run_kernel()
+        torch.cuda.synchronize()
+
+        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+            run_kernel, warmup=0, repetition=iters
+        )
+
+        with torch.no_grad():
+            ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: model(q, kv, kv_weight, cos, sin, positions),
+                warmup=warmup,
+                repetition=iters,
+            )
+
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(kernel_ms)
+        if speedup is not None:
+            speedups.append(speedup)
+        # bytes moved: Q in/out + KV in/out + kv_weight (bf16).
+        bytes_total = (T * H * D * 2 * 2) + (T * D * 2 * 2) + (D * 2)
+        gbps = bytes_total / (kernel_ms * 1e-3) / 1e9
+        report.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [T, H, D, RD],
+            "params": {"T": T, "H": H, "D": D, "RD": RD, "group_size": G, "dtype": "bf16"},
+            "gbps": gbps,
+        })
+        if verbose:
+            print(f"{shape['name']:<24} {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}")
+        del model, q, kv, kv_weight, cos, sin, positions
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
+
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    print("-" * 60)
+    print(f"Geometric mean latency: {geomean_latency:.4f} ms")
+    print(f"Geometric mean speedup: {geomean_speedup_display}")
+    return report

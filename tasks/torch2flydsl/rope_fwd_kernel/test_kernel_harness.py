@@ -31,7 +31,9 @@ import time
 from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
 KERNEL_ENTRY = "flydsl_rope_cached_fwd"
 
@@ -40,16 +42,12 @@ ROTATE_GPTJ = 1
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, MODEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, MODEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -61,10 +59,14 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
 def _load_target():
+    if ARENA_PROVIDED_BASELINE:
+        return None
     """Load the required target; absence is a broken task, not a starter SKIP."""
     kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
     assert kmod is not None, f"cannot load {KERNEL_FILE}"
@@ -104,10 +106,13 @@ def _is_pure_starter():
 
 
 def _probe_target(target, pure_starter, *args):
+    if ARENA_PROVIDED_BASELINE:
+        return (False, None)
     """Catch NotImplementedError only for a statically proven pure starter."""
     try:
         return True, target(*args)
     except NotImplementedError:
+        raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
         if not pure_starter:
             raise
         return False, None
@@ -459,3 +464,147 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name.startswith("flydsl_") and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return result
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+    import aiter
+
+    mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
+    assert mmod is not None, "cannot load model.py"
+    target = _load_target()
+    pure_starter = _is_pure_starter()
+
+    probe_shape = SHAPES[0]
+    probe_input, probe_cos, probe_sin = _make_inputs(probe_shape)
+    target_implemented, probe_output = _probe_target(
+        target,
+        pure_starter,
+        probe_input,
+        probe_cos,
+        probe_sin,
+        probe_shape["rotate_style"],
+        probe_shape["reuse"],
+        probe_shape["nope_first"],
+    )
+    if not target_implemented:
+        print(
+            "SKIP: kernel.py FlyDSL starter is not implemented "
+            "(benchmarking the reference only; no target latency is claimed)"
+        )
+    else:
+        assert probe_output is not None, f"{KERNEL_ENTRY} returned None"
+    del probe_input, probe_cos, probe_sin, probe_output
+    torch.cuda.empty_cache()
+
+    latencies, report = [], []
+    print(f"{'Config':<22} {'aiter':>12} {'TorchRef':>12} {'target':>12}")
+    print("-" * 64)
+    for idx, shape in enumerate(SHAPES):
+        s, b, h, d = shape["s"], shape["b"], shape["h"], shape["d"]
+        model = mmod.Model(
+            shape["rotate_style"], shape["reuse"], shape["nope_first"]
+        ).to("cuda").eval()
+        input, cos, sin = _make_inputs(shape)
+
+        def run_ref():
+            with torch.no_grad():
+                return model(input, cos, sin)
+
+        def run_truth():
+            return aiter.rope_cached_fwd(
+                input, cos, sin,
+                shape["rotate_style"], shape["reuse"], shape["nope_first"], False,
+            )
+
+        def run_target():
+            return target(
+                input,
+                cos,
+                sin,
+                shape["rotate_style"],
+                shape["reuse"],
+                shape["nope_first"],
+            )
+
+        _retry(run_truth, what=shape["name"])
+        torch.cuda.synchronize()
+
+        def _mean(fn):
+            return benchmark_cuda_graph_or_events(
+                fn, warmup=warmup, repetition=iters
+            )
+
+        ref_ms, ref_bench_meta = _mean(run_ref)
+        aiter_ms, _aiter_bench_meta = _mean(run_truth)
+        target_result = (
+            _mean(run_target) if target_implemented else (None, None)
+        )
+        target_ms, target_bench_meta = target_result
+        primary_ms = target_ms if target_ms is not None else ref_ms
+        bench_meta = (
+            target_bench_meta if target_ms is not None else ref_bench_meta
+        )
+        latencies.append(primary_ms)
+        # bytes moved: input + output (bf16); cos/sin caches are small.
+        bytes_total = s * b * h * d * 2 * 2
+        gbps = bytes_total / (primary_ms * 1e-3) / 1e9
+        report.append(
+            {
+                "test_case_id": f"test_case_{idx}",
+                "execution_time_ms": primary_ms,
+                **bench_meta,
+                "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+                "benchmark_method_consistent": bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+                "shape": [s, b, h, d],
+                "params": {
+                    "s": s, "b": b, "h": h, "d": d,
+                    "rotary_pct": shape["rotary_pct"],
+                    "rotate_style": shape["rotate_style"],
+                    "reuse": shape["reuse"],
+                    "nope_first": shape["nope_first"],
+                    "dtype": "bf16",
+                },
+                "aiter_ms": aiter_ms,
+                "reference_ms": ref_ms,
+                "target_ms": target_ms,
+                "target_implemented": target_implemented,
+                "gbps": gbps,
+            }
+        )
+        if verbose:
+            target_s = f"{target_ms:>10.4f}ms" if target_ms is not None else f"{'n/a':>12}"
+            print(
+                f"{shape['name']:<22} {aiter_ms:>10.4f}ms "
+                f"{ref_ms:>10.4f}ms {target_s}"
+            )
+        del model, input, cos, sin
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+    print("-" * 64)
+    latency_kind = "target" if target_implemented else "reference fallback"
+    print(f"Geometric mean {latency_kind} latency: {geomean_latency:.4f} ms")
+    return report

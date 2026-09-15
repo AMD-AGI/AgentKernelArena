@@ -1,0 +1,118 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "s": 2048,
+        "b": 2,
+        "h": 8,
+        "d": 128,
+        "rotary_pct": 1.0,
+        "rotate_style": 0,
+        "reuse": true,
+        "nope_first": false,
+        "seed": 0,
+        "rotate_neox": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "s": 2048,
+        "b": 2,
+        "h": 8,
+        "d": 128,
+        "rotary_pct": 1.0,
+        "rotate_style": 1,
+        "reuse": true,
+        "nope_first": false,
+        "seed": 0,
+        "rotate_neox": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "s": 1024,
+        "b": 4,
+        "h": 8,
+        "d": 128,
+        "rotary_pct": 0.5,
+        "rotate_style": 0,
+        "reuse": false,
+        "nope_first": false,
+        "seed": 0,
+        "rotate_neox": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "s": 1024,
+        "b": 4,
+        "h": 8,
+        "d": 128,
+        "rotary_pct": 0.5,
+        "rotate_style": 1,
+        "reuse": true,
+        "nope_first": false,
+        "seed": 0,
+        "rotate_neox": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "s": 1024,
+        "b": 2,
+        "h": 16,
+        "d": 128,
+        "rotary_pct": 0.5,
+        "rotate_style": 0,
+        "reuse": true,
+        "nope_first": true,
+        "seed": 0,
+        "rotate_neox": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "s": 512,
+        "b": 2,
+        "h": 16,
+        "d": 64,
+        "rotary_pct": 1.0,
+        "rotate_style": 0,
+        "reuse": false,
+        "nope_first": false,
+        "seed": 0,
+        "rotate_neox": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

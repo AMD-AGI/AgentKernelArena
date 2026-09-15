@@ -31,21 +31,19 @@ import time
 from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, KERNEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, KERNEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -57,6 +55,8 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
@@ -227,6 +227,7 @@ def run_correctness(verbose=True):
                     shape["topk_group"], shape["renormalize"], shape["route_scale"],
                 )
             except NotImplementedError:
+                raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
                 has_kernel = False
                 if verbose:
                     print(
@@ -272,6 +273,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
                     s0["topk_group"], s0["renormalize"], s0["route_scale"],
                 )
         except NotImplementedError:
+            raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
             has_kernel = False
             print(
                 "SKIP: kernel.py FlyDSL target not implemented yet "
@@ -404,3 +406,152 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name.startswith("flydsl_") and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return result
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+    import aiter
+
+    mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
+    assert mmod is not None, "cannot load model.py"
+    kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
+    has_kernel = kmod is not None
+
+    if has_kernel:
+        s0 = SHAPES[0]
+        model0, gating0 = _build_model(mmod, s0)
+        bias0 = model0.correction_bias.detach().float()
+        try:
+            with torch.no_grad():
+                kmod.flydsl_biased_grouped_topk(
+                    gating0, bias0, s0["topk"], s0["num_expert_group"],
+                    s0["topk_group"], s0["renormalize"], s0["route_scale"],
+                )
+        except NotImplementedError:
+            raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
+            has_kernel = False
+            print(
+                "SKIP: kernel.py FlyDSL target not implemented yet "
+                "(benchmarking aiter op instead)"
+            )
+        del model0, gating0
+        torch.cuda.empty_cache()
+
+    latencies, speedups, report = [], [], []
+    print(f"{'Config':<24} {'Ref':>10} {'Fused':>10} {'Speedup':>10}")
+    print("-" * 60)
+    for idx, shape in enumerate(SHAPES):
+        model, gating = _build_model(mmod, shape)
+        bias = model.correction_bias.detach().float()
+
+        with torch.no_grad():
+            if has_kernel:
+                def run_fused():
+                    return kmod.flydsl_biased_grouped_topk(
+                        gating, bias, shape["topk"], shape["num_expert_group"],
+                        shape["topk_group"], shape["renormalize"], shape["route_scale"],
+                    )
+            else:
+                def run_fused():
+                    fused_w = torch.empty(
+                        (shape["tokens"], shape["topk"]), dtype=torch.float32,
+                        device=gating.device,
+                    )
+                    fused_idx = torch.empty(
+                        (shape["tokens"], shape["topk"]), dtype=torch.int32,
+                        device=gating.device,
+                    )
+                    aiter.biased_grouped_topk_hip(
+                        gating,
+                        bias,
+                        fused_w,
+                        fused_idx,
+                        shape["num_expert_group"],
+                        shape["topk_group"],
+                        shape["renormalize"],
+                        shape["route_scale"],
+                    )
+                    return fused_w, fused_idx
+
+                def prepare_fused():
+                    run_fused()
+                    torch.cuda.synchronize()
+
+                _retry(prepare_fused, what="aiter.biased_grouped_topk_hip")
+
+            run_fused()
+            torch.cuda.synchronize()
+            for _ in range(warmup):
+                run_fused()
+            torch.cuda.synchronize()
+            fused_ms, fused_bench_meta = benchmark_cuda_graph_or_events(
+                run_fused, warmup=0, repetition=iters
+            )
+
+            ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: model(gating), warmup=0, repetition=iters
+            )
+
+        methods_match = fused_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / fused_ms if methods_match and fused_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(fused_ms)
+        if speedup is not None:
+            speedups.append(speedup)
+        report.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": fused_ms,
+            **fused_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": fused_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [shape["tokens"], shape["experts"], shape["topk"]],
+            "params": {k: shape[k] for k in (
+                "tokens", "experts", "topk", "num_expert_group", "topk_group",
+                "renormalize", "route_scale")},
+        })
+        if verbose:
+            print(f"{shape['name']:<24} {ref_ms:>8.4f}ms {fused_ms:>8.4f}ms {speedup_display}")
+        del model, gating
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
+
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    print("-" * 60)
+    print(f"Geometric mean latency: {geomean_latency:.4f} ms")
+    print(f"Geometric mean speedup: {geomean_speedup_display}")
+    return report
