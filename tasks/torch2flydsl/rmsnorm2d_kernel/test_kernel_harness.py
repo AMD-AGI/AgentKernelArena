@@ -26,7 +26,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -170,6 +171,22 @@ def _norm_max_err(ref, out):
     return max_abs / denom, max_abs, denom
 
 
+def _checked_rms_output(actual, input):
+    import torch
+    require_tensor_contract(actual, input)
+    if not bool(torch.isfinite(actual).all()):
+        raise AssertionError("Non-finite operator/reference output")
+    return actual
+
+
+def _compare_rms_output(actual, expected):
+    _checked_rms_output(actual, expected)
+    _checked_rms_output(expected, expected)
+    error, _, _ = _norm_max_err(expected, actual)
+    if error > REL_TOL:
+        raise AssertionError(f"Numerical mismatch: normalized_max_error={error}, tolerance={REL_TOL}")
+
+
 def run_correctness(verbose=True):
     import torch
     import aiter
@@ -199,6 +216,7 @@ def run_correctness(verbose=True):
         m, n = shape["m"], shape["n"]
         model = mmod.Model(EPS).to("cuda").eval()
         input, weight = _make_inputs(shape)
+        originals = (input.clone(), weight.clone())
 
         with torch.no_grad():
             ref = model(input, weight)
@@ -206,6 +224,9 @@ def run_correctness(verbose=True):
         truth = _retry(lambda: aiter.rms_norm(input, weight, EPS), what=shape["name"])
         torch.cuda.synchronize()
 
+        require_unchanged((input, weight), originals)
+        _checked_rms_output(truth, input)
+        _checked_rms_output(ref, input)
         err, max_abs, _ = _norm_max_err(truth, ref)
         worst = max(worst, err)
         pct = (
@@ -243,6 +264,8 @@ def run_correctness(verbose=True):
         if target_implemented:
             assert kout is not None, f"{KERNEL_ENTRY} returned None"
             torch.cuda.synchronize()
+            require_unchanged((input, weight), originals)
+            _checked_rms_output(kout, input)
             kerr, kmax_abs, _ = _norm_max_err(truth, kout)
             k_ok = kerr <= REL_TOL
             if verbose:
@@ -295,6 +318,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         m, n = shape["m"], shape["n"]
         model = mmod.Model(EPS).to("cuda").eval()
         input, weight = _make_inputs(shape)
+        originals = (input.clone(), weight.clone())
 
         def run_ref():
             with torch.no_grad():
@@ -310,9 +334,21 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         torch.cuda.synchronize()
 
         def _mean(fn):
-            return benchmark_cuda_graph_or_events(
-                fn, warmup=warmup, repetition=iters
+            # The scored Torch baseline and candidate use the original AITER
+            # truth. The auxiliary AITER timing uses the independent model.
+            oracle = run_ref if fn is run_truth else run_truth
+            expected = oracle()
+            _checked_rms_output(expected, input)
+            timed = TimedRun()
+            elapsed, metadata = benchmark_cuda_graph_or_events(
+                fn, warmup=warmup, repetition=iters, timed_run=timed
             )
+            metadata.update(verify_timed_run(
+                timed, inputs=(input, weight), originals=originals, expected=expected,
+                perturb=lambda: (input.neg_(), weight.mul_(0.5)),
+                reference=oracle, compare=_compare_rms_output,
+            ))
+            return elapsed, metadata
 
         ref_ms, ref_bench_meta = _mean(run_ref)
         aiter_ms, _aiter_bench_meta = _mean(run_truth)
@@ -451,6 +487,7 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         m, n = shape["m"], shape["n"]
         model = mmod.Model(EPS).to("cuda").eval()
         input, weight = _make_inputs(shape)
+        originals = (input.clone(), weight.clone())
 
         def run_ref():
             with torch.no_grad():
@@ -466,9 +503,21 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         torch.cuda.synchronize()
 
         def _mean(fn):
-            return benchmark_cuda_graph_or_events(
-                fn, warmup=warmup, repetition=iters
+            # The scored Torch baseline and candidate use the original AITER
+            # truth. The auxiliary AITER timing uses the independent model.
+            oracle = run_ref if fn is run_truth else run_truth
+            expected = oracle()
+            _checked_rms_output(expected, input)
+            timed = TimedRun()
+            elapsed, metadata = benchmark_cuda_graph_or_events(
+                fn, warmup=warmup, repetition=iters, timed_run=timed
             )
+            metadata.update(verify_timed_run(
+                timed, inputs=(input, weight), originals=originals, expected=expected,
+                perturb=lambda: (input.neg_(), weight.mul_(0.5)),
+                reference=oracle, compare=_compare_rms_output,
+            ))
+            return elapsed, metadata
 
         ref_ms, ref_bench_meta = _mean(run_ref)
         aiter_ms, _aiter_bench_meta = _mean(run_truth)

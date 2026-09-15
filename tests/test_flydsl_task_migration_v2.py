@@ -352,7 +352,7 @@ def test_torch_numerical_gates_cases_and_models_preserved():
                 assert isinstance(handler.body[0],ast.Raise)
                 assert "no baseline fallback" in ast.unparse(handler.body[0])
                 handler.body.pop(0)
-        if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel"}:
+        if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel", "rmsnorm2d_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
         if name in {"gelu_fast_kernel", "gelu_and_mul_kernel", "gelu_tanh_and_mul_kernel", "swiglu_and_mul_kernel"}:
             fn = _RemoveActivationReplayChecks().visit(fn)
@@ -678,7 +678,7 @@ class _RemoveAddedReplayChecks(ast.NodeTransformer):
     def visit_Expr(self, node):
         value = node.value
         if isinstance(value, ast.Call):
-            if isinstance(value.func, ast.Name) and value.func.id in {"require_tensor_contract", "require_unchanged", "_validate_pa_contract", "_checked_gemm_output"}:
+            if isinstance(value.func, ast.Name) and value.func.id in {"require_tensor_contract", "require_unchanged", "_validate_pa_contract", "_checked_gemm_output", "_checked_rms_output"}:
                 return None
             if (isinstance(value.func, ast.Attribute) and value.func.attr == "update"
                     and len(value.args) == 1 and isinstance(value.args[0], ast.Call)
@@ -1500,3 +1500,92 @@ def test_preshuffle_vector_api_port_preserves_compilation_algorithm():
     fn = OriginalAssembly().visit(fn)
     assert len(converted) == 1
     assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == "4ffbe6d2fb5813bf4c4e6c663556e752f1ddb9319d6179e16657b8f95791092f"
+
+
+@pytest.mark.parametrize("function", ["run_benchmark", "arena_benchmark"])
+@pytest.mark.parametrize("provided", [False, True])
+@pytest.mark.parametrize("behavior", ["correct", "measured_wrong", "replay_wrong", "cached", "input_modified", "dtype", "shape", "nonfinite"])
+def test_rmsnorm_primary_baseline_and_candidate_timed_controls(function, provided, behavior, monkeypatch, tmp_path):
+    import math
+    import types
+    import torch
+    task=ROOT/"tasks/torch2flydsl/rmsnorm2d_kernel"
+    checks=module(task/"scripts/replay_checks.py")
+    monkeypatch.setattr(torch.cuda,"synchronize",lambda:None)
+    monkeypatch.setattr(torch.cuda,"empty_cache",lambda:None)
+    inp=torch.tensor([[1.,2.],[3.,4.]],dtype=torch.bfloat16)
+    weight=torch.tensor([2.,3.],dtype=torch.bfloat16)
+    originals=(inp.clone(),weight.clone())
+    phase={"value":"setup"}
+    def oracle():
+        x=inp.float();return (x*torch.rsqrt(x.square().mean(-1,keepdim=True)+1e-5)*weight.float()).to(inp.dtype)
+    cached=oracle()
+    def compute(is_model):
+        target_under_test = is_model == provided
+        out=oracle()
+        if target_under_test:
+            if behavior==phase["value"]+"_wrong":out.fill_(2.)
+            if phase["value"]=="replay":
+                if behavior=="cached":out=cached.clone()
+                if behavior=="input_modified":inp.add_(1)
+            if phase["value"]=="measured":
+                if behavior=="dtype":out=out.float()
+                if behavior=="shape":out=out[:1]
+                if behavior=="nonfinite":out.flatten()[0]=float("inf")
+        return out
+    class Model:
+        def __init__(self,*args):pass
+        def to(self,*args):return self
+        def eval(self):return self
+        def __call__(self,*args):return compute(True)
+    target=lambda *args:compute(False)
+    monkeypatch.setitem(sys.modules,"aiter",types.SimpleNamespace(rms_norm=lambda *args:oracle()))
+    class Collector:
+        bound=False
+        outputs=None
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run):
+        calls.append((fn.__name__,warmup,repetition))
+        phase["value"]="measured";out=fn();timed_run.outputs=out;timed_run.bound=True
+        def replay():
+            phase["value"]="replay";result=fn();phase["value"]="setup";return result
+        timed_run.rerun=replay;phase["value"]="setup"
+        return .1,{"benchmark_method":"cuda_graph","benchmark_timed_run_kind":"captured_graph"}
+    ns={"TimedRun":Collector,"benchmark_cuda_graph_or_events":benchmark,
+        "verify_timed_run":checks.verify_timed_run,"require_tensor_contract":checks.require_tensor_contract,
+        "math":math,"json":json,"Path":Path,"_KERNEL_DIR":str(tmp_path),"MODEL_FILE":"model.py",
+        "KERNEL_ENTRY":"flydsl_rmsnorm2d","REL_TOL":.01,"EPS":1e-5,
+        "SHAPES":[{"name":"controlled","m":2,"n":2}],"_make_inputs":lambda *args:(inp,weight),
+        "_load_module":lambda *args:types.SimpleNamespace(Model=Model),"_load_target":lambda:target,
+        "_is_pure_starter":lambda:provided,"_probe_target":lambda *args:(False,None) if provided else (True,target()),
+        "_retry":lambda fn,**kwargs:fn()}
+    _harness_functions(task,{function,"_norm_max_err","_checked_rms_output","_compare_rms_output"},ns)
+    if behavior=="correct":
+        result=ns[function](verbose=False)
+        if function=="run_benchmark":result=json.loads((tmp_path/"build/performance_report.json").read_text())
+        assert result[0]["timed_output_correctness"]==result[0]["replay_correctness"]=="PASS"
+        assert calls==[("run_ref",10,100),("run_truth",10,100)]+([] if provided else [("run_target",10,100)])
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+    assert torch.equal(inp,originals[0]) and torch.equal(weight,originals[1])
+
+
+@pytest.mark.parametrize("bad", ["shape", "dtype", "device", "nonfinite"])
+def test_rmsnorm_output_contract_and_original_normalized_gate(bad):
+    import torch
+    task=ROOT/"tasks/torch2flydsl/rmsnorm2d_kernel"
+    checks=module(task/"scripts/replay_checks.py")
+    ns={"require_tensor_contract":checks.require_tensor_contract,"REL_TOL":.01}
+    _harness_functions(task,{"_norm_max_err","_checked_rms_output","_compare_rms_output"},ns)
+    expected=torch.tensor([[100.,1.],[2.,3.]],dtype=torch.bfloat16)
+    # Original global max normalization allows .5 absolute error near a small element.
+    actual=expected.clone();actual[0,1]+=.5
+    ns["_compare_rms_output"](actual,expected)
+    actual[0,1]+=2.
+    with pytest.raises(AssertionError,match="Numerical mismatch"):ns["_compare_rms_output"](actual,expected)
+    actual=expected.clone()
+    if bad=="shape":actual=actual[:1]
+    if bad=="dtype":actual=actual.float()
+    if bad=="device":actual=actual.to("meta")
+    if bad=="nonfinite":actual[0,0]=float("nan")
+    with pytest.raises(AssertionError):ns["_compare_rms_output"](actual,expected)

@@ -50,3 +50,12 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+The scored provided baseline is the protected PyTorch model; AITER remains its
+independent numerical truth and an auxiliary timing diagnostic. Correctness and
+timing checks require BF16 tensors with the declared shape/device, finite values
+and unchanged inputs. Measured outputs and input-perturbed replay use the original
+normalized max-error rule (`REL_TOL=1e-2`), outside the timing interval. Both roles
+retain all six shapes, the seed, EPS, warmups and sampling methodology. The
+canonical metadata distinguishes captured graph replay from explicit Event eager
+re-invocation; automatic unsupported replay paths cannot pass as a skip.
