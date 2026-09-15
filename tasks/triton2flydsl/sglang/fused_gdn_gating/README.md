@@ -52,3 +52,20 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All nine original BF16 decode cases remain. Return (g, beta_output), each with
+shape [1,batch,heads], FP32 dtype and its input device. The existing baseline
+stores beta_output in an FP32 tensor after rounding sigmoid values to b.dtype;
+returning a BF16 container changes the interface. Both results must be finite.
+The original FP32 comparisons remain: g atol=rtol=0.001; beta_output atol=0.02,
+rtol=0.01 for the declared BF16 input. BETA=1 and THRESHOLD=20 are unchanged.
+All four inputs are read-only. Replay adds one to a and negates b, preserves
+A_log/dt_bias, and checks both new outputs with these same rules.
+
+Both actual measured outputs and the same captured graph replay are checked.
+Outputs are poisoned before replay; reference work, perturbation and restoration
+are outside timing. Original seed42+i, ten external warmups and100samples are
+unchanged. An unavailable measured-output collector fails evaluation. Final
+candidate calls are audited separately for FlyDSL arithmetic; the original
+Triton implementation remains the frozen performance baseline.

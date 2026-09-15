@@ -52,3 +52,19 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All eight original cases remain, including both dispatch branches, top-k 1/2/4,
+softcap 0/30 and correction bias. Return FP32 weights and INT32 expert IDs,
+both [batch,topk] on the input device. IDs must match exactly; finite weights
+use the original FP32 allclose atol=rtol=0.001. Selected weights are unnormalized
+probabilities from the full softmax, not probabilities renormalized over top-k.
+Inputs x, router weight and optional bias are read-only. Replay negates x and
+checks the changed probabilities and exact IDs with the same reference.
+
+Both actual measured outputs and the same captured graph replay are checked.
+Outputs are poisoned before replay; reference work, perturbation and restoration
+are outside timing. Original seed42+i, ten external warmups and100samples are
+unchanged. An unavailable measured-output collector fails evaluation. Final
+candidate calls are audited separately for FlyDSL arithmetic; the original
+Triton implementation remains the frozen performance baseline.

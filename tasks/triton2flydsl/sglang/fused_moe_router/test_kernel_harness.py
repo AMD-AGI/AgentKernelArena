@@ -22,7 +22,8 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_pair
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -30,6 +31,7 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2flydsl/sglang/fused_moe_router"
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
+ENTRY = 'fused_moe_router_shim'
 
 # num_experts must be a power of two (cudacore uses tl.arange(0, num_experts);
 # tensorcore BLOCK_SIZE_N = max(num_experts, 16)). hidden % 256 == 0 for the
@@ -124,6 +126,44 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_router_output(outputs, x, shape):
+    import torch
+    if not isinstance(outputs, (tuple, list)) or len(outputs) != 2:
+        raise AssertionError("Operator must return both result tensors")
+    for output, dtype in zip(outputs, (torch.float32, torch.int32)):
+        if (not isinstance(output, torch.Tensor) or output.shape != shape
+                or output.dtype != dtype or output.device != x.device):
+            raise AssertionError("Output shape/dtype/device contract mismatch")
+
+
+def _compare_router_output(actual, expected, cfg):
+    import torch
+    _checked_router_output(actual, expected[0], tuple(expected[0].shape))
+    if not all(bool(torch.isfinite(v).all()) for pair in (actual, expected) for v in pair):
+        raise AssertionError("Non-finite operator/reference output")
+    ids_match = torch.equal(actual[1].cpu(), expected[1].cpu())
+    weights_close = torch.allclose(actual[0].float(), expected[0].float(), atol=1e-3, rtol=1e-3)
+    if not (ids_match and weights_close):
+        raise AssertionError("Numerical mismatch: exact expert IDs or router weights")
+
+
+def _router_replay_validator(x, w, cfg, bias):
+    inputs = tuple(v for v in (x, w, bias) if v is not None)
+    originals = tuple(v.clone() for v in inputs)
+    expected = reference(x, w, cfg, bias)
+    def perturb():
+        x.neg_()
+    def replay_reference():
+        return reference(x, w, cfg, bias)
+    def compare(actual, expected):
+        _compare_router_output(actual, expected, cfg)
+    def validate(timed):
+        return verify_timed_pair(timed, inputs=inputs, originals=originals,
+                                 expected=expected, perturb=perturb,
+                                 reference=replay_reference, compare=compare)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -137,9 +177,13 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             x, w, bias = make_inputs(cfg, "cuda")
+            protected_inputs = tuple(v for v in (x, w, bias) if v is not None)
+            originals = tuple(v.clone() for v in protected_inputs)
             tw, tid = _retry_oom(lambda: mod.fused_moe_router_shim(
                 cfg["cap"], x, w, cfg["topk"], False, correction_bias=bias))
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_router_output((tw, tid), x, (cfg["bs"], cfg["topk"]))
             rw, rid = reference(x, w, cfg, bias)
             finite = bool(torch.isfinite(tw).all().item())
             ids_match = bool(torch.equal(tid.cpu(), rid.cpu()))
@@ -173,27 +217,30 @@ def run_performance():
         try:
             torch.manual_seed(42 + ti)
             x, w, bias = make_inputs(cfg, "cuda")
+            replay_validate = _router_replay_validator(x, w, cfg, bias)
 
             def fn():
-                mod.fused_moe_router_shim(
+                return mod.fused_moe_router_shim(
                     cfg["cap"], x, w, cfg["topk"], False, correction_bias=bias)
 
             _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 
