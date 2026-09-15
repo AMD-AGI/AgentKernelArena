@@ -261,3 +261,42 @@ on CPU, with the staged linear kernel matching the above SHA-256. The package's
 formatting-file symlink into the same upstream checkout is copied by content;
 links outside that checkout are rejected. These acquisition checks provide no
 GPU correctness or performance evidence.
+
+## Separate vLLM runtime candidate: source inventory only
+
+The official `vllm/vllm-openai-rocm:v0.24.0` registry manifest was resolved to
+`vllm/vllm-openai-rocm@sha256:3832d79d9e514ce2e072580689da078726454596d833c8ab803f29f3cea5ea28`.
+Its actual local image ID and RepoDigest both match that digest. The registry
+configuration blob is
+`sha256:ee424d681e1d5644fa96f13cced1e511401e67ef04207bb459c1986d35ab84e7`.
+
+During job 139130, a separate container **without GPU devices** inspected this
+image. It contains every declared candidate file and top-level entrypoint for:
+
+- `mi355x_vllm_tilelang_mhc_fused_post_pre`
+- `mi355x_vllm_triton_fused_moe_gemma4`
+- `mi355x_vllm_triton_fused_moe_gptq_awq`
+- `mi355x_vllm_triton_paged_attention_2d`
+- `mi355x_vllm_triton_sparse_attn_prefill_ragged`
+- `mi355x_vllm_triton_unified_attention_gemma4`
+
+Observed package metadata: Python 3.12.13, Torch `2.11.0+gitd0c8b1f`,
+Triton 3.6.0, vLLM `0.24.0+rocm723`, TileLang 0.1.10 and FlyDSL 0.1.4.2.
+The installed vLLM package uses the task-declared
+`/usr/local/lib/python3.12/dist-packages/vllm` layout. No source redirection to
+AITER is needed or permitted. These are file/AST/package observations, **not**
+GPU import, compile, correctness, timing or task-validator passes.
+
+The next qualification uses a separate run with `AKA_DOCKER_IMAGE` set to the
+above digest and only the matching vLLM tasks. Each run must freeze its own
+baseline under the same runtime used for the candidate. This does not change the
+Arena default image, and does not establish that compiled vLLM extensions can be
+copied into the newer SGLang image.
+
+Kimi KDA is a separate unresolved dependency: this official image lacks its
+`models/kimi_k3/amd/ops/third_party/kda` and corresponding shared FLA sources.
+The original task records custom build `0.1.dev19253+g5f76ae224.d20260727`; its
+referenced archived session is unavailable in the current workspace environment.
+An immutable copy of that build or its exact source/dependencies is needed before
+qualification. Retain the task and report missing sources explicitly; a different
+attention kernel or the speculative-decode entrypoint is not a substitute.

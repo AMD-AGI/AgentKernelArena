@@ -21,15 +21,15 @@ Optimize the SGLang dense MXFP8 GEMM kernel _mxfp8_linear_kernel (tl.dot_scaled,
 
 ## Arena v2 contract
 
-The candidate is the existing implementation in the declared image sources.
+The candidate is the existing implementation in the declared pinned sources.
 Its required final language and exact task-relative editable files are in
 `config.yaml`; directory names do not select execution behavior. The framework
 freezes this initial implementation into a separate baseline workspace. Both
 roles run the same protected harness in their own workspace; an absent candidate
 or missing image source is an error, never permission to use the installed copy.
 
-Setup runs `python3 scripts/setup_task.py` after declared image materialization
-and before baseline capture. It validates source paths and required build assets.
+Setup stages the declared Git package, then runs `python3 scripts/setup_task.py`
+before baseline capture. It validates source paths and required build assets.
 Do not edit `scripts/`, workload files or references. Additional source files
 outside `candidate.editable` are dependencies, not editable implementation.
 Preserve the original numerical gates, seeds, layouts, dispatch, state handling
