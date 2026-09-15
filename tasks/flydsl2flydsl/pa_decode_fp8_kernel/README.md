@@ -48,3 +48,13 @@ Any older validation reports in this directory predate this migration and do not
 qualify the v2 runner. The parent integration schedules new GPU validation.
 
 Upstream source: {"commit": "28a18d328b4882c999864b2df2f8f9fe3fcc8b47", "date": "2026-06-01", "path": "kernels/pa_decode_fp8.py", "repo": "https://github.com/ROCm/FlyDSL"}.
+
+The actual measured output and a replay of the measured launch must satisfy the
+same finite-output, BF16, maximum-absolute-error `5e-3` rule as correctness.
+Outside timing, the harness negates the query, recomputes the protected attention
+reference, poisons the measured output, and replays that same launch. KV caches,
+scales, indices and lengths are read-only; implementation-owned metadata and
+scratch retain their existing contract. Input cloning, checks, reference work
+and restoration are excluded from device timing for both roles. Warmups, sample
+counts, cases and numerical thresholds remain unchanged. The original secondary
+launch timing is diagnostic; Arena scores against the separate frozen baseline.

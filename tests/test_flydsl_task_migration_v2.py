@@ -172,7 +172,7 @@ def test_original_f2f_numerical_gates_and_output_contracts_unchanged():
         if name=="topk_gating_softmax_kernel":
             start=next(i for i,n in enumerate(fn.body) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=="atol_weight" for t in n.targets))
             fn=ast.Module(fn.body[start:],type_ignores=[])
-        if name in {"fp8_gemm_4wave_kernel", "fp8_gemm_8wave_kernel", "blockscale_preshuffle_gemm_kernel", "preshuffle_gemm_v2_kernel"}:
+        if name in {"fp8_gemm_4wave_kernel", "fp8_gemm_8wave_kernel", "blockscale_preshuffle_gemm_kernel", "preshuffle_gemm_v2_kernel", "pa_decode_fp8_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
         actual=ast.dump(fn,include_attributes=False).replace("build_flash_attn_func_module_primary","build_flash_attn_func_module")
         assert hashlib.sha256(actual.encode()).hexdigest()==expected,name
@@ -676,7 +676,7 @@ class _RemoveAddedReplayChecks(ast.NodeTransformer):
     def visit_Expr(self, node):
         value = node.value
         if isinstance(value, ast.Call):
-            if isinstance(value.func, ast.Name) and value.func.id == "require_tensor_contract":
+            if isinstance(value.func, ast.Name) and value.func.id in {"require_tensor_contract", "_validate_pa_contract"}:
                 return None
             if (isinstance(value.func, ast.Attribute) and value.func.attr == "update"
                     and len(value.args) == 1 and isinstance(value.args[0], ast.Call)
@@ -704,7 +704,8 @@ _REPLAY_TASKS = ["triton2flydsl/aiter/gemm_a16w16",
                  "torch2flydsl/silu_and_mul_kernel",
                  "flydsl2flydsl/fp8_gemm_8wave_kernel",
                  "flydsl2flydsl/blockscale_preshuffle_gemm_kernel",
-                 "flydsl2flydsl/preshuffle_gemm_v2_kernel"]
+                 "flydsl2flydsl/preshuffle_gemm_v2_kernel",
+                 "flydsl2flydsl/pa_decode_fp8_kernel"]
 
 
 @pytest.mark.parametrize("task_name", _REPLAY_TASKS)
@@ -953,3 +954,135 @@ def test_silu_output_contract_applies_to_public_operator_not_private_helpers():
     ns["_require_candidate_outputs"](candidate)
     with pytest.raises(AssertionError, match="shape"):
         candidate.flydsl_silu_and_mul(inp, 0)
+
+
+@pytest.mark.parametrize("function", ["arena_benchmark", "run_benchmark"])
+@pytest.mark.parametrize("behavior", ["correct", "measured_wrong", "replay_wrong", "cached", "input_modified", "setup_error"])
+def test_pa_benchmark_checks_actual_output_and_replay(function, behavior, monkeypatch, tmp_path):
+    """CPU orchestration test of the real PA benchmark, not a GPU timing claim."""
+    import math
+    import types
+    import torch
+    task = ROOT / "tasks/flydsl2flydsl/pa_decode_fp8_kernel"
+    checks = module(task / "scripts/replay_checks.py")
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
+    q = torch.tensor([[1., 2.]], dtype=torch.bfloat16)
+    k = torch.tensor([[1., 0.], [0., 1.]], dtype=torch.bfloat16)
+    v = torch.tensor([[3., 1.], [0., 4.]], dtype=torch.bfloat16)
+    def reference():
+        return (torch.softmax(q.float() @ k.float().T, -1) @ v.float()).bfloat16()
+    ref = reference()
+    out = torch.empty_like(ref)
+    originals = tuple(x.clone() for x in (q, k, v))
+    phase = {"name": "setup"}
+    def launch():
+        if behavior == "cached" and phase["name"] == "replay":
+            return out
+        if behavior == "input_modified" and phase["name"] == "measured":
+            k.add_(1)
+        bad = behavior == phase["name"] + "_wrong"
+        out.copy_(torch.zeros_like(out) if bad else reference())
+        return out
+    launch.arena_inputs = (q, k, v)
+    launch.arena_originals = originals
+    launch.arena_perturb = lambda: q.neg_()
+    launch.arena_reference = reference
+    def build(*args, **kwargs):
+        if behavior == "setup_error":
+            raise ValueError("broken metadata")
+        return launch, out, ref
+    seen = []
+    def benchmark(fn, warmup, repetition, timed_run=None):
+        seen.append((warmup, repetition, timed_run is not None))
+        phase["name"] = "measured"
+        result = fn()
+        if timed_run is not None:
+            timed_run.bound = True
+            timed_run.outputs = result
+            def replay():
+                phase["name"] = "replay"
+                return fn()
+            timed_run.rerun = replay
+        phase["name"] = "setup"
+        return .1, {"benchmark_method": "cuda_graph"}
+    ns = {"math": math, "json": json, "Path": Path, "_KERNEL_DIR": str(tmp_path),
+          "HARNESS_SHAPES": [(1, 1, (1, 1), "per_token")],
+          "_load_kernel": lambda *args: object(), "_build_case": build,
+          "TimedRun": types.SimpleNamespace, "benchmark_cuda_graph_or_events": benchmark,
+          "verify_timed_run": checks.verify_timed_run, "require_tensor_contract": checks.require_tensor_contract}
+    _harness_functions(task, {function, "_validate_pa_timing", "_compare_pa_output"}, ns)
+    if behavior == "correct":
+        result = ns[function](verbose=False)
+        if function == "arena_benchmark":
+            assert result[0]["timed_output_correctness"] == "PASS"
+            assert result[0]["replay_correctness"] == "PASS"
+        assert seen == [(0, 100, True), (0, 20, False)]
+        checks.require_unchanged((q, k, v), originals)
+    elif behavior == "setup_error":
+        with pytest.raises(RuntimeError, match="PA setup failed"):
+            ns[function](verbose=False)
+        assert not seen
+    else:
+        with pytest.raises(AssertionError):
+            ns[function](verbose=False)
+
+
+def test_pa_replay_keeps_original_absolute_error_gate():
+    import torch
+    task = ROOT / "tasks/flydsl2flydsl/pa_decode_fp8_kernel"
+    checks = module(task / "scripts/replay_checks.py")
+    compare = _harness_functions(task, {"_compare_pa_output"}, {
+        "require_tensor_contract": checks.require_tensor_contract})["_compare_pa_output"]
+    # Absolute tolerance stays constant even when the reference magnitude changes.
+    ref = torch.tensor([0., 1000.], dtype=torch.bfloat16)
+    compare(ref + torch.tensor([.004, 0.], dtype=torch.bfloat16), ref)
+    for delta in ([.006, 0.], [0., 4.]):
+        with pytest.raises(AssertionError, match="Numerical mismatch"):
+            compare(ref + torch.tensor(delta, dtype=torch.bfloat16), ref)
+    with pytest.raises(AssertionError, match="dtype"):
+        compare(ref.float(), ref)
+
+
+@pytest.mark.parametrize("mutate", [False, True])
+def test_pa_build_case_records_inputs_before_metadata_and_excludes_writable_scratch(monkeypatch, mutate):
+    import types
+    import torch
+    task = ROOT / "tasks/flydsl2flydsl/pa_decode_fp8_kernel"
+    checks = module(task / "scripts/replay_checks.py")
+    cpu = torch.device("cpu")
+    monkeypatch.setattr(torch, "device", lambda *args: cpu)
+    monkeypatch.setattr(torch, "set_default_device", lambda *args: None)
+    monkeypatch.setitem(sys.modules, "aiter", types.SimpleNamespace(dtypes=types.SimpleNamespace(fp8=torch.float32)))
+    monkeypatch.setitem(sys.modules, "triton", types.SimpleNamespace(cdiv=lambda a,b: (a+b-1)//b))
+    cache = torch.ones((2, 1, 2, 2))
+    scale = torch.ones((2, 1, 2))
+    scratch = torch.empty(2)
+    def metadata(query, *args):
+        if mutate:
+            query.add_(1)
+        # A valid implementation may use a different private metadata format.
+        return types.SimpleNamespace(private_scratch=scratch)
+    mod = types.SimpleNamespace(get_pa_metadata=metadata, get_sw_ps_max_context_partition_num=lambda *args: 1,
+                                pa_decode_ps_launch=lambda *args, **kwargs: None)
+    ns = {"HEAD_SIZE": 2, "BLOCK_SIZE": 2, "CONTEXT_LENGTH": 2, "CONTEXT_PARTITION_SIZE": 2,
+          "SLIDING_WINDOW": 0, "TRANS_V": True, "UNIFORM_RANGE": (-1, 1),
+          "setup_seed": lambda *args: None, "random": __import__("random"),
+          "create_kv_cache": lambda *args: ([cache.clone()], [cache.clone()]),
+          "quantize_kv_cache_symmetric": lambda k,v,**kwargs: (k, scale, v, scale, scale, scale),
+          "torch_mha_extend": lambda q,*args,**kwargs: q + 1,
+          "shuffle_value_cache_layout": lambda x: x.clone(),
+          "build_ps_page_data": lambda *args: (torch.zeros(2, dtype=torch.int32), torch.zeros(2, dtype=torch.int32)),
+          "require_tensor_contract": checks.require_tensor_contract, "require_unchanged": checks.require_unchanged}
+    _harness_functions(task, {"_build_case", "_validate_pa_contract"}, ns)
+    launch, out, ref = ns["_build_case"](mod, (1, 1), 1, 1, "per_token")
+    assert all(t is not scratch for t in launch.arena_inputs)
+    if mutate:
+        with pytest.raises(AssertionError, match="read-only"):
+            ns["_validate_pa_contract"](launch, out, ref)
+    else:
+        ns["_validate_pa_contract"](launch, out, ref)
+        before = launch.arena_reference().clone()
+        launch.arena_perturb()
+        assert not torch.equal(before, launch.arena_reference())
+        assert launch() is out
