@@ -75,6 +75,8 @@ AgentKernelArena/
 │   ├── cursor/                     # Cursor Agent CLI
 │   ├── claude_code/                # Claude Code CLI
 │   ├── codex/                      # Codex CLI
+│   ├── forge/                      # KernelForge through the shared task contract
+│   ├── geak/                       # Native GEAK Workflow integration
 │   ├── geak_v3/                    # GEAK HIP optimization
 │   ├── geak_v3_triton/             # GEAK Triton optimization
 │   ├── mini_swe_triton/            # mini-swe-agent Triton optimization
@@ -87,6 +89,7 @@ AgentKernelArena/
 │   ├── torch2flydsl/
 │   ├── triton2flydsl/
 │   ├── flydsl2flydsl/
+│   ├── SIKL-task/                  # Production GEMM and MoE to FlyDSL
 │   └── image_kernel/               # Kernels from declared in-image source trees
 └── docs/                            # Full documentation
 ```
