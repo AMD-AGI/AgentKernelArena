@@ -52,3 +52,12 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+The harness checks the actual measured output and a perturbed replay against
+its protected reference using the original numerical gate. It also validates
+output shape, dtype, device, finite values and read-only input preservation;
+output and intermediate scratch buffers remain writable. Oracle calculations,
+input perturbation, output poisoning and restoration occur outside timing.
+The baseline and candidate keep the original callable, workload cases, seeds,
+warmups, repetition counts and Graph/Event selection. A captured Graph replay
+and an explicit Event eager re-invocation are reported distinctly.

@@ -18,7 +18,8 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -141,6 +142,19 @@ def run_compile():
         return False, str(e)
 
 
+def _compare_decode_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected, dtype=torch.bfloat16)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite decode attention output/reference")
+    diff = (actual.float() - expected.float()).abs().max().item()
+    denom = expected.float().abs().max().item()
+    rel = diff / denom if denom > 0 else diff
+    frac = torch.isclose(actual.float(), expected.float(), atol=1e-2, rtol=1e-2).float().mean().item()
+    if not (frac >= 0.999 or rel <= 1e-2):
+        raise AssertionError(f"Numerical mismatch: decode rel={rel}, close_fraction={frac}")
+
+
 def run_correctness():
     import torch
     try:
@@ -159,11 +173,14 @@ def run_correctness():
             torch.manual_seed(42 + i)
             (q, k_buf, v_buf, o, kvp, kvi, al, alse, nks) = make_inputs(cfg, "cuda")
             sm_scale = 1.0 / (cfg["Lk"] ** 0.5)
+            originals = tuple(value.clone() for value in (q, k_buf, v_buf, kvp, kvi, nks))
             _retry_oom(lambda: mod.decode_attention_fwd(
                 q, k_buf, v_buf, o, kvp, kvi, al, alse, nks, MAX_KV_SPLITS,
                 sm_scale, 1.0, 1.0))
             torch.cuda.synchronize()
+            require_unchanged((q, k_buf, v_buf, kvp, kvi, nks), originals)
             ref = reference(q, k_buf, v_buf, kvi, cfg, sm_scale)
+            require_tensor_contract(o, ref, dtype=torch.bfloat16)
             finite = bool(torch.isfinite(o).all().item())
             diff = (o.float() - ref.float()).abs().max().item()
             denom = ref.float().abs().max().item()
@@ -197,19 +214,28 @@ def run_performance():
             torch.manual_seed(42 + ti)
             (q, k_buf, v_buf, o, kvp, kvi, al, alse, nks) = make_inputs(cfg, "cuda")
             sm_scale = 1.0 / (cfg["Lk"] ** 0.5)
+            originals = tuple(value.clone() for value in (q, k_buf, v_buf, kvp, kvi, nks))
 
             def fn():
                 mod.decode_attention_fwd(
                     q, k_buf, v_buf, o, kvp, kvi, al, alse, nks, MAX_KV_SPLITS,
                     sm_scale, 1.0, 1.0)
+                return o
 
+            expected = reference(q, k_buf, v_buf, kvi, cfg, sm_scale)
             _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(verify_timed_run(
+                timed, inputs=(q, k_buf, v_buf, kvp, kvi, nks), originals=originals, expected=expected,
+                perturb=lambda: (q.neg_(), v_buf.neg_()), reference=lambda: reference(q, k_buf, v_buf, kvi, cfg, sm_scale),
+                compare=_compare_decode_output,
+            ))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,

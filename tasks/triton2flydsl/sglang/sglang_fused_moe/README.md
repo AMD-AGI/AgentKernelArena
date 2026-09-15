@@ -60,3 +60,12 @@ routing preparation outside timing and preserve all fixed intermediate buffers.
 The timed region retains the protected two-GEMM path, pointwise activation
 and top-k combine. The task-owned pointwise glue is fixed for both roles; the
 editable grouped-GEMM compute must use the requested final backend.
+
+The harness checks the actual measured output and a perturbed replay against
+its protected reference using the original numerical gate. It also validates
+output shape, dtype, device, finite values and read-only input preservation;
+output and intermediate scratch buffers remain writable. Oracle calculations,
+input perturbation, output poisoning and restoration occur outside timing.
+The baseline and candidate keep the original callable, workload cases, seeds,
+warmups, repetition counts and Graph/Event selection. A captured Graph replay
+and an explicit Event eager re-invocation are reported distinctly.

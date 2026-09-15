@@ -396,6 +396,7 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False):
     tree=ast.parse(source)
     if added_replay_checks:
         tree = _RemoveAddedReplayChecks().visit(tree)
+        tree = _RemoveSglangReplayChecks().visit(tree)
     excluded={"_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
               "_reference_softmax","_reference_gemm","_reference_layernorm","_reference_quant"}
     nodes=[]
@@ -410,7 +411,7 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False):
 def test_triton_preserves_original_harness_semantics_inputs_and_timing():
     for name,expected in TRITON_PROTECTED_SHA256.items():
         task=ROOT/"tasks/triton2flydsl"/name
-        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm"})==expected,name
+        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"})==expected,name
         cfg=yaml.safe_load((task/"config.yaml").read_text())
         assert cfg["baseline"]["kind"]=="initial_candidate"
         assert cfg["baseline"]["language"]=="triton"
@@ -1702,3 +1703,174 @@ def test_other_moe_original_tie_weight_policy_and_benchmark_work_preserved():
                   if isinstance(n, ast.FunctionDef) and n.name == function)
         fn = _RemoveAddedReplayChecks().visit(fn)
         assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == expected
+
+
+@pytest.mark.parametrize("name", ["decode_attention", "sglang_fused_moe"])
+@pytest.mark.parametrize("behavior", ["correct", "measured_wrong", "replay_wrong", "cached", "input_modified", "nonfinite"])
+def test_sglang_five_each_actual_performance_observes_output(name, behavior, monkeypatch):
+    import types
+    import torch
+    task = ROOT / "tasks/triton2flydsl/sglang" / name
+    checks = module(task / "scripts/replay_checks.py")
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
+    phase = {"name": "setup"}
+    ns = {"load_module": lambda: object(), "TimedRun": types.SimpleNamespace,
+          "require_tensor_contract": checks.require_tensor_contract,
+          "require_unchanged": checks.require_unchanged, "verify_timed_run": checks.verify_timed_run,
+          "_retry_oom": lambda fn: fn(), "WARMUP_ITERATIONS": 10, "BENCHMARK_ITERATIONS": 100,
+          "DTYPE_NAME": "bfloat16", "MAX_KV_SPLITS": 1}
+    _harness_functions(task, {"run_performance", "reference", "reference_moe", "_shape_of",
+                              "_compare_decode_output", "_compare_prepared_moe_output"}, ns)
+    if name == "decode_attention":
+        cfg = {"seqs": [2, 1], "head": 1, "kv_head": 1, "Lk": 2, "Lv": 2}
+        q = torch.tensor([[[1., 2.]], [[3., 4.]]], dtype=torch.bfloat16)
+        k = torch.tensor([[[1., 0.]], [[0., 1.]], [[1., 1.]]], dtype=torch.bfloat16)
+        v = k + 1
+        o = torch.empty_like(q)
+        kvp = torch.tensor([0, 2, 3], dtype=torch.int32)
+        kvi = torch.arange(3, dtype=torch.int64)
+        nks = torch.ones(2, dtype=torch.int32)
+        al = torch.empty(2, 1, 1, 2)
+        alse = torch.empty(2, 1, 1)
+        inputs = (q, k, v, kvp, kvi, nks)
+        ns.update(TEST_SHAPES=[cfg], make_inputs=lambda *args: (q, k, v, o, kvp, kvi, al, alse, nks))
+        oracle = lambda: ns["reference"](q, k, v, kvi, cfg)
+        def launch(*args): o.copy_(compute())
+        ns["load_module"] = lambda: types.SimpleNamespace(decode_attention_fwd=launch)
+    else:
+        inp = {"M": 2, "K": 2, "I": 2, "E": 2, "topk": 1,
+               "hidden": torch.tensor([[1., 2.], [3., 4.]], dtype=torch.bfloat16),
+               "w1": torch.tensor([[[1., 0.], [0., 1.], [1., 1.], [1., 2.]],
+                                   [[1., 1.], [2., 0.], [1., 0.], [0., 1.]]], dtype=torch.bfloat16),
+               "w2": torch.eye(2, dtype=torch.bfloat16).repeat(2, 1, 1),
+               "topk_weights": torch.ones(2, 1), "topk_ids": torch.tensor([[0], [1]], dtype=torch.int32)}
+        inputs = tuple(inp[n] for n in ("hidden", "w1", "w2", "topk_weights", "topk_ids"))
+        ns.update(TEST_SHAPES=[(2, 2, 2, 2, 1)], make_test_data=lambda *args: inp,
+                  _make_prepared_fused_moe_runner=lambda *args: (compute, None))
+        oracle = lambda: ns["reference_moe"](inp)
+    originals = tuple(value.clone() for value in inputs)
+    cached = oracle().to(torch.bfloat16)
+    def compute():
+        result = oracle().to(torch.bfloat16)
+        if behavior == phase["name"] + "_wrong": result.add_(30.)
+        if phase["name"] == "replay":
+            if behavior == "cached": result = cached.clone()
+            if behavior == "input_modified": inputs[0].add_(1)
+        if phase["name"] == "measured" and behavior == "nonfinite": result.flatten()[0] = float("nan")
+        return result
+    calls = []
+    def benchmark(fn, *, warmup, repetition, timed_run):
+        calls.append((warmup, repetition))
+        phase["name"] = "measured"
+        timed_run.outputs = fn()
+        timed_run.bound = True
+        def replay():
+            phase["name"] = "replay"
+            out = fn()
+            phase["name"] = "setup"
+            return out
+        timed_run.rerun = replay
+        phase["name"] = "setup"
+        return .1, {"benchmark_method": "cuda_graph", "benchmark_timed_run_kind": "captured_graph"}
+    ns["benchmark_cuda_graph_or_events"] = benchmark
+    rows = ns["run_performance"]()
+    assert len(rows) == 1 and calls == [(0, 100)]
+    if behavior == "correct":
+        assert rows[0]["timed_output_correctness"] == rows[0]["replay_correctness"] == "PASS"
+    else:
+        assert rows[0]["execution_time_ms"] < 0
+        assert rows[0]["benchmark_method"] == "benchmark_failed"
+    checks.require_unchanged(inputs, originals)
+
+
+@pytest.mark.parametrize("name", ["decode_attention", "sglang_fused_moe"])
+def test_sglang_output_contracts_keep_original_fraction_and_zero_reference_rules(name):
+    import torch
+    task = ROOT / "tasks/triton2flydsl/sglang" / name
+    checks = module(task / "scripts/replay_checks.py")
+    fn = "_compare_decode_output" if name == "decode_attention" else "_compare_prepared_moe_output"
+    ns = _harness_functions(task, {fn}, {"require_tensor_contract": checks.require_tensor_contract})
+    compare = ns[fn]
+    expected = torch.ones(10000, dtype=torch.bfloat16)
+    if name == "decode_attention":
+        actual = expected.clone(); actual[:9] = 50
+        compare(actual, expected)  # Original >=99.9% disjunct.
+        actual[:11] = 50
+        with pytest.raises(AssertionError, match="Numerical mismatch"): compare(actual, expected)
+        # Original global normalization disjunct and zero-reference fallback.
+        expected = torch.ones(10000); expected[0] = 100
+        actual = expected.bfloat16(); actual[1:] += .5
+        compare(actual, expected)
+        compare(torch.full((2, 2), .009, dtype=torch.bfloat16), torch.zeros(2, 2))
+        with pytest.raises(AssertionError): compare(torch.full((2, 2), .011, dtype=torch.bfloat16), torch.zeros(2, 2))
+    else:
+        actual = expected.clone(); actual[:199] = 50
+        compare(actual, expected)  # Original <=2% mismatch fraction.
+        actual[:201] = 50
+        with pytest.raises(AssertionError, match="Numerical mismatch"): compare(actual, expected)
+        expected = torch.ones(10000, dtype=torch.float32)
+        actual = expected.clone(); actual[0] += .01
+        with pytest.raises(AssertionError): compare(actual, expected)  # FP32 permits no outliers.
+    expected = torch.ones((2, 2), dtype=torch.bfloat16)
+    for bad in (expected[:1], expected.float(), expected.to("meta"), torch.full_like(expected, float("nan"))):
+        with pytest.raises(AssertionError): compare(bad, expected)
+
+
+class _RemoveSglangReplayChecks(ast.NodeTransformer):
+    """Remove only new checks and the host-only output return for AST comparison."""
+    def visit_FunctionDef(self, node):
+        if node.name in {"_compare_decode_output", "_compare_prepared_moe_output"}:
+            return None
+        self.generic_visit(node)
+        if (node.name == "fn" and isinstance(node.body[-1], ast.Return)
+                and isinstance(node.body[-1].value, ast.Name) and node.body[-1].value.id == "o"):
+            node.body.pop()
+        return node
+
+    def visit_If(self, node):
+        if (len(node.body) == 1 and isinstance(node.body[0], ast.Raise)
+                and isinstance(node.body[0].exc, ast.Call)
+                and len(node.body[0].exc.args) == 1
+                and isinstance(node.body[0].exc.args[0], ast.Constant)
+                and node.body[0].exc.args[0].value == "Non-finite fused MoE output/reference"):
+            return None
+        return self.generic_visit(node)
+
+
+@pytest.mark.parametrize("name", ["decode_attention", "sglang_fused_moe"])
+@pytest.mark.parametrize("mutate_input", [False, True])
+def test_sglang_correctness_uses_pristine_inputs_before_computing_reference(name, mutate_input, monkeypatch):
+    import types
+    import torch
+    task = ROOT / "tasks/triton2flydsl/sglang" / name
+    checks = module(task / "scripts/replay_checks.py")
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+    ns = {"require_unchanged": checks.require_unchanged, "require_tensor_contract": checks.require_tensor_contract,
+          "_retry_oom": lambda fn: fn(), "DTYPE_NAME": "bfloat16", "MAX_KV_SPLITS": 1}
+    _harness_functions(task, {"run_correctness", "reference", "reference_moe", "_shape_of"}, ns)
+    if name == "decode_attention":
+        cfg = {"seqs": [1], "head": 1, "kv_head": 1, "Lk": 2, "Lv": 2}
+        q = torch.ones(1, 1, 2, dtype=torch.bfloat16)
+        k, v, out = q.clone(), q.clone(), torch.empty_like(q)
+        kvp, kvi, nks = torch.tensor([0, 1], dtype=torch.int32), torch.tensor([0]), torch.ones(1, dtype=torch.int32)
+        al, alse = torch.empty(1, 1, 1, 2), torch.empty(1, 1, 1)
+        def compute(*args):
+            if mutate_input: q.add_(1)
+            out.copy_(ns["reference"](q, k, v, kvi, cfg))
+        ns.update(TEST_SHAPES=[cfg], make_inputs=lambda *args: (q, k, v, out, kvp, kvi, al, alse, nks),
+                  load_module=lambda: types.SimpleNamespace(decode_attention_fwd=compute))
+    else:
+        inp = {"M": 1, "K": 2, "I": 2, "E": 1, "topk": 1,
+               "hidden": torch.ones(1, 2, dtype=torch.bfloat16),
+               "w1": torch.ones(1, 4, 2, dtype=torch.bfloat16), "w2": torch.ones(1, 2, 2, dtype=torch.bfloat16),
+               "topk_weights": torch.ones(1, 1), "topk_ids": torch.zeros(1, 1, dtype=torch.int32)}
+        def compute(*args):
+            if mutate_input: inp["hidden"].add_(1)
+            return ns["reference_moe"](inp)
+        ns.update(TEST_SHAPES=[(1, 2, 2, 1, 1)], make_test_data=lambda *args: inp,
+                  load_module=lambda: types.SimpleNamespace(fused_moe=compute))
+    ok, error, details = ns["run_correctness"]()
+    assert ok is (not mutate_input)
+    if mutate_input: assert "read-only input" in error
+    assert len(details) == 1

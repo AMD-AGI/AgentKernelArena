@@ -23,7 +23,8 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -247,6 +248,19 @@ def run_compile():
         return False, str(e)
 
 
+def _compare_prepared_moe_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite fused MoE output/reference")
+    fp32 = expected.dtype == torch.float32
+    atol, rtol, max_ratio = (1e-4, 1e-4, 0.0) if fp32 else (3e-2, 1e-2, 0.02)
+    isclose = torch.isclose(actual.float(), expected.float(), atol=atol, rtol=rtol)
+    err_ratio = (~isclose).float().mean().item()
+    if err_ratio > max_ratio:
+        raise AssertionError(f"Numerical mismatch: MoE error_fraction={err_ratio}, limit={max_ratio}")
+
+
 def run_correctness():
     import torch
     try:
@@ -263,11 +277,16 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             inp = make_test_data(M, K, I, E, topk, "cuda", dtype)
+            originals = tuple(value.clone() for value in (inp["hidden"], inp["w1"], inp["w2"], inp["topk_weights"], inp["topk_ids"]))
             out_t = _retry_oom(lambda: mod.fused_moe(
                 inp["hidden"], inp["w1"], inp["w2"],
                 inp["topk_weights"], inp["topk_ids"]))
             torch.cuda.synchronize()
+            require_unchanged((inp["hidden"], inp["w1"], inp["w2"], inp["topk_weights"], inp["topk_ids"]), originals)
             out_r = reference_moe(inp)
+            require_tensor_contract(out_t, out_r)
+            if not bool(torch.isfinite(out_t).all() and torch.isfinite(out_r).all()):
+                raise AssertionError("Non-finite fused MoE output/reference")
             diff = (out_t.float() - out_r.float()).abs().max().item()
             isclose = torch.isclose(out_t.float(), out_r.float(), atol=atol, rtol=rtol)
             err_ratio = (~isclose).float().mean().item()
@@ -298,15 +317,23 @@ def run_performance():
         try:
             torch.manual_seed(42 + ti)
             inp = make_test_data(M, K, I, E, topk, "cuda", dtype)
+            originals = tuple(value.clone() for value in (inp["hidden"], inp["w1"], inp["w2"], inp["topk_weights"], inp["topk_ids"]))
+            expected = reference_moe(inp)
             fn, _ = _make_prepared_fused_moe_runner(mod, inp)
 
             _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(verify_timed_run(
+                timed, inputs=(inp["hidden"], inp["w1"], inp["w2"], inp["topk_weights"], inp["topk_ids"]), originals=originals, expected=expected,
+                perturb=lambda: inp["hidden"].neg_(), reference=lambda: reference_moe(inp),
+                compare=_compare_prepared_moe_output,
+            ))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
