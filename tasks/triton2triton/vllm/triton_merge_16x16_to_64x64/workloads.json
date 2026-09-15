@@ -4,7 +4,7 @@
     "source/triton_merge_16x16_to_64x64.py": [
       {
         "name": "merge_16x16_to_64x64_inverse_kernel",
-        "jit": false
+        "jit": true
       }
     ]
   },

@@ -4,7 +4,7 @@
     "source/triton_causal_conv1d_update.py": [
       {
         "name": "_causal_conv1d_update_kernel",
-        "jit": false
+        "jit": true
       }
     ]
   },

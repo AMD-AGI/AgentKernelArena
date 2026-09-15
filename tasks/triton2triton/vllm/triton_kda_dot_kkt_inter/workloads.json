@@ -4,7 +4,7 @@
     "source/triton_kda_dot_kkt_inter.py": [
       {
         "name": "chunk_kda_scaled_dot_kkt_fwd_kernel_intra_sub_inter",
-        "jit": false
+        "jit": true
       }
     ]
   },

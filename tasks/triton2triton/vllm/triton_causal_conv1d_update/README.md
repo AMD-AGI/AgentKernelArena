@@ -38,3 +38,8 @@ Both actual timed outputs are verified. A replay after changing the source input
 state and weights must produce the new correct output and updated history.
 Diagnostic perturbations and working buffers are restored even on failure.
 This adds no scored cases and does not change any kernel or generated helper.
+
+The protected manifest requires the declared kernel symbols to remain Triton JIT
+functions, including kernels originally decorated with `@triton.jit()`. Removing
+the decorator is rejected before compilation. This structural check supplements
+the numerical and timed-path checks; it does not by itself attest every dispatch.

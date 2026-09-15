@@ -4,7 +4,7 @@
     "source/triton_causal_conv1d_fwd.py": [
       {
         "name": "_causal_conv1d_fwd_kernel",
-        "jit": false
+        "jit": true
       }
     ]
   },

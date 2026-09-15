@@ -53,6 +53,16 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
     for name in bf.keys()-{'run_correctness'}:
         assert ast.get_source_segment(before,bf[name]) == ast.get_source_segment(after,af[name])
     manifest = json.loads((task/'workloads.json').read_text())
+    for source, targets in manifest['candidate_symbols'].items():
+        nodes = {n.name: n for n in ast.parse((task/source).read_text()).body
+                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        for target in targets:
+            decorators = [d.func if isinstance(d, ast.Call) else d
+                          for d in nodes[target['name']].decorator_list]
+            is_triton_jit = any(isinstance(d, ast.Attribute) and d.attr == 'jit'
+                               and isinstance(d.value, ast.Name) and d.value.id == 'triton'
+                               for d in decorators)
+            assert target['jit'] is is_triton_jit, (source, target['name'])
     assert sum('performance' in row['checks'] for row in manifest['cases']) == 5
     assert all('correctness' in row['checks'] for row in manifest['cases'])
     assert manifest['migration']['original_harness_sha256'] == hashlib.sha256(before.encode()).hexdigest()
@@ -91,6 +101,46 @@ def test_vllm_candidate_stub_is_never_baseline_fallback(tmp_path,monkeypatch):
     assert adapter.inspect_candidate(data)=='unimplemented'
     with pytest.raises(ValueError,match='no baseline fallback'):
         adapter.inspect_candidate(data,require_implemented=True)
+
+
+def _vllm_called_jit_tasks():
+    tasks = []
+    for config in VLLM:
+        task = config.parent
+        manifest = json.loads((task/'workloads.json').read_text())
+        for source, targets in manifest['candidate_symbols'].items():
+            symbols = {target['name'] for target in targets}
+            if any(isinstance(node, ast.FunctionDef) and node.name in symbols
+                   and any(isinstance(d, ast.Call) and ast.unparse(d.func) == 'triton.jit'
+                           for d in node.decorator_list)
+                   for node in ast.parse((task/source).read_text()).body):
+                tasks.append(config)
+                break
+    return tasks
+
+
+@pytest.mark.parametrize('config', _vllm_called_jit_tasks(), ids=lambda p: p.parent.name)
+def test_vllm_called_jit_kernel_cannot_be_replaced_with_plain_python(config, tmp_path, monkeypatch):
+    adapter = module_at(config.parent/'_arena_eval.py', monkeypatch)
+    data = adapter.load_manifest()
+    assert adapter.inspect_candidate(data, require_implemented=True) == 'implemented'
+    for source, targets in data['candidate_symbols'].items():
+        path = tmp_path/source
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tree = ast.parse((config.parent/source).read_text())
+        symbols = {target['name'] for target in targets}
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef) and node.name in symbols:
+                node.decorator_list = []
+                # A nonempty function used to bypass the false manifest flag.
+                node.body = ast.parse('return 1').body
+        path.write_text(ast.unparse(ast.fix_missing_locations(tree)))
+    monkeypatch.setattr(adapter, 'ROOT', tmp_path)
+    with pytest.raises(ValueError, match='must remain a Triton JIT kernel'):
+        adapter.inspect_candidate(data, require_implemented=True)
+    result = adapter.evaluate('candidate', 'compile')
+    assert result_record(result).status == 'FAIL'
+    assert 'must remain a Triton JIT kernel' in result['reason']
 
 
 

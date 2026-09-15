@@ -4,7 +4,7 @@
     "source/triton_fused_moe_lora.py": [
       {
         "name": "fused_moe_lora_kernel",
-        "jit": false
+        "jit": true
       }
     ]
   },

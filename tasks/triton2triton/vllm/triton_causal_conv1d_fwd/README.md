@@ -37,3 +37,8 @@ After timing, protected checks verify both actual output buffers, perturb inputs
 and initial state, poison outputs, then verify the same captured graph again.
 Diagnostic changes to inputs and initial state are restored even on failure.
 No case, seed, warmup, repetition, launch parameter or timed allocation changes.
+
+The protected manifest requires the declared kernel symbols to remain Triton JIT
+functions, including kernels originally decorated with `@triton.jit()`. Removing
+the decorator is rejected before compilation. This structural check supplements
+the numerical and timed-path checks; it does not by itself attest every dispatch.

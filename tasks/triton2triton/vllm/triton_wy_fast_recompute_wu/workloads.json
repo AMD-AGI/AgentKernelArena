@@ -4,7 +4,7 @@
     "source/triton_wy_fast_recompute_wu.py": [
       {
         "name": "recompute_w_u_fwd_kernel",
-        "jit": false
+        "jit": true
       }
     ]
   },

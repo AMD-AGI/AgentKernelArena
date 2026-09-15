@@ -22,3 +22,8 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+The protected manifest requires the declared kernel symbols to remain Triton JIT
+functions, including kernels originally decorated with `@triton.jit()`. Removing
+the decorator is rejected before compilation. This structural check supplements
+the numerical and timed-path checks; it does not by itself attest every dispatch.

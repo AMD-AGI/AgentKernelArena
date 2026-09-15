@@ -4,7 +4,7 @@
     "source/triton_kda_gla_fwd_o.py": [
       {
         "name": "chunk_gla_fwd_kernel_o",
-        "jit": false
+        "jit": true
       }
     ]
   },

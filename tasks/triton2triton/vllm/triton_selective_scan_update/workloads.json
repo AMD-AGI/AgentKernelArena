@@ -4,7 +4,7 @@
     "source/triton_selective_scan_update.py": [
       {
         "name": "_selective_scan_update_kernel",
-        "jit": false
+        "jit": true
       }
     ]
   },

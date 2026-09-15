@@ -4,7 +4,7 @@
     "source/triton_rejection_random_sample.py": [
       {
         "name": "rejection_random_sample_kernel",
-        "jit": false
+        "jit": true
       }
     ]
   },

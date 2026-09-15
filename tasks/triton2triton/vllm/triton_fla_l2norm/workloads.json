@@ -4,7 +4,7 @@
     "source/triton_fla_l2norm.py": [
       {
         "name": "l2norm_fwd_kernel",
-        "jit": false
+        "jit": true
       }
     ]
   },

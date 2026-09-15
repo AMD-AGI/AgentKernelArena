@@ -4,7 +4,7 @@
     "source/triton_fla_cumsum_vector.py": [
       {
         "name": "chunk_local_cumsum_vector_kernel",
-        "jit": false
+        "jit": true
       }
     ]
   },

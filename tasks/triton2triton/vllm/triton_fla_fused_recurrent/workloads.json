@@ -4,7 +4,7 @@
     "source/triton_fla_fused_recurrent.py": [
       {
         "name": "fused_recurrent_gated_delta_rule_fwd_kernel",
-        "jit": false
+        "jit": true
       }
     ]
   },

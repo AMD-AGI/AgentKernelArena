@@ -4,7 +4,7 @@
     "source/triton_fla_scaled_dot_kkt.py": [
       {
         "name": "chunk_scaled_dot_kkt_fwd_kernel",
-        "jit": false
+        "jit": true
       }
     ]
   },

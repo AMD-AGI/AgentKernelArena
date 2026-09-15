@@ -4,7 +4,7 @@
     "source/triton_rejection_greedy_sample.py": [
       {
         "name": "rejection_greedy_sample_kernel",
-        "jit": false
+        "jit": true
       }
     ]
   },

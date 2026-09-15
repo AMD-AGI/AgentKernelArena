@@ -4,7 +4,7 @@
     "source/triton_expand.py": [
       {
         "name": "expand_kernel",
-        "jit": false
+        "jit": true
       }
     ]
   },
