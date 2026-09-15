@@ -597,6 +597,25 @@ def test_public_profiling_case_selection_survives_driver_removal(task_name, case
                for case in manifest["cases"])
 
 
+@pytest.mark.parametrize("name,activation,expected", [
+    ("mi355x_vllm_aiter_mxfp4_moe_2stage_kimi_k3", "situv2",
+     [[4.0, -0.50390625], [-1.390625, 0.2177734375]]),
+    ("mi355x_vllm_ck_moe_2stage", "silu",
+     [[4.3125, -0.5859375], [-1.421875, 0.22265625]]),
+    ("mi355x_vllm_ck_cktile_moe_2stage", "silu",
+     [[4.3125, -0.5859375], [-1.421875, 0.22265625]]),
+])
+def test_two_stage_moe_known_answer_includes_bf16_intermediate(name, activation, expected):
+    torch = pytest.importorskip("torch")
+    controls = load_module(TASKS / name / "scripts/reference_controls.py")
+    _, answer = controls.moe_data(activation)
+    # Independent two-token/two-expert scalar answer, rounded to BF16 between
+    # gate/up and down projections. The unrounded Kimi control returned 4.03125.
+    assert answer.dtype == torch.bfloat16
+    torch.testing.assert_close(answer.float(), torch.tensor(expected), rtol=0, atol=0)
+    controls.rejects(lambda bad: controls.equal(bad, answer), torch.zeros_like(answer))
+
+
 @pytest.mark.parametrize("directory", DIRECTORIES, ids=lambda d: d.name)
 def test_original_cases_numerical_policy_and_benchmark_unchanged(directory):
     harness = load_module(directory / "scripts/task_runner.py")

@@ -41,6 +41,9 @@ def moe_data(activation):
             if activation=='gelu_tanh':g=0.5*gate*(1+math.tanh(math.sqrt(2/math.pi)*(gate+0.044715*gate**3)))*up
             elif activation=='situv2':g=4*math.tanh(gate/4)/(1+math.exp(-gate))*25*math.tanh(up/25)
             else:g=gate/(1+math.exp(-gate))*up
+            # This reference stores stage1 as BF16 before the down projection.
+            # Round the independent scalar answer at the same public boundary.
+            g = float(torch.tensor(g, dtype=torch.bfloat16))
             expected[t,0]+=g*float(w2[e,0,0])*float(weights[t,slot])
             expected[t,1]+=g*float(w2[e,1,0])*float(weights[t,slot])
     inputs={"x":x,"hidden":x,"w1":w1,"w2":w2,"w1_deq":w1,"w2_deq":w2,

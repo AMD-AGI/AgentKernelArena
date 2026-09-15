@@ -93,6 +93,12 @@ Setup freezes Kimi's numerical stage implementation separately from its editable
 per-32-element dequantizer instead of importing the editable kernel's helper.
 The remaining Torch references and all input generation remain protected.
 
+The Kimi and CK two-stage MoE reference controls include the BF16 intermediate
+between the gate/up and down projections. The independent scalar known answer
+rounds at that boundary, matching the reference's declared dtype. Omitting this
+rounding made the Kimi self-check compare `4.03125` with `4.0`; correcting the
+known answer keeps the control tolerance and the scored numerical gates intact.
+
 ## Preservation evidence and deliberate corrections
 
 `tests/test_image_task_migration_v2.py` pins evidence from commit `5c9f8ef2`:
