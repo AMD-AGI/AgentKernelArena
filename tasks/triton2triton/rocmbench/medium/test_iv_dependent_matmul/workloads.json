@@ -56769,6 +56769,226 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "test_partial_tile_control/449545f46d63e5e680e4",
+      "params": {
+        "function": "test_partial_tile_control",
+        "arguments": {
+          "M": 17,
+          "N": 19,
+          "K": 13,
+          "kernel_type": "pre_load",
+          "input_dtype": "fp16",
+          "BM": 16,
+          "BN": 16,
+          "BK": 32,
+          "num_stages": 3,
+          "num_warps": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_partial_tile_control/af0a2c84d7c0c9b945a8",
+      "params": {
+        "function": "test_partial_tile_control",
+        "arguments": {
+          "M": 17,
+          "N": 19,
+          "K": 13,
+          "kernel_type": "pre_load",
+          "input_dtype": "fp32",
+          "BM": 16,
+          "BN": 16,
+          "BK": 32,
+          "num_stages": 3,
+          "num_warps": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_partial_tile_control/931fdf9c183df331c4da",
+      "params": {
+        "function": "test_partial_tile_control",
+        "arguments": {
+          "M": 17,
+          "N": 19,
+          "K": 13,
+          "kernel_type": "post_load",
+          "input_dtype": "fp16",
+          "BM": 16,
+          "BN": 16,
+          "BK": 32,
+          "num_stages": 3,
+          "num_warps": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_partial_tile_control/36a0aaa56d494b913e83",
+      "params": {
+        "function": "test_partial_tile_control",
+        "arguments": {
+          "M": 17,
+          "N": 19,
+          "K": 13,
+          "kernel_type": "post_load",
+          "input_dtype": "fp32",
+          "BM": 16,
+          "BN": 16,
+          "BK": 32,
+          "num_stages": 3,
+          "num_warps": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_partial_tile_control/35b827ce2cee7e5b1ef7",
+      "params": {
+        "function": "test_partial_tile_control",
+        "arguments": {
+          "M": 17,
+          "N": 19,
+          "K": 13,
+          "kernel_type": "post_pre_mixed",
+          "input_dtype": "fp16",
+          "BM": 16,
+          "BN": 16,
+          "BK": 32,
+          "num_stages": 3,
+          "num_warps": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_partial_tile_control/276c7e6cd91e574327c9",
+      "params": {
+        "function": "test_partial_tile_control",
+        "arguments": {
+          "M": 17,
+          "N": 19,
+          "K": 13,
+          "kernel_type": "post_pre_mixed",
+          "input_dtype": "fp32",
+          "BM": 16,
+          "BN": 16,
+          "BK": 32,
+          "num_stages": 3,
+          "num_warps": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_partial_tile_control/ff00583aa6c0a69b7840",
+      "params": {
+        "function": "test_partial_tile_control",
+        "arguments": {
+          "M": 17,
+          "N": 19,
+          "K": 13,
+          "kernel_type": "post_load_two_iters",
+          "input_dtype": "fp16",
+          "BM": 16,
+          "BN": 16,
+          "BK": 32,
+          "num_stages": 3,
+          "num_warps": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_partial_tile_control/4fd87b82b58d71bbb5a1",
+      "params": {
+        "function": "test_partial_tile_control",
+        "arguments": {
+          "M": 17,
+          "N": 19,
+          "K": 13,
+          "kernel_type": "post_load_two_iters",
+          "input_dtype": "fp32",
+          "BM": 16,
+          "BN": 16,
+          "BK": 32,
+          "num_stages": 3,
+          "num_warps": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_partial_tile_control/b8addaf0f35993ea2437",
+      "params": {
+        "function": "test_partial_tile_control",
+        "arguments": {
+          "M": 17,
+          "N": 19,
+          "K": 13,
+          "kernel_type": "post_load_three_iters",
+          "input_dtype": "fp16",
+          "BM": 16,
+          "BN": 16,
+          "BK": 32,
+          "num_stages": 4,
+          "num_warps": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_partial_tile_control/99eca96025bf0dc9edee",
+      "params": {
+        "function": "test_partial_tile_control",
+        "arguments": {
+          "M": 17,
+          "N": 19,
+          "K": 13,
+          "kernel_type": "post_load_three_iters",
+          "input_dtype": "fp32",
+          "BM": 16,
+          "BN": 16,
+          "BK": 32,
+          "num_stages": 4,
+          "num_warps": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

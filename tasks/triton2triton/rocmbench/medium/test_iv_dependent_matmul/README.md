@@ -1,35 +1,49 @@
-# test_iv_dependent_matmul
+# IV-dependent tiled GEMM
 
-The on-disk starting functions contain implemented Triton code. The v2 declaration
-therefore uses `implemented` and a frozen `initial_candidate` baseline, regardless
-of this directory's historical suite name. Edit only the declared function scopes
-(and permitted implementation helpers) in `test_iv_dependent_matmul.py`. Preserve signatures,
-references, input generation, assertions, test parameters and timing policy.
-Deliver edits to those files; a fenced code block alone is not a submission.
+The implemented initial Triton kernel is frozen independently as the baseline.
+Edit only the declared `iv_dependent_matmul` and permitted implementation helpers.
+All five pointer-induction variants compute the same GEMM. The original kernel
+rounds its accumulator to float16 before storing; functional tests use a float32
+output buffer, performance uses float16. Inputs are read-only float16/float32
+matrices. The wrapper returns the preallocated full M-by-N output buffer.
 
-## Evaluation contract
+Private input snapshots supply the independent torch matrix-product oracle.
+Original functional assertions stay `atol=rtol=0.01`. Performance checks retain
+the product cast to float16 with that same gate, with separate output metadata,
+no-input-aliasing, full-value and finite checks. No failure-fitted tolerance,
+baseline exception or alternate candidate path is used.
 
-Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|candidate compile|correctness|performance`
-with one role and one action. Submitted checks use `ARENA_EVAL_PHASE=candidate_evaluation`.
-The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
-`workloads.json` retains 2105 original collected cases, including 2100 performance cases.
-Collection is checked against this independent manifest. Original correctness
-functions run unchanged. Performance inputs additionally run the task-local
-oracle in `_arena_reference.py`, before timing and against observed timed output.
-Seeds, case parameters, original assertions/tolerances, launch parameters,
-prepare/reset callbacks, warmups and sample counts are unchanged.
+## Cases and compilation
 
-Arena times the same Triton path in its independently frozen baseline workspace
-and the edited candidate workspace. The old benchmark helper's optional PyTorch
-peer timing is not an Arena baseline and is omitted by this adapter. Candidate
-measurements still use the canonical helper and its original mean device latency.
-Do not edit `performance_utils_pytest.py` or generated benchmark helpers.
+All 2,105 original identities/parameters remain, including 2,100 scored cases
+covering shapes, seven block configurations, both dtypes, five addressing variants,
+three stage counts and two warp counts. A fixed 64KB estimate previously skipped
+800 rows before the real compiler ran. This heuristic is removed: each declared
+specialization must actually compile and pass, with unchanged launch options.
+A real resource/compile error is still a failure, never an expected scored pass.
+The redundant BLOCK_K>K skip is removed too: masked K loads define a partial first
+tile. Ten additional unscored controls (all variants and both dtypes) check odd
+M/N/K tails and K<BLOCK_K, with explicit shape/block/stage/warp identities.
 
-Existing skip conditions are retained as visible failures for the complete
-manifest: missing hardware features, unsupported combinations, missing references
-or incomplete execution cannot qualify this task. These require explicit task
-qualification/repair before a campaign; the migration is not a GPU validation.
-A missing/empty final kernel never falls back to a reference or starting kernel.
+## Timing and replay
+
+The original preallocated-output callable, seed42, stage/warp/block values,
+warmup10/repetition100, canonical graph/event timing and mean device latency
+are retained. Full outputs are checked before timing and from the actual
+`TimedRun`. Untimed replay changes valid floating input values, recomputes the
+independent oracle, poisons the output and replays the captured invocation.
+A finally block restores original inputs/output on success and failure. Frozen
+baseline and candidate use identical workloads and timing boundaries. Newly
+executed formerly skipped rows have no prior valid timing; historical aggregate
+scores are not directly comparable. The old optional PyTorch peer timing is not
+Arena's baseline. Do not modify generated benchmark helpers or stubs.
+
+Use `python3 _arena_eval.py validate-task`, or
+`python3 _arena_eval.py baseline|candidate compile|correctness|performance`.
+Final submission checks use `ARENA_EVAL_PHASE=candidate_evaluation`; every action
+emits `arena-eval-v1`, and Arena alone writes final validation/score reports.
+Deliver files inside the configured boundary, not merely a fenced code block.
+Missing/empty candidates never fall back to a reference or frozen implementation.
 
 ## Original operator instructions
 

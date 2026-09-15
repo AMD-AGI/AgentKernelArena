@@ -1,5 +1,4 @@
-"""Independent output checks for the performance inputs; never timed or editable."""
-import numpy as np
+"""Protected IV-dependent GEMM oracle; original atol=rtol=0.01."""
 import torch
 
 
@@ -7,55 +6,73 @@ class NumericalMismatch(AssertionError):
     pass
 
 
-def compare(actual, expected, *, atol=None, rtol=None, check_dtype=True, exact=False, equal_nan=False):
-    if not isinstance(actual, torch.Tensor):
-        raise TypeError('The candidate did not produce its declared tensor output')
-    if actual.shape != expected.shape or actual.device != expected.device:
-        raise ValueError('Candidate output shape/device violates the contract')
-    if check_dtype and actual.dtype != expected.dtype:
-        raise ValueError('Candidate output dtype violates the contract')
-    if not equal_nan and not torch.isfinite(actual).all():
-        raise ValueError('Candidate output contains nonfinite values')
-    try:
-        if exact:
-            if not torch.equal(actual, expected):
-                raise AssertionError('Exact output mismatch')
-        else:
-            torch.testing.assert_close(actual, expected, atol=atol, rtol=rtol,
-                                       check_dtype=check_dtype, equal_nan=equal_nan)
-    except AssertionError as exc:
-        raise NumericalMismatch(str(exc)) from exc
+def equal_bytes(a, b):
+    return torch.equal(a.contiguous().view(torch.uint8), b.contiguous().view(torch.uint8))
 
 
-def philox32(seed, count):
-    """Counter-based Philox4x32-10, independently evaluated using NumPy integers."""
-    mask = np.uint64(0xffffffff)
-    c0 = np.arange(count, dtype=np.uint64)
-    c1 = np.zeros(count,dtype=np.uint64); c2=c1.copy(); c3=c1.copy()
-    k0=np.uint64(seed & 0xffffffff); k1=np.uint64((seed>>32)&0xffffffff)
-    for _ in range(10):
-        pa=c0*np.uint64(0xD2511F53); pb=c2*np.uint64(0xCD9E8D57)
-        c0,c1,c2,c3=(pb>>np.uint64(32))^c1^k0,pb&mask,(pa>>np.uint64(32))^c3^k1,pa&mask
-        k0=(k0+np.uint64(0x9E3779B9))&mask; k1=(k1+np.uint64(0xBB67AE85))&mask
-    return c0.astype(np.uint32)
+class IVMatmulCheck:
+    def __init__(self, a, b, output):
+        if a.ndim != 2 or b.ndim != 2 or a.shape[1] != b.shape[0]:
+            raise ValueError('Invalid GEMM dimensions')
+        if a.dtype not in (torch.float16, torch.float32) or b.dtype != a.dtype:
+            raise ValueError('Inputs must share declared float16/float32 dtype')
+        if output.dtype not in (torch.float16, torch.float32):
+            raise ValueError('Output must be float16 or float32')
+        if output.shape != (a.shape[0], b.shape[1]) or a.device != b.device or output.device != a.device:
+            raise ValueError('Output shape/device mismatch')
+        self.inputs = [a, b]
+        self.original = [a.clone(), b.clone()]
+        self.strides = [a.stride(), b.stride()]
+        self.snapshots = self.original
+        self.output = output
+        self.output_original = output.clone()
+        self.output_stride = output.stride()
+        self._reference()
+
+    def _reference(self):
+        # Match the original functional/product reference and performance output cast.
+        self.expected = (self.snapshots[0] @ self.snapshots[1]).to(self.output.dtype)
+
+    def check_inputs(self):
+        for actual, snapshot, stride in zip(self.inputs, self.snapshots, self.strides):
+            if (actual.shape, actual.dtype, actual.device, actual.stride()) != (snapshot.shape, snapshot.dtype, snapshot.device, stride):
+                raise ValueError('Read-only input metadata changed')
+            if not equal_bytes(actual, snapshot):
+                raise ValueError('Read-only input was modified')
+
+    def __call__(self, output):
+        if not isinstance(output, torch.Tensor):
+            raise TypeError('Expected output tensor')
+        if output is not self.output:
+            raise ValueError('Unexpected public output buffer')
+        if (output.shape, output.dtype, output.device, output.stride()) != (self.output_original.shape, self.output_original.dtype, self.output_original.device, self.output_stride):
+            raise ValueError('Output metadata changed')
+        self.check_inputs()
+        if any(output.untyped_storage().data_ptr() == a.untyped_storage().data_ptr() for a in self.inputs):
+            raise ValueError('Output aliases a read-only input')
+        if not bool(torch.isfinite(output).all()):
+            raise ValueError('Nonfinite output')
+        try:
+            torch.testing.assert_close(output, self.expected, atol=1e-2, rtol=1e-2)
+        except AssertionError as exc:
+            raise NumericalMismatch(str(exc)) from exc
+
+    def fresh(self, output):
+        if output is not self.output:
+            raise ValueError('Unexpected replay output')
+        a, b = self.original
+        rows = ((torch.arange(a.shape[0], device=a.device) % 5) - 2).to(a.dtype)[:, None] * 0.125
+        cols = ((torch.arange(b.shape[1], device=b.device) % 7) - 3).to(b.dtype)[None, :] * 0.125
+        self.snapshots = [-a.flip(1) + rows, b.flip(0) + cols]
+        self._reference()
+        for dest, values in zip(self.inputs, self.snapshots): dest.copy_(values)
+        output.fill_(float('nan'))
+
+    def restore(self):
+        for dest, original in zip(self.inputs, self.original): dest.copy_(original)
+        self.output.copy_(self.output_original)
 
 
-def swizzle_reference(rows, cols, group, *, dtype, device):
-    expected = torch.empty((rows,cols),dtype=dtype,device=device)
-    for i in range(rows):
-        for j in range(cols):
-            linear=i*cols+j
-            first=(linear//(group*cols))*group
-            width=min(group,rows-first)
-            ni=first+(linear%(group*cols))%width; nj=(linear%(group*cols))//width
-            expected[ni,nj]=linear
-    return expected
 
-
-def _cast_like(expected, actual):
-    return expected.to(device=actual.device,dtype=actual.dtype)
-
-
-def prepare(c, module):
-    expected=c['a']@c['b']
-    return lambda result: compare(c['triton_output_buffer'],expected.to(torch.float16),atol=1e-2,rtol=1e-2)
+def prepare(context, module):
+    return IVMatmulCheck(context['a'], context['b'], context['triton_output_buffer'])
