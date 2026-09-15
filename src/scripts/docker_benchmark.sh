@@ -20,7 +20,7 @@ SELECTED_IMAGE=""
 AGENT_STATE_MOUNT_ROOT="${AKA_AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
 DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
 # Set by host-side commands after reading the selected run config. Keep this
-# separate from REQUIRED_AGENTS because geak_v4 is normalized to claude_code
+# separate from REQUIRED_AGENTS because GEAK templates normalize to claude_code
 # before Docker arguments are built.
 GEAK_V4_RUNTIME=0
 # quality_loop keeps the repository checkout read-only in the agent container.
@@ -371,9 +371,9 @@ read_agent_template() {
 configure_geak_v4_runtime() {
     local config="$1"
     GEAK_V4_RUNTIME=0
-    if [[ "$(read_agent_template "$config")" == "geak_v4" ]]; then
-        GEAK_V4_RUNTIME=1
-    fi
+    case "$(read_agent_template "$config")" in
+        geak|geak_v3|geak_v3_triton|geak_v4) GEAK_V4_RUNTIME=1 ;;
+    esac
 }
 
 agent_list_contains() {
@@ -435,8 +435,8 @@ resolve_required_agents() {
         claude|claude_code) printf 'claude_code\n' ;;
         cursor|cursor-agent) printf 'cursor\n' ;;
         codex) printf 'codex\n' ;;
-        # GEAK v4 drives Claude Code; extra deps handled in build/preflight.
-        geak_v4|geak-v4|geak) printf 'claude_code\n' ;;
+        # All retained v2 tasks use GEAK's unified Claude Workflow engine.
+        geak|geak_v3|geak_v3_triton|geak_v4|geak-v4) printf 'claude_code\n' ;;
         *) printf '%s\n' "$tmpl" ;;
     esac
 }
@@ -453,7 +453,7 @@ normalize_check_agents() {
             all)
                 normalized+=(codex claude_code cursor)
                 ;;
-            claude|claude_code|geak_v4|geak-v4|geak)
+            claude|claude_code|geak|geak_v3|geak_v3_triton|geak_v4|geak-v4)
                 normalized+=(claude_code)
                 ;;
             cursor|cursor-agent)
@@ -1177,18 +1177,24 @@ build_docker_args() {
         mount_agent "$_agent" "$strict"
     done
 
-    # Mount the GEAK kernel_workflow checkout only for GEAK runs so an exported
+    # Mount the pinned GEAK checkout only for GEAK runs so an exported
     # host setting does not change the container surface for existing agents.
-    if [[ "$GEAK_V4_RUNTIME" == "1" && -n "${GEAK_V4_WORKFLOW_DIR:-}" ]]; then
-        local geak_dir
-        geak_dir="$(cd "$GEAK_V4_WORKFLOW_DIR" 2>/dev/null && pwd || true)"
+    # The v2 adapter also reads git identity and perf_knowledge in its parent.
+    if [[ "$GEAK_V4_RUNTIME" == "1" && ( -n "${GEAK_HOME:-}" || -n "${GEAK_V4_WORKFLOW_DIR:-}" ) ]]; then
+        local geak_dir geak_root
+        if [[ -n "${GEAK_HOME:-}" ]]; then
+            geak_root="$GEAK_HOME"
+        else
+            geak_root="$(dirname "${GEAK_V4_WORKFLOW_DIR%/}")"
+        fi
+        geak_dir="$(cd "$geak_root" 2>/dev/null && pwd || true)"
         if [[ -n "$geak_dir" && -d "$geak_dir" ]]; then
             add_mount "$geak_dir" "$geak_dir" ro
-            docker_args+=(-e "GEAK_V4_WORKFLOW_DIR=$geak_dir")
+            docker_args+=(-e "GEAK_HOME=$geak_dir" -e "GEAK_V4_WORKFLOW_DIR=$geak_dir/kernel_workflow")
         elif [[ "$strict" == "1" ]]; then
-            die "GEAK_V4_WORKFLOW_DIR is set but is not a directory: $GEAK_V4_WORKFLOW_DIR"
+            die "GEAK checkout is not a directory: $geak_root"
         else
-            warn "GEAK_V4_WORKFLOW_DIR is set but is not a directory: $GEAK_V4_WORKFLOW_DIR; skipping GEAK mount"
+            warn "GEAK checkout is not a directory: $geak_root; skipping GEAK mount"
         fi
     fi
 
@@ -1401,11 +1407,13 @@ container_preflight() {
     container_smoke
     # Only verify the agent(s) this config actually uses (mounts are scoped the same way).
     container_check_agents $(resolve_required_agents "$config_name")
-    # GEAK v4 also needs the Claude Agent SDK and its kernel_workflow checkout.
-    if [[ "$(read_agent_template "$config_name")" == geak_v4 ]]; then
-        container_setup_geak
-        container_check_geak
-    fi
+    # GEAK aliases all use the same v2 SDK and pinned engine.
+    case "$(read_agent_template "$config_name")" in
+        geak|geak_v3|geak_v3_triton|geak_v4)
+            container_setup_geak
+            container_check_geak
+            ;;
+    esac
 python - "$config_name" <<'PY'
 import pathlib
 import sys
@@ -1439,9 +1447,22 @@ container_setup_flydsl() {
 }
 
 container_setup_geak() {
-    # Install claude-agent-sdk when the image does not ship it.
-    if python -c 'import claude_agent_sdk' 2>/dev/null; then
-        python -c 'import claude_agent_sdk; print("claude-agent-sdk already provided by image: " + str(getattr(claude_agent_sdk, "__version__", "unknown")) + "; nothing to install")'
+    # Install only the SDK version qualified by the adapter, even when an image
+    # or earlier setup supplies a different version.
+    if python - <<'PY'
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
+required = next(line.split("==", 1)[1].strip() for line in
+                Path("agents/geak/requirements.txt").read_text().splitlines()
+                if line.startswith("claude-agent-sdk=="))
+try:
+    installed = version("claude-agent-sdk")
+except PackageNotFoundError:
+    installed = None
+raise SystemExit(0 if installed == required else 1)
+PY
+    then
+        python -c 'from importlib.metadata import version; print("claude-agent-sdk=" + version("claude-agent-sdk") + " already qualified")'
         return 0
     fi
     # Install into a host-mounted target dir (survives the --rm container) and
@@ -1457,17 +1478,24 @@ container_setup_geak() {
     # SDK via PYTHONPATH and short-circuit above.
     local target="${PYTHONUSERBASE:-$PWD/.aka-pyuserbase}/geak-sdk"
     echo "claude-agent-sdk not found in image; installing into $target ..."
-    python -m pip install --target "$target" claude-agent-sdk
+    python -m pip install --upgrade --target "$target" -r agents/geak/requirements.txt
     PYTHONPATH="$target${PYTHONPATH:+:$PYTHONPATH}" python -c 'import claude_agent_sdk; print("claude-agent-sdk=" + str(getattr(claude_agent_sdk, "__version__", "unknown")) + " setup OK")'
 }
 
 container_check_geak() {
-    # Confirm the kernel_workflow checkout is reachable inside the container.
-    local dir="${GEAK_V4_WORKFLOW_DIR:-/opt/geak/kernel_workflow}"
-    if [[ ! -f "$dir/kernel_workflow.js" ]]; then
-        die "GEAK kernel workflow not found: $dir/kernel_workflow.js. Export GEAK_V4_WORKFLOW_DIR on the host (the runner mounts and forwards it) to your GEAK kernel_workflow directory."
-    fi
-    echo "geak_workflow=$dir/kernel_workflow.js"
+    python - <<'PY'
+import os
+from pathlib import Path
+from agents.geak.compatibility import verify_upstream
+
+root = os.environ.get("GEAK_HOME")
+if not root and os.environ.get("GEAK_V4_WORKFLOW_DIR"):
+    root = str(Path(os.environ["GEAK_V4_WORKFLOW_DIR"]).parent)
+if not root:
+    raise SystemExit("Set GEAK_HOME to the pinned checkout before starting Docker")
+verify_upstream(Path(root))
+print("geak_engine=pinned clean checkout; live Workflow capability is checked by the agent")
+PY
 }
 
 container_prepare_worker_home() {

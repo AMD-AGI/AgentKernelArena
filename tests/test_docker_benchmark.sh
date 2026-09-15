@@ -708,12 +708,28 @@ assert_has "$GEAK_PREFIX:/opt/claude-node:ro" "${args[@]}"
 assert_has "$GEAK_HOME/.claude:$GEAK_HOME/.claude" "${args[@]}"
 assert_has "$GEAK_HOME/.claude.json:$GEAK_HOME/.claude.json" "${args[@]}"
 assert_has "claude_code" "${args[@]}"
-assert_has "$GEAK_WORKFLOW_DIR:$GEAK_WORKFLOW_DIR:ro" "${args[@]}"
+assert_has "${GEAK_WORKFLOW_DIR%/kernel_workflow}:${GEAK_WORKFLOW_DIR%/kernel_workflow}:ro" "${args[@]}"
+assert_has "GEAK_HOME=${GEAK_WORKFLOW_DIR%/kernel_workflow}" "${args[@]}"
 assert_has "GEAK_V4_WORKFLOW_DIR=$GEAK_WORKFLOW_DIR" "${args[@]}"
 # The Claude Agent SDK is installed with `pip install --target` into the mounted
 # user-base (setup-geak); its dir must be forwarded on PYTHONPATH so the venv
 # python in the standard sglang images can import it.
 assert_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
+
+# Public GEAK and its v2 aliases need the complete read-only checkout, SDK path,
+# and Claude authentication; other agents must not acquire that mount.
+for geak_template in geak geak_v3 geak_v3_triton; do
+    printf 'agent:\n  template: %s\n' "$geak_template" > "$GEAK_CONFIG"
+    mapfile -t args < <(run_check_args \
+        "$GEAK_HOME" "$GEAK_CONFIG" \
+        AKA_NODE_PREFIX="$GEAK_PREFIX" \
+        GEAK_HOME="${GEAK_WORKFLOW_DIR%/kernel_workflow}")
+    assert_has "${GEAK_WORKFLOW_DIR%/kernel_workflow}:${GEAK_WORKFLOW_DIR%/kernel_workflow}:ro" "${args[@]}"
+    assert_has "GEAK_HOME=${GEAK_WORKFLOW_DIR%/kernel_workflow}" "${args[@]}"
+    assert_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
+    assert_has "claude_code" "${args[@]}"
+done
+printf 'agent:\n  template: geak_v4\n' > "$GEAK_CONFIG"
 
 # The explicit setup command has no run config or required agent CLI, but still
 # needs the GEAK-only dependency path and workflow mount for its container check.
@@ -726,7 +742,7 @@ mapfile -t args < <(
         bash "$RUNNER" setup-geak 2>/dev/null
 )
 assert_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
-assert_has "$GEAK_WORKFLOW_DIR:$GEAK_WORKFLOW_DIR:ro" "${args[@]}"
+assert_has "${GEAK_WORKFLOW_DIR%/kernel_workflow}:${GEAK_WORKFLOW_DIR%/kernel_workflow}:ro" "${args[@]}"
 assert_has "GEAK_V4_WORKFLOW_DIR=$GEAK_WORKFLOW_DIR" "${args[@]}"
 assert_has "_container_setup_geak" "${args[@]}"
 assert_not_has "ANTHROPIC_AUTH_TOKEN" "${args[@]}"

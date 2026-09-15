@@ -15,15 +15,13 @@ Python symbol scopes. Initial-language translations use GEAK's author mode.
 Backend availability and actual generated-code correctness are decided by the
 task's public runner and the selected GPU runtime, not the file extension.
 
-## Parent integration contract
+## Arena integration
 
-The parent integration must add `GEAK = "geak"` to `AgentType`, map its launcher
-to `agents.geak.launch_agent.launch_agent`, and select ordinary optimization
-post-processing. The launcher builds its context-based contract internally and
-does not call an agent-specific shared prompt builder. Retain the standard v2
-orchestration path that supplies `ARENA_TASK_CONTEXT` and independently calls
-the evaluator after the launcher. This worker intentionally does not modify
-`src/module_registration.py`, `main.py`, shared task APIs, or tasks.
+Select `agent.template: geak`. The shared registry loads this launcher and uses
+ordinary optimization post-processing. The launcher builds its contract from
+`ARENA_TASK_CONTEXT`; the standard v2 pipeline independently evaluates the
+retained candidate after GEAK returns. Task files do not contain GEAK-specific
+drivers or engine layout requirements.
 
 Existing `geak_v3`, `geak_v3_triton`, and `geak_v4` launchers now delegate schema
 v2 to this same adapter before probing their legacy CLIs. Their v1 behavior is
@@ -48,7 +46,7 @@ lifecycle runner. Authentication is inherited from the runtime environment.
 Use Arena's `AGENT_KERNEL_ARENA_PYTHON` for public task commands when their
 GPU/toolchain Python differs from the SDK interpreter.
 
-Configure `agent.template: geak` after the parent registry integration.
+Configure `agent.template: geak`.
 Run-level `agent.model`, `effort`, `budget`, `deep_cost`, `min_improve`, and
 `timeout_seconds` override [agent_config.yaml](agent_config.yaml). A null model
 uses the Claude runtime's configured default. Credentials are never agent
@@ -62,8 +60,12 @@ make docker-check-agents CONFIG=<run-config>
 make docker-run CONFIG=<run-config>
 ```
 
-Generic registry/preflight selection is a parent integration responsibility;
-this worker's CPU checks do not qualify those Docker commands or a GPU task.
+Docker provisions Claude for `geak` and its v2 aliases, mounts only the selected
+GEAK checkout read-only, and forwards `GEAK_HOME`. The complete checkout is
+needed for revision checks and private engine/knowledge copies. Preflight
+installs the pinned SDK into the GEAK-only dependency directory when necessary
+and verifies the clean upstream pin. These checks do not certify a live
+Workflow invocation or a GPU task.
 
 ## Upstream compatibility and evaluation
 

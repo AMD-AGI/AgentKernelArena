@@ -118,6 +118,7 @@ Each run selects one `agent.template`. Repeated runs can compare different agent
 | `claude_code` | Claude Code CLI integration |
 | `codex` | Codex CLI integration |
 | `forge` | KernelForge search through the shared task interface; initialize, translate, or optimize as required |
+| `geak` | GEAK multi-agent Workflow engine through the shared v2 task interface |
 | `geak_v3` | GEAK optimization for HIP tasks |
 | `geak_v3_triton` | GEAK optimization for Triton tasks |
 | `mini_swe_triton` | mini-swe-agent-based Triton optimization |
