@@ -28,7 +28,7 @@ The following software versions are required or verified.
 | --- | --- | --- |
 | Linux | Ubuntu 22.04, Ubuntu 24.04 | |
 | hipcc | Matches ROCm image | Required for HIP tasks. |
-| Profiler tools | Match runtime image | Smoke requires `rocprof-compute` on CDNA and `rocprofv3` on `gfx1201`. Tool availability does not establish candidate analysis. |
+| Profiler tools | Match runtime image | Smoke reports `rocprof-compute` and `rocprofv3` availability. Core graph/event timing needs neither; profiling runs can require specific binaries with `AKA_REQUIRED_PROFILERS`. Availability does not establish candidate analysis. See the [qualification record](runtime-upgrade-qualification.md#profiler-capability-policy). |
 | Docker | Current stable release | Required; serial experiments run through `make docker-run`; multi-GPU experiments run through `make docker-parallel-run`. |
 | SGLang runtime image | `lmsysorg/sglang:v0.5.12-rocm720-mi30x` for `gfx942`; `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705` for `gfx950` | The verified `gfx950` digest is `sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78`. Override with `AKA_DOCKER_IMAGE`, `AKA_DOCKER_IMAGE_GFX942`, or `AKA_DOCKER_IMAGE_GFX950`. |
 | RDNA4 runtime image | [Digest-pinned base and layout adapter](../../docker/rdna4/Dockerfile) | Default image builds on first use if missing; `make docker-build-rdna4` prebuilds or rebuilds it. Image overrides disable automatic builds; see the [runtime guide](../../docker/rdna4/README.md). |

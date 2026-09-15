@@ -76,6 +76,9 @@ Environment overrides:
   AKA_DOCKER_IMAGE_GFX1201 RDNA4 image (also the build-rdna4-image output tag).
   AKA_NODE_PREFIX         Host Node prefix containing bin/node and npm-installed agent CLI(s).
   AKA_AGENTS              Agent CLI(s) to check, comma/space separated; use all for all three.
+  AKA_REQUIRED_PROFILERS  Optional comma/space-separated profiler binaries required by
+                          this run: rocprof-compute, rocprofv3. Smoke reports both;
+                          core graph/event timing does not require either profiler.
   AKA_EVAL_TOOLS          Override evaluation_tools.enabled (comma/space separated).
   AKA_EVAL_TOOL_IMAGE_<TOOL>
                            Per-tool sidecar image override, e.g. AKA_EVAL_TOOL_IMAGE_GPU_ASAN.
@@ -999,6 +1002,7 @@ build_docker_args() {
         -e "AGENT_KERNEL_ARENA_DOCKER=1"
         -e "AGENT_KERNEL_ARENA_WORKDIR=${CONTAINER_WORKDIR}"
         -e "AGENT_KERNEL_ARENA_GPU_ARCH=${SELECTED_GPU_ARCH}"
+        -e "AKA_REQUIRED_PROFILERS=${AKA_REQUIRED_PROFILERS:-}"
         -e "PYTORCH_ROCM_ARCH=${SELECTED_GPU_ARCH}"
         -e "AGENT_STATE_MOUNT_ROOT=${AGENT_STATE_MOUNT_ROOT}"
         -e "PATH=${container_path}"
@@ -1280,12 +1284,26 @@ print(f"python={sys.executable}")
 print(f"version={sys.version.split()[0]}")
 
 selected_arch = os.environ.get("AGENT_KERNEL_ARENA_GPU_ARCH")
-profiler = "rocprofv3" if selected_arch == "gfx1201" else "rocprof-compute"
-for cmd in ("hipcc", profiler):
+for cmd in ("hipcc",):
     path = shutil.which(cmd)
     if not path:
         raise SystemExit(f"missing command: {cmd}")
     print(f"{cmd}={path}")
+
+# Core correctness and graph/event timing do not launch a profiler. Report
+# binary availability separately; it does not attest profiling support on this
+# device, or that any candidate was analyzed. Optional evaluation-tool sidecars
+# retain their own capability and evidence gates.
+profilers = ("rocprof-compute", "rocprofv3")
+required = set(os.environ.get("AKA_REQUIRED_PROFILERS", "").replace(",", " ").split())
+unknown = required.difference(profilers)
+if unknown:
+    raise SystemExit(f"unknown required profiler(s): {', '.join(sorted(unknown))}")
+for profiler in profilers:
+    path = shutil.which(profiler)
+    print(f"{profiler}={path or 'optional-missing'}")
+    if profiler in required and not path:
+        raise SystemExit(f"missing required profiler: {profiler}")
 
 for mod_name in ("torch", "triton", "pytest", "yaml", "numpy"):
     mod = importlib.import_module(mod_name)
