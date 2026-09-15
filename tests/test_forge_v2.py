@@ -457,7 +457,15 @@ def test_changed_numerical_candidate_reenters_initialization(tmp_path, monkeypat
     assert len(failed["cases"]) == 2
     assert "initial_candidate_commit" not in status
     assert (status_path.parent / "template/source/helper.py").read_text() == "100"
-    assert "Repair or reimplement" in (status_path.parent / "engine/arena_program.md").read_text()
+    assert "Historical input assessment" in (status_path.parent / "engine/arena_program.md").read_text()
+    # prepare_loop regenerates this program after a successful initialization.
+    # Retained failure evidence must describe the old input, not invalidate the
+    # new checked candidate or ask the optimization loop to initialize again.
+    from agents.forge.upstream import program_text
+    plan = json.loads((status_path.parent / "bridge_plan.json").read_text())
+    loop_program = program_text(plan)
+    assert "Optimize the existing candidate" in loop_program
+    assert "do not override a later successful check" in loop_program
     assert (context.workspace / "source/helper.py").read_text() == "6"
     assert (context.baseline_workspace / "source/helper.py").read_text() == "3"
 

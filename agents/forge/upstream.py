@@ -110,8 +110,9 @@ def program_text(plan: dict, *, prefix: str = "", port: bool = False, initialize
     instructions = [config.get("description", "")]
     if plan.get("initial_candidate_failure"):
         instructions += [
-            "The previous candidate compiled but failed the complete numerical check. "
-            "Repair or reimplement it before optimization. This is failed evidence, not acceptance:",
+            "Historical input assessment: an earlier candidate compiled but failed the complete numerical check. "
+            "The protected driver determines whether the current candidate now passes. Optimization requires "
+            "a currently passing implementation; these retained diagnostics do not override a later successful check:",
             json.dumps(plan["initial_candidate_failure"], ensure_ascii=False)[:4000],
         ]
     for name in dict.fromkeys(["README.md", *config.get("instructions", [])]):
