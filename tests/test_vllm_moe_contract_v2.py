@@ -204,6 +204,8 @@ def test_quant_controls_reject_zero_with_unchanged_large_tolerance(control):
                 out.append(value)
             actual.append(out)
     torch.testing.assert_close(expected,torch.tensor(actual,dtype=torch.float16),atol=0,rtol=0)
+    # The scalar oracle's dyadic results suffer no rounding when stored in FP16.
+    torch.testing.assert_close(expected.double(),torch.tensor(actual,dtype=torch.float64),atol=0,rtol=0)
 
 
 def test_quant_control_rejects_wrong_nibble_zero_point_and_routing():
@@ -213,6 +215,29 @@ def test_quant_control_rejects_wrong_nibble_zero_point_and_routing():
     wrong=[ref(wrong_nibbles,options),ref(no_zero,options),ref(inputs,{**options,'mul_routed_weight':False})]
     for output in wrong:
         with pytest.raises(CONTRACT.NumericalMismatch): CONTRACT.compare_output(output,expected,atol=1.,rtol=.5)
+
+
+@pytest.mark.parametrize('control',['int4_explicit','int4_default','int8_explicit','int8_default'])
+def test_exact_quant_control_rejects_scaling_and_single_element_errors(control):
+    path=TASKS/'triton_fused_moe_gptq_awq/scripts/task_runner.py'
+    check=function(path,'check_control_output',compare_output=CONTRACT.compare_output)
+    legacy=function(path,'check_output',compare_output=CONTRACT.compare_output)
+    ref,inputs_for=quant_oracles();inputs,options=inputs_for(control,'cpu')
+    expected=ref(inputs,options)
+    check(expected.clone(),expected)
+    # Preserve and expose the old scored-case gate instead of silently changing it.
+    legacy(expected*0.5,expected)
+    one_element=expected.clone();one_element[0,0]+=0.0625
+    invalid_expert=expected.clone();invalid_expert[3,0]=0.0625
+    for wrong in [expected*0.5,expected*1.25,-expected,one_element,invalid_expert]:
+        with pytest.raises(CONTRACT.NumericalMismatch): check(wrong,expected)
+    # Exercise the real correctness dispatch, not only the new comparison helper.
+    run=function(path,'run_correctness',load_module=lambda:None,CONTROL_CASES=(control,),
+        control_inputs=lambda name,device:inputs_for(name,'cpu'),reference=ref,
+        invoke=lambda mod,data,opts:ref(data,opts)*0.5,checked_call=CONTRACT.checked_call,
+        check_control_output=check,check_output=legacy)
+    ok,error=run(control=control)
+    assert not ok and isinstance(error,CONTRACT.NumericalMismatch)
 
 
 def test_int8_exact_known_answer_including_default_zero():

@@ -192,6 +192,15 @@ def check_output(actual, expected):
     compare_output(actual, expected, atol=1.0, rtol=0.5)
 
 
+def check_control_output(actual, expected):
+    # Each control row has one nonzero integer activation. Integer quantized
+    # weights/zero points, power-of-two scales and dyadic routing weights make
+    # every intermediate and output exactly representable in FP16. There is
+    # no reduction error to budget here. Keep the original random-case gate
+    # above, but reject systematic scaling and packing errors on these controls.
+    compare_output(actual, expected, atol=0.0, rtol=0.0)
+
+
 def run_correctness(*, case_index=None, control=None):
     import torch
     try:
@@ -201,7 +210,7 @@ def run_correctness(*, case_index=None, control=None):
             assert control in CONTROL_CASES, 'Unknown control'
             inputs, options = control_inputs(control, device)
             checked_call(lambda: invoke(mod, inputs, options), inputs=inputs,
-                         reference=lambda saved:reference(saved,options), check=check_output)
+                         reference=lambda saved:reference(saved,options), check=check_control_output)
             return True, None
         for i, (M, K, E, N, topk, group_size) in enumerate(TEST_SHAPES):
             if case_index is not None and i != case_index:

@@ -15,7 +15,8 @@ Key optimization opportunities:
 
 Constraints:
 - Must maintain the same function signature for `fused_moe_gptq_awq`
-- Output must match reference within atol=1.0, rtol=0.5
+- Original random cases must match reference within atol=1.0, rtol=0.5;
+  the exact arithmetic correctness-only controls require equality.
 
 
 ## Evaluation contract
@@ -51,9 +52,14 @@ They include repeated routes, absent/invalid experts, optional routing weights,
 partial matrix dimensions, and deterministic basis activations. Invalid expert
 assignments produce zero rows. Missing routing weights mean unit weights.
 INT4/INT8 controls exercise explicit and default zero points and signed routing
-weights; scales are binary-exact and outputs large enough to reject all-zero or
-wrong-routing implementations using the unchanged atol=1.0/rtol=0.5 rule. These
-controls add no score rows or fitted baseline thresholds.
+weights. Each activation row has one nonzero integer value, and the integer
+weights/zero points, power-of-two scales and dyadic routing weights yield exactly
+representable FP16 intermediates and outputs. These controls therefore require
+exact numerical equality, independently of the unchanged atol=1.0/rtol=0.5 rule
+for the five original random cases. The original relative tolerance alone admits
+a uniformly half-scaled answer; the exact controls reject that error, wrong
+packing/zero points/routing, and incorrect zero rows. They add no score rows or
+fitted baseline thresholds; the scoring timer is unchanged.
 
 The shipped quantized kernel now masks weight loads in a partial K block, matching
 its existing activation/scale/zero-point masks. Previously K=48 reached an unmasked
