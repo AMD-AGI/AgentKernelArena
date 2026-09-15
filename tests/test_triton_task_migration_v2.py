@@ -5315,8 +5315,17 @@ def test_block_gemm_independent_known_answer_and_preserved_tolerance(monkeypatch
     checks.check_output(allowed,expected)
     allowed[0,0]+=2
     with pytest.raises(AssertionError):checks.check_output(allowed,expected)
-    with pytest.raises(AssertionError,match='finite'):
-        checks.check_output(torch.full_like(expected,float('inf')),torch.full_like(expected,float('inf')))
+    overflow=torch.full_like(expected,float('inf'))
+    if checks.FP8:
+        with pytest.raises(AssertionError,match='finite'):checks.check_output(overflow,overflow)
+    else:
+        # INT8's original large timing scales can overflow FP16. Preserve the
+        # original allclose rule; finite and wrong-sign substitutions must fail.
+        assert torch.allclose(overflow,overflow,atol=.1,rtol=.1)
+        checks.check_output(overflow,overflow)
+        for bad in [torch.zeros_like(overflow),-overflow,torch.full_like(overflow,float('nan'))]:
+            with pytest.raises(AssertionError):checks.check_output(bad,overflow)
+        with pytest.raises(AssertionError):checks.check_output(overflow,expected)
 
 
 @pytest.mark.parametrize('symbol,mode',[(s,m) for s in _BLOCK_GEMM_TASKS for m in
@@ -5386,12 +5395,9 @@ def test_block_gemm_original_timing_real_replay_and_pristine_inputs(monkeypatch,
     assert len(rows)==5 and options==[dict(warmup=10,repetition=100)]*5
     for case,row in zip(h.TEST_SHAPES,rows):
         assert row['params']==dict(zip(('M','N','K','block_n','block_k'),case))
-        # Original INT8 scales can overflow FP16. Preserve and reject those
-        # specific cases; a synthetic FP64 backend cannot make them finite.
-        index=h.TEST_SHAPES.index(case)
-        expected=checks.reference(h,saved[index],[case[3],case[4]],torch.float16)
-        valid=mode=='correct' and bool(torch.isfinite(expected).all())
-        assert row['execution_time_ms']==(.125 if valid else -1.)
+        # Preserve original allclose semantics including matching signed FP16
+        # overflow. All cases still reach and validate the perturbed replay.
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
     for inputs,pristine in zip(values,saved):checks.unchanged(inputs,pristine)
     assert getattr(mod,checks.SYMBOL) is _block_gemm_cpu and h._benchmark_cuda_graph_or_events is benchmark
     assert any(float(v[2].max()) > (1. if checks.FP8 else .11) for v in saved)
@@ -5409,8 +5415,8 @@ def test_block_gemm_adapter_installs_self_contained_checks(monkeypatch,symbol):
     ['correct','stale','no_write','wrong_replay','mutate_replay_a','mutate_replay_b',
      'mutate_replay_sa','mutate_replay_sb','raise_replay']])
 def test_block_gemm_finite_control_reaches_exact_poisoned_replay(monkeypatch,symbol,mode):
-    # Original large INT8 timing scales may overflow FP16 before replay. This
-    # additional finite control proves replay rejection, without changing them.
+    # This additional fully finite control exercises every replay rejection
+    # without changing the original large INT8 scored scales.
     h,checks=_block_gemm_cpu_harness(monkeypatch,symbol)
     h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
     dtype=torch.float8_e4m3fnuz if checks.FP8 else torch.int8

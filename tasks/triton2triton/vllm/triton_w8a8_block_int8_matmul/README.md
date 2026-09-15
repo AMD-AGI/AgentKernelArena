@@ -29,7 +29,7 @@ Canonical benchmark helpers must be materialized by Arena; do not edit their gen
 
 ## Complete outputs and measured replay
 
-Correctness checks every output element, shape, dtype, device and finiteness
+Correctness checks every output element, shape, dtype and device
 against the original CPU block-dequantization/matmul oracle, using pristine
 operands and scales. All four input tensors must remain unchanged. The original
 `atol=rtol=1e-1` rule is retained. Unscored controls add a contiguous higher-rank
@@ -43,8 +43,13 @@ The protected wrapper collects that output from the exact measured graph,
 checks it against the reference, then changes A/B/As/Bs, poisons the captured
 output and checks the same graph's replay. These checks are outside timing.
 Input buffers are verified read-only and restored even on replay failure.
-Numerical failures or FP16 overflow in any original scored case remain failures;
-the check does not substitute an easier timing workload.
+NaN and numerical mismatches remain failures. The original `torch.allclose`
+semantics permit signed FP16 infinity only at exactly the same locations and
+with the same signs as the independent reference; large original performance
+scales can exceed FP16's finite range. Those reference-overflow counts are
+recorded explicitly. Extra, missing or wrong-sign infinities fail, and all
+finite elements still use the unchanged `atol=rtol=1e-1` rule. The check does not
+substitute an easier timing workload or a different output dtype.
 
 Performance check failures also emit the underlying exception to stderr before
 the original harness records its failing timing sentinel. Failed cases remain
