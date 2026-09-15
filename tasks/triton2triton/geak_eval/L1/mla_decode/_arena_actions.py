@@ -23,7 +23,7 @@ def correctness(require):
         require(h.run_contract_controls(), 'none', len(h.CONTROL_CASES))
     except Exception as exc:
         control.update(status='FAIL', reason=f'{type(exc).__name__}: {exc}',
-                       metadata={'failure_kind': 'execution_failure'})
+                       failure_kind='execution_failure')
     outcomes.append(control)
     return outcomes
 

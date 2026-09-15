@@ -33,7 +33,8 @@ keep their separate indices. No skipped/missing case or incomplete action passes
 Correctness records each executed case separately, including after an earlier
 case fails. Setup/import failures produce a failing action with no invented
 case outcomes; only completed numerical comparisons can report
-`numerical_mismatch`.
+`numerical_mismatch`. Per-case `failure_kind` is a top-level protocol field.
+The task's baseline correctness policy remains `required`.
 
 Compilation retains the original syntax check. Numerical checks actually execute
 the candidate and compare with the protected references; original numerical tolerances are retained, with the full-output checks below. Full benchmark input order, seeds, allocation/reset behavior,

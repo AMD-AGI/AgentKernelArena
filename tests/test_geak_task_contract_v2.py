@@ -388,15 +388,22 @@ class MLACompleteContractTests(unittest.TestCase):
                 self.assertEqual(before.__path__, [str(dependency)])
 
     def test_failure_reports_only_completed_case_outcomes_and_honest_kind(self):
+        from copy import deepcopy
+        from dataclasses import replace
         import json
         import tempfile
         from types import SimpleNamespace
-        from src.task_protocol import parse_command_result
+        from src.task_protocol import CaseManifest, baseline_correctness_accepted, parse_command_result
+        from src.task_spec import load_task_spec
         runner = load_file('_geak_mla_runner', TASKS / 'L1/mla_decode/_arena_eval.py')
-        cases = [{'test_case_id': f'case/{i}', 'checks': ['correctness'], 'params': {}} for i in range(2)]
+        baseline = load_task_spec(TASKS / 'L1/mla_decode/config.yaml',
+                                  task_id='triton2triton/geak_eval/L1/mla_decode').baseline
+        self.assertEqual(baseline.correctness_policy, 'required')
+        diagnostic = replace(baseline, correctness_policy='diagnostic', diagnostic_reason='Test-only policy')
+        cases = [{'test_case_id': f'case/{i}', 'checks': ['correctness', 'performance'], 'params': {}} for i in range(2)]
         outcomes = [{'test_case_id': 'case/0', 'status': 'PASS'},
                     {'test_case_id': 'case/1', 'status': 'FAIL', 'reason': 'outside bound',
-                     'metadata': {'failure_kind': 'numerical_mismatch'}}]
+                     'failure_kind': 'numerical_mismatch'}]
         actions = SimpleNamespace(inputs=lambda: {}, validate=lambda: None,
                                   correctness=lambda require: outcomes)
         with tempfile.TemporaryDirectory() as directory:
@@ -404,11 +411,29 @@ class MLACompleteContractTests(unittest.TestCase):
             (root/'workloads.json').write_text(json.dumps({'cases': cases, 'input_tables': {}}))
             with patch.object(runner, 'ROOT', root), patch.object(runner, 'load_actions', return_value=actions), \
                     patch.object(runner, 'inspect_candidate', return_value='implemented'):
+                manifest = CaseManifest.from_result(parse_command_result(
+                    'ARENA_EVAL_RESULT='+json.dumps(runner.evaluate('task', 'validate-task')),
+                    role='task', action='validate-task', returncode=0))
                 result = runner.evaluate('baseline', 'correctness')
                 self.assertEqual([r['status'] for r in result['cases']], ['PASS', 'FAIL'])
                 self.assertEqual(result['failure_kind'], 'numerical_mismatch')
-                parse_command_result('ARENA_EVAL_RESULT='+json.dumps(result), role='baseline',
-                                     action='correctness', returncode=1)
+                self.assertEqual(result['cases'][1]['failure_kind'], 'numerical_mismatch')
+                def accepted(payload, policy=diagnostic, phase='task_validation'):
+                    parsed = parse_command_result('ARENA_EVAL_RESULT='+json.dumps(payload), role='baseline',
+                                                  action='correctness', returncode=1)
+                    return baseline_correctness_accepted(parsed, baseline=policy, phase=phase, manifest=manifest)
+                self.assertTrue(accepted(result))
+                self.assertFalse(accepted(result, baseline))
+                self.assertFalse(accepted(result, phase='candidate_evaluation'))
+                nested = deepcopy(result)
+                nested['cases'][1]['metadata'] = {'failure_kind': nested['cases'][1].pop('failure_kind')}
+                self.assertFalse(accepted(nested))
+                outcomes[0].update(status='FAIL', reason='launch failed', failure_kind='execution_failure')
+                mixed = runner.evaluate('baseline', 'correctness')
+                self.assertEqual(mixed['failure_kind'], 'execution_failure')
+                self.assertFalse(accepted(mixed))
+                mixed['failure_kind'] = 'numerical_mismatch'
+                self.assertFalse(accepted(mixed))  # Per-case kinds must also be purely numerical.
                 def fail_before_results(require):
                     raise ImportError('missing runtime implementation')
                 actions.correctness = fail_before_results
@@ -417,6 +442,30 @@ class MLACompleteContractTests(unittest.TestCase):
                 self.assertEqual(result['failure_kind'], 'execution_failure')
                 parse_command_result('ARENA_EVAL_RESULT='+json.dumps(result), role='baseline',
                                      action='correctness', returncode=1)
+
+    def test_harness_and_control_failures_publish_top_level_kind(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        rounding = load_file('_geak_mla_failure_type', TASKS / 'L1/mla_decode/_rounding_reference.py')
+        collect = function(
+            TASKS / 'L1/mla_decode/test_kernel_harness.py', 'mode_correctness',
+            ALL_CONFIGS=[(21, 1, 16)]*3, config_str=str, setup_inputs=lambda *a: {},
+            _mla_contract=lambda inputs: ({}, None, None), run_ref=lambda inputs: torch.ones(1),
+            check_correctness_val=lambda ref, actual: (False, .1, .2),
+            NumericalMismatch=rounding.NumericalMismatch,
+            checked_call=Mock(side_effect=[rounding.NumericalMismatch('outside bound'),
+                                          RuntimeError('launch failed'), torch.ones(1)]))
+        with patch.object(torch.cuda, 'empty_cache'):
+            outcomes = collect([0, 1, 2], collect=True)
+        self.assertEqual([row['failure_kind'] for row in outcomes],
+                         ['numerical_mismatch', 'execution_failure', 'numerical_mismatch'])
+        self.assertTrue(all('metadata' not in row for row in outcomes))
+        h = SimpleNamespace(ALL_CONFIGS=[], _pick=lambda *a: [], mode_correctness=lambda *a, **k: [],
+                            CONTROL_CASES=[{'test_case_id': 'control'}],
+                            run_contract_controls=Mock(side_effect=RuntimeError('control setup failed')))
+        control = function(TASKS / 'L1/mla_decode/_arena_actions.py', 'correctness', h=h)(lambda *a: None)
+        self.assertEqual(control[0]['failure_kind'], 'execution_failure')
+        self.assertNotIn('metadata', control[0])
 
 
 if __name__ == '__main__':

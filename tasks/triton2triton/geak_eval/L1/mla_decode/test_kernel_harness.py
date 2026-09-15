@@ -263,13 +263,13 @@ def mode_correctness(indices, *, collect=False):
                     idx, label, err_ratio, cos_diff))
                 all_pass = False
                 outcome.update(status='FAIL', reason=f'MLA numerical mismatch: ratio={err_ratio}',
-                               metadata={'failure_kind': 'numerical_mismatch'})
+                               failure_kind='numerical_mismatch')
         except Exception as e:
             print("  [{}] {}  ERROR: {}".format(idx, label, e))
             all_pass = False
             outcome.update(status='FAIL', reason=f'{type(e).__name__}: {e}',
-                           metadata={'failure_kind': 'numerical_mismatch' if isinstance(e, NumericalMismatch)
-                                     else 'execution_failure'})
+                           failure_kind='numerical_mismatch' if isinstance(e, NumericalMismatch)
+                                        else 'execution_failure')
         finally:
             outcomes.append(outcome)
             torch.cuda.empty_cache()

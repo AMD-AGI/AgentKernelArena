@@ -143,7 +143,7 @@ def evaluate(role, action):
                     row.update(outcome)
                 failed = [row for row in result['cases'] if row['status'] == 'FAIL']
                 if failed:
-                    numerical = all(row.get('metadata', {}).get('failure_kind') == 'numerical_mismatch'
+                    numerical = all(row.get('failure_kind') == 'numerical_mismatch'
                                     for row in failed)
                     result.update(reason=f'{len(failed)} completed correctness cases failed',
                                   failure_kind='numerical_mismatch' if numerical else 'execution_failure',
