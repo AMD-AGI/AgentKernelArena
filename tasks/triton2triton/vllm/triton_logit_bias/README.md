@@ -4,7 +4,13 @@ The starting candidate is implemented Triton. Improve the declared source files 
 the framework freezes the initial implementation as the baseline. Baseline and candidate
 actions execute only this workspace, with no fallback to another implementation.
 
-Optimize the Triton logit bias kernel that applies allowed-token filtering, additive logit biases, and min-token stop-token masking in a single kernel launch.
+Optimize additive logit-bias throughput on the five original scored workloads.
+Those workloads disable allowlist and stop-token filtering and use identity request
+mapping; their measured speedup applies to bias-only execution. The full public
+`apply_logit_bias` API must still implement allowed-token filtering, additive biases
+and minimum-length stop masking correctly. The original targeted correctness case
+and the new routed controls enforce this broader compatibility. This score does not
+claim an improvement in combined filtering throughput.
 
 Constraints:
 - Must maintain the same function signature for `apply_logit_bias`

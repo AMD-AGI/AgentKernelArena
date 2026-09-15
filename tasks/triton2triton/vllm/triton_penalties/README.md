@@ -4,7 +4,12 @@ The starting candidate is implemented Triton. Improve the declared source files 
 the framework freezes the initial implementation as the baseline. Baseline and candidate
 actions execute only this workspace, with no fallback to another implementation.
 
-Optimize the Triton penalties kernel that applies repetition, frequency, and presence penalties to logits using packed bitmasks and output bin counts.
+Optimize repetition, frequency and presence penalties for the five original
+non-speculative scored workloads, using existing output bin counts. The score uses
+identity request mapping and no additional speculative history; it makes no claim
+about speculative-history throughput. Preserve the complete `apply_penalties` API,
+including packed prompt masks, routed requests and speculative local positions,
+which remain required correctness controls.
 
 Constraints:
 - Must maintain the same function signature for `apply_penalties`
