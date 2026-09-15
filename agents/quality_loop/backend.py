@@ -35,6 +35,7 @@ class _StreamCapture:
         self.file, self.limit, self.events = file, limit, events
         self.observed = self.retained = 0
         self.digest = hashlib.sha256()
+        self.retained_digest = hashlib.sha256()
         self.tail = b""
         self.pending = b""
         self.discard_line = self.oversized_event = False
@@ -49,6 +50,7 @@ class _StreamCapture:
         kept = data[:max(0, self.limit - self.retained)]
         written = self.file.write(kept)
         self.retained += written
+        self.retained_digest.update(kept[:written])
         if written != len(kept):
             raise OSError("Incomplete quality_loop process evidence write")
         self.tail = (self.tail + data)[-4000:]
@@ -103,7 +105,8 @@ class _StreamCapture:
         return {"file": Path(self.file.name).name, "limit_bytes": self.limit,
                 "observed_bytes": self.observed, "retained_bytes": self.retained,
                 "truncated": self.observed > self.retained, "retention": "prefix",
-                "observed_sha256": self.digest.hexdigest(), "eof": self.eof}
+                "observed_sha256": self.digest.hexdigest(),
+                "retained_sha256": self.retained_digest.hexdigest(), "eof": self.eof}
 
 
 def _write_status(directory: Path, status: dict):
@@ -112,7 +115,14 @@ def _write_status(directory: Path, status: dict):
         os.chmod(temporary, 0o600)
         json.dump(status, stream, indent=2, ensure_ascii=True)
         stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
     temporary.replace(directory / "process.json")
+    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _kill_group(process):
@@ -120,6 +130,10 @@ def _kill_group(process):
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
+
+
+class _ExitDrainTimeout(subprocess.TimeoutExpired):
+    """The CLI exited but a descendant still holds an output pipe open."""
 
 
 def _drain(process, captures: dict, deadline: float):
@@ -135,6 +149,8 @@ def _drain(process, captures: dict, deadline: float):
                 exit_deadline = min(deadline, now + CLEANUP_SECONDS)
             remaining = (exit_deadline or deadline) - now
             if remaining <= 0:
+                if exit_deadline is not None and exit_deadline < deadline:
+                    raise _ExitDrainTimeout(process.args, CLEANUP_SECONDS)
                 raise subprocess.TimeoutExpired(process.args, 0)
             for key, _ in selector.select(min(remaining, 0.1)):
                 data = os.read(key.fd, 65536)
@@ -193,6 +209,7 @@ class CodexBackend:
         process = None
         captures = {}
         output = ""
+        role_completed = False
         with ExitStack() as stack:
             stdout = stderr = None
             try:
@@ -239,11 +256,18 @@ class CodexBackend:
                     _drain(process, pipes, deadline)
                 except subprocess.TimeoutExpired as exc:
                     status["timed_out"] = True
+                    status["timeout_phase"] = "exit_drain" if isinstance(exc, _ExitDrainTimeout) else "role"
                     _kill_group(process)
                     try:
                         _drain(process, pipes, time.monotonic() + CLEANUP_SECONDS)
                     except subprocess.TimeoutExpired:
                         pass  # Still-open pipes remain explicitly incomplete in evidence.
+                    if isinstance(exc, _ExitDrainTimeout):
+                        status["exit_drain_limit_seconds"] = CLEANUP_SECONDS
+                        raise RuntimeError(
+                            f"Codex role {role} CLI exited but output pipes remained open "
+                            f"(exit-drain limit {CLEANUP_SECONDS}s, bounded by role deadline)"
+                        ) from exc
                     raise RuntimeError(
                         f"Codex role {role} timed out after {self.config.timeout_seconds}s"
                     ) from exc
@@ -258,9 +282,9 @@ class CodexBackend:
                     raise RuntimeError(f"Codex role {role} ended without a completed turn")
                 retained = (evidence / "stdout.log").read_text(encoding="utf-8", errors="replace")
                 output = "\n".join(_format_event(line) for line in retained.splitlines() if line.strip())
-                status["status"] = "succeeded"
                 if stderr.observed:
                     self.logger.warning("Codex role=%s emitted stderr; see %s", role, evidence / "stderr.log")
+                role_completed = True
             except BaseException as exc:
                 status["status"] = "timed_out" if status.get("timed_out") else "failed"
                 # Exception messages/child env can contain credentials; record only type.
@@ -275,6 +299,7 @@ class CodexBackend:
                         process.wait(timeout=CLEANUP_SECONDS)
                     except subprocess.TimeoutExpired:
                         status["cleanup_incomplete"] = True
+                        status["cleanup_timeout_phase"] = "process_reap"
                         status["status"] = "failed"
                     status["returncode"] = process.returncode
                 status.update(
@@ -289,8 +314,26 @@ class CodexBackend:
                         "terminal_count": stdout.terminal_count,
                         "last_terminal_events": stdout.terminal_events,
                     }
-                # Failure to persist evidence is an operational error, never success.
-                _write_status(evidence, status)
+                # Durable raw files precede publication of a successful status.
+                # Preserve a failed status if storage still allows it; never
+                # return success after a flush/fsync/rename failure.
+                status["raw_receipts_synced"] = False
+                try:
+                    for capture in captures.values():
+                        capture.file.flush()
+                        os.fsync(capture.file.fileno())
+                    status["raw_receipts_synced"] = True
+                    if role_completed and not status.get("cleanup_incomplete"):
+                        status["status"] = "succeeded"
+                    _write_status(evidence, status)
+                except OSError as exc:
+                    status.update(status="failed", evidence_error_type=type(exc).__name__,
+                                  evidence_error_errno=exc.errno)
+                    try:
+                        _write_status(evidence, status)
+                    except OSError:
+                        pass  # Storage may also prevent saving the failure receipt.
+                    raise
         if status.get("cleanup_incomplete"):
             raise RuntimeError(f"Codex role {role} process cleanup incomplete; see {evidence}")
         return output

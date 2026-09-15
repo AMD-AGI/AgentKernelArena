@@ -34,6 +34,7 @@ def assert_streams(path, status):
     for stream in status['streams'].values():
         raw = (path.parent / stream['file']).read_bytes()
         assert len(raw) == stream['retained_bytes'] <= stream['limit_bytes']
+        assert stream['retained_sha256'] == hashlib.sha256(raw).hexdigest()
         assert stat.S_IMODE((path.parent / stream['file']).stat().st_mode) == 0o600
         if not stream['truncated']:
             assert stream['observed_sha256'] == hashlib.sha256(raw).hexdigest()
@@ -69,6 +70,7 @@ print('diagnostic only', file=sys.stderr)
     assert not transport['stdin_link'].startswith(str(workspace))
     path, status = receipts(workspace)[0]
     assert status['status'] == 'succeeded' and status['returncode'] == 0
+    assert status['raw_receipts_synced'] is True
     assert status['prompt'] == {'transport': 'anonymous_stdin', 'bytes': len(prompt.encode()), 'sha256': expected_hash}
     assert status['model'] == backend.config.model and status['effort'] == backend.config.effort
     assert status['events']['last_terminal_events'] == [{'type': 'turn.completed', 'usage':
@@ -130,6 +132,7 @@ time.sleep(60)
         backend.run('test', workspace, role='repair')
     path, status = receipts(workspace)[0]
     assert status['status'] == 'timed_out' and status['timed_out'] is True
+    assert status['timeout_phase'] == 'role'
     assert status['returncode'] < 0
     assert status['events']['completed_turn'] is False
     assert b'item.started' in (path.parent / 'stdout.log').read_bytes()
@@ -202,7 +205,7 @@ def test_evidence_write_failure_is_not_role_success(tmp_path, monkeypatch):
     with pytest.raises(OSError, match='quota'):
         backend.run('test', workspace, role='optimizer')
     path, status = receipts(workspace)[0]
-    assert status['status'] == 'running'  # No fabricated finalized success.
+    assert status['status'] == 'failed' and status['evidence_error_errno'] == 122
     assert (path.parent / 'stdout.log').read_bytes() == b'{"type":"turn.completed"}\n'
 
 
@@ -268,4 +271,97 @@ def test_short_disk_write_is_failed_with_actual_retained_byte_count(tmp_path):
         recorded = capture.summary()
     assert path.read_bytes() == b'ab'
     assert recorded['retained_bytes'] == 2 and recorded['observed_bytes'] == 6
+    assert recorded['retained_sha256'] == hashlib.sha256(b'ab').hexdigest()
+    assert recorded['observed_sha256'] == hashlib.sha256(b'abcdef').hexdigest()
     assert recorded['truncated'] is True and recorded['eof'] is False
+
+
+@pytest.mark.parametrize('timeout,cleanup,phase', [(30, 0.2, 'exit_drain'), (1, 5, 'role')])
+def test_exited_cli_with_descendant_pipe_reports_actual_timeout(tmp_path, monkeypatch, timeout, cleanup, phase):
+    monkeypatch.setattr(module, 'CLEANUP_SECONDS', cleanup)
+    backend, workspace = make_backend(tmp_path, monkeypatch, '''
+import subprocess, sys
+from pathlib import Path
+child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+Path('child.pid').write_text(str(child.pid))
+print('{"type":"turn.completed"}', flush=True)
+''', timeout=timeout)
+    with pytest.raises(RuntimeError) as caught:
+        backend.run('test', workspace, role='reviewer')
+    path, status = receipts(workspace)[0]
+    assert status['status'] == 'timed_out' and status['timeout_phase'] == phase
+    if phase == 'exit_drain':
+        assert 'CLI exited but output pipes remained open' in str(caught.value)
+        assert 'timed out after 30s' not in str(caught.value)
+        assert status['exit_drain_limit_seconds'] == cleanup
+    else:
+        assert f'timed out after {timeout}s' in str(caught.value)
+    assert status['timeout_seconds'] == timeout and status['returncode'] == 0
+    assert status['events']['completed_turn'] is True  # Still a rejected call.
+    assert status['raw_receipts_synced'] is True
+    child = int((workspace / 'child.pid').read_text())
+    try:
+        assert Path(f'/proc/{child}/stat').read_text().split()[2] == 'Z'
+    except (FileNotFoundError, ProcessLookupError):
+        pass
+    assert_streams(path, status)
+
+
+def test_raw_and_status_fsync_precede_success_publication(tmp_path, monkeypatch):
+    backend, workspace = make_backend(tmp_path, monkeypatch, '''
+import sys
+print('{"type":"turn.completed"}')
+print('stderr evidence', file=sys.stderr)
+''')
+    operations = []
+    real_fsync, real_replace = module.os.fsync, Path.replace
+    def fsync(descriptor):
+        path = Path(os.readlink(f'/proc/self/fd/{descriptor}'))
+        state = json.loads(path.read_text())['status'] if path.name == 'process.json.tmp' else None
+        operations.append(('fsync', path.name, state))
+        return real_fsync(descriptor)
+    def replace(path, destination):
+        operations.append(('replace', path.name, json.loads(path.read_text())['status']))
+        return real_replace(path, destination)
+    monkeypatch.setattr(module.os, 'fsync', fsync)
+    monkeypatch.setattr(Path, 'replace', replace)
+    backend.run('test', workspace, role='optimizer')
+    success_sync = operations.index(('fsync', 'process.json.tmp', 'succeeded'))
+    success_replace = operations.index(('replace', 'process.json.tmp', 'succeeded'))
+    assert operations.index(('fsync', 'stdout.log', None)) < success_sync < success_replace
+    assert operations.index(('fsync', 'stderr.log', None)) < success_sync
+    for state in ('starting', 'running'):
+        assert operations.index(('fsync', 'process.json.tmp', state)) < operations.index(('replace', 'process.json.tmp', state))
+    path, status = receipts(workspace)[0]
+    assert status['status'] == 'succeeded' and status['raw_receipts_synced'] is True
+    assert_streams(path, status)
+
+
+@pytest.mark.parametrize('failing_file', ['stdout.log', 'stderr.log', 'process.json.tmp'])
+def test_fsync_quota_error_cannot_publish_success(tmp_path, monkeypatch, failing_file):
+    backend, workspace = make_backend(tmp_path, monkeypatch, '''
+import sys
+print('{"type":"turn.completed"}')
+print('retained stderr', file=sys.stderr)
+''')
+    real_fsync = module.os.fsync
+    injected = []
+    def fsync(descriptor):
+        path = Path(os.readlink(f'/proc/self/fd/{descriptor}'))
+        if path.name == failing_file:
+            # Permit initial state and the best-effort failed receipt, but reject
+            # every attempt to sync successful metadata. Raw sync fails always.
+            if path.name != 'process.json.tmp' or json.loads(path.read_text())['status'] == 'succeeded':
+                injected.append(path.name)
+                raise OSError(122, 'fsync quota fixture')
+        return real_fsync(descriptor)
+    monkeypatch.setattr(module.os, 'fsync', fsync)
+    with pytest.raises(OSError, match='fsync quota'):
+        backend.run('test', workspace, role='optimizer')
+    assert injected
+    path, status = receipts(workspace)[0]
+    assert status['status'] == 'failed' and status['evidence_error_errno'] == 122
+    assert status['returncode'] == 0 and status['events']['completed_turn'] is True
+    assert status['raw_receipts_synced'] is (failing_file == 'process.json.tmp')
+    assert (path.parent / 'stdout.log').read_bytes() == b'{"type":"turn.completed"}\n'
+    assert_streams(path, status)

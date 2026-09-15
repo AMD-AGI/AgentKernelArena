@@ -109,7 +109,7 @@ not command-line arguments. Each invocation logs a unique private receipt direct
 beside its task workspace: `.quality_loop-<role>-<unique-id>/`. It contains
 `stdout.log`, `stderr.log` and `process.json`, including failed and timed-out calls.
 The metadata records the role, model, safe argv, prompt byte count/hash, timestamps,
-exit status, observed stream hashes and the latest terminal/usage events; it does
+exit status, observed and retained-prefix hashes and the latest terminal/usage events; it does
 not serialize prompt text, credentials or the process environment. The separately
 launched task validator does not use this backend receipt mechanism.
 
@@ -121,6 +121,10 @@ in `starting`/`running`, or without stream EOF, is incomplete evidence. These lo
 are outside task edit scopes and must be preserved with run artifacts; permissive
 agent subprocesses are not a security sandbox. Role completion and its receipt do
 not approve a candidate or replace independent review and framework finalization.
+Raw receipts are flushed/fsynced before success; status files are flushed/fsynced
+before atomic replacement, followed by a directory fsync. Storage errors fail the
+call, with a failed receipt saved when storage permits. A shorter post-exit pipe
+drain timeout is identified separately from the configured role deadline.
 
 ## Per-task gates
 
