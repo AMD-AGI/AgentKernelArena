@@ -93,6 +93,74 @@ def test_vllm_candidate_stub_is_never_baseline_fallback(tmp_path,monkeypatch):
         adapter.inspect_candidate(data,require_implemented=True)
 
 
+
+def test_staged_write_reference_known_answer_and_untouched_cells(monkeypatch):
+    task = ROOT/'tasks/triton2triton/vllm/triton_apply_write'
+    harness = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    initial = torch.full((3, 5), -7, dtype=torch.int32)
+    indices = torch.tensor([2, 0], dtype=torch.int32)
+    starts = torch.tensor([1, 3], dtype=torch.int32)
+    contents = torch.tensor([10, 11, 20], dtype=torch.int32)
+    cumulative = torch.tensor([2, 3], dtype=torch.int32)
+    expected = torch.tensor([[-7,-7,-7,20,-7],[-7,-7,-7,-7,-7],[-7,10,11,-7,-7]], dtype=torch.int32)
+    torch.testing.assert_close(harness.reference_apply_write(initial,indices,starts,contents,cumulative),expected)
+    checks.check_output(expected,initial,indices,starts,contents,cumulative,harness.reference_apply_write)
+    invalid = expected.clone(); invalid[1,0] = 0
+    with pytest.raises(AssertionError,match='untouched cells'):
+        checks.check_output(invalid,initial,indices,starts,contents,cumulative,harness.reference_apply_write)
+    with pytest.raises(AssertionError,match='dtype'):
+        checks.check_output(expected.float(),initial,indices,starts,contents,cumulative,harness.reference_apply_write)
+
+
+@pytest.mark.parametrize('mode', ['correct','incorrect_timed','stale','no_write','uniform_segments','zero_starts','identity_mapping'])
+def test_staged_write_replay_checks_changed_mapping_offsets_and_lengths(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_apply_write'
+    harness = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    harness._TimedRun = SimpleNamespace
+    output = torch.zeros(6, 12, dtype=torch.int32)
+    output_work = output.clone()
+    write_indices = torch.arange(4, dtype=torch.int32)
+    write_starts = torch.zeros(4, dtype=torch.int32)
+    write_contents = torch.arange(1, 13, dtype=torch.int32)
+    cu_lens = torch.tensor([3,6,9,12], dtype=torch.int32)
+    original = [v.clone() for v in (write_indices,write_starts,write_contents,cu_lens)]
+    def fn():
+        output_work.copy_(harness.reference_apply_write(output_work,write_indices,write_starts,write_contents,cu_lens))
+    def prepare():
+        output_work.copy_(output)
+    observed = []
+    def benchmark(measured, *, timed_run, **kwargs):
+        observed.append({k:v for k,v in kwargs.items() if k != 'prepare_fn'})
+        for actual,expected in zip((write_indices,write_starts,write_contents,cu_lens),original):
+            torch.testing.assert_close(actual,expected)
+        kwargs['prepare_fn'](); captured = measured(); cached = captured.clone()
+        if mode == 'incorrect_timed': captured.zero_()
+        def replay():
+            kwargs['prepare_fn']()
+            indices = original[0] if mode == 'identity_mapping' else write_indices
+            starts = original[1] if mode == 'zero_starts' else write_starts
+            cumulative = original[3] if mode == 'uniform_segments' else cu_lens
+            if mode == 'stale': captured.copy_(cached)
+            elif mode != 'no_write':
+                captured.copy_(harness.reference_apply_write(output,indices,starts,write_contents,cumulative))
+            return captured
+        timed_run.outputs = captured; timed_run.rerun = replay
+        return 0.25, {'benchmark_method':'cuda_graph'}
+    options = dict(warmup=10,repetition=100,target_ms=20.0,prepare_fn=prepare)
+    if mode == 'correct':
+        ms,metadata = checks.checked_benchmark(harness,benchmark,fn,**options)
+        assert ms == 0.25 and metadata['perturbed_input_replay_checked']
+    else:
+        with pytest.raises(AssertionError): checks.checked_benchmark(harness,benchmark,fn,**options)
+    assert observed == [dict(warmup=10,repetition=100,target_ms=20.0)]
+
+
+def test_staged_write_adapter_installs_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_apply_write/_arena_eval.py',monkeypatch)
+    assert adapter.load_harness().run_performance.__module__ == '_staged_write_checks'
+
 def test_rms_reference_has_independent_known_answers(monkeypatch):
     runner = ROOT/'tasks/triton2triton/vllm/triton_rms_norm/scripts/task_runner.py'
     harness = module_at(runner,monkeypatch)

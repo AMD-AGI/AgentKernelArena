@@ -33,3 +33,9 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+The evaluator retains the actual timed output buffer and checks every cell against
+the original exact CPU reference, including rows and columns that must stay unchanged.
+After timing, it changes the captured row mapping, offsets, segment lengths, contents
+and initial output state, then validates the same graph replay. These controls preserve
+the original five workloads, seeds and timing policy; they run outside device timing.
+The normal state reset still executes before each timed sample and replay control.
