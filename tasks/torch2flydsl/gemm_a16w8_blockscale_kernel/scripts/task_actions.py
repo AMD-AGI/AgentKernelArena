@@ -8,8 +8,11 @@ def select_role(h, role, provided):
         raise ValueError("Harness case definitions disagree with protected manifest")
 
 def check(h):
-    if h.run_correctness(verbose=True) is not True:
-        raise RuntimeError("Correctness/output-contract check failed")
+    from scripts.candidate_checks import audit_candidate_calls
+    with audit_candidate_calls(h) as observed:
+        if h.run_correctness(verbose=True) is not True:
+            raise RuntimeError("Correctness/output-contract check failed")
+    return sorted(observed)
 
 def performance(h):
     return h.arena_benchmark(warmup=10, iters=100, verbose=True)

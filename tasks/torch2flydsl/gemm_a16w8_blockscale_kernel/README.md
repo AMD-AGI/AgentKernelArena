@@ -63,3 +63,14 @@ cases, numerical gates, warmups and sample counts. It does not accept a runtime
 capture failure as permission to switch methods. Diagnostic reference timing
 uses the same fixed method. Prior results from mismatched methods are not valid
 speedups; changed task sources require fresh GPU qualification.
+
+The output must be a finite BF16 tensor of shape `[M,N]` on the input device;
+raw A and weight tensors are read-only. Both the actual measured output and a
+poisoned-output replay with changed activation/weight values must pass the
+original quantized `Model` reference and normalized max-error gate. The separate
+unquantized PyTorch GEMM remains only a diagnostic performance comparison.
+Original five cases, quantization/reference algorithms, seeds, tolerances,
+zero-reference denominator, timing policy, warmups and samples are unchanged.
+Candidate-only auditing requires actual FlyDSL computation, with host allocation,
+layout/casts and launch preparation allowed. Baseline library dispatch and final
+candidate are checked separately; a starter is not a final implementation.

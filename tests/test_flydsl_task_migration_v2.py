@@ -132,6 +132,7 @@ def test_declaring_flydsl_without_executing_it_is_rejected():
 
 
 CANDIDATE_AUDIT_TASKS = [ROOT / "tasks/torch2flydsl" / name for name in (
+    'gemm_a16w8_blockscale_kernel', 'gemm_a16wfp4_kernel', 'gemm_a4w4_kernel', 'gemm_a8w8_blockscale_kernel',
     "fused_add_rmsnorm_kernel", "fmoe_fp8_blockscale_g1u1_kernel", "fmoe_g1u1_tkw1_kernel", "silu_and_mul_kernel", "dynamic_mxfp8_quant_kernel", "batched_gemm_a8w8_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel",
     "moe_topk_softplus_kernel", "gelu_and_mul_kernel", "gelu_fast_kernel",
     "gelu_tanh_and_mul_kernel", "swiglu_and_mul_kernel",
@@ -471,6 +472,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
                 handler.body.pop(0)
         if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel", "moe_topk_softplus_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
+        if name in _QUANT_GEMM_CONTROL_NAMES:
+            fn = _RemoveQuantGemmChecks().visit(fn)
         if name == "fused_add_rmsnorm_kernel":
             fn = _RemoveAddRmsnormChecks().visit(fn)
         if name in {"fmoe_fp8_blockscale_g1u1_kernel", "fmoe_g1u1_tkw1_kernel"}:
@@ -2624,3 +2627,104 @@ def test_fmoe_case_evidence_preserves_real_passes_and_failure_kind(name,fault,mo
         assert row['metadata']['baseline_normalized_max_error']==0.
     manifest=runtime.manifest()
     assert [{k:row[k] for k in ('test_case_id','params')} for row in report['cases']]==[{k:row[k] for k in ('test_case_id','params')} for row in manifest]
+
+
+_QUANT_GEMM_CONTROL_NAMES=['gemm_a16w8_blockscale_kernel', 'gemm_a16wfp4_kernel', 'gemm_a4w4_kernel', 'gemm_a8w8_blockscale_kernel']
+
+
+class _RemoveQuantGemmChecks(_RemoveAddedReplayChecks):
+    def visit_Expr(self,node):
+        call=node.value
+        if isinstance(call,ast.Call):
+            if getattr(call.func,'id',None)=='_checked_quant_gemm_output':return None
+            if isinstance(call.func,ast.Attribute) and call.func.attr=='update' and call.args and isinstance(call.args[0],ast.Call) and getattr(call.args[0].func,'id',None)=='replay_validate':return None
+        return super().visit_Expr(node)
+    def visit_Assign(self,node):
+        if len(node.targets)==1 and getattr(node.targets[0],'id',None)=='replay_validate':return None
+        return super().visit_Assign(node)
+    def visit_Call(self,node):
+        if getattr(node.func,'id',None)=='_checked_quant_gemm_output':return self.visit(node.args[0])
+        return super().visit_Call(node)
+
+
+@pytest.mark.parametrize('name',_QUANT_GEMM_CONTROL_NAMES)
+@pytest.mark.parametrize('function,provided',[('run_benchmark',False),('arena_benchmark',False),('run_benchmark',True),('arena_benchmark',True)])
+@pytest.mark.parametrize('behavior',['correct','measured_wrong','replay_wrong','cached','input_mutation','weight_mutation','shape','dtype','nonfinite'])
+def test_quant_gemm_actual_timed_output_and_original_quantized_oracle(name,function,provided,behavior,monkeypatch,tmp_path):
+    import torch,types,math
+    t=ROOT/'tasks/torch2flydsl'/name;checks=module(t/'scripts/replay_checks.py');phase={'value':'setup'}
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    a=torch.tensor([[.4,1.7],[2.3,3.8]],dtype=torch.bfloat16);w=torch.tensor([[2.2,.7],[1.3,2.8]],dtype=torch.bfloat16);originals=(a.clone(),w.clone())
+    # Controlled CPU quantizer differs from raw matrix multiplication. This tests
+    # oracle plumbing, not GPU quantizer accuracy; original models are fingerprinted.
+    def quant(x):return (x.float()*2).round()/2
+    def oracle(x,y):return (quant(x) @ quant(y).T).to(torch.bfloat16)
+    cached=oracle(a,w)
+    assert not torch.equal(cached,a@w.T)
+    def compute(x,y):
+        out=oracle(x,y)
+        if behavior==phase['value']+'_wrong':out.fill_(1)
+        if phase['value']=='replay':
+            if behavior=='cached':out=cached.clone()
+            if behavior=='input_mutation':x.add_(1)
+            if behavior=='weight_mutation':y.add_(1)
+        if phase['value']=='measured':
+            if behavior=='shape':out=out[:1]
+            if behavior=='dtype':out=out.float()
+            if behavior=='nonfinite':out[0,0]=float('nan')
+        return out
+    class Model:
+        def to(self,*a):return self
+        def eval(self):return self
+        def __call__(self,x,y):return oracle(x,y)
+    mmod=types.SimpleNamespace(Model=Model,prepare_mxfp4_values=lambda *a:None,quantize_a8w8_blockscale=lambda x,y:(x,None,y,None))
+    kmod=types.SimpleNamespace(**{'flydsl_'+name.removesuffix('_kernel'):compute})
+    monkeypatch.setitem(sys.modules,'aiter',types.SimpleNamespace(gemm_a8w8_blockscale=lambda x,y,*a:compute(x,y)))
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run=None,**kwargs):
+        calls.append((warmup,repetition,timed_run is not None,kwargs));phase['value']='measured';out=fn();phase['value']='setup'
+        if timed_run is not None:
+            timed_run.outputs=out;timed_run.bound=True
+            def replay():
+                phase['value']='replay'
+                try:return fn()
+                finally:phase['value']='setup'
+            timed_run.rerun=replay
+        graph=kwargs.get('use_cuda_graph',True)
+        return .1,{'benchmark_method':'cuda_graph' if graph else 'cuda_event_fallback','benchmark_timed_run_kind':'captured_graph' if graph else 'eager_callable'}
+    ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':benchmark,'require_tensor_contract':checks.require_tensor_contract,'require_unchanged':checks.require_unchanged,'verify_timed_run':checks.verify_timed_run,
+        '_load_module':lambda directory,filename,alias:mmod if filename=='model.py' else None if provided else kmod,
+        '_make_inputs':lambda *a:(originals[0].clone(),originals[1].clone()),'_retry':lambda fn,**kw:fn(),
+        '_aiter_ground_truth':lambda *args:compute(*args[-2:]),'_KERNEL_DIR':str(tmp_path),'MODEL_FILE':'model.py','KERNEL_FILE':'kernel.py',
+        'KERNEL_ENTRY':'flydsl_'+name.removesuffix('_kernel'),'SHAPES':[{'name':'controlled','m':2,'n':2,'k':2}],'TOL':.01,'math':math,'json':json,'Path':Path}
+    _harness_functions(t,{function,'_checked_quant_gemm_output','_compare_quant_gemm_output','_gemm_replay_validator','_norm_worst'},ns)
+    if behavior=='correct':
+        result=ns[function](verbose=False)
+        if function=='run_benchmark':result=json.loads((tmp_path/'build/performance_report.json').read_text())
+        assert result[0]['timed_output_correctness']==result[0]['replay_correctness']=='PASS'
+        assert [(a,b,c) for a,b,c,_ in calls]==[(0,100,True),(0,100,False)]
+        if name!='gemm_a8w8_blockscale_kernel':
+            assert calls[0][3]['use_cuda_graph']==(not provided)
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+
+
+@pytest.mark.parametrize('name',_QUANT_GEMM_CONTROL_NAMES)
+def test_quant_gemm_preserves_zero_reference_denominator_and_normalized_gate(name):
+    import torch
+    t=ROOT/'tasks/torch2flydsl'/name;checks=module(t/'scripts/replay_checks.py');ns={'require_tensor_contract':checks.require_tensor_contract,'TOL':.01}
+    _harness_functions(t,{'_norm_worst','_compare_quant_gemm_output'},ns)
+    expected=torch.zeros((2,2),dtype=torch.bfloat16)
+    ns['_compare_quant_gemm_output'](torch.full_like(expected,.009),expected)
+    with pytest.raises(AssertionError,match='Numerical mismatch'):ns['_compare_quant_gemm_output'](torch.full_like(expected,.02),expected)
+
+
+def test_quant_gemm_original_quantization_inputs_numeric_and_timing_functions_preserved():
+    hashes={'gemm_a16w8_blockscale_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '93bff37a12d09580cc31aa6ffa370e5a2078a48b39f6b45c1660cdb85ceed836', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': 'ce7fc05173a63f6dd8a3c8ed28cf80406fa0c219cc622b76d50250e844d22053', 'run_benchmark': '9a48b014da77dbd608d90d612a6388e18f95fd8f33e482171a4700e5686f725d', 'arena_benchmark': 'defc1227e2c5eb6db2c8bb530c0d3d20493271b8a1f3b504c24154573cba059e'}, 'gemm_a16wfp4_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '94c9fb8daa6c36fddc997ac668a6cb45a36d3ccd3f3b3e7d2b61f2eaa261debd', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': 'efa4bd4a9ad4138146bf604144086cb01d969ea5eb213385f83996ff690dd00f', 'run_benchmark': '4a94553fec39201aa1aa248165c57f38edc28334c765cca94b19a1fbe589ca33', 'arena_benchmark': '3818b99f737ad1ec43e6d4c575da11642801346bb036cfe9ecfa143aedff8060'}, 'gemm_a4w4_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '5865e0e578d5b704f9b8e14647b8012315927edda4d707a434273d7f56929ac1', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': '5fde44afc9fbb877a379ff91caee3f2a33e890b70689428476e93c1b957db2b9', 'run_benchmark': '4ca5e661c5d35618e6dc4591984dc4a4369ffe793043fdea4dac133186f43f8c', 'arena_benchmark': 'c8853015a53f2f888f974a53e4a02f7b22c1aeceeb0d2c6aa2957d4d3cca1ad4'}, 'gemm_a8w8_blockscale_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_norm_worst': 'd7003c9ba7525de49603baf59e23bdb58e69a36796ae75fa7cad95fb292025a6', 'run_correctness': '6af71206b39f7aba58d882103352b64382317d1529a9fba71e8265fec33b7f0c', 'run_benchmark': 'b172161ae8a4c4cba052938c63aa5c3b4c6f674bc66f4c0f20551c3b7614f556', 'arena_benchmark': '7a62ff1081019435b838188ad687efdcd029b0a9c87720302f162ed78643dd47'}}
+    for name,functions in hashes.items():
+        tree=ast.parse((ROOT/'tasks/torch2flydsl'/name/'test_kernel_harness.py').read_text())
+        for fn in tree.body:
+            if isinstance(fn,ast.FunctionDef) and fn.name in functions:
+                restored=_RemoveQuantGemmChecks().visit(fn)
+                assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
