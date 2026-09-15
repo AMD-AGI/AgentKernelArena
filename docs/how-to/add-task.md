@@ -489,8 +489,8 @@ A task may register adapters for multiple known tools; only the run-enabled
 subset executes. Disabled known adapters remain dormant. Unknown tool names
 or malformed options must still be rejected. Task config cannot enable tools,
 change run policy/runtime identities, weaken evidence requirements, or increase
-the run-level timeout. The current merge implementation rejects adapters for
-non-enabled tools; updating that behavior is an explicit v2 migration item.
+the run-level timeout. The common merger validates registered adapters even
+when disabled and includes only the run-enabled subset in the execution plan.
 
 Infer the common profile from the candidate declaration. Keep explicit
 `evaluation_profile` overrides only where necessary, and verify capabilities

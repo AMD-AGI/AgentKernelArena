@@ -415,14 +415,16 @@ docker image inspect --format '{{.Id}}' <selected-image>
 
 Read [Task definition, schema, and authoring](add-task.md) before changing a task
 or its analysis harness. That guide defines the selected v2 command-based task
-contract. This page documents the current tool implementation. In particular,
-allowing task adapters for known but disabled tools is a v2 migration requirement;
-the current merger rejects them. V2 candidate fields also need shared profile
-normalization before they can replace the legacy profile inputs below.
+contract. This page documents the current tool implementation. The shared
+profile/evidence adapters now accept v2 candidate declarations. End-to-end task
+orchestration and harness migration are tracked separately in the task guide.
 
 Run-level configuration chooses tools, policy, optional image-identity
-assertions, and maximum timeout. A task can only add options for an
-already-enabled tool and lower its timeout. It cannot enable a tool, change the
+assertions, and maximum timeout. A task may register adapters for known tools,
+including ones the run has not enabled. Disabled adapters are validated but
+remain dormant; they do not trigger a runtime probe or execution. Unknown tools
+and malformed options are rejected. For an enabled tool, task options can
+specialize its invocation and lower its timeout. A task cannot enable a tool, change the
 image or top-level policy, or raise the run-level timeout.
 Reserved framework options are rejected at both run and task level. They are
 `positive_control_required`; GPU ASan's `asan_runtime_dir`,
