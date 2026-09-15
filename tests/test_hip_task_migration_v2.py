@@ -410,7 +410,7 @@ ORIGINAL_SOURCE_DIGESTS = {'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (10
 # Job 139100 additionally found missing replay checks in FusedLeakyReLU, GRU and item attention.
 # MaskedLanguageModel also needed its transposed weight launch axes corrected.
 # The original digest remains the gate for all other 73 tasks.
-GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '0b72fe68a7c9bb4ef696ce876f80f0de9ed3a0dd434acd8f499f679e0188975c'), 'torch2hip/gpumode/14539_GELU': (10, '6988f6cace9f3c9a1f8da275789518c8667ba249b5c9431c6b05a57dd67d9e36'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (12, '8b09aa169f4aab575af30b00c06191335d1d9a4f4e425da584b41701bdffe8c0'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, '434697dcc5596fee2141040bbcb1b404b5614f555a58bc8d729b190da194adfd'), 'hip2hip/gpumode/ItemQueryAttention': (11, '5625fb2aa11b57597f56893f70bb70d5e5cf8ccafa43977f2bc2a95ac563f8a0'), 'hip2hip/gpumode/MaskedLanguageModel': (10, '17834ed93fcdbec6f9d64f2450fc14bf161eb37f69844c731d39055e57d62d96'), 'hip2hip/gpumode/SiLU': (11, 'c590823050ac4c044cddc3113def4b6866f153f92a54d9775f168856843a9ecf'), 'hip2hip/gpumode/Sigmoid': (11, 'dad77fe3e8c52bf73f6e6d86acfdc9fcaf82262cb07a40fe39f212052f6758c5'), 'torch2hip/gpumode/10190_FusedLeakyReLU': (11, 'e989d4b07f82669a567a8653765d64812956b021c93decc83045edcec67bdfff'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '4c41c855bbf75c472fcd5ae17f7a1709d841fe133d67f482669f37a68e4dbb25'), 'torch2hip/gpumode/102_ItemQueryAttention': (10, 'aa6bbf7f1997f037a682a9705fc6eafd0ec30e2a0aecd8066bef80024bfd60ca'), 'torch2hip/gpumode/16636_SiLU': (10, '709a7f37523e955d65e56755e0a80cf678062bb178f104b42ca2f6423af16f0a'), 'torch2hip/gpumode/11184_Sigmoid': (10, 'da01ac4fa506921c5f5e8bb6e35222dda47a05a608b8667d84cad00394f1d050'), 'hip2hip/gpumode/TanH': (11, '417c0618e1d83cc7d574e0dcd746e4da001a6af3237c1b74ec131ec95b4f551b'), 'torch2hip/gpumode/11178_TanH': (10, '6c162a2f6cc5f7accda98123ad09b806f0079f31d894779dfe86d95bcb4b2e5e')}
+GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '0b72fe68a7c9bb4ef696ce876f80f0de9ed3a0dd434acd8f499f679e0188975c'), 'torch2hip/gpumode/14539_GELU': (10, '6988f6cace9f3c9a1f8da275789518c8667ba249b5c9431c6b05a57dd67d9e36'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (12, '1fbb1450f119a1e2fad5293aa374a830047b51ee1c9fbdd6c728f4ec04e88357'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, '434697dcc5596fee2141040bbcb1b404b5614f555a58bc8d729b190da194adfd'), 'hip2hip/gpumode/ItemQueryAttention': (11, '5625fb2aa11b57597f56893f70bb70d5e5cf8ccafa43977f2bc2a95ac563f8a0'), 'hip2hip/gpumode/MaskedLanguageModel': (10, '17834ed93fcdbec6f9d64f2450fc14bf161eb37f69844c731d39055e57d62d96'), 'hip2hip/gpumode/SiLU': (11, 'c590823050ac4c044cddc3113def4b6866f153f92a54d9775f168856843a9ecf'), 'hip2hip/gpumode/Sigmoid': (11, 'dad77fe3e8c52bf73f6e6d86acfdc9fcaf82262cb07a40fe39f212052f6758c5'), 'torch2hip/gpumode/10190_FusedLeakyReLU': (11, 'c394c46e1984a50c0972e9ea2c018844cd3ace8d7ae94cf5f9c6e1c71807264d'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '4c41c855bbf75c472fcd5ae17f7a1709d841fe133d67f482669f37a68e4dbb25'), 'torch2hip/gpumode/102_ItemQueryAttention': (10, 'aa6bbf7f1997f037a682a9705fc6eafd0ec30e2a0aecd8066bef80024bfd60ca'), 'torch2hip/gpumode/16636_SiLU': (10, '709a7f37523e955d65e56755e0a80cf678062bb178f104b42ca2f6423af16f0a'), 'torch2hip/gpumode/11184_Sigmoid': (10, 'da01ac4fa506921c5f5e8bb6e35222dda47a05a608b8667d84cad00394f1d050'), 'hip2hip/gpumode/TanH': (11, '417c0618e1d83cc7d574e0dcd746e4da001a6af3237c1b74ec131ec95b4f551b'), 'torch2hip/gpumode/11178_TanH': (10, '6c162a2f6cc5f7accda98123ad09b806f0079f31d894779dfe86d95bcb4b2e5e')}
 
 
 @pytest.mark.parametrize('path', CONFIGS, ids=lambda p: p.parent.name)
@@ -986,4 +986,90 @@ def test_fused_timed_replay_uses_nonzero_manifest_reference(relative, defect, mo
         torch.testing.assert_close(x, pristine, rtol=0, atol=0)
         for name, value in model.state_dict().items():
             torch.testing.assert_close(value, before_state[name], rtol=0, atol=0)
-    assert len(reruns) == 5
+    assert len(reruns) == 5 + (5 if defect == 'none' else int(defect in ('fixed_slope', 'fixed_scale')))
+
+
+@pytest.mark.parametrize('relative', ['hip2hip/gpumode/FusedLeakyReLU',
+                                      'torch2hip/gpumode/10190_FusedLeakyReLU'])
+@pytest.mark.parametrize('role', ['baseline', 'candidate'])
+@pytest.mark.parametrize('behavior', ['correct', 'cached_answer', 'fresh_replay_error',
+                                      'fresh_oracle_error', 'fresh_input_mutation'])
+def test_fused_changed_input_replay_restores_scored_workload(relative, role, behavior, monkeypatch):
+    """CPU graph double: old-answer replay passes same-input checks but fails fresh inputs."""
+    root = ROOT / 'tasks' / relative
+    helper = import_path(root / 'eval_tools/replay_validation.py')
+    controls = import_path(root / 'eval_tools/case_controls.py')
+    runner = import_path(root / 'eval_tools/evaluate.py')
+    args = options(yaml.safe_load((root / 'config.yaml').read_text()))
+    model = import_path(root / args.functional).FusedLeakyReLU(channel=256).eval()
+    row = json.loads((root / 'workload.json').read_text())['cases'][0]
+    controls.apply_control(model, row['params']['operator'])
+    timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
+    monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    x = torch.tensor([-1., -.1, .2, 1.]).reshape(1, 1, 1, 4).expand(1, 4, 1, 4).clone()
+    pristine, rng = x.clone(), torch.random.get_rng_state().clone()
+    state = copy.deepcopy(model.state_dict())
+    seen, oracle_inputs, compared = [], [], []
+
+    def oracle(value, fn=None):
+        if fn is not None:
+            return fn(value)
+        oracle_inputs.append(value.clone())
+        if behavior == 'fresh_oracle_error' and not torch.equal(value, pristine):
+            raise RuntimeError('fresh oracle deliberately failed')
+        return model(value)
+
+    def candidate(value):
+        # Independent fused math, never delegates to the protected module.
+        shifted = value + model.bias[:4].detach().reshape(1, 4, 1, 1)
+        return torch.where(shifted >= 0, shifted, shifted * model.negative_slope) * model.scale
+
+    def benchmark(invoke, **kwargs):
+        assert kwargs['warmup'] == 10 and kwargs['repetition'] == 100
+        torch.testing.assert_close(x, pristine, rtol=0, atol=0)
+        output = invoke().detach()
+        cached = output.clone()
+        def replay():
+            assert torch.isnan(output).all()
+            seen.append(x.clone())
+            changed = not torch.equal(x, pristine)
+            if changed and behavior == 'fresh_replay_error':
+                raise RuntimeError('fresh replay deliberately failed')
+            output.copy_(cached if behavior == 'cached_answer' else candidate(x))
+            if changed and behavior == 'fresh_input_mutation':
+                x.add_(1)
+            return output
+        kwargs['timed_run']._bind(replay, output)
+        return .25, {'benchmark_method': 'cuda_graph'}
+
+    def cal_kernel_perf(rtol=1e-4, atol=1e-5): pass
+    def compare(expected, actual, *, rtol, atol):
+        assert rtol == 1e-4 and atol == 1e-5
+        compared.append((expected.clone(), actual.clone()))
+        return torch.allclose(expected, actual, rtol=rtol, atol=atol)
+    perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf,
+        cal_modu_latency=None, benchmark_cuda_graph_or_events=benchmark, _compare_results=compare)
+    helper.install(perf, runner.output_contract)
+    def run():
+        return perf.cal_modu_latency(oracle, [x]) if role == 'baseline' else perf.cal_hip_latency(oracle, [x], candidate)
+    if behavior == 'correct':
+        elapsed, metadata = run()
+        assert elapsed == .25 and metadata['changed_input_validation_valid'] is True
+        assert metadata['changed_input_restore'].startswith('finally')
+    else:
+        with pytest.raises((ValueError, RuntimeError, AssertionError)):
+            run()
+    # The same-input replay passed before the fresh control was exercised.
+    torch.testing.assert_close(seen[0], pristine, rtol=0, atol=0)
+    torch.testing.assert_close(oracle_inputs[-1], .5 - pristine, rtol=0, atol=0)
+    if behavior != 'fresh_oracle_error':
+        torch.testing.assert_close(seen[1], .5 - pristine, rtol=0, atol=0)
+    torch.testing.assert_close(x, pristine, rtol=0, atol=0)
+    assert torch.equal(torch.random.get_rng_state(), rng)
+    for name, value in model.state_dict().items():
+        torch.testing.assert_close(value, state[name], rtol=0, atol=0)
+    assert model.negative_slope == .1 and model.scale == .5
+    if behavior == 'cached_answer':
+        # Last comparison used the new oracle and the deliberately stale answer.
+        assert not torch.allclose(*compared[-1], rtol=1e-4, atol=1e-5)

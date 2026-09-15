@@ -62,8 +62,43 @@ def install(perf, output_contract):
         actual = observed.rerun()
         check_result(actual, expected, inputs, output_contract, perf._compare_results, rtol, atol)
         unchanged_inputs(pristine, inputs)
+        # A correct cached answer also survives same-input poisoning. Change the
+        # captured input storage, independently recompute the oracle, and replay
+        # that same graph again. These controls run after all measured samples.
+        try:
+            changed = False
+            with torch.no_grad():
+                for original, value in zip(pristine, inputs):
+                    if isinstance(value, torch.Tensor) and value.is_floating_point():
+                        value.copy_(original).neg_().add_(0.5)
+                        if not torch.isfinite(value).all():
+                            raise ValueError('fresh replay input must remain finite')
+                        changed |= not torch.equal(value, original)
+                if not changed:
+                    raise ValueError('fresh replay requires changed floating input')
+                fresh_inputs = copy.deepcopy(inputs)
+                fresh_expected = module(*copy.deepcopy(inputs))
+                if perf._compare_results(expected, fresh_expected, rtol=rtol, atol=atol):
+                    raise ValueError('fresh replay oracle must distinguish the original answer')
+                observed.outputs.fill_(float('nan'))
+            actual = observed.rerun()
+            check_result(actual, fresh_expected, inputs, output_contract,
+                         perf._compare_results, rtol, atol)
+            unchanged_inputs(fresh_inputs, inputs)
+        finally:
+            # Preserve the original scored workload for the other role, even if
+            # the oracle, replay, or numerical check fails. Never perturb model
+            # bias/slope/scale or consume the input generator's RNG here.
+            with torch.no_grad():
+                for original, value in zip(pristine, inputs):
+                    if isinstance(value, torch.Tensor):
+                        value.copy_(original)
+            torch.cuda.synchronize()
         return elapsed, {**metadata, 'replay_validation_valid': True,
-                         'replay_validation': 'full_reference_output_and_unchanged_inputs'}
+                         'replay_validation': 'full_reference_output_and_unchanged_inputs',
+                         'changed_input_validation_valid': True,
+                         'changed_input_transform': 'x -> 0.5 - x; floating tensors only',
+                         'changed_input_restore': 'finally; original scored inputs'}
 
     perf.cal_hip_latency = latency
     if hasattr(perf, 'cal_modu_latency'):

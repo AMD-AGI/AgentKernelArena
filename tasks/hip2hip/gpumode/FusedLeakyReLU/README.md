@@ -72,3 +72,13 @@ measured calls; graph capture, 10 warmups, 100 samples, input allocation and
 restoration, and the full-reference timed replay checks retain their boundaries.
 Nonzero channels and varied slopes/scales make omitted bias, wrong channel
 indexing, or hardcoded activation parameters detectable.
+
+After checking the actual timed output and same-input poisoned replay, both
+roles also replay the same captured graph with floating inputs changed in place
+to `0.5 - x`. The protected reference is recomputed for those fresh values and
+the entire result must pass the original `rtol=1e-4`, `atol=1e-5` comparison.
+The fresh oracle must distinguish the old answer under that same rule. Original
+inputs are restored in `finally`, including on a failed check, so the other role
+receives identical scored inputs. This control consumes no RNG, changes no
+model parameters, and occurs outside all timing samples. It detects returning
+a cached original answer; it does not prove absence of every caching strategy.
