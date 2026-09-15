@@ -5,7 +5,12 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - sglang/srt/layers/quantization/mxfp8_amd_gfx95.py
+  - path: sglang/srt/layers/quantization/mxfp8_amd_gfx95.py
+    scope: symbols
+    symbols:
+    - _mxfp8_linear_kernel
+    - _run_mxfp8_linear_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: sglang/srt/layers/quantization/mxfp8_amd_gfx95.py
     kind: function

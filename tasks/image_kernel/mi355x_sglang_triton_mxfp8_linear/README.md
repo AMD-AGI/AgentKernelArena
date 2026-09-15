@@ -21,6 +21,13 @@ Optimize the SGLang dense MXFP8 GEMM kernel _mxfp8_linear_kernel (tl.dot_scaled,
 
 ## Arena v2 contract
 
+Only `_mxfp8_linear_kernel`, `_run_mxfp8_linear_kernel`, and new implementation
+helpers in the declared file may change. Its existing input quantizers,
+dequantizer, module constants, imports, and other wrappers remain protected by
+the framework's symbol-scoped guard. The harness uses those fixed quantizers to
+construct nontrivial MXFP8 operands before the timed GEMM and during replay
+validation; they are part of input generation, not the optimization target.
+
 The candidate is the existing implementation in the declared pinned sources.
 Its required final language and exact task-relative editable files are in
 `config.yaml`; directory names do not select execution behavior. The framework

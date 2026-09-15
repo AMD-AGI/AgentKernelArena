@@ -790,6 +790,36 @@ def test_sparse_additional_checks_reject_incorrect_captured_path():
     assert events == ["original checks", "correct immediate output", "captured"]
 
 
+@pytest.mark.parametrize("protected", ["_mxfp8_e4m3_quantize_torch", "_mxfp8_quant_kernel",
+                                      "_mxfp8_e4m3_quantize_triton", "mxfp8_e4m3_quantize",
+                                      "dequant_mxfp8_to_bf16"])
+def test_mxfp8_linear_guard_preserves_input_quantizers(tmp_path, protected):
+    from src.harness_guard import (describe_workspace_harness, snapshot_workspace_harness,
+                                   verify_workspace_harness)
+    directory = TASKS / "mi355x_sglang_triton_mxfp8_linear"
+    config = yaml.safe_load((directory / "config.yaml").read_text())
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(config))
+    edit = config["candidate"]["editable"][0]
+    assert edit["scope"] == "symbols" and edit["allow_new_helpers"] is True
+    assert edit["symbols"] == ["_mxfp8_linear_kernel", "_run_mxfp8_linear_kernel"]
+    source = tmp_path / edit["path"]
+    source.parent.mkdir(parents=True)
+    source.write_text(f"def {protected}(x): return x\n"
+                      "def _mxfp8_linear_kernel(x): return x\n"
+                      "def _run_mxfp8_linear_kernel(x): return _mxfp8_linear_kernel(x)\n")
+    snapshot = snapshot_workspace_harness(tmp_path)
+    assert describe_workspace_harness(tmp_path)["editable_entrypoint_targets"] == {
+        edit["path"]: edit["symbols"]}
+    source.write_text(source.read_text().replace("def _mxfp8_linear_kernel(x): return x",
+                                                "def _mxfp8_linear_kernel(x): return helper(x)")
+                      + "def helper(x): return x + 1\n")
+    verify_workspace_harness(snapshot)
+    source.write_text(source.read_text().replace(f"def {protected}(x): return x",
+                                                f"def {protected}(x): return x * 0"))
+    with pytest.raises(RuntimeError, match="mxfp8_amd_gfx95.py"):
+        verify_workspace_harness(snapshot)
+
+
 def test_reduced_ck_checks_do_not_claim_scored_shape_coverage(monkeypatch):
     directory = TASKS / "mi355x_vllm_ck_a8w8_blockscale_gemm"
     adapter = load_module(directory / "scripts/task_adapter.py")
