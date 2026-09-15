@@ -31,7 +31,7 @@ def validation_post_processing(
     reports: list[dict[str, Any]] = []
     invalid_reports: list[str] = []
     check_stats = {
-        name: {"PASS": 0, "FAIL": 0, "WARN": 0, "TIMEOUT": 0, "SKIP": 0}
+        name: {"PASS": 0, "FAIL": 0, "WARN": 0, "TIMEOUT": 0, "SKIP": 0, "NOT_RUN": 0}
         for name in CHECK_NAMES
     }
     overall_counts = {"PASS": 0, "FAIL": 0, "WARN": 0}
@@ -76,14 +76,14 @@ def validation_post_processing(
     logger.info("Overall FAIL:     %s", overall_counts["FAIL"])
     logger.info("-" * 90)
 
-    header = f"{'Check':<35} {'PASS':>6} {'FAIL':>6} {'WARN':>6} {'TIMEOUT':>8} {'SKIP':>6}"
+    header = f"{'Check':<35} {'PASS':>6} {'FAIL':>6} {'WARN':>6} {'TIMEOUT':>8} {'SKIP':>6} {'NOT_RUN':>8}"
     logger.info(header)
     logger.info("-" * 90)
     for check_name in CHECK_NAMES:
         stats = check_stats[check_name]
         logger.info(
             f"{check_name:<35} {stats['PASS']:>6} {stats['FAIL']:>6} "
-            f"{stats['WARN']:>6} {stats['TIMEOUT']:>8} {stats['SKIP']:>6}"
+            f"{stats['WARN']:>6} {stats['TIMEOUT']:>8} {stats['SKIP']:>6} {stats['NOT_RUN']:>8}"
         )
 
     logger.info("-" * 90)
@@ -121,6 +121,7 @@ def validation_post_processing(
                 "task_name": report["task_name"],
                 "overall_status": report["overall_status"],
                 "validation_errors": report.get("validation_errors", []),
+                "task_validation_failures": report.get("task_validation_failures", []),
                 "validation_warnings": report.get("validation_warnings", []),
                 "policy_findings": report.get("policy_findings", []),
                 "summary": report.get("summary", ""),

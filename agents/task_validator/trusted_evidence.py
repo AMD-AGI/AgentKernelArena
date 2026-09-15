@@ -16,7 +16,7 @@ from typing import Any, Mapping
 from src.task_protocol import (
     CaseManifest, baseline_correctness_accepted, merge_command_results, parse_command_result,
 )
-from src.task_spec import ACTIONS, TaskSpec
+from src.task_spec import TaskSpec
 
 
 def _json(value: Any) -> str:
@@ -104,40 +104,49 @@ def _argv_matches(actual: list, declared: tuple[str, ...]) -> bool:
 
 
 def evaluate_task_evidence(snapshot: TrustedTaskEvidence) -> dict:
-    """Recheck command/manifest/policy evidence; preserve every original FAIL.
+    """Separate a faithfully recorded failed task from broken execution evidence.
 
-    TaskSession's accepted flag is necessary but never sufficient. A malformed,
-    truncated, contradictory, or wrong-phase context cannot grant an exception.
+    A valid lifecycle may stop at its first failed action. That remains a task
+    FAIL, but it is reviewable/repairable; omitted successful actions, altered
+    stdout, wrong argv and contradictory lifecycle claims are framework errors.
     """
     data = snapshot.to_mapping()
     spec = TaskSpec.from_mapping(data["task_config"], task_id=data["task_id"])
-    errors = []
-    records = {}
-    results = {}
-    ids = set()
+    errors, failures = [], []
+    records, results, ids = {}, {}, set()
+    manifest = None
+    state_verified = False
+    diagnostic = False
+    order = [("task", "validate-task"), *(("baseline", a) for a in ("compile", "correctness", "performance"))]
+    if spec.candidate.initial_state == "implemented" and spec.baseline.kind == "provided":
+        order.extend(("candidate", a) for a in ("compile", "correctness", "performance"))
+    stopped = False
     for index, record in enumerate(data["actions"]):
         try:
             if not isinstance(record, dict) or record.get("phase") != "task_validation":
                 raise ValueError("Only initial task_validation actions are permitted")
+            if stopped:
+                raise ValueError("Initial actions continued after a failed action")
             result_data = record.get("result", {})
             role = record.get("role", result_data.get("role"))
             action = record.get("action", result_data.get("action"))
             key = (role, action)
-            if key not in ACTIONS or key in records:
-                raise ValueError("Unknown or duplicate action evidence")
+            if index >= len(order) or key != order[index] or key in records:
+                raise ValueError("Initial actions are missing, duplicated or out of lifecycle order")
             records[key] = record
-            if record.get("execution_error"):
-                raise ValueError(str(record["execution_error"]))
+            execution_error = record.get("execution_error")
+            if execution_error is not None and (not isinstance(execution_error, str) or not execution_error):
+                raise ValueError("Invalid execution_error evidence")
             invocation = record.get("invocation_id")
-            if not isinstance(invocation, str) or not invocation or invocation in ids:
-                raise ValueError("Action requires a unique framework invocation_id")
-            ids.add(invocation)
+            if not execution_error:
+                if not isinstance(invocation, str) or not invocation or invocation in ids:
+                    raise ValueError("Action requires a unique framework invocation_id")
+                ids.add(invocation)
             commands = record.get("commands")
             declared = spec.action(role, action)
-            if not isinstance(commands, list) or not commands or len(commands) > len(declared.commands):
+            if not isinstance(commands, list) or len(commands) > len(declared.commands) or (not commands and not execution_error):
                 raise ValueError("Missing or extra command execution evidence")
-            parsed = []
-            elapsed = 0.0
+            parsed, elapsed = [], 0.0
             for command_index, command in enumerate(commands):
                 if not isinstance(command, dict) or not _argv_matches(command.get("argv", []), declared.commands[command_index]):
                     raise ValueError("Executed argv differs from declared action")
@@ -151,91 +160,86 @@ def evaluate_task_evidence(snapshot: TrustedTaskEvidence) -> dict:
                     raise ValueError("Command returncode/stdout/stderr are required")
                 if parsed and not parsed[-1].passed:
                     raise ValueError("Action continued after a failed command")
-                parsed.append(parse_command_result(command["stdout"], role=role, action=action,
-                                                   returncode=command["returncode"]))
+                try:
+                    parsed.append(parse_command_result(command["stdout"], role=role, action=action,
+                                                       returncode=command["returncode"]))
+                except ValueError:
+                    # A runner can crash or violate its result protocol. Its
+                    # final failed command is still preserved execution evidence.
+                    if not execution_error or command_index != len(commands) - 1:
+                        raise
+            if execution_error:
+                if "result" in record:
+                    raise ValueError("Execution error cannot also claim a completed result")
+                failures.append(f"{role}.{action}: {execution_error}")
+                stopped = True
+                continue
             result = merge_command_results(parsed)
             if result.passed and len(commands) != len(declared.commands):
                 raise ValueError("Passing action omitted configured commands")
             if elapsed > declared.timeout_s:
-                raise ValueError("Action exceeded configured timeout")
+                raise ValueError("Action exceeded configured timeout without an execution error")
             if result.to_mapping() != result_data:
                 raise ValueError("Recorded result contradicts actual command stdout")
             results[key] = result
+            accepted = result.passed
+            if role == "task":
+                if result.passed:
+                    manifest = CaseManifest.from_result(result)
+                    states = {m.get("candidate_state") for m in (result.metadata or {}).get("commands", [])
+                              if isinstance(m, dict) and "candidate_state" in m}
+                    state_verified = states == {spec.candidate.initial_state}
+                    if not state_verified:
+                        accepted = False
+                        failures.append("validate-task did not confirm actual candidate initial state")
+            else:
+                if manifest is None:
+                    raise ValueError("Action has no independent manifest")
+                manifest.validate(result)
+                if key == ("baseline", "correctness"):
+                    accepted = baseline_correctness_accepted(result, baseline=spec.baseline,
+                                                            phase="task_validation", manifest=manifest)
+                    diagnostic = accepted and not result.passed
+            if not accepted:
+                failures.append(f"{role}.{action} failed: {result.reason or 'initial-state check failed'}")
+                stopped = True
         except (ValueError, TypeError, AttributeError, KeyError) as exc:
             errors.append(f"actions[{index}]: {exc}")
+            stopped = True
 
+    complete = list(records) == order
+    if not complete and not failures:
+        errors.append("Initial actions are missing without a recorded task failure")
     initial = data["initial_validation"]
     for key in ("accepted", "baseline_diagnostic"):
         if type(initial.get(key)) is not bool:
             errors.append(f"initial_validation.{key} must be boolean")
-    if not isinstance(initial.get("errors"), list) or any(not isinstance(e, str) for e in initial.get("errors", [])):
-        errors.append("initial_validation.errors must be a list of strings")
-    else:
-        errors.extend(initial["errors"])
-    if initial.get("accepted") is not True:
-        errors.append("TaskSession rejected initial validation")
+    initial_errors = initial.get("errors")
+    if not isinstance(initial_errors, list) or any(not isinstance(e, str) or not e for e in initial_errors):
+        errors.append("initial_validation.errors must be a list of nonempty strings")
+    elif bool(initial_errors) != bool(failures or errors):
+        errors.append("Initial error summary contradicts execution evidence")
     if initial.get("candidate_initial_state") != spec.candidate.initial_state:
         errors.append("Initial candidate state disagrees with task declaration")
-
-    manifest = None
-    task = results.get(("task", "validate-task"))
-    if task:
-        try:
-            manifest = CaseManifest.from_result(task)
-            states = {m.get("candidate_state") for m in (task.metadata or {}).get("commands", [])
-                      if isinstance(m, dict) and "candidate_state" in m}
-            if states != {spec.candidate.initial_state}:
-                errors.append("validate-task did not confirm actual candidate initial state")
-        except ValueError as exc:
-            errors.append(str(exc))
-    else:
-        errors.append("Missing validate-task result")
-    diagnostic = False
     baseline_correctness = results.get(("baseline", "correctness"))
-    for key, result in results.items():
-        if key[0] == "task":
-            continue
-        try:
-            if manifest is None:
-                raise ValueError("Action has no independent manifest")
-            manifest.validate(result)
-            accepted = result.passed
-            if key == ("baseline", "correctness"):
-                accepted = baseline_correctness_accepted(result, baseline=spec.baseline,
-                                                        phase="task_validation", manifest=manifest)
-                diagnostic = accepted and not result.passed
-            if not accepted:
-                errors.append(f"{key[0]}.{key[1]} failed: {result.reason}")
-        except ValueError as exc:
-            errors.append(f"{key[0]}.{key[1]}: {exc}")
-    for action in ("compile", "correctness", "performance"):
-        if ("baseline", action) not in results:
-            errors.append(f"Missing baseline.{action} evidence")
     numerical = baseline_correctness.status if baseline_correctness else "NOT_RUN"
     if initial.get("baseline_numerical_status") != numerical:
         errors.append("Initial baseline numerical status contradicts execution evidence")
     if initial.get("baseline_diagnostic") != diagnostic:
         errors.append("Initial diagnostic decision contradicts baseline policy/evidence")
-
     unimplemented = spec.candidate.initial_state == "unimplemented"
     expected_checks = ("candidate_unimplemented" if unimplemented else
                        "verified_as_frozen_baseline" if spec.baseline.kind == "initial_candidate" else "PASS")
+    if failures or errors or not complete:
+        expected_checks = "NOT_RUN"
     if initial.get("candidate_checks") != expected_checks:
         errors.append("Initial candidate checks are incomplete or inconsistent")
-    if unimplemented or spec.baseline.kind == "initial_candidate":
-        if any(key[0] == "candidate" for key in records):
-            errors.append("Unexpected candidate execution for this initial lifecycle")
-    else:
-        for action in ("compile", "correctness", "performance"):
-            if ("candidate", action) not in results:
-                errors.append(f"Missing initial candidate.{action} evidence")
-    expected_order = [("task", "validate-task"), *(("baseline", a) for a in ("compile", "correctness", "performance"))]
-    if not unimplemented and spec.baseline.kind != "initial_candidate":
-        expected_order.extend(("candidate", a) for a in ("compile", "correctness", "performance"))
-    if list(records) != expected_order:
-        errors.append("Initial actions are missing or out of lifecycle order")
-    return {"accepted": not errors, "errors": errors, "diagnostic": diagnostic,
+    accepted = complete and not errors and not failures
+    if initial.get("accepted") != accepted:
+        errors.append("TaskSession acceptance contradicts execution evidence")
+    return {"accepted": accepted and not errors, "errors": errors, "task_failures": failures,
+            "evidence_valid": not errors, "diagnostic": diagnostic,
             "baseline_numerical_status": numerical,
-            "candidate_unimplemented": unimplemented and not errors,
+            "candidate_unimplemented": unimplemented and state_verified and not errors,
             "candidate_checks": expected_checks, "results": results, "records": records,
             "spec": spec, "manifest": manifest}

@@ -223,6 +223,21 @@ def test_validator_uses_stable_identity_and_real_completion_gate(tmp_path,monkey
     assert len(loop._validation_evidence)==1
 
 
+def test_actual_initial_correctness_failure_is_returned_for_repair(tmp_path, monkeypatch):
+    task = make_task(tmp_path/'broken-task', state='implemented', baseline='initial_candidate')
+    (task/'source/kernel.py').write_text('def kernel(x):\n    return 2*x if x < 3 else 0\n')
+    def validator(settings, config_path, workspace):
+        write_report(Path(workspace), settings['task_id'], settings=settings)
+    loop = workflow(tmp_path, validator_launcher=validator)
+    copied_workspace(monkeypatch, loop)
+    _, report = loop._validate('suite/broken', task, tmp_path/'validation')
+    assert report['framework_status'] == 'PASS'
+    assert report['overall_status'] == 'FAIL'
+    assert report['checks']['correctness']['status'] == 'FAIL'
+    assert report['checks']['performance']['status'] == 'NOT_RUN'
+    assert report['task_validation_failures']
+
+
 def test_provided_baseline_is_not_promoted_by_copying_a_stub(tmp_path):
     task=make_task(tmp_path/'task');optimized=make_task(tmp_path/'optimized',state='implemented')
     before=snapshot_tree(task)

@@ -167,6 +167,8 @@ def _normalize_benchmark_integrity(
     status: str,
     errors: list[str],
     policy_findings: list[str],
+    *,
+    measurement_available: bool = True,
 ) -> str:
     if status == "SKIP":
         return status
@@ -195,7 +197,11 @@ def _normalize_benchmark_integrity(
             "benchmark_integrity: every emitted case must be structurally scoreable"
         )
         hard_failure = True
-    if not isinstance(methods, list) or not methods:
+    if isinstance(methods, list) and not methods and not measurement_available:
+        policy_findings.append("benchmark_integrity: measurement was not completed after a task failure")
+        hard_failure = True
+        normalized_methods = set()
+    elif not isinstance(methods, list) or not methods:
         errors.append("benchmark_integrity: benchmark_methods must be a non-empty list")
         hard_failure = True
         normalized_methods: set[str] = set()
@@ -667,10 +673,17 @@ def validation_report_is_complete(workspace: str | Path) -> bool:
     checks = report.get("checks")
     if not isinstance(checks, dict) or set(checks) != set(CHECK_NAMES):
         return False
-    if any(
-        not isinstance(checks[name], dict)
-        or _status(checks[name].get("status")) not in ALLOWED_STATUSES[name]
-        for name in CHECK_NAMES
-    ):
-        return False
+    for name in CHECK_NAMES:
+        check = checks[name]
+        if not isinstance(check, dict):
+            return False
+        # A failed v2 lifecycle stops at its first failure. Later commands were
+        # not run; this is a complete failed report, not a successful skip.
+        if (version == V2_REPORT_SCHEMA_VERSION and name in COMMAND_CHECKS
+                and check.get("status") == "NOT_RUN"):
+            if report.get("initial_validation_gate") != "FAIL":
+                return False
+            continue
+        if _status(check.get("status")) not in ALLOWED_STATUSES[name]:
+            return False
     return report.get("overall_status") == compute_overall_status(report)

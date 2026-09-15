@@ -77,9 +77,9 @@ def compute_v2_overall_status(report: Mapping) -> str:
 def _action_check(evaluated: dict, role: str, action: str) -> dict:
     result = evaluated.get("results", {}).get((role, action))
     record = evaluated.get("records", {}).get((role, action), {})
-    check = {"status": result.status if result else "FAIL", "source_role": role,
+    check = {"status": result.status if result else "FAIL" if record else "NOT_RUN", "source_role": role,
              "details": result.reason or "Framework executed the declared action." if result else
-             record.get("execution_error", "No completed framework action evidence."),
+             record.get("execution_error", "Action was not executed; see the initial validation failure."),
              "commands": deepcopy(record.get("commands", [])),
              "invocation_id": record.get("invocation_id")}
     if result:
@@ -180,7 +180,11 @@ def normalize_v2_report(raw_report: Any, *, expected_task_name: str,
             # review fields still come from the model; a command PASS proves
             # neither representative inputs nor fair timing boundaries.
             previous = status
-            status = _normalize_benchmark_integrity(check, status, errors, findings)
+            status = _normalize_benchmark_integrity(
+                check, status, errors, findings,
+                measurement_available=not (perf is None and evaluated.get("evidence_valid")
+                                           and evaluated.get("task_failures")),
+            )
             if previous == "FAIL":
                 status = "FAIL"
         if name == "harness_integrity":
@@ -209,6 +213,8 @@ def normalize_v2_report(raw_report: Any, *, expected_task_name: str,
         "task_evidence_sha256": digest, "task_name": expected_task_name,
         "validation_timestamp": timestamp, "framework_status": "FAIL" if errors else "PASS",
         "initial_validation_gate": "PASS" if evaluated.get("accepted") else "FAIL",
+        "task_validation_failures": evaluated.get("task_failures", []),
+        "task_evidence_valid": evaluated.get("evidence_valid", False),
         "candidate_initial_state": spec.candidate.initial_state if spec else "unknown",
         "baseline_gating": {
             "accepted": evaluated.get("accepted", False),

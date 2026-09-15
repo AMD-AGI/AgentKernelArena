@@ -238,6 +238,37 @@ def test_failed_initial_context_is_diagnostic_input_not_acceptance(tmp_path):
     report = normalized(ctx)
     assert report["overall_status"] == "FAIL"
     assert "compiler failed" in report["checks"]["compilation"]["details"]
+    assert report["framework_status"] == "PASS"
+    assert report["task_evidence_valid"]
+    assert report["checks"]["performance"]["status"] == "NOT_RUN"
+
+
+def test_first_failed_action_is_a_valid_stopping_point_but_not_a_task_pass(tmp_path):
+    ctx = context(tmp_path, numerical_fail=True)
+    ctx["actions"] = ctx["actions"][:3]
+    ctx["initial_validation"].update(accepted=False, candidate_checks="NOT_RUN", errors=["Baseline correctness failed"])
+    report = normalized(ctx)
+    assert report["framework_status"] == "PASS", report["validation_errors"]
+    assert report["overall_status"] == "FAIL"
+    assert report["task_validation_failures"]
+    assert report["checks"]["correctness"]["status"] == "FAIL"
+    assert report["checks"]["performance"]["status"] == "NOT_RUN"
+    assert report["candidate_initial_checks"]["compile"]["status"] == "SKIP"
+    ctx["actions"].append(record(TaskSpec.from_mapping(ctx["task_config"], task_id=TASK_ID),
+                                 "baseline", "performance", index=4))
+    report = normalized(ctx)
+    assert report["framework_status"] == "FAIL"
+    assert not report["task_evidence_valid"]
+
+
+def test_claimed_stop_without_a_failed_attempt_is_invalid_evidence(tmp_path):
+    ctx = context(tmp_path)
+    ctx["actions"] = ctx["actions"][:2]
+    ctx["initial_validation"].update(accepted=False, candidate_checks="NOT_RUN", baseline_numerical_status="NOT_RUN",
+                                     errors=["Claimed failure without a failed command"])
+    report = normalized(ctx)
+    assert report["framework_status"] == "FAIL"
+    assert not report["task_evidence_valid"]
 
 
 @pytest.mark.parametrize("changed", ["validation_request_id", "task_evidence_sha256", "task_name"])

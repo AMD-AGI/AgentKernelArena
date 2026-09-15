@@ -14,9 +14,9 @@ using them in controlled comparisons or RL data collection.
 
 Before adding or modifying a task, read
 [Task definition, schema, and authoring](add-task.md). That guide owns the task
-schema and authoring rules. Its v2 lifecycle is the migration target; the checks
-and field names on this page describe the current legacy runtime until that
-migration is implemented. A task config version is separate from a validator
+schema and authoring rules. Schema-v2 tasks use the shared TaskSession lifecycle
+and validator report version 4. Legacy tasks retain report version 3 while
+migration is in progress. A task config version is separate from a validator
 report schema version.
 
 ## Run the validator
@@ -60,8 +60,8 @@ make docker-parallel-run \
   RUN_ARGS="--run-suffix validator_parallel8"
 ```
 
-Parallel resume skips only validator tasks with a framework-finalized schema-v3
-report and matching completion digest. A partial, legacy, or manually copied
+Parallel resume skips only validator tasks with a framework-finalized supported
+report and matching completion digest. A partial, obsolete, or manually copied
 `validation_report.yaml` is rerun.
 
 ## Validator configuration
@@ -86,21 +86,30 @@ correctness_timeout: 600
 performance_timeout: 600
 ```
 
-Per-task timeout values in `config.yaml` override these defaults. The outer
-backend timeout is expanded to cover the three command budgets plus review time.
+For v2, the shared executor runs task actions with their declared
+`evaluation.*.timeout_s` budgets before the model reviews the captured evidence.
+The backend timeout covers semantic review. Legacy command timeout overrides
+and the corresponding expanded outer budget remain supported during migration.
 
 ## `task_validator` checks
 
-The `task_validator` runs the following checks in order.
+For v2 tasks, the framework first validates task data and the initial state,
+then builds, checks and times the independent baseline. A confirmed empty
+candidate is allowed only in this initial phase. An existing candidate is also
+checked, reusing the frozen baseline evidence when they are the same initial
+implementation. The model reviews source semantics and the captured command
+evidence; it does not supply authoritative command verdicts.
+
+The final report contains the following checks.
 
 | # | Check | What it verifies |
 | --- | --- | --- |
 | 1 | `config_schema` | All required fields exist with correct types |
-| 2 | `source_files_exist` | Every file in `source_file_path` exists |
-| 3 | `target_symbols_found` | Every `target_kernel_functions` symbol is defined in source |
-| 4 | `compilation` | `compile_command` succeeds within `compile_timeout` |
-| 5 | `correctness` | `correctness_command` succeeds within `correctness_timeout` |
-| 6 | `performance` | `performance_command` succeeds within `performance_timeout`, if present |
+| 2 | `source_files_exist` | Declared initial implementation files exist; confirmed unimplemented candidates receive a framework-owned lifecycle skip |
+| 3 | `target_symbols_found` | Declared initial interfaces exist, with the same empty-candidate rule |
+| 4 | `compilation` | Baseline compilation completed within its action budget |
+| 5 | `correctness` | Baseline outputs satisfy the task-owned reference comparison; diagnostic policy preserves an actual numerical FAIL |
+| 6 | `performance` | Baseline measurement completed with full manifest coverage and scoreable timing |
 | 7 | `correctness_implementation_review` | The correctness check is meaningful, not trivially passing |
 | 8 | `self_contained` | No missing headers/imports; tasks avoid undeclared external paths and declare required runtime dependencies |
 | 9 | `gpu_hang_check` | No command hangs or times out |
@@ -117,10 +126,29 @@ The `task_validator` runs the following checks in order.
 - **FAIL:** a check failed/timed out, the backend failed, or the report contract is incomplete; the task must be fixed before merging.
 
 The framework normalizes every report and recomputes `overall_status`; it does
-not trust the agent's claimed aggregate. Compile/correctness/performance commands
-must exit zero, and stale JSON/YAML output cannot override a failure. The final
+not trust the agent's claimed aggregate. Passing actions must exit zero and emit
+valid structured results. Only an explicitly declared baseline diagnostic policy
+can accept a complete numerical-mismatch result; its numerical status remains
+FAIL. Final candidates have no such exception. Stale output cannot override a failure. The final
 CLI exits nonzero when any task validation fails. WARN is non-failing but requires
 review.
+
+Version 4 distinguishes a failed task from invalid evaluation evidence:
+
+- `task_evidence_valid` records whether the captured execution history is
+  internally consistent; `task_validation_failures` lists actual task failures.
+- `framework_status: PASS` means the evidence and semantic report are valid,
+  not that the task passed. `initial_validation_gate` and `overall_status` stay
+  FAIL when a required task action fails. Quality loop may repair such a task.
+- Actions after the first failed action are `NOT_RUN`. They are neither PASS
+  nor an allowlisted lifecycle SKIP. Missing actions without a recorded failure,
+  altered command evidence, and an incomplete model review are framework errors.
+- Only a verified unimplemented initial candidate can receive
+  `SKIP/candidate_unimplemented`. Its baseline still requires validation.
+
+Reports are bound to a framework request ID, captured evidence digest, and
+completion digest. A complete FAIL report remains useful diagnostic output;
+only `overall_status: PASS` satisfies the clean task-validation gate.
 
 For performance, `cuda_graph` and `cuda_event_fallback` are the only scoreable
 methods. CPU/host timing, missing or mixed methods, candidate-triggered fallback,
