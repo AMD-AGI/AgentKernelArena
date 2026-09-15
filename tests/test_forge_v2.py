@@ -425,6 +425,65 @@ def test_broken_changed_candidate_not_reclassified_as_empty(tmp_path, monkeypatc
     assert not commands
 
 
+def classify_fixture_failure(context, *, kind="numerical_mismatch", mixed=False):
+    reporting = f'''
+if status == "FAIL":
+    result["failure_kind"] = {kind!r}
+    for row in rows: row["failure_kind"] = {kind!r}
+    if {mixed!r} and rows: rows[-1]["failure_kind"] = "runtime_error"
+'''
+    runner = context.workspace / "runner.py"
+    runner.write_text(RUNNER.replace('print("ARENA_EVAL_RESULT="', reporting + '\nprint("ARENA_EVAL_RESULT="'))
+
+
+@pytest.mark.parametrize("language", ["hip", "triton", "flydsl"])
+@pytest.mark.parametrize("initial_state", ["implemented", "unimplemented"])
+def test_changed_numerical_candidate_reenters_initialization(tmp_path, monkeypatch, language, initial_state):
+    context, _, _ = fixture_task(tmp_path, language=language, initial_state=initial_state)
+    (context.workspace / "source/helper.py").write_text("100")
+    classify_fixture_failure(context)
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    commands = mock_engine(monkeypatch)
+    adapter.launch({}, "unused", str(context.workspace))
+    assert len(commands) == 1
+    assert ("forge-rewrite-by-flydsl" in commands[0]) == (language == "flydsl")
+    assert ("--arena-initialize" in commands[0]) == (language != "flydsl")
+    status_path, = tmp_path.glob("workspace-forge-*/arena_forge_status.json")
+    status = json.loads(status_path.read_text())
+    assert status["candidate_requires_repair"] is True
+    failed = status["initial_candidate_failure"]
+    assert failed["status"] == "FAIL"
+    assert failed["failure_kind"] == "numerical_mismatch"
+    assert len(failed["cases"]) == 2
+    assert "initial_candidate_commit" not in status
+    assert (status_path.parent / "template/source/helper.py").read_text() == "100"
+    assert "Repair or reimplement" in (status_path.parent / "engine/arena_program.md").read_text()
+    assert (context.workspace / "source/helper.py").read_text() == "6"
+    assert (context.baseline_workspace / "source/helper.py").read_text() == "3"
+
+
+@pytest.mark.parametrize("failure", ["runtime", "mixed", "missing_case", "compile", "crash", "unchanged"])
+def test_resume_recovery_does_not_hide_environment_or_evidence_errors(tmp_path, monkeypatch, failure):
+    context, _, _ = fixture_task(tmp_path, language="hip")
+    (context.workspace / "source/helper.py").write_text("100")
+    classify_fixture_failure(context, kind="runtime_error" if failure == "runtime" else "numerical_mismatch",
+                             mixed=failure == "mixed")
+    if failure == "missing_case":
+        (context.workspace / "drop_case").touch()
+    elif failure == "compile":
+        (context.workspace / "source/kernel.py").write_text("not valid source")
+    elif failure == "crash":
+        (context.workspace / "runner.py").write_text('raise ModuleNotFoundError("fixture runtime unavailable")')
+    elif failure == "unchanged":
+        (context.baseline_workspace / "source/helper.py").write_text("100")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    commands = mock_engine(monkeypatch)
+    with pytest.raises(adapter.ForgeRunError):
+        adapter.launch({}, "unused", str(context.workspace))
+    assert not commands
+    assert (context.workspace / "source/helper.py").read_text() == "100"
+
+
 @pytest.mark.parametrize("default_branch", ["main", "master"])
 def test_scratch_branch_passes_real_upstream_campaign_preflight(tmp_path, monkeypatch, default_branch):
     python = os.environ.get("AKA_FORGE_PROBE_PYTHON")

@@ -201,10 +201,22 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         changed = _digest(context.spec, context.workspace) != _digest(context.spec, context.baseline_workspace)
         target_verified = False
         if initially_target or changed:
-            # A broken current implementation or environment is an error, not
-            # permission to reinterpret a task as an unimplemented candidate.
-            bridge.execute(plan, engine, role="candidate", action="correctness")
-            target_verified = True
+            try:
+                bridge.execute(plan, engine, role="candidate", action="correctness")
+                target_verified = True
+            except bridge.ActionCheckFailure as exc:
+                # Only a completed numerical rejection after successful compile
+                # identifies repairable partial work. Runtime/protocol/build
+                # failures and unchanged broken task seeds remain hard errors.
+                result = exc.result
+                failed = [row for row in result.cases if row["status"] == "FAIL"]
+                if not (changed and result.role == "candidate" and result.action == "correctness"
+                        and result.failure_kind == "numerical_mismatch" and failed
+                        and all(row.get("failure_kind") == "numerical_mismatch" for row in failed)):
+                    raise
+                plan["initial_candidate_failure"] = result.to_mapping()
+                status["initial_candidate_failure"] = result.to_mapping()
+                status["candidate_requires_repair"] = True
         plan["workflow"] = choose_workflow(context, target_verified=target_verified,
                                            requested=config["workflow"])
         status["workflow"] = plan["workflow"]

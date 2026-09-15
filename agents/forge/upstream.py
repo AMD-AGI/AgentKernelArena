@@ -108,6 +108,12 @@ def program_text(plan: dict, *, prefix: str = "", port: bool = False, initialize
     config = spec.to_mapping()
     declarations = config["candidate"].copy()
     instructions = [config.get("description", "")]
+    if plan.get("initial_candidate_failure"):
+        instructions += [
+            "The previous candidate compiled but failed the complete numerical check. "
+            "Repair or reimplement it before optimization. This is failed evidence, not acceptance:",
+            json.dumps(plan["initial_candidate_failure"], ensure_ascii=False)[:4000],
+        ]
     for name in dict.fromkeys(["README.md", *config.get("instructions", [])]):
         path = Path(plan["template"]) / name
         if path.is_file():

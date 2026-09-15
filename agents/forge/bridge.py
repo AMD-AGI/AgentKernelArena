@@ -20,6 +20,16 @@ from agents.forge.task_context import TaskContext, bounded_spec
 from agents.forge.bundles import copy_workspace, install_candidate
 
 
+class ActionCheckFailure(RuntimeError):
+    """A completed, protocol-validated check failed; execution errors stay separate."""
+
+    def __init__(self, executed):
+        self.result = executed.result
+        self.commands = executed.commands
+        detail = "\n".join(command.stdout + command.stderr for command in self.commands)
+        super().__init__(f"{self.result.role}.{self.result.action}: {self.result.reason}\n{detail[-6000:]}")
+
+
 def load_plan(path: Path) -> dict:
     plan = json.loads(Path(path).read_text())
     if plan.get("version") != 1:
@@ -74,8 +84,7 @@ def execute(plan: dict, engine_root: Path, *, role: str, action: str):
                                   manifest=context.manifest)
             result = executed.result
             if not result.passed:
-                detail = "\n".join(command.stdout + command.stderr for command in executed.commands)
-                raise RuntimeError(f"{role}.{step}: {result.reason}\n{detail[-6000:]}")
+                raise ActionCheckFailure(executed)
         return result
 
 

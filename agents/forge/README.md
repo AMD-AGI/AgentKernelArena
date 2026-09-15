@@ -18,8 +18,13 @@ It does not supply a Forge driver or consume `KERNELFORGE_*` variables. The old
 `workflow: auto` is the default. `optimize` requires a currently verified target
 implementation; `rewrite` requires initialization. A changed candidate is rebuilt
 and checked against the final target contract before routing, so a resumed task
-whose config originally declared a stub does not repeatedly PORT. A broken
-changed candidate or failing environment is an error, not an implicit stub.
+whose config originally declared a stub does not repeatedly PORT. A changed
+candidate that compiles but receives a complete, explicitly classified numerical
+rejection enters initialization again. Its failed evidence is retained and fed
+to the implementer; it is never treated as an accepted implementation. Missing
+failure classifications, build failures, runtime errors, incomplete case evidence
+and unchanged broken task seeds still abort. This deliberately narrow recovery
+does not infer a candidate mistake from a missing dependency or broken harness.
 The backend comes from `candidate.language` and is checked against the actual
 installed KernelForge registry. There is no task-name dispatch, suffix inference,
 or silent substitution of an unsupported backend with FlyDSL.
