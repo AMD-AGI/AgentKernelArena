@@ -55,3 +55,14 @@ Automatic graph-to-Event fallback with a collector still fails closed; Event
 collection must be explicitly selected. Both methods require actual GPU timing.
 Task harnesses must check the last measured value before re-invoking, then check
 the returned replay value with the task's reference and numerical policy.
+
+For evolving state, set `timed_run.before_sample` to a callback accepting the
+number of logical calls in that sample's replay. The helper invokes it on the
+measurement stream, after `prepare_fn` (when present) and before the start event
+of each reported sample. It is not called during warmup, capture, estimation,
+graph priming, or `rerun()`. The task may retain a private copy of the last
+sample's starting state and use that state plus the replay count for an
+independent reference after timing. The callback must only observe state; it
+must not reset inputs or run the reference. It does not change graph batching.
+Apply the same observation and state policy to baseline and candidate. An
+observer exception rejects the measurement and leaves the collector unbound.

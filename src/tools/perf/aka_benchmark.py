@@ -670,6 +670,9 @@ def benchmark_cuda_event_samples(
 
     if timed_run is not None:
         timed_run._bind(None, None)
+    observer = getattr(timed_run, "before_sample", None)
+    if observer is not None and not callable(observer):
+        raise TypeError("TimedRun.before_sample must be callable or None")
     _require_gpu_timing()
     repetition = _positive_int(repetition)
     samples: list[float] = []
@@ -685,6 +688,8 @@ def benchmark_cuda_event_samples(
             prepare_fn()
         if timed_run is not None:
             measured_stream = torch.cuda.current_stream()
+        if observer is not None:
+            observer(1)
         start_event.record()
         if timed_run is None:
             fn()
@@ -753,6 +758,7 @@ def _graph_replay_samples(
     samples: int,
     calls_per_replay: int,
     prepare_fn: Callable[[], Any] | None = None,
+    before_sample: Callable[[int], Any] | None = None,
 ) -> list[float]:
     values: list[float] = []
     for _ in range(samples):
@@ -767,6 +773,8 @@ def _graph_replay_samples(
                 # makes replay consume the fresh state without charging the
                 # preparation work to the kernel sample.
                 prepare_fn()
+            if before_sample is not None:
+                before_sample(calls_per_replay)
             start_event.record(stream)
             graph.replay()
             end_event.record(stream)
@@ -825,11 +833,18 @@ class TimedRun:
     measured sample. Eager ``rerun`` calls the same Python callable (and optional
     preparation) again and may return newly allocated buffers. It is not graph
     replay. Automatic graph-to-event fallback with a collector remains an error.
+
+    A task may set ``before_sample(calls_per_replay)`` to snapshot evolving state.
+    It runs on the measurement stream after preparation and before the start
+    event of each reported sample, never during warmup, capture, calibration or
+    ``rerun``. The callback must only observe state; it must not reset inputs or
+    perform reference computation. It does not force one call per graph.
     """
 
     def __init__(self) -> None:
         self._rerun: Callable[[], Any] | None = None
         self.outputs: Any = None
+        self.before_sample: Callable[[int], Any] | None = None
 
     def _bind(self, rerun: Callable[[], Any] | None, outputs: Any = None) -> None:
         self._rerun = rerun
@@ -881,6 +896,9 @@ def benchmark_cuda_graph_or_events_samples(
         # Reusing a collector after a failed benchmark cannot expose old data
         # as if it belonged to the new attempted measurement.
         timed_run._bind(None, None)
+    observer = getattr(timed_run, "before_sample", None)
+    if observer is not None and not callable(observer):
+        raise TypeError("TimedRun.before_sample must be callable or None")
     _require_gpu_timing()
 
     if os.environ.get(_FORCE_EVENT_ENV) == "1":
@@ -990,12 +1008,14 @@ def benchmark_cuda_graph_or_events_samples(
             calls_per_replay=graph_repeats,
             prepare_fn=prepare_fn,
         )
+        observation_kwargs = {"before_sample": observer} if observer is not None else {}
         values = _graph_replay_samples(
             graph,
             stream,
             samples=repetition,
             calls_per_replay=graph_repeats,
             prepare_fn=prepare_fn,
+            **observation_kwargs,
         )
 
         if not values or any(

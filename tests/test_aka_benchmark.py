@@ -965,6 +965,126 @@ def test_event_collector_does_not_substitute_untimed_correct_output(monkeypatch)
     assert timed.rerun()["answer"] == "correct"
 
 
+def test_event_observer_records_prepared_state_before_only_measured_samples(monkeypatch):
+    helper = _load_helper(monkeypatch)
+    trace, snapshots = [], []
+    _event_cuda(helper, monkeypatch, trace)
+    state = [0]
+    def prepare():
+        trace.append("prepare")
+        state[0] += 10
+    def invoke():
+        trace.append("fn")
+        state[0] += 1
+        return [state[0]]
+    def observe(repeats):
+        trace.append("observe")
+        snapshots.append((state[0], repeats))
+    timed = helper.TimedRun()
+    timed.before_sample = observe
+    values, meta = helper.benchmark_cuda_graph_or_events_samples(
+        invoke, warmup=2, repetition=3, prepare_fn=prepare,
+        use_cuda_graph=False, timed_run=timed,
+    )
+    assert values == [.25] * 3 and meta["benchmark_effective_repeats"] == 1
+    assert snapshots == [(32, 1), (43, 1), (54, 1)]
+    assert timed.outputs == [55]
+    assert trace == ["prepare", "fn"] * 2 + [
+        "prepare", "observe", "start", "fn", "end", "wait_event", "elapsed",
+    ] * 3
+    assert timed.rerun() == [66]
+    assert snapshots == [(32, 1), (43, 1), (54, 1)]
+
+
+def test_graph_observer_matches_evolving_state_and_actual_batched_replay(monkeypatch):
+    from contextlib import contextmanager
+    helper = _load_helper(monkeypatch)
+    cuda = helper.torch.cuda
+    default_stream, capture_stream = object(), object()
+    active = [default_stream]
+    trace, snapshots = [], []
+    state, output = [0], [0]
+    event_count = 0
+    class Event:
+        def __init__(self, enable_timing):
+            nonlocal event_count
+            assert enable_timing
+            self.kind = "start" if event_count % 2 == 0 else "end"
+            event_count += 1
+        def record(self, stream):
+            assert active[0] is stream is capture_stream
+            trace.append((self.kind, state[0]))
+        def synchronize(self): pass
+        def elapsed_time(self, other): return 1.0
+    @contextmanager
+    def stream_context(stream):
+        prior = active[0]
+        active[0] = stream
+        try:
+            yield
+        finally:
+            active[0] = prior
+    class Stream:
+        def wait_stream(self, other): pass
+    capture_stream = Stream()
+    monkeypatch.setattr(cuda, "Stream", lambda: capture_stream)
+    monkeypatch.setattr(cuda, "current_stream", lambda: active[0])
+    monkeypatch.setattr(cuda, "stream", stream_context, raising=False)
+    monkeypatch.setattr(cuda, "Event", Event, raising=False)
+    def invoke():
+        state[0] += 1
+        output[0] = state[0]
+        return output
+    class Graph:
+        def __init__(self, repeats): self.repeats = repeats
+        def replay(self):
+            assert active[0] is capture_stream
+            for _ in range(self.repeats): invoke()
+    def capture(fn, repeats, stream, prepare_fn=None, output_holder=None):
+        assert prepare_fn is None  # observing must not force reset/R=1
+        with stream_context(stream):
+            for _ in range(repeats): fn()
+        if output_holder is not None: output_holder[:] = [output]
+        return Graph(repeats)
+    monkeypatch.setattr(helper, "_capture_graph", capture)
+    def observe(repeats):
+        assert active[0] is capture_stream
+        trace.append(("observe", state[0]))
+        snapshots.append((state[0], repeats))
+    timed = helper.TimedRun()
+    timed.before_sample = observe
+    values, meta = helper.benchmark_cuda_graph_or_events_samples(
+        invoke, warmup=2, repetition=3, estimate_reps=2, target_ms=2,
+        max_graph_repeats=4, timed_run=timed,
+    )
+    assert values == [.25] * 3 and meta["benchmark_effective_repeats"] == 4
+    assert snapshots == [(16, 4), (20, 4), (24, 4)]
+    assert timed.outputs is output and output == [28]
+    for index, item in enumerate(trace):
+        if item[0] == "observe":
+            assert trace[index + 1] == ("start", item[1])
+            assert trace[index + 2] == ("end", item[1] + 4)
+    assert timed.rerun() is output and output == [32]
+    assert len(snapshots) == 3  # not capture, calibration, priming or rerun
+
+
+@pytest.mark.parametrize("invalid", [False, True])
+def test_observer_failure_cannot_leave_previous_timing_bound(monkeypatch, invalid):
+    helper = _load_helper(monkeypatch)
+    trace = []
+    _event_cuda(helper, monkeypatch, trace)
+    timed = helper.TimedRun()
+    timed._bind(lambda: "old", "old")
+    def fail(_repeats): raise ValueError("state observation failed")
+    timed.before_sample = 42 if invalid else fail
+    with pytest.raises((TypeError, ValueError)):
+        helper.benchmark_cuda_graph_or_events_samples(
+            lambda: "new", warmup=0, repetition=2, use_cuda_graph=False, timed_run=timed,
+        )
+    assert timed.outputs is None and not timed.bound
+    assert "start" not in trace
+
+
 @pytest.mark.parametrize("failure", ["prepare", "fn", "invalid_time", "no_gpu"])
 def test_failed_event_attempt_clears_collector_from_previous_measurement(monkeypatch, failure):
     helper = _load_helper(monkeypatch, available=failure != "no_gpu")
