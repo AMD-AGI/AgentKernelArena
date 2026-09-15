@@ -105,4 +105,17 @@ def check_reference(h):
     equal(h._golden(inputs),expected)
     rejects(lambda bad:torch.testing.assert_close(bad,expected),torch.zeros_like(expected))
     check_vector_recurrence(h)
+    # Exercise the actual state/replay comparator, including the all-zero
+    # fixed point reached by the public chunk implementation's evolving v.
+    params = {"min_cosine": .999, "max_rel_err": .03}
+    zero = torch.zeros(3, dtype=torch.float64)
+    vector = torch.tensor([1., -2., 3.], dtype=torch.float64)
+    h._assert_numerics(zero, zero, params)
+    for scale in (1., 1e-30):
+        value = vector * scale
+        h._assert_numerics(value, value, params)
+        rejects(lambda bad: h._assert_numerics(bad, value, params), zero)
+        rejects(lambda bad: h._assert_numerics(bad, zero, params), value)
+        rejects(lambda bad: h._assert_numerics(bad, value, params), -value)
+    rejects(lambda bad: h._assert_numerics(bad, vector, params), vector * 2)
     return {"known_answer": "PASS", "negative_control": "PASS", "scored": False}

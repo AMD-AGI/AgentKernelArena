@@ -262,6 +262,23 @@ restored in `finally`, including on replay or comparison failures. Missing
 observer support fails explicitly; a replay-only check cannot certify the
 original stateful measured path.
 
+For state and replay comparisons, two exactly zero vectors match. If only one
+vector is zero, comparison fails. Nonzero vectors are rescaled before computing
+cosine to preserve their angle when their norms are very small. This avoids the
+cosine library's epsilon floor; the original `cos > 0.999` and normalized maximum
+error `< 0.03` gates remain unchanged. Shape and finite-value checks still apply.
+Task validation exercises these rules with exact-zero, tiny-vector, opposite
+direction and incorrect-magnitude controls.
+
+Job 139802 failed the original timed chunk-state check. Diagnostic job 139981
+reproduced it on MI355X with the unchanged cases and timing: at T=7211, after
+four calls in the observed graph replay, both the actual FP32 final state and
+the independent FP64 reference were exactly zero. The previous cosine check
+returned zero for that pair and rejected it. A fresh single invocation of the
+same full-size case passed both output and state checks. The comparator correction
+above addresses that false rejection; the diagnostic is not a task-validator
+PASS, and fresh full validation remains required.
+
 
 Job 139646 passed all five full-shape correctness cases and the actual timed
 decode output/state check, but failed chunk performance because the harness

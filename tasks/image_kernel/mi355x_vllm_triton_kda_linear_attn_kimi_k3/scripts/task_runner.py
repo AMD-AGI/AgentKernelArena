@@ -248,8 +248,22 @@ def _golden(inp: dict, *, return_state=False):
 
 def _assert_numerics(got, expected, params):
     torch = _torch()
+    assert got.shape == expected.shape, "Wrong KDA comparison shape"
     actual, reference = got.double().flatten(), expected.double().flatten()
-    cosine = torch.nn.functional.cosine_similarity(actual, reference, dim=0)
+    assert torch.isfinite(actual).all() and torch.isfinite(reference).all(), "Nonfinite KDA comparison"
+    actual_scale, reference_scale = actual.abs().max(), reference.abs().max()
+    if actual_scale == 0 or reference_scale == 0:
+        # An evolving chunk replay can legitimately end with exactly zero
+        # state in both the implementation and the independent recurrence.
+        # Cosine has no direction there: accept only two exact zero vectors.
+        assert actual_scale == reference_scale, "KDA cosine mismatch: only one vector is zero"
+        cosine = 1.0
+    else:
+        # Scaling each vector does not change its angle. It avoids cosine's
+        # default epsilon turning equal tiny nonzero vectors into a mismatch.
+        cosine = torch.nn.functional.cosine_similarity(
+            actual / actual_scale, reference / reference_scale, dim=0,
+        )
     rel_max = (actual - reference).abs().max() / reference.abs().max().clamp_min(1e-8)
     assert float(cosine) > params.get("min_cosine", 0.999), "KDA cosine mismatch"
     assert float(rel_max) < params.get("max_rel_err", 0.03), "KDA relative maximum mismatch"

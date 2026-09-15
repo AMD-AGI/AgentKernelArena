@@ -1408,6 +1408,42 @@ def _kda_scalar_fixture(torch, mode):
             "state_indices":torch.tensor([1],dtype=torch.int32)}
 
 
+@pytest.mark.parametrize('scale', [1., 1e-12, 1e-30, 1e-200])
+def test_kda_state_comparison_preserves_direction_for_tiny_vectors(scale, monkeypatch):
+    torch = pytest.importorskip('torch')
+    h = load_module(KDA_TASK / 'scripts/task_runner.py')
+    monkeypatch.setattr(h, '_torch', lambda: torch)
+    value = torch.tensor([1., -2., 3.], dtype=torch.float64) * scale
+    params = {'min_cosine': .999, 'max_rel_err': .03}
+    h._assert_numerics(value, value, params)
+    for bad in (-value, value.flip(0), torch.zeros_like(value)):
+        with pytest.raises(AssertionError, match='cosine'):
+            h._assert_numerics(bad, value, params)
+
+
+def test_kda_zero_state_requires_exact_zero_on_both_sides(monkeypatch):
+    torch = pytest.importorskip('torch')
+    h = load_module(KDA_TASK / 'scripts/task_runner.py')
+    monkeypatch.setattr(h, '_torch', lambda: torch)
+    params = {'min_cosine': .999, 'max_rel_err': .03}
+    zero = torch.zeros(1, 2, 3, 3)
+    h._assert_numerics(zero, zero.double(), params)
+    for value in (1., 1e-30):
+        nonzero = zero.clone(); nonzero.flatten()[0] = value
+        for got, expected in ((zero, nonzero), (nonzero, zero)):
+            with pytest.raises(AssertionError, match='only one vector is zero'):
+                h._assert_numerics(got, expected, params)
+    for value in (float('nan'), float('inf')):
+        with pytest.raises(AssertionError, match='Nonfinite'):
+            h._assert_numerics(zero + value, zero, params)
+    with pytest.raises(AssertionError, match='shape'):
+        h._assert_numerics(zero.flatten(), zero, params)
+    reference = torch.tensor([1., -2., 3.])
+    with pytest.raises(AssertionError, match='relative maximum'):
+        h._assert_numerics(reference * 1.04, reference, params)
+    h._assert_numerics(reference * 1.02, reference, params)
+
+
 @pytest.mark.parametrize('mode',['chunk','packed_decode'])
 def test_kda_state_reference_and_output_contract(mode, monkeypatch):
     import math
