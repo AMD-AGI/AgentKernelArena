@@ -1,173 +1,145 @@
-# Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
-"""The one implementation of how this task measures anything.
+"""Task-owned execution, original comparison callbacks and canonical GPU timing.
 
-Two callers evaluate this task and they must not drift: the Arena harness
-produces the score, and the rewrite driver produces the number KernelForge's
-loop keeps or reverts a candidate on. If those two ever measured differently,
-the pipeline would optimize for something the score does not reward.
-
-They differ only in where the candidate comes from and how results are printed.
-Everything else -- how launches are built, how a case is compared, how a case is
-timed -- lives here and is imported by both.
-
-Inputs are built one case at a time, because the schema bundle initializes one
-workload point at a time and its ``a`` is drawn before its ``b``: a case's
-weight depends on the case's m, so the cases cannot share one. Each mode
-therefore builds a case, uses it, and lets it fall out of scope before the next.
+Every caller selects an explicit role. An absent candidate is never a baseline.
+This module is copied into each task so isolated workspaces need no sibling task
+or Arena Python imports. The benchmark helper is materialized by Arena.
 """
-
 from __future__ import annotations
 
-from typing import Any, Callable
-
+import math
 import torch
 
-from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-
 import task_baseline
+import task_compare
 import task_inputs
 import task_reference
 
 
-def build_launches(builder) -> list | None:
-    """Build one launch per scored case, or None while the candidate is a stub.
+def build_launch(builder, case):
+    if not callable(builder):
+        raise RuntimeError("Candidate builder is missing or not callable")
+    if task_inputs.WORKLOAD["op_type"] == "gemm":
+        launch = builder(m=int(case["m"]), n=task_inputs.N, k=task_inputs.K)
+    else:
+        launch = builder(num_tokens=int(case["num_tokens"]),
+                         model_dim=task_inputs.MODEL_DIM, inter_dim=task_inputs.INTER_DIM,
+                         num_experts=task_inputs.NUM_EXPERTS, topk=task_inputs.TOPK)
+    if not callable(launch):
+        raise RuntimeError("Candidate builder did not return a callable launch")
+    return launch
 
-    The builder takes the case shape and no data, so every launch is built
-    before any input exists. Only ``NotImplementedError`` counts as "not ported
-    yet"; every other failure propagates, so a broken port fails the task
-    instead of silently scoring the baseline a second time.
+
+def case_call(inputs, *, role, launch=None):
+    if role == "baseline":
+        if launch is not None:
+            raise ValueError("Baseline action cannot invoke a candidate")
+        return lambda: task_baseline.run(**task_inputs.call_kwargs(inputs))
+    if role != "candidate" or not callable(launch):
+        raise RuntimeError("Candidate action requires its own launch; no baseline fallback")
+    if task_inputs.WORKLOAD["op_type"] == "gemm":
+        return lambda: launch(inputs["a"], inputs["b"])
+    return lambda: launch(inputs["hidden_states"], inputs["w1"], inputs["w2"],
+                          inputs["topk_weights"], inputs["topk_ids"],
+                          inputs["w1_scale"], inputs["w2_scale"],
+                          inputs["activation"], inputs["doweight_stage1"])
+
+
+def compare_output(got, expected):
+    """Only completed numerical comparisons can produce numerical_mismatch.
+
+    Invalid references and runtime errors propagate. The original callback is
+    the only authority on numerical acceptance, after shape/dtype/finite checks.
     """
-    if builder is None:
-        return None
-    launches = []
-    for case in task_inputs.CASES:
-        try:
-            launch = builder(m=int(case["m"]), n=task_inputs.N, k=task_inputs.K)
-        except NotImplementedError:
-            return None
-        launches.append(launch)
-    return launches
+    try:
+        task_compare.validate_comparison(got, expected)
+    except AssertionError as error:
+        return {"status": "FAIL", "failure_kind": "output_contract", "reason": str(error)}
+    passed, detail = task_inputs.verdict(got, expected)
+    # Supplemental evidence never sets, replaces or rescales the callback gate.
+    delta = (got.float() - expected.float()).abs()
+    metrics = {"max_absolute_error": delta.max().item() if delta.numel() else 0.0,
+               "compared_elements": expected.numel()}
+    result = {"status": "PASS" if passed else "FAIL", "metrics": metrics,
+              "metadata": {"comparison": "scripts/task_compare.py:run",
+                           "output_contract_passed": True, "comparison_detail": detail}}
+    if task_inputs.WORKLOAD["op_type"] == "moe":
+        # The original helper uses the output dtype, as does the comparator.
+        # Exact pairs have +inf SQNR (or NaN for identical zero tensors).
+        sqnr = task_compare.compute_error(expected, got).item()
+        metrics["sqnr_db"] = sqnr if math.isfinite(sqnr) else None
+        if not math.isfinite(sqnr):
+            result["metadata"]["sqnr_db_nonfinite"] = (
+                "exact match; infinite SQNR" if torch.equal(got, expected)
+                else f"original SQNR helper returned {sqnr}; callback verdict retained")
+    if not passed:
+        result.update(failure_kind="numerical_mismatch", reason=detail)
+    return result
 
 
-def case_call(inputs: dict[str, Any], launch) -> Callable:
-    """A zero-argument call into the candidate, or into the baseline when stub."""
-    if launch is None:
-        kwargs = task_inputs.call_kwargs(inputs)
-        return lambda: task_baseline.run(**kwargs)
-    return lambda: launch(inputs["a"], inputs["b"])
+def input_snapshot(inputs):
+    # Byte views support packed float4 tensors, whose equal/clone ops may not.
+    return {key: value.view(torch.uint8).clone() for key, value in inputs.items()
+            if isinstance(value, torch.Tensor)}
 
 
-def compare_cases(launches: list | None) -> list[dict[str, Any]]:
-    """Judge every case, and judge the production implementation beside it.
-
-    The verdict is the bundle's comparison callback, applied to the candidate
-    and -- separately -- to the shipped implementation. The second reading
-    changes no outcome; it is the only thing that tells a reader whether a
-    failing case is the candidate's fault or a bar production does not clear
-    either.
-    """
-    results = []
-    for index, case in enumerate(task_inputs.CASES):
-        inputs = task_inputs.build_case_inputs(case)
-        kwargs = task_inputs.call_kwargs(inputs)
-        expected = task_reference.run(**kwargs)
-        baseline_passed, baseline_detail = task_inputs.verdict(
-            task_baseline.run(**kwargs), expected
-        )
-        got = case_call(inputs, None if launches is None else launches[index])()
-        torch.cuda.synchronize()
-        passed, detail = task_inputs.verdict(got, expected)
-        results.append(
-            {
-                "case_id": str(case["case_id"]),
-                "passed": passed,
-                "detail": detail,
-                "baseline_passed": baseline_passed,
-                "baseline_detail": baseline_detail,
-            }
-        )
-    return results
+def assert_inputs_unchanged(inputs, snapshot):
+    for key, expected in snapshot.items():
+        if not torch.equal(inputs[key].view(torch.uint8), expected):
+            raise RuntimeError(f"Operator modified protected input tensor: {key}")
 
 
-def verify_timed_invocation(inputs: dict[str, Any], timed: TimedRun) -> None:
-    """Hold the invocation that was timed to the result it reported.
+def check_case(case, *, role, launch=None):
+    inputs = task_inputs.build_case_inputs(case)
+    expected = task_reference.run(**task_inputs.call_kwargs(inputs))
+    before = input_snapshot(inputs)
+    got = case_call(inputs, role=role, launch=launch)()
+    torch.cuda.synchronize()
+    assert_inputs_unchanged(inputs, before)
+    return compare_output(got, expected)
 
-    A case is timed over one set of input buffers: the call is built once and
-    every warmup, capture and replay reads those same objects. An implementation can
-    answer the first call and serve the rest from a cache keyed on their
-    identity, and the capture then records the cached path, so every replay
-    measures a lookup. Correctness would not notice, and not by accident: it
-    builds fresh inputs per case and calls once, which is always a miss. The two
-    modes are separate invocations, so an implementation can tell which one is
-    scored.
 
-    Closing that means asking the timed unit itself, after the ground has moved:
-    the buffers are redrawn, the output it wrote is poisoned, and the same graph
-    is replayed. What the replay has to show is that it recomputed -- it wrote
-    over the poison, and it did not reproduce the answer it gave for the draw
-    before. Neither test involves a tolerance, deliberately: the production
-    implementation does not clear the bundle's bar at every shape, and on the
-    small-M cases it does not even agree with itself run to run, so any accuracy
-    criterion here would reject the baseline this task is scored against.
+def verify_timed_invocation(inputs, timed):
+    """Check the actual measured graph over redrawn inputs under the full gate.
+
+    Reference creation, poison/refill and comparisons occur after measurement.
+    Both roles undergo exactly the same check. The runner alone can retain a
+    baseline's completed numerical mismatch as explicitly declared diagnostics.
     """
     if not timed.bound:
-        raise RuntimeError(
-            "the benchmark did not expose the invocation it timed, so nothing "
-            "here can tell whether the scored path computed the operator"
-        )
-    previous = (
-        timed.outputs.detach().clone()
-        if isinstance(timed.outputs, torch.Tensor)
-        else None
-    )
+        raise RuntimeError("Benchmark did not expose the invocation it timed")
+    previous = timed.outputs.detach().clone() if isinstance(timed.outputs, torch.Tensor) else None
     task_inputs.refill_case_inputs(inputs)
+    expected = task_reference.run(**task_inputs.call_kwargs(inputs))
+    before = input_snapshot(inputs)
     if isinstance(timed.outputs, torch.Tensor):
         timed.outputs.fill_(float("nan"))
     got = timed.rerun()
     torch.cuda.synchronize()
-    if not isinstance(got, torch.Tensor):
-        raise RuntimeError(
-            f"the timed invocation returned {type(got).__name__}, so its output "
-            "cannot be inspected for whether the replay produced it"
-        )
-    if not torch.isfinite(got).all():
-        raise RuntimeError(
-            "the timed invocation left part of its output unwritten: the poison "
-            "survived the replay, so the measured work does not produce the result"
-        )
-    if previous is not None and torch.equal(got, previous):
-        raise RuntimeError(
-            "the timed invocation reproduced its previous output bit for bit "
-            "over a fresh draw, so what was measured is a replay of a cached "
-            "answer rather than the operator"
-        )
+    assert_inputs_unchanged(inputs, before)
+    result = compare_output(got, expected)
+    if previous is not None and isinstance(got, torch.Tensor) and torch.equal(got, previous):
+        raise RuntimeError("Timed invocation returned its cached output over a fresh draw")
+    result.setdefault("metadata", {}).update(replay_checked=True,
+                                             refill_seed=task_inputs.REFILL_SEED)
+    return result
 
 
-def time_cases(launches: list | None) -> list[dict[str, Any]]:
-    """Time every case under the task's own sampling protocol.
+def time_case(case, *, role, launch=None, baseline_diagnostic=False):
+    from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
 
-    The protocol belongs to the task, not to the caller: a candidate is only
-    worth keeping if it holds up under the protocol that decides the score.
-    """
-    samples = []
-    for index, case in enumerate(task_inputs.CASES):
-        inputs = task_inputs.build_case_inputs(case)
-        call = case_call(inputs, None if launches is None else launches[index])
-        timed = TimedRun()
-        execution_time_ms, metadata = benchmark_cuda_graph_or_events(
-            call,
-            warmup=task_inputs.BENCH_WARMUP,
-            repetition=task_inputs.BENCH_REPETITION,
-            target_ms=task_inputs.BENCH_TARGET_MS,
-            timed_run=timed,
-        )
-        verify_timed_invocation(inputs, timed)
-        samples.append(
-            {
-                "case_id": str(case["case_id"]),
-                "m": int(case["m"]),
-                "execution_time_ms": execution_time_ms,
-                "metadata": metadata,
-            }
-        )
-    return samples
+    inputs = task_inputs.build_case_inputs(case)
+    call = case_call(inputs, role=role, launch=launch)
+    timed = TimedRun()
+    execution_time_ms, timing = benchmark_cuda_graph_or_events(
+        call, warmup=task_inputs.BENCH_WARMUP,
+        repetition=task_inputs.BENCH_REPETITION,
+        target_ms=task_inputs.BENCH_TARGET_MS, timed_run=timed)
+    replay = verify_timed_invocation(inputs, timed)
+    allowed_diagnostic = (role == "baseline" and baseline_diagnostic
+                          and replay.get("failure_kind") == "numerical_mismatch")
+    if replay["status"] != "PASS" and not allowed_diagnostic:
+        return {**replay, "metadata": {**replay.get("metadata", {}), "timing": timing}}
+    return {"status": "PASS", "execution_time_ms": execution_time_ms,
+            "benchmark_method": timing["benchmark_method"],
+            "metadata": {"timing": timing, "replay_correctness": replay,
+                         "baseline_numerical_diagnostic": bool(allowed_diagnostic)}}

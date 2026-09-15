@@ -21,17 +21,14 @@ stream for every case -- the cases do not share a weight and cannot be built
 from one pass.
 
 Every constant that varies between tasks in this family lives in
-``workload.json``, so the whole ``scripts/`` tree plus the harness and the
-driver stay byte-identical across the GEMM tasks. Arena copies each task
+the configured workload JSON, so the helpers and runner stay byte-identical
+across the GEMM tasks. Arena copies each task
 directory into its own workspace, so a task cannot import from a sibling and
 every task has to carry its own copy of these modules.
 """
 
 from __future__ import annotations
 
-import ast
-import json
-from pathlib import Path
 from typing import Any
 
 import torch
@@ -39,58 +36,10 @@ import torch
 import task_compare
 import task_initialize
 
-# A candidate implementation may not import the framework under test. aiter's
-# tuned a16w16 dispatch resolves to aiter's own FlyDSL kernels for most of the
-# small-M cases, so importing it would measure the baseline against itself.
-BANNED_CANDIDATE_IMPORT_ROOTS = ("aiter",)
+# The declared workload path is resolved only inside this task workspace.
+import task_contract
 
-# Candidates run with the task's scripts on sys.path. Importing one of those
-# modules can reach the baseline indirectly (for example, task_baseline.run)
-# while avoiding a direct aiter import.
-BANNED_CANDIDATE_TASK_MODULES = frozenset(
-    {"forge_driver", "test_kernel_harness"}
-)
-
-# A GEMM has a second cheat the MoE tasks do not: torch's own matmul is a real
-# hipBLASLt call, and it is literally the baseline this task dispatches to at
-# the larger M cases. A candidate that writes ``a @ b.T`` would tie the baseline
-# exactly while implementing no kernel at all.
-BANNED_CANDIDATE_CALL_ATTRS = frozenset(
-    {
-        "matmul",
-        "mm",
-        "bmm",
-        "einsum",
-        "linear",
-        "addmm",
-        "addbmm",
-        "baddbmm",
-        "tensordot",
-    }
-)
-
-def _find_workload() -> Path:
-    """Locate workload.json, whichever layout these modules were copied into.
-
-    The task keeps them under ``scripts/`` next to the harness, while the
-    rewrite launcher copies them and the driver side by side into a scratch
-    workspace one level below the task. Both have to resolve, and a module that
-    cannot find its workload fails every mode rather than silently running a
-    different shape.
-    """
-    here = Path(__file__).resolve().parent
-    for candidate in (here.parent, here, here.parent.parent):
-        path = candidate / "workload.json"
-        if path.is_file():
-            return path
-    raise RuntimeError(
-        f"workload.json not found above {here}; the task's numeric contract is "
-        "unreadable, so no input can be built"
-    )
-
-
-_WORKLOAD_PATH = _find_workload()
-WORKLOAD = json.loads(_WORKLOAD_PATH.read_text())
+WORKLOAD = task_contract.load_workload()
 
 DEFINITION = str(WORKLOAD["definition"])
 N = int(WORKLOAD["axes"]["n"])
@@ -103,15 +52,10 @@ SEED = int(WORKLOAD["seed"])
 # call in this process has seen, not that they come from a second distribution.
 REFILL_SEED = SEED + 1
 
-# The FlyDSL factory the port must expose. KernelForge derives it from the
-# task's logical operator and passes it to the driver in the environment, so the
-# harness reads the generated value rather than deriving it a second way: a
-# harness that looked for a different symbol than the pipeline asked the agent
-# to write would find no factory and score the aiter baseline as a port.
-BUILDER_SYMBOL = str(WORKLOAD["builder_symbol"])
+# The entrypoint is explicit task data; it is not derived from operator identity.
+BUILDER_SYMBOL = task_contract.candidate_entry()["symbol"]
 
-# Benchmark parameters, shared by the Arena harness and the rewrite driver so
-# the score and the pipeline's own speedup are measured the same way. Timing
+# Benchmark parameters used for both baseline and candidate. Timing
 # must be CUDA-graph based: at the small-M cases this operator runs for tens of
 # microseconds and eager timing would be dominated by per-call host dispatch.
 BENCH_WARMUP = int(WORKLOAD["bench"]["warmup"])
@@ -159,79 +103,6 @@ def call_kwargs(inputs: dict[str, Any]) -> dict[str, Any]:
     return {"a": inputs["a"], "b": inputs["b"]}
 
 
-def _banned_candidate_findings(source: str) -> list[str]:
-    """Return every rule violation found in a candidate implementation."""
-    try:
-        tree = ast.parse(source)
-    except SyntaxError as error:
-        raise RuntimeError(f"the candidate does not parse: {error}") from error
-
-    findings: list[str] = []
-
-    for node in ast.walk(tree):
-        names: list[str] = []
-        if isinstance(node, ast.Import):
-            names = [alias.name for alias in node.names]
-        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            names = [node.module]
-        for name in names:
-            if name.split(".", 1)[0] in BANNED_CANDIDATE_IMPORT_ROOTS:
-                finding = f"imports the framework under test: {name}"
-                if finding not in findings:
-                    findings.append(finding)
-            leaf = name.rsplit(".", 1)[-1]
-            if leaf.startswith("task_") or leaf in BANNED_CANDIDATE_TASK_MODULES:
-                finding = f"imports a protected task module: {name}"
-                if finding not in findings:
-                    findings.append(finding)
-
-        # Also catch aliases such as ``from torch import matmul as product``.
-        if (
-            isinstance(node, ast.ImportFrom)
-            and node.module
-            and node.module.split(".", 1)[0] == "torch"
-        ):
-            for alias in node.names:
-                if alias.name in BANNED_CANDIDATE_CALL_ATTRS:
-                    finding = f"imports the library matrix product `{alias.name}`"
-                    if finding not in findings:
-                        findings.append(finding)
-
-    for node in ast.walk(tree):
-        # ``ast.MatMult`` only ever means the binary operator, so a decorator's
-        # ``@`` cannot be mistaken for one.
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.MatMult):
-            finding = "uses the `@` matrix-multiply operator"
-        elif isinstance(node, ast.AugAssign) and isinstance(node.op, ast.MatMult):
-            finding = "uses the `@=` matrix-multiply operator"
-        elif (
-            isinstance(node, ast.Attribute)
-            and node.attr in BANNED_CANDIDATE_CALL_ATTRS
-        ):
-            finding = f"references the library matrix product `{node.attr}`"
-        else:
-            continue
-        if finding not in findings:
-            findings.append(finding)
-
-    return findings
-
-
-def assert_candidate_is_independent(source: str) -> None:
-    """Raise when a candidate reuses an implementation it is meant to replace."""
-    findings = _banned_candidate_findings(source)
-    if findings:
-        joined = "; ".join(findings)
-        raise RuntimeError(
-            f"the candidate {joined}. These defeat the rewrite: protected task "
-            "modules can call the baseline indirectly, aiter's tuned "
-            "a16w16 path dispatches to aiter's own FlyDSL kernels at the small-M "
-            "cases, and torch's matmul IS the baseline at the larger ones. "
-            "Implement the GEMM in FlyDSL (import flydsl and torch only, and use "
-            "torch for tensor plumbing rather than for the product)."
-        )
-
-
 def verdict(got: torch.Tensor, expected: torch.Tensor) -> tuple[bool, str]:
     """Apply the bundle's comparison callback and report what it decided.
 
@@ -250,3 +121,8 @@ def verdict(got: torch.Tensor, expected: torch.Tensor) -> tuple[bool, str]:
     except AssertionError as failure:
         return False, str(failure)
     return True, "within tolerance"
+
+
+def assert_candidate_is_independent(source: str) -> None:
+    """Apply the documented dependency policy before candidate import."""
+    task_contract.assert_source_independent(source)

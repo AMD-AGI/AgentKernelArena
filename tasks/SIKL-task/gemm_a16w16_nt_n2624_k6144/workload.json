@@ -1,7 +1,6 @@
 {
   "definition": "gemm_a16w16_nt_n2624_k6144",
   "op_type": "gemm",
-  "builder_symbol": "build_gemm_a16w16_nt_n2624_k6144_module",
   "axes": {
     "n": 2624,
     "k": 6144
@@ -12,7 +11,7 @@
     "repetition": 100,
     "target_ms": 1.0
   },
-  "gate_policy": "Correctness is scripts/task_compare.py and input construction is scripts/task_initialize.py, both copied without edit from the workload schema's own definition callbacks. The task fixes no tolerance, no threshold and no distribution of its own, so the bar a candidate clears here is by construction the bar the acceptance run applies to the result -- which a gate derived in this file could never guarantee, and did not: a run of all 21 solutions rejected 92 of 273 points these tasks had passed. The production implementation is judged by the same callback beside every case and the verdict is reported, but it does not move the bar and it does not clear it at every shape.",
+  "gate_policy": "Input initialization, reference, comparison and production baseline are the original bundled task callbacks. The requested role is evaluated independently over every case; candidate replay uses the same numerical gate. Any baseline numerical exception is declared in config.yaml and preserves the failed comparison evidence.",
   "cases": [
     {
       "case_id": "m_1",

@@ -22,16 +22,13 @@ at a different point in the stream for every case -- the cases do not share a
 weight set and cannot be built from one pass.
 
 Every constant that varies between tasks in this family lives in
-``workload.json``, so the whole ``scripts/`` tree plus the harness and the
-driver stay byte-identical across the MoE tasks. Arena copies each task
+the configured workload JSON, so the helpers and runner stay byte-identical
+across the MoE tasks. Arena copies each task
 directory into its own workspace, so a task cannot import from a sibling and
 every task has to carry its own copy of these modules.
 """
 from __future__ import annotations
 
-import ast
-import json
-from pathlib import Path
 from typing import Any
 
 import torch
@@ -39,47 +36,10 @@ import torch
 import task_compare
 import task_initialize
 
-# A candidate implementation may not import the framework under test. Importing
-# aiter -- including its FlyDSL kernel factories under aiter/ops/flydsl/kernels/
-# -- launches the implementation this task exists to replace, so the run would
-# compare the baseline's kernels against themselves and report the removal of
-# per-call host dispatch as a speedup.
-#
-# Unlike the GEMM tasks there is no ban on torch's matrix product: a MoE written
-# as a Python loop over experts is orders of magnitude slower than the fused
-# baseline, so it is not a way to tie the baseline without writing a kernel.
-BANNED_CANDIDATE_IMPORT_ROOTS = ("aiter",)
+# The declared workload path is resolved only inside this task workspace.
+import task_contract
 
-# Candidates run with the task's scripts on sys.path. Importing one of those
-# modules can reach the baseline indirectly (for example, task_baseline.run)
-# while avoiding a direct aiter import.
-BANNED_CANDIDATE_TASK_MODULES = frozenset(
-    {"forge_driver", "test_kernel_harness"}
-)
-
-
-def _find_workload() -> Path:
-    """Locate workload.json, whichever layout these modules were copied into.
-
-    The task keeps them under ``scripts/`` next to the harness, while the
-    rewrite launcher copies them and the driver side by side into a scratch
-    workspace one level below the task. Both have to resolve, and a module that
-    cannot find its workload fails every mode rather than silently running a
-    different shape.
-    """
-    here = Path(__file__).resolve().parent
-    for candidate in (here.parent, here, here.parent.parent):
-        path = candidate / "workload.json"
-        if path.is_file():
-            return path
-    raise RuntimeError(
-        f"workload.json not found above {here}; the task's numeric contract is "
-        "unreadable, so no input can be built"
-    )
-
-
-_WORKLOAD_PATH = _find_workload()
-WORKLOAD = json.loads(_WORKLOAD_PATH.read_text())
+WORKLOAD = task_contract.load_workload()
 
 DEFINITION = str(WORKLOAD["definition"])
 
@@ -106,15 +66,10 @@ REFILL_SEED = SEED + 1
 ACTIVATION = 0
 DOWEIGHT_STAGE1 = False
 
-# The FlyDSL factory the port must expose. KernelForge derives it from the
-# task's logical operator and passes it to the driver in the environment, so the
-# harness reads the generated value rather than deriving it a second way: a
-# harness that looked for a different symbol than the pipeline asked the agent
-# to write would find no factory and score the baseline as a port.
-BUILDER_SYMBOL = str(WORKLOAD["builder_symbol"])
+# The entrypoint is explicit task data; it is not derived from operator identity.
+BUILDER_SYMBOL = task_contract.candidate_entry()["symbol"]
 
-# Benchmark parameters, shared by the Arena harness and the rewrite driver so
-# the score and the pipeline's own speedup are measured the same way. Timing
+# Benchmark parameters used for both baseline and candidate. Timing
 # must be CUDA-graph based: eager timing of this operator is dominated by
 # per-call host dispatch, not by the device work.
 BENCH_WARMUP = int(WORKLOAD["bench"]["warmup"])
@@ -213,39 +168,6 @@ def call_kwargs(inputs: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def banned_candidate_imports(source: str) -> list[str]:
-    """Return protected modules a candidate implementation must not import."""
-    try:
-        tree = ast.parse(source)
-    except SyntaxError as error:
-        raise RuntimeError(f"the candidate does not parse: {error}") from error
-
-    found: list[str] = []
-    for node in ast.walk(tree):
-        names: list[str] = []
-        if isinstance(node, ast.Import):
-            names = [alias.name for alias in node.names]
-        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            names = [node.module]
-        for name in names:
-            root = name.split(".", 1)[0]
-            if root in BANNED_CANDIDATE_IMPORT_ROOTS and name not in found:
-                found.append(name)
-            leaf = name.rsplit(".", 1)[-1]
-            if (
-                leaf.startswith("task_") or leaf in BANNED_CANDIDATE_TASK_MODULES
-            ) and name not in found:
-                found.append(name)
-    return found
-
-
 def assert_candidate_is_independent(source: str) -> None:
-    """Raise when a candidate reuses the framework it is meant to replace."""
-    banned = banned_candidate_imports(source)
-    if banned:
-        raise RuntimeError(
-            f"the candidate imports the framework under test or imports a protected task "
-            f"module: {banned}. "
-            "Reusing its baseline path measures the baseline against itself; implement the "
-            "operator in FlyDSL (import flydsl and torch only)."
-        )
+    """Apply the documented dependency policy before candidate import."""
+    task_contract.assert_source_independent(source)
