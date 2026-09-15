@@ -32,7 +32,15 @@ def unchanged_model_state(before, module):
 def check_result(actual, expected, inputs, output_contract, compare, rtol, atol):
     output_contract(expected, actual)
     if not compare(expected, actual, rtol=rtol, atol=atol):
-        raise ValueError("Timed operator output disagrees with the protected reference")
+        difference = (expected.double() - actual.double()).abs()
+        bound = atol + rtol * actual.double().abs()  # original torch.allclose order
+        failing = difference > bound
+        position = int(failing.flatten().nonzero()[0])
+        raise ValueError(
+            "Timed operator output disagrees with the protected reference: "
+            f"count={int(failing.sum())}, max_abs={float(difference.max())}, "
+            f"index={position}, expected={float(expected.flatten()[position])}, "
+            f"actual={float(actual.flatten()[position])}, rtol={rtol}, atol={atol}")
     separate_output(actual, inputs)
 
 

@@ -70,3 +70,12 @@ values are restored in `finally`, including on exceptions, so a failed role
 cannot alter the next role's starting state. Snapshot, checks and final cleanup
 run outside the reported samples; existing per-invocation prepare callbacks
 and the baseline's graph/Event policy retain their timing boundaries.
+
+The initial HIP channel reduction uses FP64 accumulation after the original
+FP32 image-times-scale multiplication, then rounds to FP32 before adding bias.
+The former sequential FP32 sum failed the unchanged timed-reference gate on
+case 3 with nontrivial affine state. Both provided baseline and initial candidate
+receive the same numerical repair. Input shapes/values, explicit affine controls,
+reference tolerance and sampling remain unchanged; the new baseline timing is
+not comparable to the former less accurate implementation. Final candidates may
+use any allowed reduction that passes the full original numerical gate.

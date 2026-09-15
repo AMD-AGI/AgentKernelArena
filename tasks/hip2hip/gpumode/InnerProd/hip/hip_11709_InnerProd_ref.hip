@@ -67,7 +67,9 @@ __global__ void k_forward(
         const float* __restrict__ fi_b = feat_img_bc + (int64_t)b * C;            // [C]
         const float* __restrict__ fs_b = feat_sound  + (int64_t)b * C * H * W;    // [C,H,W]
 
-        float acc = 0.0f;
+        // Match the reference's float32 scaling, but avoid sequential FP32
+        // reduction cancellation over 512 channels. Round the dot before bias.
+        double acc = 0.0;
         const int64_t planeHW = (int64_t)H * W;
         const int64_t base_hw = (int64_t)h * W + w;
 
@@ -89,18 +91,18 @@ __global__ void k_forward(
             float fs2 = fs_b[(int64_t)(c + 2) * planeHW + base_hw];
             float fs3 = fs_b[(int64_t)(c + 3) * planeHW + base_hw];
 
-            acc += (fi0 * sc0) * fs0;
-            acc += (fi1 * sc1) * fs1;
-            acc += (fi2 * sc2) * fs2;
-            acc += (fi3 * sc3) * fs3;
+            acc += static_cast<double>(fi0 * sc0) * static_cast<double>(fs0);
+            acc += static_cast<double>(fi1 * sc1) * static_cast<double>(fs1);
+            acc += static_cast<double>(fi2 * sc2) * static_cast<double>(fs2);
+            acc += static_cast<double>(fi3 * sc3) * static_cast<double>(fs3);
         }
         for (; c < C; ++c) {
             float fi = fi_b[c];
             float sc = smem[c];
             float fs = fs_b[(int64_t)c * planeHW + base_hw];
-            acc += (fi * sc) * fs;
+            acc += static_cast<double>(fi * sc) * static_cast<double>(fs);
         }
-        out[linear] = acc + bias;
+        out[linear] = static_cast<float>(acc) + bias;
     }
 }
 
@@ -164,7 +166,9 @@ __global__ void k_forward_pixelwise(
         const int64_t img_base = (int64_t)hi * WI + wi;
         const int64_t snd_base = (int64_t)hs * WS + ws;
 
-        float acc = 0.0f;
+        // Match the reference's float32 scaling, but avoid sequential FP32
+        // reduction cancellation over 512 channels. Round the dot before bias.
+        double acc = 0.0;
         int c = 0;
         int C4 = (C / 4) * 4;
         for (; c < C4; c += 4) {
@@ -183,18 +187,18 @@ __global__ void k_forward_pixelwise(
             float fs2 = fs_b[(int64_t)(c + 2) * snd_hw + snd_base];
             float fs3 = fs_b[(int64_t)(c + 3) * snd_hw + snd_base];
 
-            acc += (fi0 * sc0) * fs0;
-            acc += (fi1 * sc1) * fs1;
-            acc += (fi2 * sc2) * fs2;
-            acc += (fi3 * sc3) * fs3;
+            acc += static_cast<double>(fi0 * sc0) * static_cast<double>(fs0);
+            acc += static_cast<double>(fi1 * sc1) * static_cast<double>(fs1);
+            acc += static_cast<double>(fi2 * sc2) * static_cast<double>(fs2);
+            acc += static_cast<double>(fi3 * sc3) * static_cast<double>(fs3);
         }
         for (; c < C; ++c) {
             float fi = fi_b[(int64_t)c * img_hw + img_base];
             float sc = smem[c];
             float fs = fs_b[(int64_t)c * snd_hw + snd_base];
-            acc += (fi * sc) * fs;
+            acc += static_cast<double>(fi * sc) * static_cast<double>(fs);
         }
-        out[idx] = acc + bias;
+        out[idx] = static_cast<float>(acc) + bias;
     }
 }
 
