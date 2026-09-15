@@ -13,9 +13,9 @@ Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|
 with one role and one action. Submitted checks use `ARENA_EVAL_PHASE=candidate_evaluation`.
 The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
 `workloads.json` retains 82 original collected cases, including 42 performance cases.
-Collection is checked against this independent manifest. Original correctness
-functions run unchanged. Performance inputs additionally run the task-local
-oracle in `_arena_reference.py`, before timing and against observed timed output.
+Collection is checked against this independent manifest. Original forward/autograd correctness
+assertions and dtype gates remain, with pristine input snapshots. Performance inputs additionally run the task-local
+oracle in `_arena_reference.py`, before timing, against actual timed backward buffers, and after changed-input replay.
 Seeds, case parameters, original assertions/tolerances, launch parameters,
 prepare/reset callbacks, warmups and sample counts are unchanged.
 
@@ -140,3 +140,33 @@ def rms_bwd_kernel(
 
 
 
+
+
+## Actual backward workload and output contract
+
+All 82 case identities, 42 scored shape/dtype/gamma combinations, seeds and
+numerical thresholds remain. The task's editable target is `rms_bwd_kernel`.
+Both suite variants now measure that backward launch on precomputed protected
+forward `rsigma`, with identical warmup 10, repetition 100 and canonical event
+timing. The instruction variant already had this workload. The triton variant
+previously measured only the protected forward function; its timing workload is
+explicitly corrected to backward using the existing instruction harness.
+Those historical forward times are not comparable to this revised task.
+
+The public backward outputs are full `dx` and per-row FP32 `dg_tmp`. Both are
+checked elementwise from private x/g/grad_output/rsigma snapshots, using the
+unchanged FP16/BF16 1e-3 absolute / 1e-2 relative gate or FP32 1e-5 / 1e-5 gate.
+The prior wrapper instead summed dg_tmp outside the timed kernel and compared
+against a differently associated expression; cancellation in that extra
+reduction created failures while leaving per-row output errors unexamined.
+The original complete autograd tests, including their reduced-gradient gates,
+remain separately required and unchanged in numerical criteria.
+
+The protected forward rsigma input is independently checked against the RMS
+formula. Actual timed dx and dg_tmp buffers are both checked, poisoned and
+replayed after fresh x/g/grad_output plus a consistent newly computed rsigma.
+Inputs and both outputs are restored in `finally`. The Triton launch's Python
+return is a kernel handle; the checked outputs are its bound device buffers.
+No oracle, poison, reduction or reset is inserted into the timed callable.
+Candidate kernel code is unchanged. Each revised task freezes its own initial
+baseline and evaluates both roles under the same current workload.

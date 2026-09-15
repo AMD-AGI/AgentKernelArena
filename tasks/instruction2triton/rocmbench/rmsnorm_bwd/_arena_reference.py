@@ -1,5 +1,4 @@
-"""Independent output checks for the performance inputs; never timed or editable."""
-import numpy as np
+"""Independent RMS backward outputs; no extra reduced-gradient scoring surrogate."""
 import torch
 
 
@@ -7,63 +6,82 @@ class NumericalMismatch(AssertionError):
     pass
 
 
-def compare(actual, expected, *, atol=None, rtol=None, check_dtype=True, exact=False, equal_nan=False):
-    if not isinstance(actual, torch.Tensor):
-        raise TypeError('The candidate did not produce its declared tensor output')
-    if actual.shape != expected.shape or actual.device != expected.device:
-        raise ValueError('Candidate output shape/device violates the contract')
-    if check_dtype and actual.dtype != expected.dtype:
-        raise ValueError('Candidate output dtype violates the contract')
-    if not equal_nan and not torch.isfinite(actual).all():
-        raise ValueError('Candidate output contains nonfinite values')
-    try:
-        if exact:
-            if not torch.equal(actual, expected):
-                raise AssertionError('Exact output mismatch')
-        else:
-            torch.testing.assert_close(actual, expected, atol=atol, rtol=rtol,
-                                       check_dtype=check_dtype, equal_nan=equal_nan)
-    except AssertionError as exc:
-        raise NumericalMismatch(str(exc)) from exc
+def equal_bytes(a, b):
+    return torch.equal(a.detach().contiguous().view(torch.uint8), b.detach().contiguous().view(torch.uint8))
 
 
-def philox32(seed, count):
-    """Counter-based Philox4x32-10, independently evaluated using NumPy integers."""
-    mask = np.uint64(0xffffffff)
-    c0 = np.arange(count, dtype=np.uint64)
-    c1 = np.zeros(count,dtype=np.uint64); c2=c1.copy(); c3=c1.copy()
-    k0=np.uint64(seed & 0xffffffff); k1=np.uint64((seed>>32)&0xffffffff)
-    for _ in range(10):
-        pa=c0*np.uint64(0xD2511F53); pb=c2*np.uint64(0xCD9E8D57)
-        c0,c1,c2,c3=(pb>>np.uint64(32))^c1^k0,pb&mask,(pa>>np.uint64(32))^c3^k1,pa&mask
-        k0=(k0+np.uint64(0x9E3779B9))&mask; k1=(k1+np.uint64(0xBB67AE85))&mask
-    return c0.astype(np.uint32)
+class FrozenInputs:
+    def __init__(self, inputs):
+        self.inputs = list(inputs)
+        self.original = [x.detach().clone() for x in inputs]
+        self.snapshots = self.original
+        self.strides = [x.stride() for x in inputs]
+
+    def check(self):
+        for actual, snapshot, stride in zip(self.inputs, self.snapshots, self.strides):
+            if (actual.shape, actual.dtype, actual.device, actual.stride()) != (snapshot.shape, snapshot.dtype, snapshot.device, stride):
+                raise ValueError('Read-only input metadata changed')
+            if not equal_bytes(actual, snapshot): raise ValueError('Read-only input was modified')
+
+    def restore(self):
+        with torch.no_grad():
+            for actual, original in zip(self.inputs, self.original): actual.copy_(original)
 
 
-def swizzle_reference(rows, cols, group, *, dtype, device):
-    expected = torch.empty((rows,cols),dtype=dtype,device=device)
-    for i in range(rows):
-        for j in range(cols):
-            linear=i*cols+j
-            first=(linear//(group*cols))*group
-            width=min(group,rows-first)
-            ni=first+(linear%(group*cols))%width; nj=(linear%(group*cols))//width
-            expected[ni,nj]=linear
-    return expected
+class BackwardCheck(FrozenInputs):
+    def __init__(self, context):
+        super().__init__([context[k] for k in ('x', 'g', 'grad_output', 'rsigma_buffer')])
+        self.outputs = [context['dx_bench'], context['dg_tmp_bench']]
+        self.output_original = [x.clone() for x in self.outputs]
+        self.output_strides = [x.stride() for x in self.outputs]
+        self.centered, self.eps = context['ZERO_CENTERED_GAMMA'], context['eps']
+        self.atol, self.rtol = (1e-3, 1e-2) if self.inputs[0].dtype in (torch.float16, torch.bfloat16) else (1e-5, 1e-5)
+        x, g, go, r = self.original
+        # rsigma is an input to the timed backward, produced by protected forward.
+        torch.testing.assert_close(r, torch.rsqrt(x.float().square().mean(-1) + self.eps), atol=1e-5, rtol=1e-5)
+        self.reference()
+
+    def reference(self):
+        x, g, go, r = [x.float() for x in self.snapshots]
+        r = r[:, None]
+        gamma = g + (1 if self.centered else 0)
+        grad_sum = (go * x * gamma).mean(-1, keepdim=True)
+        dx = go * r * gamma - (r * r * r) * x * grad_sum
+        # The public kernel writes every per-row contribution, not its row sum.
+        dg_tmp = (go * x) * r
+        self.expected = [dx.to(self.outputs[0].dtype), dg_tmp]
+
+    def __call__(self, launch_result):
+        # A Triton launch returns a compiled-kernel handle; its actual declared
+        # outputs are the two preallocated buffers bound to this timed callable.
+        self.check()
+        for output, expected, original, stride in zip(self.outputs, self.expected, self.output_original, self.output_strides):
+            if (output.shape, output.dtype, output.device, output.stride()) != (expected.shape, expected.dtype, expected.device, stride):
+                raise ValueError('Backward output metadata violates the contract')
+            if any(output.untyped_storage().data_ptr() == x.untyped_storage().data_ptr() for x in self.inputs):
+                raise ValueError('Backward output aliases a read-only input')
+            if not bool(torch.isfinite(output).all()): raise ValueError('Nonfinite backward output')
+            try:
+                torch.testing.assert_close(output, expected, atol=self.atol, rtol=self.rtol)
+            except AssertionError as exc: raise NumericalMismatch(str(exc)) from exc
+
+    def fresh(self, launch_result):
+        x, g, go, r = self.original
+        rows = ((torch.arange(x.shape[0], device=x.device) % 5) - 2).to(x.dtype)[:, None] * .125
+        cols = ((torch.arange(x.shape[1], device=x.device) % 7) - 3).to(g.dtype) * .125
+        fresh_x = -x.flip(1) + rows
+        fresh_g = -g.flip(-1) + cols
+        fresh_go = go.flip(1) * .5 + cols[None, :]
+        fresh_r = torch.rsqrt(fresh_x.float().square().mean(-1) + self.eps)
+        self.snapshots = [fresh_x, fresh_g, fresh_go, fresh_r]
+        self.reference()
+        for actual, values in zip(self.inputs, self.snapshots): actual.copy_(values)
+        for output in self.outputs: output.fill_(float('nan'))
+
+    def restore(self):
+        super().restore()
+        for output, original in zip(self.outputs, self.output_original): output.copy_(original)
 
 
-def _cast_like(expected, actual):
-    return expected.to(device=actual.device,dtype=actual.dtype)
-
-
-def prepare(c, module):
-    x=c['x'].detach().float(); gamma=c['g'].float()+(1 if c['ZERO_CENTERED_GAMMA'] else 0)
-    go=c['grad_output'].float(); inv=torch.rsqrt((x*x).mean(-1,keepdim=True)+c['eps'])
-    xhat=x*inv; weighted=go*gamma
-    expected_dx=(weighted-xhat*(weighted*xhat).mean(-1,keepdim=True))*inv
-    expected_dg=(go*xhat).sum(0)
-    atol,rtol=(1e-3,1e-2) if c['x'].dtype in (torch.float16,torch.bfloat16) else (1e-5,1e-5)
-    def check(result):
-        compare(c['dx_bench'],expected_dx.to(c['dx_bench'].dtype),atol=atol,rtol=rtol)
-        compare(c['dg_tmp_bench'].sum(0).to(c['g'].dtype),expected_dg.to(c['g'].dtype),atol=atol,rtol=rtol)
-    return check
+def prepare(context, module):
+    return BackwardCheck(context)
