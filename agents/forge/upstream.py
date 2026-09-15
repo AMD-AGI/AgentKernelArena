@@ -156,6 +156,8 @@ def install_hooks(plan: dict) -> None:
     install_gate_targets()
     from agents.forge.deadline import install as install_deadline, bound_agent, bound_session
     install_deadline(plan)
+    from agents.forge.incumbent import install as install_incumbent
+    install_incumbent()
     if plan.get("agent_config", {}).get("codex_auth_mode") == "cli":
         from agents.forge.codex_auth import install_cli_auth
         install_cli_auth()

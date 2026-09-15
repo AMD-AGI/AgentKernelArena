@@ -60,13 +60,20 @@ nonzero exit keeps the native engine from scoring that output. These details hel
 diagnose compiler/runtime failures instead of receiving only a missing-result
 message.
 
+If the newly initialized candidate's actual measured path fails, the source-pinned
+compatibility layer clears its unverified incumbent timings. The independent
+baseline remains the score denominator. A first candidate may establish a valid
+incumbent even when it is slower than that baseline, but only after full
+correctness, all three benchmark suites with complete cases, and canonical
+acceptance. The native loop then commits and publishes it normally. This is
+recorded as establishing the first scoreable candidate, not a speed improvement.
+Later candidates use the normal improvement rule. Failed or incomplete
+measurements, correctness failures and integrity violations cannot use this path.
+
 ### HIP/Triton initialization
 
-The examined loop can continue after its initial candidate benchmark fails when
-external baseline timings exist, but its first incumbent then defaults to those
-baseline timings. A first correct implementation slower than that baseline can
-be rejected as an optimization. Initialization therefore uses the existing Forge
-correctness-only implementer before entering the ordinary performance search:
+Initialization uses the existing Forge correctness-only implementer before
+entering the ordinary performance search:
 
 1. Keep the task's provided baseline and references independent. Measure baseline
    timing through the public baseline actions. Preserve existing candidate stubs
