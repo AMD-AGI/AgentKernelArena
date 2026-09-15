@@ -53,6 +53,13 @@ still applies. The implementer session budget also includes its in-session
 checks, so a task with long checks needs enough session time as well as campaign
 time; increasing a driver ceiling does not extend either budget.
 
+If a task process exits before emitting a valid protocol result, the bridge
+reports its exit code and the last 6,000 characters of its output. The diagnostic
+is JSON-escaped on one line, separate from the bridge's gate/timing lines. The
+nonzero exit keeps the native engine from scoring that output. These details help the native implementer
+diagnose compiler/runtime failures instead of receiving only a missing-result
+message.
+
 ### HIP/Triton initialization
 
 The examined loop can continue after its initial candidate benchmark fails when

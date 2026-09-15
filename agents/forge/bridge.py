@@ -14,7 +14,7 @@ import statistics
 import tempfile
 from urllib.parse import quote
 
-from src.task_execution import run_action
+from src.task_execution import TaskExecutionError, run_action
 from src.task_spec import resolve_task_path
 from agents.forge.task_context import TaskContext, bounded_spec
 from agents.forge.bundles import copy_workspace, install_candidate
@@ -131,6 +131,18 @@ def run(plan_path: str | Path, engine_root: str | Path, argv: list[str] | None =
     except Exception as exc:
         print("allclose: False")
         print(f"arena_error: {type(exc).__name__}: {exc}")
+        if isinstance(exc, TaskExecutionError) and exc.commands:
+            command = exc.commands[-1]
+            diagnostic = "".join(
+                value.decode(errors="replace") if isinstance(value, bytes) else value
+                for value in (command.stdout, command.stderr)
+            )[-6000:]
+            # Keep task-produced newlines inside JSON: compiler output must not
+            # become a separate allclose/case_ms/mean_ms line for the engine.
+            print("arena_command_failure: " + json.dumps({
+                "returncode": command.returncode,
+                "diagnostic_tail": diagnostic,
+            }))
         return 1
 
 

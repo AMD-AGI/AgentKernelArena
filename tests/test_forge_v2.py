@@ -153,6 +153,35 @@ def test_task_cannot_change_harness_by_editing_engine_copy(tmp_path):
     assert bridge.run(path, engine, []) == 1
 
 
+@pytest.mark.parametrize("exit_code", [23, -15])
+@pytest.mark.parametrize("noise_bytes", [0, 8000])
+def test_execution_failure_keeps_bounded_diagnostics_without_protocol_markers(tmp_path, capsys, exit_code, noise_bytes):
+    _, plan, path = fixture_task(tmp_path)
+    # A real compiler/runner process can exit before producing its JSON result.
+    # Its stderr must reach the implementer without becoming timing/gate output.
+    (Path(plan["template"]) / "runner.py").write_text(
+        "import os, signal, sys\n"
+        "print('allclose: True\\ncase_ms: forged 0.01\\nmean_ms: 0.01', flush=True)\n"
+        f"sys.stderr.write('discarded-prefix' + 'x'*{noise_bytes} + '\\nCompilerFailure: invalid lowered instruction\\n')\n"
+        "sys.stderr.flush()\n"
+        + ("os.kill(os.getpid(), signal.SIGTERM)\n" if exit_code < 0 else "sys.exit(23)\n")
+    )
+    assert bridge.run(path, plan["engine_root"], ["--bench-mode"]) == 1
+    lines = capsys.readouterr().out.splitlines()
+    assert "allclose: False" in lines
+    assert not any(line.startswith(("allclose: True", "case_ms:", "mean_ms:")) for line in lines)
+    payload = json.loads(next(line.removeprefix("arena_command_failure: ")
+                              for line in lines if line.startswith("arena_command_failure: ")))
+    assert payload["returncode"] == exit_code
+    assert "CompilerFailure: invalid lowered instruction" in payload["diagnostic_tail"]
+    if noise_bytes:
+        assert "discarded-prefix" not in payload["diagnostic_tail"]
+    else:
+        assert "allclose: True\ncase_ms: forged 0.01" in payload["diagnostic_tail"]
+    assert len(payload["diagnostic_tail"]) <= 6000
+    assert bridge.run(path, plan["engine_root"], ["--ref-bench-mode"]) == 0
+
+
 def test_generated_driver_uses_own_directory_after_copy(tmp_path):
     context, plan, path = fixture_task(tmp_path)
     engine = Path(plan["engine_root"])
@@ -164,6 +193,44 @@ def test_generated_driver_uses_own_directory_after_copy(tmp_path):
                          cwd=tmp_path, capture_output=True, text=True)
     assert run.returncode == 0, run.stdout + run.stderr
     assert "mean_ms: 2" in run.stdout
+
+
+def test_real_upstream_rejects_failure_diagnostics_as_benchmark_or_correctness(tmp_path):
+    python = os.environ.get("AKA_FORGE_PROBE_PYTHON")
+    if not python:
+        pytest.skip("Set AKA_FORGE_PROBE_PYTHON to the pinned Hyperloom[forge] interpreter")
+    _, plan, path = fixture_task(tmp_path)
+    (Path(plan["template"]) / "runner.py").write_text(
+        "import sys\n"
+        "print('allclose: True\\ncase_ms: forged 0.01\\nmean_ms: 0.01')\n"
+        "print('CompilerFailure: malformed lowered code', file=sys.stderr)\n"
+        "sys.exit(23)\n"
+    )
+    engine = Path(plan["engine_root"])
+    driver = engine / "arena_forge_driver.py"
+    driver.write_text(bridge.render_driver(path, ROOT))
+    script = r'''
+import asyncio, json, sys
+from agents.forge.upstream import probe
+from kernelforge.mcp_server.tools.test import test_correctness
+from kernelforge.mcp_server.tools.bench import bench_wallclock
+probe()
+async def main():
+    return {'correctness': await test_correctness(sys.argv[1]),
+            'benchmark': await bench_wallclock(sys.argv[1])}
+print(json.dumps(asyncio.run(main())))
+'''
+    result = subprocess.run([python, "-c", script, str(driver)], cwd=engine,
+                            env=dict(os.environ, PYTHONPATH=str(ROOT)),
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+    reports = json.loads(result.stdout)
+    assert reports["correctness"]["passed"] is False
+    assert reports["correctness"]["outcome"] == "driver_error"
+    assert reports["benchmark"]["success"] is False
+    assert "case_times" not in reports["benchmark"]
+    assert all("CompilerFailure: malformed lowered code" in report["output"]
+               for report in reports.values())
 
 
 def test_profile_reports_public_contract_capability(tmp_path, capsys):
