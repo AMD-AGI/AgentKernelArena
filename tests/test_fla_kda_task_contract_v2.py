@@ -268,6 +268,9 @@ def test_actual_framework_guard_allows_kernel_edits_but_rejects_wrapper_bypass(t
 @pytest.mark.parametrize('name,missing', [('triton_kda_gate','g_bias'),('triton_fla_scaled_dot_kkt','g')])
 def test_optional_gate_controls_reject_omitted_dependency(name,missing,monkeypatch):
     root=ROOT/'tasks/triton2triton/vllm'/name
+    # The standalone runner sets its cwd at import time. Register that change
+    # with pytest so later agent CLI tests still start from the original cwd.
+    monkeypatch.chdir(root)
     for module in list(sys.modules):
         if module=='scripts' or module.startswith('scripts.'):monkeypatch.delitem(sys.modules,module)
     monkeypatch.syspath_prepend(str(root))

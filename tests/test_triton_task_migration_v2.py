@@ -826,14 +826,21 @@ def test_mxfp_unscaled_reference_preserves_fp32_operands(relative, monkeypatch):
     with pytest.raises(reference.NumericalMismatch): check(output)
     output.fill_(0.25)
     a.zero_(); b.zero_()
-    check(output)  # The expected answer was frozen before the candidate call.
+    if 'triton2triton' in relative:
+        # The stronger checker preserves the independent expected answer and
+        # also rejects an implementation that mutates its read-only operands.
+        assert check.expected.item() == 0.25
+        with pytest.raises(ValueError, match='Read-only'): check(output)
+        check.restore()
+    else:
+        check(output)  # The expected answer was frozen before the candidate call.
     output.zero_()
     with pytest.raises(reference.NumericalMismatch): check(output)
     context.update(a_tensor=torch.tensor([[1., 2.]], dtype=torch.float16),
                    b_tensor=torch.tensor([[3.], [4.]], dtype=torch.float16))
     output.fill_(11)
     reference.prepare(context, None)(output)
-    with pytest.raises(RuntimeError, match='Scaled MXFP'):
+    with pytest.raises(RuntimeError, match='Scaled (MXFP|performance)'):
         reference.prepare({**context, 'is_scaled_mode': True}, None)
 
 
@@ -855,8 +862,12 @@ def test_mxfp_scaled_matrix_reference_respects_32_element_groups(relative):
 @pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/test_matmul_MXFP',
                                     'tasks/triton2triton/rocmbench/hard/test_matmul_MXFP'])
 @pytest.mark.parametrize('mode', ['correct', 'zero', 'compiler_error'])
-def test_mxfp_scaled_pipeline_runs_on_hip_and_rejects_zero_kernel(relative, mode):
+def test_mxfp_scaled_pipeline_runs_on_hip_and_rejects_zero_kernel(relative, mode, monkeypatch):
     source = ROOT/relative/'test_matmul_MXFP.py'
+    checked_replay = 'triton2triton' in relative
+    if checked_replay:
+        reference = module_at(ROOT/relative/'_arena_reference.py', monkeypatch)
+        monkeypatch.setitem(__import__('sys').modules, '_arena_reference', reference)
     ref = pure_functions(source, ['mxfp_to_bf16_torch', 'dot_scale_ref'])
     launches = []
     class Kernel:
@@ -872,7 +883,7 @@ def test_mxfp_scaled_pipeline_runs_on_hip_and_rejects_zero_kernel(relative, mode
         is_cuda=lambda: False, is_hopper=lambda: False, is_hip_mi200=lambda: False,
         triton=SimpleNamespace(cdiv=lambda a, b: (a+b-1)//b), matmul_kernel=Kernel(),
         dot_scale_ref=ref.dot_scale_ref, result_gold={}))
-    request = SimpleNamespace(node=SimpleNamespace(name='scaled-pipeline'))
+    request = SimpleNamespace(node=SimpleNamespace(name='scaled-pipeline', user_properties=[]))
     run = lambda: harness.test_pipeline_matmul(True, request, device='cpu')
     if mode == 'correct': run()
     elif mode == 'compiler_error':
@@ -882,7 +893,8 @@ def test_mxfp_scaled_pipeline_runs_on_hip_and_rejects_zero_kernel(relative, mode
         # The original small-scale check passed; the second known-answer launch
         # must reject zero, retaining the same tolerance and all original cases.
         assert len(launches) == 2
-    assert len(launches) == (1 if mode == 'compiler_error' else 2)
+    expected_launches = 1 if mode == 'compiler_error' else 3 if checked_replay and mode == 'correct' else 2
+    assert len(launches) == expected_launches
     assert all(row[:3] == ((512, 128), (512, 8), (256, 512)) for row in launches)
     assert all(row[3] == dict(NUM_STAGES=4, a_type='e2m1', b_type='e5m2') for row in launches)
 
@@ -965,12 +977,13 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
             b'    x_grouped = x.reshape(*scale.shape, -1)\n    x_upcast = mxfp_to_bf16_torch(x_grouped, scale, type_x).reshape(x.shape[0], -1)')
         # Only the separately exercised known-answer diagnostic is additional;
         # all old source bytes, including gates/parameters, remain protected.
-        after = source.read_text()
-        start = after.index('\n    # Unscored known-answer control at an ordinary E8M0 scale.')
-        end = after.index('\n\n# Define these globally', start)
-        extra = after[start:end].rstrip('\n') + '\n'
-        anchor = b'    torch.testing.assert_close(ref_out, output, atol=atol, rtol=rtol, equal_nan=scale)\n'
-        expected_source = expected_source.replace(anchor, anchor + extra.encode())
+        if 'instruction2triton' in task.parts:
+            after = source.read_text()
+            start = after.index('\n    # Unscored known-answer control at an ordinary E8M0 scale.')
+            end = after.index('\n\n# Define these globally', start)
+            extra = after[start:end].rstrip('\n') + '\n'
+            anchor = b'    torch.testing.assert_close(ref_out, output, atol=atol, rtol=rtol, equal_nan=scale)\n'
+            expected_source = expected_source.replace(anchor, anchor + extra.encode())
     if task.name in {'test_block_copy', 'test_load_reduce', 'softmax', 'naive_softmax'}:
         # Reviewed correctness bodies add real compiler rejection (block copy)
         # or independent pre-call snapshots (load reduction and softmax). Preserve
@@ -1013,7 +1026,44 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
     }))
 '''
         expected_source = expected_source.replace(anchor, anchor + addition.encode())
-    if task.name == 'test_cast_matmul':
+    reviewed_matmul_bodies = {
+        'test_gemm_no_scf': ({'test_gemm_no_scf'}, {'test_transposed_left_control'}),
+        'test_iv_dependent_matmul': ({'test_iv_dependent_matmul'}, {'test_partial_tile_control'}),
+        'test_chained_matmul': ({'test_chained_matmul'}, {'test_signed_partial_m_control'}),
+        'test_matmul_MXFP': ({'test_mxfp_to_bf16_numerical_correctness', 'test_pipeline_matmul'},
+                             {'test_converter_encoding_control'}),
+    }
+    if task.name in reviewed_matmul_bodies and not (
+            task.name == 'test_matmul_MXFP' and 'instruction2triton' in task.parts):
+        # Dedicated matmul tests pin original kernels, wrappers, gates,
+        # manifest rows and timing options, then execute the added negative
+        # controls. Here also preserve original signatures and parametrization
+        # of the rewritten correctness bodies, plus every remaining source AST.
+        rewritten, added = reviewed_matmul_bodies[task.name]
+        def matmul_original_contract(raw):
+            tree = ast.parse(raw)
+            tree.body = [n for n in tree.body if not isinstance(n, ast.FunctionDef)
+                         or n.name not in added]
+            for node in tree.body:
+                if not isinstance(node, ast.FunctionDef):
+                    continue
+                if node.name in rewritten:
+                    node.body = [ast.Pass()]
+                elif task.name == 'test_iv_dependent_matmul' and node.name == 'test_performance':
+                    # Remove only the reviewed obsolete K-size/smem heuristics;
+                    # actual compilation failures remain failures in the runner.
+                    old_conditions = {
+                        'BLOCK_K > K',
+                        'smem_elements_needed * elem_size * (num_stages_launch if num_stages_launch > 1 else 1) > 65536',
+                    }
+                    node.body = [n for n in node.body if not (
+                        isinstance(n, ast.If) and ast.unparse(n.test) in old_conditions
+                        or isinstance(n, ast.Assign) and any(
+                            isinstance(t, ast.Name) and t.id == 'smem_elements_needed'
+                            for t in n.targets))]
+            return ast.dump(tree, include_attributes=False)
+        assert matmul_original_contract(source.read_bytes()) == matmul_original_contract(expected_source)
+    elif task.name == 'test_cast_matmul':
         # The reviewed rewrite executes the previously skipped valid dtype
         # combinations and adds pristine/output checks plus three unscored
         # stride/tail controls. Preserve all remaining source AST, including
@@ -1293,7 +1343,7 @@ def test_add_canonical_samples_observe_exact_replay_and_reject_wrong_output(monk
 
 # These adapters use actual TimedRun outputs; their dedicated contract modules
 # exercise event metadata, changed inputs and rejected fallback paths.
-@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_add_kernel', 'test_block_copy', 'test_randn', 'test_load_reduce', 'softmax', 'naive_softmax', 'test_cast_matmul'}], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
+@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_add_kernel', 'test_block_copy', 'test_randn', 'test_load_reduce', 'softmax', 'naive_softmax', 'test_cast_matmul', 'test_gemm_no_scf', 'test_iv_dependent_matmul', 'test_chained_matmul'} and not (p.parent.name == 'test_matmul_MXFP' and 'triton2triton' in p.parts)], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
 def test_rocm_timing_evidence_retains_canonical_fallback_reason(monkeypatch, path):
     adapter = module_at(path.parent/'_arena_eval.py', monkeypatch)
     expected = torch.tensor([2.])

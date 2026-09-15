@@ -285,12 +285,12 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     assert config_count == 438
     assert problems == []
     assert sum(counts.values()) == config_count
-    # Add, block-copy, RNG, load-reduce and both softmax variants call the
-    # canonical sample API directly to validate and replay measured outputs.
+    # Replay-aware adapters call the canonical sample API directly so their
+    # checks observe the exact invocation measured by the timer.
     assert counts == {
-        "canonical_python": 250,
+        "canonical_python": 257,
         "native_graph_driver": 2,
-        "rocmbench_adapter": 47,
+        "rocmbench_adapter": 40,
         "vllm_adapter": 139,
     }
 
