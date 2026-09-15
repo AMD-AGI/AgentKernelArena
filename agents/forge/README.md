@@ -189,6 +189,14 @@ process-local changes to the pinned Forge factory and run-spec constructor.
 The public task assessment and final candidate installation still enforce the
 task boundary, including symbol-scoped colocated Python harnesses.
 
+The in-session gate uses the same explicit-target exemption as the reviewed
+SDK workspace guard. A declared implementation such as `test_add_kernel.py`
+is editable despite a default test-name glob. The generated driver and explicit
+protected paths remain protected even when also listed as targets. This does
+not permit editing colocated tests: the public assessment bridge checks the
+declared symbol boundary against its independent template before compilation,
+correctness, or performance, and final installation repeats that check.
+
 For large source snapshots, the compatibility layer resolves the exact protected
 path set once per inventory scan. The reviewed upstream walker otherwise repeats
 that work for every visited file, delaying the first model call quadratically.

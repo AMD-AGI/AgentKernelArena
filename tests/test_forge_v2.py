@@ -440,6 +440,29 @@ def test_internal_absolute_symlinks_rebind_to_snapshot(tmp_path):
     assert (destination / "alias.txt").resolve().is_relative_to(destination)
 
 
+def test_test_named_target_still_checks_colocated_harness_before_execution(tmp_path):
+    context, plan, _ = fixture_task(tmp_path, language="triton")
+    data = json.loads(context.path.read_text())
+    data["task_config"]["candidate"] = {
+        "language": "triton",
+        "editable": [{"path": "test_impl.py", "scope": "symbols",
+                      "symbols": ["compute"], "allow_new_helpers": True}],
+    }
+    context.path.write_text(json.dumps(data))
+    original = "def compute(x):\n    return x\n\ndef test_oracle():\n    assert compute(3) == 6\n"
+    template, engine = Path(plan["template"]), Path(plan["engine_root"])
+    for root in (template, engine):
+        (root / "test_impl.py").write_text(original)
+    # Real public task actions pass with a legal symbol edit; filename alone
+    # does not make the declared implementation a protected file.
+    (engine / "test_impl.py").write_text(original.replace("return x", "return x * 2"))
+    assert bridge.execute(plan, engine, role="candidate", action="correctness").passed
+    # The same native target exemption must never authorize its test body.
+    (engine / "test_impl.py").write_text(original.replace("assert compute(3) == 6", "assert True"))
+    with pytest.raises(ValueError, match="protected statements"):
+        bridge.execute(plan, engine, role="candidate", action="performance")
+
+
 def test_nested_session_children_are_reaped_after_timeout(tmp_path):
     """A grandchild calls setsid(), so killing only the parent group is insufficient."""
     script = r'''

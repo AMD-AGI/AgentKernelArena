@@ -164,3 +164,46 @@ else:
     raise AssertionError('unreviewed policy accepted')
 assert workspace_policy.protected_path_inventory is original
 ''')
+
+
+def test_real_gate_honors_targets_without_exempting_explicit_protection(tmp_path):
+    run_upstream(tmp_path, r'''
+import sys
+from pathlib import Path
+from agents.forge import upstream, gate_targets, protected_inventory
+from kernelforge.loop import insession_gate
+upstream.probe()
+protected_inventory.install()
+gate_targets.install()
+installed = insession_gate.InSessionGate
+gate_targets.install()
+assert insession_gate.InSessionGate is installed
+root = Path(sys.argv[1])
+root.joinpath('tests').mkdir()
+target = root/'tests/test_impl.py'
+oracle = root/'tests/test_oracle.py'
+driver = root/'arena_forge_driver.py'
+explicit = root/'reference.data'
+for path in (target, oracle, driver, explicit):
+    path.write_text('original')
+gate = insession_gate.InSessionGate(str(driver), 0, workspace=root,
+    kernel_file=str(target), target_files=[str(target), str(driver), str(explicit)],
+    extra_protected_paths=[str(explicit)], correctness_only=True)
+assert not gate._is_protected(str(target))
+assert not gate._is_protected('tests/test_impl.py')
+assert gate._is_protected(str(oracle))
+assert gate._is_protected(str(driver))
+assert gate._is_protected(str(explicit))
+target.write_text('legal candidate modification')
+assert gate._protected_changes() == ''
+oracle.write_text('changed oracle')
+assert 'test_oracle.py' in gate._protected_changes()
+gate.restore_protected_files()
+assert oracle.read_text() == 'original'
+assert target.read_text() == 'legal candidate modification'
+explicit.write_text('changed reference')
+assert 'reference.data' in gate._protected_changes()
+gate.restore_protected_files()
+driver.write_text('changed driver')
+assert 'arena_forge_driver.py' in gate._protected_changes()
+''')
