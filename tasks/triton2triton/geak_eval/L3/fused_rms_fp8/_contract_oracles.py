@@ -58,7 +58,14 @@ def check_quant(actual, expected, *, atol=0.1, rtol=0.1):
     # A scale has its own meaning. Compensating wrong q and scale cannot pass
     # merely because their product happens to reconstruct the right values.
     torch.testing.assert_close(scale, ref_scale, atol=0, rtol=rtol)
-    torch.testing.assert_close(q.float(), ref_q.float(), atol=atol, rtol=rtol)
+    assert torch.isfinite(q.float()).all() and torch.isfinite(ref_q.float()).all()
+    def ordered_codes(value):
+        bits = value.contiguous().view(torch.uint8).to(torch.int16)
+        return torch.where(bits < 128, 128 + bits, 128 - (bits & 127))
+    # FP32 rsqrt/reduction/reciprocal rounding at an FP8 midpoint can choose
+    # either adjacent code (one step can be 12.5%, greater than a 10% float
+    # tolerance). More than one representable FP8 step is always rejected.
+    assert ((ordered_codes(q) - ordered_codes(ref_q)).abs() <= 1).all(), 'FP8 output differs by more than one representable step'
     width = q.shape[1]
     expanded = scale.repeat_interleave(128, dim=-1)[:, :width]
     ref_expanded = ref_scale.repeat_interleave(128, dim=-1)[:, :width]

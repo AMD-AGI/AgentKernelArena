@@ -142,10 +142,6 @@ class TopKContractTests(unittest.TestCase):
             self.check((torch.tensor([[2., 2.]]), torch.tensor([[0, 0]])), torch.topk(x, 2), x)
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
 class AdditionalOperatorContractTests(unittest.TestCase):
     def test_mla_nonfinite_tail_cannot_use_five_percent_allowance(self):
         check = function(TASKS / 'L1/mla_decode/test_kernel_harness.py', 'check_correctness_val',
@@ -279,3 +275,42 @@ class AutogradOutputStorageTests(unittest.TestCase):
         # legitimate storage reuse, reproducing the reported GPU guard error.
         with self.assertRaises(RuntimeError):
             original[0] - 3
+
+
+class DiscreteRoundingContractTests(unittest.TestCase):
+    def test_fp8_adjacent_codes_and_two_step_error(self):
+        oracle = load_file('_geak_fp8_step_oracle', TASKS / 'L3/fused_rms_fp8/_contract_oracles.py')
+        dtype = torch.float8_e4m3fn
+        ref = (torch.full((1, 128), 256., dtype=dtype), torch.full((1, 1), .001))
+        # Adjacent codes 256/288 straddle the 272 midpoint; reconstructed
+        # values still satisfy the unchanged numerical gate.
+        oracle.check_quant((torch.full((1, 128), 288., dtype=dtype), ref[1]), ref)
+        with self.assertRaisesRegex(AssertionError, 'more than one'):
+            oracle.check_quant((torch.full((1, 128), 320., dtype=dtype), ref[1]), ref)
+
+    def test_only_possible_first_saturated_expert_is_admissible(self):
+        check = function(TASKS / 'L1/moe_routing_sigmoid_top1/test_kernel_harness.py', '_check_timed_routing')
+        lower = torch.tensor([[.9, .99999988, .95, 1., 1.]])
+        upper = torch.tensor([[.9, 1., .95, 1., 1.]])
+        weights = torch.ones(1, 2)
+        expected = (torch.tensor([[3, 5]], dtype=torch.int32), weights)
+        check((torch.tensor([[1, 5]], dtype=torch.int32), weights), expected, lower, upper)
+        for wrong in (0, 2, 4, 5):
+            with self.assertRaises(AssertionError):
+                check((torch.tensor([[wrong, 5]], dtype=torch.int32), weights), expected, lower, upper)
+
+    def test_unsaturated_routing_and_original_integer_ids_stay_exact(self):
+        path = TASKS / 'L1/moe_routing_sigmoid_top1/test_kernel_harness.py'
+        check = function(path, '_check_timed_routing')
+        scores = torch.tensor([[.5, .5, .4]])
+        weights = torch.tensor([[.5, 1.]])
+        expected = (torch.tensor([[0, 3]], dtype=torch.int32), weights)
+        wrong = (torch.tensor([[1, 3]], dtype=torch.int32), weights)
+        with self.assertRaises(AssertionError):
+            check(wrong, expected, scores, scores)
+        with self.assertRaises(AssertionError):
+            function(path, '_check_routing')(wrong, expected)
+
+
+if __name__ == '__main__':
+    unittest.main()

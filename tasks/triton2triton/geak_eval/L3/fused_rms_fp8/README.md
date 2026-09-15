@@ -56,7 +56,9 @@ quantized values, both unquantized normalized outputs and residual output.
 Every returned tensor must also have the specified dtype/shape/device and be finite.
 Independent FP32 accumulation oracles additionally check raw FP8 values and
 positive per-group scales; scales use 10% relative error without a large absolute
-allowance. Compensating an incorrect scale with an incorrect quantized value is
+allowance. Raw values may differ by at most one representable FP8 step, accounting
+for FP32 arithmetic choosing opposite sides of a quantization midpoint. The
+original reconstructed-value `atol=rtol=0.1` still applies independently. Compensating an incorrect scale with an incorrect quantized value is
 not an acceptable representation of the specified quantization.
 
 Seven additional **unscored** cases exercise all four editable entrypoints:

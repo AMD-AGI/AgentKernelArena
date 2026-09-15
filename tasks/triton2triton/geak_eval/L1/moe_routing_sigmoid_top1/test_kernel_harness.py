@@ -189,6 +189,44 @@ def _check_routing(actual, expected, atol=1e-4, rtol=1e-4):
     torch.testing.assert_close(actual[1], expected[1], atol=atol, rtol=rtol)
 
 
+def _check_timed_routing(actual, expected, lower, upper):
+    ids, weights = actual
+    ref_ids, ref_weights = expected
+    torch.testing.assert_close(weights, ref_weights, atol=1e-4, rtol=1e-4)
+    torch.testing.assert_close(ids[:, 1:], ref_ids[:, 1:], atol=1e-4, rtol=1e-4)
+    selected = ids[:, 0].long()
+    assert ((selected >= 0) & (selected < lower.shape[1])).all(), 'Invalid expert ID'
+    # Normally the index is exact. The only exception is an ambiguous first
+    # saturated sigmoid value: FP32 accumulation can round a boundary logit
+    # one way or the other, making that expert's score equal to 1.0.
+    first_certain = torch.where(lower == 1, torch.arange(lower.shape[1], device=lower.device),
+                                lower.shape[1]).amin(dim=1)
+    possible = upper.gather(1, selected[:, None]).squeeze(1) == 1
+    ambiguous_saturation = ((ref_weights[:, 0] == 1) & (weights[:, 0] == 1)
+                            & (lower.amax(dim=1) == 1) & possible
+                            & (selected <= first_certain))
+    assert ((ids[:, 0] == ref_ids[:, 0]) | ambiguous_saturation).all(), 'Routing selected a nonmaximal expert'
+
+
+def _timed_routing_contract():
+    bounds = {}
+    def reference(saved):
+        expected = _routing_reference(saved)
+        # An independent FP64 dot locates the narrow FP32 saturation boundary.
+        # Adjacent FP32 logits bracket one final accumulation-rounding step;
+        # this is not the task's much larger 1e-4 output tolerance.
+        exact_dot = saved['x'].double() @ saved['w'].double()
+        rounded = exact_dot.float()
+        lower_dot = torch.nextafter(rounded, torch.full_like(rounded, -float('inf')))
+        upper_dot = torch.nextafter(rounded, torch.full_like(rounded, float('inf')))
+        bounds['lower'] = 1 / (1 + torch.exp(-lower_dot))
+        bounds['upper'] = 1 / (1 + torch.exp(-upper_dot))
+        return expected
+    def check(actual, expected):
+        _check_timed_routing(actual, expected, bounds['lower'], bounds['upper'])
+    return reference, check
+
+
 CONTROL_CASES = [
     {'test_case_id': 'control-routing-no-shared', 'params': {'shared': False, 'ties': False}},
     {'test_case_id': 'control-routing-leftmost-tie', 'params': {'shared': True, 'ties': True}},
@@ -335,9 +373,10 @@ def run_benchmark(shapes, warmup, iterations):
             return routing_sigmoid_top1(x, w, TOPK, fused_shared_experts=True)
 
         ref_time, ref_meta = _gpu_median_time(_run_ref, warmup, iterations)
+        timed_reference, timed_check = _timed_routing_contract()
         kernel_time, kernel_meta = checked_benchmark(
             benchmark_cuda_graph_or_events, _run_kernel, inputs={'x': x, 'w': w},
-            reference=_routing_reference, check=_check_routing,
+            reference=timed_reference, check=timed_check,
             perturb=lambda saved: {**saved, 'x': -saved['x']},
             warmup=warmup, repetition=iterations,
         )

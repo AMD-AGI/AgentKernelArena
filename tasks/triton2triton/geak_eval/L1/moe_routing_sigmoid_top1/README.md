@@ -64,3 +64,15 @@ place and poisoning writable outputs. Its complete outputs must match a newly
 computed private oracle. Every read-only input is checked byte-for-byte and
 restored in `finally`, including failure paths. These checks run outside timing
 and identically for the frozen initial candidate and submitted candidate.
+
+For the newly checked noninteger timed inputs, indices remain exact except for
+an ambiguous **first saturated sigmoid score**. An independent FP64 dot is
+rounded to FP32, and its adjacent FP32 logits define lower/upper sigmoid scores.
+An alternative index is accepted only if it can reach exactly 1.0, the global
+maximum is certainly 1.0, its returned weight is exactly 1.0, and it precedes
+(or equals) the first expert certainly saturated. Thus clearly nonmaximal
+experts, invalid IDs, and later indices after a guaranteed tie are rejected.
+Ordinary unsaturated selection remains exact. The original integer-input ID
+checks and all original `1e-4` weight gates remain unchanged.
+This addresses arithmetic at the saturation boundary, not a blanket tolerance
+on integer IDs or permission to choose any similarly weighted expert.
