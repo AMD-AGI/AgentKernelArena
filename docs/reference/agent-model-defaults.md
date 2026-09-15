@@ -96,18 +96,19 @@ owned by the shared framework and the
 
 ## Invocation and failure contract
 
-The tested invocation forms, with the prompt passed as a literal argument, are:
+The launchers use these invocation forms. Codex and Claude read the prompt from
+stdin; Cursor receives a literal prompt argument:
 
 ```text
 codex exec --json --dangerously-bypass-approvals-and-sandbox
   --skip-git-repo-check --ephemeral -c features.memories=false
   --cd <workspace> --model <model>
-  -c 'model_reasoning_effort="<effort>"' -- <prompt>
+  -c 'model_reasoning_effort="<effort>"' -- -
 
 claude --print --verbose --output-format stream-json
   --include-partial-messages --permission-mode bypassPermissions
   --no-session-persistence --model <model> --effort <effort>
-  [--max-budget-usd <budget>] -- <prompt>
+  [--max-budget-usd <budget>] --input-format text
 
 cursor-agent --force --print --output-format stream-json
   --stream-partial-output --trust --workspace <workspace>
@@ -116,7 +117,12 @@ cursor-agent --force --print --output-format stream-json
 
 These are displayed across multiple lines for readability; launchers construct
 argv lists, not shell command strings. Each resolved executable is invoked
-directly, including paths with spaces. Claude receives `IS_SANDBOX=1` and
+directly, including paths with spaces. For stdin, the launcher passes a seekable
+anonymous file containing the complete prompt. This avoids command-line size
+limits and pipe-write stalls before timeout supervision starts. The same
+transport is used by task_validator. Subprocess tests cover large Unicode
+prompts; the historical live probes below predate this transport change.
+Claude receives `IS_SANDBOX=1` and
 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` through its subprocess environment. Existing
 permissive tool execution is retained for Arena's controlled runtime; it does
 not turn a privileged container into a security sandbox. Cursor's `--trust`
