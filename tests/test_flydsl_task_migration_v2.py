@@ -132,6 +132,7 @@ def test_declaring_flydsl_without_executing_it_is_rejected():
 
 
 CANDIDATE_AUDIT_TASKS = [ROOT / "tasks/torch2flydsl" / name for name in (
+    'per_tensor_fp8_quant_kernel', 'per_token_fp8_quant_kernel', 'per_1x128_fp8_quant_kernel', 'per_token_i8_quant_kernel',
     "layernorm2d_kernel", "layernorm2d_with_add_kernel",
     'gemm_a8w8_kernel', 'gemm_a8w8_per_token_scale_kernel', 'gemm_a8wfp4_kernel', 'gemm_afp4wfp4_kernel', 'gemm_afp8wfp8_kernel',
     'gemm_a16w8_blockscale_kernel', 'gemm_a16wfp4_kernel', 'gemm_a4w4_kernel', 'gemm_a8w8_blockscale_kernel',
@@ -515,6 +516,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
             fn = _RemoveAddedReplayChecks().visit(fn)
         if name in {"layernorm2d_kernel", "layernorm2d_with_add_kernel"}:
             fn = _RemoveLayernormChecks().visit(fn)
+        if name in _STANDARD_QUANT_NAMES:
+            fn = _RemoveStandardQuantChecks().visit(fn)
         if name in _QUANT_GEMM_CONTROL_NAMES:
             fn = _RemoveQuantGemmChecks().visit(fn)
         if name == "fused_add_rmsnorm_kernel":
@@ -2976,4 +2979,108 @@ def test_layernorm_original_numeric_inputs_and_timing_preserved():
         for fn in tree.body:
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 restored=_RemoveLayernormChecks().visit(fn)
+                assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
+
+
+_STANDARD_QUANT_NAMES=['per_tensor_fp8_quant_kernel', 'per_token_fp8_quant_kernel', 'per_1x128_fp8_quant_kernel', 'per_token_i8_quant_kernel']
+
+
+class _RemoveStandardQuantChecks(_RemoveAddedReplayChecks):
+    def visit_Expr(self,node):
+        call=node.value
+        if isinstance(call,ast.Call):
+            if getattr(call.func,'id',None)=='_checked_quant_pair':return None
+            if isinstance(call.func,ast.Attribute) and call.func.attr=='update' and call.args and isinstance(call.args[0],ast.Call) and getattr(call.args[0].func,'id',None)=='validate':return None
+        return super().visit_Expr(node)
+    def visit_Assign(self,node):
+        if len(node.targets)==1 and getattr(node.targets[0],'id',None)=='validate':return None
+        return super().visit_Assign(node)
+    def visit_Call(self,node):
+        if getattr(node.func,'id',None)=='_checked_quant_pair':return self.visit(node.args[0])
+        if getattr(node.func,'id',None)=='_mean_ms':node.keywords=[x for x in node.keywords if x.arg!='validate']
+        return super().visit_Call(node)
+    def visit_FunctionDef(self,node):
+        if node.name=='_mean_ms':node.args.kwonlyargs=[];node.args.kw_defaults=[]
+        return self.generic_visit(node)
+
+
+@pytest.mark.parametrize('name',_STANDARD_QUANT_NAMES)
+@pytest.mark.parametrize('function',['run_benchmark','arena_benchmark'])
+@pytest.mark.parametrize('provided',[True,False])
+@pytest.mark.parametrize('behavior',['correct','measured_wrong','replay_wrong','cached_codes','cached_scale','input_modified','shape','code_dtype','scale_dtype','nonfinite'])
+def test_standard_quantizer_actual_measured_pair_and_replay(name,function,provided,behavior,monkeypatch,tmp_path):
+    import math,types,torch
+    t=ROOT/'tasks/torch2flydsl'/name;checks=module(t/'scripts/replay_checks.py');real_model=module(t/'model.py');oracle=real_model.Model()
+    # CPU plumbing test: real original quantization produces the expected
+    # codes/scales for each changed input. Deliberately wrong paths must fail;
+    # full GPU task checks still compare independently against AITER.
+    inp=torch.linspace(-8,7,512,dtype=torch.float32).reshape(2,256).to(torch.bfloat16);original=inp.clone();cached=oracle(inp);phase={'name':'setup'}
+    def compute(is_model):
+        y,scale=oracle(inp)
+        if is_model==provided:
+            if behavior==phase['name']+'_wrong':y.view(torch.uint8).zero_()
+            if phase['name']=='replay':
+                if behavior=='cached_codes':y=cached[0].clone()
+                if behavior=='cached_scale':scale=cached[1].clone()
+                if behavior=='input_modified':inp.add_(1)
+            if phase['name']=='measured':
+                if behavior=='shape':scale=scale.reshape(-1) if scale.ndim==2 else scale.reshape(1,1)
+                if behavior=='code_dtype':y=y.view(torch.uint8)
+                if behavior=='scale_dtype':scale=scale.to(torch.bfloat16)
+                if behavior=='nonfinite':scale.fill_(float('nan'))
+        return y,scale
+    class Model:
+        def to(self,*a):return self
+        def __call__(self,*a):return compute(True)
+    mmod=types.SimpleNamespace(Model=Model,get_init_inputs=lambda:[],_FP8_DTYPE=getattr(real_model,'_FP8_DTYPE',None));kmod=types.SimpleNamespace(**{'flydsl_'+name.removesuffix('_kernel'):lambda *a:compute(False)})
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run):
+        calls.append((warmup,repetition));phase['name']='measured';timed_run.outputs=fn();timed_run.bound=True;phase['name']='setup'
+        def replay():
+            phase['name']='replay'
+            try:return fn()
+            finally:phase['name']='setup'
+        timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':benchmark,'require_unchanged':checks.require_unchanged,
+        'CODE_TOL':1,'SCALE_RTOL':.001,'_aiter_op':oracle,'_make_inputs':lambda shape:inp if name=='per_token_i8_quant_kernel' else (inp,),
+        '_load_module':lambda directory,filename,alias:mmod if filename=='model.py' else None if provided else kmod,
+        '_KERNEL_DIR':str(tmp_path),'MODEL_FILE':'model.py','KERNEL_FILE':'kernel.py','KERNEL_ENTRY':'flydsl_'+name.removesuffix('_kernel'),
+        'SHAPES':[{'name':'controlled','m':2,'n':256}], 'math':math,'json':json,'Path':Path}
+    _harness_functions(t,{function,'_mean_ms','_compare','_checked_quant_pair','_compare_quant_outputs','_quant_replay_validator'},ns)
+    if behavior=='correct':
+        report=ns[function](verbose=False)
+        if function=='run_benchmark':report=json.loads((tmp_path/'build/performance_report.json').read_text())
+        assert report[0]['timed_output_correctness']==report[0]['replay_correctness']=='PASS'
+        assert calls==[(10,100)]*(2 if provided else 3)
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+    assert torch.equal(inp,original)
+
+
+@pytest.mark.parametrize('name',_STANDARD_QUANT_NAMES)
+def test_standard_quantizer_keeps_one_code_step_and_original_scale_gate(name):
+    import torch
+    t=ROOT/'tasks/torch2flydsl'/name;mmod=module(t/'model.py');x=torch.full((2,256),2.,dtype=torch.bfloat16)
+    expected=list(mmod.Model()(x));ns={'CODE_TOL':1,'SCALE_RTOL':.001};_harness_functions(t,{'_compare','_checked_quant_pair','_compare_quant_outputs'},ns)
+    actual=[v.clone() for v in expected]
+    # Avoid endpoint wrapping: compare two adjacent finite code values.
+    if name=='per_token_i8_quant_kernel':expected[0].fill_(2);actual[0].fill_(3)
+    else:expected[0].view(torch.uint8).fill_(56);actual[0].view(torch.uint8).fill_(57)
+    ns['_compare_quant_outputs'](tuple(actual),tuple(expected),(x,),mmod)
+    actual[1].mul_(1.01)
+    with pytest.raises(AssertionError,match='Numerical mismatch'):ns['_compare_quant_outputs'](tuple(actual),tuple(expected),(x,),mmod)
+    actual[1].copy_(expected[1]);actual[0].view(torch.uint8).add_(1)
+    with pytest.raises(AssertionError,match='Numerical mismatch'):ns['_compare_quant_outputs'](tuple(actual),tuple(expected),(x,),mmod)
+
+
+def test_standard_quantizers_preserve_original_numerics_inputs_and_timing():
+    hashes={'per_tensor_fp8_quant_kernel': {'_make_inputs': '17800253aebd6dc6f79a2f102d9127e1bf787de9708ee39e29e408d421377b3d', '_aiter_op': '337fc0e0288af0d8c6e08c202c9815167a08a54a62d99721132814b3d6f040c7', '_compare': '7370859da62e853ba8a197c5ba6e4f07f7f41f1f815a55c24cb4c54ed73d3390', 'run_correctness': 'c7991fb82df9aee3ff159b03aef748e6d72ee670fbd2e7eaa46e9c04c6d53d01', '_mean_ms': 'd577e74039d622acefe0c724d81ab5149f872772160fc2a2c7b229700fb428be', 'run_benchmark': '90bfab17dbc2c9bf422a8deca038a9ba100c6791af0ab642cb95c09c66a4b538', 'arena_benchmark': 'ca5e3fcd67f5d57c95ee648c27b44432f7d32cb354dbc8c1eaccc897d81f4df4'}, 'per_token_fp8_quant_kernel': {'_make_inputs': '17800253aebd6dc6f79a2f102d9127e1bf787de9708ee39e29e408d421377b3d', '_aiter_op': 'b7962f1966999d19c5161d0d50e996868b44268d6e556b8fabc8eb6a4a4f0139', '_compare': '7370859da62e853ba8a197c5ba6e4f07f7f41f1f815a55c24cb4c54ed73d3390', 'run_correctness': '09320c212eec2c7c965d155721e4c0037ff143ed3b470ef83fcdd3b745b45d05', '_mean_ms': 'd577e74039d622acefe0c724d81ab5149f872772160fc2a2c7b229700fb428be', 'run_benchmark': '71bba4b5222624e432ddbec8bd71b1df401e07b7785c58d2fffde407847a181c', 'arena_benchmark': '4b10fcd809f486c9cd23059979c72f62c292fe01f7a8d34296126ac5119ed493'}, 'per_1x128_fp8_quant_kernel': {'_make_inputs': '17800253aebd6dc6f79a2f102d9127e1bf787de9708ee39e29e408d421377b3d', '_aiter_op': '3ebcae67fe0961a1b266815022db4de2222e31a9ebce95b4b052ead1fc38286c', '_compare': '7370859da62e853ba8a197c5ba6e4f07f7f41f1f815a55c24cb4c54ed73d3390', 'run_correctness': '9f141b10b3eae32f373b1605c510dda09ca44e70432155362cfb102d3716bbc9', '_mean_ms': 'd577e74039d622acefe0c724d81ab5149f872772160fc2a2c7b229700fb428be', 'run_benchmark': '2ac80fb49c0a10f04026bf05926c1ecce39e9bb173251c5c20cb7355bd7e2ca8', 'arena_benchmark': 'fe43be52eeae8e690f57386df4ba9a0a5aed3a8c3956c33c008d937898ea7bd4'}, 'per_token_i8_quant_kernel': {'_make_inputs': 'b189ce05262cdd417908cc9746babb21a576bc68927754e8beb7e1e36c9e2038', '_aiter_op': 'e1367df215a4f2c7d0ffb3b9b2a52f9b13e6e7baafd7babad17d814b35a765da', '_compare': '26b0aed52720cd3ac91782410828b02e1947aed8ed614f5b2ab148c5dabb5be2', 'run_correctness': 'ee742cf41d63d6b6b1fe879acdcd45b08907e722b13c982c434b75c56d533aee', '_mean_ms': 'd577e74039d622acefe0c724d81ab5149f872772160fc2a2c7b229700fb428be', 'run_benchmark': '49e51bb6201effc168702a851ca698e99d3c3ae2daf77eb9cb8a3ee549519b9d', 'arena_benchmark': 'a9f07227c9f5d46eb6cd3398115fa4e0b0bbe622815cd0deb44eba127940fb91'}}
+    for name,functions in hashes.items():
+        tree=ast.parse((ROOT/'tasks/torch2flydsl'/name/'test_kernel_harness.py').read_text())
+        for fn in tree.body:
+            if isinstance(fn,ast.FunctionDef) and fn.name in functions:
+                restored=_RemoveStandardQuantChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)

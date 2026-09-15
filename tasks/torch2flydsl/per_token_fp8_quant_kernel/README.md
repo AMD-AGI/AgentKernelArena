@@ -50,3 +50,14 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+The public operator returns `(codes, scale)`; the unused starter builder is not
+an evaluation entrypoint. Codes have the input shape and the original quantized
+dtype; scales keep the original per-tensor/per-token/per-group FP32 layout.
+Both outputs are finite and on the input device; input bytes are read-only.
+Measured outputs and both outputs of a poisoned replay with changed input must
+pass the original code-distance and scale-relative-error comparison against
+AITER. All original cases, seeds, rounding/quantization algorithms, tolerances,
+graph timing and sample counts are unchanged. The provided PyTorch model remains
+the primary baseline. Candidate computation must use actual FlyDSL launches;
+allocation, layout/casts and launch preparation are allowed host operations.

@@ -12,9 +12,6 @@ candidate:
   - file: kernel.py
     kind: function
     symbol: flydsl_per_tensor_fp8_quant
-  - file: kernel.py
-    kind: builder
-    symbol: build_per_tensor_fp8_quant_module
 baseline:
   kind: provided
   correctness_policy: required
