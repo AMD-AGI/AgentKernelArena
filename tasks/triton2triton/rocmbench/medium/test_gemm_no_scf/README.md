@@ -1,35 +1,48 @@
-# test_gemm_no_scf
+# No-SCF single-tile GEMM
 
-The on-disk starting functions contain implemented Triton code. The v2 declaration
-therefore uses `implemented` and a frozen `initial_candidate` baseline, regardless
-of this directory's historical suite name. Edit only the declared function scopes
-(and permitted implementation helpers) in `test_gemm_no_scf.py`. Preserve signatures,
-references, input generation, assertions, test parameters and timing policy.
-Deliver edits to those files; a fenced code block alone is not a submission.
+The implemented initial Triton kernel is frozen independently as the baseline.
+Edit only the declared `matmul_no_scf_kernel` and permitted helpers. A missing
+candidate cannot delegate to or fall back to the baseline/reference.
 
-## Evaluation contract
+A[M,K] and B[K,N] are read-only float16 matrices; the output C is float16 or
+float32 as declared. The kernel computes the complete single-tile product,
+including the pointer-store and block-pointer epilogue modes. Input strides
+may reflect transposes. The independent oracle uses **private float32 input
+copies** and the original `atol=1e-3, rtol=1e-2, check_dtype=False` numeric rule.
+Output dtype is separately required to match the declared C buffer, alongside
+shape/device/stride, non-aliasing, finiteness and full-value checks.
 
-Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|candidate compile|correctness|performance`
-with one role and one action. Submitted checks use `ARENA_EVAL_PHASE=candidate_evaluation`.
-The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
-`workloads.json` retains 52 original collected cases, including 20 performance cases.
-Collection is checked against this independent manifest. Original correctness
-functions run unchanged. Performance inputs additionally run the task-local
-oracle in `_arena_reference.py`, before timing and against observed timed output.
-Seeds, case parameters, original assertions/tolerances, launch parameters,
-prepare/reset callbacks, warmups and sample counts are unchanged.
+## Manifest and unsupported arguments
 
-Arena times the same Triton path in its independently frozen baseline workspace
-and the edited candidate workspace. The old benchmark helper's optional PyTorch
-peer timing is not an Arena baseline and is omitted by this adapter. Candidate
-measurements still use the canonical helper and its original mean device latency.
-Do not edit `performance_utils_pytest.py` or generated benchmark helpers.
+All 52 original case IDs/parameters remain (32 functional, 20 scored); four
+additional unscored cases cover transposed A with both output types and
+both epilogues. Original functional rows with NUM_CTAS=4 previously skipped on
+HIP. When the actual backend reports multi-CTA launch unsupported, those eight
+rows now invoke the real candidate and require precisely its backend ValueError
+`num_ctas > 1 not supported on <arch>`. Success, another exception/message, or
+input/output mutation fails. This tests rejection, not a skipped numerical pass.
+If a backend supports multi-CTA, the same row executes normal numerical checks.
+On the pinned gfx950 runtime the eight are rejection controls. Every scored
+case remains NUM_CTAS=1 and must run complete numerical and timing checks.
 
-Existing skip conditions are retained as visible failures for the complete
-manifest: missing hardware features, unsupported combinations, missing references
-or incomplete execution cannot qualify this task. These require explicit task
-qualification/repair before a campaign; the migration is not a GPU validation.
-A missing/empty final kernel never falls back to a reference or starting kernel.
+## Replay and timing
+
+The original preallocated-output wrapper, launch arguments, seed42,
+warmup10/repetition100, canonical graph/event fallback and mean device latency
+are preserved. Every performance input is numerically checked, as is the actual
+`TimedRun` output. Untimed replay changes valid floating input values while
+preserving pointers/layouts, recomputes the private oracle, poisons C, and replays
+the timed invocation. Original inputs/output are restored in finally, including
+failure paths. Both frozen baseline and candidate use identical work and cases.
+Original functional oracle evaluation is protected from candidate input mutation.
+The optional historical PyTorch peer timing is not Arena's independent baseline.
+Do not edit helper stubs or generated performance helpers.
+
+Use `python3 _arena_eval.py validate-task`, or
+`python3 _arena_eval.py baseline|candidate compile|correctness|performance`.
+The task emits `arena-eval-v1`; Arena alone writes official reports/scores.
+Final submitted checks use `ARENA_EVAL_PHASE=candidate_evaluation`. Deliver files
+within the configured edit boundary, not merely a fenced code block.
 
 ## Original operator instructions
 

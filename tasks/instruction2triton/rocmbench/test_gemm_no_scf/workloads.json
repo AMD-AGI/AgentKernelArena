@@ -1116,6 +1116,74 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "test_transposed_left_control/3b9abde748d594d909fe",
+      "params": {
+        "function": "test_transposed_left_control",
+        "arguments": {
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": false,
+          "M": 32,
+          "N": 16,
+          "K": 64
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_transposed_left_control/c6bbab9f8051c03d4e64",
+      "params": {
+        "function": "test_transposed_left_control",
+        "arguments": {
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": true,
+          "M": 32,
+          "N": 16,
+          "K": 64
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_transposed_left_control/1cdb435b517f5cc52cc8",
+      "params": {
+        "function": "test_transposed_left_control",
+        "arguments": {
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": false,
+          "M": 32,
+          "N": 16,
+          "K": 64
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_transposed_left_control/e9abe914ecca12530148",
+      "params": {
+        "function": "test_transposed_left_control",
+        "arguments": {
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": true,
+          "M": 32,
+          "N": 16,
+          "K": 64
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
