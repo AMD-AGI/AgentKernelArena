@@ -1569,3 +1569,51 @@ def test_kda_vector_reference_checks_state_orientation_and_component_gates(monke
         return out.flip(-1), states
     monkeypatch.setattr(h, '_golden', reverse_output)
     with pytest.raises(AssertionError): controls.check_vector_recurrence(h)
+
+
+@pytest.mark.parametrize("correctness", [False, True])
+def test_cktile_preparation_uses_generic_mxfp4_layout_and_keeps_reference(correctness, monkeypatch):
+    torch = pytest.importorskip("torch")
+    h = load_module(TASKS / "mi355x_vllm_ck_cktile_moe_2stage/scripts/task_runner.py")
+    dtypes = SimpleNamespace(bf16=torch.bfloat16, fp16=torch.float16,
+                            fp8=torch.float8_e4m3fn, fp4x2=torch.uint8)
+    quant_types = SimpleNamespace(per_Tensor=1, per_1x128=2, per_1x32=3)
+    raw_weights, raw_scales, packed = [], [], []
+    def quantize(weight, *, quant_dtype):
+        e, n, k = weight.shape
+        q = (torch.arange(e*n*k//2).reshape(e,n,k//2) % 251).to(torch.uint8)
+        scale = (torch.arange(e*n*k//32).reshape(e*n,k//32) % 251).to(torch.uint8)
+        raw_weights.append(q.clone()); raw_scales.append(scale.clone())
+        return q, scale
+    def generic(weight, *, layout):
+        assert layout == (16, 16)
+        packed.append(weight.clone())
+        # A distinct physical permutation makes accidental reference aliasing
+        # visible. The external kernel's permutation is qualified on real GPU.
+        return weight.flip(-2)
+    def legacy(*args, **kwargs):
+        raise AssertionError("CK-Tile must not consume legacy A16W4 packing")
+    aiter = SimpleNamespace(dtypes=dtypes, QuantType=quant_types,
+                            get_torch_quant=lambda kind: quantize)
+    monkeypatch.setitem(sys.modules, "aiter", aiter)
+    monkeypatch.setitem(sys.modules, "aiter.fused_moe", SimpleNamespace(
+        fused_topk=lambda x, score, k, norm: (
+            torch.full((len(x),k),1./k),torch.arange(k).repeat(len(x),1))))
+    monkeypatch.setitem(sys.modules, "aiter.ops.shuffle", SimpleNamespace(
+        shuffle_weight=generic,shuffle_weight_a16w4=legacy,shuffle_scale_a16w4=legacy))
+    monkeypatch.setitem(sys.modules, "aiter.utility", SimpleNamespace(
+        fp4_utils=SimpleNamespace(e8m0_shuffle=lambda scale:scale.flip(-2))))
+    monkeypatch.setattr(h, "_import_aiter", lambda: aiter)
+    monkeypatch.setattr(h, "_moe_enums", lambda params, module: (3,"swiglu"))
+    monkeypatch.setattr(h, "_torch", lambda: SimpleNamespace(
+        manual_seed=torch.manual_seed,
+        randn=lambda *args, **kwargs: torch.randn(*args, **dict(kwargs,device="cpu"))))
+    case = {"params":{"token":4,"experts":2,"model_dim":256,"inter_dim":128,
+                      "topk":2,"a_dtype":"bf16","w_dtype":"fp4"}}
+    inputs = h._prepare_moe(case,correctness=correctness)
+    assert len(packed) == 2
+    for i in (1,2):
+        torch.testing.assert_close(inputs[f"w{i}_reference"],raw_weights[i-1],rtol=0,atol=0)
+        torch.testing.assert_close(inputs[f"w{i}"],raw_weights[i-1].flip(-2),rtol=0,atol=0)
+        torch.testing.assert_close(inputs[f"w{i}_scale"],raw_scales[i-1],rtol=0,atol=0)
+        torch.testing.assert_close(inputs[f"w{i}_scale_runtime"],raw_scales[i-1].flip(-2),rtol=0,atol=0)

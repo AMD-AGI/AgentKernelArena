@@ -562,6 +562,10 @@ def _prepare_moe(case: dict, correctness: bool = False) -> dict:
         quant_type == aiter.QuantType.per_1x32
         and activation_dtype in (dtypes.bf16, dtypes.fp16, dtypes.fp8)
         and weight_dtype == dtypes.fp4x2
+        # The pinned GPT-OSS CK-Tile split-K path consumes generic shuffled
+        # MXFP4 weights/scales and applies activation to standard gate/up rows.
+        # Legacy A16W4 interleaving is a different physical input contract.
+        and OPERATOR != "cktile_moe_2stage"
     ):
         w1_runtime = shuffle_weight_a16w4(w1_quant, 16, True)
         w1_scale_runtime = shuffle_scale_a16w4(

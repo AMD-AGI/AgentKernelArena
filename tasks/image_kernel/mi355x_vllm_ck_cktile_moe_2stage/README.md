@@ -67,6 +67,21 @@ still require full GPU validation on the selected immutable runtime.
 
 ## Materialized AITER package and build helpers
 
+### GPT-OSS MXFP4 packing compatibility
+
+The pinned SGLang runtime's GPT-OSS CK-Tile route uses split-K with generic
+MXFP4 weight/scale preshuffling and standard gate/up rows for its activation.
+The older `shuffle_weight_a16w4`/`shuffle_scale_a16w4` helpers interleave those
+rows for a different epilogue. Supplying that legacy layout to the current
+dispatch compiled successfully but failed the original cosine gate on MI355X
+(job 139599, cosine error 0.95607036 versus the required error below 0.03).
+
+Task preparation now selects the generic packing already supported by the
+declared AITER source. It retains the original unshuffled quantized weights and
+scales for the independent reference. The operator, quantization, inputs, seeds,
+numerical gates and timing calls are unchanged. This compatibility correction
+has CPU preparation coverage; fresh GPU qualification is still required.
+
 The declared runtime provides both `aiter/` (Python dispatch and JIT utilities)
 and `aiter_meta/` (C++ sources and bundled compiler dependencies). They are
 siblings inside each role's workspace. Code generation resolves helpers such as
