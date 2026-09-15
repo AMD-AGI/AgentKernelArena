@@ -886,7 +886,9 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
             b'y_buffer = torch.empty_like(x) # Output buffer for forward',
             b'y_buffer = torch.empty_like(x, dtype=arg_to_torch_dtype[out_dtype_str]) # Declared output dtype').replace(
             b'baseline_callable = lambda: torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, current_dtype, eps)',
-            b'baseline_callable = lambda: torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, arg_to_torch_dtype[out_dtype_str], eps)')
+            b'baseline_callable = lambda: torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, arg_to_torch_dtype[out_dtype_str], eps)').replace(
+            b'rms = torch.sqrt(torch.sum(x_f32 * x_f32, dim=-1) * 1 / N)',
+            b'rms = torch.sqrt(torch.sum(x_f32 * x_f32, dim=-1) * 1 / N + epsilon)')
     if task.name == 'test_matmul_MXFP':
         expected_source = expected_source.replace(
             b'    if scale and not is_cuda():\n        pytest.skip("NYI: scale_dot just implemented in CUDA")\n', b'').replace(
@@ -947,6 +949,36 @@ def test_kernel_sub_declared_compilation_case_executes_and_rejects_child_failure
         run()
         assert namespace['result_gold']['compile_case'].item()==1.0
     assert calls[:2]==['start',('join',60)]
+
+
+@pytest.mark.parametrize('task',['tasks/instruction2triton/rocmbench/rmsnorm_fwd','tasks/triton2triton/rocmbench/medium/rmsnorm_fwd'])
+@pytest.mark.parametrize('epsilon', [1e-6, 1e-5])
+@pytest.mark.parametrize('zero_centered', [True, False])
+def test_rms_direct_reference_uses_declared_epsilon_on_near_zero_rows(task, epsilon, zero_centered):
+    import math
+    source = ROOT/task/'rmsnorm_fwd.py'
+    ref = pure_functions(source, ['torch_rmsnorm_fwd'])
+    x = torch.tensor([[0., 0.], [0.001, 0.001]])
+    g = torch.tensor([[1., 2.]])
+    y, rsigma = ref.torch_rmsnorm_fwd(x, g, zero_centered, torch.float32, epsilon)
+    expected_rs = torch.tensor([1/math.sqrt(epsilon), 1/math.sqrt(1e-6+epsilon)])
+    gain = [2., 3.] if zero_centered else [1., 2.]
+    expected_y = torch.tensor([[0., 0.], [0.001*expected_rs[1]*v for v in gain]])
+    torch.testing.assert_close(y, expected_y, atol=1e-5, rtol=1e-5)
+    torch.testing.assert_close(rsigma, expected_rs, atol=1e-5, rtol=1e-5)
+    assert torch.isfinite(y).all() and torch.isfinite(rsigma).all()
+    if epsilon == 1e-6:
+        default_y, default_rs = ref.torch_rmsnorm_fwd(x, g, zero_centered, torch.float32)
+        torch.testing.assert_close(default_y, y)
+        torch.testing.assert_close(default_rs, rsigma)
+    before = subprocess.check_output(['git', 'show', f'{BASE}:{source.relative_to(ROOT).as_posix()}'], cwd=ROOT, text=True)
+    node = next(n for n in ast.parse(before).body if isinstance(n, ast.FunctionDef) and n.name == 'torch_rmsnorm_fwd')
+    scope = {'torch': torch}
+    exec(compile(ast.Module(body=[node], type_ignores=[]), str(source), 'exec'), scope)
+    old_y, old_rs = scope['torch_rmsnorm_fwd'](x, g, zero_centered, torch.float32, epsilon)
+    with pytest.raises(AssertionError):
+        torch.testing.assert_close(old_rs, expected_rs, atol=1e-5, rtol=1e-5)
+    assert not torch.isfinite(old_y[0]).all()
 
 
 @pytest.mark.parametrize('task',['tasks/instruction2triton/rocmbench/rmsnorm_fwd','tasks/triton2triton/rocmbench/medium/rmsnorm_fwd'])

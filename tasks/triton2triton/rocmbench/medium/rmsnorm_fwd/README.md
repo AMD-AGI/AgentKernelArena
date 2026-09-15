@@ -161,3 +161,11 @@ requested output dtype. The independent oracle selects the original numerical ga
 by output dtype, exactly as test_rmsnorm does: fp16/bf16 use atol=1e-3, rtol=1e-2;
 fp32 uses atol=rtol=1e-5. Previously executed same-dtype gates, the full case table,
 seeds, candidate kernels, warmups and device timing policy remain unchanged.
+
+The protected direct RMS reference now includes its `epsilon` argument inside
+the square root, matching the candidate's formula. Direct correctness retains
+epsilon 1e-6; performance retains its explicit 1e-5 and existing independent
+reference. Near-zero CPU known answers detect the old omission, including the
+old nonfinite result on an all-zero row. All 182 required cases, 126 scored
+cases, dtype combinations, seeds, output gates and candidate timing remain
+unchanged. This reference correction requires fresh GPU qualification.
