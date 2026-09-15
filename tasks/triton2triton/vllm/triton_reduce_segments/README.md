@@ -31,3 +31,12 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+Protected checks enforce the supplied output buffer's shape, dtype and device,
+finite values, and the wrapper's return of that same buffer. Both correctness
+and performance compare against the original independent logsumexp formula on
+pristine inputs; segment data and sequence routing must remain unchanged.
+The actual timed output is checked before perturbing the partial outputs, maxima
+and exp sums, poisoning the output, and replaying the same timed invocation.
+All input/output buffers are restored even on failure. These checks retain all
+five original fully active segment workloads, seeds, 1e-2 absolute/relative
+tolerances, full-wrapper timing, 10 warmups and 100 samples.

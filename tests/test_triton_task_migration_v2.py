@@ -4080,3 +4080,112 @@ def test_bincount_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_bincount/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_bincount_checks'
+
+
+
+def _reduce_segments_cpu(partial, maxima, sums, output, lengths, starts, tile_size=16):
+    weights = maxima.double().softmax(-1)
+    numerator = (partial.double() * weights.unsqueeze(-1)).sum(2)
+    denominator = (sums.double() * weights).sum(-1).unsqueeze(-1)
+    output.copy_((numerator / denominator)[..., :output.shape[-1]])
+    return output
+
+
+def _reduce_segments_cpu_harness(monkeypatch):
+    import sys
+    task = ROOT/'tasks/triton2triton/vllm/triton_reduce_segments'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    monkeypatch.setitem(sys.modules, 'triton', SimpleNamespace(next_power_of_2=lambda n: 1 << (n-1).bit_length()))
+    make = h.make_test_data
+    h.make_test_data = lambda *a: make(*a[:-1], device='cpu')
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    return h, checks
+
+
+def test_reduce_segments_independent_known_answer(monkeypatch):
+    h, checks = _reduce_segments_cpu_harness(monkeypatch)
+    partial = torch.tensor([[[[2., 4.], [6., 8.]]]])
+    maxima = torch.tensor([[[0., float(torch.log(torch.tensor(3.)))]]])
+    sums = torch.ones(1, 1, 2)
+    output = torch.empty(1, 1, 2, dtype=torch.float16)
+    lengths, starts = torch.tensor([32], dtype=torch.int32), torch.tensor([0, 1], dtype=torch.int32)
+    expected = torch.tensor([[[5., 7.]]], dtype=torch.float16)
+    checks.check_output(checks.reference(h, (partial, maxima, sums, lengths, starts), output), expected)
+    checks.check_output(_reduce_segments_cpu(partial, maxima, sums, output, lengths, starts), expected)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'dtype', 'shape', 'nonfinite', 'wrong_value', 'return_copy',
+                                 'omit_output', 'mutate_partial', 'mutate_maxima', 'mutate_sums', 'mutate_lengths', 'mutate_starts'])
+def test_reduce_segments_actual_correctness_output_contract_and_pristine_inputs(monkeypatch, mode):
+    h, checks = _reduce_segments_cpu_harness(monkeypatch)
+    seen = []
+    def candidate(partial, maxima, sums, output, lengths, starts, tile_size=16):
+        seen.append((tuple(partial.shape), tuple(output.shape), tile_size))
+        tensors = dict(mutate_partial=partial, mutate_maxima=maxima, mutate_sums=sums,
+                       mutate_lengths=lengths, mutate_starts=starts)
+        if mode in tensors: tensors[mode].zero_()
+        if mode == 'dtype': output.data = output.float()
+        if mode == 'shape': output.resize_(1, 1, 1)
+        result = _reduce_segments_cpu(partial, maxima, sums, output, lengths, starts, tile_size)
+        if mode == 'nonfinite': output.fill_(torch.inf)
+        if mode == 'wrong_value': output.zero_()
+        if mode == 'return_copy': result = result.clone()
+        if mode == 'omit_output': result = None
+        return result
+    mod = SimpleNamespace(reduce_attention_segments=candidate)
+    h.load_module = lambda: mod
+    checks.install(h)
+    ok, reason = h.run_correctness()
+    assert ok is (mode == 'correct'), reason
+    if mode == 'correct':
+        assert seen == [((b, nh, ns, hs), (b, nh, hs), 16) for b, nh, hs, ns, sl in h.TEST_SHAPES]
+    assert mod.reduce_attention_segments is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'wrong_replay',
+                                 'mutate_timed', 'mutate_replay', 'mutate_routing', 'zero_input_and_output', 'raise_replay'])
+def test_reduce_segments_original_timing_and_replay_restore_all_buffers(monkeypatch, mode):
+    import inspect
+    h, checks = _reduce_segments_cpu_harness(monkeypatch)
+    h._TimedRun = module_at(ROOT/'src/tools/perf/aka_benchmark.py', monkeypatch).TimedRun
+    mod = SimpleNamespace(reduce_attention_segments=_reduce_segments_cpu)
+    h.load_module = lambda: mod
+    buffers, saved, options = [], [], []
+    def benchmark(measured, *, timed_run, **kwargs):
+        fn = inspect.getclosurevars(measured).nonlocals['fn']
+        state = inspect.getclosurevars(fn).nonlocals
+        inputs = tuple(state[k] for k in ('segm_output', 'segm_max_t', 'segm_expsum', 'seqused_k', 'cu_seqlens_q'))
+        output = state['output']
+        buffers.append(inputs+(output,)); saved.append(checks.snapshots(inputs+(output,))); options.append(kwargs)
+        value = measured(); cache = output.clone()
+        if mode == 'wrong_timed': output.zero_()
+        if mode == 'mutate_timed': inputs[0].zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('Replay failed')
+            if mode == 'stale': output.copy_(cache)
+            elif mode != 'no_write': measured()
+            if mode == 'wrong_replay': output.zero_()
+            if mode == 'mutate_replay': inputs[1].zero_()
+            if mode == 'mutate_routing': inputs[4].zero_()
+            if mode == 'zero_input_and_output': inputs[0].zero_(); output.zero_()
+            return output
+        timed_run._bind(replay, value)
+        return .125, {'benchmark_method': 'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == 5
+    assert options == [dict(warmup=10, repetition=100)] * 5
+    for (b, nh, hs, ns, sl), row in zip(h.TEST_SHAPES, rows):
+        assert row['params'] == dict(num_seqs=b, num_query_heads=nh, head_size=hs, num_segments=ns, seq_len_k=sl)
+        assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
+        if mode == 'correct': assert row['perturbed_input_replay_checked']
+    for values, originals in zip(buffers, saved): checks.unchanged(values, originals)
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_reduce_segments_adapter_installs_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_reduce_segments/_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_reduce_segments_checks'
