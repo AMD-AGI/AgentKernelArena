@@ -260,7 +260,7 @@ def test_real_validator_launcher_uses_initial_evidence_and_semantic_gate(tmp_pat
     def backend(prompt, workspace, *_args, **_kwargs):
         # Exercise the real generated prompt and finalizers; only the model's
         # semantic judgment is a fixture. Never count this as actual LLM/GPU validation.
-        raw = yaml.safe_load(prompt.rsplit("```yaml\n", 1)[1].split("```", 1)[0])
+        raw = json.loads(prompt.rsplit("```json\n", 1)[1].split("```", 1)[0])
         raw["validation_timestamp"] = datetime.now(timezone.utc).isoformat()
         raw["overall_status"] = "PASS"
         for name in ("source_files_exist", "target_symbols_found", *SEMANTIC_CHECKS):
@@ -271,7 +271,7 @@ def test_real_validator_launcher_uses_initial_evidence_and_semantic_gate(tmp_pat
         raw["checks"]["harness_integrity"].update(guard_coverage_reviewed=True, editable_targets_preserved=True)
         if not semantic_pass:
             raw["checks"]["correctness_implementation_review"]["status"] = "FAIL"
-        (Path(workspace) / DRAFT_FILENAME).write_text(yaml.safe_dump(raw))
+        (Path(workspace) / DRAFT_FILENAME).write_text(json.dumps(raw))
         return launcher.BackendResult(output="CPU fixture review", returncode=0, timed_out=False)
 
     monkeypatch.setattr(launcher, "_launch_codex", backend)
@@ -280,6 +280,9 @@ def test_real_validator_launcher_uses_initial_evidence_and_semantic_gate(tmp_pat
     report = yaml.safe_load((workspace / "validation_report.yaml").read_text())
     assert complete
     assert report["overall_status"] == ("PASS" if semantic_pass else "FAIL"), report["validation_errors"]
+    assert report["framework_status"] == "PASS", report["framework_errors"]
+    assert report["checks"]["correctness_implementation_review"]["status"] == (
+        "PASS" if semantic_pass else "FAIL")
     assert report["task_name"] == "suite/protocol_fixture"
     assert report["checks"]["correctness"]["status"] == "PASS"
     assert report["candidate_initial_checks"]["correctness"]["status"] == "SKIP"
