@@ -59,3 +59,7 @@ negates the multiplicative input, poisons both byte outputs and checks the same
 captured replay. All original cases, exact scales, 1% grid-tie rule, tolerances,
 warmups, samples and timed launches are retained. Reference work and checks
 remain outside timing. Unused scale padding is outside the numerical output.
+
+Every declared case passed on MI355X gfx950 with the unchanged MXFP4 rule and
+measured payload/scale replay checks. The original gfx942 path is retained;
+gfx942 was not revalidated by this port. Support is scoped to `cases.json`.
