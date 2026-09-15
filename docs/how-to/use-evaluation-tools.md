@@ -678,10 +678,10 @@ The report keeps ordinary scoring fields and adds:
 pass_tool_gate: true
 tool_policy_satisfied: false
 tool_evaluation:
-  schema_version: 1
+  schema_version: 2
   plan_fingerprint: "..."
   plan:
-    schema_version: 1
+    schema_version: 2
     policy: advisory
     profile: {}
     tools:
@@ -722,7 +722,7 @@ for audit without relying on the digest alone.
 
 ## Artifact and evidence layout
 
-For a normal run, the relevant files are:
+For a v2 task run, the relevant files are:
 
 ```text
 <repository-root>/
@@ -753,13 +753,20 @@ For a normal run, the relevant files are:
 │               ├── stderr.log
 │               └── build_attestation.json
 └── experiments/workspace_<gpu>_<agent>/run_<timestamp>/
-    ├── .eval-tool-evidence/
+    ├── .task-sessions/
     │   └── <task-workspace-name>/
-    │       ├── manifest.json
-    │       └── files/                     # captured original declared files
+    │       └── tool_submission/
+    │           ├── manifest.json
+    │           └── files/                 # original files from frozen baseline
     └── <task-workspace-name>/
         └── task_result.yaml               # nested tool_evaluation summary
 ```
+
+At final evaluation initialization, v2 captures the original declared files
+from the session's frozen baseline into `tool_submission/`; an existing capture
+is loaded and verified before use. This is separate from the candidate being
+analyzed. Legacy runs use `.eval-tool-evidence/<task-workspace-name>/`, captured
+before agent execution.
 
 Each tool attempt gets a newly created invocation directory, so a repeated plan
 cannot consume an old attestation or race report. Each stdout and stderr file is
@@ -811,9 +818,12 @@ and presence of a tools mapping; it does not prove that every tool completed or
 that its result is clean. The serialized `plan` makes the inputs auditable but
 does not by itself change resume scheduling.
 
-The top-level `--resume-run` and `--resume-latest` paths currently skip a task
-when its `task_result.yaml` already exists; they do not yet rebuild the tool plan
-and call that fingerprint check. Until this is wired into run scheduling:
+The top-level `--resume-run` and `--resume-latest` paths verify a v2 task's saved
+session, completion record, result digest, and candidate source identity before
+treating it as complete. Legacy tasks still use the existence of
+`task_result.yaml`. Neither path currently rebuilds the tool plan from this
+run's tool configuration and calls the fingerprint check. Until that check is
+wired into run scheduling:
 
 - use a new `--run-suffix` after changing tool configuration, plugin code,
   sidecar image, adapter, source declaration, or positive-control policy;
@@ -926,12 +936,13 @@ pre-create evidence unless the adapter independently verifies its provenance.
 Filesystem placement and a SHA-256 inside an agent-writable JSON file are
 integrity checks, not signatures.
 
-The pre-agent `.eval-tool-evidence` copy is checked against an in-memory
-manifest during an uninterrupted task, which detects ordinary mutation. It is
-still stored on the current writable run mount and is not signed. After a crash,
-an interrupted-run resume loads that on-disk manifest as its starting point, so
-it is not a durable trust anchor against an adversarial process that can rewrite
-both the manifest and copied files.
+The v2 `tool_submission` copy, captured from the frozen baseline at final
+evaluation initialization, is checked against its loaded manifest. Legacy runs
+instead capture `.eval-tool-evidence` before the agent. These checks detect
+ordinary mutation, but both layouts remain on the writable run mount and are
+not signed. Resume verifies saved session/evidence consistency without creating
+an external trust anchor against an adversarial process that can rewrite both
+the manifests and copied files.
 
 For adversarial or reward-bearing evaluation, use a separate evaluation phase:
 stop the agent container, snapshot the candidate, start fresh sidecars with

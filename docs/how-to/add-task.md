@@ -234,7 +234,7 @@ the unmaintained `tasks/repository` suite has been removed.
 | `workspace.sources` | List of declared source acquisitions. An image source has `kind: image`, `image_path`, `destination`, and optional `exclude`. A Git source has `kind: git`, `url`, immutable `revision`, and `destination`. |
 | `workspace.setup` | Ordered list of argv lists, run after materialization and before baseline capture. Setup must be repeatable and must not be silently delegated to an agent. |
 | `workspace.timeout_s` | Positive integer, default `3600`, bounding source materialization and setup together. A timeout aborts setup before baseline capture. |
-| `platform_support` | `required_arch` accepts one exact architecture string or a nonempty list of alternatives; `status` is `active \| skip`, with optional `skip_reason`. Omission declares no architecture restriction; it does not prove sanitizer support. |
+| `platform_support` | `required_arch` accepts one exact architecture string or a nonempty list of alternatives; `status` defaults to `active` and also accepts `skip`. A skipped task must provide a nonempty `skip_reason`. Omission declares no architecture restriction; it does not prove sanitizer support. |
 | `evaluation_profile` | Optional analysis-tool profile overrides when inference from candidate language, paths, and artifact kind is insufficient. See the tool guide for supported keys. |
 | `evaluation_tools` | Optional task-side tool commands/options. Only the run config enables tools and sets their policy/runtime. |
 | `exports` | Optional list of `{format, output, command, timeout_s}` objects. `command` is an argv list, `output` is a relative artifact path, and `timeout_s` defaults to `60`. |

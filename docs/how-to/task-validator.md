@@ -72,7 +72,7 @@ the model unset so the selected CLI uses its default:
 
 ```yaml
 backend: claude_code          # claude_code | codex
-timeout_seconds: 1200         # minimum outer limit; auto-raised for command budgets (0 disables)
+timeout_seconds: 1200         # v2 model review limit; task actions have separate budgets (0 disables)
 python_path: null             # null uses the framework/container Python
 
 # Optional model settings for the active backend.
@@ -160,7 +160,9 @@ completion digest. A complete FAIL report remains useful diagnostic output;
 only `overall_status: PASS` satisfies the clean task-validation gate.
 
 For performance, `cuda_graph` and `cuda_event_fallback` are the only scoreable
-methods. CPU/host timing, missing or mixed methods, candidate-triggered fallback,
+methods. Each case must use the same method for baseline and candidate; different
+cases may use different methods. CPU/host timing, missing or unknown methods,
+aggregate `mixed:*` values, mismatched method pairs, candidate-triggered fallback,
 invalid/partial cases, missing state restore, or demonstrably asymmetric timed work
 fail `benchmark_integrity`. Missing exact output validation from the captured Graph is
 WARN by itself; an observed incorrect/stale replay or a demonstrated unsafe state/reset
