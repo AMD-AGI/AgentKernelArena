@@ -53,6 +53,12 @@ def build_v2_validation_prompt(*, task_id: str, task_config: dict, workspace: st
         "editable_entrypoint_targets": guard.get("editable_entrypoint_targets", {}),
         "protected_path_count": len(protected),
         "protected_paths_sample": protected[:24],
+        # Include all symbol-scoped policies even when their path is outside the
+        # sample. Full raw-file policies remain in the captured context.
+        "symbol_digest_policies": {
+            path: policy for path, policy in guard.get("protected_path_policies", {}).items()
+            if policy.get("digest_mode") == "sha256_python_ast_excluding_editable_symbols"
+        },
         "complete_guard": "Read harness in context_path for the full captured boundary",
     }
     initial = context.get("initial_validation") or {}
@@ -193,6 +199,19 @@ the listed cases alone does not establish those properties.
    their harness sections. Symbol scope can allow complete top-level
    @triton.jit/@jit helper nodes when declared; it must not expose tests/reference/
    benchmark policy. Review coverage even when enforcement is diagnostic.
+   Read protected_path_policies in the captured harness context (also recorded as
+   effective_guard in the session harness.json). A protected path or a single
+   digest does not imply a whole-file lock. digest_mode=sha256_bytes hashes the
+   entire file; sha256_python_ast_excluding_editable_symbols hashes the remaining
+   Python AST after removing declared editable top-level function/class nodes,
+   including their decorators. Those editable_symbols can change while all other
+   original AST nodes remain protected. With allow_new_helpers=true, new top-level
+   functions/classes whose names are absent from initial_top_level_names are also
+   excluded; existing undeclared helpers, imports and constants stay protected.
+   These facts describe the original framework snapshot, not permissions inferred
+   from candidate-authored files. Do not invent digest semantics when evidence is
+   missing or contradictory; report the specific uncertainty. Explicit metadata
+   does not replace review of whether the allowed scope exposes harness policy.
 
 A semantic FAIL blocks task acceptance even when every deterministic action passed.
 WARN remains visible and is not a clean validator PASS. Missing review evidence or

@@ -75,6 +75,20 @@ These absolute paths are runtime transport identities, not task configuration pa
 The file must be a regular external file with no symlink components, outside both
 workspaces. Its task ID, config and workspace must match the launched task.
 
+For v2 tasks, `harness.protected_path_policies` binds each protected path's digest
+to its mode: `sha256_bytes` covers the entire file, while
+`sha256_python_ast_excluding_editable_symbols` covers the remaining Python AST
+after excluding the declared editable top-level functions/classes. It records
+`editable_symbols`, `allow_new_helpers`, and the original `initial_top_level_names`.
+When new helpers are permitted, only new top-level function/class names are
+excluded; existing undeclared helpers, imports and constants stay protected.
+These facts come from the original session snapshot and are also persisted under
+`effective_guard` in the external `harness.json`. Resume regenerates them from
+the saved original TaskSpec and snapshot, including for older receipts without
+this additive field. Membership in `protected_paths` does not itself imply a
+whole-file lock. The metadata clarifies enforcement; it never overrides a
+semantic reviewer FAIL or relaxes the guard.
+
 Successful action records contain `invocation_id`, `phase`, merged `result`, and
 actual `commands` (`argv`, `returncode`, `stdout`, `stderr`, `elapsed_s`). Failed
 execution records contain `role`, `action`, `phase`, `execution_error`, and available

@@ -22,7 +22,10 @@ from .task_protocol import (
 )
 from .task_execution import CommandEvidence
 from .task_spec import TaskConfigError, TaskSpec, resolve_task_path
-from .harness_guard import WorkspaceSnapshot, snapshot_workspace_harness, verify_workspace_harness
+from .harness_guard import (
+    WorkspaceSnapshot, describe_workspace_harness, snapshot_workspace_harness,
+    verify_workspace_harness,
+)
 
 
 def _write_json(path: Path, value: dict) -> None:
@@ -114,6 +117,7 @@ class TaskSession:
         _write_json(state_directory / "harness.json", {
             "digests": harness.digests,
             "initial_symbols": {key: sorted(names) for key, names in harness.initial_symbols.items()},
+            "effective_guard": describe_workspace_harness(workspace, snapshot=harness),
         })
         session = cls(spec, workspace, state_directory, sources, logger)
         session.harness = harness
@@ -301,10 +305,10 @@ class TaskSession:
 
     def validation_context(self) -> dict:
         """Trusted input to the validator, including failed initial executions."""
-        from .harness_guard import describe_workspace_harness
-
         if self.initial_validation is None:
             raise TaskExecutionError("Initial task validation has not completed")
+        if self.harness is None:
+            raise TaskExecutionError("Original harness snapshot is missing")
         actions = []
         for path in sorted(self.state_directory.glob("action-*.json")):
             record = json.loads(path.read_text())
@@ -318,7 +322,7 @@ class TaskSession:
             "baseline_workspace": str(self.baseline_workspace),
             "initial_validation": asdict(self.initial_validation),
             "actions": actions,
-            "harness": describe_workspace_harness(self.workspace),
+            "harness": describe_workspace_harness(self.workspace, snapshot=self.harness),
         }
 
     def _write_agent_context(self) -> None:

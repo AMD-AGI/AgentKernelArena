@@ -373,26 +373,27 @@ def _protected_digests(root: Path, extra_paths: Iterable[str] = ()) -> dict[str,
     return digests
 
 
-def describe_workspace_harness(root: Path) -> dict[str, object]:
+def describe_workspace_harness(
+    root: Path, *, snapshot: WorkspaceSnapshot | None = None
+) -> dict[str, object]:
     """Return trusted, non-secret facts about the active harness guard.
 
     Task validators run inside the materialized task workspace and cannot inspect
     the framework source tree that applies the guard.  Expose the effective path
-    boundary so validation prompts do not have to infer it from task-local files
-    or look for a guard manifest that intentionally does not live in the task.
+    boundary and digest semantics so validators need not infer a whole-file lock
+    from a digest. Sessions supply their original snapshot: candidate edits must
+    not redefine this description through a changed config or new helper names.
     """
 
     root = Path(root)
+    if snapshot is not None:
+        if snapshot.root.resolve() != root.resolve():
+            raise ValueError("Harness snapshot belongs to a different workspace")
+        if snapshot.task_spec is not None:
+            return _describe_v2_snapshot(snapshot)
     config = _task_config(root)
     if config.get("schema_version") == 2:
-        spec = TaskSpec.from_mapping(config, task_id="workspace")
-        return {
-            "enforced_during_optimization": True,
-            "protected_paths": sorted(_v2_protected_paths(root, spec)),
-            "editable_entrypoint_targets": {
-                edit.path: list(edit.symbols) for edit in spec.candidate.editable if edit.scope == "symbols"
-            },
-        }
+        return _describe_v2_snapshot(snapshot_workspace_harness(root))
     editable_entrypoints = _editable_entrypoint_targets(root)
     return {
         "enforced_during_optimization": True,
@@ -405,6 +406,32 @@ def describe_workspace_harness(root: Path) -> dict[str, object]:
                 editable_entrypoints.items(), key=lambda item: str(item[0])
             )
         },
+    }
+
+
+def _describe_v2_snapshot(snapshot: WorkspaceSnapshot) -> dict[str, object]:
+    """Describe existing digest selection; do not recompute or change enforcement."""
+    assert snapshot.task_spec is not None
+    scopes = {edit.path: edit for edit in snapshot.task_spec.candidate.editable
+              if edit.scope == "symbols"}
+    policies = {}
+    for path, digest in sorted(snapshot.digests.items()):
+        edit = scopes.get(path)
+        policies[path] = {
+            "digest": digest,
+            "digest_mode": ("sha256_python_ast_excluding_editable_symbols" if edit
+                            else "sha256_bytes"),
+            "editable_symbols": list(edit.symbols) if edit else [],
+            "allow_new_helpers": edit.allow_new_helpers if edit else False,
+            "initial_top_level_names": sorted(snapshot.initial_symbols.get(path, ())),
+        }
+    return {
+        "enforced_during_optimization": True,
+        "protected_paths": sorted(snapshot.digests),
+        "editable_entrypoint_targets": {
+            path: list(edit.symbols) for path, edit in scopes.items()
+        },
+        "protected_path_policies": policies,
     }
 
 
