@@ -147,6 +147,12 @@ that invocation use that same copy. Baseline assessments start from the separate
 baseline snapshot. Task scripts are executed through `src.task_execution.run_action`;
 no task Python modules are imported into the agent adapter.
 
+Every generated phase prompt preserves the task's implementation and dependency
+constraints and gives them priority over backend guides, examples, and knowledge
+base suggestions. A passing driver does not waive those constraints. This prompt
+guidance is not a dependency enforcement mechanism; task evaluation must still
+check the implementations it accepts.
+
 Task references, comparison rules, inputs, timings, and complete case manifest
 remain authoritative. The driver translates the task verdict into `allclose`;
 it does not invent an SNR threshold or alter tolerances. Forge stage hints such

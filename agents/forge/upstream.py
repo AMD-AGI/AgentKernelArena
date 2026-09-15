@@ -122,6 +122,10 @@ def program_text(plan: dict, *, prefix: str = "", port: bool = False, initialize
     return "\n".join([
         "# Arena task contract", "Task: " + spec.task_id,
         "Implement the task using " + spec.candidate.language + ".",
+        "Task implementation and dependency constraints take precedence over backend guides, examples, "
+        "and knowledge-base suggestions. Passing the driver does not waive these constraints. "
+        "Do not treat an available library or backend example as permission to delegate an operator "
+        "when the task forbids that delegation.",
         "The following paths are relative to " + (prefix or "the workspace root") + ".",
         "Editable declarations and real entrypoints (do not invent a factory convention):",
         json.dumps(declarations, indent=2),
@@ -133,8 +137,8 @@ def program_text(plan: dict, *, prefix: str = "", port: bool = False, initialize
         "--ref-bench-mode for the independent baseline. Task-owned cases and warmups are fixed.",
         "The driver reports allclose from the task verdict. Do not modify task configuration,",
         "harnesses, inputs, references, or import protected implementations into your candidate.",
-        "INITIALIZE: implement the missing target-language code. Full task correctness is the only acceptance "
-        "criterion for this phase; no speedup is required. Keep partial work between attempts and use compiler "
+        "INITIALIZE: implement the missing target-language code. Full task correctness and all declared "
+        "implementation constraints are required; no speedup is required. Keep partial work between attempts and use compiler "
         "and correctness feedback. The same Forge loop optimizes the first valid implementation afterward."
         if initialize else "PORT first produces a correct implementation; the nested loop then optimizes it." if port else
         "Optimize the existing candidate. Keep all declared entrypoints and dependent source files.",

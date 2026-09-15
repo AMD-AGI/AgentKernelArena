@@ -102,6 +102,21 @@ def test_context_rejects_missing_wrong_or_workspace_owned_evidence(tmp_path, mon
         TaskContext.load(context.path)
 
 
+@pytest.mark.parametrize("phase", [{}, {"port": True}, {"initialize": True}])
+def test_task_constraints_preserved_across_native_phases(tmp_path, phase):
+    from agents.forge.upstream import program_text
+    _, plan, _ = fixture_task(tmp_path)
+    rule = "Task-specific rule: implement arithmetic in candidate-owned kernels; do not delegate it to vendor.operator."
+    (Path(plan["template"]) / "README.md").write_text(rule)
+    program = program_text(plan, **phase)
+    assert rule in program
+    assert "constraints take precedence over backend guides" in program
+    assert "Passing the driver does not waive these constraints" in program
+    if phase.get("initialize"):
+        assert "Full task correctness and all declared implementation constraints are required" in program
+        assert "no speedup is required" in program
+
+
 def test_fresh_manifest_required_not_old_workspace_report(tmp_path):
     context, plan, _ = fixture_task(tmp_path)
     (context.workspace / "task_result.yaml").write_text("correctness: PASS")
