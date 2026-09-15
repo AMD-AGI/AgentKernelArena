@@ -26,6 +26,7 @@ import json, os, sys
 from pathlib import Path
 Path('call.json').write_text(json.dumps({'argv':sys.argv[1:], 'gh_present':'GH_TOKEN' in os.environ,
                                        'ssh_present':'SSH_AUTH_SOCK' in os.environ,
+                                       'stdin':sys.stdin.read(),
                                        'gh_config':os.environ['GH_CONFIG_DIR']}))
 print(json.dumps({'type':'turn.completed'}))
 ''')
@@ -34,7 +35,8 @@ print(json.dumps({'type':'turn.completed'}))
     backend = CodexBackend(BackendConfig(), logging.getLogger(__name__))
     backend.run('-literal prompt', workspace, role='optimizer')
     result = json.loads((workspace/'call.json').read_text())
-    assert result['argv'][-2:] == ['--', '-literal prompt']
+    assert result['argv'][-2:] == ['--', '-']
+    assert result['stdin'] == '-literal prompt'
     assert result['argv'][result['argv'].index('--model')+1] == 'gpt-5.6-terra'
     assert 'model_reasoning_effort="medium"' in result['argv']
     assert '--ephemeral' in result['argv']

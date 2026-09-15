@@ -104,6 +104,24 @@ when no reviewer block is supplied. CLI nonzero exits, failed/missing completed
 turn events and timeouts are operational failures; timeout cleanup terminates the
 CLI process group. These failures do not authorize task edits.
 
+Optimizer, repair, reviewer and case-enhancement prompts use anonymous stdin,
+not command-line arguments. Each invocation logs a unique private receipt directory
+beside its task workspace: `.quality_loop-<role>-<unique-id>/`. It contains
+`stdout.log`, `stderr.log` and `process.json`, including failed and timed-out calls.
+The metadata records the role, model, safe argv, prompt byte count/hash, timestamps,
+exit status, observed stream hashes and the latest terminal/usage events; it does
+not serialize prompt text, credentials or the process environment. The separately
+launched task validator does not use this backend receipt mechanism.
+
+Raw stdout/stderr retain at most 8 MiB/1 MiB per invocation. Truncation is explicit;
+the backend continues draining, hashing and checking terminal events after those
+limits. A JSON event line larger than 1 MiB is an operational failure. Available
+token counts are CLI-reported evidence, not a dollar-cost estimate. A receipt left
+in `starting`/`running`, or without stream EOF, is incomplete evidence. These logs
+are outside task edit scopes and must be preserved with run artifacts; permissive
+agent subprocesses are not a security sandbox. Role completion and its receipt do
+not approve a candidate or replace independent review and framework finalization.
+
 ## Per-task gates
 
 1. Run the shared task validator in a fresh workspace. Require the framework's
