@@ -4,6 +4,30 @@
 gated-delta-rule path used by K3's 69 linear-attention layers. Built from Hyperloom
 session `20260728T091437Z` on MI355X/gfx950.
 
+## Reproduction status (2026-09-15)
+
+The original session used custom vLLM build
+`0.1.dev19253+g5f76ae224.d20260727`. Its KDA implementation and shared FLA
+sources have not been recovered. The original public vLLM 0.24.0 image used by
+other tasks and the SGLang qualification image both lack this custom layout.
+Current v2 validation therefore fails at source materialization; the historical
+measurements below are not current validation evidence.
+
+A readable pre-patch `kimi_gdn_linear_attn.py` backup from the original session
+confirms the exact import and all three entrypoints:
+`chunk_kda_with_fused_gate`, `fused_recurrent_kda`, and
+`fused_recurrent_kda_packed_decode`. Its SHA-256 is
+`e126de56567249973b92b29b445edb0bd016267f84c6b022da3c9baf79612dc8`.
+This recovers the calling contract, not the kernels themselves. The accessible
+archive contains no required KDA source files, and its kernel workspace is empty.
+
+Reproduction requires an immutable export of that custom image or its exact
+source and runtime dependencies. Verify all declared files and imported helpers,
+then run full compilation, correctness, performance and task validation on
+compatible hardware. Keep the original cases, references and thresholds. A
+similarly named attention implementation, production fallback, or the sibling
+speculative-decode entrypoint cannot satisfy this dependency.
+
 ## Where the kernels actually live
 
 The KDA kernels are vendored **per GPU vendor**; `kimi_gdn_linear_attn.py:399`

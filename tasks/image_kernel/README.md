@@ -150,9 +150,10 @@ session specifications. No universal tolerance replaces these task-owned rules.
 Independent nonzero known answers and deliberately wrong outputs are provided for
 all tasks. The CPU suite directly executes the real reference/comparison controls
 for 15 tasks. Six controls require the image's imported dependencies: the two older
-HIP PA tasks, two CK MoE tasks, Kimi MoE, and TileLang MHC. Those six controls have
-not been executed in a matching runtime in this migration. Tiny controls validate
-reference semantics; they do not replace full quantized workloads or GPU validation.
+HIP PA tasks, two CK MoE tasks, Kimi MoE, and TileLang MHC. Their execution was
+outstanding at the initial migration checkpoint; the later GPU qualification
+records supersede that checkpoint. Tiny controls validate reference semantics;
+they do not replace full quantized workloads or GPU validation.
 
 The CPU session regression uses the actual migrated envelope runner and real
 TaskSession to execute all seven actions, then corrupts the candidate and proves
@@ -225,9 +226,12 @@ if that materialization is missing. This migration does not hand-edit them.
 
 Run the focused CPU suite with `python -m pytest -q
 tests/test_image_task_migration_v2.py` in the parent-provided test environment.
-Run formal initial baseline validation and candidate compile/correctness/performance
-on compatible hardware only after the parent wires the shared v2 pipeline. No
-full validator or optimization campaign was launched by this worker.
+The shared v2 pipeline is now integrated. Use the complete `task_validator`
+flow described in the [validator guide](../../docs/how-to/task-validator.md),
+with the matching pinned runtime and declared sources. The initial migration
+checkpoint predates full validation; subsequent evidence is retained
+separately under `logs/image-v2-gpu-validation/`. No optimization is included
+in these qualification runs.
 
 Uncommitted reproducibility artifacts are retained under
 `logs/image-migration-v2/`: the Slurm request, final job state, masked GPU output,
@@ -244,8 +248,10 @@ fresh reference with the original tolerance. This runs after measurement, with n
 change to the measured kernel, warmups or repetitions. It addresses their missing
 exact-replay evidence; a separate ordinary correctness invocation is insufficient.
 An event fallback whose outputs cannot be observed is explicitly rejected by the
-existing shared timed-run collector. The new controls have CPU negative coverage;
-full GPU validation of this follow-up is still outstanding.
+existing shared timed-run collector. At this follow-up checkpoint the new controls
+had CPU negative coverage,
+with full GPU validation still outstanding. Later full reports supersede this
+checkpoint for their exact task version and runtime.
 
 Six AITER-based `mi355x_vllm_*` configs now explicitly select the real SGLang
 repository layout observed in job 138977. The three CK tasks and two HIP tasks
@@ -254,9 +260,10 @@ seed `/sgl-workspace/aiter` into `aiter_meta`. Unified attention additionally se
 reference rules and source-build checks remain unchanged. The historical table
 above describes the original source declarations at `5fb2b9d6`; these six source
 availability errors are corrected in the follow-up, without claiming GPU PASS.
-The two removed SGLang MXFP8 modules and seven actual vLLM-source tasks still need
-compatible explicitly pinned source/runtime assets; an identically named AITER
-file is not a valid substitute for a vLLM implementation.
+At that checkpoint the two removed SGLang MXFP8 modules and seven actual
+vLLM-source tasks still needed compatible explicitly pinned source/runtime
+assets; an identically named AITER file is not a valid substitute for a vLLM
+implementation.
 
 Qualification job 139081 allocated GPUs 2 and 3 on node100, then failed in Docker
 before process startup because the read-only snapshot lacked its `logs/` mount
@@ -331,8 +338,8 @@ framework materialization and every declared setup command for all six tasks,
 using frozen source `69e3436f`. These are source and setup checks, **not** GPU
 import, compile, correctness, timing or task-validator passes.
 
-The next qualification uses a separate run with `AKA_DOCKER_IMAGE` set to the
-above digest and only the matching vLLM tasks. Each run must freeze its own
+Qualification of these tasks uses a separate run with `AKA_DOCKER_IMAGE` set
+to the above digest and only the matching vLLM tasks. Each run must freeze its own
 baseline under the same runtime used for the candidate. This does not change the
 Arena default image, and does not establish that compiled vLLM extensions can be
 copied into the newer SGLang image.
