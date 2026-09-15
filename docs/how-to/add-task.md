@@ -21,7 +21,7 @@ and initial validation entrypoints. CPU process fixtures cover their integration
 this does not certify GPU task quality or an agent's optimization capability.
 The migrated task families include SIKL, HIP, Triton, FlyDSL, generation, and
 image-backed tasks. Legacy execution/report compatibility remains for old
-workspaces and external configs; new or changed repository tasks must use v2.
+workspaces and external configs; new or changed tasks in this repository must use v2.
 Do not replace a config without implementing its task-owned actions.
 See [Migration](#migration) before changing
 an executable task. Task config version 2, runner protocol 1 and validator report
@@ -691,7 +691,7 @@ as documentation; they do not qualify any task on GPU.
 
 Orchestration selects the v2 path by `schema_version: 2`. That path uses
 `TaskSpec`, bounded materialization, `TaskSession`, `ARENA_EVAL_RESULT`, the
-shared evaluator and captured-evidence validator. All retained repository tasks
+shared evaluator and captured-evidence validator. All retained tasks
 have migrated. Compatibility paths for old workspaces and external legacy
 configs still understand `compile_command`/`correctness_command` and their
 existing timing formats; they are not a second schema for new tasks.
@@ -726,7 +726,8 @@ V2 uses the same initial-state lifecycle for every task family.
 
 ### Runtime migration acceptance
 
-Before declaring the migration complete, verify the following together:
+When migrating an external legacy task or extending the v2 runtime, verify the
+following together:
 
 - One shared schema/path normalization used by discovery, workspace setup,
   prompting, edit-boundary enforcement, evaluator, validator, and agents.
