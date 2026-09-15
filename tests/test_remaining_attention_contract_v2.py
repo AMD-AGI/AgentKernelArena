@@ -11,6 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 TASKS = ROOT / 'tasks/triton2triton/vllm'
 FIRST = ('triton_correct_attn_cp_out', 'triton_decode_attn_stage2',
          'triton_decode_attn_stage1', 'triton_decode_attn_grouped_stage1')
+REMAINING = ('triton_chunked_prefill_paged_decode', 'triton_flash_prefill_attention',
+             'triton_paged_prefix_prefill', 'triton_paged_prefix_prefill_alibi',
+             'triton_unified_attention_2d', 'triton_unified_attention_3d')
 
 
 def load(path):
@@ -20,7 +23,7 @@ def load(path):
     return module
 
 
-@pytest.fixture(params=FIRST)
+@pytest.fixture(params=FIRST + REMAINING)
 def contract(request, monkeypatch):
     monkeypatch.chdir(ROOT)
     name = request.param
@@ -33,10 +36,32 @@ def contract(request, monkeypatch):
     elif name == FIRST[1]:
         args = (*harness.make_stage1_outputs(1, 2, 1, 4, 8, 2, 2, 'cpu', torch.float32), 2)
         kwargs = {}
-    else:
+    elif name in FIRST:
         q, k, v, out, pages, lengths, scale = harness.make_inputs(1, 2, 1, 4, 8, 2, 2, 'cpu', torch.float32)
         args = (q, k, v, out, pages, lengths, 2, scale, 2)
         kwargs = {'logit_cap': 0.0}
+    elif name == REMAINING[0]:
+        args = harness.make_test_data(1, 4, 2, 1, 8, 2, 2, 'cpu', torch.float32)
+        kwargs = {'filter_by_query_len': False}
+    elif name == REMAINING[1]:
+        args = (torch.randn(4, 2, 8), torch.randn(4, 1, 8), torch.randn(4, 1, 8),
+                torch.zeros(4, 2, 8), torch.tensor([0], dtype=torch.int32), torch.tensor([4], dtype=torch.int32))
+        kwargs = {'max_input_len': 4, 'is_causal': True}
+    elif name in REMAINING[2:4]:
+        kc, vc, pages, _, _ = harness.setup_paged_kv_cache(1, 4, 1, 8, 2, 'cpu', torch.float32)
+        args = (torch.randn(2, 2, 8), torch.randn(2, 1, 8), torch.randn(2, 1, 8),
+                torch.zeros(2, 2, 8), kc, vc, pages, torch.tensor([0, 2]), torch.tensor([6]))
+        kwargs = {'max_input_len': 2}
+        if name.endswith('_alibi'): kwargs['alibi_slopes'] = torch.tensor([0.5, 0.125])
+    elif name == REMAINING[4]:
+        args = harness.make_test_data(1, 2, 4, 2, 1, 8, 2, 'cpu', torch.float32)
+        kwargs = {'sliding_window': 2, 'softcap': 2.0}
+    else:
+        import sys
+        # The independent original reference uses only Triton's integer helper.
+        monkeypatch.setitem(sys.modules, 'triton', SimpleNamespace(next_power_of_2=lambda n: 1 << (n-1).bit_length()))
+        args = harness.make_test_data(1, 1, 32, 2, 1, 8, 2, 'cpu', torch.float32)
+        kwargs = {'num_segments': 2}
     return checks, harness, args, kwargs
 
 
@@ -194,3 +219,31 @@ ORIGINALS = {'triton_correct_attn_cp_out/source/triton_correct_attn_cp_out.py': 
 def test_original_kernels_cases_gates_and_timers_preserved():
     for relative, digest in ORIGINALS.items():
         assert hashlib.sha256((TASKS / relative).read_bytes()).hexdigest() == digest
+
+
+@pytest.mark.parametrize('alibi', [False, True])
+def test_paged_oracle_reconstructs_actual_cache_and_page_indirection(monkeypatch, alibi):
+    monkeypatch.chdir(ROOT)
+    task = TASKS / ('triton_paged_prefix_prefill' + ('_alibi' if alibi else ''))
+    checks, h = load(task / '_arena_checks.py'), load(task / 'scripts/task_runner.py')
+    torch.manual_seed(909)
+    kc, vc, pages, dense_k, dense_v = h.setup_paged_kv_cache(2, 4, 2, 8, 2, 'cpu', torch.float32)
+    q, k, v = torch.randn(4, 4, 8), torch.randn(4, 2, 8), torch.randn(4, 2, 8)
+    starts, lengths, slopes = torch.tensor([0, 2, 4]), torch.tensor([6, 6]), torch.tensor([.5, .25, .125, .0625])
+    a = dict(enumerate((q, k, v, torch.empty_like(q), kc, vc, pages, starts, lengths)))
+    if alibi:
+        a['alibi_slopes'] = slopes
+        expected = h.reference_attention_alibi(q,k,v,dense_k,dense_v,starts,lengths,slopes,2,4,2,4,2,8)
+    else:
+        expected = h.reference_paged_attention(q,k,v,dense_k,dense_v,starts,lengths,2,4,2,4,2,8)
+    torch.testing.assert_close(checks.expected_outputs(h, a)[0], expected)
+    # Physically permute blocks and repair the table: the same operator must result.
+    order = torch.arange(kc.shape[0]-1, -1, -1)
+    permuted = a | {4:kc[order], 5:vc[order], 6:kc.shape[0]-1-pages}
+    torch.testing.assert_close(checks.expected_outputs(h, permuted)[0], expected)
+    # Changing real cache content, while the generator's old dense tensors stay
+    # fixed, must affect this reference and invalidate a cached old answer.
+    changed = permuted | {5:permuted[5]+3}
+    assert not torch.allclose(checks.expected_outputs(h, changed)[0], expected)
+
+ORIGINALS.update({'triton_chunked_prefill_paged_decode/source/triton_chunked_prefill_paged_decode.py': '3fca551b8f21dbfca500e5ee003112c88ddce8c364f1c2c8e16a0596d08bdf08', 'triton_chunked_prefill_paged_decode/config.yaml': '9c2299ba86847d816573c626c13821ac00d26ed527a83001ef2491b04a5e8865', 'triton_chunked_prefill_paged_decode/workloads.json': '4b1cf48ca65f51159d17a2e6de9ff6f2d1436296c6954e3c2325b6ace7fde6c3', 'triton_chunked_prefill_paged_decode/scripts/task_runner.py': '7c0a87b6374ea88b3f45cbe0d73005acc6716734fb51393f71f1b79711d2b71b', 'triton_flash_prefill_attention/source/triton_flash_prefill_attention.py': '7f0a141fd36716f848ab95b4be9df3655b5b6da11e07654466076b701c9d3b5b', 'triton_flash_prefill_attention/config.yaml': '2fbb4c96d9705a85dd42753c9a1638b67212d87639dbc53e36a072b9bee90fff', 'triton_flash_prefill_attention/workloads.json': '27e121b368b9055d59746c784d17954d5b33fe277b24872d2d9406e025698b49', 'triton_flash_prefill_attention/scripts/task_runner.py': '58cad2d8c55e3a37e6dbc18417d8885b205998d8300ae869b8d5adc3af2df961', 'triton_paged_prefix_prefill/source/triton_paged_prefix_prefill.py': 'c02a77c038191ab04f635d861e1395074ca77c049917fb0c2641b7a503affb76', 'triton_paged_prefix_prefill/config.yaml': '6140359155f3f66e00bb28378ae9675f04b48a3c51a1ab21ff546d5b963a8269', 'triton_paged_prefix_prefill/workloads.json': '4b8b6c0d12a4bdc6c6781ca188ed425ccd67e2d280ba7f9a37625f452389d92b', 'triton_paged_prefix_prefill/scripts/task_runner.py': '8a7f02a4464bd0c32fb19a5ed599a10d17324cb4b9c8004f1f48ec4bed51877b', 'triton_paged_prefix_prefill_alibi/source/triton_paged_prefix_prefill_alibi.py': '127615ac25ecda18318d2328176e92f0fd344c3eba78bb9a295d95fbd8ddc742', 'triton_paged_prefix_prefill_alibi/config.yaml': 'b6b06a0041f97d27c626a5c477ae7751cdaa29683130ebe9be687c91e888eb40', 'triton_paged_prefix_prefill_alibi/workloads.json': '45ec8809c90266475f1ff222d49e89e5eeadeab114e4e770471e9109cecd0e23', 'triton_paged_prefix_prefill_alibi/scripts/task_runner.py': '3958ecfc8e2db1508da60aeaef5e1e08af71f24069967a6ad558c695103258ed', 'triton_unified_attention_2d/source/triton_unified_attention_2d.py': '38efd85c3e716f0a689f0b464dc7a108f885d5b2bd5f8ca5674a138a271a259f', 'triton_unified_attention_2d/config.yaml': '31b6b7d72a8c6703ad5eb6f956febd0b5f4f64c682f11b643aed2328dcc2a294', 'triton_unified_attention_2d/workloads.json': '836278af56678a6bb601e7986b7acec804ba7d1fc14a873b690b4b77664be7dc', 'triton_unified_attention_2d/scripts/task_runner.py': '20c714a0b1b51a99ab03ee65c14533c84b4e7c089afbd37c51b66b3f16ba801b', 'triton_unified_attention_3d/source/triton_unified_attention_3d.py': '715800906a4d9244c2045871a6cc0168c4b68f8806e2d97dd66ea71d83ad79b8', 'triton_unified_attention_3d/config.yaml': 'b20d3a7328cf9dfdb3a6c404c86fd8d1431c23e55def172ba5e372bdf3016156', 'triton_unified_attention_3d/workloads.json': '0073fec446196304235c29632d1701083eb13710fcd0b6c9f69105da9951b578', 'triton_unified_attention_3d/scripts/task_runner.py': 'daa9393587de7abb630f2cc4b981c9b11d1e6546686980912c56f168c7c3b4a5'})

@@ -38,3 +38,22 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+### Protected execution and replay checks
+
+The task computes each oracle from pristine inputs before calling the public
+wrapper, checks all returned or supplied outputs (including auxiliary statistics),
+and rejects changes to read-only input bytes, tensor metadata, or output/input
+aliasing. Shape-only inputs are compared bytewise without assuming finite values.
+The wrapper must dispatch the declared genuine Triton JIT kernel; Torch allocation,
+same-device casts/copies and views are permitted, while operator computation in
+Torch is rejected. References execute outside that dispatch guard. This is a
+backend execution contract, not a Python security sandbox.
+
+Performance retains the original cases, 0.01 absolute/relative gates, ten warmups,
+100 samples, and shared timing helper. The actual measured graph outputs are
+checked against the pristine reference. Outside timing, source data is perturbed
+and every output poisoned, then the same captured graph is replayed and fully
+compared against a new reference. Inputs are restored afterward. No reference,
+poisoning, comparison, or extra GPU check is added inside the timed invocation.
+A timing fallback that cannot expose the actual measured outputs fails closed.
