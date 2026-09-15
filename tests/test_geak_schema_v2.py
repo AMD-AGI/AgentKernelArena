@@ -459,7 +459,7 @@ def test_launcher_retains_observed_identity_after_worker_timeout(task_factory, m
     assert "FAKE_SECRET_DO_NOT_LOG" not in path.read_text()
 
 
-@pytest.mark.parametrize("terminal", ["valid", "missing", "wrong_path", "sdk_error"])
+@pytest.mark.parametrize("terminal", ["valid", "missing", "wrong_path", "sdk_error", "oauth_expired"])
 def test_engine_worker_requires_truthful_terminal_result(task_factory, monkeypatch, terminal):
     from agents.geak import engine_worker
 
@@ -473,6 +473,9 @@ def test_engine_worker_requires_truthful_terminal_result(task_factory, monkeypat
         assert kwargs["require_workflow_result"] is True
         assert 0 < kwargs["timeout_seconds"] <= bridge.remaining() + 0.1
         kwargs["runtime_metadata"].update(init_model="probe-model", assistant_models=["probe-model"])
+        if terminal == "oauth_expired":
+            kwargs["runtime_metadata"]["runtime_error_codes"] = ["authentication_failed", "oauth_session_expired"]
+            return ""
         result = {"eval_dir": str(bridge.eval_dir), "validation_status": "accepted", "final_geomean": 0.5,
                   "final_patch": str(bridge.eval_dir / "final_patch.diff")}
         if terminal == "wrong_path":
@@ -489,6 +492,8 @@ def test_engine_worker_requires_truthful_terminal_result(task_factory, monkeypat
     assert "FAKE_PROVIDER_SECRET_DO_NOT_LOG" not in output
     assert json.loads(output)["workflow_completed"] is (terminal == "valid")
     assert json.loads(output)["runtime"]["assistant_models"] == ["probe-model"]
+    if terminal == "oauth_expired":
+        assert json.loads(output)["error_code"] == "oauth_session_expired"
 
 
 def test_runtime_identity_records_observed_models_without_credentials(tmp_path):
@@ -549,6 +554,23 @@ def test_runtime_identity_retains_error_codes_without_error_text(tmp_path):
     identity = {}
     _record_runtime_identity(message, identity)
     assert identity == {"workflow_agent_errors": [{"label": "tech_lead:plan r1", "code": "reasoning_extraction"}]}
+
+
+@pytest.mark.parametrize("model", ["<synthetic>", "real-model"])
+def test_runtime_identity_classifies_only_synthetic_oauth_failures(model):
+    from types import SimpleNamespace
+    from agents.geak_v4.workflow_runner import _record_runtime_identity
+
+    message = type("AssistantMessage", (SimpleNamespace,), {})(model=model, content=[
+        SimpleNamespace(text="Failed to authenticate: OAuth session expired and could not be refreshed. "
+                             "FAKE_PROVIDER_SECRET_DO_NOT_LOG")])
+    identity = {}
+    _record_runtime_identity(message, identity)
+    if model == "<synthetic>":
+        assert identity["runtime_error_codes"] == ["authentication_failed", "oauth_refresh_failed", "oauth_session_expired"]
+    else:
+        assert "runtime_error_codes" not in identity
+    assert "FAKE_PROVIDER_SECRET_DO_NOT_LOG" not in json.dumps(identity)
 
 
 def test_engine_rejects_child_errors_before_search(task_factory, monkeypatch):

@@ -472,6 +472,22 @@ def _record_runtime_identity(message: Any, identity: dict[str, Any]) -> None:
         model = getattr(message, "model", None)
         if isinstance(model, str):
             identity["assistant_models"] = sorted(set(identity.get("assistant_models", [])) | {model})
+        # Claude emits authentication failures as synthetic assistant messages,
+        # before a Workflow exists. Keep only known codes, never provider text.
+        if model == "<synthetic>":
+            errors = set(identity.get("runtime_error_codes", []))
+            for block in getattr(message, "content", []) or []:
+                value = getattr(block, "text", None)
+                if not isinstance(value, str) or len(value) > _JSON_SIZE_LIMIT:
+                    continue
+                value = value.lower()
+                for phrase, code in (("oauth session expired", "oauth_session_expired"),
+                                     ("could not be refreshed", "oauth_refresh_failed"),
+                                     ("failed to authenticate", "authentication_failed")):
+                    if phrase in value:
+                        errors.add(code)
+            if errors:
+                identity["runtime_error_codes"] = sorted(errors)
     if name == "TaskNotificationMessage" and getattr(message, "status", None) == "completed":
         output = getattr(message, "output_file", None)
         wrapper = _read_json(Path(output)) if output else None
