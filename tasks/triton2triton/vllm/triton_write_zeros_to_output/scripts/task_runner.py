@@ -92,7 +92,10 @@ def run_performance():
                 output.copy_(initial_output)
 
             def _bench_fn():
-                return mod.write_zeros(output)
+                mod.write_zeros(output)
+                # The contract is an in-place write. Observe the destination
+                # even if the wrapper returns a view or no value.
+                return output
 
             timed_run = _TimedRun()
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
@@ -104,8 +107,6 @@ def run_performance():
             )
 
             timed_output = timed_run.rerun()
-            if timed_output is not output:
-                raise RuntimeError("timed graph replay returned an unexpected output")
             if not torch.equal(timed_output, torch.zeros_like(timed_output)):
                 raise RuntimeError("timed graph replay did not zero the output")
 

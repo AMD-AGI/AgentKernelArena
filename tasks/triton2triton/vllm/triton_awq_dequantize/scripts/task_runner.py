@@ -14,7 +14,8 @@ SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_awq_dequantize.py")
 
 # Performance configurations: (K, N_packed, group_size)
 # qweight shape: [K, N_packed], scales shape: [K//G, N_packed*8], zeros shape: [K//G, N_packed]
-PERFORMANCE_TEST_SHAPES = [
+# Keep the literal TEST_SHAPES assignment for held-out injection.
+TEST_SHAPES = [
     (64, 8, 32),
     (128, 16, 32),
     (128, 16, 64),
@@ -26,7 +27,7 @@ PERFORMANCE_TEST_SHAPES = [
 # these separate so correctness hardening does not change performance scoring.
 CORRECTNESS_TEST_CASES = [
     {"K": K, "N_packed": N_packed, "group_size": group_size}
-    for K, N_packed, group_size in PERFORMANCE_TEST_SHAPES
+    for K, N_packed, group_size in TEST_SHAPES
 ] + [
     {
         "K": 33,
@@ -192,7 +193,7 @@ def run_performance():
     dtype = torch.float16
     test_cases = []
 
-    for test_idx, (K, N_packed, group_size) in enumerate(PERFORMANCE_TEST_SHAPES):
+    for test_idx, (K, N_packed, group_size) in enumerate(TEST_SHAPES):
         try:
             N = N_packed * 8
             num_groups = K // group_size

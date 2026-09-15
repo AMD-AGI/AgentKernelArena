@@ -22,6 +22,12 @@ Fixed by the protected native driver; do not change.
 Q dtype: `bf16`. KV dtype: `fp8 e4m3fn` (bias = 7, saturating). O dtype:
 `bf16`. Optional LSE (`fp32 [batch, NHEAD]`) supported.
 
+The protected driver launches `grid = (batch, HEAD_GROUPS)` with 64 threads
+per workgroup and `BLOCK_H * LK * sizeof(float)` (36,864 bytes) of dynamic
+shared memory. Optimize within this launch and the existing kernel signature;
+the driver does not expose a persistent-work queue or configurable launch
+dimensions. Workgroup residency is not fixed at one workgroup per CU.
+
 ## Files
 
 - `mla_decode.hip` — editable kernel and implementation helpers.

@@ -13,14 +13,15 @@ TASK_NAME = "triton2triton/triton_scale_swizzle"
 SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_scale_swizzle.py")
 
 # Keep performance coverage stable; additional padding cases are correctness-only.
-PERFORMANCE_SHAPES = [
+# Keep the literal TEST_SHAPES assignment for held-out injection.
+TEST_SHAPES = [
     (128, 4),
     (256, 8),
     (128, 16),
     (384, 12),
     (512, 8),
 ]
-CORRECTNESS_SHAPES = PERFORMANCE_SHAPES + [
+CORRECTNESS_SHAPES = TEST_SHAPES + [
     (129, 4),  # Row padding with packed columns.
     (128, 5),  # Column padding with aligned rows.
 ]
@@ -133,7 +134,7 @@ def run_performance():
     device = "cuda"
     test_cases = []
 
-    for test_idx, (rows, cols) in enumerate(PERFORMANCE_SHAPES):
+    for test_idx, (rows, cols) in enumerate(TEST_SHAPES):
         try:
             torch.manual_seed(0)
             data = torch.randint(0, 256, (rows, cols), device=device, dtype=torch.uint8)

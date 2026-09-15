@@ -165,10 +165,11 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    for i, ((M, K, E, N, topk, group_size), variant) in enumerate(
-        zip(TEST_SHAPES, CORRECTNESS_VARIANTS)
-    ):
+    for i, (M, K, E, N, topk, group_size) in enumerate(TEST_SHAPES):
         try:
+            # Held-out injection can supply more shapes than variants. Cycle
+            # variants so every shape is checked without changing the public cases.
+            variant = CORRECTNESS_VARIANTS[i % len(CORRECTNESS_VARIANTS)]
             use_int4, has_zp, mul_routed_weight, pass_topk_weights = variant
             torch.manual_seed(42 + i)
             input_tensor = torch.randn(M, K, device=device, dtype=torch.float16) * 0.5

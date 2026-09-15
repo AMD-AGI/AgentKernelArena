@@ -22,6 +22,14 @@ prompt:
       - decode_qlen = 1, page_size = 1
       - Q dtype: bf16, KV dtype: fp8 e4m3fn, O dtype: bf16
 
+    Launch contract (fixed by scripts/native/benchmark_driver.hip):
+      - grid = (batch, HEAD_GROUPS), one workgroup per batch/head group
+      - block = (64,), one wavefront per workgroup
+      - dynamic shared memory = BLOCK_H * LK * sizeof(float) = 36,864 bytes
+    Optimize within this launch and kernel signature. The protected driver
+    does not provide a persistent-work queue, scratch counter, or configurable
+    grid/block dimensions. Do not change the driver or assume 1 WG / CU.
+
     The baseline is correctness-first and uses naive FP32 dot products
     instead of MFMA. Expected gaps to address (in priority order):
 
@@ -29,10 +37,11 @@ prompt:
          transposed reads with XOR-swizzled layout).
       2. MFMA pipe under-fed (switch to mfma_f32_16x16x32_fp8_fp8 or
          the K=128 scaled variant mfma_scale_f32_16x16x128_f8f6f4).
-      3. Per-launch prologue not amortized (consider a persistent grid
-         with an atomic work-tile dispenser).
+      3. Repeated address and setup work (hoist loop invariants and reuse
+         them across context tiles within each workgroup).
       4. State held in LDS instead of registers (Q tile + softmax state
-         can be register-resident at 1 WG / CU).
+         can move to registers where register pressure permits, within the
+         fixed 64-thread workgroup and shared-memory allocation).
       5. s_waitcnt-bound after MFMA pipe is fed (hand-schedule the
          load / MFMA interleave with __builtin_amdgcn_sched_group_barrier).
       6. FetchSize > algorithmic minimum at high L2 hit rate (use
