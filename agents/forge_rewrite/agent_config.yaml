@@ -3,7 +3,13 @@
 # A task's `rewrite:` block overrides snr_threshold and max_port_attempts: the
 # task knows its operator's tolerance and how many correctness-only port
 # sessions it is worth.
-model: claude-opus-5
+# Left empty on purpose, which makes Arena omit --model and lets KernelForge
+# resolve the id for whichever provider FORGE_AGENT_BACKEND selects, from
+# CLAUDE_MODEL or CODEX_MODEL. A value here can only name one provider's
+# deployment, so it is wrong on the other one -- and it wins over the
+# environment, so the environment cannot correct it. Name a model here only to
+# pin a run to one regardless of backend.
+model: ""
 
 # Arena's hard subprocess timeout. --max-hours is derived from it with a 900s
 # shutdown margin so KernelForge self-stops before the kill, so this value is

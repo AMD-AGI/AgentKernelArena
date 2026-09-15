@@ -59,6 +59,7 @@ from agents.forge.common import (
     _terminate_process_group,
     _verify_forge_edit_scope,
     forge_environment,
+    forge_model_args,
     resolve_forge_bin,
     run_forge_subprocess,
 )
@@ -138,8 +139,7 @@ def _build_forge_command(
         fellow,
         "--git-branch",
         "forge-optimize",
-        "--model",
-        str(agent_config.get("model", "claude-opus-4-8")),
+        *forge_model_args(agent_config),
         "--permission-mode",
         str(agent_config.get("permission_mode", "acceptEdits")),
         "--task-type",
@@ -358,7 +358,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     result_json = experiments_dir / "forge_result.json"
     result_json.unlink(missing_ok=True)
 
-    model = str(agent_config.get("model", "claude-opus-4-8"))
+    model = str(agent_config.get("model") or "").strip() or "<from CLAUDE_MODEL / CODEX_MODEL>"
     cmd_parts = _build_forge_command(
         forge_bin=forge_bin,
         kernel_file=kernel_file,

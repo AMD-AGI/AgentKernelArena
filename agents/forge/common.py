@@ -68,6 +68,23 @@ def resolve_forge_bin(purpose: str) -> str:
     )
 
 
+def forge_model_args(agent_config: dict[str, Any]) -> list[str]:
+    """Return ``--model <id>``, or nothing when the agent config names no model.
+
+    Passing ``--model`` unconditionally overrides the model KernelForge would
+    have resolved for the provider actually in use, from CLAUDE_MODEL or
+    CODEX_MODEL. That is what an Arena-side default gets wrong: it can only name
+    one provider's id, so on the other provider it forwards an id that provider
+    has no deployment for. Omitting the flag is how KernelForge's own nested
+    forge-loop invocation defers the choice, and this mirrors it.
+
+    An agent config that does name a model still wins, so pinning one remains a
+    matter of writing it down.
+    """
+    model = str(agent_config.get("model") or "").strip()
+    return ["--model", model] if model else []
+
+
 def _normalize_gfx_arch(arch: str) -> str:
     """Normalize rocminfo/config variants to the Forge KB architecture token."""
     match = re.search(r"gfx[0-9a-f]+", str(arch or "").lower())

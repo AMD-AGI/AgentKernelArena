@@ -51,6 +51,7 @@ from agents.forge.common import (
     _resolve_gpu_type,
     _verify_forge_edit_scope,
     forge_environment,
+    forge_model_args,
     resolve_forge_bin,
     run_forge_subprocess,
 )
@@ -259,8 +260,7 @@ def _build_rewrite_command(
         str(max_port_attempts),
         "--max-hours",
         str(_forge_max_hours(agent_config)),
-        "--model",
-        str(agent_config.get("model", "claude-opus-4-8")),
+        *forge_model_args(agent_config),
         "--permission-mode",
         str(agent_config.get("permission_mode", "acceptEdits")),
         "--supervisor-backend",
@@ -393,7 +393,9 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logger.info(f"  operator:    {rewrite['logical_operator']}")
     logger.info(f"  gpu target:  {gpu_arch}")
     logger.info(f"  gpu type:    {gpu_type}")
-    logger.info(f"  model:       {agent_config.get('model')}")
+    logger.info(
+        f"  model:       {str(agent_config.get('model') or '').strip() or '<from CLAUDE_MODEL / CODEX_MODEL>'}"
+    )
     logger.info(f"  budget:      {_forge_max_hours(agent_config)}h")
     logger.info(f"  gateway:     {env.get('ANTHROPIC_BASE_URL', '<unset>')}")
     logger.info(f"Running command: {' '.join(shlex.quote(p) for p in cmd_parts)}")
