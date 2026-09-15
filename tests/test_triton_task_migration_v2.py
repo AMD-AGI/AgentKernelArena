@@ -2523,3 +2523,112 @@ def test_expert_count_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_count_expert_tokens/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_expert_count_checks'
+
+
+PADDED_EAGLE = ['triton_eagle_prepare_inputs_padded', 'triton_eagle_prepare_next_token_padded']
+
+
+def _padded_eagle_cpu_inputs(name):
+    if name == PADDED_EAGLE[0]:
+        inputs = (torch.tensor([2, 2, 5], dtype=torch.int32),
+                  torch.tensor([2, 1, 1], dtype=torch.int32),
+                  torch.tensor([0, 4, 7, 12], dtype=torch.int32))
+        scalars = ()
+        expected = (torch.tensor([2, 6, 8], dtype=torch.int32), torch.tensor([1, 0, 3], dtype=torch.int32))
+        def candidate(cu, vs, qsl):
+            drafts = cu - torch.cat((cu.new_zeros(1), cu[:-1]))
+            rejected = torch.where(drafts > 0, drafts+1-vs, 0)
+            return qsl[1:]-1-rejected, rejected
+    else:
+        inputs = (torch.tensor([[1, -1, 3], [5, 6, 7], [-1, -1, -1]], dtype=torch.int32),
+                  torch.tensor([False, True, False]), torch.tensor([9, 8, 4], dtype=torch.int32))
+        scalars = (10,)
+        expected = (torch.tensor([3, 8, 4], dtype=torch.int32), torch.tensor([2, 0, 0], dtype=torch.int32))
+        def candidate(sampled, dm, backup, vs):
+            valid = (sampled != -1) & (sampled < vs)
+            count = valid.sum(1).to(torch.int32)
+            indices = torch.where(valid, torch.arange(sampled.shape[1])[None, :], -1).max(1).values
+            selected = sampled.gather(1, indices.clamp_min(0)[:, None]).squeeze(1)
+            return torch.where((count > 0) & ~dm, selected, backup), torch.where(dm, 0, count)
+    return inputs, scalars, expected, candidate
+
+
+@pytest.mark.parametrize('name', PADDED_EAGLE)
+@pytest.mark.parametrize('mode', ['correct', 'dtype', 'shape', 'missing_second', 'wrong_first', 'wrong_second', 'mutate_input'])
+def test_padded_eagle_known_answers_output_contract_and_pristine_inputs(monkeypatch, name, mode):
+    task = ROOT/'tasks/triton2triton/vllm'/name
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    inputs, scalars, expected, correct = _padded_eagle_cpu_inputs(name)
+    for actual, known in zip(h.reference(*inputs, *scalars), expected):
+        torch.testing.assert_close(actual, known, atol=0, rtol=0)
+    def candidate(*args):
+        if mode == 'mutate_input': args[0].zero_()
+        outputs = list(correct(*args))
+        if mode == 'dtype': outputs[0] = outputs[0].float()
+        if mode == 'shape': outputs[0] = outputs[0][:1]
+        if mode == 'missing_second': outputs.pop()
+        if mode == 'wrong_first': outputs[0].zero_()
+        if mode == 'wrong_second': outputs[1].fill_(17)
+        return tuple(outputs)
+    mod = SimpleNamespace(**{checks.SYMBOL: candidate})
+    h.load_module = lambda: mod
+    with checks.checked_modules(h):
+        call = getattr(h.load_module(), checks.SYMBOL)
+        if mode == 'correct': checks.check_outputs(call(*inputs, *scalars), expected)
+        else:
+            with pytest.raises(AssertionError): call(*inputs, *scalars)
+    assert getattr(mod, checks.SYMBOL) is candidate
+
+
+@pytest.mark.parametrize('name', PADDED_EAGLE)
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'omit_second',
+                                 'wrong_replay', 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_padded_eagle_captured_outputs_replay_and_restoration(monkeypatch, name, mode):
+    task = ROOT/'tasks/triton2triton/vllm'/name
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h._TimedRun = SimpleNamespace
+    inputs, scalars, expected, correct = _padded_eagle_cpu_inputs(name)
+    pristine = checks.snapshots(inputs)
+    mod = SimpleNamespace(**{checks.SYMBOL: correct})
+    if name == PADDED_EAGLE[0]:
+        cu, vs, qsl = inputs
+        def fn(): mod.eagle_prepare_inputs_padded(cu, vs, qsl)
+    else:
+        sampled, dm, backup = inputs
+        vs, = scalars
+        def fn(): mod.eagle_prepare_next_token_padded(sampled, dm, backup, vs)
+    options = []
+    def benchmark(measured, *, timed_run, **kwargs):
+        options.append(kwargs)
+        outputs = measured(); cached = tuple(out.clone() for out in outputs)
+        if mode == 'wrong_timed': outputs[0].zero_()
+        if mode == 'mutate_timed': inputs[0].zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay failed')
+            if mode != 'no_write':
+                computed = cached if mode == 'stale' else measured()
+                for i, (out, value) in enumerate(zip(outputs, computed)):
+                    if mode != 'omit_second' or i == 0: out.copy_(value)
+            if mode == 'wrong_replay': outputs[1].fill_(17)
+            if mode == 'mutate_replay': inputs[0].zero_()
+            return outputs
+        timed_run.outputs, timed_run.rerun = outputs, replay
+        return 0.125, {'benchmark_method': 'cuda_graph'}
+    call = lambda: checks.checked_benchmark(h, benchmark, fn, warmup=10, repetition=100)
+    if mode == 'correct':
+        ms, metadata = call()
+        assert ms == 0.125 and metadata['perturbed_input_replay_checked']
+    else:
+        with pytest.raises((AssertionError, RuntimeError)): call()
+    checks.unchanged(inputs, pristine)
+    assert options == [dict(warmup=10, repetition=100)]
+    assert getattr(mod, checks.SYMBOL) is correct
+
+
+@pytest.mark.parametrize('name', PADDED_EAGLE)
+def test_padded_eagle_adapter_installs_checks(monkeypatch, name):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm'/name/'_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_eagle_padded_checks'

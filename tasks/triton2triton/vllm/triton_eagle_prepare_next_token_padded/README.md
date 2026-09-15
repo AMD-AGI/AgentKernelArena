@@ -29,3 +29,12 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+Protected checks require exactly two int32 output tensors of the documented
+shape on the input device. Both are compared with the original CPU reference
+computed from pristine inputs; mutating any source tensor fails. The actual
+timed outputs are checked, poisoned and replayed against changed valid input
+values. The replay exercises changed rejection/acceptance state and restores
+all input buffers and callables in `finally`. Original five cases, input seeds,
+exact comparisons, complete wrapper/allocation boundary, 10 warmups and 100
+samples are unchanged. Supplemental replay work is outside measured time.
