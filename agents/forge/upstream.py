@@ -158,6 +158,8 @@ def install_hooks(plan: dict) -> None:
     install_deadline(plan)
     from agents.forge.incumbent import install as install_incumbent
     install_incumbent()
+    from agents.forge.round_budget import install as install_round_budget
+    install_round_budget()
     if plan.get("agent_config", {}).get("codex_auth_mode") == "cli":
         from agents.forge.codex_auth import install_cli_auth
         install_cli_auth()

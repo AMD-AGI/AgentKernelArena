@@ -210,11 +210,25 @@ SDK or runner starts a separate process session.
 The pinned loop's original remaining-time calculation ignores its absolute
 deadline and uses the CLI hour budget alone. The adapter bounds native round
 admission by both clocks, scales its default 30-minute reserve down to 10% of
-the remaining short campaign (at least 60 seconds), and caps implementer sessions
-with 120 seconds left for assessment and checkpoint publication. Initialization
-uses its own smaller phase deadline. No task checks or measurement budgets are
-relaxed. The outer deadline remains a hard failure boundary if native finalization
-does not finish; an intermediate KEEP is not an Arena completion verdict.
+the remaining short campaign (at least 60 seconds), and reserves a separate 120
+seconds for native checkpoint/report publication and adapter delivery. Round
+admission, analysis and implementer sessions also reserve the complete assessment
+estimate: native history, observed initial three-suite timing scaled to include
+correctness and canonical acceptance, and the slowest complete assessment with
+25% headroom. The session limit includes provider resumes and in-session checks.
+Initialization uses its own smaller phase deadline.
+
+If an assessment still overruns the usable clock, cancellation reaps its native
+driver process group. The unfinished attempt receives `REVERT_VALIDATION_TIMEOUT`
+and cannot earn KEEP. The loop records that failure, restores its previous
+committed candidate, and exits through normal budget finalization. This includes
+the first-incumbent recovery gate; an incomplete first trial cannot establish a
+best. Task tolerances, cases, three measurements and canonical checks remain
+mandatory for every accepted candidate. Native finalization must actually finish
+and identify its selected commit before adapter delivery; Arena then evaluates
+that exact bundle normally. The outer deadline remains a hard failure boundary
+if cleanup or publication does not finish. An intermediate KEEP or an
+initialization-only run is not an Arena completion verdict.
 
 Common Arena post-processing owns exports. Neither this launcher nor the alias
 backfills an SIKL solution or assumes `kernel.py` / `workload.json`. The legacy

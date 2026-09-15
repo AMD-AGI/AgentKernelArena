@@ -8,6 +8,8 @@ import math
 import time
 
 _session_gates = ContextVar("arena_forge_session_gates", default=None)
+_active_round_budget = ContextVar("arena_forge_round_budget", default=None)
+FINALIZATION_RESERVE_SEC = 120
 
 
 class SessionBudgetExceeded(RuntimeError):
@@ -20,8 +22,14 @@ class SessionBudgetExceeded(RuntimeError):
 
 def _available(plan):
     deadline = min(plan["deadline_unix"], plan.get("phase_deadline_unix", math.inf))
-    reserve = 0 if "phase_deadline_unix" in plan else 120
-    return deadline - time.time() - reserve
+    reserve = 0 if "phase_deadline_unix" in plan else FINALIZATION_RESERVE_SEC
+    available = deadline - time.time() - reserve
+    loop = _active_round_budget.get()
+    if loop is not None and "phase_deadline_unix" not in plan:
+        # The loop's clock already excludes delivery/checkpoint time. Sessions
+        # must also leave the full native assessment, including canonical checks.
+        available = min(available, loop._time_remaining() - loop._measurement_estimate_sec())
+    return available
 
 
 def bound_agent(agent, plan, timeout_sec):
