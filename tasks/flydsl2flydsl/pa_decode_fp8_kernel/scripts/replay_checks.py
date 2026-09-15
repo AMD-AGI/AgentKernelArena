@@ -55,6 +55,17 @@ def require_unchanged(inputs, originals):
         raise AssertionError("Operator modified a read-only input")
 
 
+def _restore_readonly_tensor(value, original):
+    # Per-tensor PA scales are expanded views. Preserve the exact storage/stride
+    # passed to the captured kernel, restoring each broadcast location only once.
+    destination, source = value, original
+    for dim in range(value.ndim - 1, -1, -1):
+        if value.shape[dim] > 1 and value.stride(dim) == 0:
+            destination = destination.select(dim, 0)
+            source = source.select(dim, 0)
+    destination.copy_(source)
+
+
 def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, compare):
     """Check last measured output, then perturb and replay the measured unit.
 
@@ -81,6 +92,6 @@ def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, 
     finally:
         # Subsequent diagnostic timings see the original declared input, too.
         for value, original in zip(inputs, originals):
-            value.copy_(original)
+            _restore_readonly_tensor(value, original)
     return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
             "replay_inputs_perturbed": True, "replay_output_poisoned": True}

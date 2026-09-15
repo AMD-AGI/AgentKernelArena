@@ -2728,3 +2728,30 @@ def test_quant_gemm_original_quantization_inputs_numeric_and_timing_functions_pr
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 restored=_RemoveQuantGemmChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
+
+
+@pytest.mark.parametrize('behavior',['correct','cached','scale_mutated','reference_error'])
+@pytest.mark.parametrize('expanded_dims',[1,2])
+def test_pa_replay_restores_expanded_scale_storage_without_changing_layout(behavior,expanded_dims):
+    import torch,types
+    checks=module(ROOT/'tasks/flydsl2flydsl/pa_decode_fp8_kernel/scripts/replay_checks.py')
+    query=torch.tensor([[1.,2.],[3.,4.]],dtype=torch.bfloat16)
+    storage=torch.tensor([2.]) if expanded_dims==2 else torch.tensor([2.,3.])
+    scale=storage.expand(2,2);strides=scale.stride();pointer=scale.data_ptr()
+    originals=(query.clone(),scale.clone());expected=(query*scale).to(query.dtype);output=expected.clone()
+    def replay():
+        if behavior=='cached':output.copy_(expected)
+        else:output.copy_((query*scale).to(query.dtype))
+        if behavior=='scale_mutated':storage.add_(1)
+        return output
+    def reference():
+        if behavior=='reference_error':raise RuntimeError('controlled reference failure')
+        return (query*scale).to(query.dtype)
+    timed=types.SimpleNamespace(bound=True,outputs=output,rerun=replay)
+    def compare(actual,ref):checks.allclose_output(actual,ref,atol=.005,rtol=0)
+    kwargs=dict(inputs=(query,scale),originals=originals,expected=expected,perturb=lambda:query.neg_(),reference=reference,compare=compare)
+    if behavior=='correct':assert checks.verify_timed_run(timed,**kwargs)['replay_correctness']=='PASS'
+    else:
+        with pytest.raises((AssertionError,RuntimeError)):checks.verify_timed_run(timed,**kwargs)
+    checks.require_unchanged((query,scale),originals)
+    assert scale.stride()==strides and scale.data_ptr()==pointer

@@ -58,3 +58,9 @@ scratch retain their existing contract. Input cloning, checks, reference work
 and restoration are excluded from device timing for both roles. Warmups, sample
 counts, cases and numerical thresholds remain unchanged. The original secondary
 launch timing is diagnostic; Arena scores against the separate frozen baseline.
+
+Per-tensor quantization scales retain their original expanded, zero-stride views.
+Replay restoration writes each shared storage location once; it does not replace
+those views with contiguous tensors or change the captured kernel arguments.
+Read-only checks still compare every logical element before and after replay.
+All eight original cases, seeds, absolute-error gate and graph timing remain.
