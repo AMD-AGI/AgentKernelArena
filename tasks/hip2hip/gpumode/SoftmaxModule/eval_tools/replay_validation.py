@@ -11,6 +11,48 @@ import inspect
 import torch
 
 
+def softmax_reference(x, axis=-1, chunk_elements=1048576):
+    """FP64 exp/sum definition with bounded scratch; never calls softmax."""
+    if chunk_elements <= 0:
+        raise ValueError("Positive reference scratch bound required")
+    values = x.detach().movedim(axis, -1)
+    width = values.shape[-1]
+    rows = values.reshape(-1, width)
+    output = torch.empty_like(rows)
+    step = max(1, chunk_elements // width)
+    for start in range(0, rows.shape[0], step):
+        part = rows[start:start + step].double()
+        weights = torch.exp(part - part.amax(dim=-1, keepdim=True))
+        output[start:start + step] = (weights / weights.sum(dim=-1, keepdim=True)).to(x.dtype)
+    return output.reshape(values.shape).movedim(-1, axis)
+
+
+def reference_self_test(module, functional):
+    """Known answers cross-check both actual production paths independently."""
+    import math
+    axis = getattr(module, 'axis', -1)
+    values = [[0., math.log(2), math.log(3), math.log(4)],
+              [1000., 1000., 999., 998.], [-1000., -1000., -1000., -1000.]]
+    normalizer = 2 + math.exp(-1) + math.exp(-2)
+    expected = [[.1, .2, .3, .4],
+                [1/normalizer, 1/normalizer, math.exp(-1)/normalizer, math.exp(-2)/normalizer],
+                [.25, .25, .25, .25]]
+    x = torch.tensor(values, dtype=torch.float32)
+    answer = torch.tensor(expected, dtype=torch.float32)
+    if axis == 2:
+        x, answer = x.unsqueeze(0), answer.unsqueeze(0)
+    torch.testing.assert_close(softmax_reference(x, axis, chunk_elements=4), answer, rtol=1e-4, atol=1e-5)
+    for implementation in (module, functional):
+        with torch.no_grad():
+            actual = implementation(x.clone())
+        if actual.shape != x.shape or actual.dtype != x.dtype or actual.device != x.device:
+            raise ValueError("Softmax reference output contract mismatch")
+        torch.testing.assert_close(actual, answer, rtol=1e-4, atol=1e-5)
+    wrong_axis = 1 if axis == 2 else 0
+    if torch.allclose(softmax_reference(x, wrong_axis), answer, rtol=1e-4, atol=1e-5):
+        raise ValueError("Softmax control cannot detect wrong-axis normalization")
+
+
 def unchanged_inputs(before, after):
     for expected, actual in zip(before, after):
         if isinstance(expected, torch.Tensor):
@@ -55,10 +97,9 @@ def install(perf, output_contract):
         state = {name: value.detach().clone() for name, value in module.state_dict().items()} if hasattr(module, "state_dict") else {}
         try:
             with torch.no_grad():
-                # The functional module's default is the protected PyTorch operator,
-                # never the supplied HIP function. The PyTorch baseline is checked
-                # eagerly here and against the functional reference by correctness.
-                expected = module(*copy.deepcopy(inputs))
+                # Independent exp/sum oracle for the actual timed inputs;
+                # both baseline and candidate are checked outside timing.
+                expected = softmax_reference(inputs[0], getattr(module, 'axis', -1))
             observed = TimedRun()
             invoke = (lambda: module(*inputs)) if hip_fn is None else (lambda: module(*inputs, fn=hip_fn))
             elapsed, metadata = perf.benchmark_cuda_graph_or_events(

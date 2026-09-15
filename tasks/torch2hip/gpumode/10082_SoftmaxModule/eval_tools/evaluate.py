@@ -127,6 +127,9 @@ def validate_task(args, rows):
     import torch
     module = load_module(local_path(args.module), "arena_reference")
     functional = load_module(local_path(args.functional), "arena_functional")
+    from replay_validation import reference_self_test
+    control_module, control_functional = prepare_models(args, device="cpu")
+    reference_self_test(control_module, control_functional)
     forward = getattr(functional, args.model_class).forward
     default = inspect.signature(forward).parameters["fn"].default
     if not callable(default):
@@ -170,16 +173,25 @@ def correctness(args, role, rows):
         reference_inputs = [value.to("cuda") if isinstance(value, torch.Tensor) else value for value in inputs]
         torch.manual_seed(1337 + index)
         torch.cuda.manual_seed_all(1337 + index)
-        expected = module(*copy.deepcopy(reference_inputs))
+        expected_inputs = copy.deepcopy(reference_inputs)
+        actual_inputs = copy.deepcopy(reference_inputs)
+        from replay_validation import softmax_reference
+        expected = softmax_reference(expected_inputs[0], getattr(module, 'axis', -1))
+        module_result = module(*copy.deepcopy(expected_inputs))
+        output_contract(expected, module_result)
         torch.manual_seed(1337 + index)
         torch.cuda.manual_seed_all(1337 + index)
         # A provided PyTorch baseline is checked against the independently written
         # functional reference. HIP always uses the explicitly loaded extension.
-        actual = (functional(*copy.deepcopy(reference_inputs)) if hip_fn is None else
-                  functional(*copy.deepcopy(reference_inputs), fn=hip_fn))
+        actual = (functional(*actual_inputs) if hip_fn is None else
+                  functional(*actual_inputs, fn=hip_fn))
         torch.cuda.synchronize()
         output_contract(expected, actual)
-        passed = checks._compare_results(expected, actual, rtol=rtol, atol=atol)
+        from replay_validation import unchanged_inputs, separate_output
+        unchanged_inputs(expected_inputs, actual_inputs)
+        separate_output(actual, actual_inputs)
+        passed = (checks._compare_results(expected, module_result, rtol=rtol, atol=atol)
+                  and checks._compare_results(expected, actual, rtol=rtol, atol=atol))
         row = {**rows[index], "status": "PASS" if passed else "FAIL", "metrics": {"rtol": rtol, "atol": atol}}
         if not passed:
             row["failure_kind"] = "numerical_mismatch"

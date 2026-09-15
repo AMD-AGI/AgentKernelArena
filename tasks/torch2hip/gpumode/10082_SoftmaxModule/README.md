@@ -65,3 +65,17 @@ method mismatch, including graph capture falling back to Event for only one
 role. Successful timing rows must be comparable; merely naming two supported
 methods is insufficient. Arena additionally checks each case against the
 independently frozen baseline method before accepting/scoring a candidate.
+
+
+## Independent Softmax reference
+
+Correctness and actual timed-output/replay validation use a protected FP64
+max-shifted exponential/sum formula, with bounded FP64 scratch and the original
+output dtype and comparison tolerance. This oracle never calls Tensor.softmax,
+F.softmax or torch.softmax. Task validation cross-checks both production forms
+against logarithm-ratio, large-offset and uniform known answers, and rejects a
+wrong-axis negative control. Both the baseline and submitted HIP implementation
+must match the independent oracle. Original workload cases, input generators,
+seeds, axis, 10 warmups, 100 samples and timing boundaries are unchanged;
+reference calculations remain outside timing. Same-input poisoned replay does
+not establish changed-input cache rejection.

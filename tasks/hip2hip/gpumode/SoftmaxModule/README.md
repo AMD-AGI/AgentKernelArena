@@ -59,3 +59,17 @@ values are restored in `finally`, including on exceptions, so a failed role
 cannot alter the next role's starting state. Snapshot, checks and final cleanup
 run outside the reported samples; existing per-invocation prepare callbacks
 and the baseline's graph/Event policy retain their timing boundaries.
+
+
+## Independent Softmax reference
+
+Correctness and actual timed-output/replay validation use a protected FP64
+max-shifted exponential/sum formula, with bounded FP64 scratch and the original
+output dtype and comparison tolerance. This oracle never calls Tensor.softmax,
+F.softmax or torch.softmax. Task validation cross-checks both production forms
+against logarithm-ratio, large-offset and uniform known answers, and rejects a
+wrong-axis negative control. Both the baseline and submitted HIP implementation
+must match the independent oracle. Original workload cases, input generators,
+seeds, axis, 10 warmups, 100 samples and timing boundaries are unchanged;
+reference calculations remain outside timing. Same-input poisoned replay does
+not establish changed-input cache rejection.
