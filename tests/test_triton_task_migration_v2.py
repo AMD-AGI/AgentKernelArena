@@ -23,6 +23,9 @@ BASE = '5c9f8ef2'
 # preserve original kernels, references, input generation, cases, gates and
 # timer settings, and reject incorrect measured/replay output through real runners.
 VLLM_CHECKED_RUNNERS = {
+    'triton_fused_moe': 'e3c3c28504797346f7af6a02847118bf7a886059f8de176cd799cfedcec7206a',
+    'triton_fused_moe_gptq_awq': '6012428b1517683d3fa73578025c8d03932a5b259fab66c753c09acf6e449c87',
+
     'triton_batched_moe': 'd804d6902c7036d97f1ba24b719435d9c9240af0fe38fdcd161a4776e60a7d05',
     'triton_moe_mmk': '445e4603b0521be7a87256158a7d1d834a1670e277c205b5c922328276325dfa',
 
@@ -152,6 +155,13 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
             # Apply modulo to the global column, including the tile offset.
             old = b'pid_n * BLOCK_N + tl.arange(0, BLOCK_N) % N'
             new = b'(pid_n * BLOCK_N + tl.arange(0, BLOCK_N)) % N'
+            assert original.count(old) == 1
+            original = original.replace(old, new)
+        if task.name == 'triton_fused_moe_gptq_awq':
+            # Reuse the existing K-tail predicate on packed weight loads too.
+            # The independent quantized controls check both INT4 and INT8.
+            old = b'        b = tl.load(b_ptrs)'
+            new = b'        b = tl.load(b_ptrs, mask=k_mask, other=k_other)'
             assert original.count(old) == 1
             original = original.replace(old, new)
         if task.name == 'triton_paged_prefix_prefill':
