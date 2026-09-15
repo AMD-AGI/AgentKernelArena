@@ -312,5 +312,55 @@ class DiscreteRoundingContractTests(unittest.TestCase):
             function(path, '_check_routing')(wrong, expected)
 
 
+class MLACompleteContractTests(unittest.TestCase):
+    def test_single_finite_corruption_cannot_use_legacy_five_percent_allowance(self):
+        path = TASKS / 'L1/mla_decode/test_kernel_harness.py'
+        reference = function(path, 'run_ref')
+        legacy = function(path, 'check_correctness_val', assert_output_contract=CONTRACT.assert_output_contract)
+        build = function(path, '_mla_contract', KV_LORA_RANK=2, run_ref=reference, check_correctness_val=legacy)
+        inputs = dict(q=torch.zeros(1, 50, 3), k_input=torch.zeros(3, 1, 3),
+                      v_input=torch.ones(3, 1, 2), kv_indices=torch.arange(3),
+                      output=torch.empty(1, 50, 2), sm_scale=.5)
+        readonly, ref, check = build(inputs)
+        expected = ref(readonly)
+        wrong = expected.clone(); wrong.flatten()[0] -= .1
+        self.assertTrue(legacy(expected, wrong)[0])
+        with self.assertRaises(AssertionError):
+            check(wrong, expected)
+
+    def test_dependency_identity_repeatability_and_collision(self):
+        import hashlib
+        import json
+        import tempfile
+        import types
+        module = load_file('_geak_mla_dependency', TASKS / 'L1/mla_decode/_aiter_dependency.py')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dependency = root / 'dependencies/aiter_triton'
+            dependency.mkdir(parents=True)
+            source = dependency / 'primitive.py'; source.write_text('VALUE = 7\n')
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            (root / 'runtime-dependencies.json').write_text(json.dumps({'source_root': 'dependencies/aiter_triton', 'files': {'primitive.py': digest}}))
+            module.ROOT = root
+            self.assertEqual(module.verify_dependency(), dependency)
+            self.assertEqual(module.verify_dependency(), dependency)
+            source.write_text('VALUE = 8\n')
+            with self.assertRaisesRegex(ValueError, 'identity mismatch'):
+                module.verify_dependency()
+            source.write_text('VALUE = 7\n')
+            with patch.dict(sys.modules, {'aiter': types.ModuleType('aiter')}):
+                with self.assertRaisesRegex(RuntimeError, 'outside this task'):
+                    module.bind_dependency()
+            with patch.dict(sys.modules):
+                for name in list(sys.modules):
+                    if name == 'aiter' or name.startswith('aiter.'):
+                        del sys.modules[name]
+                module.bind_dependency()
+                before = sys.modules['aiter.ops.triton']
+                module.bind_dependency()
+                self.assertIs(before, sys.modules['aiter.ops.triton'])
+                self.assertEqual(before.__path__, [str(dependency)])
+
+
 if __name__ == '__main__':
     unittest.main()

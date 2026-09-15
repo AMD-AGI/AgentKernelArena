@@ -14,15 +14,6 @@ import torch
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
 from _timed_contract import checked_call, checked_benchmark, assert_output_contract
 
-# Newer aiter imports template-backed C++ interfaces eagerly and defaults their
-# build cache to ~/.aiter. The Docker validator exposes a read-only HOME, so keep
-# that cache local to this task before importing kernel.py/aiter.
-os.environ.setdefault(
-    "AITER_ROOT_DIR",
-    str(Path(__file__).resolve().parent / "build" / "aiter_root"),
-)
-
-
 def benchmark_cuda_graph_or_events(*args, **kwargs):
     samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
     values = sorted(samples)
@@ -39,6 +30,9 @@ REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+from _aiter_dependency import bind_dependency
+
+bind_dependency()
 from kernel import decode_attention_fwd_grouped_rope
 
 torch.set_default_device("cuda")
@@ -195,6 +189,7 @@ def _mla_contract(inputs):
     def check(actual, expected):
         passed, ratio, cosine = check_correctness_val(expected, actual)
         assert passed, ('MLA numerical mismatch', ratio, cosine)
+        torch.testing.assert_close(actual, expected, atol=1e-2, rtol=1e-2)
         # Each output coordinate is a convex combination of V coordinates.
         # The original absolute tolerance accounts for output rounding.
         assert (actual.float() >= bounds['lower'] - 1e-2).all(), 'Attention below value range'

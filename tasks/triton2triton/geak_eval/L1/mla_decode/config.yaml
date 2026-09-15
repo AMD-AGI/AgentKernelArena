@@ -1,6 +1,6 @@
 schema_version: 2
-description: Optimize the declared Triton implementation of mla_decode, preserving the protected operator
-  and output contracts.
+description: Optimize the declared Triton implementation of mla_decode, preserving
+  the protected operator and output contracts.
 candidate:
   language: triton
   initial_state: implemented
@@ -26,3 +26,14 @@ evaluation:
   - python3
   - _arena_eval.py
   workloads: workloads.json
+workspace:
+  sources:
+  - kind: image
+    image_path: /sgl-workspace/aiter/aiter/ops/triton
+    destination: dependencies/aiter_triton
+    exclude:
+    - __pycache__
+  setup:
+  - - python3
+    - _aiter_dependency.py
+    - --check

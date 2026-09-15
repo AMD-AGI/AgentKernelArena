@@ -13,9 +13,9 @@ a request to run a reference implementation instead.
 
 Arena creates an independent frozen `initial_candidate` workspace for baseline
 measurement. Both roles execute this task's local `kernel.py`; no `GEAK_WORK_DIR`
-or external worktree selects a candidate or baseline. Installed PyTorch/Triton
-(and AITER utilities where imported by the existing source) are runtime image
-dependencies. This task neither clones dependencies nor imports Arena/agent code.
+or external worktree selects a candidate or baseline. Installed PyTorch/Triton are runtime image dependencies. AITER modules are loaded
+from the declared, checked source tree described below. No Arena or agent code
+is imported.
 
 ## Evaluation contract
 
@@ -24,7 +24,7 @@ Run `python3 _arena_eval.py validate-task`, or
 one role and action. The runner emits one `ARENA_EVAL_RESULT=` envelope using
 `arena-eval-v1`. Arena owns final reports and scoring.
 
-`workloads.json` independently records 128 required cases, including all
+`workloads.json` independently records 129 required cases, including all
 128 original full-benchmark cases. The original correctness selection
 (16 cases) runs first with its original ordering/seeding. Any additional
 benchmark cases then receive the same numerical/output checks. Distinct original
@@ -40,28 +40,38 @@ The original optional reference timings remain diagnostic; Arena uses the frozen
 initial implementation's measured times for scoring. No GPU qualification is
 implied by the CPU migration checks.
 
-Do not edit `test_kernel_harness.py`, `_timed_contract.py`, `_arena_*.py`, `workloads.json`, or generated
+Do not edit the materialized dependencies, `runtime-dependencies.json`,
+`_aiter_dependency.py`, `test_kernel_harness.py`, `_timed_contract.py`, `_arena_*.py`, `workloads.json`, or generated
 `_aka_benchmark.py`. The runtime must materialize the canonical benchmark helper
 next to the original harness even though the public runner is `_arena_eval.py`.
 Unsupported hardware or missing dependencies return a failing envelope; use a
 compatible image/GPU before scheduling this task.
 
-The original task recorded AITER source revision
-`22122345c03991cb8026947b8df05e02f50d1f88`; that provenance is retained in
-`workloads.json`. The candidate imports the installed AITER MLA Triton primitives
-and logger. The runner does not claim that the image package matches this commit
-or silently clone/install another copy. Image qualification must record its
-actual AITER revision and verify compatibility with this source contract.
+The original wrapper source provenance remains revision
+`22122345c03991cb8026947b8df05e02f50d1f88`. Its runtime dependency is now explicitly
+materialized by `workspace.sources` from the selected image's AITER Triton source.
+`runtime-dependencies.json` pins the required implementation modules and tuning
+configs by SHA256 at qualified AITER revision
+`4ad99832823dde2315b361cbd3b54b1c5c12acd5`. Setup verifies these bytes before the
+baseline is frozen. A missing or different dependency fails; it never silently
+uses an installed AITER package instead.
+
+The protected `_aiter_dependency.py` binds Python source namespaces to the copied
+tree so the original kernel imports execute those exact modules. This avoids
+unrelated AITER quant/comms/C++ package initializers. It does not replace either
+Triton stage or modify imported source bytes. The complete task works from its
+materialized dependency tree, with PyTorch/Triton supplied by the runtime image.
 
 ## Complete output and measured invocation checks
 
 The scored domain is one BF16 query per sequence, page size one, two KV splits,
 `use_rope=False`, and `logit_cap=0`. Both declared Python launch functions call
-installed AITER **Triton** primitives; there is no HIP assembly stage in this
+declared materialized AITER **Triton** primitives; there is no HIP assembly stage in this
 local source. The fixed image's actual AITER revision must be qualified.
 
 The original elementwise `atol=rtol=0.01`, at most 5% mismatching-elements policy
-is retained. Every output must additionally have the expected shape/dtype/device,
+is retained as a legacy diagnostic, and **all elements must additionally pass**
+`atol=rtol=0.01`; the 5% allowance cannot exempt any bad coordinate. Every output must have the expected shape/dtype/device,
 be finite, and lie in its value-coordinate convex range (with the same 0.01
 rounding allowance). The legacy 5% policy is not permission for NaNs/infinities
 or arbitrary unbounded values. A separate, unscored zero-query control checks
