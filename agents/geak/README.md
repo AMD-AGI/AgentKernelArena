@@ -122,6 +122,20 @@ during delivery remains a failure and records the actual retained sources.
 The adapter never writes `task_result.yaml` or a validator report. Arena's
 independent evaluator and framework exports remain authoritative.
 
+Failed public actions retain bounded, redacted task reasons in `checks/` and
+return those diagnostics to GEAK. `runtime_identity.json` separately records
+known provider error codes and available rate-limit metadata, without raw
+provider messages. A rate-limit event with `status: rejected` indicates a
+rejected request; `overage_status: rejected` alone does not establish that the
+regular allowance is exhausted.
+
+Read these diagnostics alongside `engine_result.json`, `delivery.json`, and
+Arena's `task_result.yaml`. Candidate acceptance means the retained source
+passed Arena's evaluation. It does not establish that GEAK completed its
+workflow: an interrupted or failed engine can still leave an accepted candidate.
+Count a completed optimization only with evidence of native GEAK search and
+successful workflow completion as well as independent candidate acceptance.
+
 ## Security and reproducibility review
 
 New execution paths are the selected Python SDK worker, Claude's real Workflow
