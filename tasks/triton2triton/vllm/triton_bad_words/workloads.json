@@ -212,6 +212,18 @@
         "case_index": 5,
         "coverage": "Controls cover multi-token bad words using output history plus speculative input positions, matching/nonmatching prefixes and remapped requests."
       }
+    },
+    {
+      "test_case_id": "perf_prefix_routing",
+      "status": "PASS",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "case_index": 6,
+        "coverage": "additional representative operator branch workload"
+      }
     }
   ],
   "migration": {

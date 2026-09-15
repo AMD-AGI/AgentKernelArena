@@ -127,6 +127,18 @@
         "case_index": 5,
         "coverage": "Controls include speculative local positions and token histories, repeated request routing, packed prompt masks and disabled/heterogeneous repetition/frequency/presence penalties. Original scored cases remain non-speculative."
       }
+    },
+    {
+      "test_case_id": "perf_speculative_penalties",
+      "status": "PASS",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "case_index": 6,
+        "coverage": "additional representative operator branch workload"
+      }
     }
   ],
   "migration": {

@@ -36,3 +36,14 @@ def control_inputs(harness):
 
 def observe(result, args):
     return args[MUTABLE[0]]
+
+
+SCORED_CASE_IDS = ('perf_combined_filtering',)
+SCORED_TARGET_MS = 1.0
+
+def scored_inputs(harness):
+    args = list(next(control_inputs(harness)))
+    args[0] = torch.linspace(-2,2,32*1024).reshape(32,1024)
+    args[1] = args[1].repeat(8)
+    args[2] = args[2].repeat(8)
+    yield SCORED_CASE_IDS[0], tuple(args)

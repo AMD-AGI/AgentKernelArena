@@ -465,3 +465,78 @@ def test_mrope_scored_setup_honors_declared_scenario(is_prefill):
     exec(compile(ast.Module(body=assignments,type_ignores=[]),str(path),'exec'),ns)
     assert torch.all(ns['prefill_lens']==(128 if is_prefill else 10))
     assert torch.all(ns['num_computed_tokens']==(0 if is_prefill else 50))
+
+
+@pytest.mark.parametrize('name',['bad_words','logit_bias','penalties','topk_topp'])
+def test_additional_scored_paths_have_declared_correctness_and_cpu_oracles(name):
+    replay,contract,harness=modules(name)
+    manifest=json.loads((TASKS/('triton_'+name)/'workloads.json').read_text())
+    rows={r['test_case_id']:r for r in manifest['cases']}
+    observed=[]
+    for index,(case_id,args) in enumerate(contract.scored_inputs(harness)):
+        observed.append(case_id)
+        assert rows[case_id]['checks']==['correctness','performance']
+        assert rows[case_id]['params']['case_index']==contract.CONTROL_INDEX+1+index
+        before=replay.clone(args)
+        answer=replay.expected(harness,contract,args)
+        replay.unchanged(args,before,())
+        replay.check(harness,contract,answer,answer,args)
+        assert args[0].shape[0]>=8 and args[0].shape[1]>=1024
+        if name in ('bad_words','logit_bias','topk_topp'):
+            assert torch.isfinite(answer).any() and torch.isneginf(answer).any()
+        else:
+            assert not torch.equal(answer,args[0])
+    assert observed==list(contract.SCORED_CASE_IDS)
+
+
+@pytest.mark.parametrize('name',['bad_words','logit_bias','penalties'])
+def test_added_scored_launches_preserve_reset_and_observe_real_output(name,monkeypatch):
+    replay,contract,harness=modules(name)
+    # Exercise extension + shared Recorder composition on CPU, not GPU timing.
+    monkeypatch.setitem(__import__('sys').modules,'_arena_replay',replay)
+    extension=load(TASKS/('triton_'+name)/'_arena_additional.py','additional_'+name)
+    real_to_device=replay.to_device
+    monkeypatch.setattr(extension,'to_device',lambda values,device:real_to_device(values,'cpu'))
+    original_count=ORIGINAL_CONTRACTS[name]['original_count']
+    sentinel=[{'test_case_id':'untouched-original','execution_time_ms':2.}]
+    harness.run_performance=lambda:sentinel.copy()
+    harness.run_correctness=lambda **kw:(True,None)
+    arity=len(next(contract.scored_inputs(harness))[1])
+    function=fake_function(replay,contract,harness,arity)
+    harness.load_module=lambda:types.SimpleNamespace(**{contract.FUNCTION:function})
+    harness._TimedRun=Timed
+    harness._benchmark_cuda_graph_or_events=fake_benchmark
+    extension.install(harness,contract)
+    replay.install(harness,contract)
+    rows=harness.run_performance()
+    assert rows[0]==sentinel[0]
+    assert len(rows)==1+len(contract.SCORED_CASE_IDS)
+    assert all(r['execution_time_ms']>0 and r['replay_input_control_checked'] and r['input_state_restored'] for r in rows[1:])
+    assert rows[1]['test_case_id']==contract.SCORED_CASE_IDS[0]
+    assert original_count>=5
+
+
+def test_added_top_p_and_combined_direct_launch_composition(monkeypatch):
+    replay,contract,harness=modules('topk_topp')
+    monkeypatch.setitem(__import__('sys').modules,'_arena_replay',replay)
+    extension=load(TASKS/'triton_topk_topp/_arena_additional.py','additional_topk')
+    real_to_device=replay.to_device
+    monkeypatch.setattr(extension,'to_device',lambda values,device:real_to_device(values,'cpu'))
+    harness.run_performance=lambda:[]
+    harness.run_correctness=lambda **kw:(True,None)
+    harness.load_module=lambda:types.SimpleNamespace(**{contract.FUNCTION:fake_function(replay,contract,harness,4)})
+    def direct(module,logits,k,p,mask_value):
+        kernel_args=(logits,None,None,None,k,p)
+        kernel_meta={'TOPK_ENABLED':k is not None,'TOPP_ENABLED':p is not None,'MASK_VALUE':mask_value}
+        def launch():
+            assert kernel_meta['TOPP_ENABLED']
+            logits.copy_(harness.reference_apply_top_k_top_p(kernel_args[0],kernel_args[4],kernel_args[5]))
+        return {'launch':launch}
+    harness.prepare_direct_launch=direct
+    harness._TimedRun=Timed
+    harness._benchmark_cuda_graph_or_events=fake_benchmark
+    extension.install(harness,contract)
+    replay.install(harness,contract)
+    rows=harness.run_performance()
+    assert [r['test_case_id'] for r in rows]==list(contract.SCORED_CASE_IDS)
+    assert all(r['execution_time_ms']>0 and r['replay_input_control_checked'] for r in rows)

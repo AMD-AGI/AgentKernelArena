@@ -53,3 +53,17 @@ def check(harness, actual, answer, args):
     ok, reason = harness.compare_masked_logits(actual,answer,args[0].shape[1],limit)
     if not ok:
         raise AssertionError(reason)
+
+
+SCORED_CASE_IDS = ('perf_top_p_only', 'perf_combined_topk_topp')
+SCORED_TARGET_MS = 1.0
+
+def scored_inputs(harness):
+    logits = torch.linspace(-4,4,4096).repeat(8,1)
+    k = i([8,32,128,256,512,1024,2048,4096])
+    p = f([0.5,0.6,0.7,0.8,0.9,0.95,0.99,1.])
+    yield SCORED_CASE_IDS[0], (logits.clone(), None, p.clone(), -float('inf'))
+    yield SCORED_CASE_IDS[1], (logits.clone(), k, p, -float('inf'))
+
+def scored_launch(harness, module, args):
+    return harness.prepare_direct_launch(module, *args)["launch"]

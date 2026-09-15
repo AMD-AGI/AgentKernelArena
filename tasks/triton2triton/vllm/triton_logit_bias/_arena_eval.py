@@ -56,6 +56,8 @@ def load_harness():
     spec.loader.exec_module(module)
     import _arena_contract
     import _arena_replay
+    import _arena_additional
+    _arena_additional.install(module, _arena_contract)
     _arena_replay.install(module, _arena_contract)
     return module
 

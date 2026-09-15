@@ -4,12 +4,10 @@ The starting candidate is implemented Triton. Improve the declared source files 
 the framework freezes the initial implementation as the baseline. Baseline and candidate
 actions execute only this workspace, with no fallback to another implementation.
 
-Optimize repetition, frequency and presence penalties for the five original
-non-speculative scored workloads, using existing output bin counts. The score uses
-identity request mapping and no additional speculative history; it makes no claim
-about speculative-history throughput. Preserve the complete `apply_penalties` API,
-including packed prompt masks, routed requests and speculative local positions,
-which remain required correctness controls.
+Optimize repetition, frequency and presence penalties. The original five
+non-speculative scored workloads remain unchanged; `perf_speculative_penalties`
+adds a 48-row, 1024-vocabulary workload with packed prompt masks, heterogeneous
+penalties, routed requests and speculative token history.
 
 Constraints:
 - Must maintain the same function signature for `apply_penalties`
@@ -30,6 +28,12 @@ Canonical benchmark helpers must be materialized by Arena; do not edit their gen
 
 ## Protected evaluation controls
 
-Controls include speculative local positions and token histories, repeated request routing, packed prompt masks and disabled/heterogeneous repetition/frequency/presence penalties. Original scored cases remain non-speculative.
+Controls include speculative local positions and token histories, repeated request routing, packed prompt masks and disabled/heterogeneous repetition/frequency/presence penalties. The five original non-speculative scored workloads remain unchanged.
 
 The task-local `_arena_contract.py` and `_arena_replay.py` are protected evaluation code. Original cases, seeds, tolerances, warmups, sample counts, allocations and preparation boundaries remain in `scripts/task_runner.py`. The extra `contract_controls` manifest row is correctness-only. Both the frozen baseline and candidate receive the same checks. The measured graph exposes its real outputs; an untimed replay changes a domain-valid input, recomputes the CPU oracle and restores all input buffers in `finally`. For the zero operator the replay control instead poisons its output. References and snapshots are outside device timing. Failure to observe or replay the measured invocation is an error, never an accepted timing sample.
+
+Each additional scored workload also has a separately declared correctness check.
+The frozen baseline and candidate use identical inputs, untimed state restoration,
+warmups, sample counts, allocation boundaries and actual graph replay checks. The
+new workloads expand the case set; aggregate scores must be evaluated against a
+fresh baseline, not compared directly with the historical five-case aggregate.

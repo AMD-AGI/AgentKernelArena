@@ -161,6 +161,18 @@
         "case_index": 5,
         "coverage": "Controls combine remapped requests, allowlists, nonzero heterogeneous biases and stop-token minimum lengths. Original scored cases remain the original bias-only workload."
       }
+    },
+    {
+      "test_case_id": "perf_combined_filtering",
+      "status": "PASS",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "case_index": 6,
+        "coverage": "additional representative operator branch workload"
+      }
     }
   ],
   "migration": {

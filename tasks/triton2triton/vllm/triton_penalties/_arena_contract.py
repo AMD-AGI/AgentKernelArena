@@ -38,3 +38,17 @@ def control_inputs(harness):
 
 def observe(result, args):
     return args[MUTABLE[0]]
+
+
+SCORED_CASE_IDS = ('perf_speculative_penalties',)
+SCORED_TARGET_MS = 20.0
+
+def scored_inputs(harness):
+    args = list(next(control_inputs(harness)))
+    args[0] = torch.linspace(-2,2,48*1024).reshape(48,1024)
+    for index in (1,2,3):
+        args[index] = args[index].repeat(8)
+    prompt = torch.zeros((3,32),dtype=torch.int32); prompt[:,0] = args[7][:,0]
+    counts = torch.zeros((3,1024),dtype=torch.int32); counts[:,:16] = args[8]
+    args[7], args[8] = prompt, counts
+    yield SCORED_CASE_IDS[0], tuple(args)

@@ -127,6 +127,30 @@
         "case_index": 5,
         "coverage": "Controls add top-p-only and heterogeneous k/p. Keep original numerical rules: finite-value atol/rtol=1e-4, top-k mask mismatch <=1, top-p/combined <=max(4,vocab//500). NaN/+inf cannot masquerade as a removed token. Original scored path remains direct preallocated top-k with k=50."
       }
+    },
+    {
+      "test_case_id": "perf_top_p_only",
+      "status": "PASS",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "case_index": 6,
+        "coverage": "additional representative operator branch workload"
+      }
+    },
+    {
+      "test_case_id": "perf_combined_topk_topp",
+      "status": "PASS",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "case_index": 7,
+        "coverage": "additional representative operator branch workload"
+      }
     }
   ],
   "migration": {
