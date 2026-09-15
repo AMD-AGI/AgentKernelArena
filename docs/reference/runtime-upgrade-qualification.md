@@ -71,7 +71,9 @@ The unchanged-code mean device timings were 0.790660 ms for the baseline and
 1.556085 ms for the candidate. The raw per-case timings and effective replay
 counts are retained; this single sequential run does not establish stable
 relative performance, and the difference must be investigated before using it
-as comparative performance evidence. No optimization gain is claimed.
+as comparative performance evidence. The paired investigation below did not
+reproduce the discrepancy; the original result remains preserved and must not
+be treated as an optimization gain.
 The original vLLM runtime also lacks optional `matplotlib`: plot creation was
 skipped, while the raw score, numerical checks and device timings completed.
 
@@ -98,6 +100,85 @@ materialization records and runtime evidence are preserved under
 failures and pending work. These are experiment artifacts, not task inputs.
 The default image is unchanged. Neither ROCm 10 image has completed the full
 promotion gate, sanitizer qualification or a matched optimization campaign.
+
+## KDA same-source paired timing (job 140154)
+
+The requested crossover study completed on node 104, physical GPU 3, UUID
+`30646234-6534-6635-6436-636464363431`, the same device used by job 140103.
+The container saw exactly one allocated MI355X, with 287 GiB free and a passing
+device-computation preflight. One GPU was allocated for 9 minutes 24 seconds;
+the job completed with exit code zero and released it. No model calls,
+credentials, concurrent GPU probes or GPU configuration changes were involved.
+
+The study used the exact frozen `288bb2ed` task and canonical helper, public
+vLLM source `000c7df9ffd3e470980fd4cd6b8ec1b0585500ff`, and original vLLM image
+`sha256:3832d79d9e514ce2e072580689da078726454596d833c8ab803f29f3cea5ea28`.
+The helper SHA256 was
+`072fb2d68cd7b7923750e2f2e4c0b09e86436063fde2607844181f9f84d66269`.
+Actual versions were Python 3.12.13, PyTorch `2.11.0+gitd0c8b1f`, HIP
+`7.2.53211`, Triton 3.6.0 and installed vLLM `0.24.0+rocm723`.
+The candidate workspace and independent frozen baseline retained all 10,254
+initial source entries. The task's nine implementation files matched their
+recorded hashes.
+
+After separate compilation and correctness preflights, the real shared
+`run_action` entrypoint executed six pairs of full performance actions. The
+first three assigned workspace A to baseline and B to candidate; the last
+three exchanged those roles. Physical execution order alternated AB/BA.
+All 12 actions passed all five cases and the existing independent checks of
+actual timed outputs, state, read-only inputs and perturbed graph replay.
+All seeds, shapes, tolerances, warmups, sample counts, target durations and
+repeat caps were unchanged. The original adaptive repeat rule selected 48–49
+for decode, 4 for T7211, 16 for T1080 and 1 for both longer cases.
+
+| Case | Original candidate/baseline | Six-pair median ratio | Six-pair range |
+| --- | ---: | ---: | ---: |
+| Packed decode, 62 sequences | 0.9924 | 1.0038 | 0.9971–1.0061 |
+| Chunk T7211 | 2.3246 | 0.9961 | 0.9774–1.0216 |
+| Chunk T1080 | 3.1298 | 0.9995 | 0.9907–1.0090 |
+| Chunk T16384 | 2.2929 | 0.9993 | 0.9765–1.0337 |
+| Chunk T32768 | 1.6772 | 0.9996 | 0.9717–1.0360 |
+
+Pooling the equally represented roles and cases gives 0.781138 ms for baseline
+and 0.781776 ms for candidate, ratio **1.000817**. These are descriptive paired
+measurements, not an optimization result. Workspace B remained about 0.7–2.3%
+slower on chunk cases after its role changed. Both old and new workspaces had
+the same 78 compiled kernel variants: executable code, loaded data and compiler
+metadata matched; only ELF debug sections differed. Their six autotuning keys
+and search spaces matched, but independently measured tuning selected one
+different configuration in the original pair and two in the new pair. This is
+a plausible contributor to the small workspace effect, not proof of the cause
+of the original large discrepancy.
+
+Four separate diagnostic actions crossed each workspace with both evaluation
+phases. All passed and recorded 380 reported device samples. Prepared tensor
+bytes, shapes, strides and dtypes were identical across these arms. The helper
+observed mutable state before the start event; it did not reset inputs or add
+calls inside the graph. Decode retained its evolving state-cache semantics;
+chunk retained its evolving, aliased `v` output. Actual final measured state
+and outputs still passed the independent reference and replay checks. Chunk
+sample coefficients of variation were 0.13–0.70%; decode was 2.1–5.1%.
+Diagnostic collection occurred outside measured work and is kept separate
+from the 12 uninstrumented primary actions.
+
+**The original 1.968-fold mean discrepancy was not reproduced.** No persistent
+role, phase, state or capture-boundary bug was demonstrated. These results
+support comparable timing under this paired setup; they do not establish the
+specific transient cause of the earlier anomaly or justify calling a twofold
+outlier ordinary noise. No task, framework, scoring rule or default image was
+changed, and the historical result remains unsuitable as evidence of a gain.
+
+Raw evidence is under `logs/image-v2-gpu-validation/140154/`: `vllm/pair-*.json`
+contains exact action arguments, stdout, stderr and envelopes;
+`vllm/diagnostic-*.json` contains samples and buffer/state fingerprints.
+`cache-comparison.json`, `elf-comparison.json` and `autotune-comparison.json`
+retain the old/new cache audit. The independent `paired-final-audit.json`
+binds all 16 actions, 80 case-action checks, source/runtime identities and
+analysis artifacts; SHA256
+`5aae23812a7ed8f2e5a646df1223fee5618e8f6089614aace455d46e05d788cf`.
+The original audit is `140103/original-paired-timing-audit.json` under the same
+artifact root. This study is additional timing evidence, not another full
+LLM validator run and not a replacement for the preserved 21 validator reports.
 
 ## KDA observer GPU evidence (job 139646)
 
