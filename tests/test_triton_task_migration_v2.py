@@ -486,7 +486,12 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
     data=json.loads((task/'workloads.json').read_text())
     source=task/data['source']
     original=subprocess.check_output(['git','show',f'{BASE}:{source.relative_to(ROOT).as_posix()}'],cwd=ROOT)
-    assert source.read_bytes()==original
+    expected_source = original
+    if task.name == 'test_kernel_sub':
+        historical_skip = b'    pytest.skip("Skipping ASTSource compile-in-subprocess check on Triton 3.3 due to known API/compiler instability; numerical correctness tests cover kernel behavior.")\n'
+        assert original.count(historical_skip) == 1
+        expected_source = original.replace(historical_skip, b'')
+    assert source.read_bytes() == expected_source
     assert hashlib.sha256(original).hexdigest()==data['migration']['original_source_sha256']
     rows=data['cases']
     assert len(rows)==len({row['test_case_id'] for row in rows})
@@ -497,6 +502,42 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
     ast.parse((task/'_arena_eval.py').read_text())
     ast.parse((task/'_arena_reference.py').read_text())
 
+
+
+@pytest.mark.parametrize('exitcode,timed_out', [(0,False),(1,False),(None,True)])
+@pytest.mark.parametrize('task', ['tasks/triton2triton/rocmbench/easy/test_kernel_sub',
+                                'tasks/instruction2triton/rocmbench/test_kernel_sub'])
+def test_kernel_sub_declared_compilation_case_executes_and_rejects_child_failure(task,exitcode,timed_out):
+    # Run the protected test body against a controlled process, verifying that
+    # a skipped/nonzero/timed-out compilation cannot become successful evidence.
+    tree=ast.parse((ROOT/task/'test_kernel_sub.py').read_text())
+    definition=next(node for node in tree.body if isinstance(node,ast.FunctionDef)
+                    and node.name=='test_compile_kernel_sub_in_subproc')
+    definition.decorator_list=[]
+    calls=[]
+    def compile_target(): pass
+    class Process:
+        def __init__(self, target):
+            assert target is compile_target
+            self.exitcode=exitcode
+        def start(self): calls.append('start')
+        def join(self, timeout=None): calls.append(('join',timeout))
+        def is_alive(self): return timed_out
+        def terminate(self): calls.append('terminate')
+    namespace=dict(multiprocessing=SimpleNamespace(set_start_method=lambda *a,**k:None,Process=Process),
+                   set_seed=lambda:None,pytest=pytest,torch=torch,result_gold={},
+                   compile_kernel_sub_for_test=compile_target)
+    exec(compile(ast.Module(body=[definition],type_ignores=[]),str(ROOT/task/'test_kernel_sub.py'),'exec'),namespace)
+    run=lambda: namespace[definition.name]('fresh-cache',SimpleNamespace(node=SimpleNamespace(name='compile-case')))
+    if timed_out:
+        with pytest.raises(pytest.fail.Exception,match='Process timed out'): run()
+        assert 'terminate' in calls
+    elif exitcode != 0:
+        with pytest.raises(AssertionError): run()
+    else:
+        run()
+        assert namespace['result_gold']['compile_case'].item()==1.0
+    assert calls[:2]==['start',('join',60)]
 
 def oracle(name,monkeypatch):
     return module_at(ROOT/'tasks/instruction2triton/rocmbench'/name/'_arena_reference.py',monkeypatch)

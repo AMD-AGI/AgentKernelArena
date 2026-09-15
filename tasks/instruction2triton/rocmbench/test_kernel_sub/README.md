@@ -95,3 +95,8 @@ def kernel_sub(a, b, o, N: tl.constexpr):
 
 
 
+
+The declared subprocess-compilation case executes the original ASTSource compiler
+check and enforces its child exit status and 60-second deadline. The historical
+unconditional Triton 3.3 skip is removed; an incompatible compiler must fail
+explicitly. Kernel code, numerical gates and all 49 cases remain unchanged.
