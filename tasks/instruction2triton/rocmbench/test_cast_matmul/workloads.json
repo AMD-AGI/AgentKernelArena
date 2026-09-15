@@ -1,0 +1,1021 @@
+{
+  "version": 1,
+  "source": "test_cast_matmul.py",
+  "kernel_symbols": [
+    "matmul_kernel"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_cast_matmul/f6efc386b3e2a24f7d44",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float16",
+          "x_dtype": "float16",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/88af7b2cd74344f22466",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float16",
+          "x_dtype": "float16",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/e5cda43d62cd27f2d457",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float16",
+          "x_dtype": "float32",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/bdab6836f8f1eba040cc",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float16",
+          "x_dtype": "float32",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/d43dabb71939ab55ab64",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float16",
+          "x_dtype": "float64",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/c2d37b77c1b22c7b0d5e",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float16",
+          "x_dtype": "float64",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/666ebfa465fa4a9112fb",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float32",
+          "x_dtype": "float16",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/9e3faf1288682ff7754c",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float32",
+          "x_dtype": "float16",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/ce948bc265504c6941a3",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float32",
+          "x_dtype": "float32",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/e625b6f735835e7a415a",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float32",
+          "x_dtype": "float32",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/8de22f51b55e97537cda",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float32",
+          "x_dtype": "float64",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/f46cea0ed39ba3c90852",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float32",
+          "x_dtype": "float64",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/20c883719c84e29d7397",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float64",
+          "x_dtype": "float16",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/4d5941394e6354850232",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float64",
+          "x_dtype": "float16",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/28f708889d6cf3911fc3",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float64",
+          "x_dtype": "float32",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/4c26e26cc78a36d273ef",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float64",
+          "x_dtype": "float32",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/bd3f6e5d6534bcaa25f3",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float64",
+          "x_dtype": "float64",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/29d91c994b61e9b7642e",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "w_dtype": "float64",
+          "x_dtype": "float64",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/edbfdb5575fba6a4a642",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float16",
+          "x_dtype": "float16",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/fd963aa53788b2e5c80a",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float16",
+          "x_dtype": "float16",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/554bf23057aaaaf4f5fe",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float16",
+          "x_dtype": "float32",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/07f29e9dfb3ec224952a",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float16",
+          "x_dtype": "float32",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/9b0c0396727721f6a1aa",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float16",
+          "x_dtype": "float64",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/01b46e720f978c6da8fa",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float16",
+          "x_dtype": "float64",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/008b641c609a6b50acdd",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float32",
+          "x_dtype": "float16",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/2d45b045fe0799ac21b4",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float32",
+          "x_dtype": "float16",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/cae64d519217999302a0",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float32",
+          "x_dtype": "float32",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/d79c206e2764f30c89c4",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float32",
+          "x_dtype": "float32",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/e1c8b68601b241cd2ec7",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float32",
+          "x_dtype": "float64",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/2e426363a07f079e3212",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float32",
+          "x_dtype": "float64",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/70d68d10f4df67a78089",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float64",
+          "x_dtype": "float16",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/45284307079316f32186",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float64",
+          "x_dtype": "float16",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/39d4ec01777966d0054f",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float64",
+          "x_dtype": "float32",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/b84320888b9794bd4cca",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float64",
+          "x_dtype": "float32",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/c6baec6854a74d169be9",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float64",
+          "x_dtype": "float64",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/7db7f64fe918de24300c",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 1280,
+          "K": 768,
+          "N": 1024,
+          "w_dtype": "float64",
+          "x_dtype": "float64",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/c2fed2ccd84cc14b08e6",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "a_dtype_str": "float32",
+          "b_dtype_str": "float16",
+          "c_dtype_str": "float16",
+          "dot_acc_tl_dtype_str": "float32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/a9931e4f68964f6c2f69",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "a_dtype_str": "float16",
+          "b_dtype_str": "float32",
+          "c_dtype_str": "float16",
+          "dot_acc_tl_dtype_str": "float32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/39b5236405d4eb0ab1ad",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "a_dtype_str": "float16",
+          "b_dtype_str": "float16",
+          "c_dtype_str": "float32",
+          "dot_acc_tl_dtype_str": "float32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1a7468830d4de7d201db",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "a_dtype_str": "float32",
+          "b_dtype_str": "float32",
+          "c_dtype_str": "float16",
+          "dot_acc_tl_dtype_str": "float16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/5cb318437ef0785f2f23",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "a_dtype_str": "float16",
+          "b_dtype_str": "float16",
+          "c_dtype_str": "float16",
+          "dot_acc_tl_dtype_str": "float16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1fbf12260682b8509b99",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "K": 128,
+          "N": 128,
+          "a_dtype_str": "float32",
+          "b_dtype_str": "float32",
+          "c_dtype_str": "float32",
+          "dot_acc_tl_dtype_str": "float32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/7a8495936f49902ce512",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1024,
+          "K": 768,
+          "N": 1280,
+          "a_dtype_str": "float32",
+          "b_dtype_str": "float16",
+          "c_dtype_str": "float16",
+          "dot_acc_tl_dtype_str": "float32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/0c2d5e11d8376f6e8ed0",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1024,
+          "K": 768,
+          "N": 1280,
+          "a_dtype_str": "float16",
+          "b_dtype_str": "float32",
+          "c_dtype_str": "float16",
+          "dot_acc_tl_dtype_str": "float32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/fd7ac35926a624616369",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1024,
+          "K": 768,
+          "N": 1280,
+          "a_dtype_str": "float16",
+          "b_dtype_str": "float16",
+          "c_dtype_str": "float32",
+          "dot_acc_tl_dtype_str": "float32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/0f4dbb48db1ee6e8c284",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1024,
+          "K": 768,
+          "N": 1280,
+          "a_dtype_str": "float32",
+          "b_dtype_str": "float32",
+          "c_dtype_str": "float16",
+          "dot_acc_tl_dtype_str": "float16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/746426c5714fb95aeabe",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1024,
+          "K": 768,
+          "N": 1280,
+          "a_dtype_str": "float16",
+          "b_dtype_str": "float16",
+          "c_dtype_str": "float16",
+          "dot_acc_tl_dtype_str": "float16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/8ec9df04cc700181b4f3",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1024,
+          "K": 768,
+          "N": 1280,
+          "a_dtype_str": "float32",
+          "b_dtype_str": "float32",
+          "c_dtype_str": "float32",
+          "dot_acc_tl_dtype_str": "float32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/7d86ba141930b9d618bc",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1280,
+          "K": 1024,
+          "N": 768,
+          "a_dtype_str": "float32",
+          "b_dtype_str": "float16",
+          "c_dtype_str": "float16",
+          "dot_acc_tl_dtype_str": "float32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/01c47a9dbedac164ea86",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1280,
+          "K": 1024,
+          "N": 768,
+          "a_dtype_str": "float16",
+          "b_dtype_str": "float32",
+          "c_dtype_str": "float16",
+          "dot_acc_tl_dtype_str": "float32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/8d01518cbae34e4b9567",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1280,
+          "K": 1024,
+          "N": 768,
+          "a_dtype_str": "float16",
+          "b_dtype_str": "float16",
+          "c_dtype_str": "float32",
+          "dot_acc_tl_dtype_str": "float32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/dd44ed168a8d08079458",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1280,
+          "K": 1024,
+          "N": 768,
+          "a_dtype_str": "float32",
+          "b_dtype_str": "float32",
+          "c_dtype_str": "float16",
+          "dot_acc_tl_dtype_str": "float16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/3f87f120a54a7d3232f7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1280,
+          "K": 1024,
+          "N": 768,
+          "a_dtype_str": "float16",
+          "b_dtype_str": "float16",
+          "c_dtype_str": "float16",
+          "dot_acc_tl_dtype_str": "float16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ee50147e87fbd538dcea",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1280,
+          "K": 1024,
+          "N": 768,
+          "a_dtype_str": "float32",
+          "b_dtype_str": "float32",
+          "c_dtype_str": "float32",
+          "dot_acc_tl_dtype_str": "float32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "279136ba9297f38f3dd9b47f532a08775c32255053bf22bd3128cbe67497b852",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

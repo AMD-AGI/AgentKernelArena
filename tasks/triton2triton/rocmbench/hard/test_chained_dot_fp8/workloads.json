@@ -1,0 +1,361 @@
+{
+  "version": 1,
+  "source": "test_chained_dot_fp8.py",
+  "kernel_symbols": [
+    "_chained_dot"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_chained_dot/b9139fc100d2e4e8484a",
+      "params": {
+        "function": "test_chained_dot",
+        "arguments": {
+          "M": 128,
+          "N": 64,
+          "D": 32,
+          "dtype": "fp8",
+          "msize": 16
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_chained_dot/52f8d65e978dde3306de",
+      "params": {
+        "function": "test_chained_dot",
+        "arguments": {
+          "M": 128,
+          "N": 64,
+          "D": 32,
+          "dtype": "fp8",
+          "msize": 32
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_chained_dot/1eda3eb52c8038bb29c5",
+      "params": {
+        "function": "test_chained_dot",
+        "arguments": {
+          "M": 256,
+          "N": 128,
+          "D": 128,
+          "dtype": "fp8",
+          "msize": 16
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_chained_dot/d023ccfbaa795e0af5ae",
+      "params": {
+        "function": "test_chained_dot",
+        "arguments": {
+          "M": 256,
+          "N": 128,
+          "D": 128,
+          "dtype": "fp8",
+          "msize": 32
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/28f6d3215a4d7f2f267b",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140e80>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d3bbbcd20b123d4e53dd",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140c80>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/6f2850cdaa3beef7ddb6",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140cc0>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/a7effa5038e555fa026e",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140d00>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/4f1ee2a736fc7be0cf53",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140d40>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/14082aab2fef43149ad2",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140d80>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/29c51bf1af78972eb68b",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140dc0>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ee27d43e11b8232ac2e3",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140e00>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/f0fe9c26b6fed3167d75",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140e40>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/260ead09d306834c3fdb",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2143500>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/17d4031c88edc3b31a61",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140a40>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/4337bf0ccb5388c32cc6",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140ac0>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/a1b68f4c7007faca7032",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140a80>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/6bcfecdccda8b6eb1eda",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140b00>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/32e9ca5993b234e48146",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca21409c0>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/c16ea05d8447eec19cd2",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140a00>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/4a9670c12c68edd886cc",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140980>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/5b77791e76198943fdcd",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140940>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/4979534f9baec1aab1ea",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca2140900>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/200ad928079610416130",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": "<built-in method values of dict object at 0x777ca21408c0>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "0444f4580de6ff7c12114e2bda57d9eabed21f743da65dc74a630993742e74e2",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

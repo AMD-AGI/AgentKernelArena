@@ -1,0 +1,217 @@
+{
+  "version": 1,
+  "source": "test_flashattention_fwd.py",
+  "kernel_symbols": [
+    "flash_fwd_kernel"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_op/214687b293d421b938b7",
+      "params": {
+        "function": "test_op",
+        "arguments": {
+          "Z": 4,
+          "H": 48,
+          "N_CTX": 128,
+          "D_HEAD": 64
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_op/e9040c9221eb204c1a19",
+      "params": {
+        "function": "test_op",
+        "arguments": {
+          "Z": 4,
+          "H": 48,
+          "N_CTX": 256,
+          "D_HEAD": 64
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_op/5829c5ba8ca75d897562",
+      "params": {
+        "function": "test_op",
+        "arguments": {
+          "Z": 4,
+          "H": 48,
+          "N_CTX": 512,
+          "D_HEAD": 64
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_op/cf38e44265a70d1fee1a",
+      "params": {
+        "function": "test_op",
+        "arguments": {
+          "Z": 4,
+          "H": 48,
+          "N_CTX": 1024,
+          "D_HEAD": 64
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_op/680427bf2a4de0d9f093",
+      "params": {
+        "function": "test_op",
+        "arguments": {
+          "Z": 4,
+          "H": 48,
+          "N_CTX": 2048,
+          "D_HEAD": 64
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_op/4e2464b9b380e11c0b45",
+      "params": {
+        "function": "test_op",
+        "arguments": {
+          "Z": 4,
+          "H": 48,
+          "N_CTX": 4096,
+          "D_HEAD": 64
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/222db14a47f1cf352e99",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "Z": 4,
+          "H": 48,
+          "N_CTX": 128,
+          "D_HEAD": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/619804d0b830b68710c3",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "Z": 4,
+          "H": 48,
+          "N_CTX": 256,
+          "D_HEAD": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/c44ef6ef8f6b015a7b0c",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "Z": 4,
+          "H": 48,
+          "N_CTX": 512,
+          "D_HEAD": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/8f6a9ba4f884292240c2",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "Z": 4,
+          "H": 48,
+          "N_CTX": 1024,
+          "D_HEAD": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d4fbc110dce4b5935db4",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "Z": 4,
+          "H": 48,
+          "N_CTX": 2048,
+          "D_HEAD": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/62f036ac2df0d029e1a7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "Z": 4,
+          "H": 48,
+          "N_CTX": 4096,
+          "D_HEAD": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "4ad35c58be03273a2d7d4d1409f79bd6a563f0193f1a8ab28a189c06271a57a1",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

@@ -1,0 +1,624 @@
+{
+  "version": 1,
+  "source": "test_batched_vecmat.py",
+  "kernel_symbols": [
+    "batched_vecmat"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_vecmat/44136fa355b3678a1146",
+      "params": {
+        "function": "test_vecmat",
+        "arguments": {}
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/c8df412488c5afd2ee15",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 128,
+          "block_m": 16,
+          "block_n": 32,
+          "block_k": 64,
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/c1cc912ff7cea6845e9c",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 128,
+          "block_m": 16,
+          "block_n": 32,
+          "block_k": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/e669fa6c701be0ae31f0",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 128,
+          "block_m": 32,
+          "block_n": 32,
+          "block_k": 128,
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/af9b28bf03d919715ca8",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 128,
+          "block_m": 32,
+          "block_n": 32,
+          "block_k": 128,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1297401fc96bf42ee22c",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 128,
+          "block_m": 16,
+          "block_n": 64,
+          "block_k": 64,
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/04769b7748e20744a50f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 128,
+          "block_m": 16,
+          "block_n": 64,
+          "block_k": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d49a5171051537d482d6",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 256,
+          "N": 256,
+          "K": 256,
+          "block_m": 16,
+          "block_n": 32,
+          "block_k": 64,
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/021a53ce0105383dfc29",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 256,
+          "N": 256,
+          "K": 256,
+          "block_m": 16,
+          "block_n": 32,
+          "block_k": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ee266bdc2aa9b22834ca",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 256,
+          "N": 256,
+          "K": 256,
+          "block_m": 32,
+          "block_n": 32,
+          "block_k": 128,
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/4faac76dfed13366154e",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 256,
+          "N": 256,
+          "K": 256,
+          "block_m": 32,
+          "block_n": 32,
+          "block_k": 128,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/e370e9f33195b3a0a9de",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 256,
+          "N": 256,
+          "K": 256,
+          "block_m": 16,
+          "block_n": 64,
+          "block_k": 64,
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/9d0ddfd6d63f149a3a2a",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 256,
+          "N": 256,
+          "K": 256,
+          "block_m": 16,
+          "block_n": 64,
+          "block_k": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d3ce5953cecb48708faf",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 512,
+          "N": 64,
+          "K": 1024,
+          "block_m": 16,
+          "block_n": 32,
+          "block_k": 64,
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/f57f4519e7a97b7cdb32",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 512,
+          "N": 64,
+          "K": 1024,
+          "block_m": 16,
+          "block_n": 32,
+          "block_k": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/555c61d17b8caed12d1f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 512,
+          "N": 64,
+          "K": 1024,
+          "block_m": 32,
+          "block_n": 32,
+          "block_k": 128,
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d8523a11635ed5b7bf87",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 512,
+          "N": 64,
+          "K": 1024,
+          "block_m": 32,
+          "block_n": 32,
+          "block_k": 128,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1974ac31f27b9f95b355",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 512,
+          "N": 64,
+          "K": 1024,
+          "block_m": 16,
+          "block_n": 64,
+          "block_k": 64,
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/2051af5537c9d00eb87c",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 512,
+          "N": 64,
+          "K": 1024,
+          "block_m": 16,
+          "block_n": 64,
+          "block_k": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/2734584d750de16995bc",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 512,
+          "K": 256,
+          "block_m": 16,
+          "block_n": 32,
+          "block_k": 64,
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/99193609e93128620570",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 512,
+          "K": 256,
+          "block_m": 16,
+          "block_n": 32,
+          "block_k": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ccf3d86fc66e0a24a7ef",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 512,
+          "K": 256,
+          "block_m": 32,
+          "block_n": 32,
+          "block_k": 128,
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/960aea5a2796be1483fc",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 512,
+          "K": 256,
+          "block_m": 32,
+          "block_n": 32,
+          "block_k": 128,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/6d093470b58a7ee5fc92",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 512,
+          "K": 256,
+          "block_m": 16,
+          "block_n": 64,
+          "block_k": 64,
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/5578363cc11a0344a287",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 512,
+          "K": 256,
+          "block_m": 16,
+          "block_n": 64,
+          "block_k": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/fb657bff6468a4d676a9",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1024,
+          "N": 32,
+          "K": 512,
+          "block_m": 16,
+          "block_n": 32,
+          "block_k": 64,
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d0d8e9a52f5f1f60204e",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1024,
+          "N": 32,
+          "K": 512,
+          "block_m": 16,
+          "block_n": 32,
+          "block_k": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/fcb10aa5ab9a2bc8bd45",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1024,
+          "N": 32,
+          "K": 512,
+          "block_m": 32,
+          "block_n": 32,
+          "block_k": 128,
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/933b82ae42daae5a3042",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1024,
+          "N": 32,
+          "K": 512,
+          "block_m": 32,
+          "block_n": 32,
+          "block_k": 128,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/e8cd4c84b95e69e734c8",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1024,
+          "N": 32,
+          "K": 512,
+          "block_m": 16,
+          "block_n": 64,
+          "block_k": 64,
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/677b915652ca37448a67",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1024,
+          "N": 32,
+          "K": 512,
+          "block_m": 16,
+          "block_n": 64,
+          "block_k": 64,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "48401257104e11b2fe487f48e4f8e74706087d3f5779b8776ab63e9efcca150b",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

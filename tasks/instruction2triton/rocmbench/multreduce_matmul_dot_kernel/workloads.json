@@ -1,0 +1,669 @@
+{
+  "version": 1,
+  "source": "multreduce_matmul_dot_kernel.py",
+  "kernel_symbols": [
+    "triton_dot_matmul_kernel"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_matmul/4ba9823e3c03567d4e3f",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": false,
+          "M": 1,
+          "N": 8192,
+          "K": 28672
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/d116f4f6c4dde29d7c9a",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": false,
+          "M": 1,
+          "N": 6144,
+          "K": 6144
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/7617c6947ad0ce334cf9",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": false,
+          "M": 1,
+          "N": 4096,
+          "K": 4096
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/40b46d560fba97bc738f",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": false,
+          "M": 2,
+          "N": 16384,
+          "K": 16384
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/17eb152765b4cf11a047",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": false,
+          "M": 1,
+          "N": 4096,
+          "K": 3078
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/2e1d24d35fab5ef7ab6e",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": false,
+          "M": 1,
+          "N": 23,
+          "K": 31
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/56e593e7d796a80e1aa5",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": false,
+          "M": 1,
+          "N": 23,
+          "K": 128
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/91a874a01a516e3cf62c",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": true,
+          "M": 1,
+          "N": 8192,
+          "K": 28672
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/7b9e4414c7c4086d07bd",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": true,
+          "M": 1,
+          "N": 6144,
+          "K": 6144
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/183eadc8c804dca3293e",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": true,
+          "M": 1,
+          "N": 4096,
+          "K": 4096
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/67f639ef99a80bc9b1b8",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": true,
+          "M": 2,
+          "N": 16384,
+          "K": 16384
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/a201096c6f0ea1d69d02",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": true,
+          "M": 1,
+          "N": 4096,
+          "K": 3078
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/6fc6758e9ad85c7287c8",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": true,
+          "M": 1,
+          "N": 23,
+          "K": 31
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/ccd445f45954ce1314fd",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": true,
+          "M": 1,
+          "N": 23,
+          "K": 128
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/c38886af1aef94a1c8fa",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": false,
+          "M": 128,
+          "N": 8192,
+          "K": 4096,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/746792a1cbc9e9862a1f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": false,
+          "M": 128,
+          "N": 8192,
+          "K": 4096,
+          "dtype_str": "bf16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ae1dc756c1bb029394b4",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": false,
+          "M": 512,
+          "N": 4096,
+          "K": 4096,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/b8760223c1902ea9114a",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": false,
+          "M": 512,
+          "N": 4096,
+          "K": 4096,
+          "dtype_str": "bf16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/178a3e07151a2ce63246",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": false,
+          "M": 1024,
+          "N": 1024,
+          "K": 1024,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/4e8739e479ce91f76925",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": false,
+          "M": 1024,
+          "N": 1024,
+          "K": 1024,
+          "dtype_str": "bf16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/4b61f5d82ef5f168872e",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": false,
+          "M": 4096,
+          "N": 512,
+          "K": 2048,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/10f01ab4e792b57afc69",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": false,
+          "M": 4096,
+          "N": 512,
+          "K": 2048,
+          "dtype_str": "bf16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/fda9d7e02e8fbc1c1690",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": false,
+          "M": 1,
+          "N": 4096,
+          "K": 3078,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/6673e0038219745459b7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": false,
+          "M": 1,
+          "N": 4096,
+          "K": 3078,
+          "dtype_str": "bf16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1304852c2c2322b52d09",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": false,
+          "M": 16,
+          "N": 2048,
+          "K": 2048,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d37b7f732de2b87bf615",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": false,
+          "M": 16,
+          "N": 2048,
+          "K": 2048,
+          "dtype_str": "bf16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/db1e721ed573093ca44c",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": true,
+          "M": 128,
+          "N": 8192,
+          "K": 4096,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/44cc4121fac16d3b2e68",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": true,
+          "M": 128,
+          "N": 8192,
+          "K": 4096,
+          "dtype_str": "bf16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/78daa06adec551ce4e59",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": true,
+          "M": 512,
+          "N": 4096,
+          "K": 4096,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/3919eaf968e4d1035612",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": true,
+          "M": 512,
+          "N": 4096,
+          "K": 4096,
+          "dtype_str": "bf16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/60f6f2af8967a62c23d9",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": true,
+          "M": 1024,
+          "N": 1024,
+          "K": 1024,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/9cd7c3420abdbc9a87aa",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": true,
+          "M": 1024,
+          "N": 1024,
+          "K": 1024,
+          "dtype_str": "bf16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1d00320fcfb64a9c310a",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": true,
+          "M": 4096,
+          "N": 512,
+          "K": 2048,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/57ccfaa69c5fd3ed08df",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": true,
+          "M": 4096,
+          "N": 512,
+          "K": 2048,
+          "dtype_str": "bf16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/e232a2d85e291fd9f1ee",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": true,
+          "M": 1,
+          "N": 4096,
+          "K": 3078,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/58724f2e055387048279",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": true,
+          "M": 1,
+          "N": 4096,
+          "K": 3078,
+          "dtype_str": "bf16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/78d387bc6d484043a2de",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": true,
+          "M": 16,
+          "N": 2048,
+          "K": 2048,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/546af47ebd14f60cc481",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "use_bias": true,
+          "M": 16,
+          "N": 2048,
+          "K": 2048,
+          "dtype_str": "bf16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "6998ad810a3bce5fbe39835e96b4025153a51ef0b4257c2125d98b2f69d91561",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "source": "test_matmul_MXFP.py",
+  "kernel_symbols": [
+    "matmul_kernel",
+    "mxfp_to_bf16_kernel"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_mxfp_to_bf16_numerical_correctness/44136fa355b3678a1146",
+      "params": {
+        "function": "test_mxfp_to_bf16_numerical_correctness",
+        "arguments": {}
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_pipeline_matmul/5e4d348b62896d006c17",
+      "params": {
+        "function": "test_pipeline_matmul",
+        "arguments": {
+          "scale": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_pipeline_matmul/e9a44849c8d6602787c6",
+      "params": {
+        "function": "test_pipeline_matmul",
+        "arguments": {
+          "scale": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/4ca00e15788fa2066d0f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_cfg_dict": "<built-in method values of dict object at 0x777ca218bfc0>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/5ddbe14f46f8fcb8d949",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_cfg_dict": "<built-in method values of dict object at 0x777ca218b900>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/087feda83997ce949f61",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_cfg_dict": "<built-in method values of dict object at 0x777ca218b940>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/2ed7e538b957288d808d",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_cfg_dict": "<built-in method values of dict object at 0x777ca218b980>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/f083ce1fd0570e734e1a",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_cfg_dict": "<built-in method values of dict object at 0x777ca218b9c0>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/dc97d1f4ec911edf7b41",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_cfg_dict": "<built-in method values of dict object at 0x777ca218ba00>"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "03e59284e5f21085dc2e5644c5232439d77d25a9494968703b4ad40759eaeaa5",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}
