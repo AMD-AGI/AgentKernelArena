@@ -7,7 +7,8 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import verify_timed_run, compare_output
 
 # ============================================================================
 # GEAK bootstrap
@@ -389,24 +390,26 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         k_flat = k_4d.contiguous().view(-1)
         v_flat = v_4d.contiguous().view(-1)
         o_flat = torch.zeros_like(q_flat)
+        originals = tuple(value.clone() for value in (q_flat, k_flat, v_flat))
+        expected = reference_flash_attn(q_4d, k_4d, v_4d, causal=causal).to(torch_dtype).contiguous().view(-1)
 
         for _ in range(warmup):
             exe(q_flat, k_flat, v_flat, o_flat, B, S)
         torch.cuda.synchronize()
 
+        timed = TimedRun()
+        def launch():
+            exe(q_flat, k_flat, v_flat, o_flat, B, S, stream=torch.cuda.current_stream())
+            return o_flat
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: exe(
-                q_flat,
-                k_flat,
-                v_flat,
-                o_flat,
-                B,
-                S,
-                stream=torch.cuda.current_stream(),
-            ),
-            warmup=0,
-            repetition=iters,
+            launch, warmup=0, repetition=iters, timed_run=timed,
         )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(q_flat, k_flat, v_flat), originals=originals, expected=expected,
+            perturb=lambda: v_flat.neg_(),
+            reference=lambda: reference_flash_attn(q_4d, k_4d, v_4d, causal=causal).to(torch_dtype).contiguous().view(-1),
+            compare=lambda actual, ref: compare_output(actual, ref, ATOL_BY_DTYPE.get(dtype_str, ATOL)),
+        ))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: reference_flash_attn(q_4d, k_4d, v_4d, causal=causal).to(torch_dtype), warmup=0, repetition=iters

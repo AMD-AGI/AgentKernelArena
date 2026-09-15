@@ -48,3 +48,16 @@ Any older validation reports in this directory predate this migration and do not
 qualify the v2 runner. The parent integration schedules new GPU validation.
 
 Upstream source: {"commit": "28a18d328b4882c999864b2df2f8f9fe3fcc8b47", "date": "2026-06-01", "path": "kernels/flash_attn_func.py", "repo": "https://github.com/ROCm/FlyDSL"}.
+
+
+## Dependency compatibility and measured replay checks
+
+The bundled `flydsl_compat/` package retains the original FlyDSL buffer/vector
+helpers when installed and supplies a pinned task-local compatibility layer for
+current FlyDSL APIs otherwise. Its source pin, license and API adjustments are
+recorded in `flydsl_compat/SOURCE.md`. Kernel operator expressions are unchanged.
+
+The public benchmark compares the actual measured output to its independent
+reference, changes input in place, poisons the output and replays the same graph.
+The original numerical rule, cases, warmups, samples and timed launches remain;
+reference work, input preservation and replay checks occur outside timing.

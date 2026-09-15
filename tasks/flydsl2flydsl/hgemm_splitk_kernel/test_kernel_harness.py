@@ -7,7 +7,8 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import verify_timed_run, compare_output
 
 # ============================================================================
 # GEAK bootstrap
@@ -363,6 +364,8 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         a = torch.randn(M, K, dtype=torch_dtype, device="cuda").uniform_(-1, 1)
         b = torch.randn(N, K, dtype=torch_dtype, device="cuda").uniform_(-1, 1)
         c = torch.zeros(M, N, dtype=torch_dtype, device="cuda")
+        originals = (a.clone(), b.clone())
+        expected = reference_gemm(a, b, dtype=torch.float32)
 
         mod.hgemm_splitk_(c, a, b, None, kw, torch.cuda.current_stream())
         torch.cuda.synchronize()
@@ -371,9 +374,18 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
             mod.hgemm_splitk_(c, a, b, None, kw, torch.cuda.current_stream())
         torch.cuda.synchronize()
 
+        timed = TimedRun()
+        def launch():
+            mod.hgemm_splitk_(c, a, b, None, kw, torch.cuda.current_stream())
+            return c
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: mod.hgemm_splitk_(c, a, b, None, kw, torch.cuda.current_stream()), warmup=0, repetition=iters
+            launch, warmup=0, repetition=iters, timed_run=timed,
         )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(a, b), originals=originals, expected=expected,
+            perturb=lambda: a.neg_(), reference=lambda: reference_gemm(a, b, dtype=torch.float32),
+            compare=lambda actual, ref: compare_output(actual, ref, RTOL, torch_dtype),
+        ))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.mm(a, b.T), warmup=0, repetition=iters
