@@ -13,7 +13,7 @@ the full repository campaign, isolated git worktree, resume manifest, and final 
 
 ## Hard preflight
 
-A real run stops before creating a branch or modifying a task unless all of these
+Host initialization stops before creating the audit branch unless these checks
 pass:
 
 - `gh auth status -h github.com`
@@ -21,7 +21,9 @@ pass:
 - `git`, `gh`, and `codex` are installed
 - Git has a usable author identity for task commits
 - the source worktree is clean
-- the configured GPU/runtime is available through the Docker runner
+
+The Docker execution phase checks the selected GPU/runtime before task work.
+Successful host initialization alone is not evidence of GPU execution.
 
 Only the host-side deterministic publisher uses `gh`. The Docker runner performs
 GitHub preflight and creates the audit worktree on the host, runs Codex/GPU work
@@ -141,17 +143,24 @@ drain timeout is identified separately from the configured role deadline.
    shared harness guard, and submit the candidate to the common evaluator.
 5. Run an independent read-only review of the current finalized result. The review
    cannot override deterministic failures or absent required tool evidence.
-6. Measure the same candidate against the same frozen baseline for the configured
-   number of confirmations. The easy-task gate requires finite speedups, matching
-   case counts, consistent methods and successful candidate/tool/reviewer gates.
+6. When the first speedup reaches the configured easy-task threshold and the
+   reviewer accepts, perform the remaining confirmations against the same frozen
+   baseline. The easy-task gate requires finite speedups, matching case counts,
+   consistent methods and successful candidate/tool/reviewer gates.
 7. Promote a baseline only when it is an implemented `initial_candidate` with
    committed editable sources. Preserve nested paths and tree helpers. A provided
    baseline is independent: copying a candidate cannot replace its implementation.
    After cross-language promotion, declare the new starting/baseline language.
-8. Case enhancements may edit test/harness paths or the declared
-   `evaluation.workloads` file, never candidate scopes. Revalidate the original
-   baseline with new cases and check the actual optimized candidate. An original
-   generation stub is not executed as a candidate. Failed hardening is rolled back.
+8. When enabled and requested by an accepting reviewer, propose case enhancements.
+   The current file allowlist accepts paths under `script/`, `scripts/`, `test/`
+   or `tests/`, names beginning with `test_` or ending in `_test.py` or
+   `_harness.py`, and the declared `evaluation.workloads` file. Candidate scopes,
+   materialized source destinations and `performance_utils_pytest.py` remain
+   excluded. Other changed files reject the entire proposal before validation;
+   this includes a README or an input generator outside the allowed paths.
+   For an eligible proposal, revalidate the original baseline with new cases and
+   check the actual optimized candidate. An original generation stub is not
+   executed as a candidate. Failed hardening is rolled back.
 9. Every material task change needs a fresh framework-finalized validation PASS
    before it is applied to the audit worktree. WARN does not authorize publication.
 10. Before any host commit, recheck retained validation evidence and task file
@@ -177,6 +186,14 @@ Run artifacts are written under `quality_loop_runs/<run-id>/`; the isolated audi
 branch lives under `.quality_loop_worktrees/<run-id>/`. Both are ignored by Git.
 Tasks pinned to another GPU architecture are reported as `platform_deferred`; run
 the matching campaign to audit them. No accepted changes means no empty PR.
+
+A completed campaign or accepted implementation review does not mean a baseline
+was promoted or cases were enhanced. Inspect `baseline_hardened`, `cases_enhanced`,
+accepted changes and retained stage logs separately. The current case allowlist
+does not support every task's input-generator layout; a manifest edit alone also
+cannot change a generator with a fixed case list. See the
+[recorded GPU smoke](../../docs/how-to/quality-loop.md#recorded-gpu-smoke-2026-09-15)
+for an actual completed campaign with a rejected enhancement proposal.
 
 ## Shared-runtime integration
 
