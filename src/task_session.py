@@ -211,10 +211,13 @@ class TaskSession:
             raise TaskExecutionError("Saved lifecycle verdict contradicts original command evidence")
 
     def _verify_initial_state(self, task: ExecutedAction) -> None:
-        states = {metadata.get("candidate_state") for metadata in
+        states = [metadata["candidate_state"] for metadata in
                   (task.result.metadata or {}).get("commands", [])
-                  if isinstance(metadata, dict) and "candidate_state" in metadata}
-        if states != {self.spec.candidate.initial_state}:
+                  if isinstance(metadata, dict) and "candidate_state" in metadata]
+        # Task-owned JSON may contain lists/dicts here. Reject every invalid or
+        # conflicting observation without hashing it or losing the failure report.
+        if not states or any(not isinstance(state, str) or state != self.spec.candidate.initial_state
+                             for state in states):
             raise TaskExecutionError("Task check must verify candidate_state against the actual initial files")
 
     def verify_baseline_sources(self) -> None:

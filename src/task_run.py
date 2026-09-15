@@ -84,6 +84,8 @@ def _run_exports(session: TaskSession, harness, logger: logging.Logger) -> list[
     finalized_bytes = report_path.read_bytes()
     original_candidate = session._candidate_sources(allow_missing=True)
     for declaration in declarations:
+        record = {"format": declaration["format"], "output": declaration["output"],
+                  "status": "FAIL", "error": None}
         try:
             output = resolve_task_path(session.workspace, declaration["output"])
             relative = output.relative_to(session.workspace).as_posix()
@@ -103,17 +105,18 @@ def _run_exports(session: TaskSession, harness, logger: logging.Logger) -> list[
             if python and command[0] in {"python", "python3"}:
                 command = (python,) + command[1:]
             executed = _run_process(command, session.workspace, env, declaration.get("timeout_s", 60))
+            # Artifact and source checks can raise even after the process has
+            # completed. Retain its diagnostics before inspecting those outputs.
+            record["command"] = asdict(executed)
             resolve_task_path(session.workspace, declaration["output"], must_exist=True)
             after = (output.stat().st_mtime_ns, output.stat().st_size) if output.is_file() else None
             passed = executed.returncode == 0 and after is not None and after != before
             error = None if passed else "Exporter failed or did not produce a fresh declared artifact"
-            record = {"format": declaration["format"], "output": declaration["output"],
-                      "status": "PASS" if passed else "FAIL", "error": error, "command": asdict(executed)}
+            record.update(status="PASS" if passed else "FAIL", error=error)
             if session._candidate_sources() != candidate_before:
                 record.update(status="FAIL", error="Exporter modified the evaluated candidate", candidate_unchanged=False)
         except Exception as exc:
-            record = {"format": declaration["format"], "output": declaration["output"],
-                      "status": "FAIL", "error": f"{type(exc).__name__}: {exc}"}
+            record.update(status="FAIL", error=f"{type(exc).__name__}: {exc}")
         if report_path.is_symlink() or not report_path.is_file() or report_path.read_bytes() != finalized_bytes:
             if report_path.is_symlink():
                 report_path.unlink()
