@@ -2845,3 +2845,121 @@ def test_fla_l2norm_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_fla_l2norm/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_l2norm_checks'
+
+
+def _gated_norm_cpu(x, g, weight=None, bias=None, activation='swish', eps=1e-5, is_rms_norm=True):
+    if is_rms_norm:
+        mean = None
+        rstd = (torch.linalg.vector_norm(x, dim=-1).square()/x.shape[-1] + eps).rsqrt()
+        y = x * rstd[:, None]
+        if weight is not None: y = y * weight
+        if bias is not None: y = y + bias
+    else:
+        var, mean = torch.var_mean(x, dim=-1, unbiased=False)
+        rstd = (var + eps).rsqrt()
+        y = torch.nn.functional.layer_norm(x, (x.shape[-1],), weight, bias, eps)
+    if activation in ('silu', 'swish'): y = y * torch.nn.functional.silu(g)
+    elif activation == 'sigmoid': y = y * torch.sigmoid(g)
+    return y, mean, rstd
+
+
+@pytest.mark.parametrize('is_rms', [False, True])
+def test_gated_norm_reference_known_full_tuple(monkeypatch, is_rms):
+    task = ROOT/'tasks/triton2triton/vllm/triton_fla_layernorm_gated'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    x, g = torch.tensor([[1., 3.]]), torch.zeros(1, 2)
+    eps = 1e-5
+    scale = (5+eps if is_rms else 1+eps)**-0.5
+    y = torch.tensor([[.5, 1.5] if is_rms else [-.5, .5]]) * scale
+    expected = y, None if is_rms else torch.tensor([2.]), torch.tensor([scale])
+    options = dict(activation='sigmoid', is_rms_norm=is_rms, eps=eps)
+    checks.check_outputs(checks.reference(h, (x, g, None, None), options), expected)
+    checks.check_outputs(_gated_norm_cpu(x, g, **options), expected)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'dtype', 'stat_dtype', 'shape', 'nonfinite',
+                                 'missing_stats', 'wrong_mean', 'wrong_rstd', 'mutate_input'])
+def test_gated_norm_actual_correctness_full_outputs(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_fla_layernorm_gated'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    generator = h.gen_inputs
+    h.gen_inputs = lambda seed, case_idx, device: generator(seed, case_idx, 'cpu')
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    calls = []
+    def candidate(x, g, **kwargs):
+        calls.append((tuple(x.shape), kwargs['is_rms_norm']))
+        if mode == 'mutate_input': g.zero_()
+        outputs = list(_gated_norm_cpu(x, g, **kwargs))
+        if mode == 'dtype': outputs[0] = outputs[0].double()
+        if mode == 'stat_dtype': outputs[2] = outputs[2].double()
+        if mode == 'shape': outputs[0] = outputs[0][:1]
+        if mode == 'nonfinite': outputs[2].fill_(float('inf'))
+        if mode == 'missing_stats': outputs = outputs[:1]
+        if mode == 'wrong_mean': outputs[1] = torch.full_like(outputs[2], 17.)
+        if mode == 'wrong_rstd': outputs[2].zero_()
+        return tuple(outputs)
+    mod = SimpleNamespace(layer_norm_gated_fwd=candidate)
+    h.load_module = lambda: mod
+    checks.install(h)
+    ok, reason = h.run_correctness()
+    assert ok is (mode == 'correct'), reason
+    if mode == 'correct':
+        assert calls == [((case[0], case[1]), case[3]) for case in h.TEST_CASES]
+    assert mod.layer_norm_gated_fwd is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'omit_mean',
+                                 'omit_rstd', 'wrong_replay', 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_gated_norm_actual_performance_full_tuple_replay(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_fla_layernorm_gated'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h._TimedRun = SimpleNamespace
+    generator = h.gen_inputs
+    inputs, pristine, options = [], [], []
+    def gen_inputs(seed, case_idx, device):
+        args, kwargs = generator(seed, case_idx, 'cpu')
+        values = (*args, kwargs.get('weight'), kwargs.get('bias'))
+        inputs.append(values); pristine.append(checks.snapshots(values))
+        return args, kwargs
+    h.gen_inputs = gen_inputs
+    mod = SimpleNamespace(layer_norm_gated_fwd=_gated_norm_cpu)
+    h.load_module = lambda: mod
+    def benchmark(measured, *, timed_run, **kwargs):
+        options.append(kwargs)
+        outputs = measured(); cached = checks.snapshots(outputs)
+        if mode == 'wrong_timed': outputs[2].zero_()
+        if mode == 'mutate_timed': inputs[-1][1].zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay failed')
+            if mode != 'no_write':
+                computed = cached if mode == 'stale' else measured()
+                for i, (value, calculated) in enumerate(zip(outputs, computed)):
+                    if value is not None and not (mode == 'omit_mean' and i == 1 or mode == 'omit_rstd' and i == 2):
+                        value.copy_(calculated)
+            if mode == 'wrong_replay': outputs[2].zero_()
+            if mode == 'mutate_replay': inputs[-1][0].zero_()
+            return outputs
+        timed_run.outputs, timed_run.rerun = outputs, replay
+        return 0.125, {'benchmark_method': 'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == 5
+    assert options == [dict(warmup=10, repetition=100)] * 5
+    for case, row in zip(h.TEST_CASES, rows):
+        # RMSNorm deliberately has no mean buffer to rewrite.
+        success = mode == 'correct' or (mode == 'omit_mean' and case[3])
+        assert row['execution_time_ms'] == (0.125 if success else -1.)
+        if success: assert row['perturbed_input_replay_checked']
+    for values, saved in zip(inputs, pristine): checks.unchanged(values, saved)
+    assert mod.layer_norm_gated_fwd is _gated_norm_cpu
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_gated_norm_adapter_installs_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_fla_layernorm_gated/_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_gatednorm_checks'
