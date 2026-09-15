@@ -57,3 +57,19 @@ values are restored in `finally`, including on exceptions, so a failed role
 cannot alter the next role's starting state. Snapshot, checks and final cleanup
 run outside the reported samples; existing per-invocation prepare callbacks
 and the baseline's graph/Event policy retain their timing boundaries.
+
+## Signed-domain coverage and independent reference
+
+The original five cases and every shape, dtype, RNG seed/draw, numerical gate,
+warmup and sample count remain. Each original uniform draw is transformed as
+`12*u-6` in the protected module and functional input generators, providing
+negative, near-zero and positive GELU inputs. The previous `[0,1)`-only input
+values could accept an implementation that mishandled all negative values.
+This intentional input-quality repair is declared as `input_distribution` in
+every manifest row; results from the former input values are not comparable.
+Both baseline and candidate consume the same new input policy.
+
+Initial reference controls use Python `math.erf` known answers. Full correctness
+and actual timed output/replay use the independent erf GELU definition evaluated
+with bounded FP64 scratch, not a second call to production `F.gelu`. All checks
+remain outside measured samples; input/output/model-state contracts are retained.

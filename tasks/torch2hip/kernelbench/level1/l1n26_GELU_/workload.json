@@ -15,7 +15,8 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1337
+        "correctness_seed": 1337,
+        "input_distribution": "uniform[-6,6)"
       }
     },
     {
@@ -35,7 +36,8 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1338
+        "correctness_seed": 1338,
+        "input_distribution": "uniform[-6,6)"
       }
     },
     {
@@ -57,7 +59,8 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1339
+        "correctness_seed": 1339,
+        "input_distribution": "uniform[-6,6)"
       }
     },
     {
@@ -81,7 +84,8 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1340
+        "correctness_seed": 1340,
+        "input_distribution": "uniform[-6,6)"
       }
     },
     {
@@ -101,7 +105,8 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1341
+        "correctness_seed": 1341,
+        "input_distribution": "uniform[-6,6)"
       }
     }
   ]

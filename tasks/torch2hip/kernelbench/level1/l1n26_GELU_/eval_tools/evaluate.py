@@ -127,6 +127,11 @@ def validate_task(args, rows):
     import torch
     module = load_module(local_path(args.module), "arena_reference")
     functional = load_module(local_path(args.functional), "arena_functional")
+    if any(row["params"].get("input_distribution") != "uniform[-6,6)" for row in rows):
+        raise ValueError("GELU workload must declare its signed input domain")
+    from replay_validation import reference_self_test
+    reference_self_test(getattr(module, args.model_class)().eval(),
+                        getattr(functional, args.model_class)().eval())
     forward = getattr(functional, args.model_class).forward
     default = inspect.signature(forward).parameters["fn"].default
     if not callable(default):
@@ -170,7 +175,10 @@ def correctness(args, role, rows):
         reference_inputs = [value.to("cuda") if isinstance(value, torch.Tensor) else value for value in inputs]
         torch.manual_seed(1337 + index)
         torch.cuda.manual_seed_all(1337 + index)
-        expected = module(*copy.deepcopy(reference_inputs))
+        from replay_validation import gelu_reference
+        expected = gelu_reference(reference_inputs[0])
+        module_result = module(*copy.deepcopy(reference_inputs))
+        output_contract(expected, module_result)
         torch.manual_seed(1337 + index)
         torch.cuda.manual_seed_all(1337 + index)
         # A provided PyTorch baseline is checked against the independently written
@@ -179,7 +187,8 @@ def correctness(args, role, rows):
                   functional(*copy.deepcopy(reference_inputs), fn=hip_fn))
         torch.cuda.synchronize()
         output_contract(expected, actual)
-        passed = checks._compare_results(expected, actual, rtol=rtol, atol=atol)
+        passed = (checks._compare_results(expected, module_result, rtol=rtol, atol=atol)
+                  and checks._compare_results(expected, actual, rtol=rtol, atol=atol))
         row = {**rows[index], "status": "PASS" if passed else "FAIL", "metrics": {"rtol": rtol, "atol": atol}}
         if not passed:
             row["failure_kind"] = "numerical_mismatch"
