@@ -49,3 +49,13 @@ Any older validation reports in this directory predate this migration and do not
 qualify the v2 runner. The parent integration schedules new GPU validation.
 
 Upstream source: {"commit": "28a18d328b4882c999864b2df2f8f9fe3fcc8b47", "date": "2026-06-01", "path": "kernels/silu_and_mul_fq.py", "repo": "https://github.com/ROCm/FlyDSL"}.
+
+
+The task-local `flydsl_compat/` package adapts removed buffer APIs without
+changing kernel expressions; its source pin and license are bundled. Original
+installed legacy APIs remain preferred. The public benchmark checks its measured
+MXFP4 payload and block scales against the original independent codec, then
+negates the multiplicative input, poisons both byte outputs and checks the same
+captured replay. All original cases, exact scales, 1% grid-tie rule, tolerances,
+warmups, samples and timed launches are retained. Reference work and checks
+remain outside timing. Unused scale padding is outside the numerical output.

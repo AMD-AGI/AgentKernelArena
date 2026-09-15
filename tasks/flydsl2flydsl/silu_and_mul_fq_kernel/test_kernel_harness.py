@@ -28,7 +28,8 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import prepare_check, verify_timed_run
 
 # ============================================================================
 # GEAK bootstrap — make `from kernels...` imports work and load kernel.py
@@ -672,6 +673,7 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         token_num, inter_dim, topk, quant_mode = cfg
         inputs = _make_inputs(cfg, seed=42)
         out_buf, out_scale = _alloc_outputs(inputs)
+        check = prepare_check(inputs, out_buf, out_scale, _torch_ref_silu_mul, reference_mxfp4, decode_kernel_fp4)
 
         # Compile ONCE (first launch triggers FlyDSL JIT), outside timing.
         launcher = _build_launcher(mod, cfg)
@@ -682,17 +684,14 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
             _launch(launcher, inputs, out_buf, out_scale, stream)
         torch.cuda.synchronize()
 
+        timed = TimedRun()
+        def launch():
+            _launch(launcher, inputs, out_buf, out_scale, torch.cuda.current_stream())
+            return out_buf, out_scale
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: _launch(
-                launcher,
-                inputs,
-                out_buf,
-                out_scale,
-                torch.cuda.current_stream(),
-            ),
-            warmup=0,
-            repetition=iters,
+            launch, warmup=0, repetition=iters, timed_run=timed,
         )
+        kernel_bench_meta.update(verify_timed_run(timed, **check))
 
         # Display-only torch reference (silu(gate)*mul). Not the oracle.
         x = inputs["x"]
