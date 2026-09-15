@@ -262,6 +262,9 @@ def run_performance():
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
                 fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta["benchmark_external_warmup"] = WARMUP_ITERATIONS
+            bench_meta["benchmark_total_warmup"] = WARMUP_ITERATIONS + bench_meta["benchmark_warmup"]
+            bench_meta["benchmark_warmup_scope"] = "collector_only"
             bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,

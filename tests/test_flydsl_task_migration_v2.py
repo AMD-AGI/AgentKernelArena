@@ -6695,6 +6695,7 @@ def test_bpreshuffle_preserves_original_source_model_cases_math_and_event_bounda
 
 class _RemoveFinalSglangChecks(_RemoveSglangElementwiseChecks):
     def visit_Assign(self,node):
+        if len(node.targets)==1 and isinstance(node.targets[0],ast.Subscript) and getattr(node.targets[0].value,"id",None)=="bench_meta" and isinstance(node.targets[0].slice,ast.Constant) and node.targets[0].slice.value in {"benchmark_external_warmup","benchmark_total_warmup","benchmark_warmup_scope"}:return None
         if len(node.targets)==1 and getattr(node.targets[0],'id',None) in {'ENTRIES','location_originals'}:return None
         return super().visit_Assign(node)
     def visit_Expr(self,node):
@@ -6759,8 +6760,9 @@ def test_indexer_actual_exact_codes_scales_store_and_quantizer_only_replay(phase
     task=ROOT/'tasks/triton2flydsl/sglang/dsv4_fp4_indexer';checks=module(task/'scripts/replay_checks.py')
     ns=dict(HEAD=128,_DTYPES={'fp32':'float32','bf16':'bfloat16','fp16':'float16'},WARMUP_ITERATIONS=10,BENCHMARK_ITERATIONS=100,MAX_OOM_RETRIES=5,require_tensor_contract=checks.require_tensor_contract,require_unchanged=checks.require_unchanged,verify_timed_pair=checks.verify_timed_pair)
     names={n.name for n in ast.parse((task/'test_kernel_harness.py').read_text()).body if isinstance(n,ast.FunctionDef)};_harness_functions(task,names,ns)
-    x=torch.linspace(-8,7,7*128).reshape(7,128).to(getattr(torch,dtype_name));original=x.clone();cached=ns['reference'](x);state={'phase':'setup','stores':0}
+    x=torch.linspace(-8,7,7*128).reshape(7,128).to(getattr(torch,dtype_name));original=x.clone();cached=ns['reference'](x);state={'phase':'setup','stores':0,'quantizer_calls':0}
     def compute(*a):
+        state["quantizer_calls"]+=1
         codes,scales=ns['reference'](x)
         if phase=='correctness' or state['phase']=='measured':
             if behavior=='codes':codes.zero_()
@@ -6783,13 +6785,13 @@ def test_indexer_actual_exact_codes_scales_store_and_quantizer_only_replay(phase
     class Collector:bound=False
     calls=[]
     def benchmark(fn,*,warmup,repetition,timed_run):
-        calls.append((warmup,repetition));state['phase']='measured';timed_run.outputs=fn();timed_run.bound=True;state['phase']='setup'
+        calls.append((warmup,repetition));assert state['quantizer_calls']==11;state['phase']='measured';timed_run.outputs=fn();timed_run.bound=True;state['phase']='setup'
         def replay():
             state['phase']='replay'
             try:return fn()
             finally:state['phase']='setup'
         timed_run.rerun=replay
-        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph','benchmark_warmup':warmup}
     # Preserve real CPU tensor behavior; route only the harness's explicit CUDA
     # cache/location allocations to CPU. This verifies protocol, not GPU code.
     zeros=torch.zeros;randperm=torch.randperm
@@ -6801,7 +6803,10 @@ def test_indexer_actual_exact_codes_scales_store_and_quantizer_only_replay(phase
     if phase=='correctness':assert result[0]==(behavior=='correct'),result
     else:
         assert len(result)==1 and calls==[(0,100)] and state['stores']==0
-        if behavior=='correct':assert result[0]['timed_output_correctness']==result[0]['replay_correctness']=='PASS'
+        if behavior=='correct':
+            assert result[0]['timed_output_correctness']==result[0]['replay_correctness']=='PASS'
+            assert result[0]['benchmark_external_warmup']==result[0]['benchmark_total_warmup']==10
+            assert result[0]['benchmark_warmup']==0 and result[0]['benchmark_warmup_scope']=='collector_only'
         else:assert result[0]['execution_time_ms']==-1,result
     if behavior=='correct':assert torch.equal(x,original)
 

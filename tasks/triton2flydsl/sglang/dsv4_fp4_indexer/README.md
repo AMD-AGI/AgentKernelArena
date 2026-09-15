@@ -73,3 +73,10 @@ are audited individually during correctness, outside timing and oracle calls.
 Both declared interfaces (where present) must run FlyDSL operator computation;
 host allocation/layout preparation is allowed, substitute PyTorch/AITER/Triton
 operator execution and protected reference imports are rejected.
+
+Timing metadata separates the actual ten external task warmups from the
+collector's zero additional warmups: benchmark_external_warmup=10,
+benchmark_warmup=0 with scope collector_only, and benchmark_total_warmup=10.
+The existing first successful setup/JIT invocation is separate from those
+warmup loops. These fields describe the unchanged execution; no warmup or
+sample was added, removed, moved or reclassified as scored work.
