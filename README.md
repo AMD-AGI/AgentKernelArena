@@ -10,7 +10,7 @@ The platform provides:
 
 - **Controlled A/B experiments**: Label and compare repeated runs while holding tasks, hardware, environment, and evaluation rules constant.
 - **RL-ready feedback**: Produce per-task compilation, correctness, runtime, speedup, and score signals that can be consumed as rewards by an external reinforcement-learning system.
-- **Multiple agent integrations**: Run Cursor Agent, Claude Code, Codex, GEAK-based agents, mini-swe-agent-based flows, or custom agents through a shared interface.
+- **Multiple agent integrations**: Run Cursor Agent, Claude Code, Codex, GEAK-based agents, or custom agents through a shared interface. Mini-swe is retained only for [legacy external tasks](agents/mini_swe_triton/README.md); v2 tasks are unsupported.
 - **Real GPU task environments**: Work with HIP, Triton, FlyDSL, PyTorch-to-kernel conversion, instruction-to-kernel generation, and image-backed kernel optimization tasks.
 - **Isolated and reproducible execution**: Give every task its own timestamped workspace and preserve logs, modified sources, and structured results.
 - **Centralized evaluation**: Measure compilation, correctness, and GPU performance independently of the optimizing agent.
@@ -79,7 +79,7 @@ AgentKernelArena/
 │   ├── geak/                       # Native GEAK Workflow integration
 │   ├── geak_v3/                    # GEAK HIP optimization
 │   ├── geak_v3_triton/             # GEAK Triton optimization
-│   ├── mini_swe_triton/            # mini-swe-agent Triton optimization
+│   ├── mini_swe_triton/            # Legacy external tasks only; v2 unsupported
 │   └── task_validator/             # Task quality validator
 ├── tasks/
 │   ├── hip2hip/
@@ -124,7 +124,7 @@ Each run selects one `agent.template`. Repeated runs can compare different agent
 | `geak` | GEAK multi-agent Workflow engine through the shared v2 task interface |
 | `geak_v3` | Compatibility name for `geak` on v2; legacy HIP flow for v1 |
 | `geak_v3_triton` | Compatibility name for `geak` on v2; legacy Triton flow for v1 |
-| `mini_swe_triton` | mini-swe-agent-based Triton optimization |
+| `mini_swe_triton` | Legacy external tasks only; v2 unsupported. See [compatibility limits](agents/mini_swe_triton/README.md) |
 | `task_validator` | Task quality validation; does not optimize kernels |
 
 The registry also retains `geak_v4` (delegating v2 tasks to `geak`) and
@@ -262,7 +262,7 @@ make docker-check-agents CONFIG="$CONFIG_PATH"
 
 Use `AGENTS=claude_code,codex` to check an explicit subset or `AGENTS=all` to
 check Cursor, Claude Code, and Codex together. Specialized integrations such as
-Forge and mini-swe have their own dependency checks. GEAK and its v2 aliases
+Forge and legacy mini-swe have their own dependency checks. GEAK and its v2 aliases
 resolve to Claude Code for this CLI check; a normal run additionally checks the
 pinned GEAK engine and SDK.
 
@@ -284,9 +284,10 @@ make docker-parallel-run CONFIG="$CONFIG_PATH"
 ```
 
 The Docker parallel path is verified for `cursor`, `claude_code`, `codex`, and
-`task_validator`. Specialized GEAK/mini-swe integrations need their own
+`task_validator`. Specialized GEAK integrations need their own
 dependencies and GPU-ID configuration before they are used with isolated
-workers.
+workers. `mini_swe_triton` remains limited to legacy external tasks and does not
+support the retained v2 tasks; see its [compatibility limits](agents/mini_swe_triton/README.md).
 
 ### Run From a Slurm/Spur Login Node
 

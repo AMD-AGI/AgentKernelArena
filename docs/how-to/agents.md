@@ -25,7 +25,7 @@ The following agents are available.
 | `geak` | GEAK Workflow engine through the shared v2 task interface |
 | `geak_v3` | Compatibility name for `geak` on v2; legacy HIP flow for v1 |
 | `geak_v3_triton` | Compatibility name for `geak` on v2; legacy Triton flow for v1 |
-| `mini_swe_triton` | mini-swe-agent-based Triton optimization |
+| `mini_swe_triton` | Legacy external tasks only; v2 unsupported. See [compatibility limits](../../agents/mini_swe_triton/README.md) |
 | `task_validator` | Task quality validator; does not optimize kernels (see [Validate tasks](task-validator.md)) |
 
 The [registry](../../src/module_registration.py) also retains `geak_v4`, which
