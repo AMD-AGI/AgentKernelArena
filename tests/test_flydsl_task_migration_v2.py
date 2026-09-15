@@ -354,8 +354,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
                 handler.body.pop(0)
         if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
-        if name in {"gelu_fast_kernel", "gelu_and_mul_kernel", "gelu_tanh_and_mul_kernel"}:
-            fn = _RemoveGeluReplayChecks().visit(fn)
+        if name in {"gelu_fast_kernel", "gelu_and_mul_kernel", "gelu_tanh_and_mul_kernel", "swiglu_and_mul_kernel"}:
+            fn = _RemoveActivationReplayChecks().visit(fn)
         assert hashlib.sha256(ast.dump(fn,include_attributes=False).encode()).hexdigest()==expected,name
         assert hashlib.sha256((task/"model.py").read_bytes()).hexdigest()==model_hash,name
         original=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=="run_benchmark")
@@ -1319,14 +1319,14 @@ def test_torch_gemm_original_benchmark_work_and_sampling_preserved():
         assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == expected_hash
 
 
-_GELU_TASKS = ["gelu_fast", "gelu_and_mul", "gelu_tanh_and_mul"]
+_ACTIVATION_REPLAY_TASKS = ["gelu_fast", "gelu_and_mul", "gelu_tanh_and_mul", "swiglu_and_mul"]
 
 
-@pytest.mark.parametrize("name", _GELU_TASKS)
+@pytest.mark.parametrize("name", _ACTIVATION_REPLAY_TASKS)
 @pytest.mark.parametrize("function", ["run_benchmark", "arena_benchmark"])
 @pytest.mark.parametrize("provided", [False, True])
 @pytest.mark.parametrize("behavior", ["correct", "measured_wrong", "replay_wrong", "cached", "input_modified", "shape", "dtype", "nonfinite"])
-def test_gelu_actual_measured_and_replayed_invocations(name, function, provided, behavior, monkeypatch, tmp_path):
+def test_activation_actual_measured_and_replayed_invocations(name, function, provided, behavior, monkeypatch, tmp_path):
     """Run real harness orchestration with CPU outputs; this is not GPU timing."""
     import math
     import types
@@ -1334,13 +1334,18 @@ def test_gelu_actual_measured_and_replayed_invocations(name, function, provided,
     task = ROOT / "tasks/torch2flydsl" / (name + "_kernel")
     checks = module(task / "scripts/replay_checks.py")
     actual_model = module(task / "model.py").Model()
-    inp = torch.tensor([[-2., 1., 3., 4.], [1., 2., 3., 4.]], dtype=torch.bfloat16)
+    inp = torch.tensor([[-2., 10., -9., 4.], [1., 2., 3., 4.]], dtype=torch.bfloat16)
     original = inp.clone()
     phase = {"name": "setup"}
     monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
     monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
 
     def oracle(value):
+        if name == "swiglu_and_mul":
+            gate, linear = value.float().chunk(2, -1)
+            gate = torch.minimum(gate, torch.tensor(7.))
+            linear = torch.maximum(torch.minimum(linear, torch.tensor(7.)), torch.tensor(-7.))
+            return (gate / (1 + torch.exp(-1.702 * gate)) * (linear + 1)).to(value.dtype)
         x = value.float() if name == "gelu_fast" else value.float().chunk(2, -1)[0]
         if name == "gelu_and_mul":
             out = .5 * x * (1 + torch.erf(x / math.sqrt(2)))
@@ -1404,9 +1409,9 @@ def test_gelu_actual_measured_and_replayed_invocations(name, function, provided,
     assert torch.equal(inp, original)
 
 
-@pytest.mark.parametrize("name", _GELU_TASKS)
+@pytest.mark.parametrize("name", _ACTIVATION_REPLAY_TASKS)
 @pytest.mark.parametrize("behavior", ["correct", "shape", "dtype", "device", "nonfinite", "input_modified"])
-def test_gelu_correctness_retains_output_and_input_contract(name, behavior, monkeypatch):
+def test_activation_correctness_retains_output_and_input_contract(name, behavior, monkeypatch):
     import types
     import torch
     task = ROOT / "tasks/torch2flydsl" / (name + "_kernel")
@@ -1436,7 +1441,7 @@ def test_gelu_correctness_retains_output_and_input_contract(name, behavior, monk
         with pytest.raises(AssertionError): ns["run_correctness"](verbose=False)
 
 
-class _RemoveGeluReplayChecks(_RemoveAddedReplayChecks):
+class _RemoveActivationReplayChecks(_RemoveAddedReplayChecks):
     def visit_Assign(self, node):
         if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             if node.targets[0].id in {"original", "ref_validate", "ker_validate"}:
@@ -1451,12 +1456,12 @@ class _RemoveGeluReplayChecks(_RemoveAddedReplayChecks):
         return super().visit_Call(node)
 
 
-_GELU_ORIGINAL_BENCHMARKS = {('gelu_fast', 'run_benchmark'): '9c380844988351c657b3be9ac29948bbd4825f8f8146dd118b99279522a29f6e', ('gelu_fast', 'arena_benchmark'): '8af86be049fad9ef00f0a01e2e5635a5589f413e75a34cb243e38b70a63df54a', ('gelu_and_mul', 'run_benchmark'): 'cfffddd747d47293fc3de6f7e16f3b9575613cba5132650e8e072228fc92b28f', ('gelu_and_mul', 'arena_benchmark'): 'a90c92fa4f4d7adfb6e55be9c60e0d4adabaf1e2f9e4b3617315e33b00495675', ('gelu_tanh_and_mul', 'run_benchmark'): '26d26e61238601cc73c39909701917635a7f897e87cf4aacd65f175a60526b73', ('gelu_tanh_and_mul', 'arena_benchmark'): 'b9264e16963ec7cb727939225b47f18c36d219bc0f3d296a933fb9c866fe8959'}
+_ACTIVATION_ORIGINAL_BENCHMARKS = {('gelu_fast', 'run_benchmark'): '9c380844988351c657b3be9ac29948bbd4825f8f8146dd118b99279522a29f6e', ('gelu_fast', 'arena_benchmark'): '8af86be049fad9ef00f0a01e2e5635a5589f413e75a34cb243e38b70a63df54a', ('gelu_and_mul', 'run_benchmark'): 'cfffddd747d47293fc3de6f7e16f3b9575613cba5132650e8e072228fc92b28f', ('gelu_and_mul', 'arena_benchmark'): 'a90c92fa4f4d7adfb6e55be9c60e0d4adabaf1e2f9e4b3617315e33b00495675', ('gelu_tanh_and_mul', 'run_benchmark'): '26d26e61238601cc73c39909701917635a7f897e87cf4aacd65f175a60526b73', ('gelu_tanh_and_mul', 'arena_benchmark'): 'b9264e16963ec7cb727939225b47f18c36d219bc0f3d296a933fb9c866fe8959', ('swiglu_and_mul', 'run_benchmark'): '74280c1ee802db9d83bf2cc16df46965207e00abc77a59039b3da58f699a8d43', ('swiglu_and_mul', 'arena_benchmark'): 'e9e502e4752c6f7cc261231c5f63065e435f3d2a7555921f7bc9454de6357434'}
 
 
-def test_gelu_original_timed_work_sampling_and_reference_boundaries_preserved():
-    for (name, function), expected in _GELU_ORIGINAL_BENCHMARKS.items():
+def test_activation_original_timed_work_sampling_and_reference_boundaries_preserved():
+    for (name, function), expected in _ACTIVATION_ORIGINAL_BENCHMARKS.items():
         tree = ast.parse((ROOT / "tasks/torch2flydsl" / (name + "_kernel") / "test_kernel_harness.py").read_text())
         fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function)
-        fn = _RemoveGeluReplayChecks().visit(fn)
+        fn = _RemoveActivationReplayChecks().visit(fn)
         assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == expected

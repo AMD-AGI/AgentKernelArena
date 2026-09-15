@@ -50,3 +50,12 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+The scored implementation's actual measured output and a subsequent invocation
+are checked against an independent protected oracle using the original
+normalized maximum error gate (REL_TOL=1e-2). The provided Model baseline uses
+AITER as its oracle; a candidate uses Model. Shape, BF16 dtype, device, finite
+outputs and read-only inputs are enforced. Perturbation, oracle calculations,
+output poisoning and restoration occur outside timing. Graph validation replays
+the captured graph; explicit Event validation re-invokes the same eager callable.
+Original cases, seeds, warmups, repetitions and Graph/Event selection are retained.
