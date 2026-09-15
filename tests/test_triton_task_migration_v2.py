@@ -5261,3 +5261,173 @@ def test_cache_scatter_preserves_scored_zero_reset_and_poisons_only_actual_rerun
 def test_cache_scatter_adapter_installs_task_local_checks(monkeypatch,symbol):
     h=module_at(ROOT/'tasks/triton2triton/vllm'/('triton_'+symbol)/'_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_cache_scatter_checks'
+
+
+_BLOCK_GEMM_TASKS = ['w8a8_block_int8_matmul', 'w8a8_block_scaled_mm']
+
+
+def _block_gemm_cpu(a,b,sa,sb,block_size,output_dtype=torch.float16):
+    # Independent vectorized FP64 dequantization, unlike the protected loop oracle.
+    bn,bk=block_size
+    ki=torch.arange(a.shape[-1])//bk;ni=torch.arange(b.shape[0])//bn
+    aa=a.double()*sa.double()[...,ki]
+    bb=b.double()*sb.double()[ni[:,None],ki[None,:]]
+    return (aa@bb.t()).to(output_dtype)
+
+
+def _block_gemm_cpu_harness(monkeypatch,symbol):
+    import sys
+    monkeypatch.setitem(sys.modules,'triton',SimpleNamespace(cdiv=lambda x,y:(x+y-1)//y))
+    h,checks=_fp8_group_cpu_harness(monkeypatch,symbol)
+    for name in ('rand','randint'):
+        factory=getattr(torch,name)
+        monkeypatch.setattr(torch,name,lambda *a,_factory=factory,**kw:_factory(*a,**{**kw,'device':'cpu'}))
+    return h,checks
+
+
+@pytest.mark.parametrize('symbol',_BLOCK_GEMM_TASKS)
+def test_block_gemm_independent_known_answer_and_preserved_tolerance(monkeypatch,symbol):
+    h,checks=_block_gemm_cpu_harness(monkeypatch,symbol)
+    dtype=torch.float8_e4m3fnuz if checks.FP8 else torch.int8
+    a=torch.tensor([[1,2,3],[4,5,6]]).to(dtype)
+    b=torch.tensor([[1,0,2],[0,1,3],[1,1,1]]).to(dtype)
+    sa=torch.tensor([[2.,.5],[1.,2.]])
+    sb=torch.tensor([[.25,2.],[.5,1.]])
+    expected=torch.tensor([[6.5,10.,4.5],[49.,73.25,16.5]],dtype=torch.float16)
+    checks.check_output(checks.reference(h,[a,b,sa,sb],[2,2],torch.float16),expected)
+    checks.check_output(_block_gemm_cpu(a,b,sa,sb,[2,2]),expected)
+    allowed=expected.clone();allowed[0,0]+=.5
+    checks.check_output(allowed,expected)
+    allowed[0,0]+=2
+    with pytest.raises(AssertionError):checks.check_output(allowed,expected)
+    with pytest.raises(AssertionError,match='finite'):
+        checks.check_output(torch.full_like(expected,float('inf')),torch.full_like(expected,float('inf')))
+
+
+@pytest.mark.parametrize('symbol,mode',[(s,m) for s in _BLOCK_GEMM_TASKS for m in
+    ['correct','shape','dtype','nonfinite','zero_output','ignore_scales','partial_tail',
+     'flatten_output','wrong_output_dtype','mutate_a','mutate_b','mutate_sa','mutate_sb']]+[
+     ('w8a8_block_scaled_mm','spoof_fp8_dtype')])
+def test_block_gemm_full_original_correctness_and_public_partial_blocks(monkeypatch,symbol,mode):
+    h,checks=_block_gemm_cpu_harness(monkeypatch,symbol);calls=[]
+    def public(a,b,sa,sb,blocks,output_dtype=torch.float16):
+        calls.append((tuple(a.shape),tuple(b.shape),tuple(blocks),output_dtype,b.stride()))
+        if mode.startswith('mutate_'):{'mutate_a':a,'mutate_b':b,'mutate_sa':sa,'mutate_sb':sb}[mode].zero_()
+        result=_block_gemm_cpu(a,b,sa,sb,blocks,output_dtype)
+        if mode=='shape':result=result.flatten()
+        if mode=='dtype':result=result.double()
+        if mode=='nonfinite':result.fill_(float('nan'))
+        if mode=='zero_output':result.zero_()
+        if mode=='ignore_scales':result=(a.float()@b.float().t()).to(output_dtype)
+        if mode=='partial_tail' and a.shape[-1]%blocks[1]:result[...,-1].add_(20)
+        if mode=='flatten_output':result=result.reshape(-1,result.shape[-1])
+        if mode=='wrong_output_dtype':result=result.half()
+        return result
+    mod=SimpleNamespace(**{checks.SYMBOL:public},_get_fp8_dtype=lambda:torch.float16 if mode=='spoof_fp8_dtype' else torch.float8_e4m3fnuz)
+    h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness()
+    assert ok is (mode=='correct'),reason
+    if mode=='correct':
+        scored=[c for c in calls if len(c[0])==2]
+        assert [(c[0][0],c[1][0],c[0][1],*c[2]) for c in scored]==h.TEST_SHAPES
+        controls=[c for c in calls if len(c[0])==3]
+        assert len(controls)==3 and all(c[:3]==((1,3,67),(65,67),(64,64)) for c in controls)
+        assert [c[3] for c in controls]==[torch.float32,torch.bfloat16,torch.float16]
+        assert all(c[4]==((1,65) if checks.FP8 else (67,1)) for c in controls)
+    assert getattr(mod,checks.SYMBOL) is public
+
+
+@pytest.mark.parametrize('symbol,mode',[(s,m) for s in _BLOCK_GEMM_TASKS for m in
+    ['correct','wrong_timed','stale','no_write','wrong_replay','mutate_timed_a','mutate_timed_b',
+     'mutate_timed_sa','mutate_timed_sb','mutate_replay_a','mutate_replay_b',
+     'mutate_replay_sa','mutate_replay_sb','raise_replay','zero_input_and_output']])
+def test_block_gemm_original_timing_real_replay_and_pristine_inputs(monkeypatch,symbol,mode):
+    import inspect
+    h,checks=_block_gemm_cpu_harness(monkeypatch,symbol)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(**{checks.SYMBOL:_block_gemm_cpu},_get_fp8_dtype=lambda:torch.float8_e4m3fnuz)
+    h.load_module=lambda:mod
+    values,saved,options=[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        inputs=[state[k] for k in ('A','B','As','Bs')]
+        values.append(inputs);saved.append(checks.snapshot(inputs));options.append(kwargs)
+        output=measured();cached=output.clone()
+        if mode=='wrong_timed':output.zero_()
+        if mode.startswith('mutate_timed_'):inputs[['a','b','sa','sb'].index(mode.removeprefix('mutate_timed_'))].zero_()
+        if mode=='zero_input_and_output':
+            for x in inputs:x.zero_()
+            output.zero_()
+        def replay():
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='no_write':output.copy_(cached if mode=='stale' else measured())
+            if mode=='wrong_replay':output.zero_()
+            if mode.startswith('mutate_replay_'):inputs[['a','b','sa','sb'].index(mode.removeprefix('mutate_replay_'))].zero_()
+            return output
+        timed_run._bind(replay,output)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h)
+    rows=h.run_performance()
+    assert len(rows)==5 and options==[dict(warmup=10,repetition=100)]*5
+    for case,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('M','N','K','block_n','block_k'),case))
+        # Original INT8 scales can overflow FP16. Preserve and reject those
+        # specific cases; a synthetic FP64 backend cannot make them finite.
+        index=h.TEST_SHAPES.index(case)
+        expected=checks.reference(h,saved[index],[case[3],case[4]],torch.float16)
+        valid=mode=='correct' and bool(torch.isfinite(expected).all())
+        assert row['execution_time_ms']==(.125 if valid else -1.)
+    for inputs,pristine in zip(values,saved):checks.unchanged(inputs,pristine)
+    assert getattr(mod,checks.SYMBOL) is _block_gemm_cpu and h._benchmark_cuda_graph_or_events is benchmark
+    assert any(float(v[2].max()) > (1. if checks.FP8 else .11) for v in saved)
+
+
+@pytest.mark.parametrize('symbol',_BLOCK_GEMM_TASKS)
+def test_block_gemm_adapter_installs_self_contained_checks(monkeypatch,symbol):
+    import sys
+    monkeypatch.setitem(sys.modules,'triton',SimpleNamespace(cdiv=lambda x,y:(x+y-1)//y))
+    h=module_at(ROOT/'tasks/triton2triton/vllm'/('triton_'+symbol)/'_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_block_gemm_checks'
+
+
+@pytest.mark.parametrize('symbol,mode',[(s,m) for s in _BLOCK_GEMM_TASKS for m in
+    ['correct','stale','no_write','wrong_replay','mutate_replay_a','mutate_replay_b',
+     'mutate_replay_sa','mutate_replay_sb','raise_replay']])
+def test_block_gemm_finite_control_reaches_exact_poisoned_replay(monkeypatch,symbol,mode):
+    # Original large INT8 timing scales may overflow FP16 before replay. This
+    # additional finite control proves replay rejection, without changing them.
+    h,checks=_block_gemm_cpu_harness(monkeypatch,symbol)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    dtype=torch.float8_e4m3fnuz if checks.FP8 else torch.int8
+    A=((torch.arange(3*67).reshape(3,67)%7)-3).to(dtype)
+    B=((torch.arange(65*67).reshape(65,67)%5)-2).to(dtype)
+    As=torch.tensor([[.5,1.],[.25,.5],[.5,.25]])
+    Bs=torch.tensor([[.5,.25],[.25,.5]])
+    block_n,block_k=64,64
+    mod=SimpleNamespace(**{checks.SYMBOL:_block_gemm_cpu})
+    inputs=[A,B,As,Bs];saved=checks.snapshot(inputs);replay_seen=[]
+    def fn():getattr(mod,checks.SYMBOL)(A,B,As,Bs,[block_n,block_k])
+    def benchmark(measured,*,timed_run,**options):
+        assert options==dict(warmup=10,repetition=100)
+        output=measured();cache=output.clone()
+        def replay():
+            replay_seen.append(True)
+            assert torch.isnan(output).all()
+            for value,old in zip(inputs,saved):
+                assert not torch.equal(value.float(),old.float())
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='no_write':output.copy_(cache if mode=='stale' else measured())
+            if mode=='wrong_replay':output.zero_()
+            if mode.startswith('mutate_replay_'):inputs[['a','b','sa','sb'].index(mode.removeprefix('mutate_replay_'))].zero_()
+            return output
+        timed_run._bind(replay,output)
+        return .125,{'benchmark_method':'cuda_graph'}
+    if mode=='correct':
+        ms,metadata=checks.checked_benchmark(h,benchmark,fn,warmup=10,repetition=100)
+        assert ms==.125 and metadata['perturbed_input_replay_checked']
+    else:
+        with pytest.raises((AssertionError,RuntimeError)):
+            checks.checked_benchmark(h,benchmark,fn,warmup=10,repetition=100)
+    assert replay_seen==[True]
+    checks.unchanged(inputs,saved)
+    assert getattr(mod,checks.SYMBOL) is _block_gemm_cpu
