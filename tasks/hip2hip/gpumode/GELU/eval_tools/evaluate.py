@@ -127,6 +127,9 @@ def validate_task(args, rows):
     import torch
     module = load_module(local_path(args.module), "arena_reference")
     functional = load_module(local_path(args.functional), "arena_functional")
+    from replay_validation import reference_self_test
+    reference_self_test(getattr(module, args.model_class)().eval(),
+                        getattr(functional, args.model_class)().eval())
     forward = getattr(functional, args.model_class).forward
     default = inspect.signature(forward).parameters["fn"].default
     if not callable(default):
@@ -172,7 +175,10 @@ def correctness(args, role, rows):
         torch.cuda.manual_seed_all(1337 + index)
         expected_inputs = copy.deepcopy(reference_inputs)
         actual_inputs = copy.deepcopy(reference_inputs)
-        expected = module(*expected_inputs)
+        from replay_validation import gelu_reference
+        expected = gelu_reference(expected_inputs[0])
+        module_result = module(*copy.deepcopy(expected_inputs))
+        output_contract(expected, module_result)
         torch.manual_seed(1337 + index)
         torch.cuda.manual_seed_all(1337 + index)
         # A provided PyTorch baseline is checked against the independently written
@@ -184,7 +190,8 @@ def correctness(args, role, rows):
         from replay_validation import unchanged_inputs, separate_output
         unchanged_inputs(expected_inputs, actual_inputs)
         separate_output(actual, actual_inputs)
-        passed = checks._compare_results(expected, actual, rtol=rtol, atol=atol)
+        passed = (checks._compare_results(expected, module_result, rtol=rtol, atol=atol)
+                  and checks._compare_results(expected, actual, rtol=rtol, atol=atol))
         row = {**rows[index], "status": "PASS" if passed else "FAIL", "metrics": {"rtol": rtol, "atol": atol}}
         if not passed:
             row["failure_kind"] = "numerical_mismatch"

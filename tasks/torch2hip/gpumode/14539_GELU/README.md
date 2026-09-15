@@ -58,3 +58,14 @@ values are restored in `finally`, including on exceptions, so a failed role
 cannot alter the next role's starting state. Snapshot, checks and final cleanup
 run outside the reported samples; existing per-invocation prepare callbacks
 and the baseline's graph/Event policy retain their timing boundaries.
+
+## Independent GELU oracle
+
+Every correctness case compares both the production module and the selected
+baseline/candidate to `0.5*x*(1+erf(x/sqrt(2)))`, evaluated independently with
+bounded FP64 scratch in `eval_tools/replay_validation.py`. It does not invoke
+`F.gelu`. Initial reference controls additionally use Python `math.erf` known
+answers, including negative tails and values distinguishing the tanh approximation.
+The actual timed output and poisoned replay use this same independent oracle
+outside measured samples. All 11 original cases, values/seeds, warmups, samples,
+original rtol/atol and output/input/state contracts remain unchanged.

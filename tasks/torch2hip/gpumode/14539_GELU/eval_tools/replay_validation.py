@@ -10,6 +10,33 @@ import inspect
 import torch
 
 
+
+def gelu_reference(x, chunk_size=1048576):
+    """Independent erf definition, bounded FP64 scratch; never calls F.gelu."""
+    import math
+    flat = x.detach().reshape(-1)
+    output = torch.empty_like(flat)
+    for start in range(0, flat.numel(), chunk_size):
+        part = flat[start:start + chunk_size].to(torch.float64)
+        output[start:start + chunk_size] = (0.5 * part * (1.0 + torch.erf(part / math.sqrt(2.0)))).to(x.dtype)
+    return output.reshape(x.shape)
+
+
+def reference_self_test(module, functional):
+    """Analytic controls of the actual baseline paths; no candidate execution."""
+    import math
+    values = [-6., -3., -2.5, -1., 0., .5, 1., 2.5, 3., 6.]
+    x = torch.tensor(values, dtype=torch.float32)
+    expected = torch.tensor([0.5 * v * (1.0 + math.erf(v / math.sqrt(2.0))) for v in values])
+    torch.testing.assert_close(gelu_reference(x, chunk_size=3), expected, rtol=1e-4, atol=1e-5)
+    with torch.no_grad():
+        for implementation in (module, functional):
+            result = implementation(x.clone())
+            if result.shape != x.shape or result.dtype != x.dtype or result.device != x.device:
+                raise ValueError("GELU reference output contract mismatch")
+            torch.testing.assert_close(result, expected, rtol=1e-4, atol=1e-5)
+
+
 def unchanged_inputs(before, after):
     for expected, actual in zip(before, after):
         if isinstance(expected, torch.Tensor):
@@ -54,10 +81,9 @@ def install(perf, output_contract):
         state = {name: value.detach().clone() for name, value in module.state_dict().items()} if hasattr(module, "state_dict") else {}
         try:
             with torch.no_grad():
-                # The functional module's default is the protected PyTorch GELU,
-                # never the supplied HIP function. The PyTorch baseline is checked
-                # eagerly here and against the functional reference by correctness.
-                expected = module(*copy.deepcopy(inputs))
+                # Independent mathematical oracle for the actual timed inputs,
+                # including PyTorch baseline actions; never F.gelu vs F.gelu.
+                expected = gelu_reference(inputs[0])
             observed = TimedRun()
             invoke = (lambda: module(*inputs)) if hip_fn is None else (lambda: module(*inputs, fn=hip_fn))
             elapsed, metadata = perf.benchmark_cuda_graph_or_events(
