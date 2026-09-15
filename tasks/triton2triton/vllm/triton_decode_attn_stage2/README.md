@@ -58,3 +58,11 @@ and every output poisoned, then the same captured graph is replayed and fully
 compared against a new reference. Inputs are restored afterward. No reference,
 poisoning, comparison, or extra GPU check is added inside the timed invocation.
 A timing fallback that cannot expose the actual measured outputs fails closed.
+
+The five original scored cases remain unchanged. Additional explicitly scored
+controls in `workloads.json` execute the same public wrapper and the same
+10-warmup/100-sample measured-graph checks, with their own concrete input shapes,
+dtypes, routing and seed. Their exact manifest parameters are checked against
+the protected generator. They do not silently replace or rescale old scores.
+The stage-2 control uses lengths 63 and 2 with four splits, with large finite
+values in inactive partials that must be ignored. Replay also exchanges lengths.

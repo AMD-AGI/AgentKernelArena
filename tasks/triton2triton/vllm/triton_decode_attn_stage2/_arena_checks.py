@@ -193,6 +193,7 @@ class CallPlan:
     def perturb(self):
         for key in PERTURB_KEYS:
             self.values[key].mul_(-0.75).add_(0.3125)
+        self.values[5].copy_(self.values[5].flip(0))
         # New source snapshot is the reference input and read-only replay guard.
         self.saved = {k: self.values[k].clone() for k in self.saved}
         return expected_outputs(self.harness, self.values | self.saved)
@@ -311,3 +312,71 @@ def install(harness):
 
     harness.run_correctness = correctness
     harness.run_performance = performance
+    install_controls(harness)
+
+
+CONTRACT_CASES = {'ragged_inactive_splits': {'contract_case': 'ragged_inactive_splits',
+                            'batch': 2,
+                            'query_heads': 8,
+                            'kv_heads': 2,
+                            'head_dim': 64,
+                            'max_seq': 63,
+                            'num_splits': 4,
+                            'page_size': 16,
+                            'sequence_lengths': [63, 2],
+                            'inactive_partial_value': 7000.0,
+                            'inactive_lse': 80.0,
+                            'input_shapes': {'mid_o': [2, 8, 4, 65],
+                                             'q': [2, 8, 64],
+                                             'v_buffer': [1, 2, 64],
+                                             'b_seqlen': [2]},
+                            'output_shapes': {'o': [2, 8, 64], 'lse': [2, 8]},
+                            'dtypes': {'data': 'float16',
+                                       'partial_or_statistics': 'float32',
+                                       'routing': 'int32'},
+                            'seed': 814}}
+
+
+def control_inputs(h, case, device='cuda'):
+    import torch
+    c = CONTRACT_CASES[case]
+    args = list(h.make_stage1_outputs(c['batch'], c['query_heads'], c['kv_heads'],
+                c['head_dim'], c['max_seq'], c['num_splits'], c['page_size'], device, torch.float16))
+    # The original generator fixes its own seed. Refill every partial explicitly
+    # under this control's declared seed, including adversarial inactive parts.
+    torch.manual_seed(c['seed'])
+    args[0].copy_(torch.randn_like(args[0]))
+    args[5].copy_(torch.tensor(c['sequence_lengths'], device=device, dtype=torch.int32))
+    for b, length in enumerate(c['sequence_lengths']):
+        split_size = (length + c['num_splits'] - 1) // c['num_splits']
+        for part in range(c['num_splits']):
+            if part * split_size >= length:
+                args[0][b, :, part, :-1].fill_(c['inactive_partial_value'])
+                args[0][b, :, part, -1].fill_(c['inactive_lse'])
+    return (*args, c['num_splits']), {}
+
+
+def install_controls(harness):
+    harness.CONTRACT_CASES = CONTRACT_CASES
+
+    def correctness(case):
+        with checked_modules(harness):
+            module = harness.load_module()
+            args, kwargs = control_inputs(harness, case)
+            getattr(module, SYMBOL)(*args, **kwargs)
+        return True, None
+
+    def performance():
+        rows = []
+        for case in CONTRACT_CASES:
+            mod = harness.load_module()
+            args, kwargs = control_inputs(harness, case)
+            def fn():
+                getattr(mod, SYMBOL)(*args, **kwargs)
+            ms, metadata = checked_benchmark(harness, harness._benchmark_cuda_graph_or_events, fn,
+                        warmup=harness.WARMUP_ITERATIONS, repetition=harness.BENCHMARK_ITERATIONS)
+            rows.append({'test_case_id':case, 'execution_time_ms':ms, **metadata, 'params':CONTRACT_CASES[case]})
+        return rows
+
+    harness.run_contract_correctness = correctness
+    harness.run_contract_performance = performance

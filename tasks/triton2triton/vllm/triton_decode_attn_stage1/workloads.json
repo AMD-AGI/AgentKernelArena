@@ -166,6 +166,196 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "ragged_permuted_pages",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "contract_case": "ragged_permuted_pages",
+        "batch": 2,
+        "query_heads": 8,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "max_seq": 63,
+        "num_splits": 4,
+        "page_size": 16,
+        "sequence_lengths": [
+          63,
+          37
+        ],
+        "page_mapping": "reversed physical page order",
+        "logit_cap": 0.0,
+        "input_shapes": {
+          "q": [
+            2,
+            8,
+            64
+          ],
+          "k_buffer": [
+            128,
+            2,
+            64
+          ],
+          "v_buffer": [
+            128,
+            2,
+            64
+          ],
+          "req_to_tokens": [
+            2,
+            64
+          ],
+          "b_seqlen": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "att_out": [
+            2,
+            8,
+            4,
+            65
+          ]
+        },
+        "dtypes": {
+          "data": "float16",
+          "partial_or_statistics": "float32",
+          "routing": "int32"
+        },
+        "seed": 814
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "ragged_permuted_capped",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "contract_case": "ragged_permuted_capped",
+        "batch": 2,
+        "query_heads": 8,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "max_seq": 63,
+        "num_splits": 4,
+        "page_size": 16,
+        "sequence_lengths": [
+          63,
+          37
+        ],
+        "page_mapping": "reversed physical page order",
+        "logit_cap": 1.5,
+        "input_shapes": {
+          "q": [
+            2,
+            8,
+            64
+          ],
+          "k_buffer": [
+            128,
+            2,
+            64
+          ],
+          "v_buffer": [
+            128,
+            2,
+            64
+          ],
+          "req_to_tokens": [
+            2,
+            64
+          ],
+          "b_seqlen": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "att_out": [
+            2,
+            8,
+            4,
+            65
+          ]
+        },
+        "dtypes": {
+          "data": "float16",
+          "partial_or_statistics": "float32",
+          "routing": "int32"
+        },
+        "seed": 814
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "inactive_ragged_pages",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "contract_case": "inactive_ragged_pages",
+        "batch": 2,
+        "query_heads": 8,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "max_seq": 63,
+        "num_splits": 4,
+        "page_size": 16,
+        "sequence_lengths": [
+          2,
+          37
+        ],
+        "page_mapping": "reversed physical page order",
+        "logit_cap": 1.5,
+        "input_shapes": {
+          "q": [
+            2,
+            8,
+            64
+          ],
+          "k_buffer": [
+            128,
+            2,
+            64
+          ],
+          "v_buffer": [
+            128,
+            2,
+            64
+          ],
+          "req_to_tokens": [
+            2,
+            64
+          ],
+          "b_seqlen": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "att_out": [
+            2,
+            8,
+            4,
+            65
+          ]
+        },
+        "dtypes": {
+          "data": "float16",
+          "partial_or_statistics": "float32",
+          "routing": "int32"
+        },
+        "seed": 814,
+        "initial_partial_value": 23.5
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

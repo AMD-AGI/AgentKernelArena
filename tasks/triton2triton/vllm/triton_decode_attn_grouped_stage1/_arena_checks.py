@@ -8,7 +8,40 @@ OUTPUT_KEYS = (3,)
 PERTURB_KEYS = (0, 1, 2)
 
 def expected_outputs(h, a):
-    return (h.reference_grouped_stage1(a[0], a[1], a[2], a[4], a[5], a[6], a[7], a[8]),)
+    cap = a.get('logit_cap', 0.0)
+    if cap == 0:
+        result = h.reference_grouped_stage1(a[0], a[1], a[2], a[4], a[5], a[6], a[7], a[8])
+        result[~output_write_mask(a)] = a[3][~output_write_mask(a)]
+        return (result,)
+    # Independent FP32 attention with cap applied to logits before softmax.
+    import torch
+    q, k, v, pages, lengths, splits, scale, page_size = (a[i] for i in (0, 1, 2, 4, 5, 6, 7, 8))
+    result = a[3].clone()
+    for b in range(q.shape[0]):
+        length = int(lengths[b])
+        split_size = (length + splits - 1) // splits
+        for head in range(q.shape[1]):
+            kv_head = head // (q.shape[1] // k.shape[1])
+            for part in range(splits):
+                begin, end = part * split_size, min((part + 1) * split_size, length)
+                if begin >= end:
+                    continue
+                positions = torch.arange(begin, end, device=q.device)
+                locations = pages[b, positions // page_size].long() * page_size + positions % page_size
+                logits = k[locations, kv_head].float() @ q[b, head].float() * scale
+                logits = cap * torch.tanh(logits / cap)
+                result[b, head, part, :-1] = torch.softmax(logits, dim=0) @ v[locations, kv_head].float()
+                result[b, head, part, -1] = torch.logsumexp(logits, dim=0)
+    return (result,)
+
+
+def output_write_mask(a):
+    import torch
+    splits = a[6]
+    lengths = a[5]
+    split_size = (lengths + splits - 1) // splits
+    active = torch.arange(splits, device=lengths.device)[None, :] * split_size[:, None] < lengths[:, None]
+    return active[:, None, :, None].expand_as(a[3])
 
 # Only allocation, same-device conversion/copy and views belong in the host
 # wrapper. The reduction itself must execute the declared Triton kernel.
@@ -184,14 +217,20 @@ class CallPlan:
             # assert_close rejects NaN and requires matching signed infinities;
             # ordinary finite cases therefore reject unwritten poison everywhere.
             torch.testing.assert_close(actual, wanted, atol=0.01, rtol=0.01, equal_nan=False)
+            inactive = ~output_write_mask(self.values)
+            if not torch.equal(_tensor_bytes(actual[inactive]), _tensor_bytes(self.saved[3][inactive])):
+                raise AssertionError('Attention modified inactive caller-owned split slots')
 
     def poison(self, outputs):
-        for output in outputs:
-            output.fill_(float('nan'))
+        # Inactive split slots are caller-owned state: the upstream kernel
+        # intentionally does not write them. Poison every required output byte.
+        outputs[0].masked_fill_(output_write_mask(self.values), float('nan'))
 
     def perturb(self):
         for key in PERTURB_KEYS:
             self.values[key].mul_(-0.75).add_(0.3125)
+        self.values[4].copy_(self.values[4].roll(1, dims=1))
+        self.values[5].copy_(self.values[5].flip(0))
         # New source snapshot is the reference input and read-only replay guard.
         self.saved = {k: self.values[k].clone() for k in self.saved}
         return expected_outputs(self.harness, self.values | self.saved)
@@ -310,3 +349,114 @@ def install(harness):
 
     harness.run_correctness = correctness
     harness.run_performance = performance
+    install_controls(harness)
+
+
+CONTRACT_CASES = {'ragged_permuted_pages': {'contract_case': 'ragged_permuted_pages',
+                           'batch': 2,
+                           'query_heads': 8,
+                           'kv_heads': 2,
+                           'head_dim': 64,
+                           'max_seq': 63,
+                           'num_splits': 4,
+                           'page_size': 16,
+                           'sequence_lengths': [63, 37],
+                           'page_mapping': 'reversed physical page order',
+                           'logit_cap': 0.0,
+                           'input_shapes': {'q': [2, 8, 64],
+                                            'k_buffer': [128, 2, 64],
+                                            'v_buffer': [128, 2, 64],
+                                            'req_to_tokens': [2, 64],
+                                            'b_seqlen': [2]},
+                           'output_shapes': {'att_out': [2, 8, 4, 65]},
+                           'dtypes': {'data': 'float16',
+                                      'partial_or_statistics': 'float32',
+                                      'routing': 'int32'},
+                           'seed': 814},
+ 'ragged_permuted_capped': {'contract_case': 'ragged_permuted_capped',
+                            'batch': 2,
+                            'query_heads': 8,
+                            'kv_heads': 2,
+                            'head_dim': 64,
+                            'max_seq': 63,
+                            'num_splits': 4,
+                            'page_size': 16,
+                            'sequence_lengths': [63, 37],
+                            'page_mapping': 'reversed physical page order',
+                            'logit_cap': 1.5,
+                            'input_shapes': {'q': [2, 8, 64],
+                                             'k_buffer': [128, 2, 64],
+                                             'v_buffer': [128, 2, 64],
+                                             'req_to_tokens': [2, 64],
+                                             'b_seqlen': [2]},
+                            'output_shapes': {'att_out': [2, 8, 4, 65]},
+                            'dtypes': {'data': 'float16',
+                                       'partial_or_statistics': 'float32',
+                                       'routing': 'int32'},
+                            'seed': 814},
+ 'inactive_ragged_pages': {'contract_case': 'inactive_ragged_pages',
+                           'batch': 2,
+                           'query_heads': 8,
+                           'kv_heads': 2,
+                           'head_dim': 64,
+                           'max_seq': 63,
+                           'num_splits': 4,
+                           'page_size': 16,
+                           'sequence_lengths': [2, 37],
+                           'page_mapping': 'reversed physical page order',
+                           'logit_cap': 1.5,
+                           'input_shapes': {'q': [2, 8, 64],
+                                            'k_buffer': [128, 2, 64],
+                                            'v_buffer': [128, 2, 64],
+                                            'req_to_tokens': [2, 64],
+                                            'b_seqlen': [2]},
+                           'output_shapes': {'att_out': [2, 8, 4, 65]},
+                           'dtypes': {'data': 'float16',
+                                      'partial_or_statistics': 'float32',
+                                      'routing': 'int32'},
+                           'seed': 814,
+                           'initial_partial_value': 23.5}}
+
+
+def control_inputs(h, case, device='cuda'):
+    import torch
+    c = CONTRACT_CASES[case]
+    q, k, v, out, pages, lengths, scale = h.make_inputs(c['batch'], c['query_heads'],
+             c['kv_heads'], c['head_dim'], c['max_seq'], c['num_splits'], c['page_size'], device, torch.float16)
+    torch.manual_seed(c['seed'])
+    for data in (q, k, v):
+        data.copy_(torch.randn_like(data))
+    lengths.copy_(torch.tensor(c['sequence_lengths'], device=device, dtype=torch.int32))
+    out.fill_(c.get('initial_partial_value', 0.0))
+    total_pages = k.shape[0] // c['page_size']
+    # The kernel indexes the table by logical page number, not token number.
+    # Every entry is a valid physical page, with non-identity routing per request.
+    for b in range(c['batch']):
+        pages[b].copy_((total_pages - 1 - (torch.arange(pages.shape[1], device=device) + b) % total_pages).int())
+    return (q, k, v, out, pages, lengths, c['num_splits'], scale, c['page_size']), {'logit_cap':c['logit_cap']}
+
+
+def install_controls(harness):
+    harness.CONTRACT_CASES = CONTRACT_CASES
+
+    def correctness(case):
+        with checked_modules(harness):
+            module = harness.load_module()
+            args, kwargs = control_inputs(harness, case)
+            getattr(module, SYMBOL)(*args, **kwargs)
+        return True, None
+
+    def performance():
+        rows = []
+        for case in CONTRACT_CASES:
+            mod = harness.load_module()
+            args, kwargs = control_inputs(harness, case)
+            def fn():
+                getattr(mod, SYMBOL)(*args, **kwargs)
+            ms, metadata = checked_benchmark(harness, harness._benchmark_cuda_graph_or_events, fn,
+                        warmup=harness.WARMUP_ITERATIONS, repetition=harness.BENCHMARK_ITERATIONS)
+            rows.append({'test_case_id':case, 'execution_time_ms':ms, **metadata, 'params':CONTRACT_CASES[case]})
+        return rows
+
+    harness.run_contract_correctness = correctness
+    harness.run_contract_performance = performance

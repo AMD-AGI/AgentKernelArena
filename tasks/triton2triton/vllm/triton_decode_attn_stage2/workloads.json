@@ -166,6 +166,69 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "ragged_inactive_splits",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "contract_case": "ragged_inactive_splits",
+        "batch": 2,
+        "query_heads": 8,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "max_seq": 63,
+        "num_splits": 4,
+        "page_size": 16,
+        "sequence_lengths": [
+          63,
+          2
+        ],
+        "inactive_partial_value": 7000.0,
+        "inactive_lse": 80.0,
+        "input_shapes": {
+          "mid_o": [
+            2,
+            8,
+            4,
+            65
+          ],
+          "q": [
+            2,
+            8,
+            64
+          ],
+          "v_buffer": [
+            1,
+            2,
+            64
+          ],
+          "b_seqlen": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "o": [
+            2,
+            8,
+            64
+          ],
+          "lse": [
+            2,
+            8
+          ]
+        },
+        "dtypes": {
+          "data": "float16",
+          "partial_or_statistics": "float32",
+          "routing": "int32"
+        },
+        "seed": 814
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

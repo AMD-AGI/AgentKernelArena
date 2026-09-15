@@ -64,3 +64,19 @@ and every output poisoned, then the same captured graph is replayed and fully
 compared against a new reference. Inputs are restored afterward. No reference,
 poisoning, comparison, or extra GPU check is added inside the timed invocation.
 A timing fallback that cannot expose the actual measured outputs fails closed.
+
+The five original scored cases remain unchanged. Additional explicitly scored
+controls in `workloads.json` execute the same public wrapper and the same
+10-warmup/100-sample measured-graph checks, with their own concrete input shapes,
+dtypes, routing and seed. Their exact manifest parameters are checked against
+the protected generator. They do not silently replace or rescale old scores.
+Stage-1 controls use ragged lengths 63 and 37, reversed page routing, and both
+zero and positive logit caps. The positive-cap oracle applies tanh before
+softmax. Replay changes page-table data and exchanges sequence lengths.
+
+The additional inactive-split control uses lengths 2 and 37. Upstream stage 1
+intentionally leaves empty split slots untouched; those slots are initialized
+to a distinct finite sentinel and checked byte-for-byte as caller-owned state.
+All active output elements, including logsumexp, are poisoned before numerical
+checks/replay. No inactive slot is claimed as a kernel write. The original five
+cases have only active splits and still require complete output overwrites.
