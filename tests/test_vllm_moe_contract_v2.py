@@ -164,6 +164,19 @@ def quant_oracles():
     return function(path,'reference',reference_fused_moe_int4=original), function(path,'control_inputs')
 
 
+QUANT_ACCURACY = load(TASKS/'triton_fused_moe_gptq_awq/_numerical_contract.py', '_quant_accuracy_test')
+
+
+def quant_contract_factory():
+    path=TASKS/'triton_fused_moe_gptq_awq/scripts/task_runner.py'
+    ref,_=quant_oracles()
+    return function(path,'numerical_contract',reference=ref,
+        reference_and_bound=QUANT_ACCURACY.reference_and_bound,
+        assert_accuracy=QUANT_ACCURACY.assert_accuracy,NumericalMismatch=CONTRACT.NumericalMismatch,
+        check_output=function(path,'check_output',compare_output=CONTRACT.compare_output),
+        check_control_output=function(path,'check_control_output',compare_output=CONTRACT.compare_output))
+
+
 def test_int4_reference_has_independent_exact_known_answer():
     ref,_=quant_oracles()
     inputs={'A':torch.tensor([[2.,0.,0.,0.],[0.,0.,0.,-3.]],dtype=torch.float16),
@@ -206,6 +219,9 @@ def test_quant_controls_reject_zero_with_unchanged_large_tolerance(control):
     torch.testing.assert_close(expected,torch.tensor(actual,dtype=torch.float16),atol=0,rtol=0)
     # The scalar oracle's dyadic results suffer no rounding when stored in FP16.
     torch.testing.assert_close(expected.double(),torch.tensor(actual,dtype=torch.float64),atol=0,rtol=0)
+    ideal,bound=QUANT_ACCURACY.reference_and_bound(inputs,options)
+    torch.testing.assert_close(ideal,torch.tensor(actual,dtype=torch.float64),atol=0,rtol=0)
+    QUANT_ACCURACY.assert_accuracy(expected,ideal,bound,CONTRACT.NumericalMismatch)
 
 
 def test_quant_control_rejects_wrong_nibble_zero_point_and_routing():
@@ -213,8 +229,11 @@ def test_quant_control_rejects_wrong_nibble_zero_point_and_routing():
     wrong_nibbles={**inputs,'qweight':((inputs['qweight'].to(torch.int32)>>4)|(inputs['qweight'].to(torch.int32)<<4)).to(torch.uint8)}
     no_zero={k:v for k,v in inputs.items() if k!='zeros'}
     wrong=[ref(wrong_nibbles,options),ref(no_zero,options),ref(inputs,{**options,'mul_routed_weight':False})]
+    ideal,bound=QUANT_ACCURACY.reference_and_bound(inputs,options)
     for output in wrong:
         with pytest.raises(CONTRACT.NumericalMismatch): CONTRACT.compare_output(output,expected,atol=1.,rtol=.5)
+        with pytest.raises(CONTRACT.NumericalMismatch):
+            QUANT_ACCURACY.assert_accuracy(output,ideal,bound,CONTRACT.NumericalMismatch)
 
 
 @pytest.mark.parametrize('control',['int4_explicit','int4_default','int8_explicit','int8_default'])
@@ -235,9 +254,101 @@ def test_exact_quant_control_rejects_scaling_and_single_element_errors(control):
     run=function(path,'run_correctness',load_module=lambda:None,CONTROL_CASES=(control,),
         control_inputs=lambda name,device:inputs_for(name,'cpu'),reference=ref,
         invoke=lambda mod,data,opts:ref(data,opts)*0.5,checked_call=CONTRACT.checked_call,
-        check_control_output=check,check_output=legacy)
+        numerical_contract=quant_contract_factory())
     ok,error=run(control=control)
     assert not ok and isinstance(error,CONTRACT.NumericalMismatch)
+
+
+@pytest.mark.parametrize('index',range(5))
+def test_all_original_quant_shapes_have_input_derived_accuracy_gate(index):
+    shapes=json.loads((TASKS/'triton_fused_moe_gptq_awq/workloads.json').read_text())['input_table']
+    m,k,e,n,topk,group_size=shapes[index]
+    torch.manual_seed(42+index)
+    inputs={'A':torch.randn(m,k,dtype=torch.float16)*0.1,
+        'qweight':torch.randint(0,255,(e,k//2,n),dtype=torch.int32).to(torch.uint8),
+        'scales':torch.randn(e,k//group_size,n,dtype=torch.float16).abs()*0.01+0.001,
+        'zeros':torch.randint(0,255,(e,k//group_size,n//2),dtype=torch.int32).to(torch.uint8),
+        'ids':torch.randint(0,e,(m,topk),dtype=torch.int32),
+        'weights':torch.randn(m*topk,dtype=torch.float32).abs()}
+    options={'use_int4':True,'group_size':group_size,'mul_routed_weight':True}
+    ref,_=quant_oracles();oracle,check=quant_contract_factory()(options)
+    expected=oracle(inputs);check(expected.clone(),expected)
+    ideal,bound=QUANT_ACCURACY.reference_and_bound(inputs,options)
+    assert bound.shape==expected.shape and (bound>=0).all()
+    assert torch.linalg.vector_norm(bound) < 0.02*torch.linalg.vector_norm(ideal)
+    # A legitimate FP16-dequantize / FP32-dot implementation is admitted by
+    # the derived bound; this numerical model is not a measured GPU baseline.
+    q=inputs['qweight'].to(torch.int32)
+    unpack=torch.stack((q&15,q>>4),dim=2).reshape(e,k,n)
+    zp=inputs['zeros'].to(torch.int32)
+    zero=torch.stack((zp&15,zp>>4),dim=-1).reshape(e,k//group_size,n)
+    dequant=((unpack-zero.repeat_interleave(group_size,dim=1))*
+             inputs['scales'].float().repeat_interleave(group_size,dim=1)).half()
+    rounded=torch.empty_like(expected)
+    for token in range(m):
+        for lane in range(topk):
+            row=token*topk+lane;expert=int(inputs['ids'][token,lane])
+            rounded[row]=(inputs['A'][token].float()@dequant[expert].float()*inputs['weights'][row]).half()
+    check(rounded,expected)
+    q=inputs['qweight'].to(torch.int32)
+    wrong_nibbles={**inputs,'qweight':((q>>4)|(q<<4)).to(torch.uint8)}
+    wrong_zero={key:value for key,value in inputs.items() if key!='zeros'}
+    wrong_route={**inputs,'ids':(inputs['ids']+1)%e}
+    wrong=[expected*0.5,expected+0.25,ref(wrong_nibbles,options),
+           ref(wrong_zero,options),ref(wrong_route,options)]
+    # All outputs are still required to meet the original broad allclose gate;
+    # the new independent criterion rejects even the half/offset examples it admits.
+    CONTRACT.compare_output(wrong[0],expected,atol=1.,rtol=.5)
+    CONTRACT.compare_output(wrong[1],expected,atol=1.,rtol=.5)
+    for actual in wrong:
+        with pytest.raises(CONTRACT.NumericalMismatch):
+            QUANT_ACCURACY.assert_accuracy(actual,ideal,bound,CONTRACT.NumericalMismatch)
+
+
+@pytest.mark.parametrize('failure',['original','replay'])
+def test_quant_performance_dispatch_rejects_half_scaled_measured_path(failure):
+    path=TASKS/'triton_fused_moe_gptq_awq/scripts/task_runner.py'
+    shapes=json.loads((path.parent.parent/'workloads.json').read_text())['input_table']
+    ref,_=quant_oracles()
+    def benchmark(fn, *, timed_run, **options):
+        assert options=={'warmup':10,'repetition':100,'use_cuda_graph':False,
+                        'fallback_reason':'fused_moe_host_routing_and_dynamic_allocations'}
+        actual=fn()
+        if failure=='original': actual*=0.5
+        def replay():
+            actual.copy_(fn()*0.5 if failure=='replay' else fn())
+            return actual
+        timed_run._bind(replay,actual)
+        return 0.25,{'benchmark_method':'cuda_event_fallback'}
+    run=function(path,'run_performance',load_module=lambda:None,TEST_SHAPES=shapes[:1],
+        WARMUP_ITERATIONS=10,BENCHMARK_ITERATIONS=100,numerical_contract=quant_contract_factory(),
+        checked_benchmark=CONTRACT.checked_benchmark,perturb_activation=CONTRACT.perturb_activation,
+        _benchmark_cuda_graph_or_events=benchmark,invoke=lambda mod,data,opts:ref(data,opts))
+    randn,randint=torch.randn,torch.randint
+    def cpu_randn(*args,**kwargs): return randn(*args,**{**kwargs,'device':'cpu'})
+    def cpu_randint(*args,**kwargs): return randint(*args,**{**kwargs,'device':'cpu'})
+    with patch.object(torch,'randn',cpu_randn),patch.object(torch,'randint',cpu_randint),patch.dict(sys.modules,{'_aka_benchmark':TIMER}):
+        rows=run()
+    assert len(rows)==1 and rows[0]['execution_time_ms']==-1.
+    assert rows[0]['failure_kind']=='numerical_mismatch'
+    assert 'Arithmetic accuracy bound exceeded' in rows[0]['error']
+
+
+@pytest.mark.parametrize('index',range(5))
+def test_quant_correctness_dispatch_rejects_half_scaled_original_case(index):
+    path=TASKS/'triton_fused_moe_gptq_awq/scripts/task_runner.py'
+    shapes=json.loads((path.parent.parent/'workloads.json').read_text())['input_table']
+    ref,_=quant_oracles()
+    run=function(path,'run_correctness',load_module=lambda:None,TEST_SHAPES=shapes,
+        numerical_contract=quant_contract_factory(),checked_call=CONTRACT.checked_call,
+        invoke=lambda mod,data,opts:ref(data,opts)*0.5)
+    randn,randint=torch.randn,torch.randint
+    def cpu_randn(*args,**kwargs): return randn(*args,**{**kwargs,'device':'cpu'})
+    def cpu_randint(*args,**kwargs): return randint(*args,**{**kwargs,'device':'cpu'})
+    with patch.object(torch,'randn',cpu_randn),patch.object(torch,'randint',cpu_randint):
+        ok,error=run(case_index=index)
+    assert not ok and isinstance(error,CONTRACT.NumericalMismatch)
+    assert 'Arithmetic accuracy bound exceeded' in str(error)
 
 
 def test_int8_exact_known_answer_including_default_zero():

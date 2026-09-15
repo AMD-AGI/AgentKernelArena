@@ -37,7 +37,8 @@ def _benchmark_cuda_graph_or_events(*args, **kwargs):
 # <<< AKA-GENERATED <<<
 
 sys.path.insert(0, TASK_DIR)
-from _contract_checks import checked_call, checked_benchmark, compare_output, perturb_activation
+from _contract_checks import checked_call, checked_benchmark, compare_output, perturb_activation, NumericalMismatch
+from _numerical_contract import reference_and_bound, assert_accuracy
 
 
 def load_module():
@@ -201,6 +202,22 @@ def check_control_output(actual, expected):
     compare_output(actual, expected, atol=0.0, rtol=0.0)
 
 
+def numerical_contract(options, *, exact_control=False):
+    # checked_call/checked_benchmark invoke oracle on private pristine inputs
+    # before the candidate, including the changed-input timed replay. Recompute
+    # the bound for those exact inputs; never derive it from a measured output.
+    prepared = {}
+    def oracle(saved):
+        prepared['ideal'], prepared['bound'] = reference_and_bound(saved, options)
+        return reference(saved, options)
+    def check(actual, expected):
+        check_output(actual, expected)  # retain the original allclose constraint
+        assert_accuracy(actual, prepared['ideal'], prepared['bound'], NumericalMismatch)
+        if exact_control:
+            check_control_output(actual, expected)
+    return oracle, check
+
+
 def run_correctness(*, case_index=None, control=None):
     import torch
     try:
@@ -209,8 +226,9 @@ def run_correctness(*, case_index=None, control=None):
         if control is not None:
             assert control in CONTROL_CASES, 'Unknown control'
             inputs, options = control_inputs(control, device)
+            oracle, check = numerical_contract(options, exact_control=True)
             checked_call(lambda: invoke(mod, inputs, options), inputs=inputs,
-                         reference=lambda saved:reference(saved,options), check=check_control_output)
+                         reference=oracle, check=check)
             return True, None
         for i, (M, K, E, N, topk, group_size) in enumerate(TEST_SHAPES):
             if case_index is not None and i != case_index:
@@ -229,8 +247,9 @@ def run_correctness(*, case_index=None, control=None):
             inputs={'A':input_tensor,'qweight':qweight,'scales':scales_t,'zeros':zeros_t,
                     'ids':topk_ids,'weights':topk_weights_flat}
             options={'mul_routed_weight':True,'group_size':group_size,'use_int4':True}
+            oracle, check = numerical_contract(options)
             checked_call(lambda: invoke(mod, inputs, options), inputs=inputs,
-                         reference=lambda saved:reference(saved,options), check=check_output)
+                         reference=oracle, check=check)
         return True, None
     except Exception as exc:
         return False, exc
@@ -258,9 +277,10 @@ def run_performance():
             inputs={'A':input_tensor,'qweight':qweight,'scales':scales_t,'zeros':zeros_t,
                     'ids':topk_ids,'weights':topk_weights_flat}
             options={'mul_routed_weight':True,'group_size':group_size,'use_int4':True}
+            oracle, check = numerical_contract(options)
             elapsed_ms, metadata = checked_benchmark(
                 _benchmark_cuda_graph_or_events, lambda: invoke(mod, inputs, options),
-                inputs=inputs, reference=lambda saved:reference(saved,options), check=check_output,
+                inputs=inputs, reference=oracle, check=check,
                 perturb=perturb_activation, warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS, use_cuda_graph=False,
                 fallback_reason='fused_moe_host_routing_and_dynamic_allocations')
