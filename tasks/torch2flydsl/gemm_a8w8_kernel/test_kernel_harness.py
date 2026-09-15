@@ -152,7 +152,22 @@ def _gemm_replay_validator(mmod, a, w):
     return validate
 
 
+def _record_gemm_case(shape, status, *, metrics=None, error=None):
+    row = {"status": status}
+    if metrics is not None:
+        row["metadata"] = metrics
+        if status == "FAIL":
+            row.update(failure_kind="numerical_mismatch",
+                       reason="GEMM normalized error exceeds the original tolerance")
+    if error is not None:
+        row.update(failure_kind="execution_or_contract_error",
+                   reason=f"{type(error).__name__}: {error}")
+    ARENA_CORRECTNESS_RESULTS[shape["name"]] = row
+
+
 def run_correctness(verbose=True):
+    global ARENA_CORRECTNESS_RESULTS
+    ARENA_CORRECTNESS_RESULTS = {}
     import torch
     import aiter
 
@@ -188,6 +203,7 @@ def run_correctness(verbose=True):
             worst, norm = _norm_worst(ref, gt)
             ok = norm <= TOL
             note = ""
+            knorm = None
             if has_kernel:
                 try:
                     out = _retry(
@@ -209,6 +225,12 @@ def run_correctness(verbose=True):
                     ok = ok and kok
                     note = f" | kernel norm={knorm:.4g} {'ok' if kok else 'BAD'}"
 
+            _record_gemm_case(shape, "PASS" if ok else "FAIL", metrics={
+                "baseline_max_abs_error": worst,
+                "baseline_normalized_max_error": norm,
+                "candidate_normalized_max_error": knorm,
+                "tolerance": TOL,
+            })
             if verbose:
                 print(
                     f"  {'PASS' if ok else 'FAIL'}: {shape['name']} "
@@ -220,6 +242,7 @@ def run_correctness(verbose=True):
             del a, w, x_fp8, x_scale, w_fp8, w_scale, gt
             torch.cuda.empty_cache()
         except Exception as e:  # noqa: BLE001
+            _record_gemm_case(shape, "FAIL", error=e)
             failures.append(shape["name"])
             if verbose:
                 print(f"  FAIL: {shape['name']} - {str(e)[:160]}")

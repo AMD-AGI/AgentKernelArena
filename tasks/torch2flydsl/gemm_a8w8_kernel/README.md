@@ -74,3 +74,11 @@ zero-reference denominator, timing policy, warmups and samples are unchanged.
 Candidate-only auditing requires actual FlyDSL computation, with host allocation,
 layout/casts and launch preparation allowed. Baseline library dispatch and final
 candidate are checked separately; a starter is not a final implementation.
+
+
+Correctness failures retain each independently completed case's true result and
+numeric error metrics; a failing case does not relabel other completed cases.
+Launch and output-contract errors are distinguished from numerical mismatches.
+If correctness fails during the performance action's precheck, no performance
+case is accepted without timing. The completed correctness evidence is retained
+as metadata; the performance action remains failed without invented latencies.

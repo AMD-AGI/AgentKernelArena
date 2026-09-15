@@ -249,7 +249,7 @@ def run(argv):
         # label it numerical_mismatch without separately attested numeric evidence.
         for row in report["cases"]: row.update(status="FAIL",reason=report["reason"])
         evidence = getattr(exc, "arena_case_results", {})
-        if evidence and action in {"correctness", "performance"}:
+        if evidence and action == "correctness":
             # Preserve independently completed cases even when another case fails.
             for row in report["cases"]:
                 case = evidence.get(row["test_case_id"])
@@ -259,6 +259,13 @@ def run(argv):
             failed = [row for row in report["cases"] if row["status"] == "FAIL"]
             if failed and all(row.get("failure_kind") == "numerical_mismatch" for row in failed):
                 report["failure_kind"] = "numerical_mismatch"
+        elif evidence and action == "performance":
+            # Correctness precheck rows contain no timing. Never promote them
+            # to PASS performance cases or invent missing device latencies.
+            report.setdefault("metadata", {}).update(
+                failed_stage="correctness_precheck",
+                correctness_precheck_cases=copy.deepcopy(evidence),
+            )
 
     try:
         encoded = json.dumps(report, allow_nan=False, sort_keys=True)

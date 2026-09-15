@@ -74,3 +74,11 @@ completed cases retain their actual PASS status. Only a failed numerical gate
 receives `numerical_mismatch`; launch errors, invalid outputs and input mutation
 remain execution/contract failures. Baseline correctness is still required;
 these diagnostics do not grant a numerical exception or widen tolerances.
+
+
+Correctness failures retain each independently completed case's true result and
+numeric error metrics; a failing case does not relabel other completed cases.
+Launch and output-contract errors are distinguished from numerical mismatches.
+If correctness fails during the performance action's precheck, no performance
+case is accepted without timing. The completed correctness evidence is retained
+as metadata; the performance action remains failed without invented latencies.

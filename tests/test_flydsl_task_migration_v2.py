@@ -2694,10 +2694,15 @@ class _RemoveQuantGemmChecks(_RemoveAddedReplayChecks):
     def visit_Expr(self,node):
         call=node.value
         if isinstance(call,ast.Call):
-            if getattr(call.func,'id',None)=='_checked_quant_gemm_output':return None
+            if getattr(call.func,'id',None) in {'_checked_quant_gemm_output','_record_gemm_case'}:return None
             if isinstance(call.func,ast.Attribute) and call.func.attr=='update' and call.args and isinstance(call.args[0],ast.Call) and getattr(call.args[0].func,'id',None)=='replay_validate':return None
         return super().visit_Expr(node)
+    def visit_Global(self,node):
+        if node.names==['ARENA_CORRECTNESS_RESULTS']:return None
+        return node
     def visit_Assign(self,node):
+        if len(node.targets)==1 and getattr(node.targets[0],'id',None)=='ARENA_CORRECTNESS_RESULTS':return None
+        if len(node.targets)==1 and getattr(node.targets[0],'id',None)=='knorm' and isinstance(node.value,ast.Constant) and node.value.value is None:return None
         if len(node.targets)==1 and getattr(node.targets[0],'id',None)=='replay_validate':return None
         return super().visit_Assign(node)
     def visit_Call(self,node):
@@ -3207,3 +3212,73 @@ def test_biased_grouped_scalar_known_answer_and_comparator_negative_control():
     weights=torch.tensor([[1.25,1.25]]);ids=torch.tensor([[0,1]],dtype=torch.int32);sel=torch.tensor([[.8,.5,.5,.1]])
     assert compare(weights,ids,weights,torch.tensor([[0,2]],dtype=torch.int32),sel,2)==(0,0.)
     assert compare(weights,ids,weights,torch.tensor([[0,3]],dtype=torch.int32),sel,2)[0]==1
+
+
+@pytest.mark.parametrize('fault',['numerical','dtype','launch','nonfinite'])
+@pytest.mark.parametrize('action',['correctness','performance'])
+def test_a8w8_gemm_real_case_evidence_and_failed_timing_precheck(fault,action,monkeypatch,capsys):
+    import torch,types
+    from src.task_protocol import parse_command_result
+    t=ROOT/'tasks/torch2flydsl/gemm_a8w8_kernel';runtime=module(t/'task_runtime.py');actions=module(t/'scripts/task_actions.py');checks=module(t/'scripts/replay_checks.py')
+    candidate_checks=module(t/'scripts/candidate_checks.py');monkeypatch.setitem(sys.modules,'scripts.candidate_checks',candidate_checks)
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    h=types.ModuleType('controlled_gemm_harness');h.__dict__.update(ARENA_PROVIDED_BASELINE=True,
+        _KERNEL_DIR='.',MODEL_FILE='model.py',KERNEL_FILE='kernel.py',KERNEL_ENTRY='flydsl_gemm_a8w8',
+        SHAPES=actions.EXPECTED_CASES,TOL=.01,require_unchanged=checks.require_unchanged)
+    # Small CPU tensors exercise the original complete five-case orchestration;
+    # numeric GPU checks and full shapes remain in the actual frozen campaign.
+    class Model:
+        def to(self,*a):return self
+        def eval(self):return self
+        def __call__(self,a,w):return a.clone()
+    mmod=types.SimpleNamespace(Model=Model,quantize_a8w8=lambda a,w:(a,None,w,None));state={'case':-1}
+    def inputs(*args):
+        state['case']+=1
+        return torch.tensor([[1.,2.],[3.,4.]],dtype=torch.bfloat16),torch.ones((2,2),dtype=torch.bfloat16)
+    def baseline(a,w,*args):
+        if state['case']==0:
+            if fault=='launch':raise RuntimeError('controlled GPU launch failure')
+            if fault=='dtype':return a.float()
+            if fault=='nonfinite':return torch.full_like(a,float('nan'))
+            return a+1
+        return a.clone()
+    monkeypatch.setitem(sys.modules,'aiter',types.SimpleNamespace(gemm_a8w8=baseline))
+    h._make_inputs=inputs;h._retry=lambda fn,**kw:fn();h._load_module=lambda directory,filename,alias:mmod if filename=='model.py' else None
+    _harness_functions(t,{'run_correctness','_checked_quant_gemm_output','_norm_worst','_record_gemm_case'},h.__dict__)
+    real_loader=runtime.load_module
+    monkeypatch.setattr(runtime,'load_module',lambda key,path:h if key=='arena_harness' else actions if key=='arena_task_actions' else real_loader(key,path))
+    assert runtime.run(['baseline',action])==1
+    output=capsys.readouterr().out
+    result=parse_command_result(output,role='baseline',action=action,returncode=1)
+    report=result.to_mapping();assert report['status']=='FAIL'
+    if action=='correctness':
+        rows=report['cases'];assert [row['status'] for row in rows]==['FAIL','PASS','PASS','PASS','PASS']
+    else:
+        assert all(row['status']=='FAIL' and 'execution_time_ms' not in row for row in report['cases'])
+        assert report['metadata']['failed_stage']=='correctness_precheck'
+        rows=list(report['metadata']['correctness_precheck_cases'].values())
+    first=rows[0]
+    if fault=='numerical':
+        assert first['failure_kind']=='numerical_mismatch'
+        assert first['metadata']['baseline_max_abs_error']==1.
+        assert first['metadata']['baseline_normalized_max_error']==.25
+        assert first['metadata']['tolerance']==.01
+    else:assert first['failure_kind']=='execution_or_contract_error'
+    assert all(row['status']=='PASS' and row['metadata']['baseline_normalized_max_error']==0 for row in rows[1:])
+
+
+@pytest.mark.parametrize('name',_FMOE_REPLAY_NAMES)
+def test_fmoe_failed_correctness_precheck_cannot_emit_passing_performance_rows(name,monkeypatch,capsys):
+    import types
+    from src.task_protocol import parse_command_result
+    t=ROOT/'tasks/torch2flydsl'/name;runtime=module(t/'task_runtime.py')
+    evidence={'case_0000':{'status':'FAIL','failure_kind':'numerical_mismatch','reason':'controlled numerical failure'},
+              'case_0001':{'status':'PASS'},'case_0002':{'status':'PASS'}}
+    def fail(h):
+        exc=AssertionError('correctness precheck failed');exc.arena_case_results=evidence;raise exc
+    actions=types.SimpleNamespace(check=fail,select_role=lambda *a:None)
+    monkeypatch.setattr(runtime,'load_module',lambda key,path:actions if key=='arena_task_actions' else types.SimpleNamespace())
+    assert runtime.run(['baseline','performance'])==1
+    result=parse_command_result(capsys.readouterr().out,role='baseline',action='performance',returncode=1)
+    assert not result.passed and all(row['status']=='FAIL' and 'execution_time_ms' not in row for row in result.cases)
+    assert result.metadata['correctness_precheck_cases']==evidence
