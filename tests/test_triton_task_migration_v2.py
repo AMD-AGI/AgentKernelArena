@@ -4952,3 +4952,115 @@ def test_scaled_mm_original_timing_replay_and_all_readonly_buffers_restored(monk
 def test_scaled_mm_adapter_installs_task_local_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_scaled_mm/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_scaled_mm_checks'
+
+
+def _unpack_cpu(packed, lengths, **options):
+    return torch.cat([packed[i,:int(n)] for i,n in enumerate(lengths.tolist())],dim=0)
+
+
+def _unpack_cpu_harness(monkeypatch):
+    p=ROOT/'tasks/triton2triton/vllm/triton_unpack_seq'
+    h=module_at(p/'scripts/task_runner.py',monkeypatch);checks=module_at(p/'_arena_checks.py',monkeypatch)
+    for name in ('randn','arange','empty','tensor'):
+        factory=getattr(torch,name)
+        monkeypatch.setattr(torch,name,lambda *a,_factory=factory,**kw:_factory(*a,**{**kw,'device':'cpu'}))
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None)
+    return h,checks
+
+
+def test_unpack_seq_independent_known_answer_zero_prefix_and_rank(monkeypatch):
+    h,checks=_unpack_cpu_harness(monkeypatch)
+    packed=torch.arange(3*3*2,dtype=torch.float32).reshape(3,3,2)
+    lens=torch.tensor([0,2,1],dtype=torch.int32)
+    expected=torch.tensor([[6.,7.],[8.,9.],[12.,13.]])
+    checks.check_output(checks.reference(h,packed,lens),expected)
+    checks.check_output(_unpack_cpu(packed,lens),expected)
+    ranked=packed.reshape(3,3,1,2)
+    checks.check_output(checks.reference(h,ranked,lens),expected.reshape(3,1,2))
+    empty=checks.reference(h,ranked,torch.zeros_like(lens))
+    assert empty.shape==(0,1,2)
+    checks.check_output(_unpack_cpu(ranked,torch.zeros_like(lens)),empty)
+
+
+@pytest.mark.parametrize('mode',['correct','dtype','shape','nonfinite','wrong_values','mutate_packed',
+                                'mutate_lengths','drop_second_time_block','drop_feature_tail','flatten_rank','reject_empty'])
+def test_unpack_seq_original_correctness_and_unscored_partial_multidimensional_cases(monkeypatch,mode):
+    h,checks=_unpack_cpu_harness(monkeypatch);calls=[]
+    def public(packed,lengths,**kwargs):
+        calls.append((tuple(packed.shape),lengths.tolist(),kwargs))
+        if mode=='mutate_packed':packed.zero_()
+        if mode=='mutate_lengths':lengths.fill_(1)
+        result=_unpack_cpu(packed,lengths)
+        if mode=='dtype':result=result.float()
+        if mode=='shape':result=result.flatten()
+        if mode=='nonfinite':result.fill_(float('nan'))
+        if mode=='wrong_values':result.zero_()
+        if mode=='drop_second_time_block' and packed.shape[1]>64:result[64].add_(10)
+        if mode=='drop_feature_tail' and packed.ndim>3:result.reshape(result.shape[0],-1)[:,-1].add_(10)
+        if mode=='flatten_rank':result=result.reshape(result.shape[0],-1)
+        if mode=='reject_empty' and result.numel()==0:raise ValueError('Empty sequences unsupported')
+        return result
+    mod=SimpleNamespace(unpack_seq=public);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
+    if mode=='correct':
+        scored=[c for c in calls if len(c[0])==3]
+        assert [(c[0][0],c[1],c[0][2]) for c in scored]==h.TEST_SHAPES
+        diag=[c for c in calls if len(c[0])==4]
+        assert len(diag)==2 and diag[0][0]==(4,65,3,23) and diag[0][1]==[0,65,1,3]
+        assert diag[0][2]==dict(block_t=32,block_d=32) and diag[1][1]==[0,0,0,0]
+    assert mod.unpack_seq is public
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay',
+                                'mutate_timed','mutate_replay','raise_replay'])
+def test_unpack_seq_direct_jit_timing_grid_replay_and_full_buffer_restore(monkeypatch,mode):
+    import inspect
+    h,checks=_unpack_cpu_harness(monkeypatch)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    launches=[];values=[];saved=[];options=[]
+    class Kernel:
+        def __getitem__(self,grid):
+            def launch(packed,out,lengths,B,Lmax,D,**kwargs):
+                launches.append((grid,kwargs))
+                out.copy_(_unpack_cpu(packed,lengths))
+            return launch
+    def forbidden_public(*args,**kwargs):raise AssertionError('Scored unit must remain original direct JIT launch')
+    mod=SimpleNamespace(_unpack_seq_triton_kernel=Kernel(),unpack_seq=forbidden_public);h.load_module=lambda:mod
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        packed,lengths,out=state['packed'],state['lengths'],state['out']
+        values.append((packed,lengths,out));saved.append((packed.clone(),lengths.clone(),out.clone()));options.append(kwargs)
+        actual=measured();cached=actual.clone()
+        if mode=='wrong_timed':out.zero_()
+        if mode=='mutate_timed':packed.zero_();lengths.fill_(1)
+        def replay():
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='no_write':
+                if mode=='stale':out.copy_(cached)
+                else:measured()
+            if mode=='wrong_replay':out.zero_()
+            if mode=='mutate_replay':packed.zero_();lengths.fill_(1)
+            return out
+        timed_run._bind(replay,out)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h)
+    rows=h.run_performance()
+    assert len(rows)==5 and options==[dict(warmup=10,repetition=100)]*5
+    expected_grids=[]
+    for case,row in zip(h.TEST_SHAPES,rows):
+        B,lens,D=case
+        assert row['params']==dict(B=B,D=D,lengths=lens)
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+        expected_grids.append((B,(max(lens)+63)//64,(D+63)//64))
+    assert {grid for grid,kw in launches}==set(expected_grids)
+    assert all(kw==dict(BLOCK_T=64,BLOCK_D=64,num_warps=4,num_stages=2) for grid,kw in launches)
+    for (packed,lens,out),(old_packed,old_lens,old_out) in zip(values,saved):
+        checks.unchanged(packed,lens,old_packed,old_lens)
+        # Preallocated empty output may contain NaNs: compare storage bits.
+        assert torch.equal(out.view(torch.int16),old_out.view(torch.int16))
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_unpack_seq_adapter_installs_task_local_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_unpack_seq/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_unpack_checks'
