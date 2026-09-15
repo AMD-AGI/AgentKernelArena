@@ -8,7 +8,8 @@ import os
 import sys
 import types
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import verify_timed_run
 
 # ============================================================================
 # GEAK bootstrap
@@ -338,6 +339,8 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         x = torch.randn(M, N, device="cuda", dtype=torch_dtype)
         gamma = torch.randn(N, device="cuda", dtype=torch_dtype)
         output = torch.empty_like(x)
+        originals = tuple(value.clone() for value in (x, gamma))
+        expected = reference_rms_norm(x, gamma)
 
         launch_fn = mod.build_rmsnorm_module(M, N, dtype_str)
 
@@ -345,17 +348,21 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
             launch_fn(x, gamma, output, M)
         torch.cuda.synchronize()
 
+        timed = TimedRun()
+
+        def launch():
+            launch_fn(x, gamma, output, M, stream=torch.cuda.current_stream())
+            return output
+
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: launch_fn(
-                x,
-                gamma,
-                output,
-                M,
-                stream=torch.cuda.current_stream(),
-            ),
-            warmup=0,
-            repetition=iters,
+            launch, warmup=0, repetition=iters, timed_run=timed,
         )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(x, gamma), originals=originals, expected=expected,
+            perturb=lambda: x.neg_(), reference=lambda: reference_rms_norm(x, gamma),
+            compare=lambda actual, ref: torch.testing.assert_close(
+                actual, ref, atol=ATOL, rtol=RTOL),
+        ))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: reference_rms_norm(x, gamma), warmup=0, repetition=iters

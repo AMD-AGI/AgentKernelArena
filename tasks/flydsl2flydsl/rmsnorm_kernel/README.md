@@ -61,3 +61,9 @@ unused legacy pointer-conversion dependency only when that conversion is request
 These compatibility changes do not replace any GPU operator with a host/reference
 implementation. A fresh framework-finalized task-validator report is required for
 each supported runtime before publishing qualification results.
+
+The benchmark now checks the actual measured output against the independent oracle,
+then poisons output, negates inputs in place, and replays the same captured graph.
+Both checks use the original tolerances. Input restoration, oracle work, and all
+checks occur outside timing; shapes, warmups, samples and launch boundaries remain
+unchanged for both baseline and candidate. Missing replay observation is an error.
