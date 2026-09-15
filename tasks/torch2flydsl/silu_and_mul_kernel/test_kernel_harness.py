@@ -329,7 +329,7 @@ def _require_candidate_outputs(mod):
     import functools
     for name in tuple(vars(mod)):
         target = getattr(mod, name)
-        if name.startswith("flydsl_") and callable(target):
+        if name == KERNEL_ENTRY and callable(target):
             @functools.wraps(target)
             def checked(*args, __target=target, **kwargs):
                 try:

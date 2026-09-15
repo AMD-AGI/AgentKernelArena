@@ -911,3 +911,25 @@ def test_actual_gemm_benchmark_binds_and_validates_timed_output(task_name, bad_p
     else:
         with pytest.raises(AssertionError, match="Numerical mismatch"):
             run()
+
+
+
+def test_silu_output_contract_applies_to_public_operator_not_private_helpers():
+    import torch
+    from types import SimpleNamespace
+    task = ROOT / "tasks/torch2flydsl/silu_and_mul_kernel"
+    checks = module(task / "scripts/replay_checks.py")
+    ns = _harness_functions(task, {"_require_candidate_outputs", "_checked_silu_result"}, {
+        "KERNEL_ENTRY": "flydsl_silu_and_mul", "require_tensor_contract": checks.require_tensor_contract,
+    })
+    inp = torch.ones((2, 4), dtype=torch.bfloat16)
+    # A helper is free to prepare differently shaped FP32 intermediates.
+    candidate = SimpleNamespace(flydsl_prepare=lambda x: x.float().sum(0),
+                                flydsl_silu_and_mul=lambda x, limit: x[:, :2])
+    ns["_require_candidate_outputs"](candidate)
+    assert candidate.flydsl_prepare(inp).dtype == torch.float32
+    assert candidate.flydsl_silu_and_mul(inp, 0).shape == (2, 2)
+    candidate.flydsl_silu_and_mul = lambda x, limit: x[:1, :2]
+    ns["_require_candidate_outputs"](candidate)
+    with pytest.raises(AssertionError, match="shape"):
+        candidate.flydsl_silu_and_mul(inp, 0)
