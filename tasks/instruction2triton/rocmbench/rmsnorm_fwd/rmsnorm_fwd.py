@@ -447,11 +447,6 @@ OP_NAME_FOR_BENCHMARK = "rmsnorm_fwd_triton_perf" # Distinct name
     # (1, 4), (873, 1245), # Smaller/odd shapes can be added back if desired
 ])
 def test_performance(M, N, ZERO_CENTERED_GAMMA, in_dtype_str, out_dtype_str, request):
-    # Ensure in_dtype and out_dtype are compatible for RMSNorm (usually they are the same for x and y)
-    # For benchmarking, let's assume in_dtype is the primary type for x and g, and y.
-    if in_dtype_str != out_dtype_str:
-         pytest.skip(f"Skipping perf test where in_dtype {in_dtype_str} != out_dtype {out_dtype_str} for simplicity.")
-
     current_dtype = arg_to_torch_dtype[in_dtype_str]
     eps = 1e-5 # Standard epsilon
     set_seed()
@@ -459,7 +454,7 @@ def test_performance(M, N, ZERO_CENTERED_GAMMA, in_dtype_str, out_dtype_str, req
     # Prepare inputs and output buffers
     x = torch.randn(M, N, device='cuda', dtype=current_dtype)
     g = torch.rand(N, device='cuda', dtype=current_dtype) # Kernel expects g_ptr + col_offsets, so 1D is fine.
-    y_buffer = torch.empty_like(x) # Output buffer for forward
+    y_buffer = torch.empty_like(x, dtype=arg_to_torch_dtype[out_dtype_str]) # Declared output dtype
     rsigma_buffer = torch.empty(M, device='cuda', dtype=torch.float32)
 
     # Dummy buffers for backward context (RMSNorm.apply signature expects them)
@@ -499,7 +494,7 @@ def test_performance(M, N, ZERO_CENTERED_GAMMA, in_dtype_str, out_dtype_str, req
         "blk_size_fwd": blk_size_fwd, "USE_BLOCKED_fwd": USE_BLOCKED_fwd, "NUM_PRGMS_fwd": NUM_PRGMS_fwd
     }
 
-    baseline_callable = lambda: torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, current_dtype, eps)
+    baseline_callable = lambda: torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, arg_to_torch_dtype[out_dtype_str], eps)
     benchmarker.run_benchmark(current_params_dict=current_params_for_logs_and_calc,
                               gbps_calculator=calculate_rmsnorm_fwd_gbps,
                               tflops_calculator=calculate_rmsnorm_fwd_tflops,

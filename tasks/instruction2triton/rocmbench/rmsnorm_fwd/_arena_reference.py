@@ -59,8 +59,10 @@ def _cast_like(expected, actual):
 def prepare(c, module):
     x=c['x'].float(); gamma=c['g'].float()+(1 if c['ZERO_CENTERED_GAMMA'] else 0)
     rsigma=torch.rsqrt((x*x).mean(-1)+c['eps'])
-    y=(x*rsigma[:,None]*gamma).to(c['y_buffer'].dtype)
-    atol,rtol=(1e-3,1e-2) if c['x'].dtype in (torch.float16,torch.bfloat16) else (1e-5,1e-5)
+    output_dtype={'fp16':torch.float16,'bf16':torch.bfloat16,'fp32':torch.float32}[c['out_dtype_str']]
+    y=(x*rsigma[:,None]*gamma).to(output_dtype)
+    # Match the original correctness policy, which is selected by output dtype.
+    atol,rtol=(1e-3,1e-2) if output_dtype in (torch.float16,torch.bfloat16) else (1e-5,1e-5)
     def check(result):
         compare(c['y_buffer'],y,atol=atol,rtol=rtol)
         compare(c['rsigma_buffer'],rsigma,atol=atol,rtol=rtol)

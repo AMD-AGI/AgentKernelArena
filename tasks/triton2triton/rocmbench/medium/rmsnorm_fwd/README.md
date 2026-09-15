@@ -154,3 +154,10 @@ def rms_kernel(output_ptr, input_ptr, g_ptr, rsigma_ptr, input_row_stride, outpu
 
 
 
+
+All 182 declared correctness cases now execute, including the 84 previously skipped
+performance cases with different input and output dtypes. The harness allocates the
+requested output dtype. The independent oracle selects the original numerical gate
+by output dtype, exactly as test_rmsnorm does: fp16/bf16 use atol=1e-3, rtol=1e-2;
+fp32 uses atol=rtol=1e-5. Previously executed same-dtype gates, the full case table,
+seeds, candidate kernels, warmups and device timing policy remain unchanged.

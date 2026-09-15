@@ -552,6 +552,14 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
         historical_skip = b'    pytest.skip("Skipping ASTSource compile-in-subprocess check on Triton 3.3 due to known API/compiler instability; numerical correctness tests cover kernel behavior.")\n'
         assert original.count(historical_skip) == 1
         expected_source = original.replace(historical_skip, b'')
+    if task.name == 'rmsnorm_fwd':
+        skip = b'    # Ensure in_dtype and out_dtype are compatible for RMSNorm (usually they are the same for x and y)\n    # For benchmarking, let\'s assume in_dtype is the primary type for x and g, and y.\n    if in_dtype_str != out_dtype_str:\n         pytest.skip(f"Skipping perf test where in_dtype {in_dtype_str} != out_dtype {out_dtype_str} for simplicity.")\n\n'
+        assert expected_source.count(skip) == 1
+        expected_source = expected_source.replace(skip,b'').replace(
+            b'y_buffer = torch.empty_like(x) # Output buffer for forward',
+            b'y_buffer = torch.empty_like(x, dtype=arg_to_torch_dtype[out_dtype_str]) # Declared output dtype').replace(
+            b'baseline_callable = lambda: torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, current_dtype, eps)',
+            b'baseline_callable = lambda: torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, arg_to_torch_dtype[out_dtype_str], eps)')
     assert source.read_bytes() == expected_source
     assert hashlib.sha256(original).hexdigest()==data['migration']['original_source_sha256']
     rows=data['cases']
@@ -599,6 +607,57 @@ def test_kernel_sub_declared_compilation_case_executes_and_rejects_child_failure
         run()
         assert namespace['result_gold']['compile_case'].item()==1.0
     assert calls[:2]==['start',('join',60)]
+
+
+@pytest.mark.parametrize('task',['tasks/instruction2triton/rocmbench/rmsnorm_fwd','tasks/triton2triton/rocmbench/medium/rmsnorm_fwd'])
+@pytest.mark.parametrize('in_name',['fp16','bf16','fp32'])
+@pytest.mark.parametrize('out_name',['fp16','bf16','fp32'])
+@pytest.mark.parametrize('zero_centered',[False,True])
+def test_rms_forward_declared_dtype_pairs_execute_original_performance_body(monkeypatch,task,in_name,out_name,zero_centered):
+    import inspect,math
+    oracle_module=module_at(ROOT/task/'_arena_reference.py',monkeypatch)
+    mapping={'fp16':torch.float16,'bf16':torch.bfloat16,'fp32':torch.float32}
+    calls=[]
+    class CpuTorch:
+        def __getattr__(self,name):
+            value=getattr(torch,name)
+            if name in ('randn','rand','empty','empty_like'):
+                def cpu(*args,**kwargs):
+                    kwargs['device']='cpu'
+                    return value(*args,**kwargs)
+                return cpu
+            return value
+    def run_kernel(x,g,y,rsigma,*args):
+        assert x.dtype==mapping[in_name] and y.dtype==mapping[out_name]
+        zero,eps=args[5],args[-1]
+        for row in range(x.shape[0]):
+            inv=1/math.sqrt(sum(float(v)**2 for v in x[row])/x.shape[1]+eps)
+            rsigma[row]=inv
+            for col in range(x.shape[1]):
+                y[row,col]=float(x[row,col])*inv*(float(g[col])+int(zero))
+        calls.append('kernel')
+        return y
+    class Benchmark:
+        def __init__(self,op_callable,config,**kwargs):
+            assert config==(10,100)
+            self.context=dict(inspect.currentframe().f_back.f_locals)
+            self.op=op_callable
+        def run_benchmark(self,**kwargs):
+            output=self.op()
+            oracle_module.prepare(self.context,None)(output)
+            invalid={**self.context,'y_buffer':output.double()}
+            with pytest.raises(ValueError,match='dtype'): oracle_module.prepare(invalid,None)(output)
+            output.zero_()
+            with pytest.raises(oracle_module.NumericalMismatch): oracle_module.prepare(self.context,None)(output)
+    tree=ast.parse((ROOT/task/'rmsnorm_fwd.py').read_text())
+    fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='test_performance');fn.decorator_list=[]
+    namespace=dict(torch=CpuTorch(),pytest=pytest,arg_to_torch_dtype=mapping,set_seed=lambda:torch.manual_seed(42),
+                   get_num_sms=lambda:2,triton=SimpleNamespace(next_power_of_2=lambda n:1<<(n-1).bit_length()),
+                   rmsnorm=run_kernel,PytestBenchmarker=Benchmark,do_bench_config=lambda warm_up,repetition:(warm_up,repetition),
+                   OP_NAME_FOR_BENCHMARK='fixture',calculate_rmsnorm_fwd_gbps=None,calculate_rmsnorm_fwd_tflops=None)
+    exec(compile(ast.Module(body=[fn],type_ignores=[]),str(ROOT/task/'rmsnorm_fwd.py'),'exec'),namespace)
+    namespace['test_performance'](2,8,zero_centered,in_name,out_name,None)
+    assert calls==['kernel']
 
 def oracle(name,monkeypatch):
     return module_at(ROOT/'tasks/instruction2triton/rocmbench'/name/'_arena_reference.py',monkeypatch)
