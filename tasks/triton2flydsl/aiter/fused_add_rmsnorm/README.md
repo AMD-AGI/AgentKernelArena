@@ -52,3 +52,15 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All 18 original correctness cases (nine shapes, BF16/FP16) and 9 BF16 performance cases remain. Both caller-provided normalized output and summed residual have the input shape/dtype/device and retain atol=rtol=0.01; input,residual and weight are read-only.
+
+Actual measured output pairs and the same captured graph replay must satisfy
+all original pair-specific numerical rules. Floating outputs are poisoned with
+NaN and integer IDs with -1 before replay; perturbation, reference calculation,
+checks and restoration run outside timing. Both roles keep original seeds,
+10 external warmups and 100 graph samples. The original Triton source is unchanged.
+Final candidate operator calls are audited for FlyDSL computation, independently
+of baseline/oracle calls and outside timing; alternative operator backends and
+protected task references remain forbidden.

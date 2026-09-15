@@ -12,7 +12,8 @@ Modes:
   --correctness     run the triton kernel on TEST_SHAPES, assert finite output
   --full-benchmark  graph-first GPU timing, write build/performance_report.json
 
-The flydsl-vs-triton comparison will be added when the FlyDSL target lands.
+The same task-owned reference and gates evaluate the frozen Triton baseline
+and the final FlyDSL candidate.
 """
 import argparse
 import ast
@@ -22,7 +23,8 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, require_tensor_contract, allclose_output, verify_timed_pair
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -91,6 +93,54 @@ def run_compile():
     return True
 
 
+def _checked_pair_output(pair, x, experts, shared):
+    import torch
+    if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+        raise AssertionError("Router must return expert IDs and weights")
+    ids, weights = pair
+    shape = (x.shape[0], 2 if shared else 1)
+    for value, dtype in ((ids, torch.int32), (weights, torch.float32)):
+        if (not isinstance(value, torch.Tensor) or value.shape != shape
+                or value.dtype != dtype or value.device != x.device):
+            raise AssertionError("Router output shape/dtype/device contract mismatch")
+    if not bool(((ids[:, 0] >= 0) & (ids[:, 0] < experts)).all()):
+        raise AssertionError("Router selected an out-of-range expert ID")
+    if not bool(torch.isfinite(weights).all()):
+        raise AssertionError("Non-finite router weights")
+
+
+def _compare_routing_pair(actual, expected, x, experts, shared):
+    import torch
+    _checked_pair_output(actual, x, experts, shared)
+    ids, weights = actual
+    ref_ids, ref_w, scores = expected
+    if not torch.allclose(weights.float(), ref_w, atol=1e-2, rtol=1e-2):
+        raise AssertionError("Numerical mismatch: router weights")
+    chosen = scores.gather(1, ids[:, :1].long()).squeeze(1)
+    if not bool((scores.max(dim=1).values - chosen <= 1e-2).all()):
+        raise AssertionError("Numerical mismatch: router did not choose a near-argmax expert")
+    if shared and (not bool((ids[:, 1] == experts).all()) or not torch.allclose(
+            weights[:, 1].float(), torch.ones_like(ref_w[:, 1]), atol=1e-3, rtol=1e-3)):
+        raise AssertionError("Router shared-expert ID/weight contract mismatch")
+
+
+def _pair_replay_validator(x, w, experts, shared):
+    inputs = (x, w)
+    originals = tuple(v.clone() for v in inputs)
+    def reference():
+        return _torch_routing_ref(x, w, experts, shared)
+    expected = reference()
+    def perturb():
+        x.neg_()
+    def compare(actual, expected):
+        _compare_routing_pair(actual, expected, x, experts, shared)
+    def validate(timed):
+        return verify_timed_pair(timed, inputs=inputs, originals=originals,
+                                 expected=expected, perturb=perturb,
+                                 reference=reference, compare=compare)
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -99,9 +149,13 @@ def run_correctness(verbose=True):
     for shape in TEST_SHAPES:
         try:
             x, w = _make_inputs(shape["M"], shape["K"], shape["N"])
+            protected_inputs = (x, w)
+            originals = tuple(v.clone() for v in protected_inputs)
             ids, weights = mod.routing_sigmoid_top1(
                 x, w, topk=1, fused_shared_experts=shape["shared"]
             )
+            require_unchanged(protected_inputs, originals)
+            _checked_pair_output((ids, weights), x, shape["N"], shape["shared"])
             torch.cuda.synchronize()
 
             ref_ids, ref_w, ref_scores = _torch_routing_ref(
@@ -157,6 +211,7 @@ def run_benchmark(verbose=True):
     report, latencies = [], []
     for idx, shape in enumerate(TEST_SHAPES):
         x, w = _make_inputs(shape["M"], shape["K"], shape["N"])
+        replay_validate = _pair_replay_validator(x, w, shape["N"], shape["shared"])
         fn = lambda: mod.routing_sigmoid_top1(  # noqa: E731
             x, w, topk=1, fused_shared_experts=shape["shared"]
         )
@@ -165,9 +220,11 @@ def run_benchmark(verbose=True):
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
+        timed = TimedRun()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, timed_run=timed
         )
+        bench_meta.update(replay_validate(timed))
         latencies.append(ms)
         report.append(
             {

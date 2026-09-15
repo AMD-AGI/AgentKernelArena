@@ -52,3 +52,15 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All 5 original routing cases, including the shared-expert case, remain. IDs are INT32 and weights FP32, shaped[M,1] or[M,2] on the input device. Selected IDs must be in[0,N); the shared ID isN. The original near-argmax score difference<=0.01 and weight atol=rtol=0.01 remain, with shared weight atol=rtol=0.001. These rules intentionally permit benign near-tie choices; they do not require exact reference IDs. Input and weights are read-only.
+
+Actual measured output pairs and the same captured graph replay must satisfy
+all original pair-specific numerical rules. Floating outputs are poisoned with
+NaN and integer IDs with -1 before replay; perturbation, reference calculation,
+checks and restoration run outside timing. Both roles keep original seeds,
+10 external warmups and 100 graph samples. The original Triton source is unchanged.
+Final candidate operator calls are audited for FlyDSL computation, independently
+of baseline/oracle calls and outside timing; alternative operator backends and
+protected task references remain forbidden.

@@ -23,7 +23,8 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, require_tensor_contract, allclose_output, verify_timed_pair
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -108,6 +109,34 @@ def run_compile():
     return True
 
 
+def _checked_pair_output(pair, x):
+    if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+        raise AssertionError("Fused add RMSNorm must populate both output tensors")
+    for value in pair:
+        require_tensor_contract(value, x)
+
+
+def _pair_replay_validator(x, residual, weight):
+    inputs = (x, residual, weight)
+    originals = tuple(v.clone() for v in inputs)
+    def reference():
+        summed = x + residual
+        return _torch_rmsnorm(summed, weight, x.dtype), summed
+    expected = reference()
+    def perturb():
+        x.neg_()
+        residual.neg_()
+    def compare(actual, expected):
+        _checked_pair_output(actual, x)
+        for value, ref in zip(actual, expected):
+            allclose_output(value, ref, atol=1e-2, rtol=1e-2)
+    def validate(timed):
+        return verify_timed_pair(timed, inputs=inputs, originals=originals,
+                                 expected=expected, perturb=perturb,
+                                 reference=reference, compare=compare)
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -120,7 +149,11 @@ def run_correctness(verbose=True):
                 x, residual, weight = _make_inputs(
                     shape["M"], shape["N"], _torch_dtype(dt)
                 )
+                protected_inputs = (x, residual, weight)
+                originals = tuple(v.clone() for v in protected_inputs)
                 out, residual_out = _run_kernel(mod, x, residual, weight)
+                require_unchanged(protected_inputs, originals)
+                _checked_pair_output((out, residual_out), x)
                 torch.cuda.synchronize()
                 ref_res = x + residual
                 ref_out = _torch_rmsnorm(ref_res, weight, out.dtype)
@@ -158,15 +191,18 @@ def run_benchmark(verbose=True):
     report, latencies = [], []
     for idx, shape in enumerate(TEST_SHAPES):
         x, residual, weight = _make_inputs(shape["M"], shape["N"], _torch_dtype("bf16"))
+        replay_validate = _pair_replay_validator(x, residual, weight)
         fn = lambda: _run_kernel(mod, x, residual, weight)  # noqa: E731
         fn()
         torch.cuda.synchronize()
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
+        timed = TimedRun()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, timed_run=timed
         )
+        bench_meta.update(replay_validate(timed))
         latencies.append(ms)
         nbytes = 4.0 * shape["M"] * shape["N"] * 2  # x+res read, out+res_out write (bf16)
         report.append(
