@@ -836,7 +836,13 @@ def test_silu_provided_baseline_replay_oracle_is_independent():
     assert validate(timed)["timed_output_correctness"] == "PASS"
 
 
-@pytest.mark.parametrize("task_name", _REPLAY_TASKS[:2] + _REPLAY_TASKS[3:])
+@pytest.mark.parametrize("task_name", [
+    "triton2flydsl/aiter/gemm_a16w16",
+    "flydsl2flydsl/fp8_gemm_4wave_kernel",
+    "flydsl2flydsl/fp8_gemm_8wave_kernel",
+    "flydsl2flydsl/blockscale_preshuffle_gemm_kernel",
+    "flydsl2flydsl/preshuffle_gemm_v2_kernel",
+])
 @pytest.mark.parametrize("bad_phase", [None, "measured", "replay"])
 def test_actual_gemm_benchmark_binds_and_validates_timed_output(task_name, bad_phase, monkeypatch, tmp_path):
     """Execute task benchmark orchestration with CPU tensor / timing doubles.
