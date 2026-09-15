@@ -49,3 +49,10 @@ Any older validation reports in this directory predate this migration and do not
 qualify the v2 runner. The parent integration schedules new GPU validation.
 
 Upstream source: {"commit": "28a18d328b4882c999864b2df2f8f9fe3fcc8b47", "date": "2026-06-01", "path": "kernels/blockscale_preshuffle_gemm.py", "repo": "https://github.com/ROCm/FlyDSL"}.
+
+Scored outputs must satisfy the original numerical rule after the actual timed
+invocation. Outside timing the harness also changes the activation tensor in
+place, poisons output storage, and checks replay against the protected reference.
+Logical and preshuffled input buffers are protected from candidate mutation.
+Output shape/dtype/device and complete case coverage remain required. Unsupported
+replay collection or any failed case is a failure, never a successful skip.

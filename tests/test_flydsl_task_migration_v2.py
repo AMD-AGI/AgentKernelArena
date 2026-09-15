@@ -172,7 +172,7 @@ def test_original_f2f_numerical_gates_and_output_contracts_unchanged():
         if name=="topk_gating_softmax_kernel":
             start=next(i for i,n in enumerate(fn.body) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=="atol_weight" for t in n.targets))
             fn=ast.Module(fn.body[start:],type_ignores=[])
-        if name == "fp8_gemm_4wave_kernel":
+        if name in {"fp8_gemm_4wave_kernel", "fp8_gemm_8wave_kernel", "blockscale_preshuffle_gemm_kernel", "preshuffle_gemm_v2_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
         actual=ast.dump(fn,include_attributes=False).replace("build_flash_attn_func_module_primary","build_flash_attn_func_module")
         assert hashlib.sha256(actual.encode()).hexdigest()==expected,name
@@ -701,7 +701,10 @@ class _RemoveAddedReplayChecks(ast.NodeTransformer):
 
 _REPLAY_TASKS = ["triton2flydsl/aiter/gemm_a16w16",
                  "flydsl2flydsl/fp8_gemm_4wave_kernel",
-                 "torch2flydsl/silu_and_mul_kernel"]
+                 "torch2flydsl/silu_and_mul_kernel",
+                 "flydsl2flydsl/fp8_gemm_8wave_kernel",
+                 "flydsl2flydsl/blockscale_preshuffle_gemm_kernel",
+                 "flydsl2flydsl/preshuffle_gemm_v2_kernel"]
 
 
 @pytest.mark.parametrize("task_name", _REPLAY_TASKS)
@@ -831,7 +834,7 @@ def test_silu_provided_baseline_replay_oracle_is_independent():
     assert validate(timed)["timed_output_correctness"] == "PASS"
 
 
-@pytest.mark.parametrize("task_name", _REPLAY_TASKS[:2])
+@pytest.mark.parametrize("task_name", _REPLAY_TASKS[:2] + _REPLAY_TASKS[3:])
 @pytest.mark.parametrize("bad_phase", [None, "measured", "replay"])
 def test_actual_gemm_benchmark_binds_and_validates_timed_output(task_name, bad_phase, monkeypatch, tmp_path):
     """Execute task benchmark orchestration with CPU tensor / timing doubles.
@@ -871,9 +874,11 @@ def test_actual_gemm_benchmark_binds_and_validates_timed_output(task_name, bad_p
 
     a = torch.tensor([[1., 2.], [3., 4.]], dtype=torch.bfloat16)
     b = torch.tensor([[3., 4.], [5., 6.]], dtype=torch.bfloat16)
+    if "blockscale_preshuffle" in task_name:
+        b = b.repeat(64, 1)
     def compute():
         if bad_phase is not None and phase["name"] == bad_phase:
-            return torch.full((2, 2), a[0, 0].item(), dtype=torch.bfloat16)
+            return torch.full((a.shape[0], b.shape[0]), a[0, 0].item(), dtype=torch.bfloat16)
         return a @ b.T
     ns = {"TimedRun": Collector, "benchmark_cuda_graph_or_events": benchmark,
           "verify_timed_run": checks.verify_timed_run, "allclose_output": checks.allclose_output,
@@ -892,7 +897,7 @@ def test_actual_gemm_benchmark_binds_and_validates_timed_output(task_name, bad_p
         flydsl.compiler = compiler
         monkeypatch.setitem(sys.modules, "flydsl", flydsl)
         monkeypatch.setitem(sys.modules, "flydsl.compiler", compiler)
-        c = torch.zeros((2, 2), dtype=torch.bfloat16)
+        c = torch.zeros((a.shape[0], b.shape[0]), dtype=torch.bfloat16)
         scale = torch.ones(2)
         def compiled(*args):
             c.copy_(compute())
@@ -904,13 +909,25 @@ def test_actual_gemm_benchmark_binds_and_validates_timed_output(task_name, bad_p
             "_compile_and_run_once": lambda *args: (compiled, None),
             "_kernel_args": lambda *args: (None,),
         })
-        _harness_functions(task, {"arena_benchmark", "_torch_reference"}, ns)
+        names = {"arena_benchmark", "_torch_reference"}
+        if "blockscale_preshuffle" in task_name:
+            inp = {"M": 2, "N": 128, "K": 2, "scale_k": 1, "scale_n": 1,
+                   "a_fp8": a, "b_fp8": b, "b_shuf": b.clone(),
+                   "scale_a": torch.ones((1, 2)), "scale_b": torch.ones((1, 1)), "c": c}
+            ns.update({"_KERNEL_DIR": str(tmp_path), "HARNESS_SHAPES": [(2, 128, 2)],
+                       "_make_inputs": lambda *args, **kwargs: inp,
+                       "_launch_args": lambda *args: (None,), "SCALE_BLOCK_K": 2, "OUT_DTYPE": "bf16", "TILE_M": 2, "TILE_N": 128, "TILE_K": 2})
+            names = {"arena_benchmark", "_torch_blockscale_reference", "_time_mean_ms"}
+        elif "preshuffle_gemm_v2" in task_name:
+            ns["_select_config"] = lambda *args, **kwargs: (
+                (2, 2, 2), compiled, None, (a, b, b.clone(), scale, scale.clone(), c))
+        _harness_functions(task, names, ns)
         run = lambda: ns["arena_benchmark"](verbose=False)
     if bad_phase is None:
         records = run()
         assert records[0]["timed_output_correctness"] == "PASS"
         assert records[0]["replay_correctness"] == "PASS"
-        assert seen[0] == (0, 100, True)
+        assert seen[0] == (10 if "blockscale_preshuffle" in task_name else 0, 100, True)
     else:
         with pytest.raises(AssertionError, match="Numerical mismatch"):
             run()

@@ -35,7 +35,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import (allclose_output, require_tensor_contract,
+                                  require_unchanged, verify_timed_run)
 
 # ============================================================================
 # GEAK bootstrap
@@ -268,6 +270,7 @@ def run_correctness(shapes=None, verbose=True):
 
             actual = c_cand.float()
             ref = _torch_blockscale_reference(inp).to(torch.bfloat16).float()
+            require_tensor_contract(c_cand, ref, dtype=torch.bfloat16)
             ok = torch.allclose(actual, ref, atol=ATOL, rtol=RTOL)
             max_err = (actual - ref).abs().max().item()
 
@@ -324,10 +327,10 @@ def run_profile(shapes=None, warmup=10, iters=50, verbose=True):
             print(f"  (M={M}, N={N}, K={K}) done")
 
 
-def _time_mean_ms(fn, warmup, iters):
+def _time_mean_ms(fn, warmup, iters, timed_run=None):
     """Graph-first mean GPU time in milliseconds for one callable invocation."""
     return benchmark_cuda_graph_or_events(
-        fn, warmup=warmup, repetition=iters
+        fn, warmup=warmup, repetition=iters, timed_run=timed_run
     )
 
 
@@ -351,6 +354,10 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
 
     for idx, (M, N, K) in enumerate(shapes):
         inp = _make_inputs(M, N, K, seed=42)
+        inputs = tuple(inp[key] for key in ("a_fp8", "b_fp8", "b_shuf", "scale_a", "scale_b"))
+        originals = tuple(t.clone() for t in inputs)
+        expected = _torch_blockscale_reference(inp).to(torch.bfloat16).float()
+        timed = TimedRun()
 
         # Compile ONCE (outside the timing loop) then time EXECUTION only.
         c = inp["c"]
@@ -363,11 +370,19 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
 
         def kfn():
             cf(*(args[:-1] + (torch.cuda.current_stream(),)))
+            return c
 
         def reffn():
             torch.mm(a_ref, b_ref.t())
 
-        kernel_ms, kernel_bench_meta = _time_mean_ms(kfn, warmup, iters)
+        kernel_ms, kernel_bench_meta = _time_mean_ms(kfn, warmup, iters, timed_run=timed)
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=inputs, originals=originals, expected=expected,
+            perturb=lambda: inp["a_fp8"].copy_((-inp["a_fp8"].float()).to(inp["a_fp8"].dtype)),
+            reference=lambda: _torch_blockscale_reference(inp).to(torch.bfloat16).float(),
+            compare=lambda actual, ref: allclose_output(
+                actual, ref, atol=ATOL, rtol=RTOL, dtype=torch.bfloat16),
+        ))
         ref_ms, ref_bench_meta = _time_mean_ms(reffn, warmup, iters)
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
@@ -495,6 +510,10 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
 
     for idx, (M, N, K) in enumerate(shapes):
         inp = _make_inputs(M, N, K, seed=42)
+        inputs = tuple(inp[key] for key in ("a_fp8", "b_fp8", "b_shuf", "scale_a", "scale_b"))
+        originals = tuple(t.clone() for t in inputs)
+        expected = _torch_blockscale_reference(inp).to(torch.bfloat16).float()
+        timed = TimedRun()
 
         # Compile ONCE (outside the timing loop) then time EXECUTION only.
         c = inp["c"]
@@ -507,11 +526,19 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
 
         def kfn():
             cf(*(args[:-1] + (torch.cuda.current_stream(),)))
+            return c
 
         def reffn():
             torch.mm(a_ref, b_ref.t())
 
-        kernel_ms, kernel_bench_meta = _time_mean_ms(kfn, warmup, iters)
+        kernel_ms, kernel_bench_meta = _time_mean_ms(kfn, warmup, iters, timed_run=timed)
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=inputs, originals=originals, expected=expected,
+            perturb=lambda: inp["a_fp8"].copy_((-inp["a_fp8"].float()).to(inp["a_fp8"].dtype)),
+            reference=lambda: _torch_blockscale_reference(inp).to(torch.bfloat16).float(),
+            compare=lambda actual, ref: allclose_output(
+                actual, ref, atol=ATOL, rtol=RTOL, dtype=torch.bfloat16),
+        ))
         ref_ms, ref_bench_meta = _time_mean_ms(reffn, warmup, iters)
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
