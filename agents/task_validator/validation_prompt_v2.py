@@ -211,13 +211,16 @@ the listed cases alone does not establish those properties.
    The compiler_decorators_no_test_hooks_v1 definition policy checks masked nodes
    before excluding them. Compiler decorators are resolved through protected
    imports (including aliases); pytest/unknown/dynamic decorators are rejected,
-   including on an existing editable target. New test/lifecycle hook names,
+   including outer host decorators on existing targets that retain @triton.jit.
+   New test/lifecycle hook names,
    executable defaults/annotations, and executable helper-class bodies or
    metaclasses are rejected too. Plain helpers and Triton jit/autotune/heuristics
    declarations remain allowed. Decorator arguments cannot call newly introduced
    factories: supported Triton configuration operations, unshadowed range and
-   original task factories are allowed; inspect original factory bodies as
-   implementation code. The guard is a structural integrity check, not
+   original protected function definitions are allowed. Existing editable
+   non-entrypoint config helpers need a restricted configuration-body check;
+   initial global aliases and kernel entrypoints are not trusted factories.
+   The guard is a structural integrity check, not
    isolation of arbitrary Python implementation bodies; still review concrete
    reachable attempts to modify test/reference state.
    These facts describe the original framework snapshot, not permissions inferred

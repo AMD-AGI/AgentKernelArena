@@ -99,10 +99,13 @@ are rejected. Defaults/annotations cannot execute calls, and new helper classes
 must have passive bodies without metaclasses or executable bases. Ordinary
 functions, async helpers and passive helper classes remain usable. Calls in
 decorator arguments must use supported Triton
-configuration operations, unshadowed `range`, or original task configuration
-factories; a newly added factory cannot hide fixture installation inside a
-compiler decorator argument. Original factory bodies remain implementation
-code subject to semantic review. This rejects the described definition-time
+configuration operations, unshadowed `range`, or original protected function
+definitions. An initial name alone grants no callable privilege. Existing
+editable non-entrypoint configuration helpers have a separate restricted-body
+check: data construction/local assignments, returns, and branches calling
+protected predicates or supported configuration operations. Kernel entrypoints,
+arbitrary aliases and newly added factories cannot acquire that privilege.
+This rejects the described definition-time
 test hooks; it is not a sandbox for arbitrary Python function
 bodies or a replacement for semantic review of implementation dependencies.
 

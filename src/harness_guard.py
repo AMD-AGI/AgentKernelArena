@@ -155,8 +155,48 @@ def _definition_calls(node: ast.AST):
         yield from _definition_calls(child)
 
 
+def _config_factory_body_allowed(node: ast.FunctionDef, bindings: dict[str, str],
+                                 protected_functions: set[str], bound_names: set[str]) -> bool:
+    """Allow editable configuration constructors, not arbitrary import-time code.
+
+    Existing ROCmBench contracts explicitly let the agent tune these helpers.
+    Their bodies may build configuration data and branch on protected predicates;
+    they cannot acquire the arbitrary-call privilege of protected functions.
+    """
+    if node.decorator_list:
+        return False
+    locals_ = {item.id for item in ast.walk(node) if isinstance(item, ast.Name)
+               and isinstance(item.ctx, ast.Store)}
+    locals_.update(arg.arg for arg in [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs])
+    locals_.update(arg.arg for arg in [node.args.vararg, node.args.kwarg] if arg)
+    for statement in node.body:
+        for item in ast.walk(statement):
+            if isinstance(item, ast.stmt) and not isinstance(item, (
+                    ast.Return, ast.Assign, ast.AnnAssign, ast.If, ast.Pass)):
+                if not (isinstance(item, ast.Expr) and isinstance(item.value, ast.Constant)):
+                    return False
+            if isinstance(item, ast.Assign) and not all(isinstance(t, ast.Name) for t in item.targets):
+                return False
+            if isinstance(item, ast.AnnAssign) and not isinstance(item.target, ast.Name):
+                return False
+            if isinstance(item, (ast.NamedExpr, ast.Await, ast.Yield, ast.YieldFrom)):
+                return False
+        for call in _definition_calls(statement):
+            unshadowed = {key: value for key, value in bindings.items() if key not in locals_}
+            imported = _qualified_import(call.func, unshadowed)
+            protected = (isinstance(call.func, ast.Name)
+                         and call.func.id in protected_functions - locals_)
+            builtin_range = (isinstance(call.func, ast.Name) and call.func.id == "range"
+                             and "range" not in bound_names | locals_)
+            if not (protected or builtin_range or imported in {
+                    "triton.Config", "triton.cdiv", "triton.next_power_of_2", "itertools.product"}):
+                return False
+    return True
+
+
 def _validate_editable_definition(node: ast.AST, bindings: dict[str, str], *,
                                   initial_names: frozenset[str], definition_names: set[str],
+                                  configuration_factories: set[str],
                                   new_helper: bool, method: bool = False) -> None:
     name = node.name
     if new_helper and (name.startswith(("test", "Test", "pytest_"))
@@ -167,7 +207,8 @@ def _validate_editable_definition(node: ast.AST, bindings: dict[str, str], *,
         qualified = _qualified_import(target, bindings)
         plain_method = (method and isinstance(decorator, ast.Name)
                         and decorator.id in {"staticmethod", "classmethod", "property"}
-                        and decorator.id not in bindings)
+                        and decorator.id not in bindings
+                        and decorator.id not in initial_names | definition_names)
         if qualified not in _COMPILER_DECORATORS and not plain_method:
             raise ValueError(f"Unsupported decorator on editable definition {name!r}: "
                              f"{ast.unparse(decorator)}; only compiler decorators are allowed")
@@ -181,13 +222,12 @@ def _validate_editable_definition(node: ast.AST, bindings: dict[str, str], *,
                     raise ValueError(f"Decorator on {name!r} contains a binding expression")
                 for call in _definition_calls(value):
                     imported = _qualified_import(call.func, bindings)
-                    original_factory = (isinstance(call.func, ast.Name)
-                                        and call.func.id in initial_names
-                                        and call.func.id not in bindings)
+                    config_factory = (isinstance(call.func, ast.Name)
+                                      and call.func.id in configuration_factories)
                     builtin_range = (isinstance(call.func, ast.Name) and call.func.id == "range"
                                      and "range" not in initial_names | definition_names)
                     if not (imported in {"triton.Config", "triton.cdiv", "triton.next_power_of_2"}
-                            or original_factory or builtin_range):
+                            or config_factory or builtin_range):
                         raise ValueError(f"Unapproved definition-time factory in decorator on {name!r}: "
                                          f"{ast.unparse(call.func)}")
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -204,12 +244,21 @@ def _validate_editable_definition(node: ast.AST, bindings: dict[str, str], *,
         # classes remain usable; metaclasses, executable bodies and test classes
         # do not become an unguarded extension of the test environment.
         if node.keywords or any(not isinstance(base, ast.Name) or base.id != "object"
+                                or "object" in initial_names | definition_names
                                 for base in node.bases):
             raise ValueError(f"Editable helper class {name!r} has executable bases/metaclass")
+        local_names = {child.name for child in node.body
+                       if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+        for child in node.body:
+            targets = (child.targets if isinstance(child, ast.Assign) else
+                       [child.target] if isinstance(child, ast.AnnAssign) else [])
+            local_names.update(target.id for target in targets if isinstance(target, ast.Name))
+        local_bindings = {key: value for key, value in bindings.items() if key not in local_names}
         for child in node.body:
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                _validate_editable_definition(child, bindings, initial_names=initial_names,
-                                              definition_names=definition_names,
+                _validate_editable_definition(child, local_bindings, initial_names=initial_names,
+                                              definition_names=definition_names | local_names,
+                                              configuration_factories=configuration_factories - local_names,
                                               new_helper=True, method=True)
             elif isinstance(child, ast.Pass):
                 continue
@@ -225,7 +274,8 @@ def _validate_editable_definition(node: ast.AST, bindings: dict[str, str], *,
                 raise ValueError(f"Editable helper class {name!r} has an executable class body")
 
 
-def _v2_symbol_digest(path: Path, edit: EditScope, initial_names: frozenset[str]) -> str:
+def _v2_symbol_digest(path: Path, edit: EditScope, initial_names: frozenset[str],
+                      entrypoint_symbols: frozenset[str] = frozenset()) -> str:
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, SyntaxError):
@@ -234,6 +284,22 @@ def _v2_symbol_digest(path: Path, edit: EditScope, initial_names: frozenset[str]
     bindings = _import_bindings(tree)
     definition_names = {node.name for node in tree.body
                         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+    definitions = [node for node in tree.body
+                   if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+    for name in definition_names:
+        if (name in edit.symbols or (edit.allow_new_helpers and name not in initial_names)):
+            if sum(node.name == name for node in definitions) != 1:
+                raise RuntimeError(f"Protected test/harness policy rejected {path.name}: "
+                                   f"Multiple definitions of editable binding {name!r}")
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    # These definitions remain in the digest: an initial global alias, class,
+    # editable target or newly introduced helper is not a protected factory.
+    protected_functions = (set(functions) & initial_names) - set(edit.symbols)
+    configuration_factories = set(protected_functions)
+    for name in (set(functions) & initial_names & set(edit.symbols)) - entrypoint_symbols:
+        if _config_factory_body_allowed(functions[name], bindings, protected_functions,
+                                        set(initial_names) | definition_names):
+            configuration_factories.add(name)
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             new_helper = node.name not in initial_names
@@ -241,6 +307,7 @@ def _v2_symbol_digest(path: Path, edit: EditScope, initial_names: frozenset[str]
                 try:
                     _validate_editable_definition(node, bindings, initial_names=initial_names,
                                                   definition_names=definition_names,
+                                                  configuration_factories=configuration_factories,
                                                   new_helper=new_helper)
                 except ValueError as exc:
                     raise RuntimeError(f"Protected test/harness policy rejected {path.name}: {exc}") from exc
@@ -269,7 +336,10 @@ def _v2_digests(root: Path, spec: TaskSpec, paths: Iterable[str],
         if relative in scopes:
             if path.suffix != ".py":
                 raise ValueError(f"Symbol-scoped protection currently requires Python: {relative}")
-            result[relative] = _v2_symbol_digest(path, scopes[relative], initial_symbols.get(relative, frozenset()))
+            entrypoints = frozenset(entry.symbol for entry in spec.candidate.entrypoints
+                                    if entry.file == relative and entry.symbol)
+            result[relative] = _v2_symbol_digest(path, scopes[relative],
+                                                initial_symbols.get(relative, frozenset()), entrypoints)
         else:
             result[relative] = _sha256(path)
     return result

@@ -1,5 +1,6 @@
 """Definition-time hooks cannot hide inside excluded implementation helpers."""
 from pathlib import Path
+import ast
 import shutil
 
 import pytest
@@ -28,7 +29,8 @@ def fixture_workspace(tmp_path):
     (root / "runner.py").write_text("# protected runner\n")
     config = {"schema_version": 2, "candidate": {"language": "triton", "editable": [{
         "path": "kernel.py", "scope": "symbols", "symbols": ["kernel"], "allow_new_helpers": True,
-    }]}, "evaluation": {"runner": ["python3", "runner.py"]}}
+    }], "entrypoints": [{"file": "kernel.py", "kind": "function", "symbol": "kernel"}]},
+        "evaluation": {"runner": ["python3", "runner.py"]}}
     (root / "config.yaml").write_text(yaml.safe_dump(config))
     return root, source, snapshot_workspace_harness(root)
 
@@ -89,6 +91,12 @@ def test_normal_implementation_helpers_remain_editable(tmp_path, declaration):
     "class Helper(metaclass=Factory): pass\n",
     "class Helper(Factory()): pass\n",
     "class Helper:\n    @pytest.fixture(autouse=True)\n    def patch(self): pass\n",
+    "def staticmethod(fn): return pytest.fixture(autouse=True)(fn)\n"
+    "class Helper:\n    @staticmethod\n    def patch(): pass\n",
+    "class object:\n    def __init_subclass__(cls): pytest.fixture(autouse=True)(lambda: None)\n"
+    "class Helper(object): pass\n",
+    "class Helper:\n    def staticmethod(fn): return pytest.fixture(autouse=True)(fn)\n"
+    "    @staticmethod\n    def patch(): pass\n",
 ])
 def test_test_environment_hooks_cannot_be_new_helpers(tmp_path, declaration):
     _, source, snapshot = fixture_workspace(tmp_path)
@@ -106,6 +114,92 @@ def test_existing_editable_target_cannot_receive_a_fixture_header(tmp_path, decl
     source.write_text(IMPORTS + declaration + "def reference(): return 7\n")
     with pytest.raises(RuntimeError, match="Protected test/harness policy rejected"):
         verify_workspace_harness(snapshot)
+
+
+@pytest.mark.parametrize("outer", ["host_launcher", "host_launcher()", "getattr(host_launcher, '__call__')"])
+def test_existing_jit_target_cannot_be_replaced_by_a_host_decorator(tmp_path, outer):
+    root, source, _ = fixture_workspace(tmp_path)
+    wrapper = "\ndef protected_wrapper(x): return kernel[(1,)](x)\n"
+    original = source.read_text() + wrapper
+    source.write_text(original)
+    snapshot = snapshot_workspace_harness(root)
+    replacement = '''
+def host_launcher(*args):
+    class HostLauncher:
+        def __getitem__(self, grid):
+            return lambda x: x
+    return HostLauncher()
+'''
+    changed = original.replace("@triton.jit\ndef kernel", replacement + f"@{outer}\n@triton.jit\ndef kernel")
+    source.write_text(changed)
+    # This is the reported failure mode: the JIT marker and protected caller
+    # survive, but Python would bind kernel to an arbitrary outer decorator.
+    before = ast.parse(original); after = ast.parse(changed)
+    caller = lambda tree: ast.dump(next(n for n in tree.body if getattr(n, "name", None) == "protected_wrapper"))
+    assert caller(before) == caller(after)
+    target = next(n for n in after.body if getattr(n, "name", None) == "kernel")
+    assert any(ast.unparse(d) == "triton.jit" for d in target.decorator_list)
+    with pytest.raises(RuntimeError, match="Unsupported decorator on editable definition 'kernel'"):
+        verify_workspace_harness(snapshot)
+
+
+def test_existing_target_keeps_supported_tuning_chain_and_new_jit_helper(tmp_path):
+    _, source, snapshot = fixture_workspace(tmp_path)
+    original = source.read_text()
+    source.write_text(original.replace(
+        "@triton.jit\ndef kernel(x): return x",
+        "@triton.autotune(configs=get_configs(), key=['n'])\n"
+        "@triton.heuristics({'EVEN': lambda args: args['n'] % 128 == 0})\n"
+        "@triton.jit\ndef kernel(x, n): return helper(x)")
+        + "\n@triton.jit\ndef helper(x): return x + 1\n")
+    verify_workspace_harness(snapshot)
+
+
+def test_duplicate_binding_cannot_leave_an_unused_jit_definition_as_cover(tmp_path):
+    _, source, snapshot = fixture_workspace(tmp_path)
+    source.write_text(source.read_text() + "\ndef kernel(x): return x\n")
+    with pytest.raises(RuntimeError, match="Multiple definitions of editable binding 'kernel'"):
+        verify_workspace_harness(snapshot)
+
+
+@pytest.mark.parametrize("initial,call", [
+    ("config_alias = pytest.fixture\n", "config_alias(autouse=True)"),
+    ("", "kernel(None)"),
+    ("class ConfigAlias:\n    pass\n", "ConfigAlias()"),
+])
+def test_initial_names_do_not_grant_arbitrary_factory_privilege(tmp_path, initial, call):
+    root, source, _ = fixture_workspace(tmp_path)
+    source.write_text(source.read_text() + initial)
+    snapshot = snapshot_workspace_harness(root)
+    source.write_text(source.read_text() + f"\n@triton.jit(launch_metadata={call})\ndef helper(x): return x\n")
+    with pytest.raises(RuntimeError, match="Unapproved definition-time factory"):
+        verify_workspace_harness(snapshot)
+
+
+@pytest.mark.parametrize("body,accepted", [
+    ("return [triton.Config({'BLOCK': n}) for n in range(32, 129, 32)]", True),
+    ("return pytest.fixture(autouse=True)(lambda: None)", False),
+    ("global reference\n    reference = lambda: 0\n    return []", False),
+    ("reference = pytest.fixture\n    return reference(autouse=True)", False),
+    ("triton = pytest\n    return triton.Config({})", False),
+])
+def test_editable_config_factory_has_a_separate_restricted_body_policy(tmp_path, body, accepted):
+    root, source, _ = fixture_workspace(tmp_path)
+    original = source.read_text().replace(
+        "@triton.jit\ndef kernel", "@triton.autotune(configs=get_configs(), key=['x'])\n@triton.jit\ndef kernel")
+    source.write_text(original)
+    config_path = root / "config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["candidate"]["editable"][0]["symbols"].append("get_configs")
+    config_path.write_text(yaml.safe_dump(config))
+    snapshot = snapshot_workspace_harness(root)
+    source.write_text(original.replace("def get_configs(): return [triton.Config({'BLOCK': 128})]",
+                                       "def get_configs():\n    " + body))
+    if accepted:
+        verify_workspace_harness(snapshot)
+    else:
+        with pytest.raises(RuntimeError, match="Unapproved definition-time factory"):
+            verify_workspace_harness(snapshot)
 
 
 @pytest.mark.parametrize("task", [

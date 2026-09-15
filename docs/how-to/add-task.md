@@ -158,11 +158,16 @@ functions and passive helper classes are supported; compiler decorators must
 resolve through the protected imports (currently Triton `jit`, `autotune`, and
 `heuristics`, including aliases). New pytest fixtures/test hooks, unknown or
 dynamic decorators, executable defaults/annotations, and executable helper-class
-bodies/metaclasses are not implementation helpers. The guard reports its
-allowed compiler decorators in the context. Calls in their arguments use
+bodies/metaclasses are not implementation helpers. This policy covers
+existing targets as well as new helpers: retaining `@triton.jit`
+does not permit an outer helper decorator that replaces the kernel binding.
+Calls in allowed compiler decorator arguments use
 supported Triton configuration operations, unshadowed `range`, or original
-task configuration factories, not newly introduced definition-time factories.
-Original factory bodies remain subject to semantic review. The guard reports its
+protected function definitions. Existing editable non-entrypoint configuration
+helpers must pass a restricted body check: configuration data/local assignments,
+returns, and branches using protected predicates or supported configuration
+operations. Initial aliases, kernel entrypoints, and newly introduced factories
+do not gain permission to run at definition time. The guard reports its
 effective policy in the validator context. It is a structural integrity check,
 not isolation of arbitrary Python code; reference/test manipulation remains
 forbidden and subject to semantic review.
