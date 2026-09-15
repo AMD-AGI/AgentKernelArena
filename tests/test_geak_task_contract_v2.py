@@ -207,3 +207,48 @@ class DegenerateInputLayoutTests(unittest.TestCase):
         guard.restore()
         guard.check()
         self.assertEqual(scale.stride(), (8, 2))
+
+
+class FP8VariantOracleTests(unittest.TestCase):
+    def setUp(self):
+        self.oracle = load_file('_geak_fp8_oracles', TASKS / 'L3/fused_rms_fp8/_contract_oracles.py')
+        self.dtype = torch.float8_e4m3fnuz
+
+    def test_quantization_known_zero_and_unit_groups(self):
+        x = torch.cat((torch.zeros(1, 128), torch.ones(1, 128)), dim=1)
+        q, scale = self.oracle.quantize(x, self.dtype)
+        self.assertTrue(torch.equal(q[:, :128].float(), torch.zeros(1, 128)))
+        self.assertTrue(torch.equal(q[:, 128:].float(), torch.full((1, 128), torch.finfo(self.dtype).max)))
+        torch.testing.assert_close(scale, torch.tensor([[1e-10, 1.]]) / torch.finfo(self.dtype).max)
+
+    def test_compensating_wrong_scale_and_q_are_rejected(self):
+        expected = self.oracle.quantize(torch.ones(1, 128), self.dtype)
+        wrong = ((expected[0].float() / 2).to(self.dtype), expected[1] * 2)
+        torch.testing.assert_close(wrong[0].float() * wrong[1], expected[0].float() * expected[1])
+        with self.assertRaises(AssertionError):
+            self.oracle.check_quant(wrong, expected)
+
+    def test_reduce_rms_all_five_outputs_have_independent_known_answers(self):
+        saved = {'x1': torch.ones(3, 2, 128), 'w1': torch.ones(128),
+                 'x2': torch.full((3, 2, 256), 2.), 'w2': torch.full((256,), 2.),
+                 'x3': torch.full((3, 2, 64), .5), 'res1': torch.ones(2, 128)}
+        outputs = self.oracle.rms(saved, self.dtype, reduce=True)
+        self.assertEqual(len(outputs), 5)
+        torch.testing.assert_close(outputs[1], torch.ones(2, 128))
+        torch.testing.assert_close(outputs[2], torch.full((2, 256), 2.))
+        torch.testing.assert_close(outputs[3], torch.full((2, 128), 4.))
+        torch.testing.assert_close(outputs[4], torch.full((2, 64), 1.5))
+        wrong = (*outputs[:4], torch.zeros_like(outputs[4]))
+        with self.assertRaises(AssertionError):
+            self.oracle.check_fused(wrong, outputs)
+
+    def test_activation_reduction_uses_both_halves_and_auxiliary(self):
+        x = torch.cat((torch.ones(3, 2, 128), torch.full((3, 2, 128), 2.)), dim=-1)
+        result, aux = self.oracle.activation_mul({'x': x, 'x2': torch.ones(3, 2, 16)}, self.dtype)
+        expected_value = torch.nn.functional.silu(torch.tensor(3.)) * 6
+        torch.testing.assert_close(result[0].float() * result[1], torch.full((2, 128), expected_value))
+        torch.testing.assert_close(aux, torch.full((2, 16), 3.))
+
+    def test_rms_missing_optional_outputs_stay_none(self):
+        out = self.oracle.rms({'x1': torch.ones(2, 128), 'w1': torch.ones(128)}, self.dtype, show=False)
+        self.assertEqual(out[1:], (None, None, None))

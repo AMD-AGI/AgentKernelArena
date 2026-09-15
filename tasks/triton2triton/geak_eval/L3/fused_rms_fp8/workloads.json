@@ -273,6 +273,57 @@
         7168,
         7168
       ]
+    ],
+    "controls": [
+      {
+        "test_case_id": "control-rms-optional",
+        "params": {
+          "variant": "rms",
+          "split": 1
+        }
+      },
+      {
+        "test_case_id": "control-flatten",
+        "params": {
+          "variant": "flatten",
+          "split": 1
+        }
+      },
+      {
+        "test_case_id": "control-activation-2d",
+        "params": {
+          "variant": "activation",
+          "split": 1
+        }
+      },
+      {
+        "test_case_id": "control-activation-split3",
+        "params": {
+          "variant": "activation",
+          "split": 3
+        }
+      },
+      {
+        "test_case_id": "control-reduce-rms-2d",
+        "params": {
+          "variant": "reduce_rms",
+          "split": 1
+        }
+      },
+      {
+        "test_case_id": "control-reduce-rms-split3",
+        "params": {
+          "variant": "reduce_rms",
+          "split": 3
+        }
+      },
+      {
+        "test_case_id": "control-reduce-rms-split4",
+        "params": {
+          "variant": "reduce_rms",
+          "split": 4
+        }
+      }
     ]
   },
   "cases": [
@@ -675,6 +726,76 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-rms-optional",
+      "params": {
+        "variant": "rms",
+        "split": 1
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-flatten",
+      "params": {
+        "variant": "flatten",
+        "split": 1
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-activation-2d",
+      "params": {
+        "variant": "activation",
+        "split": 1
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-activation-split3",
+      "params": {
+        "variant": "activation",
+        "split": 3
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-reduce-rms-2d",
+      "params": {
+        "variant": "reduce_rms",
+        "split": 1
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-reduce-rms-split3",
+      "params": {
+        "variant": "reduce_rms",
+        "split": 3
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-reduce-rms-split4",
+      "params": {
+        "variant": "reduce_rms",
+        "split": 4
+      },
+      "checks": [
+        "correctness"
+      ]
     }
   ],
   "timing_calls_per_case": [
