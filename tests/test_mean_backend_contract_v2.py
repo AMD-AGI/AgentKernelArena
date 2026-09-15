@@ -183,6 +183,81 @@ def test_install_guards_initializer_compute(checks):
         h.load_module()
 
 
+def dispatch_device_metadata(checks, op, source, target=None, copy_source=None):
+    """Run the real audit with CPU device-metadata and dispatcher doubles.
+
+    The fake operator records delegation; it performs no transfer. This avoids
+    requiring a CUDA-enabled CPU test build or exposing a second physical GPU.
+    Ordinary Tensor calls and native GPU calls have separate integration tests.
+    """
+    from torch.utils._python_dispatch import _get_current_dispatch_mode
+    calls = []
+    class Operation:
+        _schema = op._schema
+        def __call__(self, *args, **kwargs):
+            calls.append((args, kwargs))
+            return args[0]
+    tensor = SimpleNamespace(device=torch.device(source))
+    args = (tensor,) if copy_source is None else (
+        tensor, SimpleNamespace(device=torch.device(copy_source)))
+    kwargs = {} if target is None else {'device': torch.device(target)}
+    with checks.candidate_preparation_only():
+        mode = _get_current_dispatch_mode()
+        output = mode.__torch_dispatch__(Operation(), (), args, kwargs)
+    assert output is tensor
+    return calls
+
+
+@pytest.mark.parametrize('source,target,current,allowed', [
+    ('cuda:0', 'cuda:0', 1, True),
+    ('cuda:0', 'cuda:1', 0, False),
+    ('cuda:0', 'cuda', 0, True),
+    ('cuda:0', 'cuda', 1, False),
+    ('cuda:1', 'cuda', 1, True),
+    ('cuda:1', 'cuda', 0, False),
+])
+def test_to_checks_resolved_device_index_with_cpu_metadata(
+        checks, monkeypatch, source, target, current, allowed):
+    monkeypatch.setattr(torch.cuda, 'current_device', lambda: current)
+    invoke = lambda: dispatch_device_metadata(checks, torch.ops.aten._to_copy.default, source, target)
+    if allowed:
+        assert len(invoke()) == 1
+    else:
+        with pytest.raises(AssertionError, match='another device'):
+            invoke()
+
+
+@pytest.mark.parametrize('source,target,allowed', [
+    ('cuda:0', 'cuda:0', True),
+    ('cuda:1', 'cuda:0', False),
+    ('cpu', 'cuda:0', False),
+    ('cuda:0', 'cpu', False),
+])
+def test_copy_checks_both_tensor_devices_with_cpu_metadata(checks, source, target, allowed):
+    invoke = lambda: dispatch_device_metadata(
+        checks, torch.ops.aten.copy_.default, target, copy_source=source)
+    if allowed:
+        assert len(invoke()) == 1
+    else:
+        with pytest.raises(AssertionError, match='another device'):
+            invoke()
+
+
+def test_dtype_only_cast_does_not_resolve_a_new_device(checks, monkeypatch):
+    def unexpected_query():
+        pytest.fail('A dtype-only cast must not resolve a new current device')
+    monkeypatch.setattr(torch.cuda, 'current_device', unexpected_query)
+    assert len(dispatch_device_metadata(checks, torch.ops.aten._to_copy.default, 'cuda:1')) == 1
+
+
+def test_cpu_device_index_alias_and_same_device_copy_remain_allowed(checks):
+    tensor = torch.arange(3.)
+    with checks.candidate_preparation_only():
+        output = tensor.to('cpu:0', dtype=torch.float16)
+        copied = torch.empty_like(output).copy_(output)
+    torch.testing.assert_close(copied, tensor.half())
+
+
 @pytest.mark.parametrize('shortcut_phase', [None, 'warmup', 'capture'])
 def test_checked_benchmark_guards_actual_warmup_capture_and_replay(checks, cpu_runtime, shortcut_phase):
     _, _, JIT, _ = cpu_runtime

@@ -22,9 +22,22 @@ PREPARATION_OPS = frozenset({
 })
 
 
+def _device_identity(device):
+    import torch
+    device = torch.device(device)
+    index = device.index
+    if device.type == 'cuda' and index is None:
+        # An unindexed CUDA target means the current device, which need not
+        # be the source tensor's device. ROCm also uses this CUDA interface.
+        index = torch.cuda.current_device()
+    elif device.type == 'cpu':
+        # PyTorch accepts cpu:0, but CPU tensors have an unindexed device.
+        index = None
+    return device.type, index
+
+
 @contextmanager
 def candidate_preparation_only():
-    import torch
     from torch.utils._python_dispatch import TorchDispatchMode
 
     class PreparationOnly(TorchDispatchMode):
@@ -37,7 +50,10 @@ def candidate_preparation_only():
                     'operator computation must use Triton')
             if name in {'aten::_to_copy', 'aten::to'} and args:
                 device = kwargs.get('device')
-                if device is not None and torch.device(device).type != args[0].device.type:
+                if device is not None and _device_identity(device) != _device_identity(args[0].device):
+                    raise AssertionError('Mean wrapper cannot move operator data to another device')
+            if name == 'aten::copy_' and len(args) >= 2:
+                if _device_identity(args[0].device) != _device_identity(args[1].device):
                     raise AssertionError('Mean wrapper cannot move operator data to another device')
             return func(*args, **kwargs)
 
