@@ -174,7 +174,7 @@ def test_resume_retains_original_baseline_and_performs_new_candidate_checks(tmp_
     assert before == after
 
 
-@pytest.mark.parametrize("modify_report", [False, True])
+@pytest.mark.parametrize("modify_report", [False, "delete", "symlink", "directory"])
 def test_common_export_for_any_agent_and_report_tampering_detection(tmp_path, modify_report):
     code = '''import json, os, pathlib
 output = pathlib.Path(os.environ["ARENA_EXPORT_PATH"])
@@ -184,6 +184,10 @@ output.write_text(json.dumps({"delivered": True}))
 '''
     if modify_report:
         code += "report.unlink()\n"
+    if modify_report == "symlink":
+        code += "report.symlink_to(output)\n"
+    elif modify_report == "directory":
+        code += "report.mkdir()\n(report / 'diagnostic.txt').write_text('exporter output')\n"
     path = package(tmp_path, exporter=code)
     _, workspace = run(tmp_path, path, lambda **_: None, agent="claude_code")
     report = read_report(workspace)
@@ -192,6 +196,27 @@ output.write_text(json.dumps({"delivered": True}))
     assert report["exports"][0]["status"] == ("FAIL" if modify_report else "PASS")
     assert json.loads((workspace / "artifacts/solution.json").read_text())["delivered"]
     assert task_run_is_complete(workspace, "suite/protocol_fixture", "claude_code")
+    if modify_report == "directory":
+        state = workspace.parent / ".task-sessions" / workspace.name
+        preserved = state / report["exports"][0]["invalid_report_artifact"]
+        assert (preserved / "diagnostic.txt").read_text() == "exporter output"
+
+
+def test_exporter_cannot_deliver_with_changed_protected_harness(tmp_path):
+    code = '''import pathlib,os
+target=pathlib.Path('evaluate.py')
+target.write_text(target.read_text()+'\\n# exporter modified harness\\n')
+output=pathlib.Path(os.environ['ARENA_EXPORT_PATH'])
+output.parent.mkdir(parents=True,exist_ok=True)
+output.write_text('{}')
+'''
+    path = package(tmp_path, exporter=code)
+    _, workspace = run(tmp_path, path, lambda **_: None)
+    report = read_report(workspace)
+    assert report["pass_correctness"] and report["score"] == 220
+    assert not report["candidate_accepted"]
+    assert report["delivery_status"] == "INCOMPLETE"
+    assert report["exports"][0]["protected_state_unchanged"] is False
 
 
 def test_quality_loop_api_returns_exact_scored_report_and_rechecks_new_candidate(tmp_path):

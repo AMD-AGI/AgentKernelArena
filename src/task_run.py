@@ -117,13 +117,20 @@ def _run_exports(session: TaskSession, harness, logger: logging.Logger) -> list[
         if report_path.is_symlink() or not report_path.is_file() or report_path.read_bytes() != finalized_bytes:
             if report_path.is_symlink():
                 report_path.unlink()
+            elif report_path.is_dir():
+                # Preserve unexpected exporter output for diagnosis while
+                # restoring the report owned by the evaluator.
+                preserved = session.state_directory / f"export-invalid-report-{uuid.uuid4().hex}"
+                report_path.rename(preserved)
+                record["invalid_report_artifact"] = preserved.name
             report_path.write_bytes(finalized_bytes)
             record.update(status="FAIL", error="Exporter attempted to modify the framework-finalized result")
         try:
             verify_workspace_harness(harness, logger=logger)
             session.verify_baseline_sources()
         except Exception as exc:
-            record.update(status="FAIL", error=f"Exporter changed protected task state: {exc}")
+            record.update(status="FAIL", error=f"Exporter changed protected task state: {exc}",
+                          protected_state_unchanged=False)
         evidence = session.candidate_source_evidence()
         if evidence["error"] or evidence["sources"] != original_candidate:
             record.update(status="FAIL", error=evidence["error"] or "Exporter modified the evaluated candidate",
@@ -221,7 +228,8 @@ def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
     result.update(candidate_accepted=accepted, exports=exports,
                   delivery_status=("COMPLETE" if all(row["status"] == "PASS" for row in exports)
                                    else "INCOMPLETE") if accepted else "NOT_ACCEPTED")
-    if any(row.get("candidate_unchanged") is False for row in exports):
+    if any(row.get("candidate_unchanged") is False or row.get("protected_state_unchanged") is False
+           for row in exports):
         result["candidate_accepted"] = False
     (workspace / "task_result.yaml").write_text(yaml.safe_dump(result, sort_keys=False))
     _json_file(state / "completion.json", _completion_record(session, agent.value))
