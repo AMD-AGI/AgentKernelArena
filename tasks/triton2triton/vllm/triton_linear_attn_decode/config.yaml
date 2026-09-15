@@ -1,10 +1,15 @@
 schema_version: 2
-description: Optimize triton_linear_attn_decode with the original Triton operator contract.
+description: Optimize triton_linear_attn_decode with the original Triton operator
+  contract.
 candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_linear_attn_decode.py
+  - path: source/triton_linear_attn_decode.py
+    scope: symbols
+    symbols:
+    - _linear_attn_decode_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_linear_attn_decode.py
     kind: function

@@ -1,10 +1,15 @@
 schema_version: 2
-description: Optimize triton_fla_fused_recurrent with the original Triton operator contract.
+description: Optimize triton_fla_fused_recurrent with the original Triton operator
+  contract.
 candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_fla_fused_recurrent.py
+  - path: source/triton_fla_fused_recurrent.py
+    scope: symbols
+    symbols:
+    - fused_recurrent_gated_delta_rule_fwd_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_fla_fused_recurrent.py
     kind: function

@@ -1,6 +1,6 @@
 # triton_selective_scan_update
 
-The starting candidate is implemented Triton. Improve the declared source files in place;
+The starting candidate is implemented Triton. Improve only the declared kernel symbols and permitted new implementation helpers;
 the framework freezes the initial implementation as the baseline. Baseline and candidate
 actions execute only this workspace, with no fallback to another implementation.
 
@@ -28,3 +28,19 @@ The protected manifest requires the declared kernel symbols to remain Triton JIT
 functions, including kernels originally decorated with `@triton.jit()`. Removing
 the decorator is rejected before compilation. This structural check supplements
 the numerical and timed-path checks; it does not by itself attest every dispatch.
+
+Public wrappers, imports, allocations and dispatch are protected. Candidate computation
+must remain in the declared Triton kernels and implementation helpers; task references
+and other operator implementations are not candidate dependencies.
+
+All five scored cases, original comparisons, seeds, 10 warmups, 100 samples and state
+reset/allocation boundaries are retained. The actual captured graph returns both its
+output and the updated state/cache for validation. The harness checks the measured
+output and state, then perturbs operands, poisons output storage and replays the same
+graph with the original preparation callback. The state reset remains outside timing.
+All output/state values use the original numerical gate; readonly operands are checked.
+Unobservable graph fallback fails.
+
+`validate-task` checks independent known answers and negative comparator controls.
+Correctness additionally runs the unscored public-interface controls in
+`scripts/semantic_controls.py`. They never replace or change scored workloads.
