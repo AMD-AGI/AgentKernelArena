@@ -57,3 +57,20 @@ operator is `flydsl_rmsnorm2d_smoothquant`; any additional declared callables us
 remain required. Legacy build/compile helpers are optional implementation details;
 no builder return protocol is required by this task. A candidate may choose its
 own internal compilation helpers, while implementing all tested work in FlyDSL.
+
+
+The five original BF16 RMSNorm/SmoothQuant workloads and seed20260401 remain.
+Require exactly (INT8 codes[m,n], FP32 scales[m,1]) on the input device, finite
+scales, and read-only input, FP32 smoothing scales and BF16 gamma. Preserve the
+original integer code distance<=1 and maximum scale relative error<=1e-3
+(denominator maximum reference scale plus1e-12). The model keeps FP32 RMSNorm
+and smoothing arithmetic followed by truncation toward zero to INT8; no model,
+rounding rule, case, seed or tolerance changes are made.
+Both the diagnostic measurements and actual role timing retain the original
+10warmups/100samples and canonical graph policy. Compare the actual measured
+codes/scales against AITER, then negate/halve gamma outside timing and replay
+the exact measured invocation: signs change and expected scales halve. Poison
+codes with-128 and scales withNaN, and restore every input before subsequent
+measurements. Final candidate arithmetic must launch FlyDSL; candidate-only
+execution auditing permits host preparation while rejecting substitute operators
+or protected model/reference calls, and runs outside timing.
