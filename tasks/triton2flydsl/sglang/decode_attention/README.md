@@ -62,6 +62,22 @@ The baseline and candidate keep the original callable, workload cases, seeds,
 warmups, repetition counts and Graph/Event selection. A captured Graph replay
 and an explicit Event eager re-invocation are reported distinctly.
 
+Each of the six original correctness cases additionally calls the same candidate
+with a valid noncontiguous KV index layout containing repeated physical rows.
+The mapping changes selected-row membership/multiplicity, including for the
+single-batch case; merely permuting a segment would leave attention unchanged.
+The output is poisoned and checked against the indexed reference with the same
+original numerical gate, and read-only inputs are checked and restored.
+
+All measured samples still use the original identity indices, buffers, shapes,
+seeds, warmups and repetition counts. Only after timing, replay negates Q/V and
+updates the existing `kv_indices` tensor **in place** to the noncontiguous layout,
+so the captured invocation sees the changed mapping at its original address.
+Its output must match the newly indexed reference. All read-only inputs,
+including the index values, are restored in `finally`, also on check failure.
+These extra checks do not add or replace scored cases or change either role's
+timing/allocation boundary. Ignoring `kv_indices` is not a valid implementation.
+
 Candidate dependency enforcement runs before candidate import for compile,
 correctness and performance. AITER package/operator imports are forbidden,
 including `aiter.ops.flydsl` implementations; a FlyDSL runtime call from an

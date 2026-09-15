@@ -1974,7 +1974,7 @@ def test_sglang_five_each_actual_performance_observes_output(name, behavior, mon
           "_retry_oom": lambda fn: fn(), "WARMUP_ITERATIONS": 10, "BENCHMARK_ITERATIONS": 100,
           "DTYPE_NAME": "bfloat16", "MAX_KV_SPLITS": 1}
     _harness_functions(task, {"run_performance", "reference", "reference_moe", "_shape_of",
-                              "_compare_decode_output", "_compare_prepared_moe_output"}, ns)
+                              "_compare_decode_output", "_compare_prepared_moe_output", "_reroute_kv_indices_"}, ns)
     if name == "decode_attention":
         cfg = {"seqs": [2, 1], "head": 1, "kv_head": 1, "Lk": 2, "Lv": 2}
         q = torch.tensor([[[1., 2.]], [[3., 4.]]], dtype=torch.bfloat16)
@@ -2073,7 +2073,8 @@ def test_sglang_output_contracts_keep_original_fraction_and_zero_reference_rules
 class _RemoveSglangReplayChecks(ast.NodeTransformer):
     """Remove only new checks and the host-only output return for AST comparison."""
     def visit_FunctionDef(self, node):
-        if node.name in {"_compare_decode_output", "_compare_prepared_moe_output"}:
+        if node.name in {"_compare_decode_output", "_compare_prepared_moe_output",
+                         "_reroute_kv_indices_", "_check_decode_routing"}:
             return None
         self.generic_visit(node)
         if (node.name == "fn" and isinstance(node.body[-1], ast.Return)
@@ -2091,6 +2092,24 @@ class _RemoveSglangReplayChecks(ast.NodeTransformer):
         return self.generic_visit(node)
 
 
+    def visit_Assign(self, node):
+        added = (
+            "routing = _check_decode_routing(mod, (q, k_buf, v_buf, o, kvp, kvi, al, alse, nks), cfg, sm_scale) if passed else None",
+            'bench_meta["replay_kv_routing"] = "repeated_noncontiguous_kv"',
+        )
+        if any(ast.dump(node, include_attributes=False) == ast.dump(ast.parse(source).body[0], include_attributes=False)
+               for source in added):
+            return None
+        return self.generic_visit(node)
+
+    def visit_Dict(self, node):
+        pairs = [(key, value) for key, value in zip(node.keys, node.values)
+                 if not (isinstance(key, ast.Constant) and key.value == "kv_routing_control"
+                         and isinstance(value, ast.Name) and value.id == "routing")]
+        node.keys, node.values = [key for key, value in pairs], [value for key, value in pairs]
+        return self.generic_visit(node)
+
+
 @pytest.mark.parametrize("name", ["decode_attention", "sglang_fused_moe"])
 @pytest.mark.parametrize("mutate_input", [False, True])
 def test_sglang_correctness_uses_pristine_inputs_before_computing_reference(name, mutate_input, monkeypatch):
@@ -2101,7 +2120,8 @@ def test_sglang_correctness_uses_pristine_inputs_before_computing_reference(name
     monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
     ns = {"require_unchanged": checks.require_unchanged, "require_tensor_contract": checks.require_tensor_contract,
           "_retry_oom": lambda fn: fn(), "DTYPE_NAME": "bfloat16", "MAX_KV_SPLITS": 1}
-    _harness_functions(task, {"run_correctness", "reference", "reference_moe", "_shape_of"}, ns)
+    _harness_functions(task, {"run_correctness", "reference", "reference_moe", "_shape_of",
+                              "_check_decode_routing", "_reroute_kv_indices_", "_compare_decode_output"}, ns)
     if name == "decode_attention":
         cfg = {"seqs": [1], "head": 1, "kv_head": 1, "Lk": 2, "Lv": 2}
         q = torch.ones(1, 1, 2, dtype=torch.bfloat16)

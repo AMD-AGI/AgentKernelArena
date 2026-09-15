@@ -66,9 +66,9 @@ def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, 
 
     if not timed.bound:
         raise RuntimeError("Benchmark did not expose its measured invocation")
-    require_unchanged(inputs, originals)
-    compare(timed.outputs, expected)
     try:
+        require_unchanged(inputs, originals)
+        compare(timed.outputs, expected)
         perturb()
         changed = tuple(x.detach().clone() for x in inputs)
         expected_replay = reference()

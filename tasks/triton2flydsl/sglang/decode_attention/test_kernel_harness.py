@@ -155,6 +155,43 @@ def _compare_decode_output(actual, expected):
         raise AssertionError(f"Numerical mismatch: decode rel={rel}, close_fraction={frac}")
 
 
+def _reroute_kv_indices_(kv_indices):
+    """Select repeated, noncontiguous cache rows without changing storage/length.
+
+    A permutation of a full B=1 segment leaves attention unchanged. Selecting
+    every other physical row, in reverse order and with repetition, instead
+    changes membership/multiplicity while retaining valid page-size-one indices.
+    This check-only mapping is never used by the measured benchmark samples.
+    """
+    import torch
+    count = kv_indices.numel()
+    slots = torch.arange(count, device=kv_indices.device, dtype=kv_indices.dtype)
+    kv_indices.copy_(count - 1 - 2 * (slots % ((count + 1) // 2)))
+
+
+def _check_decode_routing(mod, tensors, cfg, sm_scale):
+    """Exercise the same candidate/build case on a second, unscored KV layout."""
+    import torch
+    q, k_buf, v_buf, o, kvp, kvi, al, alse, nks = tensors
+    inputs = (q, k_buf, v_buf, kvp, kvi, nks)
+    originals = tuple(value.clone() for value in inputs)
+    try:
+        _reroute_kv_indices_(kvi)
+        changed = tuple(value.clone() for value in inputs)
+        expected = reference(q, k_buf, v_buf, kvi, cfg, sm_scale)
+        o.fill_(float("nan"))
+        _retry_oom(lambda: mod.decode_attention_fwd(
+            q, k_buf, v_buf, o, kvp, kvi, al, alse, nks, MAX_KV_SPLITS,
+            sm_scale, 1.0, 1.0))
+        torch.cuda.synchronize()
+        require_unchanged(inputs, changed)
+        _compare_decode_output(o, expected)
+    finally:
+        for value, original in zip(inputs, originals):
+            value.copy_(original)
+    return {"status": "PASS", "mapping": "repeated_noncontiguous_kv"}
+
+
 def run_correctness():
     import torch
     try:
@@ -188,8 +225,12 @@ def run_correctness():
             frac = torch.isclose(o.float(), ref.float(),
                                  atol=1e-2, rtol=1e-2).float().mean().item()
             passed = finite and (frac >= 0.999 or rel <= 1e-2)
+            routing = _check_decode_routing(
+                mod, (q, k_buf, v_buf, o, kvp, kvi, al, alse, nks), cfg, sm_scale,
+            ) if passed else None
             details.append({"shape_id": i + 1, "shape": sh, "max_diff": diff,
-                            "rel": rel, "frac": frac, "passed": passed})
+                            "rel": rel, "frac": frac, "passed": passed,
+                            "kv_routing_control": routing})
             if not passed:
                 return False, (f"Shape {i+1} {sh}: max_diff={diff:.4e} "
                                f"rel={rel:.4e} frac={frac:.5f} "
@@ -233,9 +274,11 @@ def run_performance():
             )
             bench_meta.update(verify_timed_run(
                 timed, inputs=(q, k_buf, v_buf, kvp, kvi, nks), originals=originals, expected=expected,
-                perturb=lambda: (q.neg_(), v_buf.neg_()), reference=lambda: reference(q, k_buf, v_buf, kvi, cfg, sm_scale),
+                perturb=lambda: (q.neg_(), v_buf.neg_(), _reroute_kv_indices_(kvi)),
+                reference=lambda: reference(q, k_buf, v_buf, kvi, cfg, sm_scale),
                 compare=_compare_decode_output,
             ))
+            bench_meta["replay_kv_routing"] = "repeated_noncontiguous_kv"
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
