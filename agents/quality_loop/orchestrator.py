@@ -48,7 +48,7 @@ from src.harness_guard import snapshot_workspace_harness, verify_workspace_harne
 from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
 from src.preprocessing import _resolve_gfx_arch, setup_workspace
 from src.prompt_builder import prompt_builder
-from src.task_spec import TaskSpec, load_task_spec, resolve_task_path
+from src.task_spec import TaskSpec, load_task_spec, required_gpu_arches, resolve_task_path
 
 
 def _task_slug(task_id: str) -> str:
@@ -233,8 +233,8 @@ class QualityLoop:
             return True
         if str(platform.get("status", "active")).strip().lower() == "skip":
             return False
-        required = platform.get("required_arch")
-        return not required or (gfx_arch is not None and str(required).strip() == gfx_arch)
+        required = required_gpu_arches(platform)
+        return not required or gfx_arch in required
 
     def run(
         self,

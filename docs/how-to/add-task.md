@@ -234,10 +234,20 @@ the unmaintained `tasks/repository` suite has been removed.
 | `workspace.sources` | List of declared source acquisitions. An image source has `kind: image`, `image_path`, `destination`, and optional `exclude`. A Git source has `kind: git`, `url`, immutable `revision`, and `destination`. |
 | `workspace.setup` | Ordered list of argv lists, run after materialization and before baseline capture. Setup must be repeatable and must not be silently delegated to an agent. |
 | `workspace.timeout_s` | Positive integer, default `3600`, bounding source materialization and setup together. A timeout aborts setup before baseline capture. |
-| `platform_support` | Retains `required_arch`, `status: active \| skip`, and optional `skip_reason`. Omission declares no architecture restriction; it does not prove sanitizer support. |
+| `platform_support` | `required_arch` accepts one exact architecture string or a nonempty list of alternatives; `status` is `active \| skip`, with optional `skip_reason`. Omission declares no architecture restriction; it does not prove sanitizer support. |
 | `evaluation_profile` | Optional analysis-tool profile overrides when inference from candidate language, paths, and artifact kind is insufficient. See the tool guide for supported keys. |
 | `evaluation_tools` | Optional task-side tool commands/options. Only the run config enables tools and sets their policy/runtime. |
 | `exports` | Optional list of `{format, output, command, timeout_s}` objects. `command` is an argv list, `output` is a relative artifact path, and `timeout_s` defaults to `60`. |
+
+For example, `required_arch: [gfx942, gfx950]` permits either architecture;
+`required_arch: gfx950` remains valid for a single architecture. Empty lists,
+duplicate names, and wildcards are invalid. Main scheduling, quality-loop
+planning, and actual runtime binding use the same rule. Supporting another
+architecture requires real task validation there with the full workload and
+numerical gates; merely adding its name is not qualification. Record the tested
+source, image, and GPU separately for each architecture. An existing baseline
+session cannot resume on a different GPU architecture or runtime, even when both
+architectures are allowed by the task.
 
 A Git revision must be a pinned commit, not a floating branch. Image source
 paths name locations in the selected runtime image; the framework records that

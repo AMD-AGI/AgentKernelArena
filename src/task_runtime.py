@@ -3,6 +3,7 @@ import importlib.metadata
 import json
 import os
 import sys
+from src.task_spec import required_gpu_arches
 
 
 def _runtime_identity() -> dict:
@@ -27,8 +28,8 @@ def _runtime_identity() -> dict:
 
 def bind_session_runtime(session) -> dict:
     runtime = _runtime_identity()
-    required_arch = session.spec.to_mapping().get("platform_support", {}).get("required_arch")
-    if required_arch and runtime["gpu_arch"] != required_arch:
+    required_arch = required_gpu_arches(session.spec.to_mapping().get("platform_support"))
+    if required_arch and runtime["gpu_arch"] not in required_arch:
         raise RuntimeError(f"Task requires {required_arch}; actual GPU is {runtime['gpu_arch']}")
     path = session.state_directory / "runtime_identity.json"
     if path.exists():

@@ -52,6 +52,23 @@ def _timeout(value: Any, where: str) -> int:
     return value
 
 
+def required_gpu_arches(platform: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """Parse the same exact architecture alternatives in every framework path."""
+    if platform is None or "required_arch" not in platform:
+        return ()
+    value = platform["required_arch"]
+    values = [value] if isinstance(value, str) else value
+    where = "platform_support.required_arch"
+    if not isinstance(values, list) or not values:
+        raise TaskConfigError(f"{where} must be an architecture string or nonempty list")
+    arches = tuple(_text(arch, where).strip() for arch in values)
+    if any(any(ch.isspace() for ch in arch) or "*" in arch for arch in arches):
+        raise TaskConfigError(f"{where} requires exact architecture names")
+    if len(set(arches)) != len(arches):
+        raise TaskConfigError(f"{where} contains duplicate architectures")
+    return arches
+
+
 def relative_path(value: Any, where: str = "path") -> str:
     """Validate a literal task-root-relative path, including on Linux hosts."""
     path = _text(value, where)
@@ -264,8 +281,7 @@ def _optional_fields(obj: dict) -> None:
             _text(value, f"kernel_identity.{key}")
     if "platform_support" in obj:
         platform = _mapping(obj["platform_support"], "platform_support", {"required_arch", "status", "skip_reason"})
-        if "required_arch" in platform:
-            _text(platform["required_arch"], "platform_support.required_arch")
+        required_gpu_arches(platform)
         status = _choice(platform.get("status", "active"), ("active", "skip"), "platform_support.status")
         if status == "skip" or "skip_reason" in platform:
             _text(platform.get("skip_reason"), "platform_support.skip_reason")
