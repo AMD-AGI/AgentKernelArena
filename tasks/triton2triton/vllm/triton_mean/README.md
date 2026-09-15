@@ -42,3 +42,19 @@ The original full wrapper, seeds, 10 warmups and 100 samples are preserved.
 Actual captured outputs and a poisoned replay after changing input values must
 match the same reference gate; read-only input is checked and restored even if
 replay fails. Added checks run outside timing and do not replace scored cases.
+
+The public `mean_dim` wrapper must actually launch the declared `mean_kernel`
+through the Triton runtime. Merely defining an unused JIT kernel or replacing it
+with a Python object is insufficient. Host allocation, same-device casts/copies
+and views are allowed; PyTorch reductions, arithmetic and library computation
+(including `torch.mean` and matrix multiplication) are rejected inside candidate
+initialization and wrapper execution. The independent numerical reference runs
+outside this restriction.
+
+The runtime audit surrounds each actual correctness and benchmark wrapper call,
+including initialization/warmup and graph capture. It observes native launch
+hooks and runtime object identity without inserting GPU operations. Captured
+graph replays retain their original GPU work; the existing output and perturbed
+input replay checks still establish numerical correctness. The same audit applies
+to the frozen initial baseline and candidate. This is a backend execution
+contract, not a Python security sandbox.
