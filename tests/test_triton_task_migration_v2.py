@@ -439,6 +439,60 @@ def test_timed_wrong_path_rejected_by_rocm_adapter(monkeypatch):
     assert not plugin.exercised
 
 
+@pytest.mark.parametrize('path', ROCM, ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
+def test_rocm_timing_evidence_retains_canonical_fallback_reason(monkeypatch, path):
+    adapter = module_at(path.parent/'_arena_eval.py', monkeypatch)
+    expected = torch.tensor([2.])
+    def prepare(context, module):
+        return lambda value: torch.testing.assert_close(value, expected)
+    monkeypatch.setitem(__import__('sys').modules, '_arena_reference', SimpleNamespace(prepare=prepare))
+    plugin = SimpleNamespace(action='performance', current_row={'test_case_id':'cpu-fixture'}, exercised=set())
+    record = {'timing_ms': {'mean': 0.25}, 'benchmark_method':'cuda_event_fallback',
+              'benchmark_fallback_reason':'protected invocation uses a GPU scalar on the host',
+              'benchmark_samples':100, 'benchmark_warmup':10, 'benchmark_effective_repeats':1,
+              'params':{'not_timing_metadata':True}}
+    class Base:
+        def __init__(self, op_callable, **kwargs):
+            self.op_callable = op_callable
+            self.prepare_fn = None
+        def run_benchmark(self, **kwargs):
+            self.op_callable()
+            return record
+    benchmark = adapter.benchmark_type(Base, plugin, None)(op_callable=lambda: expected.clone())
+    benchmark.run_benchmark()
+    assert plugin.current_row['metadata']['device_timing'] == {
+        k:v for k,v in record.items() if k.startswith('benchmark_')}
+    assert plugin.current_row['metadata']['timed_output_checked']
+    assert plugin.current_row['execution_time_ms'] == 0.25
+
+
+@pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/moe_gemm',
+                                     'tasks/triton2triton/rocmbench/hard/moe_gemm'])
+def test_moe_launcher_selects_events_before_attempting_unsupported_capture(monkeypatch, relative):
+    adapter = module_at(ROOT/relative/'_arena_eval.py', monkeypatch)
+    expected = torch.tensor([2.])
+    monkeypatch.setitem(__import__('sys').modules, '_arena_reference', SimpleNamespace(
+        prepare=lambda context,module: lambda value: torch.testing.assert_close(value, expected)))
+    plugin = SimpleNamespace(action='performance', current_row={'test_case_id':'cpu-fixture'}, exercised=set())
+    options = {}
+    class Base:
+        def __init__(self, op_callable, use_cuda_graph=True, fallback_reason=None):
+            options.update(use_cuda_graph=use_cuda_graph, fallback_reason=fallback_reason)
+            self.op_callable = op_callable
+            self.prepare_fn = None
+        def run_benchmark(self, **kwargs):
+            if options['use_cuda_graph']:
+                raise RuntimeError('The protected .item() launcher cannot be captured')
+            self.op_callable()
+            return {'timing_ms':{'mean':0.25}, 'benchmark_method':'cuda_event_fallback',
+                    'benchmark_fallback_reason':options['fallback_reason']}
+    benchmark = adapter.benchmark_type(Base,plugin,None)(op_callable=lambda:expected.clone())
+    benchmark.run_benchmark()
+    assert options['use_cuda_graph'] is False and '.item()' in options['fallback_reason']
+    assert plugin.current_row['metadata']['device_timing']['benchmark_fallback_reason'] == options['fallback_reason']
+    assert plugin.exercised == {'cpu-fixture'}
+
+
 def test_skip_is_not_passing_protocol_evidence(monkeypatch):
     adapter=module_at(ROCM[0].parent/'_arena_eval.py',monkeypatch)
     data=json.loads((ROCM[0].parent/'workloads.json').read_text())

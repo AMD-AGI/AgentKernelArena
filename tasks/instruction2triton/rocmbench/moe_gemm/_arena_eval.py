@@ -54,6 +54,11 @@ def benchmark_type(base, plugin, module):
             # Inputs are task-owned locals prepared by the original performance
             # function. No compiler, RNG, warmup or repetition argument changes.
             self.context=dict(inspect.currentframe().f_back.f_locals)
+            # The protected launcher reads a GPU scalar with .item() on every
+            # invocation. Select its existing event path before capture: a
+            # failed capture can leave the runtime RNG unusable for later cases.
+            kwargs['use_cuda_graph']=False
+            kwargs['fallback_reason']='protected moe_gemm launcher performs GPU scalar .item() during each invocation'
             super().__init__(*args,**kwargs)
 
         def run_benchmark(self,*args,**kwargs):
@@ -90,7 +95,8 @@ def benchmark_type(base, plugin, module):
             if method not in ('cuda_graph','cuda_event_fallback'):
                 raise RuntimeError('Missing device timing method')
             row.update(execution_time_ms=ms,benchmark_method=method,
-                       metadata={'timing_stats':record['timing_ms'],'timed_output_checked':True})
+                       metadata={'timing_stats':record['timing_ms'],'timed_output_checked':True,
+                                 'device_timing':{k:v for k,v in record.items() if k.startswith('benchmark_')}})
             plugin.exercised.add(row['test_case_id'])
             return record
     return CheckedBenchmark

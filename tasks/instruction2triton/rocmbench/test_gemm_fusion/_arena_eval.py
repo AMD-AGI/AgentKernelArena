@@ -90,7 +90,8 @@ def benchmark_type(base, plugin, module):
             if method not in ('cuda_graph','cuda_event_fallback'):
                 raise RuntimeError('Missing device timing method')
             row.update(execution_time_ms=ms,benchmark_method=method,
-                       metadata={'timing_stats':record['timing_ms'],'timed_output_checked':True})
+                       metadata={'timing_stats':record['timing_ms'],'timed_output_checked':True,
+                                 'device_timing':{k:v for k,v in record.items() if k.startswith('benchmark_')}})
             plugin.exercised.add(row['test_case_id'])
             return record
     return CheckedBenchmark

@@ -105,3 +105,9 @@ def moe_gemm_kernel(
 
 
 
+
+The protected MoE launcher calls GPU-scalar `.item()` during each invocation,
+which cannot be captured in a CUDA/HIP graph. Both roles explicitly use canonical
+CUDA-event samples with the original warmup/repetition policy and full operator
+call. The runner records this task-owned reason with the device timing metadata.
+It does not attempt a failing graph capture before measuring later cases.
