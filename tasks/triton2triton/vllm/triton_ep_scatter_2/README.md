@@ -29,3 +29,22 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+Protected checks validate every active (token, route) assignment, including tokens
+beyond the original harness's first-16 subset. Slots must be unique, in bounds
+and in the assigned expert's actual token region; final atomic counters must
+match initial starts plus route counts. Data copies retain the original
+`atol=rtol=1e-5` comparison, with shape/dtype/device and finite-output checks.
+Read-only tokens/routes, inactive index entries and unused output padding must
+remain unchanged. Any legal atomic allocation order is accepted.
+
+Unscored diagnostics cover 17 tokens, 515 hidden elements, three routes, negative
+and duplicate expert IDs, noncontiguous row strides with contiguous inner
+columns; a separate 8193-token case covers the public grid-loop tail.
+Performance still directly launches the original raw kernel and preserves its
+`prepare_fn` counter reset, allocations, seed 0, 10 warmups and 100 samples.
+The actual `TimedRun` outputs/counters are checked after timing, then replayed
+with changed tokens, expert IDs and corresponding prefix starts, poisoned
+required outputs, and the original prepare callback. All six caller/prepare
+buffers are restored in `finally`, including failure paths. All five original
+scored cases and correctness seeds 42+i remain unchanged.

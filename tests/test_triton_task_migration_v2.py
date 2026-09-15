@@ -7042,3 +7042,148 @@ def test_ep_scatter1_actual_timing_replays_changed_counts_and_restores_all_buffe
 def test_ep_scatter1_adapter_installs_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_ep_scatter_1/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_ep_scatter1_checks'
+
+
+def _ep_scatter2_cpu(x,routes,counters,output,index,reverse=False):
+    # Independent per-expert allocation: each expert chooses a legal ordering.
+    # The task checker instead verifies all routes, regions and unique slots.
+    for e in range(len(counters)):
+        positions=(routes==e).nonzero()
+        if reverse:positions=positions.flip(0)
+        slots=counters[e].long()+torch.arange(len(positions))
+        if len(positions):
+            index[positions[:,0],positions[:,1]]=slots.to(index.dtype)
+            output[slots]=x[positions[:,0]]
+        counters[e]+=len(positions)
+
+
+def test_ep_scatter2_independent_known_routing_allows_atomic_order_and_checks_every_output(monkeypatch):
+    h,checks=_ep_scatter_cpu_harness(monkeypatch,2)
+    x=torch.tensor([[1.,2.],[3.,4.]],dtype=torch.float16)
+    routes=torch.tensor([[1,1],[0,-1]],dtype=torch.int32)
+    counters=torch.tensor([0,128],dtype=torch.int32)
+    output=torch.zeros(256,2,dtype=x.dtype);index=torch.full((2,2),-1,dtype=routes.dtype)
+    pristine=checks.snapshot((x,routes,counters,output,index))
+    _ep_scatter2_cpu(x,routes,counters,output,index)
+    assert torch.equal(counters,torch.tensor([1,130],dtype=torch.int32))
+    assert torch.equal(index,torch.tensor([[128,129],[0,-1]],dtype=torch.int32))
+    checks.check_outputs((counters,output,index),pristine)
+    counters.copy_(pristine[2]);output.zero_();index.fill_(-1)
+    _ep_scatter2_cpu(x,routes,counters,output,index,reverse=True)
+    assert torch.equal(index,torch.tensor([[129,128],[0,-1]],dtype=torch.int32))
+    checks.check_outputs((counters,output,index),pristine)
+    index[0,1]=index[0,0]
+    with pytest.raises(AssertionError,match='unique'):checks.check_outputs((counters,output,index),pristine)
+    index[0,1]=128
+    for bad in [(counters.long(),output,index),(counters,output.flatten(),index),(counters,output.to('meta'),index)]:
+        with pytest.raises(AssertionError):checks.check_outputs(bad,pristine)
+    output[0,0]+=.000001
+    checks.check_outputs((counters,output,index),pristine)
+    output[0,0]+=.01
+    with pytest.raises(AssertionError):checks.check_outputs((counters,output,index),pristine)
+
+
+@pytest.mark.parametrize('mode',['correct','reverse_order','first16_only','wrong_region','duplicate_slot',
+    'wrong_data','wrong_counter','nan_padding','write_padding','write_inactive','mutate_x','mutate_routes',
+    'omit_hidden_tail','omit_grid_loop','ignore_row_strides'])
+def test_ep_scatter2_actual_fivecase_correctness_full_routes_counters_padding_and_tails(monkeypatch,mode):
+    h,checks=_ep_scatter_cpu_harness(monkeypatch,2);calls=[];saved_inputs=[]
+    def public(x,routes,counters,output,index):
+        calls.append((x.shape,routes.shape,x.stride(),output.stride()))
+        saved_inputs.append(((x,routes),checks.snapshot((x,routes))))
+        if mode=='mutate_x':x.zero_()
+        if mode=='mutate_routes':routes.zero_()
+        original=counters.clone()
+        _ep_scatter2_cpu(x,routes,counters,output,index,reverse=mode=='reverse_order')
+        if mode=='first16_only':index[16:].fill_(-1)
+        if mode=='wrong_region':index[routes>=0]=0
+        if mode=='duplicate_slot':
+            pos=(routes==0).nonzero()
+            if len(pos)>1:index[pos[1,0],pos[1,1]]=index[pos[0,0],pos[0,1]]
+        if mode=='wrong_data':output.add_(1)
+        if mode=='wrong_counter':counters.copy_(original)
+        if mode=='nan_padding':output[-1].fill_(float('nan'))
+        if mode=='write_padding':output[-1].fill_(100)
+        if mode=='write_inactive':index[routes<0]=0
+        if mode=='omit_hidden_tail' and x.shape[1]==515:output[:,512:].zero_()
+        if mode=='omit_grid_loop' and len(x)==8193:index[-1].fill_(-1)
+        if mode=='ignore_row_strides' and not x.is_contiguous():output.zero_()
+    mod=SimpleNamespace(ep_scatter_2=public);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode in ('correct','reverse_order')),reason
+    if ok:
+        assert [v[0][0] for v in calls]==[16,17,8193,32,64,128,256]
+        assert calls[1][0]==(17,515) and calls[1][1]==(17,3)
+        assert calls[1][2]==calls[1][3]==(1030,1)
+    for inputs,saved in saved_inputs:checks.unchanged(inputs,saved)
+    assert mod.ep_scatter_2 is public
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','wrong_counter','stale','no_write','skip_prepare',
+    'wrong_replay','mutate_timed_x','mutate_timed_routes','mutate_timed_initial',
+    'mutate_replay_x','mutate_replay_routes','mutate_replay_initial','zero_inputs_outputs','raise_replay'])
+def test_ep_scatter2_actual_raw_launch_timing_uses_original_prepare_and_restores_all_six_buffers(monkeypatch,mode):
+    import inspect
+    h,checks=_ep_scatter_cpu_harness(monkeypatch,2)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    launches=[]
+    class Raw:
+        def __getitem__(self,grid):
+            def launch(n,counters,x,sx0,sx1,routes,sr0,sr1,output,so0,so1,index,si0,si1,**kw):
+                assert grid==(min(n,8192),)
+                assert (sx0,sx1)==x.stride() and (sr0,sr1)==routes.stride()
+                assert (so0,so1)==output.stride() and (si0,si1)==index.stride()
+                assert kw==dict(topk_num=routes.shape[1],num_warps=8,HIDDEN_SIZE=x.shape[1],HIDDEN_SIZE_PAD=1<<(x.shape[1]-1).bit_length())
+                launches.append(n)
+                _ep_scatter2_cpu(x,routes,counters,output,index)
+            return launch
+    mod=SimpleNamespace(_fwd_kernel_ep_scatter_2=Raw(),triton=SimpleNamespace(next_power_of_2=lambda v:1<<(v-1).bit_length()))
+    h.load_module=lambda:mod
+    all_buffers,all_saved,options,replays=[],[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        prepare=kwargs['prepare_fn'];initial=inspect.getclosurevars(prepare).nonlocals['initial_expert_start_loc']
+        x,routes,counters,output,index=(state[n] for n in ('recv_x','recv_topk','expert_start_loc','output_tensor','output_index'))
+        buffers=(x,routes,counters,output,index,initial);saved=checks.snapshot(buffers)
+        all_buffers.append(buffers);all_saved.append(saved);options.append(kwargs)
+        generator=torch.Generator().manual_seed(0);n,d,e,k=h.TEST_SHAPES[len(options)-1]
+        checks.unchanged((x,routes),(torch.randn(n,d,dtype=x.dtype,generator=generator),torch.randint(0,e,(n,k),dtype=routes.dtype,generator=generator)))
+        assert torch.equal(output,torch.zeros_like(output)) and torch.all(index==-1)
+        prepare();outputs=measured();cache=checks.snapshot(outputs)
+        if mode=='wrong_timed':index[16:].fill_(-1);output[0].fill_(100)
+        if mode=='wrong_counter':counters.copy_(initial)
+        if mode.startswith('mutate_timed_'):
+            {'x':x,'routes':routes,'initial':initial}[mode.rsplit('_',1)[-1]].zero_()
+        if mode=='zero_inputs_outputs':
+            for v in buffers:v.zero_()
+        def replay():
+            replays.append(True)
+            checks.unchanged((x,routes),(saved[0]*-.5+.25,(saved[1]+1)%e))
+            assert torch.all(counters==-777) and torch.all(index==-777)
+            counts,starts,total=checks.counts_and_starts(routes,e)
+            assert torch.equal(initial,starts) and total==len(output)
+            for start,count in zip(starts.tolist(),counts.tolist()):assert torch.isnan(output[start:start+count]).all()
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='skip_prepare':prepare()
+            if mode=='stale':
+                for value,old in zip(outputs,cache):value.copy_(old)
+            elif mode!='no_write':measured()
+            if mode=='wrong_replay':output.add_(1)
+            if mode.startswith('mutate_replay_'):
+                {'x':x,'routes':routes,'initial':initial}[mode.rsplit('_',1)[-1]].zero_()
+            return outputs
+        timed_run._bind(replay,outputs)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h);rows=h.run_performance()
+    assert len(options)==5
+    assert all(set(kw)=={'warmup','repetition','prepare_fn'} and kw['warmup']==10 and kw['repetition']==100 for kw in options)
+    for cfg,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('num_tokens','hidden_size','num_experts','topk'),cfg))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for buffers,saved in zip(all_buffers,all_saved):checks.unchanged(buffers,saved)
+    assert len(replays)==(0 if mode in ('wrong_timed','wrong_counter','zero_inputs_outputs') or mode.startswith('mutate_timed_') else 5)
+    assert len(launches)==(10 if mode in ('correct','wrong_replay','mutate_replay_x','mutate_replay_routes','mutate_replay_initial','skip_prepare') else 5)
+
+
+def test_ep_scatter2_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_ep_scatter_2/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_ep_scatter2_checks'
