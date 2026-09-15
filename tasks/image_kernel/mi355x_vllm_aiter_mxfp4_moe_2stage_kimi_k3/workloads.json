@@ -539,7 +539,10 @@
           "max_graph_repeats": 100
         },
         "correctness_token": 7211,
-        "timed_replay_seed": 43
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
       }
     },
     {
@@ -584,7 +587,10 @@
           "max_graph_repeats": 200
         },
         "correctness_token": 62,
-        "timed_replay_seed": 43
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
       }
     },
     {
@@ -626,7 +632,10 @@
         },
         "seed": 1001,
         "correctness_token": 1,
-        "timed_replay_seed": 43
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
       }
     },
     {
@@ -668,7 +677,10 @@
         },
         "seed": 1002,
         "correctness_token": 2,
-        "timed_replay_seed": 43
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
       }
     },
     {
@@ -710,7 +722,10 @@
         },
         "seed": 1004,
         "correctness_token": 4,
-        "timed_replay_seed": 43
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
       }
     },
     {
@@ -752,7 +767,10 @@
         },
         "seed": 1008,
         "correctness_token": 8,
-        "timed_replay_seed": 43
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
       }
     },
     {
@@ -794,7 +812,10 @@
         },
         "seed": 1016,
         "correctness_token": 16,
-        "timed_replay_seed": 43
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
       }
     },
     {
@@ -836,7 +857,10 @@
         },
         "seed": 1032,
         "correctness_token": 32,
-        "timed_replay_seed": 43
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
       }
     },
     {
@@ -878,7 +902,10 @@
         },
         "seed": 1128,
         "correctness_token": 128,
-        "timed_replay_seed": 43
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
       }
     },
     {
@@ -920,7 +947,10 @@
         },
         "seed": 1256,
         "correctness_token": 256,
-        "timed_replay_seed": 43
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
       }
     },
     {
@@ -962,7 +992,10 @@
         },
         "seed": 1512,
         "correctness_token": 512,
-        "timed_replay_seed": 43
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
       }
     },
     {
@@ -1004,7 +1037,10 @@
         },
         "seed": 2024,
         "correctness_token": 1024,
-        "timed_replay_seed": 43
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
       }
     },
     {
@@ -1046,7 +1082,10 @@
         },
         "seed": 3048,
         "correctness_token": 2048,
-        "timed_replay_seed": 43
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
       }
     },
     {
@@ -1088,7 +1127,10 @@
         },
         "seed": 5096,
         "correctness_token": 4096,
-        "timed_replay_seed": 43
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
       }
     }
   ]

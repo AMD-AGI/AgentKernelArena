@@ -1,6 +1,11 @@
 schema_version: 2
-description: Optimize the existing flydsl implementation; preserve the task-local operator and workload
-  contracts.
+description: >-
+  Optimize FlyDSL Kimi-K3 routed-expert MoE on the fixed synthetic workloads
+  declared in workloads.json: M=7211 and M=62, with twelve additional
+  correctness-only M buckets. Preserve the full operator, numerical and timing
+  contracts. The protected case parameters define the scored problem.
+  Historical kernel IDs provide provenance; the exact original decode-graph M
+  is unknown, and these synthetic inputs make no historical trace-replay claim.
 candidate:
   language: flydsl
   initial_state: implemented
