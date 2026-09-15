@@ -573,8 +573,10 @@ class _InlineTritonReference(ast.NodeTransformer):
         return self.generic_visit(node)
 
 
-def _protected_triton_fingerprint(source, *, added_replay_checks=False):
+def _protected_triton_fingerprint(source, *, added_replay_checks=False, sglang_elementwise=False):
     tree=ast.parse(source)
+    if sglang_elementwise:
+        tree = _RemoveSglangElementwiseChecks().visit(tree)
     if added_replay_checks:
         tree = _RemoveAddedReplayChecks().visit(tree)
         tree = _RemoveSglangReplayChecks().visit(tree)
@@ -582,7 +584,7 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False):
         tree = _RemoveTritonQuantChecks().visit(tree)
         tree = _RemoveMqaChecks().visit(tree)
         tree = _RemoveElementwiseChecks().visit(tree)
-    excluded={"_checked_elementwise_output","_elementwise_replay_validator","_checked_mqa_output","_compare_mqa_output","_verify_mqa_timed","_checked_mx_pair","_mx_reference","_compare_mx_pair","_verify_quant_timed","_checked_quant_output","_compare_token_outputs","_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
+    excluded={"_checked_sglang_output", "_compare_sglang_output", "_sglang_replay_validator", "_checked_elementwise_output","_elementwise_replay_validator","_checked_mqa_output","_compare_mqa_output","_verify_mqa_timed","_checked_mx_pair","_mx_reference","_compare_mx_pair","_verify_quant_timed","_checked_quant_output","_compare_token_outputs","_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
               "_reference_softmax","_reference_gemm","_reference_layernorm","_reference_quant"}
     nodes=[]
     for n in tree.body:
@@ -596,7 +598,7 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False):
 def test_triton_preserves_original_harness_semantics_inputs_and_timing():
     for name,expected in TRITON_PROTECTED_SHA256.items():
         task=ROOT/"tasks/triton2flydsl"/name
-        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/ff_a16w16", "aiter/fused_silu_mul", "aiter/fused_clamp_act_mul", "aiter/rmsnorm", "aiter/fp8_mqa_logits", "aiter/dynamic_mxfp8_quant", "aiter/dynamic_quant_fp8", "aiter/batched_gemm_a8w8", "aiter/batched_gemm_bf16", "aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"})==expected,name
+        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/ff_a16w16", "aiter/fused_silu_mul", "aiter/fused_clamp_act_mul", "aiter/rmsnorm", "aiter/fp8_mqa_logits", "aiter/dynamic_mxfp8_quant", "aiter/dynamic_quant_fp8", "aiter/batched_gemm_a8w8", "aiter/batched_gemm_bf16", "aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"}, sglang_elementwise=name in {"sglang/gdn_l2norm_fwd", "sglang/fused_norm_gate", "sglang/chunk_local_cumsum"})==expected,name
         cfg=yaml.safe_load((task/"config.yaml").read_text())
         assert cfg["baseline"]["kind"]=="initial_candidate"
         assert cfg["baseline"]["language"]=="triton"
@@ -4125,3 +4127,178 @@ def test_rmsnorm_reference_epsilon_scale_matches_independent_fp64_math(dtype_nam
     assert actual.dtype == dtype
     assert torch.isfinite(actual).all()
     torch.testing.assert_close(actual, expected, atol=1e-6, rtol=1e-6)
+
+
+_SGLANG_ELEMENTWISE_NAMES = ['gdn_l2norm_fwd', 'fused_norm_gate', 'chunk_local_cumsum']
+
+
+class _RemoveSglangElementwiseChecks(_RemoveAddedReplayChecks):
+    def visit_Assign(self, node):
+        if len(node.targets) == 1 and getattr(node.targets[0], 'id', None) in {'ENTRY', 'protected_inputs', 'replay_validate'}:
+            return None
+        return super().visit_Assign(node)
+
+    def visit_Expr(self, node):
+        call = node.value
+        if isinstance(call, ast.Call):
+            if getattr(call.func, 'id', None) == '_checked_sglang_output':
+                return None
+            if (isinstance(call.func, ast.Attribute) and call.func.attr == 'update'
+                    and call.args and isinstance(call.args[0], ast.Call)
+                    and getattr(call.args[0].func, 'id', None) == 'replay_validate'):
+                return None
+        return super().visit_Expr(node)
+
+    def visit_FunctionDef(self, node):
+        if node.name == 'fn':
+            node.body = [ast.Expr(statement.value) if isinstance(statement, ast.Return) else statement for statement in node.body]
+        return self.generic_visit(node)
+
+    def visit_ExceptHandler(self, node):
+        if node.name == 'error' and any(isinstance(n, ast.Constant) and n.value == 'performance case failed: ' for n in ast.walk(node)):
+            node.name = None
+        return self.generic_visit(node)
+
+    def visit_Dict(self, node):
+        for i, key in enumerate(node.keys):
+            if isinstance(key, ast.Constant) and key.value == 'benchmark_fallback_reason':
+                node.values[i] = ast.Constant('performance case failed before timing completed')
+        return self.generic_visit(node)
+
+
+@pytest.mark.parametrize('name', _SGLANG_ELEMENTWISE_NAMES)
+@pytest.mark.parametrize('variant', [0, 1, 2])
+@pytest.mark.parametrize('phase,behavior', [(phase, behavior) for phase in ['correctness', 'performance'] for behavior in ['correct', 'shape', 'dtype', 'device', 'nan', 'input_modified', 'measured_wrong', 'replay_wrong', 'cached'] if phase == 'performance' or behavior not in {'measured_wrong', 'replay_wrong', 'cached'}])
+def test_sglang_elementwise_real_original_gates_and_measured_replay(name, variant, phase, behavior, monkeypatch):
+    import torch
+    import types
+    task = ROOT / 'tasks/triton2flydsl/sglang' / name
+    checks = module(task / 'scripts/replay_checks.py')
+    ns = {'EPS': 1e-6 if name == 'gdn_l2norm_fwd' else 1e-5, 'CHUNK_SIZE': 2,
+          'DTYPE_NAME': 'bfloat16', 'WARMUP_ITERATIONS': 10, 'BENCHMARK_ITERATIONS': 100,
+          'require_tensor_contract': checks.require_tensor_contract,
+          'require_unchanged': checks.require_unchanged, 'verify_timed_run': checks.verify_timed_run}
+    _harness_functions(task, {'reference_l2norm', 'reference_norm_gate', 'reference_cumsum', '_shape_of', '_checked_sglang_output', '_compare_sglang_output', '_sglang_replay_validator'}, ns)
+    if name == 'gdn_l2norm_fwd':
+        x = torch.tensor([[3., 4., 1., -2.], [-1., 2., 3., 4.]], dtype=torch.bfloat16)
+        inputs = (x,)
+        shape = (2, 4)
+        entry = 'l2norm_fwd'
+        oracle = lambda: ns['reference_l2norm'](x, ns['EPS'])
+        ns['make_x'] = lambda *args: x
+    elif name == 'fused_norm_gate':
+        x = torch.tensor([[1., 3., -2., 4.], [-1., 2., 3., 4.]], dtype=torch.bfloat16)
+        inp = dict(x=x, g=x.clone().mul_(.3), weight=torch.tensor([2., 1., -.5, 3.], dtype=x.dtype), bias=torch.ones(4, dtype=x.dtype) if variant == 2 else None)
+        inputs = tuple(v for v in inp.values() if v is not None)
+        shape = (2, 4, variant != 2, 'sigmoid' if variant == 1 else 'swish', variant == 2)
+        entry = 'layer_norm_gated_fwd'
+        oracle = lambda: ns['reference_norm_gate'](inp, shape[2], shape[3])
+        ns['make_test_data'] = lambda *args: inp
+    else:
+        shape = dict(ndim=4 if variant == 2 else 3, B=1, T=5, H=1, S=2, reverse=variant == 1, scale=.5 if variant == 2 else None)
+        x = -torch.arange(1, 11 if variant == 2 else 6, dtype=torch.float32).reshape(ns['_shape_of'](shape))
+        inputs = (x,)
+        entry = 'chunk_local_cumsum'
+        oracle = lambda: ns['reference_cumsum'](x, shape)
+        ns['make_g'] = lambda *args: x
+    originals = tuple(v.clone() for v in inputs)
+    cached = oracle().clone()
+    state = {'phase': 'setup'}
+    def compute(*args, **kwargs):
+        out = oracle()
+        active = phase == 'correctness' or state['phase'] == 'measured'
+        if active:
+            if behavior == 'shape': out = out.reshape(-1)
+            if behavior == 'dtype': out = out.double()
+            if behavior == 'device': out = out.to('meta')
+            if behavior == 'nan': out.fill_(float('nan'))
+            if behavior == 'input_modified': x.mul_(.5)
+        if behavior == state['phase'] + '_wrong': out.zero_()
+        if state['phase'] == 'replay' and behavior == 'cached': out = cached.clone()
+        return (out, None, None, x) if name == 'fused_norm_gate' else out
+    class Collector:
+        bound = False
+    calls = []
+    def benchmark(fn, *, warmup, repetition, timed_run):
+        calls.append((warmup, repetition))
+        state['phase'] = 'measured'
+        timed_run.outputs = fn()
+        timed_run.bound = True
+        state['phase'] = 'setup'
+        def replay():
+            state['phase'] = 'replay'
+            try:
+                return fn()
+            finally:
+                state['phase'] = 'setup'
+        timed_run.rerun = replay
+        return .1, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph'}
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    ns.update(TEST_SHAPES=[shape], load_module=lambda: types.SimpleNamespace(**{entry: compute}), _retry_oom=lambda fn: fn(), TimedRun=Collector, benchmark_cuda_graph_or_events=benchmark)
+    _harness_functions(task, {'run_correctness', 'run_performance'}, ns)
+    result = ns['run_' + phase]()
+    if phase == 'correctness':
+        assert result[0] == (behavior == 'correct'), result
+        assert len(result[2]) == 1
+    else:
+        assert len(result) == 1
+        assert calls == [(0, 100)]
+        if behavior == 'correct':
+            assert result[0]['timed_output_correctness'] == result[0]['replay_correctness'] == 'PASS'
+            assert result[0]['benchmark_timed_run_kind'] == 'captured_graph'
+        else:
+            assert result[0]['execution_time_ms'] == -1
+            assert 'PASS' not in result[0].values()
+    if behavior != 'input_modified':
+        checks.require_unchanged(inputs, originals)
+
+
+def test_sglang_norm_gate_preserves_original_error_fraction_policy():
+    import torch
+    task = ROOT / 'tasks/triton2flydsl/sglang/fused_norm_gate'
+    checks = module(task / 'scripts/replay_checks.py')
+    ns = {'require_tensor_contract': checks.require_tensor_contract}
+    _harness_functions(task, {'_checked_sglang_output', '_compare_sglang_output'}, ns)
+    expected = torch.ones((1, 200), dtype=torch.bfloat16)
+    actual = expected.clone()
+    actual[0, :3] = 2
+    assert not torch.allclose(actual.float(), expected.float(), atol=.02, rtol=.01)
+    ns['_compare_sglang_output'](actual, expected)
+    actual[0, :5] = 2
+    with pytest.raises(AssertionError, match='error fraction'):
+        ns['_compare_sglang_output'](actual, expected)
+    actual = expected.clone()
+    actual[0, 0] = float('nan')
+    with pytest.raises(AssertionError, match='Non-finite'):
+        ns['_compare_sglang_output'](actual, expected)
+
+
+@pytest.mark.parametrize('name', _SGLANG_ELEMENTWISE_NAMES)
+def test_sglang_elementwise_copied_audit_and_action_propagation(name, monkeypatch):
+    import torch
+    import types
+    task = ROOT / 'tasks/triton2flydsl/sglang' / name
+    audit = module(task / 'scripts/candidate_checks.py')
+    actions = module(task / 'scripts/task_actions.py')
+    monkeypatch.setitem(sys.modules, 'scripts.candidate_checks', audit)
+    details = [{'shape_id': i + 1, 'passed': True} for i in range(actions.CORRECTNESS_COUNT)]
+    h = types.SimpleNamespace(ARENA_FINAL_CANDIDATE=False, run_correctness=lambda: (True, None, details))
+    assert actions.check(h) == []
+    details[-1]['passed'] = False
+    with pytest.raises(RuntimeError, match='Invalid or failed'):
+        actions.check(h)
+    with pytest.raises(RuntimeError, match='non-preparation PyTorch operation'):
+        with audit.candidate_preparation_only():
+            torch.ones(2).square()
+    assert (task / 'scripts/candidate_checks.py').read_bytes() == (ROOT / 'tasks/triton2flydsl/aiter/fp8_mqa_logits/scripts/candidate_checks.py').read_bytes()
+    assert (task / 'scripts/replay_checks.py').read_bytes() == (ROOT / 'tasks/triton2flydsl/aiter/fp8_mqa_logits/scripts/replay_checks.py').read_bytes()
+
+
+def test_sglang_elementwise_original_inputs_seeds_references_gates_and_timing():
+    hashes = {'gdn_l2norm_fwd': {'load_module': 'c36c53e82ca1a8838919c427b1a370d2ef0438789a451e3a3df7c2e0f5c6df0a', '_is_oom': '9b550282f3f34c68d3d9934df68176f5cf533a34ff50825c814de4dc90f3294e', '_retry_oom': '5b0f6dc7bbb2b6e687ae64a186e2c883d9c7db2bbdc01ef6764de12f4e8c1dbc', 'make_x': '43a8c24b405e3c222c5d716f8a4c7d8fd8a736f98935914f8b66c2f497be37c8', 'reference_l2norm': 'e84d9abe9ec04b64a76502104c61db81b66aa1a2c972fe14dd759b28ba0dbb01', 'run_compile': '0b48af5b7f311fb4f4219c09fee8175b1becb7715f1ba47e0ada836dfc6969d0', 'run_correctness': '67db83bf8dc83a9cff2faad8dba9d710e575dc6bd973e7e558bcd6ab0093ba97', 'run_performance': 'b2f5193d24a348ef8517fdbaaf6f8d1c6a4ed689daec1f508b6972e77b2fa886', 'main': 'f71a0eca447c73e79099d35ccf944d04173587ec5c41a316b6245efb0b6fca4f'}, 'fused_norm_gate': {'load_module': '6c0eaa337759666cb08631be7de786cad7efd062fa04f0e064d89fdc985fc30a', '_is_oom': '9b550282f3f34c68d3d9934df68176f5cf533a34ff50825c814de4dc90f3294e', '_retry_oom': '5b0f6dc7bbb2b6e687ae64a186e2c883d9c7db2bbdc01ef6764de12f4e8c1dbc', 'make_test_data': '69948fb1e87722247812dc5068f0cbbf694ed31ac703e8a4c831e637b7b97d9b', 'reference_norm_gate': '41640fb658ce94671a055326711c46a6f642f62bf1b638f8d0a4ccbad06cb53c', 'run_compile': '1db90d55271c579ee45aec9eda512006a49b31b88e77f044af0994324903ca5c', 'run_correctness': '6b7d95841f019489e89caa957fe7ae21746a228c1889da759763f529cc955769', 'run_performance': '6de4d4747db4e2da5d1a2364ec88fe3f9825e50763dfb18075654abaa9c8033f', 'main': '4cd9b931b1bb38cc5868ed2f101b083f973cd9663e4429f8870faead285981f6'}, 'chunk_local_cumsum': {'load_module': '4ca849e18c8b68f3a230283dd813b8085f55b7863e18cc025b00370a714397e7', '_is_oom': '9b550282f3f34c68d3d9934df68176f5cf533a34ff50825c814de4dc90f3294e', '_retry_oom': '5b0f6dc7bbb2b6e687ae64a186e2c883d9c7db2bbdc01ef6764de12f4e8c1dbc', 'make_g': 'f60c65683f65c46600f3cc871ec82c15a616d3f58aae311158b32fbbdcc5608c', 'reference_cumsum': 'ef53138ec4c7abfc028b8096edad2e4d3fcf0edb706a16890860c5fbf9d85e67', '_shape_of': 'c111669b72d1d44501e511a2873860b9be4827e8b6de9e20bad6eca53c4548d8', 'run_compile': 'f567feb9581378fd43f738b902c3dc860aae0f55197336d9bbe3622e4919d4cc', 'run_correctness': 'ef65af08b9b5aff5ab8a58e4842d3d1cde2e13c851b248f13904740a43f9a2a6', 'run_performance': 'e0f378044e5ece6aeac90876a689387d636e5a9ea7dfec307282b3ef69199ae7', 'main': '619e83159bd006e04c6f20f5a206688e1f05896109808711979b45aa6427e8e3'}}
+    for name, functions in hashes.items():
+        task = ROOT / 'tasks/triton2flydsl/sglang' / name
+        for fn in ast.parse((task / 'test_kernel_harness.py').read_text()).body:
+            if isinstance(fn, ast.FunctionDef) and fn.name in functions:
+                normalized = _RemoveSglangElementwiseChecks().visit(fn)
+                assert hashlib.sha256(ast.dump(normalized, include_attributes=False).encode()).hexdigest() == functions[fn.name], (name, fn.name)

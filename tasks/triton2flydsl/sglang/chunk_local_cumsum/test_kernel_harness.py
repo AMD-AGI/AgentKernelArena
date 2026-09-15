@@ -19,7 +19,10 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, require_tensor_contract, verify_timed_run
+
+ENTRY = 'chunk_local_cumsum'
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -128,6 +131,38 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_sglang_output(out, x):
+    import torch
+    require_tensor_contract(out, x)
+    if not bool(torch.isfinite(out).all()):
+        raise AssertionError("Non-finite operator output")
+
+
+def _compare_sglang_output(actual, expected):
+    import torch
+    _checked_sglang_output(actual, expected)
+    if not bool(torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite reference output")
+    atol, rtol = 1e-3, 1e-3
+    if not torch.allclose(actual.float(), expected.float(), atol=atol, rtol=rtol):
+        raise AssertionError("Numerical mismatch: original allclose gate failed")
+
+
+def _sglang_replay_validator(g, cfg):
+    inputs = (g,)
+    originals = tuple(v.clone() for v in inputs)
+    expected = reference_cumsum(g, cfg)
+    def perturb():
+        g.mul_(0.5)
+    def reference():
+        return reference_cumsum(g, cfg)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=reference, compare=_compare_sglang_output)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -142,8 +177,12 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             g = make_g(cfg, "cuda")
+            protected_inputs = (g,)
+            originals = tuple(v.clone() for v in protected_inputs)
             o_t = _retry_oom(lambda: mod.chunk_local_cumsum(
                 g, chunk_size=CHUNK_SIZE, reverse=cfg["reverse"], scale=cfg["scale"]))
+            require_unchanged(protected_inputs, originals)
+            _checked_sglang_output(o_t, g)
             torch.cuda.synchronize()
             o_r = reference_cumsum(g, cfg)
             diff = (o_t.float() - o_r.float()).abs().max().item()
@@ -172,27 +211,30 @@ def run_performance():
         try:
             torch.manual_seed(42 + ti)
             g = make_g(cfg, "cuda")
+            replay_validate = _sglang_replay_validator(g, cfg)
 
             def fn():
-                mod.chunk_local_cumsum(
+                return mod.chunk_local_cumsum(
                     g, chunk_size=CHUNK_SIZE, reverse=cfg["reverse"], scale=cfg["scale"])
 
             _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 

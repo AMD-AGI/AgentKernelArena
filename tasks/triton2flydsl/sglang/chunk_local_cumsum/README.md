@@ -52,3 +52,15 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All ten original FP32 scalar/vector, prefix/suffix and scaled variants remain, including the partial final chunk. The declared regular non-varlen workload uses chunk size 64 and atol=rtol=0.001. Output has the input shape and FP32 dtype. Inputs are read-only.
+
+The actual measured output and the same captured graph replay on changed inputs
+must satisfy that same numerical rule. Negative log-gates stay negative during
+Cumsum replay. Checking, perturbing, poisoning and restoring inputs/outputs occur
+outside timing. Both roles retain seed 42+case index, 10 external warmups and
+100 graph samples. A graph-capture failure cannot bypass measured-output checks.
+The frozen original Triton source is unchanged; final candidate operator calls
+are audited separately for FlyDSL computation and cannot call protected references
+or AITER/Triton/PyTorch operator implementations.

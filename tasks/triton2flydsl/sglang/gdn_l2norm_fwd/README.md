@@ -52,3 +52,14 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All eight original BF16 L2-normalization cases retain atol=0.02, rtol=0.01 and EPS=1e-6. The result has the input shape and dtype. Inputs are read-only.
+
+The actual measured output and the same captured graph replay on changed inputs
+must satisfy that same numerical rule. Checking, perturbing, poisoning and restoring inputs/outputs occur
+outside timing. Both roles retain seed 42+case index, 10 external warmups and
+100 graph samples. A graph-capture failure cannot bypass measured-output checks.
+The frozen original Triton source is unchanged; final candidate operator calls
+are audited separately for FlyDSL computation and cannot call protected references
+or AITER/Triton/PyTorch operator implementations.

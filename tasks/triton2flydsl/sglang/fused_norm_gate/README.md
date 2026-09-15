@@ -52,3 +52,14 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All eight original RMS/LayerNorm, swish/sigmoid and bias variants remain. This task evaluates the first (normalized/gated output) tuple element with no residual. It retains the original BF16 atol=0.02, rtol=0.01 and at most 2% non-close element rule, with finite output and exact shape/dtype/device required. The error-fraction rule is a task-specific acceptance policy, not elementwise allclose. EPS remains 1e-5. Inputs are read-only.
+
+The actual measured output and the same captured graph replay on changed inputs
+must satisfy that same numerical rule. Checking, perturbing, poisoning and restoring inputs/outputs occur
+outside timing. Both roles retain seed 42+case index, 10 external warmups and
+100 graph samples. A graph-capture failure cannot bypass measured-output checks.
+The frozen original Triton source is unchanged; final candidate operator calls
+are audited separately for FlyDSL computation and cannot call protected references
+or AITER/Triton/PyTorch operator implementations.
