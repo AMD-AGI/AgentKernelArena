@@ -260,6 +260,28 @@ def test_new_controls_have_public_failure_rows_and_leave_scored_bytes_unchanged(
                   b'        return run_control(case_index - 10000, load_module)\n')
     after = (root / 'scripts/task_runner.py').read_bytes()
     assert after.count(dispatcher) == 1
+    if name == 'prepare_eagle_docode':
+        # Only the reviewed launcher-policy boundary is additional to the public
+        # control dispatch. Preserve the complete byte comparison for everything
+        # else, including original inputs, numerical gates and measured work.
+        old_loader = (
+            b'def load_module():\n'
+            b'    spec = importlib.util.spec_from_file_location("triton_kernel", SOURCE_FILE)\n'
+            b'    mod = importlib.util.module_from_spec(spec)\n'
+            b'    spec.loader.exec_module(mod)\n'
+            b'    return mod'
+        )
+        checked_loader = (
+            b'def load_module():\n'
+            b'    policy_path = os.path.join(TASK_DIR, "_arena_kernel_policy.py")\n'
+            b'    spec = importlib.util.spec_from_file_location("_eagle_kernel_policy", policy_path)\n'
+            b'    policy = importlib.util.module_from_spec(spec)\n'
+            b'    spec.loader.exec_module(policy)\n'
+            b'    return policy.load_checked(SOURCE_FILE)'
+        )
+        assert before.count(old_loader) == 1
+        assert after.count(checked_loader) == 1
+        after = after.replace(checked_loader, old_loader, 1)
     assert after.replace(dispatcher, b'', 1) == before
     original = json.loads(subprocess.check_output(['git', 'show',
         'e8ec5d6b:' + str((root / 'workloads.json').relative_to(ROOT))], cwd=ROOT))

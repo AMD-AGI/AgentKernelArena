@@ -96,6 +96,19 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
             # as expert31. Known answers and old-source controls below cover it.
             continue
         expected = ast.get_source_segment(before, bf[name])
+        if task.name == 'triton_prepare_eagle_docode' and name == 'load_module':
+            # The protected loader rejects host-decorator/runtime substitutions.
+            # Admit only this exact loading boundary; still check every original
+            # reference, correctness and timing function below. Dedicated EAGLE
+            # tests exercise real loading and all eight correctness rows.
+            expected = (
+                'def load_module():\n'
+                '    policy_path = os.path.join(TASK_DIR, "_arena_kernel_policy.py")\n'
+                '    spec = importlib.util.spec_from_file_location("_eagle_kernel_policy", policy_path)\n'
+                '    policy = importlib.util.module_from_spec(spec)\n'
+                '    spec.loader.exec_module(policy)\n'
+                '    return policy.load_checked(SOURCE_FILE)'
+            )
         if task.name == 'triton_prepare_mrope_positions' and name == 'run_performance':
             # The old decode-labelled cases always executed prefill. Preserve
             # everything except the two now scenario-dependent input fields.
