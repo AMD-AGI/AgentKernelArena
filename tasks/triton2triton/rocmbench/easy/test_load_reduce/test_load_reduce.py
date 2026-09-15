@@ -94,20 +94,32 @@ def test_load_reduce(BLOCK_M, BLOCK_N, dtype_str, request):
     x = torch.randn((BLOCK_M, BLOCK_N), device='cuda', dtype=dtype)
     y = torch.empty((BLOCK_M, ), device='cuda', dtype=dtype)
 
-    load_reduce_kernel[(1, )](x, y, x.stride(0), x.stride(1), y.stride(0), BLOCK_M, BLOCK_N)
+    from _arena_reference import ReductionCheck
+    check = ReductionCheck(x, y)
+    try:
+        check.poison()
+        load_reduce_kernel[(1, )](x, y, x.stride(0), x.stride(1), y.stride(0), BLOCK_M, BLOCK_N)
 
-    golden = x.max(dim=1)[0]
-    torch.set_printoptions(profile='full')
+        golden = check.expected
+        torch.set_printoptions(profile='full')
 
-    result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
-    
-    ################### save tri_out in result_gold ###################
-    test_case_name = request.node.name
-    sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
-    result_gold[sanitized_key_name] = y.clone().detach().cpu()
-    ################################################################### 
+        result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
 
-    assert_close(y, golden, rtol=1e-2, atol=1e-3, check_dtype=False)
+        ################### save tri_out in result_gold ###################
+        test_case_name = request.node.name
+        sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
+        result_gold[sanitized_key_name] = y.clone().detach().cpu()
+        ###################################################################
+
+        assert_close(y, golden, rtol=1e-2, atol=1e-3, check_dtype=False)
+        check(y)
+        request.node.user_properties.append(('load_reduce_contract', {
+            'readonly_input_checked': True, 'independent_input_snapshot': True,
+            'full_output_checked': True,
+        }))
+    finally:
+        check.restore()
+
 
 
 # --- Python wrapper for the kernel for benchmarking ---

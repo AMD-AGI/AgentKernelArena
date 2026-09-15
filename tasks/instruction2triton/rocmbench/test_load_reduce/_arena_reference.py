@@ -56,6 +56,53 @@ def _cast_like(expected, actual):
     return expected.to(device=actual.device,dtype=actual.dtype)
 
 
+def check_readonly(actual, original):
+    if (actual.shape,actual.dtype,actual.device)!=(original.shape,original.dtype,original.device):
+        raise ValueError('Read-only input metadata changed')
+    # Value equality would miss a changed zero sign; preserve input bytes.
+    if not torch.equal(actual.contiguous().view(torch.uint8),original.contiguous().view(torch.uint8)):
+        raise ValueError('Read-only input was modified')
+
+
+class ReductionCheck:
+    """Independent input snapshots never become arguments to the candidate."""
+    def __init__(self, x, output):
+        self.x=x;self.output=output
+        self.original_x=x.clone();self.original_output=output.clone()
+        self.input_strides=x.stride()
+        self.input_snapshot=self.original_x.clone()
+        self.expected=self.input_snapshot.max(dim=1).values
+
+    def __call__(self, result):
+        if result is not self.output:
+            raise ValueError('Timed reduction must expose the declared output buffer')
+        if self.x.stride()!=self.input_strides:
+            raise ValueError('Read-only input strides changed')
+        check_readonly(self.x,self.input_snapshot)
+        # Preserve the original task's comparison rule, including check_dtype.
+        compare(self.output,self.expected,atol=1e-3,rtol=1e-2,check_dtype=False)
+
+    def poison(self):
+        self.output.fill_(float('nan'))
+
+    def fresh(self):
+        # Same allocations, shape, strides and dtype; no RNG draws. Reverse and
+        # negate columns, with row-varying positive/negative offsets, so stale
+        # maxima and zero-initialized reductions are meaningfully challenged.
+        rows=torch.arange(self.x.shape[0],device=self.x.device)
+        shift=torch.where(rows%2==0,-8-rows%3,8+rows%3).to(self.x.dtype)
+        fresh=-self.original_x.flip(1)+shift[:,None]
+        self.input_snapshot=fresh.clone()
+        self.expected=self.input_snapshot.max(dim=1).values
+        if torch.allclose(self.expected,self.original_x.max(dim=1).values,atol=1e-3,rtol=1e-2):
+            raise RuntimeError('Replay control did not change the expected reduction')
+        self.x.copy_(fresh)
+        self.poison()
+
+    def restore(self):
+        self.x.copy_(self.original_x)
+        self.output.copy_(self.original_output)
+
+
 def prepare(c, module):
-    expected=c['x'].max(dim=1).values
-    return lambda result: compare(c['y_buffer'],expected,atol=1e-3,rtol=1e-2,check_dtype=False)
+    return ReductionCheck(c['x'],c['y_buffer'])

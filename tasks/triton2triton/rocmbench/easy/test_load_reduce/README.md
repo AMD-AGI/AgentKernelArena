@@ -13,9 +13,10 @@ Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|
 with one role and one action. Submitted checks use `ARENA_EVAL_PHASE=candidate_evaluation`.
 The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
 `workloads.json` retains 43 original collected cases, including 42 performance cases.
-Collection is checked against this independent manifest. Original correctness
-functions run unchanged. Performance inputs additionally run the task-local
-oracle in `_arena_reference.py`, before timing and against observed timed output.
+Collection is checked against this independent manifest. The original correctness case now computes its oracle from an independent
+pre-invocation input snapshot, so modifying the input cannot rewrite the expected
+answer. All 42 performance inputs use the same protected reference, checked
+before timing, against the actual measured output, and on changed-input replay.
 Seeds, case parameters, original assertions/tolerances, launch parameters,
 prepare/reset callbacks, warmups and sample counts are unchanged.
 
@@ -31,6 +32,33 @@ or incomplete execution cannot qualify this task. These require explicit task
 qualification/repair before a campaign; the migration is not a GPU validation.
 A missing/empty final kernel never falls back to a reference or starting kernel.
 
+## Reduction and replay contract
+
+The operation is the maximum of each full input row: `y[i] = max(x[i, :])`.
+The input is read-only. The single original correctness case is float16 128x64;
+the 42 scored cases retain all 14 original block shapes and fp16/fp32/bf16.
+All input generation uses the original seed and remains unchanged. The kernel,
+launch wrapper and performance function are unchanged; this task still uses a
+single-program grid and contiguous output. No general strided-output support
+is claimed merely because the signature contains a stride argument.
+
+Every full output comparison retains `rtol=1e-2`, `atol=1e-3`, `check_dtype=False`;
+shape/device and finite-value checks remain active. Independent input snapshots
+and byte comparisons reject input mutation, including mutations to non-maxima
+that happen to leave the row maximum unchanged.
+
+The canonical timer exposes the actual measured output through `TimedRun`.
+Outside timing, the harness reverses/negates columns and adds deterministic,
+row-varying signed offsets to the input at the same device addresses. It computes
+a new oracle from an independent copy, poisons the whole output with NaNs and
+replays the bound measured invocation. This challenges cached old maxima,
+unwritten output, all-negative rows and input mutation. Input and output are
+restored in `finally`, including failures. Baseline and candidate therefore time
+the same original input values with unchanged ten warmups, 100 samples, graph
+batching/calibration defaults and mean device latency. Replay control creates no
+new scored cases. Unobservable graph-to-event fallback fails; explicitly selected
+observable event timing retains its timing metadata.
+
 ## Original operator instructions
 
 The historical instructions below retain the operator semantics and interface;
@@ -44,7 +72,7 @@ These kernels, `load_reduce_kernel`,  performs a block-wise load followed by a r
 **Your objective is to optimize the body of both the kernels `load_reduce_kernel`.**
 
 You must ensure that:
-1.  All arguments received by `matmul_kernel and mxfp_to_bf16_kernel` are kept intact and not modified.
+1.  All arguments received by `load_reduce_kernel` are kept intact and not modified.
 2. Provide you final code in ```python code block. 
 Example:
 ```python
