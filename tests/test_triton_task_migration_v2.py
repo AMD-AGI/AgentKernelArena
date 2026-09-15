@@ -956,6 +956,24 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
         expected_source = before.replace(
             ast.get_source_segment(before, correctness_body(before)),
             ast.get_source_segment(after, correctness_body(after)), 1).encode()
+    if task.name == 'test_randn':
+        # Only the protected exact-oracle hook is appended to the original
+        # statistical test. Its range/KS gates, decorators, kernels and timing
+        # remain byte-for-byte unchanged; the dedicated RNG tests exercise it.
+        anchor = b'    assert ks_stat < 0.01\n'
+        assert expected_source.count(anchor) == 1
+        addition = '''
+    # Preserve both original statistical gates; also require the actual seeded
+    # Philox sequence for every original seed/index-width/seed-binding case.
+    from _arena_reference import check_seeded_output
+    check_seeded_output(x, seed, N)
+    request.node.user_properties.append(('rng_contract', {
+        'exact_seeded_sequence_checked': True,
+        'original_range_checked': True, 'original_ks_checked': True,
+        'ks_stat': float(ks_stat), 'ks_limit': 0.01,
+    }))
+'''
+        expected_source = expected_source.replace(anchor, anchor + addition.encode())
     assert source.read_bytes() == expected_source
     assert hashlib.sha256(original).hexdigest()==data['migration']['original_source_sha256']
     rows=data['cases']
@@ -1215,9 +1233,9 @@ def test_add_canonical_samples_observe_exact_replay_and_reject_wrong_output(monk
     assert benchmark.op_callable is original and len(calls)==1
 
 
-# The add and block-copy adapters use actual TimedRun outputs; their dedicated
-# replay tests cover observable event metadata and rejected fallback paths.
-@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_add_kernel', 'test_block_copy'}], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
+# The add, block-copy and RNG adapters use actual TimedRun outputs; their
+# dedicated replay tests cover event metadata and rejected fallback paths.
+@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_add_kernel', 'test_block_copy', 'test_randn'}], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
 def test_rocm_timing_evidence_retains_canonical_fallback_reason(monkeypatch, path):
     adapter = module_at(path.parent/'_arena_eval.py', monkeypatch)
     expected = torch.tensor([2.])
