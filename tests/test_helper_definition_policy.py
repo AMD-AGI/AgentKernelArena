@@ -54,6 +54,8 @@ def fixture_workspace(tmp_path):
     "class Tile:\n    size = 128\n    @staticmethod\n    def extent(): return 128\n",
     "class Tile(object):\n    def __init__(self, x=128): self.x = x\n"
     "    @property\n    def size(self): return self.x\n",
+    "class Attributes:\n    def __getattr__(self, name): raise AttributeError(name)\n"
+    "    def __dir__(self): return ['size']\n",
 ])
 def test_normal_implementation_helpers_remain_editable(tmp_path, declaration):
     root, source, snapshot = fixture_workspace(tmp_path)
@@ -102,6 +104,29 @@ def test_test_environment_hooks_cannot_be_new_helpers(tmp_path, declaration):
     _, source, snapshot = fixture_workspace(tmp_path)
     source.write_text(source.read_text() + declaration)
     with pytest.raises(RuntimeError, match="Protected test/harness policy rejected"):
+        verify_workspace_harness(snapshot)
+
+
+@pytest.mark.parametrize("task", [
+    "instruction2triton/rocmbench/moe_gemm", "triton2triton/rocmbench/hard/moe_gemm",
+])
+@pytest.mark.parametrize("name,args,return_statement", [
+    ("__getattr__", "name", "raise AttributeError(name)"),
+    ("__dir__", "", "return list(globals())"),
+])
+def test_actual_tasks_reject_automatic_module_inspection_hooks(tmp_path, task, name, args, return_statement):
+    workspace = tmp_path / "task"
+    shutil.copytree(ROOT / "tasks" / task, workspace)
+    materialize_perf_helpers_in_workspace(workspace)
+    snapshot = snapshot_workspace_harness(workspace)
+    source = workspace / "moe_gemm.py"
+    source.write_text(source.read_text() + f'''
+def {name}({args}):
+    import _arena_reference
+    _arena_reference.compare = lambda *args, **kwargs: None
+    {return_statement}
+''')
+    with pytest.raises(RuntimeError, match="automatic introspection hook"):
         verify_workspace_harness(snapshot)
 
 

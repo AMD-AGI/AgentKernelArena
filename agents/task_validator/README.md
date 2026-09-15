@@ -95,7 +95,9 @@ Symbol-scoped definitions also declare
 the guard checks its definition: only compiler decorators resolved through
 protected imports are accepted (currently Triton `jit`, `autotune`, `heuristics`).
 Unknown/dynamic decorators, pytest fixtures and new test/lifecycle hook names
-are rejected. Defaults/annotations cannot execute calls, and new helper classes
+are rejected. New module-level `__getattr__`/`__dir__` are also rejected because
+pytest invokes them during module inspection; ordinary class methods with these
+names remain allowed. Defaults/annotations cannot execute calls, and new helper classes
 must have passive bodies without metaclasses or executable bases. Ordinary
 functions, async helpers and passive helper classes remain usable. Calls in
 decorator arguments must use supported Triton

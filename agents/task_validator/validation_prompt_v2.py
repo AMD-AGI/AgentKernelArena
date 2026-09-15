@@ -219,7 +219,7 @@ the listed cases alone does not establish those properties.
    before excluding them. Compiler decorators are resolved through protected
    imports (including aliases); pytest/unknown/dynamic decorators are rejected,
    including outer host decorators on existing targets that retain @triton.jit.
-   New test/lifecycle hook names,
+   New test/lifecycle hook names and module-level __getattr__/__dir__ hooks,
    executable defaults/annotations, and executable helper-class bodies or
    metaclasses are rejected too. Plain helpers and Triton jit/autotune/heuristics
    declarations remain allowed. Decorator arguments cannot call newly introduced

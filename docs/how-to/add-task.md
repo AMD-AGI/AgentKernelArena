@@ -158,7 +158,9 @@ functions and passive helper classes are supported; compiler decorators must
 resolve through the protected imports (currently Triton `jit`, `autotune`, and
 `heuristics`, including aliases). New pytest fixtures/test hooks, unknown or
 dynamic decorators, executable defaults/annotations, and executable helper-class
-bodies/metaclasses are not implementation helpers. This policy covers
+bodies/metaclasses are not implementation helpers. New module-level `__getattr__`
+and `__dir__` are forbidden automatic inspection hooks; same-named ordinary class
+methods remain allowed. This policy covers
 existing targets as well as new helpers: retaining `@triton.jit`
 does not permit an outer helper decorator that replaces the kernel binding.
 Calls in allowed compiler decorator arguments use

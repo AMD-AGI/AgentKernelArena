@@ -107,6 +107,7 @@ _TEST_LIFECYCLE_NAMES = frozenset({
     "setup_module", "teardown_module", "setup_function", "teardown_function",
     "setup_class", "teardown_class", "setup_method", "teardown_method",
 })
+_MODULE_INTROSPECTION_HOOKS = frozenset({"__getattr__", "__dir__"})
 
 
 def _import_bindings(tree: ast.Module) -> dict[str, str]:
@@ -199,6 +200,11 @@ def _validate_editable_definition(node: ast.AST, bindings: dict[str, str], *,
                                   configuration_factories: set[str],
                                   new_helper: bool, method: bool = False) -> None:
     name = node.name
+    if new_helper and not method and name in _MODULE_INTROSPECTION_HOOKS:
+        # Pytest inspects modules through getattr/dir during collection. These
+        # bodies therefore run automatically even without a fixture decorator.
+        # Ordinary instance methods with the same names remain implementation.
+        raise ValueError(f"New module helper {name!r} is an automatic introspection hook")
     if new_helper and (name.startswith(("test", "Test", "pytest_"))
                        or name in _TEST_LIFECYCLE_NAMES):
         raise ValueError(f"New helper {name!r} is a test or test lifecycle hook")
