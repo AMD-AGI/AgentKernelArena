@@ -23,3 +23,18 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+The five original cases exercise single-token FP32 updates with widths 3/4,
+non-padding cache indices, optional bias and SiLU. The existing equal-dtype API
+writes the result into `x` in place and shifts the convolution cache, appending
+the original input token. Protected checks compare that cache exactly (it is a
+copy operation) and preserve the original output atol=1e-1, rtol=1e-1. They also
+check tensor shape, dtype, device, finiteness and unchanged weights/indices.
+References are computed from pristine inputs before invoking the candidate.
+
+Performance preserves the original wrapper, `target_ms=20.0`, warmups, repetitions,
+and preparation that resets both working input and state before each invocation.
+Both actual timed outputs are verified. A replay after changing the source input,
+state and weights must produce the new correct output and updated history.
+Diagnostic perturbations and working buffers are restored even on failure.
+This adds no scored cases and does not change any kernel or generated helper.

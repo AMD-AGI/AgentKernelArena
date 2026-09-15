@@ -1426,3 +1426,112 @@ def test_conv_fwd_adapter_installs_output_state_and_timing_checks(monkeypatch):
     adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_causal_conv1d_fwd/_arena_eval.py',monkeypatch)
     harness=adapter.load_harness()
     assert harness.run_correctness.__module__==harness.run_performance.__module__=='_conv_fwd_checks'
+
+
+def conv_update_inputs():
+    x=torch.tensor([[[1.],[7.]],[[4.],[10.]]])
+    state=torch.tensor([[[10.,20.],[30.,40.]],[[50.,60.],[70.,80.]]])
+    weight=torch.tensor([[1.,2.,3.],[1.,-1.,2.]])
+    bias=torch.tensor([1.,-1.]);indices=torch.tensor([0,1],dtype=torch.int32)
+    return x,state,weight,bias,indices
+
+
+def independent_conv_update(x,state,weight,bias=None,activation=None,conv_state_indices=None):
+    for sequence,slot in enumerate(conv_state_indices.tolist()):
+        history=torch.cat((state[slot].clone(),x[sequence].clone()),dim=-1)
+        value=torch.nn.functional.conv1d(history.unsqueeze(0),weight.unsqueeze(1),bias,groups=x.shape[1])[0]
+        if activation in ('silu','swish'):value=torch.nn.functional.silu(value)
+        x[sequence].copy_(value)
+        state[slot].copy_(history[:,-state.shape[-1]:])
+    return x
+
+
+def test_conv_update_original_reference_and_shifted_state_known_answers(monkeypatch):
+    task=ROOT/'tasks/triton2triton/vllm/triton_causal_conv1d_update'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    x,state,weight,bias,indices=conv_update_inputs()
+    expected=torch.tensor([[[54.],[3.]],[[183.],[9.]]])
+    state_expected=torch.tensor([[[20.,1.],[40.,7.]],[[60.,4.],[80.,10.]]])
+    result=checks.references(harness,x,state,weight,bias,None,indices)
+    assert torch.equal(result[0],expected) and torch.equal(result[1],state_expected)
+    output=independent_conv_update(x,state,weight,bias=bias,conv_state_indices=indices)
+    assert torch.equal(output,expected) and torch.equal(state,state_expected)
+
+
+@pytest.mark.parametrize('mode',['correct','no_state_write','wrong_state','wrong_output','out_of_place','dtype','nonfinite','mutate_weight'])
+def test_conv_update_correctness_covers_state_and_in_place_output(monkeypatch,mode):
+    task=ROOT/'tasks/triton2triton/vllm/triton_causal_conv1d_update'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    x,state,weight,bias,indices=conv_update_inputs()
+    def candidate(x,state,weight,**kwargs):
+        saved=state.clone()
+        result=independent_conv_update(x,state,weight,**kwargs)
+        if mode=='no_state_write':state.copy_(saved)
+        elif mode=='wrong_state':state[1,0,0]=0
+        elif mode=='wrong_output':result.zero_()
+        elif mode=='out_of_place':result=result.clone()
+        elif mode=='dtype':result=result.double()
+        elif mode=='nonfinite':state[0,0,0]=float('nan')
+        elif mode=='mutate_weight':weight.zero_();result.zero_();state.zero_()
+        return result
+    module=SimpleNamespace(causal_conv1d_update=candidate)
+    original_load=lambda:module
+    harness.load_module=original_load
+    with checks.checked_modules(harness):
+        call=lambda:harness.load_module().causal_conv1d_update(x,state,weight,bias=bias,conv_state_indices=indices)
+        if mode=='correct':call()
+        else:
+            with pytest.raises(AssertionError):call()
+    assert harness.load_module is original_load and module.causal_conv1d_update is candidate
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed_state','stale','no_write','wrong_replay_state','wrong_replay_output','mutate_weight','replay_raises'])
+def test_conv_update_actual_timed_buffers_and_replay_restore(monkeypatch,mode):
+    task=ROOT/'tasks/triton2triton/vllm/triton_causal_conv1d_update'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    harness._TimedRun=SimpleNamespace
+    x,conv_state,weight,bias_t,conv_state_indices=conv_update_inputs()
+    x_work=x.clone();conv_state_work=conv_state.clone();activation='silu'
+    inputs=(x,conv_state,weight,bias_t,conv_state_indices,x_work,conv_state_work)
+    saved=tuple(value.clone() for value in inputs)
+    def fn():
+        return independent_conv_update(x_work,conv_state_work,weight,bias=bias_t,
+                                       activation=activation,conv_state_indices=conv_state_indices)
+    def prepare():x_work.copy_(x);conv_state_work.copy_(conv_state)
+    options=[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        options.append(kwargs);kwargs['prepare_fn']()
+        outputs=measured();cached=tuple(value.clone() for value in outputs)
+        if mode=='wrong_timed_state':conv_state_work.zero_()
+        def replay():
+            kwargs['prepare_fn']()
+            if mode=='replay_raises':raise RuntimeError('injected replay failure')
+            if mode=='stale':
+                for value,original in zip(outputs,cached):value.copy_(original)
+            elif mode!='no_write':
+                measured()
+                if mode=='wrong_replay_state':conv_state_work.zero_()
+                elif mode=='wrong_replay_output':x_work.zero_()
+                elif mode=='mutate_weight':weight.zero_();x_work.zero_();conv_state_work.zero_()
+            return outputs
+        timed_run.outputs=outputs;timed_run.rerun=replay
+        return 0.25,dict(benchmark_method='cuda_graph')
+    call=lambda:checks.checked_benchmark(harness,benchmark,fn,warmup=10,repetition=100,target_ms=20.0,prepare_fn=prepare)
+    if mode=='correct':
+        ms,metadata=call()
+        assert ms==0.25 and metadata['cached_state_checked'] and metadata['perturbed_input_replay_checked']
+    elif mode=='replay_raises':
+        with pytest.raises(RuntimeError,match='injected replay failure'):call()
+    else:
+        with pytest.raises(AssertionError):call()
+    assert options==[dict(warmup=10,repetition=100,target_ms=20.0,prepare_fn=prepare)]
+    assert all(torch.equal(value,original) for value,original in zip(inputs,saved))
+
+
+def test_conv_update_adapter_installs_output_state_and_timing_checks(monkeypatch):
+    adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_causal_conv1d_update/_arena_eval.py',monkeypatch)
+    harness=adapter.load_harness()
+    assert harness.run_correctness.__module__==harness.run_performance.__module__=='_conv_update_checks'
