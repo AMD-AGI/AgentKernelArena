@@ -544,9 +544,10 @@ def test_real_cpu_timeout_kills_tool_process_group(tmp_path):
     for _ in range(50):
         try:
             state = stat.read_text().split()[2]
-        except FileNotFoundError:
+        except (FileNotFoundError, ProcessLookupError):
             # The killed process can be reaped between observing and reading
-            # /proc. Its disappearance is the desired outcome.
+            # /proc (ENOENT at open or ESRCH during read). Its disappearance
+            # is the desired outcome; other read errors must still fail.
             break
         if state == "Z":
             break
