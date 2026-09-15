@@ -1,6 +1,6 @@
 # fused_mxfp4_quant_moe_sort
 
-Optimize the fused MXFP4 quantization + MOE sort Triton kernel for AMD MI300X GPU. Fuses dynamic microscaling FP4 quantization with MOE token sorting.
+Optimize the fused MXFP4 quantization + MOE sort Triton kernel for supported MXFP4 hardware (gfx950/gfx1250). Fuses dynamic microscaling FP4 quantization with MOE token sorting.
 
 ## Candidate and baseline contract
 
@@ -61,3 +61,13 @@ NaN, following [OCP MX specification section 5.4.1/table 7](https://www.opencomp
 CPU regression checks cover all 256 encodings against PyTorch's native E8M0
 conversion. Original numerical tolerances and performance code are unchanged;
 GPU qualification remains required.
+
+The protected adapter checks both packed data and sorted scales from the actual
+timed invocation and a replay with changed input values and legal token/expert
+mapping. It retains the original `atol=rtol=0.1` comparisons, native-scale
+dequantization convention and valid-row slice; unspecified padding is not a new
+numerical requirement. Tensor shape, dtype, device and read-only source buffers
+are checked explicitly. References use snapshots made before candidate execution.
+Replay diagnostics restore original inputs in `finally`. The original full
+wrapper/allocation boundary, 24 cases, seed 42, 50 warmups, 200 default samples
+and median calculation are unchanged. These checks run outside measured time.

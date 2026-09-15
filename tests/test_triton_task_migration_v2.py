@@ -1185,6 +1185,148 @@ def test_quant_sort_harness_bootstrap_supports_captured_stdout(monkeypatch,strea
     finally:stream.close()
 
 
+def _quant_sort_cpu_harness():
+    """Original quantizer/decoder and benchmark orchestration; CPU sort fixture."""
+    from types import ModuleType
+    path = ROOT/'tasks/triton2triton/geak_eval/L3/fused_mxfp4_quant_moe_sort/test_kernel_harness.py'
+    h = ModuleType('_quant_sort_cpu')
+    quant = pure_functions(path, ['_torch_dynamic_mxfp4_quant'])
+    decoder = pure_functions(path, ['mxfp4_to_f32'], {'torch': SimpleNamespace(
+        float32=torch.float32, tensor=lambda values, **kwargs: torch.tensor(
+            values, **{**kwargs, 'device': 'cpu'}))})
+    conversion = pure_functions(path, ['e8m0_to_f32', 'convert_mxfp4_to_fp32'],
+        {'SCALE_GROUP_SIZE': 32, 'mxfp4_to_f32': decoder.mxfp4_to_f32})
+    h.dynamic_mxfp4_quant = quant._torch_dynamic_mxfp4_quant
+    h.convert_mxfp4_to_fp32 = conversion.convert_mxfp4_to_fp32
+    h._fp4x2 = h._fp8_e8m0 = torch.uint8
+    def reference(x, sorted_ids, token_num, topk, q_dtype_a, local, valid, block):
+        packed, scales = quant._torch_dynamic_mxfp4_quant(x)
+        rows = (sorted_ids & 0xffffff) * topk + (sorted_ids >> 24)
+        return packed, scales[rows], scales
+    h.run_fused_dynamic_mxfp4_quant_moe_sort_ref = reference
+    def candidate(x, sorted_ids, num_valid_ids, token_num, topk, block_size=32):
+        # Independent output generation on CPU; no Triton execution claimed.
+        packed, scales, _ = reference(x, sorted_ids, token_num, topk, None, None,
+                                      num_valid_ids, block_size)
+        return packed, scales
+    h.fused_dynamic_mxfp4_quant_moe_sort = candidate
+    x = torch.tensor([[0., .5, 1., 1.5, 2., 3., 4., 6.]]).repeat(4, 4)
+    x.mul_(torch.tensor([1., 2., -1., -2.])[:, None])
+    inp = dict(x=x, sorted_ids=torch.tensor([1 << 24, 1], dtype=torch.int64),
+               num_valid_ids=torch.tensor([2, 2], dtype=torch.int64), token_num=2,
+               topk=2, block_size_M=128)
+    h._make_inputs = lambda config: inp
+    h._cfg_label = lambda config: 'CPU synthetic quant-sort orchestration'
+    h.ALL_CONFIGS = [object()]
+    h.WARMUP, h.ITERATIONS = 50, 200
+    h.math = __import__('math')
+    tree = ast.parse(path.read_text())
+    selected = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'run_benchmark']
+    exec(compile(ast.Module(body=selected, type_ignores=[]), str(path), 'exec'), h.__dict__)
+    return h, inp
+
+
+def test_quant_sort_reference_known_packed_nibbles_and_scales():
+    h, inp = _quant_sort_cpu_harness()
+    packed, scales = h.dynamic_mxfp4_quant(inp['x'])
+    assert packed[0].tolist() == [0x10, 0x32, 0x54, 0x76] * 4
+    assert scales[:, 0].tolist() == [127, 128, 127, 128]
+    decoded = h.convert_mxfp4_to_fp32(packed, scales)
+    torch.testing.assert_close(decoded, inp['x'], atol=0, rtol=0)
+    with pytest.raises(AssertionError):
+        torch.testing.assert_close(h.convert_mxfp4_to_fp32(torch.zeros_like(packed), scales),
+                                   inp['x'], atol=0.1, rtol=0.1)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_data', 'wrong_scales', 'missing',
+                                 'dtype', 'shape', 'mutate_source'])
+def test_quant_sort_correctness_requires_both_outputs_and_pristine_inputs(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/geak_eval/L3/fused_mxfp4_quant_moe_sort'
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h, inp = _quant_sort_cpu_harness()
+    original = h.fused_dynamic_mxfp4_quant_moe_sort
+    def candidate(*args, **kwargs):
+        if mode == 'mutate_source': args[0].zero_()
+        packed, scales = original(*args, **kwargs)
+        if mode == 'wrong_data': packed.zero_()
+        if mode == 'wrong_scales': scales.zero_()
+        if mode == 'missing': return (packed,)
+        if mode == 'dtype': packed = packed.float()
+        if mode == 'shape': scales = scales[:1]
+        return packed, scales
+    h.fused_dynamic_mxfp4_quant_moe_sort = candidate
+    with checks.checked_correctness(h):
+        def run():
+            return h.fused_dynamic_mxfp4_quant_moe_sort(inp['x'], inp['sorted_ids'],
+                inp['num_valid_ids'], inp['token_num'], inp['topk'], inp['block_size_M'])
+        if mode == 'correct': run()
+        else:
+            with pytest.raises(AssertionError): run()
+    assert h.fused_dynamic_mxfp4_quant_moe_sort is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write',
+                                 'wrong_replay', 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_quant_sort_actual_benchmark_captures_both_outputs_and_restores_inputs(monkeypatch, mode):
+    import sys
+    task = ROOT/'tasks/triton2triton/geak_eval/L3/fused_mxfp4_quant_moe_sort'
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    monkeypatch.setitem(sys.modules, '_aka_benchmark', SimpleNamespace(TimedRun=SimpleNamespace))
+    h, inp = _quant_sort_cpu_harness()
+    original = h.fused_dynamic_mxfp4_quant_moe_sort
+    pristine = checks.snapshots(inp)
+    observed = []
+    def benchmark(fn, *, timed_run, **kwargs):
+        observed.append(kwargs)
+        checks.unchanged(inp, pristine)
+        outputs = fn()
+        cached = [value.clone() for value in outputs]
+        if mode == 'wrong_timed': outputs[0].zero_()
+        if mode == 'mutate_timed': inp['x'].zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay exploded')
+            new = fn()
+            if mode == 'mutate_replay': inp['sorted_ids'].zero_()
+            if mode == 'stale': new = cached
+            if mode == 'no_write': return outputs
+            if mode == 'wrong_replay': new[1].zero_()
+            for output, value in zip(outputs, new): output.copy_(value)
+            return outputs
+        timed_run.outputs, timed_run.rerun = outputs, replay
+        return 0.125, {'benchmark_method': 'cuda_graph'}
+    h.benchmark_cuda_graph_or_events = lambda fn, **kwargs: checks.checked_benchmark(h, benchmark, fn, **kwargs)
+    if mode == 'correct':
+        assert h.run_benchmark([0]) == pytest.approx(0.125)
+    else:
+        with pytest.raises((AssertionError, RuntimeError)): h.run_benchmark([0])
+    assert observed == [dict(warmup=50, repetition=200)]
+    checks.unchanged(inp, pristine)
+    assert h.fused_dynamic_mxfp4_quant_moe_sort is original
+
+
+def test_quant_sort_action_adapter_retains_replay_metadata(monkeypatch):
+    import sys
+    task = ROOT/'tasks/triton2triton/geak_eval/L3/fused_mxfp4_quant_moe_sort'
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h, inp = _quant_sort_cpu_harness()
+    def benchmark(fn, *, timed_run, **kwargs):
+        timed_run.outputs, timed_run.rerun = fn(), fn
+        return 0.25, {'benchmark_method': 'cuda_graph'}
+    h.benchmark_cuda_graph_or_events = benchmark
+    monkeypatch.setitem(sys.modules, '_aka_benchmark', SimpleNamespace(TimedRun=SimpleNamespace))
+    monkeypatch.setitem(sys.modules, 'test_kernel_harness', h)
+    monkeypatch.setitem(sys.modules, '_arena_checks', checks)
+    actions = module_at(task/'_arena_actions.py', monkeypatch)
+    adapter = module_at(task/'_arena_eval.py', monkeypatch)
+    measurements = adapter.capture_performance(actions, {'cases': [{'checks': ['performance']}],
+                                                        'timing_calls_per_case': ['candidate']})
+    ms, metadata = measurements[0]
+    assert ms == 0.25
+    assert metadata['timed_output_checked'] and metadata['perturbed_input_replay_checked']
+    assert metadata['source_buffers_unchanged']
+    assert h.benchmark_cuda_graph_or_events is benchmark
+
+
 def test_geak_boolean_integer_and_skipped_result_contracts(monkeypatch):
     adapter=module_at(GEAK[0].parent/'_arena_eval.py',monkeypatch)
     adapter.require_success(None,'none',1)
