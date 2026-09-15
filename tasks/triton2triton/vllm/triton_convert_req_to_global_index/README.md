@@ -36,3 +36,15 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+Protected checks validate shape, dtype, device and exact values for the ordinary
+output and for **both** outputs when `return_valid_counts=True`. Each original
+correctness case additionally uses cloned inputs with shifted request/table
+mapping and negative, exactly out-of-range and farther out-of-range token indices.
+These unscored diagnostics preserve original scored shapes, seeds and exact gates.
+
+Performance retains the existing invocation, warmups and samples. It checks the
+actual timed result against a pristine scalar-reference snapshot, then perturbs
+the same input buffers with those boundary values and poisons the output before
+replaying the exact captured graph. Inputs are checked for mutation and restored
+in `finally`. Original kernel and generated helper sources remain unchanged.

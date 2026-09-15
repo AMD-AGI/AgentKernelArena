@@ -1535,3 +1535,101 @@ def test_conv_update_adapter_installs_output_state_and_timing_checks(monkeypatch
     adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_causal_conv1d_update/_arena_eval.py',monkeypatch)
     harness=adapter.load_harness()
     assert harness.run_correctness.__module__==harness.run_performance.__module__=='_conv_update_checks'
+
+
+def index_conversion_inputs():
+    req=torch.tensor([1,0],dtype=torch.int32)
+    table=torch.tensor([[10,20],[30,40]],dtype=torch.int32)
+    tokens=torch.tensor([[0,3,4,7],[1,-1,8,12]],dtype=torch.int32)
+    return req,table,tokens
+
+
+def independent_index_conversion(req,table,tokens,BLOCK_SIZE=4,BLOCK_N=4,return_valid_counts=False):
+    block=torch.div(tokens,BLOCK_SIZE,rounding_mode='floor')
+    valid=(tokens>=0)&(block<table.shape[1])
+    bases=table[req.long().unsqueeze(1),block.clamp(0,table.shape[1]-1).long()]
+    output=torch.where(valid,bases*BLOCK_SIZE+tokens.remainder(BLOCK_SIZE),-1).to(torch.int32)
+    return (output,valid.sum(1).to(torch.int32)) if return_valid_counts else output
+
+
+def test_index_conversion_reference_counts_and_oob_known_answers(monkeypatch):
+    task=ROOT/'tasks/triton2triton/vllm/triton_convert_req_to_global_index'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    args=index_conversion_inputs()
+    expected=torch.tensor([[120,123,160,163],[41,-1,-1,-1]],dtype=torch.int32)
+    assert torch.equal(checks.reference(harness,args,4),expected)
+    result=independent_index_conversion(*args,return_valid_counts=True)
+    assert torch.equal(result[0],expected) and torch.equal(result[1],torch.tensor([4,1],dtype=torch.int32))
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_counted_output','wrong_counts','dtype','shape','ignore_oob','mutate_inputs'])
+@pytest.mark.parametrize('counted',[False,True])
+def test_index_conversion_correctness_checks_both_results_and_oob(monkeypatch,mode,counted):
+    task=ROOT/'tasks/triton2triton/vllm/triton_convert_req_to_global_index'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    inputs=index_conversion_inputs()
+    def candidate(req,table,tokens,**kwargs):
+        result=independent_index_conversion(req,table,tokens,**kwargs)
+        output=result[0] if isinstance(result,tuple) else result
+        if mode=='wrong_counted_output' and counted:output.zero_()
+        elif mode=='wrong_counts' and counted:result[1].zero_()
+        elif mode=='dtype':
+            output=output.long();result=(output,result[1]) if counted else output
+        elif mode=='shape':
+            output=output[:1];result=(output,result[1]) if counted else output
+        elif mode=='ignore_oob':output[tokens>=table.shape[1]*kwargs['BLOCK_SIZE']]=0
+        elif mode=='mutate_inputs':table.zero_();output.zero_()
+        return result
+    module=SimpleNamespace(convert_req_to_global_index=candidate)
+    original_load=lambda:module;harness.load_module=original_load
+    with checks.checked_modules(harness):
+        call=lambda:harness.load_module().convert_req_to_global_index(*inputs,BLOCK_SIZE=4,BLOCK_N=4,return_valid_counts=counted)
+        if mode=='correct' or not counted and mode in ('wrong_counted_output','wrong_counts'):call()
+        else:
+            with pytest.raises(AssertionError):call()
+    assert harness.load_module is original_load and module.convert_req_to_global_index is candidate
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay','ignore_oob','mutate_inputs','replay_raises'])
+def test_index_conversion_actual_captured_replay_and_pristine_restore(monkeypatch,mode):
+    task=ROOT/'tasks/triton2triton/vllm/triton_convert_req_to_global_index'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch);harness._TimedRun=SimpleNamespace
+    req_id,block_table,token_indices=index_conversion_inputs();bs=4
+    inputs=(req_id,block_table,token_indices);pristine=tuple(value.clone() for value in inputs)
+    mod=SimpleNamespace(convert_req_to_global_index=independent_index_conversion)
+    original=mod.convert_req_to_global_index
+    def fn():mod.convert_req_to_global_index(req_id,block_table,token_indices,BLOCK_SIZE=bs,BLOCK_N=4)
+    options=[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        options.append(kwargs);output=measured();cached=output.clone()
+        if mode=='wrong_timed':output.zero_()
+        def replay():
+            if mode=='replay_raises':raise RuntimeError('injected replay failure')
+            if mode=='stale':output.copy_(cached)
+            elif mode!='no_write':
+                output.copy_(measured())
+                if mode=='wrong_replay':output.zero_()
+                elif mode=='ignore_oob':output[token_indices>=block_table.shape[1]*bs]=0
+                elif mode=='mutate_inputs':block_table.zero_();output.zero_()
+            return output
+        timed_run.outputs=output;timed_run.rerun=replay
+        return 0.25,dict(benchmark_method='cuda_graph')
+    call=lambda:checks.checked_benchmark(harness,benchmark,fn,warmup=10,repetition=100)
+    if mode=='correct':
+        ms,metadata=call()
+        assert ms==0.25 and metadata['out_of_bounds_checked'] and metadata['perturbed_input_replay_checked']
+    elif mode=='replay_raises':
+        with pytest.raises(RuntimeError,match='injected replay failure'):call()
+    else:
+        with pytest.raises(AssertionError):call()
+    assert options==[dict(warmup=10,repetition=100)] and mod.convert_req_to_global_index is original
+    assert all(torch.equal(value,saved) for value,saved in zip(inputs,pristine))
+
+
+def test_index_conversion_adapter_installs_correctness_and_timing_checks(monkeypatch):
+    adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_convert_req_to_global_index/_arena_eval.py',monkeypatch)
+    harness=adapter.load_harness()
+    assert harness.run_correctness.__module__==harness.run_performance.__module__=='_index_conversion_checks'
