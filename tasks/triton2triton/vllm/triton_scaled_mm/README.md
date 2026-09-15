@@ -30,3 +30,13 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+Protected checks require the declared output shape/dtype/device and finite values,
+using the original FP32 reference and atol=rtol=1e-2. The oracle reads pristine
+operands, scales and bias before candidate execution. Unscored diagnostics cover
+partial M/N/K blocks, legal padded/transposed inputs, scalar-A/per-channel-B
+scales, explicit tiles and FP32 output. All five scored cases retain their original
+seeds and distributions, including the larger performance input magnitudes.
+Both roles time the same public wrapper with 10 warmups and 100 samples. The
+actual timed result is checked, poisoned and replayed after changing both operands,
+scales and bias; every caller-owned input is checked and restored even on failure.

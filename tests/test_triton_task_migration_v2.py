@@ -4848,3 +4848,107 @@ def test_silu_fp8_original_measured_pair_and_replay_restores_input(monkeypatch, 
 def test_silu_fp8_adapter_installs_task_local_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_silu_mul_quant_fp8/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_silu_fp8_checks'
+
+
+def _scaled_mm_cpu(a, b, sa, sb, out_dtype, bias=None, **options):
+    # Independent accumulation/order: FP64 matrix product, then row/column scales.
+    result = ((a.double()@b.double())*sa.double().reshape(-1,1)*sb.double().reshape(1,-1)).to(out_dtype)
+    return result if bias is None else result+bias.to(out_dtype)
+
+
+def _scaled_mm_cpu_harness(monkeypatch):
+    h, checks = _fp8_group_cpu_harness(monkeypatch, 'scaled_mm')
+    rand = torch.rand
+    monkeypatch.setattr(torch, 'rand', lambda *a,**kw: rand(*a,**{**kw,'device':'cpu'}))
+    return h, checks
+
+
+def test_scaled_mm_independent_known_answer_and_unchanged_gate(monkeypatch):
+    h, checks = _scaled_mm_cpu_harness(monkeypatch)
+    values = [torch.tensor([[1.,2.],[3.,4.]]),torch.tensor([[5.,6.],[7.,8.]]),
+              torch.tensor([2.,3.]),torch.tensor([.5,2.]),torch.tensor([1.,-1.])]
+    expected = torch.tensor([[20.,87.],[65.5,299.]],dtype=torch.float16)
+    checks.check_output(checks.reference(h,values,torch.float16),expected)
+    checks.check_output(_scaled_mm_cpu(*values[:4],torch.float16,bias=values[4]),expected)
+    allowed = expected.clone();allowed[0,0]+=.125
+    checks.check_output(allowed,expected)
+    allowed[0,0]+=1
+    with pytest.raises(AssertionError): checks.check_output(allowed,expected)
+
+
+@pytest.mark.parametrize('mode', ['correct','shape','dtype','nonfinite','wrong_values','ignore_bias',
+                                 'ignore_scales','omit_partial_tiles','wrong_output_dtype',
+                                 'mutate_a','mutate_b','mutate_sa','mutate_sb','mutate_bias'])
+def test_scaled_mm_original_correctness_and_unscored_layouts(monkeypatch,mode):
+    h, checks = _scaled_mm_cpu_harness(monkeypatch)
+    calls = []
+    def public(a,b,sa,sb,dtype,bias=None,**kwargs):
+        calls.append((tuple(a.shape),tuple(b.shape),a.stride(),b.stride(),tuple(sa.shape),tuple(sb.shape),dtype,kwargs))
+        if mode.startswith('mutate_'):
+            target={'mutate_a':a,'mutate_b':b,'mutate_sa':sa,'mutate_sb':sb,'mutate_bias':bias}[mode]
+            if target is not None: target.zero_()
+        result=_scaled_mm_cpu(a,b,sa,sb,dtype,bias=bias)
+        if mode=='shape':result=result.flatten()
+        if mode=='dtype':result=result.double()
+        if mode=='nonfinite':result.fill_(float('nan'))
+        if mode=='wrong_values':result.zero_()
+        if mode=='ignore_bias':result=_scaled_mm_cpu(a,b,sa,sb,dtype)
+        if mode=='ignore_scales':result=(a.float()@b.float()).to(dtype)
+        if mode=='omit_partial_tiles' and a.shape[0]==17:result[-1].add_(10)
+        if mode=='wrong_output_dtype':result=result.half()
+        return result
+    mod=SimpleNamespace(triton_scaled_mm=public);h.load_module=lambda:mod
+    checks.install(h)
+    ok,reason=h.run_correctness()
+    assert ok is (mode=='correct'),reason
+    if mode=='correct':
+        scored=[c for c in calls if c[0][0]!=17]
+        assert [(c[0][0],c[0][1],c[1][1]) for c in scored]==[v[:3] for v in h.TEST_SHAPES]
+        diagnostics=[c for c in calls if c[0][0]==17]
+        assert len(diagnostics)==2
+        assert all(c[0]==(17,35) and c[1]==(35,19) and c[2]==(70,1) and c[3]==(1,35) for c in diagnostics)
+        assert diagnostics[0][4:6]==((1,),(19,)) and not diagnostics[0][7]['use_heuristic']
+        assert diagnostics[1][6]==torch.float32
+    assert mod.triton_scaled_mm is public
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay',
+                                'mutate_timed','mutate_replay','raise_replay'])
+def test_scaled_mm_original_timing_replay_and_all_readonly_buffers_restored(monkeypatch,mode):
+    import inspect
+    h,checks=_scaled_mm_cpu_harness(monkeypatch)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(triton_scaled_mm=_scaled_mm_cpu);h.load_module=lambda:mod
+    values,snapshots,options=[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        inputs=[state[k] for k in ('input_t','weight','scale_a','scale_b','bias')]
+        values.append(inputs);snapshots.append(checks.snapshot(inputs));options.append(kwargs)
+        output=measured();cached=output.clone()
+        if mode=='wrong_timed':output.zero_()
+        if mode=='mutate_timed':
+            for value in inputs:
+                if value is not None:value.zero_()
+        def replay():
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='no_write':output.copy_(cached if mode=='stale' else measured())
+            if mode=='wrong_replay':output.zero_()
+            if mode=='mutate_replay':
+                for value in inputs:
+                    if value is not None:value.zero_()
+            return output
+        timed_run._bind(replay,output)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h)
+    rows=h.run_performance()
+    assert len(rows)==5 and options==[dict(warmup=10,repetition=100)]*5
+    for case,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('M','K','N','per_token_scale_a','per_channel_scale_b','has_bias'),case))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for inputs,saved in zip(values,snapshots):checks.unchanged(inputs,saved)
+    assert mod.triton_scaled_mm is _scaled_mm_cpu and h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_scaled_mm_adapter_installs_task_local_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_scaled_mm/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_scaled_mm_checks'
