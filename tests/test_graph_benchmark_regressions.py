@@ -149,28 +149,6 @@ def test_torch2flydsl_gfx950_configs_use_platform_support():
         assert "status: active" in config, task
 
 
-def test_aiter_task_venvs_inherit_the_image_parent_packages():
-    tasks = [
-        "mla_decode_rope",
-        "moe_routing_sigmoid_top1_fused",
-        "pa_decode",
-        "pa_prefill",
-        "unified_attention",
-    ]
-    for task in tasks:
-        runner = (
-            ROOT / "tasks/repository/aiter" / task / "scripts/task_runner.py"
-        ).read_text()
-        assert "def _inherit_parent_site_packages(" in runner, task
-        assert "aka_parent_site_packages.pth" in runner, task
-        assert "site.addsitedir" in runner, task
-        assert 'os.environ.setdefault("USER", "agentkernelarena")' in runner, task
-        assert 'os.environ.setdefault("LOGNAME", "agentkernelarena")' in runner, task
-        assert runner.index("_inherit_parent_site_packages(venv_python)") < (
-            runner.index("if not ready_marker.exists()")
-        ), task
-
-
 def test_sglang_mxfp8_runners_handle_anonymous_docker_uids():
     tasks = [
         "mi355x_sglang_triton_mxfp8_grouped_gemm",

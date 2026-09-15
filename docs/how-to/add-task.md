@@ -9,13 +9,15 @@ myst:
 
 Read this document before adding or modifying a task, its configuration,
 reference, input generator, harness, or benchmark. It is the canonical task
-contract and replaces the previous separate isolated-task, repository-task,
-and `operator2flydsl` configuration guidance.
+contract and replaces the previous task-family-specific configuration guidance.
 
 ## Status and scope
 
-**Schema v2 is the selected design; its runtime migration is not implemented
-by this documentation change.** The current branch still consumes legacy
+**Schema v2 is being implemented; task migration is not yet enabled.** The
+shared declaration parser (`src/task_spec.py`), result validation
+(`src/task_protocol.py`), and argv action executor (`src/task_execution.py`)
+have focused CPU coverage. Discovery, orchestration, validator, and task harness
+migration must be completed before live tasks can use them. The existing run path still consumes legacy
 fields such as `task_type`, `source_file_path`, and `compile_command`. The v2
 examples below specify the implementation target; they are not drop-in runnable
 configs for the current loader. See [Migration](#migration) before changing an
@@ -25,7 +27,7 @@ task config version.
 The design uses one task `config.yaml`, task-owned evaluation scripts, and
 optional workload data. It does not require a second `definition.yaml`, an
 agent-specific driver, or a Python callback API. All task families use the same
-schema, including existing optimization, generation, repository, and image-backed
+schema, including existing optimization, generation, and image-backed
 tasks and the new SIKL operator-to-FlyDSL tasks.
 
 Use the existing task directory as the package boundary. A typical layout is:
@@ -221,7 +223,8 @@ malformed results, and stale result files are errors, not implicit skips.
 ### Workspace, platform, tools, and exports
 
 These optional fields use the same schema for small isolated tasks and larger
-repository/image-backed tasks.
+image-backed tasks. Declared pinned Git sources remain an acquisition option;
+the unmaintained `tasks/repository` suite has been removed.
 
 | Field | Meaning |
 | --- | --- |
@@ -302,6 +305,8 @@ is part of v2 and is not yet understood by the legacy parsers. Its fields are:
 | `status` | `PASS` or `FAIL`. Only the framework decides lifecycle skips and diagnostic acceptance. |
 | `cases` | Array of case records. `validate-task` enumerates the manifest with each case's `checks` list (`correctness`, `performance`, or both). Correctness/performance records cover their declared manifest. A whole-build compilation check may use an empty array. |
 | `reason` | Required explanation for a failure; optional on success. |
+| `failure_kind` | Optional failure classification. A diagnostic baseline numerical failure must use `numerical_mismatch` at the report level and on every failed case. Missing or other classifications cannot use that exception. |
+| `metadata` | Optional object with task-specific diagnostic evidence; it cannot override status, identity, coverage, or timing checks. |
 
 Each case uses a stable `test_case_id` and declared `shape`, `dtype`, and
 `params` as applicable. Correctness records include `status` and task-defined
@@ -576,32 +581,6 @@ exports:
     command: [python3, scripts/export_solution.py]
 ```
 
-### Optimize an upstream repository
-
-```yaml
-schema_version: 2
-description: Optimize the declared rocPRIM implementation region.
-workspace:
-  sources:
-    - kind: git
-      url: https://github.com/ROCm/rocPRIM.git
-      revision: "<replace with a full upstream commit SHA>"
-      destination: upstream
-  setup:
-    - [python3, scripts/setup.py]
-candidate:
-  language: hip
-  editable:
-    - {path: upstream/rocprim/include, scope: tree}
-evaluation:
-  runner: [python3, scripts/evaluate.py]
-```
-
-Replace the revision placeholder before use and narrow the editable region to
-the intended optimization target. An image-backed optimization task uses an
-image source declaration instead of a Git source; candidate and evaluation
-fields retain the same meanings. All paths include the materialization prefix.
-
 ## How to add or modify a task
 
 1. **Check implementation status.** Read the status and migration sections. Do
@@ -662,12 +641,12 @@ as documentation; they do not qualify any task on GPU.
 
 ### Current runtime versus the selected contract
 
-This branch still uses the legacy command fields and task-family dispatch in
+The existing orchestration still uses legacy command fields and task-family dispatch in
 workspace setup, prompts, evaluation, and validation. The current evaluator
 reads `compile_command`/`correctness_command`, and timing consumes existing
-per-case formats. There is no implemented `schema_version: 2` dispatcher or
-`ARENA_EVAL_RESULT` parser here. The current Forge integrations, SIKL harnesses,
-and sanitizer limitations are not changed by this document.
+per-case formats. The new `TaskSpec` and `ARENA_EVAL_RESULT` parser are available
+to the migration, but are not yet wired into that run path. Their CPU tests
+do not qualify the existing Forge integrations, SIKL harnesses, or GPU tools.
 
 For executable work before migration, retain the task's working legacy fields
 and use nearby tasks plus the implementation as reference. Legacy command
@@ -711,7 +690,7 @@ Before enabling v2, implement and verify the following together:
 - Tool profile mapping and disabled-adapter selection with existing runtime,
   evidence, and policy protections intact.
 - Representative coverage of an existing HIP task, PyTorch-to-HIP generation,
-  Triton-to-FlyDSL conversion, a symbol-scoped task, repository/image tasks,
+  Triton-to-FlyDSL conversion, a symbol-scoped task, image tasks,
   and both SIKL operator families. Compare before/after cases, rules, timing,
   and scores on compatible hardware; test with more than one agent integration.
 
