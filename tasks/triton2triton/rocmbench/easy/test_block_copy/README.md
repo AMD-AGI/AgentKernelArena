@@ -13,23 +13,42 @@ Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|
 with one role and one action. Submitted checks use `ARENA_EVAL_PHASE=candidate_evaluation`.
 The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
 `workloads.json` retains 130 original collected cases, including 40 performance cases.
-Collection is checked against this independent manifest. Original correctness
-functions run unchanged. Performance inputs additionally run the task-local
-oracle in `_arena_reference.py`, before timing and against observed timed output.
-Seeds, case parameters, original assertions/tolerances, launch parameters,
-prepare/reset callbacks, warmups and sample counts are unchanged.
+Collection is checked against this independent manifest: 90 original correctness
+cases plus all 40 performance cases, whose inputs are also numerically checked.
+All case IDs, dtype/shape/padding combinations, input seeds, launch grids,
+10 warmups and 100 repetitions are retained. The candidate kernel is unchanged;
+only the protected contract checks and benchmark observation are repaired.
 
-Arena times the same Triton path in its independently frozen baseline workspace
-and the edited candidate workspace. The old benchmark helper's optional PyTorch
-peer timing is not an Arena baseline and is omitted by this adapter. Candidate
-measurements still use the canonical helper and its original mean device latency.
+The operator copies the source prefix `a[:N//2]` exactly. The source is read-only.
+With `zero` padding the entire destination suffix must be zero; with floating
+`nan` padding every suffix element must be NaN. Correctness uses the original
+full grid: for `padding=None`, out-of-bound loaded suffix values are undefined
+and carry no invented zero/preservation requirement. Performance keeps the
+original half grid for `None`, so its unlaunched suffix must remain unchanged.
+Output sentinels expose missing stores; exact copied/state comparisons do not
+use a tolerance or floating-point flush-to-zero comparisons.
+
+The 15 bool/int16/int32 + NaN rows are explicit **invalid-argument tests**.
+Each calls the actual candidate specialization and requires `CompilationError`
+with the exact `ValueError` cause:
+``Padding option `nan` is not supported for integer block pointers``.
+A successful launch, a generic runtime/compiler failure, timeout, missing
+symbol, or mutated input/output buffer fails. These are exercised cases, not
+skips. The rule comes from the pinned runtime's
+[Triton block-pointer implementation](https://github.com/triton-lang/triton/blob/4cff872ced001ea92d9fcf05b3f6517e2b486d19/python/triton/language/core.py#L1746)
+and its [compiler exception wrapping](https://github.com/triton-lang/triton/blob/4cff872ced001ea92d9fcf05b3f6517e2b486d19/python/triton/compiler/code_generator.py#L1427).
+The integer error controls use deterministic alternating values without
+consuming RNG, preserving the later valid cases' original random sequence.
+
+Both Arena roles execute this same task in independently frozen workspaces.
+The adapter uses canonical graph timing and the original mean device latency;
+the old helper's optional PyTorch peer timing is not the Arena baseline.
+`TimedRun` exposes the actual measured destination; an untimed replay changes
+the source, recomputes the expected prefix/padding, poisons output, and checks
+read-only source/preserved suffix. All buffers are restored in `finally`.
+Reference work, snapshots and poisoning execute outside timing. An unobservable
+fallback is an error. No alternate implementation is used when a candidate fails.
 Do not edit `performance_utils_pytest.py` or generated benchmark helpers.
-
-Existing skip conditions are retained as visible failures for the complete
-manifest: missing hardware features, unsupported combinations, missing references
-or incomplete execution cannot qualify this task. These require explicit task
-qualification/repair before a campaign; the migration is not a GPU validation.
-A missing/empty final kernel never falls back to a reference or starting kernel.
 
 ## Original operator instructions
 

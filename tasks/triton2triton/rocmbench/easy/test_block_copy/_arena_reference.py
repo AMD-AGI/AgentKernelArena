@@ -1,5 +1,9 @@
-"""Independent output checks for the performance inputs; never timed or editable."""
-import numpy as np
+"""Protected block-copy oracle and explicit invalid-argument contract.
+
+Triton 4cff872c, language/core.py:_block_ptr.load rejects integer NaN padding.
+All values compared here belong to defined output regions; omitted padding has
+undefined loaded values beyond N//2, not an implicit zero guarantee.
+"""
 import torch
 
 
@@ -7,61 +11,95 @@ class NumericalMismatch(AssertionError):
     pass
 
 
-def compare(actual, expected, *, atol=None, rtol=None, check_dtype=True, exact=False, equal_nan=False):
-    if not isinstance(actual, torch.Tensor):
-        raise TypeError('The candidate did not produce its declared tensor output')
-    if actual.shape != expected.shape or actual.device != expected.device:
-        raise ValueError('Candidate output shape/device violates the contract')
-    if check_dtype and actual.dtype != expected.dtype:
-        raise ValueError('Candidate output dtype violates the contract')
-    if not equal_nan and not torch.isfinite(actual).all():
-        raise ValueError('Candidate output contains nonfinite values')
+INTEGER_NAN_ERROR = 'Padding option `nan` is not supported for integer block pointers'
+
+
+def compare(actual, expected):
+    if not isinstance(actual, torch.Tensor) or (actual.shape != expected.shape or
+            actual.dtype != expected.dtype or actual.device != expected.device):
+        raise ValueError('Output shape/dtype/device violates the block-copy contract')
+    # Byte-exact for copied values/state: no float comparison may flush a
+    # subnormal or treat a changed NaN payload as an unchanged input buffer.
+    if not torch.equal(actual.contiguous().view(torch.uint8), expected.contiguous().view(torch.uint8)):
+        raise NumericalMismatch('Exact block-copy/state mismatch')
+
+
+def check_output(a, b, source_before, padding, *, untouched_tail=None):
+    compare(a, source_before)
+    if b.shape != a.shape or b.dtype != a.dtype or b.device != a.device:
+        raise ValueError('Output metadata differs from the declared input/output contract')
+    half=a.numel()//2
+    compare(b[:half], source_before[:half])
+    if padding=='zero':
+        # Zero sign is not part of the operator contract; nonzero subnormals
+        # still fail via integer magnitude bits.
+        if b.is_floating_point():
+            integer,mask=(torch.int32,0x7fffffff) if b.dtype==torch.float32 else (torch.int16,0x7fff)
+            if torch.any((b[half:].contiguous().view(integer)&mask)!=0):
+                raise NumericalMismatch('Nonzero padding magnitude')
+        elif torch.any(b[half:]!=0):
+            raise NumericalMismatch('Nonzero padding')
+    elif padding=='nan':
+        if not b.is_floating_point() or not torch.isnan(b[half:]).all():
+            raise NumericalMismatch('NaN padding missing or replaced by finite/infinite values')
+    elif untouched_tail is not None:
+        # Performance None launches only N//2: unlike full-grid correctness,
+        # the unlaunched suffix must preserve its input sentinel exactly.
+        compare(b[half:],untouched_tail)
+
+
+def expected_nan_error(exc, compilation_error_type):
+    if not isinstance(exc,compilation_error_type):return False
+    seen=set();cause=exc
+    while cause is not None and id(cause) not in seen:
+        seen.add(id(cause))
+        if type(cause) is ValueError and str(cause)==INTEGER_NAN_ERROR:return True
+        cause=cause.__cause__
+    return False
+
+
+def expect_integer_nan_rejection(launch,a,b):
+    from triton.compiler.errors import CompilationError
+    before_a=a.clone();before_b=b.clone()
     try:
-        if exact:
-            if not torch.equal(actual, expected):
-                raise AssertionError('Exact output mismatch')
-        else:
-            torch.testing.assert_close(actual, expected, atol=atol, rtol=rtol,
-                                       check_dtype=check_dtype, equal_nan=equal_nan)
-    except AssertionError as exc:
-        raise NumericalMismatch(str(exc)) from exc
+        launch()
+    except Exception as exc:
+        if not expected_nan_error(exc,CompilationError):raise
+        compare(a,before_a);compare(b,before_b)
+        return {'expected_rejection_checked':True,'exception':'CompilationError',
+                'cause_type':'ValueError','cause_message':INTEGER_NAN_ERROR}
+    raise AssertionError('Integer NaN-padding invocation unexpectedly succeeded')
 
 
-def philox32(seed, count):
-    """Counter-based Philox4x32-10, independently evaluated using NumPy integers."""
-    mask = np.uint64(0xffffffff)
-    c0 = np.arange(count, dtype=np.uint64)
-    c1 = np.zeros(count,dtype=np.uint64); c2=c1.copy(); c3=c1.copy()
-    k0=np.uint64(seed & 0xffffffff); k1=np.uint64((seed>>32)&0xffffffff)
-    for _ in range(10):
-        pa=c0*np.uint64(0xD2511F53); pb=c2*np.uint64(0xCD9E8D57)
-        c0,c1,c2,c3=(pb>>np.uint64(32))^c1^k0,pb&mask,(pa>>np.uint64(32))^c3^k1,pa&mask
-        k0=(k0+np.uint64(0x9E3779B9))&mask; k1=(k1+np.uint64(0xBB67AE85))&mask
-    return c0.astype(np.uint32)
+class CopyCheck:
+    def __init__(self,c):
+        self.a,self.b=c['a'],c['b'];self.padding=c['padding_option']
+        self.source=self.a.clone();self.destination=self.b.clone()
+        self.b.fill_(-7)
+        self.tail=self.b[self.a.numel()//2:].clone()
+
+    def check(self,output):
+        if not isinstance(output,torch.Tensor) or output.data_ptr()!=self.b.data_ptr():
+            raise ValueError('Timed output is not the actual declared destination buffer')
+        check_output(self.a,output,self.source,self.padding,
+                     untouched_tail=self.tail if self.padding is None else None)
+
+    def fresh(self):
+        if self.a.is_floating_point():self.a.copy_(-self.source+0.25)
+        else:self.a.copy_(self.source ^ 1)
+        self.source_fresh=self.a.clone()
+        self.b.fill_(-11)
+        self.tail_fresh=self.b[self.a.numel()//2:].clone()
+
+    def check_fresh(self,output):
+        if not isinstance(output,torch.Tensor) or output.data_ptr()!=self.b.data_ptr():
+            raise ValueError('Replay output is not the actual destination buffer')
+        check_output(self.a,output,self.source_fresh,self.padding,
+                     untouched_tail=self.tail_fresh if self.padding is None else None)
+
+    def restore(self):
+        self.a.copy_(self.source);self.b.copy_(self.destination)
 
 
-def swizzle_reference(rows, cols, group, *, dtype, device):
-    expected = torch.empty((rows,cols),dtype=dtype,device=device)
-    for i in range(rows):
-        for j in range(cols):
-            linear=i*cols+j
-            first=(linear//(group*cols))*group
-            width=min(group,rows-first)
-            ni=first+(linear%(group*cols))%width; nj=(linear%(group*cols))//width
-            expected[ni,nj]=linear
-    return expected
-
-
-def _cast_like(expected, actual):
-    return expected.to(device=actual.device,dtype=actual.dtype)
-
-
-def prepare(c, module):
-    a=c['a'].clone(); n=c['n']; padding=c['padding_option']
-    def check(result):
-        b=c['b']
-        compare(b[:n//2],a[:n//2],exact=True)
-        if padding=='zero':compare(b[n//2:],torch.zeros_like(b[n//2:]),exact=True)
-        # The original performance launch touches only the prefix for nonzero
-        # padding. The original correctness test retains its full NaN-padding check.
-    return check
+def prepare(c,module):
+    return CopyCheck(c)

@@ -21,7 +21,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "bool",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/eca3cb3440ec1b4f61a5",
@@ -39,7 +51,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "bool",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/b03d0fdc8dde0b295be9",
@@ -57,7 +81,22 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "bool",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "compile_time_rejection",
+          "exception": "triton.compiler.errors.CompilationError",
+          "cause_type": "ValueError",
+          "cause_message": "Padding option `nan` is not supported for integer block pointers",
+          "buffers_unchanged": true
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/bc34eb852b730c154405",
@@ -75,7 +114,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "bool",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/3d60b8bca45417acb331",
@@ -93,7 +144,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "bool",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/aa85db9129b154df9016",
@@ -111,7 +174,22 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "bool",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "compile_time_rejection",
+          "exception": "triton.compiler.errors.CompilationError",
+          "cause_type": "ValueError",
+          "cause_message": "Padding option `nan` is not supported for integer block pointers",
+          "buffers_unchanged": true
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/d5b38ca3cdd76ee6e5a3",
@@ -129,7 +207,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "bool",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/19903b2edfa275e0b2c2",
@@ -147,7 +237,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "bool",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/682ccfd52b1edbd1c17a",
@@ -165,7 +267,22 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "bool",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "compile_time_rejection",
+          "exception": "triton.compiler.errors.CompilationError",
+          "cause_type": "ValueError",
+          "cause_message": "Padding option `nan` is not supported for integer block pointers",
+          "buffers_unchanged": true
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/18294f1f8da319f17518",
@@ -183,7 +300,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "bool",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/ef5e63678d2789fb7ca1",
@@ -201,7 +330,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "bool",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/83a63f167f2d6b0a8002",
@@ -219,7 +360,22 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "bool",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "compile_time_rejection",
+          "exception": "triton.compiler.errors.CompilationError",
+          "cause_type": "ValueError",
+          "cause_message": "Padding option `nan` is not supported for integer block pointers",
+          "buffers_unchanged": true
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/d0a69b079189d2a38f58",
@@ -237,7 +393,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "bool",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/652380712c390ad961b4",
@@ -255,7 +423,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "bool",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/9e8ac04f19d7864926ea",
@@ -273,7 +453,22 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "bool",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "compile_time_rejection",
+          "exception": "triton.compiler.errors.CompilationError",
+          "cause_type": "ValueError",
+          "cause_message": "Padding option `nan` is not supported for integer block pointers",
+          "buffers_unchanged": true
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/5e3f99ac250164eeaa0c",
@@ -291,7 +486,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "int16",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/e77bd95d8c8818c8b50e",
@@ -309,7 +516,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "int16",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/ab48c98918fd48188e5c",
@@ -327,7 +546,22 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "int16",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "compile_time_rejection",
+          "exception": "triton.compiler.errors.CompilationError",
+          "cause_type": "ValueError",
+          "cause_message": "Padding option `nan` is not supported for integer block pointers",
+          "buffers_unchanged": true
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/208933bb7eb3596dacd7",
@@ -345,7 +579,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "int16",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/339a07f2c25382b1a081",
@@ -363,7 +609,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "int16",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/94f8b59311272ee76ca1",
@@ -381,7 +639,22 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "int16",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "compile_time_rejection",
+          "exception": "triton.compiler.errors.CompilationError",
+          "cause_type": "ValueError",
+          "cause_message": "Padding option `nan` is not supported for integer block pointers",
+          "buffers_unchanged": true
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/b44e26dcb6c7dbf4b310",
@@ -399,7 +672,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "int16",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/e4f597c077c2eb369f9b",
@@ -417,7 +702,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "int16",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/ddbe7a0653d574c4dd66",
@@ -435,7 +732,22 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "int16",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "compile_time_rejection",
+          "exception": "triton.compiler.errors.CompilationError",
+          "cause_type": "ValueError",
+          "cause_message": "Padding option `nan` is not supported for integer block pointers",
+          "buffers_unchanged": true
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/2411d1e638bef4215304",
@@ -453,7 +765,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "int16",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/b7df0dacd05f98dcb1a6",
@@ -471,7 +795,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "int16",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/448e3b8fb10b81960b42",
@@ -489,7 +825,22 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "int16",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "compile_time_rejection",
+          "exception": "triton.compiler.errors.CompilationError",
+          "cause_type": "ValueError",
+          "cause_message": "Padding option `nan` is not supported for integer block pointers",
+          "buffers_unchanged": true
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/71b43cf6a93d507d5b5d",
@@ -507,7 +858,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "int16",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/9e88f1cfcae6eeda28cf",
@@ -525,7 +888,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "int16",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/a2cd6029aaf801734785",
@@ -543,7 +918,22 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "int16",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "compile_time_rejection",
+          "exception": "triton.compiler.errors.CompilationError",
+          "cause_type": "ValueError",
+          "cause_message": "Padding option `nan` is not supported for integer block pointers",
+          "buffers_unchanged": true
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/b08281e41165e8ed7615",
@@ -561,7 +951,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "int32",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/e59187d61f0b43be4283",
@@ -579,7 +981,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "int32",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/fdbcf764db94873b1b5e",
@@ -597,7 +1011,22 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "int32",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "compile_time_rejection",
+          "exception": "triton.compiler.errors.CompilationError",
+          "cause_type": "ValueError",
+          "cause_message": "Padding option `nan` is not supported for integer block pointers",
+          "buffers_unchanged": true
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/68d28306c844b2aa366e",
@@ -615,7 +1044,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "int32",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/c2bc376458c757dafbf2",
@@ -633,7 +1074,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "int32",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/58721cfd05450d6d6e43",
@@ -651,7 +1104,22 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "int32",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "compile_time_rejection",
+          "exception": "triton.compiler.errors.CompilationError",
+          "cause_type": "ValueError",
+          "cause_message": "Padding option `nan` is not supported for integer block pointers",
+          "buffers_unchanged": true
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/b1c6fe60f96c84827474",
@@ -669,7 +1137,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "int32",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/b2ba135824ac75d5d395",
@@ -687,7 +1167,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "int32",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/3a1927bd6117a2b0d265",
@@ -705,7 +1197,22 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "int32",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "compile_time_rejection",
+          "exception": "triton.compiler.errors.CompilationError",
+          "cause_type": "ValueError",
+          "cause_message": "Padding option `nan` is not supported for integer block pointers",
+          "buffers_unchanged": true
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/fd80bbac4b67c0c77084",
@@ -723,7 +1230,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "int32",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/0f1bedefc1bc67dc31bb",
@@ -741,7 +1260,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "int32",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/b9e7d8c5a0febb32680c",
@@ -759,7 +1290,22 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "int32",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "compile_time_rejection",
+          "exception": "triton.compiler.errors.CompilationError",
+          "cause_type": "ValueError",
+          "cause_message": "Padding option `nan` is not supported for integer block pointers",
+          "buffers_unchanged": true
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/dc71861c6cf63052fc93",
@@ -777,7 +1323,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "int32",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/84e3d99c5d2599e2e8de",
@@ -795,7 +1353,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "int32",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/40cfcc80fc38a750f86f",
@@ -813,7 +1383,22 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "int32",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "compile_time_rejection",
+          "exception": "triton.compiler.errors.CompilationError",
+          "cause_type": "ValueError",
+          "cause_message": "Padding option `nan` is not supported for integer block pointers",
+          "buffers_unchanged": true
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/6ecb6114337f00be0e64",
@@ -831,7 +1416,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "float16",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/c385c01050b03310fe2b",
@@ -849,7 +1446,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "float16",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/269b3cfecd33a0c96e48",
@@ -867,7 +1476,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "float16",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/2a43573fa441ef3681e2",
@@ -885,7 +1506,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "float16",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/e7d531364b0439d2866c",
@@ -903,7 +1536,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "float16",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/71cdafbf97a43ee2d22e",
@@ -921,7 +1566,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "float16",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/ceafca8537d5470e9534",
@@ -939,7 +1596,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "float16",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/9ce16f6b0a85d10e4929",
@@ -957,7 +1626,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "float16",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/1b858fa40a3479929812",
@@ -975,7 +1656,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "float16",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/962fd4c813a9f322bd1f",
@@ -993,7 +1686,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "float16",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/24b02c421e2f94249b10",
@@ -1011,7 +1716,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "float16",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/4c50c608effc6c628486",
@@ -1029,7 +1746,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "float16",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/21443a943ed894d2c0c0",
@@ -1047,7 +1776,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "float16",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/a971cf8a6c716f2b6f62",
@@ -1065,7 +1806,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "float16",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/b1dce35d65e0b730a007",
@@ -1083,7 +1836,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "float16",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/7fe1450bab423cabef1e",
@@ -1101,7 +1866,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "float32",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/7d1275cdccb9d193355f",
@@ -1119,7 +1896,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "float32",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/8404849cc7fab38089ea",
@@ -1137,7 +1926,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "float32",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/84d723492a58142d9574",
@@ -1155,7 +1956,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "float32",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/19fdedc839ce568a9ee0",
@@ -1173,7 +1986,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "float32",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/086abe9fd328ef4d108d",
@@ -1191,7 +2016,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "float32",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/803de8f088925eadb19b",
@@ -1209,7 +2046,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "float32",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/bb31b16cbc6218795f9c",
@@ -1227,7 +2076,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "float32",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/7a219803ce3782d20e86",
@@ -1245,7 +2106,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "float32",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/a499dd76b3eec18eb2c5",
@@ -1263,7 +2136,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "float32",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/c0162a7974ab1d5a6dd1",
@@ -1281,7 +2166,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "float32",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/55bd56a76e17226a1727",
@@ -1299,7 +2196,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "float32",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/0e1dac01873fb7866850",
@@ -1317,7 +2226,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "float32",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/9105b21dddaa6573f675",
@@ -1335,7 +2256,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "float32",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/b8c6e7f94867937162f7",
@@ -1353,7 +2286,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "float32",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/a2c2aa92659b2842e7f7",
@@ -1371,7 +2316,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/7188fbaeb00de2d3d64c",
@@ -1389,7 +2346,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/477f864b8315ba510398",
@@ -1407,7 +2376,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            64
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/5143fbb40f9efa953a19",
@@ -1425,7 +2406,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/aa7a5b2736e8ed652023",
@@ -1443,7 +2436,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/f1e429148bce5996be39",
@@ -1461,7 +2466,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            128
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 64,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/bc8f5c8340cffafc850c",
@@ -1479,7 +2496,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/b3a976906dbe0213d996",
@@ -1497,7 +2526,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/0473aa6092f6f09a03d4",
@@ -1515,7 +2556,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            256
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 128,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/e077af7bc11517585d89",
@@ -1533,7 +2586,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/2314d4265ed3d75b7b2e",
@@ -1551,7 +2616,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/59de88c78025bc72da04",
@@ -1569,7 +2646,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            512
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 256,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/a779422e7132c7abe401",
@@ -1587,7 +2676,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/7debfae73f0e8e41ca65",
@@ -1605,7 +2706,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_block_copy/5c874bec0109748f98ba",
@@ -1623,7 +2736,19 @@
       "checks": [
         "correctness"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/a4692aef122182b2e2f5",
@@ -1642,7 +2767,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "float16",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/abe0f354dba6cf19d748",
@@ -1661,7 +2798,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "float16",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/fea628bc40770a5216c4",
@@ -1680,7 +2829,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            8192
+          ],
+          "dtype": "float16",
+          "copied_prefix": 4096,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/83b001632ab123312b5c",
@@ -1699,7 +2860,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            8192
+          ],
+          "dtype": "float16",
+          "copied_prefix": 4096,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/19ad91719a2920369532",
@@ -1718,7 +2891,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            65536
+          ],
+          "dtype": "float16",
+          "copied_prefix": 32768,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/b97399ea4786718c8905",
@@ -1737,7 +2922,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            65536
+          ],
+          "dtype": "float16",
+          "copied_prefix": 32768,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/bb96cff786f21a9c51ee",
@@ -1756,7 +2953,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            262144
+          ],
+          "dtype": "float16",
+          "copied_prefix": 131072,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/c8a58f601e6f8d96b3d7",
@@ -1775,7 +2984,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            262144
+          ],
+          "dtype": "float16",
+          "copied_prefix": 131072,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/da13fbec2428df5df5d1",
@@ -1794,7 +3015,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1048576
+          ],
+          "dtype": "float16",
+          "copied_prefix": 524288,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/b0e5ff17f09f769a987f",
@@ -1813,7 +3046,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1048576
+          ],
+          "dtype": "float16",
+          "copied_prefix": 524288,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/1b238d4431e2e6d965c0",
@@ -1832,7 +3077,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "float32",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/504f5d46b11b264cd72e",
@@ -1851,7 +3108,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "float32",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/0921d1e9568ed83a79aa",
@@ -1870,7 +3139,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            8192
+          ],
+          "dtype": "float32",
+          "copied_prefix": 4096,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/510994c87aab544fcfa2",
@@ -1889,7 +3170,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            8192
+          ],
+          "dtype": "float32",
+          "copied_prefix": 4096,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/2149215eeac6af718420",
@@ -1908,7 +3201,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            65536
+          ],
+          "dtype": "float32",
+          "copied_prefix": 32768,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/9f9d1999a7e005878dd3",
@@ -1927,7 +3232,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            65536
+          ],
+          "dtype": "float32",
+          "copied_prefix": 32768,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/282a1029137441ef5d45",
@@ -1946,7 +3263,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            262144
+          ],
+          "dtype": "float32",
+          "copied_prefix": 131072,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/7b30e704297f24a242fc",
@@ -1965,7 +3294,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            262144
+          ],
+          "dtype": "float32",
+          "copied_prefix": 131072,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/09a668a86092990e96cc",
@@ -1984,7 +3325,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1048576
+          ],
+          "dtype": "float32",
+          "copied_prefix": 524288,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/574aff2e34ebe302c253",
@@ -2003,7 +3356,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1048576
+          ],
+          "dtype": "float32",
+          "copied_prefix": 524288,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/043a1931587f0d54a1a1",
@@ -2022,7 +3387,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/b2871ded5a7cab075797",
@@ -2041,7 +3418,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/7b64c5e99e0b64f96268",
@@ -2060,7 +3449,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            8192
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 4096,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/79f824e78d82cea757c5",
@@ -2079,7 +3480,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            8192
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 4096,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/b493527a723a623db350",
@@ -2098,7 +3511,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            65536
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 32768,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/9b09e379b44b9553027d",
@@ -2117,7 +3542,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            65536
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 32768,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/456e61f38cf46bb9d19b",
@@ -2136,7 +3573,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            262144
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 131072,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/70bb958422c7177bf2a0",
@@ -2155,7 +3604,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            262144
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 131072,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/e8afaae7a3947b1d44d2",
@@ -2174,7 +3635,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1048576
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 524288,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/208349eb90fa3de055fa",
@@ -2193,7 +3666,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1048576
+          ],
+          "dtype": "bfloat16",
+          "copied_prefix": 524288,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/7943d00563bf500b5f1b",
@@ -2212,7 +3697,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "int32",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/5a1dc5416af60a185b76",
@@ -2231,7 +3728,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1024
+          ],
+          "dtype": "int32",
+          "copied_prefix": 512,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/492b239ff89070d443ab",
@@ -2250,7 +3759,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            8192
+          ],
+          "dtype": "int32",
+          "copied_prefix": 4096,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/740b523c2abc03c46238",
@@ -2269,7 +3790,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            8192
+          ],
+          "dtype": "int32",
+          "copied_prefix": 4096,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/64758ea02d99a9337425",
@@ -2288,7 +3821,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            65536
+          ],
+          "dtype": "int32",
+          "copied_prefix": 32768,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/ce7e4f25c2452322aa66",
@@ -2307,7 +3852,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            65536
+          ],
+          "dtype": "int32",
+          "copied_prefix": 32768,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/277bc59a592d02f91cae",
@@ -2326,7 +3883,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            262144
+          ],
+          "dtype": "int32",
+          "copied_prefix": 131072,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/34110dde38e9aea5dfd5",
@@ -2345,7 +3914,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            262144
+          ],
+          "dtype": "int32",
+          "copied_prefix": 131072,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/60f5c43df176bc54743c",
@@ -2364,7 +3945,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1048576
+          ],
+          "dtype": "int32",
+          "copied_prefix": 524288,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "unchanged"
+        }
+      }
     },
     {
       "test_case_id": "test_performance/5b131fde5f704f1376d4",
@@ -2383,7 +3976,19 @@
         "correctness",
         "performance"
       ],
-      "status": "PASS"
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            1048576
+          ],
+          "dtype": "int32",
+          "copied_prefix": 524288,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        }
+      }
     }
   ],
   "migration": {

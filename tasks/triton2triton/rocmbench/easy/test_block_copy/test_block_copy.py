@@ -100,17 +100,29 @@ def test_block_copy(dtypes_str, n, padding_option, request, device='cuda'):
     dst_dtype = getattr(torch, dst_dtype_str)
     check_type_supported(src_dtype, device)
     check_type_supported(dst_dtype, device)
+    from _arena_reference import check_output, expect_integer_nan_rejection
+    if src_dtype_str in ("bool", "int16", "int32") and padding_option == "nan":
+        # Invalid-argument rows execute the real specialization; no RNG draw
+        # shifts the subsequent original valid cases.
+        a = (torch.arange(n,device=device) % 2).to(src_dtype)
+        b = torch.zeros((n,),device=device,dtype=dst_dtype)
+        grid = lambda meta: (triton.cdiv(n,meta["BLOCK_SIZE"]),)
+        evidence = expect_integer_nan_rejection(lambda: block_copy_kernel[grid](
+            a_ptr=a,b_ptr=b,N=n,BLOCK_SIZE=64,padding_option=padding_option),a,b)
+        request.node.user_properties.append(('block_copy_contract',evidence))
+        return
     if src_dtype_str in ("bool", "int16", "int32"):
-        if padding_option == "nan":
-            pytest.skip("Padding with NaN is not supported for integer types")
         a = torch.randint(0, 2, (n, ), device=device, dtype=src_dtype)
     else:
         a = torch.randn((n, ), device=device, dtype=src_dtype)
-    b = torch.zeros((n, ), device=device, dtype=dst_dtype)
+    b = torch.full((n,), 1 if dst_dtype==torch.bool else -7, device=device, dtype=dst_dtype)
+    source_before = a.clone()
 
     grid = lambda meta: (triton.cdiv(n, meta["BLOCK_SIZE"]), )
     block_copy_kernel[grid](a_ptr=a, b_ptr=b, N=n, BLOCK_SIZE=64, padding_option=padding_option)
-    a.to(dst_dtype)
+    check_output(a,b,source_before,padding_option)
+    request.node.user_properties.append(('block_copy_contract',{'readonly_input_checked':True,
+        'defined_output_checked':True,'undefined_tail':padding_option is None}))
     
     result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
     
