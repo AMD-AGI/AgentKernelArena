@@ -160,6 +160,15 @@ def test_only_reviewed_load_masks_changed_kernel_and_original_cases_retained(tas
             mask=next(kw for kw in n.keywords if kw.arg=='mask')
             if isinstance(mask.value,ast.BinOp):mask.value=mask.value.right
             else:n.keywords=[]
+    compensation=next(n for n in kernel.body if isinstance(n,ast.Assign) and ast.unparse(n.targets[0])=='compensation')
+    assert ast.unparse(compensation.value)=='tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=acc_dtype)'
+    kernel.body.remove(compensation)
+    dot_branch=next(n for n in ast.walk(kernel) if isinstance(n,ast.If) and ast.unparse(n.test)=='USE_DOT')
+    assert [ast.unparse(n) for n in dot_branch.body]==[
+        'product = tl.dot(a, b)', 'adjusted = product - compensation',
+        'total = accumulator + adjusted', 'compensation = total - accumulator - adjusted',
+        'accumulator = total']
+    dot_branch.body=ast.parse('accumulator += tl.dot(a, b)').body
     assert hashlib.sha256(ast.dump(kernel).encode()).hexdigest()==old['kernel_ast']
     rows=json.loads((path/'workloads.json').read_text())['cases'];assert len(rows)==40 and sum('performance' in r['checks'] for r in rows)==24
     assert hashlib.sha256(json.dumps(rows[:38],sort_keys=True,separators=(',',':')).encode()).hexdigest()==old['rows']
@@ -224,3 +233,38 @@ ORIGINAL = {'tasks/instruction2triton/rocmbench/multreduce_matmul_dot_kernel': {
                                                                                    'triton_matmul': '14ab68bcc12baf55b05dc2ee4e3bdbf72b3f6de2ef5729fa67d69f97f3dc191e'},
                                                                      'kernel_ast': '2d6cfd78c6b97bb40d06e08dfcb081db9f6d8a7f4de24ef832fb5c1937f67636',
                                                                      'rows': 'ac381686e9f8affb1c6cb59b1116d385e93f82154d78c9465be0c1c01f4c08b2'}}
+
+
+def test_actual_compensated_tile_reduction_recovers_small_contributions(task):
+    path,_=task;tree=ast.parse((path/'multreduce_matmul_dot_kernel.py').read_text())
+    kernel=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='triton_matmul_kernel')
+    branch=next(n for n in ast.walk(kernel) if isinstance(n,ast.If) and ast.unparse(n.test)=='USE_DOT')
+    code=compile(ast.Module(body=branch.body,type_ignores=[]),'<actual-dot-accumulation>','exec')
+    ns={'tl':types.SimpleNamespace(dot=lambda a,b:a*b), 'accumulator':torch.zeros(1,dtype=torch.float32), 'compensation':torch.zeros(1,dtype=torch.float32)}
+    values=[2**24]+[1]*8+[-2**24]
+    naive=torch.zeros(1,dtype=torch.float32)
+    for value in values:
+        ns.update(a=torch.tensor([value],dtype=torch.float32),b=torch.ones(1,dtype=torch.float32));exec(code,ns);naive+=value
+    assert ns['accumulator'].item()==sum(values)==8
+    assert naive.item()==0
+
+
+def test_independent_oracle_preserves_small_exact_sum_and_half_before_bias(task):
+    _,ref=task
+    a=torch.tensor([[4096.]+[1.]*8+[4096.]],dtype=torch.float16)
+    b=torch.tensor([[4096.]]+[[1.]]*8+[[-4096.]],dtype=torch.float16)
+    bias=torch.tensor([-.125],dtype=a.dtype)
+    check=ref.BiasCheck(a,b,bias);check(torch.tensor([[7.875]],dtype=a.dtype))
+    with pytest.raises(ref.NumericalMismatch):check(torch.tensor([[-.125]],dtype=a.dtype))
+    # Product rounding precedes the bias even with an FP64 independent dot.
+    a=torch.tensor([[1.0009765625]],dtype=torch.float16);b=a.clone();bias=torch.tensor([-1.001953125],dtype=a.dtype)
+    check=ref.BiasCheck(a,b,bias);check(torch.zeros((1,1),dtype=a.dtype))
+    assert check.expected.item()==0
+    assert (a.double()@b.double()+bias.double()[:,None]).half().item()==2**-20
+
+
+def test_original_pytorch_functional_gate_remains_required(task):
+    path,_=task;source=(path/'multreduce_matmul_dot_kernel.py').read_text();tree=ast.parse(source)
+    node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='test_matmul')
+    assert 'assert allclose(c_torch, c_triton_dot)' in ast.unparse(node)
+    assert 'matmul("torch", check.original[0], check.original[1], check.original[2] if bias is not None else None)' in ast.get_source_segment(source,node)

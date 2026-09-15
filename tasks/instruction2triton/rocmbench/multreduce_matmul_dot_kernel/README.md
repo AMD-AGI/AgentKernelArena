@@ -157,3 +157,26 @@ The kernel repair adds M/N masks to those four operand loads, preserving valid
 arithmetic, tiles, signatures and launch options while preventing out-of-bounds
 reads. Frozen baseline and candidate both start from this repaired revision;
 historical timings belong to the earlier kernel revision.
+
+### Accumulation and oracle precision repair
+
+The required FP16 gate remains `atol=1e-3, rtol=1e-2`, including row bias.
+The original functional `allclose` comparison with the protected PyTorch
+implementation remains an additional required check. No cases, seeds, tuning
+configurations, warmups, repetitions or timed operations have been removed.
+
+A long-K dot may lie close to a FP16 rounding midpoint. Rounding its FP32
+accumulation error to FP16 before adding a cancelling row bias can magnify that
+error. The initial kernel now uses compensated FP32 accumulation between its
+unchanged dot-product tiles. Dot operands, dot precision, tile parameters,
+output-dtype conversion and the subsequent output-dtype bias addition remain
+unchanged. This is a new baseline implementation revision; compare candidate
+and baseline from the same revision, not against historical timings.
+
+The independent oracle accumulates in FP64, converts the product to the output
+dtype, then performs the separate bias addition in that dtype. An ordinary
+PyTorch low-precision GEMM can itself round to the wrong side of such a midpoint;
+its error must not become the mathematical expected answer. The FP16 tolerance
+is unchanged, and the original functional PyTorch comparison remains present.
+The BF16 input-derived accumulation/rounding interval is unchanged. Reference
+and replay work remain outside all scored timing intervals.

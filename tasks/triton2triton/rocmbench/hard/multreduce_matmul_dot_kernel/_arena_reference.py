@@ -40,7 +40,10 @@ class BiasCheck:
         bias = self.snapshots[2] if len(self.snapshots) == 3 else None
         if a.dtype not in (torch.float16, torch.bfloat16) or b.dtype != a.dtype:
             raise ValueError('Declared GEMM operands must have matching FP16/BF16 dtypes')
-        self.expected = a @ b
+        # Independent accumulation avoids inheriting a particular BLAS FP32
+        # reduction's error at a half-rounding midpoint. Preserve the mandatory
+        # output-dtype rounding BEFORE the separate output-dtype row-bias add.
+        self.expected = (a.double() @ b.double()).to(a.dtype)
         if bias is not None: self.expected += bias[:, None]
         self.bounds = bias_bounds(a, b, bias) if a.dtype == torch.bfloat16 else None
 

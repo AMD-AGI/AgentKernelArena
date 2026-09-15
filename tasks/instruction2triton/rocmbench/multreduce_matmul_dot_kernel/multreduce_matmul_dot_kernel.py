@@ -76,6 +76,8 @@ def triton_matmul_kernel(a_ptr, b_ptr, c_ptr, bias_ptr,  #
     acc_dtype = tl.float32 if a_ptr.type.element_ty != tl.int8 else tl.int32  
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=acc_dtype)  
   
+    # Preserve low-order FP32 contributions across K tiles.
+    compensation = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=acc_dtype)
     # GEMM loop:  
   
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):  
@@ -89,7 +91,11 @@ def triton_matmul_kernel(a_ptr, b_ptr, c_ptr, bias_ptr,  #
             b = tl.load(b_ptrs, mask=(offs_bn[None, :] < N) & (offs_k[:, None] < K - k * BLOCK_SIZE_K), other=0)
         # Compute dot product:  
         if USE_DOT:  
-            accumulator += tl.dot(a, b)  
+            product = tl.dot(a, b)
+            adjusted = product - compensation
+            total = accumulator + adjusted
+            compensation = (total - accumulator) - adjusted
+            accumulator = total
         else:  
             a = tl.reshape(a, (BLOCK_SIZE_M, BLOCK_SIZE_K, 1)).to(acc_dtype)  
             b = tl.reshape(b, (1, BLOCK_SIZE_K, BLOCK_SIZE_N)).to(acc_dtype)  
