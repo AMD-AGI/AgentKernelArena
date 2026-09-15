@@ -371,15 +371,17 @@ def test_installed_upstream_probe_and_real_rewrite_orchestration(tmp_path):
         pytest.skip("Set AKA_FORGE_PROBE_PYTHON to a Hyperloom[forge] interpreter for the compatibility test")
     context, plan, plan_path = fixture_task(tmp_path, initial_state="unimplemented")
     engine = Path(plan["engine_root"])
-    plan.update(workflow="rewrite", deadline_unix=time.time()+3600)
+    plan.update(workflow="rewrite", deadline_unix=time.time()+3600,
+                program=str(engine / "arena_program.md"))
     plan_path.write_text(json.dumps(plan))
     for file in (engine / "source").glob("*.py"):
         file.unlink()
     (engine / "arena_source_hint.py").write_text("# Provided baseline is measured by the task runner\n")
     (engine / "arena_forge_driver.py").write_text(bridge.render_driver(plan_path, ROOT))
+    (engine / "arena_program.md").write_text("PORT instructions\n")
     adapter._initialize_git(engine)
     script = r'''
-import asyncio, json, os
+import asyncio, json, os, subprocess
 from pathlib import Path
 from agents.forge import upstream, bridge
 from kernelforge.config import Config
@@ -406,8 +408,16 @@ def optimize(spec, driver_path, config, **kwargs):
     (root / "helper.py").write_text("6")
     check = asyncio.run(canonical_correctness.accept_candidate(str(Path(spec.workspace)), timeout_cap_sec=30, candidate_label="cpu-test"))
     assert check.passed, check.output
+    subprocess.run(['git', 'add', '--', str(root/'kernel.py'), str(root/'helper.py')], cwd=spec.workspace, check=True)
+    subprocess.run(['git', 'commit', '-m', 'CPU fixture candidate'], cwd=spec.workspace, check=True, capture_output=True)
     args = upstream.configure_nested_loop(plan, ["forge-loop", "--source-files", spec.flydsl_kernel])
     assert str(root / "helper.py") in args[args.index("--source-files")+1]
+    assert subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=spec.workspace, text=True) == ''
+    assert subprocess.check_output(['git', 'show', '--pretty=format:', '--name-only', 'HEAD'], cwd=spec.workspace, text=True).strip() == 'arena_program.md'
+    from kernelforge.loop.campaign_config import create_campaign_config
+    create_campaign_config(workspace_dir=spec.workspace, kernel=str(root/'kernel.py'), driver=str(driver_path),
+        source_files=[str(root/'kernel.py'), str(root/'helper.py')], program_md_file=plan['program'],
+        target_functions=['not_a_builder'], gpu_target='gfx950', gpu_type='mi355x', kernel_backend='flydsl', task_type='image_kernel')
     return {"best_ms":2, "mean_case_speedup":2, "llm_usage_complete":True}
 runner.run_port_loop = port
 runner.run_optimize = optimize
@@ -427,6 +437,44 @@ print("UPSTREAM_ADAPTER_CPU_TEST_PASS")
     run = subprocess.run([python, "-c", script], cwd=engine, env=env, capture_output=True, text=True, timeout=60)
     assert run.returncode == 0, run.stdout[-6000:] + run.stderr[-6000:]
     assert "UPSTREAM_ADAPTER_CPU_TEST_PASS" in run.stdout
+
+
+@pytest.mark.parametrize("nested", [{}, {"llm_usage_complete": False},
+                                   {"llm_usage_complete": True, "terminated_for_deadline": True},
+                                   {"llm_usage_complete": True, "experiment_id": "complete"}])
+def test_nested_loop_failure_cannot_be_hidden_by_successful_port(tmp_path, nested):
+    python = os.environ.get("AKA_FORGE_PROBE_PYTHON")
+    if not python:
+        pytest.skip("Set AKA_FORGE_PROBE_PYTHON to the pinned Hyperloom[forge] interpreter")
+    _, plan, plan_path = fixture_task(tmp_path, initial_state="unimplemented")
+    plan["workflow"] = "rewrite"
+    plan_path.write_text(json.dumps(plan))
+    script = r'''
+import json, os
+from pathlib import Path
+from agents.forge import upstream
+from kernelforge.rewrite_by_flydsl import runner
+plan = json.loads(Path(os.environ['ARENA_FORGE_PLAN']).read_text())
+value = json.loads(os.environ['NESTED_RESULT'])
+runner.run_optimize = lambda *a, **kw: value
+upstream.install_hooks(plan)
+complete = value.get('llm_usage_complete') is True and not value.get('terminated_for_deadline')
+try:
+    result = runner.run_optimize()
+except RuntimeError as error:
+    assert not complete
+    assert 'PORT evidence retained' in str(error)
+else:
+    assert complete and result == value
+evidence = json.loads(Path(plan['result']).with_name('nested_loop_status.json').read_text())
+assert evidence['status'] == ('COMPLETED' if complete else 'FAILED')
+assert evidence['result'] == value
+'''
+    result = subprocess.run([python, "-c", script], cwd=ROOT,
+                            env=dict(os.environ, PYTHONPATH=str(ROOT), ARENA_FORGE_PLAN=str(plan_path),
+                                     NESTED_RESULT=json.dumps(nested)),
+                            text=True, capture_output=True, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_internal_absolute_symlinks_rebind_to_snapshot(tmp_path):

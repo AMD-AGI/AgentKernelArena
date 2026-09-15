@@ -291,6 +291,20 @@ def install_hooks(plan: dict) -> None:
     modules.runner._ensure_git_committed = commit
     modules.optimize._forge_loop_argv = lambda: [sys.executable, str(Path(__file__).resolve())]
 
+    original_optimize = modules.runner.run_optimize
+    def optimize(*args, **kwargs):
+        value = original_optimize(*args, **kwargs)
+        complete = (isinstance(value, dict) and value.get("llm_usage_complete") is True
+                    and not value.get("terminated_for_deadline"))
+        evidence = {"status": "COMPLETED" if complete else "FAILED", "result": value}
+        Path(plan["result"]).with_name("nested_loop_status.json").write_text(
+            json.dumps(evidence, indent=2) + "\n")
+        if not complete:
+            raise RuntimeError("Forge nested OPTIMIZE did not finish successfully; PORT evidence retained")
+        return value
+
+    modules.runner.run_optimize = optimize
+
     # Arena owns delivery; applying a patch to an upstream framework is not a
     # task requirement. Explicitly record it as unrequested, never as passed.
     modules.runner.DEFAULT_REWRITE_BUDGET = replace(modules.runner.DEFAULT_REWRITE_BUDGET,
@@ -318,7 +332,23 @@ def configure_nested_loop(plan: dict, argv: list[str]) -> list[str]:
     root = bound_candidate_root(plan, Path(plan["engine_root"]))
     context = TaskContext.load(plan["context"])
     sources = candidate_files(context.spec, root)
-    Path(plan["program"]).write_text(program_text(plan, prefix=str(root.relative_to(plan["engine_root"]))))
+    program = Path(plan["program"])
+    engine = Path(plan["engine_root"])
+    if program != engine / "arena_program.md":
+        raise ValueError("Unexpected adapter-generated program path")
+    program.write_text(program_text(plan, prefix=str(root.relative_to(engine))))
+    # PORT commits its candidate before this transition. Only the generated
+    # phase instructions change here; do not sweep candidate or harness edits
+    # into an adapter commit. The native campaign still rejects other dirt.
+    dirty = subprocess.run(["git", "diff", "HEAD", "--quiet", "--", program.name], cwd=engine)
+    tracked = subprocess.run(["git", "ls-files", "--error-unmatch", "--", program.name],
+                             cwd=engine, capture_output=True)
+    if dirty.returncode == 1 or (dirty.returncode == 0 and tracked.returncode == 1):
+        subprocess.run(["git", "add", "--", program.name], cwd=engine, check=True)
+        subprocess.run(["git", "commit", "--only", "-m", "Arena: prepare native optimization instructions",
+                        "--", program.name], cwd=engine, check=True, capture_output=True, text=True)
+    elif dirty.returncode or tracked.returncode:
+        raise RuntimeError("Cannot inspect generated Forge phase instructions")
     for flag, value in (("--source-files", ",".join(map(str, sources.values()))),
                         ("--task-type", "image_kernel"), ("--target-functions", ",".join(
                             entry.symbol for entry in context.spec.candidate.entrypoints if entry.symbol))):

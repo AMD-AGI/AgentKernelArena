@@ -214,6 +214,12 @@ default/extra name rules, and filesystem errors. Each new scan resolves paths
 again; no inventory or content cache spans model edits. Workspace rollback,
 in-session protection and Arena's independent assessment remain in place.
 
+At the PORT-to-OPTIMIZE transition, the adapter commits only its regenerated
+`arena_program.md` so the native campaign sees clean phase instructions. It
+does not commit other pending edits. A nested loop that fails, times out, or
+omits its completed result makes the adapter fail even if PORT succeeded.
+`nested_loop_status.json` preserves that distinction alongside the PORT evidence.
+
 Compatibility was inspected and CPU-tested against Hyperloom commit
 `0425bde3f6e76e1588400c37d056dfd3bb75ac11`, package version `1.1.0`.
 Upstream owns its GPU DSL/compiler support and SDKs. Install the `forge` extra in
