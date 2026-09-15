@@ -1,5 +1,9 @@
 # PR107 integration with pinned main
 
+This record describes the `c1dc5e09` merge candidate. For later source-specific
+CPU, GPU, quality-loop and agent-matrix results, see the
+[2026-09-15 verification checkpoint](verification-2026-09-15.md).
+
 This is an isolated integration candidate, not a replacement for the frozen
 `e8ec5d6b` campaign source or its reports. GPU qualification of this candidate is
 pending. The existing e8 task-validation and optimization checkpoints retain
