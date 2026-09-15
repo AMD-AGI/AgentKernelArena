@@ -173,5 +173,15 @@ The unscaled performance reference multiplies the original operands in FP32 and
 casts the result to FP16, matching the kernel's accumulation/output contract.
 It does not round FP32 inputs to FP16 before multiplication. The six unscaled
 performance cases and their existing FP16 comparison defaults are unchanged.
-The separately declared scaled pipeline case still requires a working backend;
-its legacy CUDA-only skip is a failing coverage gap on ROCm, not a clean PASS.
+The separately declared scaled pipeline case now attempts its real Triton
+compilation on the selected backend. Unsupported lowering is a real failure;
+the historical blanket non-CUDA skip no longer suppresses this required case.
+
+The scaled reference reshapes packed operands into their 32-element scale
+groups before decoding, then reconstructs the matrix. This fixes the matrix
+path's previously invalid broadcasting without changing the decoder or gate.
+The original seeded scaled comparison remains. An additional unscored control
+uses exact one-valued decoded operands and ordinary E8M0 exponent 127, whose
+answer is the logical K. It rejects zero-output implementations which the
+original tiny-scale inputs alone could accept at the original 1e-2 tolerance.
+Scored cases, launch parameters, warmups, samples and timing are unchanged.

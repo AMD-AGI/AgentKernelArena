@@ -736,6 +736,56 @@ def test_mxfp_unscaled_reference_preserves_fp32_operands(relative, monkeypatch):
         reference.prepare({**context, 'is_scaled_mode': True}, None)
 
 
+@pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/test_matmul_MXFP',
+                                    'tasks/triton2triton/rocmbench/hard/test_matmul_MXFP'])
+def test_mxfp_scaled_matrix_reference_respects_32_element_groups(relative):
+    source = ROOT/relative/'test_matmul_MXFP.py'
+    ref = pure_functions(source, ['mxfp_to_bf16_torch', 'dot_scale_ref'])
+    x = torch.full((2, 32), 0x22, dtype=torch.uint8)
+    scales = torch.tensor([[127, 128], [126, 129]], dtype=torch.uint8)
+    y = torch.full((64, 1), 0x3c, dtype=torch.uint8)  # E5M2 one.
+    output = ref.dot_scale_ref(x, scales, y, 'e2m1', 'e5m2')
+    expected = torch.tensor([[96.], [144.]], dtype=torch.bfloat16)
+    torch.testing.assert_close(output, expected, atol=0, rtol=0)
+    with pytest.raises(AssertionError):
+        torch.testing.assert_close(torch.zeros_like(output), expected, atol=1e-2, rtol=1e-2)
+
+
+@pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/test_matmul_MXFP',
+                                    'tasks/triton2triton/rocmbench/hard/test_matmul_MXFP'])
+@pytest.mark.parametrize('mode', ['correct', 'zero', 'compiler_error'])
+def test_mxfp_scaled_pipeline_runs_on_hip_and_rejects_zero_kernel(relative, mode):
+    source = ROOT/relative/'test_matmul_MXFP.py'
+    ref = pure_functions(source, ['mxfp_to_bf16_torch', 'dot_scale_ref'])
+    launches = []
+    class Kernel:
+        def __getitem__(self, grid):
+            def launch(a, scale_a, b, output, *args, **kwargs):
+                launches.append((tuple(a.shape), tuple(scale_a.shape), tuple(b.shape), kwargs))
+                if mode == 'compiler_error': raise RuntimeError('unsupported compiler lowering')
+                if mode == 'zero': output.zero_()
+                else: output.copy_(ref.dot_scale_ref(a, scale_a, b, kwargs['a_type'], kwargs['b_type']))
+            return launch
+    harness = pure_functions(source, ['test_pipeline_matmul'], dict(
+        pytest=pytest, set_seed=lambda: torch.manual_seed(42), check_capabilities=lambda: None,
+        is_cuda=lambda: False, is_hopper=lambda: False, is_hip_mi200=lambda: False,
+        triton=SimpleNamespace(cdiv=lambda a, b: (a+b-1)//b), matmul_kernel=Kernel(),
+        dot_scale_ref=ref.dot_scale_ref, result_gold={}))
+    request = SimpleNamespace(node=SimpleNamespace(name='scaled-pipeline'))
+    run = lambda: harness.test_pipeline_matmul(True, request, device='cpu')
+    if mode == 'correct': run()
+    elif mode == 'compiler_error':
+        with pytest.raises(RuntimeError, match='unsupported compiler lowering'): run()
+    else:
+        with pytest.raises(AssertionError): run()
+        # The original small-scale check passed; the second known-answer launch
+        # must reject zero, retaining the same tolerance and all original cases.
+        assert len(launches) == 2
+    assert len(launches) == (1 if mode == 'compiler_error' else 2)
+    assert all(row[:3] == ((512, 128), (512, 8), (256, 512)) for row in launches)
+    assert all(row[3] == dict(NUM_STAGES=4, a_type='e2m1', b_type='e5m2') for row in launches)
+
+
 @pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/gemm',
                                     'tasks/triton2triton/rocmbench/hard/gemm'])
 def test_rocm_gemm_scope_retains_original_scored_cases_and_numerical_gate(relative,monkeypatch):
@@ -805,6 +855,19 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
             b'y_buffer = torch.empty_like(x, dtype=arg_to_torch_dtype[out_dtype_str]) # Declared output dtype').replace(
             b'baseline_callable = lambda: torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, current_dtype, eps)',
             b'baseline_callable = lambda: torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, arg_to_torch_dtype[out_dtype_str], eps)')
+    if task.name == 'test_matmul_MXFP':
+        expected_source = expected_source.replace(
+            b'    if scale and not is_cuda():\n        pytest.skip("NYI: scale_dot just implemented in CUDA")\n', b'').replace(
+            b'    x_upcast = mxfp_to_bf16_torch(x, scale, type_x)',
+            b'    x_grouped = x.reshape(*scale.shape, -1)\n    x_upcast = mxfp_to_bf16_torch(x_grouped, scale, type_x).reshape(x.shape[0], -1)')
+        # Only the separately exercised known-answer diagnostic is additional;
+        # all old source bytes, including gates/parameters, remain protected.
+        after = source.read_text()
+        start = after.index('\n    # Unscored known-answer control at an ordinary E8M0 scale.')
+        end = after.index('\n\n# Define these globally', start)
+        extra = after[start:end].rstrip('\n') + '\n'
+        anchor = b'    torch.testing.assert_close(ref_out, output, atol=atol, rtol=rtol, equal_nan=scale)\n'
+        expected_source = expected_source.replace(anchor, anchor + extra.encode())
     assert source.read_bytes() == expected_source
     assert hashlib.sha256(original).hexdigest()==data['migration']['original_source_sha256']
     rows=data['cases']
