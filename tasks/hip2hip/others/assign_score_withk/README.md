@@ -39,3 +39,15 @@ native source fails the current-stream/capture-safety check required by that
 method, evaluation rejects it; it cannot force graph timing for an unsafe launch
 or downgrade only the candidate to event timing. Implementation/launcher edits
 remain within the declared file boundary, and must honor this stream contract.
+
+
+Both timed variants expose their actual outputs to TimedRun. Forward is checked
+against the full protected gather/weighted-reduction reference; forward+backward
+also checks all score, point-feature and center-feature gradients against CPU
+autograd of that reference, using the original `atol=rtol=1e-3`. Poisoned exact
+graph replay repeats these checks. The existing stable leaf-gradient buffers
+and per-invocation zeroing callback remain inside the same measured boundary;
+input values and original gradient state are restored after validation.
+The unused scalar CPU oracle's extra point-feature term is corrected to match
+the documented neighbor difference and independently tested vectorized oracle.
+No shape, seed, mode, warmup or sample was removed.

@@ -123,3 +123,23 @@ python3 scripts/task_runner.py compile
 python3 scripts/task_runner.py correctness
 python3 scripts/task_runner.py performance
 ```
+
+
+The native timing driver computes the protected CPU attention reference for
+its exact deterministic timing inputs, outside measured calls. It validates the
+actual measured output before poisoning and the exact captured replay afterward:
+the original eager/replay `1e-2` absolute gate is retained, and both outputs also
+satisfy the original host-reference rule (`max_abs <= 5e-2` OR `max_rel <= 1e-1`).
+Finite-value checks use exponent bits so `-ffast-math` cannot remove them. Host
+reference work uses OpenMP outside GPU timing. No case, seed, launch, warmup,
+sample, graph-batching or numerical threshold is weakened. A further fresh-input control sets Q to zero and every FP8 KV entry to one,
+whose independent analytical answer is an all-one output. It replays the same
+graph, checks against the original reference rule, and restores original Q/KV
+buffers even when the check fails. This detects returning the old timed answer
+or zeros; it does not claim to exclude every possible caching strategy.
+
+The observer also reads back every caller-owned Q, KV, token-map and sequence-
+length buffer and checks exact bytes after timed execution, replay and the fresh
+known-answer probe. It restores the original four buffers on every validation
+exit, including exceptions; restoration failure fails the benchmark. These
+copies and checks occur outside timed samples.

@@ -120,6 +120,9 @@ def test_complete_manifest_from_protected_generator(path):
             expected_params['operator'] = {
                 'scale': {'pattern': 'channel_ramp', 'offset': .5, 'span': .5},
                 'bias': [.125, -.25, .5, -.75, 1.25][i]}
+        if path.parent.name in {'CrossEntropyLossLabelSmoothing', '12501_CrossEntropyLossLabelSmoothing'}:
+            expected_params['operator'] = {'class_axis': -1, 'smooth_eps': [0., .1, .2, .4, .6][i],
+                                           'smooth_dist': 'normalized_class_ramp'}
         assert row == {'test_case_id': f'case_{i}', 'params': expected_params}
 
 
@@ -416,7 +419,7 @@ ORIGINAL_SOURCE_DIGESTS = {'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (10
 # Job 139100 additionally found missing replay checks in FusedLeakyReLU, GRU and item attention.
 # MaskedLanguageModel also needed its transposed weight launch axes corrected.
 # Original digests remain the gate for tasks without an explicit reviewed repair.
-GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, 'ec08bb589e2acb8c425c758b5df5841d459ea01354074c5f89ea641c0330e36c'), 'torch2hip/gpumode/14539_GELU': (10, 'b4b255c97630057f877de31b0f4c68b3967a3003e465a5c699d1b88fc04301b8'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (12, '774ebc2b63b75e648ff4e40dd9f5222dc334318bb8ec6ac019586542645ca639'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, 'caf22f456cba41142677bf9455f4f7330931c65ad645b14e3830c3a0500999ac'), 'hip2hip/gpumode/ItemQueryAttention': (11, '78e4567f5a065446466e0c41d6e2135ffaa7b69ccb2ed9056ef27f93232011dd'), 'hip2hip/gpumode/MaskedLanguageModel': (11, 'bb8969ec7690e5dbbc5675e4ac97db7443714d21d8c063a1574a45ea81c468ac'), 'hip2hip/gpumode/SiLU': (11, '43c5f0a8c2cb9eaf4c0a52d75f952e27304a723c9c8f7cc4ac56bb90d09fa64c'), 'hip2hip/gpumode/Sigmoid': (11, '4e7b4b92dbdee90c258f442c994038e6bba420947f510550adf601f061000d71'), 'torch2hip/gpumode/10190_FusedLeakyReLU': (11, 'c6fbff431520d64b059cc1495a3e98b7462e771e0afec52a12c9cbfb637aa364'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '3d631fc5dce6c0574920709fdffd5c3eba28405ae3d83bd935e6e916abc14412'), 'torch2hip/gpumode/102_ItemQueryAttention': (10, 'cd9d6537d805e3d175b038e539ae36a2400a1c2cb08e4858faf663ca248528c4'), 'torch2hip/gpumode/16636_SiLU': (10, '5330ab36cee1ca0704a0d45db8bb0a47bfc8b53d2bba521bdcf3f21c3da6ba94'), 'torch2hip/gpumode/11184_Sigmoid': (10, '783a2770eb6a1c464563aabe03bc7b45bf893a21a82f9f54eb565c161748e7ea'), 'hip2hip/gpumode/TanH': (11, '007897566632c1584b5913a1592362aeaca4a3038422f93642e172777848fa43'), 'torch2hip/gpumode/11178_TanH': (10, '1d61bea5024422ea638fc84d953b20128d647fbdf88e5fe418f2686a2d9c4503'), 'hip2hip/others/assign_score_withk': (7, '3a2905af4c19a4797e44e04737d46a7fe31e7f61a951d4b2cd0b655d37bb2bc7'), 'hip2hip/others/ball_query': (10, 'cd11b843e3fb5be4644e86ad082dac15f58be645e7e98417da5e2feacd97b14e'), 'hip2hip/others/furthest_point_sample': (10, 'c76c7a8cb25cec5c79852ca7d174a19fd788517642c3f819beac596f899e8544'), 'hip2hip/others/knn': (8, '3ecfb50ee4713f8b0ecb65dadd2c76fc889d3b119449582e8ff95c4cc45de558'), 'hip2hip/others/points_in_boxes': (8, '076e6ed46ccfd82e5ee0360f8ff63ddfcc3f28bc430a42a99ade4e04c47dfa21'), 'hip2hip/others/roiaware_pool3d': (8, 'da874d09478d56aaf6b7af62df2053d306cd774e7e27078a5b46c85a86b387cd'), 'hip2hip/others/roipoint_pool3d': (8, '1777ecf526530d16b3072fdba19fbb612406af9c4f40cbd4105f9ce7759790f1'), 'hip2hip/others/three_nn': (8, '40e7b452866f727f83c37e3e9306d4c9a4fddbfb89ba4cf502f89baccbb052d4'), 'torch2hip/gpumode/8325_MaskedLanguageModel': (10, '2fb3f69dcecad77a6e350430090830dc5b3af6d7a2ff03d8b8d0cb4e29678e2b'), 'torch2hip/kernelbench/level1/l1n1_Square_matrix_multiplication_': (10, '20b6ac9b8c3d37d45587e72a62c91a794ad00538217705d12c2bac1a57e81c5d'), 'torch2hip/kernelbench/level1/l1n23_Softmax': (10, '8ef11e6fa898e93af88a5f5f665085a3a0864ee2545604c79cb5b3128d9ed64e'), 'torch2hip/kernelbench/level1/l1n26_GELU_': (10, '609c40fb91167b4156a6c8261c2f971c3cf14f50f639939999ca2251bd2b8002'), 'torch2hip/kernelbench/level1/l1n2_Standard_matrix_multiplication_': (10, '3947c3d599ec40cc77ccaefee8d4b55c9bebb5186b8dd1a97e55abb494b733d5'), 'torch2hip/kernelbench/level1/l1n36_RMSNorm_': (10, '26983a696c85e3c6f9bb0df51e131e5c1fd9e646a147e158ea210a58fdd7ac7e'), 'torch2hip/kernelbench/level1/l1n3_Batched_matrix_multiplication': (10, '499811d76f7fccd1e4cd51ed172109aadbc1a72f8795db87eef66b2755ecbb7d'), 'torch2hip/kernelbench/level1/l1n40_LayerNorm': (10, '203af86b1730f5ea6f09eb9b2c81ff07a9241291558fff862fe67c06f86a6f04'), 'torch2hip/kernelbench/level1/l1n42_Max_Pooling_2D': (10, '6357ce29e8c56f3182c5c40f2543ce40affffbbbfe74911ed9ff9d0e1f5d7375'), 'torch2hip/kernelbench/level1/l1n47_Sum_reduction_over_a_dimension': (10, '609c722ceb99129492ec248d2332020e5072bc76a3e8f9bfc0d303253b536e76'), 'torch2hip/kernelbench/level1/l1n4_Matrix_vector_multiplication_': (10, '9a2412cb0a319bc4d3a2bc1d5eeeee7a946af1f85f37acb3dbd9f01cccee59e1'), 'torch2hip/kernelbench/level1/l1n63_conv_standard_2D__square_input__square_kernel': (10, 'aed202bc6ee1649644598e4edeb71929ac546f1a7f7f279c36cdffc597325409'), 'torch2hip/kernelbench/level1/l1n82_conv_depthwise_2D_square_input_square_kernel': (10, '9c65cb3c33f81ce01e9a7771978b1da6e1b90317547be87983df41f6ffe9d869'), 'torch2hip/kernelbench/level1/l1n8_Matmul_with_irregular_shapes_': (10, '06563b8354b58fc1a19b9530958427b58905f732f37d0c82bb8d32fbe47dc95e'), 'torch2hip/kernelbench/level1/l1n95_CrossEntropyLoss': (10, '4760199ce48b862e98d6cc1400aa17bfaddfdc1526f77c538111488325b900d4'), 'torch2hip/kernelbench/level1/l1n9_Tall_skinny_matrix_multiplication_': (10, '4181e90055b4a574d36ddbfd712e06b44f682be7b701167aab0bc6bfb15f674f'), 'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (11, 'b354d8d864ac53b7b02f18c1993f998ec08c2c8f46733e31a33a530043d9a444'), 'torch2hip/gpumode/12501_CrossEntropyLossLabelSmoothing': (10, '68d4292c21774b409ea038aa35ad3a232c2d719f6dabe53fc3b45d95d1ea66f5'), 'hip2hip/gpumode/NormalAttention_dot': (11, 'e0d6aaf0d805eb8869274d3f737b0cfdaf47b998036ca61ae3175dc994aa63ac'), 'torch2hip/gpumode/1001_NormalAttention_dot': (10, '044854eccc3c0db3955fcf640c2da0fc01a5d154572b2d6f2bf5f67635cf6761'), 'hip2hip/gpumode/Feedforward': (11, '40e1e191db0544dad748a983378beff6daf4cbee497fa1f965586b888ab55dc0'), 'torch2hip/gpumode/10024_Feedforward': (10, '79b2020bdc61cb4936085128c3079882e07b8aed7046c51ef6198598084a8c0d'), 'hip2hip/gpumode/InnerProd': (12, 'ca749eb4811d0b7a09dd8b69161d25a9f02fac3f07df5e28516575830b089c77'), 'hip2hip/gpumode/KDLoss': (11, '519fb7118865ba9e00cdc6b9059d7add4f7d2f0a9c1e56611d1439ea6a64b6ec'), 'hip2hip/gpumode/MLP_model': (11, 'd47715de80e5bd5e2494617707e49c325cc87bd09fede7b8bdb817a8d5e7c7a9'), 'hip2hip/gpumode/MultiHeadAttention': (11, '411d29cabd95c3c6af6aa1a5c4d18644c9b7a989749dc6e96b788e248349babd'), 'hip2hip/gpumode/NormalAttention_embedded_gaussian': (11, 'af24da05b8ea606df87fe9e7e9e26186afe7d098f98de5dce873e89c541ce643'), 'hip2hip/gpumode/PositionWiseFeedForward': (11, 'df0164ed765748cc088b24f4d56cf0999f2e492a72c1b1b0e675c3f00a8d271d'), 'hip2hip/gpumode/SimpleMatmulModule': (11, 'd4dc537d8858f7aa1c14b9f4e4f24b8fb092341229e335eb3c958c613b0418db'), 'hip2hip/gpumode/SoftmaxModule': (11, '5e1fedd4a2ac5191e543bce4e5c48eb8cfe0cf1dbaa98b46f14aaafc0e8c2817'), 'hip2hip/gpumode/TransformerFFNLayer': (11, '452dd026048faf7b0c52f39222834a943b0138936ea92efb44266edcefa1c267'), 'hip2hip/gpumode/Transpose': (11, 'e37c704ef3121fe4a37a2105084a51bb9c9d37178cd2ae5722498a052d31e168'), 'hip2hip/gpumode/layer_normalization': (11, 'e122a9c2d22a3266e7fce12a86060adee77c2ce12580d2a581cfe1a9fde8506c'), 'torch2hip/gpumode/1003_NormalAttention_embedded_gaussian': (10, '4e6b2b5a43cf3e0220be48f3aba290b6860ed62b91c6df024020228f30252fb1'), 'torch2hip/gpumode/10082_SoftmaxModule': (10, '07dc4bbdd87b3b72740a8f60c01717e93247d3f0cff7a5a4af4f10b7d720fc36'), 'torch2hip/gpumode/10099_Gather': (10, 'b812f72c4cc17a19c11efb380f08f3b807da768fc4e2bad5afa984804c44f6c0'), 'torch2hip/gpumode/10456_MultiHeadAttention': (10, '5716dd434e3baf6ebcffae5275b3042a726f137acb0053c5785a95d235514c07'), 'torch2hip/gpumode/1067_Transpose': (10, 'f3a6ac32eebc9f7788d3f99cd587418017f41fd879ce28daf6e34629544a8071'), 'torch2hip/gpumode/11122_PositionEmbedder': (10, 'e06e7c1eee5408c79a64fcac82801c757affd21d491c69bf424645e9a4e658a7'), 'torch2hip/gpumode/11709_InnerProd': (11, '399c11b6c10e8052cbd1266a3b8e1165a71b205eac78ec02ac61b9b30506f38e'), 'torch2hip/gpumode/11754_layer_normalization': (10, 'f619a30431d4cb3c179fcaccd4ac74e2c77aec8f11147e547ae1f91be42f2840'), 'torch2hip/gpumode/1178_MLP_model': (10, '7856ee9beaf792f0aec8d84aeaf54579316de9b3dea782daba32f46d02a0c139'), 'torch2hip/gpumode/14007_KDLoss': (10, 'cf7f9a76d572e0b164b54df09f55225ceec70261d25e2ae6d2052e485e094b94'), 'torch2hip/gpumode/14044_PositionWiseFeedForward': (10, 'cb0f9baa199a4b87f7e67905769be0693b68731ada888696cf9ef0c1ca0f9106'), 'torch2hip/gpumode/14069_TransformerFFNLayer': (10, '8b134fecdba1fef0e1c272721d0f3eec77cb3a3d240122a0b730919d6356cf12'), 'torch2hip/gpumode/3267_SimpleMatmulModule': (10, 'a912fd2c41021a55c029d35a410a01dc00a46fc9bb34d48bbee0a131084dd6fe'), 'torch2hip/kernelbench/level2/l2n17_Conv2d_InstanceNorm_Divide': (10, '5e683ac6cacf817d6df23145a49ef858580b228d774e12363e11e91216ce62db'), 'torch2hip/kernelbench/level2/l2n37_Matmul_Swish_Sum_GroupNorm': (10, 'f2f4617a554667cdb94ac1f0086414161a63b9de87b00769a00beb2e290d18d1'), 'torch2hip/kernelbench/level2/l2n40_Matmul_Scaling_ResidualAdd': (10, '968de902011ebf3c7d4426e1a59aff3df8d16d60a6d643a419c71c49f583b29c'), 'torch2hip/kernelbench/level2/l2n46_Conv2d_Subtract_Tanh_Subtract_AvgPool': (10, 'abcaa40577247626b1b6b96bc1190dbcfbe68202eafc7a0eb526a39c86386892'), 'torch2hip/kernelbench/level2/l2n52_Conv2d_Activation_BatchNorm': (10, '0ebd91aa7952491a2b79c772bf19fb58b49d8c761c5b414f01247187339ee67c'), 'torch2hip/kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale': (10, '23db7153133fd97e5ee40ded27e147ee5c4464d5fccb65867c8d39b22dd050ea'), 'torch2hip/kernelbench/level2/l2n59_Matmul_Swish_Scaling': (10, '316416aeae848fc04b2f925aa1d11026387abbfac16613fd1f9616a20e3795c1'), 'torch2hip/kernelbench/level2/l2n66_Matmul_Dropout_Softmax': (10, '5abfcb99c3c248270aa0e35a8f455c04995ad8d5a04829230310ce3cdf268cc9'), 'torch2hip/kernelbench/level2/l2n6_Conv3d_Softmax_MaxPool_MaxPool': (10, 'cbbcc6e39cc4874fd4eff05c65b024cfa72af6090d6b7c45a985fc19f9428a6f'), 'torch2hip/kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling': (10, 'd0392538be766d65c8cb65d2c8d6241a4c9ec3c27630981f6959b23852de7d8b'), 'torch2hip/kernelbench/level2/l2n82_Conv2d_Tanh_Scaling_BiasAdd_Max': (10, '1965dcbf0a873b2dac96f0f56237dff4c5ab0aafe50ed2f236ef922bd4482f6c'), 'torch2hip/kernelbench/level2/l2n85_Conv2d_GroupNorm_Scale_MaxPool_Clamp': (10, '30018c04c529fd9f2d71ef248d304050d7ea8f13442673fdae85c76db5fcd3ad'), 'torch2hip/kernelbench/level2/l2n86_Matmul_Divide_GELU': (10, '9b0be02c49ad151540f9809841b5cecb1103f7fcd0b425e7e06529d0579ff13d'), 'torch2hip/kernelbench/level2/l2n98_Matmul_AvgPool_GELU_Scale_Max': (10, 'ab8d0508fb2d6dd8a570ac802b217e31b178738f75382a5a6f69718f4a764458'), 'torch2hip/kernelbench/level2/l2n99_Matmul_GELU_Softmax': (10, '8fabb1d609c2327c90ac16be5ed1d124661f6a1da0eb29fcf4bfa1598a581316'), 'torch2hip/kernelbench/level3/l3n31_VisionAttention': (10, 'd0af0fbc6b95cbf5602cc2a30474c663095faf401390e4d6fcd7318d07bbc40b'), 'torch2hip/kernelbench/level3/l3n43_MinGPTCausalAttention': (10, '14353949b386acbb41c7e4f02277a5b33909e1752020d127dba87cd25e7200e9'), 'torch2hip/kernelbench/level3/l3n44_MiniGPTBlock': (10, 'd1edd1bb46b907d2fb56d68a9b1237d2bbfa0ef40d415c17a98ce5ade130d5ad')}
+GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, 'ec08bb589e2acb8c425c758b5df5841d459ea01354074c5f89ea641c0330e36c'), 'torch2hip/gpumode/14539_GELU': (10, 'b4b255c97630057f877de31b0f4c68b3967a3003e465a5c699d1b88fc04301b8'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (12, '774ebc2b63b75e648ff4e40dd9f5222dc334318bb8ec6ac019586542645ca639'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, 'caf22f456cba41142677bf9455f4f7330931c65ad645b14e3830c3a0500999ac'), 'hip2hip/gpumode/ItemQueryAttention': (11, '78e4567f5a065446466e0c41d6e2135ffaa7b69ccb2ed9056ef27f93232011dd'), 'hip2hip/gpumode/MaskedLanguageModel': (11, 'bb8969ec7690e5dbbc5675e4ac97db7443714d21d8c063a1574a45ea81c468ac'), 'hip2hip/gpumode/SiLU': (11, '43c5f0a8c2cb9eaf4c0a52d75f952e27304a723c9c8f7cc4ac56bb90d09fa64c'), 'hip2hip/gpumode/Sigmoid': (11, '4e7b4b92dbdee90c258f442c994038e6bba420947f510550adf601f061000d71'), 'torch2hip/gpumode/10190_FusedLeakyReLU': (11, 'c6fbff431520d64b059cc1495a3e98b7462e771e0afec52a12c9cbfb637aa364'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '3d631fc5dce6c0574920709fdffd5c3eba28405ae3d83bd935e6e916abc14412'), 'torch2hip/gpumode/102_ItemQueryAttention': (10, 'cd9d6537d805e3d175b038e539ae36a2400a1c2cb08e4858faf663ca248528c4'), 'torch2hip/gpumode/16636_SiLU': (10, '5330ab36cee1ca0704a0d45db8bb0a47bfc8b53d2bba521bdcf3f21c3da6ba94'), 'torch2hip/gpumode/11184_Sigmoid': (10, '783a2770eb6a1c464563aabe03bc7b45bf893a21a82f9f54eb565c161748e7ea'), 'hip2hip/gpumode/TanH': (11, '007897566632c1584b5913a1592362aeaca4a3038422f93642e172777848fa43'), 'torch2hip/gpumode/11178_TanH': (10, '1d61bea5024422ea638fc84d953b20128d647fbdf88e5fe418f2686a2d9c4503'), 'hip2hip/others/assign_score_withk': (8, '42e3493889a8c098bca37112f5c93c756ca0f2710ffdc29c06c79d78c0e1152f'), 'hip2hip/others/ball_query': (10, 'cd11b843e3fb5be4644e86ad082dac15f58be645e7e98417da5e2feacd97b14e'), 'hip2hip/others/furthest_point_sample': (10, 'c76c7a8cb25cec5c79852ca7d174a19fd788517642c3f819beac596f899e8544'), 'hip2hip/others/knn': (8, '3ecfb50ee4713f8b0ecb65dadd2c76fc889d3b119449582e8ff95c4cc45de558'), 'hip2hip/others/points_in_boxes': (8, '076e6ed46ccfd82e5ee0360f8ff63ddfcc3f28bc430a42a99ade4e04c47dfa21'), 'hip2hip/others/roiaware_pool3d': (8, 'da874d09478d56aaf6b7af62df2053d306cd774e7e27078a5b46c85a86b387cd'), 'hip2hip/others/roipoint_pool3d': (8, '1777ecf526530d16b3072fdba19fbb612406af9c4f40cbd4105f9ce7759790f1'), 'hip2hip/others/three_nn': (8, '40e7b452866f727f83c37e3e9306d4c9a4fddbfb89ba4cf502f89baccbb052d4'), 'torch2hip/gpumode/8325_MaskedLanguageModel': (10, '2fb3f69dcecad77a6e350430090830dc5b3af6d7a2ff03d8b8d0cb4e29678e2b'), 'torch2hip/kernelbench/level1/l1n1_Square_matrix_multiplication_': (10, '20b6ac9b8c3d37d45587e72a62c91a794ad00538217705d12c2bac1a57e81c5d'), 'torch2hip/kernelbench/level1/l1n23_Softmax': (10, '8ef11e6fa898e93af88a5f5f665085a3a0864ee2545604c79cb5b3128d9ed64e'), 'torch2hip/kernelbench/level1/l1n26_GELU_': (10, '609c40fb91167b4156a6c8261c2f971c3cf14f50f639939999ca2251bd2b8002'), 'torch2hip/kernelbench/level1/l1n2_Standard_matrix_multiplication_': (10, '3947c3d599ec40cc77ccaefee8d4b55c9bebb5186b8dd1a97e55abb494b733d5'), 'torch2hip/kernelbench/level1/l1n36_RMSNorm_': (10, '26983a696c85e3c6f9bb0df51e131e5c1fd9e646a147e158ea210a58fdd7ac7e'), 'torch2hip/kernelbench/level1/l1n3_Batched_matrix_multiplication': (10, '499811d76f7fccd1e4cd51ed172109aadbc1a72f8795db87eef66b2755ecbb7d'), 'torch2hip/kernelbench/level1/l1n40_LayerNorm': (10, '203af86b1730f5ea6f09eb9b2c81ff07a9241291558fff862fe67c06f86a6f04'), 'torch2hip/kernelbench/level1/l1n42_Max_Pooling_2D': (10, '6357ce29e8c56f3182c5c40f2543ce40affffbbbfe74911ed9ff9d0e1f5d7375'), 'torch2hip/kernelbench/level1/l1n47_Sum_reduction_over_a_dimension': (10, '609c722ceb99129492ec248d2332020e5072bc76a3e8f9bfc0d303253b536e76'), 'torch2hip/kernelbench/level1/l1n4_Matrix_vector_multiplication_': (10, '9a2412cb0a319bc4d3a2bc1d5eeeee7a946af1f85f37acb3dbd9f01cccee59e1'), 'torch2hip/kernelbench/level1/l1n63_conv_standard_2D__square_input__square_kernel': (10, 'aed202bc6ee1649644598e4edeb71929ac546f1a7f7f279c36cdffc597325409'), 'torch2hip/kernelbench/level1/l1n82_conv_depthwise_2D_square_input_square_kernel': (10, '9c65cb3c33f81ce01e9a7771978b1da6e1b90317547be87983df41f6ffe9d869'), 'torch2hip/kernelbench/level1/l1n8_Matmul_with_irregular_shapes_': (10, '06563b8354b58fc1a19b9530958427b58905f732f37d0c82bb8d32fbe47dc95e'), 'torch2hip/kernelbench/level1/l1n95_CrossEntropyLoss': (10, '4760199ce48b862e98d6cc1400aa17bfaddfdc1526f77c538111488325b900d4'), 'torch2hip/kernelbench/level1/l1n9_Tall_skinny_matrix_multiplication_': (10, '4181e90055b4a574d36ddbfd712e06b44f682be7b701167aab0bc6bfb15f674f'), 'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (12, 'c28f313b850a8e34983473564d00ebdbc2113c6a2db85f1541680567fa2884fa'), 'torch2hip/gpumode/12501_CrossEntropyLossLabelSmoothing': (11, '285a57b17629499fe15b1e7a3242afe5ae7ce636b2a06029ddf6bff66f1a2acf'), 'hip2hip/gpumode/NormalAttention_dot': (11, 'e0d6aaf0d805eb8869274d3f737b0cfdaf47b998036ca61ae3175dc994aa63ac'), 'torch2hip/gpumode/1001_NormalAttention_dot': (10, '044854eccc3c0db3955fcf640c2da0fc01a5d154572b2d6f2bf5f67635cf6761'), 'hip2hip/gpumode/Feedforward': (11, '40e1e191db0544dad748a983378beff6daf4cbee497fa1f965586b888ab55dc0'), 'torch2hip/gpumode/10024_Feedforward': (10, '79b2020bdc61cb4936085128c3079882e07b8aed7046c51ef6198598084a8c0d'), 'hip2hip/gpumode/InnerProd': (12, 'ca749eb4811d0b7a09dd8b69161d25a9f02fac3f07df5e28516575830b089c77'), 'hip2hip/gpumode/KDLoss': (11, '519fb7118865ba9e00cdc6b9059d7add4f7d2f0a9c1e56611d1439ea6a64b6ec'), 'hip2hip/gpumode/MLP_model': (11, 'd47715de80e5bd5e2494617707e49c325cc87bd09fede7b8bdb817a8d5e7c7a9'), 'hip2hip/gpumode/MultiHeadAttention': (11, '411d29cabd95c3c6af6aa1a5c4d18644c9b7a989749dc6e96b788e248349babd'), 'hip2hip/gpumode/NormalAttention_embedded_gaussian': (11, 'af24da05b8ea606df87fe9e7e9e26186afe7d098f98de5dce873e89c541ce643'), 'hip2hip/gpumode/PositionWiseFeedForward': (11, 'df0164ed765748cc088b24f4d56cf0999f2e492a72c1b1b0e675c3f00a8d271d'), 'hip2hip/gpumode/SimpleMatmulModule': (11, 'd4dc537d8858f7aa1c14b9f4e4f24b8fb092341229e335eb3c958c613b0418db'), 'hip2hip/gpumode/SoftmaxModule': (11, '5e1fedd4a2ac5191e543bce4e5c48eb8cfe0cf1dbaa98b46f14aaafc0e8c2817'), 'hip2hip/gpumode/TransformerFFNLayer': (11, '452dd026048faf7b0c52f39222834a943b0138936ea92efb44266edcefa1c267'), 'hip2hip/gpumode/Transpose': (11, 'e37c704ef3121fe4a37a2105084a51bb9c9d37178cd2ae5722498a052d31e168'), 'hip2hip/gpumode/layer_normalization': (11, 'e122a9c2d22a3266e7fce12a86060adee77c2ce12580d2a581cfe1a9fde8506c'), 'torch2hip/gpumode/1003_NormalAttention_embedded_gaussian': (10, '4e6b2b5a43cf3e0220be48f3aba290b6860ed62b91c6df024020228f30252fb1'), 'torch2hip/gpumode/10082_SoftmaxModule': (10, '07dc4bbdd87b3b72740a8f60c01717e93247d3f0cff7a5a4af4f10b7d720fc36'), 'torch2hip/gpumode/10099_Gather': (10, 'b812f72c4cc17a19c11efb380f08f3b807da768fc4e2bad5afa984804c44f6c0'), 'torch2hip/gpumode/10456_MultiHeadAttention': (10, '5716dd434e3baf6ebcffae5275b3042a726f137acb0053c5785a95d235514c07'), 'torch2hip/gpumode/1067_Transpose': (10, 'f3a6ac32eebc9f7788d3f99cd587418017f41fd879ce28daf6e34629544a8071'), 'torch2hip/gpumode/11122_PositionEmbedder': (10, 'e06e7c1eee5408c79a64fcac82801c757affd21d491c69bf424645e9a4e658a7'), 'torch2hip/gpumode/11709_InnerProd': (11, '399c11b6c10e8052cbd1266a3b8e1165a71b205eac78ec02ac61b9b30506f38e'), 'torch2hip/gpumode/11754_layer_normalization': (10, 'f619a30431d4cb3c179fcaccd4ac74e2c77aec8f11147e547ae1f91be42f2840'), 'torch2hip/gpumode/1178_MLP_model': (10, '7856ee9beaf792f0aec8d84aeaf54579316de9b3dea782daba32f46d02a0c139'), 'torch2hip/gpumode/14007_KDLoss': (10, 'cf7f9a76d572e0b164b54df09f55225ceec70261d25e2ae6d2052e485e094b94'), 'torch2hip/gpumode/14044_PositionWiseFeedForward': (10, 'cb0f9baa199a4b87f7e67905769be0693b68731ada888696cf9ef0c1ca0f9106'), 'torch2hip/gpumode/14069_TransformerFFNLayer': (10, '8b134fecdba1fef0e1c272721d0f3eec77cb3a3d240122a0b730919d6356cf12'), 'torch2hip/gpumode/3267_SimpleMatmulModule': (10, 'a912fd2c41021a55c029d35a410a01dc00a46fc9bb34d48bbee0a131084dd6fe'), 'torch2hip/kernelbench/level2/l2n17_Conv2d_InstanceNorm_Divide': (10, '5e683ac6cacf817d6df23145a49ef858580b228d774e12363e11e91216ce62db'), 'torch2hip/kernelbench/level2/l2n37_Matmul_Swish_Sum_GroupNorm': (10, 'f2f4617a554667cdb94ac1f0086414161a63b9de87b00769a00beb2e290d18d1'), 'torch2hip/kernelbench/level2/l2n40_Matmul_Scaling_ResidualAdd': (10, '968de902011ebf3c7d4426e1a59aff3df8d16d60a6d643a419c71c49f583b29c'), 'torch2hip/kernelbench/level2/l2n46_Conv2d_Subtract_Tanh_Subtract_AvgPool': (10, 'abcaa40577247626b1b6b96bc1190dbcfbe68202eafc7a0eb526a39c86386892'), 'torch2hip/kernelbench/level2/l2n52_Conv2d_Activation_BatchNorm': (10, '0ebd91aa7952491a2b79c772bf19fb58b49d8c761c5b414f01247187339ee67c'), 'torch2hip/kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale': (10, '23db7153133fd97e5ee40ded27e147ee5c4464d5fccb65867c8d39b22dd050ea'), 'torch2hip/kernelbench/level2/l2n59_Matmul_Swish_Scaling': (10, '316416aeae848fc04b2f925aa1d11026387abbfac16613fd1f9616a20e3795c1'), 'torch2hip/kernelbench/level2/l2n66_Matmul_Dropout_Softmax': (10, '5abfcb99c3c248270aa0e35a8f455c04995ad8d5a04829230310ce3cdf268cc9'), 'torch2hip/kernelbench/level2/l2n6_Conv3d_Softmax_MaxPool_MaxPool': (10, 'cbbcc6e39cc4874fd4eff05c65b024cfa72af6090d6b7c45a985fc19f9428a6f'), 'torch2hip/kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling': (10, 'd0392538be766d65c8cb65d2c8d6241a4c9ec3c27630981f6959b23852de7d8b'), 'torch2hip/kernelbench/level2/l2n82_Conv2d_Tanh_Scaling_BiasAdd_Max': (10, '1965dcbf0a873b2dac96f0f56237dff4c5ab0aafe50ed2f236ef922bd4482f6c'), 'torch2hip/kernelbench/level2/l2n85_Conv2d_GroupNorm_Scale_MaxPool_Clamp': (10, '30018c04c529fd9f2d71ef248d304050d7ea8f13442673fdae85c76db5fcd3ad'), 'torch2hip/kernelbench/level2/l2n86_Matmul_Divide_GELU': (10, '9b0be02c49ad151540f9809841b5cecb1103f7fcd0b425e7e06529d0579ff13d'), 'torch2hip/kernelbench/level2/l2n98_Matmul_AvgPool_GELU_Scale_Max': (10, 'ab8d0508fb2d6dd8a570ac802b217e31b178738f75382a5a6f69718f4a764458'), 'torch2hip/kernelbench/level2/l2n99_Matmul_GELU_Softmax': (10, '8fabb1d609c2327c90ac16be5ed1d124661f6a1da0eb29fcf4bfa1598a581316'), 'torch2hip/kernelbench/level3/l3n31_VisionAttention': (10, 'd0af0fbc6b95cbf5602cc2a30474c663095faf401390e4d6fcd7318d07bbc40b'), 'torch2hip/kernelbench/level3/l3n43_MinGPTCausalAttention': (10, '14353949b386acbb41c7e4f02277a5b33909e1752020d127dba87cd25e7200e9'), 'torch2hip/kernelbench/level3/l3n44_MiniGPTBlock': (10, 'd1edd1bb46b907d2fb56d68a9b1237d2bbfa0ef40d415c17a98ce5ade130d5ad'), 'hip2hip/others/mla_decode': (4, 'b2c0c163f8ac070d2fc8f36fcf24ee4b074804e9dc9290ea172fcde54aad670c')}
 
 
 @pytest.mark.parametrize('path', CONFIGS, ids=lambda p: p.parent.name)
@@ -538,6 +541,7 @@ def test_mla_protected_host_reference_known_answers_on_cpu(tmp_path):
 #include <vector>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include <cassert>
 #define __host__
@@ -577,7 +581,7 @@ int main() {
 
 @pytest.mark.parametrize('outcome', ['correct', 'wrong_values', 'wrong_shape'])
 def test_extension_correctness_real_comparison_and_honest_failure_kind(outcome, tmp_path, monkeypatch, capsys):
-    path = EXTENSIONS[0]
+    path = next(p for p in EXTENSIONS if p.parent.name == 'KDLoss')
     raw = yaml.safe_load(path.read_text()); args = options(raw)
     runner = import_path(path.parent / 'eval_tools/evaluate.py')
     monkeypatch.setattr(runner, 'ROOT', tmp_path); monkeypatch.chdir(tmp_path)
@@ -1279,6 +1283,9 @@ def test_loss_observes_actual_event_sample_and_distinguishes_graph(relative, kin
     model = import_path(root / args.functional).CrossEntropyLossLabelSmoothing().eval()
     logits = torch.tensor([[0., math.log(2), math.log(3)], [math.log(2), math.log(3), 0.]])
     targets = torch.tensor([[.25,.25,.5],[.5,0.,.5]])
+    controls = import_path(root / 'eval_tools/case_controls.py')
+    monkeypatch.setitem(sys.modules, 'case_controls', controls)
+    controls.apply_control(model, {'smooth_eps': 0.}, [logits, targets])
     expected = torch.tensor(-(.25*math.log(1/6)+.25*math.log(2/6)+.5*math.log(3/6)
                               +.5*math.log(2/6)+.5*math.log(1/6))/2)
     for filename in (args.module, args.functional):
@@ -1709,6 +1716,12 @@ def test_all_python_timed_paths_preserve_and_restore_state(path, role, fault, mo
     model = Model().eval()
     x = torch.tensor([-1., .5, 2.])
     original = x.clone()
+    if 'CrossEntropyLossLabelSmoothing' in path.parent.name:
+        # This test isolates shared state mechanics with its synthetic model.
+        # The actual loss oracle and replay are exercised separately below.
+        model.smooth_eps, model.smooth_dist = .3, None
+        monkeypatch.setitem(sys.modules, 'case_controls', types.SimpleNamespace(
+            reference=lambda value, epsilon, distribution: model(value)))
     def candidate(x, weight, offset):
         return torch.nn.functional.gelu(x * weight + offset)
     def benchmark(invoke, **kwargs):
@@ -1859,6 +1872,142 @@ def test_level23_references_against_independent_small_answers(path):
                 torch.testing.assert_close(value, state[key], rtol=0, atol=0)
 
 
+def test_assign_score_scalar_and_vectorized_known_gradients():
+    h = harness_namespace(ROOT / 'tasks/hip2hip/others/assign_score_withk')
+    scores = torch.tensor([[[[2.], [2.]]]], requires_grad=True)
+    points = torch.tensor([[[[3.]], [[5.]]]], requires_grad=True)
+    centers = torch.tensor([[[[1.]], [[7.]]]], requires_grad=True)
+    indices = torch.tensor([[[0, 1]]])
+    for reference in (h.cpu_assign_score_withk_forward, h.cpu_assign_score_withk_forward_vectorized):
+        actual = reference(scores, points, centers, indices)
+        torch.testing.assert_close(actual, torch.tensor([[[[4., 8.]]]]))
+        grads = torch.autograd.grad(actual.sum(), (scores, points, centers))
+        for actual, expected in zip(grads, (torch.tensor([[[[2.], [4.]]]]), torch.tensor([[[[2.]], [[2.]]]]), torch.tensor([[[[-4.]], [[0.]]]]))):
+            torch.testing.assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('fault', ['none', 'wrong_gradient', 'missing_reset', 'input_mutation', 'exception'])
+def test_assign_score_timed_backward_checks_and_restores_gradients(fault, monkeypatch):
+    root = ROOT / 'tasks/hip2hip/others/assign_score_withk'
+    helper = import_path(root / 'scripts/replay_validation.py')
+    timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
+    monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    inputs = [torch.tensor([2., 3.], requires_grad=True), torch.tensor([4., 5.], requires_grad=True), torch.tensor([6., 7.], requires_grad=True)]
+    for value in inputs: value.grad = torch.zeros_like(value)
+    pristine = [value.detach().clone() for value in inputs]
+    buffers = [value.grad for value in inputs]
+    expected = (torch.tensor([48., 105.]), torch.tensor([24., 35.]), torch.tensor([12., 21.]), torch.tensor([8., 15.]))
+    output = tuple(torch.empty_like(value) for value in expected[:1]) + tuple(buffers)
+    calls = []
+    def reset():
+        calls.append('reset')
+        for value in inputs: value.grad.zero_()
+    def invoke():
+        calls.append('invoke')
+        output[0].copy_(expected[0])
+        for value, reference in zip(inputs, expected[1:]): value.grad.add_(reference)
+        return output
+    def check(actual):
+        for value, reference in zip(actual, expected): torch.testing.assert_close(value, reference, rtol=1e-3, atol=1e-3)
+    def benchmark(fn, **kwargs):
+        assert kwargs['warmup'] == 10 and kwargs['repetition'] == 100
+        kwargs['prepare_fn'](); observed = fn()
+        def replay():
+            assert all(torch.isnan(value).all() for value in observed)
+            if fault != 'missing_reset': kwargs['prepare_fn']()
+            actual = fn()
+            with torch.no_grad():
+                if fault == 'wrong_gradient': actual[1].zero_()
+                if fault == 'input_mutation': inputs[0].add_(1)
+                if fault == 'exception':
+                    inputs[0].add_(1); inputs[1].grad = None
+                    raise RuntimeError('deliberate captured backward failure')
+            return actual
+        kwargs['timed_run']._bind(replay, observed)
+        return .5, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph'}
+    def run():
+        return helper.measure(benchmark, invoke, inputs, check, warmup=10, repetition=100, use_cuda_graph=True, prepare_fn=reset)
+    if fault == 'none': assert run()[1]['replay_validation_valid']
+    else:
+        with pytest.raises((AssertionError, ValueError, RuntimeError)): run()
+    for value, original, buffer in zip(inputs, pristine, buffers):
+        torch.testing.assert_close(value, original, rtol=0, atol=0)
+        assert value.grad is buffer and torch.equal(value.grad, torch.zeros_like(value))
+    assert calls.count('invoke') == 2
+
+
+def test_mla_reference_gate_rejects_consistent_wrong_replay_and_nan_under_fast_math(tmp_path):
+    compiler = shutil.which('g++')
+    if compiler is None: pytest.skip('CPU C++ compiler unavailable; not GPU validation')
+    root = ROOT / 'tasks/hip2hip/others/mla_decode'
+    header = root / 'scripts/native/output_validation.hpp'
+    program = tmp_path / 'check.cpp'
+    program.write_text('''
+#include <cassert>
+#include <limits>
+#include <vector>
+#include "output_validation.hpp"
+int main() {
+    auto decode=[](float v){return v;};
+    std::vector<float> correct{1.f,2.f}, wrong{0.f,0.f};
+    assert(validate_mla_outputs(correct,correct,correct,decode).empty());
+    assert(!validate_mla_outputs(wrong,wrong,correct,decode).empty());
+    for(float value : {std::numeric_limits<float>::quiet_NaN(),std::numeric_limits<float>::infinity()}) {
+        std::vector<float> bad{value,2.f};
+        assert(!validate_mla_outputs(bad,bad,correct,decode).empty());
+    }
+    std::vector<float> boundary{1.09f,2.18f};
+    assert(validate_mla_outputs(boundary,boundary,correct,decode).empty());
+    assert(!validate_mla_outputs(boundary,correct,correct,decode).empty());
+    std::vector<float> ones{1.f,1.f};
+    assert(!validate_mla_outputs(wrong,wrong,ones,decode).empty());
+}
+''')
+    subprocess.run([compiler, '-std=c++17', '-O3', '-ffast-math', '-I', str(header.parent), str(program), '-o', str(tmp_path / 'check')], check=True, timeout=60)
+    subprocess.run([str(tmp_path / 'check')], check=True, timeout=10)
+
+
+def test_mla_host_reference_nonzero_known_answer_with_remapped_tokens(tmp_path):
+    compiler = shutil.which('g++')
+    if compiler is None: pytest.skip('CPU C++ compiler unavailable; not GPU validation')
+    root = ROOT / 'tasks/hip2hip/others/mla_decode'
+    text = (root / 'mla_decode.hip').read_text()
+    decode = extract_cpp_function(text, '__host__ __device__ __forceinline__ float fp8_e4m3fn_to_f32')
+    reference = extract_cpp_function(text, 'static void host_reference')
+    preamble = '''
+#include <vector>
+#include <cstdint>
+#include <cmath>
+#include <cassert>
+#define __host__
+#define __device__
+#define __forceinline__ inline
+// The known answer is exactly representable; no rounding/GPU claim here.
+using bf16=float;
+float __float2bfloat16(float x){return x;}
+float __bfloat162float(float x){return x;}
+constexpr int NHEAD=128,LK=576,LV=512;
+'''
+    main = '''
+int main(){
+    std::vector<bf16> q(NHEAD*LK,0), out;
+    // e4m3fn byte 0x38 is 1, 0x40 is 2, 0x48 is 4.
+    std::vector<uint8_t> kv(3*LK,0x38);
+    for(int d=0;d<LK;++d){kv[LK+d]=0x40;kv[2*LK+d]=0x48;}
+    std::vector<int32_t> mapping{2,0},lengths{2};
+    host_reference(out,q,kv,mapping,lengths,1,2,1.f/std::sqrt(float(LK)));
+    for(float value:out)assert(value==2.5f);
+    lengths[0]=1;
+    host_reference(out,q,kv,mapping,lengths,1,2,1.f/std::sqrt(float(LK)));
+    for(float value:out)assert(value==4.f);
+}
+'''
+    source=tmp_path/'reference.cpp';source.write_text(preamble+decode+reference+main)
+    subprocess.run([compiler,'-std=c++17','-O3','-ffast-math',str(source),'-o',str(tmp_path/'check')],check=True,timeout=60)
+    subprocess.run([str(tmp_path/'check')],check=True,timeout=10)
+
+
 @pytest.mark.parametrize('control_index', range(5))
 def test_ball_query_mmcv_exact_zero_boundaries_order_and_padding(control_index):
     task = ROOT / 'tasks/hip2hip/others/ball_query'
@@ -1889,3 +2038,121 @@ def test_ball_query_index_validation_has_no_near_zero_or_padding_escape():
     empty = torch.full((1, 2, 3), 10.)
     assert check(torch.zeros(1, 1, 3, dtype=torch.int32), empty, center, 1., 2.)
     assert not check(torch.ones(1, 1, 3, dtype=torch.int32), empty, center, 1., 2.)
+
+
+CE_TASKS = [p for p in EXTENSIONS if 'CrossEntropyLossLabelSmoothing' in p.parent.name]
+
+
+@pytest.mark.parametrize('path', CE_TASKS, ids=lambda p: p.parent.name)
+def test_ce_analytic_smoothing_oracle_and_probability_axis(path):
+    args = options(yaml.safe_load(path.read_text()))
+    helper = import_path(path.parent / 'eval_tools/case_controls.py')
+    module, functional = [import_path(path.parent / name) for name in (args.module, args.functional)]
+    helper.self_test(module, functional, args.model_class)
+    rows = json.loads(path.with_name('workload.json').read_text())['cases']
+    helper.validate_controls(rows)
+    model = getattr(module, args.model_class)()
+    for inputs, row in zip(module.get_inputs(), rows):
+        before = [value.clone() for value in inputs]
+        rng = torch.random.get_rng_state().clone()
+        assert helper.configure_models((model,), inputs) == row['params']['operator']
+        torch.testing.assert_close(inputs[1].sum(-1), torch.ones_like(inputs[1][..., 0]), rtol=1e-5, atol=1e-6)
+        assert not torch.allclose(inputs[1].sum(1), torch.ones_like(inputs[1][:, 0]), rtol=1e-5, atol=1e-6)
+        assert 'smooth_dist' in model.state_dict()
+        assert model.smooth_dist.shape == inputs[1].shape and model.smooth_dist.is_contiguous()
+        actual = model(*inputs)
+        expected = helper.reference(*inputs, model.smooth_eps, model.smooth_dist)
+        torch.testing.assert_close(actual, expected, rtol=1e-4, atol=1e-5)
+        for old, new in zip(before, inputs): torch.testing.assert_close(new, old, rtol=0, atol=0)
+        assert torch.equal(torch.random.get_rng_state(), rng)
+    invalid = copy.deepcopy(rows)
+    for row in invalid: row['params']['operator']['smooth_eps'] = 0
+    with pytest.raises(ValueError, match='varied nonzero'):
+        helper.validate_controls(invalid)
+
+
+@pytest.mark.parametrize('path', CE_TASKS, ids=lambda p: p.parent.name)
+@pytest.mark.parametrize('role', ['baseline', 'candidate'])
+@pytest.mark.parametrize('fault', ['none', 'ignore_smoothing', 'wrong_axis', 'mutate_target'])
+def test_ce_actual_reference_and_timed_replay_negative_controls(path, role, fault, monkeypatch):
+    args = options(yaml.safe_load(path.read_text()))
+    controls = import_path(path.parent / 'eval_tools/case_controls.py')
+    helper = import_path(path.parent / 'eval_tools/replay_validation.py')
+    runner = import_path(path.parent / 'eval_tools/evaluate.py')
+    monkeypatch.setitem(sys.modules, 'case_controls', controls)
+    timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
+    monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    module = import_path(path.parent / (args.module if role == 'baseline' else args.functional))
+    model = getattr(module, args.model_class)()
+    logits = torch.tensor([[[[0., math.log(2), math.log(4)], [math.log(4), 0., math.log(2)]]]])
+    target = torch.tensor([[[[1., 0., 0.], [0., 1., 0.]]]])
+    controls.apply_control(model, {'smooth_eps': .3}, [logits, target])
+    initial = target.clone()
+    def correct(input, target, **kwargs):
+        return controls.reference(input, target, kwargs['smooth_eps'], kwargs['smooth_dist'])
+    def benchmark(invoke, **kwargs):
+        output = invoke().detach()
+        def replay():
+            assert torch.isnan(output).all()
+            eps = 0. if fault == 'ignore_smoothing' else model.smooth_eps
+            value = controls.reference(logits, target, eps, model.smooth_dist)
+            if fault == 'wrong_axis':
+                mixed = (1-eps)*target + eps*model.smooth_dist
+                value = -(mixed * torch.log_softmax(logits, dim=-2)).sum(-2).mean()
+            with torch.no_grad():
+                output.copy_(value)
+                if fault == 'mutate_target': target.mul_(.5)
+            return output
+        kwargs['timed_run']._bind(replay, output)
+        return .2, {'benchmark_method':'cuda_event_fallback','benchmark_timed_run_kind':'eager_callable'}
+    def policy(rtol=1e-4, atol=1e-5): pass
+    perf = types.SimpleNamespace(cal_kernel_perf=policy, cal_modu_latency=None,
+        benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)
+    helper.install(perf, runner.output_contract)
+    def run():
+        return perf.cal_modu_latency(model, [logits, target]) if role == 'baseline' else perf.cal_hip_latency(model, [logits, target], correct)
+    if fault == 'none':
+        _, meta = run()
+        assert meta['model_state_validation_valid'] and meta['replay_validation_valid']
+    else:
+        with pytest.raises((ValueError, AssertionError)):
+            run()
+    torch.testing.assert_close(target, initial, rtol=0, atol=0)
+
+
+def test_mla_input_bytes_and_finally_restore_on_native_validation_failures(tmp_path):
+    compiler = shutil.which('g++')
+    if compiler is None:
+        pytest.skip('C++ compiler unavailable')
+    header = ROOT / 'tasks/hip2hip/others/mla_decode/scripts/native/output_validation.hpp'
+    source = tmp_path / 'restore.cpp'
+    source.write_text('#include <vector>\n#include <cassert>\n#include <stdexcept>\n#include "' + str(header) + '"\n' + r'''
+int main() {
+    std::vector<float> original{1.f, -0.f}, values = original;
+    assert(mla_same_buffer(values, original));
+    values[1] = 0.f;
+    assert(!mla_same_buffer(values, original)); // exact bytes, not FP tolerance
+    values = original;
+    int restored = 0;
+    auto restore = [&]() { values = original; ++restored; return true; };
+    auto good = [&]() { values[0] = 3.f; return std::string(); };
+    assert(mla_with_restored_inputs(good, restore).empty());
+    assert(restored == 1 && mla_same_buffer(values, original));
+    auto failed = [&]() { values[0] = 7.f; return std::string("wrong replay"); };
+    assert(mla_with_restored_inputs(failed, restore) == "wrong replay");
+    assert(restored == 2 && mla_same_buffer(values, original));
+    bool threw = false;
+    try {
+        mla_with_restored_inputs([&]() -> std::string {
+            values[0] = 11.f;
+            throw std::runtime_error("oracle failed");
+        }, restore);
+    } catch(const std::runtime_error&) { threw = true; }
+    assert(threw && restored == 3 && mla_same_buffer(values, original));
+    assert(!mla_with_restored_inputs(good, []() { return false; }).empty());
+}
+''')
+    binary = tmp_path / 'restore'
+    subprocess.run([compiler, '-std=c++17', '-O3', '-ffast-math', str(source), '-o', str(binary)], check=True, timeout=60)
+    subprocess.run([str(binary)], check=True, timeout=10)

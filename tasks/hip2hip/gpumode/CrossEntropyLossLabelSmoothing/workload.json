@@ -36,7 +36,12 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1337
+        "correctness_seed": 1337,
+        "operator": {
+          "class_axis": -1,
+          "smooth_eps": 0.0,
+          "smooth_dist": "normalized_class_ramp"
+        }
       }
     },
     {
@@ -75,7 +80,12 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1338
+        "correctness_seed": 1338,
+        "operator": {
+          "class_axis": -1,
+          "smooth_eps": 0.1,
+          "smooth_dist": "normalized_class_ramp"
+        }
       }
     },
     {
@@ -114,7 +124,12 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1339
+        "correctness_seed": 1339,
+        "operator": {
+          "class_axis": -1,
+          "smooth_eps": 0.2,
+          "smooth_dist": "normalized_class_ramp"
+        }
       }
     },
     {
@@ -153,7 +168,12 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1340
+        "correctness_seed": 1340,
+        "operator": {
+          "class_axis": -1,
+          "smooth_eps": 0.4,
+          "smooth_dist": "normalized_class_ramp"
+        }
       }
     },
     {
@@ -192,7 +212,12 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1341
+        "correctness_seed": 1341,
+        "operator": {
+          "class_axis": -1,
+          "smooth_eps": 0.6,
+          "smooth_dist": "normalized_class_ramp"
+        }
       }
     }
   ]

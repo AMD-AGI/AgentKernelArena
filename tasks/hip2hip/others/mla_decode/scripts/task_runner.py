@@ -51,7 +51,7 @@ def run_compile():
                 os.environ.get("HIPCXX", "hipcc"),
                 "-O3", "-ffast-math",
                 "--offload-arch=gfx950", "--offload-arch=gfx942",
-                "-munsafe-fp-atomics", "-std=c++17",
+                "-munsafe-fp-atomics", "-std=c++17", "-fopenmp",
                 BENCH_SOURCE, "-o", BENCH_BINARY,
             ],
             cwd=TASK_DIR, capture_output=True, text=True, timeout=600,

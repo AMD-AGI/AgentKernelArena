@@ -69,3 +69,21 @@ values are restored in `finally`, including on exceptions, so a failed role
 cannot alter the next role's starting state. Snapshot, checks and final cleanup
 run outside the reported samples; existing per-invocation prepare callbacks
 and the baseline's graph/Event policy retain their timing boundaries.
+
+The scored operator is mean cross entropy with floating probability targets,
+`from_logits=True`, and the **last axis as classes**, exactly as the original
+HIP/PyTorch loss computes. The original five shapes, seeds and case IDs remain.
+Target generation now normalizes that same last axis; the prior generator used
+axis 1 even though the loss reduced the last axis. This is an explicit input
+quality repair; old workload speedups are not directly comparable.
+
+Cases declare smoothing epsilon 0, 0.1, 0.2, 0.4 and 0.6 and a nonuniform class
+ramp distribution in `workload.json`. Both roles receive identical state outside
+the timed invocation. PyTorch smoothing uses an out-of-place mixture, matching
+the native implementation and keeping caller-owned targets immutable. The
+smoothing buffer is included in replay state checks. An independent FP64
+log-sum-exp formula checks the mean loss at the original comparison rule;
+small analytic controls reject wrong axes, ignored smoothing and mutated targets.
+The loss, mixture and reduction remain in the measured call. Integer labels,
+ignore-index behavior, weighting, and other reductions are not scored by these
+five declared cases; the task does not claim qualification for those API modes.

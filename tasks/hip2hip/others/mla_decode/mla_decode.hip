@@ -197,7 +197,12 @@ static void max_diff(
         const double x = static_cast<double>(__bfloat162float(a[i]));
         const double y = static_cast<double>(__bfloat162float(b[i]));
         const double d = std::fabs(x - y);
-        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(d)) {
+        uint64_t xb, yb;
+        std::memcpy(&xb, &x, sizeof(xb));
+        std::memcpy(&yb, &y, sizeof(yb));
+        // std::isfinite may be folded away by this task's -ffast-math build.
+        if ((xb & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL ||
+            (yb & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL) {
             max_abs = INFINITY;
             max_rel = INFINITY;
             return;

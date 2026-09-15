@@ -59,6 +59,11 @@ def install(perf, output_contract):
                 # never the supplied HIP function. The PyTorch baseline is checked
                 # eagerly here and against the functional reference by correctness.
                 expected = module(*copy.deepcopy(inputs))
+                from case_controls import reference
+                oracle = reference(*inputs, module.smooth_eps, module.smooth_dist)
+                output_contract(oracle, expected)
+                if not perf._compare_results(oracle, expected, rtol=rtol, atol=atol):
+                    raise ValueError('Loss reference disagrees with independent smoothing oracle')
             observed = TimedRun()
             invoke = (lambda: module(*inputs)) if hip_fn is None else (lambda: module(*inputs, fn=hip_fn))
             elapsed, metadata = perf.benchmark_cuda_graph_or_events(
