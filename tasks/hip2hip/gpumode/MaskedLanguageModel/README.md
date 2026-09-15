@@ -42,3 +42,9 @@ The runner is task-local and does not import the Arena source tree or an agent.
 ## Original task instructions
 
 You are a hip expert and good at gpu kernel implementation. Please implemnt a target HIP kernel code corresponding to pytorch modullle code provided as followings, which includes hip kernel, kernel laucher and python bliding code for the hip launcher.
+
+The weight transpose launch must cover all columns of the `[vocab_size, hidden]`
+input along grid x and all rows along grid y. The initial implementation had the
+axes reversed, leaving most transposed weight elements unwritten for the declared
+4096-by-512 weights. Both HIP baseline and candidate use the corrected launch;
+input shapes, seeds, arithmetic, numerical tolerances and timing are unchanged.

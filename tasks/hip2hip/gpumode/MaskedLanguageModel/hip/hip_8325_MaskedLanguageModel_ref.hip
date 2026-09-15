@@ -173,7 +173,8 @@ torch::Tensor forward(
     const int TILE_X = 32;
     const int TILE_Y = 8;
     dim3 tpb(TILE_X, TILE_Y);
-    dim3 gridT((V + TILE_X - 1) / TILE_X, (H + TILE_Y - 1) / TILE_Y);
+    // Input weight is [V,H]: x covers H columns, y covers V rows.
+    dim3 gridT((H + TILE_X - 1) / TILE_X, (V + TILE_Y - 1) / TILE_Y);
 
     AT_DISPATCH_FLOATING_TYPES(weight.scalar_type(), "transpose2d_kernel", [&] {
         hipLaunchKernelGGL(

@@ -402,8 +402,9 @@ ORIGINAL_SOURCE_DIGESTS = {'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (10
 # Repairs justified by finalized real-GPU validator job 139005: GELU must be
 # out-of-place and validate timed replay; matrix must validate every output.
 # Job 139100 additionally found missing replay checks in FusedLeakyReLU, GRU and item attention.
-# The original digest remains the gate for all other 83 tasks.
-GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '0b72fe68a7c9bb4ef696ce876f80f0de9ed3a0dd434acd8f499f679e0188975c'), 'torch2hip/gpumode/14539_GELU': (10, '6988f6cace9f3c9a1f8da275789518c8667ba249b5c9431c6b05a57dd67d9e36'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (11, '2e76a63ae4a0f16eadc664b81c60d5d9779104ce66304d9bac85f5d5c90e70e7'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, '434697dcc5596fee2141040bbcb1b404b5614f555a58bc8d729b190da194adfd'), 'hip2hip/gpumode/ItemQueryAttention': (11, '5625fb2aa11b57597f56893f70bb70d5e5cf8ccafa43977f2bc2a95ac563f8a0')}
+# MaskedLanguageModel also needed its transposed weight launch axes corrected.
+# The original digest remains the gate for all other 82 tasks.
+GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '0b72fe68a7c9bb4ef696ce876f80f0de9ed3a0dd434acd8f499f679e0188975c'), 'torch2hip/gpumode/14539_GELU': (10, '6988f6cace9f3c9a1f8da275789518c8667ba249b5c9431c6b05a57dd67d9e36'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (11, '2e76a63ae4a0f16eadc664b81c60d5d9779104ce66304d9bac85f5d5c90e70e7'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, '434697dcc5596fee2141040bbcb1b404b5614f555a58bc8d729b190da194adfd'), 'hip2hip/gpumode/ItemQueryAttention': (11, '5625fb2aa11b57597f56893f70bb70d5e5cf8ccafa43977f2bc2a95ac563f8a0'), 'hip2hip/gpumode/MaskedLanguageModel': (10, '17834ed93fcdbec6f9d64f2450fc14bf161eb37f69844c731d39055e57d62d96')}
 
 
 @pytest.mark.parametrize('path', CONFIGS, ids=lambda p: p.parent.name)
@@ -785,3 +786,48 @@ def test_item_attention_zero_projection_known_answer_and_readonly_inputs():
         for old, value in zip(before, [queries, support]):
             torch.testing.assert_close(old,value,rtol=0,atol=0)
             assert actual.untyped_storage().data_ptr() != value.untyped_storage().data_ptr()
+
+
+@pytest.mark.parametrize('suffix', ['', '_ref'])
+def test_masked_language_weight_transpose_covers_nonsquare_manifest_weights(tmp_path, suffix):
+    compiler = shutil.which('g++')
+    if not compiler: pytest.skip('CPU C++ compiler unavailable; not GPU validation')
+    root = ROOT / 'tasks/hip2hip/gpumode/MaskedLanguageModel'
+    text = (root / f'hip/hip_8325_MaskedLanguageModel{suffix}.hip').read_text()
+    kernel = 'template<typename scalar_t>\n' + extract_cpp_function(text, '__global__ void transpose2d_kernel')
+    grid = next(line.strip() for line in text.splitlines() if 'dim3 gridT(' in line)
+    preamble = '''
+#include <vector>
+#include <cmath>
+#include <cassert>
+#define __global__
+struct dim3 { int x,y; dim3(int a=0,int b=0):x(a),y(b){} };
+dim3 blockIdx,blockDim,threadIdx;
+'''
+    body = '''
+int main() {
+    const int V=4096,H=512,TILE_X=32,TILE_Y=8;
+    GRID
+    blockDim=dim3(TILE_X,TILE_Y);
+    std::vector<float> input(V*H), output(V*H,NAN);
+    for(int i=0;i<V*H;++i) input[i]=(i%251)/8.f;
+    auto run=[&](dim3 grid) {
+        for(blockIdx.y=0;blockIdx.y<grid.y;++blockIdx.y)
+            for(blockIdx.x=0;blockIdx.x<grid.x;++blockIdx.x)
+                for(threadIdx.y=0;threadIdx.y<TILE_Y;++threadIdx.y)
+                    for(threadIdx.x=0;threadIdx.x<TILE_X;++threadIdx.x)
+                        transpose2d_kernel(input.data(),output.data(),V,H);
+    };
+    run(gridT);
+    for(int row=0;row<V;++row) for(int col=0;col<H;++col)
+        assert(output[col*V+row]==input[row*H+col]);
+    std::fill(output.begin(),output.end(),NAN);
+    run(dim3((V+TILE_X-1)/TILE_X,(H+TILE_Y-1)/TILE_Y));
+    // The original transposed launch writes only H out of V rows.
+    assert(std::isnan(output[V-1]));
+}
+'''.replace('GRID', grid)
+    source=tmp_path/'transpose.cpp'; source.write_text(preamble+kernel+body)
+    result=subprocess.run([compiler,'-std=c++17','-O2',str(source),'-o',str(tmp_path/'check')],capture_output=True,text=True,timeout=60)
+    assert result.returncode==0,result.stderr
+    subprocess.run([str(tmp_path/'check')],check=True,timeout=10)
