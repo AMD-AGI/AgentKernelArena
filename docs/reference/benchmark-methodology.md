@@ -263,3 +263,9 @@ checks; they do not establish a performance improvement. Action-level evidence
 is distinct from the full task-validator report. That separate HGEMM report
 was subsequently framework-finalized as `PASS` in the same job, with an
 implemented frozen initial candidate and no baseline diagnostic exemption.
+
+A subsequent resource audit on the same node found nearly full device memory
+and other 0.5.19 tasks failed with allocation/launch resource errors. Retain the
+successful functional reports, but do not treat the sequential elapsed values
+as isolated performance qualification. A fresh run with sufficient free device
+memory is required before using those timings for comparative conclusions.
