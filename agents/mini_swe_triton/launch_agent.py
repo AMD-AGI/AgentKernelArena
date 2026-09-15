@@ -1,21 +1,15 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
-"""
-Mini-SWE Triton agent: raw single-round optimization via mini CLI.
+"""Legacy mini CLI compatibility; schema-v2 tasks are explicitly unsupported.
 
-No preprocessing, no COMMANDMENT, no profiler, no orchestrator.
-Just gives the agent the kernel code, harness, and lets it optimize
-freely. This is the baseline to measure what GEAK's structured
-pipeline (preprocessing, profiling, multi-round orchestration,
-heterogeneous task generation) adds on top.
-
-Pipeline:
-  1. Read kernel.py and build a simple task prompt
-  2. mini --task <prompt> --test-command <harness> --repo <workspace>
-     --num-parallel N --gpu-ids <gpus> --yolo --exit-immediately
+The required GEAK mini fork is separate from the current GEAK Workflow engine.
+See README.md for the inspected CLI and the missing v2 integration contract.
 """
 import logging
 import os
+import shlex
+import signal
 import subprocess
+import tempfile
 import threading
 from pathlib import Path
 from typing import Any
@@ -23,6 +17,55 @@ from typing import Any
 import yaml
 
 from agents import register_agent
+from src.task_spec import resolve_task_path
+
+
+class MiniSweCapabilityError(RuntimeError):
+    """The selected task/runtime has no implemented mini adapter."""
+
+
+def _require_legacy_task(task_config: dict[str, Any]) -> None:
+    # Check before filenames, dependencies, git initialization, or output writes.
+    # A framework context also prevents a missing version from falling through.
+    if ("schema_version" in task_config or "candidate" in task_config
+            or "evaluation" in task_config or "ARENA_TASK_CONTEXT" in os.environ):
+        raise MiniSweCapabilityError(
+            "MINI_SWE_V2_UNSUPPORTED: mini_swe_triton has no verified adapter for "
+            "TaskSpec/ARENA_TASK_CONTEXT and task-owned v2 actions. All retained "
+            "Arena tasks use v2. This launcher only retains external legacy "
+            "single-file task compatibility; it will not infer kernel.py or "
+            "substitute the GEAK Workflow engine. See agents/mini_swe_triton/README.md."
+        )
+
+
+def _legacy_runtime_source() -> Path:
+    value = os.environ.get("GEAK_SRC")
+    source = Path(value) if value else None
+    if (source is None or not source.is_absolute()
+            or not (source / "minisweagent" / "run" / "mini.py").is_file()):
+        raise MiniSweCapabilityError(
+            "MINI_SWE_RUNTIME_UNAVAILABLE: GEAK_SRC must be the absolute source "
+            "directory of the legacy GEAK mini fork containing "
+            "minisweagent/run/mini.py. A current GEAK Workflow checkout or an "
+            "arbitrary directory is not that runtime."
+        )
+    return source.resolve()
+
+
+def _legacy_paths(task_config: dict[str, Any], workspace: Path) -> tuple[Path, Path]:
+    sources = task_config.get("source_file_path", ["kernel.py"])
+    if not isinstance(sources, list) or len(sources) != 1:
+        raise MiniSweCapabilityError(
+            "Legacy mini requires exactly one source_file_path; multifile tasks "
+            "need a verified v2 adapter."
+        )
+    kernel = resolve_task_path(workspace, sources[0], must_exist=True)
+    harness = resolve_task_path(
+        workspace, task_config.get("harness_path", "test_kernel_harness.py"), must_exist=True,
+    )
+    if not kernel.is_file() or not harness.is_file() or kernel == harness:
+        raise ValueError("Legacy mini requires separate regular kernel and harness files")
+    return kernel, harness
 
 
 def _read_stream(stream, lines: list, prefix: str, log_func):
@@ -39,19 +82,19 @@ def _read_stream(stream, lines: list, prefix: str, log_func):
 
 
 def _run_step(
-    cmd: str,
+    cmd: list[str],
     *,
     env: dict[str, str],
     cwd: str,
     label: str,
     logger: logging.Logger,
-    timeout: int = 7200,
+    timeout: float = 7200,
 ) -> tuple[int, list[str], list[str]]:
-    logger.info(f"[{label}] Running: {cmd}")
+    logger.info("[%s] Running argv: %r", label, cmd)
     logger.info(f"[{label}] cwd: {cwd}")
 
     proc = subprocess.Popen(
-        cmd, shell=True,
+        cmd, shell=False, start_new_session=True,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, cwd=cwd, env=env, bufsize=1,
     )
@@ -72,46 +115,56 @@ def _run_step(
     t_out.start()
     t_err.start()
 
+    timed_out = False
     try:
         proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         logger.warning(f"[{label}] Timed out after {timeout}s; killing")
-        proc.kill()
+        timed_out = True
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.wait()
 
     t_out.join(timeout=5)
     t_err.join(timeout=5)
 
     logger.info(f"[{label}] exit code: {proc.returncode}")
+    if timed_out:
+        raise subprocess.TimeoutExpired(cmd, timeout, output="\n".join(stdout_lines),
+                                        stderr="\n".join(stderr_lines))
     return proc.returncode, stdout_lines, stderr_lines
 
 
 @register_agent("mini_swe_triton")
 def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: str) -> str:
-    """
-    Launch mini-SWE Triton agent: raw single-round parallel optimization.
-    No preprocessing, no COMMANDMENT — just kernel code + harness + go.
-    """
+    """Run the legacy CLI, or reject unsupported task contracts before side effects."""
     logger = logging.getLogger(__name__)
+
+    with open(task_config_dir) as f:
+        task_config = yaml.safe_load(f)
+    if not isinstance(task_config, dict):
+        raise ValueError("mini_swe_triton task config must be a mapping")
+    _require_legacy_task(task_config)
+    geak_src = _legacy_runtime_source()
 
     config_path = Path(__file__).with_name("agent_config.yaml")
     with config_path.open() as f:
         agent_config = yaml.safe_load(f) or {}
 
-    with open(task_config_dir) as f:
-        task_config = yaml.safe_load(f) or {}
-
     workspace_path = Path(workspace).resolve()
-    kernel_path = workspace_path / (task_config.get("source_file_path", ["kernel.py"])[0])
-    harness_path = workspace_path / task_config.get("harness_path", "test_kernel_harness.py")
+    kernel_path, harness_path = _legacy_paths(task_config, workspace_path)
+    kernel_relative = kernel_path.relative_to(workspace_path).as_posix()
+    harness_relative = harness_path.relative_to(workspace_path).as_posix()
 
-    if not kernel_path.is_file():
-        raise FileNotFoundError(f"Kernel not found: {kernel_path}")
-    if not harness_path.is_file():
-        raise FileNotFoundError(f"Harness not found: {harness_path}")
+    timeout = agent_config.get("timeout_seconds", 7200)
+    if type(timeout) is not int or timeout <= 0:
+        raise ValueError("mini timeout_seconds must be a positive integer")
 
-    # Logs dir as sibling
-    logs_dir = workspace_path.parent / f"{workspace_path.name}_logs"
-    logs_dir.mkdir(parents=True, exist_ok=True)
+    # Each invocation owns a fresh output directory; prior artifacts stay intact.
+    logs_dir = Path(tempfile.mkdtemp(prefix=f"{workspace_path.name}_mini_",
+                                    dir=workspace_path.parent))
 
     # Build environment
     run_env = os.environ.copy()
@@ -123,23 +176,10 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     model = agent_config.get("agent", {}).get("model", "claude-opus-4-6")
     step_limit = agent_config.get("agent", {}).get("step_limit", 100)
 
-    # PYTHONPATH for mini-swe-agent modules. GEAK_SRC must point to the
-    # absolute path of the GEAK source tree (the directory containing
-    # `minisweagent/`). No baked-in fallback — fail fast with a clear error
-    # rather than silently using a path that only exists in one user's setup.
-    geak_src = os.environ.get("GEAK_SRC")
-    if not geak_src or not Path(geak_src).is_dir():
-        raise RuntimeError(
-            "GEAK_SRC env var is unset or does not point to an existing "
-            "directory. Set GEAK_SRC to the absolute path of GEAK/src "
-            f"(got: {geak_src!r})."
-        )
     run_env["PYTHONPATH"] = f"{geak_src}:{run_env.get('PYTHONPATH', '')}"
 
-    timeout = int(agent_config.get("timeout_seconds", 7200))
-
     logger.info("=" * 60)
-    logger.info("  Mini-SWE Triton Agent (raw, no preprocessing)")
+    logger.info("  Mini-SWE Triton Agent (legacy compatibility)")
     logger.info("=" * 60)
     logger.info(f"  kernel:       {kernel_path}")
     logger.info(f"  harness:      {harness_path}")
@@ -151,8 +191,6 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logger.info(f"  step_limit:   {step_limit}")
     logger.info("=" * 60)
 
-    all_output: list[str] = []
-
     # ── Build task prompt from kernel code directly ──────────────
     kernel_code = kernel_path.read_text()
     # Truncate if very large (keep first 3000 chars + last 1000)
@@ -161,22 +199,22 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     else:
         kernel_snippet = kernel_code
 
-    task_prompt = f"""Optimize this Triton GPU kernel for maximum performance on AMD MI300X (gfx942/gfx950).
+    task_prompt = f"""Optimize this Triton GPU kernel for the configured GPU: {eval_config.get('target_gpu_model', 'inspect the runtime GPU')}.
 
-The kernel is at: {kernel_path.name}
-The test harness is at: {harness_path.name}
+The kernel is at: {kernel_relative}
+The test harness is at: {harness_relative}
 
 To test your changes:
-  python3 {harness_path.name} --correctness   # must pass
-  python3 {harness_path.name} --benchmark     # measures performance
+  python3 {shlex.quote(harness_relative)} --correctness   # must pass
+  python3 {shlex.quote(harness_relative)} --benchmark     # measures performance
 
 Rules:
-- Only modify {kernel_path.name}
+- Only modify {kernel_relative}
 - Do NOT modify the test harness
 - Correctness must pass after your changes
 - Focus on real kernel-body optimizations (block sizes, memory access patterns,
   vectorization, loop unrolling, warp-level primitives)
-- Target: AMD MI300X with gfx942/gfx950 architecture, 304 CUs, HBM3
+- Preserve the workload, numerical checks and timing policy.
 
 Current kernel code:
 ```python
@@ -190,8 +228,9 @@ Current kernel code:
     # Build test command (correctness + benchmark)
     benchmark_iters = run_env.get("GEAK_BENCHMARK_ITERATIONS", "30")
     test_command = (
-        f"python3 {harness_path} --correctness && "
-        f"python3 {harness_path} --full-benchmark --iterations {benchmark_iters}"
+        f"python3 {shlex.quote(harness_relative)} --correctness && "
+        f"python3 {shlex.quote(harness_relative)} --full-benchmark "
+        f"--iterations {shlex.quote(benchmark_iters)}"
     )
 
     # ── Initialize workspace as git repo ─────────────────────────
@@ -203,76 +242,36 @@ Current kernel code:
         "GIT_COMMITTER_EMAIL": "mini-swe@amd.com",
     }
     subprocess.run(["git", "init"], cwd=str(workspace_path),
-                   capture_output=True, text=True)
+                   capture_output=True, text=True, check=True, timeout=60, env=git_env)
     subprocess.run(["git", "add", "."], cwd=str(workspace_path),
-                   capture_output=True, text=True)
+                   capture_output=True, text=True, check=True, timeout=60, env=git_env)
     subprocess.run(["git", "commit", "-m", "baseline", "--allow-empty"],
                    cwd=str(workspace_path), capture_output=True, text=True,
-                   env=git_env)
+                   env=git_env, check=True, timeout=60)
 
     # ── Run mini agent ───────────────────────────────────────────
-    mini_cmd = (
-        f"python3 -m minisweagent.run.mini"
-        f" --task {task_file}"
-        f" --test-command '{test_command}'"
-        f" --repo {workspace_path}"
-        f" --num-parallel {num_parallel}"
-        f" --gpu-ids {gpu_ids}"
-        f" --model {model}"
-        f" --yolo"
-        f" --exit-immediately"
-        f" -o {logs_dir}"
-        f" --cost-limit 0"
-    )
-
-    rc_mini, out_mini, err_mini = _run_step(
-        mini_cmd, env=run_env, cwd=str(workspace_path),
-        label="mini-swe", logger=logger, timeout=timeout,
-    )
-    all_output.extend(out_mini)
-
+    mini_cmd = [
+        "python3", "-m", "minisweagent.run.mini", "--task", str(task_file),
+        "--test-command", test_command, "--repo", str(workspace_path),
+        "--num-parallel", str(num_parallel), "--gpu-ids", str(gpu_ids),
+        "--model", str(model), "--yolo", "--exit-immediately", "-o", str(logs_dir),
+        "--cost-limit", "0",
+    ]
+    try:
+        rc_mini, out_mini, err_mini = _run_step(
+            mini_cmd, env=run_env, cwd=str(workspace_path),
+            label="mini-swe", logger=logger, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        (logs_dir / "stdout.log").write_text(exc.stdout or "")
+        (logs_dir / "stderr.log").write_text(exc.stderr or "")
+        raise RuntimeError(f"mini-swe timed out; invocation logs: {logs_dir}") from exc
+    (logs_dir / "stdout.log").write_text("\n".join(out_mini))
+    (logs_dir / "stderr.log").write_text("\n".join(err_mini))
     if rc_mini != 0:
-        logger.warning(f"mini-swe exited with code {rc_mini}")
-        all_output.extend(err_mini)
+        raise RuntimeError(f"mini-swe exited with code {rc_mini}; invocation logs: {logs_dir}")
 
-    # ── Find best patch and apply to workspace ───────────────────
-    best_applied = False
-
-    # Check for patches in the output directory
-    for patch_file in sorted(logs_dir.rglob("*.patch"), reverse=True):
-        try:
-            result = subprocess.run(
-                ["git", "apply", "--check", str(patch_file)],
-                cwd=str(workspace_path), capture_output=True, text=True,
-            )
-            if result.returncode == 0:
-                subprocess.run(
-                    ["git", "apply", str(patch_file)],
-                    cwd=str(workspace_path), capture_output=True, text=True,
-                )
-                logger.info(f"Applied patch: {patch_file.name}")
-                best_applied = True
-                break
-        except Exception as e:
-            logger.warning(f"Patch {patch_file.name} failed: {e}")
-
-    # Fallback: check if kernel.py was modified in any worktree
-    if not best_applied:
-        original_kernel = kernel_path.read_text()
-        for wt_kernel in sorted(workspace_path.parent.rglob("kernel.py")):
-            if wt_kernel == kernel_path:
-                continue
-            try:
-                modified = wt_kernel.read_text()
-                if modified != original_kernel:
-                    kernel_path.write_text(modified)
-                    logger.info(f"Copied modified kernel from {wt_kernel.parent.name}")
-                    best_applied = True
-                    break
-            except OSError:
-                continue
-
-    if not best_applied:
-        logger.warning("No applicable patch found from mini-swe output")
-
-    return "\n".join(all_output)
+    # The inspected legacy CLI applies its selected result to --repo itself.
+    # Never guess a winning patch or import another invocation's candidate.
+    logger.info("mini-swe completed; Arena evaluates only the retained workspace files")
+    return "\n".join(out_mini)
