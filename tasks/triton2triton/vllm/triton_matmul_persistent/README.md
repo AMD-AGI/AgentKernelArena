@@ -32,3 +32,18 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+The protected checks validate the full FP16 result against pristine FP32 matmul
+(with optional bias added before the FP16 cast), at the original `atol=rtol=1e-2`.
+They require the expected shape, dtype, device and finite values, and preserve all
+read-only operands. Unscored diagnostics cover M129/N259/K67 with strided A/B and
+bias, and M1153/N8449/K16 with 340 original FP16 tiles for grouped scheduling and
+multiple persistent waves on gfx950. These do not replace any scored case or
+certify the greater-than-2^31 index path or unscored dtypes.
+
+Performance checks use the actual output from the original measured public call.
+After timing, they compare it against pristine inputs, change both A and B,
+poison the captured output and numerically verify the exact `TimedRun` replay.
+Inputs are restored in `finally`, including rejected or exceptional replays.
+Original seeds (correctness 42+i, performance 0), five cases, allocations,
+10 warmups and 100 samples remain unchanged for baseline and candidate.

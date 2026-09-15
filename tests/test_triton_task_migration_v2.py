@@ -6823,3 +6823,107 @@ def test_ep_gather_actual_timing_poisoned_inplace_replay_and_full_input_restore(
 def test_ep_gather_adapter_installs_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_ep_gather/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_ep_gather_checks'
+
+
+def _persistent_matmul_cpu(a,b,bias=None):
+    result=a.double()@b.double()
+    if bias is not None:result=result+bias.double()
+    return result.to(a.dtype)
+
+
+def test_persistent_matmul_independent_bias_known_answer_and_original_gate(monkeypatch):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'matmul_persistent')
+    a=torch.tensor([[1.,2.,3.],[-1.,0.,2.]],dtype=torch.float16)
+    b=torch.tensor([[1.,2.],[3.,4.],[5.,6.]],dtype=torch.float16)
+    bias=torch.tensor([.5,-.25],dtype=torch.float16)
+    expected=torch.tensor([[22.5,27.75],[9.5,9.75]],dtype=torch.float16)
+    checks.check_output(checks.reference((a,b,bias)),expected)
+    checks.check_output(_persistent_matmul_cpu(a,b,bias),expected)
+    # Bias must be accumulated before the final output cast.
+    a=torch.tensor([[1.,2**-6]],dtype=torch.float16)
+    b=torch.tensor([[1.],[2**-5]],dtype=torch.float16)
+    bias=torch.tensor([2**-11],dtype=torch.float16)
+    assert checks.reference((a,b,bias)).item()==1+2**-10
+    checks.check_output(torch.tensor([.009],dtype=a.dtype),torch.zeros(1,dtype=a.dtype))
+    with pytest.raises(AssertionError):checks.check_output(torch.tensor([.011],dtype=a.dtype),torch.zeros(1,dtype=a.dtype))
+
+
+@pytest.mark.parametrize('mode',['correct','dtype','shape','device','nan','zero','mutate_a','mutate_b',
+    'mutate_bias','ignore_bias','omit_m_tail','omit_n_tail','omit_k_tail','ignore_strides','omit_late_tiles'])
+def test_persistent_matmul_original_fivecase_correctness_bias_strides_and_persistent_tiles(monkeypatch,mode):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'matmul_persistent');calls=[];saved_inputs=[]
+    def public(a,b,bias=None):
+        inputs=(a,b) if bias is None else (a,b,bias)
+        calls.append((a.shape,b.shape,a.stride(),b.stride(),bias is not None))
+        saved_inputs.append((inputs,checks.snapshots(inputs)))
+        if mode=='mutate_a':a.zero_()
+        if mode=='mutate_b':b.zero_()
+        if mode=='mutate_bias' and bias is not None:bias.zero_()
+        result=_persistent_matmul_cpu(a,b,bias)
+        if mode=='ignore_bias':result=_persistent_matmul_cpu(a,b)
+        if mode=='omit_m_tail' and a.shape[0]==129:result[128:].zero_()
+        if mode=='omit_n_tail' and b.shape[1]==259:result[:,256:].zero_()
+        if mode=='omit_k_tail' and a.shape[1]==67:result=_persistent_matmul_cpu(a[:,:64],b[:64],bias)
+        if mode=='ignore_strides' and not a.is_contiguous():result.zero_()
+        if mode=='omit_late_tiles' and a.shape[0]==1153:result[1024:].zero_()
+        if mode=='dtype':result=result.float()
+        if mode=='shape':result=result.flatten()
+        if mode=='device':result=result.to('meta')
+        if mode=='nan':result.fill_(float('nan'))
+        if mode=='zero':result.zero_()
+        return result
+    mod=SimpleNamespace(matmul_persistent=public);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
+    if mode=='correct':
+        assert [(a,b) for a,b,_,_,_ in calls if a[0] not in (129,1153)]==[(torch.Size((m,k)),torch.Size((k,n))) for m,n,k in h.TEST_SHAPES]
+        assert [v for v in calls if v[0][0]==129]==[(torch.Size((129,67)),torch.Size((67,259)),(268,2),(1,134),True)]
+        assert [v for v in calls if v[0][0]==1153]==[(torch.Size((1153,16)),torch.Size((16,8449)),(16,1),(8449,1),False)]
+    for inputs,saved in saved_inputs:checks.unchanged(inputs,saved)
+    assert mod.matmul_persistent is public
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay','mutate_timed_a',
+    'mutate_timed_b','mutate_replay_a','mutate_replay_b','zero_inputs_and_output','raise_replay'])
+def test_persistent_matmul_actual_timing_original_seed_scale_and_exact_replay(monkeypatch,mode):
+    import inspect
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'matmul_persistent')
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(matmul_persistent=_persistent_matmul_cpu);h.load_module=lambda:mod
+    all_inputs,all_saved,options,replays=[],[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        inputs=(state['a'],state['b']);saved=checks.snapshots(inputs)
+        all_inputs.append(inputs);all_saved.append(saved);options.append(kwargs)
+        generator=torch.Generator().manual_seed(0)
+        expected_a=torch.randn(*inputs[0].shape,dtype=torch.float16,generator=generator)
+        expected_b=torch.randn(*inputs[1].shape,dtype=torch.float16,generator=generator)
+        checks.unchanged(inputs,(expected_a,expected_b))
+        output=measured();cache=output.clone()
+        if mode=='wrong_timed':output.add_(10)
+        if mode.startswith('mutate_timed_'):inputs[0 if mode.endswith('a') else 1].zero_()
+        if mode=='zero_inputs_and_output':
+            for value in (*inputs,output):value.zero_()
+        def replay():
+            replays.append(True)
+            checks.unchanged(inputs,(saved[0]*-.5+.5,saved[1]*.5+.25))
+            assert torch.isnan(output).all()
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='no_write':output.copy_(cache if mode=='stale' else measured())
+            if mode=='wrong_replay':output.zero_()
+            if mode.startswith('mutate_replay_'):inputs[0 if mode.endswith('a') else 1].zero_()
+            return output
+        timed_run._bind(replay,output)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h);rows=h.run_performance()
+    assert options==[dict(warmup=10,repetition=100)]*5
+    for cfg,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('M','N','K'),cfg))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for inputs,saved in zip(all_inputs,all_saved):checks.unchanged(inputs,saved)
+    assert len(replays)==(0 if mode=='wrong_timed' or mode.startswith('mutate_timed_') or mode=='zero_inputs_and_output' else 5)
+    assert mod.matmul_persistent is _persistent_matmul_cpu
+
+
+def test_persistent_matmul_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_matmul_persistent/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_persistent_matmul_checks'
