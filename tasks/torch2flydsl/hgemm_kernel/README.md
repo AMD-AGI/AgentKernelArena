@@ -72,3 +72,10 @@ Select the qualified runtime through the run-level Docker image setting;
 an unchanged source under 0.5.19 is not qualified. Candidate and baseline must
 use the same runtime and timing method. This initial-task validation does not
 certify a subsequently modified candidate.
+
+
+Only the entrypoints listed in config.yaml are required interfaces. The primary
+operator is `flydsl_hgemm`; any additional declared callables used by the harness
+remain required. Legacy build/compile helpers are optional implementation details;
+no builder return protocol is required by this task. A candidate may choose its
+own internal compilation helpers, while implementing all tested work in FlyDSL.

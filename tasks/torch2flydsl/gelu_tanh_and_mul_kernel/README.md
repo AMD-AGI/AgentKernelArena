@@ -71,3 +71,10 @@ FlyDSL launch evidence is required inside each candidate operator invocation;
 launches by the reference or baseline cannot satisfy it.
 The audit wraps candidate import/correctness only, leaving baseline/reference
 execution and the original device-timing callable unchanged.
+
+
+Only the entrypoints listed in config.yaml are required interfaces. The primary
+operator is `flydsl_gelu_tanh_and_mul`; any additional declared callables used by the harness
+remain required. Legacy build/compile helpers are optional implementation details;
+no builder return protocol is required by this task. A candidate may choose its
+own internal compilation helpers, while implementing all tested work in FlyDSL.

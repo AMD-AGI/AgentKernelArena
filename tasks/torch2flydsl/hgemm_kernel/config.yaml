@@ -12,12 +12,6 @@ candidate:
   - file: kernel.py
     kind: function
     symbol: flydsl_hgemm
-  - file: kernel.py
-    kind: builder
-    symbol: build_hgemm_module
-  - file: kernel.py
-    kind: builder
-    symbol: compile_hgemm_kernel
   initial_language: flydsl
 baseline:
   kind: initial_candidate

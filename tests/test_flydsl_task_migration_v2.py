@@ -5568,3 +5568,39 @@ def test_sglang_combine_two_original_source_math_inputs_shapes_gates_sampling():
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 normalized=_RemoveCombineChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
+
+
+_UNUSED_TORCH_BUILDERS = ['dynamic_mxfp8_quant_kernel', 'gelu_and_mul_kernel', 'gelu_tanh_and_mul_kernel', 'gemm_a8w8_bpreshuffle_kernel', 'hgemm_kernel', 'jagged_dense_bmm_kernel', 'moe_sorting_kernel', 'qk_norm_rope_quant_kernel', 'rmsnorm2d_dynamicquant_kernel', 'rmsnorm2d_kernel', 'rmsnorm2d_smoothquant_kernel', 'swiglu_and_mul_kernel']
+
+
+@pytest.mark.parametrize('name',_UNUSED_TORCH_BUILDERS)
+def test_torch_actual_operators_are_required_without_unused_builders(name,tmp_path):
+    # A syntax-valid real operator can use its own internal compiler interface;
+    # retained legacy starter helpers must not become mandatory public outputs.
+    task=tmp_path/name;shutil.copytree(ROOT/'tasks/torch2flydsl'/name,task)
+    spec=load_task_spec(task/'config.yaml',task_id='torch2flydsl/'+name);cfg=spec.to_mapping()
+    runtime=module(task/'task_runtime.py')
+    tree=ast.parse((task/'test_kernel_harness.py').read_text())
+    entry=cfg['candidate']['entrypoints'][0]['symbol']
+    assert any(isinstance(n,ast.Attribute) and n.attr==entry or isinstance(n,ast.Constant) and n.value==entry for n in ast.walk(tree))
+    assert all(e['kind']=='function' for e in cfg['candidate']['entrypoints'])
+    state,defined=runtime.source_state(runtime.config())
+    assert state==cfg['candidate']['initial_state']
+    assert all(defined) if state=='implemented' else not any(defined)
+    source='import flydsl\n'
+    for e in cfg['candidate']['entrypoints']:
+        source += 'def '+e['symbol']+'(*args, **kwargs):\n    return None\n'
+    source += 'def unused_legacy_builder(*args):\n    raise NotImplementedError("unused")\n'
+    (task/'kernel.py').write_text(source)
+    assert runtime.source_state(runtime.config())==('implemented',[True]*len(cfg['candidate']['entrypoints']))
+    result=invoke(task,'candidate','compile');assert result.passed,result.reason
+    # A compile PASS is syntax evidence only. This return-None function is NOT
+    # a valid candidate; real correctness still runs full FlyDSL/output guards.
+    assert entry in (task/'test_kernel_harness.py').read_text()
+
+
+def test_unused_builder_cleanup_retains_starter_model_and_manifest_bytes():
+    original={'dynamic_mxfp8_quant_kernel': {'kernel.py': '04c2ab5eb9e9bee43be84633bc7b210fcb3ad8be69bba8aa98ef6897010611a0', 'model.py': '9e5b1e289eee05aba727b71e28a98e6a7611d9fd6737d5e87b83fe9469eed39d', 'cases.json': '9e76bdcd9955b731e930c2e46536dbce2522d2f88f4ad9cb76016e825821988d'}, 'gelu_and_mul_kernel': {'kernel.py': '4fb1de9fe9d5da55e5cb924ecd03458ab70cc493612857ca300343237d541f25', 'model.py': 'c171ab0b489b1cb87a3f551c3ba8ecd820e3147a9becb6810154040f4027f7dd', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}, 'gelu_tanh_and_mul_kernel': {'kernel.py': '04616e2c62589d5c2e4b8147772bf4e333e753e663eb5d95bb88456428110f24', 'model.py': '95988833405bac9d10624c4ca4e78ee0251a5a60c1dd457d6b915904b9b2dadf', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}, 'gemm_a8w8_bpreshuffle_kernel': {'kernel.py': 'b5d3e87a3ceca3fe555572f0b4ab5c7b1dd6c3f5c9e18ab924b589df3d485996', 'model.py': 'e4278a3637b56eab94baec3b712ff1fb5ac44206a0ac21b1925a7497ca0b9643', 'cases.json': '7f2d3e25a614486974800da54cb23d2c7913101b2ec1b82ca92818cdfec479ee'}, 'hgemm_kernel': {'kernel.py': '29cab2057d32224a7da558083f6b4edeb560e44efd59a60b82dfb14c9c6a8d28', 'model.py': '89ca4fce55817fdf5fcbaea925a1639f9b96cd809dcda8c06cd70f9e1033372e', 'cases.json': '8388fcafea635e69bde93aad82d8b6bcd10d3ffd9998f2594e4ab989c2fd61e4'}, 'jagged_dense_bmm_kernel': {'kernel.py': 'fcb9b75ec238ced56568fb5b27535a160314db29c212abe33c83be6f7df3c043', 'model.py': '1b446ea35fee03f47ae16121fb7ba8aa933e9e99c48f2d90584c770d56065186', 'cases.json': '8304b063316f9cfc3667a8f38d9d85805b38a2339deebd48b883bfb59b5427e3'}, 'moe_sorting_kernel': {'kernel.py': '4bc536d6d29f16e1f24278d9db05ffba13d723f3f42064cce18b60c687f3eb43', 'model.py': 'c874911efc1c947437d5c7c62019e7c52b34458a0ec1560ecdde72aa971de271', 'cases.json': '0c8247d8727d48dc3a8ddd20ede1db3ae2586e990222f7bf19ce39dc6ad913c4'}, 'qk_norm_rope_quant_kernel': {'kernel.py': 'be6c11328764ac59054301e1d8a9312287227718eee498731698ddc45079fa46', 'model.py': '152a32140302f1264c555fbd9b6f9d8362583fd08b0344290a67d6b1bb849ee2', 'cases.json': 'de8e183a711424ddabe5f8bfea4fa00dbe79cb886462b5d3681f67fa9d6e0eb1'}, 'rmsnorm2d_dynamicquant_kernel': {'kernel.py': 'c8542e7ea4b69aa6881ae2e7046995c67112e7e38b68e95d3cc2a51965d05bdc', 'model.py': '5cd3abaf088651f8f2ed9db44513bfd8c5238a45145aaf3dcd3168d63e3ff080', 'cases.json': '046dcf1c5e6f49bf68bd6e935555006803f9f6af5668460389ae6147297528f1'}, 'rmsnorm2d_kernel': {'kernel.py': 'a20840e12a22f5c08fed1e87eee62de5dec590680c79b5b6fa8cb28d9dd9396a', 'model.py': '8442cb4d63444e7dfa9db1fa2d6253ceee0463b1debfd6919fc5219181de3b13', 'cases.json': '426c9e84d97161e5bb7a09353102c57648f5ca5a4790c46370b5369ba470fa64'}, 'rmsnorm2d_smoothquant_kernel': {'kernel.py': '701e11ec5e63bf65572fd9325a7e0b1bea0e1aa9561f8711de0e7ed0113fc2b0', 'model.py': '5496289dc3f8f72c1b9deefce1e39b7c1a00dc5726ad708abe65641fee4edf0e', 'cases.json': '359795558e6ebcfb617bbae66eda8540f5503cc5a04056f1fdfde58e13aedce4'}, 'swiglu_and_mul_kernel': {'kernel.py': '6adbabe7f43dd51289ec4afa3310ba30c56ad8f216edb801886882a1c00715e5', 'model.py': '74765a3a6e469d27926a92b0d710231f2bb7604850186fca782dc5446a8224b4', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}}
+    for name,files in original.items():
+        for rel,expected in files.items():
+            assert hashlib.sha256((ROOT/'tasks/torch2flydsl'/name/rel).read_bytes()).hexdigest()==expected,(name,rel)

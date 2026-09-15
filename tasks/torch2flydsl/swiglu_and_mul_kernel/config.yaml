@@ -12,9 +12,6 @@ candidate:
   - file: kernel.py
     kind: function
     symbol: flydsl_swiglu_and_mul
-  - file: kernel.py
-    kind: builder
-    symbol: build_swiglu_and_mul_module
 baseline:
   kind: provided
   correctness_policy: required

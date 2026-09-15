@@ -12,12 +12,6 @@ candidate:
   - file: kernel.py
     kind: function
     symbol: flydsl_qk_norm_rope_quant
-  - file: kernel.py
-    kind: builder
-    symbol: build_qk_norm_rope_quant_module
-  - file: kernel.py
-    kind: builder
-    symbol: compile_flydsl_qk_norm_rope_quant
   initial_language: flydsl
 baseline:
   kind: initial_candidate

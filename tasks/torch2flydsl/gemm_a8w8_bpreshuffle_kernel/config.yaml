@@ -12,12 +12,6 @@ candidate:
   - file: kernel.py
     kind: function
     symbol: flydsl_gemm_a8w8_bpreshuffle
-  - file: kernel.py
-    kind: builder
-    symbol: build_gemm_a8w8_bpreshuffle_module
-  - file: kernel.py
-    kind: builder
-    symbol: compile_preshuffle_gemm_a8
   initial_language: flydsl
 baseline:
   kind: initial_candidate

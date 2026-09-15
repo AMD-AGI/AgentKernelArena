@@ -12,9 +12,6 @@ candidate:
   - file: kernel.py
     kind: function
     symbol: flydsl_moe_sorting
-  - file: kernel.py
-    kind: builder
-    symbol: build_moe_sorting_module
   initial_language: flydsl
 baseline:
   kind: initial_candidate

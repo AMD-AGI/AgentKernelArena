@@ -12,9 +12,6 @@ candidate:
   - file: kernel.py
     kind: function
     symbol: flydsl_rmsnorm2d_dynamicquant
-  - file: kernel.py
-    kind: builder
-    symbol: build_rmsnorm2d_dynamicquant_module
 baseline:
   kind: provided
   correctness_policy: required

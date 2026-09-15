@@ -50,3 +50,10 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+
+Only the entrypoints listed in config.yaml are required interfaces. The primary
+operator is `flydsl_gemm_a8w8_bpreshuffle`; any additional declared callables used by the harness
+remain required. Legacy build/compile helpers are optional implementation details;
+no builder return protocol is required by this task. A candidate may choose its
+own internal compilation helpers, while implementing all tested work in FlyDSL.

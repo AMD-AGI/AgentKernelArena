@@ -13,9 +13,6 @@ candidate:
     kind: function
     symbol: flydsl_jagged_dense_bmm
   - file: kernel.py
-    kind: builder
-    symbol: build_jagged_dense_bmm_module
-  - file: kernel.py
     kind: function
     symbol: jagged_dense_bmm
   - file: kernel.py

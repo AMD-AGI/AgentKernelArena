@@ -79,3 +79,10 @@ The CPU known-answer controls use an independent Python scalar formula. The
 post-timing replay uses these saturation inputs as well as negating remaining
 values, then restores the original inputs. Formal timing keeps the original
 random workloads, warmups and samples; all comparisons retain REL_TOL=1e-2.
+
+
+Only the entrypoints listed in config.yaml are required interfaces. The primary
+operator is `flydsl_swiglu_and_mul`; any additional declared callables used by the harness
+remain required. Legacy build/compile helpers are optional implementation details;
+no builder return protocol is required by this task. A candidate may choose its
+own internal compilation helpers, while implementing all tested work in FlyDSL.

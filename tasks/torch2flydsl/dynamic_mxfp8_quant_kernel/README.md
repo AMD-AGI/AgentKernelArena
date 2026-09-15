@@ -61,3 +61,10 @@ post-timing replay changes signs and scale magnitude, poisons both outputs and
 restores inputs. Formal graph/Event selection, warmups, samples and timed work
 are unchanged. Candidate-only backend auditing requires real FlyDSL calls and
 rejects replacement AITER/PyTorch operator computation, outside timed windows.
+
+
+Only the entrypoints listed in config.yaml are required interfaces. The primary
+operator is `flydsl_dynamic_mxfp8_quant`; any additional declared callables used by the harness
+remain required. Legacy build/compile helpers are optional implementation details;
+no builder return protocol is required by this task. A candidate may choose its
+own internal compilation helpers, while implementing all tested work in FlyDSL.
