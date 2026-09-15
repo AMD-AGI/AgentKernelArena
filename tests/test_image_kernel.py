@@ -1,4 +1,4 @@
-"""Image-backed tasks use the shared v2 contract, acquisition and prompt path.
+"""Image-suite tasks use the shared v2 contract, acquisition and prompt path.
 
 CPU/filesystem regression tests only; these do not qualify an image or GPU.
 """
@@ -33,7 +33,7 @@ def _load_image_task(config_path):
     config = spec.to_mapping()
     if "kernel_identity" in config:
         assert set(config["kernel_identity"]) == {"logical_operator", "source_owner"}
-    assert any(source["kind"] == "image" for source in config["workspace"]["sources"])
+    assert config["workspace"]["sources"]  # image or explicitly pinned Git; no family dispatch
     # This validates declarations only. PASS below is a protocol fixture, never
     # a claim that the task's validate-task action ran on its actual image.
     workload = resolve_task_path(config_path.parent, config["evaluation"]["workloads"], must_exist=True)

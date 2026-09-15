@@ -18,10 +18,13 @@ baseline:
   correctness_policy: required
 workspace:
   sources:
-  - kind: image
-    image_path: /sgl-workspace/sglang/python/sglang
-    destination: sglang
+  - kind: git
+    url: https://github.com/sgl-project/sglang.git
+    revision: 3ea875fef48f6f01fa3bddd9e2197ad190cef29d
+    destination: upstream/sglang
   setup:
+  - - python3
+    - scripts/materialize_source.py
   - - python3
     - scripts/setup_task.py
 evaluation:

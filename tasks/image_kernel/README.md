@@ -234,3 +234,30 @@ point. Scheduler elapsed: 13 seconds, exit `125:0`; GPUs were released. It produ
 now creates that mount point before the read-only mount. This is a launcher fix,
 not a change to framework evaluation or task acceptance. Its artifacts are under
 `logs/image-v2-gpu-validation/139081/`.
+
+## Pinned source recovery for the two SGLang MXFP8 tasks
+
+These tasks now explicitly acquire
+[SGLang commit 3ea875fef48f6f01fa3bddd9e2197ad190cef29d](https://github.com/sgl-project/sglang/tree/3ea875fef48f6f01fa3bddd9e2197ad190cef29d)
+through `workspace.sources: kind: git`. Task setup stages its `python/sglang`
+package at the unchanged `sglang/` candidate paths. This supersedes reliance on
+the scoring image containing the two historical modules. Setup never overwrites
+an existing candidate; the upstream copy remains protected.
+
+The upstream files match the immutable old-image inventory from job 138977 byte
+for byte (SHA-256):
+
+- `srt/layers/quantization/mxfp8_amd_gfx95.py`:
+  `a80677e9863df4f7d9ad35dccdad414488d7eaa53e81c7b35fefc3f8cbd66baa`.
+- `srt/layers/moe/moe_runner/triton_utils/mxfp8_moe_amd_gfx95.py`:
+  `69d2987ca17b5a24a0a16d2f07d539d8a73e43ed7c5846c272bca9921e16d271`.
+
+No operator, candidate entrypoint, workload, reference, tolerance or timing
+method changes with this acquisition correction. Source identity is established;
+runtime compatibility and a fresh complete GPU validator remain required.
+
+The real Git acquisition and both declared setup commands have also completed
+on CPU, with the staged linear kernel matching the above SHA-256. The package's
+formatting-file symlink into the same upstream checkout is copied by content;
+links outside that checkout are rejected. These acquisition checks provide no
+GPU correctness or performance evidence.

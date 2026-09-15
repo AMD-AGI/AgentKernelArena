@@ -910,3 +910,51 @@ def test_aiter_image_sources_use_qualified_repository_layout():
             assert by_dest["aiter"]["image_path"] == "/sgl-workspace/aiter/aiter"
         else:
             assert all(p.startswith("aiter_meta/csrc/") for p in cfg["candidate"]["editable"])
+
+
+@pytest.mark.parametrize("name", ["mi355x_sglang_triton_mxfp8_linear", "mi355x_sglang_triton_mxfp8_grouped_gemm"])
+def test_mxfp8_pinned_git_staging_preserves_candidate_on_reentry(name, tmp_path):
+    directory = TASKS / name
+    spec = load_task_spec(directory / "config.yaml", task_id="image_kernel/" + name)
+    source = spec.to_mapping()["workspace"]["sources"][0]
+    assert source == {"kind": "git", "url": "https://github.com/sgl-project/sglang.git",
+                      "revision": "3ea875fef48f6f01fa3bddd9e2197ad190cef29d", "destination": "upstream/sglang"}
+    package = tmp_path / "upstream/sglang/python/sglang"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("# source package\n")
+    target = spec.candidate.editable[0].path
+    upstream = package / Path(target).relative_to("sglang")
+    upstream.parent.mkdir(parents=True, exist_ok=True)
+    upstream.write_text("def compute(): return 3\n")
+    # The actual pinned package links .clang-format to sgl-kernel in the same
+    # declared checkout. Copy its content so the staged package stands alone.
+    style = tmp_path / "upstream/sglang/sgl-kernel/.clang-format"
+    style.parent.mkdir()
+    style.write_text("BasedOnStyle: LLVM\n")
+    (package / ".clang-format").symlink_to(style)
+    stage = load_module(directory / "scripts/materialize_source.py")
+    stage.materialize(tmp_path)
+    candidate = tmp_path / target
+    assert candidate.read_bytes() == upstream.read_bytes()
+    staged_style = tmp_path / "sglang/.clang-format"
+    assert not staged_style.is_symlink() and staged_style.read_bytes() == style.read_bytes()
+    candidate.write_text("def compute(): return 4\n")
+    with pytest.raises(FileExistsError, match="existing candidate"):
+        stage.materialize(tmp_path)
+    assert candidate.read_text() == "def compute(): return 4\n"
+    assert upstream.read_text() == "def compute(): return 3\n"
+
+
+@pytest.mark.parametrize("name", ["mi355x_sglang_triton_mxfp8_linear", "mi355x_sglang_triton_mxfp8_grouped_gemm"])
+def test_mxfp8_staging_rejects_external_package_symlink(name, tmp_path):
+    directory = TASKS / name
+    package = tmp_path / "upstream/sglang/python/sglang"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("# package\n")
+    external = tmp_path / "outside.py"
+    external.write_text("# outside package\n")
+    (package / "escape.py").symlink_to(external)
+    stage = load_module(directory / "scripts/materialize_source.py")
+    with pytest.raises(ValueError, match="external source symlink"):
+        stage.materialize(tmp_path)
+    assert not (tmp_path / "sglang").exists()

@@ -61,3 +61,20 @@ profiling drivers do not supply final evaluation evidence.
 This migration has CPU regression coverage; formal GPU task validation and the
 optimization campaign are coordinated separately. Runtime source availability
 must be checked against the selected immutable image, not inferred from a tag.
+
+## Pinned implementation acquisition
+
+`workspace.sources` acquires SGLang commit
+`3ea875fef48f6f01fa3bddd9e2197ad190cef29d` from the declared upstream Git
+repository. Setup copies its `python/sglang` package into the existing `sglang/`
+candidate layout before the framework freezes the baseline. It performs no
+additional download and refuses to overwrite an existing candidate. Both MXFP8
+implementation files at this commit are byte-identical to the files inventoried
+in the previously qualified source image; their image and source SHA-256 evidence
+is recorded in the suite README.
+
+This makes source acquisition independent of whether the scoring image still
+ships these modules. Torch, Triton and other runtime dependencies still require
+GPU qualification. The numerical reference, shapes, seeds, tolerances and timing
+methodology are unchanged. Do not replace the implementation with a similarly
+named AITER or vLLM operator.
