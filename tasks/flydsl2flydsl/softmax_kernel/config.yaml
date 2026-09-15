@@ -1,5 +1,5 @@
 schema_version: 2
-description: "Optimize the FlyDSL Softmax kernel for AMD MI300X GPU.\nThe kernel computes numerically\
+description: "Optimize the FlyDSL Softmax kernel for AMD MI300X and MI355X GPUs.\nThe kernel computes numerically\
   \ stable softmax using exp2(x * log2e)\nfor fast exponentiation and float32 accumulation.\nYou MUST\
   \ keep the kernel in FlyDSL \u2014 do NOT rewrite it in HIP, CUDA, or Triton."
 instructions:
@@ -25,5 +25,7 @@ evaluation:
   workloads: cases.json
   timeout_s: 3600
 platform_support:
-  required_arch: gfx942
+  required_arch:
+  - gfx942
+  - gfx950
   status: active

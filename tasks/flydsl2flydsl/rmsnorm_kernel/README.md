@@ -4,7 +4,7 @@ The task starts with an implemented FlyDSL candidate. Arena freezes that initial
 implementation in a separate workspace for baseline evaluation. Candidate actions
 always use this workspace's declared source; they never search other workspaces.
 
-Optimize the FlyDSL RMSNorm kernel for AMD MI300X GPU.
+Optimize the FlyDSL RMSNorm kernel for AMD MI300X and MI355X GPUs.
 The kernel computes RMSNorm: y = x / sqrt(mean(x^2) + eps) * gamma
 using float32 accumulation for numerical stability.
 You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
@@ -47,3 +47,17 @@ Any older validation reports in this directory predate this migration and do not
 qualify the v2 runner. The parent integration schedules new GPU validation.
 
 Upstream source: {"commit": "28a18d328b4882c999864b2df2f8f9fe3fcc8b47", "date": "2026-06-01", "path": "kernels/rmsnorm_kernel.py", "repo": "https://github.com/ROCm/FlyDSL"}.
+
+## Architecture compatibility
+
+The gfx950 port has executed every declared correctness and performance case on
+MI355X with unchanged operator semantics, inputs, tolerances, and timing boundaries.
+The original gfx942 declaration and legacy import path are preserved; gfx942 has
+not been revalidated by this port. Support is scoped to the cases in `cases.json`.
+
+FlyDSL releases that moved vector helpers into `flydsl.expr.typing` use that API;
+older releases retain `flydsl.expr.vector`. The bundled common helper imports its
+unused legacy pointer-conversion dependency only when that conversion is requested.
+These compatibility changes do not replace any GPU operator with a host/reference
+implementation. A fresh framework-finalized task-validator report is required for
+each supported runtime before publishing qualification results.
