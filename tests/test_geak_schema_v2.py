@@ -443,6 +443,7 @@ def test_engine_worker_requires_truthful_terminal_result(task_factory, monkeypat
     write_json(bridge.job_path, bridge.job)
     def sdk(prompt, **kwargs):
         assert kwargs["quiet"] is True
+        assert kwargs["require_workflow_result"] is True
         assert 0 < kwargs["timeout_seconds"] <= bridge.remaining() + 0.1
         kwargs["runtime_metadata"].update(init_model="probe-model", assistant_models=["probe-model"])
         result = {"eval_dir": str(bridge.eval_dir), "validation_status": "accepted", "final_geomean": 0.5,
@@ -510,6 +511,37 @@ def test_runtime_identity_handles_synchronous_and_unknown_workflow_output(tmp_pa
     assert identity == {"workflow_models": ["late-child", "observed-child"]}
 
 
+def test_runtime_identity_retains_error_codes_without_error_text(tmp_path):
+    from types import SimpleNamespace
+    from agents.geak_v4.workflow_runner import _record_runtime_identity
+
+    output = tmp_path / "output.json"
+    write_json(output, {"workflowProgress": [{"label": "tech_lead:plan r1", "state": "error",
+                                            "error": "[reasoning_extraction] FAKE_PROVIDER_SECRET"}]})
+    message = type("TaskNotificationMessage", (SimpleNamespace,), {})(status="completed", output_file=str(output))
+    identity = {}
+    _record_runtime_identity(message, identity)
+    assert identity == {"workflow_agent_errors": [{"label": "tech_lead:plan r1", "code": "reasoning_extraction"}]}
+
+
+def test_engine_rejects_child_errors_before_search(task_factory, monkeypatch):
+    from agents.geak import engine_worker
+
+    bridge = task_factory()
+    bridge.job["engine"] = {"script_path": str(bridge.root / "engine.js"),
+                            "args": {"eval_dir": str(bridge.eval_dir), "mode": "optimize", "target_language": "hip"}}
+    write_json(bridge.job_path, bridge.job)
+    def sdk(prompt, **kwargs):
+        kwargs["runtime_metadata"]["workflow_agent_errors"] = [{"label": "tech_lead:plan r1", "code": "agent_error"}]
+        return json.dumps({"eval_dir": str(bridge.eval_dir), "validation_status": "accepted", "final_geomean": 1,
+                           "final_patch": str(bridge.eval_dir / "final_patch.diff"), "rounds": 0, "budget_used": 0})
+    monkeypatch.setattr(engine_worker, "invoke_via_sdk", sdk)
+    assert engine_worker.run(bridge.job_path) == 1
+    result = json.loads((bridge.root / "engine_result.json").read_text())
+    assert result["error_code"] == "workflow_agent_errors_before_search"
+    assert (bridge.eval_dir / "workflow_return.json").is_file()
+
+
 def test_compatibility_rejects_unknown_engine_source():
     with pytest.raises(ValueError, match="unknown GEAK lane"):
         adapt_lane("export const meta = {}; return {};")
@@ -545,6 +577,9 @@ def test_pinned_upstream_preparation(task_factory, upstream, language, state):
     assert "roleAgent('author_engineer'" in lane
     assert "roleAgent('director', 'validate'" in lane
     assert "A.arena_contract" in lane
+    assert "plan.decision_summary" in lane
+    assert "reasoning: { type:" not in lane
+    assert '"reasoning":' not in (Path(engine["script_path"]).parent / "roles/tech_lead.md").read_text()
     assert "const KB_WRITE_OK = false;" in lane
     assert args["kb_remote"] == "off"
     # Verify preparation never mutates the engine being shared with other runs.

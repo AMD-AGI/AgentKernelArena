@@ -61,6 +61,10 @@ def adapt_lane(source: str) -> str:
         raise ValueError("GEAK agent extension point changed")
     source = source.replace(marker, marker + "\n  p += '\\n\\n' + A.arena_contract;"
                             "\n  if (A.arena_model) o = { ...o, model: A.arena_model };", 1)
+    # Request a public decision summary, never private model deliberations.
+    source = source.replace("reasoning: { type: 'string' }",
+                            "decision_summary: { type: 'string', description: 'Brief decision summary only; no private deliberations.' }")
+    source = source.replace("plan.reasoning", "plan.decision_summary")
     # A failed clock must never turn a bounded run into an unlimited one.
     source = source.replace("return Infinity;\n  }\n  return DEADLINE_EPOCH - r.epoch;",
                             "return 0;\n  }\n  return DEADLINE_EPOCH - r.epoch;")
@@ -129,7 +133,11 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
     contract = arena_contract(bridge, python)
     for role in (workflow / "roles").glob("*.md"):
         bridge.remaining()
-        role.write_text(role.read_text() + "\n\n" + contract)
+        content = role.read_text()
+        if role.name == "tech_lead.md":
+            content = content.replace('`reasoning`', '`decision_summary`').replace('"reasoning":', '"decision_summary":')
+            content += "\nReturn only a brief decision summary and proposed actions, never private deliberations.\n"
+        role.write_text(content + "\n\n" + contract)
     # The upstream copier special-cases vendor trees, excludes some potential
     # task inputs and clears existing destinations. Arena instead preserves all
     # task inputs and refuses overwrites. Only this private script is replaced.

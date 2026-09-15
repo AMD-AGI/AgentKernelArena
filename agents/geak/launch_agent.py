@@ -178,7 +178,10 @@ def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str
         if isinstance(runtime, dict):
             engine["runtime"] = {key: runtime[key] for key in (
                 "requested_model", "sdk_version", "cli_version", "init_model",
-                "assistant_models", "workflow_models") if key in runtime}
+                "assistant_models", "workflow_models", "workflow_agent_errors") if key in runtime}
+        for key in ("rounds", "budget_used", "error_code"):
+            if key in raw_engine:
+                engine[key] = raw_engine[key]
         status["engine"] = engine
         # A full canonical candidate includes the author seed, unlike a patch
         # relative to its first commit. Preserve correct no-gain implementations.

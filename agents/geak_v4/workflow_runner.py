@@ -442,7 +442,7 @@ def _completed_producer_error(
 
 def _record_runtime_identity(message: Any, identity: dict[str, Any]) -> None:
     """Retain observed CLI/model identity without conversation or auth material."""
-    def record_workflow_models(wrapper: Any) -> None:
+    def record_workflow_identity(wrapper: Any) -> None:
         rows = wrapper.get("workflowProgress") if isinstance(wrapper, dict) else None
         if not isinstance(rows, list):
             return
@@ -450,6 +450,16 @@ def _record_runtime_identity(message: Any, identity: dict[str, Any]) -> None:
                   if isinstance(row, dict) and isinstance(row.get("model"), str)}
         if models:
             identity["workflow_models"] = sorted(set(identity.get("workflow_models", [])) | models)
+        failures = {(row["label"], row["code"]) for row in identity.get("workflow_agent_errors", [])}
+        for row in rows:
+            if not isinstance(row, dict) or row.get("state") != "error":
+                continue
+            error = str(row.get("error", ""))
+            code = next((code for code in ("reasoning_extraction", "authentication_error", "rate_limit_error",
+                                           "context_length_exceeded", "overloaded_error") if code in error), "agent_error")
+            failures.add((str(row.get("label", "unknown"))[:100], code))
+        if failures:
+            identity["workflow_agent_errors"] = [{"label": label, "code": code} for label, code in sorted(failures)]
 
     name = type(message).__name__
     if name == "SystemMessage" and getattr(message, "subtype", None) == "init":
@@ -465,7 +475,7 @@ def _record_runtime_identity(message: Any, identity: dict[str, Any]) -> None:
     if name == "TaskNotificationMessage" and getattr(message, "status", None) == "completed":
         output = getattr(message, "output_file", None)
         wrapper = _read_json(Path(output)) if output else None
-        record_workflow_models(wrapper)
+        record_workflow_identity(wrapper)
     # Fast Workflows may complete synchronously without a task notification.
     # Read structured tool output only; assistant prose is not runtime evidence.
     if name == "UserMessage":
@@ -476,7 +486,7 @@ def _record_runtime_identity(message: Any, identity: dict[str, Any]) -> None:
                 if len(text) > _JSON_SIZE_LIMIT:
                     continue
                 try:
-                    record_workflow_models(json.loads(text))
+                    record_workflow_identity(json.loads(text))
                 except json.JSONDecodeError:
                     pass
 
@@ -495,6 +505,7 @@ def invoke_via_sdk(
     done_poll_seconds: float,
     quiet: bool = False,
     runtime_metadata: dict[str, Any] | None = None,
+    require_workflow_result: bool = False,
 ) -> str:
     """Invoke Claude Code while surviving synchronous and background Workflows."""
     try:
@@ -535,6 +546,7 @@ def invoke_via_sdk(
 
     async def _run() -> str:
         chunks: list[str] = []
+        captured_return: dict[str, Any] | None = None
         runtime_notifications: list[Any] = []
         captured_chars = 0
         pending: set[str] = set()
@@ -577,7 +589,7 @@ def invoke_via_sdk(
                                     pending.add(str(task_id))
                                     state["background_started"] = True
                             elif name == "TaskNotificationMessage":
-                                if runtime_metadata is not None:
+                                if runtime_metadata is not None or require_workflow_result:
                                     runtime_notifications.append(message)
                                 state["terminal_task_seen"] = True
                                 task_id = getattr(message, "task_id", None)
@@ -612,7 +624,22 @@ def invoke_via_sdk(
                         if pending and not state["producer_done"]:
                             await anyio.sleep(max(0.1, done_poll_seconds))
                             continue
-                        if _terminal_artifact_exists(eval_dir):
+                        if require_workflow_result:
+                            # A Director writes its validation before Workflow returns.
+                            # Capture the runtime's actual return object, even if the
+                            # outer assistant has not written workflow_return.json yet.
+                            returned = _read_json(eval_dir / "workflow_return.json")
+                            for notification in runtime_notifications:
+                                path = getattr(notification, "output_file", None)
+                                wrapper = _read_json(Path(path)) if path else None
+                                value = wrapper.get("result") if isinstance(wrapper, dict) else None
+                                if _valid_workflow_return(value, eval_dir, require_pinned_patch=True):
+                                    returned = value
+                                    break
+                            if _valid_workflow_return(returned, eval_dir, require_pinned_patch=True):
+                                captured_return = returned
+                                break
+                        elif _terminal_artifact_exists(eval_dir):
                             break
                         if state["result_seen"] and not state["background_started"]:
                             break
@@ -652,7 +679,11 @@ def invoke_via_sdk(
         if runtime_metadata is not None:
             for notification in runtime_notifications:
                 _record_runtime_identity(notification, runtime_metadata)
-        return "\n".join(chunks)[:_TRANSCRIPT_SIZE_LIMIT]
+        transcript = "\n".join(chunks)[:_TRANSCRIPT_SIZE_LIMIT]
+        if captured_return is not None:
+            terminal = json.dumps(captured_return, separators=(",", ":"))
+            transcript = transcript[:max(0, _TRANSCRIPT_SIZE_LIMIT - len(terminal) - 1)] + "\n" + terminal
+        return transcript
 
     return anyio.run(_run)
 
