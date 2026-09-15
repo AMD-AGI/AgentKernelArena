@@ -55,3 +55,7 @@ installed legacy APIs remain preferred. Performance validates measured Q/K and
 full KV caches, then negates Q/K/V, poisons written output/cache slots and checks
 the same captured replay. Unwritten cache slots must stay unchanged. Original
 cases, tolerances, warmups, samples and timed launch boundaries are preserved.
+
+All declared cases passed on MI355X gfx950, including full KV cache checks.
+The original gfx942 implementation path remains supported and was not
+revalidated during this port. Support is scoped to `cases.json`.
