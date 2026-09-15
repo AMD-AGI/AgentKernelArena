@@ -11,7 +11,7 @@ The kernel computes per-group max, scales to [-127, 127], and quantizes to int8.
 
 Constraints:
 - Must maintain the same function signature for `per_token_group_quant_int8`
-- Output must match reference within atol=1, rtol=1e-2 for int8 values
+- Output must match reference within atol=1, rtol=0 for int8 values (the existing harness gate)
 
 
 ## Evaluation contract
@@ -25,3 +25,14 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+Protected checks require the complete `(quantized, scales)` pair with INT8 codes,
+FP32 positive finite scales, and the original shape/device contracts. The original
+one-code allowance is retained; scale comparison remains atol=1e-4, rtol=1e-3.
+The reference reads pristine input before any candidate call. An unscored diagnostic
+covers higher-rank inputs, zero data and partial launch tiles with a non-default epsilon floor.
+Performance observes both outputs from the actual timed invocation, changes input
+sign and magnitude, poisons both captured outputs, and numerically checks the same
+replay. Inputs and module hooks are restored even on failure. All five scored cases,
+seeds, original source/harness, full-wrapper timing, 10 warmups and 100 samples stay
+unchanged; diagnostics do not add measurements to the score.

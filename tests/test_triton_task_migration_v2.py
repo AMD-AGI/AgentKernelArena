@@ -4426,3 +4426,160 @@ def test_recovered_tokens_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_sample_recovered_tokens/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_recovered_tokens_checks'
+
+
+_INT8_QUANT_TASKS = ['per_token_quant_int8', 'per_token_group_quant_int8']
+
+
+def _int8_quant_cpu(x, group_size=None, eps=1e-10, dtype=None):
+    width = group_size or x.shape[-1]
+    groups = x.float().reshape(-1, width)
+    maximum = groups.abs().amax(-1, keepdim=True).clamp_min(eps)
+    scales = maximum/127
+    codes = groups/scales
+    codes = codes.trunc() if group_size else codes.round()
+    quant = codes.clamp(-128, 127).to(dtype or torch.int8).reshape(x.shape)
+    return quant, scales.reshape(*x.shape[:-1], x.shape[-1]//width)
+
+
+def _int8_quant_cpu_harness(monkeypatch, symbol):
+    task = ROOT/'tasks/triton2triton/vllm'/('triton_'+symbol)
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    for name in ('randn', 'arange'):
+        factory = getattr(torch, name)
+        monkeypatch.setattr(torch, name, lambda *a, _factory=factory, **kw: _factory(*a, **{**kw, 'device': 'cpu'}))
+    original = torch.Tensor.to
+    def cpu_to(value, *args, **kwargs):
+        if args and isinstance(args[0], str) and args[0].startswith('cuda'): args = ('cpu', *args[1:])
+        return original(value, *args, **kwargs)
+    monkeypatch.setattr(torch.Tensor, 'to', cpu_to)
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    return h, checks
+
+
+@pytest.mark.parametrize('symbol', _INT8_QUANT_TASKS)
+def test_int8_quant_independent_known_codes_and_scale_contract(monkeypatch, symbol):
+    h, checks = _int8_quant_cpu_harness(monkeypatch, symbol)
+    x = torch.tensor([[0., 1., -2., 0.], [0., 0., 0., 0.]], dtype=torch.float16)
+    grouped = 'group' in symbol
+    options = dict(group_size=2) if grouped else {}
+    expected_q = torch.tensor([[0, 127, -127, 0], [0, 0, 0, 0]] if grouped else
+                              [[0, 64, -127, 0], [0, 0, 0, 0]], dtype=torch.int8)
+    expected_s = torch.tensor([[1/127, 2/127], [1e-10/127, 1e-10/127]] if grouped else
+                              [[2/127], [1e-10/127]], dtype=torch.float32)
+    expected = expected_q, expected_s
+    checks.check_outputs(checks.reference(h, x, options), expected)
+    checks.check_outputs(_int8_quant_cpu(x, **options), expected)
+    # Existing +1 code allowance is preserved; a two-code error still fails.
+    allowed = expected_q.clone(); allowed[0, 0] = 1
+    checks.check_outputs((allowed, expected_s), expected)
+    allowed[0, 0] = 2
+    with pytest.raises(AssertionError): checks.check_outputs((allowed, expected_s), expected)
+    invalid_scales = expected_s.clone(); invalid_scales[1].zero_()
+    with pytest.raises(AssertionError, match='positive'): checks.check_outputs((expected_q, invalid_scales), expected)
+
+
+@pytest.mark.parametrize('symbol,mode', [
+    (symbol, mode) for symbol in _INT8_QUANT_TASKS
+    for mode in ['correct', 'q_dtype', 'scale_dtype', 'q_shape', 'scale_shape',
+                 'nonfinite_scale', 'empty_tuple', 'missing_scale', 'wrong_q', 'wrong_scale',
+                 'mutate_input', 'zero_case', 'ignore_eps', 'truncate_tail', 'flatten_output']
+    if mode != 'ignore_eps' or 'group' in symbol
+])
+def test_int8_quant_actual_correctness_metadata_and_optional_inputs(monkeypatch, symbol, mode):
+    h, checks = _int8_quant_cpu_harness(monkeypatch, symbol)
+    calls = []
+    def candidate(x, **kwargs):
+        calls.append((tuple(x.shape), x.is_contiguous(), dict(kwargs)))
+        if mode == 'mutate_input': x.zero_()
+        if mode == 'ignore_eps': kwargs['eps'] = 1e-10
+        quant, scales = _int8_quant_cpu(x, **kwargs)
+        if mode == 'q_dtype': quant = quant.float()
+        if mode == 'scale_dtype': scales = scales.half()
+        if mode == 'q_shape': quant = quant.flatten()
+        if mode == 'scale_shape': scales = scales.flatten()
+        if mode == 'nonfinite_scale': scales.fill_(float('nan'))
+        if mode == 'empty_tuple': return ()
+        if mode == 'missing_scale': return (quant,)
+        if mode == 'wrong_q': quant.fill_(0)
+        if mode == 'wrong_scale': scales.mul_(2)
+        if mode == 'zero_case':
+            zero = x.reshape(-1, x.shape[-1]).abs().amax(-1) == 0
+            scales.reshape(zero.numel(), -1)[zero] = 0
+        if mode == 'truncate_tail':
+            if x.shape[-1] & (x.shape[-1]-1): quant[..., -1].fill_(-128)
+        if mode == 'flatten_output':
+            quant, scales = quant.reshape(-1, x.shape[-1]), scales.reshape(-1, scales.shape[-1])
+        return quant, scales
+    # The protected group harness calls group_size positionally.
+    def public(x, group_size=None, **kw):
+        if group_size is not None: kw['group_size'] = group_size
+        return candidate(x, **kw)
+    mod = SimpleNamespace(**{symbol: public})
+    h.load_module = lambda: mod
+    checks.install(h)
+    ok, reason = h.run_correctness()
+    assert ok is (mode == 'correct'), reason
+    if mode == 'correct':
+        original = [c for c in calls if len(c[0]) == 2 and c[0] != (17, 6)]
+        assert [c[0] for c in original] == [tuple(v[:2]) for v in h.TEST_SHAPES]
+        if 'group' in symbol:
+            assert [c[2]['group_size'] for c in original] == [v[2] for v in h.TEST_SHAPES]
+            assert ((2, 3, 34), True, {'group_size':17, 'eps':.5}) in calls
+        else:
+            assert any(c[0] == (2, 3, 17) for c in calls)
+            assert any(c[0] == (17, 6) and not c[1] for c in calls)
+    assert getattr(mod, symbol) is public
+
+
+@pytest.mark.parametrize('symbol', _INT8_QUANT_TASKS)
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'omit_q', 'omit_scale',
+                                 'wrong_replay', 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_int8_quant_original_timing_full_tuple_replay_and_restored_input(monkeypatch, symbol, mode):
+    import inspect
+    h, checks = _int8_quant_cpu_harness(monkeypatch, symbol)
+    h._TimedRun = module_at(ROOT/'src/tools/perf/aka_benchmark.py', monkeypatch).TimedRun
+    mod = SimpleNamespace(**{symbol: _int8_quant_cpu})
+    h.load_module = lambda: mod
+    inputs, pristine, options = [], [], []
+    def benchmark(measured, *, timed_run, **kwargs):
+        fn = inspect.getclosurevars(measured).nonlocals['fn']
+        state = inspect.getclosurevars(fn).nonlocals
+        x = state['x']; inputs.append(x); pristine.append(x.clone()); options.append(kwargs)
+        outputs = measured(); cached = tuple(v.clone() for v in outputs)
+        if mode == 'wrong_timed': outputs[0].zero_()
+        if mode == 'mutate_timed': x.zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('Replay failed')
+            if mode != 'no_write':
+                computed = cached if mode == 'stale' else measured()
+                for i, (out, value) in enumerate(zip(outputs, computed)):
+                    if mode == 'omit_q' and i == 0 or mode == 'omit_scale' and i == 1: continue
+                    out.copy_(value)
+            if mode == 'wrong_replay': outputs[0].zero_()
+            if mode == 'mutate_replay': x.zero_()
+            return outputs
+        timed_run._bind(replay, outputs)
+        return .125, {'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == 5
+    assert options == [dict(warmup=10, repetition=100)] * 5
+    for case, row in zip(h.TEST_SHAPES, rows):
+        expected = dict(M=case[0], N=case[1])
+        if 'group' in symbol: expected['group_size'] = case[2]
+        assert row['params'] == expected
+        assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
+        if mode == 'correct': assert row['perturbed_input_replay_checked']
+    for x, saved in zip(inputs, pristine): checks.unchanged(x, saved)
+    assert getattr(mod, symbol) is _int8_quant_cpu
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+@pytest.mark.parametrize('symbol', _INT8_QUANT_TASKS)
+def test_int8_quant_adapters_install_task_local_checks(monkeypatch, symbol):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm'/('triton_'+symbol)/'_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_int8_quant_checks'
