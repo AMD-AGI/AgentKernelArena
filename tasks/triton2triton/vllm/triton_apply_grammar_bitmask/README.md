@@ -37,3 +37,16 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+Protected correctness checks include the complete output tensor, including rows
+not selected by the mask mapping. They retain the exact negative-infinity pattern
+and original finite-value atol=1e-8, rtol=1e-5, while checking dtype/shape/device.
+Cloned diagnostic inputs permute the row mapping and complement all 32 mask bits,
+including the sign bit omitted by the original positive-only mask generator.
+
+Performance retains the original scored inputs, shapes, seed, warmups, samples,
+`target_ms=20.0` and preparation that resets working logits. The actual timed
+output and the same captured replay must match pristine references after changing
+logits, mapping and signed mask words. Working/source buffers are restored even
+on replay failure. All original scored cases, kernel and generated helpers remain
+unchanged; masked negative infinity is expected rather than a nonfinite error.

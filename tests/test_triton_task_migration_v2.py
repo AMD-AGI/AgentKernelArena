@@ -1907,3 +1907,92 @@ def test_slot_mapping_adapter_installs_correctness_and_timing_checks(monkeypatch
     adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_compute_slot_mappings/_arena_eval.py',monkeypatch)
     harness=adapter.load_harness()
     assert harness.run_correctness.__module__==harness.run_performance.__module__=='_slot_mapping_checks'
+
+
+def grammar_inputs():
+    logits=torch.arange(99,dtype=torch.float32).reshape(3,33)/10
+    indices=torch.tensor([2,0],dtype=torch.int32)
+    bits=torch.tensor([[-2147483647,1],[2,0]],dtype=torch.int32)
+    return logits,indices,bits
+
+
+def independent_grammar(logits,indices,bits,vocab):
+    columns=torch.arange(vocab)
+    words=bits.long()[:,columns//32]
+    keep=((words>>(columns%32))&1).bool()
+    logits[indices.long(),:vocab]=torch.where(keep,logits[indices.long(),:vocab],float('-inf'))
+
+
+def test_grammar_signed_mask_reference_and_unselected_row_known_answers(monkeypatch):
+    task=ROOT/'tasks/triton2triton/vllm/triton_apply_grammar_bitmask'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    args=grammar_inputs();expected=args[0].clone()
+    expected[0].fill_(float('-inf'));expected[0,1]=args[0][0,1]
+    expected[2].fill_(float('-inf'));expected[2,[0,31,32]]=args[0][2,[0,31,32]]
+    assert torch.equal(checks.reference(harness,args,33),expected)
+    independent_grammar(*args,33);assert torch.equal(args[0],expected)
+
+
+@pytest.mark.parametrize('mode',['correct','ignore_mapping','drop_bit31','clobber_unselected','mutate_bits','nonfinite','wrong_unmasked'])
+def test_grammar_correctness_checks_signed_words_mapping_and_all_rows(monkeypatch,mode):
+    task=ROOT/'tasks/triton2triton/vllm/triton_apply_grammar_bitmask'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    def candidate(logits,indices,bits,vocab):
+        index=indices if mode!='ignore_mapping' else torch.arange(indices.numel(),dtype=indices.dtype)
+        mask=bits if mode!='drop_bit31' else bits.bitwise_and(2147483647)
+        independent_grammar(logits,index,mask,vocab)
+        if mode=='clobber_unselected':
+            unselected=next(i for i in range(logits.shape[0]) if i not in indices.tolist());logits[unselected].zero_()
+        elif mode=='mutate_bits':bits.zero_()
+        elif mode=='nonfinite':logits[0,1]=float('nan')
+        elif mode=='wrong_unmasked':logits[torch.isfinite(logits)]+=10
+    mod=SimpleNamespace(apply_grammar_bitmask=candidate);load=lambda:mod;harness.load_module=load
+    with checks.checked_modules(harness):
+        call=lambda:harness.load_module().apply_grammar_bitmask(*grammar_inputs(),33)
+        if mode=='correct':call()
+        else:
+            with pytest.raises(AssertionError):call()
+    assert harness.load_module is load and mod.apply_grammar_bitmask is candidate
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay','mutate_bits','replay_raises'])
+def test_grammar_actual_timed_in_place_output_and_restoration(monkeypatch,mode):
+    task=ROOT/'tasks/triton2triton/vllm/triton_apply_grammar_bitmask'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch);harness._TimedRun=SimpleNamespace
+    logits,logits_indices,bitmask=grammar_inputs();logits_work=logits.clone();vocab_size=33
+    inputs=(logits,logits_indices,bitmask,logits_work);pristine=tuple(value.clone() for value in inputs)
+    def fn():independent_grammar(logits_work,logits_indices,bitmask,vocab_size)
+    def prepare():logits_work.copy_(logits)
+    options=[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        options.append(kwargs);kwargs['prepare_fn']();output=measured();cached=output.clone()
+        if mode=='wrong_timed':output.zero_()
+        def replay():
+            kwargs['prepare_fn']()
+            if mode=='replay_raises':raise RuntimeError('injected replay failure')
+            if mode=='stale':output.copy_(cached)
+            elif mode!='no_write':
+                measured()
+                if mode=='wrong_replay':output.zero_()
+                elif mode=='mutate_bits':bitmask.zero_()
+            return output
+        timed_run.outputs=output;timed_run.rerun=replay
+        return 0.25,dict(benchmark_method='cuda_graph')
+    call=lambda:checks.checked_benchmark(harness,benchmark,fn,warmup=10,repetition=100,target_ms=20.0,prepare_fn=prepare)
+    if mode=='correct':
+        ms,metadata=call();assert ms==0.25 and metadata['signed_mask_mapping_checked'] and metadata['perturbed_input_replay_checked']
+    elif mode=='replay_raises':
+        with pytest.raises(RuntimeError,match='injected replay failure'):call()
+    else:
+        with pytest.raises(AssertionError):call()
+    assert options==[dict(warmup=10,repetition=100,target_ms=20.0,prepare_fn=prepare)]
+    assert all(torch.equal(value,saved) for value,saved in zip(inputs,pristine))
+
+
+def test_grammar_adapter_installs_correctness_and_timing_checks(monkeypatch):
+    adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_apply_grammar_bitmask/_arena_eval.py',monkeypatch)
+    harness=adapter.load_harness()
+    assert harness.run_correctness.__module__==harness.run_performance.__module__=='_grammar_checks'
