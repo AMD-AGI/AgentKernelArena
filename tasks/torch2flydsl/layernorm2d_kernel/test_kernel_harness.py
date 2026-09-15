@@ -5,9 +5,8 @@
 ``model.py`` is the pure-torch specification and ``kernel.py`` is the FlyDSL
 starter/target. Correctness always validates the reference against the independent
 AMD runtime oracle ``aiter.layer_norm`` and also invokes ``flydsl_layernorm2d``.
-Once implemented, the target is compared to the same oracle. Only the starter's
-explicit ``NotImplementedError`` is a SKIP; missing entry points and all other
-target errors fail validation.
+Once implemented, the target is compared to the same oracle. Initial validation explicitly selects the provided baseline. Final candidate
+actions require a real implementation and never fall back.
 
 The normalized worst-element gate is
 ``max|truth - result| / max|truth| <= REL_TOL``.
@@ -26,7 +25,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -170,6 +170,43 @@ def _norm_max_err(ref, out):
     return max_abs / denom, max_abs, denom
 
 
+def _checked_layernorm_output(value, input):
+    import torch
+    require_tensor_contract(value, input)
+    if not bool(torch.isfinite(value).all()):
+        raise AssertionError("Non-finite LayerNorm output")
+    return value
+
+
+def _compare_layernorm_output(actual, expected):
+    _checked_layernorm_output(actual, expected)
+    if _norm_max_err(expected, actual)[0] > REL_TOL:
+        raise AssertionError("Numerical mismatch: LayerNorm normalized error")
+
+
+def _verify_layernorm_timed(timed, inputs, originals, expected):
+    import aiter
+    if not timed.bound:
+        raise RuntimeError("Benchmark did not expose measured LayerNorm output")
+    require_unchanged(inputs, originals)
+    _compare_layernorm_output(timed.outputs, expected)
+    try:
+        inputs[0].neg_()
+        inputs[1].mul_(0.5)
+        inputs[2].add_(0.25)
+        changed = tuple(x.clone() for x in inputs)
+        replay_expected = _checked_layernorm_output(aiter.layer_norm(*inputs, EPS), inputs[0])
+        timed.outputs.fill_(float("nan"))
+        replayed = timed.rerun()
+        require_unchanged(inputs, changed)
+        _compare_layernorm_output(replayed, replay_expected)
+    finally:
+        for value, original in zip(inputs, originals):
+            value.copy_(original)
+    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+            "replay_inputs_perturbed": True, "replay_output_poisoned": True}
+
+
 def run_correctness(verbose=True):
     import torch
     import aiter
@@ -198,6 +235,7 @@ def run_correctness(verbose=True):
         m, n = shape["m"], shape["n"]
         model = mmod.Model(EPS).to("cuda").eval()
         input, weight, bias = _make_inputs(shape)
+        originals = tuple(x.clone() for x in (input, weight, bias))
 
         with torch.no_grad():
             ref = model(input, weight, bias)
@@ -207,6 +245,9 @@ def run_correctness(verbose=True):
         )
         torch.cuda.synchronize()
 
+        require_unchanged((input, weight, bias), originals)
+        _checked_layernorm_output(ref, input)
+        _checked_layernorm_output(truth, input)
         err, max_abs, _ = _norm_max_err(truth, ref)
         worst = max(worst, err)
         pct = (
@@ -244,6 +285,8 @@ def run_correctness(verbose=True):
         if target_implemented:
             assert kout is not None, f"{KERNEL_ENTRY} returned None"
             torch.cuda.synchronize()
+            require_unchanged((input, weight, bias), originals)
+            _checked_layernorm_output(kout, input)
             kerr, kmax_abs, _ = _norm_max_err(truth, kout)
             k_ok = kerr <= REL_TOL
             if verbose:
@@ -296,6 +339,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         m, n = shape["m"], shape["n"]
         model = mmod.Model(EPS).to("cuda").eval()
         input, weight, bias = _make_inputs(shape)
+        originals = tuple(x.clone() for x in (input, weight, bias))
 
         def run_ref():
             with torch.no_grad():
@@ -310,10 +354,16 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         _retry(run_truth, what=shape["name"])
         torch.cuda.synchronize()
 
+        expected = _checked_layernorm_output(run_truth(), input)
+        require_unchanged((input, weight, bias), originals)
         def _mean(fn):
-            return benchmark_cuda_graph_or_events(
-                fn, warmup=warmup, repetition=iters
+            timed = TimedRun()
+            result_ms, metadata = benchmark_cuda_graph_or_events(
+                fn, warmup=warmup, repetition=iters, timed_run=timed
             )
+            metadata.update(_verify_layernorm_timed(
+                timed, (input, weight, bias), originals, expected))
+            return result_ms, metadata
 
         ref_ms, ref_bench_meta = _mean(run_ref)
         aiter_ms, _aiter_bench_meta = _mean(run_truth)
@@ -452,6 +502,7 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         m, n = shape["m"], shape["n"]
         model = mmod.Model(EPS).to("cuda").eval()
         input, weight, bias = _make_inputs(shape)
+        originals = tuple(x.clone() for x in (input, weight, bias))
 
         def run_ref():
             with torch.no_grad():
@@ -466,10 +517,16 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         _retry(run_truth, what=shape["name"])
         torch.cuda.synchronize()
 
+        expected = _checked_layernorm_output(run_truth(), input)
+        require_unchanged((input, weight, bias), originals)
         def _mean(fn):
-            return benchmark_cuda_graph_or_events(
-                fn, warmup=warmup, repetition=iters
+            timed = TimedRun()
+            result_ms, metadata = benchmark_cuda_graph_or_events(
+                fn, warmup=warmup, repetition=iters, timed_run=timed
             )
+            metadata.update(_verify_layernorm_timed(
+                timed, (input, weight, bias), originals, expected))
+            return result_ms, metadata
 
         ref_ms, ref_bench_meta = _mean(run_ref)
         aiter_ms, _aiter_bench_meta = _mean(run_truth)

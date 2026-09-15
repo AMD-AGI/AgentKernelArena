@@ -132,6 +132,7 @@ def test_declaring_flydsl_without_executing_it_is_rejected():
 
 
 CANDIDATE_AUDIT_TASKS = [ROOT / "tasks/torch2flydsl" / name for name in (
+    "layernorm2d_kernel", "layernorm2d_with_add_kernel",
     'gemm_a8w8_kernel', 'gemm_a8w8_per_token_scale_kernel', 'gemm_a8wfp4_kernel', 'gemm_afp4wfp4_kernel', 'gemm_afp8wfp8_kernel',
     'gemm_a16w8_blockscale_kernel', 'gemm_a16wfp4_kernel', 'gemm_a4w4_kernel', 'gemm_a8w8_blockscale_kernel',
     "fused_add_rmsnorm_kernel", "fmoe_fp8_blockscale_g1u1_kernel", "fmoe_g1u1_tkw1_kernel", "silu_and_mul_kernel", "dynamic_mxfp8_quant_kernel", "batched_gemm_a8w8_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel",
@@ -512,6 +513,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
                 handler.body.pop(0)
         if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel", "moe_topk_softplus_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
+        if name in {"layernorm2d_kernel", "layernorm2d_with_add_kernel"}:
+            fn = _RemoveLayernormChecks().visit(fn)
         if name in _QUANT_GEMM_CONTROL_NAMES:
             fn = _RemoveQuantGemmChecks().visit(fn)
         if name == "fused_add_rmsnorm_kernel":
@@ -2860,3 +2863,117 @@ def test_afp8wfp8_production_binding_propagates_runtime_error(monkeypatch):
     model=types.SimpleNamespace(quantize_afp8wfp8=lambda a,w:(1,2,3,4));ns={}
     _harness_functions(ROOT/'tasks/torch2flydsl/gemm_afp8wfp8_kernel',{'_aiter_ground_truth'},ns)
     with pytest.raises(RuntimeError,match='device launch failed'):ns['_aiter_ground_truth'](model,None,None)
+
+
+class _RemoveLayernormChecks(_RemoveAddedReplayChecks):
+    def visit_Expr(self,node):
+        call=node.value
+        if isinstance(call,ast.Call):
+            if getattr(call.func,'id',None) in {'_checked_layernorm_output','_checked_layernorm_pair'}:return None
+            if isinstance(call.func,ast.Attribute) and call.func.attr=='update' and call.args and isinstance(call.args[0],ast.Call) and getattr(call.args[0].func,'id',None) in {'_verify_layernorm_timed','replay_validate'}:return None
+        return super().visit_Expr(node)
+    def visit_Call(self,node):
+        if getattr(node.func,'id',None) in {'_checked_layernorm_output','_checked_layernorm_pair'}:return self.visit(node.args[0])
+        if getattr(node.func,'id',None)=='_mean_ms':node.keywords=[x for x in node.keywords if x.arg!='replay_validate']
+        return super().visit_Call(node)
+    def visit_With(self,node):
+        node=self.generic_visit(node)
+        return node if node.body else None
+    def visit_FunctionDef(self,node):
+        if node.name=='replay_validate':return None
+        if node.name=='_mean':
+            node.body=ast.parse('return benchmark_cuda_graph_or_events(fn,warmup=warmup,repetition=iters)').body
+            return node
+        if node.name=='_mean_ms':
+            node.args.kwonlyargs=[];node.args.kw_defaults=[]
+        return self.generic_visit(node)
+
+
+@pytest.mark.parametrize('name',['layernorm2d_kernel','layernorm2d_with_add_kernel'])
+@pytest.mark.parametrize('function',['run_benchmark','arena_benchmark'])
+@pytest.mark.parametrize('provided',[True,False])
+@pytest.mark.parametrize('behavior',['correct','measured_wrong','replay_wrong','cached','input_mutated','weight_mutated','bias_mutated','shape','dtype','nonfinite'])
+def test_layernorm_actual_measured_output_and_replay(name,function,provided,behavior,monkeypatch,tmp_path):
+    import torch,types,math
+    t=ROOT/'tasks/torch2flydsl'/name;checks=module(t/'scripts/replay_checks.py');added='with_add' in name
+    x=torch.tensor([[1.,2.,4.,-1.],[3.,-4.,2.,1.]],dtype=torch.bfloat16)
+    residual=torch.tensor([[.5,-1.,2.,3.],[2.,1.,-.5,2.]],dtype=torch.bfloat16)
+    weight=torch.tensor([2.,-1.,.5,3.],dtype=torch.bfloat16);bias=torch.tensor([.5,1.,-2.,.25],dtype=torch.bfloat16)
+    inputs=(x,residual,weight,bias) if added else (x,weight,bias);originals=tuple(v.clone() for v in inputs)
+    actual_model=module(t/'model.py').Model();phase={'value':'setup'}
+    def oracle(*args):
+        inp,res,w,b=args if added else (args[0],None,args[1],args[2])
+        summed=inp+res if added else inp
+        out=torch.nn.functional.layer_norm(summed.float(),[4],w.float(),b.float(),1e-5).to(inp.dtype)
+        return (out,summed) if added else out
+    cache=oracle(*inputs);cached=tuple(v.clone() for v in cache) if added else (cache.clone(),)
+    def compute(is_model):
+        raw=actual_model(*inputs);values=list(raw) if added else [raw]
+        if is_model==provided:
+            if behavior==phase['value']+'_wrong':values[0].fill_(5)
+            if phase['value']=='replay':
+                if behavior=='cached':values=[v.clone() for v in cached]
+                for label,value in [('input',x),('weight',weight),('bias',bias)]:
+                    if behavior==label+'_mutated':value.add_(1)
+            if phase['value']=='measured':
+                if behavior=='shape':values[0]=values[0][:1]
+                if behavior=='dtype':values[0]=values[0].float()
+                if behavior=='nonfinite':values[0][0,0]=float('nan')
+        return tuple(values) if added else values[0]
+    class Model:
+        def __init__(self,*a):pass
+        def to(self,*a):return self
+        def eval(self):return self
+        def __call__(self,*a):return compute(True)
+    target=lambda *a:compute(False);mmod=types.SimpleNamespace(Model=Model,get_init_inputs=lambda:[1e-5]);kmod=types.SimpleNamespace(**{'flydsl_'+name.removesuffix('_kernel'):target})
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    monkeypatch.setitem(sys.modules,'aiter',types.SimpleNamespace(layer_norm=lambda *a:oracle(*a[:-1])))
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run):
+        calls.append((warmup,repetition));phase['value']='measured';timed_run.outputs=fn();timed_run.bound=True;phase['value']='setup'
+        def replay():
+            phase['value']='replay'
+            try:return fn()
+            finally:phase['value']='setup'
+        timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':benchmark,'require_tensor_contract':checks.require_tensor_contract,'require_unchanged':checks.require_unchanged,
+        'math':math,'json':json,'Path':Path,'_KERNEL_DIR':str(tmp_path),'MODEL_FILE':'model.py','KERNEL_FILE':'kernel.py','KERNEL_ENTRY':'flydsl_'+name.removesuffix('_kernel'),
+        'REL_TOL':.01,'PASS_PCT':99.9,'EPS':1e-5,'SHAPES':[{'name':'controlled','m':2,'n':4}], '_make_inputs':lambda *a:inputs,
+        '_load_module':lambda directory,filename,alias:mmod if filename=='model.py' else None if provided else kmod,
+        '_load_target':lambda:target,'_is_pure_starter':lambda:provided,'_probe_target':lambda *a:(False,None) if provided else (True,target()),'_retry':lambda fn,**kw:fn(),'_aiter_op':oracle}
+    _harness_functions(t,{function,'_mean_ms','_norm_max_err','_tensor_ok','_compare','_checked_layernorm_output','_checked_layernorm_pair','_compare_layernorm_output','_verify_layernorm_timed'},ns)
+    if behavior=='correct':
+        report=ns[function](verbose=False)
+        if function=='run_benchmark':report=json.loads((tmp_path/'build/performance_report.json').read_text())
+        assert report[0]['timed_output_correctness']==report[0]['replay_correctness']=='PASS'
+        assert calls==[(10,100)]*(2 if provided else 3)
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+    for value,original in zip(inputs,originals):assert torch.equal(value,original)
+
+
+def test_layernorm_add_original_or_gate_and_residual_contract():
+    import torch
+    t=ROOT/'tasks/torch2flydsl/layernorm2d_with_add_kernel';checks=module(t/'scripts/replay_checks.py')
+    ns={'require_tensor_contract':checks.require_tensor_contract,'REL_TOL':.01,'PASS_PCT':99.9};_harness_functions(t,{'_tensor_ok','_compare','_checked_layernorm_pair','_compare_layernorm_output'},ns)
+    # 1/2000 deliberately large errors fail the normalized bound but satisfy
+    # the ORIGINAL 99.9% gate. Requiring both conditions would change the task.
+    actual=(torch.ones((1,2000),dtype=torch.bfloat16),torch.ones((1,2000),dtype=torch.bfloat16));truth=tuple(v.clone() for v in actual);truth[0][0,0]=10
+    ok,error,pct=ns['_tensor_ok'](actual[0],truth[0]);assert ok and error>.01 and pct>=99.9
+    ns['_compare_layernorm_output'](actual,truth)
+    bad=(actual[0],torch.zeros_like(actual[1]))
+    with pytest.raises(AssertionError,match='Numerical mismatch'):ns['_compare_layernorm_output'](bad,truth)
+    for bad in [(actual[0],), (actual[0],actual[1][:,:1]),(actual[0],actual[1].float()),(actual[0],torch.full_like(actual[1],float('nan')))]:
+        with pytest.raises(AssertionError):ns['_compare_layernorm_output'](bad,actual)
+
+
+def test_layernorm_original_numeric_inputs_and_timing_preserved():
+    hashes={'layernorm2d_kernel': {'_make_inputs': '96047c11ef94bb5e3124f1cd5de22b1f6959ac99d9336927143baca4baaa21c3', '_norm_max_err': '750a488ebe381cf762ba31a41890c0fe3dd87c2dc703955ad218dd85a2d9862e', 'run_correctness': '844bca314b686fd2bb17b421fe25d38253f7987c9a8eb1a83eaf7434ff9e1465', 'run_benchmark': '34ec3583d9970fae7690374cb18b28f3087da202dfd8fff8fe5fd5320f975b27', 'arena_benchmark': '7db8114697de0bf8efb6774c9bae5be11c662b0d760095ff9051c5890d8a945b'}, 'layernorm2d_with_add_kernel': {'_make_inputs': 'a04871a09de4827358e0bc8db07faff135fb9e0d1a855fe01c5d81635f7df318', '_aiter_op': '82f1bc3a8fcdb3588d6ed5f2fa17f3dfb8e152846a57b1097394c366f6bb7f68', '_tensor_ok': 'c00fb86d889b0e7ce78e148f7a61bc1ce6fb16b2817a572f1229f87aa577942f', '_compare': 'e0bc09cd3e2d00997e194b1366075a6908596af9ee8629946f1a0491178d8f0f', 'run_correctness': 'f706a5821b6653d4629be4af9244c4d1da9df5fdf581a44ac93bc28c2b431c46', '_mean_ms': 'd577e74039d622acefe0c724d81ab5149f872772160fc2a2c7b229700fb428be', 'run_benchmark': 'e2dc0275cc3ae5807f6053bbf4379776d51e6cea87c3ec9f5ac9e97cdcc9c584', 'arena_benchmark': '72452bbe2421a0564c40d125346bb07b7cc69ec3b564ef3705f160c6155d71b1'}}
+    for name,functions in hashes.items():
+        tree=ast.parse((ROOT/'tasks/torch2flydsl'/name/'test_kernel_harness.py').read_text())
+        for fn in tree.body:
+            if isinstance(fn,ast.FunctionDef) and fn.name in functions:
+                restored=_RemoveLayernormChecks().visit(fn)
+                assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)

@@ -50,3 +50,15 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+Only the declared public operator is required; its unused starter builder is not
+an evaluation entrypoint. Every returned tensor must match the input shape,
+BF16 dtype and device and contain finite values. Inputs, residual (when present),
+weight and bias are read-only. Both actual measured outputs and poisoned-output
+replay with changed input/affine values must pass the original AITER comparison.
+The residual-add variant validates both normalized output and residual sum,
+retaining the original comparator's operand order and OR condition between its
+normalized-error and pass-percentage gates. Original models, inputs, seeds,
+epsilon, cases, numerical gates, graph timing and sample counts are unchanged.
+The provided PyTorch model remains the primary baseline; AITER timing remains
+diagnostic. Candidate-only execution auditing requires actual FlyDSL computation.

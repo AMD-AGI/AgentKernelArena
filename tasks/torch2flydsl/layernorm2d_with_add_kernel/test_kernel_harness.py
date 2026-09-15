@@ -14,7 +14,7 @@ aiter; ``model.py`` MUST NOT.
 
 Gate (tight, bf16 op): both the LayerNorm output and the residual_out must
 match the op within a normalized worst-element bound (max|ref-out| / max|ref| <=
-REL_TOL) AND an element-wise isclose pass-rate (atol=rtol=1e-2) >= PASS_PCT.
+REL_TOL) OR an element-wise isclose pass-rate (atol=rtol=1e-2) >= PASS_PCT.
 
 Modes:
   --compile         import model.py, build the Model, run a CPU smoke pass
@@ -29,7 +29,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -154,6 +155,49 @@ def run_compile(verbose=True):
     return True
 
 
+def _checked_layernorm_pair(pair, input):
+    import torch
+    if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+        raise AssertionError("LayerNorm with add must return (output, residual_out)")
+    for value in pair:
+        require_tensor_contract(value, input)
+        if not bool(torch.isfinite(value).all()):
+            raise AssertionError("Non-finite LayerNorm output or residual")
+    return pair
+
+
+def _compare_layernorm_output(actual, expected):
+    _checked_layernorm_pair(actual, expected[0])
+    # Preserve the original comparator's operand order, normalization and OR
+    # condition (normalized error or required per-element pass percentage).
+    if not _compare(actual, expected)[0]:
+        raise AssertionError("Numerical mismatch: LayerNorm output or residual")
+
+
+def _verify_layernorm_timed(timed, inputs, originals, expected):
+    if not timed.bound:
+        raise RuntimeError("Benchmark did not expose measured LayerNorm outputs")
+    require_unchanged(inputs, originals)
+    _compare_layernorm_output(timed.outputs, expected)
+    try:
+        inputs[0].neg_()
+        inputs[1].mul_(0.5)
+        inputs[2].mul_(0.5)
+        inputs[3].add_(0.25)
+        changed = tuple(x.clone() for x in inputs)
+        replay_expected = _checked_layernorm_pair(_aiter_op(*inputs), inputs[0])
+        for output in timed.outputs:
+            output.fill_(float("nan"))
+        replayed = timed.rerun()
+        require_unchanged(inputs, changed)
+        _compare_layernorm_output(replayed, replay_expected)
+    finally:
+        for value, original in zip(inputs, originals):
+            value.copy_(original)
+    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+            "replay_inputs_perturbed": True, "replay_output_poisoned": True}
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -165,6 +209,7 @@ def run_correctness(verbose=True):
     failures = []
     for shape in SHAPES:
         input, residual, weight, bias = _make_inputs(shape)
+        originals = tuple(x.clone() for x in (input, residual, weight, bias))
         model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
         with torch.no_grad():
             ref = model(input, residual, weight, bias)
@@ -174,6 +219,9 @@ def run_correctness(verbose=True):
             )
         torch.cuda.synchronize()
 
+        require_unchanged((input, residual, weight, bias), originals)
+        _checked_layernorm_pair(ref, input)
+        _checked_layernorm_pair(truth, input)
         ok, orel, opct, rrel, rpct = _compare(ref, truth)
         if verbose:
             print(
@@ -204,6 +252,8 @@ def run_correctness(verbose=True):
                 kout = None
             if kout is not None:
                 torch.cuda.synchronize()
+                require_unchanged((input, residual, weight, bias), originals)
+                _checked_layernorm_pair(kout, input)
                 k_ok, ko, kop, kr, krp = _compare(kout, truth)
                 if verbose:
                     print(
@@ -223,10 +273,12 @@ def run_correctness(verbose=True):
     return True
 
 
-def _mean_ms(fn, warmup, iters):
+def _mean_ms(fn, warmup, iters, *, replay_validate):
+    timed = TimedRun()
     mean_ms, bench_meta = benchmark_cuda_graph_or_events(
-        fn, warmup=warmup, repetition=iters
+        fn, warmup=warmup, repetition=iters, timed_run=timed
     )
+    bench_meta.update(replay_validate(timed))
     _mean_ms.benchmark_metadata = bench_meta
     return mean_ms
 
@@ -258,13 +310,22 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
     print("-" * 56)
     for idx, shape in enumerate(SHAPES):
         input, residual, weight, bias = _make_inputs(shape)
+        originals = tuple(x.clone() for x in (input, residual, weight, bias))
         model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
         with torch.no_grad():
+            expected = _checked_layernorm_pair(_aiter_op(input, residual, weight, bias), input)
+        require_unchanged((input, residual, weight, bias), originals)
+        def replay_validate(timed):
+            return _verify_layernorm_timed(
+                timed, (input, residual, weight, bias), originals, expected)
+        with torch.no_grad():
             op_ms = _mean_ms(
-                lambda: _aiter_op(input, residual, weight, bias), warmup, iters
+                lambda: _aiter_op(input, residual, weight, bias), warmup, iters,
+                replay_validate=replay_validate,
             )
             ref_ms = _mean_ms(
-                lambda: model(input, residual, weight, bias), warmup, iters
+                lambda: model(input, residual, weight, bias), warmup, iters,
+                replay_validate=replay_validate,
             )
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = (
@@ -274,6 +335,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
                     ),
                     warmup,
                     iters,
+                    replay_validate=replay_validate,
                 )
                 if has_kernel
                 else None
@@ -389,13 +451,22 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
     print("-" * 56)
     for idx, shape in enumerate(SHAPES):
         input, residual, weight, bias = _make_inputs(shape)
+        originals = tuple(x.clone() for x in (input, residual, weight, bias))
         model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
         with torch.no_grad():
+            expected = _checked_layernorm_pair(_aiter_op(input, residual, weight, bias), input)
+        require_unchanged((input, residual, weight, bias), originals)
+        def replay_validate(timed):
+            return _verify_layernorm_timed(
+                timed, (input, residual, weight, bias), originals, expected)
+        with torch.no_grad():
             op_ms = _mean_ms(
-                lambda: _aiter_op(input, residual, weight, bias), warmup, iters
+                lambda: _aiter_op(input, residual, weight, bias), warmup, iters,
+                replay_validate=replay_validate,
             )
             ref_ms = _mean_ms(
-                lambda: model(input, residual, weight, bias), warmup, iters
+                lambda: model(input, residual, weight, bias), warmup, iters,
+                replay_validate=replay_validate,
             )
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = (
@@ -405,6 +476,7 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
                     ),
                     warmup,
                     iters,
+                    replay_validate=replay_validate,
                 )
                 if has_kernel
                 else None

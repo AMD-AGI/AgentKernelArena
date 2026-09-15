@@ -12,9 +12,6 @@ candidate:
   - file: kernel.py
     kind: function
     symbol: flydsl_layernorm2d_with_add
-  - file: kernel.py
-    kind: builder
-    symbol: build_layernorm2d_with_add_module
 baseline:
   kind: provided
   correctness_policy: required
