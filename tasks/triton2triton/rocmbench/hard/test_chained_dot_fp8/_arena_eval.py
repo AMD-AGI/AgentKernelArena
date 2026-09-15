@@ -37,7 +37,7 @@ def inspect_candidate(data, *, require_implemented=False):
         node=defs.get(name)
         body=[] if node is None else [n for n in node.body if not (
             isinstance(n,ast.Expr) and isinstance(n.value,ast.Constant) and isinstance(n.value.value,str))]
-        empty=not body or all(isinstance(n,ast.Pass) for n in body) or (len(body)==1 and isinstance(body[0],ast.Raise))
+        empty=not body or all(isinstance(n,ast.Pass) or (isinstance(n,ast.Expr) and isinstance(n.value,ast.Constant) and n.value.value is Ellipsis) for n in body) or (len(body)==1 and isinstance(body[0],ast.Raise))
         states.append(not empty)
         if node is not None and not any(ast.unparse(d).endswith('.jit') for d in node.decorator_list):
             raise ValueError(f'{name} must be a Triton JIT kernel')
@@ -179,6 +179,19 @@ def evaluate(role,action):
     return result
 
 
+def emit_result(result):
+    """Even invalid/nonfinite diagnostic metadata must produce a failing envelope."""
+    try:
+        payload = json.dumps(result, allow_nan=False, separators=(',', ':'))
+    except (TypeError, ValueError, OverflowError) as exc:
+        result = {'protocol': 'arena-eval-v1', 'role': result['role'], 'action': result['action'],
+                  'status': 'FAIL', 'cases': [], 'failure_kind': 'invalid_evidence',
+                  'reason': f'Cannot serialize action evidence: {type(exc).__name__}: {exc}'}
+        payload = json.dumps(result, allow_nan=False, separators=(',', ':'))
+    print('ARENA_EVAL_RESULT=' + payload)
+    return 0 if result['status'] == 'PASS' else 1
+
+
 def main():
     os.chdir(ROOT);os.environ['PYTEST_DISABLE_PLUGIN_AUTOLOAD']='1'
     args=sys.argv[1:]
@@ -190,8 +203,7 @@ def main():
     except BaseException as exc:
         result={'protocol':'arena-eval-v1','role':role,'action':action,'status':'FAIL','cases':[],
                 'reason':f'{type(exc).__name__}: {exc}','failure_kind':'execution_failure'}
-    print('ARENA_EVAL_RESULT='+json.dumps(result,allow_nan=False,separators=(',',':')))
-    return 0 if result['status']=='PASS' else 1
+    return emit_result(result)
 
 
 if __name__=='__main__':raise SystemExit(main())

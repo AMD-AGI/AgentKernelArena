@@ -2793,6 +2793,10 @@
   "migration": {
     "original_harness_sha256": "600b9768cf939677a42aaae3fe0d2085b27eb9623dca21a0c39d5bdb69a8326a",
     "original_source_sha256": "53a2ce4062faaa70caad54cb923447c4d3ff71d7238b69dd2ae91cc7304cc9f3",
-    "preservation": "Original correctness subset executes first, in its original order; additional performance cases are checked afterward. Original performance order, RNG calls, reset callbacks, sample counts and median reduction remain intact."
+    "preservation": "Original correctness subset executes first, in its original order; additional performance cases are checked afterward. Original performance order, RNG calls, reset callbacks, sample counts and median reduction remain intact.",
+    "upstream_source": {
+      "repository": "https://github.com/ROCm/aiter",
+      "revision": "22122345c03991cb8026947b8df05e02f50d1f88"
+    }
   }
 }

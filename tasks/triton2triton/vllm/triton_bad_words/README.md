@@ -22,3 +22,5 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+The manifest also declares 3 original targeted correctness-only cases beyond the main five-shape table. Their original checks and seeds remain active; no performance score is assigned to those cases.

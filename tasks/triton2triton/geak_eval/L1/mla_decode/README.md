@@ -52,3 +52,10 @@ Do not edit `test_kernel_harness.py`, `_arena_*.py`, `workloads.json`, or genera
 next to the original harness even though the public runner is `_arena_eval.py`.
 Unsupported hardware or missing dependencies return a failing envelope; use a
 compatible image/GPU before scheduling this task.
+
+The original task recorded AITER source revision
+`22122345c03991cb8026947b8df05e02f50d1f88`; that provenance is retained in
+`workloads.json`. The candidate imports the installed AITER MLA Triton primitives
+and logger. The runner does not claim that the image package matches this commit
+or silently clone/install another copy. Image qualification must record its
+actual AITER revision and verify compatibility with this source contract.

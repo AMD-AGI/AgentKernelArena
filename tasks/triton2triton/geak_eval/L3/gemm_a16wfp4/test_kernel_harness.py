@@ -151,10 +151,11 @@ def mxfp4_to_f32(x):
 
 
 def e8m0_to_f32(x):
-    """Convert E8M0 scale to float32."""
-    x_f32 = 2 ** (x.to(torch.float32) - 127)
-    x_f32[x_f32 == 128] = float("nan")
-    return x_f32
+    """Decode unsigned E8M0: finite biased exponents 0..254, NaN code 255."""
+    codes = x.to(torch.float32)
+    # Convert before subtraction: uint8 arithmetic would wrap below bias 127.
+    values = torch.exp2(codes - 127)
+    return torch.where(codes == 255, float("nan"), values)
 
 
 def run_torch_reference(x, w, w_scales, dtype):

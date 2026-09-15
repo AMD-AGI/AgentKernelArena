@@ -35,7 +35,7 @@ def inspect_candidate(data, *, require_implemented=False):
         node = functions.get(target['name'])
         body = [] if node is None else [s for s in node.body if not (
             isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant) and isinstance(s.value.value, str))]
-        empty = not body or all(isinstance(s, ast.Pass) for s in body) or (len(body) == 1 and isinstance(body[0], ast.Raise))
+        empty = not body or all(isinstance(s, ast.Pass) or (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant) and s.value.value is Ellipsis) for s in body) or (len(body) == 1 and isinstance(body[0], ast.Raise))
         implemented.append(not empty)
         if node is not None and target['jit'] and not any(ast.unparse(d).endswith('.jit') for d in node.decorator_list):
             raise ValueError(f"{target['name']} must remain a Triton JIT kernel")
@@ -147,6 +147,19 @@ def evaluate(role, action):
     return result
 
 
+def emit_result(result):
+    """Even invalid/nonfinite diagnostic metadata must produce a failing envelope."""
+    try:
+        payload = json.dumps(result, allow_nan=False, separators=(',', ':'))
+    except (TypeError, ValueError, OverflowError) as exc:
+        result = {'protocol': 'arena-eval-v1', 'role': result['role'], 'action': result['action'],
+                  'status': 'FAIL', 'cases': [], 'failure_kind': 'invalid_evidence',
+                  'reason': f'Cannot serialize action evidence: {type(exc).__name__}: {exc}'}
+        payload = json.dumps(result, allow_nan=False, separators=(',', ':'))
+    print('ARENA_EVAL_RESULT=' + payload)
+    return 0 if result['status'] == 'PASS' else 1
+
+
 def main():
     os.chdir(ROOT)
     args = sys.argv[1:]
@@ -156,8 +169,7 @@ def main():
                   'reason': 'Use validate-task or baseline|candidate compile|correctness|performance', 'failure_kind': 'invalid_arguments'}
     else:
         result = evaluate(role, action)
-    print('ARENA_EVAL_RESULT=' + json.dumps(result, allow_nan=False, separators=(',', ':')))
-    return 0 if result['status'] == 'PASS' else 1
+    return emit_result(result)
 
 
 if __name__ == '__main__':

@@ -8,6 +8,7 @@ candidate:
     scope: symbols
     symbols:
     - softmax_kernel_online
+    - get_autotune_config
     allow_new_helpers: true
   entrypoints:
   - file: softmax.py

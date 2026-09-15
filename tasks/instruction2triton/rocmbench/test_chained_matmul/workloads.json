@@ -17,12 +17,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/64dda2b368a0d9f141c4",
+      "test_case_id": "test_performance/73f4ad3795bb8ebad145",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec4c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 64,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -32,12 +38,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/35cc65b9d80955c4cd54",
+      "test_case_id": "test_performance/2ac94f826a024a78c8fd",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec500>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 64,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -47,12 +59,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/529038df166910e0cf5b",
+      "test_case_id": "test_performance/b37f89daf3f4b75ce2ce",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec540>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 64,
+            "bm": 16,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -62,12 +80,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/e28b2eaa5b701e3cf333",
+      "test_case_id": "test_performance/9ce019ae8037e45d2ac8",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec580>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 64,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -77,12 +101,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/256ef4245a3ab5307dc4",
+      "test_case_id": "test_performance/b9b3e24f5daea5261b46",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec5c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 64,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -92,12 +122,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/fcd821c637cd0e56171d",
+      "test_case_id": "test_performance/7d7011934d29c13a4fc7",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec600>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 64,
+            "bm": 32,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -107,12 +143,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/621b2765c51ebe3b72ca",
+      "test_case_id": "test_performance/db77ba041516c52bc297",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec640>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 64,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -122,12 +164,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/d437298e3971dc402709",
+      "test_case_id": "test_performance/23acf2a5694f681cf99e",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec680>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 64,
+            "bm": 64,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -137,12 +185,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/857e7dac5c6f255cc3c4",
+      "test_case_id": "test_performance/f150c70e1bb26a503a7d",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec6c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 128,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -152,12 +206,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/20f0cdf80d14c46de596",
+      "test_case_id": "test_performance/c00514b41647a5a71c39",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec700>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 128,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -167,12 +227,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/747b43f6a3645d53eed7",
+      "test_case_id": "test_performance/1c8c0360827c8cba9a2a",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec740>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 128,
+            "bm": 16,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -182,12 +248,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/b0885b0782b439b5d692",
+      "test_case_id": "test_performance/2e21cd24df8333e0c5fe",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec780>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 128,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -197,12 +269,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/ddd37ac498179360c699",
+      "test_case_id": "test_performance/82b3867ceab9f59b5db2",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec7c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 128,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -212,12 +290,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/82590d1337b770a18bdb",
+      "test_case_id": "test_performance/10ae43c8385f26bcf0a5",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec800>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 128,
+            "bm": 32,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -227,12 +311,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/5c876c99edd54e56a16b",
+      "test_case_id": "test_performance/e52696f6c81debe71bd2",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec840>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 128,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -242,12 +332,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/ac70dd17ed973265f1ba",
+      "test_case_id": "test_performance/9ac20af976fa7da4a2c4",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec880>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 128,
+            "bm": 64,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -257,12 +353,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/dc97c890370c342bf7a6",
+      "test_case_id": "test_performance/f60791fc0ac442da0c3a",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec8c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 256,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -272,12 +374,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/1836c6817859a4e32e18",
+      "test_case_id": "test_performance/9752cd46aa27e443fe7d",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec900>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 256,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -287,12 +395,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/d878cf236c155ae8124c",
+      "test_case_id": "test_performance/bbcd08e73cba20aae224",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec940>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 256,
+            "bm": 16,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -302,12 +416,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/d14889ea9d9004362407",
+      "test_case_id": "test_performance/008379b1bf05c8d19961",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec980>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 256,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -317,12 +437,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/0f71fc72ee69c165a52f",
+      "test_case_id": "test_performance/1196bfe4f0b1d4f271aa",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca25ec9c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 256,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -332,12 +458,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/d69c0b82bc0c6549f9f7",
+      "test_case_id": "test_performance/79476dc259e32dfae262",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602680>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 256,
+            "bm": 32,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -347,12 +479,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/4ae6f8a69e4bfdc04068",
+      "test_case_id": "test_performance/72db9c072e35d7212bf0",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26026c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 256,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -362,12 +500,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/5b939c020d9be49676cd",
+      "test_case_id": "test_performance/9cfe939ddbb827b9a345",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602700>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 64,
+            "N": 256,
+            "bm": 64,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -377,12 +521,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/53fa1662a7695a72fb5c",
+      "test_case_id": "test_performance/4b7008c207415245cb4c",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602740>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 64,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -392,12 +542,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/6b1bb44ae7401e4772b8",
+      "test_case_id": "test_performance/c5d82009325dac981600",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602780>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 64,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -407,12 +563,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/d01f1eeb13a61d906030",
+      "test_case_id": "test_performance/dcc8b6360772665d0479",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26027c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 64,
+            "bm": 16,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -422,12 +584,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/77b59f5696b7978a9271",
+      "test_case_id": "test_performance/896e6cefef7b01df05b4",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602800>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 64,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -437,12 +605,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/2c870e3f692b74ce10eb",
+      "test_case_id": "test_performance/d1e1638b45b52c28a4c3",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602840>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 64,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -452,12 +626,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/781df9e984bf66931021",
+      "test_case_id": "test_performance/5e2a1c9961c0fd4988dd",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602880>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 64,
+            "bm": 32,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -467,12 +647,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/9eb701efb091eaf0f41e",
+      "test_case_id": "test_performance/34a3668a06ad33c7534b",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26028c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 64,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -482,12 +668,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/5acd2ed1e71a819970d4",
+      "test_case_id": "test_performance/34653c6bb7085d07bef6",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602900>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 64,
+            "bm": 64,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -497,12 +689,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/878240fa8cad15e32467",
+      "test_case_id": "test_performance/3f6730992278fe735c35",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602940>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 128,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -512,12 +710,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/7c096a54d85af4b1a43d",
+      "test_case_id": "test_performance/5cfbaf20b1175b8aed75",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602980>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 128,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -527,12 +731,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/dcf85fd163ea2db7ee07",
+      "test_case_id": "test_performance/205c438283a0c674b78e",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26029c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 128,
+            "bm": 16,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -542,12 +752,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/ccfff8dacd13fbfd4986",
+      "test_case_id": "test_performance/9592124e65fe3cd623e0",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602a00>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 128,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -557,12 +773,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/2784457adb8bfd899fe2",
+      "test_case_id": "test_performance/ac5d2ebc0319bbf897e6",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602a40>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 128,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -572,12 +794,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/d65aa9f4cd936ee6f085",
+      "test_case_id": "test_performance/a55cc3b9f315b1eafb0b",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602a80>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 128,
+            "bm": 32,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -587,12 +815,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/af1207c664563b1af901",
+      "test_case_id": "test_performance/cd9ab37c8738e702d1c1",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602ac0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 128,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -602,12 +836,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/c44274dd4ae2b319cc1d",
+      "test_case_id": "test_performance/b9a6064e17c0e63a82c8",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602b00>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 128,
+            "bm": 64,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -617,12 +857,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/8b77525c6cfcb2093880",
+      "test_case_id": "test_performance/26762296564f42009304",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602b40>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 256,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -632,12 +878,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/f97c93f7ceeac49a6fc2",
+      "test_case_id": "test_performance/6ca8a7edc36f855364d5",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602b80>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 256,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -647,12 +899,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/ef64710fcae4b6f936ee",
+      "test_case_id": "test_performance/f4cd095efd71ae50a4ae",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602bc0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 256,
+            "bm": 16,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -662,12 +920,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/a24ee1cc686bee4e0a83",
+      "test_case_id": "test_performance/1c6331872b72b6853e05",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602c00>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 256,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -677,12 +941,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/d188246f5c2bfc63d385",
+      "test_case_id": "test_performance/2d22443d15b7cba8bf69",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602c40>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 256,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -692,12 +962,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/adda8401587220a6e315",
+      "test_case_id": "test_performance/7fd2de38ffbbb11a6887",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602c80>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 256,
+            "bm": 32,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -707,12 +983,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/176b90ac784c3247ad8e",
+      "test_case_id": "test_performance/a6a4bf0261cc5df99f85",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602cc0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 256,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -722,12 +1004,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/3feee82f57364cdd62f1",
+      "test_case_id": "test_performance/a2efd500d538fb9a7e90",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602d00>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 128,
+            "N": 256,
+            "bm": 64,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -737,12 +1025,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/62c03c1d8184424fe27f",
+      "test_case_id": "test_performance/02a4f52b1a274cf0a97a",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602d40>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 64,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -752,12 +1046,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/c6798ef9097f2e5f0f0a",
+      "test_case_id": "test_performance/29f6f0bd3e4ba8dc1f07",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602d80>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 64,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -767,12 +1067,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/8ce5399f7c95bb76114f",
+      "test_case_id": "test_performance/bf8b32bc1774d565fe51",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602dc0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 64,
+            "bm": 16,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -782,12 +1088,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/7b25d353f882018729b4",
+      "test_case_id": "test_performance/5183cb9726905b157bcb",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602e00>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 64,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -797,12 +1109,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/4144a4fb7d39b71719b4",
+      "test_case_id": "test_performance/d3d77ccff0502a9e1fc7",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602e40>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 64,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -812,12 +1130,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/35fc40606a5b85801112",
+      "test_case_id": "test_performance/8ffc60ca2d78a9c26b34",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602e80>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 64,
+            "bm": 32,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -827,12 +1151,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/f56437f0153c4d19c287",
+      "test_case_id": "test_performance/9657d33b393f733917b5",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602ec0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 64,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -842,12 +1172,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/07404956396fc1b6fb91",
+      "test_case_id": "test_performance/7312f88b9059b66b9d64",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602f00>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 64,
+            "bm": 64,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -857,12 +1193,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/4c8bc6098bf12d3c219e",
+      "test_case_id": "test_performance/9dbcca0c97a1e1b3c076",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602f40>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 128,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -872,12 +1214,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/c5d12296cf859a61c0b3",
+      "test_case_id": "test_performance/9c3a225aeda2f02cee9a",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602f80>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 128,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -887,12 +1235,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/9ca322f3b4cef212872a",
+      "test_case_id": "test_performance/7c0cf60e877adbc75de6",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2602fc0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 128,
+            "bm": 16,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -902,12 +1256,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/b9107df4f7623532e116",
+      "test_case_id": "test_performance/0411694c297061f7cd66",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603000>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 128,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -917,12 +1277,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/b4638de1a5bbeeabc2b0",
+      "test_case_id": "test_performance/9dd036673b1449eaaf7e",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603040>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 128,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -932,12 +1298,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/dfad0c87747a6e2e5d72",
+      "test_case_id": "test_performance/17489ea3bda6d8cee511",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603080>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 128,
+            "bm": 32,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -947,12 +1319,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/e52872830ee6ca7d59e7",
+      "test_case_id": "test_performance/d2f5766565c13c26dcdf",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26030c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 128,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -962,12 +1340,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/21cba71a104901e8e44b",
+      "test_case_id": "test_performance/4789b58ae8ed168dd91c",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603100>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 128,
+            "bm": 64,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -977,12 +1361,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/4b5011b6cfb8455fc8d1",
+      "test_case_id": "test_performance/20fb6f00dba38d815faf",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603140>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 256,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -992,12 +1382,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/ba515d6cd8b13ee328a8",
+      "test_case_id": "test_performance/96d921f8e7386355251c",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603180>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 256,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1007,12 +1403,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/72061f75f60e0a96cfa5",
+      "test_case_id": "test_performance/ce213496bf9393792928",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26031c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 256,
+            "bm": 16,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -1022,12 +1424,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/701dee884deafbf48125",
+      "test_case_id": "test_performance/ca14efd522ee0ff32b31",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603200>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 256,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1037,12 +1445,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/b8db5378d9d0c8a955b1",
+      "test_case_id": "test_performance/42b5d00ec5ae563b40ad",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603240>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 256,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1052,12 +1466,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/f817359f299b770624f2",
+      "test_case_id": "test_performance/79408772340d825af072",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603280>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 256,
+            "bm": 32,
+            "bn": 64
+          }
         }
       },
       "checks": [
@@ -1067,12 +1487,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/40ff865cc60a5e066500",
+      "test_case_id": "test_performance/0f0880a86a2baefd187e",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26032c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 256,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1082,12 +1508,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/cbe39163c7102290a79e",
+      "test_case_id": "test_performance/dc70fca701c96ad9be3e",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603300>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 64,
+            "M": 256,
+            "N": 256,
+            "bm": 64,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1097,12 +1529,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/6a685b43e8fe89258bfd",
+      "test_case_id": "test_performance/cc21ad9136035c87d2f8",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603340>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 64,
+            "N": 32,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1112,12 +1550,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/57608112bdc3ec77f847",
+      "test_case_id": "test_performance/912a234225f3131963bf",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603380>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 64,
+            "N": 32,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1127,12 +1571,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/ea37724336e65646955d",
+      "test_case_id": "test_performance/04ae941f8ae89ee01059",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26033c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 64,
+            "N": 32,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1142,12 +1592,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/7e32848498a47a40fb6d",
+      "test_case_id": "test_performance/f2140f36ae85d12556b9",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603400>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 64,
+            "N": 32,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1157,12 +1613,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/b09bd3cf368311a95aff",
+      "test_case_id": "test_performance/179a2a2e6947ec9b7276",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603440>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 64,
+            "N": 32,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1172,12 +1634,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/158c1230bef55645f8e9",
+      "test_case_id": "test_performance/41ab87dbe2a599855fc3",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603480>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 64,
+            "N": 64,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1187,12 +1655,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/c428481e2f90f46b5d96",
+      "test_case_id": "test_performance/2b44499c49c4eb605928",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26034c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 64,
+            "N": 64,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1202,12 +1676,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/9de79b4f93ba5e913b55",
+      "test_case_id": "test_performance/f340530b18ec2ea23bab",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603500>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 64,
+            "N": 64,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1217,12 +1697,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/4e62ce8bd46fa0680ab4",
+      "test_case_id": "test_performance/d493a6f5ec4fe814dd53",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603540>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 64,
+            "N": 64,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1232,12 +1718,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/9452da522026cc199d75",
+      "test_case_id": "test_performance/807a5ac731f99861566f",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603580>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 64,
+            "N": 64,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1247,12 +1739,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/8a91ce12e253128b72e6",
+      "test_case_id": "test_performance/775e92f1af69028ff57e",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26035c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 64,
+            "N": 128,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1262,12 +1760,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/0d4b9cdb7bfb259bd672",
+      "test_case_id": "test_performance/5c7790495745b0a78372",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603600>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 64,
+            "N": 128,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1277,12 +1781,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/14f85d33d691a427bd4f",
+      "test_case_id": "test_performance/c8faf906ee80a047bee2",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603640>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 64,
+            "N": 128,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1292,12 +1802,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/63a3dbdca410a82489f9",
+      "test_case_id": "test_performance/47a43033abb19aaae644",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603680>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 64,
+            "N": 128,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1307,12 +1823,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/127b41c3c392aad937b1",
+      "test_case_id": "test_performance/787a1db90e3e9c36b017",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26036c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 64,
+            "N": 128,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1322,12 +1844,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/ddce51c658ec4d90354a",
+      "test_case_id": "test_performance/16260e139d9d75693b51",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603700>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 128,
+            "N": 32,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1337,12 +1865,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/6095471b2ae018cb5535",
+      "test_case_id": "test_performance/60bfa192ba5ceba3a6dd",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603740>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 128,
+            "N": 32,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1352,12 +1886,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/ca67e86eaa5df63aaf21",
+      "test_case_id": "test_performance/aa80b3059bf169bad8d2",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603780>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 128,
+            "N": 32,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1367,12 +1907,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/e5671167db772002d8f5",
+      "test_case_id": "test_performance/3f68e4baad52d65a61c4",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26037c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 128,
+            "N": 32,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1382,12 +1928,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/907aef64525f0ab9c35c",
+      "test_case_id": "test_performance/1f546118cdc64ec50a31",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603800>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 128,
+            "N": 32,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1397,12 +1949,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/feaf265a67bbeb832017",
+      "test_case_id": "test_performance/82f8aadb3394982b50ea",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603840>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 128,
+            "N": 64,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1412,12 +1970,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/0c905667d2676e5968de",
+      "test_case_id": "test_performance/f77853d43efd2923bf58",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603880>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 128,
+            "N": 64,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1427,12 +1991,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/9a6d06883e528d0d69b9",
+      "test_case_id": "test_performance/5afd42450e24071b79b6",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26038c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 128,
+            "N": 64,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1442,12 +2012,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/e3c7bf312463385ffba6",
+      "test_case_id": "test_performance/89d81729f1e4492a27ca",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603900>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 128,
+            "N": 64,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1457,12 +2033,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/8871283751383d541a8b",
+      "test_case_id": "test_performance/522e0090b075b8c70f23",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603940>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 128,
+            "N": 64,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1472,12 +2054,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/37f215d486689e1d0cd0",
+      "test_case_id": "test_performance/fcc7cb64149a4f9b2eb2",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603980>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 128,
+            "N": 128,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1487,12 +2075,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/d9f02cd5b2d64e69d0e0",
+      "test_case_id": "test_performance/b6ce33c17202c1cc26e1",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26039c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 128,
+            "N": 128,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1502,12 +2096,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/bcf715954b75d9a8afee",
+      "test_case_id": "test_performance/42cd5f1452fb6587507c",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603a00>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 128,
+            "N": 128,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1517,12 +2117,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/0553dd50f675662f9ba6",
+      "test_case_id": "test_performance/6afc723be9ba0226208c",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603a40>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 128,
+            "N": 128,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1532,12 +2138,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/e1a86301590ff13e1caa",
+      "test_case_id": "test_performance/468e01dcfe5dab7e5011",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603a80>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 128,
+            "N": 128,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1547,12 +2159,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/665096e4fefdd59ba151",
+      "test_case_id": "test_performance/43ce6f43d06c6a1ee49d",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603ac0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 256,
+            "N": 32,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1562,12 +2180,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/c83e65c6932f0002f6d3",
+      "test_case_id": "test_performance/baffc9d1ffc87ee89989",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603b00>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 256,
+            "N": 32,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1577,12 +2201,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/d98722b166de63f9195e",
+      "test_case_id": "test_performance/2d0e04bf1782952eadad",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603b40>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 256,
+            "N": 32,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1592,12 +2222,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/8edde9310018fa714484",
+      "test_case_id": "test_performance/43a7f817a01113466514",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603b80>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 256,
+            "N": 32,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1607,12 +2243,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/6d1a3a9c736cc68bfe90",
+      "test_case_id": "test_performance/bac7b1a2b4ea1e42506b",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603bc0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 256,
+            "N": 32,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1622,12 +2264,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/c46b73fcb13b5c530cc3",
+      "test_case_id": "test_performance/2bede64c188933361681",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603c00>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 256,
+            "N": 64,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1637,12 +2285,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/086d6c04d3e88ad4b516",
+      "test_case_id": "test_performance/47ee21457199bf116d75",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603c40>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 256,
+            "N": 64,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1652,12 +2306,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/9893d413ad53d1442234",
+      "test_case_id": "test_performance/2144b9fae3a419440646",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603c80>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 256,
+            "N": 64,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1667,12 +2327,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/1ccb0cc564fa4f68465a",
+      "test_case_id": "test_performance/d1a34c5e629095833098",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603cc0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 256,
+            "N": 64,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1682,12 +2348,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/6aab980150846d179567",
+      "test_case_id": "test_performance/c600624eb2a02b103fa1",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603d00>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 256,
+            "N": 64,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1697,12 +2369,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/be60770a0926629b10dd",
+      "test_case_id": "test_performance/2df4cd915843025b0761",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603d40>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 256,
+            "N": 128,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1712,12 +2390,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/c36abbe8d3f4582ca1f1",
+      "test_case_id": "test_performance/0251c9572b8d9035b90b",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603d80>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 256,
+            "N": 128,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1727,12 +2411,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/686ef5975579ef6bafb9",
+      "test_case_id": "test_performance/3be0dcab5fb5bd9599f0",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603dc0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 256,
+            "N": 128,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1742,12 +2432,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/aba608bf63bcd636ae8d",
+      "test_case_id": "test_performance/78cfd557f6164e2c6713",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603e00>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 256,
+            "N": 128,
+            "bm": 32,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1757,12 +2453,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/4b57f7237e03a182a357",
+      "test_case_id": "test_performance/9f3564f031c8efea05e6",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603e40>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 128,
+            "M": 256,
+            "N": 128,
+            "bm": 64,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1772,12 +2474,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/f96d76768806ff14b19b",
+      "test_case_id": "test_performance/cf00b58e6303b1010161",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603e80>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 32,
+            "N": 16,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1787,12 +2495,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/3d0de554dde29c93b60d",
+      "test_case_id": "test_performance/42fd5d6f4a5f4204cb6e",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603ec0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 32,
+            "N": 16,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1802,12 +2516,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/36c04b0d178fe7f29687",
+      "test_case_id": "test_performance/34e6b13da4f9c428100e",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603f00>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 32,
+            "N": 16,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1817,12 +2537,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/bb020aee73dd2c1d205e",
+      "test_case_id": "test_performance/0ac631540fc5c05dc81e",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603f40>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 32,
+            "N": 32,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1832,12 +2558,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/32bd5aba49f81aa2baa6",
+      "test_case_id": "test_performance/44599a0e15c773e40361",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603f80>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 32,
+            "N": 32,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1847,12 +2579,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/fea0954ad63f58a483cf",
+      "test_case_id": "test_performance/a2b3dc66da405afafd9f",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2603fc0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 32,
+            "N": 32,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1862,12 +2600,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/192391a1cec385f64c7d",
+      "test_case_id": "test_performance/1d3c3f66e877d62f2b10",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618040>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 32,
+            "N": 64,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1877,12 +2621,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/e5415514a342aec184e6",
+      "test_case_id": "test_performance/1d1890ee118d7a2be836",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618080>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 32,
+            "N": 64,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1892,12 +2642,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/1049a847e2b1141a7432",
+      "test_case_id": "test_performance/4ba61c6885f76b5c6563",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26180c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 32,
+            "N": 64,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1907,12 +2663,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/77f614d4d2cf7aa95def",
+      "test_case_id": "test_performance/9d1ea0962aa39177388e",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618100>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 64,
+            "N": 16,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1922,12 +2684,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/417ad7026cbc3f7fab01",
+      "test_case_id": "test_performance/ecb77f8e378c6cafe3cc",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618140>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 64,
+            "N": 16,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1937,12 +2705,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/6357bd1d9e082a54c40a",
+      "test_case_id": "test_performance/bb9a71cc67b1d8434639",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618180>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 64,
+            "N": 16,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1952,12 +2726,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/c3df2519dc1947d4e7f8",
+      "test_case_id": "test_performance/aaeb4f66942de0feb331",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26181c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 64,
+            "N": 32,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1967,12 +2747,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/cc6d81232fce0381451f",
+      "test_case_id": "test_performance/02f51c82c9c8320192dc",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618200>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 64,
+            "N": 32,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -1982,12 +2768,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/c220823ebea4f563d965",
+      "test_case_id": "test_performance/fe4bd418028130f85e0b",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618240>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 64,
+            "N": 32,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -1997,12 +2789,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/538988a9d9b699a4b90d",
+      "test_case_id": "test_performance/04fa8c23ddb9bdd736e4",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618280>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 64,
+            "N": 64,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -2012,12 +2810,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/cef81852f7c5db19e774",
+      "test_case_id": "test_performance/1b82b9e2829420f6d592",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26182c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 64,
+            "N": 64,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -2027,12 +2831,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/15340c9a1164b22d647e",
+      "test_case_id": "test_performance/49116b607d67bc3e1739",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618300>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 64,
+            "N": 64,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -2042,12 +2852,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/aebb3a774523114aaa39",
+      "test_case_id": "test_performance/61e351d38b4e6fea3250",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618340>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 128,
+            "N": 16,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -2057,12 +2873,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/3d2ceb67ee2abf1012fd",
+      "test_case_id": "test_performance/3a71d1c3f7b83e91d8b9",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618380>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 128,
+            "N": 16,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -2072,12 +2894,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/7e9929ef50b1a080d75c",
+      "test_case_id": "test_performance/eb803e9a4e749dd54d30",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26183c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 128,
+            "N": 16,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -2087,12 +2915,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/f566ca6c0df4d3848637",
+      "test_case_id": "test_performance/849b1bc10ef121d12a77",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618400>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 128,
+            "N": 32,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -2102,12 +2936,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/912dd3b9817bc28b0a6b",
+      "test_case_id": "test_performance/4d7958cf65be1f827041",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618440>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 128,
+            "N": 32,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -2117,12 +2957,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/e2ab8ffb848b0bb7eb99",
+      "test_case_id": "test_performance/8587114af5694c87aa2d",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618480>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 128,
+            "N": 32,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -2132,12 +2978,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/49e7de20a23552aea8ad",
+      "test_case_id": "test_performance/51f59b564110448dda0a",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26184c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 128,
+            "N": 64,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -2147,12 +2999,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/6746d8def8002dc417e9",
+      "test_case_id": "test_performance/9cb95b1a160e1d9476e8",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618500>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 128,
+            "N": 64,
+            "bm": 16,
+            "bn": 32
+          }
         }
       },
       "checks": [
@@ -2162,12 +3020,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/7d65f049099ef4fd9e8a",
+      "test_case_id": "test_performance/ca162177f9085d721abf",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618540>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 256,
+            "M": 128,
+            "N": 64,
+            "bm": 32,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -2177,12 +3041,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/2c52a9a1aaa5010ffc85",
+      "test_case_id": "test_performance/5ca247e59e132b739a47",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618580>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 512,
+            "M": 16,
+            "N": 16,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -2192,12 +3062,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/ee255334c51ba89c180e",
+      "test_case_id": "test_performance/ef93e14312a0478be030",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26185c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 512,
+            "M": 16,
+            "N": 32,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -2207,12 +3083,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/2bb7deccb73ba7da92ad",
+      "test_case_id": "test_performance/cdc61b74c538a533f0c4",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618600>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 512,
+            "M": 32,
+            "N": 16,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -2222,12 +3104,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/75c63f6c1dc9160a57e7",
+      "test_case_id": "test_performance/3df27cc36c471a8156d2",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618640>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 512,
+            "M": 32,
+            "N": 32,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -2237,12 +3125,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/b8580f5f1dbb02b4f938",
+      "test_case_id": "test_performance/f857a302193da9392878",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca2618680>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 512,
+            "M": 64,
+            "N": 16,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [
@@ -2252,12 +3146,18 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/2a9c457313ed70c0cdef",
+      "test_case_id": "test_performance/56bb0b9a8eb44f8b9b9c",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_params_dict": "<built-in method values of dict object at 0x777ca26186c0>",
-          "dtype_str": "fp16"
+          "dtype_str": "fp16",
+          "test_params_dict": {
+            "K": 512,
+            "M": 64,
+            "N": 32,
+            "bm": 16,
+            "bn": 16
+          }
         }
       },
       "checks": [

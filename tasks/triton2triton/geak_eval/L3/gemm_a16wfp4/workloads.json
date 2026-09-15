@@ -1455,6 +1455,9 @@
   "migration": {
     "original_harness_sha256": "3bd313fa3cff325696e39ea674860c596cf5a6f93666daf2ba813891e093708b",
     "original_source_sha256": "3bb95a761f1a1704685a98960c28b51894ae6b7562f096fbdf48c1d3eb931196",
-    "preservation": "Original correctness subset executes first, in its original order; additional performance cases are checked afterward. Original performance order, RNG calls, reset callbacks, sample counts and median reduction remain intact."
+    "preservation": "Original correctness subset executes first, in its original order; additional performance cases are checked afterward. Original performance order, RNG calls, reset callbacks, sample counts and median reduction remain intact.",
+    "reference_fixes": [
+      "E8M0 decode: subtract bias after float conversion and reserve code 255 for NaN; numerical comparison thresholds unchanged."
+    ]
   }
 }

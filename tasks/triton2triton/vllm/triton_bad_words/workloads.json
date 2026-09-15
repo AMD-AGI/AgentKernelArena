@@ -126,10 +126,86 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "multi-token/0",
+      "shape": [
+        4,
+        256,
+        2,
+        2
+      ],
+      "dtype": "torch.float32",
+      "params": {
+        "case_index": -1,
+        "additional_case_index": 0,
+        "seed": 1234,
+        "batch": 4,
+        "vocab": 256,
+        "num_bad_words": 2,
+        "word_len": 2,
+        "output_len": 10,
+        "prompt_len": 10
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "multi-token/1",
+      "shape": [
+        8,
+        512,
+        3,
+        2
+      ],
+      "dtype": "torch.float32",
+      "params": {
+        "case_index": -1,
+        "additional_case_index": 1,
+        "seed": 1235,
+        "batch": 8,
+        "vocab": 512,
+        "num_bad_words": 3,
+        "word_len": 2,
+        "output_len": 10,
+        "prompt_len": 10
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "multi-token/2",
+      "shape": [
+        6,
+        1024,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "params": {
+        "case_index": -1,
+        "additional_case_index": 2,
+        "seed": 1236,
+        "batch": 6,
+        "vocab": 1024,
+        "num_bad_words": 3,
+        "word_len": 3,
+        "output_len": 10,
+        "prompt_len": 10
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "d2236c7ab71cc377ca22e321ddbbaf2f851586148a9d316e0eaae54ae6fa9626",
-    "original_correctness_sha256": "328b1df71bcdfbe085ca3898ac77063f8aaeff2c2848858ba4c26afec55aad67"
+    "original_correctness_sha256": "328b1df71bcdfbe085ca3898ac77063f8aaeff2c2848858ba4c26afec55aad67",
+    "additional_correctness": "Original targeted cases beyond the main shape table are retained explicitly. case_index=-1 executes the protected additional group without the main shape loop."
   }
 }

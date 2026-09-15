@@ -53,8 +53,8 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
     for name in bf.keys()-{'run_correctness'}:
         assert ast.get_source_segment(before,bf[name]) == ast.get_source_segment(after,af[name])
     manifest = json.loads((task/'workloads.json').read_text())
-    assert len(manifest['cases']) == 5
-    assert all(row['checks']==['correctness','performance'] for row in manifest['cases'])
+    assert sum('performance' in row['checks'] for row in manifest['cases']) == 5
+    assert all('correctness' in row['checks'] for row in manifest['cases'])
     assert manifest['migration']['original_harness_sha256'] == hashlib.sha256(before.encode()).hexdigest()
     for edit in spec.candidate.editable:
         source = task/edit.path
@@ -276,7 +276,7 @@ def test_geak_v2_preserves_original_functions_and_freezes_the_complete_manifest(
     olddefs={n.name:n for n in ast.parse(before).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
     newdefs={n.name:n for n in ast.parse(after).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
     bootstrap={'_find_baseline_kernel_dir','_load_baseline_triton','_resolve_geak_kernel_dir','_register_geak_aliases'}
-    for name in olddefs.keys()-bootstrap:
+    for name in olddefs.keys()-bootstrap-({'e8m0_to_f32'} if data['migration'].get('reference_fixes') else set()):
         assert ast.get_source_segment(before,olddefs[name])==ast.get_source_segment(after,newdefs[name]),name
     assert 'os.environ.get("GEAK_WORK_DIR"' not in after
     assert 'os.environ.get("GEAK_REPO_ROOT"' not in after
@@ -369,3 +369,101 @@ def test_geak_fp4_reference_decodes_independent_known_values():
     got=ref.mxfp4_to_f32(packed)
     torch.testing.assert_close(got,expected)
     with pytest.raises(AssertionError):torch.testing.assert_close(got,torch.zeros_like(expected))
+
+
+@pytest.mark.parametrize('name',['gemm_a16wfp4','fused_mxfp4_quant_moe_sort'])
+def test_e8m0_reference_all_encodings_and_negative_control(name):
+    path=ROOT/'tasks/triton2triton/geak_eval/L3'/name/'test_kernel_harness.py'
+    ref=pure_functions(path,['e8m0_to_f32'])
+    codes=torch.arange(256,dtype=torch.uint8)
+    got=ref.e8m0_to_f32(codes)
+    expected=codes.view(torch.float8_e8m0fnu).float()
+    torch.testing.assert_close(got,expected,atol=0,rtol=0,equal_nan=True)
+    assert got[126]==0.5 and got[134]==128 and torch.isnan(got[255])
+    before=subprocess.check_output(['git','show',f'{BASE}:{path.relative_to(ROOT).as_posix()}'],cwd=ROOT,text=True)
+    node=next(n for n in ast.parse(before).body if isinstance(n,ast.FunctionDef) and n.name=='e8m0_to_f32')
+    scope={'torch':torch};exec(compile(ast.Module(body=[node],type_ignores=[]),str(path),'exec'),scope)
+    with pytest.raises(AssertionError):
+        torch.testing.assert_close(scope['e8m0_to_f32'](codes),expected,atol=0,rtol=0,equal_nan=True)
+
+
+@pytest.mark.parametrize('task',[VLLM[0].parent,ROCM[0].parent,GEAK[0].parent],ids=['vllm','rocm','geak'])
+def test_bad_diagnostic_evidence_still_emits_failure(task,monkeypatch,capsys):
+    adapter=module_at(task/'_arena_eval.py',monkeypatch)
+    code=adapter.emit_result({'protocol':'arena-eval-v1','role':'candidate','action':'performance',
+                             'status':'PASS','cases':[],'metadata':{'bad':float('nan')}})
+    parsed=parse_command_result(capsys.readouterr().out,role='candidate',action='performance',returncode=code)
+    assert parsed.status=='FAIL' and parsed.failure_kind=='invalid_evidence'
+
+
+def test_vllm_additional_original_correctness_cases_are_manifested():
+    for name in ['triton_bad_words','triton_logit_bias']:
+        task=ROOT/'tasks/triton2triton/vllm'/name
+        data=json.loads((task/'workloads.json').read_text())
+        extra=[r for r in data['cases'] if r['checks']==['correctness']]
+        before=subprocess.check_output(['git','show',f'{BASE}:{task.relative_to(ROOT).as_posix()}/scripts/task_runner.py'],cwd=ROOT,text=True)
+        tree=ast.parse(before)
+        if name=='triton_bad_words':
+            assignment=next(n for n in ast.walk(tree) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='multi_cases' for t in n.targets))
+            assert [r['shape'] for r in extra]==[list(v) for v in ast.literal_eval(assignment.value)]
+            assert [r['params']['seed'] for r in extra]==[1234,1235,1236]
+        else:
+            assert len(extra)==1 and extra[0]['shape']==[2,256,16] and extra[0]['params']['seed']==777
+        assert all(r['params']['case_index']==-1 for r in extra)
+
+
+def test_all_rocm_manifests_match_original_cpu_collected_pytest_parameters():
+    """Import decorators with inert GPU stubs; execute no kernels or test bodies."""
+    import sys
+    fixture=ROOT/'tests/fixtures/triton_migration/collect_rocm_cpu.py'
+    run=subprocess.run([sys.executable,str(fixture)],cwd=ROOT,text=True,capture_output=True,check=True)
+    collected=json.loads(run.stdout)
+    assert len(collected)==61
+    for task,functions in collected.items():
+        expected={}
+        for fn in functions:
+            for params in fn['cases']:
+                content=json.dumps(params,sort_keys=True,separators=(',',':'))
+                case=fn['function']+'/'+hashlib.sha256(content.encode()).hexdigest()[:20]
+                expected[case]={'function':fn['function'],'arguments':params}
+        data=json.loads((ROOT/task/'workloads.json').read_text())
+        assert {r['test_case_id']:r['params'] for r in data['cases']}==expected,task
+        assert 'built-in method' not in json.dumps(data)
+
+
+DECORATOR_HELPERS={
+    'gemm':{'leaky_relu'},
+    'layernorm':{'get_autotune_config'},
+    'rmsnorm_fwd':{'get_autotune_config'},
+    'softmax':{'get_autotune_config'},
+    'multreduce_matmul_dot_kernel':{'get_triton_dot_autotune_configs','get_triton_autotune_key','get_triton_heuristics','triton_matmul_kernel'},
+    'triton_multreduce_matmul_kernel':{'get_triton_multreduce_autotune_configs','get_triton_autotune_key','get_triton_heuristics','triton_matmul_kernel'},
+}
+
+
+@pytest.mark.parametrize('path',[p for p in ROCM if p.parent.name in DECORATOR_HELPERS],ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
+def test_rocm_implementation_helpers_editable_without_exposing_tests_or_references(path,tmp_path):
+    import shutil
+    from src.harness_guard import snapshot_workspace_harness,verify_workspace_harness
+    workspace=tmp_path/'task'
+    shutil.copytree(path.parent,workspace,ignore=shutil.ignore_patterns('__pycache__'))
+    spec=load_task_spec(workspace/'config.yaml',task_id=path.parent.name)
+    helper_names=DECORATOR_HELPERS[path.parent.name]
+    entry_names={e.symbol for e in spec.candidate.entrypoints}
+    assert not (helper_names & entry_names), 'Implementation helpers must not become required entrypoints'
+    assert helper_names <= set(spec.candidate.editable[0].symbols)
+    assert set(spec.candidate.editable[0].symbols)==entry_names|helper_names
+    snapshot=snapshot_workspace_harness(workspace)
+    source=workspace/spec.candidate.editable[0].path
+    text=source.read_text();tree=ast.parse(text);lines=text.splitlines(keepends=True)
+    insertions=[n.body[0].lineno-1 for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in helper_names]
+    for index in sorted(insertions,reverse=True):lines.insert(index,'    _arena_helper_boundary_probe = 1\n')
+    source.write_text(''.join(lines))
+    verify_workspace_harness(snapshot)
+    # Ordinary test/reference code remains protected in that same file.
+    tree=ast.parse(source.read_text())
+    test=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name.startswith('test_'))
+    lines=source.read_text().splitlines(keepends=True)
+    lines.insert(test.body[0].lineno-1,'    _arena_forbidden_test_change = 1\n')
+    source.write_text(''.join(lines))
+    with pytest.raises(RuntimeError):verify_workspace_harness(snapshot)

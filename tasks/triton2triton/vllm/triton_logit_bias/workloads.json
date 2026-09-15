@@ -126,10 +126,35 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "allowlist",
+      "shape": [
+        2,
+        256,
+        16
+      ],
+      "dtype": "torch.float32",
+      "params": {
+        "case_index": -1,
+        "seed": 777,
+        "batch": 2,
+        "vocab": 256,
+        "max_bt": 16,
+        "num_allowed": [
+          4,
+          8
+        ]
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "8baf50740612087b7ad21dcbd36d15816387772e3b3cc463b24d594b6544f742",
-    "original_correctness_sha256": "1351ee6be73943fa951ae5363676e88f4fecbea095be600faf49ca7977ede529"
+    "original_correctness_sha256": "1351ee6be73943fa951ae5363676e88f4fecbea095be600faf49ca7977ede529",
+    "additional_correctness": "Original targeted cases beyond the main shape table are retained explicitly. case_index=-1 executes the protected additional group without the main shape loop."
   }
 }

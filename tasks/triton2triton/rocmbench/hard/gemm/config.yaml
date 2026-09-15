@@ -8,6 +8,7 @@ candidate:
     scope: symbols
     symbols:
     - matmul_kernel
+    - leaky_relu
     allow_new_helpers: true
   entrypoints:
   - file: gemm.py

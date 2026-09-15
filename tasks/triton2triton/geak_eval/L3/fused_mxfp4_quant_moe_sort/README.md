@@ -46,3 +46,14 @@ Do not edit `test_kernel_harness.py`, `_arena_*.py`, `workloads.json`, or genera
 next to the original harness even though the public runner is `_arena_eval.py`.
 Unsupported hardware or missing dependencies return a failing envelope; use a
 compatible image/GPU before scheduling this task.
+
+## Reference correction found during migration
+
+An independent E8M0 known-answer check found incorrect NaN decoding: code `134`
+was treated as NaN, and code `255` was treated as infinity. The quant/sort helper
+also subtracted the bias in uint8, so code `126` wrapped instead of producing
+`0.5`. Decode the exponent after conversion to float32 and reserve code `255` for
+NaN, following [OCP MX specification section 5.4.1/table 7](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf).
+CPU regression checks cover all 256 encodings against PyTorch's native E8M0
+conversion. Original numerical tolerances and performance code are unchanged;
+GPU qualification remains required.

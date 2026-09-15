@@ -8,6 +8,7 @@ candidate:
     scope: symbols
     symbols:
     - layernorm_kernel
+    - get_autotune_config
     allow_new_helpers: true
   entrypoints:
   - file: layernorm.py

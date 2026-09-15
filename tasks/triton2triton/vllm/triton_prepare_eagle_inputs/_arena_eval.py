@@ -59,7 +59,7 @@ def load_harness():
 
 def evaluate(role, action):
     data = load_manifest()
-    cases = copy.deepcopy(data['cases']) if action != 'compile' else []
+    cases = [copy.deepcopy(row) for row in data['cases'] if action == 'validate-task' or action in row['checks']] if action != 'compile' else []
     result = {'protocol':'arena-eval-v1','role':role,'action':action,'status':'PASS','cases':cases}
     try:
         state = inspect_candidate(data, require_implemented=action != 'validate-task')
@@ -81,11 +81,11 @@ def evaluate(role, action):
         elif action == 'correctness':
             for index, row in enumerate(cases):
                 try:
-                    ok, error = harness.run_correctness(case_index=index)
+                    ok, error = harness.run_correctness(case_index=row['params'].get('case_index', index))
                     if not ok:
                         raise RuntimeError(error or 'Original numerical/output contract rejected candidate')
                     row['metrics']={'original_case_checks_passed':True}
-                except Exception as exc:
+                except BaseException as exc:
                     row.update(status='FAIL', reason=f'{type(exc).__name__}: {exc}', failure_kind='correctness_failure')
         elif action == 'performance':
             measured = harness.run_performance()
@@ -110,11 +110,24 @@ def evaluate(role, action):
         failures = [r for r in cases if r['status'] != 'PASS']
         if failures:
             result.update(status='FAIL', reason=f'{len(failures)} declared cases failed', failure_kind='case_failure')
-    except Exception as exc:
+    except BaseException as exc:
         result.update(status='FAIL', reason=f'{type(exc).__name__}: {exc}', failure_kind='execution_failure')
         for row in cases:
             row.update(status='FAIL', reason=result['reason'], failure_kind='execution_failure')
     return result
+
+
+def emit_result(result):
+    """Even invalid/nonfinite diagnostic metadata must produce a failing envelope."""
+    try:
+        payload = json.dumps(result, allow_nan=False, separators=(',', ':'))
+    except (TypeError, ValueError, OverflowError) as exc:
+        result = {'protocol': 'arena-eval-v1', 'role': result['role'], 'action': result['action'],
+                  'status': 'FAIL', 'cases': [], 'failure_kind': 'invalid_evidence',
+                  'reason': f'Cannot serialize action evidence: {type(exc).__name__}: {exc}'}
+        payload = json.dumps(result, allow_nan=False, separators=(',', ':'))
+    print('ARENA_EVAL_RESULT=' + payload)
+    return 0 if result['status'] == 'PASS' else 1
 
 
 def main():
@@ -127,11 +140,10 @@ def main():
                 action in ('compile','correctness','performance')):
             raise ValueError('Use validate-task or baseline|candidate compile|correctness|performance')
         result = evaluate(role, action)
-    except Exception as exc:
+    except BaseException as exc:
         result = {'protocol':'arena-eval-v1','role':role,'action':action,'status':'FAIL','cases':[],
                   'reason':f'{type(exc).__name__}: {exc}','failure_kind':'execution_failure'}
-    print('ARENA_EVAL_RESULT='+json.dumps(result, allow_nan=False, separators=(',',':')))
-    return 0 if result['status']=='PASS' else 1
+    return emit_result(result)
 
 
 if __name__ == '__main__':

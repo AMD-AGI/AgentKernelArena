@@ -9,6 +9,7 @@ candidate:
     scope: symbols
     symbols:
     - rms_kernel
+    - get_autotune_config
     allow_new_helpers: true
   entrypoints:
   - file: rmsnorm_fwd.py

@@ -44,11 +44,19 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/4ca00e15788fa2066d0f",
+      "test_case_id": "test_performance/896f58b7d1251dbf0037",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_cfg_dict": "<built-in method values of dict object at 0x777ca218bfc0>"
+          "test_cfg_dict": {
+            "K_param": 128,
+            "M": 512,
+            "N": 512,
+            "a_type": null,
+            "b_type": null,
+            "input_dtype": "fp16",
+            "is_scaled": false
+          }
         }
       },
       "checks": [
@@ -58,11 +66,19 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/5ddbe14f46f8fcb8d949",
+      "test_case_id": "test_performance/8e4e71ac88ed108331b5",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_cfg_dict": "<built-in method values of dict object at 0x777ca218b900>"
+          "test_cfg_dict": {
+            "K_param": 128,
+            "M": 512,
+            "N": 512,
+            "a_type": null,
+            "b_type": null,
+            "input_dtype": "fp32",
+            "is_scaled": false
+          }
         }
       },
       "checks": [
@@ -72,11 +88,19 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/087feda83997ce949f61",
+      "test_case_id": "test_performance/c5cc04c2823e126a5cf0",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_cfg_dict": "<built-in method values of dict object at 0x777ca218b940>"
+          "test_cfg_dict": {
+            "K_param": 64,
+            "M": 1024,
+            "N": 1024,
+            "a_type": null,
+            "b_type": null,
+            "input_dtype": "fp16",
+            "is_scaled": false
+          }
         }
       },
       "checks": [
@@ -86,11 +110,19 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/2ed7e538b957288d808d",
+      "test_case_id": "test_performance/167d7ff25375a554d889",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_cfg_dict": "<built-in method values of dict object at 0x777ca218b980>"
+          "test_cfg_dict": {
+            "K_param": 64,
+            "M": 1024,
+            "N": 1024,
+            "a_type": null,
+            "b_type": null,
+            "input_dtype": "fp32",
+            "is_scaled": false
+          }
         }
       },
       "checks": [
@@ -100,11 +132,19 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/f083ce1fd0570e734e1a",
+      "test_case_id": "test_performance/75e808651ad55cd43262",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_cfg_dict": "<built-in method values of dict object at 0x777ca218b9c0>"
+          "test_cfg_dict": {
+            "K_param": 32,
+            "M": 2048,
+            "N": 1024,
+            "a_type": null,
+            "b_type": null,
+            "input_dtype": "fp16",
+            "is_scaled": false
+          }
         }
       },
       "checks": [
@@ -114,11 +154,19 @@
       "status": "PASS"
     },
     {
-      "test_case_id": "test_performance/dc97d1f4ec911edf7b41",
+      "test_case_id": "test_performance/dd9468db9de77f51854f",
       "params": {
         "function": "test_performance",
         "arguments": {
-          "test_cfg_dict": "<built-in method values of dict object at 0x777ca218ba00>"
+          "test_cfg_dict": {
+            "K_param": 32,
+            "M": 2048,
+            "N": 1024,
+            "a_type": null,
+            "b_type": null,
+            "input_dtype": "fp32",
+            "is_scaled": false
+          }
         }
       },
       "checks": [

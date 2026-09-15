@@ -9,6 +9,10 @@ candidate:
     scope: symbols
     symbols:
     - triton_multreduce_matmul_kernel
+    - get_triton_autotune_key
+    - get_triton_heuristics
+    - get_triton_multreduce_autotune_configs
+    - triton_matmul_kernel
     allow_new_helpers: true
   entrypoints:
   - file: triton_multreduce_matmul_kernel.py
