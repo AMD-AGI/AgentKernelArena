@@ -1,0 +1,118 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              1024
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              1
+            ]
+          },
+          {
+            "shape": [
+              256
+            ],
+            "dtype": "torch.int64",
+            "stride": [
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1337
+      }
+    },
+    {
+      "test_case_id": "case_1",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              4096
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              1
+            ]
+          },
+          {
+            "shape": [
+              512
+            ],
+            "dtype": "torch.int64",
+            "stride": [
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1338
+      }
+    },
+    {
+      "test_case_id": "case_2",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              64,
+              128
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              128,
+              1
+            ]
+          },
+          {
+            "shape": [
+              16
+            ],
+            "dtype": "torch.int64",
+            "stride": [
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1339
+      }
+    },
+    {
+      "test_case_id": "case_3",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              8,
+              16,
+              32
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              512,
+              32,
+              1
+            ]
+          },
+          {
+            "shape": [
+              4
+            ],
+            "dtype": "torch.int64",
+            "stride": [
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1340
+      }
+    }
+  ]
+}

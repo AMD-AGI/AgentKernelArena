@@ -14,7 +14,7 @@ CFLAGS = -O3 -ffast-math --offload-arch=gfx950 --offload-arch=gfx942 -munsafe-fp
 # Default target
 all: $(TARGET)
 
-$(TARGET): $(SRC)
+$(TARGET): $(SRC) source/kernel.hpp
 	$(HIPCC) $(CFLAGS) -o $@ $<
 
 clean:

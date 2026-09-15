@@ -1,0 +1,64 @@
+{
+  "test_shapes": [
+    [
+      1,
+      512
+    ],
+    [
+      4,
+      1024
+    ],
+    [
+      16,
+      2048
+    ],
+    [
+      1,
+      4096
+    ],
+    [
+      1,
+      8192
+    ]
+  ],
+  "candidate_files": [
+    "source/kernel.hpp"
+  ],
+  "cases": [
+    {
+      "test_case_id": "shape_0",
+      "params": {
+        "batch": 1,
+        "ctx": 512
+      }
+    },
+    {
+      "test_case_id": "shape_1",
+      "params": {
+        "batch": 4,
+        "ctx": 1024
+      }
+    },
+    {
+      "test_case_id": "shape_2",
+      "params": {
+        "batch": 16,
+        "ctx": 2048
+      }
+    },
+    {
+      "test_case_id": "shape_3",
+      "params": {
+        "batch": 1,
+        "ctx": 4096
+      }
+    },
+    {
+      "test_case_id": "shape_4",
+      "params": {
+        "batch": 1,
+        "ctx": 8192
+      }
+    }
+  ]
+}

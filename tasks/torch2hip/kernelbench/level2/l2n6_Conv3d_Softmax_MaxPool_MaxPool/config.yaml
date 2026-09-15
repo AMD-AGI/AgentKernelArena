@@ -1,23 +1,35 @@
-source_file_path:
-- pytorch_code_module/py_l2n6_Conv3d_Softmax_MaxPool_MaxPool.py
-target_kernel_functions:
-- forward
-compile_command:
-- python3 eval_tools/compile.py --hip_file hip/hip_l2n6_Conv3d_Softmax_MaxPool_MaxPool.hip
-correctness_command:
-- python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_l2n6_Conv3d_Softmax_MaxPool_MaxPool.py
-  --py_func_file pytorch_code_functional/py_l2n6_Conv3d_Softmax_MaxPool_MaxPool_func.py --hip_file hip/hip_l2n6_Conv3d_Softmax_MaxPool_MaxPool.hip
-performance_command:
-- python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_l2n6_Conv3d_Softmax_MaxPool_MaxPool.py
-  --py_func_file pytorch_code_functional/py_l2n6_Conv3d_Softmax_MaxPool_MaxPool_func.py --hip_file hip/hip_l2n6_Conv3d_Softmax_MaxPool_MaxPool.hip
-prompt:
-  source_code: null
-  instructions: You are a HIP expert skilled at GPU kernel implementation. Please
-    implement target HIP kernel code corresponding to the provided PyTorch module,
-    including the HIP kernel, kernel launcher, and Python binding code
-    for the HIP launcher.
-  task_type: null
-  cheatsheet: null
-target_file_path: hip/hip_l2n6_Conv3d_Softmax_MaxPool_MaxPool.hip
-task_type: torch2hip
-task_result_template: null
+schema_version: 2
+description: Implement Conv3d_Softmax_MaxPool_MaxPool in HIP; preserve all declared input cases and the
+  protected reference contract.
+instructions:
+- README.md
+candidate:
+  language: hip
+  initial_state: unimplemented
+  editable:
+  - hip/hip_l2n6_Conv3d_Softmax_MaxPool_MaxPool.hip
+  entrypoints:
+  - file: hip/hip_l2n6_Conv3d_Softmax_MaxPool_MaxPool.hip
+    kind: function
+    symbol: forward
+baseline:
+  kind: provided
+  language: pytorch
+  source_files:
+  - pytorch_code_module/py_l2n6_Conv3d_Softmax_MaxPool_MaxPool.py
+  - pytorch_code_functional/py_l2n6_Conv3d_Softmax_MaxPool_MaxPool_func.py
+evaluation:
+  runner:
+  - python3
+  - eval_tools/evaluate.py
+  - --candidate
+  - hip/hip_l2n6_Conv3d_Softmax_MaxPool_MaxPool.hip
+  - --module
+  - pytorch_code_module/py_l2n6_Conv3d_Softmax_MaxPool_MaxPool.py
+  - --functional
+  - pytorch_code_functional/py_l2n6_Conv3d_Softmax_MaxPool_MaxPool_func.py
+  - --model-class
+  - Conv3d_Softmax_MaxPool_MaxPool
+  - --initial-state
+  - unimplemented
+  workloads: workload.json

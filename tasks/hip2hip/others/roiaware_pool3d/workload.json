@@ -1,0 +1,143 @@
+{
+  "test_shapes": [
+    [
+      2,
+      200,
+      3,
+      4
+    ],
+    [
+      4,
+      1000,
+      3,
+      4
+    ],
+    [
+      8,
+      5000,
+      3,
+      4
+    ],
+    [
+      4,
+      2000,
+      6,
+      4
+    ],
+    [
+      16,
+      3000,
+      3,
+      2
+    ]
+  ],
+  "candidate_files": [
+    "src/roiaware_pool3d_kernel.hip"
+  ],
+  "cases": [
+    {
+      "test_case_id": "shape_0_maxpool",
+      "params": {
+        "num_rois": 2,
+        "num_pts": 200,
+        "C": 3,
+        "out_size": 4,
+        "pool_mode": "max"
+      }
+    },
+    {
+      "test_case_id": "shape_0_avgpool",
+      "params": {
+        "num_rois": 2,
+        "num_pts": 200,
+        "C": 3,
+        "out_size": 4,
+        "pool_mode": "avg"
+      }
+    },
+    {
+      "test_case_id": "shape_1_maxpool",
+      "params": {
+        "num_rois": 4,
+        "num_pts": 1000,
+        "C": 3,
+        "out_size": 4,
+        "pool_mode": "max"
+      }
+    },
+    {
+      "test_case_id": "shape_1_avgpool",
+      "params": {
+        "num_rois": 4,
+        "num_pts": 1000,
+        "C": 3,
+        "out_size": 4,
+        "pool_mode": "avg"
+      }
+    },
+    {
+      "test_case_id": "shape_2_maxpool",
+      "params": {
+        "num_rois": 8,
+        "num_pts": 5000,
+        "C": 3,
+        "out_size": 4,
+        "pool_mode": "max"
+      }
+    },
+    {
+      "test_case_id": "shape_2_avgpool",
+      "params": {
+        "num_rois": 8,
+        "num_pts": 5000,
+        "C": 3,
+        "out_size": 4,
+        "pool_mode": "avg"
+      }
+    },
+    {
+      "test_case_id": "shape_3_maxpool",
+      "params": {
+        "num_rois": 4,
+        "num_pts": 2000,
+        "C": 6,
+        "out_size": 4,
+        "pool_mode": "max"
+      }
+    },
+    {
+      "test_case_id": "shape_3_avgpool",
+      "params": {
+        "num_rois": 4,
+        "num_pts": 2000,
+        "C": 6,
+        "out_size": 4,
+        "pool_mode": "avg"
+      }
+    },
+    {
+      "test_case_id": "shape_4_maxpool",
+      "params": {
+        "num_rois": 16,
+        "num_pts": 3000,
+        "C": 3,
+        "out_size": 2,
+        "pool_mode": "max"
+      }
+    },
+    {
+      "test_case_id": "shape_4_avgpool",
+      "params": {
+        "num_rois": 16,
+        "num_pts": 3000,
+        "C": 3,
+        "out_size": 2,
+        "pool_mode": "avg"
+      }
+    }
+  ],
+  "graph_policy": {
+    "enabled": true,
+    "reason": null
+  }
+}

@@ -1,17 +1,25 @@
-source_file_path:
-- src/points_in_boxes_cuda.hip
-target_kernel_functions:
-- points_in_boxes_part_kernel
-- points_in_boxes_all_kernel
-compile_command:
-- python3 scripts/task_runner.py compile
-correctness_command:
-- python3 scripts/task_runner.py correctness
-performance_command:
-- python3 scripts/task_runner.py performance
-task_type: hip2hip
-task_result_template: task_result_template_four_output_perf.yaml
-prompt:
-  source_code: null
-  instructions: null
-  cheatsheet: null
+schema_version: 2
+description: Optimize the native HIP points_in_boxes implementation while preserving its protected reference
+  and full workload.
+instructions:
+- README.md
+candidate:
+  language: hip
+  initial_state: implemented
+  editable:
+  - src/points_in_boxes_cuda.hip
+  entrypoints:
+  - file: src/points_in_boxes_cuda.hip
+    kind: function
+    symbol: points_in_boxes_part_kernel
+  - file: src/points_in_boxes_cuda.hip
+    kind: function
+    symbol: points_in_boxes_all_kernel
+baseline:
+  kind: initial_candidate
+  language: hip
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: workload.json

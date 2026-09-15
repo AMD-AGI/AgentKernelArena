@@ -1,0 +1,148 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              8,
+              16,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              64,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              8,
+              16,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              64,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              8,
+              16,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              64,
+              4,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1337
+      }
+    },
+    {
+      "test_case_id": "case_1",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              16,
+              32,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              128,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              16,
+              32,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              128,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              16,
+              32,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              128,
+              4,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1338
+      }
+    },
+    {
+      "test_case_id": "case_2",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              32,
+              64,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              256,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              32,
+              64,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              256,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              32,
+              64,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              256,
+              4,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1339
+      }
+    }
+  ]
+}

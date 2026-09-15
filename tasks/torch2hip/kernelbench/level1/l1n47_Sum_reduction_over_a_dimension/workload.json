@@ -1,0 +1,114 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              32,
+              2048,
+              2047
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              4192256,
+              2047,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1337
+      }
+    },
+    {
+      "test_case_id": "case_1",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              64,
+              2048,
+              2047
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              4192256,
+              2047,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1338
+      }
+    },
+    {
+      "test_case_id": "case_2",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              128,
+              2048,
+              2047
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              4192256,
+              2047,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1339
+      }
+    },
+    {
+      "test_case_id": "case_3",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              64,
+              4096,
+              4095
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              16773120,
+              4095,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1340
+      }
+    },
+    {
+      "test_case_id": "case_4",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              128,
+              1024,
+              1023
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              1047552,
+              1023,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1341
+      }
+    }
+  ]
+}

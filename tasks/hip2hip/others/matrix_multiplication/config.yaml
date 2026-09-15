@@ -1,16 +1,22 @@
-source_file_path:
-- main.hip
-target_kernel_functions:
-- matrix_multiplication_kernel
-compile_command:
-- python3 scripts/task_runner.py compile
-correctness_command:
-- python3 scripts/task_runner.py correctness
-performance_command:
-- python3 scripts/task_runner.py performance
-task_type: hip2hip
-task_result_template: null
-prompt:
-  source_code: null
-  instructions: null
-  cheatsheet: null
+schema_version: 2
+description: Optimize the native HIP matrix_multiplication implementation while preserving its protected
+  reference and full workload.
+instructions:
+- README.md
+candidate:
+  language: hip
+  initial_state: implemented
+  editable:
+  - source/kernel.hpp
+  entrypoints:
+  - file: source/kernel.hpp
+    kind: function
+    symbol: matrix_multiplication_kernel
+baseline:
+  kind: initial_candidate
+  language: hip
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: workload.json

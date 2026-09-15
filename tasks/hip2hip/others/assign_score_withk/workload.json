@@ -1,0 +1,173 @@
+{
+  "test_shapes": [
+    [
+      2,
+      8,
+      4,
+      2,
+      4,
+      4
+    ],
+    [
+      2,
+      32,
+      16,
+      4,
+      8,
+      8
+    ],
+    [
+      2,
+      128,
+      64,
+      8,
+      16,
+      16
+    ],
+    [
+      4,
+      256,
+      128,
+      4,
+      8,
+      32
+    ],
+    [
+      2,
+      512,
+      256,
+      8,
+      16,
+      8
+    ]
+  ],
+  "candidate_files": [
+    "src/assign_score_withk_cuda.hip"
+  ],
+  "cases": [
+    {
+      "test_case_id": "shape_0_forward",
+      "params": {
+        "B": 2,
+        "N0": 8,
+        "N1": 4,
+        "M": 2,
+        "K": 4,
+        "O": 4,
+        "mode": "forward"
+      }
+    },
+    {
+      "test_case_id": "shape_0_forward_backward",
+      "params": {
+        "B": 2,
+        "N0": 8,
+        "N1": 4,
+        "M": 2,
+        "K": 4,
+        "O": 4,
+        "mode": "forward_backward"
+      }
+    },
+    {
+      "test_case_id": "shape_1_forward",
+      "params": {
+        "B": 2,
+        "N0": 32,
+        "N1": 16,
+        "M": 4,
+        "K": 8,
+        "O": 8,
+        "mode": "forward"
+      }
+    },
+    {
+      "test_case_id": "shape_1_forward_backward",
+      "params": {
+        "B": 2,
+        "N0": 32,
+        "N1": 16,
+        "M": 4,
+        "K": 8,
+        "O": 8,
+        "mode": "forward_backward"
+      }
+    },
+    {
+      "test_case_id": "shape_2_forward",
+      "params": {
+        "B": 2,
+        "N0": 128,
+        "N1": 64,
+        "M": 8,
+        "K": 16,
+        "O": 16,
+        "mode": "forward"
+      }
+    },
+    {
+      "test_case_id": "shape_2_forward_backward",
+      "params": {
+        "B": 2,
+        "N0": 128,
+        "N1": 64,
+        "M": 8,
+        "K": 16,
+        "O": 16,
+        "mode": "forward_backward"
+      }
+    },
+    {
+      "test_case_id": "shape_3_forward",
+      "params": {
+        "B": 4,
+        "N0": 256,
+        "N1": 128,
+        "M": 4,
+        "K": 8,
+        "O": 32,
+        "mode": "forward"
+      }
+    },
+    {
+      "test_case_id": "shape_3_forward_backward",
+      "params": {
+        "B": 4,
+        "N0": 256,
+        "N1": 128,
+        "M": 4,
+        "K": 8,
+        "O": 32,
+        "mode": "forward_backward"
+      }
+    },
+    {
+      "test_case_id": "shape_4_forward",
+      "params": {
+        "B": 2,
+        "N0": 512,
+        "N1": 256,
+        "M": 8,
+        "K": 16,
+        "O": 8,
+        "mode": "forward"
+      }
+    },
+    {
+      "test_case_id": "shape_4_forward_backward",
+      "params": {
+        "B": 2,
+        "N0": 512,
+        "N1": 256,
+        "M": 8,
+        "K": 16,
+        "O": 8,
+        "mode": "forward_backward"
+      }
+    }
+  ],
+  "graph_policy": {
+    "enabled": true,
+    "reason": null
+  }
+}
