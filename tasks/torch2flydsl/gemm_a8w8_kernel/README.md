@@ -82,3 +82,27 @@ Launch and output-contract errors are distinguished from numerical mismatches.
 If correctness fails during the performance action's precheck, no performance
 case is accepted without timing. The completed correctness evidence is retained
 as metadata; the performance action remains failed without invented latencies.
+
+
+## Required baseline reduction policy
+
+The provided baseline explicitly calls `aiter.gemm_a8w8(..., splitK=0)` in
+correctness and both benchmark entrypoints. This is a baseline implementation
+repair, not a numerical tolerance change. On gfx950, the production tuned FP8
+entry for `(M,N,K)=(16,1280,8192)` selects splitK=3. An isolated GPU diagnostic
+with byte-identical operands produced eight distinct outputs in eight default
+calls; five exceeded the unchanged normalized error limit 0.01 (worst 0.010989).
+An independent CPU FP64 point oracle supported the existing reference. The same
+AITER operator with splitK=0 produced one stable output across eight calls and
+normalized error 0.002747. All other four original shapes already selected
+splitK=0 and retained identical results under the explicit policy.
+
+The baseline still runs installed AITER, with the same quantization, allocations,
+raw inputs, output type and Event timing boundaries. It executes a single K
+partition instead of the numerically unstable tuned split reduction. The first
+case's baseline latency changes and must be measured afresh; historical timing
+from the default split dispatch must not be reused for scoring. This policy does
+not constrain candidate tiling or split-K strategies: candidates must satisfy
+the original reference/gates, full cases and timed replay checks. No diagnostic
+baseline waiver is enabled. Runtime qualification requires a new full validator
+report; the dispatch diagnostic itself is not qualification.

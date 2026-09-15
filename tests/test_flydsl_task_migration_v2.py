@@ -2771,6 +2771,12 @@ class _RemoveQuantGemmChecks(_RemoveAddedReplayChecks):
         if len(node.targets)==1 and getattr(node.targets[0],'id',None)=='replay_validate':return None
         return super().visit_Assign(node)
     def visit_Call(self,node):
+        # Explicitly reviewed baseline reduction repair. Strip only its exact
+        # keyword for the preexisting math/input/timing fingerprints below.
+        if isinstance(node.func,ast.Attribute) and node.func.attr=='gemm_a8w8' and getattr(node.func.value,'id',None)=='aiter':
+            for kw in node.keywords:
+                if kw.arg=='splitK':assert isinstance(kw.value,ast.Constant) and kw.value.value==0
+            node.keywords=[kw for kw in node.keywords if kw.arg!='splitK']
         if getattr(node.func,'id',None)=='_checked_quant_gemm_output':return self.visit(node.args[0])
         if getattr(node.func,'id',None)=='gemm_afp8wfp8':
             for keyword in node.keywords:
@@ -2812,7 +2818,10 @@ def test_quant_gemm_actual_timed_output_and_original_quantized_oracle(name,funct
         def __call__(self,x,y):return oracle(x,y)
     mmod=types.SimpleNamespace(Model=Model,prepare_mxfp4_values=lambda *a:None,quantize_a8w8_blockscale=lambda x,y:(x,None,y,None),quantize_a8w8=lambda x,y:(x,None,y,None))
     kmod=types.SimpleNamespace(**{'flydsl_'+name.removesuffix('_kernel'):compute})
-    monkeypatch.setitem(sys.modules,'aiter',types.SimpleNamespace(gemm_a8w8_blockscale=lambda x,y,*a:compute(x,y),gemm_a8w8=lambda x,y,*a:compute(x,y)))
+    def stable_a8w8(x,y,*args,splitK):
+        assert splitK==0  # Required for all actual baseline timing/replay calls.
+        return compute(x,y)
+    monkeypatch.setitem(sys.modules,'aiter',types.SimpleNamespace(gemm_a8w8_blockscale=lambda x,y,*a:compute(x,y),gemm_a8w8=stable_a8w8))
     class Collector:bound=False
     calls=[]
     def benchmark(fn,*,warmup,repetition,timed_run=None,**kwargs):
@@ -3303,7 +3312,8 @@ def test_a8w8_gemm_real_case_evidence_and_failed_timing_precheck(fault,action,mo
     def inputs(*args):
         state['case']+=1
         return torch.tensor([[1.,2.],[3.,4.]],dtype=torch.bfloat16),torch.ones((2,2),dtype=torch.bfloat16)
-    def baseline(a,w,*args):
+    def baseline(a,w,*args,splitK):
+        assert splitK==0
         if state['case']==0:
             if fault=='launch':raise RuntimeError('controlled GPU launch failure')
             if fault=='dtype':return a.float()
@@ -7248,3 +7258,19 @@ def test_jagged_real_inplace_initialized_offsets_keep_view_provenance():
         with audit.candidate_preparation_only((offsets,)):
             lengths=offsets[1:].to(torch.int64)-offsets[:-1].to(torch.int64)
             assert int(lengths.max().item())==max(groups)
+
+
+
+def test_a8w8_production_baseline_uses_one_consistent_reduction_policy():
+    task=ROOT/'tasks/torch2flydsl/gemm_a8w8_kernel'
+    tree=ast.parse((task/'test_kernel_harness.py').read_text());seen={}
+    for fn in tree.body:
+        if not isinstance(fn,ast.FunctionDef):continue
+        for call in ast.walk(fn):
+            if isinstance(call,ast.Call) and isinstance(call.func,ast.Attribute) and call.func.attr=='gemm_a8w8' and getattr(call.func.value,'id',None)=='aiter':
+                assert len(call.args)==6
+                assert len(call.keywords)==1 and call.keywords[0].arg=='splitK' and isinstance(call.keywords[0].value,ast.Constant) and call.keywords[0].value.value==0
+                seen[fn.name]=seen.get(fn.name,0)+1
+    assert seen=={'run_correctness':1,'run_benchmark':1,'arena_benchmark':1}
+    cfg=load_task_spec(task/'config.yaml',task_id='torch2flydsl/gemm_a8w8_kernel')
+    assert cfg.baseline.correctness_policy=='required'

@@ -6,7 +6,7 @@ The op is a per-token FP8 GEMM (``out = a @ w.T``) with per-row activation and
 weight FP8 scales, accumulated in fp32 and returned in bf16.
 
 Correctness is the (b)-faithful PyTorch reference in model.py compared against the
-real AMD runtime op (``aiter.gemm_a8w8``) over byte-identical FP8 operands
+real AMD runtime op (``aiter.gemm_a8w8(..., splitK=0)``) over byte-identical FP8 operands
 produced by ``model.quantize_a8w8``. The gate is the normalized worst-element
 error (``max|ref-gt| / max|ref| <= 1e-2``). When the FlyDSL kernel.py exists it is
 additionally validated against the reference.
@@ -192,7 +192,7 @@ def run_correctness(verbose=True):
             x_fp8, x_scale, w_fp8, w_scale = mmod.quantize_a8w8(a, w)
             gt = _retry(
                 lambda: aiter.gemm_a8w8(
-                    x_fp8, w_fp8, x_scale, w_scale, None, torch.bfloat16
+                    x_fp8, w_fp8, x_scale, w_scale, None, torch.bfloat16, splitK=0
                 ),
                 what="aiter gemm_a8w8",
             )
@@ -281,7 +281,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         if has_kernel:
             return kmod.flydsl_gemm_a8w8(a, w)
         x_fp8, x_scale, w_fp8, w_scale = mmod.quantize_a8w8(a, w)
-        return aiter.gemm_a8w8(x_fp8, w_fp8, x_scale, w_scale, None, torch.bfloat16)
+        return aiter.gemm_a8w8(x_fp8, w_fp8, x_scale, w_scale, None, torch.bfloat16, splitK=0)
 
     label = "FlyDSL" if has_kernel else "aiter"
     latencies, speedups, report = [], [], []
@@ -435,7 +435,7 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         if has_kernel:
             return kmod.flydsl_gemm_a8w8(a, w)
         x_fp8, x_scale, w_fp8, w_scale = mmod.quantize_a8w8(a, w)
-        return aiter.gemm_a8w8(x_fp8, w_fp8, x_scale, w_scale, None, torch.bfloat16)
+        return aiter.gemm_a8w8(x_fp8, w_fp8, x_scale, w_scale, None, torch.bfloat16, splitK=0)
 
     label = "FlyDSL" if has_kernel else "aiter"
     latencies, speedups, report = [], [], []
