@@ -146,6 +146,17 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Controls cover position/sequence-length upper clamps and inactive padding. Hidden-state movement is a bit-exact copy, not an approximate arithmetic operation."
+      }
     }
   ],
   "migration": {

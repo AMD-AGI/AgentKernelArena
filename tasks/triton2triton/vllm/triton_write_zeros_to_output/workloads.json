@@ -116,6 +116,17 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Zero output is checked exactly, including subnormal residuals. Replay poisons output with ones; this constant-output operator does not claim an input-dependent cache control."
+      }
     }
   ],
   "migration": {

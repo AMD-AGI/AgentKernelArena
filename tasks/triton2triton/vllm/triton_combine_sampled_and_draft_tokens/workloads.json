@@ -126,6 +126,17 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Controls cover remapped requests, a prefill early return and heterogeneous numbers of logits. Both mutated input IDs and returned int64 logit indices are checked."
+      }
     }
   ],
   "migration": {

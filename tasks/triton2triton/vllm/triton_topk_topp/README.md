@@ -22,3 +22,9 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+## Protected evaluation controls
+
+Controls add top-p-only and heterogeneous k/p. Keep original numerical rules: finite-value atol/rtol=1e-4, top-k mask mismatch <=1, top-p/combined <=max(4,vocab//500). NaN/+inf cannot masquerade as a removed token. Original scored path remains direct preallocated top-k with k=50.
+
+The task-local `_arena_contract.py` and `_arena_replay.py` are protected evaluation code. Original cases, seeds, tolerances, warmups, sample counts, allocations and preparation boundaries remain in `scripts/task_runner.py`. The extra `contract_controls` manifest row is correctness-only. Both the frozen baseline and candidate receive the same checks. The measured graph exposes its real outputs; an untimed replay changes a domain-valid input, recomputes the CPU oracle and restores all input buffers in `finally`. For the zero operator the replay control instead poisons its output. References and snapshots are outside device timing. Failure to observe or replay the measured invocation is an error, never an accepted timing sample.

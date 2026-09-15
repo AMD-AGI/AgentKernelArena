@@ -136,6 +136,17 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Controls cover remapped requests, zero/one/multiple accepted tokens, rejection counts, repeated histogram updates and preservation of inactive request state."
+      }
     }
   ],
   "migration": {

@@ -126,6 +126,17 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Controls include zero/variable draft lengths, all-accepted bonus tokens, first/late rejection and non-greedy rows. The untouched suffix and skipped rows retain their original sentinel values."
+      }
     }
   ],
   "migration": {

@@ -126,6 +126,17 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Controls include routed partial prefill, exactly completed prefill and decode requests. Slots not written by the operator must preserve their prior contents."
+      }
     }
   ],
   "migration": {

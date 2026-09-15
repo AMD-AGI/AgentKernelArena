@@ -81,6 +81,11 @@ def reference_apply_top_k_top_p(logits, k, p):
 def compare_masked_logits(got, ref, vocab_size, max_mask_mismatch):
     import torch
 
+    if (got.shape, got.dtype, got.device) != (ref.shape, ref.dtype, ref.device):
+        return False, 'output shape/dtype/device mismatch'
+    if torch.isnan(got).any() or torch.isposinf(got).any():
+        return False, 'only negative infinity is a valid masked logit'
+
     got_mask = torch.isfinite(got)
     ref_mask = torch.isfinite(ref)
 

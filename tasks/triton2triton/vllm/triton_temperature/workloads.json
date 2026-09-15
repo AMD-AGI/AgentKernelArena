@@ -116,6 +116,17 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Temperature controls cover zero/one no-op, heterogeneous temperatures and remapped requests."
+      }
     }
   ],
   "migration": {

@@ -24,3 +24,9 @@ Canonical benchmark helpers must be materialized by Arena; do not edit their gen
 
 
 The manifest also declares 1 original targeted correctness-only cases beyond the main five-shape table. Their original checks and seeds remain active; no performance score is assigned to those cases.
+
+## Protected evaluation controls
+
+Controls combine remapped requests, allowlists, nonzero heterogeneous biases and stop-token minimum lengths. Original scored cases remain the original bias-only workload.
+
+The task-local `_arena_contract.py` and `_arena_replay.py` are protected evaluation code. Original cases, seeds, tolerances, warmups, sample counts, allocations and preparation boundaries remain in `scripts/task_runner.py`. The extra `contract_controls` manifest row is correctness-only. Both the frozen baseline and candidate receive the same checks. The measured graph exposes its real outputs; an untimed replay changes a domain-valid input, recomputes the CPU oracle and restores all input buffers in `finally`. For the zero operator the replay control instead poisons its output. References and snapshots are outside device timing. Failure to observe or replay the measured invocation is an error, never an accepted timing sample.

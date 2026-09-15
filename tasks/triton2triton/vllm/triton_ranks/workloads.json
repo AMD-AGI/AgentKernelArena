@@ -116,6 +116,17 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Rank counts values greater than or equal to the chosen logit, including ties. Output must retain int64 dtype, shape and device."
+      }
     }
   ],
   "migration": {

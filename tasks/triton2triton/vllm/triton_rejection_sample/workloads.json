@@ -116,6 +116,17 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Controls cover full acceptance with bonus token, early/late rejection and zero speculative steps. Output metadata and accepted counts are strict; only each returned accepted prefix is defined by this operator, so unused output tail values are not invented as a new contract."
+      }
     }
   ],
   "migration": {

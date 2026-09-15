@@ -150,6 +150,17 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Controls combine remapped requests, allowlists, nonzero heterogeneous biases and stop-token minimum lengths. Original scored cases remain the original bias-only workload."
+      }
     }
   ],
   "migration": {

@@ -116,6 +116,17 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Controls include speculative local positions and token histories, repeated request routing, packed prompt masks and disabled/heterogeneous repetition/frequency/presence penalties. Original scored cases remain non-speculative."
+      }
     }
   ],
   "migration": {

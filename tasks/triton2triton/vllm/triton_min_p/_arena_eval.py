@@ -54,6 +54,9 @@ def load_harness():
     spec = importlib.util.spec_from_file_location('_task_harness', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    import _arena_contract
+    import _arena_replay
+    _arena_replay.install(module, _arena_contract)
     return module
 
 

@@ -126,6 +126,17 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Controls cover position and sequence-length upper clamps. Hidden-state and token copies must be exact; all mutated buffers are checked."
+      }
     }
   ],
   "migration": {
