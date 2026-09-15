@@ -65,6 +65,37 @@ not committed task inputs. The default scoring image remains unchanged. Neither
 candidate has completed the promotion gate, and neither has qualified sanitizer
 sidecars or a matched before/after optimization campaign.
 
+## KDA observer GPU evidence (job 139646)
+
+On node 100, one allocated MI355X (physical ID 2, UUID
+`36376430-3032-3037-6366-633933643165`) ran the public KDA packed-decode case in
+the pinned original vLLM runtime. The actual old canonical helper, new helper
+with observation off, and new helper with observation on ran sequentially in
+order old/off/on/on/off/old. All six arms used the same case, seed, five warmups,
+30 samples and 20 invocations per reported graph replay. This was an unscored
+experiment with a common fixed repeat cap; scored task settings were unchanged.
+
+The captured callable counts were identical (five for the estimate graph,
+20 for the measured graph). All final outputs and states were bitwise equal.
+The observer ran exactly 30 times with count 20 in each enabled arm, and both
+those arms passed the task's independent original-output/state and perturbed
+replay numerical checks. Per-arm median device times were 20.213, 19.455,
+19.513, 19.246, 19.821 and 19.082 microseconds respectively. These short trials
+establish execution/count/state agreement, not a statistically established
+speedup or zero system-level overhead.
+
+Raw evidence: `logs/image-v2-gpu-validation/139646/vllm/helper-before-after.json`,
+SHA256 `e3cfbf3fd883dc46cec55fa281da5584fb6a701561f20d6bb1636b086f7cfbd5`.
+The file includes helper hashes, every sample and capture counts.
+
+The full KDA validator in that job **failed** separately: all five correctness
+cases passed, and timed decode passed, but the chunk implementation explicitly
+uses `o=v` and the harness incorrectly required `v` to remain read-only.
+A subsequent task-local correction observes and independently verifies the
+actual repeated BF16 value updates and enforces the output alias. The old
+failure remains evidence; the fix requires fresh full GPU qualification.
+The unchanged-candidate final evaluation was not run after the failed validator.
+
 ## Registry evidence (2026-09-15 UTC)
 
 The Docker Registry v2 API returned single-platform `linux/amd64` manifests for
