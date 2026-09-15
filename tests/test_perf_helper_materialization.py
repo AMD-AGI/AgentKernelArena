@@ -288,9 +288,9 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     # Replay-aware adapters call the canonical sample API directly so their
     # checks observe the exact invocation measured by the timer.
     assert counts == {
-        "canonical_python": 259,
+        "canonical_python": 263,
         "native_graph_driver": 2,
-        "rocmbench_adapter": 38,
+        "rocmbench_adapter": 34,
         "vllm_adapter": 139,
     }
 

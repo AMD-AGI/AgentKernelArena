@@ -138,6 +138,16 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
                    b'            (one << rem)[:, :, None], 0')
             assert original.count(old) == 1
             original = original.replace(old, new)
+        if task.name == 'triton_paged_prefix_prefill':
+            # Guard page-table reads in a partial context tile. The independent
+            # attention contract tests preserve the rest of this kernel's AST
+            # and exercise ragged, remapped-page inputs and measured replay.
+            old = b'            B_Loc + cur_batch * stride_b_loc_b + bn_logical_indices * stride_b_loc_s\n'
+            new = (b'            B_Loc + cur_batch * stride_b_loc_b + bn_logical_indices * stride_b_loc_s,\n'
+                   b'            mask=token_indices < cur_batch_ctx_len,\n'
+                   b'            other=0,\n')
+            assert original.count(old) == 1
+            original = original.replace(old, new)
         assert source.read_bytes() == original
     assert 'Evaluation contract' in (task/'README.md').read_text()
 
