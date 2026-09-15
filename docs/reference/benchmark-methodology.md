@@ -70,8 +70,8 @@ For each fixed test case, the helper:
 7. For tasks that request a timed-run handle, exposes the exact captured output
    buffers and an additional replay of the same graph executable. Correctness
    checks poison or perturb those buffers, replay, and compare them with the
-   eager/reference result. Such tasks fail closed rather than falling back to an
-   unobservable Event invocation.
+   eager/reference result. Automatic graph-to-Event fallback with a collector
+   fails closed. Explicit Event observation is described below.
 
 The start event, graph replay, and end event all run on the same side stream.
 This ordering is important: recording events on one stream while replaying on
@@ -242,3 +242,22 @@ using an undocumented timer.
 
 Pull requests also run the CPU/mock unit suite and Python compilation audit in
 CI.
+
+## Event output-observation qualification
+
+On 2026-09-15, Slurm job 139346 ran the three
+`tests/test_gpu_graph_smoke.py` checks on an MI355X (`gfx950`) with the pinned
+SGLang 0.5.19 qualification image: all three passed, none skipped. The previous
+helper rejected an explicit Event collector on the same GPU; the updated helper
+observed the actual measured output and validated eager re-invocation. See the
+[runtime qualification record](runtime-upgrade-qualification.md) for image identities.
+
+The HGEMM task also exercised all five original cases with the existing pinned
+SGLang 0.5.14 runtime (FlyDSL 0.2.2). Original and updated harnesses both passed
+baseline compile, correctness and performance actions using the same canonical
+helper. Each retained 100 Event samples, one call per sample and the original
+capture-unsafe reference reason. Updated results additionally recorded
+`eager_callable`, `timed_output_correctness: PASS` and `replay_correctness: PASS`
+for all five cases. These sequential runs verify timing boundaries and output
+checks; they do not establish a performance improvement. Action-level evidence
+is distinct from the separately finalized full task-validator report.
