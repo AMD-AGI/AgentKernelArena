@@ -27,3 +27,24 @@ The protected manifest requires the declared kernel symbols to remain Triton JIT
 functions, including kernels originally decorated with `@triton.jit()`. Removing
 the decorator is rejected before compilation. This structural check supplements
 the numerical and timed-path checks; it does not by itself attest every dispatch.
+
+Protected checks compare every int32 output token and every untouched output cell
+against a pristine-input scalar accept/reject reference. The original condition
+`draft_prob > 0 and target_prob / draft_prob >= uniform_prob` remains unchanged;
+all five original cases, distributions, seeds (42+i correctness, 0 performance),
+10 warmups and 100 samples are preserved. All probability, token, cumulative
+length, uniform and greedy buffers are read-only. Both the returned tensor and
+the caller's output are checked.
+
+Unscored controls add ragged lengths including empty requests, greedy rows that
+must remain untouched, acceptance equality, early/late rejection, zero draft
+probability, and `draft_probs=None` (implicit draft probability one). Nonzero
+output sentinels check that cells following rejection and unused capacity are
+preserved. These diagnostics do not replace the original scored workloads.
+
+Performance validates the output returned by the actual `TimedRun`, then changes
+all input/routing/probability buffers in place and replays the same measured
+invocation. Only cells that must be written are poisoned; untouched cells retain
+their caller-provided values. This introduces no reset or allocation inside the
+original timed wrapper. Every input and output buffer is restored in `finally`,
+including replay errors.

@@ -7807,3 +7807,121 @@ def test_lora_public_optional_modes_have_independent_negative_controls(monkeypat
     h.load_module=lambda:SimpleNamespace(**{checks.SYMBOL:public});checks.install(h)
     ok,reason=h.run_correctness()
     assert not ok and reason and triggered
+
+
+def _rejection_random_cpu_harness(monkeypatch):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'rejection_random_sample')
+    for name in ('randint','rand','tensor','full','zeros'):
+        factory=getattr(torch,name)
+        monkeypatch.setattr(torch,name,lambda *a,_factory=factory,**kw:_factory(*a,**{**kw,'device':'cpu'}))
+    return h,checks
+
+
+def _rejection_random_cpu(args):
+    out,cu,ids,dp,tp,bonus,recovered,uniform,greedy,max_spec,vocab=args
+    starts=torch.cat((torch.zeros_like(cu[:1]),cu[:-1]))
+    for row,(start,end) in enumerate(zip(starts.tolist(),cu.tolist())):
+        if bool(greedy[row]):continue
+        tokens=ids[start:end].long();rows=torch.arange(start,end)
+        draft=torch.ones(end-start,dtype=torch.float64) if dp is None else dp[rows,tokens].double()
+        target=tp[rows,tokens].double()
+        accepted=(draft>0)&(target/draft>=uniform[start:end])
+        rejected=(~accepted).nonzero().flatten()
+        prefix=int(rejected[0]) if len(rejected) else end-start
+        out[row,:prefix]=tokens[:prefix].to(out.dtype)
+        out[row,prefix]=recovered[start+prefix] if len(rejected) else bonus[row]
+    return out
+
+
+@pytest.mark.parametrize('no_draft',[False,True])
+def test_rejection_random_known_integer_answers_greedy_ragged_and_zero_probability(monkeypatch,no_draft):
+    _,checks=_rejection_random_cpu_harness(monkeypatch)
+    args=list(checks.diagnostic_cases('cpu'))[int(no_draft)]
+    wanted=torch.tensor([[4,-7,-7,-7,-7,-7],[-7,-7,-7,-7,-7,-7],[1,9,-7,-7,-7,-7],
+        [4,5,6,14,-7,-7],[8,9,8,-7,-7,-7] if no_draft else [15,-7,-7,-7,-7,-7],
+        [-7,-7,-7,-7,-7,-7],[0,-7,-7,-7,-7,-7] if no_draft else [10,1,-7,-7,-7,-7]],dtype=torch.int32)
+    saved=checks.snapshot(args);answer,written=checks.reference(saved)
+    assert torch.equal(answer,wanted) and torch.equal(written,wanted!=-7)
+    assert torch.equal(_rejection_random_cpu(args),wanted)
+    checks.check_output(args[0],answer,saved[0])
+    bad=wanted.clone();bad[0,0]+=1
+    with pytest.raises(AssertionError):checks.check_output(bad,answer,saved[0])
+
+
+@pytest.mark.parametrize('mode',['correct','dtype','shape','wrong_token','returned_only','caller_only',
+    'mutate_cu','mutate_draft_ids','mutate_draft_probs','mutate_target_probs','mutate_bonus','mutate_recovered',
+    'mutate_uniform','mutate_is_greedy','ignore_greedy','ignore_none','reset_padding','strict_acceptance',
+    'accept_zero_draft','ignore_ragged','omit_bonus'])
+def test_rejection_random_original_cases_and_actual_optional_paths(monkeypatch,mode):
+    h,checks=_rejection_random_cpu_harness(monkeypatch);calls=[];records=[]
+    def candidate(*args):
+        saved=checks.snapshot(args);records.append((args,saved));calls.append((len(args[1]),args[3] is None))
+        values=list(args)
+        if mode=='ignore_greedy':values[8]=torch.zeros_like(args[8])
+        if mode=='ignore_none' and args[3] is None:values[3]=torch.ones_like(args[4])*.5
+        if mode=='reset_padding':args[0].fill_(-1)
+        if mode=='strict_acceptance':values[7]=torch.nextafter(args[7],torch.full_like(args[7],float('inf')))
+        if mode=='accept_zero_draft' and len(args[1])==7:
+            values[3]=None if args[3] is None else args[3].clone()
+            if values[3] is not None:values[3][8,int(args[2][8])]=1.
+        if mode=='ignore_ragged' and len(args[1])==7:values[1]=torch.arange(1,8)*int(args[1][-1]//7)
+        result=_rejection_random_cpu(tuple(values))
+        if mode.startswith('mutate_'):
+            key=mode[len('mutate_'):];tensor=args[checks.FIELDS.index(key)]
+            if tensor is not None:tensor.zero_()
+        if mode=='wrong_token':result[0,0]+=1
+        if mode=='omit_bonus' and len(args[1])==7:result[0,0]=-7
+        if mode=='returned_only':result=result.clone();args[0].copy_(saved[0])
+        if mode=='caller_only':return torch.zeros_like(result)
+        if mode=='dtype':return result.long()
+        if mode=='shape':return result[:,:1]
+        return result
+    mod=SimpleNamespace(rejection_random_sample=candidate);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
+    if ok:assert calls==[(4,False),(7,False),(7,True)]+[(n,False) for n in (8,16,32,64)]
+    for args,saved in records:checks.unchanged(args,saved)
+    assert mod.rejection_random_sample is candidate
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay','mutate_timed',
+    'mutate_replay','raise_replay','return_wrong_timed','return_wrong_replay'])
+def test_rejection_random_actual_fivecase_timed_output_and_restoration(monkeypatch,mode):
+    import inspect
+    h,checks=_rejection_random_cpu_harness(monkeypatch)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    candidate=lambda *args:_rejection_random_cpu(args)
+    mod=SimpleNamespace(rejection_random_sample=candidate);h.load_module=lambda:mod
+    records=[];options=[];replays=[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        options.append(kwargs);fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        args=tuple(state[k] for k in checks.FIELDS);saved=checks.snapshot(args);records.append((args,saved))
+        assert kwargs==dict(warmup=10,repetition=100)
+        result=measured();cached=result.clone()
+        if mode=='wrong_timed':result[0,0]=-999
+        if mode=='mutate_timed':args[4].zero_()
+        def replay():
+            replays.append(True)
+            assert not torch.equal(args[1],saved[1]) and not torch.equal(args[2],saved[2])
+            assert all(not torch.equal(args[i],saved[i]) for i in range(3,9))
+            _,written=checks.reference(checks.snapshot(args));assert torch.all(args[0][written]==-999)
+            if mode=='raise_replay':raise RuntimeError('replay failed')
+            if mode=='stale':result.copy_(cached)
+            elif mode!='no_write':measured()
+            if mode=='wrong_replay':result[1,0]=-999
+            if mode=='mutate_replay':args[4].zero_()
+            return torch.zeros_like(result) if mode=='return_wrong_replay' else result
+        timed_run._bind(replay,torch.zeros_like(result) if mode=='return_wrong_timed' else result)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h);rows=h.run_performance()
+    assert len(rows)==len(options)==5
+    for shape,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('batch_size','max_draft','max_spec_len','vocab_size'),shape))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for args,saved in records:checks.unchanged(args,saved);assert torch.equal(args[0],saved[0])
+    assert len(replays)==(0 if mode in ('wrong_timed','mutate_timed','return_wrong_timed') else 5)
+    assert mod.rejection_random_sample is candidate
+
+
+def test_rejection_random_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_rejection_random_sample/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_rejection_random_checks'
