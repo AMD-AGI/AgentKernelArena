@@ -55,7 +55,31 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
             # Explicit semantic repair: old oracle counted tile-padding slots
             # as expert31. Known answers and old-source controls below cover it.
             continue
-        assert ast.get_source_segment(before,bf[name]) == ast.get_source_segment(after,af[name])
+        expected = ast.get_source_segment(before, bf[name])
+        if task.name == 'triton_prepare_mrope_positions' and name == 'run_performance':
+            # The old decode-labelled cases always executed prefill. Preserve
+            # everything except the two now scenario-dependent input fields.
+            expected = expected.replace(
+                '            prefill_lens = torch.full((max_num_reqs,), max_model_len,',
+                '            # Honor the declared prefill/decode case, as correctness does.\n'
+                '            prefill_lens = torch.full((max_num_reqs,), max_model_len if is_prefill else 10,',
+            ).replace(
+                'num_computed_tokens = torch.zeros(max_num_reqs, dtype=torch.int32, device=device)',
+                'num_computed_tokens = torch.full((max_num_reqs,), 0 if is_prefill else 50, dtype=torch.int32, device=device)',
+            )
+        if task.name == 'triton_topk_topp' and name == 'compare_masked_logits':
+            # Require the added metadata/NaN/+inf rejection while preserving
+            # the original finite-value tolerances and mask mismatch allowance.
+            expected = expected.replace(
+                '    import torch\n',
+                '    import torch\n\n'
+                '    if (got.shape, got.dtype, got.device) != (ref.shape, ref.dtype, ref.device):\n'
+                "        return False, 'output shape/dtype/device mismatch'\n"
+                '    if torch.isnan(got).any() or torch.isposinf(got).any():\n'
+                "        return False, 'only negative infinity is a valid masked logit'\n",
+                1,
+            )
+        assert expected == ast.get_source_segment(after, af[name])
     manifest = json.loads((task/'workloads.json').read_text())
     for source, targets in manifest['candidate_symbols'].items():
         nodes = {n.name: n for n in ast.parse((task/source).read_text()).body
@@ -67,7 +91,14 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
                                and isinstance(d.value, ast.Name) and d.value.id == 'triton'
                                for d in decorators)
             assert target['jit'] is is_triton_jit, (source, target['name'])
-    assert sum('performance' in row['checks'] for row in manifest['cases']) == 5
+    scored_ids = [row['test_case_id'] for row in manifest['cases'] if 'performance' in row['checks']]
+    additional_scored_ids = {
+        'triton_bad_words': ['perf_prefix_routing'],
+        'triton_logit_bias': ['perf_combined_filtering'],
+        'triton_penalties': ['perf_speculative_penalties'],
+        'triton_topk_topp': ['perf_top_p_only', 'perf_combined_topk_topp'],
+    }
+    assert scored_ids == [f'perf{i}' for i in range(1, 6)] + additional_scored_ids.get(task.name, [])
     assert all('correctness' in row['checks'] for row in manifest['cases'])
     assert manifest['migration']['original_harness_sha256'] == hashlib.sha256(before.encode()).hexdigest()
     for edit in spec.candidate.editable:
@@ -1699,7 +1730,13 @@ def test_vllm_additional_original_correctness_cases_are_manifested():
     for name in ['triton_bad_words','triton_logit_bias']:
         task=ROOT/'tasks/triton2triton/vllm'/name
         data=json.loads((task/'workloads.json').read_text())
-        extra=[r for r in data['cases'] if r['checks']==['correctness']]
+        correctness_only=[r for r in data['cases'] if r['checks']==['correctness']]
+        # Newly added controls supplement, rather than replace, the original
+        # targeted multi-token/allowlist cases dispatched with index -1.
+        extra=[r for r in correctness_only if r['params']['case_index']==-1]
+        controls=[r for r in correctness_only if r['params']['case_index']!=-1]
+        assert len(controls)==1 and controls[0]['test_case_id']=='contract_controls'
+        assert controls[0]['params']['case_index']==5
         before=subprocess.check_output(['git','show',f'{BASE}:{task.relative_to(ROOT).as_posix()}/scripts/task_runner.py'],cwd=ROOT,text=True)
         tree=ast.parse(before)
         if name=='triton_bad_words':
