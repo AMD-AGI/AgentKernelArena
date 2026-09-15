@@ -139,6 +139,8 @@ def install_hooks(plan: dict) -> None:
     install_inventory()
     from agents.forge.gate_targets import install as install_gate_targets
     install_gate_targets()
+    from agents.forge.deadline import install as install_deadline, bound_session
+    install_deadline()
     if plan.get("agent_config", {}).get("codex_auth_mode") == "cli":
         from agents.forge.codex_auth import install_cli_auth
         install_cli_auth()
@@ -182,8 +184,8 @@ def install_hooks(plan: dict) -> None:
             return "".join({"[": "[[]", "*": "[*]", "?": "[?]"}.get(char, char) for char in value)
         allowed = [literal((prefix / scope.path).as_posix()) + ("/*" if scope.scope == "tree" else "")
                    for scope in spec.candidate.editable]
-        return replace(result, cwd=str(root),
-                       ignored_untracked_globs=[*result.ignored_untracked_globs, *allowed])
+        return bound_session(replace(result, cwd=str(root),
+                       ignored_untracked_globs=[*result.ignored_untracked_globs, *allowed]), plan)
 
     modules.agent.AgentRunSpec = run_spec
 

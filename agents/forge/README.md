@@ -149,6 +149,15 @@ its remaining time. The rewrite's existing nested loop is not followed by a
 second outer loop. A Linux subreaper cleans up descendants even when the engine,
 SDK or runner starts a separate process session.
 
+The pinned loop's original remaining-time calculation ignores its absolute
+deadline and uses the CLI hour budget alone. The adapter bounds native round
+admission by both clocks, scales its default 30-minute reserve down to 10% of
+the remaining short campaign (at least 60 seconds), and caps implementer sessions
+with 120 seconds left for assessment and checkpoint publication. Initialization
+uses its own smaller phase deadline. No task checks or measurement budgets are
+relaxed. The outer deadline remains a hard failure boundary if native finalization
+does not finish; an intermediate KEEP is not an Arena completion verdict.
+
 Common Arena post-processing owns exports. Neither this launcher nor the alias
 backfills an SIKL solution or assumes `kernel.py` / `workload.json`. The legacy
 `solution_backfill.py` utility is no longer called by either agent path; its
