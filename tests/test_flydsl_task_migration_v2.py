@@ -525,6 +525,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
             fn = _RemoveLayernormChecks().visit(fn)
         if name in _STANDARD_QUANT_NAMES or name in {"quant_mxfp4_kernel", "rope_2d_fwd_kernel"}:
             fn = _RemoveStandardQuantChecks().visit(fn)
+        if name == "rmsnorm2d_dynamicquant_kernel":
+            fn = _RemoveRmsDynamicQuantChecks().visit(fn)
         if name in _QUANT_GEMM_CONTROL_NAMES:
             fn = _RemoveQuantGemmChecks().visit(fn)
         if name == "fused_add_rmsnorm_kernel":
@@ -6110,3 +6112,124 @@ def test_prepared_two_original_reference_inputs_cases_numerics_and_prepare_timin
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 normalized=_RemovePreparedTwoChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
+
+
+class _RemoveRmsDynamicQuantChecks(_RemoveStandardQuantChecks):
+    def visit_Assign(self,node):
+        if len(node.targets)==1 and getattr(node.targets[0],'id',None)=='inp':return None
+        return super().visit_Assign(node)
+
+
+@pytest.mark.parametrize('function',['run_benchmark','arena_benchmark'])
+@pytest.mark.parametrize('provided',[True,False])
+@pytest.mark.parametrize('behavior',['correct','measured_wrong','replay_wrong','cached_codes','cached_scale','input_modified','shape','code_dtype','scale_dtype','nonfinite'])
+def test_rms_dynamic_quant_actual_measured_pair_and_replay(function,provided,behavior,monkeypatch,tmp_path):
+    import math,types,torch
+    name='rmsnorm2d_dynamicquant_kernel'
+    t=ROOT/'tasks/torch2flydsl'/name;checks=module(t/'scripts/replay_checks.py');real_model=module(t/'model.py');oracle=real_model.Model()
+    # CPU plumbing test: real original quantization produces the expected
+    # codes/scales for each changed input. Deliberately wrong paths must fail;
+    # full GPU task checks still compare independently against AITER.
+    inp=torch.linspace(-8,7,512,dtype=torch.float32).reshape(2,256).to(torch.bfloat16);original=inp.clone();weight=torch.linspace(.25,2.,256).to(torch.bfloat16);original_weight=weight.clone();cached=oracle(inp,weight);phase={'name':'setup'}
+    def compute(is_model):
+        y,scale=oracle(inp,weight)
+        if is_model==provided:
+            if behavior==phase['name']+'_wrong':y.view(torch.uint8).zero_()
+            if phase['name']=='replay':
+                if behavior=='cached_codes':y=cached[0].clone()
+                if behavior=='cached_scale':scale=cached[1].clone()
+                if behavior=='input_modified':inp.add_(1)
+            if phase['name']=='measured':
+                if behavior=='shape':scale=scale.reshape(-1) if scale.ndim==2 else scale.reshape(1,1)
+                if behavior=='code_dtype':y=y.view(torch.uint8)
+                if behavior=='scale_dtype':scale=scale.to(torch.bfloat16)
+                if behavior=='nonfinite':scale.fill_(float('nan'))
+        return y,scale
+    class Model:
+        def to(self,*a):return self
+        def __call__(self,*a):return compute(True)
+    mmod=types.SimpleNamespace(Model=Model,get_init_inputs=lambda:[],_FP8_DTYPE=getattr(real_model,'_FP8_DTYPE',None));kmod=types.SimpleNamespace(**{'flydsl_'+name.removesuffix('_kernel'):lambda *a:compute(False)})
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run):
+        calls.append((warmup,repetition));phase['name']='measured';timed_run.outputs=fn();timed_run.bound=True;phase['name']='setup'
+        def replay():
+            phase['name']='replay'
+            try:return fn()
+            finally:phase['name']='setup'
+        timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':benchmark,'require_unchanged':checks.require_unchanged,
+        'CODE_TOL':1,'SCALE_RTOL':.001,'_aiter_op':oracle,'EPS':1e-5,'_make_inputs':lambda shape:(inp,weight),
+        '_load_module':lambda directory,filename,alias:mmod if filename=='model.py' else None if provided else kmod,
+        '_KERNEL_DIR':str(tmp_path),'MODEL_FILE':'model.py','KERNEL_FILE':'kernel.py','KERNEL_ENTRY':'flydsl_'+name.removesuffix('_kernel'),
+        'SHAPES':[{'name':'controlled','m':2,'n':256}], 'math':math,'json':json,'Path':Path}
+    _harness_functions(t,{function,'_mean_ms','_compare','_checked_quant_pair','_compare_quant_outputs','_quant_replay_validator'},ns)
+    if behavior=='correct':
+        report=ns[function](verbose=False)
+        if function=='run_benchmark':report=json.loads((tmp_path/'build/performance_report.json').read_text())
+        assert report[0]['timed_output_correctness']==report[0]['replay_correctness']=='PASS'
+        assert calls==[(10,100)]*(2 if provided else 3)
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+    assert torch.equal(inp,original) and torch.equal(weight,original_weight)
+
+
+@pytest.mark.parametrize('provided',[False,True])
+@pytest.mark.parametrize('behavior',['correct','codes','scale','code_dtype','scale_dtype','shape','nonfinite','weight_modified','input_modified'])
+def test_rms_dynamic_quant_real_correctness_pair_contract(provided,behavior,monkeypatch):
+    import torch,types
+    task=ROOT/'tasks/torch2flydsl/rmsnorm2d_dynamicquant_kernel';checks=module(task/'scripts/replay_checks.py');real=module(task/'model.py');oracle=real.Model()
+    x=torch.tensor([[1.,2.,3.,4.]],dtype=torch.bfloat16);w=torch.tensor([.25,.5,1.,2.],dtype=x.dtype)
+    def compute(is_model):
+        codes,scale=oracle(x,w)
+        if is_model==provided:
+            if behavior=='codes':codes.view(torch.uint8).zero_()
+            if behavior=='scale':scale.mul_(2)
+            if behavior=='code_dtype':codes=codes.view(torch.uint8)
+            if behavior=='scale_dtype':scale=scale.to(torch.bfloat16)
+            if behavior=='shape':scale=scale.reshape(-1)
+            if behavior=='nonfinite':codes.view(torch.uint8).fill_(127)
+            if behavior=='weight_modified':w.add_(1)
+            if behavior=='input_modified':x.add_(1)
+        return codes,scale
+    class Model:
+        def to(self,*args):return self
+        def __call__(self,*args):return compute(True)
+    mmod=types.SimpleNamespace(Model=Model,get_init_inputs=lambda:[],_FP8_DTYPE=real._FP8_DTYPE)
+    kmod=types.SimpleNamespace(flydsl_rmsnorm2d_dynamicquant=lambda *args:compute(False))
+    ns=dict(require_unchanged=checks.require_unchanged,_KERNEL_DIR='.',MODEL_FILE='model.py',KERNEL_FILE='kernel.py',KERNEL_ENTRY='flydsl_rmsnorm2d_dynamicquant',
+            CODE_TOL=1,SCALE_RTOL=.001,EPS=1e-5,SHAPES=[{'name':'controlled','m':1,'n':4}],
+            _make_inputs=lambda shape:(x,w),_aiter_op=lambda *args:oracle(x,w),_retry=lambda fn,**kwargs:fn(),
+            _load_module=lambda directory,filename,alias:mmod if filename=='model.py' else None if provided else kmod)
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    _harness_functions(task,{'run_correctness','_compare','_checked_quant_pair'},ns)
+    if behavior=='correct':assert ns['run_correctness'](verbose=False)
+    else:
+        with pytest.raises(AssertionError):ns['run_correctness'](verbose=False)
+
+
+def test_rms_dynamic_quant_real_known_answer_controls_and_scale_code_boundaries():
+    import torch
+    task=ROOT/'tasks/torch2flydsl/rmsnorm2d_dynamicquant_kernel';result=invoke(task,'validate-task')
+    assert result.passed and len(result.cases)==5,result.reason
+    real=module(task/'model.py');x=torch.ones(2,8,dtype=torch.bfloat16);w=torch.ones(8,dtype=x.dtype);ref=real.Model()(x,w)
+    ns=dict(CODE_TOL=1,SCALE_RTOL=.001);_harness_functions(task,{'_compare','_checked_quant_pair','_compare_quant_outputs'},ns)
+    ref[0].view(torch.uint8).fill_(56);actual=[v.clone() for v in ref];actual[0].view(torch.uint8).fill_(57)
+    ns['_compare_quant_outputs'](actual,ref,(x,w),real)
+    actual[0].view(torch.uint8).fill_(58)
+    with pytest.raises(AssertionError,match='Numerical'):ns['_compare_quant_outputs'](actual,ref,(x,w),real)
+    actual=[v.clone() for v in ref];actual[1].mul_(1.01)
+    with pytest.raises(AssertionError,match='Numerical'):ns['_compare_quant_outputs'](actual,ref,(x,w),real)
+    for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py','task_runtime.py']:
+        assert (task/rel).read_bytes()==(ROOT/'tasks/torch2flydsl/per_token_fp8_quant_kernel'/rel).read_bytes()
+
+
+def test_rms_dynamic_quant_original_model_case_seed_gate_and_sampling_preserved():
+    hashes={'_resolve_kernel_dir': 'ebfabcdd05c1a3f254b035e42b1783890c241f92613bda21ccb77fa064039f1a', '_load_module': 'caae8222257891caee15a695bfc7cff029ec363f792c4331f20ff92c86efb520', '_make_inputs': 'f2c4cc1ba58cc9b867adbf2240fb0e4cca93223f145a185b4abe4a79d9481e9c', '_aiter_op': '6ac4ca9adea9da9b391e0358ce74540d83580de331615f665d7bc7305f236b81', '_compare': '7370859da62e853ba8a197c5ba6e4f07f7f41f1f815a55c24cb4c54ed73d3390', '_retry': '1ac6a6d4264ec7293e454d1721c31e136efdb38788ec8e16081461ece902fd2a', 'run_compile': 'dafa99d58c67b18fcdcd9fae2c81b87505f7e0487b351837744a828e0a147328', 'run_correctness': '87aaf9e8c07f08498dc19133cd131ebff8f76b265f613880bf0d0a6f561ccefb', '_mean_ms': 'd577e74039d622acefe0c724d81ab5149f872772160fc2a2c7b229700fb428be', 'run_benchmark': 'f1d926946f3b86a71f09b8f3263c7fa35a1dfad45f5c2d215f9195e0737f8677', '_require_candidate_outputs': 'e5f69466d2ec4497fe192bf53ce8d7b034bb14cd59272fc7b1dea160a574e09e', 'arena_benchmark': '2fc5b801d21d685a2118aed6a76d8a1f75cbe36f53d1d2bc7ea4321f0a15f088'}
+    task=ROOT/'tasks/torch2flydsl/rmsnorm2d_dynamicquant_kernel'
+    for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
+        if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
+            normalized=_RemoveRmsDynamicQuantChecks().visit(fn)
+            assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name

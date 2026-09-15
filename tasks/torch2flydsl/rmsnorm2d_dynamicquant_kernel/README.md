@@ -57,3 +57,23 @@ operator is `flydsl_rmsnorm2d_dynamicquant`; any additional declared callables u
 remain required. Legacy build/compile helpers are optional implementation details;
 no builder return protocol is required by this task. A candidate may choose its
 own internal compilation helpers, while implementing all tested work in FlyDSL.
+
+
+The five original BF16 RMSNorm/dynamic-quantization workloads and seed20260401
+remain. Require exactly (FP8 codes[m,n], FP32 scales[m,1]) on the input device,
+with finite values and read-only input/gamma tensors. The hardware-selected
+FP8 dtype must match the model/AITER contract. Preserve the existing gate:
+all code bytes differ by at most1; maximum scale error divided by the original
+maximum reference scale plus1e-12 is at most1e-3. Exact-code percentage remains
+a diagnostic, not a new threshold.
+The model's FP32 RMS reduction/weight multiplication and direct quantization
+are unchanged. The independent AITER operator remains the numerical oracle.
+Both diagnostic timings and the actual role timing use the same canonical
+collector with the original10warmups/100samples. Check each measured tuple,
+then negate/halve the BF16 gamma outside timing: codes change sign and the
+expected scales halve. Poison codes with the format's NaN byte and scales with
+NaN before replaying the exact measured invocation; no fresh untimed candidate
+call may stand in for that result. Inputs are restored before later timings.
+The final candidate's operator arithmetic must launch FlyDSL and may not call
+AITER/Triton/PyTorch computation or protected model/reference code; host storage
+preparation remains permitted and is audited outside timing.
