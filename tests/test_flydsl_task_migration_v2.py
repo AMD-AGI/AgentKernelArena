@@ -132,7 +132,7 @@ def test_declaring_flydsl_without_executing_it_is_rejected():
 
 
 CANDIDATE_AUDIT_TASKS = [ROOT / "tasks/torch2flydsl" / name for name in (
-    "silu_and_mul_kernel", "dynamic_mxfp8_quant_kernel", "batched_gemm_a8w8_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel",
+    "fmoe_fp8_blockscale_g1u1_kernel", "fmoe_g1u1_tkw1_kernel", "silu_and_mul_kernel", "dynamic_mxfp8_quant_kernel", "batched_gemm_a8w8_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel",
     "moe_topk_softplus_kernel", "gelu_and_mul_kernel", "gelu_fast_kernel",
     "gelu_tanh_and_mul_kernel", "swiglu_and_mul_kernel",
 )]
@@ -471,6 +471,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
                 handler.body.pop(0)
         if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel", "moe_topk_softplus_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
+        if name in {"fmoe_fp8_blockscale_g1u1_kernel", "fmoe_g1u1_tkw1_kernel"}:
+            fn = _RemoveFmoeTimingChecks().visit(fn)
         if name == "dynamic_mxfp8_quant_kernel":
             fn = _RemoveMxfp8Checks().visit(fn)
         if name == "batched_gemm_a8w8_kernel":
@@ -2346,3 +2348,134 @@ def test_silu_only_requires_the_executed_public_operator(tmp_path):
     assert runtime.source_state(cfg)==('implemented',[True])
     spec=load_task_spec(task/'config.yaml', task_id='torch2flydsl/silu_and_mul_kernel')
     assert [e['symbol'] for e in spec.to_mapping()['candidate']['entrypoints']]==['flydsl_silu_and_mul']
+
+
+class _RemoveFmoeTimingChecks(_RemoveAddedReplayChecks):
+    def visit_Expr(self,node):
+        call=node.value
+        if isinstance(call,ast.Call):
+            if getattr(call.func,'id',None)=='_checked_fmoe_output':return None
+            if isinstance(call.func,ast.Attribute) and call.func.attr=='update' and call.args and isinstance(call.args[0],ast.Call) and getattr(call.args[0].func,'id',None)=='replay_validate':return None
+        return super().visit_Expr(node)
+    def visit_Assign(self,node):
+        if len(node.targets)==1:
+            target=node.targets[0]
+            if isinstance(target,ast.Name) and target.id in {'routing_originals','replay_validate'}:return None
+            if isinstance(target,ast.Subscript) and isinstance(target.slice,ast.Constant) and target.slice.value=='operator_timing_inputs':return None
+        return super().visit_Assign(node)
+    def visit_Call(self,node):
+        if getattr(node.func,'id',None)=='_checked_fmoe_output':return self.visit(node.args[0])
+        return super().visit_Call(node)
+    def visit_If(self,node):
+        node=self.generic_visit(node)
+        if len(node.orelse)==1 and isinstance(node.orelse[0],ast.FunctionDef):
+            fn=node.orelse[0]
+            if fn.name=='device_op' and len(fn.body)==1 and isinstance(fn.body[0],ast.Return):
+                call=fn.body[0].value
+                if isinstance(call,ast.Call) and isinstance(call.func,ast.Call) and getattr(call.func.func,'id',None)=='_make_prepared_aiter_op':
+                    # This one intentional boundary change is independently
+                    # exercised by the preparation-in-measured-call test below.
+                    node.orelse=[ast.Assign([ast.Name('device_op',ast.Store())],call.func)]
+        return node
+
+
+_FMOE_REPLAY_NAMES=['fmoe_fp8_blockscale_g1u1_kernel','fmoe_g1u1_tkw1_kernel']
+
+
+@pytest.mark.parametrize('name',_FMOE_REPLAY_NAMES)
+@pytest.mark.parametrize('function,provided',[('run_benchmark',False),('arena_benchmark',False),('run_benchmark',True),('arena_benchmark',True)])
+@pytest.mark.parametrize('behavior',['correct','measured_wrong','replay_wrong','cached','weight_mutation','shape','dtype','nonfinite'])
+def test_fmoe_raw_input_timing_boundary_and_replay(name,function,provided,behavior,monkeypatch,tmp_path):
+    import math
+    import types
+    import torch
+    task=ROOT/'tasks/torch2flydsl'/name;checks=module(task/'scripts/replay_checks.py')
+    monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None);monkeypatch.setattr(torch.cuda,'synchronize',lambda:None)
+    hidden=torch.tensor([[1.,2.],[3.,4.]],dtype=torch.bfloat16)
+    phase={'value':'setup'};models=[];preparations=[]
+    def reference(h,w1,w2):return ((h.float() @ w1[0].float().T) @ w2[0].float().T).to(h.dtype)
+    class Model:
+        experts=1
+        def __init__(self):
+            self.w1=torch.tensor([[[1.,2.],[3.,4.]]],dtype=torch.bfloat16)
+            self.w2=torch.tensor([[[2.,1.],[1.,3.]]],dtype=torch.bfloat16)
+            self.originals=(self.w1.clone(),self.w2.clone());models.append(self)
+        def gate(self,h):return torch.zeros((h.shape[0],1))
+        def forward_with_routing(self,h,weights,ids,plan):return reference(h,self.w1,self.w2)
+    cached={}
+    def compute(h,w1,w2,weights,ids):
+        out=reference(h,w1,w2)
+        cached.setdefault('output',out.clone())
+        if behavior==phase['value']+'_wrong':out.fill_(1)
+        if phase['value']=='replay':
+            if behavior=='cached':out=cached['output'].clone()
+            if behavior=='weight_mutation':w2.add_(1)
+        if phase['value']=='measured':
+            if behavior=='shape':out=out[:1]
+            if behavior=='dtype':out=out.float()
+            if behavior=='nonfinite':out[0,0]=float('nan')
+        return out
+    mmod=types.SimpleNamespace(route_topk=lambda logits,k:(torch.ones((2,1)),torch.zeros((2,1),dtype=torch.int32)),prepare_expert_plan=lambda *args:None)
+    entry='flydsl_'+name.removesuffix('_kernel');kmod=types.SimpleNamespace(**{entry:compute})
+    def prepared(*args):
+        preparations.append(phase['value'])
+        model,h,weights,ids=args[1:5] if 'blockscale' in name else args
+        return lambda:compute(h,model.w1,model.w2,weights,ids)
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run=None):
+        calls.append((warmup,repetition,timed_run is not None));phase['value']='measured';out=fn();phase['value']='setup'
+        if timed_run is not None:
+            timed_run.outputs=out;timed_run.bound=True
+            def replay():
+                phase['value']='replay'
+                try:return fn()
+                finally:phase['value']='setup'
+            timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph'}
+    ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':benchmark,'require_tensor_contract':checks.require_tensor_contract,
+        'require_unchanged':checks.require_unchanged,'verify_timed_run':checks.verify_timed_run,
+        '_KERNEL_DIR':str(tmp_path),'KERNEL_FILE':'kernel.py','MODEL_FILE':'model.py','KERNEL_ENTRY':entry,
+        '_load_module':lambda directory,filename,alias:mmod if filename=='model.py' else None if provided else kmod,
+        '_build_model':lambda *a:(Model(),hidden.clone()),'_make_prepared_aiter_op':prepared,'_retry':lambda fn,**kwargs:fn(),
+        'SHAPES':[{'name':'controlled','tokens':2,'model_dim':2,'inter_dim':2,'experts':1,'topk':1}],
+        'TOL':.035 if 'tkw1' in name else .01,'math':math,'json':json,'Path':Path}
+    _harness_functions(task,{function,'_fmoe_inputs','_fmoe_replay_validator','_checked_fmoe_output','_compare_fmoe_output','_norm_worst'},ns)
+    if behavior=='correct':
+        result=ns[function](verbose=False)
+        if function=='run_benchmark':result=json.loads((tmp_path/'build/performance_report.json').read_text())
+        assert result[0]['timed_output_correctness']==result[0]['replay_correctness']=='PASS'
+        assert result[0]['operator_timing_inputs']=='raw_hidden_raw_weights_selected_routing'
+        assert calls==[(0,100,True),(0,100,False)]
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+    if provided:
+        assert 'measured' in preparations  # baseline preprocessing is timed
+        if behavior not in ('measured_wrong','shape','dtype','nonfinite'):assert 'replay' in preparations
+    else:assert not preparations
+    for model in models:
+        assert torch.equal(model.w1,model.originals[0]) and torch.equal(model.w2,model.originals[1])
+
+
+@pytest.mark.parametrize('name',_FMOE_REPLAY_NAMES)
+def test_fmoe_original_normalized_error_floor_kept(name):
+    import torch
+    task=ROOT/'tasks/torch2flydsl'/name;checks=module(task/'scripts/replay_checks.py')
+    tol=.035 if 'tkw1' in name else .01
+    ns={'TOL':tol,'require_tensor_contract':checks.require_tensor_contract}
+    _harness_functions(task,{'_norm_worst','_compare_fmoe_output'},ns)
+    expected=torch.zeros((2,2),dtype=torch.bfloat16)
+    ns['_compare_fmoe_output'](torch.full_like(expected,tol*.9),expected)
+    with pytest.raises(AssertionError,match='Numerical mismatch'):
+        ns['_compare_fmoe_output'](torch.full_like(expected,tol*1.1),expected)
+
+
+def test_fmoe_preserves_original_references_shapes_and_sampling_except_fair_input_boundary():
+    hashes={'fmoe_fp8_blockscale_g1u1_kernel': {'_build_model': '9281e5efbec053c54f509ce05e3e5c92d09a444559d9eecaf9039b907275a9cb', '_make_prepared_aiter_op': '272d71b7299739875b02d5562c34f12ba884bbac5753988afda631c39270a813', '_aiter_op': '2fd80bb48d290b2330945cf09b82192748521355705941841e60fe0e17b9fa2e', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': '42adf960ecf89b23e26be1622dda86724a84c450467769726c33dccfe1c4a4b7', 'run_benchmark': '5279b64452e54271b408a75fa18a82a495ecacb6386669297871d0a948ded4a6', 'arena_benchmark': 'f98f295a876311be1650c7a3a32b9d25268e7c9cfffd6ce552be84a060ee813c'}, 'fmoe_g1u1_tkw1_kernel': {'_build_model': '9281e5efbec053c54f509ce05e3e5c92d09a444559d9eecaf9039b907275a9cb', '_make_prepared_aiter_op': 'a1ebb29f1b2ef25b96caa8e8d3807182f0ed8a8294e7385c41940156255e4867', '_aiter_op': '13e15634ca8882794989f39477de8c57653c2ea6c99933a3df89491163bfaf6a', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', '_cos_diff': 'a85a0c38f32e78c891cbde03d0fccc8d2b9d36d31de559a16b569d6b5db2595f', 'run_correctness': 'a1bc2faba011bef6f24e8fdc243f95924211e56d72a253973dab706397af3685', 'run_benchmark': 'f881b723e9dbc1197afdce84d53c3f644d50b739bb6046ef318179f28a228bc7', 'arena_benchmark': 'cd5793dd29587975382f8e91328dc0a7eec34974a1221b9cc28883561636be59'}}
+    for name,functions in hashes.items():
+        task=ROOT/'tasks/torch2flydsl'/name
+        tree=ast.parse((task/'test_kernel_harness.py').read_text())
+        for fn in tree.body:
+            if isinstance(fn,ast.FunctionDef) and fn.name in functions:
+                restored=_RemoveFmoeTimingChecks().visit(fn)
+                assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)

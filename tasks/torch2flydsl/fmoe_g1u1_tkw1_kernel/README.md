@@ -50,3 +50,20 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+Timing begins from the same raw BF16 hidden/weight tensors and selected routing
+for both roles. The AITER baseline now quantizes and shuffles weights (and, for
+the block-scaled task, quantizes activations and prepares sorted routing) inside
+each measured call, matching the candidate's input boundary. Router logits,
+top-k selection and the diagnostic reference's expert plan stay outside timing
+as before. This corrects the older baseline-only preprocessing exclusion; old
+kernel-only timings cannot be compared as if the timed work were unchanged.
+The original three cases, seed, numerical gates, warmups and samples remain.
+
+Outputs must be finite BF16 tensors with the hidden tensor's shape/device.
+Hidden, raw weights and selected routing are read-only. The actual measured
+output and input-perturbed replay use the original normalized max-error rule;
+replay changes hidden and both weight tensors, then restores all inputs.
+Candidate-only dependency/dispatch auditing requires FlyDSL computation while
+allowing host launch preparation. GPU before/after timing-boundary qualification
+is required; this maintenance correction is not an optimization speedup.

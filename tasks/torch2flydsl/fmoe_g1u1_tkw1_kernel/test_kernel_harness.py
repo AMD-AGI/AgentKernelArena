@@ -40,7 +40,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -187,6 +188,48 @@ def _cos_diff(ref, out):
     return (1 - 2 * (x * y).sum() / denom).item()
 
 
+def _checked_fmoe_output(actual, hidden):
+    import torch
+    require_tensor_contract(actual, hidden)
+    if not bool(torch.isfinite(actual).all()):
+        raise AssertionError("Non-finite fused MoE output")
+    return actual
+
+
+def _compare_fmoe_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite fused MoE output/reference")
+    if _norm_worst(expected, actual)[1] > TOL:
+        raise AssertionError("Numerical mismatch: fused MoE normalized error")
+
+
+def _fmoe_inputs(model, hidden, weights=None, ids=None):
+    values = (hidden, model.w1.detach(), model.w2.detach())
+    return values if weights is None else values + (weights, ids)
+
+
+def _fmoe_replay_validator(model, hidden, weights, ids, expert_plan):
+    inputs = _fmoe_inputs(model, hidden, weights, ids)
+    originals = tuple(value.clone() for value in inputs)
+    def reference():
+        return _checked_fmoe_output(model.forward_with_routing(
+            hidden, weights, ids, expert_plan), hidden)
+    expected = reference()
+    require_unchanged(inputs, originals)
+    def perturb():
+        hidden.neg_()
+        model.w1.neg_()
+        model.w2.mul_(0.5)
+    def validate(timed):
+        return verify_timed_run(
+            timed, inputs=inputs, originals=originals, expected=expected,
+            perturb=perturb, reference=reference, compare=_compare_fmoe_output,
+        )
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -201,14 +244,17 @@ def run_correctness(verbose=True):
     for shape in SHAPES:
         try:
             model, hidden = _build_model(mmod, shape)
+            originals = tuple(value.clone() for value in _fmoe_inputs(model, hidden))
             with torch.no_grad():
-                ref = model(hidden)
+                ref = _checked_fmoe_output(model(hidden), hidden)
                 gt = _retry(
                     lambda: _aiter_op(mmod, model, hidden, shape["topk"]),
                     what="aiter asm_moe_tkw1",
                 )
             torch.cuda.synchronize()
 
+            require_unchanged(_fmoe_inputs(model, hidden), originals)
+            _checked_fmoe_output(gt, hidden)
             worst, norm = _norm_worst(ref, gt)
             cdiff = _cos_diff(ref, gt)
             ok = norm <= TOL
@@ -216,6 +262,7 @@ def run_correctness(verbose=True):
             if has_kernel:
                 logits = model.gate(hidden)
                 topk_weights, topk_ids = mmod.route_topk(logits, shape["topk"])
+                routing_originals = (topk_weights.clone(), topk_ids.clone())
                 try:
                     out = _retry(
                         lambda: kmod.flydsl_fmoe_g1u1_tkw1(
@@ -233,6 +280,9 @@ def run_correctness(verbose=True):
                     )
                 else:
                     torch.cuda.synchronize()
+                    require_unchanged(_fmoe_inputs(model, hidden), originals)
+                    require_unchanged((topk_weights, topk_ids), routing_originals)
+                    _checked_fmoe_output(out, hidden)
                     _, knorm = _norm_worst(ref, out)
                     kok = knorm <= TOL
                     ok = ok and kok
@@ -309,18 +359,27 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
                         topk_weights, topk_ids,
                     )
             else:
-                device_op = _make_prepared_aiter_op(
-                    model, hidden, topk_weights, topk_ids
-                )
+                # Both roles receive raw hidden/weights and selected routing.
+                # Quantization, shuffling and required sorting belong to every
+                # measured invocation, not a baseline-only preparation cache.
+                def device_op():
+                    return _make_prepared_aiter_op(
+                        model, hidden, topk_weights, topk_ids
+                    )()
 
+            replay_validate = _fmoe_replay_validator(
+                model, hidden, topk_weights, topk_ids, expert_plan)
             _retry(device_op, what="benchmark warmup")
             torch.cuda.synchronize()
             for _ in range(warmup):
                 device_op()
             torch.cuda.synchronize()
+            timed = TimedRun()
             kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-                device_op, warmup=0, repetition=iters
+                device_op, warmup=0, repetition=iters, timed_run=timed
             )
+            kernel_bench_meta.update(replay_validate(timed))
+            kernel_bench_meta["operator_timing_inputs"] = "raw_hidden_raw_weights_selected_routing"
 
             ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
                 lambda: model.forward_with_routing(
@@ -464,18 +523,27 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
                         topk_weights, topk_ids,
                     )
             else:
-                device_op = _make_prepared_aiter_op(
-                    model, hidden, topk_weights, topk_ids
-                )
+                # Both roles receive raw hidden/weights and selected routing.
+                # Quantization, shuffling and required sorting belong to every
+                # measured invocation, not a baseline-only preparation cache.
+                def device_op():
+                    return _make_prepared_aiter_op(
+                        model, hidden, topk_weights, topk_ids
+                    )()
 
+            replay_validate = _fmoe_replay_validator(
+                model, hidden, topk_weights, topk_ids, expert_plan)
             _retry(device_op, what="benchmark warmup")
             torch.cuda.synchronize()
             for _ in range(warmup):
                 device_op()
             torch.cuda.synchronize()
+            timed = TimedRun()
             kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-                device_op, warmup=0, repetition=iters
+                device_op, warmup=0, repetition=iters, timed_run=timed
             )
+            kernel_bench_meta.update(replay_validate(timed))
+            kernel_bench_meta["operator_timing_inputs"] = "raw_hidden_raw_weights_selected_routing"
 
             ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
                 lambda: model.forward_with_routing(
