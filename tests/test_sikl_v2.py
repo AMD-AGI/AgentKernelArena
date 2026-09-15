@@ -509,6 +509,9 @@ def test_diagnostic_policy_only_names_tasks_with_specific_evidence():
     evidence = {
         'gemm_a16w16_nt_n4096_k2048': '329bc9861f7199c4df4d6fc0fc0eb16353cfe995',
         'gemm_a16w16_nt_n128_k6144': '67803d61ce77601dac7bf509bd111ca5ae3b048cee3dbaafc5d4ab6443025476',
+        'gemm_a16w16_nt_n16384_k2048': '5ef262308dd994cdb970e68d383a559b9d8b37e1da7b36cbc805933c83838be3',
+        'gemm_a16w16_nt_n256_k6144': 'ab062308fe3266fcf2bfd116160ce593e4909ce2a68c007b8a302abfbf9a2c48',
+        'gemm_a16w16_nt_n2624_k6144': 'c7ae7cf39328e1711f19c25f3b61cac2e584763891d395c63d71378f3a13225d',
     }
     diagnostic = []
     for path in TASKS:

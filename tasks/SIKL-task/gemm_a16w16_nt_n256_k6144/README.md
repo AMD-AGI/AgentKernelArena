@@ -181,3 +181,45 @@ proof of every reference operation for every possible input. They do not
 replace complete workload evaluation, an actual accepted candidate, or GPU
 validation. The fixture checks' exact/FP32 rounding bounds do not alter the
 original candidate tolerances or scored workload data.
+
+## Production baseline numerical evidence
+
+On 2026-09-15, MI355X/gfx950 job `139315`, `validator-07` ran every original
+case under image `sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93`
+with PyTorch `2.11.0+rocm10.0.0` and FlyDSL `0.3.2`. The installed baseline
+was `aiter.tuned_gemm.gemm_a16w16`; its module content SHA256 was
+`1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51`.
+The complete baseline correctness action SHA256 is `ab062308fe3266fcf2bfd116160ce593e4909ce2a68c007b8a302abfbf9a2c48`.
+
+Task/reference controls and baseline compilation passed all 13 cases. Every
+baseline output passed shape, dtype, device and finiteness checks. The original
+comparator reported 9 finite numerical mismatches:
+
+| M | Status | Elements outside gate | Max absolute error |
+| ---: | --- | ---: | ---: |
+| 1 | PASS | 0 | 0 |
+| 2 | PASS | 0 | 0.5 |
+| 4 | FAIL | 203 | 2 |
+| 8 | FAIL | 397 | 2 |
+| 16 | FAIL | 753 | 2 |
+| 32 | FAIL | 1597 | 3 |
+| 64 | FAIL | 2749 | 2 |
+| 128 | FAIL | 6078 | 2 |
+| 256 | FAIL | 9450 | 2 |
+| 512 | FAIL | 17164 | 2 |
+| 1024 | FAIL | 29822 | 2 |
+| 2048 | PASS | 0 | 1 |
+| 4096 | PASS | 0 | 1 |
+
+These are completed action observations, not a claim that the original task
+passed validation. The original required policy stopped before performance;
+this policy change needs fresh full validation including actual timed replay.
+
+The supplied production operator remains the independent performance baseline.
+Only its completed finite numerical mismatches are diagnostic. Missing cases,
+crashes, compile errors, invalid output contracts and input mutation still fail.
+Baseline replay retains its full comparison evidence; candidate correctness and
+actual timed replay must pass the original comparator without this exemption.
+No baseline implementation, reference, tolerance, workload or timing is changed.
+This observation does not identify a particular compiler/runtime version as the
+cause, nor replace the need to demonstrate an accepted candidate implementation.
