@@ -2,6 +2,7 @@
 import ast
 import hashlib
 import importlib.util
+import inspect
 import json
 from pathlib import Path
 import sys
@@ -167,6 +168,7 @@ def test_actual_adapter_bound_replay_restore_and_unchanged_timing(task, monkeypa
     saved = out.clone()
     plugin = types.SimpleNamespace(action=action, current_row={'test_case_id': 'cpu'}, exercised=set())
     stage = ['initial']
+    timer_options = []
     class Base:
         def __init__(self, op_callable):
             self.op_callable = op_callable
@@ -179,14 +181,17 @@ def test_actual_adapter_bound_replay_restore_and_unchanged_timing(task, monkeypa
             stage[0] = 'replay'
             return self.fn()
     def benchmark(fn, **kwargs):
+        timer_options.append(kwargs)
         assert {k: v for k, v in kwargs.items() if k != 'timed_run'} == dict(
             warmup=10, repetition=100, prepare_fn=None, use_cuda_graph=mode != 'events',
             fallback_reason='explicit event path' if mode == 'events' else None)
         if mode in ['unobservable', 'crash']: raise RuntimeError(mode)
         stage[0] = 'timed'
         t = kwargs['timed_run']; t.fn = fn; t.outputs = fn()
-        return ([float('nan')] if mode == 'wrong_timing' else [1., 2.]), {
-            'benchmark_method': 'cuda_event_fallback' if mode == 'events' else 'cuda_graph'}
+        metadata = {'benchmark_method': 'cuda_event_fallback' if mode == 'events' else 'cuda_graph',
+                    'benchmark_samples': 100, 'benchmark_warmup': 10}
+        if mode == 'events': metadata['benchmark_fallback_reason'] = 'explicit event path'
+        return ([float('nan')] if mode == 'wrong_timing' else [1., 2.]), metadata
     monkeypatch.setitem(sys.modules, '_aka_benchmark', types.SimpleNamespace(
         TimedRun=Timed, benchmark_cuda_graph_or_events_samples=benchmark))
     monkeypatch.setitem(sys.modules, 'performance_utils_pytest', types.SimpleNamespace(
@@ -208,6 +213,25 @@ def test_actual_adapter_bound_replay_restore_and_unchanged_timing(task, monkeypa
             assert meta['timed_output_checked'] and meta['output_state_restored']
             assert 'fresh_input_replay_checked' not in meta
             assert plugin.current_row['execution_time_ms'] == 1.5
+            assert meta['device_timing']['benchmark_samples'] == 100
+            if mode == 'events':
+                assert meta['device_timing']['benchmark_fallback_reason'] == 'explicit event path'
+            # Compare effective defaults with the actual original helper path,
+            # including graph batching/calibration defaults not stated by tasks.
+            helper = load(ROOT/'src/tools/perf/performance_utils_pytest.py')
+            original_options = []
+            monkeypatch.setattr(helper, 'benchmark_cuda_graph_or_events_samples',
+                lambda fn, **kw: (original_options.append(kw) or [1.], {}))
+            helper._measure_times(op, wrapped.config, prepare_fn=wrapped.prepare_fn,
+                                  use_cuda_graph=wrapped.use_cuda_graph,
+                                  fallback_reason=wrapped.fallback_reason)
+            canonical = load(ROOT/'src/tools/perf/aka_benchmark.py')
+            signature = inspect.signature(canonical.benchmark_cuda_graph_or_events_samples)
+            def effective(options):
+                bound = signature.bind_partial(None, **options)
+                bound.apply_defaults()
+                return {k: v for k, v in bound.arguments.items() if k not in ('fn', 'timed_run')}
+            assert effective(timer_options[0]) == effective(original_options[0])
     else:
         with pytest.raises((ref.NumericalMismatch, RuntimeError, ValueError)):
             wrapped.run_benchmark()
