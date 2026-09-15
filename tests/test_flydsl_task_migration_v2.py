@@ -573,7 +573,8 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False):
     if added_replay_checks:
         tree = _RemoveAddedReplayChecks().visit(tree)
         tree = _RemoveSglangReplayChecks().visit(tree)
-    excluded={"_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
+        tree = _RemoveTritonBatchedChecks().visit(tree)
+    excluded={"_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
               "_reference_softmax","_reference_gemm","_reference_layernorm","_reference_quant"}
     nodes=[]
     for n in tree.body:
@@ -587,7 +588,7 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False):
 def test_triton_preserves_original_harness_semantics_inputs_and_timing():
     for name,expected in TRITON_PROTECTED_SHA256.items():
         task=ROOT/"tasks/triton2flydsl"/name
-        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"})==expected,name
+        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/batched_gemm_a8w8", "aiter/batched_gemm_bf16", "aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"})==expected,name
         cfg=yaml.safe_load((task/"config.yaml").read_text())
         assert cfg["baseline"]["kind"]=="initial_candidate"
         assert cfg["baseline"]["language"]=="triton"
@@ -3370,3 +3371,102 @@ def test_mxfp4_original_math_inputs_and_timing_preserved():
     cfg=yaml.safe_load((task/'config.yaml').read_text())
     assert [e['symbol'] for e in cfg['candidate']['entrypoints']]==['flydsl_quant_mxfp4']
     assert cfg['platform_support']['required_arch']=='gfx950'
+
+
+_TRITON_BATCHED_NAMES=['batched_gemm_a8w8','batched_gemm_bf16']
+
+
+class _RemoveTritonBatchedChecks(_RemoveAddedReplayChecks):
+    def visit_Assign(self,node):
+        if len(node.targets)==1 and getattr(node.targets[0],'id',None) in {'protected_inputs','replay_validate'}:return None
+        return super().visit_Assign(node)
+    def visit_Expr(self,node):
+        call=node.value
+        if isinstance(call,ast.Call) and isinstance(call.func,ast.Attribute) and call.func.attr=='update' and call.args and isinstance(call.args[0],ast.Call) and getattr(call.args[0].func,'id',None)=='replay_validate':return None
+        return super().visit_Expr(node)
+
+
+@pytest.mark.parametrize('name,phase,behavior', [
+    (name,phase,behavior)
+    for name in _TRITON_BATCHED_NAMES for phase in ['correctness','benchmark']
+    for behavior in ['correct','shape','dtype','device','nan','input_modified','weight_modified','scale_modified','bias_modified','measured_wrong','replay_wrong','cached']
+    if not (name.endswith('bf16') and behavior=='scale_modified')
+    and not (phase=='benchmark' and behavior=='bias_modified')
+    and not (phase=='correctness' and behavior in {'measured_wrong','replay_wrong','cached'})
+])
+def test_triton_batched_original_numeric_gate_and_measured_replay(name,phase,behavior,monkeypatch,tmp_path):
+    import torch,types,math
+    t=ROOT/'tasks/triton2flydsl/aiter'/name;checks=module(t/'scripts/replay_checks.py');quant=name.endswith('a8w8')
+    x=torch.tensor([[[1.,2.],[1.,2.]],[[3.,4.],[3.,4.]]],dtype=torch.int8 if quant else torch.bfloat16)
+    w=torch.tensor([[[3.,4.],[5.,6.]],[[4.,2.],[7.,1.]]],dtype=x.dtype)
+    xs=torch.tensor([[[.5],[.25]],[[.75],[.625]]]);ws=torch.tensor([[[.125,.25]],[[.5,.75]]]);bias=torch.ones((2,1,2),dtype=torch.bfloat16)
+    originals=tuple(v.clone() for v in (x,w,xs,ws,bias));state={'value':'setup'}
+    ns={};_harness_functions(t,{'_torch_ref'},ns);oracle=ns['_torch_ref']
+    def args(with_bias=False):return (x,w,xs,ws,bias if with_bias else None,torch.bfloat16) if quant else (x,w,bias if with_bias else None,torch.bfloat16)
+    cached=oracle(*args())
+    def compute(*values):
+        out=oracle(*values);active=phase=='correctness' or state['value']=='measured'
+        if active:
+            if behavior=='shape':out=out[:,:1]
+            if behavior=='dtype':out=out.float()
+            if behavior=='device':out=out.to('meta')
+            if behavior=='nan':out.fill_(float('nan'))
+            if behavior=='input_modified':x.add_(1)
+            if behavior=='weight_modified':w.add_(1)
+            if behavior=='scale_modified':xs.mul_(.5)
+            if behavior=='bias_modified' and values[-2] is not None:values[-2].add_(1)
+        if behavior==state['value']+'_wrong':out.add_(10)
+        if state['value']=='replay' and behavior=='cached':out=cached.clone()
+        return out
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run):
+        calls.append((warmup,repetition));state['value']='measured';timed_run.outputs=fn();timed_run.bound=True;state['value']='setup'
+        def replay():
+            state['value']='replay'
+            try:return fn()
+            finally:state['value']='setup'
+        timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None)
+    ns.update(TimedRun=Collector,benchmark_cuda_graph_or_events=benchmark,require_tensor_contract=checks.require_tensor_contract,
+        require_unchanged=checks.require_unchanged,verify_timed_run=checks.verify_timed_run,allclose_output=checks.allclose_output,
+        _HERE=str(tmp_path),Path=Path,json=json,math=math,WARMUP=10,ITERS=100,
+        TEST_SHAPES=[{'name':'controlled','B':2,'M':2,'N':2,'K':2}],_load_source=lambda:types.SimpleNamespace(**{name:compute}),
+        _make_inputs=lambda *params:args(params[-1])[:-1])
+    _harness_functions(t,{'run_correctness','run_benchmark','_batched_replay_validator'},ns)
+    if phase=='correctness':assert ns['run_correctness'](verbose=False) is (behavior=='correct')
+    elif behavior=='correct':
+        report=ns['run_benchmark'](verbose=False)
+        assert report[0]['timed_output_correctness']==report[0]['replay_correctness']=='PASS'
+        assert calls==[(0,100)]
+    else:
+        with pytest.raises(AssertionError):ns['run_benchmark'](verbose=False)
+    if phase=='benchmark' and behavior not in {'input_modified','weight_modified','scale_modified'}:
+        for a,b in zip((x,w,xs,ws,bias),originals):assert torch.equal(a,b)
+
+
+@pytest.mark.parametrize('name',_TRITON_BATCHED_NAMES)
+def test_triton_batched_final_candidate_audit_does_not_instrument_initial_triton(name,monkeypatch):
+    import torch,types
+    t=ROOT/'tasks/triton2flydsl/aiter'/name;audit=module(t/'scripts/candidate_checks.py');actions=module(t/'scripts/task_actions.py')
+    x=torch.tensor([1.,2.]);source=lambda:types.SimpleNamespace(**{name:lambda value:value.square()})
+    h=types.SimpleNamespace(ENTRY=name,_load_source=source,TEST_SHAPES=actions.EXPECTED_SHAPES)
+    actions.select_role(h,'baseline',False)
+    with audit.audit_candidate_calls(h):torch.testing.assert_close(getattr(h._load_source(),name)(x),x.square())
+    monkeypatch.setenv('ARENA_EVAL_PHASE','final_candidate');actions.select_role(h,'candidate',False)
+    with pytest.raises(RuntimeError,match='non-preparation PyTorch operation'):
+        with audit.audit_candidate_calls(h):getattr(h._load_source(),name)(x)
+    assert h._load_source is source
+    # Restored ordinary timing loader receives no dispatch profiler.
+    torch.testing.assert_close(getattr(h._load_source(),name)(x),x.square())
+
+
+def test_triton_batched_all_original_arithmetic_cases_and_timing_retained():
+    hashes={'batched_gemm_a8w8': {'_make_inputs': 'aeb4337e39fb87caa6ba38a24255d94d3bee67811bb6fdc4e12ff6018d647f6f', '_torch_ref': 'd63c9e3286b09330e4390662ca6e958491a1305717360e9223896bb18e00e582', 'run_correctness': 'ba9465885ea684b71bb6fd3660ec11f309fbf2825ce5770dc50febb13a1105bd', 'run_benchmark': 'cb1b2218d06139101d04225a7ad6efcceabd74cbdefb68ba9b5f20173edbece4'}, 'batched_gemm_bf16': {'_make_inputs': '042d7e1122c3d72947342b4faa216cbaddaa17348ca65e7c9e74e3b4aa26a5f9', '_torch_ref': '699640c43ffad755291064fe51c1c5d5da5645164be088ae25fe2c23d082e9a8', 'run_correctness': '4822a2e8973b8f169c8d42a91efcd136db602c323f27ef38ea531ab0ad039050', 'run_benchmark': 'f2f8b72cf696760ac642475c7818e6f047d2dd65c9f0345e148cf6751c337000'}}
+    for name,functions in hashes.items():
+        tree=ast.parse((ROOT/'tasks/triton2flydsl/aiter'/name/'test_kernel_harness.py').read_text())
+        for fn in tree.body:
+            if isinstance(fn,ast.FunctionDef) and fn.name in functions:
+                normalized=_RemoveTritonBatchedChecks().visit(fn)
+                assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)

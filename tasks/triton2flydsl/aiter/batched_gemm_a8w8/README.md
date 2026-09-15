@@ -52,3 +52,19 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+The effective suite is the original seven B=16 shapes, BF16 output, each with
+and without bias (14 correctness cases). Seven original no-bias cases are timed.
+Return exactly `[B, M, N]` BF16 on the input device; preserve all supplied inputs,
+including bias and (for A8W8) positive FP32 row/column scales. The comparator
+remains the original PyTorch FP32 reference with `atol=0.01, rtol=0.01`.
+
+Both initial Triton baseline and final FlyDSL candidate retain10 external
+warmups and100 graph samples with the original allocation/call boundary.
+TimedRun validates the actual measured output, changes the operand batch
+associations (and scales for A8W8), poisons output, then compares the same captured
+graph replay against the original reference. Checks and restoration are outside
+timing. Final candidate import/call audits require real FlyDSL computation and
+reject PyTorch replacements; they never instrument the initial Triton baseline
+or add profiling inside benchmark timing.
