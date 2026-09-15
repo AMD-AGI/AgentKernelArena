@@ -139,7 +139,7 @@ def install_hooks(plan: dict) -> None:
     install_inventory()
     from agents.forge.gate_targets import install as install_gate_targets
     install_gate_targets()
-    from agents.forge.deadline import install as install_deadline, bound_session
+    from agents.forge.deadline import install as install_deadline, bound_agent, bound_session
     install_deadline()
     if plan.get("agent_config", {}).get("codex_auth_mode") == "cli":
         from agents.forge.codex_auth import install_cli_auth
@@ -167,7 +167,11 @@ def install_hooks(plan: dict) -> None:
         # Both CLI providers must run the root-level public bridge, even with a
         # nested anchor. Never infer the working directory from the anchor file.
         values["interposed_driver_path"] = str(root / "arena_forge_driver.py")
-        return original_agent(*bound.args, **bound.kwargs)
+        configured_timeout = plan.get("agent_config", {}).get("session_timeout_seconds", 1200)
+        timeout = values.get("session_timeout_sec")
+        values["session_timeout_sec"] = min(timeout, configured_timeout) if timeout is not None else configured_timeout
+        return bound_agent(original_agent(*bound.args, **bound.kwargs), plan,
+                           values["session_timeout_sec"])
 
     modules.agent.make_agent_fn = make_agent
 

@@ -68,6 +68,12 @@ iteration count remain unchanged. An engine error or timeout still fails the run
 The phase has a bounded attempt count and uses at most
 `initialization_budget_fraction` of the remaining campaign budget, reserving the
 rest for the loop. Each provider session also honors `session_timeout_seconds`.
+That limit covers the whole implementer invocation, including provider resume
+turns and their in-session checks. A timed-out session unwinds the provider and
+records `session_timeout`; it does not claim a passed gate. The native loop can
+then assess the remaining candidate through the complete public task checks and
+save or reject it within the shared campaign deadline. Protected-file integrity
+is finalized on cancellation as well as on a normal return.
 Failure to initialize within those bounds prevents loop launch and leaves the
 original candidate unchanged. The adapter saves `initialization.json` outside the
 editable engine tree, including failed attempts. Its usage is combined with the

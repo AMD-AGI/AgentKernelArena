@@ -1,17 +1,75 @@
 """Honor the Arena deadline in the source-pinned native search loop."""
+import asyncio
+from contextvars import ContextVar
 from dataclasses import replace
+from functools import wraps
+import inspect
 import math
 import time
+
+_session_gates = ContextVar("arena_forge_session_gates", default=None)
+
+
+def _available(plan):
+    deadline = min(plan["deadline_unix"], plan.get("phase_deadline_unix", math.inf))
+    reserve = 0 if "phase_deadline_unix" in plan else 120
+    return deadline - time.time() - reserve
+
+
+def bound_agent(agent, plan, timeout_sec):
+    """One wall clock covers all provider resumes and their intervening gates.
+
+    The pinned provider bounds each SDK turn separately. Its outer Stop gate
+    can resume with the original timeout, so bounding AgentRunSpec alone cannot
+    bound an implementer invocation. Cancellation unwinds the native provider
+    and measurement subprocesses before the loop can assess the remaining code.
+    """
+    signature = inspect.signature(agent)
+
+    @wraps(agent)
+    async def run(*args, **kwargs):
+        available = min(timeout_sec, _available(plan))
+        if available <= 0:
+            raise TimeoutError("Forge has no model-session time before its finalization reserve")
+        bound = signature.bind(*args, **kwargs)
+        sink = bound.arguments.get("session_sink")
+        gates = []
+        token = _session_gates.set(gates)
+        try:
+            task = asyncio.create_task(agent(*args, **kwargs))
+            try:
+                return await asyncio.wait_for(task, timeout=available)
+            except asyncio.TimeoutError:
+                if not task.cancelled():
+                    raise  # An inner task-action/provider timeout keeps its evidence.
+                if sink is not None:
+                    sink["end_reason"] = "session_timeout"
+                    sink["gate_passed"] = False
+                    sink.pop("benchmark_measurement", None)
+                raise TimeoutError(f"Forge implementer exceeded its {available:g}s total session budget") from None
+        except BaseException:
+            # Native agent_fn finalizes after a normal outer-gate loop, but
+            # cancellation during resume/_on_stop bypasses that code. Keep
+            # the same integrity verdict and restoration callback on error.
+            for gate in gates:
+                gate.finalize_integrity()
+                if sink is not None and not sink.get("integrity_violation"):
+                    sink.update(integrity_verdict=gate.integrity_verdict,
+                                integrity_violation=gate.integrity_violation,
+                                integrity_reason=gate.integrity_reason,
+                                integrity_restore=gate.restore_protected_files)
+            raise
+        finally:
+            _session_gates.reset(token)
+
+    return run
 
 
 def bound_session(spec, plan):
     """Reserve time for native assessment/checkpointing after a model session."""
-    deadline = min(plan["deadline_unix"], plan.get("phase_deadline_unix", math.inf))
-    remaining = deadline - time.time()
     # Initialization already owns its smaller phase budget. The outer campaign
     # still needs time for the native loop to assess and publish its incumbent.
-    reserve = 0 if "phase_deadline_unix" in plan else 120
-    available = math.floor(remaining - reserve)
+    available = math.floor(_available(plan))
     if available < 1:
         raise TimeoutError("Forge has no model-session time before its finalization reserve")
     timeout = min(spec.timeout_sec, available) if spec.timeout_sec is not None else available
@@ -32,7 +90,20 @@ def bound_session(spec, plan):
 
 def install():
     """Called only after the exact upstream source/signature probe succeeds."""
-    from kernelforge.loop import runner
+    from kernelforge.loop import insession_gate, runner
+
+    gate_class = insession_gate.InSessionGate
+    if not getattr(gate_class, "_arena_session_finalization", False):
+        class ArenaSessionGate(gate_class):
+            _arena_session_finalization = True
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                gates = _session_gates.get()
+                if gates is not None:
+                    gates.append(self)
+
+        insession_gate.InSessionGate = ArenaSessionGate
 
     original = runner.IterationLoop
     if getattr(original, "_arena_absolute_deadline", False):
