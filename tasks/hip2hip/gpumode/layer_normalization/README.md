@@ -9,7 +9,8 @@ Match the argument order used by `pytorch_code_functional/py_11754_layer_normali
 structure, shapes, dtypes, devices, parameter state, and numerical semantics.
 GPU work must run through the submitted HIP extension, with the current PyTorch
 HIP stream. Do not load or call protected baseline/reference code from the candidate.
-PyTorch/ROCm and compiler headers are runtime dependencies provided by the selected image.
+PyTorch/ROCm, PyYAML, Ninja, and compiler headers are runtime dependencies
+provided by the selected image.
 
 The initial candidate is **implemented**. The baseline is the separately provided
 HIP implementation `hip/hip_11754_layer_normalization_ref.hip`.

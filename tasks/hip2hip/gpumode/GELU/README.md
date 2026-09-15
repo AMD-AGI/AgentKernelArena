@@ -9,7 +9,8 @@ Match the argument order used by `pytorch_code_functional/py_14539_GELU_func.py`
 structure, shapes, dtypes, devices, parameter state, and numerical semantics.
 GPU work must run through the submitted HIP extension, with the current PyTorch
 HIP stream. Do not load or call protected baseline/reference code from the candidate.
-PyTorch/ROCm and compiler headers are runtime dependencies provided by the selected image.
+PyTorch/ROCm, PyYAML, Ninja, and compiler headers are runtime dependencies
+provided by the selected image.
 
 The initial candidate is **implemented**. The baseline is the separately provided
 HIP implementation `hip/hip_14539_GELU_ref.hip`.
@@ -41,3 +42,11 @@ The runner is task-local and does not import the Arena source tree or an agent.
 ## Original task instructions
 
 You are a hip expert and good at gpu kernel implementation. Please implemnt a target HIP kernel code corresponding to pytorch modullle code provided as followings, which includes hip kernel, kernel laucher and python bliding code for the hip launcher.
+
+GELU follows the out-of-place `F.gelu` contract: preserve caller input values and
+return separate output storage. Correctness checks both properties. Performance
+validates the complete output of the actual timed graph, poisons that output,
+then compares the same graph's replay against the protected reference. These
+checks run outside the reported samples; warmups, repetitions and device timing
+remain owned by the canonical helper. Its exact-replay collector does not certify
+Event fallback, so a fallback cannot silently count as a replay-validated pass.

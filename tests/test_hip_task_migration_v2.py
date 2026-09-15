@@ -399,6 +399,12 @@ ORIGINAL_SOURCE_DIGESTS = {'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (10
                                                      '6bc06bb58ed8af3ac63e5af4a2c9f6fd4d7b96f84a7b0b1835762f7a2819bbd0')}
 
 
+# Repairs justified by finalized real-GPU validator job 139005: GELU must be
+# out-of-place and validate timed replay; matrix must validate every output.
+# The original digest remains the gate for all other 86 tasks.
+GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '0b72fe68a7c9bb4ef696ce876f80f0de9ed3a0dd434acd8f499f679e0188975c'), 'torch2hip/gpumode/14539_GELU': (10, '6988f6cace9f3c9a1f8da275789518c8667ba249b5c9431c6b05a57dd67d9e36'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab')}
+
+
 @pytest.mark.parametrize('path', CONFIGS, ids=lambda p: p.parent.name)
 def test_original_code_case_seed_tolerance_and_timing_preserved(path):
     files = sorted(p for p in path.parent.rglob('*') if p.suffix in ('.py', '.hip', '.cpp', '.hpp', '.h')
@@ -414,7 +420,8 @@ def test_original_code_case_seed_tolerance_and_timing_preserved(path):
             content = content.replace(b'#include "source/kernel.hpp"\n\n', header)
             assert 'source/kernel.hpp' in path.with_name('Makefile').read_text()
         digest.update(str(p.relative_to(path.parent)).encode() + b'\0' + content + b'\0')
-    assert (len(files), digest.hexdigest()) == ORIGINAL_SOURCE_DIGESTS[str(path.parent.relative_to(ROOT / 'tasks'))]
+    relative = str(path.parent.relative_to(ROOT / 'tasks'))
+    assert (len(files), digest.hexdigest()) == GPU_VALIDATOR_REPAIR_DIGESTS.get(relative, ORIGINAL_SOURCE_DIGESTS[relative])
 
 
 @pytest.mark.parametrize('role', ['baseline', 'candidate'])
@@ -631,3 +638,97 @@ def test_real_cli_cpu_initial_action_reports_dependencies_honestly(task, tmp_pat
     else:
         assert report.passed, report.reason
     assert len(report.cases) == len(json.loads((workspace / 'workload.json').read_text())['cases'])
+
+
+def test_matrix_full_cpu_reference_and_unsampled_negative_control(tmp_path):
+    compiler = shutil.which('g++')
+    if not compiler:
+        pytest.skip('CPU C++ compiler unavailable; not GPU validation')
+    header = ROOT / 'tasks/hip2hip/others/matrix_multiplication/scripts/native/matrix_reference.hpp'
+    source = tmp_path / 'matrix_reference.cpp'
+    source.write_text('#include "' + str(header) + '"\n' + r'''
+#include <cassert>
+int main() {
+    using namespace matrix_reference;
+    auto known = product({1,2,3,4}, {5,6,7,8}, 2,2,2);
+    assert((known == std::vector<double>{19,22,43,50}));
+    std::vector<float> a(32*16), b(16*32);
+    for (int r=0;r<32;++r) for (int k=0;k<16;++k) a[r*16+k]=(r%3)-k/16.f;
+    for (int k=0;k<16;++k) for (int c=0;c<32;++c) b[k*32+c]=(c%5)+k/32.f;
+    auto expected=product(a,b,32,16,32);
+    std::vector<float> actual(expected.begin(),expected.end());
+    for (int r=0;r<32;++r) for (int c=0;c<32;++c) {
+        double independent=0;
+        for (int k=0;k<16;++k) independent+=double(a[r*16+k])*double(b[k*32+c]);
+        assert(expected[r*32+c]==independent);
+    }
+    assert(validate(actual,expected,32).empty());
+    actual[7*32+9]+=10; // Outside all sixteen former sampled coordinates.
+    assert(!validate(actual,expected,32).empty());
+    actual.assign(expected.begin(),expected.end()); actual[7*32+9]=NAN;
+    assert(!validate(actual,expected,32).empty());
+    assert(!validate(std::vector<float>(actual.size(),0),expected,32).empty());
+}
+''')
+    result = subprocess.run([compiler, '-std=c++17', str(source), '-o', str(tmp_path / 'check')], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    subprocess.run([str(tmp_path / 'check')], check=True, timeout=10)
+
+
+def test_matrix_additional_checks_cover_all_original_shapes(monkeypatch):
+    root = ROOT / 'tasks/hip2hip/others/matrix_multiplication'
+    helper = import_path(root / 'scripts/reference_checks.py')
+    shapes = json.loads((root / 'workload.json').read_text())['test_shapes']
+    calls = []
+    def run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return types.SimpleNamespace(returncode=0, stdout='Full reference validation passed', stderr='')
+    monkeypatch.setattr(helper.subprocess, 'run', run)
+    harness = types.SimpleNamespace(TEST_SHAPES=shapes, BENCH_BINARY='nested/build/benchmark')
+    helper.check_additional_paths(harness)
+    assert len(calls) == 5
+    for (argv, kwargs), shape in zip(calls, shapes):
+        assert argv == ['nested/build/benchmark', '--A_rows', str(shape[0]), '--A_cols', str(shape[1]), '--B_cols', str(shape[2]), '--check-only', '1']
+        assert kwargs['timeout'] == 300
+    monkeypatch.setattr(helper.subprocess, 'run', lambda *a, **kw: types.SimpleNamespace(returncode=1, stdout='', stderr='wrong C'))
+    with pytest.raises(ValueError, match='wrong C'):
+        helper.check_additional_paths(harness)
+
+
+@pytest.mark.parametrize('relative', ['hip2hip/gpumode/GELU', 'torch2hip/gpumode/14539_GELU'])
+@pytest.mark.parametrize('behavior', ['correct', 'wrong_replay', 'input_mutation', 'input_alias'])
+def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypatch):
+    root = ROOT / 'tasks' / relative
+    helper = import_path(root / 'eval_tools/replay_validation.py')
+    runner = import_path(root / 'eval_tools/evaluate.py')
+    timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
+    monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    inputs = [torch.tensor([-1., .5, 2.])]
+    observed = []
+    def benchmark(invoke, **kwargs):
+        observed.append(kwargs)
+        output = invoke()
+        def replay():
+            assert torch.isnan(output).all()  # Same timed buffer was poisoned.
+            output.copy_(torch.zeros_like(output) if behavior == 'wrong_replay' else torch.nn.functional.gelu(inputs[0]))
+            return output
+        kwargs['timed_run']._bind(replay, output)
+        return .25, {'benchmark_method': 'cuda_graph'}
+    def cal_kernel_perf(rtol=1e-4, atol=1e-5): pass
+    perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf,
+        benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)
+    helper.install(perf, runner.output_contract)
+    def module(x, fn=torch.nn.functional.gelu): return fn(x)
+    def candidate(x):
+        output = torch.nn.functional.gelu(x)
+        if behavior == 'input_mutation': x.add_(1)
+        if behavior == 'input_alias': x.copy_(output); return x
+        return output
+    if behavior == 'correct':
+        elapsed, metadata = perf.cal_hip_latency(module, inputs, candidate)
+        assert elapsed == .25 and metadata['replay_validation_valid'] is True
+    else:
+        with pytest.raises((ValueError, AssertionError)):
+            perf.cal_hip_latency(module, inputs, candidate)
+    assert observed[0]['warmup'] == 10 and observed[0]['repetition'] == 100

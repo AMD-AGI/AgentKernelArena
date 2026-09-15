@@ -89,3 +89,11 @@ $$c_{ij}=\sum_{k=1}^{N}a_{ik}b_{kj}$$
 - `hipMemcpy`
 - `hipGetLastError`
 - `hipFree`
+
+The original constant-input correctness gate remains unchanged. Correctness also
+runs the benchmark's original nonuniform inputs against a full CPU product for
+all five shapes. The same full-output reference checks the timed replay after
+poisoning output storage. Its original scaled tolerance is unchanged (0.002 times
+max(1, abs(expected))); CPU reference construction and validation are outside the
+timed samples. Repeated CPU dot products are reused only after comparing actual
+rows/columns for equality. Warmups, sample counts and GPU timing are unchanged.

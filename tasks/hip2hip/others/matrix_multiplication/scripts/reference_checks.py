@@ -1,11 +1,10 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
-"""The protected C++ host program owns this task's independent numerical reference.
+"""Retain the constant-input host gate and additionally check nonuniform inputs.
 
-Unlike the Python extension tasks there are no unverified extra performance
-variants. The original correctness action checks every declared shape against
-its host reference; the native timing driver additionally validates graph replay.
-These structural checks make no claim of CPU or GPU numerical validation.
+The protected CPU product validates every output on every existing shape. The
+same independent reference also checks the exact timed graph in the driver.
 """
+import subprocess
 
 
 def self_test(harness):
@@ -15,6 +14,10 @@ def self_test(harness):
 
 
 def check_additional_paths(harness):
-    # All numerical checks are in the original protected host and replay driver.
-    # Called only after the native correctness executable successfully ran.
-    return None
+    for rows, inner, cols in harness.TEST_SHAPES:
+        command = [harness.BENCH_BINARY, "--A_rows", str(rows), "--A_cols", str(inner),
+                   "--B_cols", str(cols), "--check-only", "1"]
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=300)
+        if completed.returncode or "Full reference validation passed" not in completed.stdout:
+            raise ValueError(f"Full nonuniform product check failed for {(rows, inner, cols)}: "
+                             f"{completed.stdout}\n{completed.stderr}")
