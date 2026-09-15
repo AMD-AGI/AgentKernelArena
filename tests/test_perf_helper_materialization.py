@@ -57,6 +57,25 @@ def test_materializes_vllm_adapter_and_sibling_helper(tmp_path):
     assert (scripts / AKA_HELPER_FILE_NAME).read_text() == canonical_aka_helper(ROOT)
 
 
+def test_v2_wrapper_preserves_discovery_of_delegated_generated_timing(tmp_path):
+    import yaml
+
+    task = tmp_path / "tasks" / "arbitrary_suite" / "wrapped"
+    scripts = task / "scripts"
+    scripts.mkdir(parents=True)
+    (task / "config.yaml").write_text(yaml.safe_dump({
+        "schema_version": 2, "candidate": {"language": "triton", "editable": ["kernel.py"]},
+        "evaluation": {"runner": ["python3", "public_actions.py"]}}))
+    (task / "public_actions.py").write_text("from scripts import task_runner\n")
+    runner = scripts / "task_runner.py"
+    runner.write_text(f"{MARK_START}\n{VLLM_HELPER_STUB_BLOCK}{MARK_END}\n")
+    counts, problems = audit_task_benchmark_entrypoints(tmp_path)
+    assert counts == {"vllm_adapter": 1} and not problems
+    materialize_perf_helpers_in_workspace(task)
+    assert "from _aka_benchmark import benchmark_cuda_graph_or_events" in runner.read_text()
+    assert (scripts / AKA_HELPER_FILE_NAME).read_text() == canonical_aka_helper(ROOT)
+
+
 def test_file_loaded_vllm_runner_finds_sibling_helper_from_workspace_root(tmp_path):
     scripts = tmp_path / "scripts"
     scripts.mkdir()

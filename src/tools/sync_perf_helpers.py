@@ -80,11 +80,14 @@ def audit_task_benchmark_entrypoints(root: pathlib.Path) -> tuple[dict[str, int]
             # and any other driver it ships. setup_workspace() already
             # materializes the helper beside whichever file imports it, so the
             # task is on the canonical family wherever that import lives.
-            if any(
-                "_aka_benchmark" in module.read_text(errors="replace")
-                for module in sorted(task.rglob("*.py"))
-            ):
-                family = "canonical_python"
+            for module in sorted(task.rglob("*.py")):
+                text = module.read_text(errors="replace")
+                if any(marker in text for marker in MARK_STARTS):
+                    family = "vllm_adapter"
+                    break
+                if "_aka_benchmark" in text:
+                    family = "canonical_python"
+                    break
 
         if family is None:
             relative = task.relative_to(root)
