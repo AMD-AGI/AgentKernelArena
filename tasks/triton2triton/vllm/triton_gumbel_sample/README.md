@@ -22,3 +22,25 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+The seeded integer sampling contract is checked against a protected CPU
+Philox-4x32-10/Gumbel-max oracle, rather than candidate self-consistency alone.
+It preserves the original two-stage seed/position derivation and float32 uniform
+conversion documented in [Triton random.py](https://github.com/triton-lang/triton/blob/v3.8.0/python/triton/language/random.py).
+The CPU generator is independently tested against
+[Random123 known-answer vectors](https://github.com/DEShawResearch/random123/blob/main/tests/kat_vectors).
+All original temperature-zero argmax, fixed-seed determinism, shape and range
+checks remain. Output is int64 on the input device and token IDs compare exactly.
+
+Unscored controls add 1031-token vocabularies, noncontiguous row strides,
+nonidentity request mappings, mixed zero/nonunit temperatures, both
+`apply_temperature` settings, and 64-bit seed/position high bits. The five
+original cases and seeds (42+i correctness, 0 performance), 10 warmups and
+100 samples remain unchanged. No distribution or tolerance is fitted to the
+candidate.
+
+The actual `TimedRun` return is checked numerically. Replay changes logits,
+request mapping, temperature, seeds and positions in their existing buffers,
+poisons the captured output and replays the same measured call. Inputs remain
+read-only and are restored even on failure. The original allocating wrapper and
+its timing boundary are preserved; the oracle executes outside device timing.

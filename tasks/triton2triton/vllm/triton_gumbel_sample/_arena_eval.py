@@ -54,6 +54,10 @@ def load_harness():
     spec = importlib.util.spec_from_file_location('_task_harness', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    checks_spec = importlib.util.spec_from_file_location('_gumbel_checks', ROOT / '_arena_checks.py')
+    checks = importlib.util.module_from_spec(checks_spec)
+    checks_spec.loader.exec_module(checks)
+    checks.install(module)
     return module
 
 
@@ -70,7 +74,7 @@ def evaluate(role, action):
         if actual != data['input_table']:
             raise ValueError('Harness case table disagrees with protected workload manifest')
         if action == 'validate-task':
-            for dependency in ('torch','triton'):
+            for dependency in ('torch','triton','numpy'):
                 if importlib.util.find_spec(dependency) is None:
                     raise RuntimeError(f'Required runtime dependency unavailable: {dependency}')
             result['metadata']={'candidate_state':state,'input_table_verified':True}

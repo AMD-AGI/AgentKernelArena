@@ -7925,3 +7925,137 @@ def test_rejection_random_actual_fivecase_timed_output_and_restoration(monkeypat
 def test_rejection_random_adapter_installs_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_rejection_random_sample/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_rejection_random_checks'
+
+
+def _gumbel_cpu_harness(monkeypatch):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'gumbel_sample')
+    for name in ('randint','tensor','ones','zeros'):
+        factory=getattr(torch,name)
+        monkeypatch.setattr(torch,name,lambda *a,_factory=factory,**kw:_factory(*a,**{**kw,'device':'cpu'}))
+    return h,checks
+
+
+@pytest.mark.parametrize('counter,key,expected',[
+    ([0,0,0,0],[0,0],[0x6627e8d5,0xe169c58d,0xbc57ac4c,0x9b00dbd8]),
+    ([0xffffffff]*4,[0xffffffff]*2,[0x408f276d,0x41c83b0e,0xa20bc7c6,0x6d5451fd]),
+    ([0x243f6a88,0x85a308d3,0x13198a2e,0x03707344],[0xa4093822,0x299f31d0],
+     [0xd16cfe09,0x94fdcceb,0x5001e420,0x24126ea1])])
+def test_gumbel_philox_matches_independent_random123_published_vectors(monkeypatch,counter,key,expected):
+    # DEShawResearch/random123 tests/kat_vectors, philox4x32 10-round rows.
+    _,checks=_gumbel_cpu_harness(monkeypatch)
+    assert [int(x) for x in checks.philox_words(counter,key)]==expected
+
+
+def _gumbel_scalar_randint(seed,offset):
+    mask=2**32-1;counter=[offset&mask,(offset>>32)&mask,0,0];key=[seed&mask,(seed>>32)&mask]
+    for _ in range(10):
+        lo0,hi0=(counter[0]*0xD2511F53)&mask,(counter[0]*0xD2511F53)>>32
+        lo2,hi2=(counter[2]*0xCD9E8D57)&mask,(counter[2]*0xCD9E8D57)>>32
+        counter=[hi2^counter[1]^key[0],lo2,hi0^counter[3]^key[1],lo0]
+        key=[(key[0]+0x9E3779B9)&mask,(key[1]+0xBB67AE85)&mask]
+    return counter[0]
+
+
+def _gumbel_scalar_reference(args,apply):
+    import math,struct
+    f32=lambda v:struct.unpack('f',struct.pack('f',v))[0]
+    x,mapping,temp,seeds,positions=[v.tolist() for v in args];answer=[]
+    for row,values in enumerate(x):
+        request=mapping[row];t=temp[request];stream=_gumbel_scalar_randint(seeds[request],positions[row]);scores=[]
+        for token,value in enumerate(values):
+            if t:
+                bits=_gumbel_scalar_randint(stream,token);folded=bits if bits<2**31 else (2**32-1)^bits
+                uniform=f32(f32(folded)*f32(4.6566127342e-10))
+                noise=f32(-math.log(-math.log(uniform+1e-20)+1e-20))
+                value=f32(f32(value/t) + noise) if apply else f32(value+noise)
+            scores.append(value)
+        answer.append(max(range(len(scores)),key=lambda i:scores[i]))
+    return torch.tensor(answer,dtype=torch.int64)
+
+
+@pytest.mark.parametrize('apply',[False,True])
+def test_gumbel_reference_two_stage_seeds_high_positions_and_scalar_noise(monkeypatch,apply):
+    _,checks=_gumbel_cpu_harness(monkeypatch)
+    args=(torch.tensor([[0.,1.,-2.,3.,4.,-1.,2.],[2.,0.,-2.,1.,3.,4.,-1.],[-2.,3.,2.,0.,1.,-1.,4.]]),
+          torch.tensor([2,0,1],dtype=torch.int32),torch.tensor([0.,.25,2.]),
+          torch.tensor([123,2**32+17,3*2**32+999]),torch.tensor([2**32+17,3,11]))
+    assert torch.equal(checks.reference(args,apply),_gumbel_scalar_reference(args,apply))
+    checks.check_output(checks.reference(args,apply),_gumbel_scalar_reference(args,apply))
+
+
+@pytest.mark.parametrize('mode',['correct','zero','argmax_only','dtype','shape','ignore_mapping','ignore_seed',
+    'ignore_position','truncate_seed','truncate_position','ignore_apply','always_apply',
+    'mutate_logits','mutate_idx_mapping','mutate_temp','mutate_seed','mutate_pos','omit_vocab_tail'])
+def test_gumbel_original_cases_and_independent_stochastic_optional_checks(monkeypatch,mode):
+    h,checks=_gumbel_cpu_harness(monkeypatch);records=[];calls=[]
+    def candidate(*args):
+        saved=checks.snapshot(args[:5]);records.append((args[:5],saved));calls.append((args[0].shape,args[5]))
+        values=list(checks.snapshot(args[:5]));apply=args[5]
+        if mode=='ignore_mapping':values[1]=torch.arange(len(values[1]),dtype=values[1].dtype)
+        if mode=='ignore_seed':values[3].zero_()
+        if mode=='ignore_position':values[4].zero_()
+        if mode=='truncate_seed':values[3].bitwise_and_(2**32-1)
+        if mode=='truncate_position':values[4].bitwise_and_(2**32-1)
+        if mode=='ignore_apply':apply=False
+        if mode=='always_apply':apply=True
+        result=checks.reference(values,apply)
+        if mode=='zero':result.zero_()
+        if mode=='argmax_only':result=args[0].argmax(-1)
+        if mode=='omit_vocab_tail' and args[0].shape[1]==1031:result=checks.reference((values[0][:,:1024],*values[1:]),apply)
+        if mode.startswith('mutate_'):args[checks.FIELDS.index(mode[len('mutate_'):])].zero_()
+        if mode=='dtype':result=result.int()
+        if mode=='shape':result=result[:,None]
+        return result
+    mod=SimpleNamespace(gumbel_sample=candidate);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
+    if ok:assert calls==[(torch.Size([4,256]),False),(torch.Size([7,1031]),False),(torch.Size([7,1031]),True)]+[(torch.Size(shape),False) for shape in h.TEST_SHAPES for _ in range(3)][1:]
+    for args,saved in records:checks.unchanged(args,saved)
+    assert mod.gumbel_sample is candidate
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay','mutate_timed',
+    'mutate_replay','raise_replay'])
+def test_gumbel_actual_timed_return_and_seed_position_replay(monkeypatch,mode):
+    import inspect
+    h,checks=_gumbel_cpu_harness(monkeypatch)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    candidate=lambda *args:checks.reference(args[:5],args[5]);mod=SimpleNamespace(gumbel_sample=candidate);h.load_module=lambda:mod
+    records=[];options=[];replays=[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        options.append(kwargs);fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        args=tuple(state[k] for k in checks.FIELDS);saved=checks.snapshot(args);records.append((args,saved))
+        assert kwargs==dict(warmup=10,repetition=100)
+        result=measured();cached=result.clone()
+        if mode=='wrong_timed':result[0]=-999
+        if mode=='mutate_timed':args[0].zero_()
+        def replay():
+            replays.append(True);assert torch.all(result==-999)
+            assert all(not torch.equal(a,b) for a,b in zip(args,saved))
+            if mode=='raise_replay':raise RuntimeError('replay failed')
+            if mode=='stale':result.copy_(cached)
+            elif mode!='no_write':result.copy_(measured())
+            if mode=='wrong_replay':result[0]=-999
+            if mode=='mutate_replay':args[0].zero_()
+            return result
+        timed_run._bind(replay,result);return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h);rows=h.run_performance()
+    assert len(rows)==len(options)==5
+    for shape,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('num_reqs','vocab_size'),shape))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for args,saved in records:checks.unchanged(args,saved)
+    assert len(replays)==(0 if mode in ('wrong_timed','mutate_timed') else 5)
+    assert mod.gumbel_sample is candidate
+
+
+def test_gumbel_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_gumbel_sample/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_gumbel_checks'
+
+
+def test_gumbel_validation_requires_cpu_oracle_dependency(monkeypatch):
+    adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_gumbel_sample/_arena_eval.py',monkeypatch)
+    original=adapter.importlib.util.find_spec
+    monkeypatch.setattr(adapter.importlib.util,'find_spec',lambda name,*a,**kw: None if name=='numpy' else (SimpleNamespace() if name in ('torch','triton') else original(name,*a,**kw)))
+    result=adapter.evaluate('task','validate-task')
+    assert result['status']=='FAIL' and 'numpy' in result['reason']
