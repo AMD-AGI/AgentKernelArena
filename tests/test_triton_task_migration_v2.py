@@ -5431,3 +5431,105 @@ def test_block_gemm_finite_control_reaches_exact_poisoned_replay(monkeypatch,sym
     assert replay_seen==[True]
     checks.unchanged(inputs,saved)
     assert getattr(mod,checks.SYMBOL) is _block_gemm_cpu
+
+
+def _scale_swizzle_cpu(data):
+    # Independent scatter by individual source byte coordinates.
+    rows,cols=data.shape;pr=(rows+127)//128*128;pc=(cols+3)//4*4
+    output=torch.zeros(pr*pc,dtype=torch.uint8)
+    for row in range(rows):
+        for col in range(cols):
+            dst=((row//128)*(pc//4)+col//4)*512+(row%32)*16+((row%128)//32)*4+col%4
+            output[dst]=data.view(torch.uint8)[row,col]
+    return output.reshape(pr,pc).view(data.dtype)
+
+
+def _scale_swizzle_cpu_harness(monkeypatch):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'scale_swizzle')
+    randint=torch.randint
+    monkeypatch.setattr(torch,'randint',lambda *a,**kw:randint(*a,**{**kw,'device':'cpu'}))
+    return h,checks
+
+
+def test_scale_swizzle_known_byte_coordinates_and_padding(monkeypatch):
+    h,checks=_scale_swizzle_cpu_harness(monkeypatch)
+    data=torch.zeros((129,5),dtype=torch.uint8)
+    data[0,0]=11;data[32,0]=22;data[1,0]=33;data[0,4]=44;data[128,4]=55
+    expected=torch.zeros(256*8,dtype=torch.uint8)
+    expected[0]=11;expected[4]=22;expected[16]=33;expected[512]=44;expected[1536]=55
+    expected=expected.reshape(256,8)
+    checks.check_output(_scale_swizzle_cpu(data),expected)
+    checks.check_output(checks.reference(h,data),expected)
+    for dtype in [torch.int8,torch.float8_e4m3fnuz]:
+        raw=torch.arange(256,dtype=torch.uint8).repeat(3)[:645].reshape(129,5).view(dtype)
+        checks.check_output(checks.reference(h,raw),_scale_swizzle_cpu(raw))
+    with pytest.raises(AssertionError):checks.check_output(expected.to(torch.int16),expected)
+    bad=expected.clone();bad[-1,-1]=1
+    with pytest.raises(AssertionError):checks.check_output(bad,expected)
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_shape','wrong_dtype','one_wrong_byte','ignore_swizzle',
+                                 'mutate_input','omit_padding','wrong_fp8_bytes'])
+def test_scale_swizzle_original_correctness_and_unscored_byte_layouts(monkeypatch,mode):
+    h,checks=_scale_swizzle_cpu_harness(monkeypatch);calls=[]
+    def public(data):
+        calls.append((tuple(data.shape),data.dtype))
+        if mode=='mutate_input':data.zero_()
+        value=_scale_swizzle_cpu(data)
+        if mode=='wrong_shape':value=value.flatten()
+        if mode=='wrong_dtype':value=value.to(torch.int16)
+        if mode=='one_wrong_byte':value.view(torch.uint8)[0,0]^=1
+        if mode=='ignore_swizzle':value=data.clone()
+        if mode=='omit_padding' and data.shape==(129,5):value.view(torch.uint8)[-1,-1]=1
+        if mode=='wrong_fp8_bytes' and data.dtype==torch.float8_e4m3fnuz:value.view(torch.uint8)[0,0]^=1
+        return value
+    mod=SimpleNamespace(triton_mx_block_rearrange=public);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness()
+    assert ok is (mode=='correct'),reason
+    if mode=='correct':
+        assert [v[0] for v in calls if v[0]!=(129,5)]==h.TEST_SHAPES
+        assert [v[1] for v in calls if v[0]==(129,5)]==[torch.uint8,torch.int8,torch.float8_e4m3fnuz]
+    assert mod.triton_mx_block_rearrange is public
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay',
+                                 'mutate_timed','mutate_replay','zero_input_and_output','raise_replay'])
+def test_scale_swizzle_original_timing_full_byte_poison_replay_and_restore(monkeypatch,mode):
+    import inspect
+    h,checks=_scale_swizzle_cpu_harness(monkeypatch)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(triton_mx_block_rearrange=_scale_swizzle_cpu);h.load_module=lambda:mod
+    inputs,saved,options,replays=[],[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];data=inspect.getclosurevars(fn).nonlocals['data']
+        inputs.append(data);saved.append(data.clone());options.append(kwargs)
+        output=measured();cached=output.clone()
+        if mode=='wrong_timed':output.zero_()
+        if mode=='mutate_timed':data.zero_()
+        if mode=='zero_input_and_output':data.zero_();output.zero_()
+        def replay():
+            replays.append(True)
+            assert torch.equal(data,saved[-1].bitwise_xor(85))
+            expected=_scale_swizzle_cpu(data)
+            assert torch.equal(output,expected.bitwise_xor(255))
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='no_write':output.copy_(cached if mode=='stale' else measured())
+            if mode=='wrong_replay':output[0,0]^=1
+            if mode=='mutate_replay':data.zero_()
+            return output
+        timed_run._bind(replay,output)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h)
+    rows=h.run_performance()
+    assert options==[dict(warmup=10,repetition=100)]*5
+    for shape,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('rows','cols'),shape))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for data,pristine in zip(inputs,saved):checks.unchanged(data,pristine)
+    assert len(replays)==(0 if mode in ['wrong_timed','mutate_timed','zero_input_and_output'] else 5)
+    assert mod.triton_mx_block_rearrange is _scale_swizzle_cpu
+
+
+def test_scale_swizzle_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_scale_swizzle/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_scale_swizzle_checks'

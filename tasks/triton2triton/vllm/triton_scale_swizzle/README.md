@@ -26,3 +26,20 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+## Byte layout and actual timed replay
+
+The protected check compares every byte and the output shape, dtype and device
+against the original layout oracle, calculated from a pristine input copy.
+Inputs must remain read-only. In addition to the five original scored shapes,
+unscored 129-by-5 controls cover zero-padding, signed-byte input and FP8 byte
+encodings. This operation rearranges bytes: NaN encodings are preserved exactly,
+not interpreted as floating-point numbers. Input remains contiguous as required
+by the original wrapper; output has the padded 128-by-4 block shape.
+
+All original seeds, 10 warmups, 100 samples and timing boundaries are retained.
+The public wrapper and its output allocation remain the measured unit. After
+timing, the actual captured output is compared, input bytes are XOR-perturbed,
+and every output byte is poisoned with the complement of its expected value
+before the exact measured graph is replayed and checked. Checks and poisoning
+are outside timing; original input bytes are restored even after an exception.
