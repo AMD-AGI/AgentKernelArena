@@ -27,7 +27,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -146,6 +147,61 @@ def run_compile(verbose=True):
     return True
 
 
+def _checked_mxfp8_output(actual, inp):
+    import torch
+    if not isinstance(actual, (tuple, list)) or len(actual) != 2:
+        raise AssertionError("MXFP8 requires a (codes, scales) output pair")
+    y, scale = actual
+    source = inp[0]
+    if not isinstance(y, torch.Tensor) or not isinstance(scale, torch.Tensor):
+        raise AssertionError("MXFP8 outputs must be tensors")
+    if y.shape != source.shape or scale.shape != (source.shape[0], source.shape[1] // 32):
+        raise AssertionError("MXFP8 output shape mismatch")
+    if y.dtype != torch.float8_e4m3fn or scale.dtype != torch.uint8:
+        raise AssertionError("MXFP8 requires E4M3 FN codes and uint8 E8M0 scales")
+    if y.device != source.device or scale.device != source.device:
+        raise AssertionError("MXFP8 outputs must remain on the input device")
+    if not bool(torch.isfinite(y.float()).all()) or not bool((scale != 255).all()):
+        raise AssertionError("Non-finite MXFP8 codes or reserved E8M0 scale")
+    return actual
+
+
+def _compare_mxfp8_output(actual, expected, inp):
+    _checked_mxfp8_output(actual, inp)
+    _checked_mxfp8_output(expected, inp)
+    if not _compare(actual, expected)[0]:
+        raise AssertionError("Numerical mismatch: MXFP8 code/scale gate")
+
+
+def _quant_replay_validator(inp, oracle):
+    import torch
+    originals = tuple(value.clone() for value in inp)
+    expected = _checked_mxfp8_output(oracle(*inp), inp)
+    require_unchanged(inp, originals)
+
+    def validate(timed):
+        if not timed.bound:
+            raise RuntimeError("Benchmark did not expose measured MXFP8 outputs")
+        require_unchanged(inp, originals)
+        _compare_mxfp8_output(timed.outputs, expected, inp)
+        try:
+            # Change both signs/codes and block scales, after all timing.
+            inp[0].mul_(-2)
+            changed = tuple(value.clone() for value in inp)
+            expected_replay = oracle(*inp)
+            timed.outputs[0].view(torch.uint8).fill_(127)
+            timed.outputs[1].fill_(255)
+            actual = timed.rerun()
+            require_unchanged(inp, changed)
+            _compare_mxfp8_output(actual, expected_replay, inp)
+        finally:
+            for value, original in zip(inp, originals):
+                value.copy_(original)
+        return {"timed_output_correctness":"PASS", "replay_correctness":"PASS",
+                "replay_inputs_perturbed":True, "replay_output_poisoned":True}
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -157,12 +213,16 @@ def run_correctness(verbose=True):
     failures = []
     for shape in SHAPES:
         inp = _make_inputs(shape)
+        originals = tuple(value.clone() for value in inp)
         model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
         with torch.no_grad():
             ref = model(*inp)
             truth = _retry(lambda: _aiter_op(*inp), what="aiter dynamic_mxfp8_quant")
         torch.cuda.synchronize()
 
+        require_unchanged(inp, originals)
+        _checked_mxfp8_output(ref, inp)
+        _checked_mxfp8_output(truth, inp)
         ok, ymax, ypct, smax, spct = _compare(ref, truth)
         if verbose:
             print(
@@ -189,6 +249,8 @@ def run_correctness(verbose=True):
                 kout = None
             if kout is not None:
                 torch.cuda.synchronize()
+                require_unchanged(inp, originals)
+                _checked_mxfp8_output(kout, inp)
                 k_ok, ky, kyp, ks, ksp = _compare(kout, truth)
                 if verbose:
                     print(
@@ -209,10 +271,13 @@ def run_correctness(verbose=True):
     return True
 
 
-def _mean_ms(fn, warmup, iters):
+def _mean_ms(fn, warmup, iters, validate=None):
+    timed = TimedRun() if validate is not None else None
     mean_ms, bench_meta = benchmark_cuda_graph_or_events(
-        fn, warmup=warmup, repetition=iters
+        fn, warmup=warmup, repetition=iters, timed_run=timed
     )
+    if validate is not None:
+        bench_meta.update(validate(timed))
     _mean_ms.benchmark_metadata = bench_meta
     return mean_ms
 
@@ -245,12 +310,14 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
     for idx, shape in enumerate(SHAPES):
         inp = _make_inputs(shape)
         model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
+        ref_validate = _quant_replay_validator(inp, _aiter_op) if not has_kernel else None
+        ker_validate = _quant_replay_validator(inp, _aiter_op) if has_kernel else None
         with torch.no_grad():
             op_ms = _mean_ms(lambda: _aiter_op(*inp), warmup, iters)
-            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters)
+            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters, validate=ref_validate)
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = (
-                _mean_ms(lambda: kmod.flydsl_dynamic_mxfp8_quant(*inp), warmup, iters)
+                _mean_ms(lambda: kmod.flydsl_dynamic_mxfp8_quant(*inp), warmup, iters, validate=ker_validate)
                 if has_kernel
                 else None
             )
@@ -366,12 +433,14 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
     for idx, shape in enumerate(SHAPES):
         inp = _make_inputs(shape)
         model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
+        ref_validate = _quant_replay_validator(inp, _aiter_op) if not has_kernel else None
+        ker_validate = _quant_replay_validator(inp, _aiter_op) if has_kernel else None
         with torch.no_grad():
             op_ms = _mean_ms(lambda: _aiter_op(*inp), warmup, iters)
-            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters)
+            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters, validate=ref_validate)
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = (
-                _mean_ms(lambda: kmod.flydsl_dynamic_mxfp8_quant(*inp), warmup, iters)
+                _mean_ms(lambda: kmod.flydsl_dynamic_mxfp8_quant(*inp), warmup, iters, validate=ker_validate)
                 if has_kernel
                 else None
             )

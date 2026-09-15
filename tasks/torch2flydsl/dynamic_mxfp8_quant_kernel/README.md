@@ -50,3 +50,14 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+All eight original shapes, seed20 and input distribution remain unchanged.
+Both output tensors require their declared shape, device and dtype: E4M3 FN
+codes [M,K] and uint8 E8M0 scales [M,K/32]. Non-finite codes and reserved scale
+255 fail. The original code-byte difference <=1 and exact scale-byte gate
+remain unchanged. Inputs are read-only. The scored Model baseline and candidate
+have their actual measured outputs checked against the independent AITER oracle;
+post-timing replay changes signs and scale magnitude, poisons both outputs and
+restores inputs. Formal graph/Event selection, warmups, samples and timed work
+are unchanged. Candidate-only backend auditing requires real FlyDSL calls and
+rejects replacement AITER/PyTorch operator computation, outside timed windows.

@@ -132,7 +132,7 @@ def test_declaring_flydsl_without_executing_it_is_rejected():
 
 
 CANDIDATE_AUDIT_TASKS = [ROOT / "tasks/torch2flydsl" / name for name in (
-    "batched_gemm_a8w8_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel",
+    "dynamic_mxfp8_quant_kernel", "batched_gemm_a8w8_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel",
     "moe_topk_softplus_kernel", "gelu_and_mul_kernel", "gelu_fast_kernel",
     "gelu_tanh_and_mul_kernel", "swiglu_and_mul_kernel",
 )]
@@ -471,6 +471,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
                 handler.body.pop(0)
         if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel", "moe_topk_softplus_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
+        if name == "dynamic_mxfp8_quant_kernel":
+            fn = _RemoveMxfp8Checks().visit(fn)
         if name == "batched_gemm_a8w8_kernel":
             fn = _RemoveBatchedInt8Checks().visit(fn)
         if name in {"gelu_fast_kernel", "gelu_and_mul_kernel", "gelu_tanh_and_mul_kernel", "swiglu_and_mul_kernel"}:
@@ -2192,4 +2194,106 @@ def test_batched_int8_zero_reference_gate_and_original_work_unchanged():
     for fn in tree.body:
         if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
             normalized=_RemoveBatchedInt8Checks().visit(fn)
+            assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
+
+
+class _RemoveMxfp8Checks(_RemoveActivationReplayChecks):
+    def visit_Expr(self,node):
+        if isinstance(node.value,ast.Call) and getattr(node.value.func,'id',None)=='_checked_mxfp8_output':return None
+        return super().visit_Expr(node)
+
+
+def _mxfp8_check_namespace():
+    task=ROOT/'tasks/torch2flydsl/dynamic_mxfp8_quant_kernel'
+    checks=module(task/'scripts/replay_checks.py')
+    ns={'CODE_TOL':1,'require_unchanged':checks.require_unchanged}
+    _harness_functions(task,{'_compare','_checked_mxfp8_output','_compare_mxfp8_output','_quant_replay_validator'},ns)
+    return ns
+
+
+@pytest.mark.parametrize('bad',['shape','code_dtype','scale_dtype','device','nonfinite','scale','code','count'])
+def test_mxfp8_output_contract_and_original_byte_gate(bad):
+    import torch
+    ns=_mxfp8_check_namespace();inp=(torch.ones((1,64),dtype=torch.bfloat16),)
+    y=torch.full((1,64),2.,dtype=torch.float8_e4m3fn);s=torch.full((1,2),127,dtype=torch.uint8)
+    expected=(y.clone(),s.clone());actual=(y,s)
+    ns['_compare_mxfp8_output'](actual,expected,inp)
+    if bad=='shape':actual=(y.reshape(-1),s)
+    if bad=='code_dtype':actual=(y.view(torch.uint8),s)
+    if bad=='scale_dtype':actual=(y,s.view(torch.int8))
+    if bad=='device':actual=(y.to('meta'),s)
+    if bad=='nonfinite':y.view(torch.uint8)[0,0]=127
+    if bad=='scale':s[0,0]+=1
+    if bad=='code':y.view(torch.uint8)[0,0]+=2
+    if bad=='count':actual=(y,)
+    with pytest.raises(AssertionError):ns['_compare_mxfp8_output'](actual,expected,inp)
+    near=expected[0].clone();near.view(torch.uint8)[0,0]+=1
+    ns['_compare_mxfp8_output']((near,expected[1]),expected,inp)
+
+
+@pytest.mark.parametrize('function,provided',[('run_benchmark',False),('arena_benchmark',False),('run_benchmark',True),('arena_benchmark',True)])
+@pytest.mark.parametrize('behavior',['correct','measured_wrong','replay_wrong','cached','stale_scale','input_modified','shape','dtype','nonfinite'])
+def test_mxfp8_actual_measured_and_tuple_replayed_outputs(function,provided,behavior,monkeypatch,tmp_path):
+    import math
+    import types
+    import torch
+    task=ROOT/'tasks/torch2flydsl/dynamic_mxfp8_quant_kernel';ns=_mxfp8_check_namespace()
+    actual_model=module(task/'model.py').Model()
+    x=torch.arange(1,129,dtype=torch.float32).reshape(2,64).to(torch.bfloat16)/16
+    original=x.clone();phase={'name':'setup'};cached=actual_model(x)
+    monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None);monkeypatch.setattr(torch.cuda,'synchronize',lambda:None)
+    def compute(value,is_model):
+        y,s=actual_model(value)
+        if is_model==provided:
+            if behavior==phase['name']+'_wrong':y.view(torch.uint8).fill_(0)
+            if phase['name']=='replay':
+                if behavior=='cached':y,s=(v.clone() for v in cached)
+                if behavior=='stale_scale':s=cached[1].clone()
+                if behavior=='input_modified':value.add_(1)
+            if phase['name']=='measured':
+                if behavior=='shape':y=y.reshape(-1)
+                if behavior=='dtype':y=y.view(torch.uint8)
+                if behavior=='nonfinite':y.view(torch.uint8).fill_(127)
+        return y,s
+    class Model:
+        def to(self,*a):return self
+        def __call__(self,value):return compute(value,True)
+    mmod=types.SimpleNamespace(Model=Model,get_init_inputs=lambda:[])
+    kmod=types.SimpleNamespace(flydsl_dynamic_mxfp8_quant=lambda value:compute(value,False))
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run=None):
+        calls.append((warmup,repetition,timed_run is not None))
+        phase['name']='measured';out=fn();phase['name']='setup'
+        if timed_run is not None:
+            timed_run.bound=True;timed_run.outputs=out
+            def replay():
+                phase['name']='replay'
+                try:return fn()
+                finally:phase['name']='setup'
+            timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    ns.update(TimedRun=Collector,benchmark_cuda_graph_or_events=benchmark,_aiter_op=actual_model,
+        _KERNEL_DIR=str(tmp_path),KERNEL_FILE='kernel.py',MODEL_FILE='model.py',KERNEL_ENTRY='flydsl_dynamic_mxfp8_quant',
+        _load_module=lambda directory,filename,alias:mmod if filename=='model.py' else None if provided else kmod,
+        _make_inputs=lambda shape:(x,),_retry=lambda fn,**kwargs:fn(),
+        SHAPES=[{'name':'controlled','m':2,'n':64}],math=math,json=json,Path=Path)
+    _harness_functions(task,{function,'_mean_ms'},ns)
+    if behavior=='correct':
+        report=ns[function](verbose=False)
+        if function=='run_benchmark':report=json.loads((tmp_path/'build/performance_report.json').read_text())
+        assert report[0]['timed_output_correctness']==report[0]['replay_correctness']=='PASS'
+        assert calls==[(10,100,False),(10,100,provided)]+([] if provided else [(10,100,True)])
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+    assert torch.equal(x,original)
+
+
+def test_mxfp8_original_compute_cases_gates_and_timed_work_unchanged():
+    task=ROOT/'tasks/torch2flydsl/dynamic_mxfp8_quant_kernel'
+    hashes={'_make_inputs': 'bd724715d203212c52011f3384ae5455007eee6d195a5f3a620e19c9643226b3', '_compare': 'c4ba881e0c4b71948d9b5fcbe2ad7743cd2207ad8def5e61afd8c313f5d58a3d', 'run_correctness': '163a59da1d6e0e44c216f0ef15040750dde1c9b84a24607ec03c352814430f88', 'run_benchmark': 'd05f4e55d364d37b42480de755ff16708a425be476cebda880f252b85aa5f366', 'arena_benchmark': '1cd996e9365de12e133caf89003413a12fad7c9f6226dce5952ae2c8ea69da3e'}
+    tree=ast.parse((task/'test_kernel_harness.py').read_text())
+    for fn in tree.body:
+        if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
+            normalized=_RemoveMxfp8Checks().visit(fn)
             assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
