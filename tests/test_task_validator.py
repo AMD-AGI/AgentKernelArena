@@ -386,6 +386,12 @@ class ValidationLauncherTests(unittest.TestCase):
                 prompt,
                 str(config),
             )
+            if yaml.safe_load(config.read_text()).get("schema_version") == 2:
+                self.assertIn("UNTRUSTED DATA", prompt)
+                self.assertIn("candidate_unimplemented", prompt)
+                self.assertNotIn("stub-candidate policy", prompt)
+                self.assertIn("validation_report.draft.yaml", prompt)
+                continue
             self.assertIn(
                 "complete top-level `@triton.jit`/`@jit` helper nodes",
                 prompt,
@@ -444,10 +450,11 @@ class ValidationLauncherTests(unittest.TestCase):
         self.assertNotIn("torch2hip generation placeholder policy", hip2hip_prompt)
         self.assertNotIn("torch2flydsl starter policy", hip2hip_prompt)
 
-        # The shipped package grades its production baseline as the candidate, so a
-        # correctness failure there is the baseline's and must not fail the task.
-        self.assertIn("operator2flydsl stub-candidate policy", operator2flydsl_prompt)
-        self.assertIn("SKIP/stub_candidate", operator2flydsl_prompt)
+        # Migrated SIKL tasks use the public lifecycle and real captured evidence.
+        # The previous prompt-only family exception must no longer appear.
+        self.assertNotIn("operator2flydsl stub-candidate policy", operator2flydsl_prompt)
+        self.assertNotIn("SKIP/stub_candidate", operator2flydsl_prompt)
+        self.assertIn("candidate_unimplemented", operator2flydsl_prompt)
         self.assertNotIn("operator2flydsl stub-candidate policy", torch2hip_prompt)
         self.assertNotIn("operator2flydsl stub-candidate policy", hip2hip_prompt)
 

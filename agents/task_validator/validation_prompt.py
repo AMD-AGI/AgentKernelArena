@@ -233,10 +233,22 @@ def _trusted_framework_facts(workspace: str, task_type: Any) -> str:
     return yaml.safe_dump(facts, default_flow_style=False, sort_keys=False)
 
 
-def build_validation_prompt(task_config_dir: str, workspace: str, eval_config: dict) -> str:
+def build_validation_prompt(task_config_dir: str, workspace: str, eval_config: dict, *,
+                            trusted_task_evidence=None, validation_request_id=None) -> str:
     task_config_path = Path(task_config_dir)
     task_config, parse_error = _load_task_config(task_config_path)
     task_name = _task_name_from_config_path(task_config_path)
+    if task_config.get("schema_version") == 2 or trusted_task_evidence is not None:
+        from .validation_prompt_v2 import build_v2_validation_prompt
+        if trusted_task_evidence is not None:
+            context = trusted_task_evidence.to_mapping()
+            task_name, task_config = context["task_id"], context["task_config"]
+        return build_v2_validation_prompt(
+            task_id=task_name, task_config=task_config, workspace=workspace,
+            trusted_task_evidence=trusted_task_evidence,
+            validation_request_id=validation_request_id,
+            context_path=eval_config.get("_task_validation_context") or os.environ.get("ARENA_VALIDATION_CONTEXT"),
+        )
     source_files = task_config.get("source_file_path", [])
     target_kernels = task_config.get("target_kernel_functions", [])
     compile_cmds = _safe_command_list(task_config.get("compile_command"))

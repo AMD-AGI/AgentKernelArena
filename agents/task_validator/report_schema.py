@@ -9,6 +9,7 @@ the aggregate status.  This module provides that trust boundary.
 from __future__ import annotations
 
 import hashlib
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -310,6 +311,9 @@ def _review_evidence_warnings(
 
 
 def compute_overall_status(report: Mapping[str, Any]) -> str:
+    from .report_v2 import V2_REPORT_SCHEMA_VERSION, compute_v2_overall_status
+    if report.get("validation_schema_version") == V2_REPORT_SCHEMA_VERSION:
+        return compute_v2_overall_status(report)
     if report.get("framework_status") != "PASS":
         return "FAIL"
     checks = report.get("checks")
@@ -328,8 +332,19 @@ def normalize_report(
     *,
     expected_task_name: str,
     framework_error: str | None = None,
+    trusted_task_evidence=None,
+    validation_request_id: str | None = None,
+    task_schema_version: int | None = None,
 ) -> dict[str, Any]:
-    """Normalize untrusted agent YAML into a complete versioned report."""
+    """Normalize untrusted YAML. Evidence must come from framework memory."""
+    from .report_v2 import V2_REPORT_SCHEMA_VERSION, normalize_v2_report
+    if (trusted_task_evidence is not None or task_schema_version == 2
+            or isinstance(raw_report, dict) and raw_report.get("validation_schema_version") == V2_REPORT_SCHEMA_VERSION):
+        return normalize_v2_report(
+            raw_report, expected_task_name=expected_task_name,
+            trusted_task_evidence=trusted_task_evidence,
+            validation_request_id=validation_request_id, framework_error=framework_error,
+        )
     errors: list[str] = []
     warnings: list[str] = []
     policy_findings: list[str] = []
@@ -498,10 +513,14 @@ def normalize_report(
 
 
 def _atomic_yaml_dump(path: Path, data: Mapping[str, Any]) -> None:
-    temporary = path.with_name(f".{path.name}.tmp")
-    with temporary.open("w") as handle:
-        yaml.safe_dump(dict(data), handle, default_flow_style=False, sort_keys=False)
-    temporary.replace(path)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    # Exclusive creation prevents following a task-created staging symlink.
+    try:
+        with temporary.open("x") as handle:
+            yaml.safe_dump(dict(data), handle, default_flow_style=False, sort_keys=False)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def finalize_report(
@@ -509,25 +528,66 @@ def finalize_report(
     *,
     expected_task_name: str,
     framework_error: str | None = None,
+    trusted_task_evidence=None,
+    validation_request_id: str | None = None,
+    task_schema_version: int | None = None,
 ) -> dict[str, Any]:
-    """Normalize the agent report and atomically mark it framework-complete."""
+    """Finalize a model draft with captured evidence, never re-read its context.
+
+    Legacy callers retain their version-3 path. For v2, pass the immutable
+    pre-launch snapshot (or TaskSession memory mapping) and request ID. Missing
+    evidence is a finalized FAIL, never a fallback to legacy acceptance.
+    """
+    from .report_v2 import DRAFT_FILENAME
+    from .trusted_evidence import snapshot_task_evidence
     workspace_path = Path(workspace)
+    is_v2 = trusted_task_evidence is not None or task_schema_version == 2
+    if not is_v2:
+        try:
+            config = yaml.safe_load((workspace_path / "config.yaml").read_text())
+            is_v2 = isinstance(config, dict) and config.get("schema_version") == 2
+        except (OSError, yaml.YAMLError):
+            pass
+    if is_v2 and trusted_task_evidence is not None:
+        try:
+            trusted_task_evidence = snapshot_task_evidence(
+                trusted_task_evidence, task_id=expected_task_name, workspace=workspace_path,
+            )
+        except (ValueError, TypeError, KeyError) as exc:
+            framework_error = framework_error or f"Invalid trusted task evidence: {exc}"
+            trusted_task_evidence = None
+    if is_v2:
+        validation_request_id = validation_request_id or uuid.uuid4().hex
     report_path = workspace_path / REPORT_FILENAME
     marker_path = workspace_path / COMPLETION_MARKER_FILENAME
+    # A caller may recheck the launcher's report using its own TaskSession
+    # snapshot. Re-finalization must not erase a captured backend failure.
+    if is_v2 and validation_report_is_complete(workspace_path):
+        previous = yaml.safe_load(report_path.read_text())
+        if previous.get("validation_request_id") == validation_request_id:
+            previous_errors = previous.get("framework_errors", [])
+            if isinstance(previous_errors, list):
+                failures = [e for e in previous_errors if isinstance(e, str) and e]
+                if framework_error:
+                    failures.append(framework_error)
+                framework_error = "; ".join(dict.fromkeys(failures)) or None
     marker_path.unlink(missing_ok=True)
 
     raw_report: Any = None
-    if report_path.exists():
+    draft_path = workspace_path / DRAFT_FILENAME if is_v2 else report_path
+    if draft_path.exists():
         try:
-            with report_path.open() as handle:
+            if draft_path.is_symlink() or not draft_path.is_file():
+                raise ValueError("Model draft must be a regular file inside its workspace")
+            with draft_path.open() as handle:
                 raw_report = yaml.safe_load(handle)
         except Exception as exc:  # Malformed agent output is data, not a launcher crash.
             framework_error = framework_error or f"Unable to parse agent report: {exc}"
 
     if raw_report is None and framework_error is None:
-        framework_error = "Validator backend did not produce validation_report.yaml"
+        framework_error = f"Validator backend did not produce {draft_path.name}"
 
-    if isinstance(raw_report, dict):
+    if isinstance(raw_report, dict) and not is_v2:
         # Harness coverage is enforced by framework code outside the task
         # workspace. Replace the agent's guess with the actual effective guard
         # boundary before normalizing the report.
@@ -553,12 +613,17 @@ def finalize_report(
         raw_report,
         expected_task_name=expected_task_name,
         framework_error=framework_error,
+        trusted_task_evidence=trusted_task_evidence,
+        validation_request_id=validation_request_id,
+        task_schema_version=2 if is_v2 else None,
     )
     _atomic_yaml_dump(report_path, report)
     digest = hashlib.sha256(report_path.read_bytes()).hexdigest()
     _atomic_yaml_dump(
         marker_path,
-        {"validation_schema_version": REPORT_SCHEMA_VERSION, "report_sha256": digest},
+        {"validation_schema_version": report["validation_schema_version"], "report_sha256": digest,
+         **({"validation_request_id": report["validation_request_id"],
+             "task_evidence_sha256": report["task_evidence_sha256"]} if is_v2 else {})},
     )
     return report
 
@@ -579,12 +644,26 @@ def validation_report_is_complete(workspace: str | Path) -> bool:
         return False
     if not isinstance(marker, dict) or not isinstance(report, dict):
         return False
-    if marker.get("validation_schema_version") != REPORT_SCHEMA_VERSION:
+    from .report_v2 import V2_REPORT_SCHEMA_VERSION
+    version = report.get("validation_schema_version")
+    if version not in (REPORT_SCHEMA_VERSION, V2_REPORT_SCHEMA_VERSION):
+        return False
+    if marker.get("validation_schema_version") != version:
         return False
     if marker.get("report_sha256") != hashlib.sha256(report_path.read_bytes()).hexdigest():
         return False
-    if report.get("validation_schema_version") != REPORT_SCHEMA_VERSION:
-        return False
+    if version == V2_REPORT_SCHEMA_VERSION:
+        if report.get("task_schema_version") != 2 or report.get("validation_phase") != "task_validation":
+            return False
+        request = report.get("validation_request_id")
+        if not isinstance(request, str) or not request or marker.get("validation_request_id") != request:
+            return False
+        if marker.get("task_evidence_sha256") != report.get("task_evidence_sha256"):
+            return False
+        if report.get("framework_status") == "PASS":
+            digest = report.get("task_evidence_sha256")
+            if not isinstance(digest, str) or len(digest) != 64:
+                return False
     checks = report.get("checks")
     if not isinstance(checks, dict) or set(checks) != set(CHECK_NAMES):
         return False
