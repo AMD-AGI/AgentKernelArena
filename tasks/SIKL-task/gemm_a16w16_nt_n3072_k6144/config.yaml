@@ -18,11 +18,7 @@ baseline:
   kind: provided
   source_files:
   - aiter_source/aiter/tuned_gemm.py
-  correctness_policy: diagnostic
-  diagnostic_reason: The production AITER tuned BF16 dispatch has known finite numerical deviations from
-    the bundled reference for some shapes. Preserve complete failed numerical comparisons as diagnostics
-    while retaining production runtime as the baseline; final candidate and candidate replay must satisfy
-    the original full comparison.
+  correctness_policy: required
 workspace:
   sources:
   - kind: image

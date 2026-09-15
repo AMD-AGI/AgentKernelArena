@@ -19,7 +19,7 @@ SHARED_TEMPLATE_FILES = (
     'kernel.py', 'test_kernel_harness.py', 'scripts/task_inputs.py',
     'scripts/task_initialize.py', 'scripts/task_compare.py', 'scripts/task_reference.py',
     'scripts/task_baseline.py', 'scripts/task_measure.py', 'scripts/task_contract.py',
-    'scripts/evaluate.py', 'scripts/export_solution.py', 'README.md',
+    'scripts/evaluate.py', 'scripts/export_solution.py', 'scripts/task_validation.py', 'README.md',
 )
 # SHA256 from the original PR's bundled callbacks before schema migration.
 # A migration must not quietly change input distributions or acceptance gates.

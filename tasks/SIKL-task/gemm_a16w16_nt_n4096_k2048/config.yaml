@@ -19,10 +19,11 @@ baseline:
   source_files:
   - aiter_source/aiter/tuned_gemm.py
   correctness_policy: diagnostic
-  diagnostic_reason: The production AITER tuned BF16 dispatch has known finite numerical deviations from
-    the bundled reference for some shapes. Preserve complete failed numerical comparisons as diagnostics
-    while retaining production runtime as the baseline; final candidate and candidate replay must satisfy
-    the original full comparison.
+  diagnostic_reason: Historical upstream commit 329bc9861f7199c4df4d6fc0fc0eb16353cfe995 identifies this
+    task among baseline reference-replay failures on MI355X/gfx950 and reports repeat-call disagreements
+    at m_1 and m_8. This is not fresh validation or evidence that every case fails. Record actual per-case
+    PASS/FAIL, source hash, runtime and dispatch; only completed finite numerical mismatches are diagnostic.
+    Candidate checks retain the full original gate.
 workspace:
   sources:
   - kind: image

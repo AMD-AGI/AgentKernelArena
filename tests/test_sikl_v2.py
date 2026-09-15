@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TASKS = sorted((ROOT / 'tasks/SIKL-task').glob('*/config.yaml'))
 REPRESENTATIVES = ['gemm_a16w16_nt_n32_k6144', 'mxfp4_moe_e65_i1024']
 MODULE_NAMES = ['task_contract', 'task_inputs', 'task_compare', 'task_initialize',
-                'task_reference', 'task_baseline', 'task_measure', 'evaluate', 'export_solution']
+                'task_reference', 'task_baseline', 'task_measure', 'task_validation', 'evaluate', 'export_solution']
 
 
 @contextmanager
@@ -183,10 +183,13 @@ def test_all_seven_actions_use_full_identity_and_explicit_role_with_injected_cpu
     """The injected execution backend tests command orchestration, not GPU kernels."""
     pytest.importorskip('torch')
     task = tmp_path / 'task'
-    shutil.copytree(ROOT / 'tasks/SIKL-task' / REPRESENTATIVES[0], task)
+    shutil.copytree(ROOT / 'tasks/SIKL-task/gemm_a16w16_nt_n4096_k2048', task)
     with modules(task, monkeypatch) as contract:
         runner = importlib.import_module('evaluate')
         measure = importlib.import_module('task_measure')
+        controls = importlib.import_module('task_validation')
+        real_controls = controls.run_controls
+        monkeypatch.setattr(controls, 'run_controls', lambda m, **kw: real_controls(m, device='cpu', **kw))
         monkeypatch.setenv('ARENA_EVAL_PHASE', 'task_validation')
         # Model the framework's materialized baseline source.
         path = task / contract.load_config()['baseline']['source_files'][0]
@@ -373,3 +376,161 @@ def arbitrary_builder(**axes):
             result = mod.run(a, w1, w2, 'weights', ids, w1_scale='scale1', w2_scale='scale2')
             assert result.axes == {'num_tokens': 2, 'model_dim': 4, 'inter_dim': 6, 'num_experts': 5, 'topk': 3}
             assert result.inputs == (a, w1, w2, 'weights', ids, 'scale1', 'scale2', 0, False)
+
+
+@pytest.mark.parametrize('name', REPRESENTATIVES)
+def test_independent_controls_execute_real_callbacks_on_cpu(name, monkeypatch):
+    pytest.importorskip('torch')
+    with modules(ROOT / 'tasks/SIKL-task' / name, monkeypatch):
+        measure = importlib.import_module('task_measure')
+        validation = importlib.import_module('task_validation')
+        records = validation.run_controls(measure, device='cpu')
+        assert all(r['status'] == 'PASS' and r['device'] == 'cpu' for r in records)
+        if name.startswith('gemm'):
+            assert records[0]['evidence']['observed'] == [[1, 3, 0, 4], [3, 0, -1, -4]]
+        else:
+            routed = next(r['evidence'] for r in records if r['name'] == 'moe_quantized_routing')
+            assert routed['observed_row_min'] == routed['observed_row_max'] == [3., 40.]
+            assert routed['unselected_expert'] == 2
+        assert set(records[-1]['evidence']['rejected_controls']) == {
+            'outside_numerical_gate', 'wrong_sign', 'wrong_shape', 'wrong_dtype', 'nonfinite_output'}
+        json.dumps(records, allow_nan=False)
+
+
+@pytest.mark.parametrize('name', REPRESENTATIVES)
+@pytest.mark.parametrize('fault', ['zero_output', 'wrong_sign'])
+def test_known_answers_reject_corrupted_reference(name, fault, monkeypatch):
+    torch = pytest.importorskip('torch')
+    with modules(ROOT / 'tasks/SIKL-task' / name, monkeypatch):
+        measure = importlib.import_module('task_measure')
+        validation = importlib.import_module('task_validation')
+        original = measure.task_reference.run
+        def broken(**kw):
+            value = original(**kw)
+            return torch.zeros_like(value) if fault == 'zero_output' else -value
+        monkeypatch.setattr(measure.task_reference, 'run', broken)
+        # A no-op comparator cannot hide a wrong reference: the known-answer
+        # assertion is independent of that comparator.
+        monkeypatch.setattr(measure.task_compare, 'run', lambda *a, **kw: None)
+        records = []
+        with pytest.raises(RuntimeError):
+            validation.run_controls(measure, device='cpu', records=records)
+        assert records[-1]['status'] == 'FAIL'
+        assert records[-1]['name'] in ('gemm_integer_matrix', 'moe_quantized_routing')
+
+
+@pytest.mark.parametrize('fault', ['decoder', 'weight_layout', 'gate_split', 'activation_quantization', 'routing_weights'])
+def test_moe_controls_detect_specific_reference_faults(fault, monkeypatch):
+    torch = pytest.importorskip('torch')
+    with modules(ROOT / 'tasks/SIKL-task' / REPRESENTATIVES[1], monkeypatch):
+        measure = importlib.import_module('task_measure')
+        validation = importlib.import_module('task_validation')
+        reference = measure.task_reference
+        if fault == 'decoder':
+            decode = reference._mxfp4_to_f32
+            monkeypatch.setattr(reference, '_mxfp4_to_f32', lambda x: -decode(x))
+        elif fault == 'weight_layout':
+            monkeypatch.setattr(reference, '_unshuffle_weight', lambda x, **kw: x)
+        elif fault == 'gate_split':
+            monkeypatch.setattr(reference, '_apply_gated_activation', lambda x, activation: x.chunk(2, dim=-1)[1])
+        elif fault == 'activation_quantization':
+            monkeypatch.setattr(reference, '_quantize_activation', lambda x, **kw: x.float())
+        else:
+            original = reference.run
+            monkeypatch.setattr(reference, 'run', lambda **kw: original(**{**kw, 'topk_weights': torch.ones_like(kw['topk_weights'])}))
+        records = []
+        with pytest.raises(RuntimeError):
+            validation.run_controls(measure, device='cpu', records=records)
+        assert records[-1]['status'] == 'FAIL'
+
+
+@pytest.mark.parametrize('name', REPRESENTATIVES)
+@pytest.mark.parametrize('fault', ['always_accept', 'always_reject', 'exact_only'])
+def test_controls_detect_broken_comparator_in_both_directions(name, fault, monkeypatch):
+    torch = pytest.importorskip('torch')
+    with modules(ROOT / 'tasks/SIKL-task' / name, monkeypatch):
+        measure = importlib.import_module('task_measure')
+        validation = importlib.import_module('task_validation')
+        def broken(actual, expected):
+            if fault == 'always_reject':
+                raise AssertionError('reject everything')
+            if fault == 'exact_only':
+                assert torch.equal(actual, expected)
+        monkeypatch.setattr(measure.task_compare, 'run', broken)
+        records = []
+        with pytest.raises(RuntimeError):
+            validation.run_controls(measure, device='cpu', records=records)
+        assert records[-1]['name'] == 'comparator_positive_and_negative'
+        assert records[-1]['status'] == 'FAIL'
+
+
+@pytest.mark.parametrize('broken', [False, True])
+def test_runner_controls_are_mandatory_and_preserve_real_manifest(tmp_path, monkeypatch, broken):
+    pytest.importorskip('torch')
+    task = tmp_path / 'task'
+    shutil.copytree(ROOT / 'tasks/SIKL-task' / REPRESENTATIVES[1], task)
+    with modules(task, monkeypatch) as contract:
+        runner = importlib.import_module('evaluate')
+        measure = importlib.import_module('task_measure')
+        validation = importlib.import_module('task_validation')
+        monkeypatch.setenv('ARENA_EVAL_PHASE', 'task_validation')
+        source = task / contract.load_config()['baseline']['source_files'][0]
+        source.parent.mkdir(parents=True)
+        source.write_text('# fake materialization, for orchestration unit test only')
+        monkeypatch.setattr(runner, 'require_runtime', lambda w: None)
+        monkeypatch.setattr(runner, 'runtime_evidence', lambda w: {'backend': 'injected CPU unit test'})
+        original = validation.run_controls
+        monkeypatch.setattr(validation, 'run_controls', lambda m, **kw: original(m, device='cpu', **kw))
+        calls = []
+        def recorded_case(case, measure):
+            calls.append(case['case_id'])
+            return {'status': 'PASS'}
+        monkeypatch.setattr(runner, 'validate_case', recorded_case)
+        if broken:
+            monkeypatch.setattr(measure.task_compare, 'run', lambda *a, **kw: None)
+        result = parse_report(runner.run('task', 'validate-task'))
+        assert [r['test_case_id'] for r in result.cases] == list(measure.task_inputs.CASE_IDS)
+        assert len(result.cases) == 13
+        assert all(r['checks'] == ['correctness', 'performance'] for r in result.cases)
+        assert result.metadata['candidate_state'] == 'unimplemented'
+        controls = result.metadata['validation_controls']
+        if broken:
+            assert not result.passed
+            assert controls[-1]['status'] == 'FAIL'
+            assert all(r['status'] == 'FAIL' for r in result.cases)
+        else:
+            assert result.passed
+            assert all(r['status'] == 'PASS' for r in controls)
+            assert calls == list(measure.task_inputs.CASE_IDS)
+            assert len(CaseManifest.from_result(result).cases) == 13
+
+
+def test_diagnostic_policy_only_names_task_with_specific_historical_evidence():
+    diagnostic = []
+    for path in TASKS:
+        spec = load_task_spec(path, task_id=str(path.parent.relative_to(ROOT / 'tasks')))
+        if spec.baseline.correctness_policy == 'diagnostic':
+            diagnostic.append(path.parent.name)
+            assert '329bc9861f7199c4df4d6fc0fc0eb16353cfe995' in spec.baseline.diagnostic_reason
+        else:
+            assert spec.baseline.diagnostic_reason is None
+    assert diagnostic == ['gemm_a16w16_nt_n4096_k2048']
+
+
+def test_diagnostic_task_still_reports_actual_pass(monkeypatch):
+    torch = pytest.importorskip('torch')
+    task = ROOT / 'tasks/SIKL-task/gemm_a16w16_nt_n4096_k2048'
+    with modules(task, monkeypatch) as contract:
+        measure = importlib.import_module('task_measure')
+        runner = importlib.import_module('evaluate')
+        pair = torch.tensor([[1., 2.]], dtype=torch.bfloat16)
+        verdict = measure.compare_output(pair.clone(), pair)
+        assert verdict['status'] == 'PASS'
+        rows = []
+        for row in manifest(contract).cases:
+            rows.append({**{k:v for k,v in row.items() if k != 'checks'}, **verdict})
+        result = parse_report(runner.report_for('baseline', 'correctness', rows, {}))
+        assert result.passed
+        assert result.failure_kind is None
+        spec = load_task_spec(task / 'config.yaml', task_id='SIKL-task/' + task.name)
+        assert baseline_correctness_accepted(result, baseline=spec.baseline, phase='task_validation', manifest=manifest(contract))

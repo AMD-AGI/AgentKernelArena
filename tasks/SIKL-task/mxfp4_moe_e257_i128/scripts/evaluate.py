@@ -124,10 +124,22 @@ def compile_case(case, *, role, launch, measure):
 def validate_case(case, measure):
     inputs = measure.task_inputs.build_case_inputs(case)
     expected = measure.task_reference.run(**measure.task_inputs.call_kwargs(inputs))
-    # Validates reference finiteness and its numerical comparator independently
-    # of any candidate or the production baseline's accumulation errors.
-    measure.task_compare.run(expected, expected)
-    return {"status": "PASS"}
+    # Real workload cases still execute their reference and validate its output
+    # contract. Independent known answers and comparator controls run separately;
+    # comparing the reference to itself would not establish their validity.
+    import torch
+    if measure.task_inputs.WORKLOAD["op_type"] == "gemm":
+        shape = (int(case["m"]), measure.task_inputs.N)
+    else:
+        shape = (int(case["num_tokens"]), measure.task_inputs.MODEL_DIM)
+    input_device = next(value.device for value in inputs.values() if isinstance(value, torch.Tensor))
+    if (not isinstance(expected, torch.Tensor) or expected.layout != torch.strided
+            or expected.shape != shape or expected.dtype != torch.bfloat16
+            or expected.device != input_device or expected.device.type != "cuda"):
+        raise RuntimeError(f"Reference output violates declared shape/dtype/device: {shape}, BF16, CUDA")
+    if not torch.isfinite(expected).all().item():
+        raise RuntimeError("Reference contains nonfinite output")
+    return {"status": "PASS", "metadata": {"reference_output_contract_checked": True}}
 
 
 def report_for(role, action, cases, metadata):
@@ -159,6 +171,10 @@ def run(role, action):
         require_runtime(workload)
         metadata.update(runtime_evidence(workload))
         import task_measure as measure
+        if action == "validate-task":
+            import task_validation
+            metadata["validation_controls"] = []
+            task_validation.run_controls(measure, records=metadata["validation_controls"])
         for row, case in zip(rows, workload["cases"]):
             try:
                 launch = measure.build_launch(builder, case) if role == "candidate" else None
