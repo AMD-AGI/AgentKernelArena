@@ -6343,3 +6343,100 @@ def test_recompute_actual_original_timing_checks_both_outputs_and_restores_all_f
 def test_recompute_adapter_installs_checks(monkeypatch,family):
     h=module_at(ROOT/f'tasks/triton2triton/vllm/triton_{family}_recompute_wu/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_recompute_checks'
+
+
+def _token_logprob_cpu(logits,token_ids):
+    values=logits.double()-torch.logsumexp(logits.double(),dim=-1,keepdim=True)
+    return values.gather(1,token_ids.long()).float()
+
+
+def _token_logprob_cpu_harness(monkeypatch):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'topk_log_softmax')
+    factory=torch.randint
+    monkeypatch.setattr(torch,'randint',lambda *a,**kw:factory(*a,**{**kw,'device':'cpu'}))
+    return h,checks
+
+
+def test_token_logprob_independent_known_probabilities_extremes_and_original_gate(monkeypatch):
+    import math
+    h,checks=_token_logprob_cpu_harness(monkeypatch)
+    logits=torch.tensor([[0.,math.log(2),math.log(3)],[1000.,-1000.,0.]])
+    ids=torch.tensor([[2,0,2,1],[0,2,0,1]])
+    expected=torch.tensor([[math.log(.5),math.log(1/6),math.log(.5),math.log(1/3)],[0.,-1000.,0.,-2000.]])
+    for value in (checks.reference((logits,ids)),_token_logprob_cpu(logits,ids)):
+        torch.testing.assert_close(value,expected,atol=1e-6,rtol=1e-6)
+    checks.check_output(torch.tensor([.009]),torch.tensor([0.]))
+    with pytest.raises(AssertionError):checks.check_output(torch.tensor([.011]),torch.tensor([0.]))
+
+
+@pytest.mark.parametrize('mode',['correct','dtype','shape','device','nonfinite','zero','mutate_logits',
+    'mutate_ids','wrong_ids','ignore_tail_norm','naive_exp','omit_last_output'])
+def test_token_logprob_actual_fivecase_correctness_tail_and_pristine_inputs(monkeypatch,mode):
+    h,checks=_token_logprob_cpu_harness(monkeypatch);calls=[];saved_inputs=[]
+    def public(logits,token_ids):
+        inputs=(logits,token_ids);saved_inputs.append((inputs,checks.snapshots(inputs)))
+        calls.append((tuple(logits.shape),tuple(token_ids.shape)))
+        if mode=='mutate_logits':logits.zero_()
+        if mode=='mutate_ids':token_ids.zero_()
+        result=_token_logprob_cpu(logits,token_ids)
+        if mode=='wrong_ids':result=_token_logprob_cpu(logits,(token_ids+1)%logits.shape[1])
+        if mode=='ignore_tail_norm' and logits.shape[1]==1031:
+            result=(logits.double()-torch.logsumexp(logits[:,:1024].double(),dim=-1,keepdim=True)).gather(1,token_ids).float()
+        if mode=='naive_exp':result=(logits-logits.exp().sum(-1,keepdim=True).log()).gather(1,token_ids)
+        if mode=='omit_last_output':result[:,-1]=0
+        if mode=='dtype':result=result.double()
+        if mode=='shape':result=result.flatten()
+        if mode=='device':result=result.to('meta')
+        if mode=='nonfinite':result.fill_(float('nan'))
+        if mode=='zero':result.zero_()
+        return result
+    mod=SimpleNamespace(compute_token_logprobs=public);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
+    if mode=='correct':
+        assert [c for c in calls if c[0][1]!=1031]==[((b,v),(b,k)) for b,v,k in h.TEST_SHAPES]
+        assert calls.count(((3,1031),(3,7)))==1
+    for inputs,saved in saved_inputs:checks.unchanged(inputs,saved)
+    assert mod.compute_token_logprobs is public
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay',
+    'mutate_timed_logits','mutate_timed_ids','mutate_replay_logits','mutate_replay_ids','zero_inputs_and_output','raise_replay'])
+def test_token_logprob_actual_timing_perturbs_ids_and_logits_and_restores_inputs(monkeypatch,mode):
+    import inspect
+    h,checks=_token_logprob_cpu_harness(monkeypatch)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(compute_token_logprobs=_token_logprob_cpu);h.load_module=lambda:mod
+    all_inputs,all_saved,options,replays=[],[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        inputs=(state['logits'],state['token_ids']);saved=checks.snapshots(inputs)
+        all_inputs.append(inputs);all_saved.append(saved);options.append(kwargs)
+        output=measured();cache=output.clone()
+        if mode=='wrong_timed':output.zero_()
+        if mode.startswith('mutate_timed_'):inputs[1 if mode.endswith('ids') else 0].zero_()
+        if mode=='zero_inputs_and_output':
+            for value in (*inputs,output):value.zero_()
+        def replay():
+            replays.append(True)
+            assert torch.equal(inputs[0],saved[0]*-.75)
+            assert torch.equal(inputs[1],(saved[1]+17)%inputs[0].shape[1]) and torch.isnan(output).all()
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='no_write':output.copy_(cache if mode=='stale' else measured())
+            if mode=='wrong_replay':output.zero_()
+            if mode.startswith('mutate_replay_'):inputs[1 if mode.endswith('ids') else 0].zero_()
+            return output
+        timed_run._bind(replay,output)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h);rows=h.run_performance()
+    assert options==[dict(warmup=10,repetition=100)]*5
+    for cfg,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('batch','vocab','num_tokens'),cfg))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for inputs,saved in zip(all_inputs,all_saved):checks.unchanged(inputs,saved)
+    assert len(replays)==(0 if mode=='wrong_timed' or mode.startswith('mutate_timed_') or mode=='zero_inputs_and_output' else 5)
+    assert mod.compute_token_logprobs is _token_logprob_cpu
+
+
+def test_token_logprob_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_topk_log_softmax/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_token_logprob_checks'

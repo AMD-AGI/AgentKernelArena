@@ -22,3 +22,16 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+The public output is an FP32 tensor shaped like `token_ids`; logits and token
+IDs are read-only. Protected checks use pristine inputs, require full metadata
+and finite values, and retain the original log-softmax/gather reference and
+atol=rtol=1e-2. An unscored 1031-token vocabulary control exercises the second
+partial block, duplicated and boundary token IDs, seven selected tokens, and
+large positive/negative logits. The original five scored cases, seeds, ten
+warmups, and 100 timing samples remain unchanged.
+
+Both the original timed output and its exact `TimedRun` replay are numerically
+checked. Replay uses changed logits and token IDs and poisons the captured
+output outside timing. Both caller input buffers are restored in `finally`,
+including on replay failure.
