@@ -971,6 +971,7 @@ def test_aiter_image_sources_use_qualified_repository_layout():
 @pytest.mark.parametrize("name", ["mi355x_sglang_triton_mxfp8_linear", "mi355x_sglang_triton_mxfp8_grouped_gemm"])
 def test_mxfp8_pinned_git_staging_preserves_candidate_on_reentry(name, tmp_path):
     directory = TASKS / name
+    shutil.copyfile(directory / "config.yaml", tmp_path / "config.yaml")
     spec = load_task_spec(directory / "config.yaml", task_id="image_kernel/" + name)
     source = spec.to_mapping()["workspace"]["sources"][0]
     assert source == {"kind": "git", "url": "https://github.com/sgl-project/sglang.git",
@@ -987,7 +988,7 @@ def test_mxfp8_pinned_git_staging_preserves_candidate_on_reentry(name, tmp_path)
     style = tmp_path / "upstream/sglang/sgl-kernel/.clang-format"
     style.parent.mkdir()
     style.write_text("BasedOnStyle: LLVM\n")
-    (package / ".clang-format").symlink_to(style)
+    (package / ".clang-format").symlink_to("../../sgl-kernel/.clang-format")
     stage = load_module(directory / "scripts/materialize_source.py")
     stage.materialize(tmp_path)
     candidate = tmp_path / target
@@ -995,15 +996,24 @@ def test_mxfp8_pinned_git_staging_preserves_candidate_on_reentry(name, tmp_path)
     staged_style = tmp_path / "sglang/.clang-format"
     assert not staged_style.is_symlink() and staged_style.read_bytes() == style.read_bytes()
     candidate.write_text("def compute(): return 4\n")
-    with pytest.raises(FileExistsError, match="existing candidate"):
-        stage.materialize(tmp_path)
+    before = {str(p): p.read_bytes() for p in (tmp_path / "sglang").rglob("*") if p.is_file()}
+    stage.materialize(tmp_path)
+    after = {str(p): p.read_bytes() for p in (tmp_path / "sglang").rglob("*") if p.is_file()}
+    assert after == before
     assert candidate.read_text() == "def compute(): return 4\n"
     assert upstream.read_text() == "def compute(): return 3\n"
+    # A receipt contains no checkout-local absolute paths or inode identities:
+    # a separately copied baseline can safely repeat its own setup as well.
+    copied = tmp_path.with_name(tmp_path.name + "-copied")
+    shutil.copytree(tmp_path, copied, symlinks=True)
+    stage.materialize(copied)
+    assert (copied / target).read_bytes() == candidate.read_bytes()
 
 
 @pytest.mark.parametrize("name", ["mi355x_sglang_triton_mxfp8_linear", "mi355x_sglang_triton_mxfp8_grouped_gemm"])
 def test_mxfp8_staging_rejects_external_package_symlink(name, tmp_path):
     directory = TASKS / name
+    shutil.copyfile(directory / "config.yaml", tmp_path / "config.yaml")
     package = tmp_path / "upstream/sglang/python/sglang"
     package.mkdir(parents=True)
     (package / "__init__.py").write_text("# package\n")
@@ -1014,3 +1024,39 @@ def test_mxfp8_staging_rejects_external_package_symlink(name, tmp_path):
     with pytest.raises(ValueError, match="external source symlink"):
         stage.materialize(tmp_path)
     assert not (tmp_path / "sglang").exists()
+
+
+@pytest.mark.parametrize("name", ["mi355x_sglang_triton_mxfp8_linear", "mi355x_sglang_triton_mxfp8_grouped_gemm"])
+@pytest.mark.parametrize("collision", ["unknown", "invalid_receipt", "changed_source", "changed_revision", "symlink", "upstream_escape"])
+def test_mxfp8_staging_rejects_unknown_or_changed_source_on_repeat(name, collision, tmp_path):
+    directory = TASKS / name
+    config_path = tmp_path / "config.yaml"
+    shutil.copyfile(directory / "config.yaml", config_path)
+    package = tmp_path / "upstream/sglang/python/sglang"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("# pinned package\n")
+    stage = load_module(directory / "scripts/materialize_source.py")
+    destination = tmp_path / "sglang"
+    if collision == "unknown":
+        destination.mkdir()
+        (destination / "__init__.py").write_text("# unrelated existing package\n")
+    elif collision == "symlink":
+        destination.symlink_to(package, target_is_directory=True)
+    else:
+        stage.materialize(tmp_path)
+        if collision == "invalid_receipt":
+            (destination / stage.RECEIPT).write_text("not-json")
+        elif collision == "changed_source":
+            (package / "__init__.py").write_text("# different upstream bytes\n")
+        elif collision == "changed_revision":
+            cfg = yaml.safe_load(config_path.read_text())
+            cfg["workspace"]["sources"][0]["revision"] = "f" * 40
+            config_path.write_text(yaml.safe_dump(cfg))
+        elif collision == "upstream_escape":
+            external = tmp_path / "outside.py"
+            external.write_text("# external\n")
+            (package / "escape.py").symlink_to(external)
+    before = (destination / "__init__.py").read_bytes()
+    with pytest.raises((FileExistsError, ValueError)):
+        stage.materialize(tmp_path)
+    assert (destination / "__init__.py").read_bytes() == before

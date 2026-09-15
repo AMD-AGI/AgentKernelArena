@@ -67,7 +67,11 @@ must be checked against the selected immutable image, not inferred from a tag.
 `3ea875fef48f6f01fa3bddd9e2197ad190cef29d` from the declared upstream Git
 repository. Setup copies its `python/sglang` package into the existing `sglang/`
 candidate layout before the framework freezes the baseline. It performs no
-additional download and refuses to overwrite an existing candidate. Both MXFP8
+additional download. A completed `.arena-source-staging.json` receipt binds
+the staged package to its declared Git source and package bytes. Repeating setup
+with that matching receipt leaves all candidate edits unchanged. Missing or
+invalid receipts, changed upstream inputs and symlink escapes are errors; setup
+never overwrites an existing candidate. Both MXFP8
 implementation files at this commit are byte-identical to the files inventoried
 in the previously qualified source image; their image and source SHA-256 evidence
 is recorded in the suite README.

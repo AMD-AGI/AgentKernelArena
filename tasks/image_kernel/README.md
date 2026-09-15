@@ -263,8 +263,11 @@ These tasks now explicitly acquire
 [SGLang commit 3ea875fef48f6f01fa3bddd9e2197ad190cef29d](https://github.com/sgl-project/sglang/tree/3ea875fef48f6f01fa3bddd9e2197ad190cef29d)
 through `workspace.sources: kind: git`. Task setup stages its `python/sglang`
 package at the unchanged `sglang/` candidate paths. This supersedes reliance on
-the scoring image containing the two historical modules. Setup never overwrites
-an existing candidate; the upstream copy remains protected.
+the scoring image containing the two historical modules. A completed staging
+receipt identifies the declared source and package content. Harmless repeated
+setup keeps the candidate unchanged; unknown collisions, changed source identity
+and escaping symlinks fail. Setup never overwrites an existing candidate; the
+upstream copy remains protected.
 
 The upstream files match the immutable old-image inventory from job 138977 byte
 for byte (SHA-256):
