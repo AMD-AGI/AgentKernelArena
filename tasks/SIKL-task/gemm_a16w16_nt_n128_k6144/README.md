@@ -243,11 +243,23 @@ Baseline correctness retained its 12 numerical failures; all 13 performance
 cases completed with full timed-replay diagnostic evidence. This validates the
 task's initial state and evaluation pipeline, not an optimized candidate.
 
+Actual Codex optimization job `139585` subsequently accepted all 13 candidate
+cases on the newer image, using Arena snapshot
+`fff3807bfc2910e6f0079f0ddd85a125c709e062`. The report and delivered source hashes
+were independently verified; the report SHA256 is
+`db576fe8649aaefc1ab48e352aaab32de67dde0820bc5d290c19fe04c6a1d93d`.
+The baseline retained its 12 finite numerical failures while candidate
+correctness and actual timed replay passed the full original gate. This supplies
+candidate feasibility evidence for this task and runtime. The reported single
+trial ratio of `1.028981` is not an established stable gain or an equal-accuracy
+comparison, and does not establish feasibility for other diagnostic tasks.
+
 During future runs, correctness still emits the actual per-case PASS/FAIL.
 Baseline timing replays the captured invocation after input refill, checks input
 immutability and output contracts, and records its full numerical comparison.
 Only completed finite numerical mismatches may be diagnostic. Crashes, missing
 cases, compile errors, dependency failures, invalid outputs and stale cached
 answers remain failures. Candidate correctness and replay have no diagnostic
-exception. Fresh full task validation and actual candidate feasibility evidence
-are still required; a runnable production baseline alone establishes neither.
+exception. Material task changes still require fresh full validation and
+candidate feasibility evidence; a runnable production baseline alone establishes
+neither.
