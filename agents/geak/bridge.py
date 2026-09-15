@@ -9,11 +9,13 @@ import hashlib
 import json
 import logging
 import math
+import os
 from pathlib import Path
 import shutil
 import sys
 import time
 import uuid
+from typing import Callable
 
 # This is an agent-side command, not a file installed into task packages.
 if __package__ in (None, ""):
@@ -99,10 +101,76 @@ def digests(files: dict[str, Path]) -> dict[str, str]:
     return {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in files.items()}
 
 
-def copy_task(source: Path, destination: Path) -> None:
+def remaining_budget(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if not math.isfinite(deadline) or remaining <= 0:
+        raise TimeoutError("GEAK shared deadline exhausted")
+    return remaining
+
+
+_COPY_CHUNK_SIZE = 1024 * 1024
+
+
+def copy_file(source: Path, destination: Path, *, remaining: Callable[[], float],
+              overwrite: bool = False) -> None:
+    """Bound even a single large file; check after every read/write and metadata copy."""
+    remaining()
+    with source.open("rb") as reader, destination.open("wb" if overwrite else "xb") as writer:
+        while True:
+            remaining()
+            chunk = reader.read(_COPY_CHUNK_SIZE)
+            remaining()
+            if not chunk:
+                break
+            writer.write(chunk)
+            remaining()
+    remaining()
+    shutil.copystat(source, destination)
+    remaining()
+
+
+def copy_tree(source: Path, destination: Path, *, remaining: Callable[[], float],
+              ignore_names: frozenset[str] = frozenset()) -> None:
+    """Copy into a fresh tree with per-directory, per-file and per-chunk checks.
+
+    Partial private artifacts remain on timeout; callers never continue into
+    git, model calls or delivery. Escaping/cyclic links are not materialized.
+    """
+    remaining()
+    origin = source.resolve(strict=True)
+
+    def copy_directory(directory: Path, target: Path, ancestors: frozenset[Path]) -> None:
+        remaining()
+        resolved = directory.resolve(strict=True)
+        if not resolved.is_relative_to(origin) or resolved in ancestors:
+            raise ValueError("Copy source contains an escaping or cyclic directory link")
+        target.mkdir(parents=True, exist_ok=False)
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                remaining()
+                if entry.name in ignore_names:
+                    continue
+                path = Path(entry.path)
+                if not path.resolve(strict=True).is_relative_to(origin):
+                    raise ValueError("Copy source escapes its source tree")
+                if entry.is_dir():
+                    copy_directory(path, target / entry.name, ancestors | {resolved})
+                elif entry.is_file():
+                    copy_file(path, target / entry.name, remaining=remaining)
+                else:
+                    raise ValueError("Copy source must contain regular files and directories")
+        remaining()
+        shutil.copystat(directory, target)
+        remaining()
+
+    copy_directory(source, destination, frozenset())
+    remaining()
+
+
+def copy_task(source: Path, destination: Path, *, remaining: Callable[[], float]) -> None:
     # Preserve task-relative layouts, including multifile/image materializations.
     # Build outputs are copied too: only VCS and interpreter caches are excluded.
-    shutil.copytree(source, destination, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+    copy_tree(source, destination, remaining=remaining, ignore_names=frozenset({".git", "__pycache__"}))
 
 
 def snapshot_mapping(snapshot: WorkspaceSnapshot) -> dict:
@@ -126,10 +194,7 @@ class Bridge:
         self.logger.propagate = False
 
     def remaining(self) -> float:
-        remaining = self.deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError("GEAK shared deadline exhausted")
-        return remaining
+        return remaining_budget(self.deadline)
 
     def _guard(self, root: Path, key: str = "harness") -> None:
         saved = self.job[key]
@@ -179,8 +244,9 @@ class Bridge:
             replace(item, timeout_s=min(item.timeout_s, self.remaining()))
             if item == selected else item for item in self.spec.actions))
         try:
+            phase = "task_validation" if role == "baseline" else "candidate_evaluation"
             executed = run_action(bounded, root, role=role, action=action,
-                                  phase="candidate_evaluation", manifest=self.context.manifest,
+                                  phase=phase, manifest=self.context.manifest,
                                   logger=self.logger)
         finally:
             self.baseline_unchanged()
@@ -189,7 +255,7 @@ class Bridge:
                 raise ValueError("Public runner changed implementation sources")
         # Keep validated envelopes, never raw subprocess output or environment secrets.
         result = executed.result
-        record = {"invocation_id": executed.invocation_id, "role": role, "action": action,
+        record = {"invocation_id": executed.invocation_id, "role": role, "action": action, "phase": phase,
                   "status": result.status, "cases": [
                       {k: row[k] for k in ("test_case_id", "status", "execution_time_ms", "benchmark_method")
                        if k in row} for row in result.cases],
@@ -210,10 +276,10 @@ class Bridge:
                 raise ValueError("GEAK materialization requires a fresh destination")
             destination.rmdir()
         self.remaining()
-        copy_task(source, destination)
+        copy_task(source, destination, remaining=self.remaining)
         # Engineers and verifiers need an isolated git history to exchange diffs.
         if (source / ".git").is_dir():
-            shutil.copytree(source / ".git", destination / ".git")
+            copy_tree(source / ".git", destination / ".git", remaining=self.remaining)
         self._guard(destination)
         self.remaining()
         return {"status": "COPIED"}

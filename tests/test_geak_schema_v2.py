@@ -14,7 +14,8 @@ import time
 import pytest
 import yaml
 
-from agents.geak.bridge import Bridge, TaskContext, candidate_files, digests, write_json
+from agents.geak.bridge import (Bridge, TaskContext, candidate_files, copy_task,
+                                copy_tree, digests, remaining_budget, write_json)
 from agents.geak.compatibility import adapt_lane, prepare_engine, verify_upstream
 from agents.geak.launch_agent import prepare_job
 from src.task_session import TaskSession
@@ -27,6 +28,11 @@ from pathlib import Path
 import yaml
 config = yaml.safe_load(Path("config.yaml").read_text())
 role, action = ("task", "validate-task") if len(sys.argv) == 2 else sys.argv[1:]
+if Path("probe.json").exists():
+    phase_probe = json.loads(Path("probe.json").read_text())
+    if role == "baseline" and phase_probe.get("baseline_initial_phase_only"):
+        if os.environ.get("ARENA_EVAL_PHASE") != "task_validation":
+            raise RuntimeError("Baseline rejects the final candidate language phase")
 state = config["candidate"]["initial_state"]
 rows = [{"test_case_id": name, "shape": [n], "dtype": "int64", "params": {"seed": 7},
          "status": "PASS"} for name, n in (("small", 2), ("wide", 5))]
@@ -209,6 +215,84 @@ def test_frozen_baseline_cannot_be_replaced(task_factory):
         bridge.action("baseline", "performance")
 
 
+def test_baseline_keeps_initial_language_phase_and_candidate_uses_final_phase(task_factory):
+    bridge = task_factory("flydsl", baseline="initial_candidate", initial_language="triton",
+                          probe={"baseline_initial_phase_only": True})
+    # The phase-sensitive fixture must also pass prepare_job's baseline actions.
+    bridge.action("baseline", "compile")
+    bridge.action("baseline", "performance")
+    bridge.check(bridge.eval_dir / "workspace", performance=True)
+    records = [json.loads(path.read_text()) for path in (bridge.root / "checks").glob("*.json")]
+    assert {record["phase"] for record in records if record["role"] == "baseline"} == {"task_validation"}
+    assert {record["phase"] for record in records if record["role"] == "candidate"} == {"candidate_evaluation"}
+
+
+def test_copy_deadline_interrupts_one_large_file(tmp_path, monkeypatch):
+    from agents.geak import bridge as module
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "large.bin").write_bytes(b"x" * 100)
+    monkeypatch.setattr(module, "_COPY_CHUNK_SIZE", 4)
+    destination = tmp_path / "destination"
+    ticks = 0
+    def remaining():
+        nonlocal ticks
+        ticks += 1
+        # Allow setup and a few chunk writes, then exhaust this one budget.
+        if ticks >= 15:
+            raise TimeoutError("copy deadline")
+        return 1
+    with pytest.raises(TimeoutError, match="copy deadline"):
+        copy_task(source, destination, remaining=remaining)
+    assert 0 < (destination / "large.bin").stat().st_size < 100
+    assert (source / "large.bin").stat().st_size == 100
+
+
+def test_copy_checks_deadline_after_last_metadata_operation(tmp_path, monkeypatch):
+    from agents.geak import bridge as module
+
+    source = tmp_path / "source"
+    source.mkdir()
+    destination = tmp_path / "destination"
+    now = [10.0]
+    monkeypatch.setattr(module.time, "monotonic", lambda: now[0])
+    original = module.shutil.copystat
+    def expired_metadata(src, dst):
+        original(src, dst)
+        now[0] = 12.0
+    monkeypatch.setattr(module.shutil, "copystat", expired_metadata)
+    with pytest.raises(TimeoutError):
+        copy_tree(source, destination, remaining=lambda: remaining_budget(11.0))
+
+
+def test_expired_preparation_does_not_create_run_directory(task_factory, tmp_path):
+    bridge = task_factory()
+    destination = tmp_path / "never-created"
+    with pytest.raises(TimeoutError):
+        prepare_job(bridge.context, destination, bridge.job["options"],
+                    deadline=time.monotonic() - 1, deadline_epoch=time.time() - 1)
+    assert not destination.exists()
+
+
+def test_prepare_job_copy_timeout_stops_before_git_and_actions(task_factory, monkeypatch, tmp_path):
+    bridge = task_factory()
+    launcher = importlib.import_module("agents.geak.launch_agent")
+    original_copy = launcher.copy_task
+    destinations = []
+    def expire_after_copy(source, destination, *, remaining):
+        original_copy(source, destination, remaining=remaining)
+        destinations.append(destination)
+        raise TimeoutError("copy exhausted preparation budget")
+    monkeypatch.setattr(launcher, "copy_task", expire_after_copy)
+    monkeypatch.setattr(launcher, "_run_process", lambda *a, **kw: pytest.fail("git launched after failed copy"))
+    with pytest.raises(TimeoutError):
+        prepare_job(bridge.context, tmp_path / "partial-copy", bridge.job["options"],
+                    deadline=time.monotonic() + 10, deadline_epoch=time.time() + 10)
+    assert len(destinations) == 1
+    assert destinations[0].name == "original"
+
+
 def test_tree_helpers_delivered_and_obsolete_editable_files_removed(task_factory):
     bridge = task_factory(tree=True)
     root = bridge.eval_dir / "workspace"
@@ -276,7 +360,11 @@ def test_hard_deadline_kills_detached_runner_children(task_factory, tmp_path):
     child_pid = int(pid_path.read_text())
     for _ in range(20):
         state = Path(f"/proc/{child_pid}/stat")
-        if not state.exists() or state.read_text().rsplit(")", 1)[1].split()[0] == "Z":
+        try:
+            exited = state.read_text().rsplit(")", 1)[1].split()[0] == "Z"
+        except (FileNotFoundError, ProcessLookupError):
+            exited = True
+        if exited:
             break
         time.sleep(0.02)
     else:
@@ -325,7 +413,7 @@ def test_launcher_retains_delivery_but_reports_engine_failure(task_factory, monk
     monkeypatch.setenv("ARENA_TASK_CONTEXT", str(bridge.root / "context.json"))
     monkeypatch.setenv("GEAK_HOME", str(bridge.root))
     monkeypatch.setenv("GEAK_CLAUDE_BIN", "unused")
-    monkeypatch.setattr("agents.geak.compatibility.verify_upstream", lambda _: None)
+    monkeypatch.setattr("agents.geak.compatibility.verify_upstream", lambda *a, **kw: None)
     monkeypatch.setattr(launcher, "prepare_engine", lambda *a, **kw: {})
     def failed_engine(new_bridge, python):
         (new_bridge.eval_dir / "workspace/source/nested/implementation.py").write_text("value = 5\n")
@@ -410,6 +498,25 @@ def test_pinned_upstream_preparation(task_factory, upstream, language, state):
     assert args["kb_remote"] == "off"
     # Verify preparation never mutates the engine being shared with other runs.
     verify_upstream(upstream)
+
+
+@pytest.mark.parametrize("expire_at", ["kernel_workflow", "perf_knowledge"])
+def test_engine_and_knowledge_copy_deadlines(task_factory, upstream, monkeypatch, expire_at):
+    from agents.geak import compatibility
+
+    bridge = task_factory()
+    original_copy = compatibility.copy_tree
+    completed = []
+    def expiring_copy(source, destination, *, remaining):
+        if source.name == expire_at:
+            bridge.deadline = time.monotonic() - 1
+        original_copy(source, destination, remaining=remaining)
+        completed.append(source.name)
+    monkeypatch.setattr(compatibility, "copy_tree", expiring_copy)
+    with pytest.raises(TimeoutError):
+        prepare_engine(upstream, bridge, python=sys.executable, options=bridge.job["options"])
+    assert completed == ([] if expire_at == "kernel_workflow" else ["kernel_workflow"])
+    assert not (bridge.root / "engine_identity.json").exists()
 
 
 @pytest.mark.parametrize("language", ["hip", "triton", "flydsl"])

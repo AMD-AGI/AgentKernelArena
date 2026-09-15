@@ -10,10 +10,10 @@ import json
 import math
 from pathlib import Path
 import shlex
-import shutil
 import subprocess
+from typing import Callable
 
-from .bridge import Bridge, write_json
+from .bridge import Bridge, copy_file, copy_tree, write_json
 
 
 UPSTREAM_REVISION = "c0c0e2aee5e2bec70583253058382523bdf7a3ab"
@@ -23,20 +23,25 @@ SCRIPT_SHA256 = {
 }
 
 
-def verify_upstream(checkout: Path) -> None:
+def verify_upstream(checkout: Path, *, remaining: Callable[[], float] | None = None) -> None:
+    def timeout() -> float:
+        return min(10, remaining()) if remaining else 10
+
     revision = subprocess.run(["git", "-C", str(checkout), "rev-parse", "HEAD"],
-                              capture_output=True, text=True, timeout=10, check=True).stdout.strip()
+                              capture_output=True, text=True, timeout=timeout(), check=True).stdout.strip()
     if revision != UPSTREAM_REVISION:
         raise ValueError("Unqualified GEAK revision; see agents/geak/compatibility.py")
     dirty = subprocess.run(["git", "-C", str(checkout), "status", "--porcelain", "--",
                             "kernel_workflow", "perf_knowledge"],
-                           capture_output=True, text=True, timeout=10, check=True).stdout
+                           capture_output=True, text=True, timeout=timeout(), check=True).stdout
     if dirty.strip():
         raise ValueError("GEAK engine/knowledge must match the clean pinned checkout")
     for name, expected in SCRIPT_SHA256.items():
+        timeout()
         path = checkout / "kernel_workflow" / name
         if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise ValueError("GEAK engine script does not match its pinned identity")
+    timeout()
 
 
 def adapt_lane(source: str) -> str:
@@ -108,20 +113,21 @@ GEAK metrics guide search only. Arena independently evaluates delivered candidat
 
 
 def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict) -> dict:
-    verify_upstream(checkout)
+    verify_upstream(checkout, remaining=bridge.remaining)
     bridge.remaining()
     private = bridge.root / "engine"
     private.mkdir()
     workflow = private / "kernel_workflow"
-    shutil.copytree(checkout / "kernel_workflow", workflow)
-    shutil.copytree(checkout / "perf_knowledge", private / "perf_knowledge")
+    copy_tree(checkout / "kernel_workflow", workflow, remaining=bridge.remaining)
+    copy_tree(checkout / "perf_knowledge", private / "perf_knowledge", remaining=bridge.remaining)
     lane = workflow / "kernel_lane.js"
     lane.write_text(adapt_lane(lane.read_text()))
     roles = Path(__file__).with_name("roles")
     for role in roles.glob("*.md"):
-        shutil.copy2(role, workflow / "roles" / role.name)
+        copy_file(role, workflow / "roles" / role.name, remaining=bridge.remaining, overwrite=True)
     contract = arena_contract(bridge, python)
     for role in (workflow / "roles").glob("*.md"):
+        bridge.remaining()
         role.write_text(role.read_text() + "\n\n" + contract)
     # The upstream copier special-cases vendor trees, excludes some potential
     # task inputs and clears existing destinations. Arena instead preserves all
@@ -174,4 +180,5 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
         "adapted_lane_sha256": hashlib.sha256(lane.read_bytes()).hexdigest(),
         "adapter_version": 1,
     })
+    bridge.remaining()
     return {"script_path": str(workflow / "kernel_workflow.js"), "args": args}

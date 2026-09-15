@@ -19,7 +19,8 @@ from agents import register_agent
 from src.harness_guard import snapshot_workspace_harness
 from src.task_execution import _run_process
 from src.task_spec import load_task_spec
-from .bridge import Bridge, TaskContext, candidate_files, copy_task, digests, snapshot_mapping, write_json
+from .bridge import (Bridge, TaskContext, candidate_files, copy_task, digests,
+                     remaining_budget, snapshot_mapping, write_json)
 from .compatibility import prepare_engine
 
 
@@ -101,6 +102,7 @@ def _run_engine(bridge: Bridge, python: str) -> int:
 
 def prepare_job(context: TaskContext, run_dir: Path, options: dict, *,
                 deadline: float, deadline_epoch: float) -> Bridge:
+    remaining_budget(deadline)
     run_dir.mkdir(parents=True, exist_ok=False)
     write_json(run_dir / "context.json", context.raw)
     job = {"version": 1, "context": str(run_dir / "context.json"), "options": options,
@@ -112,9 +114,10 @@ def prepare_job(context: TaskContext, run_dir: Path, options: dict, *,
     job_path = run_dir / "job.json"
     write_json(job_path, job)
     bridge = Bridge(job_path)
+    bridge.remaining()
     bridge.eval_dir.mkdir()
-    copy_task(context.workspace, bridge.eval_dir / "original")
-    copy_task(context.workspace, bridge.eval_dir / "workspace")
+    copy_task(context.workspace, bridge.eval_dir / "original", remaining=bridge.remaining)
+    copy_task(context.workspace, bridge.eval_dir / "workspace", remaining=bridge.remaining)
     # GEAK's engineers exchange git patches in private copies. Do not initialize
     # a repository in the Arena workspace or touch the user's global git config.
     private = bridge.eval_dir / "workspace"
@@ -127,6 +130,7 @@ def prepare_job(context: TaskContext, run_dir: Path, options: dict, *,
     bridge.action("baseline", "compile")
     job["baseline_performance"] = bridge.action("baseline", "performance").to_mapping()
     write_json(job_path, job)
+    bridge.remaining()
     return Bridge(job_path)
 
 
@@ -156,7 +160,7 @@ def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str
         raise RuntimeError("GEAK requires Claude Code with the dynamic Workflow tool")
     from .compatibility import verify_upstream
 
-    verify_upstream(checkout)
+    verify_upstream(checkout, remaining=lambda: remaining_budget(deadline))
     run_dir = context.workspace.parent / ("." + context.workspace.name + "_geak") / uuid.uuid4().hex
     logging.getLogger(__name__).info("GEAK artifacts: %s", run_dir)
     status = {"status": "FAILED", "delivery": "NOT_ATTEMPTED", "arena_acceptance": "PENDING"}
