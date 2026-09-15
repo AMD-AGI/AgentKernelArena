@@ -72,3 +72,8 @@ Actual measured outputs are retained and poisoned before the same graph replay.
 Oracle work, perturbation and restoration are outside timing. Originalseed42+i,
 ten externalwarmups and100samples remain. Final candidate FlyDSL launches are
 audited independently of the frozen Triton baseline and protected oracle.
+
+Small independent known-answer controls use a tight comparison before exercising
+the production comparator. In particular, decay must turn the selected 1.5
+entry into 0.75; padded zeros must not hide a reference that omits decay within
+the full-workload 2% allowance. The scored numerical rule is unchanged.

@@ -25,5 +25,9 @@ def run():
     rows.append(control(r.reference_kkt(inp),e,accept,"actual KKT comparator strict-lower entry1.5"))
     inp["g"]=t([0.,math.log(.5)]).reshape(1,2,1)
     e=e.clone();e[0,1,0,0]=.75
-    rows.append(control(r.reference_kkt(inp),e,accept,"independent decay halves KKT entry to0.75"))
+    decayed = r.reference_kkt(inp)
+    # A single wrong value among padded zeros can fit the full-workload 2%
+    # allowance. The small known answer must establish the decay independently.
+    check(decayed,e,"independent decay halves KKT entry to0.75")
+    rows.append(control(decayed,e,accept,"actual KKT comparator with decay"))
     return rows
