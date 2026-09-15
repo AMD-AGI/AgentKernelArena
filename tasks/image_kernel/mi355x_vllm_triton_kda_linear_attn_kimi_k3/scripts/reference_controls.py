@@ -118,4 +118,13 @@ def check_reference(h):
         rejects(lambda bad: h._assert_numerics(bad, zero, params), value)
         rejects(lambda bad: h._assert_numerics(bad, value, params), -value)
     rejects(lambda bad: h._assert_numerics(bad, vector, params), vector * 2)
+    # FP64 can retain a decayed state that is unrepresentable in the actual
+    # FP32 state/BF16 output. Require exact output rounding, not a loose atol.
+    for dtype in (torch.float32, torch.bfloat16):
+        output_zero = zero.to(dtype)
+        h._assert_numerics(output_zero, vector * 1e-128, params)
+        smallest = float(torch.finfo(dtype).tiny * torch.finfo(dtype).eps)
+        representable = torch.tensor([smallest, 0., 0.], dtype=torch.float64)
+        rejects(lambda bad: h._assert_numerics(bad, representable, params), output_zero)
+    rejects(lambda bad: h._assert_numerics(bad, vector * 1e-128, params), zero)
     return {"known_answer": "PASS", "negative_control": "PASS", "scored": False}

@@ -1444,6 +1444,32 @@ def test_kda_zero_state_requires_exact_zero_on_both_sides(monkeypatch):
     h._assert_numerics(reference * 1.02, reference, params)
 
 
+@pytest.mark.parametrize('dtype_name', ['float32', 'bfloat16'])
+def test_kda_zero_output_requires_exact_reference_rounding(dtype_name, monkeypatch):
+    torch = pytest.importorskip('torch')
+    h = load_module(KDA_TASK / 'scripts/task_runner.py')
+    monkeypatch.setattr(h, '_torch', lambda: torch)
+    dtype = getattr(torch, dtype_name)
+    params = {'min_cosine': .999, 'max_rel_err': .03}
+    zero = torch.zeros(3, dtype=dtype)
+    reference = torch.tensor([1., -2., 3.], dtype=torch.float64) * 1e-128
+    h._assert_numerics(zero, reference, params)
+    # The same nonzero reference is representable in FP64 and must not be
+    # accepted as a zero FP64 answer. This is output rounding, not an atol.
+    with pytest.raises(AssertionError, match='only one vector is zero'):
+        h._assert_numerics(zero.double(), reference, params)
+    smallest = float(torch.finfo(dtype).tiny * torch.finfo(dtype).eps)
+    for value in (smallest, -smallest, smallest * .51, 1e-30):
+        represented = torch.tensor([value, 0., 0.], dtype=torch.float64)
+        with pytest.raises(AssertionError, match='only one vector is zero'):
+            h._assert_numerics(zero, represented, params)
+    rounded_zero = torch.tensor([smallest * .49, 0., 0.], dtype=torch.float64)
+    h._assert_numerics(zero, rounded_zero, params)
+    # A spurious representable state is also rejected when the oracle is zero.
+    with pytest.raises(AssertionError, match='only one vector is zero'):
+        h._assert_numerics(torch.tensor([smallest, 0., 0.], dtype=dtype), zero.double(), params)
+
+
 @pytest.mark.parametrize('mode',['chunk','packed_decode'])
 def test_kda_state_reference_and_output_contract(mode, monkeypatch):
     import math

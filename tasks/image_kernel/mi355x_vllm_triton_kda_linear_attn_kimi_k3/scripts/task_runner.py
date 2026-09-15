@@ -253,10 +253,14 @@ def _assert_numerics(got, expected, params):
     assert torch.isfinite(actual).all() and torch.isfinite(reference).all(), "Nonfinite KDA comparison"
     actual_scale, reference_scale = actual.abs().max(), reference.abs().max()
     if actual_scale == 0 or reference_scale == 0:
-        # An evolving chunk replay can legitimately end with exactly zero
-        # state in both the implementation and the independent recurrence.
-        # Cosine has no direction there: accept only two exact zero vectors.
-        assert actual_scale == reference_scale, "KDA cosine mismatch: only one vector is zero"
+        # Cosine has no direction at zero. The independent FP64 recurrence
+        # can retain values smaller than the declared output type represents.
+        # Accept zero only if correctly rounding that reference to the output
+        # type produces exactly the actual vector; representable values still
+        # fail. Keep the unrounded reference for the magnitude check below.
+        assert torch.equal(got.flatten(), reference.to(got.dtype)), (
+            "KDA cosine mismatch: only one vector is zero after output rounding"
+        )
         cosine = 1.0
     else:
         # Scaling each vector does not change its angle. It avoids cosine's
