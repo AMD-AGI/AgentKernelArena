@@ -65,3 +65,6 @@ reference work, input preservation and replay checks occur outside timing.
 All declared correctness and performance cases passed on MI355X gfx950. The
 original gfx942 support and implementation path are retained; gfx942 was not
 revalidated by this port. Hardware support is scoped to `cases.json`.
+
+Standalone correctness additionally rejects nonfinite or malformed outputs before
+the original maximum relative-error comparison; NaNs cannot bypass its RTOL gate.

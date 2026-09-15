@@ -19,6 +19,7 @@ def test_port_preserves_operator_ast_cases_and_original_harness(task):
     prefix = prefix.replace('from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events\n'
                             'from scripts.replay_checks import verify_timed_run, compare_output',
                             'from _aka_benchmark import benchmark_cuda_graph_or_events')
+    prefix = prefix.replace('            compare_output(c, ref, RTOL, torch_dtype)\n', '')
     assert hashlib.sha256(prefix.encode()).hexdigest() == expected['harness_prefix']
     for name, digest in expected['operator_ast'].items():
         tree = ast.parse((path / name).read_text())

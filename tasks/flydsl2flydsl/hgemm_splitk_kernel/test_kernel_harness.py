@@ -141,6 +141,7 @@ def run_correctness(shapes=None, verbose=True):
             torch.cuda.synchronize()
 
             ref = reference_gemm(a, b, dtype=torch.float32)
+            compare_output(c, ref, RTOL, torch_dtype)
             max_err = (c.float() - ref).abs().max().item()
             rel_err = max_err / (ref.abs().max().item() + 1e-6)
 
