@@ -2400,3 +2400,34 @@ def test_kernelbench_gelu_signed_inputs_preserve_all_original_draws(monkeypatch)
             assert not torch.allclose(negative_bug, expected, rtol=1e-4, atol=1e-5)
         assert calls == shapes
         calls.clear()
+
+
+@pytest.mark.parametrize('reference_method,actual_method,consistent', [
+    ('cuda_graph','cuda_graph',True),
+    ('cuda_graph','cuda_event_fallback',False),
+    ('cuda_graph','cuda_event_fallback',True),
+    ('cuda_graph','cuda_graph',False),
+])
+def test_softmax_action_rejects_incomparable_timing(tmp_path, monkeypatch, reference_method, actual_method, consistent):
+    root = ROOT / 'tasks/torch2hip/gpumode/10082_SoftmaxModule'
+    runner = import_path(root / 'eval_tools/evaluate.py')
+    args = options(yaml.safe_load((root / 'config.yaml').read_text()))
+    monkeypatch.setattr(runner, 'ROOT', tmp_path)
+    (tmp_path / 'build').mkdir()
+    rows = [{'test_case_id':'case_0','params':{'inputs':[{'shape':[2],'dtype':'torch.float32','stride':[1]}]}}]
+    perf = types.SimpleNamespace(_compare_results=lambda *a, **k: True,
+        load_modu_obj=lambda *a: None,load_func_obj=lambda *a: None,
+        load_function_from_path=lambda *a: lambda: iter([[torch.ones(2)]]))
+    def benchmark(*paths, **kwargs):
+        list(perf.load_function_from_path('module','get_inputs')())
+        perf._write_perf_report({'status':'ok','test_cases':[{'case_idx':0,'correct':True,'ori_time':.2,'opt_time':.1,
+            'reference_benchmark_method':reference_method,'benchmark_method':actual_method,
+            'benchmark_method_consistent':consistent}]})
+    perf.cal_kernel_perf = benchmark
+    monkeypatch.setitem(sys.modules,'cal_kernel_perf',perf)
+    monkeypatch.setitem(sys.modules,'replay_validation',types.SimpleNamespace(install=lambda *a:None))
+    if consistent and reference_method==actual_method:
+        assert runner.performance(args,'candidate',rows)[0]['execution_time_ms']==.1
+    else:
+        with pytest.raises(RuntimeError,match='incomparable'):
+            runner.performance(args,'candidate',rows)

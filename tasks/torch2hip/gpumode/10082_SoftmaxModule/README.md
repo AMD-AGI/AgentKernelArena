@@ -59,3 +59,9 @@ values are restored in `finally`, including on exceptions, so a failed role
 cannot alter the next role's starting state. Snapshot, checks and final cleanup
 run outside the reported samples; existing per-invocation prepare callbacks
 and the baseline's graph/Event policy retain their timing boundaries.
+
+The task-local performance action also rejects a measured baseline/candidate
+method mismatch, including graph capture falling back to Event for only one
+role. Successful timing rows must be comparable; merely naming two supported
+methods is insufficient. Arena additionally checks each case against the
+independently frozen baseline method before accepting/scoring a candidate.

@@ -262,6 +262,9 @@ def performance(args, role, rows):
             raise RuntimeError("Benchmark returned invalid device timing")
         if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Benchmark did not establish device timing method")
+        if (case.get("benchmark_method_consistent") is False
+                or (role == "candidate" and case.get("reference_benchmark_method") != method)):
+            raise RuntimeError("Baseline/candidate benchmark methods are incomparable")
         result.append({**rows[index], "status": "PASS", "execution_time_ms": elapsed,
                        "benchmark_method": method, "metadata": {"original_benchmark": case}})
     return result
