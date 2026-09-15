@@ -3,7 +3,7 @@ import ast
 import importlib.util
 import json
 from pathlib import Path
-import subprocess
+import hashlib
 import sys
 import types
 
@@ -12,7 +12,37 @@ import torch
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = '66b187244d9d08d3fa46a24e9245a02367e14d06'
+# Preserved contract fingerprints from parent 66b18724; no Git history is needed.
+BASELINE = {'triton_ssd_chunk_cumsum': {'files': {'workloads.json': 'ad32e8ad77a4063b2140b9d723b3cae37b40a3d8c30785d96314b51010cce418',
+                                       'source/triton_ssd_chunk_cumsum.py': '61231def1708392a863c28963f8fc6fd0e192d7d3c5b8e7398d6e537626ad741'},
+                             'config_except_editable': '4da3c58d2cff25ab5ca596aa294e3c4f13fba5ab7fb735c880bf4c7c3e2c5b8c',
+                             'reference_and_constants_ast': '991f24124d7455334ce6800c918f2e2f7e38d14e06228acd57dc06cc34a8ad35',
+                             'generation_ast': '785e10e6c5e63929ae56b935e2f3446161b752341db503c0fbc32147f8910570',
+                             'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'triton_ssd_chunk_scan': {'files': {'workloads.json': 'a364d5de4f5a21ea976f55d89ba61bee5b22cd6f754af7c62b2306249f2f4fb5',
+                                     'source/triton_ssd_chunk_scan.py': '6530336992c466bf4e76810d159a6efd51c05751fa3b577644b20febace5885a'},
+                           'config_except_editable': 'fd83c7d977b63066857bc3245ff49e243549d1ecd89df04977d94b6eeea8bfad',
+                           'reference_and_constants_ast': '4dba5db02a4cee5b57da72e944186995eda20ea4fec7f8face1135b59ae0f812',
+                           'generation_ast': 'de3391ed91d33da5a8055c539d9906c6c25c31e80cee95845ae5c5e4525d7296',
+                           'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'triton_ssd_chunk_state': {'files': {'workloads.json': '92785807450f9dc163b88ff7d4b57e7daeeafc7bfec321cd84d6223ebce154f9',
+                                      'source/triton_ssd_chunk_state.py': '1653dd642efba27293c3315e201584ad62a5fc253cbdb282cc414376f14d6ffc'},
+                            'config_except_editable': '9dd95eab05545c104659dce85d7a92c5520cb3adfd5d98766fb50b07d6de437d',
+                            'reference_and_constants_ast': '9d5a0a2b2e5fd91f425058beadf088bf4d6f9e65a1a59b6a8812014bf62ca440',
+                            'generation_ast': 'c5f7d8e8644b32cb97757af790146cd46b4d965a7d76c0ec8431161d9ba477c4',
+                            'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'triton_ssd_chunk_state_varlen': {'files': {'workloads.json': 'bc0ea9ad9d41022c64e02e790f6ee928d91481b2f708e6cc0e50b2aa3e717320',
+                                             'source/triton_ssd_chunk_state_varlen.py': '2550d9117263494144050f74b200cea07568f9564daec753022c29ca60d6f954'},
+                                   'config_except_editable': '7826598c69b4d125c2137f49de88b25f684007565cf250303c21dd45e7aea1e1',
+                                   'reference_and_constants_ast': '302fb4c4f3680aec791c1d38627a76b3140f22dd667cc8a7a3297a35fc5a2fd7',
+                                   'generation_ast': 'a54eb7af435b8ca776874c74e40713aed6abf814f114f394625711cf920cf861',
+                                   'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'triton_ssd_state_passing': {'files': {'workloads.json': '93788e8fe4150acddbbd6014a348568aa24a212afd62b90b6677416885769460',
+                                        'source/triton_ssd_state_passing.py': 'af5eaac0616a9b0d7ec9a7bd1aed9ec728f27c24b9d75ba498c4a727a2611257'},
+                              'config_except_editable': '3417d7c375e4a6f380a2aa8f37cd7aac81ebe071494a054b3cf1cf948c48df0f',
+                              'reference_and_constants_ast': '45261791b4930659d5dd471bf87438070183d8706ceb86dd89c9c37d30c7c299',
+                              'generation_ast': '9a557362d418b071f9ab74c9ff96b2834486b28e76eb24d890def7a8362791fb',
+                              'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'}}
 NAMES = ('triton_ssd_chunk_cumsum', 'triton_ssd_chunk_scan', 'triton_ssd_chunk_state',
          'triton_ssd_chunk_state_varlen', 'triton_ssd_state_passing')
 
@@ -118,34 +148,33 @@ def test_actual_timed_output_replay_and_readonly_guards(task,fault):
         with pytest.raises(checks.ContractFailure):run()
 
 
-def _base(path):
-    return subprocess.check_output(['git','show',f'{BASE}:{path.relative_to(ROOT)}'],cwd=ROOT,text=True)
+def _digest(text):
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 def test_original_workloads_gates_kernels_and_timing_preserved(task):
     root,h,_,_=task
-    for path in [root/'workloads.json',*list((root/'source').glob('*.py'))]:
-        assert path.read_text()==_base(path)
-    original_config=yaml.safe_load(_base(root/'config.yaml'))
-    current_config=yaml.safe_load((root/'config.yaml').read_text())
-    edit=current_config['candidate']['editable'][0]
+    saved=BASELINE[root.name]
+    for relative,digest in saved['files'].items():
+        assert _digest((root/relative).read_text())==digest
+    config=yaml.safe_load((root/'config.yaml').read_text())
+    edit=config['candidate'].pop('editable')[0]
     assert edit['scope']=='symbols' and edit['allow_new_helpers'] is True
-    assert edit['path']==original_config['candidate']['editable'][0]
-    symbols=[current_config['candidate']['entrypoints'][0]['symbol']]
+    assert edit['path']=='source/'+root.name+'.py'
+    symbols=[config['candidate']['entrypoints'][0]['symbol']]
     if root.name=='triton_ssd_chunk_cumsum':symbols.append('softplus')
     assert edit['symbols']==symbols
-    current_config['candidate']['editable']=original_config['candidate']['editable']
-    assert current_config==original_config
-    path=root/'scripts/task_runner.py';before=_base(path);after=path.read_text()
-    trees=[ast.parse(s) for s in (before,after)]
+    assert _digest(json.dumps(config,sort_keys=True))==saved['config_except_editable']
+    after=(root/'scripts/task_runner.py').read_text()
+    tree=ast.parse(after)
     def protected(tree):
         return [ast.dump(n,include_attributes=False) for n in tree.body if
                 isinstance(n,ast.FunctionDef) and (n.name.startswith('reference') or n.name=='ref_softplus') or
                 isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id in
                 ('TEST_SHAPES','WARMUP_ITERATIONS','BENCHMARK_ITERATIONS') for t in n.targets)]
-    assert protected(trees[0])==protected(trees[1])
+    assert _digest(json.dumps(protected(tree)))==saved['reference_and_constants_ast']
     marker='# >>> AKA-GENERATED:';end='# <<< AKA-GENERATED <<<'
-    assert before.split(marker)[1].split(end)[0]==after.split(marker)[1].split(end)[0]
+    assert _digest(after.split(marker)[1].split(end)[0])==saved['generated_region']
     def generation(tree):
         found=[]
         for fn in tree.body:
@@ -154,8 +183,8 @@ def test_original_workloads_gates_kernels_and_timing_preserved(task):
                     if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr in ('manual_seed','randn','rand','arange','cumsum'):
                         found.append((fn.name,ast.dump(n,include_attributes=False)))
         return sorted(found)
-    assert generation(trees[0])==generation(trees[1])
-    calls=[n for n in ast.walk(trees[1]) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='_benchmark_cuda_graph_or_events']
+    assert _digest(json.dumps(generation(tree)))==saved['generation_ast']
+    calls=[n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='_benchmark_cuda_graph_or_events']
     assert len(calls)==1
     assert {k.arg:ast.unparse(k.value) for k in calls[0].keywords}=={
         'warmup':'WARMUP_ITERATIONS','repetition':'BENCHMARK_ITERATIONS','timed_run':'timed'}
