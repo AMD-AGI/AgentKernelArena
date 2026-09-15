@@ -63,3 +63,18 @@ cases, numerical gates, warmups and sample counts. It does not accept a runtime
 capture failure as permission to switch methods. Diagnostic reference timing
 uses the same fixed method. Prior results from mismatched methods are not valid
 speedups; changed task sources require fresh GPU qualification.
+
+All five original INT8 quantized GEMM cases and the protected quantizer remain
+unchanged. Candidate outputs must be finite BF16 tensors of shape [B,M,N] on
+the input device, and both BF16 input operands remain read-only. The actual
+measured output and input-perturbed replay use the original normalized worst
+error gate TOL=1e-2, including its zero-reference denominator policy. The scored
+provided baseline still includes quantization followed by the AITER CK call;
+the final candidate receives the same BF16 inputs and must implement that work.
+The unquantized FP32 BMM diagnostic timing is not a correctness oracle.
+Explicit Event timing is selected for both the capture-unsafe provided baseline
+and the candidate. Both expose actual measured
+outputs through the canonical collector, with checks outside timed windows.
+Candidate-only dispatch auditing permits preparation allocations/copies/views,
+requires a FlyDSL runtime launch, and rejects AITER/operator compute shortcuts;
+reference and baseline calls cannot satisfy the candidate launch requirement.

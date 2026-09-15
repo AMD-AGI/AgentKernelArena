@@ -26,7 +26,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -111,6 +112,29 @@ def _norm_worst(ref, out):
     return worst, worst / denom
 
 
+def _checked_batched_output(actual, x, w):
+    import torch
+    if not isinstance(actual, torch.Tensor):
+        raise AssertionError("Batched GEMM output must be a Tensor")
+    if actual.shape != (x.shape[0], x.shape[1], w.shape[1]):
+        raise AssertionError("Batched GEMM output shape mismatch")
+    if actual.dtype != torch.bfloat16 or actual.device != x.device:
+        raise AssertionError("Batched GEMM requires BF16 output on the input device")
+    if not bool(torch.isfinite(actual).all()):
+        raise AssertionError("Non-finite batched GEMM output")
+    return actual
+
+
+def _compare_batched_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite batched GEMM output/reference")
+    # Exactly the original zero-reference denominator and normalized-max gate.
+    if _norm_worst(expected, actual)[1] > TOL:
+        raise AssertionError("Numerical mismatch: batched INT8 GEMM normalized error")
+
+
 def run_correctness(verbose=True):
     import torch
     import aiter
@@ -129,8 +153,9 @@ def run_correctness(verbose=True):
         b, m, n, k = shape["b"], shape["m"], shape["n"], shape["k"]
         try:
             x, w = _make_inputs(b, m, n, k)
+            originals = (x.clone(), w.clone())
             with torch.no_grad():
-                ref = model(x, w)
+                ref = _checked_batched_output(model(x, w), x, w)
 
             x_i8, x_scale, w_i8, w_scale = mmod.quantize_batched_a8w8(x, w)
             gt = _retry(
@@ -141,6 +166,8 @@ def run_correctness(verbose=True):
             )
             torch.cuda.synchronize()
 
+            require_unchanged((x, w), originals)
+            _checked_batched_output(gt, x, w)
             worst, norm = _norm_worst(ref, gt)
             ok = norm <= TOL
             note = ""
@@ -159,6 +186,8 @@ def run_correctness(verbose=True):
                     )
                 else:
                     torch.cuda.synchronize()
+                    require_unchanged((x, w), originals)
+                    _checked_batched_output(out, x, w)
                     _, knorm = _norm_worst(ref, out)
                     kok = knorm <= TOL
                     ok = ok and kok
@@ -222,6 +251,9 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
     for idx, shape in enumerate(SHAPES):
         b, m, n, k = shape["b"], shape["m"], shape["n"], shape["k"]
         x, w = _make_inputs(b, m, n, k)
+        originals = (x.clone(), w.clone())
+        expected = _checked_batched_output(mmod.Model()(x, w), x, w)
+        require_unchanged((x, w), originals)
 
         _retry(lambda: device_op(x, w), what="benchmark warmup")
         torch.cuda.synchronize()
@@ -233,13 +265,20 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         # A candidate's capture support must not change the scoring method.
         use_graph = False
         event_reason = "capture_unsafe_aiter_hipblaslt"
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             lambda: device_op(x, w),
             warmup=0,
             repetition=iters,
             use_cuda_graph=use_graph,
             fallback_reason=event_reason,
+            timed_run=timed,
         )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(x, w), originals=originals, expected=expected,
+            perturb=lambda: x.neg_(), reference=lambda: mmod.Model()(x, w),
+            compare=_compare_batched_output,
+        ))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.bmm(x.float(), w.float().transpose(1, 2)),
@@ -377,6 +416,9 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
     for idx, shape in enumerate(SHAPES):
         b, m, n, k = shape["b"], shape["m"], shape["n"], shape["k"]
         x, w = _make_inputs(b, m, n, k)
+        originals = (x.clone(), w.clone())
+        expected = _checked_batched_output(mmod.Model()(x, w), x, w)
+        require_unchanged((x, w), originals)
 
         _retry(lambda: device_op(x, w), what="benchmark warmup")
         torch.cuda.synchronize()
@@ -388,13 +430,20 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         # A candidate's capture support must not change the scoring method.
         use_graph = False
         event_reason = "capture_unsafe_aiter_hipblaslt"
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             lambda: device_op(x, w),
             warmup=0,
             repetition=iters,
             use_cuda_graph=use_graph,
             fallback_reason=event_reason,
+            timed_run=timed,
         )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(x, w), originals=originals, expected=expected,
+            perturb=lambda: x.neg_(), reference=lambda: mmod.Model()(x, w),
+            compare=_compare_batched_output,
+        ))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.bmm(x.float(), w.float().transpose(1, 2)),
