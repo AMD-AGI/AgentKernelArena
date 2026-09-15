@@ -60,3 +60,15 @@ routing mismatch allowance and matched-id weight tolerance. The harness poisons
 both output tensors and permutes the expert columns (including bias) before
 replaying, then compares both outputs using fresh reference results. All checks
 are outside timing; original cases, seeds, sampling and allocation remain.
+
+Candidate correctness includes a protected, candidate-only PyTorch dispatch
+audit: allocations, initialization, copies and views may prepare a launch;
+arithmetic, reductions, sorting and library operator calls must execute in
+FlyDSL. AITER imports and direct native/subprocess dispatch are rejected in
+final candidate source. Calling an unrelated FlyDSL kernel does not authorize
+PyTorch operator computation. These checks supplement source review and the
+numerical/replay gates; they are not a sandbox against arbitrary hostile Python.
+FlyDSL launch evidence is required inside each candidate operator invocation;
+launches by the reference or baseline cannot satisfy it.
+The audit wraps candidate import/correctness only, leaving baseline/reference
+execution and the original device-timing callable unchanged.

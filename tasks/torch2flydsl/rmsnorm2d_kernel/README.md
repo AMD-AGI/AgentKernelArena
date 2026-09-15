@@ -59,3 +59,15 @@ normalized max-error rule (`REL_TOL=1e-2`), outside the timing interval. Both ro
 retain all six shapes, the seed, EPS, warmups and sampling methodology. The
 canonical metadata distinguishes captured graph replay from explicit Event eager
 re-invocation; automatic unsupported replay paths cannot pass as a skip.
+
+Candidate correctness includes a protected, candidate-only PyTorch dispatch
+audit: allocations, initialization, copies and views may prepare a launch;
+arithmetic, reductions, sorting and library operator calls must execute in
+FlyDSL. AITER imports and direct native/subprocess dispatch are rejected in
+final candidate source. Calling an unrelated FlyDSL kernel does not authorize
+PyTorch operator computation. These checks supplement source review and the
+numerical/replay gates; they are not a sandbox against arbitrary hostile Python.
+FlyDSL launch evidence is required inside each candidate operator invocation;
+launches by the reference or baseline cannot satisfy it.
+The audit wraps candidate import/correctness only, leaving baseline/reference
+execution and the original device-timing callable unchanged.

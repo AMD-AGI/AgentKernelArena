@@ -131,6 +131,123 @@ def test_declaring_flydsl_without_executing_it_is_rejected():
         runtime.check_flydsl_execution(lambda:None)
 
 
+CANDIDATE_AUDIT_TASKS = [ROOT / "tasks/torch2flydsl" / name for name in (
+    "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel",
+    "moe_topk_softplus_kernel", "gelu_and_mul_kernel", "gelu_fast_kernel",
+    "gelu_tanh_and_mul_kernel", "swiglu_and_mul_kernel",
+)]
+
+
+@pytest.mark.parametrize("task", CANDIDATE_AUDIT_TASKS, ids=lambda p:p.name)
+@pytest.mark.parametrize("source", [
+    "import aiter as baseline\nbaseline.rms_norm(x, w, eps)",
+    "from aiter import rms_norm as op\nop(x, w, eps)",
+    "from aiter import topk_gating\ntopk_gating(x)",
+    "from aiter.ops import activation",
+    "import subprocess\nsubprocess.run(['kernel'])",
+    "from ctypes import CDLL\nCDLL('kernel.so')",
+])
+def test_final_flydsl_candidate_rejects_operator_backends(task, source, tmp_path):
+    runtime = module(task / "task_runtime.py")
+    path = tmp_path / "candidate.py"
+    path.write_text("import flydsl\n" + source + "\n")
+    with pytest.raises(ValueError, match="Final operator must execute FlyDSL"):
+        runtime.check_dependencies([path], final_language=True)
+
+
+@pytest.mark.parametrize("task", CANDIDATE_AUDIT_TASKS, ids=lambda p:p.name)
+def test_candidate_dispatch_rejects_correct_torch_rms_with_unrelated_call(task):
+    torch = pytest.importorskip("torch")
+    audit = module(task / "scripts/candidate_checks.py")
+    x = torch.tensor([[3., 4.]])
+    weights = torch.ones(2)
+    calls = []
+    def operator(x, weights):
+        calls.append("unrelated backend invocation")
+        return x * torch.rsqrt(x.square().mean(-1, keepdim=True)) * weights
+    # It is a mathematically correct answer. Rejection is for operator compute
+    # in PyTorch, regardless of a preceding unrelated backend invocation.
+    expected = torch.tensor([[3 / (12.5 ** .5), 4 / (12.5 ** .5)]])
+    torch.testing.assert_close(operator(x, weights), expected)
+    calls.clear()
+    with pytest.raises(RuntimeError, match="non-preparation PyTorch operation"):
+        with audit.candidate_preparation_only():
+            operator(x, weights)
+    assert calls == ["unrelated backend invocation"]
+
+
+@pytest.mark.parametrize("task", CANDIDATE_AUDIT_TASKS, ids=lambda p:p.name)
+def test_candidate_dispatch_allows_preparation_but_not_routing(task):
+    torch = pytest.importorskip("torch")
+    audit = module(task / "scripts/candidate_checks.py")
+    x = torch.tensor([[1., 3., 2.]])
+    with audit.candidate_preparation_only():
+        out = torch.empty_like(x)
+        out.copy_(x)
+        viewed = out.view(3).unsqueeze(0)
+        scratch = torch.zeros_like(x)
+        scratch.fill_(1)
+    torch.testing.assert_close(viewed, x)
+    for op in (lambda: torch.softmax(x, -1), lambda: x.topk(2), lambda: x + 1):
+        with pytest.raises(RuntimeError, match="non-preparation PyTorch operation"):
+            with audit.candidate_preparation_only():
+                op()
+
+
+@pytest.mark.parametrize("task", CANDIDATE_AUDIT_TASKS, ids=lambda p:p.name)
+def test_candidate_audit_scopes_import_operator_and_restores_timing_loader(task):
+    import types
+    torch = pytest.importorskip("torch")
+    audit = module(task / "scripts/candidate_checks.py")
+    x = torch.tensor([2., 3.])
+    def load(directory, filename, alias):
+        return types.SimpleNamespace(flydsl_operator=lambda x: x.square())
+    h = types.SimpleNamespace(ARENA_PROVIDED_BASELINE=False, KERNEL_FILE="kernel.py", _load_module=load)
+    with pytest.raises(RuntimeError, match="non-preparation PyTorch operation"):
+        with audit.audit_candidate_calls(h):
+            # A protected baseline/reference module is not a candidate.
+            torch.testing.assert_close(h._load_module(".", "model.py", "model").flydsl_operator(x), x.square())
+            h._load_module(".", "kernel.py", "candidate").flydsl_operator(x)
+    assert h._load_module is load
+    # The ordinary timing load after correctness is not wrapped in the audit.
+    torch.testing.assert_close(h._load_module(".", "kernel.py", "timing").flydsl_operator(x), x.square())
+    h.ARENA_PROVIDED_BASELINE = True
+    with audit.audit_candidate_calls(h):
+        assert h._load_module is load
+    h.ARENA_PROVIDED_BASELINE = False
+    def computing_import(*args):
+        x.square()
+        return types.SimpleNamespace()
+    h._load_module = computing_import
+    with pytest.raises(RuntimeError, match="non-preparation PyTorch operation"):
+        with audit.audit_candidate_calls(h):
+            h._load_module(".", "kernel.py", "candidate")
+    assert h._load_module is computing_import
+
+
+@pytest.mark.parametrize("task", CANDIDATE_AUDIT_TASKS, ids=lambda p:p.name)
+def test_flydsl_launch_evidence_must_come_from_candidate_call(task):
+    torch = pytest.importorskip("torch")
+    audit = module(task / "scripts/candidate_checks.py")
+    # CPU-only profile fixture represents a backend runtime call, not GPU work.
+    scope = {"__name__": "flydsl.test_fixture"}
+    exec("class CompiledKernel:\n def __call__(self, x): return x\n", scope)
+    launch = scope["CompiledKernel"]()
+    x = torch.tensor([3., 4.])
+    observed = set()
+    launch(x)  # An oracle's earlier backend call must not count for candidate.
+    with pytest.raises(RuntimeError, match="No FlyDSL kernel runtime invocation"):
+        audit.checked_candidate_invocation(lambda x: x, observed, x)
+    assert not observed
+    previous = sys.getprofile()
+    assert audit.checked_candidate_invocation(launch, observed, x) is x
+    assert observed == {"flydsl.test_fixture.CompiledKernel"}
+    assert sys.getprofile() is previous
+    with pytest.raises(RuntimeError, match="non-preparation PyTorch operation"):
+        audit.checked_candidate_invocation(lambda x: launch(x).square(), set(), x)
+    assert sys.getprofile() is previous
+
+
 def test_f2f_preserves_all_original_case_counts_and_adds_missing_correctness():
     expected={"blockscale_preshuffle_gemm_kernel":(4,4),"flash_attn_func_kernel":(10,10),"fp8_gemm_4wave_kernel":(5,5),"fp8_gemm_8wave_kernel":(5,5),"fused_rope_cache_kernel":(6,6),"hgemm_splitk_kernel":(14,14),"layernorm_kernel":(10,10),"moe_sorting_kernel":(4,2),"pa_decode_fp8_kernel":(8,8),"pa_decode_swa_kernel":(5,5),"preshuffle_gemm_v2_kernel":(4,4),"rmsnorm_kernel":(10,10),"silu_and_mul_fq_kernel":(5,5),"softmax_kernel":(10,10),"topk_gating_softmax_kernel":(5,2)}
     for name,(correctness,performance) in expected.items():
