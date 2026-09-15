@@ -7,7 +7,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import subprocess
+import hashlib
 import types
 
 import pytest
@@ -20,6 +20,111 @@ NAMES = ('bad_words combine_sampled_and_draft_tokens logit_bias min_p pack_seq p
          'prepare_pos_seq_lens prepare_prefill_inputs prompt_logprobs_token_ids ranks '
          'rejection_greedy_sample rejection_sample temperature topk_topp update_eagle_inputs '
          'write_zeros_to_output').split()
+
+
+# Frozen original contracts: canonical JSON uses sorted keys and compact separators.
+# No Git history, network, GPU or optional checkout is needed to verify these.
+ORIGINAL_CONTRACTS = {'bad_words': {'original_count': 8,
+               'rows_sha256': '352cd350659fb16e24922fd4870227d717f65e1eece073ecf845cf88f88c47d5',
+               'manifest_metadata_sha256': 'c4c931178226487a52691cc6108bdabc72174ff5dd52825c0bcfba02e316bb8e',
+               'candidate_sha256': '6ab1618f2a6442d0f743b27b69ba7be715901e5a6efe619d65aeba76553c1a92',
+               'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'combine_sampled_and_draft_tokens': {'original_count': 5,
+                                      'rows_sha256': '6dfd6535b70867cfa63db7c893d668404413f24754da893385f2e2488b1689e5',
+                                      'manifest_metadata_sha256': '4900d05033948baeaf3888d4c272a4a78a2866f0137d187fd54353a3b3f2532c',
+                                      'candidate_sha256': 'ffa5bdf178be5da5c46f1070852fef09d9a6fa704d11390c61013f6725a97a49',
+                                      'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'logit_bias': {'original_count': 6,
+                'rows_sha256': 'b8be11fad30df931464925a803bd1f46b5e2a139c3d1acd3825061abba8e9369',
+                'manifest_metadata_sha256': '40d12c2f9d77fa4a457565b9b9aa1b4992f3ae6d07419f586bf720b8991c10c8',
+                'candidate_sha256': '9c28b1d35e40914bb4173db80a5311f32ad3fa1f08f91e962f2f2f402bca8e18',
+                'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'min_p': {'original_count': 5,
+           'rows_sha256': '9cefadd8f5accf2901ae43bc6a826dce2ea2cb57a1daf505086bfbda7052edb1',
+           'manifest_metadata_sha256': 'cd82fbbffcb9503e950d8a80b0fc6f59aa6667c5211d749328a5f3fc779478f7',
+           'candidate_sha256': '9a75bcdeec87702035d4795bd1d5503b06cf9e8f8c68546fd2906903f07e9ae0',
+           'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'pack_seq': {'original_count': 5,
+              'rows_sha256': '8bc24c65b8314726cc01eece5c4373138c8fbc0fd20fcc20f419e412fca36a47',
+              'manifest_metadata_sha256': 'f23322bb608fb19f20e11cbcde1428d993b13ac0dd720ad7b1e8f14c453094d2',
+              'candidate_sha256': 'f1a7c27e2adc099b7679a744776f20d5640a4875a72b75ab072d7685d5c6bd25',
+              'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'penalties': {'original_count': 5,
+               'rows_sha256': '15de59163343854857802e2342950e5b3a70e49c360c39e063d88f25b9d38f0b',
+               'manifest_metadata_sha256': '6274d72fd75a0c01e68b386a11abb93c770d1d43584ebd190e4dd3cae8871b61',
+               'candidate_sha256': '5657440ea29a80bdbded7efbda2b1c1a8e38f4ddca28f8631d595edffd6320cb',
+               'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'post_update': {'original_count': 5,
+                 'rows_sha256': '2e3fbc32c5c66cf9b68965ae195606f5ee3023f2542818aafdc263506bf39ea9',
+                 'manifest_metadata_sha256': '7e63fc45c421a9571d31879b85ce9b11c8b7257dd70984162e56e437cfd2d114',
+                 'candidate_sha256': '75621ac47d17889f933904052c4c70b1e820a5c363d4d15699c7b22ccf9c2177',
+                 'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'prepare_eagle_docode': {'original_count': 5,
+                          'rows_sha256': 'e6ef53399595a421d76b8583967236c68e5de515a88bc18b916d1c05d7277fe8',
+                          'manifest_metadata_sha256': '06d91f29d051b9faf647b783fa04e999be9e0f38411a7ec92017ced3ed35dae4',
+                          'candidate_sha256': '98804483f8b91e03ea25875adb94e8a3c57b37a5d5cdcc25555755c9bcb31ed2',
+                          'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'prepare_eagle_inputs': {'original_count': 5,
+                          'rows_sha256': '27b8501be696cb8eb7d3e479ab7230448e69b6a1a7984ae0467bc09f5e5609a2',
+                          'manifest_metadata_sha256': 'b4669c27753786f2a61d7703e2dac15ee3d5ce7783ed32bfa00f6d972817b47a',
+                          'candidate_sha256': 'db37af5fdc4b2196c7db61a98e1242cc156976525e2a62dd84cd9819ac63b33d',
+                          'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'prepare_mrope_positions': {'original_count': 5,
+                             'rows_sha256': 'f57554fa1d6c57692630bd9eced907ea41579e34f8f35b36a426d296ec52c9ea',
+                             'manifest_metadata_sha256': '36073ccea48b60bfce6bc9ab3493ff6e10f88904e3a3ff915bd6d9650db6fdd7',
+                             'candidate_sha256': '09a53d4552665691c4c4a4218b37ed6df40441621c2196ddf57fa2b2305dd5e3',
+                             'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'prepare_pos_seq_lens': {'original_count': 5,
+                          'rows_sha256': '6b3860c5892bbbe6e3553cc9721f2454506aa0795d00eb6cfba344cb73df6904',
+                          'manifest_metadata_sha256': '959f075b42ea8c7b0b1b7fcc510706312aa632cd00a231a8b379512882dc2fac',
+                          'candidate_sha256': '52895e4c698546b43ab3ff03319265879d848e2ce204550d99c615327f7c7948',
+                          'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'prepare_prefill_inputs': {'original_count': 5,
+                            'rows_sha256': '2f7bbcca2786d13658414b0c4750c4136417b52a9bc52409b8b7b0e933b9647c',
+                            'manifest_metadata_sha256': 'a1209e765db83d48ea74be8c13cf60b8935e70e7227f5dc69d400433f24e5a2f',
+                            'candidate_sha256': '24a2d51c3285d7b7aedd6d1966b9f6e71843b905a7c3358198ac4c976eea41e2',
+                            'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'prompt_logprobs_token_ids': {'original_count': 5,
+                               'rows_sha256': '181a6905fc0b8e8351a4cf2596e2c6e1686e116d4a3e29ea22573fd3cf11b57c',
+                               'manifest_metadata_sha256': '7cdec0d1941efde754f5ec5586edc68001c2fc2ef330a902d6a74eb58a93b626',
+                               'candidate_sha256': '756423eb1515135a96096f7497c5b00e3d70415f74a6366d3b07d4d38cb01aaa',
+                               'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'ranks': {'original_count': 5,
+           'rows_sha256': '576b1dc2ac7f6e6466c1caca35bd03161568e7aa9002d4cb9905388225b1e162',
+           'manifest_metadata_sha256': 'cec978e1cd06a457de84ca01365837d2696ef155895e36f4c5f53daad3b63f52',
+           'candidate_sha256': '959b4f2dec0e1edbda191d31d2f3d91b8d30edeb868268c8edfd3cc50b672695',
+           'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'rejection_greedy_sample': {'original_count': 5,
+                             'rows_sha256': '905364d72d9bcdecea955354de0ab1a30efbf05ffd84e61bae50509e954535a4',
+                             'manifest_metadata_sha256': 'dd8eb513f072ebb93ea42862518bf3e28eb2da64688cad87e6d0c713f39cfe3b',
+                             'candidate_sha256': 'ad7b23b903814c2ca4a907a04fdc3a59e332a3b35090841653a275202883dd3e',
+                             'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'rejection_sample': {'original_count': 5,
+                      'rows_sha256': 'b29b3f5f0c6f6eb9dd82a22980d39ac73047859c0df47fc9b6bbcf215ce461ef',
+                      'manifest_metadata_sha256': '6d04bf914463b741324df654fc33cb11d38aeca9b9ce3a02e7d22efbbe19969d',
+                      'candidate_sha256': '4b81f3bf429f6f5adb1868ee3a33df6452211109a9a4be2ee1a830c92df16d2d',
+                      'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'temperature': {'original_count': 5,
+                 'rows_sha256': '234f894ae80db2c3aecf2f900b9db4ed6de0087739b6eb52458563382a5cafe5',
+                 'manifest_metadata_sha256': 'e31cc9c64143a54afd23765014b13af68f006feaa2f10fbd3001df0848577032',
+                 'candidate_sha256': '3d4f066294b260234b14cccd4a22136d450480c56d7947f89ec3b1f0bc609def',
+                 'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'topk_topp': {'original_count': 5,
+               'rows_sha256': '521b36a7313a97a185f1635f83b3924b9a6e0e90a333ebac7961c7649ae877c5',
+               'manifest_metadata_sha256': '97dc64f0b24d6cee02346cbf371d529747779fabe5330f15229bb3583d8bec69',
+               'candidate_sha256': '97415c9da61d643c3f70aeb7c1f20ca9bddb6db930355696b8ae5ba4afa4e1e0',
+               'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'update_eagle_inputs': {'original_count': 5,
+                         'rows_sha256': 'a7952bf4bec575ad7eee766b248a23077a079ce8f50a3391ba36de0c3585adfe',
+                         'manifest_metadata_sha256': '5617c95cd4a66cb93fad6a37f9d4c7f8ce7d0aff72616031c3f0bc97ab47350b',
+                         'candidate_sha256': '24d9fb649c84f69c284373635eb7d6bf5990f48442008a234867ebcc8bb3a770',
+                         'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'},
+ 'write_zeros_to_output': {'original_count': 5,
+                           'rows_sha256': '24a443eaed795e2cc27cfeba67090b230df059900d59691cc4ce064d639a88d7',
+                           'manifest_metadata_sha256': '2dcaf32d1636de23bb6313d8652d9744c71ec3821ad947dbe86485d6c0bfa8b2',
+                           'candidate_sha256': '1da8b35a599bfbb0340b2bd25e3b6a791a312a85b186f43bcc7966670ef809e3',
+                           'generated_region_sha256': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a'}}
+
 
 
 def load(path, name):
@@ -337,17 +442,17 @@ def test_direct_preallocated_launch_is_observed_and_checked(name,cached):
 @pytest.mark.parametrize('name',NAMES)
 def test_original_manifest_rows_and_generated_region_are_byte_preserved(name):
     task=TASKS/('triton_'+name)
-    relative=task.relative_to(ROOT).as_posix()
-    old=json.loads(subprocess.check_output(['git','show','4a056113:'+relative+'/workloads.json'],cwd=ROOT,text=True))
+    expected=ORIGINAL_CONTRACTS[name]
     current=json.loads((task/'workloads.json').read_text())
-    assert current['cases'][:-1]==old['cases']
-    assert {k:v for k,v in current.items() if k!='cases'}=={k:v for k,v in old.items() if k!='cases'}
-    before=subprocess.check_output(['git','show','4a056113:'+relative+'/scripts/task_runner.py'],cwd=ROOT,text=True)
+    def digest(value):
+        return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    assert digest(current['cases'][:expected['original_count']])==expected['rows_sha256']
+    assert digest({k:v for k,v in current.items() if k!='cases'})==expected['manifest_metadata_sha256']
     after=(task/'scripts/task_runner.py').read_text()
-    start='# >>> AKA-GENERATED:'; end='# <<< AKA-GENERATED <<<'
-    assert before.split(start)[1].split(end)[0]==after.split(start)[1].split(end)[0]
+    region=after.split('# >>> AKA-GENERATED:')[1].split('# <<< AKA-GENERATED <<<')[0]
+    assert hashlib.sha256(region.encode()).hexdigest()==expected['generated_region_sha256']
     candidate=task/'source'/('triton_'+name+'.py')
-    assert candidate.read_bytes()==subprocess.check_output(['git','show','4a056113:'+candidate.relative_to(ROOT).as_posix()],cwd=ROOT)
+    assert hashlib.sha256(candidate.read_bytes()).hexdigest()==expected['candidate_sha256']
 
 
 @pytest.mark.parametrize('is_prefill',[False,True])
