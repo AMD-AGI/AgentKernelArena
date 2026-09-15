@@ -61,5 +61,7 @@ def prepare(c, module):
         # The original scaled path is CUDA-only and has no qualified independent
         # packed-format oracle here. Never interpret that gap as passing evidence.
         raise RuntimeError('Scaled MXFP performance requires a qualified packed-format reference; unsupported')
-    expected=(c['a_tensor'].to(torch.float16)@c['b_tensor'].to(torch.float16))
+    # The kernel loads the supplied input dtype, accumulates in FP32, then
+    # stores FP16. Casting FP32 operands before multiplication changes the task.
+    expected=(c['a_tensor'].float() @ c['b_tensor'].float()).to(torch.float16)
     return lambda result: compare(c['output_buffer'],expected)

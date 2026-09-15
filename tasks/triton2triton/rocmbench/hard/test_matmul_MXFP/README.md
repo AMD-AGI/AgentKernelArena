@@ -168,3 +168,10 @@ def mxfp_to_bf16_kernel(
 
 
 
+
+The unscaled performance reference multiplies the original operands in FP32 and
+casts the result to FP16, matching the kernel's accumulation/output contract.
+It does not round FP32 inputs to FP16 before multiplication. The six unscaled
+performance cases and their existing FP16 comparison defaults are unchanged.
+The separately declared scaled pipeline case still requires a working backend;
+its legacy CUDA-only skip is a failing coverage gap on ROCm, not a clean PASS.

@@ -708,6 +708,34 @@ ROCM = sorted([*(ROOT/'tasks/triton2triton/rocmbench').rglob('config.yaml'),
                *(ROOT/'tasks/instruction2triton').rglob('config.yaml')])
 
 
+@pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/test_matmul_MXFP',
+                                    'tasks/triton2triton/rocmbench/hard/test_matmul_MXFP'])
+def test_mxfp_unscaled_reference_preserves_fp32_operands(relative, monkeypatch):
+    reference = module_at(ROOT/relative/'_arena_reference.py', monkeypatch)
+    # Exactly representable FP32 operands cancel after an erroneous FP16 cast.
+    a = torch.tensor([[1.000244140625, -1.]], dtype=torch.float32)
+    b = torch.tensor([[1024.], [1024.]], dtype=torch.float32)
+    output = torch.tensor([[0.25]], dtype=torch.float16)
+    context = dict(is_scaled_mode=False, a_tensor=a, b_tensor=b, output_buffer=output)
+    check = reference.prepare(context, None)
+    check(output)
+    early_cast = a.half() @ b.half()
+    assert early_cast.item() == 0
+    output.copy_(early_cast)
+    with pytest.raises(reference.NumericalMismatch): check(output)
+    output.fill_(0.25)
+    a.zero_(); b.zero_()
+    check(output)  # The expected answer was frozen before the candidate call.
+    output.zero_()
+    with pytest.raises(reference.NumericalMismatch): check(output)
+    context.update(a_tensor=torch.tensor([[1., 2.]], dtype=torch.float16),
+                   b_tensor=torch.tensor([[3.], [4.]], dtype=torch.float16))
+    output.fill_(11)
+    reference.prepare(context, None)(output)
+    with pytest.raises(RuntimeError, match='Scaled MXFP'):
+        reference.prepare({**context, 'is_scaled_mode': True}, None)
+
+
 @pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/gemm',
                                     'tasks/triton2triton/rocmbench/hard/gemm'])
 def test_rocm_gemm_scope_retains_original_scored_cases_and_numerical_gate(relative,monkeypatch):
