@@ -87,6 +87,63 @@ def _action_check(evaluated: dict, role: str, action: str) -> dict:
     return check
 
 
+def _replay_validation_applicability(evaluated: dict) -> dict:
+    """Only complete, measured event-only actions can make graph replay N/A.
+
+    The caller has parsed the actual command stdout and checked every case
+    against the independent manifest. This does not establish numerical or
+    timing correctness: those remain separate, mandatory semantic reviews.
+    """
+    applicability = {"status": "undetermined", "source": "framework_task_evidence",
+                     "reason": "Complete trusted performance evidence is required.",
+                     "roles": [], "case_count": 0}
+    if not evaluated.get("evidence_valid") or not evaluated.get("accepted"):
+        return applicability
+    spec = evaluated["spec"]
+    roles = ["baseline"]
+    if spec.candidate.initial_state == "implemented" and spec.baseline.kind == "provided":
+        roles.append("candidate")
+    cases = []
+    for role in roles:
+        result = evaluated.get("results", {}).get((role, "performance"))
+        if result is None or not result.passed or not result.cases:
+            return applicability
+        cases.extend(result.cases)
+    applicability.update(roles=roles, case_count=len(cases))
+    if any(row.get("benchmark_method") == "cuda_graph" for row in cases):
+        applicability.update(status="required", reason="Captured graph timing occurs in the measured cases.")
+        return applicability
+    reasons = set()
+    for row in cases:
+        metadata = row.get("metadata", {})
+        timing = metadata.get("device_timing", {})
+        reason = timing.get("benchmark_fallback_reason") if isinstance(timing, dict) else None
+        if (row.get("status") != "PASS"
+                or row.get("benchmark_method") != "cuda_event_fallback"
+                or not isinstance(timing, dict)
+                or timing.get("benchmark_method") != "cuda_event_fallback"
+                or not isinstance(reason, str) or not reason.strip()
+                or metadata.get("timed_output_checked") is not True
+                or any("benchmark_method" in container
+                       and container["benchmark_method"] != "cuda_event_fallback"
+                       for container in (row, metadata, timing))
+                or any("benchmark_method_consistent" in container
+                       and container["benchmark_method_consistent"] is not True
+                       for container in (row, metadata, timing))):
+            applicability["reason"] = (
+                "Every measured case needs consistent explicit event timing, a fallback reason, "
+                "and validation of its measured output."
+            )
+            return applicability
+        reasons.add(reason)
+    applicability.update(
+        status="not_applicable",
+        reason="All measured cases use explicit event timing and validate the measured output; no graph is replayed.",
+        event_fallback_reasons=sorted(reasons),
+    )
+    return applicability
+
+
 def normalize_v2_report(raw_report: Any, *, expected_task_name: str,
                         trusted_task_evidence: Mapping | TrustedTaskEvidence | None,
                         validation_request_id: str | None,
@@ -176,6 +233,11 @@ def normalize_v2_report(raw_report: Any, *, expected_task_name: str,
             check["valid_case_count"] = sum(row.get("status") == "PASS" for row in cases)
             check["benchmark_methods"] = sorted({row["benchmark_method"] for row in cases
                                                  if isinstance(row.get("benchmark_method"), str)})
+            applicability = _replay_validation_applicability(evaluated)
+            # Ignore model-supplied applicability. Preserve its boolean and its
+            # independent verdict even when the framework establishes N/A.
+            check["replay_validation_applicability"] = applicability
+            check["agent_reported_status"] = model_check.get("status") if isinstance(model_check, dict) else None
             # Numerical policy is separate from benchmark semantics. All these
             # review fields still come from the model; a command PASS proves
             # neither representative inputs nor fair timing boundaries.
@@ -184,6 +246,7 @@ def normalize_v2_report(raw_report: Any, *, expected_task_name: str,
                 check, status, errors, findings,
                 measurement_available=not (perf is None and evaluated.get("evidence_valid")
                                            and evaluated.get("task_failures")),
+                replay_validation_applicable=applicability["status"] != "not_applicable",
             )
             if previous == "FAIL":
                 status = "FAIL"

@@ -159,8 +159,19 @@ both v3 and v4 reports:
 Every semantic review requires details and nonempty source/case evidence, even for
 PASS. It cannot use a model-invented SKIP. Missing/failed semantic reviews fail the
 report even if every initial command passed. Explicitly identifying a trivially
-passing correctness checker is FAIL. Missing replay validation alone remains WARN;
-a demonstrated wrong computation or benchmark bypass is FAIL.
+passing correctness checker is FAIL. Missing graph replay validation alone remains
+WARN; a demonstrated wrong computation or benchmark bypass is FAIL.
+
+The framework records `benchmark_integrity.replay_validation_applicability` as
+`required`, `not_applicable`, or `undetermined`. N/A requires complete captured
+performance actions for every executed role: every case uses consistent explicit
+`cuda_event_fallback` timing, supplies a nonempty fallback reason, and records
+`metadata.timed_output_checked: true`. In this case a reviewer may leave
+`replay_validation_valid: null`; the framework retains that value instead of
+inventing a successful graph replay. Graph/mixed timing or incomplete evidence
+gets no exception. All other benchmark reviews remain required, and an explicit
+reviewer WARN/FAIL or `replay_validation_valid: false` is preserved. The report
+also retains the benchmark review's `agent_reported_status`.
 
 Additional v4 fields separate lifecycle gating from numerical results:
 

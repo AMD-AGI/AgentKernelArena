@@ -171,14 +171,23 @@ the listed cases alone does not establish those properties.
    execute within its measured work; allocation of a reusable scratch/intermediate
    buffer may be hoisted if equivalent for both. Distinguish Python executed once
    while constructing/capturing a graph from device work performed on every replay.
-   Inspect the actual timed replay path, including mutated inputs and full numerical
-   correctness; output merely changing is not proof of correctness. If replay
+   For graph timing, inspect the actual timed replay path, including mutated inputs
+   and full numerical correctness; output merely changing is not proof of correctness. If replay
    validation is explicitly unsupported by the active backend/runtime, document
    concrete evidence. Missing replay validation alone is WARN; identified wrong
    results, asymmetric work, or a bypass are FAIL. Review representative nontrivial
    inputs, routing/divergence/stateful behavior, aliasing, and output writes.
    Set each boolean review field true/false/null from evidence. The framework fills
    case counts and timing methods. Supply actual Event fallback reasons if used.
+   When every measured case in every executed role explicitly uses event timing,
+   document why graph replay is not applicable and leave replay_validation_valid
+   null; do not invent a successful graph replay. The framework determines N/A
+   only from complete captured performance evidence: consistent event method,
+   a nonempty fallback reason, and timed_output_checked true for every case.
+   Still review actual measured-output correctness, inputs, state and timing
+   boundaries. Graph or mixed methods, missing metadata, or absent measured-output
+   validation receive no N/A exception. An independent WARN/FAIL remains blocking
+   or advisory as reported; N/A does not erase it.
 7. harness_integrity: inspect the supplied effective guard boundary, not an assumed
    whole-file lock. Ensure editable targets remain editable and shared files protect
    their harness sections. Symbol scope can allow complete top-level

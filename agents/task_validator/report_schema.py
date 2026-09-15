@@ -169,6 +169,7 @@ def _normalize_benchmark_integrity(
     policy_findings: list[str],
     *,
     measurement_available: bool = True,
+    replay_validation_applicable: bool = True,
 ) -> str:
     if status == "SKIP":
         return status
@@ -243,6 +244,10 @@ def _normalize_benchmark_integrity(
             )
             advisory = True
         elif value is None:
+            if not replay_validation_applicable:
+                # Only the v2 finalizer can establish this from complete,
+                # captured event-only measurements. Keep the model's null.
+                continue
             policy_findings.append(f"benchmark_integrity: {field} is undetermined")
             advisory = True
         elif value is not True:
