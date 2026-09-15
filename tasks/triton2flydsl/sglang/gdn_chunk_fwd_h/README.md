@@ -52,3 +52,22 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All eight original chunk-state cases remain. Require finite h[B,NT,H,V,K],
+v_new[B,T,H,V], and the updated full state pool in the input dtype/device.
+The original BF16 rule is retained for h, v_new and selected state rows:
+atol=0.05,rtol=0.01, with at most5% mismatched elements for each. This is the
+explicit deep-recurrence finite-value policy, not a universal allclose promise.
+Replay negates u and the initial state; all three expected outputs negate.
+
+Unselected state slots must remain byte-identical to the initial pool. All
+projection/gating/index inputs and the pristine initial state are read-only;
+only the designated working state is mutated. The declared GPU cases use
+unique nonnegative state indices within the pool; repeated/negative indices
+are not part of this suite, and no concurrent-update ordering is promised.
+Actual measured outputs include the working state. Replay poisons outputs and
+uses the canonical collector's existing prepare_fn to restore the requested
+initial state outside the measured invocation. The original preparation,
+seed42+i, ten externalwarmups and100samples are unchanged for both roles.
+Final candidate FlyDSL calls are audited independently of reference execution.
