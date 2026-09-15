@@ -288,9 +288,9 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     # Add, block-copy, RNG, load-reduce and both softmax variants call the
     # canonical sample API directly to validate and replay measured outputs.
     assert counts == {
-        "canonical_python": 248,
+        "canonical_python": 250,
         "native_graph_driver": 2,
-        "rocmbench_adapter": 49,
+        "rocmbench_adapter": 47,
         "vllm_adapter": 139,
     }
 

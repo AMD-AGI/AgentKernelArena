@@ -1003,7 +1003,26 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
     }))
 '''
         expected_source = expected_source.replace(anchor, anchor + addition.encode())
-    assert source.read_bytes() == expected_source
+    if task.name == 'test_cast_matmul':
+        # The reviewed rewrite executes the previously skipped valid dtype
+        # combinations and adds pristine/output checks plus three unscored
+        # stride/tail controls. Preserve all remaining source AST, including
+        # decorators, kernels, seeds, public wrapper and benchmark parameters.
+        # Dedicated cast tests pin the original 54 rows/18 scored cases and
+        # exercise the real numerical, padding and measured-replay checks.
+        def cast_original_contract(raw):
+            tree = ast.parse(raw)
+            tree.body = [n for n in tree.body if not isinstance(n, ast.FunctionDef)
+                         or n.name not in {'test_cast_matmul', 'test_cast_matmul_strided'}]
+            for node in tree.body:
+                if isinstance(node, ast.FunctionDef) and node.name == 'test_performance':
+                    node.body = [n for n in node.body if not isinstance(n, ast.If)
+                                 or not any(isinstance(c, ast.Call) and ast.unparse(c.func) == 'pytest.skip'
+                                            for c in ast.walk(n))]
+            return ast.dump(tree, include_attributes=False)
+        assert cast_original_contract(source.read_bytes()) == cast_original_contract(expected_source)
+    else:
+        assert source.read_bytes() == expected_source
     assert hashlib.sha256(original).hexdigest()==data['migration']['original_source_sha256']
     rows=data['cases']
     assert len(rows)==len({row['test_case_id'] for row in rows})
@@ -1264,7 +1283,7 @@ def test_add_canonical_samples_observe_exact_replay_and_reject_wrong_output(monk
 
 # These adapters use actual TimedRun outputs; their dedicated contract modules
 # exercise event metadata, changed inputs and rejected fallback paths.
-@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_add_kernel', 'test_block_copy', 'test_randn', 'test_load_reduce', 'softmax', 'naive_softmax'}], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
+@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_add_kernel', 'test_block_copy', 'test_randn', 'test_load_reduce', 'softmax', 'naive_softmax', 'test_cast_matmul'}], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
 def test_rocm_timing_evidence_retains_canonical_fallback_reason(monkeypatch, path):
     adapter = module_at(path.parent/'_arena_eval.py', monkeypatch)
     expected = torch.tensor([2.])
@@ -1372,6 +1391,33 @@ def test_rocm_missing_candidate_fails_every_applicable_case(tmp_path,monkeypatch
     result_record(result)
 
 
+# Reviewed full-output, pristine-reference and actual timed-replay wiring.
+# All other original functions remain byte-identical below, as do candidate
+# kernels and original case tables. Independent numerical/negative controls
+# live in test_geak_task_contract_v2; hashes do not substitute for those checks.
+GEAK_CHECKED_FUNCTIONS = {'L1/mla_decode': {'benchmark_kernel': '27083c2b36ba81b35e596c66318e2ef540faaebf4c667e678be47796dd251679',
+                   'check_correctness_val': 'cbda42d75c7d25b6d52beb3f3fcce08538ca4752d8d86c53dd2c648fe6fb1414',
+                   'mode_correctness': '50fd9568bcef9bf5872b7c0132626516d666c8921c04cd28d546493f73dee42c'},
+ 'L1/moe_routing_sigmoid_top1': {'run_benchmark': '43126ce6f43ff1c0b4dc6b2fbc4b2ed2afaade21de8db3c201e492d399b024d8',
+                                 'run_correctness': '51d7c7674e07e3453bb30e6fa14124e87e92e9d711137ade0537f293e0e50655'},
+ 'L1/refk_fp8_blockwise_mm': {'_bench_one': 'c58e7e40a4c5aa352a53cdd766816628e43d317cf29946291b1a79d8fad048da',
+                              'check_correctness': 'cb98fc10a0e4dfb323a92c1f095b975a17021e56a23e08d0be8cea86fa833ca5'},
+ 'L2/fast_rms_layernorm': {'run_benchmark': '2bcafc1fc6c44b523e33f94c107d35292de71818ecf0be21ed04178887517242',
+                           'run_correctness': 'ea64151a0840d28ad89e60a0c7db7cc3c60d6968d03a5c378fedb210670e2f81'},
+ 'L2/topk': {'reference_topk': '144555aa10fc2129c8eec627cea1949cc5a360035925762bcc1438e6ec205160',
+             'run_benchmark': '4d5fd149213e9b437409fcd16fa589de2bd4ec64ed423578e4f07d7cda23325e',
+             'run_correctness': 'b570bdcd8ab32ec61c3e52a05685d11035f858b58b528c660689e29de7d42aa7'},
+ 'L3/fused_moe_mxfp4': {'do_benchmark': '851d7b1d03f6eca27a480898ae108375b31fb7cf55f524ad56e0105541f7aeb7',
+                        'do_correctness': 'db9b2502208c15bc4d6c6676eab2677a988d9bc5f8c54b9ffae871f1785c86dd',
+                        'make_kernel_fn': '16ddaab510cdb248b22820196fc0534a6b7aeb67af34b76d3c017494115d3112'},
+ 'L3/fused_qkv_rope': {'_run_single_correctness': '46ea590af5b89cb073d1b8dfa67d8821f17eedd68fdf944fe25e34760a2f9ba9',
+                       'run_benchmark': 'f26febd50323e3390daa12111bc02d4c11ec021f9fcc6b69810a848acc338af9'},
+ 'L3/fused_rms_fp8': {'run_benchmark': '0b005aadca8765d23db40858cb82125e85662651571c08936cbe53f57b0b48ec',
+                      'run_correctness': 'e7790d5bfdf57e63365ab1671c1f6297f7e2e2b9d0f1d5b4cfe8fcc0fd83b56b'},
+ 'L3/gemm_a16w16_atomic': {'bench_one': 'b922fd179f3ec6d322aa81a50dfbb91547280cb6f08534102762bfedf323e99e',
+                           'check_correctness': 'ff3972f97719e9a804b95b7334fed778085b5410f19276160bd43baa543b12dd'}}
+
+
 GEAK = sorted((ROOT/'tasks/triton2triton/geak_eval').rglob('config.yaml'))
 
 
@@ -1393,17 +1439,37 @@ def test_geak_v2_preserves_original_functions_and_freezes_the_complete_manifest(
     olddefs={n.name:n for n in ast.parse(before).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
     newdefs={n.name:n for n in ast.parse(after).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
     bootstrap={'_find_baseline_kernel_dir','_load_baseline_triton','_resolve_geak_kernel_dir','_register_geak_aliases'}
+    checked = GEAK_CHECKED_FUNCTIONS.get(task.relative_to(ROOT/'tasks/triton2triton/geak_eval').as_posix(), {})
     for name in olddefs.keys()-bootstrap-({'e8m0_to_f32'} if data['migration'].get('reference_fixes') else set()):
-        assert ast.get_source_segment(before,olddefs[name])==ast.get_source_segment(after,newdefs[name]),name
+        current = ast.get_source_segment(after, newdefs[name])
+        if name in checked:
+            assert hashlib.sha256(current.encode()).hexdigest() == checked[name], name
+        else:
+            assert ast.get_source_segment(before, olddefs[name]) == current, name
     assert 'os.environ.get("GEAK_WORK_DIR"' not in after
     assert 'os.environ.get("GEAK_REPO_ROOT"' not in after
     perfrows=[r for r in data['cases'] if 'performance' in r['checks']]
     assert [r['params']['configuration'] for r in perfrows]==data['input_tables']['performance']
     assert [r['params']['case_index'] for r in perfrows]==list(range(len(perfrows)))
-    configs=[r['params']['configuration'] for r in data['cases']]
+    if checked:
+        previous = json.loads(subprocess.check_output(
+            ['git', 'show', f'fd4305bc:{task.relative_to(ROOT).as_posix()}/workloads.json'],
+            cwd=ROOT, text=True))
+        assert {key: data['input_tables'][key] for key in previous['input_tables']} == previous['input_tables']
+        assert set(data['input_tables']) - set(previous['input_tables']) <= {'controls'}
+        assert data['cases'][:len(previous['cases'])] == previous['cases']
+        assert all(row['checks'] == ['correctness']
+                   for row in data['cases'][len(previous['cases']):])
+        assert [row['test_case_id'] for row in data['cases'][len(previous['cases']):]] == [
+            row['test_case_id'] for row in data['input_tables'].get('controls', [])]
+    configs=[r['params']['configuration'] for r in data['cases']
+             if 'configuration' in r['params']]
     assert all(v in configs for v in data['input_tables']['original_correctness'])
     assert all('correctness' in r['checks'] for r in data['cases'])
-    result_record({'protocol':'arena-eval-v1','role':'task','action':'validate-task','status':'PASS','cases':data['cases']})
+    # Workload declarations need no execution status; the task action adds
+    # it when constructing the collection result. This only checks shape.
+    result_record({'protocol':'arena-eval-v1','role':'task','action':'validate-task','status':'PASS',
+                   'cases':[{**row, 'status':'PASS'} for row in data['cases']]})
     for role in ('baseline','candidate'):
         # Real command smoke: AST compilation only, no JIT/GPU execution.
         run=subprocess.run([__import__('sys').executable,'_arena_eval.py',role,'compile'],cwd=task,text=True,capture_output=True)
