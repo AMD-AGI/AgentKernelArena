@@ -49,3 +49,9 @@ measured graph. It also checks the public non-aliasing and unchanged-input
 contract. Validation runs outside measured samples with the existing tolerance,
 cases, warmups and repetition counts. Canonical TimedRun does not support Event
 fallback; an unsupported fallback cannot be reported as replay-validated.
+
+The implemented initial candidate is a supplied optimization starting point and
+may have identical source to the provided HIP baseline. Both are compiled from
+their own declared files and checked against the independent PyTorch reference.
+Every candidate action must execute its own compiled entrypoint; protected
+baseline/reference imports, calls and data access remain prohibited.
