@@ -1,6 +1,6 @@
 # Configuration for the KernelForge "forge" agent.
 #
-# This agent bridges AgentKernelArena to KernelForge's `kernel-agents forge-loop`:
+# This agent bridges AgentKernelArena to KernelForge's `forge-loop`:
 # an autonomous optimization loop (baseline -> agent edit -> 5-stage validate ->
 # bench -> keep/revert) running as a hard-killable subprocess.
 

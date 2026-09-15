@@ -1,8 +1,8 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 """Shared machinery for the KernelForge-backed Arena agents.
 
-``forge`` drives ``kernel-agents forge-loop`` and ``forge_rewrite`` drives
-``kernel-agents forge-rewrite-by-flydsl``. Both resolve the same GPU identity,
+``forge`` drives KernelForge's ``forge-loop`` and ``forge_rewrite`` drives its
+``forge-rewrite-by-flydsl``. Both resolve the same GPU identity,
 prepare the same kind of git workspace, stream and hard-kill the same kind of
 subprocess tree, and read the same ``__FORGE_RESULT__`` contract, so that part
 lives here and each launcher only owns its own CLI and result handling.
@@ -26,6 +26,14 @@ FORGE_RESULT_SENTINEL = "__FORGE_RESULT__"
 KB_STATUS_FILE = "arena_forge_status.json"
 FORGE_SHUTDOWN_MARGIN_SECONDS = 900
 
+# KernelForge's console script. It was renamed from ``kernel-agents`` to
+# ``kernelforge`` in v1.0.0b2 and the alias was dropped one release later, so
+# which name a deployment carries depends on which KernelForge it installed.
+# Both are tried, current name first, rather than pinning either: pinning the
+# old one makes every current install unlaunchable, and pinning the new one
+# does the same to installs that have not upgraded yet.
+FORGE_CLI_NAMES = ("kernelforge", "kernel-agents")
+
 _GPU_TYPE_ALIASES = {
     # Arena historically accepts the family-style names below for the X SKUs.
     # KernelForge addresses KB records by exact hardware model, so normalize the
@@ -40,6 +48,24 @@ _GPU_TYPE_ALIASES = {
 _EXPLICIT_BACKEND = {
     "rewrite_by_flydsl": "flydsl",
 }
+
+
+def resolve_forge_bin(purpose: str) -> str:
+    """Return the KernelForge CLI path, or raise naming every name tried.
+
+    ``purpose`` names the subcommand the caller needs, so the error says which
+    integration is unusable rather than only that a binary is missing.
+    """
+    for name in FORGE_CLI_NAMES:
+        path = shutil.which(name)
+        if path:
+            return path
+    raise RuntimeError(
+        f"KernelForge CLI not found, so the {purpose} is unavailable. Tried "
+        f"{', '.join(FORGE_CLI_NAMES)} on PATH. Install KernelForge "
+        "(pip install -e <KernelForge checkout>) so its console script "
+        "resolves."
+    )
 
 
 def _normalize_gfx_arch(arch: str) -> str:

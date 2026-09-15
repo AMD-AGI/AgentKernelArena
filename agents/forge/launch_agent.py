@@ -3,7 +3,7 @@
 
 KernelForge's autonomous optimization loop (baseline -> agent edit -> 5-stage
 validate -> bench -> keep/revert) runs as a standalone, hard-killable subprocess
-via `kernel-agents forge-loop`. This launcher adapts an Arena task workspace to
+via KernelForge's `forge-loop`. This launcher adapts an Arena task workspace to
 that loop's contract:
 
   1. Resolve the kernel file Arena copied into the workspace (task's
@@ -11,7 +11,7 @@ that loop's contract:
   2. Materialize a driver shim implementing the KernelForge driver contract
      (prints ``SNR: <db> dB`` for correctness and ``wall_ms: <ms>`` for bench).
   3. ``git init`` + initial commit the workspace (the loop uses git keep/revert).
-  4. Shell out to ``kernel-agents forge-loop`` (streaming output), which leaves
+  4. Shell out to ``forge-loop`` (streaming output), which leaves
      the workspace at the best-kept kernel.
 
 After this returns, Arena re-materializes its perf helpers and re-scores the
@@ -59,6 +59,7 @@ from agents.forge.common import (
     _terminate_process_group,
     _verify_forge_edit_scope,
     forge_environment,
+    resolve_forge_bin,
     run_forge_subprocess,
 )
 
@@ -279,12 +280,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     """
     logger = logging.getLogger(__name__)
 
-    forge_bin = shutil.which("kernel-agents")
-    if not forge_bin:
-        raise RuntimeError(
-            "Command 'kernel-agents' not found. Install KernelForge "
-            "(pip install -e KernelForge) so the forge-loop CLI is on PATH."
-        )
+    forge_bin = resolve_forge_bin("forge-loop CLI")
 
     # Agent config
     config_path = Path(__file__).with_name("agent_config.yaml")
