@@ -18,11 +18,18 @@ ROOT = Path(__file__).resolve().parents[1]
 VLLM = sorted((ROOT/'tasks/triton2triton/vllm').glob('*/config.yaml'))
 BASE = '5c9f8ef2'
 
-# Reviewed additive SSD contract checks change these runners. Keep their exact
-# wiring here; test_ssd_task_contract_v2 independently preserves the original
-# kernels, references, input generation, cases, gates and timer settings and
-# exercises incorrect measured/replay outputs through the actual runners.
-SSD_CHECKED_RUNNERS = {
+# Reviewed additive SSD/FLA/KDA contract checks change these runners. Keep their
+# exact wiring here; the dedicated SSD and FLA/KDA contract tests independently
+# preserve original kernels, references, input generation, cases, gates and
+# timer settings, and reject incorrect measured/replay output through real runners.
+VLLM_CHECKED_RUNNERS = {
+    'triton_ssd_bmm': '1f667162405be9f689057897819c41c98a9c25b92765c2bb958194ed5cf13f90',
+    'triton_kda_gate': '6aa814dab0b9edc1cffcf2d9aba210c073653d83573dfc3bf00f031e27515b64',
+    'triton_fla_scaled_dot_kkt': 'bef5cab3278a985409d5cfc94d88aaa7a8a3eff3a468d665b4493ce02e56af46',
+    'triton_kda_dot_kkt_inter': '42437b7515032fd4e0ef09c246439660f4492c1c9b2e3f970b50bfca109c1106',
+    'triton_kda_dot_kkt_intra': '0b2cb2303afbf141608b801fc6cd238fa3a1cc558c6d1b3aa93c8540f4d4f99b',
+    'triton_fla_chunk_fwd_o': 'a0fe8d90c811041d93c572c2d93f7328b3326d7a904a4e43841a99f8b74399ac',
+    'triton_kda_gla_fwd_o': 'a0d66e1a98173feb206c4737ccbc8cafa12c66aacef0a11a6caff798e3c364db',
     'triton_ssd_chunk_cumsum': 'a11e9f404f232597feb9ff33cee08a586da8fa7ca1ad77199308e2cb46021b18',
     'triton_ssd_chunk_scan': '0a3f92b0bcd030cc9b342a066dbd9c77f43cdda0e07a64f77cf6adcd16de0328',
     'triton_ssd_chunk_state': '286f597f11f5ce15628b76f87fc0a59fab20dce4c90db3796ad06eeddb774730',
@@ -61,12 +68,12 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
     loop = next(n for n in ast.walk(correction) if isinstance(n,ast.For))
     assert ast.unparse(loop.body[0].test).startswith('case_index is not None')
     loop.body.pop(0)
-    if task.name in SSD_CHECKED_RUNNERS:
-        assert hashlib.sha256(after.encode()).hexdigest() == SSD_CHECKED_RUNNERS[task.name]
+    if task.name in VLLM_CHECKED_RUNNERS:
+        assert hashlib.sha256(after.encode()).hexdigest() == VLLM_CHECKED_RUNNERS[task.name]
     else:
         assert ast.dump(correction, include_attributes=False) == ast.dump(bf['run_correctness'], include_attributes=False)
     for name in bf.keys()-{'run_correctness'}:
-        if task.name in SSD_CHECKED_RUNNERS and name in {'load_module', 'run_performance', 'main'}:
+        if task.name in VLLM_CHECKED_RUNNERS and name in {'load_module', 'run_performance', 'main'}:
             # The full reviewed runner hash above covers these changed bodies.
             continue
         if task.name == 'triton_pack_bitmatrix' and name == 'reference_pack_bitmatrix':
