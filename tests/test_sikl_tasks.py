@@ -97,29 +97,56 @@ def test_production_source_is_separate_and_documented(task):
         assert source.startswith(acquisition['destination'] + '/')
         assert source in (task / 'README.md').read_text()
         assert source not in config['candidate']['editable']
-    assert acquisition['exclude'] == ['jit', 'aiter/jit/flydsl_cache', '__pycache__']
+    assert acquisition['exclude'] == ['jit', 'aiter/jit/build', 'aiter/jit/flydsl_cache', '__pycache__']
 
 
-def test_image_acquisition_excludes_nested_flydsl_cache_but_keeps_jit_sources(tmp_path, monkeypatch):
+def test_image_acquisition_excludes_generated_jit_trees_but_keeps_sources(tmp_path, monkeypatch):
     from src import task_materialization as materialization
 
     root = tmp_path / 'image_aiter'
-    cache = root / 'aiter/jit/flydsl_cache/case'
-    cache.mkdir(parents=True)
-    (cache / 'unreadable.pkl').write_bytes(b'compiled runtime cache')
-    (root / 'aiter/jit/core.py').write_text('jit_source = True\n')
+    excluded = [root / 'aiter/jit/build', root / 'aiter/jit/flydsl_cache']
+    generated = {
+        'aiter/jit/build/module/build/module.so': b'compiled shared object',
+        'aiter/jit/build/module/build/kernel.cuda.o': b'compiled device object',
+        'aiter/jit/flydsl_cache/case/unreadable.pkl': b'compiled runtime cache',
+    }
+    retained = {
+        'aiter/jit/__init__.py': b'jit_source = True\n',
+        'aiter/jit/core.py': b'compiler_source = True\n',
+        'aiter/jit/build_helpers/helper.py': b'host_helper = True\n',
+        'aiter/jit/module.so': b'adjacent installed module is not excluded',
+        'aiter/tuned_gemm.py': b'production_source = True\n',
+    }
+    for name, data in {**generated, **retained}.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
     source = dict(_config(TASKS[0])['workspace']['sources'][0], image_path=str(root))
     original_digest = materialization._file_digest
 
     def digest(path, deadline):
-        if path.is_relative_to(cache):
+        if any(path.is_relative_to(directory) for directory in excluded):
             raise PermissionError('Cached runtime artifact must not be read')
         return original_digest(path, deadline)
 
     monkeypatch.setattr(materialization, '_file_digest', digest)
     _, manifest = materialization._image_input(source, materialization._Deadline(10))
-    assert 'aiter/jit/core.py' in manifest
-    assert not any('flydsl_cache' in name for name in manifest)
+    assert set(retained) <= manifest.keys()
+    assert not any(any((root / name).is_relative_to(directory) for directory in excluded)
+                   for name in manifest)
+
+    # Exercise actual copying, not just declaration or manifest assertions.
+    destination, state = tmp_path / 'materialized', tmp_path / 'copy-evidence'
+    destination.mkdir()
+    state.mkdir()
+    materialization._copy_tree(root, destination, manifest, materialization._Deadline(10), state)
+    for name, data in retained.items():
+        assert (destination / name).read_bytes() == data
+    for name, data in generated.items():
+        assert not (destination / name).exists()
+        assert (root / name).read_bytes() == data  # Installed image tree is untouched.
+    copied = materialization._tree_manifest(destination, materialization._Deadline(10))
+    materialization._verify_copy(manifest, copied, root, destination)
 
 
 @pytest.mark.parametrize('task', TASKS, ids=lambda t: t.name)

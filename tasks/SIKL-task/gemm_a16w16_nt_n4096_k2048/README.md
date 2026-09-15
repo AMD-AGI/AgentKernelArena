@@ -64,6 +64,10 @@ fusion, split reductions and per-shape dispatch are implementation choices.
 The production baseline calls the **installed AITER package**. The framework
 materializes read-only explanatory source at the location in
 `baseline.source_files`; this copy must not shadow the installed Python package.
+Source acquisition excludes generated `aiter/jit/build` objects and the
+`aiter/jit/flydsl_cache` directory while retaining `aiter/jit` Python sources.
+These exclusions apply only to the explanatory copy; the installed baseline
+package and its runtime artifacts remain available in the Docker image.
 The selected Docker runtime must provide AITER, FlyDSL and ROCm PyTorch on gfx950.
 The runner records runtime versions, the executed baseline module's source hash
 and dispatch evidence. No SIKL repository clone is needed: the original

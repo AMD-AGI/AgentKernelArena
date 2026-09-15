@@ -31,6 +31,7 @@ workspace:
     destination: aiter_source
     exclude:
     - jit
+    - aiter/jit/build
     - aiter/jit/flydsl_cache
     - __pycache__
 evaluation:
