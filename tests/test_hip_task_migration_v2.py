@@ -403,8 +403,8 @@ ORIGINAL_SOURCE_DIGESTS = {'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (10
 # out-of-place and validate timed replay; matrix must validate every output.
 # Job 139100 additionally found missing replay checks in FusedLeakyReLU, GRU and item attention.
 # MaskedLanguageModel also needed its transposed weight launch axes corrected.
-# The original digest remains the gate for all other 75 tasks.
-GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '0b72fe68a7c9bb4ef696ce876f80f0de9ed3a0dd434acd8f499f679e0188975c'), 'torch2hip/gpumode/14539_GELU': (10, '6988f6cace9f3c9a1f8da275789518c8667ba249b5c9431c6b05a57dd67d9e36'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (11, '2e76a63ae4a0f16eadc664b81c60d5d9779104ce66304d9bac85f5d5c90e70e7'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, '434697dcc5596fee2141040bbcb1b404b5614f555a58bc8d729b190da194adfd'), 'hip2hip/gpumode/ItemQueryAttention': (11, '5625fb2aa11b57597f56893f70bb70d5e5cf8ccafa43977f2bc2a95ac563f8a0'), 'hip2hip/gpumode/MaskedLanguageModel': (10, '17834ed93fcdbec6f9d64f2450fc14bf161eb37f69844c731d39055e57d62d96'), 'hip2hip/gpumode/SiLU': (11, 'c590823050ac4c044cddc3113def4b6866f153f92a54d9775f168856843a9ecf'), 'hip2hip/gpumode/Sigmoid': (11, 'dad77fe3e8c52bf73f6e6d86acfdc9fcaf82262cb07a40fe39f212052f6758c5'), 'torch2hip/gpumode/10190_FusedLeakyReLU': (10, '7870f18fd233a1f462391676dfb0ed8aa1fd6730ffa323cad140043f5d204465'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '4c41c855bbf75c472fcd5ae17f7a1709d841fe133d67f482669f37a68e4dbb25'), 'torch2hip/gpumode/102_ItemQueryAttention': (10, 'aa6bbf7f1997f037a682a9705fc6eafd0ec30e2a0aecd8066bef80024bfd60ca'), 'torch2hip/gpumode/16636_SiLU': (10, '709a7f37523e955d65e56755e0a80cf678062bb178f104b42ca2f6423af16f0a'), 'torch2hip/gpumode/11184_Sigmoid': (10, 'da01ac4fa506921c5f5e8bb6e35222dda47a05a608b8667d84cad00394f1d050')}
+# The original digest remains the gate for all other 73 tasks.
+GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '0b72fe68a7c9bb4ef696ce876f80f0de9ed3a0dd434acd8f499f679e0188975c'), 'torch2hip/gpumode/14539_GELU': (10, '6988f6cace9f3c9a1f8da275789518c8667ba249b5c9431c6b05a57dd67d9e36'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (11, '2e76a63ae4a0f16eadc664b81c60d5d9779104ce66304d9bac85f5d5c90e70e7'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, '434697dcc5596fee2141040bbcb1b404b5614f555a58bc8d729b190da194adfd'), 'hip2hip/gpumode/ItemQueryAttention': (11, '5625fb2aa11b57597f56893f70bb70d5e5cf8ccafa43977f2bc2a95ac563f8a0'), 'hip2hip/gpumode/MaskedLanguageModel': (10, '17834ed93fcdbec6f9d64f2450fc14bf161eb37f69844c731d39055e57d62d96'), 'hip2hip/gpumode/SiLU': (11, 'c590823050ac4c044cddc3113def4b6866f153f92a54d9775f168856843a9ecf'), 'hip2hip/gpumode/Sigmoid': (11, 'dad77fe3e8c52bf73f6e6d86acfdc9fcaf82262cb07a40fe39f212052f6758c5'), 'torch2hip/gpumode/10190_FusedLeakyReLU': (10, '7870f18fd233a1f462391676dfb0ed8aa1fd6730ffa323cad140043f5d204465'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '4c41c855bbf75c472fcd5ae17f7a1709d841fe133d67f482669f37a68e4dbb25'), 'torch2hip/gpumode/102_ItemQueryAttention': (10, 'aa6bbf7f1997f037a682a9705fc6eafd0ec30e2a0aecd8066bef80024bfd60ca'), 'torch2hip/gpumode/16636_SiLU': (10, '709a7f37523e955d65e56755e0a80cf678062bb178f104b42ca2f6423af16f0a'), 'torch2hip/gpumode/11184_Sigmoid': (10, 'da01ac4fa506921c5f5e8bb6e35222dda47a05a608b8667d84cad00394f1d050'), 'hip2hip/gpumode/TanH': (11, '417c0618e1d83cc7d574e0dcd746e4da001a6af3237c1b74ec131ec95b4f551b'), 'torch2hip/gpumode/11178_TanH': (10, '6c162a2f6cc5f7accda98123ad09b806f0079f31d894779dfe86d95bcb4b2e5e')}
 
 
 @pytest.mark.parametrize('path', CONFIGS, ids=lambda p: p.parent.name)
@@ -706,7 +706,8 @@ def test_matrix_additional_checks_cover_all_original_shapes(monkeypatch):
                                          'torch2hip/gpumode/5334_GateGRUSelectionLayer',
                                          'torch2hip/gpumode/102_ItemQueryAttention',
                                          'torch2hip/gpumode/16636_SiLU',
-                                         'torch2hip/gpumode/11184_Sigmoid'])
+                                         'torch2hip/gpumode/11184_Sigmoid',
+                                         'hip2hip/gpumode/TanH', 'torch2hip/gpumode/11178_TanH'])
 @pytest.mark.parametrize('behavior', ['correct', 'wrong_replay', 'input_mutation', 'input_alias'])
 def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypatch):
     root = ROOT / 'tasks' / relative
@@ -845,9 +846,9 @@ int main() {
 
 
 @pytest.mark.parametrize('family', ['hip2hip', 'torch2hip'])
-@pytest.mark.parametrize('name', ['SiLU', 'Sigmoid'])
+@pytest.mark.parametrize('name', ['SiLU', 'Sigmoid', 'TanH'])
 def test_priority_activation_references_have_independent_known_answers(name, family):
-    directory = name if family == 'hip2hip' else {'SiLU': '16636_SiLU', 'Sigmoid': '11184_Sigmoid'}[name]
+    directory = name if family == 'hip2hip' else {'SiLU': '16636_SiLU', 'Sigmoid': '11184_Sigmoid', 'TanH': '11178_TanH'}[name]
     root = ROOT / 'tasks' / family / 'gpumode' / directory
     args = options(yaml.safe_load((root / 'config.yaml').read_text()))
     inputs = torch.tensor([-1.,0.,1.])
@@ -855,8 +856,10 @@ def test_priority_activation_references_have_independent_known_answers(name, fam
         cls=getattr(import_path(root / filename),name)
         if name=='SiLU':
             model=cls().eval(); expected=torch.tensor([x/(1+math.exp(-x)) for x in (-1.,0.,1.)])
-        else:
+        elif name=='Sigmoid':
             model=cls(a=2,max=3).eval(); expected=torch.tensor([3/(1+math.exp(-2*x)) for x in (-1.,0.,1.)])
+        else:
+            model=cls(a=2,max=3).eval(); expected=torch.tensor([3*math.tanh(2*x) for x in (-1.,0.,1.)])
         before=inputs.clone(); actual=model(inputs)
         torch.testing.assert_close(actual,expected)
         assert not torch.allclose(actual,torch.zeros_like(actual))

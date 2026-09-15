@@ -42,3 +42,10 @@ The runner is task-local and does not import the Arena source tree or an agent.
 ## Original task instructions
 
 You are a hip expert and good at gpu kernel implementation. Please implemnt a target HIP kernel code corresponding to pytorch modullle code provided as followings, which includes hip kernel, kernel laucher and python bliding code for the hip launcher.
+
+The performance adapter checks the complete output from the actual timed graph
+against the protected reference, checks caller inputs remain unchanged, then
+poisons output storage and validates a replay of that same graph. These checks
+use the same inputs; they do not establish changed-input cache resistance.
+All validation runs outside the measured samples. Case shapes, seeds, tolerance,
+warmups, sample counts, and the original timing policy remain unchanged.
