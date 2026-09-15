@@ -70,6 +70,12 @@ if Path("probe.json").exists():
     probe = json.loads(Path("probe.json").read_text())
     if role == "candidate" and action == probe.get("action"):
         time.sleep(probe.get("sleep", 0))
+        if probe.get("failure_reason"):
+            status = result["status"] = "FAIL"
+            result["reason"] = probe["failure_reason"]
+            for row in rows:
+                row.update(status="FAIL", reason=probe["failure_reason"])
+            print("UNSTRUCTURED_OUTPUT_NEVER_RETAINED")
         if probe.get("drop_case") and rows:
             rows.pop()
         if probe.get("wrong_shape") and rows:
@@ -405,6 +411,34 @@ def test_bridge_cli_failure_is_nonzero_and_does_not_print_secret(task_factory):
     assert result.returncode == 1
     assert "FAKE_RUNTIME_SECRET_123" not in result.stdout + result.stderr
     assert '"status": "FAIL"' in result.stdout
+
+
+@pytest.mark.parametrize("action", ["compile", "correctness"])
+def test_bridge_exposes_bounded_redacted_validated_failure(task_factory, monkeypatch, action):
+    secret = "FAKE_TASK_API_KEY_MUST_NOT_APPEAR"
+    monkeypatch.setenv("ARENA_PROBE_API_KEY", secret)
+    bridge = task_factory(state="unimplemented" if action == "compile" else "implemented",
+                          probe={"action": action,
+                                 "failure_reason": "Unknown FlyDSL operation vector.example " +
+                                 secret + " " + "detail " * 1000})
+    command = [sys.executable, "agents/geak/bridge.py", "--job", str(bridge.job_path),
+               action, "--workspace", str(bridge.eval_dir / "workspace")]
+    result = subprocess.run(command, text=True, capture_output=True, timeout=10)
+    assert result.returncode == 1
+    envelope = json.loads(result.stdout.split("GEAK_ARENA_RESULT=", 1)[1])
+    assert envelope["error_type"] == "TaskExecutionError"
+    diagnostic = envelope["diagnostic"]
+    assert diagnostic["role"] == "candidate" and diagnostic["action"] == action
+    assert diagnostic["reason"].startswith("Unknown FlyDSL operation vector.example [REDACTED]")
+    assert len(diagnostic["reason"]) <= 1024
+    if action == "correctness":
+        assert [row["test_case_id"] for row in diagnostic["cases"]] == ["small", "wide"]
+        assert all(len(row["reason"]) <= 1024 for row in diagnostic["cases"])
+    records = [path.read_text() for path in (bridge.root / "checks").glob("*.json")]
+    visible = result.stdout + result.stderr + "".join(records)
+    assert secret not in visible
+    assert "UNSTRUCTURED_OUTPUT_NEVER_RETAINED" not in visible
+    assert any(json.loads(record).get("diagnostic") == diagnostic for record in records)
 
 
 def test_launcher_retains_delivery_but_reports_engine_failure(task_factory, monkeypatch):

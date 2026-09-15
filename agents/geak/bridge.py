@@ -11,6 +11,7 @@ import logging
 import math
 import os
 from pathlib import Path
+import re
 import shutil
 import sys
 import time
@@ -32,6 +33,23 @@ def write_json(path: Path, value: dict) -> None:
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
     temporary.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
     temporary.replace(path)
+
+
+def _task_diagnostic(value: object) -> str | None:
+    """Bound validated runner reasons; never forward raw command output."""
+    if not isinstance(value, str):
+        return None
+    for key, secret in os.environ.items():
+        if len(secret) >= 8 and re.search(r"TOKEN|SECRET|PASSWORD|API_KEY", key, re.I):
+            value = value.replace(secret, "[REDACTED]")
+    value = re.sub(r"sk-(?:ant-)?[A-Za-z0-9_-]{10,}", "[REDACTED]", value)
+    return value[:1024]
+
+
+class _ActionFailure(TaskExecutionError):
+    def __init__(self, diagnostic: dict):
+        super().__init__(f"GEAK public runner failed: {diagnostic['role']}.{diagnostic['action']}")
+        self.diagnostic = diagnostic
 
 
 @dataclass(frozen=True)
@@ -260,9 +278,16 @@ class Bridge:
                       {k: row[k] for k in ("test_case_id", "status", "execution_time_ms", "benchmark_method")
                        if k in row} for row in result.cases],
                   "sources": before, "elapsed_s": sum(c.elapsed_s for c in executed.commands)}
+        if not result.passed:
+            record["diagnostic"] = {
+                "role": role, "action": action, "reason": _task_diagnostic(result.reason),
+                "cases": [{"test_case_id": row["test_case_id"],
+                           "reason": _task_diagnostic(row.get("reason"))}
+                          for row in result.cases if row["status"] == "FAIL"][:5],
+            }
         write_json(self.root / "checks" / (executed.invocation_id + ".json"), record)
         if not result.passed:
-            raise TaskExecutionError(f"GEAK public runner failed: {role}.{action}")
+            raise _ActionFailure(record["diagnostic"])
         return result
 
     def materialize(self, source: Path, destination: Path) -> dict:
@@ -364,8 +389,12 @@ def main(argv: list[str] | None = None) -> int:
         print("GEAK_ARENA_RESULT=" + json.dumps(result, allow_nan=False))
         return 0
     except Exception as exc:
-        # Exception text may contain task output or provider secrets. Keep only type.
-        print("GEAK_ARENA_RESULT=" + json.dumps({"status": "FAIL", "error_type": type(exc).__name__}))
+        # Exception text and raw output may contain secrets. Only validated,
+        # bounded task reasons are eligible for model-facing diagnostics.
+        failure = {"status": "FAIL", "error_type": type(exc).__name__}
+        if isinstance(exc, _ActionFailure):
+            failure.update(error_type="TaskExecutionError", diagnostic=exc.diagnostic)
+        print("GEAK_ARENA_RESULT=" + json.dumps(failure))
         return 1
 
 
