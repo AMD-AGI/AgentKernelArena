@@ -1814,3 +1814,42 @@ def test_ck_full_shape_adapter_uses_magnitude_gate(name, monkeypatch):
     monkeypatch.setattr(h, "_run", lambda inp: inp["hidden"] * 2)
     with pytest.raises(AssertionError, match="magnitude"):
         adapter.run_correctness(h)
+
+
+@pytest.mark.parametrize("external_root", [False, True])
+def test_pa_adapter_attests_actual_template_compilation(tmp_path, monkeypatch, external_root):
+    name = "mi355x_vllm_hip_paged_attention_decode"
+    adapter = load_module(TASKS / name / "scripts/task_adapter.py")
+    source_build = load_module(TASKS / name / "scripts/source_build.py")
+    monkeypatch.setattr(adapter, "ROOT", tmp_path)
+    monkeypatch.setattr(adapter, "os", SimpleNamespace(environ=dict(os.environ)))
+    meta = tmp_path / "aiter_meta"
+    (meta / "csrc/cpp_itfs/pa").mkdir(parents=True)
+    (tmp_path / "aiter").mkdir()
+    shutil.copyfile(TASKS / name / "config.yaml", tmp_path / "config.yaml")
+    imported = SimpleNamespace(__file__=str(tmp_path / "aiter/__init__.py"))
+    monkeypatch.setattr(adapter, "importlib", SimpleNamespace(import_module=lambda name: imported))
+    monkeypatch.setitem(sys.modules, "source_build", source_build)
+    def compile_lib(src_file, folder, includes=None, sources=None):
+        if folder == "failed": raise RuntimeError("HIP compiler failed")
+        # The real utility mutates this list; evidence snapshots it first.
+        includes.clear()
+        return "compiled-template"
+    utils = SimpleNamespace(AITER_CORE_DIR=str(tmp_path.parent / "installed" if external_root else meta),
+                            compile_lib=compile_lib)
+    monkeypatch.setitem(sys.modules, "csrc.cpp_itfs.utils", utils)
+    if external_root:
+        with pytest.raises(RuntimeError, match="outside the declared workspace"):
+            adapter.prepare(SimpleNamespace(_configure=lambda: None))
+        return
+    evidence = adapter.prepare(SimpleNamespace(_configure=lambda: None))
+    candidate = meta / "csrc/cpp_itfs/pa/pa_kernels.cuh"
+    candidate.write_text("// declared header\n")
+    utils.compile_lib("rendered C++", "unrelated", includes=[str(meta / "csrc/other.cuh")])
+    with pytest.raises(RuntimeError, match="did not compile"): evidence.finish()
+    with pytest.raises(RuntimeError, match="compiler failed"):
+        utils.compile_lib("rendered C++", "failed", includes=[str(candidate)])
+    with pytest.raises(RuntimeError, match="did not compile"): evidence.finish()
+    assert utils.compile_lib("rendered C++", "pa_shape", includes=[str(candidate)]) == "compiled-template"
+    assert evidence.finish()["compiled_candidate_paths"] == ["aiter_meta/csrc/cpp_itfs/pa/pa_kernels.cuh"]
+    assert evidence.finish()["build_modules"] == ["pa_shape"]

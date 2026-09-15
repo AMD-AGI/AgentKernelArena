@@ -218,3 +218,17 @@ the package-origin guard rejected the installed image dispatch before baseline
 checks could run. That failure is retained; this import-path fix requires fresh
 GPU validation. The guard still rejects pre-imported external packages, and no
 case, numerical gate, timing method or source-compilation check is relaxed.
+
+## Template compilation provenance
+
+This operator compiles through `csrc.cpp_itfs.utils.compile_lib`. The protected
+adapter observes that template compiler and verifies its metadata root is the
+current role's declared AITER tree. It records declared candidate headers only
+after successful compilation. An unrelated build, installed package, compiler
+error or reused binary without a fresh compilation remains a failure.
+
+Job 139797 compiled and executed the workspace PA template, but the former
+adapter observed `aiter.jit.core.build_module`, a different build path, and
+reported missing candidate compilation evidence. Selecting the actual template
+compiler corrects the observation without changing the kernel, cases, numerical
+gates, cache isolation or device timing. Fresh full GPU validation is required.

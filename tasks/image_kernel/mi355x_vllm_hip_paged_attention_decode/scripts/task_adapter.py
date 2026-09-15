@@ -91,7 +91,8 @@ def prepare(harness):
     from source_build import watch
     cfg = yaml.safe_load((ROOT / "config.yaml").read_text())
     targets = [item if isinstance(item, str) else item["path"] for item in cfg["candidate"]["editable"]]
-    return watch(ROOT, targets, META_ROOT, template=False)
+    # paged_attention_rocm builds csrc.cpp_itfs templates, not jit.core modules.
+    return watch(ROOT, targets, META_ROOT, template=True)
 
 
 def run_correctness(harness):
