@@ -424,7 +424,7 @@ class ValidationLauncherTests(unittest.TestCase):
             )
             self.assertIn("Missing replay\nvalidation alone is WARN", prompt, str(config))
 
-    def test_prompt_includes_only_relevant_task_family_exception(self) -> None:
+    def test_migrated_tasks_share_lifecycle_policy_without_family_exceptions(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         torch2hip_prompt = build_validation_prompt(
             str(
@@ -445,18 +445,14 @@ class ValidationLauncherTests(unittest.TestCase):
             {"agent": {}},
         )
 
-        self.assertIn("torch2hip generation placeholder policy", torch2hip_prompt)
-        self.assertNotIn("torch2flydsl starter policy", torch2hip_prompt)
-        self.assertNotIn("torch2hip generation placeholder policy", hip2hip_prompt)
-        self.assertNotIn("torch2flydsl starter policy", hip2hip_prompt)
-
-        # Migrated SIKL tasks use the public lifecycle and real captured evidence.
-        # The previous prompt-only family exception must no longer appear.
-        self.assertNotIn("operator2flydsl stub-candidate policy", operator2flydsl_prompt)
-        self.assertNotIn("SKIP/stub_candidate", operator2flydsl_prompt)
-        self.assertIn("candidate_unimplemented", operator2flydsl_prompt)
-        self.assertNotIn("operator2flydsl stub-candidate policy", torch2hip_prompt)
-        self.assertNotIn("operator2flydsl stub-candidate policy", hip2hip_prompt)
+        for prompt in (torch2hip_prompt, hip2hip_prompt, operator2flydsl_prompt):
+            for obsolete in ("torch2hip generation placeholder policy", "torch2flydsl starter policy",
+                             "operator2flydsl stub-candidate policy", "SKIP/stub_candidate"):
+                self.assertNotIn(obsolete, prompt)
+            self.assertIn("candidate_unimplemented", prompt)
+            self.assertIn("Only the framework assigns", prompt)
+        self.assertIn('"initial_state": "unimplemented"', torch2hip_prompt)
+        self.assertIn('"initial_state": "implemented"', hip2hip_prompt)
 
 
 if __name__ == "__main__":

@@ -478,7 +478,13 @@ def test_real_cpu_timeout_kills_tool_process_group(tmp_path):
     pid = int(result.output.strip())
     stat = Path(f"/proc/{pid}/stat")
     for _ in range(50):
-        if not stat.exists() or stat.read_text().split()[2] == "Z":
+        try:
+            state = stat.read_text().split()[2]
+        except FileNotFoundError:
+            # The killed process can be reaped between observing and reading
+            # /proc. Its disappearance is the desired outcome.
+            break
+        if state == "Z":
             break
         time.sleep(0.02)
     else:

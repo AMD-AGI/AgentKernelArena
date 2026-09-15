@@ -6,7 +6,7 @@ from .task_spec import TaskSpec, resolve_task_path
 
 
 def build_task_prompt(spec: TaskSpec, workspace: Path, *, target_gpu: str,
-                      hardware_context: str = "") -> str:
+                      hardware_context: str = "", target_arch: str | None = None) -> str:
     config = spec.to_mapping()
     candidate = spec.candidate
     lines = [
@@ -19,6 +19,11 @@ def build_task_prompt(spec: TaskSpec, workspace: Path, *, target_gpu: str,
     ]
     if candidate.initial_language:
         lines.append(f"Initial implementation backend: {candidate.initial_language}")
+    if target_arch:
+        lines.extend([
+            f"Target architecture token: `{target_arch}`",
+            "Check runtime/build architecture compatibility before compiling. Report conflicting protected build settings; do not rewrite protected files to bypass them.",
+        ])
     lines.extend([
         "The initial state describes the shipped task. On resume, inspect the current candidate before deciding what remains to implement.",
         "All task paths below are relative to this workspace root. Preserve their directory components.",

@@ -281,11 +281,11 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
         if stable_id is None:
             stable_id = task_config_path.resolve().parent.relative_to(project_root / 'tasks').as_posix()
         spec = load_task_spec(task_config_path, task_id=stable_id)
-        context, _ = _load_cheatsheet(
+        context, gfx_arch = _load_cheatsheet(
             spec.candidate.language, target_gpu_model, project_root, spec.to_mapping(), logger,
         )
         return build_task_prompt(spec, Path(workspace_directory), target_gpu=target_gpu_model,
-                                 hardware_context=context)
+                                 hardware_context=context, target_arch=gfx_arch)
 
     # Build prompt sections
     prompt_sections = []

@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 
@@ -119,7 +120,17 @@ def test_implemented_gemm_and_hipblaslt_reference_share_event_policy():
     for task in tasks:
         harness = ROOT / "tasks/torch2flydsl" / task / "test_kernel_harness.py"
         source = harness.read_text()
-        assert source.count("use_cuda_graph=False") == 2, harness
+        tree = ast.parse(source)
+        # Both the legacy entrypoint and the v2 result adapter preserve the
+        # predetermined Event policy for the candidate/reference timing pair.
+        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+        for name in ("run_benchmark", "arena_benchmark"):
+            calls = [node for node in ast.walk(functions[name]) if isinstance(node, ast.Call)
+                     and getattr(node.func, "id", "") == "benchmark_cuda_graph_or_events"]
+            assert len(calls) == 2, (harness, name)
+            for call in calls:
+                use_graph = next(k.value for k in call.keywords if k.arg == "use_cuda_graph")
+                assert isinstance(use_graph, ast.Constant) and use_graph.value is False
         assert "capture_unsafe_hipblaslt_reference" in source, harness
 
 
