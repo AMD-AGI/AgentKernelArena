@@ -20,7 +20,8 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -28,6 +29,7 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2flydsl/sglang/chunk_scaled_dot_kkt_fwd"
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
+ENTRY = 'chunk_scaled_dot_kkt_fwd'
 BT = 64  # CHUNK_SIZE
 
 # Test configs: (B, T, Hg, H, K, use_g). real Qwen3-Next / Kimi-Linear GDN:
@@ -148,6 +150,50 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_gdn_output(actual, inp):
+    import torch
+    outputs = (actual,)
+    contracts = (((inp["B"], inp["T"], inp["H"], BT), torch.float32),)
+    for output, (shape, dtype) in zip(outputs, contracts):
+        if (not isinstance(output, torch.Tensor) or output.shape != shape
+                or output.dtype != dtype or output.device != inp["k"].device):
+            raise AssertionError("GDN output shape/dtype/device contract mismatch")
+        if not bool(torch.isfinite(output).all()):
+            raise AssertionError("Non-finite GDN output")
+
+
+def _compare_gdn_output(actual, expected, inp):
+    import torch
+    _checked_gdn_output(actual, inp)
+    dtype = inp["k"].dtype
+    atol = 1e-4 if dtype == torch.float32 else 3e-2
+    rtol = 1e-4 if dtype == torch.float32 else 1e-2
+    for output, ref in ((actual, expected),):
+        if output.shape != ref.shape or output.device != ref.device or not bool(torch.isfinite(ref).all()):
+            raise AssertionError("Invalid GDN reference contract")
+        isclose = torch.isclose(output.float(), ref.float(), atol=atol, rtol=rtol)
+        err_ratio = (~isclose).float().mean().item()
+        if err_ratio > 0.02:
+            raise AssertionError(f"Numerical mismatch: original GDN err_ratio={err_ratio}")
+
+
+def _gdn_replay_validator(inp):
+    inputs = tuple(inp[key] for key in ("k", "beta", "g") if inp[key] is not None)
+    originals = tuple(v.clone() for v in inputs)
+    expected = reference_kkt(inp)
+    def perturb():
+        inp["k"].mul_(.5)
+    def replay_reference():
+        return reference_kkt(inp)
+    def compare(actual, expected):
+        _compare_gdn_output(actual, expected, inp)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=replay_reference, compare=compare)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -163,10 +209,14 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             inp = make_test_data(B, T, Hg, H, K, use_g, "cuda", dtype)
+            protected_inputs = tuple(inp[key] for key in ("k", "beta", "g") if inp[key] is not None)
+            originals = tuple(v.clone() for v in protected_inputs)
             A_t = _retry_oom(lambda: mod.chunk_scaled_dot_kkt_fwd(
                 k=inp["k"], beta=inp["beta"], g_cumsum=inp["g"], cu_seqlens=None,
                 chunk_size=BT))
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_gdn_output(A_t, inp)
             A_r = reference_kkt(inp)
             diff = (A_t.float() - A_r.float()).abs().max().item()
             isclose = torch.isclose(A_t.float(), A_r.float(), atol=atol, rtol=rtol)
@@ -197,9 +247,10 @@ def run_performance():
         try:
             torch.manual_seed(42 + ti)
             inp = make_test_data(B, T, Hg, H, K, use_g, "cuda", dtype)
+            replay_validate = _gdn_replay_validator(inp)
 
             def fn():
-                mod.chunk_scaled_dot_kkt_fwd(
+                return mod.chunk_scaled_dot_kkt_fwd(
                     k=inp["k"], beta=inp["beta"], g_cumsum=inp["g"], cu_seqlens=None,
                     chunk_size=BT)
 
@@ -207,18 +258,20 @@ def run_performance():
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 

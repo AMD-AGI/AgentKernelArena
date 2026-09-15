@@ -52,3 +52,22 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All eight original cases remain, including grouped heads, partial final chunks,
+and both unequal K/V widths. Return finite w[B,T,H,K] in k.dtype and u[B,T,H,V]
+in v.dtype, on the input device. The oracle accumulates in FP32; its dtype is not
+the result storage contract. All five inputs are read-only. Replay negates k
+and v, so both outputs change sign while preserving the lower-triangular A,
+positive beta and negative-decay metadata.
+
+The declared suite uses cu_seqlens=None and the original64-token chunk size;
+other variable-length or dtype override modes are outside these cases. For the
+BF16 input suite, the original numerical rule allows at most2% of elements to
+miss atol=0.03,rtol=0.01 (independently for each result). This is an explicit
+finite-value fraction rule, not an all-elements guarantee; nonfinite values,
+shape or dtype errors always fail. Correctness and measured replay share it.
+Actual measured outputs are retained and poisoned before the same graph replay.
+Oracle work, perturbation and restoration are outside timing. Originalseed42+i,
+ten externalwarmups and100samples remain. Final candidate FlyDSL launches are
+audited independently of the frozen Triton baseline and protected oracle.

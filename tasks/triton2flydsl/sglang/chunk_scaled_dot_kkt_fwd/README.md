@@ -52,3 +52,23 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All eight original cases remain, including grouped heads, partial final chunks,
+and optional decay gating. The default output_dtype is FP32: return a finite
+[B,T,H,64] tensor on k.device, including zeros outside the strict lower triangle
+and in final-chunk padding. Inputs k, beta and optional g are read-only. Replay
+halves k, changing K@K.T by a factor of one quarter while preserving beta and
+negative-decay metadata. Negating all of k would leave this Gram matrix unchanged
+and is therefore not an effective stale-output control.
+
+The declared suite uses cu_seqlens=None and the original64-token chunk size;
+other variable-length or dtype override modes are outside these cases. For the
+BF16 input suite, the original numerical rule allows at most2% of elements to
+miss atol=0.03,rtol=0.01 (independently for each result). This is an explicit
+finite-value fraction rule, not an all-elements guarantee; nonfinite values,
+shape or dtype errors always fail. Correctness and measured replay share it.
+Actual measured outputs are retained and poisoned before the same graph replay.
+Oracle work, perturbation and restoration are outside timing. Originalseed42+i,
+ten externalwarmups and100samples remain. Final candidate FlyDSL launches are
+audited independently of the frozen Triton baseline and protected oracle.
