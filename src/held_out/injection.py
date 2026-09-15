@@ -14,6 +14,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from src.task_spec import resolve_task_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -152,7 +154,11 @@ def apply_injection(
     """
     log = logger or logging.getLogger(__name__)
 
-    target_file = workspace / injection_spec['file']
+    try:
+        target_file = resolve_task_path(workspace, injection_spec['file'])
+    except (KeyError, ValueError) as exc:
+        log.error("Invalid injection path: %s", exc)
+        return False
     find_marker = injection_spec['find_marker']
     replacement_code = injection_spec['replacement_code']
 
