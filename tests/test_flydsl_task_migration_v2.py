@@ -517,6 +517,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
                 handler.body.pop(0)
         if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel", "moe_topk_softplus_kernel", "moe_biased_grouped_topk_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
+        if name in {"rope_fwd_kernel", "rope_thd_fwd_kernel"}:
+            fn = _RemoveRopeChecks().visit(fn)
         if name in {"layernorm2d_kernel", "layernorm2d_with_add_kernel"}:
             fn = _RemoveLayernormChecks().visit(fn)
         if name in _STANDARD_QUANT_NAMES or name in {"quant_mxfp4_kernel", "rope_2d_fwd_kernel"}:
@@ -3832,4 +3834,125 @@ def test_triton_elementwise_original_math_cases_and_timing_preserved():
         for fn in ast.parse((t/'test_kernel_harness.py').read_text()).body:
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 normalized=_RemoveElementwiseChecks().visit(fn)
+                assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
+
+
+_ROPE_TWO_NAMES=['rope_fwd_kernel','rope_thd_fwd_kernel']
+
+
+class _RemoveRopeChecks(_RemoveAddedReplayChecks):
+    def visit_Assign(self,node):
+        if len(node.targets)==1 and getattr(node.targets[0],'id',None) in {'protected_inputs','replay_validate'}:return None
+        return super().visit_Assign(node)
+    def visit_Expr(self,node):
+        if isinstance(node.value,ast.Call) and getattr(node.value.func,'id',None)=='_checked_rope_output':return None
+        return super().visit_Expr(node)
+    def visit_FunctionDef(self,node):
+        if node.name=='_mean':
+            call=next(n for n in ast.walk(node) if isinstance(n,ast.Call) and getattr(n.func,'id',None)=='benchmark_cuda_graph_or_events')
+            call.keywords=[k for k in call.keywords if k.arg!='timed_run']
+            node.body=[ast.Return(value=call)]
+            return node
+        return self.generic_visit(node)
+
+
+@pytest.mark.parametrize('name',_ROPE_TWO_NAMES)
+@pytest.mark.parametrize('provided',[True,False])
+@pytest.mark.parametrize('function,behavior',[(function,behavior) for function in ['run_correctness','run_benchmark','arena_benchmark'] for behavior in ['correct','shape','dtype','device','nan','input_modified','position_modified','measured_wrong','replay_wrong','cached'] if function!='run_correctness' or behavior not in {'measured_wrong','replay_wrong','cached'}])
+def test_rope_two_actual_benchmark_preserves_original_truth_and_timed_replay(name,function,provided,behavior,monkeypatch,tmp_path):
+    import torch,types,math
+    t=ROOT/'tasks/torch2flydsl'/name;model=module(t/'model.py');checks=module(t/'scripts/replay_checks.py');packed=name=='rope_thd_fwd_kernel'
+    shape={'name':'controlled','s':2,'b':1,'h':1,'d':4,'rotary_pct':1.,'rotate_style':0,'reuse':True,'nope_first':False,'cu':[0,1,2]}
+    x=torch.tensor([[[[1.,2.,3.,4.]]],[[[5.,6.,7.,8.]]]],dtype=torch.bfloat16)
+    if packed:inputs=(x.squeeze(1),torch.tensor([0,1,2],dtype=torch.int32),torch.ones((2,1,1,2),dtype=torch.bfloat16)*.5)
+    else:inputs=(x,torch.ones((2,1,1,2),dtype=torch.bfloat16)*.75,torch.ones((2,1,1,2),dtype=torch.bfloat16)*.5)
+    originals=tuple(v.clone() for v in inputs);state={'phase':'setup','role':'setup'}
+    class Model(model.Model):
+        def to(self,*a,**k):return self
+        def forward(self,*args):return apply_fault(super().forward(*args),'baseline')
+    def oracle(*args):return model.Model(0,True,False)(*args[:3])
+    cached=oracle(*inputs)
+    def apply_fault(out,role):
+        if role!=('baseline' if provided else 'candidate'):return out
+        if function!='run_correctness' and state['role'] not in ('run_ref','run_kernel','run_target'):return out
+        if function=='run_correctness' or state['phase']=='measured':
+            if behavior=='shape':out=out[:1]
+            if behavior=='dtype':out=out.float()
+            if behavior=='device':out=out.to('meta')
+            if behavior=='nan':out.fill_(float('nan'))
+            if behavior=='input_modified':inputs[0].add_(1)
+            if behavior=='position_modified':inputs[-1].add_(1)
+        if behavior==state['phase']+'_wrong':out.add_(100)
+        if state['phase']=='replay' and behavior=='cached':out=cached.clone()
+        return out
+    def candidate(*args):return apply_fault(oracle(*args),'candidate')
+    entry='flydsl_rope_thd_fwd' if packed else 'flydsl_rope_cached_fwd'
+    kmod=types.SimpleNamespace(**{entry:candidate});mmod=types.SimpleNamespace(Model=Model,get_init_inputs=lambda:[0,True,False],get_inputs=lambda:[v.clone() for v in inputs])
+    def load(directory,filename,alias):return mmod if filename=='model.py' else None if provided else kmod
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run):
+        calls.append((fn.__name__,warmup,repetition));state.update(phase='measured',role=fn.__name__);timed_run.outputs=fn();timed_run.bound=True;state['phase']='setup'
+        def replay():
+            state['phase']='replay'
+            try:return fn()
+            finally:state['phase']='setup'
+        timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    original_to=torch.Tensor.to
+    def cpu_to(tensor,*args,**kwargs):
+        if args and args[0]=='cuda':args=('cpu',)+args[1:]
+        return original_to(tensor,*args,**kwargs)
+    monkeypatch.setattr(torch.Tensor,'to',cpu_to)
+    monkeypatch.setitem(sys.modules,'aiter',types.SimpleNamespace(rope_cached_fwd=oracle))
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':benchmark,'require_unchanged':checks.require_unchanged,'verify_timed_run':checks.verify_timed_run,
+        '_load_module':load,'_load_target':lambda:None if provided else candidate,'_is_pure_starter':lambda:provided,'_probe_target':lambda target,pure,*a:(False,None) if provided else (True,target(*a)),
+        '_KERNEL_DIR':str(tmp_path),'MODEL_FILE':'model.py','KERNEL_FILE':'kernel.py','KERNEL_ENTRY':entry,'SHAPES':[shape],
+        '_make_inputs':lambda *a:inputs,'_retry':lambda fn,**kw:fn(),'_aiter_op':oracle,'REL_TOL':.01,'ROTATE_STYLE':0,'REUSE_FREQS_FRONT_PART':True,'NOPE_FIRST':False,'Path':Path,'json':json,'math':math}
+    # Keep the exact task Model per-sequence arithmetic in this CPU simulation.
+    def prepared(model_instance,input,freqs,cu):
+        def run_ref():return model_instance(input,inputs[1],freqs)
+        return run_ref
+    ns['_make_reference_runner']=prepared
+    _harness_functions(t,{'_norm_max_err','_checked_rope_output','_rope_replay_validator',function},ns)
+    if behavior=='correct' and function=='run_correctness':
+        assert ns[function](verbose=False) is True
+    elif behavior=='correct':
+        rows=ns[function](verbose=False)
+        if function=='run_benchmark':rows=json.loads((tmp_path/'build/performance_report.json').read_text())
+        assert rows[0]['timed_output_correctness']==rows[0]['replay_correctness']=='PASS'
+        assert [(a,b) for _,a,b in calls]==[(10,100)]*(2 if provided else 3)
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+    if behavior not in {'input_modified','position_modified'}:checks.require_unchanged(inputs,originals)
+
+
+@pytest.mark.parametrize('name',_ROPE_TWO_NAMES)
+def test_rope_two_original_numerical_gate_not_elementwise_allclose(name):
+    import torch
+    t=ROOT/'tasks/torch2flydsl'/name;ns={'REL_TOL':.01};checks=module(t/'scripts/replay_checks.py')
+    _harness_functions(t,{'_norm_max_err','_checked_rope_output','_rope_replay_validator'},ns)
+    x=torch.tensor([[100.,0.]],dtype=torch.bfloat16);positions=torch.ones(1);expected=x.clone();originals=(x.clone(),positions.clone())
+    ns.update(require_unchanged=checks.require_unchanged,verify_timed_run=checks.verify_timed_run)
+    def run_ref():return x.clone()
+    validate=ns['_rope_replay_validator']((x,positions),run_ref)
+    class Timed:
+        bound=True
+        outputs=torch.tensor([[100.,.5]],dtype=torch.bfloat16)
+        def rerun(self):return x.clone()
+    assert not torch.allclose(Timed.outputs,expected,atol=.01,rtol=.01)
+    validate(Timed())
+    checks.require_unchanged((x,positions),originals)
+    bad=Timed();bad.outputs=torch.tensor([[100.,2.]],dtype=torch.bfloat16)
+    with pytest.raises(AssertionError):validate(bad)
+
+
+def test_rope_two_original_inputs_models_cases_comparisons_timing_unchanged():
+    hashes={'rope_fwd_kernel': {'_resolve_kernel_dir': 'ebfabcdd05c1a3f254b035e42b1783890c241f92613bda21ccb77fa064039f1a', '_load_module': 'caae8222257891caee15a695bfc7cff029ec363f792c4331f20ff92c86efb520', '_load_target': '664064a72dbdde3b5c2394280c9a9d80391753ca5fc208d893241c5f2bc10a0f', '_is_pure_starter_source': '5b07c5fdd33728bba2c41c84e320d6651222029356660ea8530ff85879ed5540', '_is_pure_starter': '2c5ca5b331dcdc34e4a5d17071b172f672ba9e26746d0bcb992e92c93db9377f', '_probe_target': 'cc64692e7e510e4df88628a2b7c738aa9b9835556ecb72542f0c09c9a2f1d047', '_retry': 'fcef3f3d7f904af49c79f1a81e6eff2f8cfbbebc651c459cbbc27878c84c996c', '_make_inputs': '4ce69054a8087de0d9fff0a3b9b4841d032a2ae26dab89be5b3f79ca37f89602', '_norm_max_err': '750a488ebe381cf762ba31a41890c0fe3dd87c2dc703955ad218dd85a2d9862e', 'run_correctness': '9dc3b1def153c9fa64303310e1a2fb466a3b6297ec507e1c2c91aba1bbb99966', 'run_benchmark': '7191c9821325124b0d0ef5abe8aa32bcb1bbf67cada1258dd79e57a4f6341b5f', 'run_compile': '8c93e69f8c091b1f53595790626186ba5aaeade2edd3fd4f4998f9276849565e', '_require_candidate_outputs': 'e5f69466d2ec4497fe192bf53ce8d7b034bb14cd59272fc7b1dea160a574e09e', 'arena_benchmark': 'b8da654bd8eee3a75aee19564f022b964cea9c6c69499783d53a4437938580b0'}, 'rope_thd_fwd_kernel': {'_resolve_kernel_dir': 'ebfabcdd05c1a3f254b035e42b1783890c241f92613bda21ccb77fa064039f1a', '_load_module': 'caae8222257891caee15a695bfc7cff029ec363f792c4331f20ff92c86efb520', '_retry': 'd0533f7305c7aa3bf15eab61ce33ab1ae23ec313c13f2699ba25d3f82d6d1882', '_make_inputs': 'f96e2f9263118813081056ec5f070955dea608032a8ad939cd106c18f57a3cc9', '_aiter_op': '3db252eb117ec48fa10ce2d58eb7e98f3ec35fc7dbcb9cb9febc1a8454ca88ad', '_make_reference_runner': '7a1b6f4ad67f8710ffedbff4cdb4ee984e753f4f3ccd90f020d20d8460a3d6ba', '_norm_max_err': '750a488ebe381cf762ba31a41890c0fe3dd87c2dc703955ad218dd85a2d9862e', 'run_correctness': '4c07b38fb34f84197e3b1d91b1db6bfe3fc4be05a8d99d47b042c1948ee45f5a', 'run_benchmark': '9690fc88a66e140c86254bb89f133886f1835d3a8b176005090597fcdb4eb0a5', 'run_compile': 'edf94a982dec224427540a11121a0a7b73de4f369de59ec0b0ddf7c657c0ff36', '_require_candidate_outputs': 'e5f69466d2ec4497fe192bf53ce8d7b034bb14cd59272fc7b1dea160a574e09e', 'arena_benchmark': '78d16a4f559bd35849a0e9eaae69efa9af4139f490a2e9c05eba813a7775a139'}}
+    for name,functions in hashes.items():
+        task=ROOT/'tasks/torch2flydsl'/name
+        for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
+            if isinstance(fn,ast.FunctionDef) and fn.name in functions:
+                normalized=_RemoveRopeChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)

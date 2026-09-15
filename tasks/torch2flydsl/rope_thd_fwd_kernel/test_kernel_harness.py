@@ -27,7 +27,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, verify_timed_run
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -158,6 +159,32 @@ def _norm_max_err(ref, out):
     return max_abs / denom, max_abs, denom
 
 
+def _checked_rope_output(out, input):
+    import torch
+    if not isinstance(out, torch.Tensor) or out.shape != input.shape or out.dtype != input.dtype or out.device != input.device:
+        raise AssertionError("RoPE output shape/dtype/device violates the operator contract")
+    if not bool(torch.isfinite(out).all()):
+        raise AssertionError("Non-finite RoPE output")
+
+
+def _rope_replay_validator(inputs, reference):
+    originals = tuple(x.clone() for x in inputs)
+    expected = reference()
+    def perturb():
+        # Preserve cached trigonometric/angle data and packed offsets. RoPE is
+        # linear in activations, so this changes its result in the same domain.
+        inputs[0].neg_()
+    def compare(actual, expected):
+        _checked_rope_output(actual, inputs[0])
+        _checked_rope_output(expected, inputs[0])
+        error, _, _ = _norm_max_err(expected, actual)
+        if error > REL_TOL:
+            raise AssertionError(f"Numerical mismatch: RoPE normalized maximum error {error} > {REL_TOL}")
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals, expected=expected, perturb=perturb, reference=reference, compare=compare)
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
     import aiter  # noqa: F401
@@ -186,6 +213,8 @@ def run_correctness(verbose=True):
         try:
             model = mmod.Model(ROTATE_STYLE, REUSE_FREQS_FRONT_PART, NOPE_FIRST).eval()
             input, cu_seqlens, freqs = _make_inputs(mmod, shape)
+            protected_inputs = (input, cu_seqlens, freqs)
+            originals = tuple(x.clone() for x in protected_inputs)
 
             with torch.no_grad():
                 ref = model(input, cu_seqlens, freqs)
@@ -195,6 +224,9 @@ def run_correctness(verbose=True):
             )
             torch.cuda.synchronize()
 
+            require_unchanged(protected_inputs, originals)
+            _checked_rope_output(ref, input)
+            _checked_rope_output(truth, input)
             err, max_abs, _ = _norm_max_err(truth, ref)
             worst = max(worst, err)
             pct = (
@@ -236,6 +268,8 @@ def run_correctness(verbose=True):
                     )
                 else:
                     torch.cuda.synchronize()
+                    require_unchanged(protected_inputs, originals)
+                    _checked_rope_output(kout, input)
                     k_err, _, _ = _norm_max_err(truth, kout)
                     k_ok = k_err <= REL_TOL
                     if verbose:
@@ -306,10 +340,14 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
                     )
             torch.cuda.synchronize()
 
+        replay_validate = _rope_replay_validator((input, cu_seqlens, freqs), run_truth)
         def _mean(fn):
-            return benchmark_cuda_graph_or_events(
-                fn, warmup=warmup, repetition=iters
+            timed = TimedRun()
+            ms, metadata = benchmark_cuda_graph_or_events(
+                fn, warmup=warmup, repetition=iters, timed_run=timed
             )
+            metadata.update(replay_validate(timed))
+            return ms, metadata
 
         ref_ms, ref_bench_meta = _mean(run_ref)
         aiter_ms, _aiter_bench_meta = _mean(run_truth)
@@ -464,10 +502,14 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
                     )
             torch.cuda.synchronize()
 
+        replay_validate = _rope_replay_validator((input, cu_seqlens, freqs), run_truth)
         def _mean(fn):
-            return benchmark_cuda_graph_or_events(
-                fn, warmup=warmup, repetition=iters
+            timed = TimedRun()
+            ms, metadata = benchmark_cuda_graph_or_events(
+                fn, warmup=warmup, repetition=iters, timed_run=timed
             )
+            metadata.update(replay_validate(timed))
+            return ms, metadata
 
         ref_ms, ref_bench_meta = _mean(run_ref)
         aiter_ms, _aiter_bench_meta = _mean(run_truth)

@@ -12,9 +12,6 @@ candidate:
   - file: kernel.py
     kind: function
     symbol: flydsl_rope_cached_fwd
-  - file: kernel.py
-    kind: builder
-    symbol: build_rope_cached_fwd_module
 baseline:
   kind: provided
   correctness_policy: required

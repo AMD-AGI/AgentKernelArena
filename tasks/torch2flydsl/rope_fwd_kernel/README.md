@@ -50,3 +50,23 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+
+The effective task retains every original shape and numerical comparison in the
+protected harness. Output must match the activation shape, BF16 dtype and device,
+with all finite elements; activations and position/frequency tensors are read-only.
+The normalized maximum error remains <= 0.01 using the original AITER-reference
+denominator. The printed elementwise close percentage is diagnostic. The provided
+performance baseline remains the task's PyTorch Model; AITER is its independent
+correctness comparator and a separately timed diagnostic. This baseline is not
+replaced by the AITER diagnostic latency.
+
+Final operator computation must use FlyDSL. The candidate import/call audit is
+outside baseline/reference execution and all timed calls. Actual measured and
+poisoned-output replay results are checked against the original AITER rule after
+negating activation input, with frequency data and sequence offsets unchanged.
+Inputs are restored outside timing. Both roles retain 10 warmups and 100 graph
+samples and the original allocation/preparation boundaries.
+The six cached-RoPE cases cover both rotate styles, full/partial rotation, both
+cache layouts and nope_first. Only flydsl_rope_cached_fwd is the required public
+entrypoint; an optional builder is candidate-internal and not separately scored.
