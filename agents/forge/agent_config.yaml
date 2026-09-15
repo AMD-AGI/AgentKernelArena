@@ -7,6 +7,10 @@ permission_mode: acceptEdits
 timeout_seconds: 87300
 session_timeout_seconds: 3600
 max_port_attempts: 3
+# HIP/Triton initialization uses Forge's own correctness-only implementer.
+# Reserve the remaining campaign budget for the ordinary optimization loop.
+initialization_max_attempts: 3
+initialization_budget_fraction: 0.4
 # Empty follows agent_backend; no accidental provider/model mismatch.
 supervisor_backend: ""
 # Optional executable for an environment with Hyperloom[forge] installed.

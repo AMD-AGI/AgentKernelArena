@@ -28,7 +28,7 @@ def load_plan(path: Path) -> dict:
 
 
 def bound_candidate_root(plan: dict, engine_root: Path) -> Path:
-    if plan["workflow"] == "optimize":
+    if plan["workflow"] != "rewrite":
         return engine_root
     raw = os.environ.get("KERNELFORGE_REWRITE_CANDIDATE_KERNEL")
     if not raw:
@@ -68,12 +68,14 @@ def execute(plan: dict, engine_root: Path, *, role: str, action: str):
             phases = ["compile", "correctness", "performance"]
         result = None
         for step in phases:
-            executed = run_action(bounded_spec(context.spec, plan["deadline_unix"]), root,
+            deadline = min(plan["deadline_unix"], plan.get("phase_deadline_unix", plan["deadline_unix"]))
+            executed = run_action(bounded_spec(context.spec, deadline), root,
                                   role=role, action=step, phase="candidate_evaluation",
                                   manifest=context.manifest)
             result = executed.result
             if not result.passed:
-                raise RuntimeError(f"{role}.{step}: {result.reason}")
+                detail = "\n".join(command.stdout + command.stderr for command in executed.commands)
+                raise RuntimeError(f"{role}.{step}: {result.reason}\n{detail[-6000:]}")
         return result
 
 

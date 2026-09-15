@@ -254,10 +254,11 @@ def test_auto_routes_initialization_to_flydsl_rewrite(tmp_path, state, initial):
         adapter.choose_workflow(context, target_verified=False, requested="optimize")
 
 
-def test_no_claim_that_hip_initialization_is_supported(tmp_path):
-    context, _, _ = fixture_task(tmp_path, language="hip", initial_state="unimplemented")
-    with pytest.raises(ValueError, match="initialization to hip is unsupported"):
-        adapter.choose_workflow(context, target_verified=False)
+@pytest.mark.parametrize("language", ["hip", "triton"])
+@pytest.mark.parametrize("state,initial", [("unimplemented", None), ("implemented", "pytorch")])
+def test_auto_initializes_hip_and_triton_using_forge(tmp_path, language, state, initial):
+    context, _, _ = fixture_task(tmp_path, language=language, initial_state=state, initial_language=initial)
+    assert adapter.choose_workflow(context, target_verified=False) == "initialize"
 
 
 def test_action_budget_is_capped_by_remaining_campaign(tmp_path):

@@ -43,10 +43,12 @@ def choose_workflow(context: TaskContext, *, target_verified: bool, requested: s
         raise ValueError("Forge optimize requires a verified current implementation in the target language")
     if requested == "rewrite" and target_verified:
         raise ValueError("Candidate already satisfies the target contract; use auto or optimize")
-    if requires_initialization and context.spec.candidate.language != "flydsl":
+    if requires_initialization and context.spec.candidate.language not in ("flydsl", "hip", "triton"):
         raise ValueError(f"Forge initialization to {context.spec.candidate.language} is unsupported; "
-                         "the installed rewrite engine initializes FlyDSL only")
-    return "rewrite" if requires_initialization else "optimize"
+                         "reviewed initialization backends are FlyDSL, HIP and Triton")
+    if not requires_initialization:
+        return "optimize"
+    return "rewrite" if context.spec.candidate.language == "flydsl" else "initialize"
 
 
 def _config(eval_config: dict) -> dict:
@@ -55,7 +57,8 @@ def _config(eval_config: dict) -> dict:
     if not isinstance(overrides, dict):
         raise ValueError("agent run configuration must be a mapping")
     allowed = {"workflow", "model", "timeout_seconds", "permission_mode", "agent_backend",
-               "python", "max_port_attempts", "supervisor_backend", "session_timeout_seconds"}
+               "python", "max_port_attempts", "supervisor_backend", "session_timeout_seconds",
+               "initialization_max_attempts", "initialization_budget_fraction"}
     config.update({key: value for key, value in overrides.items() if key in allowed})
     if overrides.get("agent_backend") not in (None, "claude") and "model" not in overrides:
         # A Claude default is not a model ID for another provider. Let upstream
@@ -64,9 +67,12 @@ def _config(eval_config: dict) -> dict:
     timeout = config["timeout_seconds"]
     if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("Forge timeout_seconds must be finite and positive")
-    for field in ("max_port_attempts", "session_timeout_seconds"):
+    for field in ("max_port_attempts", "session_timeout_seconds", "initialization_max_attempts"):
         if type(config[field]) is not int or config[field] < 1:
             raise ValueError(f"Forge {field} must be a positive integer")
+    fraction = config["initialization_budget_fraction"]
+    if type(fraction) not in (int, float) or not 0 < fraction < 1:
+        raise ValueError("Forge initialization_budget_fraction must be between zero and one")
     return config
 
 
@@ -94,7 +100,7 @@ def _anchor(context: TaskContext) -> str:
 def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: str, gpu_type: str) -> list[str]:
     root = Path(plan["engine_root"])
     command = [config.get("python") or sys.executable, str(Path(__file__).with_name("upstream.py")),
-               "forge-loop" if plan["workflow"] == "optimize" else "forge-rewrite-by-flydsl",
+               "forge-rewrite-by-flydsl" if plan["workflow"] == "rewrite" else "forge-loop",
                "--workspace", str(root), "--driver", str(root / "arena_forge_driver.py"),
                "--experiments-dir", str(root / "forge_experiments"), "--result-json", plan["result"],
                "--max-hours", str(max(1.0, (plan["deadline_unix"] - time.time()) / 3600)),
@@ -106,7 +112,7 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
     symbols = [entry.symbol for entry in context.spec.candidate.entrypoints if entry.symbol]
     identity = context.spec.to_mapping().get("kernel_identity", {})
     operator = identity.get("logical_operator") or context.spec.task_id
-    if plan["workflow"] == "optimize":
+    if plan["workflow"] != "rewrite":
         files = candidate_files(context.spec, root)
         command += ["--kernel", str(root / plan["anchor"]),
                     "--kernel-backend", context.spec.candidate.language,
@@ -127,6 +133,8 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
             command += ["--framework", identity["source_owner"]]
         if context.spec.candidate.initial_language in ("triton", "hip", "cuda", "cpp"):
             command += ["--source-language", context.spec.candidate.initial_language]
+    if plan["workflow"] == "initialize":
+        command.insert(2, "--arena-initialize")
     return command
 
 
@@ -155,7 +163,10 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         plan = {"version": 1, "context": str(context.path), "workflow": "optimize",
                 "engine_root": str(engine), "template": str(template), "deadline_unix": deadline,
                 "anchor": _anchor(context), "result": str(artifact_root / "engine_result.json"),
-                "baseline": str(artifact_root / "baseline.json"), "program": str(engine / "arena_program.md")}
+                "baseline": str(artifact_root / "baseline.json"), "program": str(engine / "arena_program.md"),
+                "initialization_result": str(artifact_root / "initialization.json"),
+                "agent_config": config, "gpu_arch": _resolve_gpu_arch(eval_config),
+                "gpu_type": _resolve_gpu_type(eval_config)}
         plan_path = artifact_root / "bridge_plan.json"
         _write(plan_path, plan)
         env = os.environ.copy()
@@ -187,6 +198,9 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         plan["workflow"] = choose_workflow(context, target_verified=target_verified,
                                            requested=config["workflow"])
         status["workflow"] = plan["workflow"]
+        if plan["workflow"] == "initialize":
+            from agents.forge.initialization import materialize_targets
+            materialize_targets(context.spec, engine, plan["anchor"])
         if plan["workflow"] == "rewrite":
             if Path(plan["anchor"]).suffix != ".py":
                 raise ForgeRunError("FlyDSL rewrite requires a Python candidate entry file")
@@ -205,16 +219,16 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
                 path.unlink()
         _write(plan_path, plan)
         from agents.forge.upstream import program_text
-        Path(plan["program"]).write_text(program_text(plan))
+        Path(plan["program"]).write_text(program_text(plan, initialize=plan["workflow"] == "initialize"))
         (engine / "arena_forge_driver.py").write_text(bridge.render_driver(plan_path, arena_root))
-        if plan["workflow"] == "optimize":
+        if plan["workflow"] != "rewrite":
             allow_candidate_paths(engine, context.spec)
         _initialize_git(engine)
-        if plan["workflow"] == "optimize":
+        if plan["workflow"] != "rewrite":
             baseline = bridge.execute(plan, engine, role="baseline", action="performance")
             values = bridge.timings(baseline)
             _write(Path(plan["baseline"]), {"wall_ms": statistics.fmean(values.values()), "case_times": values})
-        command = build_command(plan, context, config, gpu_arch=_resolve_gpu_arch(eval_config), gpu_type=_resolve_gpu_type(eval_config))
+        command = build_command(plan, context, config, gpu_arch=plan["gpu_arch"], gpu_type=plan["gpu_type"])
         status["command"] = command
         _write(status_path, status)
         remaining = deadline - time.time()
@@ -226,6 +240,8 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         (artifact_root / "engine.log").write_text(output)
         result = _read_forge_result(Path(plan["result"]), "\n".join(stdout))
         status.update({"exit_code": process.returncode, "timed_out": timed_out, "engine_result": result})
+        if Path(plan["initialization_result"]).is_file():
+            status["initialization"] = json.loads(Path(plan["initialization_result"]).read_text())
         if timed_out:
             raise TimeoutError("Forge campaign exceeded its shared deadline; partial artifacts retained")
         if process.returncode != 0 or not isinstance(result, dict):
@@ -243,6 +259,14 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
             resolve_task_path(engine, attempts[0], must_exist=True)
             prefix = attempts[0]
             selected_commit = result.get("flydsl_best_commit") or result.get("best_commit")
+        elif plan["workflow"] == "initialize" and not selected_commit:
+            # Native loop results can omit best_commit when no iteration earns
+            # KEEP. Preserve the independently validated first implementation;
+            # do not fabricate a loop win or rewrite its reported measurements.
+            initial = status.get("initialization", {})
+            if initial.get("status") == "PASS":
+                selected_commit = initial.get("commit")
+                status["delivery_selection"] = "initial_correct_implementation"
         source = committed_candidate(context.spec, engine, selected_commit,
                                      artifact_root / "delivery", prefix=prefix)
         status["selected_commit"] = selected_commit
