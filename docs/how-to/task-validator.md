@@ -94,11 +94,20 @@ and the corresponding expanded outer budget remain supported during migration.
 ## `task_validator` checks
 
 For v2 tasks, the framework first validates task data and the initial state,
-then builds, checks and times the independent baseline. A confirmed empty
+then builds, checks and times the separately preserved baseline. A confirmed empty
 candidate is allowed only in this initial phase. An existing candidate is also
 checked, reusing the frozen baseline evidence when they are the same initial
 implementation. The model reviews source semantics and the captured command
 evidence; it does not supply authoritative command verdicts.
+
+For `baseline.kind: initial_candidate`, matching initial candidate and baseline
+source is expected: the framework freezes the original implementation before
+optimization. This does not itself violate candidate independence. The reviewer
+must separately trace the correctness oracle and any prohibited runtime access
+from the candidate to protected reference/baseline code. An independent PyTorch,
+analytical, or known-answer oracle can validate the shared initial implementation;
+comparing that implementation with itself alone cannot. A valid unchanged candidate
+does not need an optimization gain to pass correctness.
 
 The final report contains the following checks.
 

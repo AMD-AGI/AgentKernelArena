@@ -116,6 +116,14 @@ LIFECYCLE AND AUTHORITY
   its initial interface under task_validation; target language/interface is the
   final candidate requirement. Baseline initial_candidate refers to frozen source
   bytes, not a later optimized workspace or a separately invented implementation.
+- For baseline.kind=initial_candidate, the initial candidate and frozen baseline
+  intentionally contain the same implementation bytes. This is valid task setup,
+  not evidence of a candidate copying a protected reference. Baseline independence
+  here means an immutable original workspace/state. Reference independence means
+  a meaningful separate oracle, analytical check, or known-answer evidence; inspect
+  the actual expected-value computation rather than inferring its role from a
+  filename containing "baseline" or "reference". An unchanged valid initial
+  implementation can pass; task validation does not require an optimization gain.
 
 SEMANTIC REVIEW
 Perform all 12 checks represented by the final report; framework command/schema
@@ -128,8 +136,12 @@ reviews with concrete evidence even when PASS:
    comparison code. Look for independent meaningful expected values, sensitivity
    to wrong outputs, appropriate task-specific tolerances, full declared coverage,
    dtype/shape/device and finite-value checks. Do not impose a universal tolerance
-   formula. Flag trivial pass conditions, broad exception fallback, use of protected
-   reference/baseline to implement candidate output, or first-call-only correctness.
+   formula. Flag trivial pass conditions, broad exception fallback, runtime access
+   to a protected reference/baseline to produce candidate output, or first-call-only
+   correctness. For such an access finding, identify the actual import/call/data
+   path and the task's implementation rule it violates. Matching initial source
+   bytes alone are not that path. Comparing two invocations of the same underlying
+   implementation without independent expected-value evidence is still inadequate.
 3. self_contained: ensure the materialized task plus declared runtime dependencies
    suffices, with no undeclared repository imports/downloads, hidden task-name
    routing, agent-specific dependency, or workspace-escaping paths. Check configured
