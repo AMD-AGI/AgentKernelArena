@@ -62,12 +62,18 @@ fusion, split reductions and per-shape dispatch are implementation choices.
 ## Baseline, reference and dependencies
 
 The production baseline calls the **installed AITER package**. The framework
-materializes read-only explanatory source at the location in
-`baseline.source_files`; this copy must not shadow the installed Python package.
-Source acquisition excludes generated `aiter/jit/build` objects and the
-`aiter/jit/flydsl_cache` directory while retaining `aiter/jit` Python sources.
-These exclusions apply only to the explanatory copy; the installed baseline
-package and its runtime artifacts remain available in the Docker image.
+materializes the image's `/sgl-workspace/aiter/aiter` package subtree at
+`aiter_source/aiter`, preserving every declared `baseline.source_files` path.
+This is read-only explanatory code, not a standalone AITER checkout or an
+installation/build input; it must not shadow the installed Python package.
+All package Python sources, including `jit/__init__.py`, `jit/core.py`, operator
+implementations and configuration data, are retained. Acquisition excludes only
+`jit/build`, `jit/flydsl_cache` and the package-root `__pycache__` from this copy.
+Repository-level third-party CK headers, examples and packaging files outside
+this package are not task inputs. Baseline callbacks execute the installed
+package, whose complete repository/build dependencies and runtime artifacts
+remain in the pinned Docker image. Task-local references and inputs are bundled
+under `scripts/`; they do not import or build the explanatory snapshot.
 The selected Docker runtime must provide AITER, FlyDSL and ROCm PyTorch on gfx950.
 The runner records runtime versions, the executed baseline module's source hash
 and dispatch evidence. No SIKL repository clone is needed: the original

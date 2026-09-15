@@ -31,12 +31,11 @@ baseline:
 workspace:
   sources:
   - kind: image
-    image_path: /sgl-workspace/aiter
-    destination: aiter_source
+    image_path: /sgl-workspace/aiter/aiter
+    destination: aiter_source/aiter
     exclude:
-    - jit
-    - aiter/jit/build
-    - aiter/jit/flydsl_cache
+    - jit/build
+    - jit/flydsl_cache
     - __pycache__
 evaluation:
   runner:
