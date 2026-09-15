@@ -33,3 +33,12 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+Protected evaluation checks both supplied output buffers, including the optional
+FP32 log-sum-exp, against an independent FP64 CPU logaddexp calculation. Additional
+unscored controls exercise a 17-element head tail, optional LSE output, extreme
+finite log-sum-exp values, and an empty prefix or suffix (`+inf` for FA2, `-inf`
+for FA3) with the other partition nonempty. Read-only states must remain unchanged.
+All five original scored cases, seeds, FP16 outputs, atol=rtol=1e-2, 10 warmups
+and 100 samples remain unchanged. The actual timed output and the same invocation
+replayed after changing all four inputs are checked outside timing; output is
+poisoned before replay and input state is restored on success or failure.
