@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -14,6 +15,10 @@ from .contracts import (
     TaskProfile,
     ToolCapability,
     ToolName,
+)
+
+from .task_declarations import (
+    candidate_framework, candidate_paths, candidate_symbols, is_v2_task,
 )
 
 
@@ -164,16 +169,23 @@ def resolve_task_profile(task_config: Mapping[str, Any]) -> TaskProfile:
 
     if not isinstance(task_config, Mapping):
         raise TypeError("task_config must be a mapping")
-    task_type = str(task_config.get("task_type") or "").strip().lower()
-    source_files = _string_list(task_config.get("source_file_path"))
-    target_functions = _string_list(task_config.get("target_kernel_functions"))
-
-    language = _infer_language(task_type, task_config)
-    artifact_kind = _infer_artifact_kind(language, source_files)
-    framework = _infer_framework(task_config, source_files)
-    control = _infer_instrumentation_control(language, artifact_kind)
-    adapter = _infer_adapter(language, artifact_kind)
-    source_available = bool(source_files) and artifact_kind != ArtifactKind.HSACO_PRECOMPILED
+    v2 = is_v2_task(task_config)
+    task_type = "" if v2 else str(task_config.get("task_type") or "").strip().lower()
+    if v2:
+        source_files = candidate_paths(task_config)
+        target_functions = candidate_symbols(task_config)
+        declared_language = str(task_config["candidate"]["language"]).strip().lower()
+        # Legacy CUDA-source aliases cannot establish an AMD HIP build path for
+        # a v2 candidate whose declared final backend is CUDA (or another DSL).
+        language = {item.value: item for item in KernelLanguage}.get(
+            declared_language, KernelLanguage.UNKNOWN
+        )
+        framework = candidate_framework(task_config, source_files)
+    else:
+        source_files = _string_list(task_config.get("source_file_path"))
+        target_functions = _string_list(task_config.get("target_kernel_functions"))
+        language = _infer_language(task_type, task_config)
+        framework = _infer_framework(task_config, source_files)
 
     override = task_config.get("evaluation_profile") or {}
     if not isinstance(override, Mapping):
@@ -181,8 +193,12 @@ def resolve_task_profile(task_config: Mapping[str, Any]) -> TaskProfile:
     explicit: list[str] = []
 
     if "language" in override:
-        language = _explicit_enum(override["language"], _LANGUAGE_ALIASES, "language")
+        requested = _explicit_enum(override["language"], _LANGUAGE_ALIASES, "language")
+        if v2 and requested != language:
+            raise ValueError("evaluation_profile.language conflicts with candidate.language")
+        language = requested
         explicit.append("language")
+    artifact_kind = _infer_artifact_kind(language, source_files)
     if "artifact_kind" in override:
         artifact_kind = _explicit_enum(
             override["artifact_kind"], _ARTIFACT_ALIASES, "artifact_kind"
@@ -193,6 +209,9 @@ def resolve_task_profile(task_config: Mapping[str, Any]) -> TaskProfile:
         if not framework:
             raise ValueError("evaluation_profile.framework cannot be empty")
         explicit.append("framework")
+    control = _infer_instrumentation_control(language, artifact_kind)
+    adapter = _infer_adapter(language, artifact_kind)
+    source_available = bool(source_files) and artifact_kind != ArtifactKind.HSACO_PRECOMPILED
     if "instrumentation_control" in override:
         control = _explicit_enum(
             override["instrumentation_control"],
@@ -216,12 +235,20 @@ def resolve_task_profile(task_config: Mapping[str, Any]) -> TaskProfile:
         # profile still records that the operator supplied an explicit boundary.
         explicit.append("submission_paths")
 
-    evidence = {
-        "repository_language": task_config.get("repository_language"),
-        "image_repo_path": task_config.get("image_repo_path"),
-        "repo_url": task_config.get("repo_url"),
-        "submission_paths": list(submission_paths) if submission_paths is not None else None,
-    }
+    if v2:
+        evidence = {
+            "schema_version": 2,
+            "candidate": deepcopy(dict(task_config["candidate"])),
+            "kernel_identity": deepcopy(task_config.get("kernel_identity", {})),
+            "workspace_sources": deepcopy(task_config.get("workspace", {}).get("sources", [])),
+        }
+    else:
+        evidence = {
+            "repository_language": task_config.get("repository_language"),
+            "image_repo_path": task_config.get("image_repo_path"),
+            "repo_url": task_config.get("repo_url"),
+        }
+    evidence["submission_paths"] = list(submission_paths) if submission_paths is not None else None
     for evidence_flag in ("fpsan_ported", "rebuilt_from_source"):
         if evidence_flag in override:
             evidence[evidence_flag] = _as_bool(

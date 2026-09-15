@@ -45,12 +45,7 @@ def test_task_can_add_adapter_argv_but_not_change_policy_or_image() -> None:
     assert tool.options["command"] == ["python3", "asan_case.py"]
 
 
-def test_task_cannot_enable_tool_or_increase_timeout() -> None:
-    with pytest.raises(ValueError, match="not enabled"):
-        merge_task_tool_config(
-            _run_config(),
-            {"evaluation_tools": {"tools": {"rocjitsu": {"options": {}}}}},
-        )
+def test_task_cannot_increase_timeout() -> None:
     with pytest.raises(ValueError, match="must be in"):
         merge_task_tool_config(
             _run_config(),
@@ -266,3 +261,71 @@ def test_hyphenated_tool_mapping_is_normalized_without_losing_options() -> None:
                 }
             }
         )
+
+
+def test_known_dormant_adapter_is_validated_but_never_planned():
+    from src.eval_tools.config import build_evaluation_plan
+    from src.eval_tools.task_profile import resolve_task_profile
+
+    merged = merge_task_tool_config(_run_config(), {
+        "evaluation_tools": {"tools": {
+            "gpu-asan": {"options": {"command": ["python3", "scripts/memory.py"]}},
+            "rocjitsu": {"timeout_s": 300, "options": {"capsule": "not-created/capsule.json"}},
+        }},
+    })
+    assert merged.enabled == ("gpu_asan",)
+    assert merged.tools[0].options["command"][-1] == "scripts/memory.py"
+    plan = build_evaluation_plan(
+        config=merged, profile=resolve_task_profile({"task_type": "hip2hip", "source_file_path": ["kernel.hip"]}),
+        plugin_versions={"gpu_asan": "1"},
+    )
+    assert [tool.tool for tool in plan.tools] == ["gpu_asan"]
+    disabled = merge_task_tool_config(EvalToolsConfig.disabled(), {
+        "evaluation_tools": {"tools": {"rocjitsu": {"options": {"capsule": "missing.json"}}}},
+    })
+    assert disabled.enabled == ()
+
+
+@pytest.mark.parametrize("item", [
+    {"runtime_ref": "other-image"}, {"policy": "advisory"},
+    {"timeout_s": 0}, {"timeout_s": True}, {"options": []},
+    {"options": None}, {"options": {"command": "python check.py"}},
+    {"options": {"command": []}}, {"options": {"command": [1]}},
+    {"options": {"commmand": ["true"]}},
+    {"options": {"positive_control_required": False}},
+    {"options": {"timeout_s": 999}},
+    {"options": {"asan_runtime_dir": "/fake"}},
+])
+def test_malformed_dormant_adapter_rejected(item):
+    with pytest.raises(ValueError):
+        merge_task_tool_config(EvalToolsConfig.disabled(), {
+            "evaluation_tools": {"tools": {"gpu_asan": item}},
+        })
+
+
+@pytest.mark.parametrize("section", [None, False, [], {"tools": []}, {"tools": None},
+    {"enabled": ["gpu_asan"]}, {"policy": "advisory"},
+    {"runtime_profile": "other"}, {"timeout_s": 999},
+    {"tools": {"gpu_assan": {}}}, {"tools": {"gpu_asan": {}, "gpu-asan": {}}},
+])
+def test_task_registration_cannot_relax_run_or_hide_malformed_configuration(section):
+    with pytest.raises(ValueError):
+        merge_task_tool_config(EvalToolsConfig.disabled(), {"evaluation_tools": section})
+
+
+@pytest.mark.parametrize("options", [
+    {"command": "python check.py"}, {"commmand": ["python"]},
+    {"positive_control_required": False}, {"attestation_path": "bad\x00path"},
+])
+def test_run_dormant_options_are_also_validated(options):
+    with pytest.raises(ValueError):
+        EvalToolsConfig.from_mapping({"evaluation_tools": {
+            "enabled": [], "tools": {"gpu_asan": {"options": options}},
+        }})
+
+
+def test_activating_dormant_adapter_applies_the_run_deadline():
+    task = {"evaluation_tools": {"tools": {"gpu_asan": {"timeout_s": 101}}}}
+    assert merge_task_tool_config(EvalToolsConfig.disabled(), task).enabled == ()
+    with pytest.raises(ValueError, match="must be in"):
+        merge_task_tool_config(_run_config(), task)

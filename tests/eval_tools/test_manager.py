@@ -425,7 +425,7 @@ def test_runtime_evidence_enriches_plugin_context_without_overriding_config(tmp_
     class EvidencePlugin(FakePlugin):
         def assess(self, context, runtime):
             assert context.options["asan_runtime_dir"] == "/opt/rocm/lib/asan"
-            assert context.options["configured"] == "run-value"
+            assert context.options["attestation_path"] == "run-value"
             return super().assess(context, runtime)
 
         def build_invocation(self, context):
@@ -439,7 +439,7 @@ def test_runtime_evidence_enriches_plugin_context_without_overriding_config(tmp_
     runtime = FakeRuntime(
         runtime=CapabilityCheck.ready(
             asan_runtime_dir="/opt/rocm/lib/asan",
-            configured="probe-value",
+            attestation_path="probe-value",
         )
     )
     config = EvalToolsConfig.from_mapping(
@@ -448,7 +448,7 @@ def test_runtime_evidence_enriches_plugin_context_without_overriding_config(tmp_
                 "enabled": ["gpu_asan"],
                 "tools": {
                     "gpu_asan": {
-                        "options": {"configured": "run-value"},
+                        "options": {"attestation_path": "run-value"},
                     }
                 },
             }
@@ -462,4 +462,4 @@ def test_runtime_evidence_enriches_plugin_context_without_overriding_config(tmp_
 
     assert report.overall_status == "clean"
     assert runtime.invocations[0][1].options["asan_runtime_dir"] == "/opt/rocm/lib/asan"
-    assert runtime.invocations[0][1].options["configured"] == "run-value"
+    assert runtime.invocations[0][1].options["attestation_path"] == "run-value"
