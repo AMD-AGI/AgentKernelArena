@@ -55,3 +55,10 @@ place, poisons output storage, and checks replay against the protected reference
 Logical and preshuffled input buffers are protected from candidate mutation.
 Output shape/dtype/device and complete case coverage remain required. Unsupported
 replay collection or any failed case is a failure, never a successful skip.
+
+The initial layout implementation uses the typed `Vector.from_elements` API.
+Its preload policy lives in protected `kernels/preload.py`, extracted unchanged
+from the bundled legacy preshuffle source. This avoids importing an unrelated
+legacy kernel solely to read its constant table. The algorithm, tile lookup,
+scaling order, supported cases and numerical gate are unchanged. Import checks
+alone do not establish GPU compilation or numerical correctness.

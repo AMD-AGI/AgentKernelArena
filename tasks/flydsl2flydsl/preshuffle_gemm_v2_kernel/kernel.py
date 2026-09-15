@@ -13,11 +13,11 @@ from typing import Optional
 import flydsl.compiler as flyc
 import flydsl.expr as fx
 from flydsl.compiler.kernel_function import CompilationContext
-from flydsl.expr import const_expr, gpu, range_constexpr, rocdl, vector
-from flydsl.expr.typing import BFloat16, Float8E4M3FN, Float8E4M3FNUZ, Float16, Float32, T
+from flydsl.expr import const_expr, gpu, range_constexpr, rocdl
+from flydsl.expr.typing import BFloat16, Float8E4M3FN, Float8E4M3FNUZ, Float16, Float32
 from flydsl.expr.typing import Vector as Vec
 from flydsl.runtime.device import get_rocm_arch
-from kernels.preshuffle_gemm import _get_preload
+from kernels.preload import _get_preload
 
 
 def compile_preshuffle_gemm_v2(
@@ -412,7 +412,7 @@ def compile_preshuffle_gemm_v2(
                         scaled_val = (val * s_a) * s_b_vals[ni]
                         scaled_elems.append(scaled_val.to(out_elem_cls))
 
-            out_vec = vector.from_elements(T.vec(acc_size, out_elem_cls.ir_type), scaled_elems)
+            out_vec = Vec.from_elements(scaled_elems, dtype=out_elem_cls)
             frag_C_out.store(out_vec)
             fx.copy(buf_copy_out, frag_C_retile, pC_g)
         else:

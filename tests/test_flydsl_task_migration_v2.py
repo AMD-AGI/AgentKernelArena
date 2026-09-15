@@ -1465,3 +1465,38 @@ def test_activation_original_timed_work_sampling_and_reference_boundaries_preser
         fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function)
         fn = _RemoveActivationReplayChecks().visit(fn)
         assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == expected
+
+
+def test_preshuffle_preload_policy_extraction_preserves_every_entry_and_default():
+    task = ROOT / "tasks/flydsl2flydsl/preshuffle_gemm_v2_kernel"
+    source = (task / "kernels/preshuffle_gemm.py").read_text()
+    wanted = {"_TILE_PRELOAD_TABLE", "_TILE_PRELOAD_DEFAULT", "_get_preload"}
+    nodes = [n for n in ast.parse(source).body if
+             isinstance(n, ast.FunctionDef) and n.name in wanted or
+             isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id in wanted for t in n.targets)]
+    original = {}
+    exec(compile(ast.Module(nodes, type_ignores=[]), "original_preload_policy", "exec"), original)
+    extracted = module(task / "kernels/preload.py")
+    for key, value in original["_TILE_PRELOAD_TABLE"].items():
+        assert extracted._get_preload(*key) == value
+        assert extracted._get_preload(*(str(x) for x in key)) == value
+    for key in [(1, 2, 3), (999, 1, 64), (-1, 0, 0)]:
+        assert extracted._get_preload(*key) == original["_get_preload"](*key)
+
+
+def test_preshuffle_vector_api_port_preserves_compilation_algorithm():
+    task = ROOT / "tasks/flydsl2flydsl/preshuffle_gemm_v2_kernel"
+    tree = ast.parse((task / "kernel.py").read_text())
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "compile_preshuffle_gemm_v2")
+    # The typed vector assembly is the only executable change. Keep all layout,
+    # scaling order, MFMA choice, tile selection and launch geometry unchanged.
+    converted = []
+    class OriginalAssembly(ast.NodeTransformer):
+        def visit_Call(self, node):
+            if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and node.func.value.id == "Vec" and node.func.attr == "from_elements":
+                converted.append(node)
+                return ast.parse("vector.from_elements(T.vec(acc_size, out_elem_cls.ir_type), scaled_elems)", mode="eval").body
+            return self.generic_visit(node)
+    fn = OriginalAssembly().visit(fn)
+    assert len(converted) == 1
+    assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == "4ffbe6d2fb5813bf4c4e6c663556e752f1ddb9319d6179e16657b8f95791092f"
