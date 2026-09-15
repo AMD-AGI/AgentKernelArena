@@ -113,3 +113,5 @@ collector. After timing, it changes both inputs, poisons the output and
 checks the same graph replay against the original add tolerance. Original inputs,
 seeds, cases, warmups and samples are unchanged during timing. An unobservable
 event fallback cannot satisfy this replay check and fails explicitly.
+Replay diagnostics restore both caller-owned inputs from pristine copies in a
+`finally` block, including when a numerical check or replay invocation fails.

@@ -67,55 +67,61 @@ def benchmark_type(base, plugin, module):
                 if any(not torch.equal(value,expected) for value,expected in zip(inputs,pristine)):
                     raise ValueError('Add modified read-only input buffers')
             pristine=tuple(value.clone() for value in inputs)
-            output=original()
-            unchanged(pristine)
-            check(output)
-            if plugin.action=='correctness':
-                row['metrics']={'performance_inputs_checked':True}
+            try:
+                output=original()
+                unchanged(pristine)
+                check(output)
+                if plugin.action=='correctness':
+                    row['metrics']={'performance_inputs_checked':True}
+                    plugin.exercised.add(row['test_case_id'])
+                    return {}
+                from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events_samples
+                from performance_utils_pytest import _compute_timing_stats
+                timed=TimedRun()
+                def observed_op():
+                    original()
+                    # The JIT launch returns a compiled-kernel handle; retain the
+                    # actual protected output buffer for canonical graph replay.
+                    return self.context['output']
+                # Use the same canonical samples and statistics as the original
+                # PytestBenchmarker, with a handle on the actual timed graph. The
+                # common session owns the independent baseline; optional old peer
+                # timing is not an Arena baseline.
+                samples,metadata=benchmark_cuda_graph_or_events_samples(
+                    observed_op, warmup=self.config.warm_up, repetition=self.config.repetition,
+                    prepare_fn=self.prepare_fn, use_cuda_graph=self.use_cuda_graph,
+                    fallback_reason=self.fallback_reason, timed_run=timed)
+                record={'timing_ms':_compute_timing_stats(samples,self.config),**metadata}
+                if timed.outputs is not self.context['output']:
+                    raise RuntimeError('Benchmark did not retain the actual add output buffer')
+                unchanged(pristine)
+                check(timed.outputs)
+                self.context['x'].neg_()
+                self.context['y'].mul_(0.5)
+                replay_pristine=tuple(value.clone() for value in inputs)
+                replay_check=prepare(self.context,module)
+                timed.outputs.fill_(float('nan'))
+                replayed=timed.rerun()
+                unchanged(replay_pristine)
+                if replayed is not self.context['output']:
+                    raise RuntimeError('Replay returned a different add output buffer')
+                replay_check(replayed)
+                ms=record['timing_ms']['mean'];method=record.get('benchmark_method')
+                if not isinstance(ms,(float,int)) or not math.isfinite(ms) or ms<=0:
+                    raise RuntimeError('Nonpositive/nonfinite device timing')
+                if method not in ('cuda_graph','cuda_event_fallback'):
+                    raise RuntimeError('Missing device timing method')
+                row.update(execution_time_ms=ms,benchmark_method=method,
+                           metadata={'timing_stats':record['timing_ms'],'timed_output_checked':True,
+                                     'perturbed_input_replay_checked':True,
+                                     'device_timing':{k:v for k,v in record.items() if k.startswith('benchmark_')}})
                 plugin.exercised.add(row['test_case_id'])
-                return {}
-            from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events_samples
-            from performance_utils_pytest import _compute_timing_stats
-            timed=TimedRun()
-            def observed_op():
-                original()
-                # The JIT launch returns a compiled-kernel handle; retain the
-                # actual protected output buffer for canonical graph replay.
-                return self.context['output']
-            # Use the same canonical samples and statistics as the original
-            # PytestBenchmarker, with a handle on the actual timed graph. The
-            # common session owns the independent baseline; optional old peer
-            # timing is not an Arena baseline.
-            samples,metadata=benchmark_cuda_graph_or_events_samples(
-                observed_op, warmup=self.config.warm_up, repetition=self.config.repetition,
-                prepare_fn=self.prepare_fn, use_cuda_graph=self.use_cuda_graph,
-                fallback_reason=self.fallback_reason, timed_run=timed)
-            record={'timing_ms':_compute_timing_stats(samples,self.config),**metadata}
-            if timed.outputs is not self.context['output']:
-                raise RuntimeError('Benchmark did not retain the actual add output buffer')
-            unchanged(pristine)
-            check(timed.outputs)
-            self.context['x'].neg_()
-            self.context['y'].mul_(0.5)
-            replay_pristine=tuple(value.clone() for value in inputs)
-            replay_check=prepare(self.context,module)
-            timed.outputs.fill_(float('nan'))
-            replayed=timed.rerun()
-            unchanged(replay_pristine)
-            if replayed is not self.context['output']:
-                raise RuntimeError('Replay returned a different add output buffer')
-            replay_check(replayed)
-            ms=record['timing_ms']['mean'];method=record.get('benchmark_method')
-            if not isinstance(ms,(float,int)) or not math.isfinite(ms) or ms<=0:
-                raise RuntimeError('Nonpositive/nonfinite device timing')
-            if method not in ('cuda_graph','cuda_event_fallback'):
-                raise RuntimeError('Missing device timing method')
-            row.update(execution_time_ms=ms,benchmark_method=method,
-                       metadata={'timing_stats':record['timing_ms'],'timed_output_checked':True,
-                                 'perturbed_input_replay_checked':True,
-                                 'device_timing':{k:v for k,v in record.items() if k.startswith('benchmark_')}})
-            plugin.exercised.add(row['test_case_id'])
-            return record
+                return record
+            finally:
+                # Replay diagnostics must never leak changed inputs to callers,
+                # including when the timed invocation or replay check fails.
+                for value,expected in zip(inputs,pristine):
+                    value.copy_(expected)
     return CheckedBenchmark
 
 

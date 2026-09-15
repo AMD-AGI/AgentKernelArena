@@ -874,7 +874,7 @@ def test_oracle_distinguishes_output_contract_failure_from_numerical_error(monke
 
 
 @pytest.mark.parametrize('relative',['tasks/instruction2triton/rocmbench/test_add_kernel','tasks/triton2triton/rocmbench/easy/test_add_kernel'])
-@pytest.mark.parametrize('mode',['correct','incorrect_timed','stale','no_write','changing_wrong','event_fallback',
+@pytest.mark.parametrize('mode',['correct','incorrect_timed','stale','no_write','changing_wrong','event_fallback','replay_raises',
                                 'zero_inputs_and_output_timed','zero_inputs_and_output_replay'])
 def test_add_canonical_samples_observe_exact_replay_and_reject_wrong_output(monkeypatch,relative,mode):
     # Use the actual PytestBenchmarker configuration and statistics helper,
@@ -895,6 +895,7 @@ def test_add_canonical_samples_observe_exact_replay_and_reject_wrong_output(monk
         output=fn();saved=output.clone()
         if mode=='incorrect_timed':output.zero_()
         def replay():
+            if mode=='replay_raises':raise RuntimeError('injected replay failure')
             if mode=='correct' or mode.startswith('zero_inputs'):fn()
             elif mode=='stale':output.copy_(saved)
             elif mode=='changing_wrong':output.fill_(123)
@@ -919,6 +920,8 @@ def test_add_canonical_samples_observe_exact_replay_and_reject_wrong_output(monk
             return 'compiled-kernel-handle'
         return Checked(op_callable=launch,op_name='add',config=helper.do_bench_config(warm_up=10,repetition=100))
     benchmark=make();original=benchmark.op_callable
+    inputs=tuple(benchmark.context[name] for name in ('x','y'))
+    pristine=tuple(value.clone() for value in inputs)
     if mode=='correct':
         record=benchmark.run_benchmark(current_params_dict={})
         assert record['timing_ms']['mean']==0.25
@@ -939,11 +942,16 @@ def test_add_canonical_samples_observe_exact_replay_and_reject_wrong_output(monk
             bound=signature.bind_partial(None,**options);bound.apply_defaults()
             return {k:v for k,v in bound.arguments.items() if k not in ('fn','timed_run')}
         assert effective(calls[0])==effective(prior[0])
+    elif mode=='replay_raises':
+        with pytest.raises(RuntimeError,match='injected replay failure'):
+            benchmark.run_benchmark(current_params_dict={})
     elif mode=='event_fallback':
         with pytest.raises(RuntimeError,match='observable'):benchmark.run_benchmark(current_params_dict={})
     else:
         with pytest.raises((reference.NumericalMismatch,ValueError)):
             benchmark.run_benchmark(current_params_dict={})
+    assert all(torch.equal(value,expected) for value,expected in zip(inputs,pristine))
+    assert all(benchmark.context[name] is value for name,value in zip(('x','y'),inputs))
     if mode!='correct':assert not plugin.exercised
     assert benchmark.op_callable is original and len(calls)==1
 
