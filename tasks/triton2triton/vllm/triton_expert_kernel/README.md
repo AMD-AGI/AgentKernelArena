@@ -28,3 +28,15 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+Protected checks validate the complete FP16 output shape, device, dtype, and
+finite values against the original FP32-matmul-then-FP16 reference at
+atol=rtol=5e-2. Both operands are read-only and the reference uses pristine
+copies. An unscored `(M,K,N)=(67,35,71)` control covers partial tiles and the
+wrapper's explicit stride support using noncontiguous A and B.
+
+The five original correctness seeds and performance seed 0, original input
+scales, full allocating wrapper, ten warmups, and 100 timing samples are
+unchanged. The actual `TimedRun` output is checked and poisoned before an exact
+replay with both operands changed. Verification is outside timing; caller inputs
+are restored even if replay or checking fails.

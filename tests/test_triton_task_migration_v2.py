@@ -6543,3 +6543,93 @@ def test_swiglustep_original_timing_poisoned_replay_and_restore(monkeypatch,mode
 def test_swiglustep_adapter_installs_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_swiglustep_and_mul/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_swiglustep_checks'
+
+
+def _expert_gemm_cpu(A,B):
+    return (A.double()@B.double()).half()
+
+
+def test_expert_gemm_independent_known_answer_and_original_gate(monkeypatch):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'expert_kernel')
+    A=torch.tensor([[1.,2.,3.],[-1.,0.,2.]],dtype=torch.float16)
+    B=torch.tensor([[1.,2.],[3.,4.],[5.,6.]],dtype=torch.float16)
+    expected=torch.tensor([[22.,28.],[9.,10.]],dtype=torch.float16)
+    checks.check_output(checks.reference((A,B)),expected)
+    checks.check_output(_expert_gemm_cpu(A,B),expected)
+    checks.check_output(torch.tensor([.049],dtype=A.dtype),torch.zeros(1,dtype=A.dtype))
+    with pytest.raises(AssertionError):checks.check_output(torch.tensor([.051],dtype=A.dtype),torch.zeros(1,dtype=A.dtype))
+
+
+@pytest.mark.parametrize('mode',['correct','dtype','shape','device','nan','zero','mutate_A','mutate_B',
+    'omit_m_tail','omit_n_tail','omit_k_tail','ignore_strides'])
+def test_expert_gemm_original_fivecase_correctness_and_partial_strided_inputs(monkeypatch,mode):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'expert_kernel');calls=[];saved_inputs=[]
+    def public(A,B):
+        inputs=(A,B);calls.append((A.shape,B.shape,A.stride(),B.stride()));saved_inputs.append((inputs,checks.snapshots(inputs)))
+        if mode=='mutate_A':A.zero_()
+        if mode=='mutate_B':B.zero_()
+        result=_expert_gemm_cpu(A,B)
+        if mode=='omit_m_tail' and A.shape[0]==67:result[64:].zero_()
+        if mode=='omit_n_tail' and B.shape[1]==71:result[:,64:].zero_()
+        if mode=='omit_k_tail' and A.shape[1]==35:result=_expert_gemm_cpu(A[:,:32],B[:32])
+        if mode=='ignore_strides' and not A.is_contiguous():result.zero_()
+        if mode=='dtype':result=result.float()
+        if mode=='shape':result=result.flatten()
+        if mode=='device':result=result.to('meta')
+        if mode=='nan':result.fill_(float('nan'))
+        if mode=='zero':result.zero_()
+        return result
+    mod=SimpleNamespace(expert_gemm=public);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
+    if mode=='correct':
+        assert [(a,b) for a,b,_,_ in calls if a[0]!=67]==[(torch.Size((m,k)),torch.Size((k,n))) for m,k,n in h.TEST_SHAPES]
+        assert [v for v in calls if v[0][0]==67]==[(torch.Size((67,35)),torch.Size((35,71)),(140,2),(1,70))]
+    for inputs,saved in saved_inputs:checks.unchanged(inputs,saved)
+    assert mod.expert_gemm is public
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay','mutate_timed_A',
+    'mutate_timed_B','mutate_replay_A','mutate_replay_B','zero_inputs_and_output','raise_replay'])
+def test_expert_gemm_actual_timing_original_seed_scale_and_exact_replay(monkeypatch,mode):
+    import inspect
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'expert_kernel')
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(expert_gemm=_expert_gemm_cpu);h.load_module=lambda:mod
+    all_inputs,all_saved,options,replays=[],[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        inputs=(state['A'],state['B']);saved=checks.snapshots(inputs)
+        all_inputs.append(inputs);all_saved.append(saved);options.append(kwargs)
+        generator=torch.Generator().manual_seed(0)
+        expectedA=torch.randn(*inputs[0].shape,dtype=torch.float16,generator=generator)*.1
+        expectedB=torch.randn(*inputs[1].shape,dtype=torch.float16,generator=generator)*.1
+        checks.unchanged(inputs,(expectedA,expectedB))
+        output=measured();cache=output.clone()
+        if mode=='wrong_timed':output.add_(10)
+        if mode.startswith('mutate_timed_'):inputs[0 if mode.endswith('A') else 1].zero_()
+        if mode=='zero_inputs_and_output':
+            for value in (*inputs,output):value.zero_()
+        def replay():
+            replays.append(True)
+            checks.unchanged(inputs,(saved[0]*-.5+.5,saved[1]*.5+.25))
+            assert torch.isnan(output).all()
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='no_write':output.copy_(cache if mode=='stale' else measured())
+            if mode=='wrong_replay':output.zero_()
+            if mode.startswith('mutate_replay_'):inputs[0 if mode.endswith('A') else 1].zero_()
+            return output
+        timed_run._bind(replay,output)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h);rows=h.run_performance()
+    assert options==[dict(warmup=10,repetition=100)]*5
+    for cfg,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('M','K','N'),cfg))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for inputs,saved in zip(all_inputs,all_saved):checks.unchanged(inputs,saved)
+    assert len(replays)==(0 if mode=='wrong_timed' or mode.startswith('mutate_timed_') or mode=='zero_inputs_and_output' else 5)
+    assert mod.expert_gemm is _expert_gemm_cpu
+
+
+def test_expert_gemm_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_expert_kernel/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_expert_gemm_checks'
