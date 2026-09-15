@@ -5533,3 +5533,101 @@ def test_scale_swizzle_original_timing_full_byte_poison_replay_and_restore(monke
 def test_scale_swizzle_adapter_installs_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_scale_swizzle/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_scale_swizzle_checks'
+
+
+def _solve_tril_cpu(data):
+    # Independent forward substitution, avoiding the protected linalg.inv oracle.
+    batch,length,heads,width=data.shape
+    output=torch.zeros_like(data,dtype=torch.float32)
+    for b in range(batch):
+        for h in range(heads):
+            for start in range(0,length,width):
+                size=min(width,length-start)
+                for row in range(size):
+                    output[b,start+row,h,row]=1
+                    for prev in range(row):
+                        output[b,start+row,h,:size]-=data[b,start+row,h,prev]*output[b,start+prev,h,:size]
+    return output
+
+
+def _solve_tril_cpu_harness(monkeypatch):
+    return _fp8_group_cpu_harness(monkeypatch,'solve_tril_16x16')
+
+
+def test_solve_tril_independent_known_inverse_partial_zero_columns_and_gate(monkeypatch):
+    h,checks=_solve_tril_cpu_harness(monkeypatch)
+    a=torch.zeros(1,3,1,16);a[0,1,0,0]=.5;a[0,2,0,0]=.25;a[0,2,0,1]=.75
+    expected=torch.zeros_like(a);expected[0,:,0,:3]=torch.tensor([[1.,0.,0.],[-.5,1.,0.],[.125,-.75,1.]])
+    checks.check_output(checks.reference(h,a),expected)
+    checks.check_output(_solve_tril_cpu(a),expected)
+    allowed=expected.clone();allowed[0,0,0,0]+=.001
+    checks.check_output(allowed,expected)
+    allowed[0,0,0,0]+=.01
+    with pytest.raises(AssertionError):checks.check_output(allowed,expected)
+    bad=expected.clone();bad[0,-1,0,-1]=.01
+    with pytest.raises(AssertionError):checks.check_output(bad,expected)
+
+
+@pytest.mark.parametrize('mode',['correct','shape','dtype','device','nonfinite','zero_output',
+                                 'missing_partial','wrong_identity','mutate_input'])
+def test_solve_tril_full_original_correctness_and_partial_identity_controls(monkeypatch,mode):
+    h,checks=_solve_tril_cpu_harness(monkeypatch);calls=[]
+    def public(a):
+        calls.append(tuple(a.shape))
+        if mode=='mutate_input':a.zero_()
+        result=_solve_tril_cpu(a)
+        if mode=='shape':result=result.flatten()
+        if mode=='dtype':result=result.half()
+        if mode=='device':result=result.to('meta')
+        if mode=='nonfinite':result.fill_(float('nan'))
+        if mode=='zero_output':result.zero_()
+        if mode=='missing_partial' and a.shape[1]%16:result[:,-1].zero_()
+        if mode=='wrong_identity' and not bool(a.any()):result.zero_()
+        return result
+    mod=SimpleNamespace(solve_tril_16x16=public);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness()
+    assert ok is (mode=='correct'),reason
+    if mode=='correct':
+        assert calls.count((2,32,4,16))==5 and calls.count((1,19,2,16))==2
+    assert mod.solve_tril_16x16 is public
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay',
+                                 'mutate_timed','mutate_replay','zero_input_and_output','raise_replay'])
+def test_solve_tril_original_timing_actual_poisoned_replay_and_restore(monkeypatch,mode):
+    import inspect
+    h,checks=_solve_tril_cpu_harness(monkeypatch)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(solve_tril_16x16=_solve_tril_cpu);h.load_module=lambda:mod
+    inputs,saved,options,replays=[],[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];data=inspect.getclosurevars(fn).nonlocals['args'][0]
+        inputs.append(data);saved.append(data.clone());options.append(kwargs)
+        output=measured();cached=output.clone()
+        if mode=='wrong_timed':output.zero_()
+        if mode=='mutate_timed':data.zero_()
+        if mode=='zero_input_and_output':data.zero_();output.zero_()
+        def replay():
+            replays.append(True)
+            assert torch.equal(data,saved[-1]*-.5) and torch.isnan(output).all()
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='no_write':output.copy_(cached if mode=='stale' else measured())
+            if mode=='wrong_replay':output[0,0,0,0]+=1
+            if mode=='mutate_replay':data.zero_()
+            return output
+        timed_run._bind(replay,output)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h)
+    rows=h.run_performance()
+    assert options==[dict(warmup=10,repetition=100)]*5
+    for seed,row in zip(h.SEEDS,rows):
+        assert row['params']=={'seed':seed}
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for data,pristine in zip(inputs,saved):checks.unchanged(data,pristine)
+    assert len(replays)==(0 if mode in ['wrong_timed','mutate_timed','zero_input_and_output'] else 5)
+    assert mod.solve_tril_16x16 is _solve_tril_cpu
+
+
+def test_solve_tril_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_solve_tril_16x16/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_solve_tril_checks'

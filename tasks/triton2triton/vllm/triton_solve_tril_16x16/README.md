@@ -30,3 +30,18 @@ The protected manifest requires the declared kernel symbols to remain Triton JIT
 functions, including kernels originally decorated with `@triton.jit()`. Removing
 the decorator is rejected before compilation. This structural check supplements
 the numerical and timed-path checks; it does not by itself attest every dispatch.
+
+## Complete inverse and measured replay
+
+All output entries, including zero regions of partial tiles, must match the
+original CPU inverse oracle at `atol=rtol=1e-3`. Output shape, FP32 dtype, device
+and finiteness are checked explicitly. The oracle uses a pristine input copy;
+the input is read-only. Unscored controls add 19 time rows (a full 16-row tile
+plus three final rows), two heads, and zero input producing identity blocks.
+
+The five original seeded cases and 10/100 warmup/sample policy are unchanged.
+The original public wrapper, its output allocation and kernel form the timed
+unit. The exact captured output is checked after timing, then the input is
+scaled by -0.5 and the output poisoned with NaN before the same graph is replayed
+and checked against a new reference. Input checks, reference computation and
+poisoning stay outside timing; input is restored even if replay raises.
