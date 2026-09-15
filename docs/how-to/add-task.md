@@ -242,6 +242,9 @@ paths name locations in the selected runtime image; the framework records that
 image's immutable identity and materialized source evidence. An image source
 path may be absolute **inside the image**. This is an acquisition exception,
 not permission to use absolute checkout/host paths in evaluation commands.
+Each source `exclude` is a path relative to that source root, including its
+descendants. It is not a basename pattern: `jit` does not exclude `aiter/jit`.
+Exclude disposable runtime caches explicitly while retaining required source.
 
 All other task paths are relative to the task workspace root after setup.
 Reject absolute paths, traversal, and symlink resolutions escaping that root.
@@ -572,7 +575,7 @@ workspace:
     - kind: image
       image_path: /sgl-workspace/aiter
       destination: aiter_source
-      exclude: [jit, __pycache__]
+      exclude: [jit, aiter/jit/flydsl_cache, __pycache__]
 platform_support:
   required_arch: gfx950
   status: active

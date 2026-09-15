@@ -97,7 +97,29 @@ def test_production_source_is_separate_and_documented(task):
         assert source.startswith(acquisition['destination'] + '/')
         assert source in (task / 'README.md').read_text()
         assert source not in config['candidate']['editable']
-    assert acquisition['exclude'] == ['jit', '__pycache__']
+    assert acquisition['exclude'] == ['jit', 'aiter/jit/flydsl_cache', '__pycache__']
+
+
+def test_image_acquisition_excludes_nested_flydsl_cache_but_keeps_jit_sources(tmp_path, monkeypatch):
+    from src import task_materialization as materialization
+
+    root = tmp_path / 'image_aiter'
+    cache = root / 'aiter/jit/flydsl_cache/case'
+    cache.mkdir(parents=True)
+    (cache / 'unreadable.pkl').write_bytes(b'compiled runtime cache')
+    (root / 'aiter/jit/core.py').write_text('jit_source = True\n')
+    source = dict(_config(TASKS[0])['workspace']['sources'][0], image_path=str(root))
+    original_digest = materialization._file_digest
+
+    def digest(path, deadline):
+        if path.is_relative_to(cache):
+            raise PermissionError('Cached runtime artifact must not be read')
+        return original_digest(path, deadline)
+
+    monkeypatch.setattr(materialization, '_file_digest', digest)
+    _, manifest = materialization._image_input(source, materialization._Deadline(10))
+    assert 'aiter/jit/core.py' in manifest
+    assert not any('flydsl_cache' in name for name in manifest)
 
 
 @pytest.mark.parametrize('task', TASKS, ids=lambda t: t.name)
