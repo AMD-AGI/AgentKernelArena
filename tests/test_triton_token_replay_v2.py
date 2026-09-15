@@ -564,6 +564,39 @@ def test_direct_preallocated_launch_is_observed_and_checked(name,cached):
     replay.unchanged(args,before,())
 
 
+def assert_original_candidate_bytes(name, source):
+    if name == 'pack_seq':
+        # The reviewed all-empty repair changes only this wrapper line. Reverse
+        # exactly that delta, then pin every original byte without Git history.
+        original = b'        x_reshaped = x.reshape(N, -1)\n'
+        approved = b'        x_reshaped = x.flatten(start_dim=1)\n'
+        assert source.count(approved) == 1
+        assert original not in source
+        source = source.replace(approved, original, 1)
+    assert hashlib.sha256(source).hexdigest() == ORIGINAL_CONTRACTS[name]['candidate_sha256']
+
+
+@pytest.mark.parametrize('change', [
+    'reverted', 'duplicated', 'wrong_dimension', 'launch_stages', 'padding',
+])
+def test_pack_candidate_pin_rejects_any_other_source_change(change):
+    source = (TASKS / 'triton_pack_seq/source/triton_pack_seq.py').read_bytes()
+    approved = b'        x_reshaped = x.flatten(start_dim=1)\n'
+    if change == 'reverted':
+        changed = source.replace(approved, b'        x_reshaped = x.reshape(N, -1)\n')
+    elif change == 'duplicated':
+        changed = source + approved
+    elif change == 'wrong_dimension':
+        changed = source.replace(b'x.flatten(start_dim=1)', b'x.flatten(start_dim=2)')
+    elif change == 'launch_stages':
+        changed = source.replace(b'num_stages=2', b'num_stages=1')
+    else:
+        changed = source.replace(b'PAD_VALUE=float(pad_value)', b'PAD_VALUE=0.0')
+    assert changed != source
+    with pytest.raises(AssertionError):
+        assert_original_candidate_bytes('pack_seq', changed)
+
+
 @pytest.mark.parametrize('name',NAMES)
 def test_original_manifest_rows_and_generated_region_are_byte_preserved(name):
     task=TASKS/('triton_'+name)
@@ -577,7 +610,7 @@ def test_original_manifest_rows_and_generated_region_are_byte_preserved(name):
     region=after.split('# >>> AKA-GENERATED:')[1].split('# <<< AKA-GENERATED <<<')[0]
     assert hashlib.sha256(region.encode()).hexdigest()==expected['generated_region_sha256']
     candidate=task/'source'/('triton_'+name+'.py')
-    assert hashlib.sha256(candidate.read_bytes()).hexdigest()==expected['candidate_sha256']
+    assert_original_candidate_bytes(name, candidate.read_bytes())
 
 
 @pytest.mark.parametrize('is_prefill',[False,True])
