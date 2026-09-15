@@ -51,7 +51,8 @@ import argparse
 import os
 import statistics
 import sys
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import prepare_check, verify_timed_run, compare_outputs
 from _aka_benchmark import benchmark_cuda_event_samples
 
 WARMUP_ITERS = 3
@@ -405,6 +406,10 @@ def run_test(T, E, topk, unit_size=UNIT_SIZE, max_tokens=None):
         return False, None
 
     torch.cuda.synchronize()
+
+    compare_outputs((gpu_ids, gpu_w, gpu_eids, gpu_nvalid, gpu_moe_buf),
+                    (ref_ids, ref_w, ref_eids, ref_nvalid),
+                    token_count=T, topk=topk, unit_size=unit_size)
 
     # --- Validate ---
     passed = True
@@ -888,9 +893,12 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         launch = _make_preallocated_flydsl_call(
             topk_ids, topk_weights, E, model_dim=4096, topk=k
         )
+        check = prepare_check(topk_ids, topk_weights, E, UNIT_SIZE, moe_sorting_reference)
+        timed = TimedRun()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            launch, warmup=warmup, repetition=iters
+            launch, warmup=warmup, repetition=iters, timed_run=timed,
         )
+        bench_meta.update(verify_timed_run(timed, **check))
         latencies.append(ms)
         report_cases.append({
             "test_case_id": f"moe_sort_{idx}",
