@@ -480,6 +480,29 @@ def _moe_enums(params: dict, aiter):
     return quant_type, activation
 
 
+def _quantize_moe_weight(weight, quant_type, weight_dtype, aiter):
+    if quant_type != aiter.QuantType.per_1x128:
+        return aiter.get_torch_quant(quant_type)(weight, quant_dtype=weight_dtype)
+    # A1x128 uses W128x128 scales, independently for each expert. The runtime's
+    # get_torch_quant(per_1x128) is a two-dimensional activation quantizer.
+    experts, rows, columns = weight.shape
+    if rows % 128 or columns % 128:
+        raise ValueError("CK FP8 weight dimensions must be divisible by 128")
+    blocks = weight.reshape(experts, rows // 128, 128, columns // 128, 128)
+    blocks = blocks.permute(0, 1, 3, 2, 4).reshape(-1, 128 * 128)
+    quantized, scales = aiter.pertoken_quant(blocks, quant_dtype=weight_dtype)
+    quantized = quantized.reshape(experts, rows // 128, columns // 128, 128, 128)
+    quantized = quantized.permute(0, 1, 3, 2, 4).reshape_as(weight)
+    return quantized, scales.reshape(experts, rows // 128, columns // 128)
+
+
+def _quantize_moe_activation(value, quantize, dtype):
+    # Flatten token/top-k axes only; each row keeps its original 128-wide groups.
+    quantized, scales = quantize(value.reshape(-1, value.shape[-1]), quant_dtype=dtype)
+    return (quantized.reshape_as(value),
+            scales.reshape(*value.shape[:-1], value.shape[-1] // 128))
+
+
 def _prepare_moe(case: dict, correctness: bool = False) -> dict:
     torch = _torch()
     aiter = _import_aiter()
@@ -533,8 +556,6 @@ def _prepare_moe(case: dict, correctness: bool = False) -> dict:
     )
     score = torch.randn((token, experts), device="cuda", dtype=dtypes.bf16)
     topk_weights, topk_ids = fused_topk(hidden, score, topk, True)
-    torch_quant = aiter.get_torch_quant(quant_type)
-
     if quant_type == aiter.QuantType.per_Tensor:
         w1_quant, w1_scale = aiter.pertoken_quant(
             w1.view(experts, -1), quant_dtype=weight_dtype
@@ -545,8 +566,8 @@ def _prepare_moe(case: dict, correctness: bool = False) -> dict:
         w1_quant = w1_quant.view(w1.shape)
         w2_quant = w2_quant.view(w2.shape)
     else:
-        w1_quant, w1_scale = torch_quant(w1, quant_dtype=weight_dtype)
-        w2_quant, w2_scale = torch_quant(w2, quant_dtype=weight_dtype)
+        w1_quant, w1_scale = _quantize_moe_weight(w1, quant_type, weight_dtype, aiter)
+        w2_quant, w2_scale = _quantize_moe_weight(w2, quant_type, weight_dtype, aiter)
 
     if quant_type == aiter.QuantType.per_1x32:
         w1_quant = w1_quant.view(
@@ -625,12 +646,9 @@ def _moe_reference(inputs: dict):
     torch_quant = aiter.get_torch_quant(inputs["quant_type"])
     params = inputs["params"]
     if inputs["quant_type"] == aiter.QuantType.per_1x128:
-        a1_quant, a1_scale = torch_quant(
-            inputs["hidden"].view(inputs["hidden"].shape[0], -1, 128),
-            quant_dtype=inputs["activation_dtype"],
+        a1_quant, a1_scale = _quantize_moe_activation(
+            inputs["hidden"], torch_quant, inputs["activation_dtype"],
         )
-        a1_quant = a1_quant.view(inputs["hidden"].shape)
-        a1_scale = a1_scale.squeeze(-1)
     elif (
         inputs["quant_type"] == aiter.QuantType.per_1x32
         and inputs["activation_dtype"]
@@ -657,12 +675,8 @@ def _moe_reference(inputs: dict):
         w1_scale=inputs["w1_scale"],
     )
     if inputs["quant_type"] == aiter.QuantType.per_1x128:
-        a2_quant, a2_scale = torch_quant(
-            stage1.view(stage1.shape[0], -1, 128),
-            quant_dtype=inputs["activation_dtype"],
-        )
-        a2_scale = a2_scale.view(
-            stage1.shape[0], params["topk"], -1
+        a2_quant, a2_scale = _quantize_moe_activation(
+            stage1, torch_quant, inputs["activation_dtype"],
         )
     elif (
         inputs["quant_type"] == aiter.QuantType.per_1x32

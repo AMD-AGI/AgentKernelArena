@@ -1620,3 +1620,61 @@ def test_cktile_preparation_uses_generic_mxfp4_layout_and_keeps_reference(correc
         torch.testing.assert_close(inputs[f"w{i}"],raw_weights[i-1].flip(-2),rtol=0,atol=0)
         torch.testing.assert_close(inputs[f"w{i}_scale"],raw_scales[i-1],rtol=0,atol=0)
         torch.testing.assert_close(inputs[f"w{i}_scale_runtime"],raw_scales[i-1].flip(-2),rtol=0,atol=0)
+
+
+def test_ck_fp8_weight_scales_are_independent_128x128_blocks():
+    torch = pytest.importorskip("torch")
+    h = load_module(TASKS / "mi355x_vllm_ck_moe_2stage/scripts/task_runner.py")
+    dtype = torch.float8_e4m3fn
+    maximum = torch.finfo(dtype).max
+    weight = torch.empty(2,256,256,dtype=torch.bfloat16)
+    for expert in range(2):
+        for row in range(2):
+            for col in range(2):
+                v = float(1+expert*4+row*2+col)
+                weight[expert,row*128:(row+1)*128,col*128:(col+1)*128] = v
+                weight[expert,row*128,col*128] = -v*2
+    before = weight.clone()
+    def quantize(blocks, *, quant_dtype):
+        assert blocks.shape == (8,128*128)
+        scales = blocks.float().abs().amax(-1,keepdim=True)/maximum
+        return (blocks.float()/scales).to(quant_dtype),scales
+    aiter = SimpleNamespace(QuantType=SimpleNamespace(per_1x128="blocks"),pertoken_quant=quantize)
+    quantized, scales = h._quantize_moe_weight(weight,"blocks",dtype,aiter)
+    assert quantized.shape == weight.shape and quantized.dtype == dtype
+    assert scales.shape == (2,2,2)
+    for expert in range(2):
+        for row in range(2):
+            for col in range(2):
+                index = (expert,slice(row*128,(row+1)*128),slice(col*128,(col+1)*128))
+                # Independent block loop: a single outlier controls all rows in
+                # this block, and must not leak to another block or expert.
+                expected_scale = float(weight[index].float().abs().max())/maximum
+                torch.testing.assert_close(scales[expert,row,col],torch.tensor(expected_scale))
+                expected = (weight[index].float()/expected_scale).to(dtype).float()
+                torch.testing.assert_close(quantized[index].float(),expected,rtol=0,atol=0)
+    torch.testing.assert_close(weight,before,rtol=0,atol=0)
+    with pytest.raises(ValueError,match="divisible by 128"):
+        h._quantize_moe_weight(weight[:,:129],"blocks",dtype,aiter)
+
+
+@pytest.mark.parametrize("shape", [(2,256),(2,3,256)])
+def test_ck_fp8_activation_groups_preserve_token_topk_axes(shape):
+    torch = pytest.importorskip("torch")
+    h = load_module(TASKS / "mi355x_vllm_ck_moe_2stage/scripts/task_runner.py")
+    value = ((torch.arange(__import__('math').prod(shape)).reshape(shape)%253)-127).float()
+    dtype = torch.float8_e4m3fn
+    def quantize(matrix, *, quant_dtype):
+        assert matrix.ndim == 2 and matrix.shape[-1] == shape[-1]
+        blocks = matrix.reshape(-1,128)
+        scales = blocks.abs().amax(-1,keepdim=True)/torch.finfo(quant_dtype).max
+        return (blocks/scales).to(quant_dtype).reshape_as(matrix),scales.reshape(len(matrix),-1)
+    actual,scales = h._quantize_moe_activation(value,quantize,dtype)
+    assert actual.shape == value.shape and scales.shape == (*shape[:-1],2)
+    for i,row in enumerate(value.reshape(-1,256)):
+        for group in range(2):
+            raw = row[group*128:(group+1)*128]
+            scale = raw.abs().max()/torch.finfo(dtype).max
+            torch.testing.assert_close(scales.reshape(-1,2)[i,group],scale)
+            expected = (raw/scale).to(dtype).float()
+            torch.testing.assert_close(actual.float().reshape(-1,256)[i,group*128:(group+1)*128],expected,rtol=0,atol=0)

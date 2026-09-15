@@ -67,6 +67,24 @@ still require full GPU validation on the selected immutable runtime.
 
 ## Materialized AITER package and build helpers
 
+### FP8 block-quantization input contract
+
+For the MiniMax `per_1x128` case, the CK interface uses 1×128 activation groups
+and independent 128×128 weight blocks within each expert. Weight scales have
+shape `(experts, rows/128, columns/128)`. The pinned runtime's
+`get_torch_quant(per_1x128)` accepts a two-dimensional activation matrix; it is
+not a quantizer for the three-dimensional expert weight tensor. Job 139599
+compiled the declared CK implementation but failed when the old preparation
+passed that tensor directly to the activation quantizer.
+
+Preparation now quantizes each weight block using the provided per-row Torch
+quantizer, restores the logical weight axes, and retains one scale per block.
+Reference activation quantization flattens only token/top-k axes before calling
+the runtime's two-dimensional API, then restores those axes and their scales.
+The MXFP4 and per-tensor paths, operator cases, seeds, numerical gates and timing
+calls are unchanged. CPU controls verify block isolation, axis restoration and
+input preservation. This correction still requires fresh full GPU validation.
+
 The declared runtime provides both `aiter/` (Python dispatch and JIT utilities)
 and `aiter_meta/` (C++ sources and bundled compiler dependencies). They are
 siblings inside each role's workspace. Code generation resolves helpers such as
