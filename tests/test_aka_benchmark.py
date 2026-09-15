@@ -875,3 +875,152 @@ def test_hip_source_policy_does_not_trust_unrelated_stream_assignment(
         False,
         "hip_source_launch_stream_unverified",
     )
+
+
+def _event_cuda(helper, monkeypatch, trace, elapsed=.25):
+    class Stream:
+        def wait_stream(self, other):
+            trace.append("wait_stream")
+    stream = Stream()
+    count = 0
+    class Event:
+        def __init__(self, enable_timing):
+            nonlocal count
+            assert enable_timing
+            self.kind = "start" if count % 2 == 0 else "end"
+            count += 1
+        def record(self):
+            trace.append(self.kind)
+        def synchronize(self):
+            trace.append("wait_event")
+        def elapsed_time(self, end):
+            assert self.kind == "start" and end.kind == "end"
+            trace.append("elapsed")
+            return elapsed
+    monkeypatch.setattr(helper.torch.cuda, "Event", Event, raising=False)
+    monkeypatch.setattr(helper.torch.cuda, "current_stream", lambda: stream)
+    monkeypatch.setattr(helper.torch.cuda, "stream", lambda value: nullcontext(), raising=False)
+    return stream
+
+
+@pytest.mark.parametrize("forced", [False, True])
+def test_explicit_event_collector_keeps_actual_last_sample_and_replays_same_callable(monkeypatch, forced):
+    helper = _load_helper(monkeypatch)
+    trace = []
+    _event_cuda(helper, monkeypatch, trace)
+    if forced:
+        monkeypatch.setenv("AKA_BENCHMARK_FORCE_EVENT", "1")
+    returned = []
+    state = {"input": 2, "prepared": None}
+    def prepare():
+        trace.append("prepare")
+        state["prepared"] = state["input"]
+    def fn():
+        trace.append("fn")
+        output = [state["prepared"] * 3]
+        returned.append(output)
+        return output
+    timed = helper.TimedRun()
+    samples, metadata = helper.benchmark_cuda_graph_or_events_samples(
+        fn, warmup=2, repetition=3, prepare_fn=prepare,
+        use_cuda_graph=forced, timed_run=timed,
+    )
+    assert samples == [.25] * 3
+    assert len(returned) == 5  # two warmups plus three measured calls, no extra call
+    assert timed.outputs is returned[-1]
+    assert timed.outputs == [6]
+    assert trace == ["prepare", "fn"] * 2 + ["prepare", "start", "fn", "end", "wait_event", "elapsed"] * 3
+    assert metadata["benchmark_method"] == "cuda_event_fallback"
+    assert metadata["benchmark_effective_repeats"] == 1
+    assert metadata["benchmark_timed_run_kind"] == "eager_callable"
+    assert metadata["benchmark_fallback_reason"] == ("forced_event_baseline" if forced else "cuda_graph_disabled")
+    last_measured = timed.outputs
+    state["input"] = 5
+    trace.clear()
+    replayed = timed.rerun()
+    assert len(returned) == 6
+    assert trace == ["wait_stream", "prepare", "fn"]
+    assert replayed is returned[-1] and timed.outputs is replayed
+    assert replayed == [15]
+    assert replayed is not last_measured  # eager callable can allocate a new output
+    assert last_measured == [6]
+
+
+def test_event_collector_does_not_substitute_untimed_correct_output(monkeypatch):
+    helper = _load_helper(monkeypatch)
+    trace = []
+    _event_cuda(helper, monkeypatch, trace)
+    results = []
+    def fn():
+        # A wrong measured branch cannot be hidden by calling fn after the events.
+        value = {"answer": "wrong" if trace[-1] == "start" else "correct"}
+        results.append(value)
+        return value
+    timed = helper.TimedRun()
+    helper.benchmark_cuda_graph_or_events(fn, warmup=0, repetition=2,
+                                         use_cuda_graph=False, timed_run=timed)
+    assert len(results) == 2
+    assert timed.outputs is results[-1]
+    assert timed.outputs["answer"] == "wrong"
+    assert timed.rerun()["answer"] == "correct"
+
+
+@pytest.mark.parametrize("failure", ["prepare", "fn", "invalid_time", "no_gpu"])
+def test_failed_event_attempt_clears_collector_from_previous_measurement(monkeypatch, failure):
+    helper = _load_helper(monkeypatch, available=failure != "no_gpu")
+    trace = []
+    _event_cuda(helper, monkeypatch, trace, elapsed=float("nan") if failure == "invalid_time" else .25)
+    timed = helper.TimedRun()
+    timed._bind(lambda: "old", "old")
+    def prepare():
+        if failure == "prepare":raise RuntimeError("prepare failed")
+    def fn():
+        if failure == "fn":raise RuntimeError("fn failed")
+        return "new"
+    with pytest.raises(RuntimeError):
+        helper.benchmark_cuda_graph_or_events(fn, warmup=0, repetition=2,
+                                             use_cuda_graph=False, prepare_fn=prepare, timed_run=timed)
+    assert not timed.bound and timed.outputs is None
+    with pytest.raises(RuntimeError, match="never bound"):
+        timed.rerun()
+
+
+@pytest.mark.parametrize("failure", ["capture_error", "empty_capture", "invalid_replay"])
+def test_automatic_graph_fallback_with_collector_still_fails_closed(monkeypatch, failure):
+    helper = _load_helper(monkeypatch)
+    def capture(fn, repeats, stream, prepare_fn=None, output_holder=None):
+        if failure == "capture_error":raise ValueError("capture failed")
+        if failure == "empty_capture":raise helper._EmptyGraphCapture("empty")
+        if output_holder is not None:output_holder[:] = [object()]
+        return object()
+    replay_calls = []
+    def replay(*args, **kwargs):
+        replay_calls.append(True)
+        return [float("nan")] if len(replay_calls) >= 4 else [.25]
+    monkeypatch.setattr(helper, "_capture_graph", capture)
+    monkeypatch.setattr(helper, "_graph_replay_samples", replay)
+    monkeypatch.setattr(helper, "benchmark_cuda_event_samples", lambda *args, **kwargs: pytest.fail("automatic Event fallback must not run with a collector"))
+    timed = helper.TimedRun()
+    timed._bind(lambda: "old", "old")
+    with pytest.raises(RuntimeError, match="timed_run"):
+        helper.benchmark_cuda_graph_or_events(lambda: None, warmup=0, repetition=2, timed_run=timed)
+    assert not timed.bound and timed.outputs is None
+
+
+@pytest.mark.parametrize("collect", [False, True])
+def test_event_samples_do_not_keep_previous_output_allocation_alive(monkeypatch, collect):
+    helper = _load_helper(monkeypatch)
+    trace = []
+    _event_cuda(helper, monkeypatch, trace)
+    live = []
+    class Output:
+        def __init__(self):
+            assert not live, "previous sample overlaps the next allocation"
+            live.append(True)
+        def __del__(self):
+            live.pop()
+    timed = helper.TimedRun() if collect else None
+    assert helper.benchmark_cuda_event_samples(Output, repetition=3, timed_run=timed) == [.25] * 3
+    assert len(live) == int(collect)
+    if collect:
+        assert timed.bound and isinstance(timed.outputs, Output)

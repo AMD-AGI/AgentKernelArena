@@ -123,6 +123,22 @@ Fallback still uses device events; it does not use Python, subprocess, or CPU
 wall-clock timing.  Host and wall-time-only fields are rejected by the central
 performance parser.
 
+For an explicit Event path, `timed_run=TimedRun()` exposes the return value from
+the last **measured** sample, after its ending GPU Event completes. It does not
+run a new untimed invocation to obtain that value. Its `rerun()` invokes the
+same eager callable on the measured stream, with `prepare_fn` before the call.
+This can allocate a new output and execute different Python dispatch decisions;
+it is not captured graph replay. The task must validate the measured output
+first and then validate the returned re-invocation output. Output observation
+alone is not a correctness verdict.
+
+Collector metadata records `benchmark_timed_run_kind: eager_callable` for
+explicit Events and `captured_graph` for graph replay. The existing
+`benchmark_method: cuda_event_fallback` and fallback reason are unchanged.
+Automatic fallback from a failed/empty/invalid graph still rejects a requested
+collector; it does not silently switch the validation contract. Event timing
+must be selected explicitly when that is the task's declared methodology.
+
 ## Independent task workspaces
 
 Task sources do not import AgentKernelArena's `src` package and do not carry
