@@ -147,3 +147,13 @@ def triton_multreduce_matmul_kernel(a_ptr, b_ptr, c_ptr, bias_ptr,  #
 
 
 
+
+The scored workload directly launches `triton_matmul_kernel` with the declared
+fixed block sizes, warps and stages and `USE_DOT=False`. This actual entrypoint
+is explicitly declared alongside `triton_multreduce_matmul_kernel`, the autotuned
+wrapper exercised by the original correctness cases. Optimizing only wrapper
+autotuning does not improve the fixed-launch measurements. Keep both interfaces
+implemented; the wrapper remains part of correctness coverage. This declaration
+clarifies the original harness behavior without changing its invocations, cases,
+numerical gates, tuning parameters, warmups or sample counts. Configuration
+helpers remain editable implementation helpers, not separate entrypoints.

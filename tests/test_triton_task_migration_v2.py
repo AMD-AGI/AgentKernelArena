@@ -708,6 +708,38 @@ ROCM = sorted([*(ROOT/'tasks/triton2triton/rocmbench').rglob('config.yaml'),
                *(ROOT/'tasks/instruction2triton').rglob('config.yaml')])
 
 
+@pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/triton_multreduce_matmul_kernel',
+                                    'tasks/triton2triton/rocmbench/hard/triton_multreduce_matmul_kernel'])
+def test_multreduce_declares_actual_fixed_launch_entrypoint(relative, monkeypatch, tmp_path):
+    task = ROOT/relative
+    spec = load_task_spec(task/'config.yaml', task_id=relative.removeprefix('tasks/'))
+    assert {e.symbol for e in spec.candidate.entrypoints} == {'triton_matmul_kernel', 'triton_multreduce_matmul_kernel'}
+    calls = []
+    class Kernel:
+        def __getitem__(self, grid):
+            def launch(*args, **kwargs): calls.append((grid, args, kwargs))
+            return launch
+    wrapper = pure_functions(task/'triton_multreduce_matmul_kernel.py', ['multreduce_matmul_triton_wrapper'],
+        dict(triton=SimpleNamespace(cdiv=lambda a, b: (a+b-1)//b), triton_matmul_kernel=Kernel()))
+    a = torch.ones(2, 4); b = torch.ones(4, 2); c = torch.empty(2, 2)
+    result = wrapper.multreduce_matmul_triton_wrapper(a, b, c, None, 2, 2, 4, 2, 2, 4, False, 4, 2)
+    assert result is c and len(calls) == 1
+    assert calls[0][2] == dict(BLOCK_SIZE_M=2, BLOCK_SIZE_N=2, BLOCK_SIZE_K=4,
+                               USE_BIAS=False, USE_DOT=False, EVEN_K=True, num_warps=4, num_stages=2)
+    # The real candidate inspector now rejects a missing timed core even when
+    # the formerly sole declared autotuned wrapper is still present.
+    adapter = module_at(task/'_arena_eval.py', monkeypatch)
+    data = json.loads((task/'workloads.json').read_text())
+    nodes = ast.parse((task/data['source']).read_text())
+    for node in nodes.body:
+        if isinstance(node, ast.FunctionDef) and node.name == 'triton_matmul_kernel':
+            node.body = [ast.Pass()]
+    (tmp_path/data['source']).write_text(ast.unparse(ast.fix_missing_locations(nodes)))
+    monkeypatch.setattr(adapter, 'ROOT', tmp_path)
+    with pytest.raises(ValueError, match='partially implemented'):
+        adapter.inspect_candidate(data, require_implemented=True)
+
+
 @pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/test_matmul_MXFP',
                                     'tasks/triton2triton/rocmbench/hard/test_matmul_MXFP'])
 def test_mxfp_unscaled_reference_preserves_fp32_operands(relative, monkeypatch):
@@ -1662,7 +1694,8 @@ DECORATOR_HELPERS={
     'rmsnorm_fwd':{'get_autotune_config'},
     'softmax':{'get_autotune_config'},
     'multreduce_matmul_dot_kernel':{'get_triton_dot_autotune_configs','get_triton_autotune_key','get_triton_heuristics','triton_matmul_kernel'},
-    'triton_multreduce_matmul_kernel':{'get_triton_multreduce_autotune_configs','get_triton_autotune_key','get_triton_heuristics','triton_matmul_kernel'},
+    # triton_matmul_kernel is the actual fixed-launch performance entrypoint.
+    'triton_multreduce_matmul_kernel':{'get_triton_multreduce_autotune_configs','get_triton_autotune_key','get_triton_heuristics'},
 }
 
 

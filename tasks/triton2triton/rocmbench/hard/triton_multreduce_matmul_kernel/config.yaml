@@ -1,6 +1,6 @@
 schema_version: 2
-description: Implement or improve the declared Triton functions for triton_multreduce_matmul_kernel; preserve
-  all harness semantics.
+description: Optimize the fixed-launch triton_matmul_kernel multreduce workload; retain the autotuned
+  wrapper correctness cases and all protected benchmark semantics.
 candidate:
   language: triton
   initial_state: implemented
@@ -15,6 +15,9 @@ candidate:
     - triton_matmul_kernel
     allow_new_helpers: true
   entrypoints:
+  - file: triton_multreduce_matmul_kernel.py
+    kind: function
+    symbol: triton_matmul_kernel
   - file: triton_multreduce_matmul_kernel.py
     kind: function
     symbol: triton_multreduce_matmul_kernel

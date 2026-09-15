@@ -2,6 +2,7 @@
   "version": 1,
   "source": "triton_multreduce_matmul_kernel.py",
   "kernel_symbols": [
+    "triton_matmul_kernel",
     "triton_multreduce_matmul_kernel"
   ],
   "cases": [
