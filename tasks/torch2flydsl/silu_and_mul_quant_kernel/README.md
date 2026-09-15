@@ -50,3 +50,20 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+
+The original code tolerance of one integer/FP8-byte step AND normalized maximum
+scale error <= 0.001 remain unchanged, including seed 20260401 and every shape.
+Return both quantized codes and FP32 scales on the input device, with the exact
+contract shapes and finite values. Original Model/AITER comparison remains the
+independent correctness check; the Model remains the timed provided baseline.
+The unused builder declaration is removed: only the callable actually used by
+correctness and timing is required.
+
+Candidate-only import/call audits enforce FlyDSL operator computation outside
+all timings. Every measured tuple and the same poisoned-output graph replay must
+pass the original numerical rule. Inputs and any per-channel smoothing scales are read-only;
+untimed perturbation changes signs/scales within the operand domain, then restores
+the originals. Both roles retain 10 warmups and 100 graph samples.
+All four cases retain group size 128 and limit 0: output is half-width runtime
+FP8 e4m3, scales shape [M, N/256]. Replay changes only the up half of the input.
