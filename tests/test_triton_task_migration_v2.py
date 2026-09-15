@@ -18,6 +18,18 @@ ROOT = Path(__file__).resolve().parents[1]
 VLLM = sorted((ROOT/'tasks/triton2triton/vllm').glob('*/config.yaml'))
 BASE = '5c9f8ef2'
 
+# Reviewed additive SSD contract checks change these runners. Keep their exact
+# wiring here; test_ssd_task_contract_v2 independently preserves the original
+# kernels, references, input generation, cases, gates and timer settings and
+# exercises incorrect measured/replay outputs through the actual runners.
+SSD_CHECKED_RUNNERS = {
+    'triton_ssd_chunk_cumsum': 'a11e9f404f232597feb9ff33cee08a586da8fa7ca1ad77199308e2cb46021b18',
+    'triton_ssd_chunk_scan': '0a3f92b0bcd030cc9b342a066dbd9c77f43cdda0e07a64f77cf6adcd16de0328',
+    'triton_ssd_chunk_state': '286f597f11f5ce15628b76f87fc0a59fab20dce4c90db3796ad06eeddb774730',
+    'triton_ssd_chunk_state_varlen': '44b4c766230354884e4c7942a44579846bc1b58f1d4bde5c15e658677b1a2cfd',
+    'triton_ssd_state_passing': '07119e60c7b3dbc32e67b56ec0ec20714388fcf5dc803fd2c29760ec2a141553',
+}
+
 
 def module_at(path, monkeypatch):
     monkeypatch.chdir(path.parent)
@@ -49,8 +61,14 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
     loop = next(n for n in ast.walk(correction) if isinstance(n,ast.For))
     assert ast.unparse(loop.body[0].test).startswith('case_index is not None')
     loop.body.pop(0)
-    assert ast.dump(correction, include_attributes=False) == ast.dump(bf['run_correctness'], include_attributes=False)
+    if task.name in SSD_CHECKED_RUNNERS:
+        assert hashlib.sha256(after.encode()).hexdigest() == SSD_CHECKED_RUNNERS[task.name]
+    else:
+        assert ast.dump(correction, include_attributes=False) == ast.dump(bf['run_correctness'], include_attributes=False)
     for name in bf.keys()-{'run_correctness'}:
+        if task.name in SSD_CHECKED_RUNNERS and name in {'load_module', 'run_performance', 'main'}:
+            # The full reviewed runner hash above covers these changed bodies.
+            continue
         if task.name == 'triton_pack_bitmatrix' and name == 'reference_pack_bitmatrix':
             # Explicit semantic repair: old oracle counted tile-padding slots
             # as expert31. Known answers and old-source controls below cover it.
