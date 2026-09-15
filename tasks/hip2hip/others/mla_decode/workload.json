@@ -29,35 +29,40 @@
       "test_case_id": "shape_0",
       "params": {
         "batch": 1,
-        "ctx": 512
+        "ctx": 512,
+        "routing": "reverse_cache_with_1024_spare_slots; lengths_cycle=half_plus_one,full,full_minus_one,one"
       }
     },
     {
       "test_case_id": "shape_1",
       "params": {
         "batch": 4,
-        "ctx": 1024
+        "ctx": 1024,
+        "routing": "reverse_cache_with_1024_spare_slots; lengths_cycle=half_plus_one,full,full_minus_one,one"
       }
     },
     {
       "test_case_id": "shape_2",
       "params": {
         "batch": 16,
-        "ctx": 2048
+        "ctx": 2048,
+        "routing": "reverse_cache_with_1024_spare_slots; lengths_cycle=half_plus_one,full,full_minus_one,one"
       }
     },
     {
       "test_case_id": "shape_3",
       "params": {
         "batch": 1,
-        "ctx": 4096
+        "ctx": 4096,
+        "routing": "reverse_cache_with_1024_spare_slots; lengths_cycle=half_plus_one,full,full_minus_one,one"
       }
     },
     {
       "test_case_id": "shape_4",
       "params": {
         "batch": 1,
-        "ctx": 8192
+        "ctx": 8192,
+        "routing": "reverse_cache_with_1024_spare_slots; lengths_cycle=half_plus_one,full,full_minus_one,one"
       }
     }
   ]

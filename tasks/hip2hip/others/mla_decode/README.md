@@ -101,7 +101,7 @@ Q dtype: `bf16`. KV dtype: `fp8 e4m3fn` (bias = 7, saturating). O dtype:
 ## Sweep space
 
 Five representative shapes (`batch`, `ctx`):
-`(1, 512)`, `(4, 1024)`, `(16, 2048)`, `(64, 4096)`, `(1, 8192)`.
+`(1, 512)`, `(4, 1024)`, `(16, 2048)`, `(1, 4096)`, `(1, 8192)`.
 
 ## Bar
 
@@ -132,14 +132,34 @@ the original eager/replay `1e-2` absolute gate is retained, and both outputs als
 satisfy the original host-reference rule (`max_abs <= 5e-2` OR `max_rel <= 1e-1`).
 Finite-value checks use exponent bits so `-ffast-math` cannot remove them. Host
 reference work uses OpenMP outside GPU timing. No case, seed, launch, warmup,
-sample, graph-batching or numerical threshold is weakened. A further fresh-input control sets Q to zero and every FP8 KV entry to one,
-whose independent analytical answer is an all-one output. It replays the same
-graph, checks against the original reference rule, and restores original Q/KV
-buffers even when the check fails. This detects returning the old timed answer
-or zeros; it does not claim to exclude every possible caching strategy.
+sample, graph-batching or numerical threshold is weakened. A further fresh-input control sets Q to zero with token-varying FP8 values
+at nontrivially mapped locations, whose analytical answer is the valid-token
+mean described below. It replays the same graph, checks the original reference
+rule, and restores original input buffers even on failure. It rejects returning
+the old timed answer or zeros; it does not exclude every possible caching strategy.
 
 The observer also reads back every caller-owned Q, KV, token-map and sequence-
 length buffer and checks exact bytes after timed execution, replay and the fresh
 known-answer probe. It restores the original four buffers on every validation
 exit, including exceptions; restoration failure fails the benchmark. These
 copies and checks occur outside timed samples.
+
+## Routing and valid-length workload coverage
+
+All five original case IDs, allocation shapes and Q/KV random seeds remain.
+Both correctness and timing use the protected `scripts/native/routing_controls.hpp`
+policy declared in every manifest row: reverse the physical cache (including
+1024 spare slots), and cycle request lengths through `ctx/2+1`, `ctx`,
+`max(1,ctx-1)` and `1`. These valid lengths change the amount of operator work;
+older full-length timing results are not comparable to this repaired workload.
+The same new policy applies to the frozen baseline and candidate. Bandwidth
+metadata counts valid tokens; warmups, samples and numerical gates are unchanged.
+
+Every native correctness case additionally runs Q=0 with exactly representable,
+token-varying FP8 values at the mapped locations and -4 in unused/padded slots.
+The expected output is the analytical mean of valid tokens, independently of
+the attention reference. The actual measured graph/Event invocation repeats this
+fresh-input control outside timing, under the original accuracy gate. Ignoring
+token indirection or using full capacity as the valid length is checked by CPU
+negative controls as well as the real GPU output check. All four original input
+buffers are restored by the replay guard on success, failure or exception.

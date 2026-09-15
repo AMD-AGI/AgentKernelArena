@@ -35,6 +35,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <random>
+#include <numeric>
+#include "scripts/native/routing_controls.hpp"
 #include <string>
 #include <vector>
 
@@ -277,11 +279,7 @@ int main(int argc, char** argv) {
 
     fill_random_bf16(h_q,  -1.0f, 1.0f, /*seed=*/42 + batch * 31 + ctx);
     fill_kv_fp8     (h_kv,                   /*seed=*/123 + batch * 17 + ctx);
-    for (int b = 0; b < batch; ++b) {
-        for (int t = 0; t < ctx; ++t) {
-            h_r2t[static_cast<size_t>(b) * ctx + t] = b * ctx + t;
-        }
-    }
+    mla_routing_inputs(h_r2t, h_bsl, batch, ctx, kv_tokens);
 
     bf16    *d_q = nullptr,  *d_o = nullptr;
     uint8_t *d_kv = nullptr;
@@ -329,12 +327,33 @@ int main(int argc, char** argv) {
         check_ok = (max_abs <= atol) || (max_rel <= rtol);
         printf("Check: max_abs=%.4g max_rel=%.4g -> %s\n",
                max_abs, max_rel, check_ok ? "PASS" : "FAIL");
+
+        // Same native kernel, independent analytical routing/length control.
+        // Preserve the random workload for any following benchmark action.
+        auto original_q = h_q;
+        auto original_kv = h_kv;
+        std::fill(h_q.begin(), h_q.end(), __float2bfloat16(0.0f));
+        const auto means = mla_routing_known_answer(h_kv, h_r2t, h_bsl, batch, ctx, LK, f32_to_fp8_e4m3fn);
+        HIP_CHECK(hipMemcpy(d_q, h_q.data(), q_e * sizeof(bf16), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_kv, h_kv.data(), kv_e, hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemset(d_o, 0xFF, o_e * sizeof(bf16)));
+        launch();
+        HIP_CHECK(hipDeviceSynchronize());
+        HIP_CHECK(hipMemcpy(h_o.data(), d_o, o_e * sizeof(bf16), hipMemcpyDeviceToHost));
+        for(int b = 0; b < batch; ++b)
+            std::fill_n(h_ref.begin() + std::size_t(b) * NHEAD * LV, NHEAD * LV, __float2bfloat16(means[b]));
+        max_diff(h_o, h_ref, max_abs, max_rel);
+        const bool routing_ok = (max_abs <= atol) || (max_rel <= rtol);
+        check_ok = check_ok && routing_ok;
+        printf("Routing check: max_abs=%.4g max_rel=%.4g -> %s\n", max_abs, max_rel, routing_ok ? "PASS" : "FAIL");
+        HIP_CHECK(hipMemcpy(d_q, original_q.data(), q_e * sizeof(bf16), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_kv, original_kv.data(), kv_e, hipMemcpyHostToDevice));
     }
 
     // Performance (full or bench mode).
     if (mode == Mode::Full || mode == Mode::Bench) {
         const float us = time_kernel_ms(launch, /*warmup=*/10, /*iters=*/100) * 1000.0f;
-        const double bytes_kv = static_cast<double>(batch) * ctx * LK;       // kv reads
+        const double bytes_kv = static_cast<double>(std::accumulate(h_bsl.begin(), h_bsl.end(), int64_t{0})) * LK; // valid kv reads
         const double bytes_q  = static_cast<double>(batch) * NHEAD * LK * 2; // bf16 q reads
         const double bytes_o  = static_cast<double>(batch) * NHEAD * LV * 2; // bf16 o writes
         const double gbs = ((bytes_kv + bytes_q + bytes_o) / (us * 1e-6)) / 1e9;

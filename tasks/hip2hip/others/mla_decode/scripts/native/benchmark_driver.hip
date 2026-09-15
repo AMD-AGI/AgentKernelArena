@@ -74,13 +74,7 @@ int main(int argc, char** argv)
             const int value = static_cast<int>((i * 13U + 5U) % 29U) - 14;
             h_kv[i] = f32_to_fp8_e4m3fn(static_cast<float>(value) * 0.03125f);
         }
-        for(int b = 0; b < batch; ++b)
-        {
-            for(int t = 0; t < ctx; ++t)
-            {
-                h_r2t[static_cast<std::size_t>(b) * ctx + t] = b * ctx + t;
-            }
-        }
+        mla_routing_inputs(h_r2t, h_bsl, batch, ctx, kv_tokens);
 
         aka_native_perf::throw_on_hip_error(
             hipStreamCreateWithFlags(&stream, hipStreamNonBlocking), "hipStreamCreateWithFlags");
@@ -223,14 +217,17 @@ int main(int argc, char** argv)
                 failure = check_inputs(h_q, h_kv, validation_stream);
                 if(!failure.empty()) return failure;
 
-                // Independent nonzero known answer on fresh valid inputs: zero Q
-                // and constant-one KV produce one in every output component.
-                // Exercise the same graph; restore both inputs on every exit path.
+                // Fresh Q=0 with mapped, token-varying KV has an independent
+                // closed-form mean. This also rejects identity addressing and
+                // reading padded tokens. The enclosing guard restores all inputs.
                 const std::vector<bf16> zero_q(q_e, __float2bfloat16(0.0f));
-                const std::vector<bf16> ones(o_e, __float2bfloat16(1.0f));
-                const std::vector<uint8_t> ones_kv(kv_e, f32_to_fp8_e4m3fn(1.0f));
+                std::vector<uint8_t> control_kv(kv_e);
+                const auto means = mla_routing_known_answer(control_kv, h_r2t, h_bsl, batch, ctx, LK, f32_to_fp8_e4m3fn);
+                std::vector<bf16> expected(o_e);
+                for(int b = 0; b < batch; ++b)
+                    std::fill_n(expected.begin() + std::size_t(b) * NHEAD * LV, NHEAD * LV, __float2bfloat16(means[b]));
                 error = hipMemcpyAsync(d_q, zero_q.data(), q_e * sizeof(bf16), hipMemcpyHostToDevice, validation_stream);
-                if(error == hipSuccess) error = hipMemsetAsync(d_kv, f32_to_fp8_e4m3fn(1.0f), kv_e, validation_stream);
+                if(error == hipSuccess) error = hipMemcpyAsync(d_kv, control_kv.data(), kv_e, hipMemcpyHostToDevice, validation_stream);
                 if(error == hipSuccess) error = hipMemsetAsync(d_o, 0xFF, o_e * sizeof(bf16), validation_stream);
                 if(error == hipSuccess) error = graph_exec != nullptr ? hipGraphLaunch(graph_exec, validation_stream) : launch(validation_stream);
                 if(error == hipSuccess) error = hipMemcpyAsync(h_actual.data(), d_o, o_e * sizeof(bf16), hipMemcpyDeviceToHost, validation_stream);
@@ -240,9 +237,9 @@ int main(int argc, char** argv)
                 {
                     // Fresh inputs use the original reference gate. The eager/replay
                     // consistency gate above remains for the original timed inputs.
-                    failure = validate_mla_outputs(h_actual, h_actual, ones, decode);
+                    failure = validate_mla_outputs(h_actual, h_actual, expected, decode);
                 }
-                if(failure.empty()) failure = check_inputs(zero_q, ones_kv, validation_stream);
+                if(failure.empty()) failure = check_inputs(zero_q, control_kv, validation_stream);
                 return failure;
             }, restore_inputs);
         };
@@ -256,7 +253,7 @@ int main(int argc, char** argv)
             /*max_repeats=*/1000,
             validate);
         const double bytes_per_launch
-            = static_cast<double>(batch) * ctx * LK
+            = static_cast<double>(std::accumulate(h_bsl.begin(), h_bsl.end(), int64_t{0})) * LK
               + static_cast<double>(batch) * NHEAD * (LK + LV) * sizeof(bf16);
         aka_native_perf::print_result_json("mla_decode", result, bytes_per_launch);
 

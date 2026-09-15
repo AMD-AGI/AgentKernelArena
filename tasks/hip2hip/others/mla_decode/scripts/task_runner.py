@@ -126,7 +126,8 @@ def run_performance():
                 return [], f"Shape {shape_idx} native benchmark failed:\n{output}"
             parsed = _parse_native_result(output)
             parsed["test_case_id"] = f"shape_{shape_idx}"
-            parsed["params"] = {"batch": batch, "ctx": ctx}
+            parsed["params"] = {"batch": batch, "ctx": ctx,
+                                "routing": 'reverse_cache_with_1024_spare_slots; lengths_cycle=half_plus_one,full,full_minus_one,one'}
             test_cases.append(parsed)
         except Exception as error:
             return [], f"Shape {shape_idx} native benchmark failed: {error}"
