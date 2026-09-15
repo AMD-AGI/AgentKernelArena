@@ -222,10 +222,26 @@ It is a historical FAIL under the former `required` baseline policy, not a
 validator PASS for this policy change. Its captured action evidence and dispatch
 selections must remain available in the experiment artifacts.
 
-The old pinned image contains the same dispatch configurations for these 13
-BF16-output cases. Source/configuration inspection alone does not establish
-identical GPU outputs or an image regression; paired old/new GPU investigation
-is separate evidence. No other runtime is qualified by this observation.
+Job `139567` subsequently repeated all four public baseline actions on the same
+physical MI355X under that image and the older pinned image
+`sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78`.
+Both runs used unchanged task snapshot
+`e82dccecc45f74ef4f9bd417945e3d90b06ad056` with the original `required` policy.
+Both completed task validation and compilation successfully. In both numerical
+correctness and actual timed replay, `m_1` passed and the other 12 cases reported
+finite numerical mismatches. This reproduces the issue across both images;
+matching failed case identities does not imply identical output tensors.
+The paired action evidence is retained with job `139567`; it is not a semantic
+validator run and does not qualify other runtime versions.
+
+Fresh semantic validator job `139564` checked snapshot
+`eced27a2eeb1bea8228d959985e8ec08e4ecd723`, including the narrowed explanatory
+source and explicit diagnostic policy, on the newer image. Its framework-finalized
+report was PASS (SHA256
+`ecc851c055c2d464f5fd5ad4c77a1f93a614502bd90c7d22a4102a2bb6ac0a52`).
+Baseline correctness retained its 12 numerical failures; all 13 performance
+cases completed with full timed-replay diagnostic evidence. This validates the
+task's initial state and evaluation pipeline, not an optimized candidate.
 
 During future runs, correctness still emits the actual per-case PASS/FAIL.
 Baseline timing replays the captured invocation after input refill, checks input
