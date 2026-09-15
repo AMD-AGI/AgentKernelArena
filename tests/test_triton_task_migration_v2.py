@@ -273,6 +273,77 @@ def test_batch_memcpy_original_correctness_uses_pristine_sources(monkeypatch, ca
                       if case_index is None or case_index==i]
     assert harness.make_inputs is make_inputs
 
+def bmm_known_inputs():
+    a=torch.tensor([[[1.,2.],[3.,4.]],[[-1.,2.],[0.,3.]]],dtype=torch.float16)
+    b=torch.tensor([[[5.,6.],[7.,8.]],[[4.,2.],[6.,1.]]],dtype=torch.float16)
+    expected=torch.tensor([[[19.,22.],[43.,50.]],[[8.,0.],[18.,3.]]],dtype=torch.float16)
+    return a,b,expected
+
+
+@pytest.mark.parametrize('mode',['correct','zero_source_and_output','wrong_batch','shape','dtype','device','nonfinite'])
+def test_bmm_correctness_preserves_inputs_and_full_output_contract(monkeypatch,mode):
+    checks=module_at(ROOT/'tasks/triton2triton/vllm/triton_bmm/_arena_checks.py',monkeypatch)
+    a,b,expected=bmm_known_inputs()
+    torch.testing.assert_close(checks.reference(a,b),expected,atol=0,rtol=0)
+    def candidate(a,b):
+        output=expected.clone()
+        if mode=='zero_source_and_output':a.zero_();output.zero_()
+        elif mode=='wrong_batch':output[1].copy_(output[0])
+        elif mode=='shape':output=output[:1]
+        elif mode=='dtype':output=output.float()
+        elif mode=='device':output=torch.empty_like(output,device='meta')
+        elif mode=='nonfinite':output.fill_(float('inf'))
+        return output
+    module=SimpleNamespace(bmm_triton=candidate)
+    load=lambda:module
+    harness=SimpleNamespace(load_module=load)
+    with checks.checked_modules(harness):
+        if mode=='correct':torch.testing.assert_close(harness.load_module().bmm_triton(a,b),expected)
+        else:
+            with pytest.raises(AssertionError):harness.load_module().bmm_triton(a,b)
+    assert harness.load_module is load and module.bmm_triton is candidate
+
+
+@pytest.mark.parametrize('mode',['correct','incorrect_timed','stale','no_write','changing_wrong',
+                                'zero_source_and_output_timed','zero_source_and_output_replay'])
+def test_bmm_exact_timed_replay_and_pristine_input_oracles(monkeypatch,mode):
+    checks=module_at(ROOT/'tasks/triton2triton/vllm/triton_bmm/_arena_checks.py',monkeypatch)
+    a,b,expected=bmm_known_inputs()
+    mod=SimpleNamespace(bmm_triton=checks.reference)
+    original=mod.bmm_triton
+    initial=(a.clone(),b.clone())
+    harness=SimpleNamespace(_TimedRun=SimpleNamespace)
+    observed=[]
+    def fn():mod.bmm_triton(a,b)
+    def benchmark(measured,*,timed_run,**kwargs):
+        observed.append(kwargs)
+        for value,saved in zip((a,b),initial):assert torch.equal(value,saved)
+        output=measured();cached=output.clone()
+        torch.testing.assert_close(output,expected)
+        if mode=='incorrect_timed':output.zero_()
+        if mode=='zero_source_and_output_timed':a.zero_();output.zero_()
+        def replay():
+            if mode=='correct':output.copy_(checks.reference(a,b))
+            elif mode=='stale':output.copy_(cached)
+            elif mode=='changing_wrong':output.fill_(a.flatten()[0])
+            elif mode=='zero_source_and_output_replay':a.zero_();output.zero_()
+            return output
+        timed_run.outputs=output;timed_run.rerun=replay
+        return 0.25,dict(benchmark_method='cuda_graph')
+    if mode=='correct':
+        ms,metadata=checks.checked_benchmark(harness,benchmark,fn,warmup=10,repetition=100)
+        assert ms==0.25 and metadata['perturbed_input_replay_checked'] and metadata['source_buffers_unchanged']
+    else:
+        with pytest.raises(AssertionError):checks.checked_benchmark(harness,benchmark,fn,warmup=10,repetition=100)
+    assert observed==[dict(warmup=10,repetition=100)] and mod.bmm_triton is original
+
+
+def test_bmm_adapter_installs_correctness_and_timed_checks(monkeypatch):
+    adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_bmm/_arena_eval.py',monkeypatch)
+    harness=adapter.load_harness()
+    assert harness.run_correctness.__module__==harness.run_performance.__module__=='_bmm_checks'
+
+
 def test_rms_reference_has_independent_known_answers(monkeypatch):
     runner = ROOT/'tasks/triton2triton/vllm/triton_rms_norm/scripts/task_runner.py'
     harness = module_at(runner,monkeypatch)

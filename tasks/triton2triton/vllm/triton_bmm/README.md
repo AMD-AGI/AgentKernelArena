@@ -31,3 +31,11 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+Correctness and performance checks retain pristine input snapshots and require
+that the candidate preserves caller-owned inputs. The runner checks the actual
+timed BMM output, then changes the captured graph's input tensors, poisons the
+output with NaNs and checks the same graph replay against a reference computed
+before replay. Output shape, dtype, device and finite values are required.
+The original FP32 BMM reference, FP16 output and `atol=1e-2`, `rtol=1e-2` stay
+unchanged. All added reference work and replay checks run outside device timing;
+the original five cases, seeds, warmups, samples and timed operator are preserved.
