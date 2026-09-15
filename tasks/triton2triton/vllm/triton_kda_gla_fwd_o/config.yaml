@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_kda_gla_fwd_o.py
+  - path: source/triton_kda_gla_fwd_o.py
+    scope: symbols
+    symbols:
+    - chunk_gla_fwd_kernel_o
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_kda_gla_fwd_o.py
     kind: function

@@ -12,22 +12,42 @@ import torch
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-BASELINE = {'triton_fla_scaled_dot_kkt': {'files': {'source/triton_fla_scaled_dot_kkt.py': '51fb28e231b5ab1575e84b7cfc4e14a5285f3e15d8aa4dd439b4e95236008f0e',
+BASELINE = {'triton_fla_chunk_fwd_o': {'files': {'source/triton_fla_chunk_fwd_o.py': '3b47b94d96369bd0494c3a7996c47f62325a9371840382590c898ee65d417123',
+                                      'workloads.json': 'db237f9668446ac0851f5bfee765b2e7ac223f5a218764749c842e42dcd2962c'},
+                            'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a',
+                            'generation_ast': '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
+                            'reference_and_constants_ast': 'b7466441ef03672e93f32a1288f52017c769bf8a269eb9bea29dcd84c461159b'},
+ 'triton_fla_scaled_dot_kkt': {'files': {'source/triton_fla_scaled_dot_kkt.py': '51fb28e231b5ab1575e84b7cfc4e14a5285f3e15d8aa4dd439b4e95236008f0e',
                                          'workloads.json': '8fd0010abf74c83b7629f8faa79f3417cc04626784bc79fb1719769bbfcecf47'},
                                'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a',
                                'generation_ast': '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
                                'reference_and_constants_ast': '32fef019dc490e01648b8a59305b79bd333114054f880840a87a22bc394f3371'},
+ 'triton_kda_dot_kkt_inter': {'files': {'source/triton_kda_dot_kkt_inter.py': '98f2bc1a3d57be04b6f9587a1d4a64d99bca9f993e8b062bc6912c3abcd40820',
+                                        'workloads.json': 'd71d254ac8d75eff6aaa21542e306d00df06c2a64d1abc326d5e4288aa7d7c79'},
+                              'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a',
+                              'generation_ast': '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
+                              'reference_and_constants_ast': 'f2a1ecc5b5d02b243528ea7d57d1282fb4e02e691040ac3148afe1a6d550566e'},
+ 'triton_kda_dot_kkt_intra': {'files': {'source/triton_kda_dot_kkt_intra.py': 'd4aec65d7a8577f40268b98e6ba168f1b0489ab49500a99870e2ff37a249277a',
+                                        'workloads.json': '6a034ed061c7ed8cf2dcd057fb31597a3ed7a5d557e21a7b9e97c129524111de'},
+                              'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a',
+                              'generation_ast': '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
+                              'reference_and_constants_ast': 'e2ce91d5af6a3cbdf2452c5f30ee115b8f85876aa9c2b9ad5c4e2bac980b1860'},
  'triton_kda_gate': {'files': {'source/triton_kda_gate.py': '59be7ebf3b2762cb028a97821abf0aefc15d23a97c96c66ee72996e0340aab78',
                                'workloads.json': 'eb5799050238e47fd15cacdc92c24be626eab987bf9bc0e05cc37bffc0cd9e15'},
                      'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a',
                      'generation_ast': '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
                      'reference_and_constants_ast': 'a22716f61770f9e5e43dc623934d52928e6548e8fb3308383b133f54962aa932'},
+ 'triton_kda_gla_fwd_o': {'files': {'source/triton_kda_gla_fwd_o.py': 'c6643a478127fccbebd11f30e51915111043a72d5331123c858b283231afa9a8',
+                                    'workloads.json': 'd2a697ffc63411c5df5d61ad03d539faf1220fd468e25e74a7c19c8be2cc95cb'},
+                          'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a',
+                          'generation_ast': '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
+                          'reference_and_constants_ast': 'e590adef6e8d05c5b02038a0de23e69486605f1de5bd959d7a810f0f9be9a71a'},
  'triton_ssd_bmm': {'files': {'source/triton_ssd_bmm.py': '3c34add862bf6abb13c4ed3f53fef6ddf618d9b520d648213eb21d1432509554',
                               'workloads.json': '5a81adb73e7f1562ebdf96652ea026d0f46417d0e0d952cfcee92644041e9e09'},
                     'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a',
                     'generation_ast': '960935b3bbc3fe4cd6bd3eca31036f5f73518b3d0c48daa84704caac8d13688b',
                     'reference_and_constants_ast': 'a5438528a71db68adb74c76e310f56f87c0a674a123f04a19ec7b4a80a059df3'}}
-NAMES = ('triton_ssd_bmm', 'triton_kda_gate', 'triton_fla_scaled_dot_kkt')
+NAMES = ('triton_ssd_bmm', 'triton_kda_gate', 'triton_fla_scaled_dot_kkt', 'triton_kda_dot_kkt_inter', 'triton_kda_dot_kkt_intra', 'triton_fla_chunk_fwd_o', 'triton_kda_gla_fwd_o')
 
 @pytest.fixture(params=NAMES)
 def task(request, monkeypatch):
@@ -188,7 +208,9 @@ def test_real_performance_runner_wires_collector_and_rejects_bad_paths(task, mon
     else:
         monkeypatch.setattr(h,'SEEDS',[42])
         op=h.reference
-        name={'triton_kda_gate':'fused_kda_gate','triton_fla_scaled_dot_kkt':'chunk_scaled_dot_kkt_fwd'}[root.name]
+        name={'triton_kda_gate':'fused_kda_gate','triton_fla_scaled_dot_kkt':'chunk_scaled_dot_kkt_fwd',
+              'triton_kda_dot_kkt_inter':'kda_dot_kkt_inter','triton_kda_dot_kkt_intra':'kda_dot_kkt_intra',
+              'triton_fla_chunk_fwd_o':'chunk_fwd_o','triton_kda_gla_fwd_o':'kda_gla_fwd_o'}[root.name]
     monkeypatch.setattr(h,'load_module',lambda:types.SimpleNamespace(**{name:op}))
     monkeypatch.setitem(sys.modules,'_aka_benchmark',types.SimpleNamespace(TimedRun=TimedRun))
     calls=[]
@@ -258,3 +280,26 @@ def test_optional_gate_controls_reject_omitted_dependency(name,missing,monkeypat
     from scripts.contract_checks import check_outputs,NumericalMismatch
     with pytest.raises(NumericalMismatch):
         check_outputs(wrong,c['expected'],atol=c['atol'],rtol=c['rtol'])
+
+@pytest.mark.parametrize('task',['triton_kda_dot_kkt_inter','triton_kda_dot_kkt_intra'],indirect=True)
+def test_real_correctness_rejects_missing_kkt_output(task,monkeypatch):
+    _,h,_,_=task
+    args,kwargs=h.gen_inputs(42,'cpu')
+    monkeypatch.setattr(h,'gen_inputs',lambda *a:(args,kwargs))
+    name='kda_dot_kkt_inter' if 'inter' in h.SOURCE_FILE else 'kda_dot_kkt_intra'
+    monkeypatch.setattr(h,'load_module',lambda:types.SimpleNamespace(**{name:lambda *a,**kw:()}))
+    # Missing outputs must fail before any device conversion is necessary.
+    ok,error=h.run_correctness(case_index=0)
+    assert not ok and error
+
+
+@pytest.mark.parametrize('task',['triton_kda_dot_kkt_inter','triton_kda_dot_kkt_intra',
+                                 'triton_fla_chunk_fwd_o','triton_kda_gla_fwd_o'],indirect=True)
+def test_structured_control_rejects_omitted_gate_or_state(task):
+    _,h,controls,checks=task
+    c=list(controls.control_cases('cpu'))[-1];kw=dict(c['kwargs'])
+    if 'gk' in kw:kw['gk']=torch.zeros_like(kw['gk'])
+    else:kw['h']=torch.zeros_like(kw['h'])
+    wrong=h.reference(**kw)
+    with pytest.raises(checks.NumericalMismatch):
+        checks.check_outputs(wrong,c['expected'],atol=c['atol'],rtol=c['rtol'])

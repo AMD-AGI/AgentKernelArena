@@ -8,6 +8,10 @@ import importlib.util
 
 TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(TASK_DIR)
+if TASK_DIR not in sys.path:
+    sys.path.insert(0, TASK_DIR)
+from scripts.contract_checks import InputSnapshot, check_outputs, validate_timed
+from scripts import semantic_controls
 
 TASK_NAME = "triton2triton/triton_kda_dot_kkt_intra"
 SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_kda_dot_kkt_intra.py")
@@ -36,10 +40,14 @@ def _benchmark_cuda_graph_or_events(*args, **kwargs):
 PERF_SEED_IDX = 2
 
 
+_LOADED_MODULES = []
+
+
 def load_module():
     spec = importlib.util.spec_from_file_location("triton_kernel", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    _LOADED_MODULES.append(mod)
     return mod
 
 
@@ -113,7 +121,11 @@ def run_correctness(*, case_index=None):
             args, kwargs = gen_inputs(seed, device)
             args_cpu = tuple(a.float().cpu() if isinstance(a, torch.Tensor) else a for a in args)
 
+            readonly = InputSnapshot({str(i): a for i,a in enumerate(args) if isinstance(a, torch.Tensor)})
             results = mod.kda_dot_kkt_intra(*args, **kwargs)
+            readonly.check()
+            check_outputs(results, tuple(x.to(device) for x in reference(*args, **kwargs)), atol=1e-2, rtol=1e-2,
+                          inputs=[e[1] for e in readonly.entries])
             refs = reference(*args_cpu, **kwargs)
             for idx, (r, ref) in enumerate(zip(results, refs)):
                 if ref is None:
@@ -144,13 +156,20 @@ def run_performance():
         try:
             args, kwargs = gen_inputs(seed, device)
 
+            readonly = InputSnapshot({str(i): a for i,a in enumerate(args) if isinstance(a, torch.Tensor)})
+            from _aka_benchmark import TimedRun
+            timed = TimedRun()
             def _bench_fn():
-                mod.kda_dot_kkt_intra(*args, **kwargs)
+                return mod.kda_dot_kkt_intra(*args, **kwargs)
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
                 _bench_fn,
                 warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS,
+                timed_run=timed,
             )
+            benchmark_metadata.update(validate_timed(
+                timed, readonly, lambda: tuple(x.to(device) for x in reference(*args, **kwargs)),
+                lambda: args[1].mul_(2.0), atol=1e-2, rtol=1e-2))
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
@@ -161,8 +180,9 @@ def run_performance():
                     "chunk_size": kwargs.get("chunk_size", 64)
                 }
             })
-        except Exception:
+        except Exception as exc:
             test_cases.append({
+                "error": f"{type(exc).__name__}: {exc}",
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
                 "params": {
@@ -171,6 +191,14 @@ def run_performance():
                 }
             })
     return test_cases
+
+
+def run_reference_controls():
+    return semantic_controls.reference_controls(sys.modules[__name__])
+
+
+def run_semantic_controls():
+    return semantic_controls.run_controls(load_module(), device="cuda")
 
 
 def main():
@@ -192,6 +220,7 @@ def main():
         sys.exit(0 if ok else 1)
 
     elif args_parsed.mode == "correctness":
+        run_semantic_controls()
         ok, err = run_correctness()
         report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(SEEDS)}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:

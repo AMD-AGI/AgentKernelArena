@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_kda_dot_kkt_inter.py
+  - path: source/triton_kda_dot_kkt_inter.py
+    scope: symbols
+    symbols:
+    - chunk_kda_scaled_dot_kkt_fwd_kernel_intra_sub_inter
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_kda_dot_kkt_inter.py
     kind: function
