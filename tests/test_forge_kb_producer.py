@@ -40,45 +40,9 @@ from agents.forge.launch_agent import (
     _resolve_kernel_backend,
 )
 
-CK_TASK_NAMES = (
-    "mi355x_vllm_ck_a8w8_blockscale_gemm",
-    "mi355x_vllm_ck_cktile_moe_2stage",
-    "mi355x_vllm_ck_moe_2stage",
-)
-
 
 def _value(argv: list[str], option: str) -> str:
     return argv[argv.index(option) + 1]
-
-
-def _load_ck_forge_driver(task_name: str):
-    root = Path(__file__).resolve().parents[1]
-    path = (
-        root
-        / "tasks"
-        / "image_kernel"
-        / task_name
-        / "scripts"
-        / "forge_driver.py"
-    )
-    spec = importlib.util.spec_from_file_location(f"_{task_name}_driver_test", path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _load_k3_forge_driver():
-    root = Path(__file__).resolve().parents[1]
-    path = (
-        root
-        / "tasks/image_kernel/mi355x_vllm_aiter_mxfp4_moe_2stage_kimi_k3"
-        / "scripts/forge_driver.py"
-    )
-    spec = importlib.util.spec_from_file_location("_k3_forge_driver_test", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def _load_unified_attention_task_runner():
@@ -673,9 +637,8 @@ def test_unified_attention_correctness_covers_2d_and_3d(monkeypatch):
     ]
 
 
-@pytest.mark.parametrize("filename", ["task_runner.py", "standalone_driver.py"])
-def test_paged_attention_correctness_uses_full_scored_dimensions(filename):
-    runner = _load_paged_attention_module(filename)
+def test_paged_attention_correctness_uses_full_scored_dimensions():
+    runner = _load_paged_attention_module("task_runner.py")
 
     dimensions = [runner._scored_dimensions(case) for case in runner.CASES]
     compile_smoke = runner._compile_smoke_case(runner.CASES[0])
@@ -688,132 +651,6 @@ def test_paged_attention_correctness_uses_full_scored_dimensions(filename):
     ] == [64, 128, 192]
     assert runner._scored_dimensions(compile_smoke) == (8, 256)
     assert runner._scored_dimensions(runner.CASES[0]) == (64, 1024)
-
-
-def test_existing_mi355x_forge_drivers_reject_case_selectors():
-    root = Path(__file__).resolve().parents[1]
-    driver_paths = sorted(
-        (root / "tasks" / "image_kernel").glob("mi355x_*/scripts/forge_driver.py")
-    )
-
-    config_paths = sorted(
-        (root / "tasks" / "image_kernel").glob("mi355x_*/config.yaml")
-    )
-    assert len(driver_paths) == len(config_paths)
-    for driver_path in driver_paths:
-        source = driver_path.read_text()
-        assert '"--shape"' not in source
-        assert '"--profile-case"' not in source
-        assert "parse_known_args" not in source
-        assert '"--profile-run"' in source
-        assert "case_ms:" in source
-        assert "mean_ms:" in source
-
-
-@pytest.mark.parametrize("task_name", CK_TASK_NAMES)
-def test_ck_profile_run_launches_only_the_target_operator(task_name, tmp_path):
-    driver = _load_ck_forge_driver(task_name)
-    prepared = []
-    launches = []
-    synchronizations = []
-    torch = SimpleNamespace(
-        cuda=SimpleNamespace(synchronize=lambda: synchronizations.append(True))
-    )
-    cases = [{"id": "first"}, {"id": "profile"}]
-
-    def make(case, correctness=False):
-        prepared.append((case, correctness))
-        return {"case": case}
-
-    task_runner = SimpleNamespace(
-        WORKSPACE=tmp_path,
-        CASES=cases,
-        _torch=lambda: torch,
-        _make=make,
-        _run=lambda inputs: launches.append(inputs),
-    )
-
-    assert driver._run_profile(task_runner) == 0
-    assert prepared == [(cases[-1], False)]
-    assert launches == [{"case": cases[-1]}] * 8
-    assert len(synchronizations) == 2
-
-
-def test_k3_profile_run_uses_cached_inputs_without_preparing(monkeypatch):
-    driver = _load_k3_forge_driver()
-    launches = []
-    fake_torch = SimpleNamespace(
-        cuda=SimpleNamespace(synchronize=lambda: None),
-    )
-    monkeypatch.setitem(sys.modules, "torch", fake_torch)
-    monkeypatch.setattr(
-        driver,
-        "_load_profile_inputs",
-        lambda _task, _case: {"cached": True},
-    )
-
-    def reject_prepare(*_args, **_kwargs):
-        pytest.fail("profile-run must not prepare quantized inputs under counters")
-
-    task = SimpleNamespace(
-        CASES=[
-            {
-                "id": "prefill",
-                "params": {"token": 7211, "topk": 16, "model_dim": 3584},
-            },
-            {
-                "id": "coverage",
-                "correctness_only": True,
-                "params": {"token": 8192, "topk": 16, "model_dim": 3584},
-            },
-        ],
-        _prepare=reject_prepare,
-        _run=lambda inputs: launches.append(inputs),
-    )
-
-    assert driver._run_profile(task) == 0
-    assert launches == [{"cached": True}] * 6
-
-
-def test_k3_benchmark_refreshes_only_profiled_scored_case(monkeypatch):
-    driver = _load_k3_forge_driver()
-    refreshed = []
-    fake_torch = SimpleNamespace(
-        cuda=SimpleNamespace(synchronize=lambda: None),
-    )
-    monkeypatch.setitem(sys.modules, "torch", fake_torch)
-    monkeypatch.setattr(
-        driver,
-        "_save_profile_inputs",
-        lambda _task, case, _inputs: refreshed.append(case["id"]),
-    )
-    cases = [
-        {
-            "id": "decode",
-            "params": {"token": 62, "topk": 16, "model_dim": 3584},
-        },
-        {
-            "id": "prefill",
-            "params": {"token": 7211, "topk": 16, "model_dim": 3584},
-        },
-        {
-            "id": "coverage",
-            "correctness_only": True,
-            "params": {"token": 8192, "topk": 16, "model_dim": 3584},
-        },
-    ]
-    task = SimpleNamespace(
-        CASES=cases,
-        _prepare=lambda case, correctness: {"case_id": case["id"]},
-        _run=lambda _inputs: None,
-        _benchmark_cuda_graph_or_events=lambda _fn, **_kwargs: (
-            1.0,
-            {"benchmark_method": "cuda_graph"},
-        ),
-    )
-
-    assert driver._run_bench(task, warmup=1, iters=1) == 0
-    assert refreshed == ["prefill"]
 
 
 def test_adapter_rejects_incomplete_and_invalid_performance_cases():

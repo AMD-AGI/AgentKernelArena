@@ -167,10 +167,9 @@ def test_sglang_mxfp8_runners_handle_anonymous_docker_uids():
     ]
     for task in tasks:
         scripts = ROOT / "tasks/image_kernel" / task / "scripts"
-        for name in ("task_runner.py", "standalone_driver.py"):
-            source = (scripts / name).read_text()
-            assert 'os.environ.setdefault("USER", "agentkernelarena")' in source
-            assert 'os.environ.setdefault("LOGNAME", "agentkernelarena")' in source
+        source = (scripts / "task_runner.py").read_text()
+        assert 'os.environ.setdefault("USER", "agentkernelarena")' in source
+        assert 'os.environ.setdefault("LOGNAME", "agentkernelarena")' in source
 
 
 def test_normal_attention_dot_predetermines_event_timing_for_rocm_teardown():

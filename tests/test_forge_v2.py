@@ -166,13 +166,21 @@ def test_generated_driver_uses_own_directory_after_copy(tmp_path):
     assert "mean_ms: 2" in run.stdout
 
 
-def test_profile_and_unknown_case_selection_not_silently_ignored(tmp_path, capsys):
+def test_profile_reports_public_contract_capability(tmp_path, capsys):
     _, plan, path = fixture_task(tmp_path)
     assert bridge.run(path, plan["engine_root"], ["--profile-run"]) == 2
     assert "unsupported" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("selector", ["--case", "--shape", "--profile-case"])
+def test_generated_bridge_rejects_case_selection(tmp_path, capsys, selector):
+    # Every task uses this generated bridge; engine hints cannot narrow the
+    # protected manifest to a convenient case or replace ordinary evaluation.
+    _, plan, path = fixture_task(tmp_path)
     with pytest.raises(SystemExit) as error:
-        bridge.run(path, plan["engine_root"], ["--case", "a_b"])
+        bridge.run(path, plan["engine_root"], [selector, "a_b"])
     assert error.value.code == 2
+    assert "case_ms:" not in capsys.readouterr().out
 
 
 def test_rewrite_binding_keeps_nested_paths_and_all_files(tmp_path, monkeypatch):
