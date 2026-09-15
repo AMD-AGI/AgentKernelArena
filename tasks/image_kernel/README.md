@@ -34,10 +34,10 @@ Correctness-only cases are additional checks, never additional score points.
 | [mi355x_vllm_triton_fused_moe_gptq_awq](mi355x_vllm_triton_fused_moe_gptq_awq/README.md) | triton | 3 | 3 |
 | [mi355x_vllm_triton_kda_linear_attn_kimi_k3](mi355x_vllm_triton_kda_linear_attn_kimi_k3/README.md) | triton | 5 | 5 |
 | [mi355x_vllm_triton_paged_attention_2d](mi355x_vllm_triton_paged_attention_2d/README.md) | triton | 3 | 3 |
-| [mi355x_vllm_triton_sparse_attn_prefill_ragged](mi355x_vllm_triton_sparse_attn_prefill_ragged/README.md) | triton | 3 | 3 |
+| [mi355x_vllm_triton_sparse_attn_prefill_ragged](mi355x_vllm_triton_sparse_attn_prefill_ragged/README.md) | triton | 5 | 3 |
 | [mi355x_vllm_triton_unified_attention](mi355x_vllm_triton_unified_attention/README.md) | triton | 10 | 5 |
 | [mi355x_vllm_triton_unified_attention_gemma4](mi355x_vllm_triton_unified_attention_gemma4/README.md) | triton | 4 | 4 |
-| **Total** | | **98** | **68** |
+| **Total** | | **100** | **68** |
 
 ## Task-local execution
 
@@ -91,6 +91,9 @@ of every kernel or proof against arbitrary hostile Python.
 Setup freezes Kimi's numerical stage implementation separately from its editable
 `fused_moe.py`. The SGLang MXFP8 references use a protected, independent UE8M0
 per-32-element dequantizer instead of importing the editable kernel's helper.
+MXFP8 linear additionally limits edits to its two GEMM entrypoints and new
+implementation helpers. Existing quantizers in that same file generate test and
+replay inputs and must stay protected by the shared symbol-scoped guard.
 The remaining Torch references and all input generation remain protected.
 
 The Kimi and CK two-stage MoE reference controls include the BF16 intermediate
@@ -128,6 +131,12 @@ The manifest distinguishes original small checks from scored dimensions:
 - MHC now explicitly rejects missing output tuple members; its four individual
   `assert_close` gates are unchanged. MXFP8 linear additionally rejects wrong
   shape, dtype/device and nonfinite output before its unchanged relative-error gate.
+- Sparse prefill retains its three historical scored uniform-512 CSR cases and
+  adds two unscored nonuniform-CSR correctness and captured-replay cases. Empty,
+  short and partial-block rows use the same `0.08/0.08` numerical rule. The grouped
+  FP32 oracle has analytical empty/one/two-element controls. These additions keep
+  all 98 migrated correctness cases and 68 score points; they do not claim the
+  historical fixed-top-k timings measure every ragged row-length distribution.
 - Three Torch references allocate on their input's device rather than a literal
   CUDA device, allowing small independent CPU known-answer tests with identical
   GPU behavior.
