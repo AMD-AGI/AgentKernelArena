@@ -3,12 +3,14 @@
 These tests do not claim GPU compilation, graph timing or semantic validator PASS.
 """
 import ast
+from contextlib import contextmanager
 import importlib.util
 import json
 import os
 from pathlib import Path
 import hashlib
 from pr107_integration_helpers import original_manifest
+import sys
 import types
 
 import pytest
@@ -139,11 +141,92 @@ def load(path, name):
     return module
 
 
+TASK_IMPORT_NAMES = ('_upstream_controls', '_arena_replay', '_arena_contract',
+                     '_arena_additional')
+TASK_IMPORT_PATHS = {str(TASKS / ('triton_' + name)) for name in NAMES}
+
+
+@contextmanager
+def isolated_task_imports():
+    """Keep task-local imports alive for deferred oracle calls, then restore them."""
+    saved_path = sys.path[:]
+    saved_modules = {name: sys.modules[name] for name in TASK_IMPORT_NAMES
+                     if name in sys.modules}
+    for name in TASK_IMPORT_NAMES:
+        sys.modules.pop(name, None)
+    try:
+        yield
+    finally:
+        sys.path[:] = saved_path
+        for name in TASK_IMPORT_NAMES:
+            sys.modules.pop(name, None)
+        sys.modules.update(saved_modules)
+
+
+@pytest.fixture(autouse=True)
+def task_import_context():
+    with isolated_task_imports():
+        yield
+
+
 def modules(name):
     task = TASKS / ('triton_' + name)
+    # A test may exercise several tasks with the same sibling module names.
+    # Match the task-root runner import context without reusing another oracle.
+    for module_name in TASK_IMPORT_NAMES:
+        sys.modules.pop(module_name, None)
+    sys.path[:] = [entry for entry in sys.path if entry not in TASK_IMPORT_PATHS]
+    sys.path.insert(0, str(task))
+    controls = task / '_upstream_controls.py'
+    if controls.is_file():
+        sys.modules['_upstream_controls'] = load(controls, '_upstream_controls')
     return (load(task / '_arena_replay.py', 'replay_' + name),
             load(task / '_arena_contract.py', 'contract_' + name),
             load(task / 'scripts/task_runner.py', 'harness_' + name))
+
+
+@pytest.mark.parametrize('preloaded', [False, True])
+@pytest.mark.parametrize('fail_inside', [False, True])
+def test_task_import_context_restores_modules_and_path(preloaded, fail_inside):
+    if preloaded:
+        modules('pack_seq')
+    before_path = sys.path[:]
+    before_modules = {name: sys.modules[name] for name in TASK_IMPORT_NAMES
+                      if name in sys.modules}
+
+    class ProbeFailure(Exception):
+        pass
+
+    try:
+        with isolated_task_imports():
+            _, contract, harness = modules('pack_seq')
+            controls = sys.modules['_upstream_controls']
+            expected_file = TASKS / 'triton_pack_seq/_upstream_controls.py'
+            assert Path(controls.__file__) == expected_file
+            assert Path(controls.reference_pack_seq.__code__.co_filename) == expected_file
+            args = next(contract.control_inputs(harness))
+            torch.testing.assert_close(
+                contract.reference(harness, args),
+                controls.reference_pack_seq(args[0], args[1].tolist(), args[2]),
+                atol=0, rtol=0)
+
+            modules('temperature')
+            assert '_upstream_controls' not in sys.modules
+            assert str(TASKS / 'triton_pack_seq') not in sys.path
+            modules('pack_seq')
+            assert sys.modules['_upstream_controls'] is not controls
+            assert sys.path.count(str(TASKS / 'triton_pack_seq')) == 1
+            if fail_inside:
+                raise ProbeFailure
+    except ProbeFailure:
+        assert fail_inside
+
+    assert sys.path == before_path
+    for name in TASK_IMPORT_NAMES:
+        if name in before_modules:
+            assert sys.modules[name] is before_modules[name]
+        else:
+            assert name not in sys.modules
 
 
 @pytest.mark.parametrize('name', NAMES)
