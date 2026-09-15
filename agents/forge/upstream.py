@@ -135,6 +135,8 @@ def program_text(plan: dict, *, prefix: str = "", port: bool = False, initialize
 
 def install_hooks(plan: dict) -> None:
     probe()  # No private-interface patches on unreviewed upstream code.
+    from agents.forge.protected_inventory import install as install_inventory
+    install_inventory()
     if plan.get("agent_config", {}).get("codex_auth_mode") == "cli":
         from agents.forge.codex_auth import install_cli_auth
         install_cli_auth()

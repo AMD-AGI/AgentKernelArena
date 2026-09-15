@@ -189,6 +189,14 @@ process-local changes to the pinned Forge factory and run-spec constructor.
 The public task assessment and final candidate installation still enforce the
 task boundary, including symbol-scoped colocated Python harnesses.
 
+For large source snapshots, the compatibility layer resolves the exact protected
+path set once per inventory scan. The reviewed upstream walker otherwise repeats
+that work for every visited file, delaying the first model call quadratically.
+The scan retains every protected path, missing-path detection, symlink identities,
+default/extra name rules, and filesystem errors. Each new scan resolves paths
+again; no inventory or content cache spans model edits. Workspace rollback,
+in-session protection and Arena's independent assessment remain in place.
+
 Compatibility was inspected and CPU-tested against Hyperloom commit
 `0425bde3f6e76e1588400c37d056dfd3bb75ac11`, package version `1.1.0`.
 Upstream owns its GPU DSL/compiler support and SDKs. Install the `forge` extra in
