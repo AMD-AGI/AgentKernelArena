@@ -50,6 +50,7 @@ def test_all_defined_moe_outputs_required(behavior):
     outputs = tuple(value.clone() for value in expected) + (torch.zeros(3, 4096, dtype=torch.bfloat16),)
     check = checks.prepare_check(ids, weights, experts, unit, reference)
     def replay():
+        assert (weights >= 0).all() and (weights <= 1).all()
         new = expected if behavior == 'stale_replay' else reference(ids, weights, experts, unit)
         if behavior != 'no_replay_write':
             for actual, ref in zip(outputs[:4], new):

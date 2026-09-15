@@ -51,7 +51,7 @@ def prepare_check(ids, weights, experts, unit_size, reference):
         compare_outputs(outputs, ref, token_count=ids.shape[0], topk=ids.shape[1], unit_size=unit_size)
     def perturb():
         ids.copy_((ids + 1) % experts)
-        weights.neg_()
+        weights.mul_(0.5)
     def poison(outputs):
         import torch
         for output in outputs:
