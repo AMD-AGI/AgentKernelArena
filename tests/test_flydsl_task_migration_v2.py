@@ -132,6 +132,7 @@ def test_declaring_flydsl_without_executing_it_is_rejected():
 
 
 CANDIDATE_AUDIT_TASKS = [ROOT / "tasks/torch2flydsl" / name for name in (
+    "rope_2d_fwd_kernel",
     "quant_mxfp4_kernel",
     "moe_biased_grouped_topk_kernel",
     'per_tensor_fp8_quant_kernel', 'per_token_fp8_quant_kernel', 'per_1x128_fp8_quant_kernel', 'per_token_i8_quant_kernel',
@@ -518,7 +519,7 @@ def test_torch_numerical_gates_cases_and_models_preserved():
             fn = _RemoveAddedReplayChecks().visit(fn)
         if name in {"layernorm2d_kernel", "layernorm2d_with_add_kernel"}:
             fn = _RemoveLayernormChecks().visit(fn)
-        if name in _STANDARD_QUANT_NAMES or name == "quant_mxfp4_kernel":
+        if name in _STANDARD_QUANT_NAMES or name in {"quant_mxfp4_kernel", "rope_2d_fwd_kernel"}:
             fn = _RemoveStandardQuantChecks().visit(fn)
         if name in _QUANT_GEMM_CONTROL_NAMES:
             fn = _RemoveQuantGemmChecks().visit(fn)

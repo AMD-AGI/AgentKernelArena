@@ -4,8 +4,7 @@
 """Harness for the torch2flydsl 2D-image RoPE forward (model-only) task.
 
 ``model.py`` is the pure-torch reference (NEOX 2D RoPE on a [b, H*W, h, d] grid,
-fp32 rotation). No ``kernel.py`` ships: a clean standalone FlyDSL kernel for this
-op does not exist in aiter, so FlyDSL is the agent's target.
+fp32 rotation). ``kernel.py`` is an unimplemented FlyDSL starter.
 
 Correctness validates the reference in ``model.py`` against the REAL AMD runtime
 op ``aiter.rope_2d_fwd`` (rotate_style=NEOX, reuse_freqs_front_part=False,
@@ -29,7 +28,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, verify_timed_run
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -106,13 +106,43 @@ def _compare(ref, out):
     """Return (ok, rel_worst, pass_pct) for the bf16 output."""
     import torch
 
+    if not isinstance(out, torch.Tensor) or (
+        out.shape != ref.shape or out.dtype != ref.dtype or out.device != ref.device
+    ):
+        raise AssertionError("2D RoPE output shape/dtype/device violates the contract")
     r = ref.float()
     o = out.float()
     den = r.abs().max().item() + 1e-12
     rel_worst = (r - o).abs().max().item() / den
     pass_pct = torch.isclose(r, o, atol=1e-2, rtol=1e-2).float().mean().item() * 100.0
-    ok = rel_worst <= REL_TOL or pass_pct >= PASS_PCT
+    ok = rel_worst <= REL_TOL and pass_pct >= PASS_PCT
     return ok, rel_worst, pass_pct
+
+
+def _rope_replay_validator(inp, shape):
+    originals = tuple(value.clone() for value in inp)
+
+    def reference():
+        return _aiter_op(*inp, shape["height"], shape["width"])
+
+    expected = reference()
+    require_unchanged(inp, originals)
+
+    def perturb():
+        # RoPE is linear in its data input; keep the angle tables unchanged.
+        inp[0].neg_()
+
+    def compare(actual, wanted):
+        if not _compare(wanted, actual)[0]:
+            raise AssertionError("Numerical mismatch: 2D RoPE output")
+
+    def validate(timed):
+        return verify_timed_run(
+            timed, inputs=inp, originals=originals, expected=expected,
+            perturb=perturb, reference=reference, compare=compare,
+        )
+
+    return validate
 
 
 def _retry(fn, tries=5, what="op"):
@@ -155,6 +185,7 @@ def run_correctness(verbose=True):
     failures = []
     for shape in SHAPES:
         inp = _make_inputs(shape, mmod)
+        originals = tuple(value.clone() for value in inp)
         model = mmod.Model(shape["height"], shape["width"]).to("cuda")
         with torch.no_grad():
             ref = model(*inp)
@@ -164,6 +195,7 @@ def run_correctness(verbose=True):
             )
         torch.cuda.synchronize()
 
+        require_unchanged(inp, originals)
         ok, rel, pct = _compare(ref, truth)
         if verbose:
             print(
@@ -192,6 +224,7 @@ def run_correctness(verbose=True):
                 kout = None
             if kout is not None:
                 torch.cuda.synchronize()
+                require_unchanged(inp, originals)
                 k_ok, kr, kp = _compare(truth, kout)
                 if verbose:
                     print(
@@ -211,10 +244,12 @@ def run_correctness(verbose=True):
     return True
 
 
-def _mean_ms(fn, warmup, iters):
+def _mean_ms(fn, warmup, iters, *, validate):
+    timed = TimedRun()
     mean_ms, bench_meta = benchmark_cuda_graph_or_events(
-        fn, warmup=warmup, repetition=iters
+        fn, warmup=warmup, repetition=iters, timed_run=timed
     )
+    bench_meta.update(validate(timed))
     _mean_ms.benchmark_metadata = bench_meta
     return mean_ms
 
@@ -250,12 +285,14 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         inp = _make_inputs(shape, mmod)
         model = mmod.Model(shape["height"], shape["width"]).to("cuda")
         with torch.no_grad():
+            validate = _rope_replay_validator(inp, shape)
             op_ms = _mean_ms(
                 lambda: _aiter_op(*inp, shape["height"], shape["width"]),
                 warmup,
                 iters,
+                validate=validate,
             )
-            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters)
+            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters, validate=validate)
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = (
                 _mean_ms(
@@ -264,6 +301,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
                     ),
                     warmup,
                     iters,
+                    validate=validate,
                 )
                 if has_kernel
                 else None
@@ -388,12 +426,14 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         inp = _make_inputs(shape, mmod)
         model = mmod.Model(shape["height"], shape["width"]).to("cuda")
         with torch.no_grad():
+            validate = _rope_replay_validator(inp, shape)
             op_ms = _mean_ms(
                 lambda: _aiter_op(*inp, shape["height"], shape["width"]),
                 warmup,
                 iters,
+                validate=validate,
             )
-            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters)
+            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters, validate=validate)
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = (
                 _mean_ms(
@@ -402,6 +442,7 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
                     ),
                     warmup,
                     iters,
+                    validate=validate,
                 )
                 if has_kernel
                 else None

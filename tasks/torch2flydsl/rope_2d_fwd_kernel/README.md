@@ -1,6 +1,6 @@
 # rope_2d_fwd_kernel: task-owned v2 contract
 
-Implement or optimize rope_2d_fwd in FlyDSL, preserving all task inputs, outputs and numerical gates.
+Implement rope_2d_fwd in FlyDSL, preserving the input/output interface and satisfying the declared numerical gate.
 
 The candidate starts **unimplemented**. The runner explicitly selects the provided baseline before loading any candidate source. An empty candidate is allowed only at initial task validation.
 The original harness's primary implementation timing is retained; additional
@@ -50,3 +50,28 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+## Correctness and measured-output repair
+
+The comparator now enforces both originally documented bounds: normalized
+maximum error at most `0.01` **and** at least `99.9%` of elements passing
+`atol=rtol=0.01`. The old code used OR despite its AND specification. One huge
+finite error among 2,000 otherwise exact outputs could therefore pass solely
+on percentage. This is an explicit stricter acceptance policy; previous
+candidate acceptance does not establish passage of this repaired gate.
+Task validation includes that sparse-error negative control and the independent
+90-degree height/width rotation known answer.
+
+All outputs must retain the reference shape, BF16 dtype and device. The original
+four workload cases, inputs, model, operator calls, 10 warmups and 100 samples
+remain unchanged. Each actual measured output is checked, then poisoned and
+replayed with a negated data input against a fresh AITER reference. Angle tables
+and data inputs are read-only to the implementation, and all replay inputs are
+restored before the next timing. Additional checks run outside device timing
+for the provided baseline, operator diagnostic and candidate alike.
+
+Candidate-only launch checks reject AITER/PyTorch operator delegation; a
+baseline/reference launch cannot count as candidate FlyDSL execution. The
+public submission interface is `flydsl_rope_2d_fwd`; the harness does not call a
+builder, so it no longer requires an otherwise unused builder definition.
+The stricter gate and added replay require fresh GPU task validation.

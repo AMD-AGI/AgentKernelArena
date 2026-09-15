@@ -1,6 +1,6 @@
 schema_version: 2
-description: Implement or optimize rope_2d_fwd in FlyDSL, preserving all task inputs, outputs and numerical
-  gates.
+description: Implement rope_2d_fwd in FlyDSL, preserving its input/output interface and satisfying the
+  declared numerical gate.
 instructions:
 - README.md
 candidate:
@@ -12,9 +12,6 @@ candidate:
   - file: kernel.py
     kind: function
     symbol: flydsl_rope_2d_fwd
-  - file: kernel.py
-    kind: builder
-    symbol: build_rope_2d_fwd_module
 baseline:
   kind: provided
   correctness_policy: required
