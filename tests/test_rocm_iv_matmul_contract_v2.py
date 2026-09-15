@@ -178,7 +178,10 @@ def test_original_kernel_launch_gate_and_all_scored_parameters_preserved(task):
     path, _ = task; original = ORIGINAL[path.relative_to(ROOT).as_posix()]
     source = (path/'test_iv_dependent_matmul.py').read_text(); nodes = {n.name:n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef)}
     for name, digest in original['functions'].items():
-        assert hashlib.sha256(ast.get_source_segment(source, nodes[name]).encode()).hexdigest() == digest
+        if name == 'iv_dependent_matmul':
+            assert_reviewed_resource_rewrite(nodes[name])
+        else:
+            assert hashlib.sha256(ast.get_source_segment(source, nodes[name]).encode()).hexdigest() == digest
     for name, digest in original['files'].items(): assert hashlib.sha256((path/name).read_bytes()).hexdigest() == digest
     for name, digest in original['decorators'].items():
         assert hashlib.sha256(ast.dump(ast.Module(body=nodes[name].decorator_list, type_ignores=[])).encode()).hexdigest() == digest
@@ -230,3 +233,20 @@ ORIGINAL = {'tasks/instruction2triton/rocmbench/test_iv_dependent_matmul': {'dec
                                                                                  'test_save_results': '557a528e777fd099f5b131e01721dfebf7caa45416f1f0864010681d99fa97b8'},
                                                                    'performance_except_heuristics': 'ee91b74526b9cd7b55dd84da0e1f92ee3743b32625716aa5bb762c2bd6304b08',
                                                                    'rows': 'e41316baae3dd7312e0453743e525f021f66c80693d9c237f89069ce4902bdd8'}}
+
+
+def assert_reviewed_resource_rewrite(node):
+    import copy
+    node = copy.deepcopy(node)
+    selection = node.body.pop(0)
+    assert isinstance(selection, ast.AnnAssign) and selection.target.id == 'TILE_K'
+    expected = ast.parse('BLOCK_SIZE_K // 2 if a_ptr.dtype.element_ty == tl.float32 and (BLOCK_SIZE_M + BLOCK_SIZE_N) * BLOCK_SIZE_K > 8192 else BLOCK_SIZE_K', mode='eval').body
+    assert ast.dump(selection.value) == ast.dump(expected)
+    # Apart from that explicit internal tile choice, every operation, mask,
+    # pointer variant, dtype conversion and public argument is the original AST.
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and child.id == 'TILE_K': child.id = 'BLOCK_SIZE_K'
+    assert hashlib.sha256(ast.dump(node).encode()).hexdigest() == ORIGINAL_KERNEL_AST
+
+
+ORIGINAL_KERNEL_AST = '0a08a96bf83fba663d8623a94de99445c33ce76f612f6fae6c73e8761d4ee15a'

@@ -140,3 +140,23 @@ def iv_dependent_matmul(a_ptr, b_ptr, c_ptr,
 
 
 
+
+
+## FP32 resource scheduling repair
+
+The original FP32 128×64×64 / 64×128×64 specializations with four pipeline
+stages required 196,608 bytes of shared memory, exceeding MI355X's 163,840-byte
+limit. The same public specializations failed on pinned Triton 3.6 and 3.8.
+No cases, stage counts, warp counts, public block arguments or numerical gates
+are removed or changed. The kernel now splits an internal FP32 K tile in half
+when `(BLOCK_SIZE_M + BLOCK_SIZE_N) * BLOCK_SIZE_K > 8192`. This keeps the
+declared tile as the maximum logical K span while loading/accumulating smaller
+physical chunks. All five induction-variable modes advance by that internal
+chunk; they still cover exactly K, accumulate in FP32 and store FP16.
+
+The twelve representative previously failing launches retain their exact public
+options and now compile to 98,304 shared bytes and pass the unchanged 1e-2 gates.
+Full qualification still requires all 2,115 correctness and 2,100 performance
+cases. Baseline freezing captures this repaired kernel revision for both roles;
+previous timings belong to the older baseline. Warmups, samples, output
+allocation and timer boundaries remain unchanged.
