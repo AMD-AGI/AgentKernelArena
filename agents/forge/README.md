@@ -74,6 +74,8 @@ records `session_timeout`; it does not claim a passed gate. The native loop can
 then assess the remaining candidate through the complete public task checks and
 save or reject it within the shared campaign deadline. Protected-file integrity
 is finalized on cancellation as well as on a normal return.
+The FlyDSL PORT loop may retry an expired attempt within its remaining phase
+budget; exhausting the whole phase still stops PORT.
 Failure to initialize within those bounds prevents loop launch and leaves the
 original candidate unchanged. The adapter saves `initialization.json` outside the
 editable engine tree, including failed attempts. Its usage is combined with the

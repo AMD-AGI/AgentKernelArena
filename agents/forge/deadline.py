@@ -10,6 +10,14 @@ import time
 _session_gates = ContextVar("arena_forge_session_gates", default=None)
 
 
+class SessionBudgetExceeded(RuntimeError):
+    """One implementer attempt expired; the outer phase may still have time.
+
+    Deliberately not TimeoutError: the pinned PORT loop interprets that type as
+    exhaustion of the whole phase and would stop instead of retrying an attempt.
+    """
+
+
 def _available(plan):
     deadline = min(plan["deadline_unix"], plan.get("phase_deadline_unix", math.inf))
     reserve = 0 if "phase_deadline_unix" in plan else 120
@@ -46,7 +54,7 @@ def bound_agent(agent, plan, timeout_sec):
                     sink["end_reason"] = "session_timeout"
                     sink["gate_passed"] = False
                     sink.pop("benchmark_measurement", None)
-                raise TimeoutError(f"Forge implementer exceeded its {available:g}s total session budget") from None
+                raise SessionBudgetExceeded(f"Forge implementer exceeded its {available:g}s total session budget") from None
         except BaseException:
             # Native agent_fn finalizes after a normal outer-gate loop, but
             # cancellation during resume/_on_stop bypasses that code. Keep

@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agents.forge.deadline import bound_agent, bound_session
+from agents.forge.deadline import SessionBudgetExceeded, bound_agent, bound_session
 
 
 @dataclass
@@ -59,7 +59,7 @@ def test_total_budget_cancels_repeated_short_turns_and_preserves_callable_metada
     assert inspect.signature(wrapped) == inspect.signature(native)
     assert wrapped.backend_name == "codex" and wrapped.backend_model == "test-only"
     with patch("agents.forge.deadline.time.time", return_value=1000):
-        with pytest.raises(TimeoutError, match="total session budget"):
+        with pytest.raises(SessionBudgetExceeded, match="total session budget"):
             asyncio.run(wrapped("kernel", "history", session_sink=sink))
     assert 1 < events.count("resume") < 100
     assert events[-1] == "unwound"
@@ -160,6 +160,7 @@ def test_pinned_implementer_timeout_unwinds_and_finalizes_integrity(tmp_path, mo
 import asyncio, json, os, sys
 from pathlib import Path
 from agents.forge import upstream
+from agents.forge.deadline import SessionBudgetExceeded
 from kernelforge.config import Config
 from kernelforge.orchestrator import agent
 from kernelforge.loop import insession_gate
@@ -216,7 +217,7 @@ except Rejection:
     assert mode == 'safety_rejection'
     assert sink['integrity_violation'] is True
     assert 'backend workspace safety rejection' in sink['integrity_reason']
-except TimeoutError as error:
+except SessionBudgetExceeded as error:
     assert 'total session budget' in str(error), str(error)
     assert sink['end_reason'] == 'session_timeout' and sink['gate_passed'] is False
     if mode == 'resumes':
@@ -233,6 +234,30 @@ else:
     raise AssertionError('unbounded repeated session completed unexpectedly')
 assert (root/'source/kernel.py').read_text() == '2'
 assert (Path(plan['template'])/'runner.py').read_bytes() == original
+if mode == 'resumes':
+    # The real PORT loop treats asyncio.TimeoutError as the entire phase ending.
+    # A shorter per-attempt budget must leave its remaining attempts available.
+    from types import SimpleNamespace
+    from agents.forge.deadline import bound_agent
+    from kernelforge.rewrite_by_flydsl import port_loop
+    import time
+    calls = []
+    async def expires(*args, **kwargs):
+        calls.append(True)
+        await asyncio.sleep(20)
+    agent.make_agent_fn = lambda **kwargs: bound_agent(expires, plan, .05)
+    port_loop.build_port_program_md = lambda *args: 'CPU fixture'
+    spec = SimpleNamespace(snr_threshold=30, flydsl_kernel=str(root/'source/kernel.py'),
+        builder_symbol='declared', source_kernel=str(root/'source/helper.py'),
+        source_kernel_name='helper.py', op_name='cpu-fixture')
+    result = asyncio.run(port_loop.run_port_loop(spec, 'unused', config,
+                         max_attempts=2, stop_at_unix=time.time()+10))
+    assert not result.ok and result.attempts == 2 and len(calls) == 2
+    calls.clear()
+    result = asyncio.run(port_loop.run_port_loop(spec, 'unused', config,
+                         max_attempts=2, stop_at_unix=time.time()+.025))
+    assert not result.ok and result.attempts == 1 and len(calls) == 1
+    assert 'finalization reserve' in result.error_tail
 print('PINNED_SESSION_TIMEOUT_CPU_PASS')
 '''
     run = subprocess.run([python, "-c", script], cwd=engine,
