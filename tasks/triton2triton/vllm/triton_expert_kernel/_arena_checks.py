@@ -19,7 +19,7 @@ def unchanged(values, saved):
 def reference(inputs):
     import torch
     A, B = inputs
-    return (A.float() @ B.float()).to(torch.float16)
+    return (A.float() @ B.float()).to(A.dtype)
 
 
 def check_output(value, expected):

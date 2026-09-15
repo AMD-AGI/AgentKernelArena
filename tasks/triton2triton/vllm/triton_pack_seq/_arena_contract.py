@@ -23,7 +23,8 @@ RTOL = 0.0
 CONTROL_INDEX = 5
 
 def reference(harness, args):
-    return harness.reference_pack_seq(args[0], args[1].tolist(), args[2])
+    from _upstream_controls import reference_pack_seq
+    return reference_pack_seq(args[0], args[1].tolist(), args[2])
 
 def fresh(args):
     args[0].add_(0.25)

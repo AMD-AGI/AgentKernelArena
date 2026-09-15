@@ -29,8 +29,9 @@ invalid timing fail; commands emit `arena-eval-v1`, never final Arena score repo
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
 
-Protected checks validate the complete FP16 output shape, device, dtype, and
-finite values against the original FP32-matmul-then-FP16 reference at
+Protected checks validate the complete output shape, device, input dtype, and
+finite values against FP32 matmul rounded to the input dtype (FP16 for the
+original scored cases, BF16 for the declared BF16 control) at
 atol=rtol=5e-2. Both operands are read-only and the reference uses pristine
 copies. An unscored `(M,K,N)=(67,35,71)` control covers partial tiles and the
 wrapper's explicit stride support using noncontiguous A and B.

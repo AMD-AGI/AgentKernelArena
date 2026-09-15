@@ -43,3 +43,7 @@ The task-local `_arena_contract.py` and `_arena_replay.py` are protected evaluat
 Additional unscored public-branch controls from PR105: All-empty/high-rank and explicit packing block/dtype boundaries.
 These use explicit `control-upstream-*` manifest rows. Original scored inputs,
 numerical gates, seeds, warmups and sample counts remain unchanged.
+
+The protected reference preserves every trailing feature dimension when packing
+sequences. The same exact output, padding, dtype, and read-only input checks
+apply to the original matrix inputs and the declared multidimensional control.
