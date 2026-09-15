@@ -97,6 +97,8 @@ def test_pairing_repair_preserves_original_work_and_sampling(name, function):
               if isinstance(n, ast.FunctionDef) and n.name == function)
     fn = normalize_former_role_policy(fn)
     if name in {"batched_gemm_a8w8_kernel", "gemm_a16w8_blockscale_kernel",
-                "gemm_a16wfp4_kernel", "gemm_a4w4_kernel", "gemm_a8w8_blockscale_kernel"}:
+                "gemm_a16wfp4_kernel", "gemm_a4w4_kernel", "gemm_a8w8_blockscale_kernel",
+                "gemm_a8w8_kernel", "gemm_a8w8_per_token_scale_kernel",
+                "gemm_a8wfp4_kernel", "gemm_afp4wfp4_kernel", "gemm_afp8wfp8_kernel"}:
         fn = RemoveMeasuredOutputControls().visit(fn)
     assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == BEFORE[name][function]

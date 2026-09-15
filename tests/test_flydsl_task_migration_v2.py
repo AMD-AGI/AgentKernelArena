@@ -513,7 +513,7 @@ def test_torch_numerical_gates_cases_and_models_preserved():
                 assert isinstance(handler.body[0],ast.Raise)
                 assert "no baseline fallback" in ast.unparse(handler.body[0])
                 handler.body.pop(0)
-        if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel", "moe_topk_softplus_kernel"}:
+        if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel", "moe_topk_softplus_kernel", "moe_biased_grouped_topk_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
         if name in {"layernorm2d_kernel", "layernorm2d_with_add_kernel"}:
             fn = _RemoveLayernormChecks().visit(fn)
@@ -2835,6 +2835,9 @@ def test_remaining_quant_gemm_original_inputs_numerics_and_timing_preserved():
         for fn in tree.body:
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 restored=_RemoveQuantGemmChecks().visit(fn)
+                if fn.name in {"run_benchmark", "arena_benchmark"}:
+                    from test_gemm_paired_timing import normalize_former_role_policy
+                    restored = normalize_former_role_policy(restored)
                 assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
 
 
