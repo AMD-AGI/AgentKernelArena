@@ -24,7 +24,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -116,6 +117,51 @@ def _make_inputs(m, n, k, device="cuda"):
     return x, weight
 
 
+def _checked_preshuffle(kmod, wq):
+    """Check the original (16,16) packed layout, outside operator timing."""
+    from scripts.candidate_checks import candidate_preparation_only
+    import torch
+
+    original = wq.clone()
+    n, k = wq.shape
+    expected = wq.view(n // 16, 16, k // 32, 2, 16).permute(0, 2, 3, 1, 4).contiguous().view(n, k)
+    with candidate_preparation_only():
+        actual = kmod.preshuffle_weight_a8(wq)
+    require_unchanged((wq,), (original,))
+    require_tensor_contract(actual, expected)
+    if not torch.equal(actual.contiguous().view(torch.uint8), expected.view(torch.uint8)):
+        raise AssertionError("Weight preshuffle must preserve the exact (16,16) byte permutation")
+    return actual
+
+
+def _compare_preshuffle_output(actual, expected):
+    import torch
+
+    require_tensor_contract(actual, expected)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite GEMM output/reference")
+    delta = (actual.float() - expected.float()).abs().max().item()
+    denom = expected.float().abs().max().item()
+    norm = delta / denom if denom > 0 else delta
+    if norm > NORM_TOL:
+        raise AssertionError(f"Numerical mismatch: normalized_max_error={norm}, tolerance={NORM_TOL}")
+
+
+def _quantized_dense_reference(xq, wq, x_scale, w_scale):
+    """Original model's quantized FP32 accumulation, before BF16 output cast."""
+    import torch
+
+    acc = torch.matmul(xq.float(), wq.float().transpose(-1, -2))
+    return (acc * x_scale * w_scale.transpose(0, 1)).to(torch.bfloat16)
+
+
+def _perturb_preshuffle_scales(x_scale, w_scale):
+    # Positive finite scales stay in-domain; change the actual measured inputs
+    # without changing the timed case, quantization or packed-weight preparation.
+    x_scale.mul_(0.5)
+    w_scale.mul_(0.5)
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -141,7 +187,9 @@ def run_correctness(verbose=True):
 
             xq, x_scale = mmod.pertoken_quant(x)
             wq, w_scale = mmod.pertoken_quant(weight)
-            wq_shuf = kmod.preshuffle_weight_a8(wq)
+            wq_shuf = _checked_preshuffle(kmod, wq)
+            protected_inputs = (x, weight, xq, wq, wq_shuf, x_scale, w_scale)
+            originals = tuple(v.clone() for v in protected_inputs)
             out = _retry(
                 lambda: kmod.flydsl_gemm_a8w8_bpreshuffle(
                     xq, wq_shuf, x_scale, w_scale, **tiling
@@ -150,6 +198,8 @@ def run_correctness(verbose=True):
             )
             torch.cuda.synchronize()
 
+            require_unchanged(protected_inputs, originals)
+            _compare_preshuffle_output(out, ref)
             ref_f, out_f = ref.float(), out.float()
             denom = ref_f.abs().max().item()
             max_delta = (ref_f - out_f).abs().max().item()
@@ -197,7 +247,11 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         x, weight = _make_inputs(m, n, k)
         xq, x_scale = mmod.pertoken_quant(x)
         wq, w_scale = mmod.pertoken_quant(weight)
-        wq_shuf = kmod.preshuffle_weight_a8(wq)
+        wq_shuf = _checked_preshuffle(kmod, wq)
+
+        protected_inputs = (x, weight, xq, wq, wq_shuf, x_scale, w_scale)
+        originals = tuple(v.clone() for v in protected_inputs)
+        expected = _quantized_dense_reference(xq, wq, x_scale, w_scale)
 
         def _call():
             return kmod.flydsl_gemm_a8w8_bpreshuffle(
@@ -214,13 +268,22 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         # capture in this image. Predetermine an Event-only policy for both
         # sides so the candidate cannot select a different timing method.
         event_reason = "capture_unsafe_hipblaslt_reference"
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             _call,
             warmup=0,
             repetition=iters,
             use_cuda_graph=False,
             fallback_reason=event_reason,
+            timed_run=timed,
         )
+
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=protected_inputs, originals=originals, expected=expected,
+            perturb=lambda: _perturb_preshuffle_scales(x_scale, w_scale),
+            reference=lambda: _quantized_dense_reference(xq, wq, x_scale, w_scale),
+            compare=_compare_preshuffle_output,
+        ))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.matmul(x, weight.transpose(-1, -2)),
@@ -338,7 +401,11 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         x, weight = _make_inputs(m, n, k)
         xq, x_scale = mmod.pertoken_quant(x)
         wq, w_scale = mmod.pertoken_quant(weight)
-        wq_shuf = kmod.preshuffle_weight_a8(wq)
+        wq_shuf = _checked_preshuffle(kmod, wq)
+
+        protected_inputs = (x, weight, xq, wq, wq_shuf, x_scale, w_scale)
+        originals = tuple(v.clone() for v in protected_inputs)
+        expected = _quantized_dense_reference(xq, wq, x_scale, w_scale)
 
         def _call():
             return kmod.flydsl_gemm_a8w8_bpreshuffle(
@@ -355,13 +422,22 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         # capture in this image. Predetermine an Event-only policy for both
         # sides so the candidate cannot select a different timing method.
         event_reason = "capture_unsafe_hipblaslt_reference"
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             _call,
             warmup=0,
             repetition=iters,
             use_cuda_graph=False,
             fallback_reason=event_reason,
+            timed_run=timed,
         )
+
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=protected_inputs, originals=originals, expected=expected,
+            perturb=lambda: _perturb_preshuffle_scales(x_scale, w_scale),
+            reference=lambda: _quantized_dense_reference(xq, wq, x_scale, w_scale),
+            compare=_compare_preshuffle_output,
+        ))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.matmul(x, weight.transpose(-1, -2)),

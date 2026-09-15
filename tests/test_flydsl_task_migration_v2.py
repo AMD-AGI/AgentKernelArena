@@ -527,6 +527,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
             fn = _RemoveStandardQuantChecks().visit(fn)
         if name in {"rmsnorm2d_dynamicquant_kernel", "rmsnorm2d_smoothquant_kernel"}:
             fn = _RemoveRmsDynamicQuantChecks().visit(fn)
+        if name == "gemm_a8w8_bpreshuffle_kernel":
+            fn = _RemoveBpreshuffleChecks().visit(fn)
         if name == "moe_2stage_generic_kernel":
             fn = _RemoveGenericMoeChecks().visit(fn)
         if name in _QUANT_GEMM_CONTROL_NAMES:
@@ -6556,3 +6558,113 @@ def test_sage_two_original_cases_quantized_gates_reference_inputs_and_timing_unc
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 normalized=_RemoveSageChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
+
+
+class _RemoveBpreshuffleChecks(_RemoveAddedReplayChecks):
+    def visit_Assign(self,node):
+        if len(node.targets)==1 and getattr(node.targets[0],'id',None)=='protected_inputs':return None
+        return super().visit_Assign(node)
+    def visit_Expr(self,node):
+        if isinstance(node.value,ast.Call) and getattr(node.value.func,'id',None)=='_compare_preshuffle_output':return None
+        return super().visit_Expr(node)
+    def visit_Call(self,node):
+        if getattr(node.func,'id',None)=='_checked_preshuffle':return ast.parse('kmod.preshuffle_weight_a8(wq)',mode='eval').body
+        return super().visit_Call(node)
+
+
+@pytest.mark.parametrize('function,behavior',[(fn,bad) for fn in ['run_correctness','run_benchmark','arena_benchmark'] for bad in ['correct','wrong','shape','dtype','nonfinite','modified','measured_wrong','replay_wrong','cached','wrong_scale','bad_shuffle','shuffle_mutation'] if fn!='run_correctness' or bad not in {'measured_wrong','replay_wrong','cached','wrong_scale'}])
+def test_bpreshuffle_actual_operator_and_event_output_controls(function,behavior,monkeypatch,tmp_path):
+    import torch,types,math
+    task=ROOT/'tasks/torch2flydsl/gemm_a8w8_bpreshuffle_kernel';checks=module(task/'scripts/replay_checks.py');real=module(task/'model.py');audit=module(task/'scripts/candidate_checks.py')
+    monkeypatch.setitem(sys.modules,'scripts.candidate_checks',audit)
+    correctness=function=='run_correctness'
+    x=torch.linspace(-2,3,64).reshape(2,32).to(torch.bfloat16);w=torch.linspace(-3,4,512).reshape(16,32).to(torch.bfloat16)
+    original=(x.clone(),w.clone());phase={'name':'setup','cached':None};seen=[]
+    def shuffle(q):
+        if behavior=='shuffle_mutation':q.view(torch.uint8).zero_()
+        if behavior=='bad_shuffle':return q.clone()
+        return q.reshape(1,16,1,2,16).permute(0,2,3,1,4).contiguous().reshape(16,32)
+    def compute(xq,wshuf,xs,ws,**kwargs):
+        dense=wshuf.reshape(1,1,2,16,16).permute(0,3,1,2,4).contiguous().reshape(16,32)
+        out=(xq.float()@dense.float().T*xs*ws.T).to(torch.bfloat16)
+        if phase['cached'] is None:phase['cached']=out.clone()
+        if correctness or phase['name']=='measured':
+            if behavior=='wrong':out.fill_(1000)
+            if behavior=='shape':out=out.reshape(-1)
+            if behavior=='dtype':out=out.float()
+            if behavior=='nonfinite':out.fill_(float('nan'))
+            if behavior=='modified':xs.mul_(.75)
+        if behavior==phase['name']+'_wrong':out.fill_(1000)
+        if phase['name']=='replay':
+            if behavior=='cached':out=phase['cached'].clone()
+            if behavior=='wrong_scale':out.mul_(2)
+        return out
+    class Model:
+        def to(self,*a):return self
+        def eval(self):return self
+        def __call__(self,*a):return real.Model()(*a)
+    mmod=types.SimpleNamespace(Model=Model,get_init_inputs=lambda:[],pertoken_quant=real.pertoken_quant);kmod=types.SimpleNamespace(preshuffle_weight_a8=shuffle,flydsl_gemm_a8w8_bpreshuffle=compute)
+    class Collector:bound=False
+    def bench(fn,*,warmup,repetition,use_cuda_graph,fallback_reason,timed_run=None):
+        seen.append((warmup,repetition,use_cuda_graph,fallback_reason));phase['name']='measured'
+        if timed_run is not None:
+            timed_run.outputs=fn();timed_run.bound=True
+            def rerun():
+                phase['name']='replay'
+                try:return fn()
+                finally:phase['name']='setup'
+            timed_run.rerun=rerun
+        else:fn()
+        phase['name']='setup'
+        return .1,{'benchmark_method':'cuda_event_fallback','benchmark_timed_run_kind':'eager_callable'}
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':bench,'require_tensor_contract':checks.require_tensor_contract,'require_unchanged':checks.require_unchanged,'verify_timed_run':checks.verify_timed_run,'math':math,'json':json,'Path':Path,
+        '_KERNEL_DIR':str(tmp_path),'KERNEL_FILE':'kernel.py','MODEL_FILE':'model.py','_make_inputs':lambda *a:(x,w),'_load_module':lambda directory,filename,alias:mmod if filename=='model.py' else kmod,
+        'NORM_TOL':.01,'ATOL':.01,'RTOL':.01,'PASS_PCT':99.9,'TILING_KEYS':('tile_m','tile_n','tile_k'),'SHAPES':[{'name':'controlled','m':2,'n':16,'k':32,'tile_m':16,'tile_n':16,'tile_k':32}], '_retry':lambda fn,**kw:fn()}
+    _harness_functions(task,{function,'_checked_preshuffle','_compare_preshuffle_output','_quantized_dense_reference','_perturb_preshuffle_scales'},ns)
+    # Measured-only controls are separately tested on both real timing paths.
+    should_pass=behavior=='correct' or correctness and behavior in {'measured_wrong','replay_wrong','cached','wrong_scale'}
+    if should_pass:
+        result=ns[function](verbose=False)
+        if not correctness:
+            report=json.loads((tmp_path/'build/performance_report.json').read_text()) if function=='run_benchmark' else result
+            assert report[0]['timed_output_correctness']==report[0]['replay_correctness']=='PASS'
+            assert report[0]['benchmark_timed_run_kind']=='eager_callable'
+            assert seen==[(0,100,False,'capture_unsafe_hipblaslt_reference')]*2
+        checks.require_unchanged((x,w),original)
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+
+
+def test_bpreshuffle_known_layout_positions_original_zero_gate_and_dependencies(monkeypatch):
+    import torch
+    task=ROOT/'tasks/torch2flydsl/gemm_a8w8_bpreshuffle_kernel';checks=module(task/'scripts/replay_checks.py');audit=module(task/'scripts/candidate_checks.py');monkeypatch.setitem(sys.modules,'scripts.candidate_checks',audit)
+    # Extract the real original helper (no GPU compiler imports) and check
+    # individual index correspondence rather than repeating a reshape oracle.
+    source=ast.parse((task/'kernel.py').read_text());fn=next(n for n in source.body if isinstance(n,ast.FunctionDef) and n.name=='preshuffle_weight_a8');ns={'torch':torch};exec(compile(ast.Module(body=[fn],type_ignores=[]),'<original layout>','exec'),ns)
+    inp=torch.arange(32*64,dtype=torch.int32).remainder(251).to(torch.uint8).reshape(32,64);out=ns['preshuffle_weight_a8'](inp)
+    flat=out.flatten()
+    for n in range(32):
+        for k in range(64):
+            packed=(((((n//16)*2+k//32)*2+(k%32)//16)*16+n%16)*16+k%16)
+            assert flat[packed]==inp[n,k]
+    h=_harness_functions(task,{'_compare_preshuffle_output'},{'require_tensor_contract':checks.require_tensor_contract,'NORM_TOL':.01})
+    h['_compare_preshuffle_output'](torch.tensor([.005]),torch.zeros(1))
+    with pytest.raises(AssertionError):h['_compare_preshuffle_output'](torch.tensor([.011]),torch.zeros(1))
+    h['_compare_preshuffle_output'](torch.tensor([1.5,100.]),torch.tensor([1.,100.]))
+    with pytest.raises(RuntimeError,match='non-preparation'):
+        with audit.candidate_preparation_only():torch.ones(2)+1
+
+
+def test_bpreshuffle_preserves_original_source_model_cases_math_and_event_boundaries():
+    hashes={'_resolve_kernel_dir': 'ebfabcdd05c1a3f254b035e42b1783890c241f92613bda21ccb77fa064039f1a', '_load_module': 'caae8222257891caee15a695bfc7cff029ec363f792c4331f20ff92c86efb520', '_retry': '5acaf1837049f86ff6b6dc46531036dc49bc6c4a7b91ad3de70bf613d57e4489', '_make_inputs': '62a69561df2134b9d91389a1b3814a9adb3719a2563350f6d45cc2fcff7adaab', 'run_correctness': '8a508376c948226a90fb1fdfda698f68415b64050741a626e87790ea7306d01c', 'run_benchmark': '269cfdc27066d63f6dd0480ec2097c10afae0a36576ec950aea589999aa2b11b', '_require_candidate_outputs': 'e5f69466d2ec4497fe192bf53ce8d7b034bb14cd59272fc7b1dea160a574e09e', 'arena_benchmark': '9c550a9fa70e86cbcfd1abf675606a9360f61bd43923a19d5693da85659f1f2a'}
+    task=ROOT/'tasks/torch2flydsl/gemm_a8w8_bpreshuffle_kernel'
+    for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
+        if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
+            normalized=_RemoveBpreshuffleChecks().visit(fn)
+            assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
+    peer=ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'
+    for rel in ['task_runtime.py','scripts/candidate_checks.py','scripts/replay_checks.py']:
+        assert (task/rel).read_bytes()==(peer/rel).read_bytes(),rel
+    cfg=load_task_spec(task/'config.yaml',task_id='torch2flydsl/gemm_a8w8_bpreshuffle_kernel').to_mapping()
+    assert [e['symbol'] for e in cfg['candidate']['entrypoints']]==['flydsl_gemm_a8w8_bpreshuffle','preshuffle_weight_a8']

@@ -57,3 +57,25 @@ operator is `flydsl_gemm_a8w8_bpreshuffle`; any additional declared callables us
 remain required. Legacy build/compile helpers are optional implementation details;
 no builder return protocol is required by this task. A candidate may choose its
 own internal compilation helpers, while implementing all tested work in FlyDSL.
+
+
+The actual required interfaces are `flydsl_gemm_a8w8_bpreshuffle` and
+`preshuffle_weight_a8`, both declared in config. The latter is untimed host
+layout preparation: preserve exactly the original (16,16) byte permutation of
+FP8[N,K] weights. PyTorch views/permutes/copies are allowed for that operation;
+GEMM arithmetic must execute FlyDSL. The protected harness verifies packed bytes
+against its independent layout construction and rejects mutation of the weights.
+The GEMM returns finite BF16[M,N] on the input device, with all raw/quantized
+inputs and FP32[M,1]/FP32[N,1] scales read-only. The gate stays
+max_abs_error/max_abs_reference<=0.01 (zero reference uses raw max_abs_error);
+elementwise allclose percentage is diagnostic only. The five cases, tiling,
+seed, original quantization/model and source kernel remain unchanged.
+Both roles retain explicit Event timing: ten external warmups, zero additional
+collector warmups and 100 measured samples. The unquantized torch matmul timing
+remains diagnostic; Arena's baseline is the frozen initial FlyDSL implementation.
+Validate the last actual measured output against quantized FP32 GEMM/BF16 cast,
+then halve both scale tensors outside timing, poison the old output and rerun
+the same eager callable. Compare the result against the original numerical gate
+and restore inputs. No captured-graph claim is made for this Event invocation.
+The original source imports the older FlyDSL buffer_ops API: qualify it with the
+pinned compatible runtime and record that image digest, not an untested image.
