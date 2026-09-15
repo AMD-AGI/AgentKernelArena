@@ -27,3 +27,23 @@ Call `python3 scripts/evaluate.py` followed by `validate-task`, or by
 `baseline|candidate` and `compile|correctness|performance`. Each action emits one
 `ARENA_EVAL_RESULT=` envelope. Missing cases, compiler errors, numerical errors,
 and unavailable runtime dependencies are failures, never implicit skips.
+
+Native extension compilation snapshots `src/` into a fresh directory under
+`build/native_sources/`. PyTorch hipify writes only into that build copy;
+the authored binding, candidate source, and frozen baseline files remain intact.
+Relative includes and current candidate bytes are preserved. Staged inputs are
+retained with the workspace for inspection. This does not change timed work.
+
+The baseline's declared timing method remains fixed for both roles. If edited
+native source fails the current-stream/capture-safety check required by that
+method, evaluation rejects it; it cannot force graph timing for an unsafe launch
+or downgrade only the candidate to event timing. Implementation/launcher edits
+remain within the declared file boundary, and must honor this stream contract.
+
+The full output of the measured graph is checked against the original CPU
+reference before and after poisoning and replaying that exact graph. Integer
+indices are poisoned with -1; floating distances use NaN. Output contracts,
+original neighbor ordering/tie rules and tolerances remain in force. Caller
+inputs must remain unchanged, and output storage must not alias them. Reference
+calculation and verification are outside timed samples; all original cases,
+10 warmups, 100 repetitions and paired timing policy remain unchanged.

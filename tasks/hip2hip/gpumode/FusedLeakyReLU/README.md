@@ -47,8 +47,8 @@ The performance adapter checks the complete observed timed output against the
 protected functional reference, poisons output storage and replays the exact
 measured graph. It also checks the public non-aliasing and unchanged-input
 contract. Validation runs outside measured samples with the existing tolerance,
-cases, warmups and repetition counts. Canonical TimedRun does not support Event
-fallback; an unsupported fallback cannot be reported as replay-validated.
+cases, warmups and repetition counts. The framework identifies captured-graph and explicit Event observations;
+automatic unsupported fallback cannot be reported as replay-validated.
 
 The implemented initial candidate is a supplied optimization starting point and
 may have identical source to the provided HIP baseline. Both are compiled from
@@ -82,3 +82,11 @@ inputs are restored in `finally`, including on a failed check, so the other role
 receives identical scored inputs. This control consumes no RNG, changes no
 model parameters, and occurs outside all timing samples. It detects returning
 a cached original answer; it does not prove absence of every caching strategy.
+
+The scored Python call path is read-only: the benchmark checks caller inputs
+and all model parameters/buffers after the actual timed call and its validated
+re-execution. A modification fails validation. Original input and model tensor
+values are restored in `finally`, including on exceptions, so a failed role
+cannot alter the next role's starting state. Snapshot, checks and final cleanup
+run outside the reported samples; existing per-invocation prepare callbacks
+and the baseline's graph/Event policy retain their timing boundaries.

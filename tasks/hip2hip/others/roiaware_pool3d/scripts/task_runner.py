@@ -148,6 +148,12 @@ def run_correctness():
                                f"out={out_size}): sum mismatch gpu={gpu_sum.item():.4f} "
                                f"cpu={cpu_sum.item():.4f}")
 
+        from reference_checks import full_output
+        try:
+            full_output(gpu_out_max, cpu_out_max, gpu=True)
+        except (ValueError, AssertionError) as exc:
+            return False, f"Max pool shape {i+1}: full output mismatch: {exc}"
+
         # Verify shapes match
         expected_shape = (num_rois, out_size, out_size, out_size, C)
         if gpu_out_max.shape != expected_shape:
@@ -182,6 +188,8 @@ def _time_kernel(fn, n_warmup=10, n_iter=100):
 
 def run_performance():
     from kernel_loader import roiaware_pool3d_ext
+    from replay_validation import measure
+    from reference_checks import check_timed_output
 
     test_cases = []
     
@@ -211,21 +219,29 @@ def run_performance():
             pts_idx_of_voxels.zero_()
 
         def run_pool(pool_method):
-            return roiaware_pool3d_ext.forward(
+            roiaware_pool3d_ext.forward(
                 rois, pts, pts_feature, argmax, pts_idx_of_voxels,
                 pooled_features, pts_mask, pool_method,
             )
+            # The native entrypoint returns void; expose its actual written buffer.
+            return pooled_features
 
         # Perf1: max pooling
-        ms_max, meta_max = benchmark_cuda_graph_or_events(
-            lambda: run_pool(0), warmup=10, repetition=100,
+        expected_max = cpu_roiaware_pool3d(rois.cpu(), pts.cpu(), pts_feature.cpu(), out_size, 'max')
+        ms_max, meta_max = measure(
+            benchmark_cuda_graph_or_events, lambda: run_pool(0), (rois, pts, pts_feature),
+            lambda actual: check_timed_output(actual, expected_max, 'max'),
+            warmup=10, repetition=100,
             use_cuda_graph=HIP_GRAPH_ENABLED,
             fallback_reason=HIP_GRAPH_FALLBACK_REASON,
             prepare_fn=prepare_outputs,
         )
         # Perf2: avg pooling
-        ms_avg, meta_avg = benchmark_cuda_graph_or_events(
-            lambda: run_pool(1), warmup=10, repetition=100,
+        expected_avg = cpu_roiaware_pool3d(rois.cpu(), pts.cpu(), pts_feature.cpu(), out_size, 'avg')
+        ms_avg, meta_avg = measure(
+            benchmark_cuda_graph_or_events, lambda: run_pool(1), (rois, pts, pts_feature),
+            lambda actual: check_timed_output(actual, expected_avg, 'avg'),
+            warmup=10, repetition=100,
             use_cuda_graph=HIP_GRAPH_ENABLED,
             fallback_reason=HIP_GRAPH_FALLBACK_REASON,
             prepare_fn=prepare_outputs,

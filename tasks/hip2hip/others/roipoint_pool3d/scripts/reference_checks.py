@@ -21,6 +21,26 @@ def close(actual, expected, *, atol=0, rtol=0, gpu=False):
     torch.testing.assert_close(actual.cpu(), expected.cpu(), atol=atol, rtol=rtol)
 
 
+
+def full_output(actual, expected, *, gpu=False):
+    # Preserve the task's original numerical tolerance while checking every
+    # voxel/channel or sampled point/feature, not just a conserved total.
+    close(actual, expected, atol=1e-3, rtol=1e-3, gpu=gpu)
+
+
+def check_timed_output(actual, expected, *, gpu=True):
+    if not isinstance(actual, tuple) or len(actual) != 2:
+        raise ValueError('ROI point pooling must expose features and empty flags')
+    output, flag = actual
+    expected_output, expected_flag = expected
+    full_output(output, expected_output, gpu=gpu)
+    close(flag, expected_flag, gpu=gpu)
+    for b in range(expected_flag.shape[0]):
+        for m in range(expected_flag.shape[1]):
+            if expected_flag[b, m] != 1:
+                close(output[b, m].sum(), expected_output[b, m].sum(), atol=1e-3, rtol=1e-3)
+
+
 def known_answer(actual, expected):
     close(actual, expected)
     # A nontrivial known answer must reject a fabricated all-zero result.
@@ -58,6 +78,7 @@ def check_additional_paths(h):
         expected, expected_flag = h.cpu_roipoint_pool3d(points.cpu(), features.cpu(), boxes.cpu(), S)
         contract(output, expected, gpu=True)
         close(flag, expected_flag, gpu=True)
+        full_output(output, expected, gpu=True)
         for b in range(B):
             for m in range(M):
                 if expected_flag[b, m] != 1:

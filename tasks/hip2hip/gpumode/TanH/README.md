@@ -55,3 +55,11 @@ may have identical source to the provided HIP baseline. Both are compiled from
 their own declared files and checked against the independent PyTorch reference.
 Every candidate action must execute its own compiled entrypoint; protected
 baseline/reference imports, calls and data access remain prohibited.
+
+The scored Python call path is read-only: the benchmark checks caller inputs
+and all model parameters/buffers after the actual timed call and its validated
+re-execution. A modification fails validation. Original input and model tensor
+values are restored in `finally`, including on exceptions, so a failed role
+cannot alter the next role's starting state. Snapshot, checks and final cleanup
+run outside the reported samples; existing per-invocation prepare callbacks
+and the baseline's graph/Event policy retain their timing boundaries.

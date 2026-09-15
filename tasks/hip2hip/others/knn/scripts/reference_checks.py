@@ -39,6 +39,12 @@ def self_test(h):
     known_answer(h.cpu_reference(2, xyz, center), torch.tensor([[[0], [1]]], dtype=torch.int32))
 
 
+def check_timed_output(actual, expected, *, gpu=True):
+    contract(actual, expected, gpu=gpu)
+    # Preserve the original unordered-neighbor-set contract.
+    close(actual.sort(dim=1).values, expected.sort(dim=1).values)
+
+
 def check_additional_paths(h):
     from knn_wrapper import knn
     for i, (B, N, M, k) in enumerate(h.TEST_SHAPES):

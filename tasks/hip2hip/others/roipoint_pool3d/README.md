@@ -27,3 +27,31 @@ Call `python3 scripts/evaluate.py` followed by `validate-task`, or by
 `baseline|candidate` and `compile|correctness|performance`. Each action emits one
 `ARENA_EVAL_RESULT=` envelope. Missing cases, compiler errors, numerical errors,
 and unavailable runtime dependencies are failures, never implicit skips.
+
+Native extension compilation snapshots `src/` into a fresh directory under
+`build/native_sources/`. PyTorch hipify writes only into that build copy;
+the authored binding, candidate source, and frozen baseline files remain intact.
+Relative includes and current candidate bytes are preserved. Staged inputs are
+retained with the workspace for inspection. This does not change timed work.
+
+Correctness now compares every output element at the original task tolerance,
+in addition to the original aggregate/flag checks. Preserving a global or per-box
+sum cannot substitute for correct voxel/channel or point/feature contents.
+The protected reference and initial native kernel select contained input points
+in input-index order, then repeat cyclically when needed; output order is part
+of this contract, including coordinate/feature association and empty-box zeros.
+
+The baseline's declared timing method remains fixed for both roles. If edited
+native source fails the current-stream/capture-safety check required by that
+method, evaluation rejects it; it cannot force graph timing for an unsafe launch
+or downgrade only the candidate to event timing. Implementation/launcher edits
+remain within the declared file boundary, and must honor this stream contract.
+
+Performance now compares the actual timed graph outputs to the full protected
+CPU reference, poisons those buffers and checks the same graph after replay.
+Caller inputs must remain unchanged. Reference calculation and checks remain
+outside measured samples; case IDs, input generation, exact-index or numerical
+gates, 10 warmups, 100 repetitions and original reset callbacks are retained.
+Native void-return entrypoints expose their written output buffers to the
+observer; this does not time a separate validation invocation. Integer outputs
+use integer-safe poisoning. These are same-input replay checks.

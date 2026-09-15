@@ -45,6 +45,19 @@ def checked_performance(expected, measured):
     return result
 
 
+def configure_timing_policy(harness, manifest):
+    policy = manifest.get("graph_policy")
+    if policy is None:
+        return
+    # The immutable baseline chooses the paired timing method. A newly unsafe
+    # candidate must fail, rather than escape graph capture or change methods.
+    if policy["enabled"] and not harness.HIP_GRAPH_ENABLED:
+        raise ValueError("Source cannot honor the frozen graph timing policy: "
+                         + str(harness.HIP_GRAPH_FALLBACK_REASON))
+    harness.HIP_GRAPH_ENABLED = policy["enabled"]
+    harness.HIP_GRAPH_FALLBACK_REASON = policy["reason"]
+
+
 def run(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("operation", nargs="+")
@@ -65,9 +78,7 @@ def run(argv=None):
             raise ValueError("Protected harness cases no longer match workload manifest")
         # Source-dependent policy was evaluated on the original implementation.
         # A candidate cannot downgrade the frozen baseline's timing method.
-        if "graph_policy" in data:
-            harness.HIP_GRAPH_ENABLED = data["graph_policy"]["enabled"]
-            harness.HIP_GRAPH_FALLBACK_REASON = data["graph_policy"]["reason"]
+        configure_timing_policy(harness, data)
         import reference_checks
         if action == "validate-task":
             reference_checks.self_test(harness)

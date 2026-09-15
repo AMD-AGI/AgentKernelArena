@@ -42,3 +42,18 @@ The runner is task-local and does not import the Arena source tree or an agent.
 ## Original task instructions
 
 You are a HIP expert skilled at GPU kernel implementation. Please implement target HIP kernel code corresponding to the provided PyTorch module, including the HIP kernel, kernel launcher, and Python binding code for the HIP launcher.
+
+The actual timed graph output is compared in full with the protected reference,
+then poisoned and revalidated after that same graph replays. Output shape,
+dtype, device, finiteness, independent storage and unchanged caller inputs are
+checked outside timed samples. The original workload values, case IDs, seeds,
+numerical gates, 10 warmups and 100 repetitions are retained. This is same-input
+replay verification; a separate eager call cannot certify timed output.
+
+The scored Python call path is read-only: the benchmark checks caller inputs
+and all model parameters/buffers after the actual timed call and its validated
+re-execution. A modification fails validation. Original input and model tensor
+values are restored in `finally`, including on exceptions, so a failed role
+cannot alter the next role's starting state. Snapshot, checks and final cleanup
+run outside the reported samples; existing per-invocation prepare callbacks
+and the baseline's graph/Event policy retain their timing boundaries.

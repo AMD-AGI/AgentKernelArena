@@ -21,6 +21,23 @@ def close(actual, expected, *, atol=0, rtol=0, gpu=False):
     torch.testing.assert_close(actual.cpu(), expected.cpu(), atol=atol, rtol=rtol)
 
 
+
+def full_output(actual, expected, *, gpu=False):
+    # Preserve the task's original numerical tolerance while checking every
+    # voxel/channel or sampled point/feature, not just a conserved total.
+    close(actual, expected, atol=1e-1, rtol=.2, gpu=gpu)
+
+
+def check_timed_output(actual, expected, mode, *, gpu=True):
+    if mode == 'max':
+        full_output(actual, expected, gpu=gpu)
+        close(actual.sum(), expected.sum(), atol=1e-1, rtol=.2)
+    elif mode == 'avg':
+        close(actual, expected, atol=1e-4, rtol=1e-3, gpu=gpu)
+    else:
+        raise ValueError('Unknown ROI pooling mode')
+
+
 def known_answer(actual, expected):
     close(actual, expected)
     # A nontrivial known answer must reject a fabricated all-zero result.
@@ -59,5 +76,6 @@ def check_additional_paths(h):
             # Preserve the original max-pool sum gate and avg pointwise gate.
             if mode == "max":
                 close(output.sum(), expected.sum(), atol=1e-1, rtol=.2)
+                full_output(output, expected, gpu=True)
             else:
                 close(output, expected, atol=1e-4, rtol=1e-3)

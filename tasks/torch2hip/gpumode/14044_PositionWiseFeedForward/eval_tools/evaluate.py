@@ -199,6 +199,8 @@ def performance(args, role, rows):
         output_contract(expected, actual)
         return original_compare(expected, actual, **kwargs)
     perf._compare_results = checked_compare
+    from replay_validation import install
+    install(perf, output_contract)
     perf._write_perf_report = lambda report: reports.append(copy.deepcopy(report))
     # Legacy helper internals derive class names from the HIP filename. Bind
     # the explicit task declaration, including when timing the _ref HIP file.

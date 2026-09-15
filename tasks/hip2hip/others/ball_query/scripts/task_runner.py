@@ -33,15 +33,22 @@ TEST_SHAPES = [
 
 
 def cpu_reference(min_radius, max_radius, nsample, xyz, center_xyz):
-    """CPU ball query: find points within [min_radius, max_radius) for each center."""
+    """MMCV: exact d2 == 0, or lower-inclusive/upper-exclusive squared radii.
+
+    Scan in input index order; fill remaining slots with the first match.
+    The wrapper's initial zeros are retained when no point matches.
+    """
     B, N, _ = xyz.shape
     M = center_xyz.shape[1]
     idx = torch.zeros(B, M, nsample, dtype=torch.int32)
 
     for b in range(B):
         for m in range(M):
-            dists = torch.norm(xyz[b] - center_xyz[b, m], dim=1)
-            mask = (dists >= min_radius) & (dists < max_radius)
+            delta = xyz[b] - center_xyz[b, m]
+            d2 = delta[:, 0].square() + delta[:, 1].square() + delta[:, 2].square()
+            lower2 = xyz.new_tensor(min_radius).square()
+            upper2 = xyz.new_tensor(max_radius).square()
+            mask = (d2 == 0) | ((d2 >= lower2) & (d2 < upper2))
             valid = torch.where(mask)[0]
             if len(valid) == 0:
                 idx[b, m, :] = 0
@@ -54,21 +61,10 @@ def cpu_reference(min_radius, max_radius, nsample, xyz, center_xyz):
 
 
 def validate_ball_query(gpu_idx, xyz, center_xyz, min_radius, max_radius):
-    """Validate that all returned GPU indices point to valid in-range neighbors."""
-    B, M, nsample = gpu_idx.shape
-    for b in range(B):
-        for m in range(M):
-            dists = torch.norm(xyz[b] - center_xyz[b, m], dim=1)
-            has_valid = ((dists >= min_radius) & (dists < max_radius)).any()
-            for s in range(nsample):
-                pt_idx = gpu_idx[b, m, s].item()
-                if has_valid:
-                    d = dists[pt_idx].item()
-                    if not (min_radius <= d < max_radius or d < 1e-6):
-                        # Allow index 0 as padding when no valid neighbors
-                        if pt_idx != 0:
-                            return False
-    return True
+    """Require exact MMCV index order and padding, without a near-zero escape."""
+    expected = cpu_reference(min_radius, max_radius, gpu_idx.shape[-1],
+                             xyz.cpu(), center_xyz.cpu())
+    return gpu_idx.dtype == expected.dtype and torch.equal(gpu_idx.cpu(), expected)
 
 
 def run_compile():
@@ -106,9 +102,13 @@ def run_correctness():
     return True, None
 
 
-def _time_kernel(fn, n_warmup=10, n_iter=100):
-    return benchmark_cuda_graph_or_events(
-        fn, warmup=n_warmup, repetition=n_iter,
+def _time_kernel(fn, inputs, expected, n_warmup=10, n_iter=100):
+    from replay_validation import measure
+    from reference_checks import close
+    return measure(
+        benchmark_cuda_graph_or_events, fn, inputs,
+        lambda actual: close(actual, expected, gpu=True),
+        warmup=n_warmup, repetition=n_iter,
         use_cuda_graph=HIP_GRAPH_ENABLED,
         fallback_reason=HIP_GRAPH_FALLBACK_REASON,
     )
@@ -125,9 +125,13 @@ def run_performance():
         center_xyz = torch.randn(B, M, 3, device="cuda", dtype=torch.float32)
 
         # Perf1: fixed radius ball query (min=0, max=max_r)
-        ms_fixed, meta_fixed = _time_kernel(lambda: ball_query(0.0, max_r, nsample, xyz, center_xyz))
+        expected_fixed = cpu_reference(0.0, max_r, nsample, xyz.cpu(), center_xyz.cpu())
+        ms_fixed, meta_fixed = _time_kernel(lambda: ball_query(0.0, max_r, nsample, xyz, center_xyz),
+                                           (xyz, center_xyz), expected_fixed)
         # Perf2: dilated/annular ball query (min=max_r, max=max_r*2)
-        ms_dilated, meta_dilated = _time_kernel(lambda: ball_query(max_r, max_r * 2, nsample, xyz, center_xyz))
+        expected_dilated = cpu_reference(max_r, max_r * 2, nsample, xyz.cpu(), center_xyz.cpu())
+        ms_dilated, meta_dilated = _time_kernel(lambda: ball_query(max_r, max_r * 2, nsample, xyz, center_xyz),
+                                               (xyz, center_xyz), expected_dilated)
 
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_fixed_radius",

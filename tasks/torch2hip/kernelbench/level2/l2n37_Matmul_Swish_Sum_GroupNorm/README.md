@@ -42,3 +42,19 @@ The runner is task-local and does not import the Arena source tree or an agent.
 ## Original task instructions
 
 You are a HIP expert skilled at GPU kernel implementation. Please implement target HIP kernel code corresponding to the provided PyTorch module, including the HIP kernel, kernel launcher, and Python binding code for the HIP launcher.
+
+
+Timing observes and checks the actual complete output of the measured graph or
+explicit Event callable, then poisons its output and checks a re-execution of
+that measured unit against the protected functional reference. All original
+cases, input generation, seeds, numerical tolerances, 10 warmups and 100 samples
+are preserved. Models run in the original eval mode: module dropout is disabled
+and batch-normalization uses frozen statistics. Checks are outside samples.
+
+The scored Python call path is read-only: the benchmark checks caller inputs
+and all model parameters/buffers after the actual timed call and its validated
+re-execution. A modification fails validation. Original input and model tensor
+values are restored in `finally`, including on exceptions, so a failed role
+cannot alter the next role's starting state. Snapshot, checks and final cleanup
+run outside the reported samples; existing per-invocation prepare callbacks
+and the baseline's graph/Event policy retain their timing boundaries.

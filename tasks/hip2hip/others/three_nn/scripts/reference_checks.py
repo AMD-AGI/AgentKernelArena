@@ -41,6 +41,27 @@ def self_test(h):
     known_answer(indices, torch.tensor([[[0, 1, 2]]], dtype=torch.int32))
 
 
+def check_timed_output(actual, expected, target, source, *, gpu=True):
+    if not isinstance(actual, tuple) or len(actual) != 2:
+        raise ValueError('Three-NN must return distances and indices')
+    distance, indices = actual
+    expected_distance, expected_indices = expected
+    close(distance, expected_distance, atol=1e-4, rtol=1e-4, gpu=gpu)
+    contract(indices, expected_indices, gpu=gpu)
+    actual_indices = indices.cpu()
+    if ((actual_indices < 0) | (actual_indices >= source.shape[1])).any():
+        raise ValueError('Three-NN returned an out-of-range index')
+    different = actual_indices != expected_indices
+    if different.any():
+        # Preserve the original tie allowance: a different selected point must
+        # have the same distance as the reference index within absolute 1e-4.
+        distances = torch.sqrt(torch.cdist(target.float(), source.float()).pow(2))
+        selected = distances.gather(2, actual_indices.long())
+        reference = distances.gather(2, expected_indices.long())
+        if ((selected - reference).abs()[different] > 1e-4).any():
+            raise ValueError('Three-NN index selects a point with the wrong distance')
+
+
 def check_additional_paths(h):
     # The original gate allows alternate tied indices; retain that numerical
     # comparison and additionally reject invalid indices and output contracts.

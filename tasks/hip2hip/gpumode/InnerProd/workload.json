@@ -34,7 +34,15 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1337
+        "correctness_seed": 1337,
+        "operator": {
+          "scale": {
+            "pattern": "channel_ramp",
+            "offset": 0.5,
+            "span": 0.5
+          },
+          "bias": 0.125
+        }
       }
     },
     {
@@ -71,7 +79,15 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1338
+        "correctness_seed": 1338,
+        "operator": {
+          "scale": {
+            "pattern": "channel_ramp",
+            "offset": 0.5,
+            "span": 0.5
+          },
+          "bias": -0.25
+        }
       }
     },
     {
@@ -108,7 +124,15 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1339
+        "correctness_seed": 1339,
+        "operator": {
+          "scale": {
+            "pattern": "channel_ramp",
+            "offset": 0.5,
+            "span": 0.5
+          },
+          "bias": 0.5
+        }
       }
     },
     {
@@ -145,7 +169,15 @@
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1340
+        "correctness_seed": 1340,
+        "operator": {
+          "scale": {
+            "pattern": "channel_ramp",
+            "offset": 0.5,
+            "span": 0.5
+          },
+          "bias": -0.75
+        }
       }
     }
   ]

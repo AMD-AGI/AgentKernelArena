@@ -42,3 +42,19 @@ The runner is task-local and does not import the Arena source tree or an agent.
 ## Original task instructions
 
 You are a hip expert and good at gpu kernel implementation. Please implemnt a target HIP kernel code corresponding to pytorch modullle code provided as followings, which includes hip kernel, kernel laucher and python bliding code for the hip launcher.
+
+The task validates the actual timed output against its full protected functional
+reference, checks unchanged caller inputs, poisons output storage and checks the
+measured unit again. With graph timing that unit is the captured graph; with
+explicit Event timing it is the same eager callable, which can allocate a new
+output. Metadata distinguishes these paths. The existing paired timing policy,
+case IDs, input generation, seeds, tolerances, 10 warmups and 100 samples remain
+unchanged. Automatic capture failure is not accepted as validated Event output.
+
+The scored Python call path is read-only: the benchmark checks caller inputs
+and all model parameters/buffers after the actual timed call and its validated
+re-execution. A modification fails validation. Original input and model tensor
+values are restored in `finally`, including on exceptions, so a failed role
+cannot alter the next role's starting state. Snapshot, checks and final cleanup
+run outside the reported samples; existing per-invocation prepare callbacks
+and the baseline's graph/Event policy retain their timing boundaries.

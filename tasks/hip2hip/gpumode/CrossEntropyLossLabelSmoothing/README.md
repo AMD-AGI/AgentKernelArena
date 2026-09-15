@@ -42,3 +42,30 @@ The runner is task-local and does not import the Arena source tree or an agent.
 ## Original task instructions
 
 You are a hip expert and good at gpu kernel implementation. Please implemnt a target HIP kernel code corresponding to pytorch modullle code provided as followings, which includes hip kernel, kernel laucher and python bliding code for the hip launcher.
+
+## Declared workload and timed-output validation
+
+The existing five cases use float targets and the default constructor: no
+weights or smoothing distribution, `smooth_eps=None`, `from_logits=True`, and
+mean reduction. The protected module applies log-softmax and the weighted
+class sum on the last dimension. These declared cases define the scored
+workload; other optional library configurations are not additional scored cases.
+No existing case, input value, seed, or numerical gate is removed.
+
+The supplied HIP baseline's explicit Event-only policy remains unchanged. Both
+roles follow that fixed policy. The observer compares the actual last measured
+Event output against the protected reference, poisons its storage and checks a
+new invocation of the same callable. That invocation may allocate a new output;
+it is not called a captured-graph replay. Graph-enabled paths instead check the
+actual captured graph. Metadata identifies the observed invocation kind.
+Reference comparison, output-contract and unchanged-input checks are outside
+timed samples; 10 warmups and 100 samples are retained. Automatic graph-to-Event
+fallback with an observer still fails closed in the canonical helper.
+
+The scored Python call path is read-only: the benchmark checks caller inputs
+and all model parameters/buffers after the actual timed call and its validated
+re-execution. A modification fails validation. Original input and model tensor
+values are restored in `finally`, including on exceptions, so a failed role
+cannot alter the next role's starting state. Snapshot, checks and final cleanup
+run outside the reported samples; existing per-invocation prepare callbacks
+and the baseline's graph/Event policy retain their timing boundaries.

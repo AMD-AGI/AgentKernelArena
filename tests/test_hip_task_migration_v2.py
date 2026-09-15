@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIGS = sorted((ROOT / 'tasks/hip2hip').rglob('config.yaml')) + sorted((ROOT / 'tasks/torch2hip').rglob('config.yaml'))
 EXTENSIONS = [p for p in CONFIGS if (p.parent / 'eval_tools/evaluate.py').is_file()]
 NATIVE = [p for p in CONFIGS if (p.parent / 'scripts/evaluate.py').is_file()]
+ADDITIONAL_GPUMODE_REPLAY = ['hip2hip/gpumode/InnerProd', 'hip2hip/gpumode/KDLoss', 'hip2hip/gpumode/MLP_model', 'hip2hip/gpumode/MultiHeadAttention', 'hip2hip/gpumode/NormalAttention_embedded_gaussian', 'hip2hip/gpumode/PositionWiseFeedForward', 'hip2hip/gpumode/SimpleMatmulModule', 'hip2hip/gpumode/SoftmaxModule', 'hip2hip/gpumode/TransformerFFNLayer', 'hip2hip/gpumode/Transpose', 'hip2hip/gpumode/layer_normalization', 'torch2hip/gpumode/1003_NormalAttention_embedded_gaussian', 'torch2hip/gpumode/10082_SoftmaxModule', 'torch2hip/gpumode/10099_Gather', 'torch2hip/gpumode/10456_MultiHeadAttention', 'torch2hip/gpumode/1067_Transpose', 'torch2hip/gpumode/11122_PositionEmbedder', 'torch2hip/gpumode/11709_InnerProd', 'torch2hip/gpumode/11754_layer_normalization', 'torch2hip/gpumode/1178_MLP_model', 'torch2hip/gpumode/14007_KDLoss', 'torch2hip/gpumode/14044_PositionWiseFeedForward', 'torch2hip/gpumode/14069_TransformerFFNLayer', 'torch2hip/gpumode/3267_SimpleMatmulModule']
 
 
 def import_path(path):
@@ -115,6 +116,10 @@ def test_complete_manifest_from_protected_generator(path):
                 'bias': {'pattern': 'alternating_channel', 'offset': .125, 'step': 1/128},
                 'negative_slope': [.1, .2, .35, .5, .75][i],
                 'scale': [.5, math.sqrt(2), 1.25, 2., 3.][i]}
+        if path.parent.name in {'InnerProd', '11709_InnerProd'}:
+            expected_params['operator'] = {
+                'scale': {'pattern': 'channel_ramp', 'offset': .5, 'span': .5},
+                'bias': [.125, -.25, .5, -.75, 1.25][i]}
         assert row == {'test_case_id': f'case_{i}', 'params': expected_params}
 
 
@@ -185,7 +190,8 @@ def test_native_all_actions_and_errors_emit_envelopes(path, tmp_path, monkeypatc
         p = tmp_path / relative; p.parent.mkdir(parents=True, exist_ok=True); p.write_text('native candidate')
     measured = [{**row, 'execution_time_ms': .1, 'benchmark_method': 'cuda_graph'} for row in data['cases']]
     h = types.SimpleNamespace(TEST_SHAPES=[tuple(s) for s in data['test_shapes']], run_compile=lambda: (True, None),
-                              run_correctness=lambda: (True, None), run_performance=lambda: measured)
+                              run_correctness=lambda: (True, None), run_performance=lambda: measured,
+                              HIP_GRAPH_ENABLED=True, HIP_GRAPH_FALLBACK_REASON=None)
     controls = types.SimpleNamespace(self_test=lambda h: None, check_additional_paths=lambda h: None)
     monkeypatch.setattr(runner, 'ROOT', tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -409,8 +415,8 @@ ORIGINAL_SOURCE_DIGESTS = {'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (10
 # out-of-place and validate timed replay; matrix must validate every output.
 # Job 139100 additionally found missing replay checks in FusedLeakyReLU, GRU and item attention.
 # MaskedLanguageModel also needed its transposed weight launch axes corrected.
-# The original digest remains the gate for all other 73 tasks.
-GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '0b72fe68a7c9bb4ef696ce876f80f0de9ed3a0dd434acd8f499f679e0188975c'), 'torch2hip/gpumode/14539_GELU': (10, '6988f6cace9f3c9a1f8da275789518c8667ba249b5c9431c6b05a57dd67d9e36'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (12, '1fbb1450f119a1e2fad5293aa374a830047b51ee1c9fbdd6c728f4ec04e88357'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, '434697dcc5596fee2141040bbcb1b404b5614f555a58bc8d729b190da194adfd'), 'hip2hip/gpumode/ItemQueryAttention': (11, '5625fb2aa11b57597f56893f70bb70d5e5cf8ccafa43977f2bc2a95ac563f8a0'), 'hip2hip/gpumode/MaskedLanguageModel': (10, '17834ed93fcdbec6f9d64f2450fc14bf161eb37f69844c731d39055e57d62d96'), 'hip2hip/gpumode/SiLU': (11, 'c590823050ac4c044cddc3113def4b6866f153f92a54d9775f168856843a9ecf'), 'hip2hip/gpumode/Sigmoid': (11, 'dad77fe3e8c52bf73f6e6d86acfdc9fcaf82262cb07a40fe39f212052f6758c5'), 'torch2hip/gpumode/10190_FusedLeakyReLU': (11, 'c394c46e1984a50c0972e9ea2c018844cd3ace8d7ae94cf5f9c6e1c71807264d'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '4c41c855bbf75c472fcd5ae17f7a1709d841fe133d67f482669f37a68e4dbb25'), 'torch2hip/gpumode/102_ItemQueryAttention': (10, 'aa6bbf7f1997f037a682a9705fc6eafd0ec30e2a0aecd8066bef80024bfd60ca'), 'torch2hip/gpumode/16636_SiLU': (10, '709a7f37523e955d65e56755e0a80cf678062bb178f104b42ca2f6423af16f0a'), 'torch2hip/gpumode/11184_Sigmoid': (10, 'da01ac4fa506921c5f5e8bb6e35222dda47a05a608b8667d84cad00394f1d050'), 'hip2hip/gpumode/TanH': (11, '417c0618e1d83cc7d574e0dcd746e4da001a6af3237c1b74ec131ec95b4f551b'), 'torch2hip/gpumode/11178_TanH': (10, '6c162a2f6cc5f7accda98123ad09b806f0079f31d894779dfe86d95bcb4b2e5e')}
+# Original digests remain the gate for tasks without an explicit reviewed repair.
+GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, 'ec08bb589e2acb8c425c758b5df5841d459ea01354074c5f89ea641c0330e36c'), 'torch2hip/gpumode/14539_GELU': (10, 'b4b255c97630057f877de31b0f4c68b3967a3003e465a5c699d1b88fc04301b8'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (12, '774ebc2b63b75e648ff4e40dd9f5222dc334318bb8ec6ac019586542645ca639'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, 'caf22f456cba41142677bf9455f4f7330931c65ad645b14e3830c3a0500999ac'), 'hip2hip/gpumode/ItemQueryAttention': (11, '78e4567f5a065446466e0c41d6e2135ffaa7b69ccb2ed9056ef27f93232011dd'), 'hip2hip/gpumode/MaskedLanguageModel': (11, 'bb8969ec7690e5dbbc5675e4ac97db7443714d21d8c063a1574a45ea81c468ac'), 'hip2hip/gpumode/SiLU': (11, '43c5f0a8c2cb9eaf4c0a52d75f952e27304a723c9c8f7cc4ac56bb90d09fa64c'), 'hip2hip/gpumode/Sigmoid': (11, '4e7b4b92dbdee90c258f442c994038e6bba420947f510550adf601f061000d71'), 'torch2hip/gpumode/10190_FusedLeakyReLU': (11, 'c6fbff431520d64b059cc1495a3e98b7462e771e0afec52a12c9cbfb637aa364'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '3d631fc5dce6c0574920709fdffd5c3eba28405ae3d83bd935e6e916abc14412'), 'torch2hip/gpumode/102_ItemQueryAttention': (10, 'cd9d6537d805e3d175b038e539ae36a2400a1c2cb08e4858faf663ca248528c4'), 'torch2hip/gpumode/16636_SiLU': (10, '5330ab36cee1ca0704a0d45db8bb0a47bfc8b53d2bba521bdcf3f21c3da6ba94'), 'torch2hip/gpumode/11184_Sigmoid': (10, '783a2770eb6a1c464563aabe03bc7b45bf893a21a82f9f54eb565c161748e7ea'), 'hip2hip/gpumode/TanH': (11, '007897566632c1584b5913a1592362aeaca4a3038422f93642e172777848fa43'), 'torch2hip/gpumode/11178_TanH': (10, '1d61bea5024422ea638fc84d953b20128d647fbdf88e5fe418f2686a2d9c4503'), 'hip2hip/others/assign_score_withk': (7, '3a2905af4c19a4797e44e04737d46a7fe31e7f61a951d4b2cd0b655d37bb2bc7'), 'hip2hip/others/ball_query': (10, 'cd11b843e3fb5be4644e86ad082dac15f58be645e7e98417da5e2feacd97b14e'), 'hip2hip/others/furthest_point_sample': (10, 'c76c7a8cb25cec5c79852ca7d174a19fd788517642c3f819beac596f899e8544'), 'hip2hip/others/knn': (8, '3ecfb50ee4713f8b0ecb65dadd2c76fc889d3b119449582e8ff95c4cc45de558'), 'hip2hip/others/points_in_boxes': (8, '076e6ed46ccfd82e5ee0360f8ff63ddfcc3f28bc430a42a99ade4e04c47dfa21'), 'hip2hip/others/roiaware_pool3d': (8, 'da874d09478d56aaf6b7af62df2053d306cd774e7e27078a5b46c85a86b387cd'), 'hip2hip/others/roipoint_pool3d': (8, '1777ecf526530d16b3072fdba19fbb612406af9c4f40cbd4105f9ce7759790f1'), 'hip2hip/others/three_nn': (8, '40e7b452866f727f83c37e3e9306d4c9a4fddbfb89ba4cf502f89baccbb052d4'), 'torch2hip/gpumode/8325_MaskedLanguageModel': (10, '2fb3f69dcecad77a6e350430090830dc5b3af6d7a2ff03d8b8d0cb4e29678e2b'), 'torch2hip/kernelbench/level1/l1n1_Square_matrix_multiplication_': (10, '20b6ac9b8c3d37d45587e72a62c91a794ad00538217705d12c2bac1a57e81c5d'), 'torch2hip/kernelbench/level1/l1n23_Softmax': (10, '8ef11e6fa898e93af88a5f5f665085a3a0864ee2545604c79cb5b3128d9ed64e'), 'torch2hip/kernelbench/level1/l1n26_GELU_': (10, '609c40fb91167b4156a6c8261c2f971c3cf14f50f639939999ca2251bd2b8002'), 'torch2hip/kernelbench/level1/l1n2_Standard_matrix_multiplication_': (10, '3947c3d599ec40cc77ccaefee8d4b55c9bebb5186b8dd1a97e55abb494b733d5'), 'torch2hip/kernelbench/level1/l1n36_RMSNorm_': (10, '26983a696c85e3c6f9bb0df51e131e5c1fd9e646a147e158ea210a58fdd7ac7e'), 'torch2hip/kernelbench/level1/l1n3_Batched_matrix_multiplication': (10, '499811d76f7fccd1e4cd51ed172109aadbc1a72f8795db87eef66b2755ecbb7d'), 'torch2hip/kernelbench/level1/l1n40_LayerNorm': (10, '203af86b1730f5ea6f09eb9b2c81ff07a9241291558fff862fe67c06f86a6f04'), 'torch2hip/kernelbench/level1/l1n42_Max_Pooling_2D': (10, '6357ce29e8c56f3182c5c40f2543ce40affffbbbfe74911ed9ff9d0e1f5d7375'), 'torch2hip/kernelbench/level1/l1n47_Sum_reduction_over_a_dimension': (10, '609c722ceb99129492ec248d2332020e5072bc76a3e8f9bfc0d303253b536e76'), 'torch2hip/kernelbench/level1/l1n4_Matrix_vector_multiplication_': (10, '9a2412cb0a319bc4d3a2bc1d5eeeee7a946af1f85f37acb3dbd9f01cccee59e1'), 'torch2hip/kernelbench/level1/l1n63_conv_standard_2D__square_input__square_kernel': (10, 'aed202bc6ee1649644598e4edeb71929ac546f1a7f7f279c36cdffc597325409'), 'torch2hip/kernelbench/level1/l1n82_conv_depthwise_2D_square_input_square_kernel': (10, '9c65cb3c33f81ce01e9a7771978b1da6e1b90317547be87983df41f6ffe9d869'), 'torch2hip/kernelbench/level1/l1n8_Matmul_with_irregular_shapes_': (10, '06563b8354b58fc1a19b9530958427b58905f732f37d0c82bb8d32fbe47dc95e'), 'torch2hip/kernelbench/level1/l1n95_CrossEntropyLoss': (10, '4760199ce48b862e98d6cc1400aa17bfaddfdc1526f77c538111488325b900d4'), 'torch2hip/kernelbench/level1/l1n9_Tall_skinny_matrix_multiplication_': (10, '4181e90055b4a574d36ddbfd712e06b44f682be7b701167aab0bc6bfb15f674f'), 'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (11, 'b354d8d864ac53b7b02f18c1993f998ec08c2c8f46733e31a33a530043d9a444'), 'torch2hip/gpumode/12501_CrossEntropyLossLabelSmoothing': (10, '68d4292c21774b409ea038aa35ad3a232c2d719f6dabe53fc3b45d95d1ea66f5'), 'hip2hip/gpumode/NormalAttention_dot': (11, 'e0d6aaf0d805eb8869274d3f737b0cfdaf47b998036ca61ae3175dc994aa63ac'), 'torch2hip/gpumode/1001_NormalAttention_dot': (10, '044854eccc3c0db3955fcf640c2da0fc01a5d154572b2d6f2bf5f67635cf6761'), 'hip2hip/gpumode/Feedforward': (11, '40e1e191db0544dad748a983378beff6daf4cbee497fa1f965586b888ab55dc0'), 'torch2hip/gpumode/10024_Feedforward': (10, '79b2020bdc61cb4936085128c3079882e07b8aed7046c51ef6198598084a8c0d'), 'hip2hip/gpumode/InnerProd': (12, 'ca749eb4811d0b7a09dd8b69161d25a9f02fac3f07df5e28516575830b089c77'), 'hip2hip/gpumode/KDLoss': (11, '519fb7118865ba9e00cdc6b9059d7add4f7d2f0a9c1e56611d1439ea6a64b6ec'), 'hip2hip/gpumode/MLP_model': (11, 'd47715de80e5bd5e2494617707e49c325cc87bd09fede7b8bdb817a8d5e7c7a9'), 'hip2hip/gpumode/MultiHeadAttention': (11, '411d29cabd95c3c6af6aa1a5c4d18644c9b7a989749dc6e96b788e248349babd'), 'hip2hip/gpumode/NormalAttention_embedded_gaussian': (11, 'af24da05b8ea606df87fe9e7e9e26186afe7d098f98de5dce873e89c541ce643'), 'hip2hip/gpumode/PositionWiseFeedForward': (11, 'df0164ed765748cc088b24f4d56cf0999f2e492a72c1b1b0e675c3f00a8d271d'), 'hip2hip/gpumode/SimpleMatmulModule': (11, 'd4dc537d8858f7aa1c14b9f4e4f24b8fb092341229e335eb3c958c613b0418db'), 'hip2hip/gpumode/SoftmaxModule': (11, '5e1fedd4a2ac5191e543bce4e5c48eb8cfe0cf1dbaa98b46f14aaafc0e8c2817'), 'hip2hip/gpumode/TransformerFFNLayer': (11, '452dd026048faf7b0c52f39222834a943b0138936ea92efb44266edcefa1c267'), 'hip2hip/gpumode/Transpose': (11, 'e37c704ef3121fe4a37a2105084a51bb9c9d37178cd2ae5722498a052d31e168'), 'hip2hip/gpumode/layer_normalization': (11, 'e122a9c2d22a3266e7fce12a86060adee77c2ce12580d2a581cfe1a9fde8506c'), 'torch2hip/gpumode/1003_NormalAttention_embedded_gaussian': (10, '4e6b2b5a43cf3e0220be48f3aba290b6860ed62b91c6df024020228f30252fb1'), 'torch2hip/gpumode/10082_SoftmaxModule': (10, '07dc4bbdd87b3b72740a8f60c01717e93247d3f0cff7a5a4af4f10b7d720fc36'), 'torch2hip/gpumode/10099_Gather': (10, 'b812f72c4cc17a19c11efb380f08f3b807da768fc4e2bad5afa984804c44f6c0'), 'torch2hip/gpumode/10456_MultiHeadAttention': (10, '5716dd434e3baf6ebcffae5275b3042a726f137acb0053c5785a95d235514c07'), 'torch2hip/gpumode/1067_Transpose': (10, 'f3a6ac32eebc9f7788d3f99cd587418017f41fd879ce28daf6e34629544a8071'), 'torch2hip/gpumode/11122_PositionEmbedder': (10, 'e06e7c1eee5408c79a64fcac82801c757affd21d491c69bf424645e9a4e658a7'), 'torch2hip/gpumode/11709_InnerProd': (11, '399c11b6c10e8052cbd1266a3b8e1165a71b205eac78ec02ac61b9b30506f38e'), 'torch2hip/gpumode/11754_layer_normalization': (10, 'f619a30431d4cb3c179fcaccd4ac74e2c77aec8f11147e547ae1f91be42f2840'), 'torch2hip/gpumode/1178_MLP_model': (10, '7856ee9beaf792f0aec8d84aeaf54579316de9b3dea782daba32f46d02a0c139'), 'torch2hip/gpumode/14007_KDLoss': (10, 'cf7f9a76d572e0b164b54df09f55225ceec70261d25e2ae6d2052e485e094b94'), 'torch2hip/gpumode/14044_PositionWiseFeedForward': (10, 'cb0f9baa199a4b87f7e67905769be0693b68731ada888696cf9ef0c1ca0f9106'), 'torch2hip/gpumode/14069_TransformerFFNLayer': (10, '8b134fecdba1fef0e1c272721d0f3eec77cb3a3d240122a0b730919d6356cf12'), 'torch2hip/gpumode/3267_SimpleMatmulModule': (10, 'a912fd2c41021a55c029d35a410a01dc00a46fc9bb34d48bbee0a131084dd6fe'), 'torch2hip/kernelbench/level2/l2n17_Conv2d_InstanceNorm_Divide': (10, '5e683ac6cacf817d6df23145a49ef858580b228d774e12363e11e91216ce62db'), 'torch2hip/kernelbench/level2/l2n37_Matmul_Swish_Sum_GroupNorm': (10, 'f2f4617a554667cdb94ac1f0086414161a63b9de87b00769a00beb2e290d18d1'), 'torch2hip/kernelbench/level2/l2n40_Matmul_Scaling_ResidualAdd': (10, '968de902011ebf3c7d4426e1a59aff3df8d16d60a6d643a419c71c49f583b29c'), 'torch2hip/kernelbench/level2/l2n46_Conv2d_Subtract_Tanh_Subtract_AvgPool': (10, 'abcaa40577247626b1b6b96bc1190dbcfbe68202eafc7a0eb526a39c86386892'), 'torch2hip/kernelbench/level2/l2n52_Conv2d_Activation_BatchNorm': (10, '0ebd91aa7952491a2b79c772bf19fb58b49d8c761c5b414f01247187339ee67c'), 'torch2hip/kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale': (10, '23db7153133fd97e5ee40ded27e147ee5c4464d5fccb65867c8d39b22dd050ea'), 'torch2hip/kernelbench/level2/l2n59_Matmul_Swish_Scaling': (10, '316416aeae848fc04b2f925aa1d11026387abbfac16613fd1f9616a20e3795c1'), 'torch2hip/kernelbench/level2/l2n66_Matmul_Dropout_Softmax': (10, '5abfcb99c3c248270aa0e35a8f455c04995ad8d5a04829230310ce3cdf268cc9'), 'torch2hip/kernelbench/level2/l2n6_Conv3d_Softmax_MaxPool_MaxPool': (10, 'cbbcc6e39cc4874fd4eff05c65b024cfa72af6090d6b7c45a985fc19f9428a6f'), 'torch2hip/kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling': (10, 'd0392538be766d65c8cb65d2c8d6241a4c9ec3c27630981f6959b23852de7d8b'), 'torch2hip/kernelbench/level2/l2n82_Conv2d_Tanh_Scaling_BiasAdd_Max': (10, '1965dcbf0a873b2dac96f0f56237dff4c5ab0aafe50ed2f236ef922bd4482f6c'), 'torch2hip/kernelbench/level2/l2n85_Conv2d_GroupNorm_Scale_MaxPool_Clamp': (10, '30018c04c529fd9f2d71ef248d304050d7ea8f13442673fdae85c76db5fcd3ad'), 'torch2hip/kernelbench/level2/l2n86_Matmul_Divide_GELU': (10, '9b0be02c49ad151540f9809841b5cecb1103f7fcd0b425e7e06529d0579ff13d'), 'torch2hip/kernelbench/level2/l2n98_Matmul_AvgPool_GELU_Scale_Max': (10, 'ab8d0508fb2d6dd8a570ac802b217e31b178738f75382a5a6f69718f4a764458'), 'torch2hip/kernelbench/level2/l2n99_Matmul_GELU_Softmax': (10, '8fabb1d609c2327c90ac16be5ed1d124661f6a1da0eb29fcf4bfa1598a581316'), 'torch2hip/kernelbench/level3/l3n31_VisionAttention': (10, 'd0af0fbc6b95cbf5602cc2a30474c663095faf401390e4d6fcd7318d07bbc40b'), 'torch2hip/kernelbench/level3/l3n43_MinGPTCausalAttention': (10, '14353949b386acbb41c7e4f02277a5b33909e1752020d127dba87cd25e7200e9'), 'torch2hip/kernelbench/level3/l3n44_MiniGPTBlock': (10, 'd1edd1bb46b907d2fb56d68a9b1237d2bbfa0ef40d415c17a98ce5ade130d5ad')}
 
 
 @pytest.mark.parametrize('path', CONFIGS, ids=lambda p: p.parent.name)
@@ -458,6 +464,9 @@ def test_extension_performance_explicit_models_sources_and_case_coverage(tmp_pat
             'reference_benchmark_method': 'cuda_graph', 'benchmark_method': 'cuda_graph'}]})
     perf.cal_kernel_perf = benchmark
     monkeypatch.setitem(sys.modules, 'cal_kernel_perf', perf)
+    # This fixture isolates role/source routing; dedicated tests exercise the
+    # real replay adapter against measured-output and re-invocation controls.
+    monkeypatch.setitem(sys.modules, 'replay_validation', types.SimpleNamespace(install=lambda *args: None))
     monkeypatch.setattr(runner, 'compile_hip', lambda source, **kw: compiled.append((source, kw)))
     measured = runner.performance(args, role, rows)
     assert loaded_models == [args.model_class, args.model_class]
@@ -713,7 +722,9 @@ def test_matrix_additional_checks_cover_all_original_shapes(monkeypatch):
                                          'torch2hip/gpumode/102_ItemQueryAttention',
                                          'torch2hip/gpumode/16636_SiLU',
                                          'torch2hip/gpumode/11184_Sigmoid',
-                                         'hip2hip/gpumode/TanH', 'torch2hip/gpumode/11178_TanH'])
+                                         'hip2hip/gpumode/TanH', 'torch2hip/gpumode/11178_TanH',
+                                         'hip2hip/gpumode/MaskedLanguageModel', 'torch2hip/gpumode/8325_MaskedLanguageModel'] +
+                         [p.parent.relative_to(ROOT / 'tasks').as_posix() for p in CONFIGS if 'level1' in p.parts] + ADDITIONAL_GPUMODE_REPLAY + ['torch2hip/kernelbench/level2/l2n17_Conv2d_InstanceNorm_Divide', 'torch2hip/kernelbench/level2/l2n37_Matmul_Swish_Sum_GroupNorm', 'torch2hip/kernelbench/level2/l2n40_Matmul_Scaling_ResidualAdd', 'torch2hip/kernelbench/level2/l2n46_Conv2d_Subtract_Tanh_Subtract_AvgPool', 'torch2hip/kernelbench/level2/l2n52_Conv2d_Activation_BatchNorm', 'torch2hip/kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale', 'torch2hip/kernelbench/level2/l2n59_Matmul_Swish_Scaling', 'torch2hip/kernelbench/level2/l2n66_Matmul_Dropout_Softmax', 'torch2hip/kernelbench/level2/l2n6_Conv3d_Softmax_MaxPool_MaxPool', 'torch2hip/kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling', 'torch2hip/kernelbench/level2/l2n82_Conv2d_Tanh_Scaling_BiasAdd_Max', 'torch2hip/kernelbench/level2/l2n85_Conv2d_GroupNorm_Scale_MaxPool_Clamp', 'torch2hip/kernelbench/level2/l2n86_Matmul_Divide_GELU', 'torch2hip/kernelbench/level2/l2n98_Matmul_AvgPool_GELU_Scale_Max', 'torch2hip/kernelbench/level2/l2n99_Matmul_GELU_Softmax', 'torch2hip/kernelbench/level3/l3n31_VisionAttention', 'torch2hip/kernelbench/level3/l3n43_MinGPTCausalAttention', 'torch2hip/kernelbench/level3/l3n44_MiniGPTBlock'])
 @pytest.mark.parametrize('behavior', ['correct', 'wrong_replay', 'input_mutation', 'input_alias'])
 def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypatch):
     root = ROOT / 'tasks' / relative
@@ -732,7 +743,7 @@ def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypa
             output.copy_(torch.zeros_like(output) if behavior == 'wrong_replay' else torch.nn.functional.gelu(inputs[0]))
             return output
         kwargs['timed_run']._bind(replay, output)
-        return .25, {'benchmark_method': 'cuda_graph'}
+        return .25, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph'}
     def cal_kernel_perf(rtol=1e-4, atol=1e-5): pass
     perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf,
         benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)
@@ -928,6 +939,572 @@ def test_fused_manifest_states_exercise_bias_channels_slope_and_scale(relative):
         helper.validate_controls(zero)
 
 
+@pytest.mark.parametrize('task', sorted((ROOT / 'tasks/hip2hip/others').glob('*/kernel_loader.py')),
+                         ids=lambda p: p.parent.name)
+def test_native_hipify_writes_only_to_fresh_build_inputs(task, tmp_path, monkeypatch):
+    task_root = tmp_path / 'task'
+    task_root.mkdir()
+    shutil.copy2(task, task_root / 'kernel_loader.py')
+    shutil.copytree(task.parent / 'src', task_root / 'src')
+    nested = task_root / 'src/nested/header.hpp'
+    nested.parent.mkdir()
+    nested.write_text('constexpr int sentinel = 7;\n')
+    editable = yaml.safe_load((task.parent / 'config.yaml').read_text())['candidate']['editable'][0]
+    before = {str(p.relative_to(task_root)): p.read_bytes() for p in (task_root / 'src').rglob('*') if p.is_file()}
+    calls = []
+    def fake_load(*, name, sources, verbose):
+        assert verbose is True
+        inputs = [Path(p) for p in sources]
+        assert all(p.is_relative_to(task_root / 'build/native_sources') for p in inputs)
+        stage = inputs[0].parent.parent
+        assert (stage / 'src/nested/header.hpp').read_bytes() == nested.read_bytes()
+        assert (stage / editable).read_bytes() == (task_root / editable).read_bytes()
+        calls.append(stage)
+        # Emulate compiler/hipify rewriting generated neighboring translation units.
+        for source in inputs:
+            generated = source.with_name(source.stem.replace('_cuda', '') + '_hip' + source.suffix)
+            generated.write_text('compiler-generated replacement\n')
+        return object()
+    monkeypatch.setitem(sys.modules, 'torch.utils.cpp_extension', types.SimpleNamespace(load=fake_load))
+    monkeypatch.chdir(task_root)
+    import_path(task_root / 'kernel_loader.py')
+    assert {str(p.relative_to(task_root)): p.read_bytes() for p in (task_root / 'src').rglob('*') if p.is_file()} == before
+    candidate = task_root / editable
+    candidate.write_text(candidate.read_text() + '\n// next submitted candidate\n')
+    import_path(task_root / 'kernel_loader.py')
+    assert len(calls) == 2 and calls[0] != calls[1]
+    assert (calls[1] / editable).read_bytes() == candidate.read_bytes()
+
+
+@pytest.mark.parametrize('name', ['roiaware_pool3d', 'roipoint_pool3d'])
+def test_roi_full_output_rejects_conserved_sum_corruption(name):
+    helper = import_path(ROOT / 'tasks/hip2hip/others' / name / 'scripts/reference_checks.py')
+    expected = torch.tensor([0., 2., 4., 8.]).reshape(1,1,2,2)
+    wrong = expected.roll(1, dims=-1)
+    assert torch.equal(wrong.sum(), expected.sum())
+    helper.full_output(expected.clone(), expected)
+    with pytest.raises(AssertionError):
+        helper.full_output(wrong, expected)
+    with pytest.raises(ValueError, match='shape/dtype'):
+        helper.full_output(expected.double(), expected)
+    invalid = expected.clone(); invalid.flatten()[0] = float('nan')
+    with pytest.raises(ValueError, match='NaN/Inf'):
+        helper.full_output(invalid, expected)
+
+
+def test_ball_query_native_annulus_predicate_known_boundaries(tmp_path):
+    import re
+    compiler = shutil.which('g++')
+    if compiler is None:
+        pytest.skip('C++ compiler unavailable')
+    path = ROOT / 'tasks/hip2hip/others/ball_query/src/ball_query_cuda.hip'
+    text = path.read_text()
+    predicate = next(value for value in re.findall(r'if\s*\(([^\n]+)\)', text)
+                     if 'min_radius2' in value and 'max_radius2' in value)
+    source = tmp_path / 'annulus.cpp'
+    source.write_text('''#include <cassert>
+static bool selected(float d2, float min_radius2, float max_radius2) { return PREDICATE; }
+int main() {
+  assert(selected(0.f, 0.f, 1.f));
+  assert(selected(0.f, 1.f, 4.f));
+  assert(!selected(1e-8f, 1.f, 4.f));
+  assert(selected(1.f, 1.f, 4.f));
+  assert(!selected(4.f, 1.f, 4.f));
+}
+'''.replace('PREDICATE', predicate))
+    binary = tmp_path / 'annulus'
+    subprocess.run([compiler, '-std=c++17', str(source), '-o', str(binary)], check=True, timeout=60)
+    subprocess.run([str(binary)], check=True, timeout=10)
+
+
+@pytest.mark.parametrize('path', [p for p in NATIVE if 'graph_policy' in json.loads(p.with_name('workload.json').read_text())], ids=lambda p: p.parent.name)
+@pytest.mark.parametrize('baseline_graph,source_safe', [(True,True),(True,False),(False,True)])
+def test_native_candidate_cannot_override_frozen_graph_safety(path, baseline_graph, source_safe):
+    runner = import_path(path.parent / 'scripts/evaluate.py')
+    harness = types.SimpleNamespace(HIP_GRAPH_ENABLED=source_safe,
+        HIP_GRAPH_FALLBACK_REASON=None if source_safe else 'default stream launch escapes capture')
+    manifest = {'graph_policy': {'enabled': baseline_graph,
+                                'reason': None if baseline_graph else 'original event-only policy'}}
+    if baseline_graph and not source_safe:
+        with pytest.raises(ValueError, match='cannot honor the frozen graph'):
+            runner.configure_timing_policy(harness, manifest)
+        assert harness.HIP_GRAPH_ENABLED is False
+    else:
+        runner.configure_timing_policy(harness, manifest)
+        assert harness.HIP_GRAPH_ENABLED is baseline_graph
+        assert harness.HIP_GRAPH_FALLBACK_REASON == manifest['graph_policy']['reason']
+
+
+@pytest.mark.parametrize('relative', ['hip2hip/gpumode/MaskedLanguageModel',
+                                      'torch2hip/gpumode/8325_MaskedLanguageModel'])
+def test_masked_language_reference_nonuniform_known_answer(relative):
+    root = ROOT / 'tasks' / relative
+    args = options(yaml.safe_load((root / 'config.yaml').read_text()))
+    x = torch.tensor([[[[-1., 2.], [3., -4.]]]])
+    # Zero weights with log([1,2,3]) biases imply probabilities [1,2,3]/6,
+    # independent of input. A uniform/zero shortcut fails this oracle.
+    expected = torch.tensor([math.log(i / 6) for i in (1, 2, 3)]).expand(1, 1, 2, 3)
+    for filename in (args.module, args.functional):
+        model = import_path(root / filename).MaskedLanguageModel(hidden=2, vocab_size=3).eval()
+        with torch.no_grad():
+            for name, parameter in model.named_parameters():
+                if name.endswith('bias'):
+                    parameter.copy_(torch.tensor([0., math.log(2), math.log(3)]))
+                else:
+                    parameter.zero_()
+        before = copy.deepcopy(model.state_dict())
+        pristine = x.clone()
+        actual = model(x)
+        torch.testing.assert_close(actual, expected, rtol=1e-4, atol=1e-5)
+        assert not torch.allclose(actual, torch.full_like(actual, -math.log(3)))
+        assert not torch.allclose(actual, torch.zeros_like(actual))
+        torch.testing.assert_close(x, pristine, rtol=0, atol=0)
+        assert actual.untyped_storage().data_ptr() != x.untyped_storage().data_ptr()
+        for name, value in model.state_dict().items():
+            torch.testing.assert_close(value, before[name], rtol=0, atol=0)
+
+
+@pytest.mark.parametrize('name', ['knn', 'three_nn'])
+@pytest.mark.parametrize('behavior', ['correct', 'wrong_replay', 'input_mutation'])
+def test_native_integer_and_tuple_timed_replay(name, behavior, monkeypatch):
+    root = ROOT / 'tasks/hip2hip/others' / name
+    controls = import_path(root / 'scripts/reference_checks.py')
+    replay = import_path(root / 'scripts/replay_validation.py')
+    h = harness_namespace(root)
+    timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
+    monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    source = torch.tensor([[[1., 0., 0.], [3., 0., 0.], [5., 0., 0.]]])
+    target = torch.zeros(1, 1, 3)
+    if name == 'knn':
+        expected = h.cpu_reference(2, source, target)
+        check = lambda output: controls.check_timed_output(output, expected, gpu=False)
+    else:
+        expected = h.cpu_reference(target, source)
+        check = lambda output: controls.check_timed_output(output, expected, target, source, gpu=False)
+    invoked = []
+
+    def benchmark(invoke, **kwargs):
+        invoked.append(kwargs)
+        output = invoke()
+        if behavior == 'input_mutation': source.add_(1)
+
+        def captured():
+            for value, original in zip(replay.tensors(output), replay.tensors(expected)):
+                if value.is_floating_point(): assert torch.isnan(value).all()
+                else: assert torch.all(value == -1)
+                value.copy_(original)
+            if behavior == 'wrong_replay':
+                replay.tensors(output)[-1].zero_()  # Valid dtype, wrong neighbor indices.
+            return output
+
+        kwargs['timed_run']._bind(captured, output)
+        return .5, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph'}
+
+    if behavior == 'correct':
+        elapsed, metadata = replay.measure(benchmark, lambda: copy.deepcopy(expected), (target, source), check,
+                                           warmup=10, repetition=100, use_cuda_graph=True)
+        assert elapsed == .5 and metadata['replay_validation_valid'] is True
+    else:
+        with pytest.raises((AssertionError, ValueError)):
+            replay.measure(benchmark, lambda: copy.deepcopy(expected), (target, source), check,
+                           warmup=10, repetition=100, use_cuda_graph=True)
+    assert invoked[0]['warmup'] == 10 and invoked[0]['repetition'] == 100
+
+
+def test_three_nn_timed_contract_preserves_ties_and_rejects_wrong_index():
+    root = ROOT / 'tasks/hip2hip/others/three_nn'
+    controls = import_path(root / 'scripts/reference_checks.py')
+    h = harness_namespace(root)
+    target = torch.zeros(1, 1, 3)
+    source = torch.tensor([[[1., 0., 0.], [-1., 0., 0.], [3., 0., 0.], [9., 0., 0.]]])
+    expected = h.cpu_reference(target, source)
+    distance, indices = copy.deepcopy(expected)
+    indices[..., :2] = indices[..., :2].flip(-1)
+    controls.check_timed_output((distance, indices), expected, target, source, gpu=False)
+    for invalid in (-1, 3, 4):
+        bad = indices.clone(); bad[..., 0] = invalid
+        with pytest.raises(ValueError):
+            controls.check_timed_output((distance, bad), expected, target, source, gpu=False)
+    with pytest.raises(AssertionError):
+        controls.check_timed_output((distance + 1, indices), expected, target, source, gpu=False)
+
+
+@pytest.mark.parametrize('name', ['ball_query', 'furthest_point_sample', 'points_in_boxes',
+                                 'roiaware_pool3d', 'roipoint_pool3d'])
+@pytest.mark.parametrize('behavior', ['correct', 'wrong_replay', 'input_mutation'])
+def test_native_pool_and_query_replay_checks_written_buffers(name, behavior, monkeypatch):
+    root = ROOT / 'tasks/hip2hip/others' / name
+    controls = import_path(root / 'scripts/reference_checks.py')
+    replay = import_path(root / 'scripts/replay_validation.py')
+    timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
+    monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    inputs = [torch.tensor([1., 2., 3.])]
+    if name == 'roiaware_pool3d':
+        expected = torch.tensor([1., 4., 2., 3.]).reshape(1, 1, 1, 1, 4)
+        check = lambda actual: controls.check_timed_output(actual, expected, 'max', gpu=False)
+    elif name == 'roipoint_pool3d':
+        expected = (torch.tensor([1., 4., 2., 3.]).reshape(1, 1, 1, 4), torch.zeros(1, 1, dtype=torch.int32))
+        check = lambda actual: controls.check_timed_output(actual, expected, gpu=False)
+    else:
+        # -1 is a legitimate outside-box value, so poisoning must change it too.
+        expected = torch.tensor([[0, -1 if name == 'points_in_boxes' else 1, 2]], dtype=torch.int32)
+        check = lambda actual: controls.close(actual, expected)
+    output = copy.deepcopy(expected)
+    calls = []
+
+    def prepare():
+        calls.append('prepare')
+        for value in replay.tensors(output): value.zero_()
+
+    def invoke():
+        calls.append('invoke')
+        for value, original in zip(replay.tensors(output), replay.tensors(expected)): value.copy_(original)
+        return output
+
+    def benchmark(fn, **kwargs):
+        assert kwargs['warmup'] == 10 and kwargs['repetition'] == 100
+        prep = kwargs.get('prepare_fn')
+        if prep: prep()
+        observed_output = fn()
+
+        def captured():
+            for value, original in zip(replay.tensors(output), replay.tensors(expected)):
+                if value.is_floating_point(): assert torch.isnan(value).all()
+                elif name == 'points_in_boxes': assert torch.equal(value, original.bitwise_not())
+                else: assert torch.all(value == -1)
+            if prep: prep()
+            fn()
+            if behavior == 'wrong_replay': replay.tensors(output)[0].zero_()
+            if behavior == 'input_mutation': inputs[0].add_(1)
+            return observed_output
+
+        kwargs['timed_run']._bind(captured, observed_output)
+        return .5, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph'}
+
+    options = dict(warmup=10, repetition=100, use_cuda_graph=True)
+    if name.startswith('roi'): options['prepare_fn'] = prepare
+    if behavior == 'correct':
+        elapsed, metadata = replay.measure(benchmark, invoke, inputs, check, **options)
+        assert elapsed == .5 and metadata['replay_validation_valid'] is True
+    else:
+        with pytest.raises((ValueError, AssertionError)):
+            replay.measure(benchmark, invoke, inputs, check, **options)
+    assert calls.count('invoke') == 2
+    assert calls.count('prepare') == (2 if name.startswith('roi') else 0)
+
+
+@pytest.mark.parametrize('path', [p for p in CONFIGS if 'level1' in p.parts], ids=lambda p: p.parent.name)
+def test_level1_reference_independent_known_answers_and_readonly_inputs(path):
+    args = options(yaml.safe_load(path.read_text()))
+    number = path.parent.name.split('_', 1)[0]
+    for filename in (args.module, args.functional):
+        cls = getattr(import_path(path.parent / filename), args.model_class)
+        if number in ('l1n1', 'l1n2', 'l1n3', 'l1n4', 'l1n8', 'l1n9'):
+            model = cls()
+            k = 2 if number == 'l1n1' else 3
+            n = 1 if number == 'l1n4' else 2
+            a = torch.arange(2*k, dtype=torch.float32).reshape(2,k) - 2
+            b = torch.arange(k*n, dtype=torch.float32).reshape(k,n) + 1
+            if number == 'l1n3': a, b = torch.stack((a,a+1)), torch.stack((b,b-2))
+            pairs = zip(a, b) if a.ndim == 3 else [(a,b)]
+            results = [torch.tensor([[sum(float(left[i,j])*float(right[j,z]) for j in range(k))
+                                      for z in range(n)] for i in range(2)]) for left,right in pairs]
+            expected = torch.stack(results) if a.ndim == 3 else results[0]
+            inputs = [a,b]
+        elif number == 'l1n23':
+            model = cls(); inputs = [torch.tensor([[0.,math.log(2),math.log(3)]])]
+            expected = torch.tensor([[1/6,2/6,3/6]])
+        elif number == 'l1n26':
+            model = cls(); values = [-2.,-1.,0.,.5,1.]; inputs = [torch.tensor(values)]
+            expected = torch.tensor([x*.5*(1+math.erf(x/math.sqrt(2))) for x in values])
+        elif number == 'l1n36':
+            model = cls(num_features=3); inputs = [torch.tensor([[-1.,2.,3.]])]
+            expected = torch.tensor([[-1.,2.,3.]]) / math.sqrt(14/3+1e-5)
+        elif number == 'l1n40':
+            model = cls(normalized_shape=(3,)); inputs = [torch.tensor([[-1.,2.,5.]])]
+            with torch.no_grad():
+                model.ln.weight.copy_(torch.tensor([1.,2.,3.]))
+                model.ln.bias.copy_(torch.tensor([-1.,.5,2.]))
+            expected = torch.tensor([[(x-2)/math.sqrt(6+1e-5)*w+b
+                                      for x,w,b in zip((-1,2,5),(1,2,3),(-1,.5,2))]])
+        elif number == 'l1n42':
+            model = cls(kernel_size=2, stride=2, padding=0, dilation=1)
+            inputs = [torch.arange(-8,8,dtype=torch.float32).reshape(1,1,4,4)]
+            expected = torch.tensor([[[[-3.,-1.],[5.,7.]]]])
+        elif number == 'l1n47':
+            model = cls(dim=1); inputs = [torch.tensor([[-1.,2.,4.],[3.,-5.,1.]])]
+            expected = torch.tensor([[5.],[-1.]])
+        elif number in ('l1n63','l1n82'):
+            model = cls(in_channels=2, kernel_size=2, bias=True,
+                        **({'out_channels':2} if number == 'l1n63' else {}))
+            conv = model.conv2d
+            with torch.no_grad():
+                conv.weight.copy_(torch.arange(conv.weight.numel()).reshape_as(conv.weight)/8+.5)
+                conv.bias.copy_(torch.tensor([.25,-.5]))
+            x = torch.arange(-8,10,dtype=torch.float32).reshape(1,2,3,3); inputs = [x]
+            expected = torch.empty(1,2,2,2)
+            for out in range(2):
+                for i in range(2):
+                    for j in range(2):
+                        channels = [out] if number == 'l1n82' else range(2)
+                        expected[0,out,i,j] = float(conv.bias[out].detach()) + sum(
+                            float(x[0,ch,i+dy,j+dx])*float(conv.weight[out,0 if number == 'l1n82' else ch,dy,dx].detach())
+                            for ch in channels for dy in range(2) for dx in range(2))
+        elif number == 'l1n95':
+            model = cls(); inputs = [torch.tensor([[0.,math.log(2),math.log(3)],
+                                                  [math.log(2),math.log(3),0.]]),torch.tensor([2,0])]
+            expected = torch.tensor(-(math.log(.5)+math.log(1/3))/2)
+        else:
+            raise AssertionError('Missing independent oracle for '+number)
+        model.eval(); pristine = copy.deepcopy(inputs); state = copy.deepcopy(model.state_dict())
+        actual = model(*inputs)
+        torch.testing.assert_close(actual,expected,rtol=1e-4,atol=1e-5)
+        assert not torch.allclose(actual,torch.zeros_like(actual))
+        for before,after in zip(pristine,inputs):
+            torch.testing.assert_close(before,after,rtol=0,atol=0)
+            assert actual.untyped_storage().data_ptr()!=after.untyped_storage().data_ptr()
+        for key,value in model.state_dict().items():
+            torch.testing.assert_close(state[key],value,rtol=0,atol=0)
+
+
+@pytest.mark.parametrize('relative', ['hip2hip/gpumode/CrossEntropyLossLabelSmoothing',
+                                      'torch2hip/gpumode/12501_CrossEntropyLossLabelSmoothing'])
+@pytest.mark.parametrize('kind', ['captured_graph', 'eager_callable'])
+@pytest.mark.parametrize('defect', ['none', 'last_sample', 'reinvocation', 'input_mutation'])
+def test_loss_observes_actual_event_sample_and_distinguishes_graph(relative, kind, defect, monkeypatch):
+    root = ROOT / 'tasks' / relative
+    args = options(yaml.safe_load((root / 'config.yaml').read_text()))
+    model = import_path(root / args.functional).CrossEntropyLossLabelSmoothing().eval()
+    logits = torch.tensor([[0., math.log(2), math.log(3)], [math.log(2), math.log(3), 0.]])
+    targets = torch.tensor([[.25,.25,.5],[.5,0.,.5]])
+    expected = torch.tensor(-(.25*math.log(1/6)+.25*math.log(2/6)+.5*math.log(3/6)
+                              +.5*math.log(2/6)+.5*math.log(1/6))/2)
+    for filename in (args.module, args.functional):
+        reference = import_path(root / filename).CrossEntropyLossLabelSmoothing().eval()
+        torch.testing.assert_close(reference(logits,targets),expected,rtol=1e-4,atol=1e-5)
+    replay = import_path(root / 'eval_tools/replay_validation.py')
+    runner = import_path(root / 'eval_tools/evaluate.py')
+    timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
+    monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    observed_buffers = []
+
+    def benchmark(invoke, **kwargs):
+        assert kwargs['warmup'] == 10 and kwargs['repetition'] == 100
+        output = invoke()
+        observed_buffers.append(output)
+        if defect == 'last_sample': output.zero_()
+        if defect == 'input_mutation': targets.add_(1)
+
+        def rerun():
+            assert torch.isnan(output).all()
+            # An explicit Event re-invocation may allocate a different buffer.
+            actual = invoke() if kind == 'eager_callable' else output
+            actual.copy_(expected)
+            if defect == 'reinvocation': actual.zero_()
+            observed_buffers.append(actual)
+            return actual
+
+        kwargs['timed_run']._bind(rerun,output)
+        return .5, {'benchmark_method':'cuda_graph' if kind == 'captured_graph' else 'cuda_event_fallback',
+                    'benchmark_timed_run_kind':kind}
+
+    def cal_kernel_perf(rtol=1e-4,atol=1e-5): pass
+    perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf,
+        benchmark_cuda_graph_or_events=benchmark,_compare_results=torch.allclose)
+    replay.install(perf,runner.output_contract)
+    if defect == 'none':
+        elapsed,metadata = perf.cal_hip_latency(model,[logits,targets],use_cuda_graph=(kind=='captured_graph'))
+        assert elapsed == .5 and metadata['validated_invocation_kind'] == kind
+        assert metadata['replay_validation_valid'] is True
+        assert (observed_buffers[0] is observed_buffers[1]) == (kind=='captured_graph')
+    else:
+        with pytest.raises((ValueError,AssertionError)):
+            perf.cal_hip_latency(model,[logits,targets],use_cuda_graph=(kind=='captured_graph'))
+    if defect == 'last_sample': assert len(observed_buffers) == 1
+
+
+@pytest.mark.parametrize('relative', ['hip2hip/gpumode/NormalAttention_dot',
+    'torch2hip/gpumode/1001_NormalAttention_dot', 'hip2hip/gpumode/Feedforward',
+    'torch2hip/gpumode/10024_Feedforward'])
+@pytest.mark.parametrize('kind', ['captured_graph', 'eager_callable'])
+@pytest.mark.parametrize('defect', ['none', 'last_sample', 'reinvocation'])
+def test_attention_and_feedforward_measured_outputs_have_independent_oracles(relative, kind, defect, monkeypatch):
+    root = ROOT / 'tasks' / relative
+    args = options(yaml.safe_load((root / 'config.yaml').read_text()))
+    feedforward = args.model_class == 'Feedforward'
+    if feedforward:
+        inputs = [torch.tensor([[1.,2.],[-3.,1.]]),torch.tensor([[2.,-1.]])]
+        values = []
+        for x,y in [(1,2),(-3,1),(2,-1)]:
+            z = .5*max(0,x-y-.5)-max(0,.5*x+2*y+.25)+.75
+            values.append([1/(1+math.exp(-z))])
+        expected = torch.tensor(values)
+    else:
+        inputs = [torch.arange(1,9,dtype=torch.float32).reshape(1,4,1,2)]
+        # Query=1, key=2 => ELU(2)/2=1, value/gamma identities. Each
+        # output channel is the sum of its two spatial inputs plus its bias.
+        expected = torch.tensor([3.25,7.5,11.75,16.]).reshape(1,4,1,1).expand(1,4,1,2)
+    models = []
+    for filename in (args.module,args.functional):
+        cls = getattr(import_path(root / filename),args.model_class)
+        model = cls(input_size=2,hidden_size=2) if feedforward else cls(input_channel_num=4)
+        with torch.no_grad():
+            if feedforward:
+                weights = {'fc1_weight':torch.tensor([[1.,-1.],[.5,2.]]),
+                           'fc1_bias':torch.tensor([-.5,.25]),
+                           'fc2_weight':torch.tensor([[.5,-1.]]),'fc2_bias':torch.tensor([.75])}
+                for name,value in model.named_parameters(): value.copy_(weights[name.replace('.','_')])
+            else:
+                for parameter in model.parameters(): parameter.zero_()
+                model.query_conv.bias.fill_(1); model.key_conv.bias.fill_(2)
+                model.value_conv.weight.copy_(torch.eye(4).reshape(4,4,1,1))
+                model.gamma.weight.copy_(torch.eye(4).reshape(4,4,1,1))
+                model.gamma.bias.copy_(torch.tensor([.25,.5,.75,1.]))
+        model.eval(); models.append(model)
+        pristine = copy.deepcopy(inputs); before = copy.deepcopy(model.state_dict())
+        actual = model(*inputs)
+        torch.testing.assert_close(actual,expected,rtol=1e-4,atol=1e-5)
+        for old,new in zip(pristine,inputs): torch.testing.assert_close(old,new,rtol=0,atol=0)
+        for key,value in model.state_dict().items(): torch.testing.assert_close(before[key],value,rtol=0,atol=0)
+    replay = import_path(root / 'eval_tools/replay_validation.py')
+    runner = import_path(root / 'eval_tools/evaluate.py')
+    timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
+    monkeypatch.setitem(sys.modules,'_aka_benchmark',timed)
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None)
+
+    def benchmark(invoke,**kwargs):
+        assert kwargs['warmup']==10 and kwargs['repetition']==100
+        output=invoke().detach()
+        if defect=='last_sample': output.zero_()
+        def rerun():
+            assert torch.isnan(output).all()
+            actual=invoke().detach() if kind=='eager_callable' else output
+            actual.copy_(expected)
+            if defect=='reinvocation': actual.zero_()
+            return actual
+        kwargs['timed_run']._bind(rerun,output)
+        return .5,{'benchmark_method':'cuda_graph' if kind=='captured_graph' else 'cuda_event_fallback',
+                   'benchmark_timed_run_kind':kind}
+
+    def cal_kernel_perf(rtol=1e-4,atol=1e-5): pass
+    perf=types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf,
+        benchmark_cuda_graph_or_events=benchmark,_compare_results=torch.allclose)
+    replay.install(perf,runner.output_contract)
+    if defect=='none':
+        elapsed,metadata=perf.cal_hip_latency(models[1],inputs,use_cuda_graph=(kind=='captured_graph'))
+        assert elapsed==.5 and metadata['validated_invocation_kind']==kind
+    else:
+        with pytest.raises(ValueError,match='protected reference'):
+            perf.cal_hip_latency(models[1],inputs,use_cuda_graph=(kind=='captured_graph'))
+
+
+@pytest.mark.parametrize('relative', ADDITIONAL_GPUMODE_REPLAY)
+def test_remaining_gpumode_references_against_independent_answers(relative):
+    root=ROOT/'tasks'/relative; args=options(yaml.safe_load((root/'config.yaml').read_text()))
+    name=args.model_class
+    for filename in (args.module,args.functional):
+        cls=getattr(import_path(root/filename),name)
+        if name=='InnerProd':
+            model=cls(2); inputs=[torch.tensor([[2.,3.]]),torch.tensor([[[[4.,5.]],[[6.,7.]]]])]
+            with torch.no_grad(): model.scale.copy_(torch.tensor([2.,-1.])); model.bias.fill_(.5)
+            expected=torch.tensor([[[[-1.5,-.5]]]])
+        elif name=='KDLoss':
+            model=cls(2); inputs=[torch.tensor([[0.,2*math.log(3)]]),torch.tensor([[.5,.5]])]
+            expected=torch.tensor(2*math.log(4/3))
+        elif name=='MLP_model':
+            model=cls(2,2); inputs=[torch.tensor([[2.,-1.],[-2.,1.]])]
+            with torch.no_grad():
+                for parameter in model.parameters(): parameter.zero_()
+                for index in range(1,7):
+                    layer=getattr(model,'linear'+str(index)); layer.weight[0,0]=1; layer.bias[0]=.1
+                model.linear7.weight[:,0]=torch.tensor([2.,-1.])
+                model.linear7.bias.copy_(torch.tensor([.25,-.5]))
+            values=[]
+            for x in (2.,-2.):
+                for _ in range(6): x=max(0,x+.1)
+                values.append([2*x+.25,-x-.5])
+            expected=torch.tensor(values)
+        elif name=='MultiHeadAttention':
+            model=cls(heads=2,d_model=4)
+            inputs=[torch.ones(1,2,4),torch.ones(1,2,4),torch.arange(1,9,dtype=torch.float32).reshape(1,2,4)]
+            with torch.no_grad():
+                for parameter in model.parameters(): parameter.zero_()
+                model.v_linear1.copy_(torch.eye(4)); model.out.weight.copy_(torch.eye(4))
+                model.out.bias.copy_(torch.tensor([.25,.5,.75,1.]))
+            expected=torch.tensor([3.25,4.5,5.75,7.]).reshape(1,1,4).expand(1,2,4)
+        elif name=='NormalAttention_embedded_gaussian':
+            model=cls(input_channel_num=4); inputs=[torch.arange(1,9,dtype=torch.float32).reshape(1,4,1,2)]
+            with torch.no_grad():
+                for parameter in model.parameters(): parameter.zero_()
+                model.value_conv.weight.copy_(torch.eye(4).reshape(4,4,1,1))
+                model.gamma.weight.copy_(torch.eye(4).reshape(4,4,1,1))
+                model.gamma.bias.copy_(torch.tensor([.25,.5,.75,1.]))
+            expected=torch.tensor([1.75,4.,6.25,8.5]).reshape(1,4,1,1).expand(1,4,1,2)
+        elif name=='PositionWiseFeedForward':
+            model=cls(d_model=3,hidden_size=2); inputs=[torch.tensor([[[-1.,2.,5.]]])]
+            with torch.no_grad():
+                for parameter in model.parameters(): parameter.zero_()
+                model.layer_norm.weight.copy_(torch.tensor([1.,2.,3.]))
+                model.layer_norm.bias.copy_(torch.tensor([-1.,.5,2.]))
+            expected=torch.tensor([[[(x-2)/math.sqrt(6+1e-5)*w+b
+                                     for x,w,b in zip((-1,2,5),(1,2,3),(-1,.5,2))]]])
+        elif name=='SimpleMatmulModule':
+            model=cls(); inputs=[torch.tensor([[1.,-2.],[3.,4.]]),torch.tensor([[2.,1.],[0.,-1.]])]
+            expected=torch.tensor([[4.,6.],[12.,-2.]])
+        elif name=='SoftmaxModule':
+            model=cls(1); inputs=[torch.tensor([[0.,math.log(2),math.log(3)]])]
+            expected=torch.tensor([[1/6,2/6,3/6]])
+        elif name=='TransformerFFNLayer':
+            model=cls(hidden_size=2,filter_size=3); inputs=[torch.tensor([[[1.,-2.]],[[-1.,3.]]])]
+            weights={'ffn1weight':torch.tensor([[1.,0.],[0.,1.],[1.,1.]]).reshape(3,2,1),
+                     'ffn1bias':torch.tensor([.1,.2,.3]),'ffn2weight':torch.tensor([[1.,2.,-1.],[.5,-.5,2.]]),
+                     'ffn2bias':torch.tensor([.25,-.75])}
+            with torch.no_grad():
+                for key,value in model.named_parameters(): value.copy_(weights[key.replace('.','').replace('_','')])
+            values=[]
+            for x,y in ((1.,-2.),(-1.,3.)):
+                g=[z*.5*(1+math.erf(z/math.sqrt(2))) for z in (x+.1,y+.2,x+y+.3)]
+                values.append([[g[0]+2*g[1]-g[2]+.25,.5*g[0]-.5*g[1]+2*g[2]-.75]])
+            expected=torch.tensor(values)
+        elif name=='Transpose':
+            model=cls(); inputs=[torch.arange(6,dtype=torch.float32).reshape(2,3)]
+            expected=torch.tensor([[0.,3.],[1.,4.],[2.,5.]])
+            # Every declared transpose requires a real layout conversion; no
+            # degenerate no-copy case is subjected to an invented no-alias rule.
+            module=import_path(root/args.module); init_args,init_kwargs=module.get_init_inputs()
+            reference=module.Transpose(*init_args,**init_kwargs)
+            for row in json.loads((root/'workload.json').read_text())['cases']:
+                desc=row['params']['inputs'][0]
+                original=torch.empty_strided(desc['shape'],desc['stride'],device='meta')
+                assert not original.transpose(reference.dim1,reference.dim2).is_contiguous()
+        elif name=='layer_normalization':
+            model=cls(3); inputs=[torch.tensor([[-1.,2.,5.]])]
+            with torch.no_grad():
+                model.gamma.copy_(torch.tensor([2.,3.,4.])); model.beta.copy_(torch.tensor([.1,.2,.3]))
+            expected=torch.tensor([[(x-2)/(3+1e-8)*g+b for x,g,b in zip((-1,2,5),(2,3,4),(.1,.2,.3))]])
+        elif name=='Gather':
+            model=cls(dim=1); inputs=[torch.tensor([[1.,2.,3.],[4.,5.,6.]]),torch.tensor([2,0])]
+            expected=torch.tensor([[3.,1.],[6.,4.]])
+        elif name=='PositionEmbedder':
+            model=cls(max_sequence_length=3,embedding_dim=2)
+            with torch.no_grad(): model.embedding.weight.copy_(torch.tensor([[0.,0.],[2.,-3.],[4.,-6.]]))
+            inputs=[torch.arange(1,7,dtype=torch.float32).reshape(1,3,2)]
+            expected=torch.tensor([[[1.,2.],[5.,1.],[9.,0.]]])
+        else:
+            raise AssertionError('Missing independent oracle for '+name)
+        model.eval(); pristine=copy.deepcopy(inputs); state=copy.deepcopy(model.state_dict())
+        actual=model(*inputs)
+        torch.testing.assert_close(actual,expected,rtol=1e-4,atol=1e-5)
+        assert not torch.allclose(actual,torch.zeros_like(actual))
+        for old,new in zip(pristine,inputs):
+            torch.testing.assert_close(old,new,rtol=0,atol=0)
+            assert actual.untyped_storage().data_ptr()!=new.untyped_storage().data_ptr()
+        for key,value in model.state_dict().items(): torch.testing.assert_close(value,state[key],rtol=0,atol=0)
+
+
 @pytest.mark.parametrize('relative', ['hip2hip/gpumode/FusedLeakyReLU',
                                       'torch2hip/gpumode/10190_FusedLeakyReLU'])
 @pytest.mark.parametrize('defect', ['none', 'omit_bias', 'wrong_channel', 'fixed_slope', 'fixed_scale'])
@@ -967,7 +1544,7 @@ def test_fused_timed_replay_uses_nonzero_manifest_reference(relative, defect, mo
             return output
 
         kwargs['timed_run']._bind(captured, output)
-        return .25, {'benchmark_method': 'cuda_graph'}
+        return .25, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph'}
 
     def cal_kernel_perf(rtol=1e-4, atol=1e-5): pass
     perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf,
@@ -1041,7 +1618,7 @@ def test_fused_changed_input_replay_restores_scored_workload(relative, role, beh
                 x.add_(1)
             return output
         kwargs['timed_run']._bind(replay, output)
-        return .25, {'benchmark_method': 'cuda_graph'}
+        return .25, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph'}
 
     def cal_kernel_perf(rtol=1e-4, atol=1e-5): pass
     def compare(expected, actual, *, rtol, atol):
@@ -1073,3 +1650,242 @@ def test_fused_changed_input_replay_restores_scored_workload(relative, role, beh
     if behavior == 'cached_answer':
         # Last comparison used the new oracle and the deliberately stale answer.
         assert not torch.allclose(*compared[-1], rtol=1e-4, atol=1e-5)
+
+
+@pytest.mark.parametrize('relative', ['hip2hip/gpumode/InnerProd', 'torch2hip/gpumode/11709_InnerProd'])
+def test_innerprod_manifest_affine_state_and_negative_controls(relative):
+    root = ROOT / 'tasks' / relative
+    helper = import_path(root / 'eval_tools/case_controls.py')
+    rows = json.loads((root / 'workload.json').read_text())['cases']
+    helper.validate_controls(rows)
+    args = options(yaml.safe_load((root / 'config.yaml').read_text()))
+    channels = rows[0]['params']['inputs'][1]['shape'][1]
+    models = [import_path(root / name).InnerProd(channels).eval() for name in (args.module, args.functional)]
+    image = (torch.arange(1, channels + 1, dtype=torch.float32) / channels).reshape(1, 1, channels)
+    sound = torch.arange(1, channels * 2 + 1, dtype=torch.float32).reshape(1, channels, 1, 2) / (channels * 2)
+    scale = torch.tensor([.5 + .5 * (c + 1) / channels for c in range(channels)])
+    pure_sum = torch.stack([sum(image[0, 0, c] * sound[0, c, 0, j] for c in range(channels)) for j in range(2)]).reshape(1, 1, 1, 2)
+    weighted = torch.stack([sum(image[0, 0, c] * scale[c] * sound[0, c, 0, j] for c in range(channels)) for j in range(2)]).reshape(1, 1, 1, 2)
+    for row in rows:
+        pristine = [image.clone(), sound.clone()]
+        rng = torch.random.get_rng_state().clone()
+        declared = [torch.empty(v['shape'], device='meta') for v in row['params']['inputs']]
+        assert helper.configure_models(models, declared) == row['params']['operator']
+        bias = row['params']['operator']['bias']
+        expected = weighted + bias
+        for model in models:
+            actual = model(image, sound)
+            torch.testing.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
+            torch.testing.assert_close(model.scale, scale, rtol=0, atol=0)
+            assert model.bias.item() == bias
+        assert not torch.allclose(expected, pure_sum + bias, rtol=1e-4, atol=1e-4)
+        assert not torch.allclose(expected, weighted, rtol=1e-4, atol=1e-4)
+        assert torch.equal(torch.random.get_rng_state(), rng)
+        for old, new in zip(pristine, [image, sound]):
+            torch.testing.assert_close(old, new, rtol=0, atol=0)
+    invalid = copy.deepcopy(rows)
+    for row in invalid:
+        row['params']['operator']['bias'] = 0
+    with pytest.raises(ValueError, match='nonzero bias'):
+        helper.validate_controls(invalid)
+
+
+@pytest.mark.parametrize('path', EXTENSIONS, ids=lambda p: p.parent.name)
+@pytest.mark.parametrize('role', ['baseline', 'candidate'])
+@pytest.mark.parametrize('fault', ['none', 'input', 'parameter', 'buffer', 'exception'])
+def test_all_python_timed_paths_preserve_and_restore_state(path, role, fault, monkeypatch):
+    helper = import_path(path.parent / 'eval_tools/replay_validation.py')
+    runner = import_path(path.parent / 'eval_tools/evaluate.py')
+    timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
+    monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    class Model(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.tensor(2.))
+            self.register_buffer('offset', torch.tensor(.5))
+        def forward(self, x, fn=None):
+            return torch.nn.functional.gelu(x * self.weight + self.offset) if fn is None else fn(x, self.weight, self.offset)
+    model = Model().eval()
+    x = torch.tensor([-1., .5, 2.])
+    original = x.clone()
+    def candidate(x, weight, offset):
+        return torch.nn.functional.gelu(x * weight + offset)
+    def benchmark(invoke, **kwargs):
+        assert kwargs['warmup'] == 10 and kwargs['repetition'] == 100
+        output = invoke().detach()
+        def replay():
+            assert torch.isnan(output).all()
+            with torch.no_grad():
+                output.copy_(candidate(x, model.weight, model.offset))
+                if fault in ('input', 'exception'): x.add_(1)
+                if fault in ('parameter', 'exception'): model.weight.add_(1)
+                if fault in ('buffer', 'exception'): model.offset.add_(1)
+                if fault == 'exception': raise RuntimeError('deliberate replay failure')
+            return output
+        kwargs['timed_run']._bind(replay, output)
+        return .25, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph'}
+    def cal_kernel_perf(rtol=1e-4, atol=1e-5): pass
+    perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf, cal_modu_latency=None,
+        benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)
+    helper.install(perf, runner.output_contract)
+    def run():
+        return perf.cal_modu_latency(model, [x]) if role == 'baseline' else perf.cal_hip_latency(model, [x], candidate)
+    if fault == 'none':
+        _, meta = run()
+        assert meta['input_state_restored'] and meta['model_state_validation_valid']
+        assert meta['model_state_tensor_count'] == 2
+    else:
+        with pytest.raises((ValueError, RuntimeError, AssertionError)):
+            run()
+    torch.testing.assert_close(x, original, rtol=0, atol=0)
+    assert model.weight.item() == 2 and model.offset.item() == .5
+
+
+@pytest.mark.parametrize('path', [p for p in EXTENSIONS if 'level2' in p.parts or 'level3' in p.parts], ids=lambda p: p.parent.name)
+def test_level23_references_against_independent_small_answers(path):
+    args = options(yaml.safe_load(path.read_text()))
+    name = args.model_class
+    constructors = {
+        'Conv2d_InstanceNorm_Divide': (1, 4, 1, 2),
+        'Matmul_Swish_Sum_GroupNorm': (4, 4, 2, (4,)),
+        'Matmul_Scaling_ResidualAdd': (4, 4, 2),
+        'Conv2d_Subtract_Tanh_Subtract_AvgPool': (1, 4, 1, .2, .3, 2),
+        'Conv2d_Activation_BatchNorm': (1, 4, 1),
+        'Matmul_MaxPool_Sum_Scale': (4, 4, 2, 3),
+        'Matmul_Swish_Scaling': (4, 4, 2),
+        'Matmul_Dropout_Softmax': (4, 4, .7),
+        'Conv3d_Softmax_MaxPool_MaxPool': (1, 4, 1, 2),
+        'Conv2d_BatchNorm_Scaling': (1, 4, 1, 2),
+        'Conv2d_Tanh_Scaling_BiasAdd_Max': (1, 4, 1, 2, (4, 1, 1), 2),
+        'Conv2d_GroupNorm_Scale_MaxPool_Clamp': (1, 4, 1, 2, (4, 1, 1), 2, -.4, .7),
+        'Matmul_Divide_GELU': (4, 4, 2),
+        'Matmul_AvgPool_GELU_Scale_Max': (4, 4, 2, 3),
+        'Matmul_GELU_Softmax': (4, 4),
+        'VisionAttention': (4, 2),
+        'MinGPTCausalAttention': (4, 2, .6, .7, 4),
+        'MiniGPTBlock': (4, 2, .6, .7, 4),
+    }
+    def norm(v, axes):
+        mean = v.mean(axes, keepdim=True)
+        return (v - mean) / ((v - mean).square().mean(axes, keepdim=True) + 1e-5).sqrt()
+    def softmax(v, dim):
+        exp = (v - v.max(dim, keepdim=True).values).exp()
+        return exp / exp.sum(dim, keepdim=True)
+    def gelu(v):
+        return .5 * v * (1 + (v / math.sqrt(2)).erf())
+    def pool2(v, mean=False):
+        rows = []
+        for i in range(0, v.shape[-2], 2):
+            cols = []
+            for j in range(0, v.shape[-1], 2):
+                block = v[..., i:i+2, j:j+2]
+                cols.append(block.mean((-2, -1)) if mean else block.amax((-2, -1)))
+            rows.append(torch.stack(cols, -1))
+        return torch.stack(rows, -2)
+    for filename in (args.module, args.functional):
+        model = getattr(import_path(path.parent / filename), name)(*constructors[name]).eval()
+        with torch.no_grad():
+            if name.startswith('Matmul'):
+                x = torch.tensor([[-1., 2., .5, 3.], [2., -1., 1., .2]])
+                linear = getattr(model, 'matmul', getattr(model, 'linear', None))
+                weights = torch.tensor([[1., 2., 0., -1.], [.5, 0., 1., 2.], [0., -1., 2., .5], [2., 1., -.5, 0.]])
+                bias = torch.tensor([.2, -.3, .4, -.1])
+                linear.weight.copy_(weights); linear.bias.copy_(bias)
+                v = torch.stack([sum(x[:, c] * weights[r, c] for c in range(4)) + bias[r] for r in range(4)], 1)
+                if name == 'Matmul_Swish_Sum_GroupNorm':
+                    model.bias.copy_(bias)
+                    z = v / (1 + (-v).exp()) + bias
+                    expected = norm(z.reshape(2, 2, 2), (2,)).reshape(2, 4)
+                elif name == 'Matmul_Scaling_ResidualAdd': expected = 3 * v
+                elif name == 'Matmul_MaxPool_Sum_Scale': expected = 3 * v.reshape(2, 2, 2).max(-1).values.sum(-1)
+                elif name == 'Matmul_Swish_Scaling': expected = 2 * v / (1 + (-v).exp())
+                elif name == 'Matmul_Dropout_Softmax': expected = softmax(v, 1)
+                elif name == 'Matmul_Divide_GELU': expected = gelu(v / 2)
+                elif name == 'Matmul_AvgPool_GELU_Scale_Max': expected = (3 * gelu(v.reshape(2, 2, 2).mean(-1))).max(-1).values
+                else: expected = softmax(gelu(v), 1)
+            elif name.startswith('Conv'):
+                is3d = name.startswith('Conv3d')
+                x = torch.arange(512 if is3d else 16, dtype=torch.float32).reshape((1, 1, 8, 8, 8) if is3d else (1, 1, 4, 4)) / 10 - .7
+                weights = torch.tensor([-.5, .75, 1.25, 2.])
+                bias = torch.tensor([.1, -.2, .3, -.4])
+                model.conv.weight.copy_(weights.reshape_as(model.conv.weight)); model.conv.bias.copy_(bias)
+                shape = (1, 4) + (1,) * (x.ndim - 2)
+                v = x * weights.reshape(shape) + bias.reshape(shape)
+                if name == 'Conv2d_InstanceNorm_Divide': expected = norm(v, (-2, -1)) / 2
+                elif name == 'Conv2d_Subtract_Tanh_Subtract_AvgPool': expected = pool2((v - .2).tanh() - .3, mean=True)
+                elif name in ('Conv2d_Activation_BatchNorm', 'Conv2d_BatchNorm_Scaling'):
+                    model.bn.running_mean.copy_(bias); model.bn.running_var.copy_(torch.tensor([.5, 1., 1.5, 2.]))
+                    z = v * (1 + v.exp()).log().tanh() if name == 'Conv2d_Activation_BatchNorm' else v
+                    expected = (z - bias.reshape(shape)) / (model.bn.running_var.reshape(shape) + model.bn.eps).sqrt()
+                    if name == 'Conv2d_BatchNorm_Scaling': expected *= 2
+                elif name == 'Conv2d_Tanh_Scaling_BiasAdd_Max':
+                    model.bias.copy_(bias.reshape(4, 1, 1)); expected = pool2(2 * v.tanh() + bias.reshape(shape))
+                elif name == 'Conv2d_GroupNorm_Scale_MaxPool_Clamp':
+                    model.scale.copy_(torch.tensor([.5, 1.5, 2., .75]).reshape(4, 1, 1))
+                    z = norm(v.reshape(1, 2, -1), (-1,)).reshape_as(v) * model.scale
+                    expected = pool2(z).clamp(-.4, .7)
+                else:
+                    z = softmax(v, 1)
+                    # Two stride-2 max pools equal max over each disjoint 4^3 cube.
+                    expected = torch.stack([torch.stack([torch.stack([z[..., d:d+4, h:h+4, w:w+4].amax((-3, -2, -1)) for w in (0, 4)], -1) for h in (0, 4)], -2) for d in (0, 4)], -3)
+            else:
+                x = torch.tensor([[[-1., .2, 1., 2.], [2., -.5, .3, 1.], [1., 3., -.4, .5]]])
+                if name == 'VisionAttention':
+                    model.attn.in_proj_weight.zero_(); model.attn.in_proj_weight[8:].copy_(torch.eye(4)); model.attn.in_proj_bias.zero_()
+                    model.attn.out_proj.weight.copy_(torch.eye(4)); model.attn.out_proj.bias.zero_()
+                    v = norm(x + x.mean(1, keepdim=True), (-1,))
+                    x = x.transpose(1, 2).reshape(1, 4, 1, 3)
+                    expected = v.transpose(1, 2).reshape_as(x)
+                else:
+                    attn = model.attn if name == 'MiniGPTBlock' else model
+                    attn.c_attn.weight.zero_(); attn.c_attn.weight[8:].copy_(torch.eye(4)); attn.c_attn.bias.zero_()
+                    attn.c_proj.weight.copy_(torch.eye(4)); attn.c_proj.bias.zero_()
+                    normalized = norm(x, (-1,)) if name == 'MiniGPTBlock' else x
+                    causal = torch.stack([normalized[:, :i+1].mean(1) for i in range(3)], 1)
+                    if name == 'MinGPTCausalAttention': expected = causal
+                    else:
+                        model.mlp.c_fc.weight.zero_(); model.mlp.c_fc.weight[:4].copy_(torch.eye(4)); model.mlp.c_fc.bias.zero_()
+                        model.mlp.c_proj.weight.zero_(); model.mlp.c_proj.weight[:, :4].copy_(torch.eye(4)); model.mlp.c_proj.bias.fill_(.2)
+                        residual = x + causal; v = norm(residual, (-1,))
+                        expected = residual + .5 * v * (1 + (math.sqrt(2/math.pi) * (v + .044715 * v.pow(3))).tanh()) + .2
+            before = x.clone(); state = copy.deepcopy(model.state_dict())
+            actual = model(x)
+            torch.testing.assert_close(actual, expected, rtol=1e-4, atol=1e-5)
+            assert not torch.allclose(actual, torch.zeros_like(actual))
+            torch.testing.assert_close(x, before, rtol=0, atol=0)
+            assert actual.untyped_storage().data_ptr() != x.untyped_storage().data_ptr()
+            for key, value in model.state_dict().items():
+                torch.testing.assert_close(value, state[key], rtol=0, atol=0)
+
+
+@pytest.mark.parametrize('control_index', range(5))
+def test_ball_query_mmcv_exact_zero_boundaries_order_and_padding(control_index):
+    task = ROOT / 'tasks/hip2hip/others/ball_query'
+    h = harness_namespace(task)
+    controls = import_path(task / 'scripts/reference_checks.py')
+    lower, upper, count, xyz, center, expected = list(controls.boundary_controls())[control_index]
+    actual = h.cpu_reference(lower, upper, count, xyz, center)
+    torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+    # Wrong-order and zero-output implementations must fail the same exact gate.
+    wrong = actual.roll(1, dims=-1) if actual.unique().numel() > 1 else torch.zeros_like(actual)
+    with pytest.raises(AssertionError):
+        controls.close(wrong, expected)
+
+
+def test_ball_query_index_validation_has_no_near_zero_or_padding_escape():
+    task = ROOT / 'tasks/hip2hip/others/ball_query'
+    h = harness_namespace(task)
+    tree = ast.parse((task / 'scripts/task_runner.py').read_text())
+    node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'validate_ball_query')
+    ns = dict(vars(h))
+    exec(compile(ast.Module(body=[node], type_ignores=[]), '<index contract>', 'exec'), ns)
+    xyz = torch.tensor([[[1e-4, 0., 0.], [0., 0., 0.], [1., 0., 0.], [2., 0., 0.]]])
+    center = torch.zeros(1, 1, 3)
+    check = ns['validate_ball_query']
+    assert check(torch.tensor([[[1, 2, 1]]], dtype=torch.int32), xyz, center, 1., 2.)
+    for wrong in ([[[0, 2, 1]]], [[[1, 3, 1]]], [[[2, 1, 1]]], [[[1, 2, 0]]]):
+        assert not check(torch.tensor(wrong, dtype=torch.int32), xyz, center, 1., 2.)
+    empty = torch.full((1, 2, 3), 10.)
+    assert check(torch.zeros(1, 1, 3, dtype=torch.int32), empty, center, 1., 2.)
+    assert not check(torch.ones(1, 1, 3, dtype=torch.int32), empty, center, 1., 2.)
