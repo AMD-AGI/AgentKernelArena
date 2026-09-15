@@ -78,6 +78,8 @@ def prepare(harness):
         expected = (ROOT / relative).resolve(strict=True)
         if path != expected and not (expected.is_dir() and path.is_relative_to(expected)):
             raise RuntimeError(f"{module_name} resolved outside the declared implementation: {path}")
+    from operator_imports import configure_operator_packages
+    configure_operator_packages(ROOT)
     if LOCAL_LOADER:
         module = getattr(harness, LOCAL_LOADER)()
         path = Path(module.__file__).resolve()

@@ -26,12 +26,13 @@ baseline:
   correctness_policy: required
 workspace:
   sources:
-  - kind: image
-    image_path: /usr/local/lib/python3.12/dist-packages/vllm
-    destination: vllm
-    exclude:
-    - __pycache__
+  - kind: git
+    url: https://github.com/vllm-project/vllm.git
+    revision: 000c7df9ffd3e470980fd4cd6b8ec1b0585500ff
+    destination: upstream/vllm
   setup:
+  - - python3
+    - scripts/materialize_source.py
   - - python3
     - scripts/setup_task.py
 evaluation:

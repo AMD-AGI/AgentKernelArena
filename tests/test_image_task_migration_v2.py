@@ -634,7 +634,8 @@ def test_original_cases_numerical_policy_and_benchmark_unchanged(directory):
         if name == "run_performance":
             assert isinstance(function.body[-1], ast.Return)
             function.body.pop()  # Return the fresh rows to v2.
-            if directory.name.startswith("mi300x_") or directory.name.startswith("mi355x_vllm_ck_"):
+            if (directory.name.startswith("mi300x_") or directory.name.startswith("mi355x_vllm_ck_")
+                    or directory.name == "mi355x_vllm_triton_kda_linear_attn_kimi_k3"):
                 # Post-migration fix: captured-output correctness after timing.
                 # Remove only the three reviewed additions before comparing the
                 # original measurement body, preserving all timing constants.
@@ -647,12 +648,18 @@ def test_original_cases_numerical_policy_and_benchmark_unchanged(directory):
                          and isinstance(n.value.func, ast.Name) and n.value.func.id == "_assert_timed_outputs"]
                 assert len(collector) == len(check) == 1
                 loop.body = [n for n in loop.body if n not in collector + check]
-                if directory.name.startswith("mi355x_vllm_ck_"):
+                if (directory.name.startswith("mi355x_vllm_ck_")
+                        or directory.name == "mi355x_vllm_triton_kda_linear_attn_kimi_k3"):
                     prep = [n for n in loop.body if isinstance(n, ast.Assign)
                             and isinstance(n.value, ast.Call) and isinstance(n.value.func, ast.Name)
                             and n.value.func.id == "_prepare_timed_check"]
                     assert len(prep) == 1
                     loop.body.remove(prep[0])
+                if directory.name == "mi355x_vllm_triton_kda_linear_attn_kimi_k3":
+                    observer = [n for n in loop.body if isinstance(n, ast.Assign)
+                                and any(isinstance(t, ast.Attribute) and t.attr == "before_sample" for t in n.targets)]
+                    assert len(observer) == 1
+                    loop.body.remove(observer[0])
                 calls = [n for n in ast.walk(loop) if isinstance(n, ast.Call)
                          and isinstance(n.func, ast.Name) and n.func.id == "_benchmark_cuda_graph_or_events"]
                 assert len(calls) == 1
@@ -665,6 +672,21 @@ def test_original_cases_numerical_policy_and_benchmark_unchanged(directory):
                       and n.value.func.id == "_assert_output_contract"]
             assert len(checks) == 1
             loop.body.remove(checks[0])
+        if name == "run_correctness" and directory.name == "mi355x_vllm_triton_kda_linear_attn_kimi_k3":
+            loop = next(n for n in function.body if isinstance(n, ast.For))
+            snapshots = [n for n in loop.body if isinstance(n, ast.Assign)
+                         and any(isinstance(t, ast.Name) and t.id == "before" for t in n.targets)]
+            checks = [n for n in loop.body if isinstance(n, ast.Expr)
+                      and isinstance(n.value, ast.Call) and isinstance(n.value.func, ast.Name)
+                      and n.value.func.id == "_assert_state_result"]
+            assert len(snapshots) == len(checks) == 1
+            loop.body = [n for n in loop.body if n not in snapshots + checks]
+            extended = [n for n in loop.body if isinstance(n, ast.Assign)
+                        and isinstance(n.value, ast.Call) and isinstance(n.value.func, ast.Name)
+                        and n.value.func.id == "_golden"]
+            assert len(extended) == 1
+            index = loop.body.index(extended[0])
+            loop.body[index] = ast.parse("ref = _golden(inp)").body[0]
         assert digest(ast.dump(function, include_attributes=False)) == expected
     for name, expected in evidence["numbers"].items():
         actual = [n.value for n in ast.walk(functions[name])
@@ -1303,6 +1325,94 @@ def test_ck_replay_checks_original_inputs_and_restores_on_failures(name, monkeyp
         h._assert_output_contract(inputs, reference(inputs).flatten())
 
 
+KDA_TASK = TASKS / "mi355x_vllm_triton_kda_linear_attn_kimi_k3"
+
+
+def test_kda_public_source_staging_preserves_edits_and_rejects_collision(tmp_path):
+    shutil.copyfile(KDA_TASK / "config.yaml", tmp_path / "config.yaml")
+    spec = load_task_spec(tmp_path / "config.yaml", task_id="image_kernel/kda")
+    source = spec.to_mapping()["workspace"]["sources"][0]
+    assert source == {"kind":"git", "url":"https://github.com/vllm-project/vllm.git",
+                      "revision":"000c7df9ffd3e470980fd4cd6b8ec1b0585500ff",
+                      "destination":"upstream/vllm"}
+    upstream = tmp_path / "upstream/vllm/vllm"
+    upstream.mkdir(parents=True)
+    (upstream / "__init__.py").write_text("# public package\n")
+    target = Path(spec.candidate.editable[0].path).relative_to("vllm")
+    (upstream / target).parent.mkdir(parents=True)
+    (upstream / target).write_text("def kernel(): return 1\n")
+    stage = load_module(KDA_TASK / "scripts/materialize_source.py")
+    stage.materialize(tmp_path)
+    candidate = tmp_path / "vllm" / target
+    assert candidate.read_bytes() == (upstream / target).read_bytes()
+    candidate.write_text("def kernel(): return 2\n")
+    stage.materialize(tmp_path)
+    assert candidate.read_text() == "def kernel(): return 2\n"
+    (upstream / target).write_text("def kernel(): return 3\n")
+    with pytest.raises(FileExistsError, match="source identity"):
+        stage.materialize(tmp_path)
+
+
+def test_kda_operator_loader_uses_real_leaves_without_model_initializers(tmp_path, monkeypatch):
+    import importlib
+    loader = load_module(KDA_TASK / "scripts/operator_imports.py")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    for name in (*loader.PACKAGES, "vllm", "vllm.third_party", "vllm.third_party.flash_linear_attention"):
+        monkeypatch.setitem(sys.modules, name, sys.modules.get(name))
+        monkeypatch.delitem(sys.modules, name, raising=False)
+        path = tmp_path.joinpath(*name.split("."));path.mkdir(parents=True,exist_ok=True)
+        (path / "__init__.py").write_text("raise RuntimeError('unrelated model initializer')\n" if name in loader.PACKAGES else "# namespace root\n")
+    leaf = tmp_path / "vllm/models/kimi_k3/amd/ops/third_party/kda"
+    leaf.mkdir();(leaf / "__init__.py").write_text("from .chunk import entry\n")
+    (leaf / "chunk.py").write_text("def entry(): return 'public operator'\n")
+    for name in ("vllm.models.kimi_k3.amd.ops.third_party.kda", "vllm.models.kimi_k3.amd.ops.third_party.kda.chunk"):
+        monkeypatch.setitem(sys.modules, name, sys.modules.get(name))
+        monkeypatch.delitem(sys.modules,name,raising=False)
+    loader.configure_operator_packages(tmp_path)
+    module = importlib.import_module("vllm.models.kimi_k3.amd.ops.third_party.kda")
+    assert module.entry() == 'public operator'
+    assert Path(module.entry.__code__.co_filename) == leaf / "chunk.py"
+    outside = tmp_path.parent / "external-kda";outside.mkdir()
+    monkeypatch.setitem(sys.modules,loader.PACKAGES[0],SimpleNamespace(__path__=[str(outside)]))
+    with pytest.raises(RuntimeError,match="another source"):
+        loader.configure_operator_packages(tmp_path)
+
+
+def _kda_scalar_fixture(torch, mode):
+    state = torch.tensor([[[[7.]]],[[[3.]]]],dtype=torch.float32) if mode == 'packed_decode' else torch.tensor([[[[3.]]]])
+    return {"cfg":{"params":{"min_cosine":.999,"max_rel_err":.03}},
+            "mode":mode,"H":1,"D":1,"scale":1.,"num_seqs":1,"seq_len":1,"total_t":1,
+            "segments":[(0,1)],"seg_state0":[torch.tensor([[[3.]]],dtype=torch.float64)],
+            "q":torch.ones(1,1,1,1,dtype=torch.bfloat16),"k":torch.ones(1,1,1,1,dtype=torch.bfloat16),
+            "v":torch.tensor([[[[2.]]]],dtype=torch.bfloat16),
+            "mixed_qkv":torch.tensor([[1.,1.,2.]],dtype=torch.bfloat16),
+            "raw_g":torch.zeros(1,1,1,1),"raw_beta":torch.zeros(1,1,1),
+            "A_log":torch.zeros(1),"dt_bias":torch.zeros(1),"state":state,
+            "state_indices":torch.tensor([1],dtype=torch.int32)}
+
+
+@pytest.mark.parametrize('mode',['chunk','packed_decode'])
+def test_kda_state_reference_and_output_contract(mode, monkeypatch):
+    import math
+    torch = pytest.importorskip('torch')
+    h = load_module(KDA_TASK / 'scripts/task_runner.py');monkeypatch.setattr(h,'_torch',lambda:torch)
+    inp = _kda_scalar_fixture(torch,mode);before = inp['state'].clone()
+    out, states = h._golden(inp,return_state=True)
+    n=math.sqrt(1.+1e-6);decayed=3.*math.exp(-2.5)
+    expected_state=decayed+(2.-decayed/n)*.5/n
+    torch.testing.assert_close(states[0],torch.tensor([[[expected_state]]],dtype=torch.float64))
+    torch.testing.assert_close(out,torch.tensor([[[[expected_state/n]]]],dtype=torch.float64))
+    if mode=='packed_decode':
+        inp['state'][1].copy_(states[0]);result_state=inp['state']
+    else:result_state=torch.stack(states).float()
+    result=(out.bfloat16(),result_state)
+    h._assert_state_result(inp,result,states,before)
+    with pytest.raises(AssertionError,match='BF16'):
+        h._assert_state_result(inp,(out.float(),result_state),states,before)
+    result_state.zero_()
+    with pytest.raises(AssertionError):h._assert_state_result(inp,result,states,before)
+
+
 @pytest.mark.parametrize("dtype_name", ["bfloat16", "float16"])
 def test_hip_paged_cache_layout_matches_scalar_slot_mapping(dtype_name):
     import torch
@@ -1375,3 +1485,68 @@ def test_ck_dispatch_binds_both_stages_and_keeps_quant_contract(monkeypatch, qua
     with pytest.raises(AttributeError):
         h.run_ck_moe(hidden,w1,w2,weights,ids,w1_scale=w1_scale,w2_scale=w2_scale,
             quant_type=EnumValue(quant),activation=EnumValue(0),dtype="bf16",activation_dtype="a")
+
+
+@pytest.mark.parametrize('mode', ['chunk', 'packed_decode'])
+def test_kda_measured_state_requires_observation_and_rejects_corruption(mode, monkeypatch):
+    torch = pytest.importorskip('torch')
+    h = load_module(KDA_TASK / 'scripts/task_runner.py')
+    monkeypatch.setattr(h, '_torch', lambda: torch)
+    inp = _kda_scalar_fixture(torch, mode)
+    check = h._prepare_timed_check(inp)
+    initial = {k: v.clone() for k, v in check['snapshots'].items()}
+    repeats = 3
+    metadata = {'benchmark_effective_repeats': repeats}
+
+    def run_math():
+        out, states = h._repeated_reference(inp, inp['state'].clone(), repeats)
+        if mode == 'packed_decode':
+            inp['state'][inp['state_indices'].long()] = torch.stack(states).float()
+            state = inp['state']
+        else:
+            state = torch.stack(states).float()
+        return (out.bfloat16(), state)
+
+    def measured():
+        for k, value in initial.items(): inp[k].copy_(value)
+        h._observe_timed_sample(inp, check, repeats)
+        return SimpleNamespace(bound=True, outputs=run_math(), rerun=run_math)
+
+    def restored():
+        for key, value in initial.items():
+            assert torch.equal(inp[key], value), key
+
+    timed = measured()
+    h._assert_timed_outputs(inp, timed, metadata, check)
+    restored()
+    timed = measured()
+    timed.outputs[0].zero_()
+    with pytest.raises(AssertionError): h._assert_timed_outputs(inp, timed, metadata, check)
+    restored()
+    timed = measured()
+    inp['raw_beta'].fill_(3)
+    with pytest.raises(AssertionError, match='Readonly'):
+        h._assert_timed_outputs(inp, timed, metadata, check)
+    restored()
+    timed = measured()
+    def corrupt_replay():
+        result = run_math(); inp['raw_g'].fill_(9); return result
+    timed.rerun = corrupt_replay
+    with pytest.raises(AssertionError, match='Readonly'):
+        h._assert_timed_outputs(inp, timed, metadata, check)
+    restored()
+    timed = measured()
+    def fail_replay(): raise RuntimeError('GPU replay failed')
+    timed.rerun = fail_replay
+    with pytest.raises(RuntimeError, match='replay failed'):
+        h._assert_timed_outputs(inp, timed, metadata, check)
+    restored()
+    if mode == 'packed_decode':
+        timed = measured(); check['sample'] = None
+        with pytest.raises(AssertionError, match='did not observe'):
+            h._assert_timed_outputs(inp, timed, metadata, check)
+        restored()
+        timed = measured()
+        with pytest.raises(AssertionError, match='replay count'):
+            h._assert_timed_outputs(inp, timed, {'benchmark_effective_repeats': 2}, check)
+        restored()
