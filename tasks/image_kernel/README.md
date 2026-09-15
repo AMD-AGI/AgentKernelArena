@@ -287,13 +287,21 @@ formatting-file symlink into the same upstream checkout is copied by content;
 links outside that checkout are rejected. These acquisition checks provide no
 GPU correctness or performance evidence.
 
-## Separate vLLM runtime candidate: source inventory only
+## Original vLLM runtime: identity and setup verified
 
 The official `vllm/vllm-openai-rocm:v0.24.0` registry manifest was resolved to
 `vllm/vllm-openai-rocm@sha256:3832d79d9e514ce2e072580689da078726454596d833c8ab803f29f3cea5ea28`.
 Its actual local image ID and RepoDigest both match that digest. The registry
 configuration blob is
 `sha256:ee424d681e1d5644fa96f13cced1e511401e67ef04207bb459c1986d35ab84e7`.
+
+The six tasks below record
+`harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0` in their
+original `session_cases.json`. Inspection from the allocated compute node in
+job 139130 confirmed that this original registry manifest exactly equals the
+official manifest, including the digest, configuration and layers. The two
+references identify the same image content. The Harbor hostname did not resolve
+on the development host; it did resolve on the compute node.
 
 During job 139130, a separate container **without GPU devices** inspected this
 image. It contains every declared candidate file and top-level entrypoint for:
@@ -309,8 +317,10 @@ Observed package metadata: Python 3.12.13, Torch `2.11.0+gitd0c8b1f`,
 Triton 3.6.0, vLLM `0.24.0+rocm723`, TileLang 0.1.10 and FlyDSL 0.1.4.2.
 The installed vLLM package uses the task-declared
 `/usr/local/lib/python3.12/dist-packages/vllm` layout. No source redirection to
-AITER is needed or permitted. These are file/AST/package observations, **not**
-GPU import, compile, correctness, timing or task-validator passes.
+AITER is needed or permitted. A separate CPU-only container also completed real
+framework materialization and every declared setup command for all six tasks,
+using frozen source `69e3436f`. These are source and setup checks, **not** GPU
+import, compile, correctness, timing or task-validator passes.
 
 The next qualification uses a separate run with `AKA_DOCKER_IMAGE` set to the
 above digest and only the matching vLLM tasks. Each run must freeze its own
@@ -320,8 +330,11 @@ copied into the newer SGLang image.
 
 Kimi KDA is a separate unresolved dependency: this official image lacks its
 `models/kimi_k3/amd/ops/third_party/kda` and corresponding shared FLA sources.
-The original task records custom build `0.1.dev19253+g5f76ae224.d20260727`; its
-referenced archived session is unavailable in the current workspace environment.
+The original task records custom build `0.1.dev19253+g5f76ae224.d20260727`. Its
+referenced archived session is visible on the compute node, although not on the
+development host. The accessible archive contains run reports but no matching
+`chunk.py`, `chunk_intra.py`, `chunk_intra_token_parallel.py` or
+`fused_recurrent.py` source files; its original kernel workspace is empty.
 An immutable copy of that build or its exact source/dependencies is needed before
 qualification. Retain the task and report missing sources explicitly; a different
 attention kernel or the speculative-decode entrypoint is not a substitute.
