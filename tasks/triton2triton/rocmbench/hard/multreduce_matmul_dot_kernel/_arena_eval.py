@@ -57,43 +57,44 @@ def benchmark_type(base, plugin, module):
             super().__init__(*args,**kwargs)
 
         def run_benchmark(self,*args,**kwargs):
+            from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events_samples
+            from performance_utils_pytest import _compute_timing_stats
             row=plugin.current_row
             check=prepare(self.context,module)
-            if self.prepare_fn is not None:self.prepare_fn()
-            original=self.op_callable
-            output=original()
-            check(output)
-            if plugin.action=='correctness':
-                row['metrics']={'performance_inputs_checked':True}
-                plugin.exercised.add(row['test_case_id'])
-                return {}
-            observed=[output]
-            def observed_op():
-                value=original()
-                observed[0]=value
-                return value
-            self.op_callable=observed_op
             try:
-                # The common session owns the independent baseline. The old
-                # helper's optional peer/reference timing is not that baseline.
-                kwargs['baseline_callable']=None
-                record=super().run_benchmark(*args,**kwargs)
+                if self.prepare_fn is not None:self.prepare_fn()
+                check(self.op_callable())
+                if plugin.action=='correctness':
+                    row['metrics']={'performance_inputs_checked':True,'readonly_input_checked':True,
+                                    'comparison_policy':'fp16_original_or_bf16_round_then_bias'}
+                    plugin.exercised.add(row['test_case_id'])
+                    return {}
+                timed=TimedRun()
+                # Preserve the original public wrapper and canonical timer's
+                # original defaults. No reference/reset is inserted into timing.
+                times,metadata=benchmark_cuda_graph_or_events_samples(
+                    self.op_callable,warmup=self.config.warm_up,repetition=self.config.repetition,
+                    prepare_fn=self.prepare_fn,use_cuda_graph=self.use_cuda_graph,
+                    fallback_reason=self.fallback_reason,timed_run=timed)
+                check(timed.outputs)
+                check.fresh(timed.outputs)
+                check(timed.rerun())
+                stats=_compute_timing_stats(times,self.config)
+                ms=stats['mean'];method=metadata.get('benchmark_method')
+                if not isinstance(ms,(float,int)) or not math.isfinite(ms) or ms<=0:
+                    raise RuntimeError('Nonpositive/nonfinite device timing')
+                if method not in ('cuda_graph','cuda_event_fallback'):
+                    raise RuntimeError('Missing device timing method')
+                row.update(execution_time_ms=ms,benchmark_method=method,
+                           metadata={'timing_stats':stats,'timed_output_checked':True,
+                                     'fresh_input_replay_checked':True,'readonly_input_checked':True,
+                                     'input_state_restored':True,'poisoned_output_restored':True,
+                                     'comparison_policy':'fp16_original_or_bf16_round_then_bias',
+                                     'device_timing':metadata})
+                plugin.exercised.add(row['test_case_id'])
+                return {'timing_ms':stats,**metadata}
             finally:
-                self.op_callable=original
-            # For graph capture, this aliases the last captured output buffers;
-            # for event timing it is the output of the last measured invocation.
-            # Do not rerun a separate candidate and label it timed evidence.
-            check(observed[0])
-            ms=record['timing_ms']['mean'];method=record.get('benchmark_method')
-            if not isinstance(ms,(float,int)) or not math.isfinite(ms) or ms<=0:
-                raise RuntimeError('Nonpositive/nonfinite device timing')
-            if method not in ('cuda_graph','cuda_event_fallback'):
-                raise RuntimeError('Missing device timing method')
-            row.update(execution_time_ms=ms,benchmark_method=method,
-                       metadata={'timing_stats':record['timing_ms'],'timed_output_checked':True,
-                                 'device_timing':{k:v for k,v in record.items() if k.startswith('benchmark_')}})
-            plugin.exercised.add(row['test_case_id'])
-            return record
+                check.restore()
     return CheckedBenchmark
 
 
@@ -143,6 +144,8 @@ class ReportPlugin:
                 row['status']='PASS'
                 row.pop('reason',None)
                 row.setdefault('metrics',{})['original_pytest_passed']=True
+                for name,value in getattr(report,'user_properties',[]):
+                    if name=='bias_contract':row['metrics'].update(value)
 
 
 def evaluate(role,action):

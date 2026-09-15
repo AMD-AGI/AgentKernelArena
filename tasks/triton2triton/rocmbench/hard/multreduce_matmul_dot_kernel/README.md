@@ -13,9 +13,9 @@ Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|
 with one role and one action. Submitted checks use `ARENA_EVAL_PHASE=candidate_evaluation`.
 The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
 `workloads.json` retains 38 original collected cases, including 24 performance cases.
-Collection is checked against this independent manifest. Original correctness
-functions run unchanged. Performance inputs additionally run the task-local
-oracle in `_arena_reference.py`, before timing and against observed timed output.
+Collection is checked against this independent manifest. Original FP16 correctness
+cases and gates remain, with private input snapshots. Performance inputs additionally run the task-local
+oracle in `_arena_reference.py`, before timing, against actual TimedRun output and after fresh input replay.
 Seeds, case parameters, original assertions/tolerances, launch parameters,
 prepare/reset callbacks, warmups and sample counts are unchanged.
 
@@ -130,3 +130,30 @@ Parameters:
 
 
 
+
+
+## Rounding, memory and replay contract
+
+The original FP16 `atol=1e-3, rtol=1e-2` gate remains unchanged. The original
+performance suite additionally introduced BF16 inputs without a numerical gate.
+For BF16, the contract includes the source's two explicit rounding operations:
+FP32-accumulated GEMM → BF16 → add row bias → BF16. A private FP64 oracle encloses
+FP32 accumulation error by `gamma(2*K) * (abs(A) @ abs(B))`, where
+`gamma(n)=n*2^-24/(1-n*2^-24)`, rounds both endpoints to BF16, adds the exact BF16
+bias, and rounds the endpoints again. All elements must be finite and inside
+that interval. This accounts for cancellation after rounding, without deriving
+thresholds from baseline or candidate errors.
+
+All 38 original case identities, 24 scored workloads, input seeds, autotune
+configurations, shapes, dtypes, warmups, repetitions and device timer are
+unchanged. Two unscored controls use signed fractional products and nonzero
+row-varying bias, including an exact known answer with zero A, for 40 total
+correctness cases. Actual timed output and fresh-input replay use the same
+oracle; inputs and poisoned outputs are restored in `finally`. Allocations stay
+inside the original wrapper, identically for baseline and candidate.
+
+The original loads masked K but omitted M/N, even for existing M=1/N=23 inputs.
+The kernel repair adds M/N masks to those four operand loads, preserving valid
+arithmetic, tiles, signatures and launch options while preventing out-of-bounds
+reads. Frozen baseline and candidate both start from this repaired revision;
+historical timings belong to the earlier kernel revision.

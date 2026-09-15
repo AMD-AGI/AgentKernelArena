@@ -660,6 +660,58 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "test_nonzero_row_bias_control/6c7bb0561c4b150a08b3",
+      "params": {
+        "function": "test_nonzero_row_bias_control",
+        "arguments": {
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS",
+      "coverage": {
+        "M": 16,
+        "N": 32,
+        "K": 128,
+        "dtype": "fp16",
+        "row_bias": "(row % 9 - 4) * 0.5",
+        "states": [
+          "signed_fractional_product",
+          "zero_A_exact_bias",
+          "fresh_A_B_bias"
+        ],
+        "scored": false
+      }
+    },
+    {
+      "test_case_id": "test_nonzero_row_bias_control/8204db70164e97f7f625",
+      "params": {
+        "function": "test_nonzero_row_bias_control",
+        "arguments": {
+          "dtype_str": "bf16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS",
+      "coverage": {
+        "M": 16,
+        "N": 32,
+        "K": 128,
+        "dtype": "bf16",
+        "row_bias": "(row % 9 - 4) * 0.5",
+        "states": [
+          "signed_fractional_product",
+          "zero_A_exact_bias",
+          "fresh_A_B_bias"
+        ],
+        "scored": false
+      }
     }
   ],
   "migration": {
