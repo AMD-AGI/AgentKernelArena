@@ -3937,3 +3937,146 @@ def test_grouped_norm_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_layernorm_gated/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_grouped_layernorm_checks'
+
+
+
+def _bincount_cpu(mapping, tokens, prompt, prefill, masks, counts, *, reset=True):
+    if reset:
+        masks[mapping.long()] = 0
+        counts[mapping.long()] = 0
+    for request in mapping.tolist():
+        p, n = int(prompt[request]), int(prefill[request])
+        for token in tokens[request, :p].unique().tolist():
+            masks[request, token // 32] |= 1 << (token % 32)
+        output = tokens[request, p:n].long()
+        counts[request].scatter_add_(0, output, torch.ones_like(output, dtype=counts.dtype))
+
+
+def test_bincount_pristine_known_answer_signed_bits_and_inactive_rows(monkeypatch):
+    checks = module_at(ROOT/'tasks/triton2triton/vllm/triton_bincount/_arena_checks.py', monkeypatch)
+    mapping = torch.tensor([2, 0], dtype=torch.int32)
+    tokens = torch.tensor([[31, 31, 64, 0, 0], [1, 2, 3, 4, 5], [32, 64, 31, 32, 32]], dtype=torch.int32)
+    prompt, prefill = torch.tensor([2, 0, 3], dtype=torch.int32), torch.tensor([5, 0, 5], dtype=torch.int32)
+    masks, counts = torch.full((3, 3), 17, dtype=torch.int32), torch.full((3, 65), 9, dtype=torch.int32)
+    expected_mask = torch.tensor([[-2147483648, 0, 0], [17, 17, 17], [-2147483648, 1, 1]], dtype=torch.int32)
+    expected_counts = torch.zeros_like(counts)
+    expected_counts[0, 0] = 2; expected_counts[0, 64] = 1
+    expected_counts[1].fill_(9); expected_counts[2, 32] = 2
+    expected = expected_mask, expected_counts
+    checks.check_outputs(checks.reference((mapping, tokens, prompt, prefill), (masks, counts)), expected)
+    _bincount_cpu(mapping, tokens, prompt, prefill, masks, counts)
+    checks.check_outputs((masks, counts), expected)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'mutate_tokens', 'mutate_lengths', 'mutate_mapping',
+                                 'identity_mapping', 'first_block_only', 'ignore_prompt', 'ignore_prefill',
+                                 'wrong_mask', 'wrong_count', 'dtype', 'shape', 'clear_inactive', 'skip_reset'])
+def test_bincount_actual_correctness_partial_mapping_and_launch_tail(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_bincount'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    for name in ('arange', 'randint', 'full', 'zeros', 'tensor'):
+        factory = getattr(torch, name)
+        monkeypatch.setattr(torch, name, lambda *a, _factory=factory, **kw: _factory(*a, **{**kw, 'device': 'cpu'}))
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    calls = []
+    def candidate(mapping, tokens, prompt, prefill, masks, counts, maximum):
+        calls.append((tuple(tokens.shape), counts.shape[1], maximum))
+        if mode == 'mutate_tokens': tokens.zero_()
+        if mode == 'mutate_lengths': prompt.zero_()
+        if mode == 'mutate_mapping': mapping.zero_()
+        if mode == 'identity_mapping': mapping = torch.arange(mapping.numel(), dtype=mapping.dtype)
+        if mode == 'first_block_only': prompt, prefill = prompt.clamp_max(1024), prefill.clamp_max(1024)
+        if mode == 'ignore_prompt': prompt = torch.zeros_like(prompt)
+        if mode == 'ignore_prefill': prefill = torch.full_like(prefill, tokens.shape[1])
+        if mode == 'clear_inactive': masks.zero_(); counts.zero_()
+        _bincount_cpu(mapping, tokens, prompt, prefill, masks, counts, reset=mode != 'skip_reset')
+        if mode == 'wrong_mask': masks.zero_()
+        if mode == 'wrong_count': counts.zero_()
+        if mode == 'dtype': masks.data = masks.long()
+        if mode == 'shape': masks.resize_(1, 1)
+    mod = SimpleNamespace(bincount=candidate)
+    h.load_module = lambda: mod
+    checks.install(h)
+    ok, reason = h.run_correctness(case_index=None if mode == 'correct' else 0)
+    assert ok is (mode == 'correct'), reason
+    if mode == 'correct':
+        assert [c for c in calls if c[0] != (4, 1031)] == [((b, n), v, n) for b, n, v in h.TEST_SHAPES]
+        assert [c for c in calls if c[0] == (4, 1031)] == [((4, 1031), 65, 1031)]
+    assert mod.bincount is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'wrong_replay',
+                                 'mutate_timed', 'mutate_replay', 'zero_tokens_and_outputs',
+                                 'omit_reset', 'raise_replay'])
+def test_bincount_original_atomic_timing_reset_replay_and_restoration(monkeypatch, mode):
+    import inspect
+    task = ROOT/'tasks/triton2triton/vllm/triton_bincount'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h._TimedRun = module_at(ROOT/'src/tools/perf/aka_benchmark.py', monkeypatch).TimedRun
+    for name in ('arange', 'randint', 'full', 'zeros'):
+        factory = getattr(torch, name)
+        monkeypatch.setattr(torch, name, lambda *a, _factory=factory, **kw: _factory(*a, **{**kw, 'device': 'cpu'}))
+    launches, buffers, saved, options = [], [], [], []
+    class Kernel:
+        def __getitem__(self, grid):
+            def launch(mapping, tokens, ts, prompt, prefill, masks, ms, counts, cs, *, BLOCK_SIZE):
+                assert grid == (mapping.numel(), (tokens.shape[1] + 1023)//1024)
+                assert (ts, ms, cs, BLOCK_SIZE) == (tokens.stride(0), masks.stride(0), counts.stride(0), 1024)
+                launches.append(grid)
+                _bincount_cpu(mapping, tokens, prompt, prefill, masks, counts, reset=False)
+            return launch
+    def forbidden_wrapper(*args): raise AssertionError('Original timing targets the JIT launch')
+    mod = SimpleNamespace(_bincount_kernel=Kernel(), bincount=forbidden_wrapper)
+    h.load_module = lambda: mod
+    def benchmark(measured, *, timed_run, **kwargs):
+        fn = inspect.getclosurevars(measured).nonlocals['fn']
+        state = inspect.getclosurevars(fn).nonlocals
+        inputs = tuple(state[k] for k in ('idx_mapping', 'all_token_ids', 'prompt_len', 'prefill_len'))
+        outputs = tuple(state[k] for k in ('prompt_mask', 'output_counts'))
+        assert torch.equal(inputs[0], torch.arange(inputs[0].numel(), dtype=torch.int32))
+        assert (inputs[2] == inputs[1].shape[1]//2).all() and (inputs[3] == inputs[1].shape[1]).all()
+        prepare = kwargs.pop('prepare_fn'); options.append(kwargs)
+        assert prepare.__name__ == 'prepare_kernel'
+        ps = inspect.getclosurevars(prepare).nonlocals
+        assert ps['prompt_mask'] is outputs[0] and ps['output_counts'] is outputs[1]
+        buffers.append(inputs+outputs); saved.append(checks.snapshots(inputs+outputs))
+        outputs[0].fill_(17); outputs[1].fill_(9)
+        prepare()
+        assert all(torch.count_nonzero(v) == 0 for v in outputs)
+        value = measured(); cache = checks.snapshots(outputs)
+        if mode == 'wrong_timed': outputs[1].zero_()
+        if mode == 'mutate_timed': inputs[1].zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('Replay failed')
+            if mode != 'omit_reset': prepare()
+            if mode == 'stale':
+                for v, old in zip(outputs, cache): v.copy_(old)
+            elif mode != 'no_write': measured()
+            if mode == 'wrong_replay': outputs[1].zero_()
+            if mode == 'mutate_replay': inputs[3].zero_()
+            if mode == 'zero_tokens_and_outputs':
+                inputs[1].zero_()
+                for v in outputs: v.zero_()
+            return outputs
+        timed_run._bind(replay, value)
+        return .125, {'benchmark_method': 'cuda_graph', 'effective_repeats': 1}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == 5
+    assert options == [dict(warmup=10, repetition=100, target_ms=20.)] * 5
+    assert launches
+    for (b, n, v), row in zip(h.TEST_SHAPES, rows):
+        assert row['params'] == dict(batch=b, seq_len=n, vocab=v)
+        assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
+        if mode == 'correct': assert row['original_atomic_reset_replay_checked']
+    for values, originals in zip(buffers, saved): checks.unchanged(values, originals)
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_bincount_adapter_installs_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_bincount/_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_bincount_checks'

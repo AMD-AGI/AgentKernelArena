@@ -22,3 +22,18 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+The scored implementation region is the declared `_bincount_kernel` launch.
+As in the original benchmark, its output buffers are zeroed before each sample,
+outside device timing, and the launch uses 10 warmups, 100 samples and the original
+20 ms target. The public `bincount` wrapper remains subject to correctness checks;
+its advanced-index reset is not included in either baseline or candidate timing.
+This reports kernel latency rather than complete wrapper latency.
+
+Protected checks compare both exact integer outputs against CPU histograms and
+bit packing from pristine tokens. An unscored diagnostic covers partial/nonidentity
+request mapping, untouched inactive rows, empty prompt/prefill ranges, bit31/32/64,
+and a 1031-token sequence crossing the launch-block boundary. Performance checks
+the actual timed buffers, then changes all four read-only inputs and validates
+the same captured/eager invocation with its original zero-reset preparation.
+Checks restore all input/output buffers on success or failure. The five scored
+cases, seeds, integer gate, original harness and reset/timing policy are unchanged.
