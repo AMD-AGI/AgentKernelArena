@@ -3486,6 +3486,21 @@ _TRITON_QUANT_NAMES=['dynamic_mxfp8_quant','dynamic_quant_fp8']
 
 
 class _RemoveTritonQuantChecks(_RemoveAddedReplayChecks):
+    def visit_FunctionDef(self, node):
+        if node.name == '_reference_quant':
+            # Only undo the explicitly documented FP8 per-token oracle repair
+            # for historical arithmetic fingerprints, never update old hashes.
+            node.body = [statement for statement in node.body if not (
+                isinstance(statement, ast.If)
+                and isinstance(statement.test, ast.Compare)
+                and getattr(statement.test.left, 'id', None) == 'qdtype'
+                and len(statement.test.ops) == 1
+                and isinstance(statement.test.ops[0], ast.NotEq)
+                and ast.unparse(statement.test.comparators[0]) == 'torch.int8')]
+            if ast.get_docstring(node) == 'Quantization oracle; FP64 resolves FP8 per-token rounding boundaries.':
+                node.body[0] = ast.Expr(ast.Constant('Original reference expressions, including token-path dtype rounding.'))
+        return self.generic_visit(node)
+
     def visit_Expr(self,node):
         call=node.value
         if isinstance(call,ast.Call):
@@ -4302,3 +4317,48 @@ def test_sglang_elementwise_original_inputs_seeds_references_gates_and_timing():
             if isinstance(fn, ast.FunctionDef) and fn.name in functions:
                 normalized = _RemoveSglangElementwiseChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized, include_attributes=False).encode()).hexdigest() == functions[fn.name], (name, fn.name)
+
+
+@pytest.mark.parametrize('factor', [0.5, 1., 2.])
+def test_fp8_token_reference_exact_rational_ties_and_neighbors(factor):
+    from fractions import Fraction
+    import torch
+    task = ROOT / 'tasks/triton2flydsl/aiter/dynamic_quant_fp8'
+    ns = {}
+    _harness_functions(task, {'_reference_quant', '_dtype_max'}, ns)
+    values = [[.4453125, .443359375, .447265625, 2.625],
+              [-.4453125, -.443359375, -.447265625, -2.625]]
+    # Independent rational arithmetic determines each side of the 76 midpoint.
+    scale = Fraction(21, 8) * Fraction(factor) / 448
+    assert Fraction(values[0][0]) * Fraction(factor) / scale == 76
+    assert Fraction(values[0][1]) * Fraction(factor) / scale < 76
+    assert Fraction(values[0][2]) * Fraction(factor) / scale > 76
+    x = (torch.tensor(values) * factor).to(torch.bfloat16)
+    q, observed_scale = ns['_reference_quant'](x, torch.float8_e4m3fn, 'dyn_token')
+    expected = torch.tensor([[80., 72., 80., 448.], [-80., -72., -80., -448.]])
+    assert torch.equal(q.float(), expected)
+    assert observed_scale.dtype == torch.float32
+    assert torch.equal(observed_scale, torch.full((2,), float(scale)))
+    assert torch.equal(x, (torch.tensor(values) * factor).to(torch.bfloat16))
+
+
+@pytest.mark.parametrize('bad_rounding', [False, True])
+def test_fp8_token_runner_known_answer_rejects_wrong_tie_rounding(bad_rounding, tmp_path):
+    task = tmp_path / 'quantizer'
+    shutil.copytree(ROOT / 'tasks/triton2flydsl/aiter/dynamic_quant_fp8', task)
+    if bad_rounding:
+        p = task / 'test_kernel_harness.py'
+        source = p.read_text()
+        old = 'return torch.div(x_f64, scale_f64[:, None]).to(qdtype), scale_f64.float()'
+        assert old in source
+        # Preserve unit-scale extrema while corrupting exact76 ties only.
+        new = 'normalized = torch.div(x_f64, scale_f64[:, None])\n        normalized = torch.where(normalized.abs() == 76., normalized * .99, normalized)\n        return normalized.to(qdtype), scale_f64.float()'
+        p.write_text(source.replace(old, new))
+    result = invoke(task, 'validate-task')
+    assert result.passed == (not bad_rounding), result.reason
+    if bad_rounding:
+        assert 'known answer' in result.reason and 'half-way' in result.reason
+    else:
+        assert len(result.cases) == 48
+        assert len(result.metadata['reference_controls']) == 14
+        assert all(row['negative_output'] == 'rejected' for row in result.metadata['reference_controls'])

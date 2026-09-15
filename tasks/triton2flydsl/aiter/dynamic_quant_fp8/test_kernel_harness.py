@@ -106,7 +106,7 @@ def run_compile():
 
 
 def _reference_quant(x, qdtype, mode, scale=None):
-    """Original reference expressions, including token-path dtype rounding."""
+    """Quantization oracle; FP64 resolves FP8 per-token rounding boundaries."""
     import torch
     if mode == "static":
         return (x / scale).to(qdtype), scale
@@ -115,6 +115,14 @@ def _reference_quant(x, qdtype, mode, scale=None):
         x_max = torch.max(torch.abs(x_f32))
         scale_ref = x_max / _dtype_max(qdtype)
         return (x_f32 / scale_ref).to(qdtype), scale_ref
+    if qdtype != torch.int8:
+        # BF16 inputs have exact FP64 representations. Compute the real-valued
+        # per-row scale/quotient before the one required FP8 rounding. FP32
+        # reciprocal error previously moved exact ties to the adjacent code.
+        x_f64 = x.to(torch.float64)
+        x_max_f64 = x_f64.abs().amax(dim=-1)
+        scale_f64 = torch.div(x_max_f64, torch.full_like(x_max_f64, float(_dtype_max(qdtype))))
+        return torch.div(x_f64, scale_f64[:, None]).to(qdtype), scale_f64.float()
     x_max, _ = torch.max(torch.abs(x), axis=-1)
     scale_ref = x_max.to(torch.float32) / _dtype_max(qdtype)
     return (x * (1 / scale_ref[:, None])).to(qdtype), scale_ref

@@ -1,5 +1,16 @@
 # dynamic_quant_fp8: Triton to FlyDSL task contract
 
+The FP8 dynamic per-token reference computes each row's `amax / max_code` scale
+and normalized values in FP64, then rounds once to FP8 and returns the scale in
+FP32. This explicitly corrects a reference rounding-boundary defect: for BF16
+input `-0.4453125` in a row with `amax=2.625`, scale is exactly `3/512` and the
+normalized value is `-76`; nearest-even FP8 is `-80`. The earlier FP32 reciprocal
+path on gfx950 could instead produce `-72`. Independent exact-rational controls
+cover both signs and adjacent values. Static, dynamic-per-tensor and INT8
+reference expressions remain unchanged. This changes no frozen Triton kernel,
+case, input distribution, seed, tolerance or timing boundary; reference work is
+outside measured calls. Full GPU validation remains required after this repair.
+
 The initial implementation is real **Triton**, not an empty FlyDSL starter.
 Arena freezes it in a separate baseline workspace. The required final backend
 is **FlyDSL**. Finishing with the original Triton implementation is not accepted,
