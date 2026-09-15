@@ -28,26 +28,26 @@ Docker argument tests cover the dated tag, immutable digest, and worker suffix.
 This cache fix needs a fresh GPU task validation; it neither promotes the default
 image nor changes the separately pinned evaluation-tool compatibility gate.
 
-## Image task qualification checkpoint (2026-09-15, 08:58 UTC)
+## Image task qualification checkpoint (2026-09-15, 08:59 UTC)
 
 The v2 follow-up uses complete `task_validator` runs with Codex medium and the
 shared framework finalizer on allocated MI355X GPUs. At this checkpoint,
-**14 of 21 image tasks have a complete PASS whose task tree matches the current
-source**. Nine passed under the explicit SGLang 0.5.19 manifest below; five passed
+**15 of 21 image tasks have a complete PASS whose task tree matches the current
+source**. Ten passed under the explicit SGLang 0.5.19 manifest below; five passed
 under the original, separately pinned vLLM 0.24.0 runtime. The vLLM results are
 not evidence that those tasks work in SGLang 0.5.19.
 
 | Candidate | Completed evidence | Remaining qualification |
 | --- | --- | --- |
 | SGLang 0.5.18 / ROCm 10 | Official manifest/config verification and actual non-root CPU import inventory; FlyDSL 0.3.1. | No GPU task validation has been performed on this candidate. |
-| SGLang 0.5.19 / ROCm 10 | Actual GPU legacy probes plus nine complete v2 image-task PASS; FlyDSL 0.3.2. | Fresh CKTile packing, CK MoE quantization and HIP package-binding checks; other retained tasks still in progress. |
+| SGLang 0.5.19 / ROCm 10 | Actual GPU legacy probes plus ten complete v2 image-task PASS; FlyDSL 0.3.2. | Fresh CKTile packing, CK MoE quantization and HIP package-binding checks; other retained tasks still in progress. |
 
 Jobs 139332 and 139599 use node 100 with two separately masked GPUs. Job 139599
 adds a clean CK block-scale GEMM PASS and requalifies HIP per-tensor quantization;
 its old CKTile packing, CK MoE quantizer API and HIP paged-attention import
 failures are retained. CPU-tested fixes do not upgrade those failed reports.
-SGLang MXFP8 linear has passed its baseline actions but has no new finalized
-report at this checkpoint. Kimi MoE and sparse attention also need fresh PASS.
+SGLang MXFP8 linear also has a fresh complete PASS with its explicitly pinned
+upstream source on the new image. Kimi MoE and sparse attention also need fresh PASS.
 
 The KDA task explicitly ports the retained operator to pinned public upstream
 source because the recorded custom source could not be recovered. Its earlier
