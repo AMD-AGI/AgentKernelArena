@@ -7,7 +7,7 @@ The original harness's primary implementation timing is retained; additional
 reference/operator timings are diagnostic only. `test_kernel_harness.py` defines
 the exact dispatch and allocation boundary for this task. The provided path uses
 the task-local PyTorch model or installed AITER operator specified there, with its
-original graph/event policy. `model.py` is protected reference/source material;
+fixed paired Event timing policy described below. `model.py` is protected reference/source material;
 its presence alone does not select the performance baseline.
 
 There are 5 declared cases in `cases.json`. All original dimensions,
@@ -50,3 +50,16 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+## Paired timing policy
+
+Baseline and candidate both use the task's predetermined Event timing method.
+The provided baseline already selects this method before attempting capture;
+an implemented candidate must use the same method even if it supports Graph
+capture. Selecting Event for the baseline and Graph for the candidate makes
+their timings incomparable and prevents Arena from scoring a correct candidate.
+This repair preserves the baseline method, operator calls, allocations, input
+cases, numerical gates, warmups and sample counts. It does not accept a runtime
+capture failure as permission to switch methods. Diagnostic reference timing
+uses the same fixed method. Prior results from mismatched methods are not valid
+speedups; changed task sources require fresh GPU qualification.

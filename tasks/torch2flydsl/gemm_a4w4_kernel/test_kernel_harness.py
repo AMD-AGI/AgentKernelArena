@@ -233,11 +233,10 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             device_op(a, w)
         torch.cuda.synchronize()
 
-        # The independent aiter starter baseline dispatches hipBLASLt, which is
-        # known to reject stream capture. Keep this unimplemented baseline on a
-        # predetermined Event-only policy; implemented FlyDSL stays Graph-first.
-        use_graph = has_kernel
-        event_reason = None if use_graph else "capture_unsafe_aiter_hipblaslt"
+        # Pair both roles with the provided baseline's fixed Event policy.
+        # A candidate's capture support must not change the scoring method.
+        use_graph = False
+        event_reason = "capture_unsafe_aiter_hipblaslt"
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             lambda: device_op(a, w),
             warmup=0,
@@ -396,11 +395,10 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
             device_op(a, w)
         torch.cuda.synchronize()
 
-        # The independent aiter starter baseline dispatches hipBLASLt, which is
-        # known to reject stream capture. Keep this unimplemented baseline on a
-        # predetermined Event-only policy; implemented FlyDSL stays Graph-first.
-        use_graph = has_kernel
-        event_reason = None if use_graph else "capture_unsafe_aiter_hipblaslt"
+        # Pair both roles with the provided baseline's fixed Event policy.
+        # A candidate's capture support must not change the scoring method.
+        use_graph = False
+        event_reason = "capture_unsafe_aiter_hipblaslt"
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             lambda: device_op(a, w),
             warmup=0,

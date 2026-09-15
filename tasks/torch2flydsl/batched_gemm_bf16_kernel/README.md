@@ -7,7 +7,7 @@ The original harness's primary implementation timing is retained; additional
 reference/operator timings are diagnostic only. `test_kernel_harness.py` defines
 the exact dispatch and allocation boundary for this task. The provided path uses
 the task-local PyTorch model or installed AITER operator specified there, with its
-original graph/event policy. `model.py` is protected reference/source material;
+fixed paired Event timing policy described below. `model.py` is protected reference/source material;
 its presence alone does not select the performance baseline.
 
 There are 5 declared cases in `cases.json`. All original dimensions,
@@ -59,4 +59,17 @@ poisoning occur outside timing, identically for baseline and candidate.
 Explicit Event timing observes the last actual measured sample; its validation
 re-invokes the same eager callable and is not captured graph replay. Graph timing
 validates the actual captured replay. Original shapes, seeds, tolerance, warmup,
-sample counts and Graph/Event selection remain unchanged.
+sample counts remain unchanged. The paired timing policy is specified below.
+
+## Paired timing policy
+
+Baseline and candidate both use the task's predetermined Event timing method.
+The provided baseline already selects this method before attempting capture;
+an implemented candidate must use the same method even if it supports Graph
+capture. Selecting Event for the baseline and Graph for the candidate makes
+their timings incomparable and prevents Arena from scoring a correct candidate.
+This repair preserves the baseline method, operator calls, allocations, input
+cases, numerical gates, warmups and sample counts. It does not accept a runtime
+capture failure as permission to switch methods. Diagnostic reference timing
+uses the same fixed method. Prior results from mismatched methods are not valid
+speedups; changed task sources require fresh GPU qualification.

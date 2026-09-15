@@ -1358,7 +1358,7 @@ def test_torch_gemm_measured_output_and_eager_reinvocation(name, provided, funct
         result = ns[function](verbose=False)
         if function == "run_benchmark":result = json.loads((tmp_path/"build/performance_report.json").read_text())
         assert result[0]["timed_output_correctness"] == result[0]["replay_correctness"] == "PASS"
-        assert calls == [(0,100,batched and not provided,True),(0,100,batched and not provided,False)]
+        assert calls == [(0,100,False,True),(0,100,False,False)]
     else:
         with pytest.raises(AssertionError):ns[function](verbose=False)
     assert torch.equal(a, original[0]) and torch.equal(b, original[1])
@@ -1434,6 +1434,9 @@ def test_torch_gemm_original_benchmark_work_and_sampling_preserved():
         tree = ast.parse((ROOT / "tasks/torch2flydsl" / name / "test_kernel_harness.py").read_text())
         fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function)
         fn = _RemoveAddedReplayChecks().visit(fn)
+        if name == "batched_gemm_bf16_kernel":
+            from test_gemm_paired_timing import normalize_former_role_policy
+            fn = normalize_former_role_policy(fn)
         assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == expected_hash
 
 

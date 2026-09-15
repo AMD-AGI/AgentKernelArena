@@ -251,13 +251,10 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             device_op(x, w)
         torch.cuda.synchronize()
 
-        # The independent aiter starter baseline dispatches hipBLASLt, which is
-        # known to reject stream capture.  Make that case explicitly Event-only
-        # before timing rather than attempting Graph and falling back after a
-        # candidate-controlled failure.  An implemented FlyDSL kernel retains
-        # the normal Graph-first policy.
-        use_graph = has_kernel
-        event_reason = None if use_graph else "capture_unsafe_aiter_hipblaslt"
+        # Pair both roles with the provided baseline's fixed Event policy.
+        # A candidate's capture support must not change the scoring method.
+        use_graph = False
+        event_reason = "capture_unsafe_aiter_hipblaslt"
         timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             lambda: device_op(x, w),
@@ -417,13 +414,10 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
             device_op(x, w)
         torch.cuda.synchronize()
 
-        # The independent aiter starter baseline dispatches hipBLASLt, which is
-        # known to reject stream capture.  Make that case explicitly Event-only
-        # before timing rather than attempting Graph and falling back after a
-        # candidate-controlled failure.  An implemented FlyDSL kernel retains
-        # the normal Graph-first policy.
-        use_graph = has_kernel
-        event_reason = None if use_graph else "capture_unsafe_aiter_hipblaslt"
+        # Pair both roles with the provided baseline's fixed Event policy.
+        # A candidate's capture support must not change the scoring method.
+        use_graph = False
+        event_reason = "capture_unsafe_aiter_hipblaslt"
         timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             lambda: device_op(x, w),
