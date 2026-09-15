@@ -84,3 +84,11 @@ AITER package, other utility members, operators or wildcard members remains
 forbidden. This allowance does not permit AITER operator compute; the final
 candidate's actual calls still undergo FlyDSL and PyTorch-operation checks.
 The six evaluated cases all use quant=False and do not execute that helper.
+
+Module lifetime is held through the whole action: correctness and performance
+reloads may overwrite the same import alias, but previously loaded FlyDSL
+modules remain strongly referenced until the action exits. This prevents old
+compiled-module finalizers from unloading HIP modules during a later graph
+capture. It does not alter kernels, inputs, warmups, samples or the graph policy.
+The motivating failed run reported hipModuleUnload/StreamCaptureUnsupported,
+followed by capture invalidation; a fresh full GPU run must qualify this fix.

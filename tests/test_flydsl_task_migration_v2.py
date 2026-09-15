@@ -6838,6 +6838,7 @@ def test_final_sglang_original_inputs_refs_cases_bit_rules_gates_and_sampling():
 
 class _RemoveQkChecks(_RemoveSglangElementwiseChecks):
     def visit_Expr(self,node):
+        if isinstance(node.value,ast.Call) and getattr(node.value.func,"attr",None)=="append" and getattr(node.value.func.value,"id",None)=="_LOADED_MODULES":return None
         if isinstance(node.value,ast.Call) and getattr(node.value.func,'id',None)=='_checked_qk_outputs':return None
         return super().visit_Expr(node)
 
@@ -7129,3 +7130,18 @@ def test_qk_original_source_passes_static_compile_without_kernel_or_case_edit():
     # Syntax evidence only: GPU compilation/correctness/performance are required
     # again with the corrected dependency policy and unchanged old API source.
     assert hashlib.sha256((task/'kernel.py').read_bytes()).hexdigest()=='be6c11328764ac59054301e1d8a9312287227718eee498731698ddc45079fa46'
+
+
+
+def test_qk_import_lifetime_survives_alias_reload_until_action_end(tmp_path):
+    import gc,weakref,importlib.util,os
+    task=ROOT/'tasks/torch2flydsl/qk_norm_rope_quant_kernel';(tmp_path/'candidate.py').write_text('def flydsl_operator(): return 1\n')
+    alive=[];ns={'os':os,'sys':sys,'importlib':importlib,'KERNEL_FILE':'candidate.py','ARENA_PROVIDED_BASELINE':False,'_LOADED_MODULES':alive}
+    _harness_functions(task,{'_load_module','_require_candidate_outputs'},ns)
+    first=ns['_load_module'](str(tmp_path),'candidate.py','qk_lifetime_fixture');ref=weakref.ref(first);del first
+    second=ns['_load_module'](str(tmp_path),'candidate.py','qk_lifetime_fixture');gc.collect()
+    assert ref() is not None and ref() is not second and len(alive)==2
+    # Alias replacement alone cannot finalize the old GPU module in capture;
+    # the keeper lasts for the action, not an indefinite global framework cache.
+    alive.clear();gc.collect();assert ref() is None
+    sys.modules.pop('qk_lifetime_fixture',None)

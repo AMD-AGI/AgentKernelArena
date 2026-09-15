@@ -28,6 +28,9 @@ from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
 ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
+# Keep earlier correctness imports alive when performance reloads the alias.
+# Old FlyDSL module finalizers may call hipModuleUnload during graph capture.
+_LOADED_MODULES = []
 
 
 def _resolve_kernel_dir():
@@ -48,6 +51,7 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    _LOADED_MODULES.append(mod)
     if filename == KERNEL_FILE:
         _require_candidate_outputs(mod)
     return mod
