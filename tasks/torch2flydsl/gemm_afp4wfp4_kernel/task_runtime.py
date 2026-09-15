@@ -106,7 +106,7 @@ def check_dependencies(paths, final_language=True):
                 parts = set(module.split("."))
                 if parts & forbidden:
                     raise ValueError(f"Protected dependency in candidate: {module}")
-                if final_language and module.split(".")[0] in {"triton", "cupy", "numba"}:
+                if final_language and module.split(".")[0] in {"triton", "cupy", "numba", "aiter", "ctypes", "subprocess"}:
                     raise ValueError(f"Final operator must execute FlyDSL, not {module}")
                 backend_seen |= module == "flydsl" or module.startswith("flydsl.")
         def dotted(node):
@@ -230,8 +230,13 @@ def run(argv):
                 # Each task explicitly binds provided baseline or working candidate.
                 if hasattr(actions,"select_role"): actions.select_role(h, role, provided)
                 if final_language and not provided:
-                    observed = check_flydsl_execution(lambda: actions.check(h))
-                    report["metadata"] = {"flydsl_runtime_invocations":observed}
+                    # Task binding audits each candidate operator invocation;
+                    # reference/baseline launches cannot satisfy this evidence.
+                    observed = actions.check(h)
+                    if not observed:
+                        raise RuntimeError("No FlyDSL candidate operator invocation observed")
+                    report["metadata"] = {"flydsl_runtime_invocations":observed,
+                                          "flydsl_evidence_scope":"candidate_operator_calls"}
                 else: actions.check(h)
                 if action == "performance":
                     report["cases"] = require_result_rows(actions.performance(h),selected,actions.PERFORMANCE_IDS)

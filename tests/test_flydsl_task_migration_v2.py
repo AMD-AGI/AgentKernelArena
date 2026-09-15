@@ -132,6 +132,7 @@ def test_declaring_flydsl_without_executing_it_is_rejected():
 
 
 CANDIDATE_AUDIT_TASKS = [ROOT / "tasks/torch2flydsl" / name for name in (
+    'gemm_a8w8_kernel', 'gemm_a8w8_per_token_scale_kernel', 'gemm_a8wfp4_kernel', 'gemm_afp4wfp4_kernel', 'gemm_afp8wfp8_kernel',
     'gemm_a16w8_blockscale_kernel', 'gemm_a16wfp4_kernel', 'gemm_a4w4_kernel', 'gemm_a8w8_blockscale_kernel',
     "fused_add_rmsnorm_kernel", "fmoe_fp8_blockscale_g1u1_kernel", "fmoe_g1u1_tkw1_kernel", "silu_and_mul_kernel", "dynamic_mxfp8_quant_kernel", "batched_gemm_a8w8_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel",
     "moe_topk_softplus_kernel", "gelu_and_mul_kernel", "gelu_fast_kernel",
@@ -2679,7 +2680,7 @@ def test_fmoe_case_evidence_preserves_real_passes_and_failure_kind(name,fault,mo
     assert [{k:row[k] for k in ('test_case_id','params')} for row in report['cases']]==[{k:row[k] for k in ('test_case_id','params')} for row in manifest]
 
 
-_QUANT_GEMM_CONTROL_NAMES=['gemm_a16w8_blockscale_kernel', 'gemm_a16wfp4_kernel', 'gemm_a4w4_kernel', 'gemm_a8w8_blockscale_kernel']
+_QUANT_GEMM_CONTROL_NAMES=['gemm_a16w8_blockscale_kernel', 'gemm_a16wfp4_kernel', 'gemm_a4w4_kernel', 'gemm_a8w8_blockscale_kernel', 'gemm_a8w8_kernel', 'gemm_a8w8_per_token_scale_kernel', 'gemm_a8wfp4_kernel', 'gemm_afp4wfp4_kernel', 'gemm_afp8wfp8_kernel']
 
 
 class _RemoveQuantGemmChecks(_RemoveAddedReplayChecks):
@@ -2727,9 +2728,9 @@ def test_quant_gemm_actual_timed_output_and_original_quantized_oracle(name,funct
         def to(self,*a):return self
         def eval(self):return self
         def __call__(self,x,y):return oracle(x,y)
-    mmod=types.SimpleNamespace(Model=Model,prepare_mxfp4_values=lambda *a:None,quantize_a8w8_blockscale=lambda x,y:(x,None,y,None))
+    mmod=types.SimpleNamespace(Model=Model,prepare_mxfp4_values=lambda *a:None,quantize_a8w8_blockscale=lambda x,y:(x,None,y,None),quantize_a8w8=lambda x,y:(x,None,y,None))
     kmod=types.SimpleNamespace(**{'flydsl_'+name.removesuffix('_kernel'):compute})
-    monkeypatch.setitem(sys.modules,'aiter',types.SimpleNamespace(gemm_a8w8_blockscale=lambda x,y,*a:compute(x,y)))
+    monkeypatch.setitem(sys.modules,'aiter',types.SimpleNamespace(gemm_a8w8_blockscale=lambda x,y,*a:compute(x,y),gemm_a8w8=lambda x,y,*a:compute(x,y)))
     class Collector:bound=False
     calls=[]
     def benchmark(fn,*,warmup,repetition,timed_run=None,**kwargs):
@@ -2808,3 +2809,13 @@ def test_pa_replay_restores_expanded_scale_storage_without_changing_layout(behav
         with pytest.raises((AssertionError,RuntimeError)):checks.verify_timed_run(timed,**kwargs)
     checks.require_unchanged((query,scale),originals)
     assert scale.stride()==strides and scale.data_ptr()==pointer
+
+
+def test_remaining_quant_gemm_original_inputs_numerics_and_timing_preserved():
+    hashes={'gemm_a8w8_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': '49c41d1fba71eb54e664e556e6081ceb5938aa08214341987d89e65b26cbe740', 'run_benchmark': 'e9cbc03267bff29c1aaf61240ab3363b389563fc7f3dea389ceb7f96f3dd84dd', 'arena_benchmark': '1b94d6280a483fb04e1c8aaebc9848c2ebea4202635ffb20f0b525bf9311e61c'}, 'gemm_a8w8_per_token_scale_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': 'b7f7bb34e20c863b280d9183cf5fe2e53be4ca6e1d77a2b9ba6628b3eaf6a2fd', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': '6126445a23348efcbf4ce6ecb3f7257b13022201408973b491a532002ef510a8', 'run_benchmark': 'dca6bb6cf3914593cc7ae6e3e23b008a3266b9d18cd78dbcb39a5349858b104e', 'arena_benchmark': '363964d370db9089b89b36950d53c1768c03b9eb9b256e4cd691ebb014f3e55d'}, 'gemm_a8wfp4_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '1121be4746b34f62737523a4c3f59090dbf9d1424e471afcf28a02f6345cbdeb', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': 'f3943c326b31dd2b5a5af19af08207cd9ca4adf0e3fb3c8f6bf54bd87a3c1daa', 'run_benchmark': 'ba914faf92c506e87a2884cadf492d0cf88ccebd796267fee9ccdcb2e25e7b6a', 'arena_benchmark': '3f765494cebcd6e7e272c46c087c5deef2da8930eb863fcf3218af19326b1467'}, 'gemm_afp4wfp4_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '58db98b7753e81a8641b5b32bf411d5edef8ad09aafa6f49d8a5a7eee1d7f7f7', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': '91ade3a412df56e545036bf500ce1f9a44153414d0ef684e971ac9381a45aa3b', 'run_benchmark': '28293637bec4ef2e181d77971151d2f0ff1a428b107b8542bb5ec8db9360cac2', 'arena_benchmark': '5aab1be9ee10f65ac072ce7b0565edcf54faef708d1acc4225df52abb9dcaf40'}, 'gemm_afp8wfp8_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': 'c25e2507a4a265cc74e92c592123cc75772bed23a6fb5af6de9a604261a783f0', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': 'e073bf26df3162f6752189650fb9854efb27d39f954b39ea97efde3eb8cdce66', 'run_benchmark': 'd9172d3f2b94921e9574d5eabe8d2c99b521eb12f0d6b4ef8a206bb97e10ad7b', 'arena_benchmark': 'e87e8dbc1508828b5f42cfaa941575f2327ac030a04e1eadd315ee815e707450'}}
+    for name,functions in hashes.items():
+        tree=ast.parse((ROOT/'tasks/torch2flydsl'/name/'test_kernel_harness.py').read_text())
+        for fn in tree.body:
+            if isinstance(fn,ast.FunctionDef) and fn.name in functions:
+                restored=_RemoveQuantGemmChecks().visit(fn)
+                assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
