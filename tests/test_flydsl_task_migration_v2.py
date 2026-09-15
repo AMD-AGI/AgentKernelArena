@@ -576,7 +576,8 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False):
         tree = _RemoveSglangReplayChecks().visit(tree)
         tree = _RemoveTritonBatchedChecks().visit(tree)
         tree = _RemoveTritonQuantChecks().visit(tree)
-    excluded={"_checked_mx_pair","_mx_reference","_compare_mx_pair","_verify_quant_timed","_checked_quant_output","_compare_token_outputs","_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
+        tree = _RemoveMqaChecks().visit(tree)
+    excluded={"_checked_mqa_output","_compare_mqa_output","_verify_mqa_timed","_checked_mx_pair","_mx_reference","_compare_mx_pair","_verify_quant_timed","_checked_quant_output","_compare_token_outputs","_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
               "_reference_softmax","_reference_gemm","_reference_layernorm","_reference_quant"}
     nodes=[]
     for n in tree.body:
@@ -590,7 +591,7 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False):
 def test_triton_preserves_original_harness_semantics_inputs_and_timing():
     for name,expected in TRITON_PROTECTED_SHA256.items():
         task=ROOT/"tasks/triton2flydsl"/name
-        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/dynamic_mxfp8_quant", "aiter/dynamic_quant_fp8", "aiter/batched_gemm_a8w8", "aiter/batched_gemm_bf16", "aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"})==expected,name
+        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/fp8_mqa_logits", "aiter/dynamic_mxfp8_quant", "aiter/dynamic_quant_fp8", "aiter/batched_gemm_a8w8", "aiter/batched_gemm_bf16", "aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"})==expected,name
         cfg=yaml.safe_load((task/"config.yaml").read_text())
         assert cfg["baseline"]["kind"]=="initial_candidate"
         assert cfg["baseline"]["language"]=="triton"
@@ -3609,3 +3610,145 @@ def test_triton_quant_original_inputs_arithmetic_tolerances_and_timing_preserved
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 normalized=_RemoveTritonQuantChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
+
+
+class _RemoveMqaChecks(_RemoveAddedReplayChecks):
+    def visit_Assign(self,node):
+        if len(node.targets)==1 and getattr(node.targets[0],'id',None)=='protected_inputs':return None
+        return super().visit_Assign(node)
+    def visit_Expr(self,node):
+        call=node.value
+        if isinstance(call,ast.Call):
+            if getattr(call.func,'id',None)=='_checked_mqa_output':return None
+            if isinstance(call.func,ast.Attribute) and call.func.attr=='update' and call.args and isinstance(call.args[0],ast.Call) and getattr(call.args[0].func,'id',None)=='_verify_mqa_timed':return None
+        return super().visit_Expr(node)
+    def visit_Return(self,node):
+        if isinstance(node.value,ast.Dict):
+            pairs=[(k,v) for k,v in zip(node.value.keys,node.value.values) if not isinstance(k,ast.Constant) or k.value!='cases']
+            node.value.keys=[k for k,v in pairs];node.value.values=[v for k,v in pairs]
+        return self.generic_visit(node)
+
+
+@pytest.mark.parametrize('window',['full','causal','band'])
+@pytest.mark.parametrize('phase,behavior',[(phase,behavior) for phase in ['correctness','benchmark'] for behavior in ['correct','shape','dtype','device','nan','mask','input_modified','measured_wrong','replay_wrong','cached'] if phase=='benchmark' or behavior not in {'measured_wrong','replay_wrong','cached'}])
+def test_mqa_actual_harness_contract_and_measured_replay(window,phase,behavior,monkeypatch,tmp_path):
+    import torch,math,types
+    t=ROOT/'tasks/triton2flydsl/aiter/fp8_mqa_logits';checks=module(t/'scripts/replay_checks.py');ns={}
+    _harness_functions(t,{'_window_mask','_build_windows','_ref_fp8_mqa_logits','_calc_diff','_checked_mqa_output','_compare_mqa_output','_verify_mqa_timed'},ns)
+    q=torch.tensor([[[1.,0.],[0.,1.]],[[1.,2.],[3.,4.]]]).to(torch.float8_e4m3fn)
+    kv=torch.tensor([[2.,4.],[-1.,3.],[2.,1.]]).to(torch.float8_e4m3fn)
+    inputs=(q,kv,torch.tensor([2.,3.,.5]),torch.tensor([[.5,2.],[1.,.5]]),*ns['_build_windows'](2,3,window,'cpu'))
+    originals=tuple(x.clone() for x in inputs);cached=ns['_ref_fp8_mqa_logits'](*inputs);state={'value':'setup'}
+    def compute(*args,**kwargs):
+        out=ns['_ref_fp8_mqa_logits'](*args)
+        active=phase=='correctness' or state['value']=='measured'
+        if active:
+            if behavior=='shape':out=out[:1]
+            if behavior=='dtype':out=out.double()
+            if behavior=='device':out=out.to('meta')
+            if behavior=='nan':out[0,0]=float('nan')
+            if behavior=='mask':out[0,0]=float('-inf') if window=='full' else 0.
+            if behavior=='input_modified':args[3].mul_(.5)
+        if behavior==state['value']+'_wrong':out.zero_()
+        if state['value']=='replay' and behavior=='cached':out=cached.clone()
+        return out
+    class Collector:bound=False
+    samples=[]
+    def benchmark(fn,*,warmup,repetition,timed_run):
+        samples.append((warmup,repetition));state['value']='measured';timed_run.outputs=fn();timed_run.bound=True;state['value']='setup'
+        def replay():
+            state['value']='replay'
+            try:return fn()
+            finally:state['value']='setup'
+        timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    ns.update(TimedRun=Collector,benchmark_cuda_graph_or_events=benchmark,require_unchanged=checks.require_unchanged,
+        TEST_SHAPES=[(2,3,2,2,window)],_TASK_DIR=str(tmp_path),SOURCE_FILE='candidate.py',Path=Path,json=json,math=math,
+        WARMUP_ITERATIONS=10,BENCHMARK_ITERATIONS=100,load_module=lambda:types.SimpleNamespace(fp8_mqa_logits=compute),make_inputs=lambda *a:inputs)
+    _harness_functions(t,{'run_correctness','run_benchmark'},ns)
+    if phase=='correctness':
+        result=ns['run_correctness'](verbose=False)
+        assert result['correct'] is (behavior=='correct')
+    else:
+        result=ns['run_benchmark'](verbose=False);rows=result['cases']
+        assert len(rows)==1 and rows[0]['test_case_id']=='perf1'
+        if behavior=='correct':
+            assert rows[0]['execution_time_ms']==.1
+            assert rows[0]['timed_output_correctness']==rows[0]['replay_correctness']=='PASS'
+            assert samples==[(0,100)]
+        else:assert rows[0]['execution_time_ms']<0 and rows[0]['benchmark_method']=='benchmark_failed'
+        if behavior!='input_modified':checks.require_unchanged(inputs,originals)
+
+
+@pytest.mark.parametrize('fault',['none','partial','duplicate','wrong_shape','failed','error','aggregate_only'])
+def test_mqa_adapter_accepts_real_dictionary_and_rejects_incomplete_evidence(fault,monkeypatch):
+    import types
+    t=ROOT/'tasks/triton2flydsl/aiter/fp8_mqa_logits';a=module(t/'scripts/task_actions.py');checks=module(t/'scripts/candidate_checks.py')
+    monkeypatch.setitem(sys.modules,'scripts.candidate_checks',checks)
+    rows=[{'shape_id':i+1,'shape':list(sh),'passed':True} for i,sh in enumerate(a.EXPECTED_SHAPES)]
+    if fault=='partial':rows.pop()
+    if fault=='duplicate':rows[-1]=rows[0]
+    if fault=='wrong_shape':rows[0]['shape']=[1,2]
+    if fault=='failed':rows[0]['passed']=False
+    if fault=='error':rows[0]['error']='launch failed'
+    h=types.SimpleNamespace(run_correctness=lambda:{'correct':True,'details':rows})
+    if fault in {'none','aggregate_only'}:assert a.check(h)==[]
+    else:
+        with pytest.raises(RuntimeError):a.check(h)
+    perf=[{'test_case_id':'perf'+str(i+1),'execution_time_ms':.1,'benchmark_method':'cuda_graph'} for i in range(5)]
+    h.run_benchmark=lambda:{'geomean_latency_ms':.1,**({} if fault=='aggregate_only' else {'cases':perf})}
+    if fault=='aggregate_only':
+        with pytest.raises(RuntimeError,match='per-case'):a.performance(h)
+    else:assert a.performance(h)==perf
+    runtime=module(t/'task_runtime.py');manifest=json.loads((t/'cases.json').read_text())['cases']
+    assert len(runtime.require_result_rows(perf,manifest,a.PERFORMANCE_IDS))==5
+    with pytest.raises(ValueError,match='Incomplete'):runtime.require_result_rows(perf[:-1],manifest,a.PERFORMANCE_IDS)
+
+
+def test_mqa_original_gate_allows_diagnostic_allclose_failure_and_exact_mask():
+    import torch
+    t=ROOT/'tasks/triton2flydsl/aiter/fp8_mqa_logits';ns={}
+    _harness_functions(t,{'_window_mask','_calc_diff','_checked_mqa_output','_compare_mqa_output'},ns)
+    inputs=(torch.ones(1,1,1),torch.ones(3,1),None,None,torch.tensor([0]),torch.tensor([2]))
+    expected=torch.tensor([[100.,0.,float('-inf')]]);actual=torch.tensor([[100.,1.,float('-inf')]])
+    assert not torch.allclose(actual[:,:2],expected[:,:2],atol=.05,rtol=.05)
+    ns['_compare_mqa_output'](actual,expected,inputs)
+    for wrong in [torch.tensor([[100.,10.,float('-inf')]]),torch.tensor([[100.,0.,0.]]),torch.tensor([[100.,float('nan'),float('-inf')]])]:
+        with pytest.raises(AssertionError):ns['_compare_mqa_output'](wrong,expected,inputs)
+
+
+def test_mqa_original_reference_inputs_numerics_and_timing_unchanged():
+    task=ROOT/'tasks/triton2flydsl/aiter/fp8_mqa_logits'
+    hashes={'_resolve_dir': 'f6c6d7a4dab024924282dc98fa368522cdf52317955ae50ab0f16a15c976d3a5', '_build_windows': 'bb31644715d1679422d40812492532011b72de480c68c2667f2053c5b0350fdc', 'make_inputs': '9dfd71d62b949164de323b2356fe778ab9706aef83231a0fdcb728217df3ae2c', '_window_mask': 'c6335be54b85da98e91cbf731c9bac2f744a4bc849a1f6365d96c241b58d4a5f', '_ref_fp8_mqa_logits': '937f4764d129d02cf4276b40a9c6ab8e578ed2b4ec3fa8bb9e750d55b889918c', '_calc_diff': '470182b3a4f81f2f3598f3ae11e9c51293b59cfa9dbdd826acff3ad7e82233ac', 'run_correctness': 'f4e131b9ce78144724bccd3a4273a1ef43f29ae10dc1ecc520f87cccce10e6c5', 'run_benchmark': 'a9ab39fa473a0997b7e62b3d07279856df37a35c0cee0a0b21d19c764df65055'}
+    for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
+        if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
+            normalized=_RemoveMqaChecks().visit(fn)
+            assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
+
+
+@pytest.mark.parametrize('fault',['none','partial_correctness','partial_performance','invalid_latency','unknown_method'])
+def test_mqa_real_runner_emits_complete_or_failed_protocol(fault,monkeypatch,capsys):
+    import types
+    t=ROOT/'tasks/triton2flydsl/aiter/fp8_mqa_logits';a=module(t/'scripts/task_actions.py');runtime=module(t/'task_runtime.py');checks=module(t/'scripts/candidate_checks.py')
+    monkeypatch.setitem(sys.modules,'scripts.candidate_checks',checks)
+    details=[{'shape_id':i+1,'shape':list(sh),'passed':True} for i,sh in enumerate(a.EXPECTED_SHAPES)]
+    perf=[{'test_case_id':'perf'+str(i+1),'execution_time_ms':.1,'benchmark_method':'cuda_graph'} for i in range(5)]
+    if fault=='partial_correctness':details.pop()
+    if fault=='partial_performance':perf.pop()
+    if fault=='invalid_latency':perf[0]['execution_time_ms']=-1.
+    if fault=='unknown_method':perf[0]['benchmark_method']='wall_clock'
+    h=types.SimpleNamespace(TEST_SHAPES=a.EXPECTED_SHAPES,run_correctness=lambda:{'correct':True,'details':details},run_benchmark=lambda:{'geomean_latency_ms':.1,'cases':perf})
+    monkeypatch.setattr(runtime,'load_module',lambda name,path:a if name=='arena_task_actions' else h)
+    rc=runtime.run(['baseline','performance'])
+    report=json.loads(capsys.readouterr().out.split('ARENA_EVAL_RESULT=')[-1])
+    assert report['protocol']=='arena-eval-v1' and report['action']=='performance' and report['role']=='baseline'
+    assert rc==(0 if fault=='none' else 1)
+    assert report['status']==('PASS' if fault=='none' else 'FAIL')
+    assert len(report['cases'])==5
+    assert all(row['status']==report['status'] for row in report['cases'])
+    if fault=='none':
+        manifest=json.loads((t/'cases.json').read_text())['cases']
+        assert [row['params'] for row in report['cases']]==[row['params'] for row in manifest]
+        assert all(row['execution_time_ms']==.1 and row['benchmark_method']=='cuda_graph' for row in report['cases'])
+    else:assert all('execution_time_ms' not in row for row in report['cases'])

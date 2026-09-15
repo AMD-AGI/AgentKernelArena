@@ -20,7 +20,8 @@ import os
 import sys
 from pathlib import Path
 
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -174,6 +175,55 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_mqa_output(out, q, kv):
+    import torch
+    if not isinstance(out, torch.Tensor) or out.shape != (q.shape[0], kv.shape[0]) or out.dtype != torch.float32 or out.device != q.device:
+        raise AssertionError("MQA logits must have [query, KV] shape, FP32 dtype and input device")
+
+
+def _compare_mqa_output(out, ref, inputs):
+    import torch
+    q, kv, kv_scales, weights, cu_starts, cu_ends = inputs
+    _checked_mqa_output(out, q, kv)
+    mask = _window_mask(kv.shape[0], cu_starts, cu_ends, out.device)
+    if bool(torch.isnan(out).any()) or not bool(torch.isfinite(out[mask]).all()):
+        raise AssertionError("Non-finite in-window MQA logits")
+    if not torch.equal(torch.isneginf(out), torch.isneginf(ref)):
+        raise AssertionError("MQA logits must retain the exact negative-infinity window mask")
+    if bool(mask.any()):
+        actual, expected = out[mask].float(), ref[mask].float()
+        error = (actual - expected).abs().max()
+        denom = expected.abs().max().item()
+        nme = float((error / denom).item()) if denom > 0 else float(error.item())
+        diff = _calc_diff(actual, expected)
+        # These are the original acceptance gates. allclose remains diagnostic.
+        if nme > 5e-2 or diff > 1e-2:
+            raise AssertionError(f"Numerical mismatch: MQA logits nme={nme}, cos_diff={diff}")
+
+
+def _verify_mqa_timed(timed, inputs, originals, expected):
+    if not timed.bound:
+        raise RuntimeError("Benchmark did not expose measured MQA logits")
+    require_unchanged(inputs, originals)
+    _compare_mqa_output(timed.outputs, expected, inputs)
+    try:
+        # Keep FP8 data and full/causal/band windows unchanged. Scale the two
+        # positive FP32 operands so a cached output cannot satisfy the replay.
+        inputs[2].mul_(0.75)
+        inputs[3].mul_(0.5)
+        changed = tuple(x.clone() for x in inputs)
+        reference = _ref_fp8_mqa_logits(*inputs)
+        timed.outputs.fill_(float("nan"))
+        actual = timed.rerun()
+        require_unchanged(inputs, changed)
+        _compare_mqa_output(actual, reference, inputs)
+    finally:
+        for value, original in zip(inputs, originals):
+            value.copy_(original)
+    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+            "replay_inputs_perturbed": True, "replay_output_poisoned": True}
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -198,8 +248,12 @@ def run_correctness(verbose=True):
             q, kv, kv_scales, weights, cu_starts, cu_ends = make_inputs(
                 s, skv, h, d, window, mod
             )
+            protected_inputs = (q, kv, kv_scales, weights, cu_starts, cu_ends)
+            originals = tuple(x.clone() for x in protected_inputs)
             out = mod.fp8_mqa_logits(q, kv, kv_scales, weights, cu_starts, cu_ends,
                                      clean_logits=True)
+            require_unchanged(protected_inputs, originals)
+            _checked_mqa_output(out, q, kv)
             torch.cuda.synchronize()
 
             # In-window positions must be finite; no NaNs anywhere. Out-of-window
@@ -276,17 +330,23 @@ def run_benchmark(verbose=True):
             q, kv, kv_scales, weights, cu_starts, cu_ends = make_inputs(
                 s, skv, h, d, window, mod
             )
+            protected_inputs = (q, kv, kv_scales, weights, cu_starts, cu_ends)
+            originals = tuple(x.clone() for x in protected_inputs)
+            expected = _ref_fp8_mqa_logits(*protected_inputs)
             for _ in range(WARMUP_ITERATIONS):
                 mod.fp8_mqa_logits(q, kv, kv_scales, weights, cu_starts, cu_ends)
             torch.cuda.synchronize()
 
+            timed = TimedRun()
             ms, bench_meta = benchmark_cuda_graph_or_events(
                 lambda: mod.fp8_mqa_logits(
                     q, kv, kv_scales, weights, cu_starts, cu_ends
                 ),
                 warmup=0,
                 repetition=BENCHMARK_ITERATIONS,
+                timed_run=timed,
             )
+            bench_meta.update(_verify_mqa_timed(timed, protected_inputs, originals, expected))
         except Exception as e:  # noqa: BLE001
             ms = -1.0
             bench_meta = {
@@ -317,7 +377,7 @@ def run_benchmark(verbose=True):
     geomean = math.exp(sum(math.log(x) for x in valid) / len(valid)) if valid else -1.0
     print("-" * 48)
     print(f"Geometric mean latency: {geomean:.4f} ms ({len(valid)}/{len(TEST_SHAPES)} measured)")
-    return {"geomean_latency_ms": geomean}
+    return {"geomean_latency_ms": geomean, "cases": report}
 
 
 if __name__ == "__main__":

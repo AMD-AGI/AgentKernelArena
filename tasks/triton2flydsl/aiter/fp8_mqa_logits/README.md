@@ -52,3 +52,23 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+The effective workload covers all five original full, causal and sliding-band
+windows, including ragged KV lengths and both MFMA size branches. Input generation
+keeps seed 20260617 and the original FP8 magnitudes, positive scales and weights.
+Return FP32 `[query_length, KV_length]` logits on the input device. In-window
+values must be finite; the exact out-of-window mask must be negative infinity.
+The original normalized maximum error <= 0.05 AND cosine difference <= 0.01
+are required. The printed 0.05 allclose result remains a diagnostic, not an
+additional acceptance gate. `clean_logits=True` is the declared correctness and
+benchmark mode (the function default). Export `e4m3_dtype` for input preparation.
+
+All six input tensors are read-only. Final operator calls are audited separately
+from reference/baseline and timing; the operator computation must use FlyDSL.
+The original 10 external warmups and 100 graph samples remain. Actual measured
+logits and poisoned-output replay are compared with the same numerical and mask
+rules after changing the two positive scale/weight inputs. Controls and restoration
+run outside timing. The task runner returns all five individual timing records;
+the legacy geomean field is only a standalone diagnostic. No scores are exported
+by the task and no missing/failed case is accepted.
