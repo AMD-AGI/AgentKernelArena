@@ -53,6 +53,7 @@ def load_harness():
     path = ROOT / 'scripts/task_runner.py'
     spec = importlib.util.spec_from_file_location('_task_harness', path)
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -73,12 +74,14 @@ def evaluate(role, action):
             for dependency in ('torch','triton'):
                 if importlib.util.find_spec(dependency) is None:
                     raise RuntimeError(f'Required runtime dependency unavailable: {dependency}')
-            result['metadata']={'candidate_state':state,'input_table_verified':True}
+            result['metadata']={'candidate_state':state,'input_table_verified':True,
+                                'reference_controls':harness.run_reference_controls()}
         elif action == 'compile':
             ok, error = harness.run_compile()
             if not ok:
                 raise RuntimeError(error or 'Compilation/import check failed')
         elif action == 'correctness':
+            result['metadata']={'unscored_semantic_controls':harness.run_semantic_controls()}
             for index, row in enumerate(cases):
                 try:
                     ok, error = harness.run_correctness(case_index=row['params'].get('case_index', index))
@@ -99,7 +102,7 @@ def evaluate(role, action):
                 ms = record.get('execution_time_ms')
                 method = record.get('benchmark_method')
                 if type(ms) not in (int,float) or not math.isfinite(ms) or ms <= 0:
-                    row.update(status='FAIL', reason='Invalid or failed device measurement', failure_kind='measurement_failure')
+                    row.update(status='FAIL', reason=record.get('error', 'Invalid or failed device measurement'), failure_kind='measurement_failure')
                 elif method not in ('cuda_graph','cuda_event_fallback'):
                     row.update(status='FAIL', reason='Missing/unsupported device timing method', failure_kind='measurement_failure')
                 else:

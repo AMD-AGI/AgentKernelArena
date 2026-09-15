@@ -5,6 +5,10 @@ import math
 
 TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(TASK_DIR)
+if TASK_DIR not in sys.path:
+    sys.path.insert(0, TASK_DIR)
+from scripts.ssd_checks import InputSnapshot, check_outputs, validate_timed
+from scripts import semantic_controls
 SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_ssd_chunk_cumsum.py")
 
 # (seqlen, nheads, chunk_size, has_bias, softplus)
@@ -36,10 +40,14 @@ def _benchmark_cuda_graph_or_events(*args, **kwargs):
     )
 # <<< AKA-GENERATED <<<
 
+_LOADED_MODULES = []
+
+
 def load_module():
     spec = importlib.util.spec_from_file_location("kernel", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    _LOADED_MODULES.append(mod)
     return mod
 
 
@@ -103,10 +111,14 @@ def run_correctness(*, case_index=None):
             A = -torch.rand(nheads, device=device, dtype=torch.float32) * 0.5
             dt_bias = torch.randn(nheads, device=device, dtype=torch.float32) * 0.01 if has_bias else None
             cu = torch.arange(0, nchunks + 1, device=device, dtype=torch.int32) * chunk_size
+            readonly = InputSnapshot(dict(dt=dt, A=A, dt_bias=dt_bias, cu=cu))
             dA_cs, dt_out = mod.chunk_cumsum_fwd(dt, A, chunk_size, cu, dt_bias=dt_bias, dt_softplus=softplus)
+            readonly.check()
             ref_dA, ref_dt = reference(dt, A, chunk_size, cu, dt_bias, softplus)
             ref_dA = ref_dA.to(device)
             ref_dt = ref_dt.to(device)
+            check_outputs((dA_cs, dt_out), (ref_dA, ref_dt), atol=1e-3, rtol=1e-3,
+                          inputs=[e[1] for e in readonly.entries])
             if not torch.allclose(dA_cs, ref_dA, atol=1e-3, rtol=1e-3):
                 diff = (dA_cs - ref_dA).abs().max().item()
                 return False, f"Shape {i} dA_cumsum: max diff={diff}"
@@ -135,13 +147,20 @@ def run_performance():
             A = -torch.rand(nheads, device=device, dtype=torch.float32) * 0.5
             dt_bias = torch.randn(nheads, device=device, dtype=torch.float32) * 0.01 if has_bias else None
             cu = torch.arange(0, nchunks + 1, device=device, dtype=torch.int32) * chunk_size
+            readonly = InputSnapshot(dict(dt=dt, A=A, dt_bias=dt_bias, cu=cu))
+            from _aka_benchmark import TimedRun
+            timed = TimedRun()
             def _bench_fn():
-                mod.chunk_cumsum_fwd(dt, A, chunk_size, cu, dt_bias=dt_bias, dt_softplus=softplus)
+                return mod.chunk_cumsum_fwd(dt, A, chunk_size, cu, dt_bias=dt_bias, dt_softplus=softplus)
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
                 _bench_fn,
                 warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS,
+                timed_run=timed,
             )
+            benchmark_metadata.update(validate_timed(
+                timed, readonly, lambda: tuple(x.to(device) for x in reference(dt, A, chunk_size, cu, dt_bias, softplus)),
+                lambda: dt.add_(0.25), atol=1e-3, rtol=1e-3))
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
@@ -155,8 +174,9 @@ def run_performance():
                     "softplus": softplus
                 }
             })
-        except Exception:
+        except Exception as exc:
             test_cases.append({
+                "error": f"{type(exc).__name__}: {exc}",
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
                 "params": {
@@ -168,6 +188,14 @@ def run_performance():
                 }
             })
     return test_cases
+
+
+def run_reference_controls():
+    return semantic_controls.reference_controls(sys.modules[__name__])
+
+
+def run_semantic_controls():
+    return semantic_controls.run_controls(load_module(), device="cuda")
 
 
 def main():
@@ -185,6 +213,7 @@ def main():
         if err: print(f"Error: {err}")
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
+        run_semantic_controls()
         ok, err = run_correctness()
         report = {"status": "ok" if ok else "fail", "error": err}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
