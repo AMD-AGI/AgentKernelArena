@@ -174,6 +174,111 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "test_converter_encoding_control/51c3c8126456d170ccee",
+      "params": {
+        "function": "test_converter_encoding_control",
+        "arguments": {
+          "encoding": "e2m1",
+          "e_bits": 2,
+          "m_bits": 1
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS",
+      "coverage": {
+        "rows": 17,
+        "logical_columns": 32,
+        "packed_dtype": "uint8",
+        "output_dtype": "float32",
+        "scale_exponents": [
+          126,
+          127,
+          128
+        ],
+        "packed_codes": [
+          18,
+          171,
+          103,
+          254
+        ],
+        "block_size": 512,
+        "num_warps": 4,
+        "scored": false
+      }
+    },
+    {
+      "test_case_id": "test_converter_encoding_control/7f5b7f79330bd403167f",
+      "params": {
+        "function": "test_converter_encoding_control",
+        "arguments": {
+          "encoding": "e4m3",
+          "e_bits": 4,
+          "m_bits": 3
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS",
+      "coverage": {
+        "rows": 17,
+        "logical_columns": 32,
+        "packed_dtype": "uint8",
+        "output_dtype": "float32",
+        "scale_exponents": [
+          126,
+          127,
+          128
+        ],
+        "packed_codes": [
+          48,
+          184,
+          64,
+          196
+        ],
+        "block_size": 512,
+        "num_warps": 4,
+        "scored": false
+      }
+    },
+    {
+      "test_case_id": "test_converter_encoding_control/7bc53cb0535a40913842",
+      "params": {
+        "function": "test_converter_encoding_control",
+        "arguments": {
+          "encoding": "e5m2",
+          "e_bits": 5,
+          "m_bits": 2
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS",
+      "coverage": {
+        "rows": 17,
+        "logical_columns": 32,
+        "packed_dtype": "uint8",
+        "output_dtype": "float32",
+        "scale_exponents": [
+          126,
+          127,
+          128
+        ],
+        "packed_codes": [
+          56,
+          188,
+          64,
+          194
+        ],
+        "block_size": 512,
+        "num_warps": 4,
+        "scored": false
+      }
     }
   ],
   "migration": {

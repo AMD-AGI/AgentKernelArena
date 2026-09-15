@@ -265,21 +265,41 @@ def test_mxfp_to_bf16_numerical_correctness(request):
     output = torch.empty((rows, 32), device="cuda", dtype=torch.float32)
     block_size = 512
     grid = (triton.cdiv(output.numel(), block_size),)
-    mxfp_to_bf16_kernel[grid](
-        packed,
-        scale,
-        output,
-        rows,
-        2,
-        1,
-        block_size,
-        num_warps=4,
-    )
-    reference = mxfp_to_bf16_torch(packed, scale, "e2m1").float()
-    torch.testing.assert_close(output, reference, atol=0.0, rtol=0.0)
+    from _arena_reference import OutputCheck
+    check = OutputCheck([packed, scale], output, lambda x, s: mxfp_to_bf16_torch(x, s, "e2m1").float(), atol=0.0, rtol=0.0)
+    try:
+        mxfp_to_bf16_kernel[grid](
+            packed,
+            scale,
+            output,
+            rows,
+            2,
+            1,
+            block_size,
+            num_warps=4,
+        )
+        reference = check.expected
+        torch.testing.assert_close(output, reference, atol=0.0, rtol=0.0)
+        check(output)
 
-    result_gold["_CALL_SUCCESS_"] = torch.tensor([[1.0]])
-    result_gold[request.node.name] = output.detach().cpu()
+        result_gold["_CALL_SUCCESS_"] = torch.tensor([[1.0]])
+        result_gold[request.node.name] = output.detach().cpu()
+
+        check.replace([check.original[0] ^ 0x88, torch.full_like(scale, 127)])
+        mxfp_to_bf16_kernel[grid](
+            packed,
+            scale,
+            output,
+            rows,
+            2,
+            1,
+            block_size,
+            num_warps=4,
+        )
+        check(output)
+        request.node.user_properties.append(("mxfp_contract", {"readonly_input_checked": True, "full_output_checked": True, "packed_input_replay_checked": True}))
+    finally:
+        check.restore()
 
 
 @pytest.mark.parametrize("scale", [True, False])
@@ -321,44 +341,86 @@ def test_pipeline_matmul(scale, request, device='cuda'):
     if scale:
         K = scale_a.shape[-1]
     stride_sm, stride_sk = scale_a.stride() if scale else (0, 0)
-    handler = matmul_kernel[grid](a, scale_a, b, output, M, N, K, a.stride(0), a.stride(1), stride_sm, stride_sk,
-                                    b.stride(0), b.stride(1), output.stride(0), output.stride(1), BLOCK_M, BLOCK_N,
-                                    BLOCK_K, NUM_STAGES=NUM_STAGES, a_type=a_type, b_type=b_type)
-    if scale:
-        ref_out = dot_scale_ref(a, scale_a, b, a_type, b_type)
-    else:
-        ref_out = torch.matmul(a, b)
-    # Bigger tolerance for AMD MI200 devices.
-    # MI200 devices use reduced precision fp16 and bf16 and flush input and
-    # output denormal values to zero. Detailed info is at: https://pytorch.org/docs/stable/notes/numerical_accuracy.html#reduced-precision-fp16-and-bf16-gemms-and-convolutions-on-amd-instinct-mi200-devices
+    from _arena_reference import OutputCheck
+    # Original gates: scaled/MI200 1e-2; otherwise dtype-aware PyTorch defaults.
     atol = 1e-2 if is_hip_mi200() or scale else None
     rtol = 1e-2 if is_hip_mi200() or scale else None
+    check = OutputCheck([a, scale_a, b] if scale else [a, b], output,
+                        (lambda x, s, y: dot_scale_ref(x, s, y, a_type, b_type)) if scale else torch.matmul,
+                        atol=atol, rtol=rtol, equal_nan=scale)
+    try:
+        handler = matmul_kernel[grid](a, scale_a, b, output, M, N, K, a.stride(0), a.stride(1), stride_sm, stride_sk,
+                                        b.stride(0), b.stride(1), output.stride(0), output.stride(1), BLOCK_M, BLOCK_N,
+                                        BLOCK_K, NUM_STAGES=NUM_STAGES, a_type=a_type, b_type=b_type)
+        ref_out = check.expected
+        check(output)
+        result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
+        ################### save tri_out in result_gold ###################
+        test_case_name = request.node.name
+        sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
+        result_gold[sanitized_key_name] = output.clone().detach().cpu()
+        ###################################################################
 
-    result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
-    ################### save tri_out in result_gold ###################
-    test_case_name = request.node.name
-    sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
-    result_gold[sanitized_key_name] = output.clone().detach().cpu()
-    ################################################################### 
+
+        torch.testing.assert_close(ref_out, output, atol=atol, rtol=rtol, equal_nan=scale)
+
+        # Unscored known-answer control at an ordinary E8M0 scale. The original
+        # tiny random scales are retained above, but alone can let zero output pass
+        # the unchanged 1e-2 tolerance. All decoded operands here are exactly one.
+        if scale:
+            check.replace([torch.full_like(a, 0x22), torch.full_like(scale_a, 127),
+                           torch.full_like(b, 0x38 if b_type == "e4m3" else 0x3c)])
+            matmul_kernel[grid](a, scale_a, b, output, M, N, K,
+                                a.stride(0), a.stride(1), stride_sm, stride_sk,
+                                b.stride(0), b.stride(1), output.stride(0), output.stride(1),
+                                BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES=NUM_STAGES,
+                                a_type=a_type, b_type=b_type)
+            torch.testing.assert_close(output, torch.full_like(output, scale_a.shape[-1] * 32),
+                                       atol=1e-2, rtol=1e-2)
+
+            check(output)
+            # Change valid packed signs/row scales; no floating perturbation of bytes.
+            changed_a = check.original[0] ^ 0x88
+            changed_scale = (torch.arange(M, device=device) % 3 + 125).to(torch.uint8)[:, None].expand_as(scale_a).clone()
+            changed_b = torch.full_like(b, 0x38 if b_type == "e4m3" else 0x3c)
+            check.replace([changed_a, changed_scale, changed_b])
+            matmul_kernel[grid](a, scale_a, b, output, M, N, K, a.stride(0), a.stride(1), stride_sm, stride_sk,
+                                            b.stride(0), b.stride(1), output.stride(0), output.stride(1), BLOCK_M, BLOCK_N,
+                                            BLOCK_K, NUM_STAGES=NUM_STAGES, a_type=a_type, b_type=b_type)
+            check(output)
+        else:
+            check.fresh(output)
+            matmul_kernel[grid](a, scale_a, b, output, M, N, K, a.stride(0), a.stride(1), stride_sm, stride_sk,
+                                            b.stride(0), b.stride(1), output.stride(0), output.stride(1), BLOCK_M, BLOCK_N,
+                                            BLOCK_K, NUM_STAGES=NUM_STAGES, a_type=a_type, b_type=b_type)
+            check(output)
+        request.node.user_properties.append(("mxfp_contract", {"readonly_input_checked": True, "full_output_checked": True, "fresh_input_replay_checked": True, "scaled_branch_checked": bool(scale)}))
+    finally:
+        check.restore()
 
 
-    torch.testing.assert_close(ref_out, output, atol=atol, rtol=rtol, equal_nan=scale)
-
-    # Unscored known-answer control at an ordinary E8M0 scale. The original
-    # tiny random scales are retained above, but alone can let zero output pass
-    # the unchanged 1e-2 tolerance. All decoded operands here are exactly one.
-    if scale:
-        a.fill_(0x22)
-        scale_a.fill_(127)
-        b.fill_(0x38 if b_type == "e4m3" else 0x3c)
-        output.fill_(float("nan"))
-        matmul_kernel[grid](a, scale_a, b, output, M, N, K,
-                            a.stride(0), a.stride(1), stride_sm, stride_sk,
-                            b.stride(0), b.stride(1), output.stride(0), output.stride(1),
-                            BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES=NUM_STAGES,
-                            a_type=a_type, b_type=b_type)
-        torch.testing.assert_close(output, torch.full_like(output, scale_a.shape[-1] * 32),
-                                   atol=1e-2, rtol=1e-2)
+@pytest.mark.parametrize("encoding,e_bits,m_bits", [("e2m1", 2, 1), ("e4m3", 4, 3), ("e5m2", 5, 2)])
+def test_converter_encoding_control(encoding, e_bits, m_bits, request):
+    from _arena_reference import OutputCheck
+    rows = 17
+    width = 16 if encoding == "e2m1" else 32
+    # Exact finite values, signed and row-scaled; cover the masked final block.
+    codes = {"e2m1": [0x12, 0xab, 0x67, 0xfe], "e4m3": [0x30, 0xb8, 0x40, 0xc4],
+             "e5m2": [0x38, 0xbc, 0x40, 0xc2]}[encoding]
+    packed = torch.tensor(codes, dtype=torch.uint8, device="cuda").repeat(rows, width // 4)
+    scale = (torch.arange(rows, device="cuda") % 3 + 126).to(torch.uint8)
+    output = torch.full((rows, 32), float("nan"), dtype=torch.float32, device="cuda")
+    check = OutputCheck([packed, scale], output, lambda x, s: mxfp_to_bf16_torch(x, s, encoding).float(), atol=0.0, rtol=0.0)
+    def launch():
+        mxfp_to_bf16_kernel[(triton.cdiv(output.numel(), 512),)](packed, scale, output, rows, e_bits, m_bits, 512, num_warps=4)
+    try:
+        launch(); check(output)
+        check.replace([check.original[0] ^ (0x88 if encoding == "e2m1" else 0x80), check.original[1].flip(0)])
+        launch(); check(output)
+        request.node.user_properties.append(("mxfp_contract", {"readonly_input_checked": True, "full_output_checked": True,
+                                                             "packed_input_replay_checked": True, "encoding": encoding}))
+    finally:
+        check.restore()
 
 
 # Define these globally so they are accessible by test_matmul_mxfp_performance

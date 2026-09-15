@@ -13,9 +13,9 @@ Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|
 with one role and one action. Submitted checks use `ARENA_EVAL_PHASE=candidate_evaluation`.
 The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
 `workloads.json` retains 9 original collected cases, including 6 performance cases.
-Collection is checked against this independent manifest. Original correctness
-functions run unchanged. Performance inputs additionally run the task-local
-oracle in `_arena_reference.py`, before timing and against observed timed output.
+Collection is checked against this independent manifest. Original seeded correctness
+cases and gates are retained, with pristine input snapshots and additional replay checks. Performance inputs additionally run the task-local
+oracle in `_arena_reference.py`, before timing, against actual TimedRun output, and after typed input changes and NaN poisoning.
 Seeds, case parameters, original assertions/tolerances, launch parameters,
 prepare/reset callbacks, warmups and sample counts are unchanged.
 
@@ -25,10 +25,8 @@ peer timing is not an Arena baseline and is omitted by this adapter. Candidate
 measurements still use the canonical helper and its original mean device latency.
 Do not edit `performance_utils_pytest.py` or generated benchmark helpers.
 
-Existing skip conditions are retained as visible failures for the complete
-manifest: missing hardware features, unsupported combinations, missing references
-or incomplete execution cannot qualify this task. These require explicit task
-qualification/repair before a campaign; the migration is not a GPU validation.
+Every declared case must execute. Missing hardware features, unsupported
+combinations, missing references or incomplete execution cannot qualify this task.
 A missing/empty final kernel never falls back to a reference or starting kernel.
 
 ## Original operator instructions
@@ -185,3 +183,29 @@ uses exact one-valued decoded operands and ordinary E8M0 exponent 127, whose
 answer is the logical K. It rejects zero-output implementations which the
 original tiny-scale inputs alone could accept at the original 1e-2 tolerance.
 Scored cases, launch parameters, warmups, samples and timing are unchanged.
+
+
+## Scoring and branch coverage
+
+The six original scored cases measure the **unscaled** branch of `matmul_kernel`
+(three shapes × FP16/FP32 inputs; FP16 output). They retain all original tiles,
+stages, warps, seed, warmup 10, repetition 100, device timer and mean reduction.
+There is no separate performance score for conversion or scaled multiplication.
+Those public branches remain required correctness contracts; an implementation
+that removes either cannot pass. All nine existing case identities are retained;
+three unscored converter controls cover E2M1/E4M3/E5M2, signed finite values,
+E8M0 exponents 126/127/128 and the masked final row block, for 12 total cases.
+
+The decoder's exact gate, scaled pipeline's 1e-2 absolute/relative gate, and
+unscaled dtype-aware gates are unchanged. The original tiny-scale case and the
+existing ordinary-scale all-one known answer both remain. Scaled replay uses
+valid packed signs and channel-varying ordinary scales; converter replay uses
+valid encoded sign flips. These inputs exercise real nonzero outputs without
+changing numerical thresholds or any scored workload.
+
+All oracles consume private snapshots before candidate execution; every declared
+input is read-only and the full output's shape/dtype/device is checked. The
+unscaled timed callable is checked again after fresh floating inputs and poisoned
+output, using a newly computed FP32 matmul→FP16 reference. Inputs and output are
+restored in `finally` after success or failure. These are untimed checks; no
+reference or replay reset is inserted into the measured callable.

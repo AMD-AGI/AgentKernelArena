@@ -1,5 +1,4 @@
-"""Independent output checks for the performance inputs; never timed or editable."""
-import numpy as np
+"""Private input snapshots and complete MXFP output/replay validation."""
 import torch
 
 
@@ -7,61 +6,72 @@ class NumericalMismatch(AssertionError):
     pass
 
 
-def compare(actual, expected, *, atol=None, rtol=None, check_dtype=True, exact=False, equal_nan=False):
-    if not isinstance(actual, torch.Tensor):
-        raise TypeError('The candidate did not produce its declared tensor output')
-    if actual.shape != expected.shape or actual.device != expected.device:
-        raise ValueError('Candidate output shape/device violates the contract')
-    if check_dtype and actual.dtype != expected.dtype:
-        raise ValueError('Candidate output dtype violates the contract')
-    if not equal_nan and not torch.isfinite(actual).all():
-        raise ValueError('Candidate output contains nonfinite values')
-    try:
-        if exact:
-            if not torch.equal(actual, expected):
-                raise AssertionError('Exact output mismatch')
-        else:
-            torch.testing.assert_close(actual, expected, atol=atol, rtol=rtol,
-                                       check_dtype=check_dtype, equal_nan=equal_nan)
-    except AssertionError as exc:
-        raise NumericalMismatch(str(exc)) from exc
+def equal_bytes(a, b):
+    return torch.equal(a.contiguous().view(torch.uint8), b.contiguous().view(torch.uint8))
 
 
-def philox32(seed, count):
-    """Counter-based Philox4x32-10, independently evaluated using NumPy integers."""
-    mask = np.uint64(0xffffffff)
-    c0 = np.arange(count, dtype=np.uint64)
-    c1 = np.zeros(count,dtype=np.uint64); c2=c1.copy(); c3=c1.copy()
-    k0=np.uint64(seed & 0xffffffff); k1=np.uint64((seed>>32)&0xffffffff)
-    for _ in range(10):
-        pa=c0*np.uint64(0xD2511F53); pb=c2*np.uint64(0xCD9E8D57)
-        c0,c1,c2,c3=(pb>>np.uint64(32))^c1^k0,pb&mask,(pa>>np.uint64(32))^c3^k1,pa&mask
-        k0=(k0+np.uint64(0x9E3779B9))&mask; k1=(k1+np.uint64(0xBB67AE85))&mask
-    return c0.astype(np.uint32)
+class OutputCheck:
+    def __init__(self, inputs, output, oracle, *, atol=None, rtol=None, equal_nan=False):
+        self.inputs = list(inputs)
+        self.original = [x.clone() for x in inputs]
+        self.snapshots = self.original
+        self.strides = [x.stride() for x in inputs]
+        self.output = output
+        self.output_original = output.clone()
+        self.output_stride = output.stride()
+        self.oracle = oracle
+        self.atol, self.rtol, self.equal_nan = atol, rtol, equal_nan
+        self.expected = oracle(*self.snapshots)
+
+    def check_inputs(self):
+        for actual, expected, stride in zip(self.inputs, self.snapshots, self.strides):
+            if (actual.shape, actual.dtype, actual.device, actual.stride()) != (expected.shape, expected.dtype, expected.device, stride):
+                raise ValueError('Read-only input metadata changed')
+            if not equal_bytes(actual, expected):
+                raise ValueError('Read-only input was modified')
+
+    def __call__(self, output):
+        if output is not self.output:
+            raise ValueError('Unexpected public output buffer')
+        if (output.shape, output.dtype, output.device, output.stride()) != (self.expected.shape, self.expected.dtype, self.expected.device, self.output_stride):
+            raise ValueError('Output metadata changed')
+        self.check_inputs()
+        if any(output.untyped_storage().data_ptr() == x.untyped_storage().data_ptr() for x in self.inputs):
+            raise ValueError('Output aliases a read-only input')
+        if not self.equal_nan and not bool(torch.isfinite(output).all()):
+            raise ValueError('Nonfinite output')
+        try:
+            torch.testing.assert_close(output, self.expected, atol=self.atol, rtol=self.rtol, equal_nan=self.equal_nan)
+        except AssertionError as exc:
+            raise NumericalMismatch(str(exc)) from exc
+
+    def replace(self, values):
+        if len(values) != len(self.inputs):
+            raise ValueError('Replay input count mismatch')
+        self.snapshots = [x.clone() for x in values]
+        # The oracle sees private values, before the candidate can mutate them.
+        self.expected = self.oracle(*self.snapshots)
+        for actual, values in zip(self.inputs, self.snapshots): actual.copy_(values)
+        self.output.fill_(float('nan'))
+
+    def fresh(self, output):
+        if output is not self.output:
+            raise ValueError('Unexpected replay output')
+        a, b = self.original
+        rows = ((torch.arange(a.shape[0], device=a.device) % 5) - 2).to(a.dtype)[:, None] * .125
+        cols = ((torch.arange(b.shape[1], device=b.device) % 7) - 3).to(b.dtype)[None, :] * .125
+        self.replace([-a.flip(1) + rows, b.flip(0) + cols])
+
+    def restore(self):
+        for actual, original in zip(self.inputs, self.original): actual.copy_(original)
+        self.output.copy_(self.output_original)
 
 
-def swizzle_reference(rows, cols, group, *, dtype, device):
-    expected = torch.empty((rows,cols),dtype=dtype,device=device)
-    for i in range(rows):
-        for j in range(cols):
-            linear=i*cols+j
-            first=(linear//(group*cols))*group
-            width=min(group,rows-first)
-            ni=first+(linear%(group*cols))%width; nj=(linear%(group*cols))//width
-            expected[ni,nj]=linear
-    return expected
-
-
-def _cast_like(expected, actual):
-    return expected.to(device=actual.device,dtype=actual.dtype)
-
-
-def prepare(c, module):
-    if c['is_scaled_mode']:
-        # The original scaled path is CUDA-only and has no qualified independent
-        # packed-format oracle here. Never interpret that gap as passing evidence.
-        raise RuntimeError('Scaled MXFP performance requires a qualified packed-format reference; unsupported')
-    # The kernel loads the supplied input dtype, accumulates in FP32, then
-    # stores FP16. Casting FP32 operands before multiplication changes the task.
-    expected=(c['a_tensor'].float() @ c['b_tensor'].float()).to(torch.float16)
-    return lambda result: compare(c['output_buffer'],expected)
+def prepare(context, module):
+    if context['is_scaled_mode']:
+        raise RuntimeError('Scaled performance is outside the declared six-case scoring manifest')
+    a, b, output = (context[k] for k in ('a_tensor', 'b_tensor', 'output_buffer'))
+    if a.dtype not in (torch.float16, torch.float32) or b.dtype != a.dtype or output.dtype != torch.float16:
+        raise ValueError('Unscaled matmul input/output dtype violates the contract')
+    # Preserve FP32 operand loads; do not round FP32 inputs to half first.
+    return OutputCheck([a, b], output, lambda x, y: (x.float() @ y.float()).half())
