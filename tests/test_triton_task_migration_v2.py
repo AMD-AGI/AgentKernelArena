@@ -157,6 +157,13 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
     for edit in spec.candidate.editable:
         source = task/edit.path
         original = subprocess.check_output(['git','show',f'{BASE}:{source.relative_to(ROOT).as_posix()}'],cwd=ROOT)
+        if task.name == 'triton_pack_seq':
+            # GPU141209 established that zero-grid is supported; only the old
+            # high-rank reshape(0, -1) is ambiguous. No kernel/timing change.
+            old = b'        x_reshaped = x.reshape(N, -1)'
+            new = b'        x_reshaped = x.flatten(start_dim=1)'
+            assert original.count(old) == 1
+            original = original.replace(old, new)
         if task.name == 'triton_pack_bitmatrix':
             old = b'div[:, :, None] == offs[None, None, :], (one << rem)[:, :, None], 0'
             new = (b'mask[:, :, None] & (indices[:, :, None] >= 0) & (div[:, :, None] == offs[None, None, :]),\n'

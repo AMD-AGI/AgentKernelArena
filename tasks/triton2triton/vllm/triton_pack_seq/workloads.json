@@ -266,6 +266,53 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-empty-1",
+      "params": {
+        "case_index": 10003,
+        "configuration": {
+          "name": "all_empty_float16",
+          "lengths": [
+            0,
+            0,
+            0
+          ],
+          "feature_shape": [
+            65
+          ],
+          "dtype": "float16"
+        },
+        "source": "PR107 final public empty-domain coverage"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-empty-2",
+      "params": {
+        "case_index": 10004,
+        "configuration": {
+          "name": "all_empty_multidimensional_bfloat16",
+          "lengths": [
+            0,
+            0
+          ],
+          "feature_shape": [
+            3,
+            5
+          ],
+          "dtype": "bfloat16",
+          "pad_value": 2.5
+        },
+        "source": "PR107 final public empty-domain coverage"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
@@ -312,6 +359,31 @@
       ],
       "dtype": "float16",
       "pad_value": -1.25
+    },
+    {
+      "name": "all_empty_float16",
+      "lengths": [
+        0,
+        0,
+        0
+      ],
+      "feature_shape": [
+        65
+      ],
+      "dtype": "float16"
+    },
+    {
+      "name": "all_empty_multidimensional_bfloat16",
+      "lengths": [
+        0,
+        0
+      ],
+      "feature_shape": [
+        3,
+        5
+      ],
+      "dtype": "bfloat16",
+      "pad_value": 2.5
     }
   ]
 }

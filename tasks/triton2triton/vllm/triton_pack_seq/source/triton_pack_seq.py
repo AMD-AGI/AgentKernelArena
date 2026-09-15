@@ -74,7 +74,7 @@ def pack_seq(
     original_shape = x.shape
     if len(original_shape) > 2:
         N = original_shape[0]
-        x_reshaped = x.reshape(N, -1)
+        x_reshaped = x.flatten(start_dim=1)
         D = x_reshaped.shape[1]
     else:
         N, D = x.shape
