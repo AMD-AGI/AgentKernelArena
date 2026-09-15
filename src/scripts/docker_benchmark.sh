@@ -519,6 +519,11 @@ mount_agent() {
             local native_claude_bin="$HOST_HOME/.local/bin/claude"
             local native_claude_root="$HOST_HOME/.local/share/claude"
             local claude_node_prefix=""
+            local claude_auth_dir="${AKA_CLAUDE_AUTH_DIR:-$HOST_HOME/.claude}"
+            local claude_auth_required="$strict"
+            # A setup-token supplies headless authentication without requiring
+            # a browser-login credential directory. Never put its value in argv.
+            [[ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] || claude_auth_required=0
             if [[ -e "$native_claude_bin" && -d "$native_claude_root" ]]; then
                 add_mount "$HOST_HOME/.local/bin" "$HOST_HOME/.local/bin" ro
                 add_mount "$native_claude_root" "$native_claude_root" ro
@@ -533,14 +538,14 @@ mount_agent() {
                 fi
                 add_mount "$claude_node_prefix" /opt/claude-node ro
             fi
-            need_path "$HOST_HOME/.claude" "Claude Code auth directory" "$strict" || return 0
-            need_path "$HOST_HOME/.claude.json" "Claude Code auth/config file" "$strict" || return 0
+            need_path "$claude_auth_dir" "Claude Code auth directory" "$claude_auth_required" || true
+            need_path "$HOST_HOME/.claude.json" "Claude Code auth/config file" "$claude_auth_required" || true
             if [[ "$isolate" == "1" ]]; then
-                add_mount "$HOST_HOME/.claude" "$AGENT_STATE_MOUNT_ROOT/.claude" ro
-                add_mount "$HOST_HOME/.claude.json" "$AGENT_STATE_MOUNT_ROOT/.claude.json" ro
+                [[ ! -d "$claude_auth_dir" ]] || add_mount "$claude_auth_dir" "$AGENT_STATE_MOUNT_ROOT/.claude" ro
+                [[ ! -f "$HOST_HOME/.claude.json" ]] || add_mount "$HOST_HOME/.claude.json" "$AGENT_STATE_MOUNT_ROOT/.claude.json" ro
             else
-                add_mount "$HOST_HOME/.claude" "$HOST_HOME/.claude"
-                add_mount "$HOST_HOME/.claude.json" "$HOST_HOME/.claude.json"
+                [[ ! -d "$claude_auth_dir" ]] || add_mount "$claude_auth_dir" "$HOST_HOME/.claude"
+                [[ ! -f "$HOST_HOME/.claude.json" ]] || add_mount "$HOST_HOME/.claude.json" "$HOST_HOME/.claude.json"
             fi
             ;;
         cursor)
@@ -1060,6 +1065,9 @@ build_docker_args() {
     fi
     if [[ "${AGENT_HOME_ISOLATION:-0}" == "1" ]]; then
         docker_args+=(-e "AGENT_KERNEL_ARENA_ISOLATED_HOME=1")
+    fi
+    if agent_list_contains "$agents" claude_code && [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+        docker_args+=(-e CLAUDE_CODE_OAUTH_TOKEN)
     fi
     # Forward the host's Claude / Anthropic auth+config only for GEAK execution
     # containers that provision Claude Code. Requiring both conditions keeps

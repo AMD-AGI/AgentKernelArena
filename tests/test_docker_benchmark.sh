@@ -553,6 +553,35 @@ assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
 assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
 
+# An explicit private credential seed replaces only Claude's auth directory;
+# worker isolation still mounts it read-only and never writes back credentials.
+CLAUDE_PRIVATE_AUTH_DIR="$TEST_HOME/private-claude-auth"
+mkdir -p "$CLAUDE_PRIVATE_AUTH_DIR"
+mapfile -t args < <(run_check_args \
+    "$NATIVE_CLAUDE_HOME" "$NATIVE_CLAUDE_CONFIG" \
+    AGENT_HOME_ISOLATION=1 AKA_CLAUDE_AUTH_DIR="$CLAUDE_PRIVATE_AUTH_DIR")
+assert_has "$CLAUDE_PRIVATE_AUTH_DIR:/opt/aka-agent-state/.claude:ro" "${args[@]}"
+assert_not_has "$NATIVE_CLAUDE_HOME/.claude:/opt/aka-agent-state/.claude:ro" "${args[@]}"
+assert_has "$NATIVE_CLAUDE_HOME/.claude.json:/opt/aka-agent-state/.claude.json:ro" "${args[@]}"
+
+# Official setup-token authentication is forwarded by name, never by value.
+# It does not require browser-login state, including the .claude.json file.
+CLAUDE_TOKEN_HOME="$TEST_HOME/claude-token-home"
+mkdir -p "$CLAUDE_TOKEN_HOME/.local/bin" "$CLAUDE_TOKEN_HOME/.local/share/claude/versions"
+touch "$CLAUDE_TOKEN_HOME/.local/share/claude/versions/2.1.0"
+ln -s ../share/claude/versions/2.1.0 "$CLAUDE_TOKEN_HOME/.local/bin/claude"
+mapfile -t args < <(run_check_args \
+    "$CLAUDE_TOKEN_HOME" "$NATIVE_CLAUDE_CONFIG" \
+    AGENT_HOME_ISOLATION=1 CLAUDE_CODE_OAUTH_TOKEN=fixture-token-not-a-secret)
+assert_has "CLAUDE_CODE_OAUTH_TOKEN" "${args[@]}"
+assert_has "claude_code" "${args[@]}"
+assert_not_has "CLAUDE_CODE_OAUTH_TOKEN=fixture-token-not-a-secret" "${args[@]}"
+assert_not_has "$CLAUDE_TOKEN_HOME/.claude:/opt/aka-agent-state/.claude:ro" "${args[@]}"
+mapfile -t args < <(run_check_args \
+    "$NATIVE_CODEX_HOME" "$CODEX_CONFIG" \
+    CLAUDE_CODE_OAUTH_TOKEN=fixture-token-not-a-secret)
+assert_not_has "CLAUDE_CODE_OAUTH_TOKEN" "${args[@]}"
+
 # Omitting --config_name uses the one-task MI300/MI300X Claude quickstart.
 mapfile -t args < <(
     env \
