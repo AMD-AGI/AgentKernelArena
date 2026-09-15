@@ -23,3 +23,17 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+
+Protected checks validate the full `(out, mean, rstd)` tuple, including shape,
+dtype, device and finite values. Statistics are FP32 in group-major row order;
+RMSNorm returns no mean. All five original scored FP16 cases, seeds, random
+weights/bias, atol=rtol=1e-2, full wrapper, 10 warmups and 100 samples remain.
+
+Additional unscored 2x34 checks exercise both advertised gate orders, both
+normalizations, the existing group_size=17 interface and a caller-provided out
+buffer. An independent CPU reference normalizes each group separately and checks
+that the supplied output buffer is used. Actual captured outputs and a poisoned
+replay after input/affine/gate perturbation must also pass. Read-only inputs are
+verified against pristine copies and restored even when replay fails. These
+checks add no scored cases and run outside timing.
