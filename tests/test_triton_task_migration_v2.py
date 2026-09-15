@@ -6927,3 +6927,118 @@ def test_persistent_matmul_actual_timing_original_seed_scale_and_exact_replay(mo
 def test_persistent_matmul_adapter_installs_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_matmul_persistent/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_persistent_matmul_checks'
+
+
+def _ep_scatter1_cpu(counts,starts,indices):
+    aligned=((counts.long()+127)//128)*128
+    prefix=aligned.cumsum(0)-aligned
+    starts.copy_(prefix)
+    owners=torch.repeat_interleave(torch.arange(len(counts)),aligned)
+    positions=torch.arange(len(indices))-prefix[owners]
+    active=positions<counts[owners]
+    indices[active]=owners[active].to(indices.dtype)
+
+
+def _ep_scatter_cpu_harness(monkeypatch,phase):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'ep_scatter_'+str(phase))
+    for name in ('randint','tensor','empty','full','zeros'):
+        factory=getattr(torch,name)
+        monkeypatch.setattr(torch,name,lambda *a,_factory=factory,**kw:_factory(*a,**{**kw,'device':'cpu'}))
+    return h,checks
+
+
+def test_ep_scatter1_independent_zero_count_prefix_and_exact_output_contract(monkeypatch):
+    h,checks=_ep_scatter_cpu_harness(monkeypatch,1)
+    counts=torch.tensor([0,1,129],dtype=torch.int32)
+    starts=torch.empty(3,dtype=torch.int32);indices=torch.full((384,),-1,dtype=torch.int32)
+    _ep_scatter1_cpu(counts,starts,indices)
+    expected_starts=torch.tensor([0,0,128],dtype=torch.int32)
+    expected_indices=torch.full((384,),-1,dtype=torch.int32);expected_indices[0]=1;expected_indices[128:257]=2
+    expected=(expected_starts,expected_indices)
+    checks.check_outputs((starts,indices),expected)
+    checks.check_outputs(checks.reference(h,counts,'cpu'),expected)
+    for bad in [(starts.long(),indices),(starts.flatten()[:1],indices),(starts.to('meta'),indices),
+                (starts,indices+1),(starts,),[starts,indices]]:
+        with pytest.raises(AssertionError):checks.check_outputs(bad,expected)
+
+
+@pytest.mark.parametrize('mode',['correct','zero_counts','wrong_starts','no_indices','write_padding',
+    'omit_later_fill','skip_last_expert','raw_prefix','ignore_zero_expert'])
+def test_ep_scatter1_original_fivecase_correctness_and_unscored_prefix_boundaries(monkeypatch,mode):
+    h,checks=_ep_scatter_cpu_harness(monkeypatch,1);calls=[];saved_inputs=[]
+    def public(counts,starts,indices):
+        calls.append(counts.tolist());saved_inputs.append((counts,counts.clone()))
+        if mode=='zero_counts':counts.zero_()
+        if mode!='zero_counts':_ep_scatter1_cpu(counts,starts,indices)
+        if mode=='wrong_starts':starts.add_(1)
+        if mode=='no_indices':indices.fill_(-1)
+        if mode=='write_padding':indices[indices==-1]=0
+        if mode=='raw_prefix':starts.copy_(counts.cumsum(0)-counts)
+        if mode=='omit_later_fill' and len(counts)==7:
+            indices[starts[5]+128:starts[5]+counts[5]]=-1
+        if mode=='skip_last_expert':indices[indices==len(counts)-1]=-1
+        if mode=='ignore_zero_expert' and len(counts)==7:starts[1]+=128
+    mod=SimpleNamespace(ep_scatter_1=public);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
+    if mode=='correct':
+        assert [len(v) for v in calls]==[4,7,8,16,32,64]
+        assert calls[1]==[0,1,127,128,129,257,0]
+    for counts,saved in saved_inputs:checks.unchanged(counts,saved)
+    assert mod.ep_scatter_1 is public
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed_starts','wrong_timed_indices','stale','no_write',
+    'skip_starts','skip_indices','wrong_replay','mutate_timed_counts','mutate_replay_counts','zero_all','raise_replay'])
+def test_ep_scatter1_actual_timing_replays_changed_counts_and_restores_all_buffers(monkeypatch,mode):
+    import inspect
+    h,checks=_ep_scatter_cpu_harness(monkeypatch,1)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(ep_scatter_1=_ep_scatter1_cpu);h.load_module=lambda:mod
+    all_buffers,all_saved,options,replays=[],[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        counts=state['tokens_per_expert'];outputs=(state['expert_start_loc'],state['m_indices'])
+        buffers=(counts,*outputs);saved=checks.snapshot(buffers)
+        all_buffers.append(buffers);all_saved.append(saved);options.append(kwargs)
+        n,m=h.TEST_SHAPES[len(options)-1]
+        generator=torch.Generator().manual_seed(0)
+        checks.unchanged(counts,torch.randint(1,m+1,(n,),dtype=torch.int32,generator=generator))
+        assert torch.equal(outputs[1],torch.full_like(outputs[1],-1))
+        measured();cache=checks.snapshot(outputs)
+        if mode.startswith('wrong_timed_'):outputs[0 if mode.endswith('starts') else 1].add_(1)
+        if mode=='mutate_timed_counts':counts.zero_()
+        if mode=='zero_all':
+            for value in buffers:value.zero_()
+        def replay():
+            replays.append(True)
+            expected=129-saved[0];expected[0]=0;expected[-1]+=128
+            checks.unchanged(counts,expected)
+            wanted=checks.reference(h,counts,'cpu');active=wanted[1]>=0
+            assert torch.all(outputs[0]==-777)
+            assert torch.all(outputs[1][active]==-777) and torch.all(outputs[1][~active]==-1)
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode=='stale':
+                for value,old in zip(outputs,cache):value.copy_(old)
+            elif mode!='no_write':
+                # Keep the original poisoned state for omitted-output controls.
+                poisoned=checks.snapshot(outputs);measured()
+                if mode=='skip_starts':outputs[0].copy_(poisoned[0])
+                if mode=='skip_indices':outputs[1].copy_(poisoned[1])
+            if mode=='wrong_replay':outputs[1].add_(1)
+            if mode=='mutate_replay_counts':counts.zero_()
+            return outputs
+        timed_run._bind(replay,outputs)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h);rows=h.run_performance()
+    assert options==[dict(warmup=10,repetition=100)]*5
+    for cfg,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('num_experts','max_tokens_per_expert'),cfg))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for buffers,saved in zip(all_buffers,all_saved):
+        for value,original in zip(buffers,saved):assert torch.equal(value,original)
+    assert len(replays)==(0 if mode.startswith('wrong_timed_') or mode in ('mutate_timed_counts','zero_all') else 5)
+
+
+def test_ep_scatter1_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_ep_scatter_1/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_ep_scatter1_checks'

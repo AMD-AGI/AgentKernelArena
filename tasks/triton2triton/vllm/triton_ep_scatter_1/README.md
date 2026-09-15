@@ -28,3 +28,17 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+The protected checks compare both entire INT32 outputs exactly against the
+original prefix-sum/reference, using pristine read-only token counts. Padding in
+`m_indices` remains -1: the kernel writes actual tokens, not the aligned padding.
+An unscored seven-expert case includes zero counts and 1/127/128/129/257 token
+boundaries, including multiple fill-loop iterations.
+
+Performance checks inspect both actual in-place outputs from `TimedRun`. Outside
+timing, they change counts and prefix starts while preserving allocated capacity,
+restore -1 padding, poison every required output and replay the same measured
+invocation. Counts and caller-owned outputs are restored in `finally`, including
+failure paths. Original five scored cases, correctness seeds 42+i, performance
+seed 0, initial output allocation/fill, 10 warmups and 100 samples are unchanged.
+No additional output reset is inserted into the measured workload.
