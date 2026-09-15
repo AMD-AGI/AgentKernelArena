@@ -78,3 +78,14 @@ its actual implementation with the original rtol=1e-4/atol=1e-5 and complete
 output/input/model-tensor contracts. No final candidate can delegate to a
 protected reference. Task validation reports five correctness cases and three
 performance cases through the normal arena-eval-v1 manifest.
+
+
+The original module derives `h` and `d_k` from the sequence length. Timing
+checks the resulting public scalar attributes against the protected reference
+call's expected state, including those fields, model dimensions, training flags
+and child-module scalar configuration. It restores their pre-call values in
+`finally` on both success and failure. The functional adapter retains its own
+original state semantics; both roles restore their own starting state. This
+preserves the original routing and timing workload while preventing one latency
+measurement from leaking Python model state into a subsequent call. Tensor
+parameters/buffers and caller inputs retain their existing strict checks.
