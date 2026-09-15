@@ -1,0 +1,166 @@
+{
+  "original_cases": {
+    "correctness": [
+      {
+        "batch_size": 2,
+        "qo_len": 64,
+        "kv_len": 64,
+        "num_qo_heads": 8,
+        "num_kv_heads": 1,
+        "head_size": 128,
+        "page_size": 16,
+        "dtype_str": "bfloat16",
+        "logits_soft_cap": 30.0
+      },
+      {
+        "batch_size": 1,
+        "qo_len": 48,
+        "kv_len": 80,
+        "num_qo_heads": 4,
+        "num_kv_heads": 2,
+        "head_size": 128,
+        "page_size": 16,
+        "dtype_str": "bfloat16",
+        "logits_soft_cap": 30.0
+      }
+    ],
+    "performance": [
+      [
+        "batch_prefill_b4_q512_kv512",
+        {
+          "batch_size": 4,
+          "qo_len": 512,
+          "kv_len": 512,
+          "num_qo_heads": 8,
+          "num_kv_heads": 1,
+          "head_size": 128,
+          "page_size": 16,
+          "dtype_str": "bfloat16",
+          "logits_soft_cap": 30.0
+        }
+      ],
+      [
+        "batch_prefill_b2_q2048_kv2048",
+        {
+          "batch_size": 2,
+          "qo_len": 2048,
+          "kv_len": 2048,
+          "num_qo_heads": 8,
+          "num_kv_heads": 1,
+          "head_size": 128,
+          "page_size": 16,
+          "dtype_str": "bfloat16",
+          "logits_soft_cap": 30.0
+        }
+      ]
+    ]
+  },
+  "cases": [
+    {
+      "test_case_id": "correctness-0",
+      "params": {
+        "batch_size": 2,
+        "qo_len": 64,
+        "kv_len": 64,
+        "num_qo_heads": 8,
+        "num_kv_heads": 1,
+        "head_size": 128,
+        "page_size": 16,
+        "dtype_str": "bfloat16",
+        "logits_soft_cap": 30.0,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ],
+      "shape": [
+        2,
+        8,
+        128,
+        64,
+        64
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "correctness-1",
+      "params": {
+        "batch_size": 1,
+        "qo_len": 48,
+        "kv_len": 80,
+        "num_qo_heads": 4,
+        "num_kv_heads": 2,
+        "head_size": 128,
+        "page_size": 16,
+        "dtype_str": "bfloat16",
+        "logits_soft_cap": 30.0,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ],
+      "shape": [
+        1,
+        4,
+        128,
+        48,
+        80
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "batch_prefill_b4_q512_kv512",
+      "params": {
+        "batch_size": 4,
+        "qo_len": 512,
+        "kv_len": 512,
+        "num_qo_heads": 8,
+        "num_kv_heads": 1,
+        "head_size": 128,
+        "page_size": 16,
+        "dtype_str": "bfloat16",
+        "logits_soft_cap": 30.0,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        4,
+        8,
+        128,
+        512,
+        512
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "batch_prefill_b2_q2048_kv2048",
+      "params": {
+        "batch_size": 2,
+        "qo_len": 2048,
+        "kv_len": 2048,
+        "num_qo_heads": 8,
+        "num_kv_heads": 1,
+        "head_size": 128,
+        "page_size": 16,
+        "dtype_str": "bfloat16",
+        "logits_soft_cap": 30.0,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        2,
+        8,
+        128,
+        2048,
+        2048
+      ],
+      "dtype": "bfloat16"
+    }
+  ]
+}

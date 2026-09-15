@@ -230,7 +230,7 @@ def _golden(inp: dict):
     qn = q / torch.sqrt((q * q).sum(-1, keepdim=True) + 1e-6) * scale
     kn = k / torch.sqrt((k * k).sum(-1, keepdim=True) + 1e-6)
 
-    out = torch.zeros(inp["total_t"], H, D, dtype=torch.float64, device="cuda")
+    out = torch.zeros(inp["total_t"], H, D, dtype=torch.float64, device=q.device)
     for (bos, eos), S0 in zip(inp["segments"], inp["seg_state0"]):
         S = S0.clone()                                     # [H, V, K]
         for t in range(bos, eos):
@@ -324,6 +324,7 @@ def run_performance() -> None:
         print(case["id"], f"{exec_ms:.6f} ms", meta.get("benchmark_method"),
               meta.get("benchmark_fallback_reason", ""))
     _write_report(rows)
+    return rows
 
 
 def main() -> None:

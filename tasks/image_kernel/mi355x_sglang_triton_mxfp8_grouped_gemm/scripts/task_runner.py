@@ -45,7 +45,7 @@ def _configure() -> None:
     if (seeded / "__init__.py").is_file():
         sys.path.insert(0, str(WORKSPACE))
     else:
-        sys.path.insert(0, os.environ.get("SGLANG_PYTHON", "/sgl-workspace/sglang/python"))
+        raise FileNotFoundError("Declared SGLang source package was not materialized")
     os.chdir(WORKSPACE)
 
 
@@ -216,7 +216,7 @@ def _fused_output(inputs: dict):
 def _timed_references(inputs: dict):
     """Independent references for the two outputs produced inside the timed region."""
     torch = _torch()
-    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
+    from reference_mxfp8 import dequant_mxfp8_to_bf16
 
     x = dequant_mxfp8_to_bf16(inputs["a_q"], inputs["a_s"]).float()
     act = dequant_mxfp8_to_bf16(
@@ -284,7 +284,7 @@ def _reference(inputs: dict):
     never materialises an fp32 copy of the whole expert bank.
     """
     torch = _torch()
-    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
+    from reference_mxfp8 import dequant_mxfp8_to_bf16
 
     x = dequant_mxfp8_to_bf16(inputs["a_q"], inputs["a_s"]).float()
     w13 = dequant_mxfp8_to_bf16(inputs["w13_fp8"], inputs["w13_scale"])
@@ -385,6 +385,7 @@ def run_performance() -> None:
     out = WORKSPACE / "build"
     out.mkdir(parents=True, exist_ok=True)
     (out / "performance_report.json").write_text(json.dumps(rows, indent=2))
+    return rows
 
 
 def main() -> None:

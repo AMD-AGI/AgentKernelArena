@@ -69,7 +69,6 @@ def _configure() -> None:
     # in-image install; otherwise `import aiter` resolves to
     # /usr/local/lib/python3.12/dist-packages/aiter and the edits are ignored.
     if (WORKSPACE / "aiter").is_dir():
-        _link_aiter_meta()
         # image_repo_path seeds the repository as WORKSPACE/aiter, while the
         # importable package is WORKSPACE/aiter/aiter.  Put the repository root
         # on sys.path; adding WORKSPACE would expose only the outer repository
@@ -80,24 +79,13 @@ def _configure() -> None:
     os.chdir(WORKSPACE)
 
 
-_IMAGE_AITER_META = Path("/usr/local/lib/python3.12/dist-packages/aiter_meta")
+_IMAGE_AITER_META = WORKSPACE / "aiter"
 
 
 def _link_aiter_meta() -> None:
-    """Give the workspace copy of aiter its sibling C++ tree.
-
-    aiter locates aiter_enum.h relative to the directory that *contains* the
-    package -- aiter/utility/aiter_types.py:_find_aiter_enum_h hardcodes
-    ``parents[2]`` and ignores AITER_META_DIR. The workspace only seeds `aiter`,
-    so without this the copied package cannot import at all. aiter_meta holds the
-    C++/HIP sources, which are not part of this task's edit surface, so it is
-    linked rather than duplicated per run.
-    """
-    link = WORKSPACE / "aiter_meta"
-    if link.exists() or link.is_symlink():
-        return
-    if _IMAGE_AITER_META.is_dir():
-        link.symlink_to(_IMAGE_AITER_META, target_is_directory=True)
+    """The declared complete repository contains its own C++/HIP assets."""
+    if not (_IMAGE_AITER_META / "csrc").is_dir():
+        raise FileNotFoundError("AITER source metadata was not materialized")
 
 
 # >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>
@@ -417,7 +405,7 @@ def _reference(inputs: dict):
     reference cannot silently drift onto the library defaults.
     """
     torch = _torch()
-    from aiter.fused_moe import torch_moe_stage1, torch_moe_stage2
+    from _reference_fused_moe import torch_moe_stage1, torch_moe_stage2
 
     token, topk = inputs["token"], inputs["topk"]
     # a16w4: the activation stays bf16 and carries no scale.
@@ -621,6 +609,7 @@ def run_performance() -> None:
         del inputs
         _free()
     _write_report(rows)
+    return rows
 
 
 def main() -> None:

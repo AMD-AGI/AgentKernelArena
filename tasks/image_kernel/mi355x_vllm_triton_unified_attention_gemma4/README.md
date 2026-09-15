@@ -119,3 +119,47 @@ Expected runtime image:
 ```text
 harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0
 ```
+
+## Effective task instructions
+
+Optimize the vLLM Triton attention kernel kernel_unified_attention (in triton_unified_attention.py) on MI355X/gfx950. This is vLLM's own kernel, not AITER's kernel_unified_attention_2d/_3d. Gemma4 on ROCm has no hand-written paged-attention path - use_rocm_custom_paged_attention only accepts head_size 64/128 on gfx9 - so every attention layer falls back to this Triton kernel and it becomes the largest single leaf in the trace. One kernel serves two geometries: sliding layers at head_size 256 with a 1024-token window (8 query heads over 4 KV heads) and full layers at head_size 512 with no window (8 query heads over 1 KV head), both BF16 decode with 64 sequences and 1024-2048 tokens of KV context. Note the very different queries-per-KV ratios (2 vs 8), which drive BLOCK_M/BLOCK_Q, and that _get_tile_size already has a Gemma-specific branch. Do not tune one geometry at the expense of the other. Cases come from the gemma-4-26B-A4B-it Hyperloom 2026-08-01 MI355X session and are stored in session_cases.json. Preserve all correctness cases and improve CUDA-graph measured performance. Do not change the public signature of unified_attention.
+
+## Arena v2 contract
+
+The candidate is the existing implementation in the declared image sources.
+Its required final language and exact task-relative editable files are in
+`config.yaml`; directory names do not select execution behavior. The framework
+freezes this initial implementation into a separate baseline workspace. Both
+roles run the same protected harness in their own workspace; an absent candidate
+or missing image source is an error, never permission to use the installed copy.
+
+Setup runs `python3 scripts/setup_task.py` after declared image materialization
+and before baseline capture. It validates source paths and required build assets.
+Do not edit `scripts/`, workload files or references. Additional source files
+outside `candidate.editable` are dependencies, not editable implementation.
+Preserve the original numerical gates, seeds, layouts, dispatch, state handling
+and CUDA graph/event timing. `workloads.json` enumerates the complete manifest
+independently of reported timings; `session_cases.json`, when present, retains
+its original session provenance. Cases marked correctness-only are not scored.
+
+Use the agent-neutral commands:
+
+```bash
+python3 scripts/evaluate.py validate-task
+python3 scripts/evaluate.py baseline compile
+python3 scripts/evaluate.py baseline correctness
+python3 scripts/evaluate.py baseline performance
+python3 scripts/evaluate.py candidate compile
+python3 scripts/evaluate.py candidate correctness
+python3 scripts/evaluate.py candidate performance
+```
+
+Baseline commands run in the framework's frozen workspace. Each command emits
+one `ARENA_EVAL_RESULT=` envelope. A failed dependency, dispatch or output contract
+is a failure, not an accepted baseline numerical diagnostic. The original
+`task_runner.py` remains the protected operator implementation of these checks;
+its generated performance region must be materialized by Arena. Developer
+profiling drivers do not supply final evaluation evidence.
+This migration has CPU regression coverage; formal GPU task validation and the
+optimization campaign are coordinated separately. Runtime source availability
+must be checked against the selected immutable image, not inferred from a tag.

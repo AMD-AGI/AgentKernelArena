@@ -1,0 +1,162 @@
+{
+  "original_cases": {
+    "correctness": [
+      {
+        "ctx_lens": 128,
+        "num_seqs": 8,
+        "num_heads": [
+          8,
+          1
+        ],
+        "head_size": 128,
+        "block_size": 16,
+        "dtype_str": "bfloat16"
+      },
+      {
+        "ctx_lens": 26,
+        "num_seqs": 16,
+        "num_heads": [
+          4,
+          2
+        ],
+        "head_size": 64,
+        "block_size": 16,
+        "dtype_str": "float16"
+      }
+    ],
+    "performance": [
+      [
+        "pa_ragged_ctx128_s128",
+        {
+          "ctx_lens": 128,
+          "num_seqs": 128,
+          "num_heads": [
+            8,
+            1
+          ],
+          "head_size": 128,
+          "block_size": 16,
+          "dtype_str": "bfloat16"
+        }
+      ],
+      [
+        "pa_ragged_ctx4097_s128",
+        {
+          "ctx_lens": 4097,
+          "num_seqs": 128,
+          "num_heads": [
+            8,
+            1
+          ],
+          "head_size": 128,
+          "block_size": 16,
+          "dtype_str": "bfloat16"
+        }
+      ]
+    ]
+  },
+  "cases": [
+    {
+      "test_case_id": "correctness-0",
+      "params": {
+        "ctx_lens": 128,
+        "num_seqs": 8,
+        "num_heads": [
+          8,
+          1
+        ],
+        "head_size": 128,
+        "block_size": 16,
+        "dtype_str": "bfloat16",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ],
+      "shape": [
+        8,
+        8,
+        128,
+        128
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "correctness-1",
+      "params": {
+        "ctx_lens": 26,
+        "num_seqs": 16,
+        "num_heads": [
+          4,
+          2
+        ],
+        "head_size": 64,
+        "block_size": 16,
+        "dtype_str": "float16",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ],
+      "shape": [
+        16,
+        4,
+        64,
+        26
+      ],
+      "dtype": "float16"
+    },
+    {
+      "test_case_id": "pa_ragged_ctx128_s128",
+      "params": {
+        "ctx_lens": 128,
+        "num_seqs": 128,
+        "num_heads": [
+          8,
+          1
+        ],
+        "head_size": 128,
+        "block_size": 16,
+        "dtype_str": "bfloat16",
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        128,
+        8,
+        128,
+        128
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "pa_ragged_ctx4097_s128",
+      "params": {
+        "ctx_lens": 4097,
+        "num_seqs": 128,
+        "num_heads": [
+          8,
+          1
+        ],
+        "head_size": 128,
+        "block_size": 16,
+        "dtype_str": "bfloat16",
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        128,
+        8,
+        128,
+        4097
+      ],
+      "dtype": "bfloat16"
+    }
+  ]
+}

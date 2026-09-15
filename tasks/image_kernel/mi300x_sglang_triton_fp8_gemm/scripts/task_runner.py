@@ -259,6 +259,7 @@ def run_performance() -> None:
         results.append(entry)
         print(f"{test_case_id}: {time_ms:.4f} ms [{bench_meta.get('benchmark_method')}]")
     _write_performance_report(results)
+    return results
 
 
 def main() -> None:

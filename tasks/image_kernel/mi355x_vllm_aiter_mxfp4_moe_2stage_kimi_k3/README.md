@@ -158,26 +158,72 @@ the same `e8m0_shuffle` entry point as vLLM.
 
 ## Edit surface and JIT freshness
 
-The compute core (FlyDSL asm / ck2stages fp4) is not an in-tree editable `.cu`, so
-the source-resolved edit surface is the aiter Python dispatch: `fused_moe.py`,
-`ops/flydsl/moe_kernels.py`, `ops/shuffle.py`.
+The five editable paths include the FlyDSL builder, dispatch wrappers, shuffle
+code, and tuned Kimi CSV; `config.yaml` lists their exact task-relative locations.
+The image source is a **complete repository** seeded at `aiter/`, so the Python
+package and config files live under `aiter/aiter/`, and headers under
+`aiter/csrc/`. The repository's package directory must shadow the installed copy.
+The task does not link to an external installed `aiter_meta` directory.
 
-The harness puts the workspace-seeded `aiter` copy first on `sys.path`, so an
-agent's edits shadow the in-image install. Verified: scaling `fused_moe`'s return
-by 1.5 in the workspace copy changes the measured output by exactly 1.5x. aiter's
-JIT output is pinned to `<workspace>/build/jit` so no run can load another run's
-compiled module.
+Setup captures `fused_moe.py` as the protected `scripts/_reference_fused_moe.py`
+before the framework freezes the initial baseline. The mathematical stage
+references come from that copy, so editing candidate dispatch does not overwrite
+the reference. Their FP4 support dependencies remain outside the edit surface.
+A resumed setup does not refresh this reference from an optimized candidate.
 
-`aiter` locates its C++ headers relative to the directory *containing* the package
-(`aiter/utility/aiter_types.py:_find_aiter_enum_h` hardcodes `parents[2]` and
-ignores `AITER_META_DIR`), so `_configure()` links the image's `aiter_meta` next to
-the seeded copy. Those are C++ sources outside this task's edit surface, so they
-are linked rather than duplicated per run.
+The strict tuned-dispatch gates remain mandatory. Availability of the five files
+in another image does not establish API, numerical or tuned-dispatch compatibility.
+Historical session validation statements above describe the original session
+build, not a fresh v2 validation of either SGLang qualification image.
 
 ## Run
 
 ```
-python3 scripts/task_runner.py compile       # smoke: one MoE call
-python3 scripts/task_runner.py correctness   # cos > 0.999 vs the torch reference
-python3 scripts/task_runner.py performance   # CUDA-graph timed -> build/performance_report.json
+python3 scripts/evaluate.py candidate compile       # smoke: one MoE call
+python3 scripts/evaluate.py candidate correctness   # cos > 0.999 vs the torch reference
+python3 scripts/evaluate.py candidate performance   # CUDA-graph timed -> build/performance_report.json
 ```
+
+## Effective task instructions
+
+Faithful reproduction of the Kimi-K3 routed-expert MoE 2-stage GEMM as it actually executed in Hyperloom session 20260728T091437Z on MI355X/gfx950. This is the aiter MoE path behind hot kernels k001 (moe_gemm1_0, decode-graph stage1 gate/up), k002 (moe_gemm2_0, decode-graph stage2 down), k003 (moe_flydsl_stage1) and k006 (moe_flydsl_stage2, eager/prefill FlyDSL). Config: bf16 activation x fp4 (mxfp4-pack, group_size=32 -> QuantType.per_1x32) weight, g1u1, SiTUv2 activation with beta=4.0 / linear_beta=25.0, per-rank (TP=8) dims model_dim=3584 / inter_dim=384 / experts=896 / topk=16. Exact shapes and dtypes are trace-recorded in session_cases.json (from the forge invocation_spec); the harness reproduces the session's own FlyDSL kernel dispatch for both M buckets. The compute core is a FlyDSL MLIR builder (ops/flydsl/kernels/mixed_moe_gemm_2stage.py, compile_mixed_moe_gemm1_a16w4 / compile_mixed_moe_gemm2_a16w4) and is part of this task's edit surface. The full edit surface also includes the tuned Kimi-K3 CSV and the aiter Python dispatch in fused_moe.py, ops/flydsl/moe_kernels.py, and ops/shuffle.py. Useful levers are the MFMA pipeline, tile/block loop structure, LDS usage, stage2 atomic reduction, 2-stage kernel selection, and tuned-config lookup. The 864 a16w4 variants are keyed by tile_m/tile_n/tile_k plus w*/bnt*/xcd*/kw* suffixes. Preserve the per-M-bucket dispatch contract, block_m / ksplit semantics, and moe_sorting behavior. Do not edit the harness. The harness enforces five invariants that a valid patch must keep: correctness and performance must dispatch the same FlyDSL kernel pair; dispatch must stay on the tuned path rather than the heuristic fallback; w2_scale must use the same e8m0_shuffle path as vLLM; nLane must stay 16 (vLLM hardcodes it); and correctness is the worst of 3 runs because stage2 reduces with atomics. All 14 reachable M buckets are correctness-checked. Two contract details that must be preserved: K3's SiTU a16w4 path runs GateMode.SEPARATED, so weights and scales are shuffled with gate_up=False (gate_up=True is the gpt-oss INTERLEAVE layout and silently produces garbage); and the SiTUv2 beta/linear_beta must stay at the session values, since aiter's kernel and torch-reference defaults disagree with each other and with K3. Correctness compares against aiter's dequantized torch_moe_stage1/stage2 reference. Preserve all correctness cases and improve the CUDA-graph measured performance.
+
+## Arena v2 contract
+
+The candidate is the existing implementation in the declared image sources.
+Its required final language and exact task-relative editable files are in
+`config.yaml`; directory names do not select execution behavior. The framework
+freezes this initial implementation into a separate baseline workspace. Both
+roles run the same protected harness in their own workspace; an absent candidate
+or missing image source is an error, never permission to use the installed copy.
+
+Setup runs `python3 scripts/setup_task.py` after declared image materialization
+and before baseline capture. It validates source paths and required build assets.
+Do not edit `scripts/`, workload files or references. Additional source files
+outside `candidate.editable` are dependencies, not editable implementation.
+Preserve the original numerical gates, seeds, layouts, dispatch, state handling
+and CUDA graph/event timing. `workloads.json` enumerates the complete manifest
+independently of reported timings; `session_cases.json`, when present, retains
+its original session provenance. Cases marked correctness-only are not scored.
+
+Use the agent-neutral commands:
+
+```bash
+python3 scripts/evaluate.py validate-task
+python3 scripts/evaluate.py baseline compile
+python3 scripts/evaluate.py baseline correctness
+python3 scripts/evaluate.py baseline performance
+python3 scripts/evaluate.py candidate compile
+python3 scripts/evaluate.py candidate correctness
+python3 scripts/evaluate.py candidate performance
+```
+
+Baseline commands run in the framework's frozen workspace. Each command emits
+one `ARENA_EVAL_RESULT=` envelope. A failed dependency, dispatch or output contract
+is a failure, not an accepted baseline numerical diagnostic. The original
+`task_runner.py` remains the protected operator implementation of these checks;
+its generated performance region must be materialized by Arena. Developer
+profiling drivers do not supply final evaluation evidence.
+This migration has CPU regression coverage; formal GPU task validation and the
+optimization campaign are coordinated separately. Runtime source availability
+must be checked against the selected immutable image, not inferred from a tag.

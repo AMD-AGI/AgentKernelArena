@@ -73,9 +73,10 @@ E=128,N=352,device_name=AMD_Instinct_MI355_OAM.json
 ```
 
 No such file ships in the image, so the harness reproduces that condition exactly.
-`configs/` is part of the seeded editable tree, which makes supplying a tuned
-config for this shape a legitimate — and probably the highest-leverage —
-optimization alongside changing the kernel.
+The original configuration declared `fused_moe.py` as its editable source.
+This v2 migration keeps that boundary; the seeded `configs/` dependency is
+protected. Tune the permitted kernel/dispatcher code. Adding editable tuning
+files would require a separate explicit task-contract change.
 
 ## Editable surface and JIT
 
@@ -131,3 +132,47 @@ Expected runtime image:
 ```text
 harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0
 ```
+
+## Effective task instructions
+
+Optimize the unquantized Triton fused-MoE expert GEMM kernel fused_moe_kernel (in fused_moe.py) on MI355X/gfx950. This is the BF16 path, not the int4 fused_moe_kernel_gptq_awq that the sibling task mi355x_vllm_triton_fused_moe_gptq_awq targets. Gemma4 lands here because the ROCm AITER unquantized MoE backend rejects its GELU_TANH activation, so the oracle falls back to Triton. The workload is the session's per-rank geometry under TP=2 with EP=1: 128 experts, top-8, hidden 2816, intermediate 352, activation gelu_tanh, BF16, at 64 (decode), 1080 and 7218 (chunked-prefill) tokens. One harness call covers both per-layer launches, the w13 gate_up GEMM and the w2 down GEMM. Worth knowing: the session ran with vLLM's fallback MoE config because configs/E=128,N=352,device_name=AMD_Instinct_MI355_OAM.json does not exist, and the harness reproduces that. The decode (M=64) and prefill (M=7218) regimes want very different tiling, so do not tune one at the expense of the other. Cases come from the gemma-4-26B-A4B-it Hyperloom 2026-08-01 MI355X session and are stored in session_cases.json. Preserve all correctness cases and improve CUDA-graph measured performance. Do not change the signature of fused_moe_kernel, invoke_fused_moe_kernel or fused_experts_impl.
+
+## Arena v2 contract
+
+The candidate is the existing implementation in the declared image sources.
+Its required final language and exact task-relative editable files are in
+`config.yaml`; directory names do not select execution behavior. The framework
+freezes this initial implementation into a separate baseline workspace. Both
+roles run the same protected harness in their own workspace; an absent candidate
+or missing image source is an error, never permission to use the installed copy.
+
+Setup runs `python3 scripts/setup_task.py` after declared image materialization
+and before baseline capture. It validates source paths and required build assets.
+Do not edit `scripts/`, workload files or references. Additional source files
+outside `candidate.editable` are dependencies, not editable implementation.
+Preserve the original numerical gates, seeds, layouts, dispatch, state handling
+and CUDA graph/event timing. `workloads.json` enumerates the complete manifest
+independently of reported timings; `session_cases.json`, when present, retains
+its original session provenance. Cases marked correctness-only are not scored.
+
+Use the agent-neutral commands:
+
+```bash
+python3 scripts/evaluate.py validate-task
+python3 scripts/evaluate.py baseline compile
+python3 scripts/evaluate.py baseline correctness
+python3 scripts/evaluate.py baseline performance
+python3 scripts/evaluate.py candidate compile
+python3 scripts/evaluate.py candidate correctness
+python3 scripts/evaluate.py candidate performance
+```
+
+Baseline commands run in the framework's frozen workspace. Each command emits
+one `ARENA_EVAL_RESULT=` envelope. A failed dependency, dispatch or output contract
+is a failure, not an accepted baseline numerical diagnostic. The original
+`task_runner.py` remains the protected operator implementation of these checks;
+its generated performance region must be materialized by Arena. Developer
+profiling drivers do not supply final evaluation evidence.
+This migration has CPU regression coverage; formal GPU task validation and the
+optimization campaign are coordinated separately. Runtime source availability
+must be checked against the selected immutable image, not inferred from a tag.

@@ -130,7 +130,51 @@ output (1.473997 -> 2.210493).
 ## Run
 
 ```
-python3 scripts/task_runner.py compile       # smoke: one KDA call
-python3 scripts/task_runner.py correctness   # float64 parity, both modes
-python3 scripts/task_runner.py performance   # CUDA-graph timed -> build/performance_report.json
+python3 scripts/evaluate.py candidate compile       # smoke: one KDA call
+python3 scripts/evaluate.py candidate correctness   # float64 parity, both modes
+python3 scripts/evaluate.py candidate performance   # CUDA-graph timed -> build/performance_report.json
 ```
+
+## Effective task instructions
+
+Optimize Kimi-K3 KDA (Kimi Delta Attention) linear attention on MI355X/gfx950. KDA is the Triton-JIT gated-delta-rule path used by K3's 69 linear-attention layers. The kernels are vendored per GPU vendor; the ROCm copy that kimi_gdn_linear_attn.py selects lives in models/kimi_k3/amd/ops/third_party/kda/ (chunk.py, chunk_intra.py, chunk_intra_token_parallel.py, fused_recurrent.py) plus the shared FLA ops under third_party/flash_linear_attention/ops/. Two entry points are timed: fused_recurrent_kda_packed_decode (decode hot kernel k007, fused_recurrent_kda_packed_decode_kernel) and chunk_kda_with_fused_gate (the prefill chunk-KDA kernel group). Do NOT retarget anything at fused_recurrent_kda: that is the speculative-decode entry and K3 never executes it (num_nextn_predict_layers=0). Dims are the session's per-rank TP=8 shapes: num_heads=12, head_dim=128 (d_k=d_v), chunk_size=64, gate_lower_bound=-5.0. That lower bound selects the safe-gate branch gate = -5.0 * sigmoid(exp(A_log) * (raw_g + dt_bias)) rather than the softplus branch, and raw_beta arrives pre-sigmoid because both kernels apply sigmoid internally. session_cases.json carries the session's real packed prefill token counts (7211 and 1080) plus long-sequence headroom up to T=32768. Correctness is numerical parity against an independent float64 golden (cos > 0.999 and normalized max error < 0.03). Preserve all correctness cases and improve the CUDA-graph measured performance, especially at long sequence length. Keep the public signatures of fused_recurrent_kda_packed_decode and chunk_kda_with_fused_gate unchanged.
+
+## Arena v2 contract
+
+The candidate is the existing implementation in the declared image sources.
+Its required final language and exact task-relative editable files are in
+`config.yaml`; directory names do not select execution behavior. The framework
+freezes this initial implementation into a separate baseline workspace. Both
+roles run the same protected harness in their own workspace; an absent candidate
+or missing image source is an error, never permission to use the installed copy.
+
+Setup runs `python3 scripts/setup_task.py` after declared image materialization
+and before baseline capture. It validates source paths and required build assets.
+Do not edit `scripts/`, workload files or references. Additional source files
+outside `candidate.editable` are dependencies, not editable implementation.
+Preserve the original numerical gates, seeds, layouts, dispatch, state handling
+and CUDA graph/event timing. `workloads.json` enumerates the complete manifest
+independently of reported timings; `session_cases.json`, when present, retains
+its original session provenance. Cases marked correctness-only are not scored.
+
+Use the agent-neutral commands:
+
+```bash
+python3 scripts/evaluate.py validate-task
+python3 scripts/evaluate.py baseline compile
+python3 scripts/evaluate.py baseline correctness
+python3 scripts/evaluate.py baseline performance
+python3 scripts/evaluate.py candidate compile
+python3 scripts/evaluate.py candidate correctness
+python3 scripts/evaluate.py candidate performance
+```
+
+Baseline commands run in the framework's frozen workspace. Each command emits
+one `ARENA_EVAL_RESULT=` envelope. A failed dependency, dispatch or output contract
+is a failure, not an accepted baseline numerical diagnostic. The original
+`task_runner.py` remains the protected operator implementation of these checks;
+its generated performance region must be materialized by Arena. Developer
+profiling drivers do not supply final evaluation evidence.
+This migration has CPU regression coverage; formal GPU task validation and the
+optimization campaign are coordinated separately. Runtime source availability
+must be checked against the selected immutable image, not inferred from a tag.

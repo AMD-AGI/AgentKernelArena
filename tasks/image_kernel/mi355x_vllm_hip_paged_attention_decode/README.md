@@ -113,3 +113,54 @@ Expected runtime image:
 ```text
 harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0
 ```
+
+## Effective task instructions
+
+Optimize the ROCm custom paged-attention decode kernels on MI355X/gfx950. The device kernels are paged_attention_ll4mi_QKV_mfma16_kernel (partial attention per KV partition) and paged_attention_ll4mi_reduce_kernel (cross-partition softmax reduction), reached through aiter.paged_attention_rocm. Both are JIT specialized per (gqa_ratio, head_size, npar_loops, dtype, block_size, ...) from csrc/cpp_itfs/pa/pa.cpp.jinja, whose device code lives in pa.cuh / pa_kernels.cuh / pa_common.cuh - all four files are editable and every edit is recompiled before each scoring step. The workload is BF16 decode with 64 sequences, head_size 128, block_size 16 and 1024-2048 tokens of KV context, across the three head geometries these models produce: GQA 2:1 (16 q / 8 kv), 4:1 (32 q / 8 kv) and 5:1 (40 q / 8 kv). That is three JIT specializations for the seven cases, so a rebuild costs three compiles. Do not tune one gqa_ratio at the expense of another. Cases come from four MI355X Hyperloom 2026-08-01 sessions (Llama-3.1-8B-Instruct, Qwen3-8B, Qwen3-0.6B, Qwen3-14B-FP8) and are stored in session_cases.json. Preserve all correctness cases and improve CUDA-graph measured performance. Do not change the signature of aiter.paged_attention_rocm or the launch contract in pa.cpp.jinja.
+
+## Arena v2 contract
+
+The candidate is the existing implementation in the declared image sources.
+Its required final language and exact task-relative editable files are in
+`config.yaml`; directory names do not select execution behavior. The framework
+freezes this initial implementation into a separate baseline workspace. Both
+roles run the same protected harness in their own workspace; an absent candidate
+or missing image source is an error, never permission to use the installed copy.
+
+Setup runs `python3 scripts/setup_task.py` after declared image materialization
+and before baseline capture. It validates source paths and required build assets.
+Do not edit `scripts/`, workload files or references. Additional source files
+outside `candidate.editable` are dependencies, not editable implementation.
+Preserve the original numerical gates, seeds, layouts, dispatch, state handling
+and CUDA graph/event timing. `workloads.json` enumerates the complete manifest
+independently of reported timings; `session_cases.json`, when present, retains
+its original session provenance. Cases marked correctness-only are not scored.
+
+Use the agent-neutral commands:
+
+```bash
+python3 scripts/evaluate.py validate-task
+python3 scripts/evaluate.py baseline compile
+python3 scripts/evaluate.py baseline correctness
+python3 scripts/evaluate.py baseline performance
+python3 scripts/evaluate.py candidate compile
+python3 scripts/evaluate.py candidate correctness
+python3 scripts/evaluate.py candidate performance
+```
+
+Baseline commands run in the framework's frozen workspace. Each command emits
+one `ARENA_EVAL_RESULT=` envelope. A failed dependency, dispatch or output contract
+is a failure, not an accepted baseline numerical diagnostic. The original
+`task_runner.py` remains the protected operator implementation of these checks;
+its generated performance region must be materialized by Arena. Developer
+profiling drivers do not supply final evaluation evidence.
+This migration has CPU regression coverage; formal GPU task validation and the
+optimization campaign are coordinated separately. Runtime source availability
+must be checked against the selected immutable image, not inferred from a tag.
+
+HIP evaluation uses a fresh task-local JIT directory per action. The runner
+requires a successful compilation whose inputs include a declared candidate
+translation unit or template header. It records the covered files and rejects
+unrelated/precompiled dispatch. This is build-source evidence, not exhaustive
+proof that every launched GPU instruction belongs to every editable file.
+No compiler-triggered repository cloning or checkout resets are permitted.

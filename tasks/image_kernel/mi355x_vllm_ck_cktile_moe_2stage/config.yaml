@@ -1,29 +1,30 @@
-task_type: image_kernel
-image_repo_path: /usr/local/lib/python3.12/dist-packages/aiter_meta
-repo_subdir: aiter_meta
-repository_language: hip
-source_file_path:
-- csrc/ck_tile_gemm_moe_2stages/moe_cktile2stages.cu
-target_kernel_functions:
-- cktile_moe_gemm1
-- cktile_moe_gemm2
+schema_version: 2
+description: Optimize the existing hip implementation; preserve the task-local operator and workload
+  contracts.
+candidate:
+  language: hip
+  initial_state: implemented
+  editable:
+  - aiter_meta/csrc/ck_tile_gemm_moe_2stages/moe_cktile2stages.cu
+baseline:
+  kind: initial_candidate
+  correctness_policy: required
+workspace:
+  sources:
+  - kind: image
+    image_path: /usr/local/lib/python3.12/dist-packages/aiter_meta
+    destination: aiter_meta
+  setup:
+  - - python3
+    - scripts/setup_task.py
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: workloads.json
+  timeout_s: 3600
 kernel_identity:
   logical_operator: cktile_moe_2stage
-  kernel_kind: ck
   source_owner: aiter
-  workload:
-    source: session_cases.json
-    primary_case: gptoss-k034-k047
-compile_command:
-- python3 scripts/task_runner.py compile
-correctness_command:
-- python3 scripts/task_runner.py correctness
-performance_command:
-- python3 scripts/task_runner.py performance
-task_result_template: null
-prompt:
-  source_code: null
-  instructions: Optimize cktile_moe_2stage on MI355X/gfx950. The harness cases are
-    parsed from Hyperloom 2026-07-20 sessions and stored in session_cases.json. Preserve
-    all correctness cases and improve CUDA-graph measured performance.
-  cheatsheet: null
+instructions:
+- README.md
