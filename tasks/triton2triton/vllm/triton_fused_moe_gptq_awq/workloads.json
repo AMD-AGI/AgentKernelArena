@@ -200,6 +200,17 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-int4_unrouted",
+      "dtype": "float16,float32,int32,uint8",
+      "params": {
+        "control": "int4_unrouted"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

@@ -35,3 +35,14 @@ All five scored cases and seeds remain unchanged and time the original default
 quantization mode. The exact timed invocation is observed and replayed with changed
 input and poisoned outputs. Input and hooks are restored even on failure; 10 warmups,
 100 samples, full-wrapper timing and original source/harness are preserved.
+
+Additional unscored public-branch controls from PR105: Explicit wider FP8 output, BF16 3D input and FP32/UE8M0 edge values.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.
+
+The protected installed checker handles leading dimensions and explicit FP8
+output storage types for the new controls. As in the public wrapper, the clamp
+and scale divisor still come from the platform's FP8 format (240 for fnuz),
+even when another output storage dtype is requested. Original 2-D/default-dtype
+cases retain their original reference. Shape/dtype/device, positive finite
+scales, read-only input checks and both original numerical gates remain active.

@@ -43,3 +43,7 @@ timing remain unchanged. The original zero-reset runs unchanged for every warmup
 and measured sample. Only the unscored exact replay poisons written cache slots
 after that reset, using changed K/V inputs and reversed slot routing; the full
 result is checked numerically. All caller-owned inputs/caches are restored on exit.
+
+Additional unscored public-branch controls from PR105: Strided BF16 full backing-storage guard plus explicit scaled FP8 cache.
+Their `control-upstream-*` manifest rows preserve all existing scored cases,
+numerical gates, seeds and timing.

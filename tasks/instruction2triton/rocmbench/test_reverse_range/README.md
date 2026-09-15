@@ -45,14 +45,14 @@ This kernel, `reverse_range`,  is designed to reverse a specific 512-element seg
 
 You must ensure that:
 1.  All arguments received by `reverse_range` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
 ```
 The full definition for `reverse_range` and relevant helper utilities are provided in the context below. You only need to complete the code for `reverse_range` whilst keeping other things intact. DONT remove Imports and HELPER utils.
 
-######################################## Imports ######################################## 
+######################################## Imports ########################################
 import numpy as np
 import pytest
 import torch
@@ -60,7 +60,7 @@ from numpy.random import RandomState
 
 import triton
 import triton.language as tl
-######################################## Imports ######################################## 
+######################################## Imports ########################################
 
 @triton.jit
 def reverse_range(in_ptr, out_ptr):
@@ -91,7 +91,3 @@ def reverse_range(in_ptr, out_ptr):
         receives the value from `in_ptr + 512`.
     """
     # Your code here
-
-
-
-

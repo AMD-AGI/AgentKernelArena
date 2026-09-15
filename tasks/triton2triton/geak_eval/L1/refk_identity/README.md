@@ -46,3 +46,7 @@ Do not edit `test_kernel_harness.py`, `_arena_*.py`, `workloads.json`, or genera
 next to the original harness even though the public runner is `_arena_eval.py`.
 Unsupported hardware or missing dependencies return a failing envelope; use a
 compatible image/GPU before scheduling this task.
+
+The input builder, identity reference and launch wrapper now live in protected
+`test_kernel_harness.py`; `kernel.py` supplies the declared `_identity_kernel`.
+The original input generator, kernel body and 12 measured workloads are unchanged.

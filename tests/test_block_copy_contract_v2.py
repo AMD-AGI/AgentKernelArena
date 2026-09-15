@@ -64,7 +64,14 @@ def digest(data):return hashlib.sha256(data).hexdigest()
 def test_original_manifest_kernel_timing_and_guard_are_preserved(task):
     path,_=task;key=str(path.relative_to(ROOT));expected=ORIGINAL[key]
     manifest=json.loads((path/'workloads.json').read_text())
-    rows=[{k:v for k,v in r.items() if k!='metadata'} for r in manifest['cases']]
+    extra=manifest['cases'][130:]
+    if key.startswith('tasks/triton2triton/'):
+        assert [(r['params']['arguments']['dtypes_str'][0], r['params']['arguments']['n'],
+                 r['params']['arguments']['padding_option']) for r in extra] == TAIL_CONTROLS
+        assert all(r['checks']==['correctness'] for r in extra)
+    else:
+        assert extra == []
+    rows=[{k:v for k,v in r.items() if k!='metadata'} for r in manifest['cases'][:130]]
     assert digest(json.dumps(rows,sort_keys=True,separators=(',',':')).encode())==expected['rows']
     assert len(rows)==130
     assert sum(r['params']['function']=='test_block_copy' for r in rows)==90
@@ -99,8 +106,9 @@ def test_only_specific_rejection_is_accepted_and_buffers_unchanged(task,dtype):
     with pytest.raises(ref.NumericalMismatch):ref.expect_integer_nan_rejection(mutation,a,b)
 
 
+TAIL_CONTROLS=[('float32',63,None),('int32',65,'zero'),('float16',127,'nan')]
 DTYPES=['bool','int16','int32','float16','float32','bfloat16']
-@pytest.mark.parametrize('dtype,n,padding',[(d,n,p) for d in DTYPES for n in [64,128,256,512,1024] for p in [None,'zero','nan']])
+@pytest.mark.parametrize('dtype,n,padding',[(d,n,p) for d in DTYPES for n in [64,128,256,512,1024] for p in [None,'zero','nan']]+TAIL_CONTROLS)
 def test_original_correctness_function_executes_all90_rows_on_cpu(task,dtype,n,padding):
     path,ref=task
     class Kernel:

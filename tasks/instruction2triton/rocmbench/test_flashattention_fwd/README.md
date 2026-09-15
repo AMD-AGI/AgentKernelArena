@@ -44,14 +44,14 @@ This kernel, `flash_fwd_kernel`,  performs forward pass of the FlashAttention al
 
 You must ensure that:
 1.  All arguments received by `flash_fwd_kernel` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
 ```
 The full definitions for `flash_fwd_kernel` and relevant helper utilities are provided in the context below. You only need to complete the code for `flash_fwd_kernel` whilst keeping other things intact. DONT remove Imports and HELPER utils.
 
-######################################## Imports ######################################## 
+######################################## Imports ########################################
 
 # import numpy as np
 import pytest
@@ -59,7 +59,7 @@ import torch
 
 import triton
 import triton.language as tl
-######################################## Imports ######################################## 
+######################################## Imports ########################################
 
 
 @triton.jit
@@ -111,7 +111,3 @@ def flash_fwd_kernel(
         BLOCK_N (tl.constexpr): The size of the block along the key/value sequence length dimension (N). Keys and values are loaded and processed in blocks of this size.
     """
     # Your code here
-
-
-
-

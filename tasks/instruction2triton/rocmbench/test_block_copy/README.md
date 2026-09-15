@@ -64,7 +64,7 @@ This kernel, `block_copy_kernel`,  is designed to copy data using block pointers
 
 You must ensure that:
 1.  All arguments received by `block_copy_kernel` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
@@ -109,7 +109,3 @@ def block_copy_kernel(a_ptr, b_ptr, N, BLOCK_SIZE: tl.constexpr, padding_option:
     # and store it to b_ptr.
 
     # Your code here
-
-
-
-

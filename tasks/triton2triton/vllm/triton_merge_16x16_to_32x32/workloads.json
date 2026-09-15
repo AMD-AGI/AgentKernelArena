@@ -86,10 +86,87 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "seed": 47,
+          "B": 1,
+          "T": 31,
+          "H": 1,
+          "dtype": "float16"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "seed": 48,
+          "B": 3,
+          "T": 33,
+          "H": 2,
+          "dtype": "bfloat16"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": {
+          "seed": 49,
+          "B": 1,
+          "T": 47,
+          "H": 5,
+          "dtype": "float32"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "c73af8e51607ebcf0cec31d8817f1041277392bc22764129c155e60d1a2e5acc",
     "original_correctness_sha256": "95bd785a41467cfd556c26ab83de638d270a6d8724e78490519176331f0ba900"
-  }
+  },
+  "upstream_controls": [
+    {
+      "seed": 47,
+      "B": 1,
+      "T": 31,
+      "H": 1,
+      "dtype": "float16"
+    },
+    {
+      "seed": 48,
+      "B": 3,
+      "T": 33,
+      "H": 2,
+      "dtype": "bfloat16"
+    },
+    {
+      "seed": 49,
+      "B": 1,
+      "T": 47,
+      "H": 5,
+      "dtype": "float32"
+    }
+  ]
 }

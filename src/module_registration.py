@@ -13,9 +13,6 @@ class AgentType(Enum):
     TASK_VALIDATOR = "task_validator"
     GEAK = "geak"
     GEAK_V4 = "geak_v4"
-    GEAK_V3 = "geak_v3"
-    GEAK_V3_TRITON = "geak_v3_triton"
-    MINI_SWE_TRITON = "mini_swe_triton"
     FORGE = "forge"
     FORGE_OPERATOR2FLYDSL = "forge_operator2flydsl"
 
@@ -73,12 +70,6 @@ def load_agent_launcher(agent_type: AgentType, logger: logging.Logger) -> Callab
             from agents.geak import launch_agent  # noqa: F401
         elif agent_type == AgentType.GEAK_V4:
             from agents.geak_v4 import launch_agent  # noqa: F401
-        elif agent_type == AgentType.GEAK_V3:
-            from agents.geak_v3 import launch_agent  # noqa: F401
-        elif agent_type == AgentType.GEAK_V3_TRITON:
-            from agents.geak_v3_triton import launch_agent  # noqa: F401
-        elif agent_type == AgentType.MINI_SWE_TRITON:
-            from agents.mini_swe_triton import launch_agent  # noqa: F401
         elif agent_type == AgentType.FORGE:
             from agents.forge import launch_agent  # noqa: F401
         elif agent_type == AgentType.FORGE_OPERATOR2FLYDSL:
@@ -122,7 +113,7 @@ def load_post_processing_handler(agent_type: AgentType, logger: logging.Logger) 
         from agents.forge_operator2flydsl.postprocessing import forge_operator2flydsl_post_processing
         logger.info(f"Using forge_operator2flydsl_post_processing for agent: {agent_name}")
         return forge_operator2flydsl_post_processing
-    elif agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.GEAK, AgentType.GEAK_V4, AgentType.GEAK_V3, AgentType.GEAK_V3_TRITON, AgentType.MINI_SWE_TRITON, AgentType.FORGE]:
+    elif agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.GEAK, AgentType.GEAK_V4, AgentType.FORGE]:
         logger.info(f"Using general_post_processing for agent: {agent_name}")
         return general_post_processing
     else:

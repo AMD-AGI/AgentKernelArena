@@ -37,3 +37,7 @@ Canonical benchmark helpers must be materialized by Arena; do not edit their gen
 Controls cover position and sequence-length upper clamps. Hidden-state and token copies must be exact; all mutated buffers are checked.
 
 The task-local `_arena_contract.py` and `_arena_replay.py` are protected evaluation code. Original cases, seeds, tolerances, warmups, sample counts, allocations and preparation boundaries remain in `scripts/task_runner.py`. The extra `contract_controls` manifest row is correctness-only. Both the frozen baseline and candidate receive the same checks. The measured graph exposes its real outputs; an untimed replay changes a domain-valid input, recomputes the CPU oracle and restores all input buffers in `finally`. For the zero operator the replay control instead poisons its output. References and snapshots are outside device timing. Failure to observe or replay the measured invocation is an error, never an accepted timing sample.
+
+Additional unscored public-branch controls from PR105: Clamp transition combined with1536-wide hidden-state masked block.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.

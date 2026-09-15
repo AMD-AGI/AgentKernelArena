@@ -291,6 +291,54 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "test_swizzle2d_boundary/52d8e1dc1992fc083b6e",
+      "params": {
+        "function": "test_swizzle2d_boundary",
+        "arguments": {
+          "size_i": 5,
+          "size_j": 7,
+          "size_g": 3,
+          "output_dtype": "torch.float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_swizzle2d_boundary/aa5c2f2149a366952dcc",
+      "params": {
+        "function": "test_swizzle2d_boundary",
+        "arguments": {
+          "size_i": 128,
+          "size_j": 128,
+          "size_g": 16,
+          "output_dtype": "torch.int32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_swizzle2d_boundary/ee1b24fc0d9851b28e0f",
+      "params": {
+        "function": "test_swizzle2d_boundary",
+        "arguments": {
+          "size_i": 64,
+          "size_j": 512,
+          "size_g": 8,
+          "output_dtype": "torch.int64"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

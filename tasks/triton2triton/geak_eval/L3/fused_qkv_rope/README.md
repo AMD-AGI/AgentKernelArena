@@ -62,3 +62,8 @@ place and poisoning writable outputs. Its complete outputs must match a newly
 computed private oracle. Every read-only input is checked byte-for-byte and
 restored in `finally`, including failure paths. These checks run outside timing
 and identically for the frozen initial candidate and submitted candidate.
+
+The input/reference helpers and public launch wrapper live in protected
+`test_kernel_harness.py`, which invokes the declared candidate JIT kernel. The
+original 1,200 workloads and the complete measured-output/replay checks above
+are unchanged by this module-boundary change.

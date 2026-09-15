@@ -54,3 +54,7 @@ prepare callback remains outside measured split-K accumulation. Unscored
 controls cover 83 shuffled tokens (including a 65-token adapter), disabled/empty
 adapter groups, 4D weights, hidden515/rank19 tails, scaling1.25 and a nonzero
 initial output to check the public wrapper's reset.
+
+Additional unscored public-branch controls from PR105: Split-K first/last partial blocks, BF16 4D weights and inactive LoRA.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.

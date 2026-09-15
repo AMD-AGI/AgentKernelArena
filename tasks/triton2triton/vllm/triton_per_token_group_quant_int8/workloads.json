@@ -126,10 +126,63 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "all_zero_g96"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "eps_dominated_g96"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": {
+          "name": "fp16_extrema_and_quant_boundaries_g96"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "a10acd718828dca6ecc3bd11c16dcb05071d6b78cba4c3d14e8a6a0bef4c5d7d",
     "original_correctness_sha256": "c19ce360982b83aa56fbf0f2be35c5a0cf5f644a27e88d019088568d229c512b"
-  }
+  },
+  "upstream_controls": [
+    {
+      "name": "all_zero_g96"
+    },
+    {
+      "name": "eps_dominated_g96"
+    },
+    {
+      "name": "fp16_extrema_and_quant_boundaries_g96"
+    }
+  ]
 }

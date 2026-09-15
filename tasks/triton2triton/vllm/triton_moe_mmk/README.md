@@ -50,3 +50,6 @@ integer-valued operands. The original five score rows remain unchanged.
 The standalone wrapper now applies modulo N to the full global column index;
 previously a second partial N tile could address weight columns beyond N. This
 corrects the public rectangular matrix contract; original scored cases are unchanged.
+
+Four additional unscored PR105 controls isolate M/N tails and K63/65 on
+either side of the tile selection boundary; all original scoring is unchanged.

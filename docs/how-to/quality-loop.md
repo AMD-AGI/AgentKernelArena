@@ -102,6 +102,11 @@ If a run has no accepted changes, it does not open an empty pull request.
   file invalidate the review.
 - Materialized image source trees and generated benchmark helpers are never
   copied into a task commit.
+- Runtime reports, ROCmBench `*_py.pt` outputs, compiled objects/libraries, and
+  ELF executables are filtered from task changes. The host independently rejects
+  generated outputs before a commit, including paths accepted by an older run's
+  manifest. This leaves local experiment artifacts intact; ordinary tensor/input
+  fixtures are not rejected merely for being binary files.
 - The top-level `tasks` selectors define the complete audit scope. Baseline
   promotion is attempted without a task-type allowlist and fails closed when the
   selected task has no promotable committed source baseline.

@@ -146,10 +146,88 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "variable_chunks_odd_heads_clamped",
+          "lengths": [
+            0,
+            48,
+            79,
+            121
+          ],
+          "heads": 7,
+          "chunk_size": 48,
+          "limits": [
+            0.01,
+            0.06
+          ]
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "short_chunks_strided_float16",
+          "lengths": [
+            0,
+            1,
+            34,
+            58,
+            67
+          ],
+          "heads": 5,
+          "chunk_size": 33
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "53689835829c1ef219867a53117e58630d37588069eada4bd9a8a2384661867b",
     "original_correctness_sha256": "a88b31d3d07e9f44e4a778758f5f15abaea8417312f8cc5a74892a1891075e94"
-  }
+  },
+  "upstream_controls": [
+    {
+      "name": "variable_chunks_odd_heads_clamped",
+      "lengths": [
+        0,
+        48,
+        79,
+        121
+      ],
+      "heads": 7,
+      "chunk_size": 48,
+      "limits": [
+        0.01,
+        0.06
+      ]
+    },
+    {
+      "name": "short_chunks_strided_float16",
+      "lengths": [
+        0,
+        1,
+        34,
+        58,
+        67
+      ],
+      "heads": 5,
+      "chunk_size": 33
+    }
+  ]
 }

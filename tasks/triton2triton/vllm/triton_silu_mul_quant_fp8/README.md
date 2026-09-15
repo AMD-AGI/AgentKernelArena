@@ -37,3 +37,7 @@ M%128 and N%256 constraints. All five scored workloads use the original default
 mode, source/harness, seeds, 10 warmups, 100 samples and full-wrapper timing.
 The exact timed invocation is numerically replayed with changed inputs and both
 outputs poisoned. Read-only input is checked and restored even on replay failure.
+
+Additional unscored public-branch controls from PR105: BF16 UE8M0 and FP32 finite/subnormal edges with provided output.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.

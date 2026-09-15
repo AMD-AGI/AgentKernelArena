@@ -59,14 +59,14 @@ This kernel, `iv_dependent_matmul`,  is designed to perform  tiled matrix multip
 
 You must ensure that:
 1.  All arguments received by `iv_dependent_matmul` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
 ```
 The full definition for `iv_dependent_matmul` and relevant helper utilities are provided in the context below. You only need to complete the code for `iv_dependent_matmul` whilst keeping other things intact. DONT remove Imports and HELPER utils.
 
-######################################## Imports ######################################## 
+######################################## Imports ########################################
 import numpy as np
 import pytest
 import torch
@@ -74,7 +74,7 @@ from numpy.random import RandomState
 
 import triton
 import triton.language as tl
-######################################## Imports ######################################## 
+######################################## Imports ########################################
 
 @triton.jit
 def iv_dependent_matmul(a_ptr, b_ptr, c_ptr,

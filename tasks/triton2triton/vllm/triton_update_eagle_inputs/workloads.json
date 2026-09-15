@@ -137,10 +137,39 @@
         "case_index": 5,
         "coverage": "Controls cover position and sequence-length upper clamps. Hidden-state and token copies must be exact; all mutated buffers are checked."
       }
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": [
+          [
+            4,
+            1536,
+            2048
+          ],
+          true
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "9d9782c0cae9f8c5e0c76fbb77f85979924649262e8ebc0f9218d701ea00e294",
     "original_correctness_sha256": "24c46c640e6806c930260bc9b4b9c2647adb2c6b59e0b7b84edad4f1ca9321c6"
-  }
+  },
+  "upstream_controls": [
+    [
+      [
+        4,
+        1536,
+        2048
+      ],
+      true
+    ]
+  ]
 }

@@ -228,10 +228,96 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": [
+          [
+            3,
+            6,
+            2,
+            80,
+            17,
+            3,
+            16
+          ],
+          [
+            17,
+            2,
+            11
+          ]
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": [
+          [
+            2,
+            4,
+            1,
+            64,
+            13,
+            1,
+            16
+          ],
+          [
+            13,
+            5
+          ]
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "dc704b9a4243ac71b22eb687703ebaaf4b446e5eb3c7f9f51f5ad2416d57ba14",
     "original_correctness_sha256": "6a9401aae213c62afc1848e5457c1394551db0bf315c9ed3066dcb6022f7a7aa"
-  }
+  },
+  "upstream_controls": [
+    [
+      [
+        3,
+        6,
+        2,
+        80,
+        17,
+        3,
+        16
+      ],
+      [
+        17,
+        2,
+        11
+      ]
+    ],
+    [
+      [
+        2,
+        4,
+        1,
+        64,
+        13,
+        1,
+        16
+      ],
+      [
+        13,
+        5
+      ]
+    ]
+  ]
 }

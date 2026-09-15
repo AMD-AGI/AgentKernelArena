@@ -73,6 +73,9 @@ def reference_sample_recovered_tokens(
     return out
 
 def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 10000:
+        from _upstream_controls import run_control
+        return run_control(case_index - 10000, load_module)
     import torch
     try: mod = load_module()
     except Exception as e: return False, f"Failed to load module: {e}"

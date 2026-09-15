@@ -15,6 +15,13 @@ MANIFEST = ROOT / 'workloads.json'
 
 def load_manifest():
     data = json.loads(MANIFEST.read_text())
+    control_tree = ast.parse((ROOT / '_upstream_controls.py').read_text())
+    controls = next(node.value for node in control_tree.body
+                    if isinstance(node, ast.Assign) and any(
+                        isinstance(target, ast.Name) and target.id == 'EXTRA_CASES'
+                        for target in node.targets))
+    if json.loads(json.dumps(ast.literal_eval(controls))) != data['upstream_controls']:
+        raise ValueError('Upstream control cases disagree with protected workload manifest')
     rows = data['cases']
     if not rows or len({r['test_case_id'] for r in rows}) != len(rows):
         raise ValueError('Empty or duplicate case manifest')

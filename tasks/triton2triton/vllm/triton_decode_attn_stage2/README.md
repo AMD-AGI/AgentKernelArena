@@ -73,3 +73,7 @@ Every added control declares only `correctness`. Its real measured/replayed
 branch is checked inside the correctness action and reported as an explicitly
 unscored diagnostic in that case's metrics. The performance action executes
 only the five original workloads; neither their weights nor aggregation change.
+
+Additional unscored public-branch controls from PR105: Nonuniform short sequences and split-count/empty-split boundaries.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.

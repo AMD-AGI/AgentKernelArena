@@ -126,10 +126,93 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": [
+          "sub_tile_tails",
+          7,
+          13,
+          11,
+          "float16",
+          "contiguous"
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": [
+          "multi_tile_tails_wide",
+          65,
+          97,
+          129,
+          "float16",
+          "contiguous"
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": [
+          "strided_bfloat16_tails",
+          73,
+          45,
+          19,
+          "bfloat16",
+          "strided"
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "ec94f285d4ee6495782dd7703dae1744552fe39b365fd61406f55b7e56fd0928",
     "original_correctness_sha256": "463f62131348bba064ab8e8827bbc15a98a43f6d183d2a3778630187cb294bca"
-  }
+  },
+  "upstream_controls": [
+    [
+      "sub_tile_tails",
+      7,
+      13,
+      11,
+      "float16",
+      "contiguous"
+    ],
+    [
+      "multi_tile_tails_wide",
+      65,
+      97,
+      129,
+      "float16",
+      "contiguous"
+    ],
+    [
+      "strided_bfloat16_tails",
+      73,
+      45,
+      19,
+      "bfloat16",
+      "strided"
+    ]
+  ]
 }

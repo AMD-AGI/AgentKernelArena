@@ -254,10 +254,175 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "unaligned_shuffled_strided_x4_head80",
+          "seq_lens": [
+            1,
+            17,
+            31
+          ],
+          "query_lens": [
+            1,
+            1,
+            1
+          ],
+          "num_query_heads": 12,
+          "num_kv_heads": 3,
+          "head_size": 80,
+          "block_size": 16,
+          "x_factor": 4,
+          "page_mapping": "shuffled",
+          "strided_layout": true,
+          "filter_by_query_len": false
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "mixed_query_filter_sliding_x16_head96",
+          "seq_lens": [
+            33,
+            70,
+            47,
+            95
+          ],
+          "query_lens": [
+            1,
+            3,
+            1,
+            2
+          ],
+          "num_query_heads": 8,
+          "num_kv_heads": 2,
+          "head_size": 96,
+          "block_size": 32,
+          "x_factor": 16,
+          "page_mapping": "reversed",
+          "strided_layout": false,
+          "filter_by_query_len": true,
+          "sliding_window": 17
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": {
+          "name": "unaligned_alibi_mha",
+          "seq_lens": [
+            23,
+            49
+          ],
+          "query_lens": [
+            1,
+            1
+          ],
+          "num_query_heads": 4,
+          "num_kv_heads": 4,
+          "head_size": 64,
+          "block_size": 16,
+          "x_factor": 8,
+          "page_mapping": "shuffled",
+          "strided_layout": false,
+          "filter_by_query_len": false,
+          "use_alibi": true
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "852ee742896f92ed5b4e728ee6d8d84e1abe2d5aaa9aecc716e1b09da9adc29c",
     "original_correctness_sha256": "e02a792f783d4ccfc2b12c8e0d655dc0bcef0cb6a2cc2e98f24c88d5d6160464"
-  }
+  },
+  "upstream_controls": [
+    {
+      "name": "unaligned_shuffled_strided_x4_head80",
+      "seq_lens": [
+        1,
+        17,
+        31
+      ],
+      "query_lens": [
+        1,
+        1,
+        1
+      ],
+      "num_query_heads": 12,
+      "num_kv_heads": 3,
+      "head_size": 80,
+      "block_size": 16,
+      "x_factor": 4,
+      "page_mapping": "shuffled",
+      "strided_layout": true,
+      "filter_by_query_len": false
+    },
+    {
+      "name": "mixed_query_filter_sliding_x16_head96",
+      "seq_lens": [
+        33,
+        70,
+        47,
+        95
+      ],
+      "query_lens": [
+        1,
+        3,
+        1,
+        2
+      ],
+      "num_query_heads": 8,
+      "num_kv_heads": 2,
+      "head_size": 96,
+      "block_size": 32,
+      "x_factor": 16,
+      "page_mapping": "reversed",
+      "strided_layout": false,
+      "filter_by_query_len": true,
+      "sliding_window": 17
+    },
+    {
+      "name": "unaligned_alibi_mha",
+      "seq_lens": [
+        23,
+        49
+      ],
+      "query_lens": [
+        1,
+        1
+      ],
+      "num_query_heads": 4,
+      "num_kv_heads": 4,
+      "head_size": 64,
+      "block_size": 16,
+      "x_factor": 8,
+      "page_mapping": "shuffled",
+      "strided_layout": false,
+      "filter_by_query_len": false,
+      "use_alibi": true
+    }
+  ]
 }

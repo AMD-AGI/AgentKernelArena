@@ -45,7 +45,7 @@ This kernel, `rms_kernel`,  is designed to perform Root Mean Square (RMS) Normal
 
 You must ensure that:
 1.  All arguments received by `rms_kernel` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>

@@ -147,10 +147,41 @@
         "case_index": 5,
         "coverage": "Controls cover remapped requests, zero/one/multiple accepted tokens, rejection counts, repeated histogram updates and preservation of inactive request state."
       }
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "multi_program_tail",
+          "requests": 70,
+          "max_requests": 149,
+          "vocab": 257,
+          "max_model_len": 96,
+          "max_sampled": 5,
+          "mapping": "(request*43+17)%149"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "eab122dcf1eed24ca17b648b6e0b6dd0ec263e27a04cbc3165d795d32ecb87c6",
     "original_correctness_sha256": "b2e899a9843b71e07885c33331dce8a224a45e569e4ba4fe3aa59ab394702746"
-  }
+  },
+  "upstream_controls": [
+    {
+      "name": "multi_program_tail",
+      "requests": 70,
+      "max_requests": 149,
+      "vocab": 257,
+      "max_model_len": 96,
+      "max_sampled": 5,
+      "mapping": "(request*43+17)%149"
+    }
+  ]
 }

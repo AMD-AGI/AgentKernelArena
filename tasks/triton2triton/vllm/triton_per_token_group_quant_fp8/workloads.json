@@ -126,10 +126,205 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "zeros",
+          "shape": [
+            1,
+            128
+          ],
+          "group_size": 32,
+          "input_kind": "zeros",
+          "input_dtype": "float16"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "tiny_custom_eps",
+          "shape": [
+            2,
+            96
+          ],
+          "group_size": 48,
+          "input_kind": "patterned",
+          "amplitudes": [
+            5e-05,
+            1e-08
+          ],
+          "input_dtype": "float32",
+          "eps": 0.0001
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": {
+          "name": "saturation_boundary_explicit_dtype",
+          "shape": [
+            2,
+            128
+          ],
+          "group_size": 64,
+          "input_kind": "saturation_boundary",
+          "input_dtype": "float16",
+          "output_dtype": "wider_fp8"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-4",
+      "params": {
+        "case_index": 10003,
+        "configuration": {
+          "name": "mixed_dynamic_range_3d",
+          "shape": [
+            2,
+            3,
+            192
+          ],
+          "group_size": 48,
+          "input_kind": "patterned",
+          "amplitudes": [
+            0.000244140625,
+            0.0625,
+            1.0,
+            64.0
+          ],
+          "input_dtype": "bfloat16"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-5",
+      "params": {
+        "case_index": 10004,
+        "configuration": {
+          "name": "ue8m0_non_power_of_two_group",
+          "shape": [
+            3,
+            120
+          ],
+          "group_size": 40,
+          "input_kind": "patterned",
+          "amplitudes": [
+            0.75,
+            17.0,
+            93.0
+          ],
+          "input_dtype": "float32",
+          "use_ue8m0": true
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "3f7503d3dc25e9723a39880c17fea8e428b820ba328b6667a1eebf54fbafb61f",
     "original_correctness_sha256": "3b87c4bf3b3f9fdc6dc4a4dcf42f1fa053203153108c56ada9cf0f80b0b13a89"
-  }
+  },
+  "upstream_controls": [
+    {
+      "name": "zeros",
+      "shape": [
+        1,
+        128
+      ],
+      "group_size": 32,
+      "input_kind": "zeros",
+      "input_dtype": "float16"
+    },
+    {
+      "name": "tiny_custom_eps",
+      "shape": [
+        2,
+        96
+      ],
+      "group_size": 48,
+      "input_kind": "patterned",
+      "amplitudes": [
+        5e-05,
+        1e-08
+      ],
+      "input_dtype": "float32",
+      "eps": 0.0001
+    },
+    {
+      "name": "saturation_boundary_explicit_dtype",
+      "shape": [
+        2,
+        128
+      ],
+      "group_size": 64,
+      "input_kind": "saturation_boundary",
+      "input_dtype": "float16",
+      "output_dtype": "wider_fp8"
+    },
+    {
+      "name": "mixed_dynamic_range_3d",
+      "shape": [
+        2,
+        3,
+        192
+      ],
+      "group_size": 48,
+      "input_kind": "patterned",
+      "amplitudes": [
+        0.000244140625,
+        0.0625,
+        1.0,
+        64.0
+      ],
+      "input_dtype": "bfloat16"
+    },
+    {
+      "name": "ue8m0_non_power_of_two_group",
+      "shape": [
+        3,
+        120
+      ],
+      "group_size": 40,
+      "input_kind": "patterned",
+      "amplitudes": [
+        0.75,
+        17.0,
+        93.0
+      ],
+      "input_dtype": "float32",
+      "use_ue8m0": true
+    }
+  ]
 }

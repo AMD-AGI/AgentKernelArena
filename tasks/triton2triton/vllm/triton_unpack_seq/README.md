@@ -43,3 +43,7 @@ Both roles use this same timing unit, grid, launch options, 10 warmups and 100
 samples. The actual timed output is numerically checked, poisoned and replayed
 with changed packed data and reversed sequence lengths (same total output size).
 Inputs and the reusable output buffer are restored even on replay failure.
+
+Additional unscored public-branch controls from PR105: INT64 lengths and explicit alternate block dimensions on higher-rank/tail/empty sequences.
+They have independent `control-upstream-*` manifest rows; existing scored
+inputs, numerical gates and timing remain unchanged.

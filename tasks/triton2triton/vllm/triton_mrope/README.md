@@ -53,3 +53,7 @@ the reference. Preparation replaces poison with the input seeds required by this
 in-place operation. All six buffers are restored in `finally`, including failure
 paths. Original five scored cases, seeds 42+i in both phases, allocation/reset
 boundaries, 10 warmups and 100 samples remain unchanged.
+
+Additional unscored public-branch controls from PR105: BF16 and partial rotary dimensions; preserve full-head original timing.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.

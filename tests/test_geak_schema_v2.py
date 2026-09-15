@@ -339,7 +339,7 @@ def test_materialization_preserves_nested_inputs_and_private_git(task_factory):
         bridge.materialize(source, destination)
 
 
-@pytest.mark.parametrize("alias", ["geak_v3", "geak_v3_triton", "geak_v4"])
+@pytest.mark.parametrize("alias", ["geak_v4"])
 def test_old_aliases_delegate_v2_without_legacy_cli(task_factory, monkeypatch, alias):
     bridge = task_factory()
     generic = importlib.import_module("agents.geak.launch_agent")

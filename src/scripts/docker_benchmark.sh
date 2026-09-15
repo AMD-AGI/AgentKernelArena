@@ -379,7 +379,7 @@ configure_geak_v4_runtime() {
     local config="$1"
     GEAK_V4_RUNTIME=0
     case "$(read_agent_template "$config")" in
-        geak|geak_v3|geak_v3_triton|geak_v4) GEAK_V4_RUNTIME=1 ;;
+        geak|geak_v4) GEAK_V4_RUNTIME=1 ;;
     esac
 }
 
@@ -443,7 +443,7 @@ resolve_required_agents() {
         cursor|cursor-agent) printf 'cursor\n' ;;
         codex) printf 'codex\n' ;;
         # All retained v2 tasks use GEAK's unified Claude Workflow engine.
-        geak|geak_v3|geak_v3_triton|geak_v4|geak-v4) printf 'claude_code\n' ;;
+        geak|geak_v4|geak-v4) printf 'claude_code\n' ;;
         *) printf '%s\n' "$tmpl" ;;
     esac
 }
@@ -460,7 +460,7 @@ normalize_check_agents() {
             all)
                 normalized+=(codex claude_code cursor)
                 ;;
-            claude|claude_code|geak|geak_v3|geak_v3_triton|geak_v4|geak-v4)
+            claude|claude_code|geak|geak_v4|geak-v4)
                 normalized+=(claude_code)
                 ;;
             cursor|cursor-agent)
@@ -1424,7 +1424,7 @@ container_preflight() {
     container_check_agents $(resolve_required_agents "$config_name")
     # GEAK aliases all use the same v2 SDK and pinned engine.
     case "$(read_agent_template "$config_name")" in
-        geak|geak_v3|geak_v3_triton|geak_v4)
+        geak|geak_v4)
             container_setup_geak
             container_check_geak
             ;;

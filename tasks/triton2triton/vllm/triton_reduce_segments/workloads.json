@@ -146,10 +146,120 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "packed_variable_partial_fp16",
+          "shape": [
+            4,
+            3,
+            80,
+            4,
+            null
+          ],
+          "query_lens": [
+            2,
+            0,
+            3,
+            1
+          ],
+          "seq_lens": [
+            1,
+            127,
+            33,
+            65
+          ],
+          "segment_dtype": "float16"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "zero_denom_extreme_max_float32_output",
+          "shape": [
+            2,
+            2,
+            48,
+            4,
+            null
+          ],
+          "query_lens": [
+            1,
+            2
+          ],
+          "seq_lens": [
+            64,
+            128
+          ],
+          "output_dtype": "float32",
+          "special_values": "zero_denom_extreme_max"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "a145c4faeb29bfa35a2ae758a9d7cbc913b178fc8baf13738ae66cd75c44c77a",
     "original_correctness_sha256": "1293ffbc434f967b746476255ad83e3792dfe91dc7453aac8d8cfee394c0a6d6"
-  }
+  },
+  "upstream_controls": [
+    {
+      "name": "packed_variable_partial_fp16",
+      "shape": [
+        4,
+        3,
+        80,
+        4,
+        null
+      ],
+      "query_lens": [
+        2,
+        0,
+        3,
+        1
+      ],
+      "seq_lens": [
+        1,
+        127,
+        33,
+        65
+      ],
+      "segment_dtype": "float16"
+    },
+    {
+      "name": "zero_denom_extreme_max_float32_output",
+      "shape": [
+        2,
+        2,
+        48,
+        4,
+        null
+      ],
+      "query_lens": [
+        1,
+        2
+      ],
+      "seq_lens": [
+        64,
+        128
+      ],
+      "output_dtype": "float32",
+      "special_values": "zero_denom_extreme_max"
+    }
+  ]
 }

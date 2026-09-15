@@ -182,10 +182,10 @@ def test_entire_manifest_is_collected_without_skips(task):
         parameter_sets = [{}]
         for mark in namespace[name].pytestmark:
             keys = mark.args[0].replace(' ', '').split(',')
-            parameter_sets = [dict(previous, **dict(zip(keys, values))) for previous in parameter_sets for values in mark.args[1]]
+            parameter_sets = [dict(previous, **dict(zip(keys, getattr(values, 'values', values)))) for previous in parameter_sets for values in mark.args[1]]
         for params in parameter_sets: found[adapter.identity(name, params)] = {'function': name, 'arguments': params}
     data = json.loads((path/'workloads.json').read_text()); expected = {r['test_case_id']: r['params'] for r in data['cases']}
-    assert found == expected and len(found) == 57
+    assert found == expected and len(found) == (59 if 'triton2triton' in path.parts else 57)
     assert sum('performance' in r['checks'] for r in data['cases']) == 18
     assert 'pytest.skip(' not in source
     assert 'torch.testing.assert_close(out_torch, out_triton, atol=0.3, rtol=0.01)' in source
@@ -200,7 +200,7 @@ def test_validate_task_emits_complete_manifest_envelope(task, monkeypatch):
     result = adapter.evaluate('task', 'validate-task')
     assert result['status'] == 'PASS', result.get('reason')
     assert result['metadata']['candidate_state'] == 'implemented'
-    assert len(result['cases']) == 57
+    assert len(result['cases']) == (59 if 'triton2triton' in path.parts else 57)
     assert all(row['status'] == 'PASS' for row in result['cases'])
     from src.task_protocol import parse_command_result
     # Verify the real framework parser accepts task-owned collection evidence.
@@ -216,6 +216,13 @@ def test_original_kernel_config_manifest_and_launch_contract(task):
         assert hashlib.sha256((path/name).read_bytes()).hexdigest() == expected[name]
     for name in ['matmul_kernel', 'cast_matmul_triton_wrapper', 'set_seed']:
         assert hashlib.sha256(ast.get_source_segment(source, nodes[name]).encode()).hexdigest() == expected[name]
+    if 'triton2triton' in path.parts:
+        param=next(d for d in nodes['test_cast_matmul'].decorator_list if isinstance(d,ast.Call))
+        extra=param.args[1]
+        assert isinstance(extra,ast.BinOp) and isinstance(extra.op,ast.Add)
+        assert [tuple(ast.literal_eval(a) for a in n.args) for n in extra.right.elts] == [
+            (31,48,48,'float16','float32','float16'), (65,48,80,'float64','float16','float32')]
+        param.args[1]=extra.left
     for name, decorators in expected['decorators'].items():
         assert ast.dump(ast.Module(body=nodes[name].decorator_list, type_ignores=[])) == decorators
     rows = json.loads((path/'workloads.json').read_text())['cases']

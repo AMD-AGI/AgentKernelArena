@@ -136,10 +136,128 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": [
+          "single_token_boundary",
+          1,
+          1,
+          1,
+          1,
+          "float32",
+          false
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": [
+          "non_power_of_two_topk_1",
+          37,
+          65,
+          5,
+          1,
+          "float32",
+          true
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": [
+          "non_power_of_two_topk_3",
+          129,
+          257,
+          8,
+          3,
+          "float16",
+          true
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-4",
+      "params": {
+        "case_index": 10003,
+        "configuration": [
+          "above_program_cap",
+          8209,
+          33,
+          8,
+          4,
+          "float16",
+          true
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "6e52ee52e0d47cb86ff5857c9d4f1fbdf133e70da82be4314f0a7062d52692a5",
     "original_correctness_sha256": "4e36a536bf88c3f61df814684bf08b11ba2cd3276635d12022d77326bc31663e"
-  }
+  },
+  "upstream_controls": [
+    [
+      "single_token_boundary",
+      1,
+      1,
+      1,
+      1,
+      "float32",
+      false
+    ],
+    [
+      "non_power_of_two_topk_1",
+      37,
+      65,
+      5,
+      1,
+      "float32",
+      true
+    ],
+    [
+      "non_power_of_two_topk_3",
+      129,
+      257,
+      8,
+      3,
+      "float16",
+      true
+    ],
+    [
+      "above_program_cap",
+      8209,
+      33,
+      8,
+      4,
+      "float16",
+      true
+    ]
+  ]
 }

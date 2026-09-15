@@ -45,7 +45,7 @@ This kernel, `chained_matmul_kernel`,  is designed to perform chained matrix mul
 
 You must ensure that:
 1.  All arguments received by `chained_matmul_kernel` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
@@ -87,7 +87,7 @@ def chained_matmul_kernel(A,  # Pointer to the first input tensor `A`. Expected 
     effectively processed column-wise due to the dot product with the intermediate, or rather,
     the accumulation logic results in an `(m,k)` output from `(m,n) @ (n,k)` where the second `(n,k)`
     is `C`). The final output matrix `out` has the shape `(m, k)`.
-    The kernel utilizes a tiled approach for parallel processing. 
+    The kernel utilizes a tiled approach for parallel processing.
 
 
     The user should implement the logic for (A @ B.T) @ C using Triton programming constructs.

@@ -156,10 +156,128 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": [
+          31,
+          577,
+          8192,
+          false,
+          true,
+          false,
+          "int8"
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": [
+          33,
+          513,
+          67,
+          false,
+          true,
+          true,
+          "float16"
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": [
+          65,
+          515,
+          131,
+          false,
+          false,
+          true,
+          "float16"
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-4",
+      "params": {
+        "case_index": 10003,
+        "configuration": [
+          129,
+          769,
+          257,
+          true,
+          false,
+          true,
+          "float16"
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "2f5317decebd9da1ae843f8a3e1f24da410086e6beb5422f355e5b39f66f6199",
     "original_correctness_sha256": "c4e30afe0caa673b7d0a6d0fdd5b918ab22327050ef43584dfd7bba418e8a7d2"
-  }
+  },
+  "upstream_controls": [
+    [
+      31,
+      577,
+      8192,
+      false,
+      true,
+      false,
+      "int8"
+    ],
+    [
+      33,
+      513,
+      67,
+      false,
+      true,
+      true,
+      "float16"
+    ],
+    [
+      65,
+      515,
+      131,
+      false,
+      false,
+      true,
+      "float16"
+    ],
+    [
+      129,
+      769,
+      257,
+      true,
+      false,
+      true,
+      "float16"
+    ]
+  ]
 }

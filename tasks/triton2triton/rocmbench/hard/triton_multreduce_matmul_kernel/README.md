@@ -45,7 +45,7 @@ This kernel, `triton_multreduce_matmul_kernel`,  is designed to perform matrix m
 
 You must ensure that:
 1.  All arguments received by `triton_multreduce_matmul_kernel` (i.e., `a_ptr`, `b_ptr`, `c_ptr`, `bias_ptr`, `M`, `N`, `K`, all stride arguments, `BLOCK_SIZE_M`, `BLOCK_SIZE_N`, `BLOCK_SIZE_K`, `USE_BIAS`, and `EVEN_K`) are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
@@ -111,35 +111,35 @@ def triton_multreduce_matmul_kernel(a_ptr, b_ptr, c_ptr, bias_ptr,  #
                                     BLOCK_SIZE_K: tl.constexpr,  #
                                     USE_BIAS: tl.constexpr, EVEN_K: tl.constexpr  #
                                     ):
-    """  
-    Performs matrix multiplication (C = A @ B + bias) using an explicit  
-    element-wise multiplication followed by a reduction (summation) strategy,  
-    instead of `tl.dot()`.  
+    """
+    Performs matrix multiplication (C = A @ B + bias) using an explicit
+    element-wise multiplication followed by a reduction (summation) strategy,
+    instead of `tl.dot()`.
 
-    This kernel is a wrapper around `triton_matmul_kernel`, configured  
-    to use the non-`tl.dot` path by setting `USE_DOT=False`.  
+    This kernel is a wrapper around `triton_matmul_kernel`, configured
+    to use the non-`tl.dot` path by setting `USE_DOT=False`.
 
-    Args:  
-        a_ptr: Pointer to the first input matrix A.  
-        b_ptr: Pointer to the second input matrix B.  
-        c_ptr: Pointer to the output matrix C.  
-        bias_ptr: Pointer to the bias vector/matrix.  
-        M: Number of rows in matrix A and C.  
-        N: Number of columns in matrix B and C.  
-        K: Number of columns in matrix A and rows in matrix B.  
-        stride_am: Stride for the M dimension of matrix A.  
-        stride_ak: Stride for the K dimension of matrix A.  
-        stride_bk: Stride for the K dimension of matrix B.  
-        stride_bn: Stride for the N dimension of matrix B.  
-        stride_cm: Stride for the M dimension of matrix C.  
-        stride_cn: Stride for the N dimension of matrix C.  
-        stride_bias: Stride for the bias.  
-        BLOCK_SIZE_M (tl.constexpr): Tile size for the M dimension.  
-        BLOCK_SIZE_N (tl.constexpr): Tile size for the N dimension.  
-        BLOCK_SIZE_K (tl.constexpr): Tile size for the K dimension.  
-        USE_BIAS (tl.constexpr): If True, add bias to the result.  
-        EVEN_K (tl.constexpr): If True, K is evenly divisible by BLOCK_SIZE_K,  
-                               allowing for unmasked loads in the K loop.  
+    Args:
+        a_ptr: Pointer to the first input matrix A.
+        b_ptr: Pointer to the second input matrix B.
+        c_ptr: Pointer to the output matrix C.
+        bias_ptr: Pointer to the bias vector/matrix.
+        M: Number of rows in matrix A and C.
+        N: Number of columns in matrix B and C.
+        K: Number of columns in matrix A and rows in matrix B.
+        stride_am: Stride for the M dimension of matrix A.
+        stride_ak: Stride for the K dimension of matrix A.
+        stride_bk: Stride for the K dimension of matrix B.
+        stride_bn: Stride for the N dimension of matrix B.
+        stride_cm: Stride for the M dimension of matrix C.
+        stride_cn: Stride for the N dimension of matrix C.
+        stride_bias: Stride for the bias.
+        BLOCK_SIZE_M (tl.constexpr): Tile size for the M dimension.
+        BLOCK_SIZE_N (tl.constexpr): Tile size for the N dimension.
+        BLOCK_SIZE_K (tl.constexpr): Tile size for the K dimension.
+        USE_BIAS (tl.constexpr): If True, add bias to the result.
+        EVEN_K (tl.constexpr): If True, K is evenly divisible by BLOCK_SIZE_K,
+                               allowing for unmasked loads in the K loop.
     """
     # Your code here.
 

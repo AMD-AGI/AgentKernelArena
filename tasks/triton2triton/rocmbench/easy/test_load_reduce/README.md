@@ -73,7 +73,7 @@ These kernels, `load_reduce_kernel`,  performs a block-wise load followed by a r
 
 You must ensure that:
 1.  All arguments received by `load_reduce_kernel` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
@@ -140,7 +140,3 @@ def load_reduce_kernel(
         and it's the dimension over which the reduction (max) is performed.
     """
     # Your code here
-
-
-
-

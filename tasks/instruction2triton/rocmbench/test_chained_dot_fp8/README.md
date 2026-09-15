@@ -45,7 +45,7 @@ This kernel, `_chained_dot`,  is designed to perform "chained dot product" opera
 
 You must ensure that:
 1.  All arguments received by `_chained_dot` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>

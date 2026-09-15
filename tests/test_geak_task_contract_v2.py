@@ -463,7 +463,7 @@ class MLACompleteContractTests(unittest.TestCase):
         h = SimpleNamespace(ALL_CONFIGS=[], _pick=lambda *a: [], mode_correctness=lambda *a, **k: [],
                             CONTROL_CASES=[{'test_case_id': 'control'}],
                             run_contract_controls=Mock(side_effect=RuntimeError('control setup failed')))
-        control = function(TASKS / 'L1/mla_decode/_arena_actions.py', 'correctness', h=h)(lambda *a: None)
+        control = function(TASKS / 'L1/mla_decode/_arena_actions.py', 'correctness', h=h, rope=SimpleNamespace(CASES=[]))(lambda *a: None)
         self.assertEqual(control[0]['failure_kind'], 'execution_failure')
         self.assertNotIn('metadata', control[0])
 

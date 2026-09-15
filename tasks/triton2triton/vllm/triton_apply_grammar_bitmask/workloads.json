@@ -116,10 +116,72 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": [
+          3,
+          37,
+          [
+            5,
+            1,
+            3
+          ]
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": [
+          4,
+          8209,
+          [
+            6,
+            2,
+            5,
+            0
+          ]
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "aa6baccf4fab446a837517cc6baaa8867098d906d08dd7d4d26b97430b216e83",
     "original_correctness_sha256": "8f2e222a7f24bbfa7e5164ad66c83c9381110b442cee8939f1872614b5f48a18"
-  }
+  },
+  "upstream_controls": [
+    [
+      3,
+      37,
+      [
+        5,
+        1,
+        3
+      ]
+    ],
+    [
+      4,
+      8209,
+      [
+        6,
+        2,
+        5,
+        0
+      ]
+    ]
+  ]
 }

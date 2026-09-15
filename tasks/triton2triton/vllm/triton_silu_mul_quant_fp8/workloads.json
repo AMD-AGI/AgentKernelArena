@@ -116,10 +116,82 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "bfloat16_ue8m0",
+          "shape": [
+            128,
+            256
+          ],
+          "input_dtype": "bfloat16",
+          "input_kind": "random",
+          "inject_wide_value": true,
+          "eps": 1e-06,
+          "use_ue8m0": true
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "float32_edges_preallocated_output",
+          "shape": [
+            128,
+            512
+          ],
+          "input_dtype": "float32",
+          "input_kind": "edge_values",
+          "eps": 0.0001,
+          "preallocate_output": true,
+          "exact_quantized": true
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "e12c8b4578e910c25908e1c5b4379421f6f5b5f44f045fb9f73802e0ecc31510",
     "original_correctness_sha256": "4d1423faa635bc27748c1de29380d6eea9bc373f5cca6d65d6bc51a72584dc41"
-  }
+  },
+  "upstream_controls": [
+    {
+      "name": "bfloat16_ue8m0",
+      "shape": [
+        128,
+        256
+      ],
+      "input_dtype": "bfloat16",
+      "input_kind": "random",
+      "inject_wide_value": true,
+      "eps": 1e-06,
+      "use_ue8m0": true
+    },
+    {
+      "name": "float32_edges_preallocated_output",
+      "shape": [
+        128,
+        512
+      ],
+      "input_dtype": "float32",
+      "input_kind": "edge_values",
+      "eps": 0.0001,
+      "preallocate_output": true,
+      "exact_quantized": true
+    }
+  ]
 }

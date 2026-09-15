@@ -35,7 +35,7 @@ def perturb(inputs, block_size):
         # Shift one boundary while retaining a valid cumulative partition.
         if int((starts[2] - starts[1]).item()) > 1:
             starts[1].add_(1)
-        else:
+        elif int((starts[1] - starts[0]).item()) > 0:
             starts[1].sub_(1)
     positions.mul_(3).add_(block_size - 1).remainder_(table.shape[1] * block_size)
     table.add_(11)

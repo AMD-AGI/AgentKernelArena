@@ -309,11 +309,109 @@
         1024
       ],
       "dtype": "float32"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "irregular_speculative",
+          "vocab": 96,
+          "mapping": [
+            2,
+            2,
+            0,
+            1,
+            1,
+            1
+          ],
+          "prefix_lengths": [
+            1,
+            2,
+            3,
+            4
+          ]
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "empty_grids",
+          "calls": [
+            {
+              "logits": [
+                0,
+                32
+              ],
+              "bad_words": 1
+            },
+            {
+              "logits": [
+                2,
+                32
+              ],
+              "bad_words": 0
+            }
+          ]
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "d2236c7ab71cc377ca22e321ddbbaf2f851586148a9d316e0eaae54ae6fa9626",
     "original_correctness_sha256": "328b1df71bcdfbe085ca3898ac77063f8aaeff2c2848858ba4c26afec55aad67",
     "additional_correctness": "Original targeted cases beyond the main shape table are retained explicitly. case_index=-1 executes the protected additional group without the main shape loop."
-  }
+  },
+  "upstream_controls": [
+    {
+      "name": "irregular_speculative",
+      "vocab": 96,
+      "mapping": [
+        2,
+        2,
+        0,
+        1,
+        1,
+        1
+      ],
+      "prefix_lengths": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "name": "empty_grids",
+      "calls": [
+        {
+          "logits": [
+            0,
+            32
+          ],
+          "bad_words": 1
+        },
+        {
+          "logits": [
+            2,
+            32
+          ],
+          "bad_words": 0
+        }
+      ]
+    }
+  ]
 }

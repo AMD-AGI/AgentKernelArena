@@ -76,9 +76,8 @@ The following templates are selectable in the current `AgentType` registry. See
 | `codex` | Codex CLI and host login state. |
 | `forge` | Pinned KernelForge engine and selected backend/provider; see the [Forge guide](../../agents/forge/README.md). |
 | `geak` | Pinned GEAK checkout, Claude Code Workflow support and SDK; see the [GEAK guide](../../agents/geak/README.md). |
-| `geak_v3`, `geak_v3_triton`, `geak_v4` | Delegate v2 tasks to `geak`; their older CLI/Workflow paths remain for v1 compatibility. |
+| `geak_v4` | Delegates v2 tasks to `geak`; its older Workflow path remains for v1 compatibility. |
 | `forge_operator2flydsl` | Compatibility name for `forge`, using the same launcher and configuration. |
-| `mini_swe_triton` | Legacy external tasks only; v2 unsupported. Requires the separate legacy mini fork, not current GEAK Workflow. See [runtime and compatibility limits](../../agents/mini_swe_triton/README.md). |
 | `task_validator` | Claude Code or Codex backend, with defaults in `agents/task_validator/agent_config.yaml` and run-level `agent` overrides. |
 
 Selectable names are defined in [the registry](../../src/module_registration.py).

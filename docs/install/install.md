@@ -121,9 +121,9 @@ installation and its alternative npm installation. See the
 [official Claude Code setup guide](https://code.claude.com/docs/en/installation)
 for current installation alternatives.
 
-The `geak_v3`, `geak_v3_triton`, and `mini_swe_triton` integrations require
-their own runtime dependencies. Review the corresponding directory under
-`agents/` before selecting one.
+Specialized integrations require additional runtime setup. Review
+[GEAK](../../agents/geak/README.md) or
+[Forge](../../agents/forge/README.md) before selecting one.
 
 ## Choose an example configuration
 
@@ -195,10 +195,10 @@ make docker-check-agents AGENTS=all
 ```
 
 `AGENTS=all` is the explicit strict check for Cursor, Claude Code, and Codex.
-Specialized integrations such as GEAK and mini-swe use their own dependency and
-authentication checks. They read credentials and provider endpoints from their
-own environment/configuration; there is no shared provider field in the root
-run configuration.
+Specialized integrations read credentials and provider endpoints from their
+own environment/configuration; their documentation describes the additional
+setup and checks. There is no shared provider field in the root run
+configuration.
 
 To run against a self-hosted model instead of a hosted provider, start a local
 vLLM server:

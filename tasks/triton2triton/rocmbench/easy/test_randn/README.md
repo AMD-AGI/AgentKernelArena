@@ -67,21 +67,21 @@ These kernels, `randn_kernel_runtime_seed,randn_kernel_const_seed`,  tests both 
 
 You must ensure that:
 1.  All arguments received by `randn_kernel_runtime_seed and randn_kernel_const_seed` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
 ```
 The full definitions for `randn_kernel_runtime_seed,randn_kernel_const_seed` and relevant helper utilities are provided in the context below. You only need to optimize the code for `randn_kernel_runtime_seed,randn_kernel_const_seed` whilst keeping other things intact. DONT remove Imports and HELPER utils.
 
-######################################## Imports ######################################## 
+######################################## Imports ########################################
 import numpy as np
 import pytest
 import torch
 
 import triton
 import triton.language as tl
-######################################## Imports ######################################## 
+######################################## Imports ########################################
 
 #####################################
 # Triton Kernels for randn

@@ -126,10 +126,75 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": [
+          17,
+          31,
+          1
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": [
+          33,
+          32,
+          31
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": [
+          513,
+          33,
+          32
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "73a3db769d5f9021ba6ca1cfe0e2c66484527c369e2f1e515b46cf0b3ba55cc4",
     "original_correctness_sha256": "40c8b752fffbe5d3a28f985cee1c88971a6a15352dff5f99d894b4c5dd2e2c4e"
-  }
+  },
+  "upstream_controls": [
+    [
+      17,
+      31,
+      1
+    ],
+    [
+      33,
+      32,
+      31
+    ],
+    [
+      513,
+      33,
+      32
+    ]
+  ]
 }

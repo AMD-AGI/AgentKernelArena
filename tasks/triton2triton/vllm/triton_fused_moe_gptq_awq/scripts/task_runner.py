@@ -131,7 +131,7 @@ def reference_fused_moe_int4(input_t, qweight, scales, zeros, topk_ids,
 
 
 
-CONTROL_CASES = ('int4_explicit', 'int4_default', 'int8_explicit', 'int8_default')
+CONTROL_CASES = ('int4_explicit', 'int4_default', 'int8_explicit', 'int8_default', 'int4_unrouted')
 
 
 def reference(inputs, options):
@@ -165,6 +165,9 @@ def reference(inputs, options):
 
 def control_inputs(name, device):
     import torch
+    if name == 'int4_unrouted':
+        inputs, options = control_inputs('int4_explicit', device)
+        return inputs, {**options, 'mul_routed_weight': False}
     # Basis activations and binary-exact scales give hand-checkable large outputs.
     # K=48 also exercises the public partial-K load branch; N=70 crosses a tile.
     M, K, E, N, group_size = 5, 48, 3, 70, 16

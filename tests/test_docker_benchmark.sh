@@ -757,7 +757,7 @@ assert_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 
 # Public GEAK and its v2 aliases need the complete read-only checkout, SDK path,
 # and Claude authentication; other agents must not acquire that mount.
-for geak_template in geak geak_v3 geak_v3_triton; do
+for geak_template in geak geak_v4; do
     printf 'agent:\n  template: %s\n' "$geak_template" > "$GEAK_CONFIG"
     mapfile -t args < <(run_check_args \
         "$GEAK_HOME" "$GEAK_CONFIG" \

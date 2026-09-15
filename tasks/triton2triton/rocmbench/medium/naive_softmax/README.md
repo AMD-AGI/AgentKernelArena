@@ -88,7 +88,7 @@ This kernel, `softmax_kernel_naive`,  naive softmax operation.
 
 You must ensure that:
 1.  All arguments received by `softmax_kernel_naive` are kept intact and not modified.
-2. Provide your final code in ```python code block. 
+2. Provide your final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
@@ -166,7 +166,3 @@ def softmax_kernel_naive(in_ptr, output_ptr, row_stride, n_cols, BLOCK_SIZE: tl.
     output_row_start_ptr = output_ptr + row_idx * row_stride
     output_ptrs = output_row_start_ptr + col_offsets
     tl.store(output_ptrs, softmax_output, mask=mask)
-
-
-
-

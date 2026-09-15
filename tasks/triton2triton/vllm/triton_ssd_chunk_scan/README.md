@@ -61,3 +61,7 @@ wrapper, imports, allocation behavior and launch dispatch remain protected by
 the framework's symbol-aware harness guard. Keeping an unused nominal kernel
 and replacing the wrapper with a PyTorch computation is not a valid submission.
 This boundary repair changes no initial kernel bytes or measured workload.
+
+Additional unscored public-branch controls from PR105: Large dstate/head tails and BF16 irregular chunks with optional D/z/initial state.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.

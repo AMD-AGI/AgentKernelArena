@@ -156,10 +156,100 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "padding_strided_bf16",
+          "shape": [
+            7,
+            3,
+            17,
+            9,
+            2,
+            4
+          ],
+          "slots": [
+            0,
+            -1,
+            7,
+            3,
+            -1,
+            4,
+            1
+          ]
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "scaled_fp8",
+          "shape": [
+            6,
+            2,
+            24,
+            40,
+            2,
+            4
+          ],
+          "k_scale": 0.75,
+          "v_scale": 1.25
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "cf288392da354e2512107dbbc8622cda91001c3e864ef8fdb39eb6b6604b1193",
     "original_correctness_sha256": "606d474f618d6090675bbadc9f7a8b1269b77fc7edd39821be6005dafb58699e"
-  }
+  },
+  "upstream_controls": [
+    {
+      "name": "padding_strided_bf16",
+      "shape": [
+        7,
+        3,
+        17,
+        9,
+        2,
+        4
+      ],
+      "slots": [
+        0,
+        -1,
+        7,
+        3,
+        -1,
+        4,
+        1
+      ]
+    },
+    {
+      "name": "scaled_fp8",
+      "shape": [
+        6,
+        2,
+        24,
+        40,
+        2,
+        4
+      ],
+      "k_scale": 0.75,
+      "v_scale": 1.25
+    }
+  ]
 }

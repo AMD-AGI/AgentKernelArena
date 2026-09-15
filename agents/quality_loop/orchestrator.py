@@ -65,7 +65,7 @@ def _source_paths(spec: TaskSpec, root: Path) -> tuple[str, ...]:
                 for path in source.rglob("*"):
                     relative = path.relative_to(root).as_posix()
                     resolve_task_path(root, relative)
-                    if path.is_file() and not is_generated_path(relative):
+                    if path.is_file() and not is_generated_path(relative, root=root):
                         paths.add(relative)
         else:
             paths.add(scope.path)
@@ -82,16 +82,17 @@ def _filtered_changes(
     after: dict[str, str],
     *,
     materialized: tuple[str, ...] = (),
+    source_root: Path | None = None,
 ) -> TreeChanges:
     changes = diff_trees(before, after)
+
+    def keep(path: str) -> bool:
+        return not is_generated_path(path, materialized=materialized, root=source_root)
+
     return TreeChanges(
-        added=tuple(p for p in changes.added if not is_generated_path(p, materialized=materialized)),
-        modified=tuple(
-            p for p in changes.modified if not is_generated_path(p, materialized=materialized)
-        ),
-        deleted=tuple(
-            p for p in changes.deleted if not is_generated_path(p, materialized=materialized)
-        ),
+        added=tuple(p for p in changes.added if keep(p)),
+        modified=tuple(p for p in changes.modified if keep(p)),
+        deleted=tuple(p for p in changes.deleted if keep(p)),
     )
 
 
@@ -374,7 +375,8 @@ class QualityLoop:
             )
             after = snapshot_tree(validation_workspace)
             changes = _filtered_changes(
-                before, after, materialized=_materialized_destinations(spec)
+                before, after, materialized=_materialized_destinations(spec),
+                source_root=validation_workspace
             )
             if changes.empty:
                 self._handle_unrepairable(task_id, validation)
@@ -453,7 +455,7 @@ class QualityLoop:
         final_changes = _filtered_changes(
             original_tree,
             candidate_tree,
-            materialized=_materialized_destinations(spec),
+            materialized=_materialized_destinations(spec), source_root=candidate_task,
         )
         commit = None
         commit_pending = False
@@ -530,7 +532,8 @@ class QualityLoop:
                 or timestamp.timestamp() > time.time() + 5):
             raise RuntimeError("validator returned stale or future-dated evidence")
         changes = _filtered_changes(before, snapshot_tree(workspace),
-                                    materialized=_materialized_destinations(spec))
+                                    materialized=_materialized_destinations(spec),
+                                    source_root=workspace)
         if not changes.empty:
             raise RuntimeError(f"validator modified task files: {changes.paths}")
         if report.get("framework_status") != "PASS":
@@ -736,7 +739,8 @@ class QualityLoop:
         self.backend.run(case_enhancement_prompt(task_id, rationale), case_workspace,
                          role="case_enhancer")
         changes = _filtered_changes(before, snapshot_tree(case_workspace),
-                                    materialized=_materialized_destinations(spec))
+                                    materialized=_materialized_destinations(spec),
+                                    source_root=case_workspace)
         if changes.empty:
             return False
         workloads = spec.to_mapping()["evaluation"].get("workloads")

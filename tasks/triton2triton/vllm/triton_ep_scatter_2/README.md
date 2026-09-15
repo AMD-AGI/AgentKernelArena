@@ -48,3 +48,7 @@ with changed tokens, expert IDs and corresponding prefix starts, poisoned
 required outputs, and the original prepare callback. All six caller/prepare
 buffers are restored in `finally`, including failure paths. All five original
 scored cases and correctness seeds 42+i remain unchanged.
+
+Additional unscored public-branch controls from PR105: FP32 singleton/topk1 and greater-than-program-cap multi-column dispatch.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.

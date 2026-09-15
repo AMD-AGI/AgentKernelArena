@@ -294,9 +294,16 @@ def test_original_kernels_manifest_seeds_timing_and_generated_stub_are_preserved
         assert hashlib.sha256(ast.get_source_segment(source, node).encode()).hexdigest() == expected[name]
         assert hashlib.sha256(ast.dump(ast.Module(body=node.decorator_list, type_ignores=[])).encode()).hexdigest() == expected[name+'_decorators']
     for name in ['config.yaml', 'performance_utils_pytest.py', 'workloads.json']:
-        assert hashlib.sha256((path/name).read_bytes()).hexdigest() == expected[name]
+        data=(path/name).read_bytes()
+        if name=='workloads.json' and 'triton2triton' in path.parts:
+            manifest=json.loads(data)
+            assert len(manifest['cases'][120:])==9
+            assert all(r['checks']==['correctness'] for r in manifest['cases'][120:])
+            manifest['cases']=manifest['cases'][:120]
+            data=(json.dumps(manifest,indent=2)+'\n').encode()
+        assert hashlib.sha256(data).hexdigest() == expected[name]
     manifest = json.loads((path/'workloads.json').read_text())
-    assert len(manifest['cases']) == 120
+    assert len(manifest['cases']) == (129 if 'triton2triton' in path.parts else 120)
     assert sum(r['params']['function'] == 'test_rand' for r in manifest['cases']) == 16
     assert sum('performance' in r['checks'] for r in manifest['cases']) == 104
     assert 'assert all((x >= 0) & (x <= 1))' in source

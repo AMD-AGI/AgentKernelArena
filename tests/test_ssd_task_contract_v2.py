@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import hashlib
+from pr107_integration_helpers import original_manifest
 import sys
 import types
 
@@ -156,7 +157,10 @@ def test_original_workloads_gates_kernels_and_timing_preserved(task):
     root,h,_,_=task
     saved=BASELINE[root.name]
     for relative,digest in saved['files'].items():
-        assert _digest((root/relative).read_text())==digest
+        text=(root/relative).read_text()
+        if relative=='workloads.json':
+            text=json.dumps(original_manifest(json.loads(text)),indent=2)+'\n'
+        assert _digest(text)==digest
     config=yaml.safe_load((root/'config.yaml').read_text())
     edit=config['candidate'].pop('editable')[0]
     assert edit['scope']=='symbols' and edit['allow_new_helpers'] is True
@@ -199,14 +203,15 @@ def test_protocol_manifest_controls_and_failed_performance(task,monkeypatch):
     monkeypatch.setattr(importlib.util,'find_spec',lambda name,*a: object() if name=='triton' else real_find(name,*a))
     report=m.evaluate('task','validate-task')
     assert report['status']=='PASS' and report['metadata']['reference_controls']
-    assert len(report['cases'])==5
+    assert len(original_manifest(m.load_manifest())['cases'])==5
+    assert len(report['cases'])==len(m.load_manifest()['cases'])
     from src.task_spec import load_task_spec
     from src.task_protocol import parse_command_result,CaseManifest
     spec=load_task_spec(root/'config.yaml',task_id='triton2triton/vllm/'+root.name)
     assert spec.candidate.initial_state=='implemented'
     result=parse_command_result('ARENA_EVAL_RESULT='+json.dumps(report),role='task',action='validate-task',returncode=0)
     manifest=CaseManifest.from_result(result)
-    monkeypatch.setattr(h,'run_performance',lambda:[{'test_case_id':r['test_case_id'],'execution_time_ms':-1.,'error':'replay rejected'} for r in report['cases']])
+    monkeypatch.setattr(h,'run_performance',lambda:[{'test_case_id':r['test_case_id'],'execution_time_ms':-1.,'error':'replay rejected'} for r in report['cases'] if 'performance' in r['checks']])
     failed=m.evaluate('candidate','performance')
     assert failed['status']=='FAIL'
     assert all(r['reason']=='replay rejected' for r in failed['cases'])

@@ -50,3 +50,7 @@ captured graph is replayed with those perturbed inputs and a poisoned output.
 Both correctness and replay reject modified input buffers; perturbations are
 restored in `finally`, including on failure. Original kernel, protected runner,
 warmup/sample policy, case manifest and generated helpers remain unchanged.
+
+Additional unscored public-branch controls from PR105: Empty and ragged INT64 mappings, strided tables and explicit full padding kernel check.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.

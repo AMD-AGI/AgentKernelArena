@@ -28,8 +28,9 @@ Call `python3 scripts/evaluate.py` followed by `validate-task`, or by
 `ARENA_EVAL_RESULT=` envelope. Missing cases, compiler errors, numerical errors,
 and unavailable runtime dependencies are failures, never implicit skips.
 
-The GPU implementation was extracted verbatim into `source/kernel.hpp`. The
-original C++ host harness remains protected and includes that header. Its launch
+The GPU implementation was extracted verbatim into `source/kernel.hpp`. A protected
+`candidate_driver.hip` includes the header in a separate translation unit, so
+candidate preprocessor definitions cannot alter the host reference or timing. Its launch
 interface and constants are part of the fixed task contract; a Python symbol
 scope is not used to protect C++ code.
 
@@ -51,10 +52,9 @@ instead of MFMA. Expected gaps to address (in priority order):
      transposed reads with XOR-swizzled layout).
   2. MFMA pipe under-fed (switch to mfma_f32_16x16x32_fp8_fp8 or
      the K=128 scaled variant mfma_scale_f32_16x16x128_f8f6f4).
-  3. Per-launch prologue not amortized (consider a persistent grid
-     with an atomic work-tile dispenser).
+  3. Repeated address and setup work (hoist loop invariants within each workgroup).
   4. State held in LDS instead of registers (Q tile + softmax state
-     can be register-resident at 1 WG / CU).
+     can move to registers where register pressure permits).
   5. s_waitcnt-bound after MFMA pipe is fed (hand-schedule the
      load / MFMA interleave with __builtin_amdgcn_sched_group_barrier).
   6. FetchSize > algorithmic minimum at high L2 hit rate (use
@@ -163,3 +163,13 @@ fresh-input control outside timing, under the original accuracy gate. Ignoring
 token indirection or using full capacity as the valid length is checked by CPU
 negative controls as well as the real GPU output check. All four original input
 buffers are restored by the replay guard on success, failure or exception.
+
+## Fixed native launch
+
+The protected host launches `grid=(batch, HEAD_GROUPS)`, 64 threads per
+workgroup and `BLOCK_H * LK * sizeof(float)` (36,864 bytes) of dynamic shared
+memory. It supplies no persistent work queue or configurable grid. Optimize
+within this launch and kernel signature; residency is not fixed at one WG/CU.
+Both correctness and benchmark binaries link the separate protected candidate
+translation unit. The editable kernel header bytes, original numerical gates,
+current routing/valid-length policy, input seeds and timed work are unchanged.

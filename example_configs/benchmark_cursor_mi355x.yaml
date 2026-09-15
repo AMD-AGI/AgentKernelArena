@@ -7,14 +7,8 @@
 
 # Agent Template Selection
 # Choose ONE agent template that defines how the LLM interacts with the system
-# Available options:
-# - cursor
-# - codex
-# - claude_code
-# - task_validator
-# - geak_v3            # GEAK-v3 optimizer (HIP kernels, via the `geak` CLI)
-# - geak_v3_triton     # GEAK-v3 optimizer (Triton kernels, via the `geak` CLI)
-# - mini_swe_triton    # mini-swe-agent-based Triton optimizer
+# Supported templates: src/module_registration.py (AgentType).
+# Setup and configuration: docs/how-to/agents.md.
 agent:
   template: cursor
 

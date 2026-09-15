@@ -395,6 +395,86 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "test_tma_load_store/e34f6061f94f637eb311",
+      "params": {
+        "function": "test_tma_load_store",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": true,
+          "TRANS_B": true,
+          "OUTPUT_F16": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_tma_load_store/d0ffdc2c030dfbbe737b",
+      "params": {
+        "function": "test_tma_load_store",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 128,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_F16": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_tma_load_store/4341fd96b01eaba6c0db",
+      "params": {
+        "function": "test_tma_load_store",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 128,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_F16": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_tma_load_store/5132d079bbb3ed0f2f84",
+      "params": {
+        "function": "test_tma_load_store",
+        "arguments": {
+          "M": 32,
+          "N": 32,
+          "K": 256,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_F16": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

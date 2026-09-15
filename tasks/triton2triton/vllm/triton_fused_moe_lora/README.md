@@ -78,3 +78,7 @@ adapters in place. Replay poisons output and intermediate storage, then runs the
 same captured pair with the original preparation. Inputs, pointer tables,
 intermediate storage and output are restored even when replay fails. No new
 reset, reference work or allocation is added to the measured pair.
+
+Additional unscored public-branch controls from PR105: BF16 sorted routed LoRA and split-K2/no-L2-cache specialization.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.

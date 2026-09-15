@@ -263,10 +263,59 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "ragged_partial_shuffled_explicit_scale",
+          "context_lens": [
+            17,
+            32,
+            47
+          ],
+          "query_lens": [
+            7,
+            129,
+            33
+          ],
+          "num_heads": 8,
+          "num_kv_heads": 2,
+          "head_dim": 64,
+          "block_size": 16,
+          "sm_scale": 0.2
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "80059a2ccccbc7c614647dfebb889e687b302b6ab8284e8fed7c3ff814f8b30c",
     "original_correctness_sha256": "a604b514fbfe2ecb435b644c0c9d54be7facf1eb851085643629299c4e72c729"
-  }
+  },
+  "upstream_controls": [
+    {
+      "name": "ragged_partial_shuffled_explicit_scale",
+      "context_lens": [
+        17,
+        32,
+        47
+      ],
+      "query_lens": [
+        7,
+        129,
+        33
+      ],
+      "num_heads": 8,
+      "num_kv_heads": 2,
+      "head_dim": 64,
+      "block_size": 16,
+      "sm_scale": 0.2
+    }
+  ]
 }

@@ -126,10 +126,121 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "zero_writes",
+          "output": [
+            4,
+            64
+          ],
+          "lengths": []
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "zero_length_segments",
+          "output": [
+            10,
+            64
+          ],
+          "lengths": [
+            0,
+            0,
+            5,
+            0,
+            9,
+            0,
+            3,
+            0
+          ]
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": {
+          "name": "block_cap_tails",
+          "output": [
+            6,
+            4096
+          ],
+          "lengths": [
+            1,
+            1024,
+            1025,
+            2049
+          ]
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "849c29dc09e36fc8e57be918c09b4088867df397d674b6b0540c6d13d28d46ad",
     "original_correctness_sha256": "919e0741e73c447f39ce523b03d6a32e52ff073526dd75cf4574c8ae89781c95"
-  }
+  },
+  "upstream_controls": [
+    {
+      "name": "zero_writes",
+      "output": [
+        4,
+        64
+      ],
+      "lengths": []
+    },
+    {
+      "name": "zero_length_segments",
+      "output": [
+        10,
+        64
+      ],
+      "lengths": [
+        0,
+        0,
+        5,
+        0,
+        9,
+        0,
+        3,
+        0
+      ]
+    },
+    {
+      "name": "block_cap_tails",
+      "output": [
+        6,
+        4096
+      ],
+      "lengths": [
+        1,
+        1024,
+        1025,
+        2049
+      ]
+    }
+  ]
 }

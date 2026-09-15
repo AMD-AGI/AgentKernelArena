@@ -137,6 +137,70 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-m_tail",
+      "dtype": "float16,int32",
+      "params": {
+        "control": "m_tail",
+        "configuration": [
+          33,
+          64,
+          64
+        ]
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-n_tail",
+      "dtype": "float16,int32",
+      "params": {
+        "control": "n_tail",
+        "configuration": [
+          64,
+          64,
+          47
+        ]
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-k_below64",
+      "dtype": "float16,int32",
+      "params": {
+        "control": "k_below64",
+        "configuration": [
+          64,
+          63,
+          32
+        ]
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-k_above64",
+      "dtype": "float16,int32",
+      "params": {
+        "control": "k_above64",
+        "configuration": [
+          32,
+          65,
+          64
+        ]
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

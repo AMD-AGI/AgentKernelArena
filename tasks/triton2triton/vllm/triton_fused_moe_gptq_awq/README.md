@@ -106,3 +106,8 @@ event timer and are recomputed from the perturbed pristine inputs before replay.
 The shipped quantized kernel now masks weight loads in a partial K block, matching
 its existing activation/scale/zero-point masks. Previously K=48 reached an unmasked
 weight load beyond the expert matrix. All original scored K dimensions divide 32.
+
+An additional exact, unscored `int4_unrouted` control supplies nonunit routing
+weights with `mul_routed_weight=False`. It checks that the public disabled-weight
+branch ignores those weights; the original five scored workloads and four exact
+controls are unchanged.

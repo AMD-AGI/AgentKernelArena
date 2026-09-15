@@ -45,14 +45,14 @@ These kernels, `randint_kernel_runtime_seed,randint_kernel_const_seed`,  tests b
 
 You must ensure that:
 1.  All arguments received by `randint_kernel_runtime_seed and randint_kernel_const_seed` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
 ```
 The full definitions for `randint_kernel_runtime_seed,randint_kernel_const_seed` and relevant helper utilities are provided in the context below. You only need to complete the code for `randint_kernel_runtime_seed,randint_kernel_const_seed` whilst keeping other things intact. DONT remove Imports and HELPER utils.
 
-######################################## Imports ######################################## 
+######################################## Imports ########################################
 import numpy as np
 import pytest
 import torch
@@ -60,7 +60,7 @@ import torch
 import triton
 import triton.language as tl
 BLOCK: tl.constexpr = 1024
-######################################## Imports ######################################## 
+######################################## Imports ########################################
 
 #####################################
 # Triton Kernels for randint

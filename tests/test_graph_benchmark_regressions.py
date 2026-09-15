@@ -7,9 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_hip2hip_gpumode_restores_state_and_uses_reference_method_policy():
     harnesses = sorted(
-        (ROOT / "tasks/hip2hip/gpumode").glob("*/eval_tools/cal_kernel_perf.py")
+        (ROOT / "tasks/hip2hip/gpumode").rglob("cal_kernel_perf.py")
     )
-    assert harnesses
+    assert len(harnesses) == 22
     for harness in harnesses:
         source = harness.read_text()
         assert "ref_check_pristine" in source, harness

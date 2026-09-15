@@ -37,3 +37,7 @@ changing the reference. The actual timed output and captured replay after input
 perturbation must satisfy that same rule. Perturbed inputs are restored in
 `finally`; original cases, seeds, warmups, samples, kernel and generated helpers
 remain unchanged.
+
+Additional unscored public-branch controls from PR105: Odd token counts and signed near-cancelling top-k scales.
+They have independent `control-upstream-*` manifest rows; existing scored
+inputs, numerical gates and timing remain unchanged.

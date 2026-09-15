@@ -51,3 +51,7 @@ input values and original gradient state are restored after validation.
 The unused scalar CPU oracle's extra point-feature term is corrected to match
 the documented neighbor difference and independently tested vectorized oracle.
 No shape, seed, mode, warmup or sample was removed.
+
+Correctness additionally checks all three backward gradients with nonuniform
+upstream gradients against an independent analytic CPU oracle, frozen before
+the candidate runs. Original sum-gradient timing and its gates are unchanged.

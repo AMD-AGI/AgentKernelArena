@@ -1066,6 +1066,42 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/f1276c3e8747a6257aa0",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 31,
+          "K": 48,
+          "N": 48,
+          "w_dtype": "float16",
+          "x_dtype": "float32",
+          "out_dtype": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_cast_matmul/931f8ccc7a068dfb533a",
+      "params": {
+        "function": "test_cast_matmul",
+        "arguments": {
+          "M": 65,
+          "K": 48,
+          "N": 80,
+          "w_dtype": "float64",
+          "x_dtype": "float16",
+          "out_dtype": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

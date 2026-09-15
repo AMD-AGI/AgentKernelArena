@@ -23,9 +23,6 @@ The following agents are available.
 | `codex` | OpenAI Codex CLI |
 | `forge` | KernelForge through the shared v2 task interface |
 | `geak` | GEAK Workflow engine through the shared v2 task interface |
-| `geak_v3` | Compatibility name for `geak` on v2; legacy HIP flow for v1 |
-| `geak_v3_triton` | Compatibility name for `geak` on v2; legacy Triton flow for v1 |
-| `mini_swe_triton` | Legacy external tasks only; v2 unsupported. See [compatibility limits](../../agents/mini_swe_triton/README.md) |
 | `task_validator` | Task quality validator; does not optimize kernels (see [Validate tasks](task-validator.md)) |
 
 The [registry](../../src/module_registration.py) also retains `geak_v4`, which
@@ -43,6 +40,10 @@ agent:
 
 Each agent lives under `agents/<agent_name>/` and is registered into a shared
 registry, so the framework loads only the agent you select.
+
+The supported identifiers are defined by `AgentType` in
+`src/module_registration.py`. Retired templates and compatibility notes are
+listed in the [release notes](../reference/release-notes.md#unreleased).
 
 The Cursor, Claude Code, and Codex integrations reuse their host CLI login
 state. Specialized integrations have additional setup and configuration under

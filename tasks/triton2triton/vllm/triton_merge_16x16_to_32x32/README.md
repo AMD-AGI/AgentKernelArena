@@ -49,3 +49,7 @@ changed strictly-lower-triangular input. All input buffers and the public wrappe
 are restored in `finally`, including failed replay paths. The scored case list,
 allocation boundary and canonical helper are unchanged. New GPU qualification
 requires a complete finalized validator report for this task package.
+
+Additional unscored public-branch controls from PR105: FP16/BF16 partial triangular tiles and odd head counts.
+They have independent `control-upstream-*` manifest rows; existing scored
+inputs, numerical gates and timing remain unchanged.

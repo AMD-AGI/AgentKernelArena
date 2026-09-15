@@ -3989,6 +3989,99 @@
           "suffix": "zero"
         }
       }
+    },
+    {
+      "test_case_id": "test_block_copy/b48297739f3333aed5c3",
+      "params": {
+        "function": "test_block_copy",
+        "arguments": {
+          "dtypes_str": [
+            "float32",
+            "float32"
+          ],
+          "n": 63,
+          "padding_option": null
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            63
+          ],
+          "dtype": "float32",
+          "copied_prefix": 31,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "undefined"
+        },
+        "origin": "PR105 unscored tail control"
+      }
+    },
+    {
+      "test_case_id": "test_block_copy/af9a8cdc70db3b9f830f",
+      "params": {
+        "function": "test_block_copy",
+        "arguments": {
+          "dtypes_str": [
+            "int32",
+            "int32"
+          ],
+          "n": 65,
+          "padding_option": "zero"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            65
+          ],
+          "dtype": "int32",
+          "copied_prefix": 32,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "zero"
+        },
+        "origin": "PR105 unscored tail control"
+      }
+    },
+    {
+      "test_case_id": "test_block_copy/91121a0f88d6634b678a",
+      "params": {
+        "function": "test_block_copy",
+        "arguments": {
+          "dtypes_str": [
+            "float16",
+            "float16"
+          ],
+          "n": 127,
+          "padding_option": "nan"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS",
+      "metadata": {
+        "contract": {
+          "output_shape": [
+            127
+          ],
+          "dtype": "float16",
+          "copied_prefix": 63,
+          "readonly_source": true,
+          "expected_outcome": "exact_defined_output",
+          "suffix": "nan"
+        },
+        "origin": "PR105 unscored tail control"
+      }
     }
   ],
   "migration": {

@@ -50,3 +50,7 @@ output and the same captured replay must match pristine references after changin
 logits, mapping and signed mask words. Working/source buffers are restored even
 on replay failure. All original scored cases, kernel and generated helpers remain
 unchanged; masked negative infinity is expected rather than a nonfinite error.
+
+Additional unscored public-branch controls from PR105: Masked vocab tails below/above 8192 with nonidentity selected rows.
+They have independent `control-upstream-*` manifest rows; existing scored
+inputs, numerical gates and timing remain unchanged.

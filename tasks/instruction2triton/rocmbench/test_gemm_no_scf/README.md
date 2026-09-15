@@ -57,14 +57,14 @@ This kernel, `matmul_no_scf_kernel`,  performs single block of matrix multiplica
 
 You must ensure that:
 1.  All arguments received by `matmul_no_scf_kernel` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
 ```
 The full definitions for `matmul_no_scf_kernel` and relevant helper utilities are provided in the context below. You only need to complete the code for `matmul_no_scf_kernel` whilst keeping other things intact. DONT remove Imports and HELPER utils.
 
-######################################## Imports ######################################## 
+######################################## Imports ########################################
 import itertools
 import os
 import re
@@ -76,7 +76,7 @@ from torch.testing import assert_close
 import triton
 import triton.language as tl
 
-######################################## Imports ######################################## 
+######################################## Imports ########################################
 
 
 
@@ -161,7 +161,3 @@ def matmul_no_scf_kernel(
         calculating destination pointers manually with `tl.arange` and `tl.store`.
     """
     # Your code here
-
-
-
-

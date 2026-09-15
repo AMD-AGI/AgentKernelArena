@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import hashlib
+from pr107_integration_helpers import original_manifest
 import types
 
 import pytest
@@ -484,7 +485,7 @@ def test_direct_preallocated_launch_is_observed_and_checked(name,cached):
 def test_original_manifest_rows_and_generated_region_are_byte_preserved(name):
     task=TASKS/('triton_'+name)
     expected=ORIGINAL_CONTRACTS[name]
-    current=json.loads((task/'workloads.json').read_text())
+    current=original_manifest(json.loads((task/'workloads.json').read_text()))
     def digest(value):
         return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     assert digest(current['cases'][:expected['original_count']])==expected['rows_sha256']

@@ -40,3 +40,7 @@ scales, full allocating wrapper, ten warmups, and 100 timing samples are
 unchanged. The actual `TimedRun` output is checked and poisoned before an exact
 replay with both operands changed. Verification is outside timing; caller inputs
 are restored even if replay or checking fails.
+
+Additional unscored public-branch controls from PR105: Sub-tile/multi-tile M/N/K and BF16 strided public GEMM.
+They have independent `control-upstream-*` manifest rows; existing scored
+inputs, numerical gates and timing remain unchanged.

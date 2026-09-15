@@ -37,3 +37,7 @@ that the supplied output buffer is used. Actual captured outputs and a poisoned
 replay after input/affine/gate perturbation must also pass. Read-only inputs are
 verified against pristine copies and restored even when replay fails. These
 checks add no scored cases and run outside timing.
+
+Additional unscored public-branch controls from PR105: Explicit output and grouped BF16 tail in addition to current gate-order controls.
+They have independent `control-upstream-*` manifest rows; existing scored
+inputs, numerical gates and timing remain unchanged.

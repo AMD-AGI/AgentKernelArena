@@ -116,7 +116,11 @@ static uint8_t f32_to_fp8_e4m3fn(float x) {
 // Kernel
 // ---------------------------------------------------------------------------
 
-#include "source/kernel.hpp"
+// Candidate compilation is isolated: its macros cannot affect the host oracle.
+extern "C" __global__ void mla_decode_kernel(
+    const bf16* q, const uint8_t* kv, const int32_t* req_to_token,
+    const int32_t* b_seq_len, float sm_scale, bf16* o, float* lse,
+    int stride_r2t_b, int max_ctx);
 
 // ---------------------------------------------------------------------------
 // Host helpers: random fill, fp32 reference, max_diff

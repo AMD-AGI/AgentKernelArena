@@ -67,7 +67,7 @@ This kernel, `matmul_kernel`,  is designed to perform matrix multiplication C = 
 
 You must ensure that:
 1.  All arguments received by `matmul_kernel` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
@@ -88,56 +88,56 @@ import re
 # This is a Triton kernel for matrix multiplication (GEMM) with support for various data types and scaling modes.
 
 #################### Helper utils functions ####################
-# Activation function.  
-@triton.jit  
-def leaky_relu(x):  
-    x = x + 1  
-    return tl.where(x >= 0, x, 0.01 * x)  
+# Activation function.
+@triton.jit
+def leaky_relu(x):
+    x = x + 1
+    return tl.where(x >= 0, x, 0.01 * x)
 #################### Helper utils functions ####################
 
 
 
-@triton.autotune(  
-    configs=[  
-        triton.Config(  
-            {  
-                'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 4, 'waves_per_eu': 2,  
-                'kpack': 2, 'matrix_instr_nonkdim': 16  
-            }, num_warps=4, num_stages=2),  
-        triton.Config(  
-            {  
-                'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 4, 'waves_per_eu': 2,  
-                'kpack': 2, 'matrix_instr_nonkdim': 16  
-            }, num_warps=8, num_stages=2),  
-        triton.Config(  
-            {'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 4, 'waves_per_eu': 0},  
-            num_warps=8, num_stages=2),  
-        triton.Config(  
-            {  
-                'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 4, 'waves_per_eu': 2,  
-                'kpack': 1, 'matrix_instr_nonkdim': 16  
-            }, num_warps=8, num_stages=2),  
-        triton.Config(  
-            {  
-                'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 1, 'waves_per_eu': 0,  
-                'kpack': 1  
-            }, num_warps=8, num_stages=2),  
-        triton.Config(  
-            {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 4, 'waves_per_eu': 0},  
-            num_warps=8, num_stages=2),  
-        triton.Config(  
-            {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 1, 'waves_per_eu': 2},  
-            num_warps=8, num_stages=2),  
-    ],  
-    key=['M', 'N', 'K'],  
-    use_cuda_graph=True,  
-)  
-@triton.heuristics({  
-    'EVEN_K':  
-    lambda args: args['K'] % args['BLOCK_SIZE_K'] == 0, 'GRID_MN':  
-    lambda args: triton.cdiv(args['M'], args['BLOCK_SIZE_M']) * triton.cdiv(args['N'], args['BLOCK_SIZE_N'])  
-})  
-@triton.jit  
+@triton.autotune(
+    configs=[
+        triton.Config(
+            {
+                'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 4, 'waves_per_eu': 2,
+                'kpack': 2, 'matrix_instr_nonkdim': 16
+            }, num_warps=4, num_stages=2),
+        triton.Config(
+            {
+                'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 4, 'waves_per_eu': 2,
+                'kpack': 2, 'matrix_instr_nonkdim': 16
+            }, num_warps=8, num_stages=2),
+        triton.Config(
+            {'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 128, 'GROUP_SIZE_M': 4, 'waves_per_eu': 0},
+            num_warps=8, num_stages=2),
+        triton.Config(
+            {
+                'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 4, 'waves_per_eu': 2,
+                'kpack': 1, 'matrix_instr_nonkdim': 16
+            }, num_warps=8, num_stages=2),
+        triton.Config(
+            {
+                'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 1, 'waves_per_eu': 0,
+                'kpack': 1
+            }, num_warps=8, num_stages=2),
+        triton.Config(
+            {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 4, 'waves_per_eu': 0},
+            num_warps=8, num_stages=2),
+        triton.Config(
+            {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 1, 'waves_per_eu': 2},
+            num_warps=8, num_stages=2),
+    ],
+    key=['M', 'N', 'K'],
+    use_cuda_graph=True,
+)
+@triton.heuristics({
+    'EVEN_K':
+    lambda args: args['K'] % args['BLOCK_SIZE_K'] == 0, 'GRID_MN':
+    lambda args: triton.cdiv(args['M'], args['BLOCK_SIZE_M']) * triton.cdiv(args['N'], args['BLOCK_SIZE_N'])
+})
+@triton.jit
 def matmul_kernel(
     a_ptr,
     b_ptr,
@@ -223,7 +223,3 @@ def matmul_kernel(
                                 Used for PID remapping across XCDs.
     """
     # Your code here.
-
-
-
-

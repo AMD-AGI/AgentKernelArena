@@ -45,7 +45,7 @@ This kernel, `gemm_fusion_kernel`,  is designed to perform a fused matrix multip
 
 You must ensure that:
 1.  All arguments received by `gemm_fusion_kernel` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
@@ -111,8 +111,3 @@ def gemm_fusion_kernel(A, B, C, E,  #
                    for C and E.
     """
     # Your code here
-
-
-
-
-

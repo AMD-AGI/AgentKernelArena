@@ -126,10 +126,102 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "K": 33,
+          "N_packed": 9,
+          "group_size": 33,
+          "scale_dtype": "float32",
+          "signed_packed": true
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "K": 96,
+          "N_packed": 33,
+          "group_size": 32,
+          "scale_dtype": "bfloat16"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": {
+          "K": 512,
+          "N_packed": 65,
+          "group_size": 64
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-4",
+      "params": {
+        "case_index": 10003,
+        "configuration": {
+          "K": 1024,
+          "N_packed": 128,
+          "group_size": 128
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "45ac63d49535dabdb3356a5dee4f4b6331602f95e4d67757bd862b89d07e4590",
     "original_correctness_sha256": "cb5e0d6a80fd7b5529d331a32c5f25ee4f1c43612cfed0172c2a8bda310bd548"
-  }
+  },
+  "upstream_controls": [
+    {
+      "K": 33,
+      "N_packed": 9,
+      "group_size": 33,
+      "scale_dtype": "float32",
+      "signed_packed": true
+    },
+    {
+      "K": 96,
+      "N_packed": 33,
+      "group_size": 32,
+      "scale_dtype": "bfloat16"
+    },
+    {
+      "K": 512,
+      "N_packed": 65,
+      "group_size": 64
+    },
+    {
+      "K": 1024,
+      "N_packed": 128,
+      "group_size": 128
+    }
+  ]
 }

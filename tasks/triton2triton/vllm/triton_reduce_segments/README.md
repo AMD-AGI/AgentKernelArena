@@ -40,3 +40,7 @@ and exp sums, poisoning the output, and replaying the same timed invocation.
 All input/output buffers are restored even on failure. These checks retain all
 five original fully active segment workloads, seeds, 1e-2 absolute/relative
 tolerances, full-wrapper timing, 10 warmups and 100 samples.
+
+Additional unscored public-branch controls from PR105: Packed variable queries, zero denominator/extreme maxima and FP32 output.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.

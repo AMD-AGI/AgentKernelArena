@@ -53,3 +53,7 @@ both actual `TimedRun` outputs, validates all originally valid tokens, then
 changes activations/counts, poisons both outputs and validates the same measured
 replay. Read-only inputs are restored in `finally`, including rejected replays.
 Correctness keeps the original cases, input scales and seeds 42+i.
+
+Additional unscored public-branch controls from PR105: BF16 strided grouped activation and group256 branches.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.

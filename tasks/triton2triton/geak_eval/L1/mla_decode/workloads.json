@@ -744,6 +744,26 @@
           "batch_size": 1,
           "nhead": 16
         }
+      },
+      {
+        "test_case_id": "control-mla-rope-single",
+        "params": {
+          "ctx_len": 21,
+          "batch_size": 1,
+          "nhead": 16,
+          "rotary_dim": 64,
+          "seed": 42
+        }
+      },
+      {
+        "test_case_id": "control-mla-rope-multiple",
+        "params": {
+          "ctx_len": 64,
+          "batch_size": 3,
+          "nhead": 16,
+          "rotary_dim": 64,
+          "seed": 42
+        }
       }
     ]
   },
@@ -2806,6 +2826,34 @@
       "checks": [
         "correctness"
       ]
+    },
+    {
+      "test_case_id": "control-mla-rope-single",
+      "params": {
+        "ctx_len": 21,
+        "batch_size": 1,
+        "nhead": 16,
+        "rotary_dim": 64,
+        "seed": 42
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-mla-rope-multiple",
+      "params": {
+        "ctx_len": 64,
+        "batch_size": 3,
+        "nhead": 16,
+        "rotary_dim": 64,
+        "seed": 42
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "timing_calls_per_case": [

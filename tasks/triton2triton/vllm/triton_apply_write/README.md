@@ -39,3 +39,11 @@ After timing, it changes the captured row mapping, offsets, segment lengths, con
 and initial output state, then validates the same graph replay. These controls preserve
 the original five workloads, seeds and timing policy; they run outside device timing.
 The normal state reset still executes before each timed sample and replay control.
+
+Additional unscored public-branch controls from PR105: Empty writes, zero-length segments and 1024/2048 write-cap tails.
+Their `control-upstream-*` manifest rows preserve all existing scored cases,
+numerical gates, seeds and timing.
+
+Additional unscored public-branch controls from PR105: Empty writes, zero-length segments and 1024/2048 write-cap tails.
+Their `control-upstream-*` manifest rows preserve all existing scored cases,
+numerical gates, seeds and timing.

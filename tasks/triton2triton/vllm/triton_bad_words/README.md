@@ -39,3 +39,11 @@ The frozen baseline and candidate use identical inputs, untimed state restoratio
 warmups, sample counts, allocation boundaries and actual graph replay checks. The
 new workloads expand the case set; aggregate scores must be evaluated against a
 fresh baseline, not compared directly with the historical five-case aggregate.
+
+Additional unscored public-branch controls from PR105: Irregular speculative prefixes plus empty logits/no-bad-words no-op contracts.
+Their `control-upstream-*` manifest rows preserve all existing scored cases,
+numerical gates, seeds and timing.
+
+Additional unscored public-branch controls from PR105: Irregular speculative prefixes plus empty logits/no-bad-words no-op contracts.
+Their `control-upstream-*` manifest rows preserve all existing scored cases,
+numerical gates, seeds and timing.

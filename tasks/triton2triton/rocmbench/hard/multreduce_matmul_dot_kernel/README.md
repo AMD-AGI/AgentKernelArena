@@ -38,7 +38,7 @@ the v2 on-disk edit and evaluation contract above governs submission format.
 
 
 You are an expert in triton programming language. You will be given a instruction/function definition of the required kernel : `triton_dot_matmul_kernel`, your task is to optimize the kernel code for the corresponding operator/function definition using triton programming language while preserving correctness. This kernel should implement a General Matrix Multiplication (GEMM) specifically using the tl.dot operation in triton and add necessary logic to use it. Only optimize the kernel code in the function definition, DONT remove any python imports or helper utils in the instruction/code provided, DONT change/interfere with the provided function definition and parameter list ,only add if required. :
-Provide you final code in ```python code block. 
+Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>

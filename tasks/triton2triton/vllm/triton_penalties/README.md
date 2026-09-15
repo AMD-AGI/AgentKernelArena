@@ -37,3 +37,7 @@ The frozen baseline and candidate use identical inputs, untimed state restoratio
 warmups, sample counts, allocation boundaries and actual graph replay checks. The
 new workloads expand the case set; aggregate scores must be evaluated against a
 fresh baseline, not compared directly with the historical five-case aggregate.
+
+Additional unscored public-branch controls from PR105: BF16 vocab8209 and per-penalty no-op/speculative branch separation.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.

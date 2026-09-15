@@ -40,3 +40,7 @@ seeds and distributions, including the larger performance input magnitudes.
 Both roles time the same public wrapper with 10 warmups and 100 samples. The
 actual timed result is checked, poisoned and replayed after changing both operands,
 scales and bias; every caller-owned input is checked and restored even on failure.
+
+Additional unscored public-branch controls from PR105: INT8 and heuristic threshold/tile tails, retaining original FP16 timing.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.

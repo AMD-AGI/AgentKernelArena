@@ -45,7 +45,7 @@ This kernel, `swizzle2d_kernel`,  perform 2D swizzling operation.
 
 You must ensure that:
 1.  All arguments received by `swizzle2d_kernel` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
@@ -84,7 +84,3 @@ def swizzle2d_kernel(output, size_i, size_j, size_g):
     pass
 
     # Your code here
-
-
-
-

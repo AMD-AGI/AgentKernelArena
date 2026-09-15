@@ -88,7 +88,7 @@ This kernel, `softmax_kernel_online`,  is designed to perform softmax function o
 
 You must ensure that:
 1.  All arguments received by `softmax_kernel_online` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
@@ -98,7 +98,7 @@ Example:
 The full definition for `softmax_kernel_online` and relevant helper utilities are provided in the context below. You only need to complete the code for `softmax_kernel_online` whilst keeping other things intact.
 
 
-#Imports 
+#Imports
 import argparse
 import torch
 import sys
@@ -107,7 +107,7 @@ import pytest
 import triton
 import triton.language as tl
 
-######################################## HELPERS utils ######################################## 
+######################################## HELPERS utils ########################################
 def is_cuda():
     return triton.runtime.driver.active.get_current_target().backend == "cuda"
 
@@ -149,7 +149,7 @@ def get_autotune_config():
     else:
         return get_hip_autotune_config()
 
-######################################## HELPERS utils ######################################## 
+######################################## HELPERS utils ########################################
 
 
 @triton.autotune(configs=get_autotune_config(), key=['n_rows', 'n_cols'], use_cuda_graph=True)
@@ -192,8 +192,3 @@ def softmax_kernel_online(output_ptr, input_ptr, input_row_stride, output_row_st
         power of 2 for efficiency (e.g., 1024, 2048).
     """
     # Your code here.
-
-
-
-
-

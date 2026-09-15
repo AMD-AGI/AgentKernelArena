@@ -156,10 +156,183 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "irregular_boundary_large_dstate",
+          "shape": [
+            94,
+            4,
+            40,
+            2,
+            129,
+            48
+          ],
+          "chunk_lengths": [
+            29,
+            48,
+            17
+          ],
+          "seq_idx": [
+            0,
+            0,
+            1
+          ],
+          "D_shape": "head"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "irregular_boundary_initial_state",
+          "shape": [
+            53,
+            4,
+            35,
+            2,
+            31,
+            24
+          ],
+          "chunk_lengths": [
+            24,
+            11,
+            18
+          ],
+          "seq_idx": [
+            0,
+            1,
+            1
+          ],
+          "initial_states": true,
+          "disable_rocm_buffer_ops": true
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": {
+          "name": "bf16_irregular_boundary_D_hdim_z",
+          "shape": [
+            76,
+            6,
+            37,
+            3,
+            21,
+            33
+          ],
+          "chunk_lengths": [
+            33,
+            16,
+            27
+          ],
+          "seq_idx": [
+            0,
+            1,
+            1
+          ],
+          "dtype": "bfloat16",
+          "D_shape": "head_hdim",
+          "z": true
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "7b6e804163a408e466234cafdce29b506409e8a18eeed71cadd425cf07f317c6",
     "original_correctness_sha256": "6054c2f9a6ea452248e307ae2d5ee2c9afdd2416169d5989e010bd0d3f031be1"
-  }
+  },
+  "upstream_controls": [
+    {
+      "name": "irregular_boundary_large_dstate",
+      "shape": [
+        94,
+        4,
+        40,
+        2,
+        129,
+        48
+      ],
+      "chunk_lengths": [
+        29,
+        48,
+        17
+      ],
+      "seq_idx": [
+        0,
+        0,
+        1
+      ],
+      "D_shape": "head"
+    },
+    {
+      "name": "irregular_boundary_initial_state",
+      "shape": [
+        53,
+        4,
+        35,
+        2,
+        31,
+        24
+      ],
+      "chunk_lengths": [
+        24,
+        11,
+        18
+      ],
+      "seq_idx": [
+        0,
+        1,
+        1
+      ],
+      "initial_states": true,
+      "disable_rocm_buffer_ops": true
+    },
+    {
+      "name": "bf16_irregular_boundary_D_hdim_z",
+      "shape": [
+        76,
+        6,
+        37,
+        3,
+        21,
+        33
+      ],
+      "chunk_lengths": [
+        33,
+        16,
+        27
+      ],
+      "seq_idx": [
+        0,
+        1,
+        1
+      ],
+      "dtype": "bfloat16",
+      "D_shape": "head_hdim",
+      "z": true
+    }
+  ]
 }

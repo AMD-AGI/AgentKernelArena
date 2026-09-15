@@ -136,10 +136,207 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "uneven_empty_permuted_int64",
+          "query_lengths": [
+            0,
+            1,
+            9,
+            17,
+            3
+          ],
+          "idx_mapping": [
+            6,
+            0,
+            4,
+            2,
+            7
+          ],
+          "position_starts": [
+            0,
+            7,
+            31,
+            4093,
+            1024
+          ],
+          "block_size": 8,
+          "max_num_reqs": 8,
+          "max_num_blocks": 520,
+          "block_table_row_padding": 5,
+          "max_num_tokens": 47,
+          "index_dtype": "int64",
+          "block_table_dtype": "int64"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "multi_tile_data_and_padding",
+          "query_lengths": [
+            1025,
+            0,
+            6
+          ],
+          "idx_mapping": [
+            2,
+            5,
+            1
+          ],
+          "position_starts": [
+            8190,
+            0,
+            65533
+          ],
+          "block_size": 64,
+          "max_num_reqs": 6,
+          "max_num_blocks": 1025,
+          "block_table_row_padding": 7,
+          "max_num_tokens": 3082,
+          "index_dtype": "int32",
+          "block_table_dtype": "int32"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": {
+          "name": "all_empty_multi_tile_padding",
+          "query_lengths": [
+            0,
+            0,
+            0
+          ],
+          "idx_mapping": [
+            2,
+            0,
+            1
+          ],
+          "position_starts": [
+            0,
+            0,
+            0
+          ],
+          "block_size": 8,
+          "max_num_reqs": 3,
+          "max_num_blocks": 1,
+          "block_table_row_padding": 3,
+          "max_num_tokens": 2053,
+          "index_dtype": "int32",
+          "block_table_dtype": "int32"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "47fd13898abc39bbb0cbc7a490b7f1f407cd4edf39aa35818619fd6ab55eb12d",
     "original_correctness_sha256": "5a478de0367818b14542c2bca97f64ea5496c66904224d567fdb6391899ebfd8"
-  }
+  },
+  "upstream_controls": [
+    {
+      "name": "uneven_empty_permuted_int64",
+      "query_lengths": [
+        0,
+        1,
+        9,
+        17,
+        3
+      ],
+      "idx_mapping": [
+        6,
+        0,
+        4,
+        2,
+        7
+      ],
+      "position_starts": [
+        0,
+        7,
+        31,
+        4093,
+        1024
+      ],
+      "block_size": 8,
+      "max_num_reqs": 8,
+      "max_num_blocks": 520,
+      "block_table_row_padding": 5,
+      "max_num_tokens": 47,
+      "index_dtype": "int64",
+      "block_table_dtype": "int64"
+    },
+    {
+      "name": "multi_tile_data_and_padding",
+      "query_lengths": [
+        1025,
+        0,
+        6
+      ],
+      "idx_mapping": [
+        2,
+        5,
+        1
+      ],
+      "position_starts": [
+        8190,
+        0,
+        65533
+      ],
+      "block_size": 64,
+      "max_num_reqs": 6,
+      "max_num_blocks": 1025,
+      "block_table_row_padding": 7,
+      "max_num_tokens": 3082,
+      "index_dtype": "int32",
+      "block_table_dtype": "int32"
+    },
+    {
+      "name": "all_empty_multi_tile_padding",
+      "query_lengths": [
+        0,
+        0,
+        0
+      ],
+      "idx_mapping": [
+        2,
+        0,
+        1
+      ],
+      "position_starts": [
+        0,
+        0,
+        0
+      ],
+      "block_size": 8,
+      "max_num_reqs": 3,
+      "max_num_blocks": 1,
+      "block_table_row_padding": 3,
+      "max_num_tokens": 2053,
+      "index_dtype": "int32",
+      "block_table_dtype": "int32"
+    }
+  ]
 }

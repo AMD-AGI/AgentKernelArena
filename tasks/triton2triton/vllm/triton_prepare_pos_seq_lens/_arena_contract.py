@@ -34,6 +34,9 @@ def reference(harness, args):
 
 def fresh(args):
     args[2].add_(1)
+    # Unscored captured replay must also prove zero writes to inactive rows.
+    args[3].fill_(-1)
+    args[4].fill_(-1)
 
 def control_inputs(harness):
     yield (i([3,0,2]), i([0,1,4,6]), i([2,0,7,4]),

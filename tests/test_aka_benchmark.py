@@ -822,7 +822,8 @@ def test_committed_hip2hip_sources_are_graph_capture_compatible(monkeypatch):
     repo = Path(__file__).parents[1]
 
     gpumode_sources = sorted(
-        (repo / "tasks/hip2hip/gpumode").glob("*/hip/*.hip")
+        # Include reference sources relocated beneath protected scripts/tests.
+        (repo / "tasks/hip2hip/gpumode").rglob("*.hip")
     )
     assert len(gpumode_sources) == 44
     failures = {

@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from pr107_integration_helpers import original_runner, original_manifest
 
 torch = pytest.importorskip('torch')
 ROOT = Path(__file__).resolve().parents[1]
@@ -244,7 +245,10 @@ ORIGINALS = {'triton_correct_attn_cp_out/source/triton_correct_attn_cp_out.py': 
 
 def test_original_kernels_cases_gates_and_timers_preserved():
     for relative, digest in ORIGINALS.items():
-        assert hashlib.sha256((TASKS / relative).read_bytes()).hexdigest() == digest
+        source = (TASKS / relative).read_text()
+        if relative.endswith('scripts/task_runner.py'):
+            source = original_runner(source)
+        assert hashlib.sha256(source.encode()).hexdigest() == digest
 
 
 @pytest.mark.parametrize('alibi', [False, True])
@@ -296,7 +300,7 @@ LEGACY_DECODE_MANIFESTS = {'triton_decode_attn_stage1': '3f2b49294c8dfbb1ccb626c
 def test_added_decode_controls_preserve_every_original_case_and_manifest_field():
     import json
     for name, digest in LEGACY_DECODE_MANIFESTS.items():
-        manifest = json.loads((TASKS / name / 'workloads.json').read_text())
+        manifest = original_manifest(json.loads((TASKS / name / 'workloads.json').read_text()))
         extra = manifest['cases'][5:]
         assert extra and all('contract_case' in row['params'] for row in extra)
         manifest['cases'] = manifest['cases'][:5]
@@ -371,14 +375,17 @@ def test_protocol_extra_correctness_failure_cannot_pass_vacuously(name, monkeypa
     assert result['status'] == 'FAIL'
     assert calls == list(checks.CONTRACT_CASES)
     assert all(row['status']=='PASS' for row in result['cases'][:5])
-    assert all(row['status']=='FAIL' for row in result['cases'][5:])
+    assert all(row['status']==('FAIL' if 'contract_case' in row['params'] else 'PASS')
+               for row in result['cases'][5:])
+    # Newly appended upstream controls use run_correctness above. Their separate
+    # candidate-invocation negative tests live in test_pr107_main_integration.
 
 LEGACY_OTHER_MANIFESTS = {'triton_chunked_prefill_paged_decode': 'cadb6c57285e44d55a0294bed40a9f496b972cb5ccb54a2243c29e137c7d491e', 'triton_flash_prefill_attention': '31630d88bd4c076e3ea9ee8335dd451c1317776ab463fc597ecc79ed0ce65d31', 'triton_paged_prefix_prefill': '7a6c3d33fdff13eb18d526dbb785bdd2eeb0b44ce029678e5ba15d36c0e39c0a', 'triton_paged_prefix_prefill_alibi': '41a468593bb8ca3585a290771df7746300628040b5c9af89521017693736c80b', 'triton_unified_attention_2d': '2ec625748194bc92a4fb9df92b390b489200fabfb4513f4b42e8623b37f263c6', 'triton_unified_attention_3d': 'dabafba2a1b3a95d507199a2b206139342b2585837f851bed25945b55cf726ef'}
 
 def test_other_attention_controls_preserve_every_original_scored_case():
     import json
     for name,digest in LEGACY_OTHER_MANIFESTS.items():
-        data=json.loads((TASKS/name/'workloads.json').read_text())
+        data=original_manifest(json.loads((TASKS/name/'workloads.json').read_text()))
         assert data['cases'][5:]
         data['cases']=data['cases'][:5]
         assert hashlib.sha256(json.dumps(data,sort_keys=True,separators=(',',':')).encode()).hexdigest()==digest

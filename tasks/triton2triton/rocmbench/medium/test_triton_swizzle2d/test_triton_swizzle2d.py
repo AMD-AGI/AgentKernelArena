@@ -79,10 +79,53 @@ def test_swizzle2d(size_i, size_j, size_g, request, device='cuda'):
     test_case_name = request.node.name
     sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
     result_gold[sanitized_key_name] = output.clone().detach().cpu()
-    ################################################################### 
+    ###################################################################
 
     assert (output == expected_order).all(), (output, expected_order)
 
+
+def swizzle2d_reference(size_i, size_j, size_g, dtype):
+    """Construct the grouped column-major ordering independently on the CPU."""
+    groups = []
+    for group_start in range(0, size_i, size_g):
+        group_rows = min(size_g, size_i - group_start)
+        group = torch.arange(
+            group_start * size_j,
+            (group_start + group_rows) * size_j,
+            dtype=dtype,
+        )
+        groups.append(group.reshape(size_j, group_rows).T.contiguous())
+    return torch.cat(groups, dim=0)
+
+@pytest.mark.interpreter
+@pytest.mark.parametrize(
+    "size_i, size_j, size_g, output_dtype",
+    [
+        pytest.param(5, 7, 3, torch.float32, id="tail_non_power_of_two_float32"),
+        pytest.param(128, 128, 16, torch.int32, id="multi_tile_int32"),
+        pytest.param(64, 512, 8, torch.int64, id="multi_tile_int64"),
+    ],
+)
+def test_swizzle2d_boundary(size_i, size_j, size_g, output_dtype, request, device='cuda'):
+    # Initialize to a sentinel so missed masked/tiled stores cannot pass silently.
+
+    set_seed()
+
+    output = torch.full((size_i, size_j), -1, dtype=output_dtype, device=device)
+    swizzle2d_kernel[(1, )](output, size_i, size_j, size_g)
+    expected_order = swizzle2d_reference(
+        size_i, size_j, size_g, output_dtype
+    ).to(device)
+
+    result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
+
+    ################### save tri_out in result_gold ###################
+    test_case_name = request.node.name
+    sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
+    result_gold[sanitized_key_name] = output.clone().detach().cpu()
+    ###################################################################
+
+    torch.testing.assert_close(output, expected_order, rtol=0, atol=0)
 
 # --- Python wrapper for the kernel for benchmarking ---
 def swizzle2d_triton_wrapper(output_buffer, size_i_k, size_j_k, size_g_k, num_warps_launch):

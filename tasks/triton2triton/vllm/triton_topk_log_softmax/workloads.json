@@ -126,10 +126,105 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "singleton_vocab",
+          "shape": [
+            1,
+            1,
+            1
+          ],
+          "dtype": "float32",
+          "values": "singleton"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "non_power_of_two_below_block",
+          "shape": [
+            3,
+            1000,
+            7
+          ],
+          "dtype": "float32",
+          "values": "random"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": {
+          "name": "non_power_of_two_above_block_fp16_edges",
+          "shape": [
+            2,
+            1025,
+            5
+          ],
+          "dtype": "float16",
+          "values": "numerical_edges"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "c123e79073fe38a12161e354f173dadc2a59647967a5620d4acca1cd3bba9356",
     "original_correctness_sha256": "a2aeacd27aedfa24be0be58df129981a098abb5236c61f82acc8b5e5cdca90be"
-  }
+  },
+  "upstream_controls": [
+    {
+      "name": "singleton_vocab",
+      "shape": [
+        1,
+        1,
+        1
+      ],
+      "dtype": "float32",
+      "values": "singleton"
+    },
+    {
+      "name": "non_power_of_two_below_block",
+      "shape": [
+        3,
+        1000,
+        7
+      ],
+      "dtype": "float32",
+      "values": "random"
+    },
+    {
+      "name": "non_power_of_two_above_block_fp16_edges",
+      "shape": [
+        2,
+        1025,
+        5
+      ],
+      "dtype": "float16",
+      "values": "numerical_edges"
+    }
+  ]
 }

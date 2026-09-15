@@ -33,3 +33,7 @@ changes the data, the captured token output is filled with -1, and the same time
 invocation is replayed and checked. Inputs are restored on success or failure.
 The five scored cases, seeds, full-wrapper timing, 10 warmups and 100 samples are
 unchanged; neither branch substitutes a different output contract.
+
+Additional unscored public-branch controls from PR105: Singleton, empty/ragged requests and deterministic recovered-distribution branch.
+Their `control-upstream-*` manifest rows preserve all existing scored cases,
+numerical gates, seeds and timing.

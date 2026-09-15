@@ -156,10 +156,136 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": [
+          1,
+          1,
+          "silu",
+          false,
+          true,
+          true,
+          "float16",
+          1e-06
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": [
+          7,
+          31,
+          "sigmoid",
+          true,
+          false,
+          false,
+          "bfloat16",
+          0.0001
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": [
+          9,
+          129,
+          "swish",
+          false,
+          false,
+          true,
+          "float16",
+          0.001
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-4",
+      "params": {
+        "case_index": 10003,
+        "configuration": [
+          33,
+          1025,
+          "sigmoid",
+          true,
+          true,
+          false,
+          "bfloat16",
+          0.01
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "c4b9a5dcc1233f01b33231c4bee4aea17e7e2c5a068349db6501e7dcf40cc118",
     "original_correctness_sha256": "e98b0f23db69a0a4011c1ef346b0b790d5fc7f57643187d04b6b2c346e966cb9"
-  }
+  },
+  "upstream_controls": [
+    [
+      1,
+      1,
+      "silu",
+      false,
+      true,
+      true,
+      "float16",
+      1e-06
+    ],
+    [
+      7,
+      31,
+      "sigmoid",
+      true,
+      false,
+      false,
+      "bfloat16",
+      0.0001
+    ],
+    [
+      9,
+      129,
+      "swish",
+      false,
+      false,
+      true,
+      "float16",
+      0.001
+    ],
+    [
+      33,
+      1025,
+      "sigmoid",
+      true,
+      true,
+      false,
+      "bfloat16",
+      0.01
+    ]
+  ]
 }

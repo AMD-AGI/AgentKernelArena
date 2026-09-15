@@ -45,7 +45,7 @@ This kernel, `kernel_sub`,  performs  element-wise operation: output[i] = a[i] -
 
 You must ensure that:
 1.  All arguments received by `kernel_sub` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>

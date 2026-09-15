@@ -1,10 +1,11 @@
 """Explicit task actions. Public evaluation dispatch is independent of agents."""
 import os
 import test_kernel_harness as h
+import _rope_controls as rope
 
 
 def inputs():
-    return {'performance': list(h.ALL_CONFIGS), 'original_correctness': [h.ALL_CONFIGS[i] for i in h._pick(h.ALL_CONFIGS, 16)], 'controls': h.CONTROL_CASES}
+    return {'performance': list(h.ALL_CONFIGS), 'original_correctness': [h.ALL_CONFIGS[i] for i in h._pick(h.ALL_CONFIGS, 16)], 'controls': h.CONTROL_CASES + rope.CASES}
 
 
 def validate():
@@ -25,6 +26,14 @@ def correctness(require):
         control.update(status='FAIL', reason=f'{type(exc).__name__}: {exc}',
                        failure_kind='execution_failure')
     outcomes.append(control)
+    for case in rope.CASES:
+        row = {'test_case_id': case['test_case_id'], 'status': 'PASS'}
+        try:
+            rope.run(h, case)
+        except Exception as exc:
+            row.update(status='FAIL', reason=f'{type(exc).__name__}: {exc}',
+                       failure_kind='execution_failure')
+        outcomes.append(row)
     return outcomes
 
 

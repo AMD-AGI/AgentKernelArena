@@ -35,3 +35,7 @@ Both the original timed output and its exact `TimedRun` replay are numerically
 checked. Replay uses changed logits and token IDs and poisons the captured
 output outside timing. Both caller input buffers are restored in `finally`,
 including on replay failure.
+
+Additional unscored public-branch controls from PR105: Singleton vocab plus below-block and FP16 above-block numerical edges.
+They have independent `control-upstream-*` manifest rows; existing scored
+inputs, numerical gates and timing remain unchanged.

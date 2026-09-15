@@ -65,3 +65,8 @@ actual `TimedRun.outputs`, then perturbs inputs in place, poisons output buffers
 and validates the same captured invocation through `TimedRun.rerun()`.
 The reference, snapshots and replay checks run outside device timing. Inputs
 are restored even on failure. `_timed_contract.py` is protected task code.
+
+The input generator and blockwise-scaled reference now live entirely in protected
+`test_kernel_harness.py`. They preserve the original generator order, seeds, FP8
+conversion, scale layout, strides and matrix formula; editable module helpers
+cannot redefine evaluator inputs or expected results.

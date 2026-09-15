@@ -27,25 +27,32 @@ def unchanged(value, original):
 
 def reference(harness, x, options):
     import torch
-    dtype = platform_dtype(x.device)
+    platform = platform_dtype(x.device)
+    dtype = options.get('dtype', platform)
     group_size, eps = options['group_size'], options.get('eps', 1e-10)
-    if not options.get('use_ue8m0', False):
+    if not options.get('use_ue8m0', False) and x.ndim == 2 and dtype == platform:
         # Keep the original independent CPU oracle for every scored case.
         quant, scales = getattr(harness, 'reference_'+SYMBOL)(x, group_size, dtype, eps)
     else:
-        # Public optional power-of-two scale path; unscored diagnostic only.
-        data = x.cpu().float()
-        maximum = 240. if dtype == torch.float8_e4m3fnuz else torch.finfo(dtype).max
+        # The public wrapper flattens leading dimensions and chooses its clamp
+        # from the platform, independently of the requested output storage dtype.
+        # Preserve the original 2-D/default-dtype oracle above without recasting
+        # through a different FP8 representation for explicit-dtype controls.
+        columns = x.shape[-1]
+        data = x.cpu().float().reshape(-1, columns)
+        maximum = 240. if platform == torch.float8_e4m3fnuz else torch.finfo(platform).max
         quant = torch.empty_like(data)
         scales = torch.empty(data.shape[0], data.shape[1]//group_size, dtype=torch.float32)
         for row in range(data.shape[0]):
             for group in range(scales.shape[1]):
                 values = data[row, group*group_size:(group+1)*group_size]
                 raw_scale = max(values.abs().max().item(), eps)/maximum
-                scale = math.ldexp(1., math.ceil(math.log2(raw_scale)))
+                scale = (math.ldexp(1., math.ceil(math.log2(raw_scale)))
+                         if options.get('use_ue8m0', False) else raw_scale)
                 scales[row, group] = scale
                 quant[row, group*group_size:(group+1)*group_size] = (values/scale).clamp(-maximum, maximum)
-        quant = quant.to(dtype)
+        quant = quant.reshape(x.shape).to(dtype)
+        scales = scales.reshape(*x.shape[:-1], columns // group_size)
     return quant.to(x.device), scales.to(x.device)
 
 

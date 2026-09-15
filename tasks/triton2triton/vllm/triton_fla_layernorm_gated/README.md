@@ -38,3 +38,7 @@ The original full wrapper, seeds, 10 warmups and 100 samples remain unchanged.
 Actual captured outputs and a poisoned replay after perturbing those inputs
 must match the corresponding pristine-input reference. Inputs are restored in
 a finally block, including replay failures; all added checks are outside timing.
+
+Additional unscored public-branch controls from PR105: FP16/BF16, singleton and 1025-wide tails, epsilon and activation variants.
+They have independent `control-upstream-*` manifest rows; existing scored
+inputs, numerical gates and timing remain unchanged.

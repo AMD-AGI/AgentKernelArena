@@ -23,10 +23,9 @@ ordinary optimization post-processing. The launcher builds its contract from
 retained candidate after GEAK returns. Task files do not contain GEAK-specific
 drivers or engine layout requirements.
 
-Existing `geak_v3`, `geak_v3_triton`, and `geak_v4` launchers now delegate schema
-v2 to this same adapter before probing their legacy CLIs. Their v1 behavior is
-unchanged. Keep their existing registry entries if backward compatibility is
-wanted; no additional v2 backend-specific registry identifiers are necessary.
+The retained `geak_v4` launcher delegates schema v2 to this adapter before
+probing its legacy CLI. Its v1 behavior is unchanged. The `geak_v3` and
+`geak_v3_triton` names are retired; select `geak` for their v2 tasks.
 V2 aliases use `agents/geak/agent_config.yaml` and its run-level overrides.
 
 ## Runtime setup

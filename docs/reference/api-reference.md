@@ -23,17 +23,10 @@ A run configuration defines a single experiment. Start from a file under
 | `log_directory` | string | Directory for run logs. |
 | `workspace_directory_prefix` | string | Prefix for the workspace directory. The full name is `<prefix>_<gpu>_<agent>`. |
 
-Specialized integrations accept these integration-specific top-level fields:
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `gpu_ids` | string | Comma-separated process-visible GPU IDs for GEAK/mini-swe workers. This is separate from the host runner's `GPU_IDS` variable; a masked worker uses logical IDs. |
-| `num_parallel` | integer | Legacy v1 GEAK sub-agent/worktree count. mini-swe configures this under its agent config instead. |
-| `run_mode` | string | Legacy v1 `geak_v3_triton` mode override, such as `quick` or `full`. |
-
-V2 GEAK search settings use the `agent` mapping in the
-[GEAK guide](../../agents/geak/README.md#runtime-setup); the legacy
-`num_parallel` and `run_mode` controls do not configure its Workflow engine.
+The legacy v1 `geak_v4` integration accepts top-level `gpu_ids`, a string of
+comma-separated process-visible GPU IDs. This differs from the host runner's
+`GPU_IDS` variable; a masked worker uses logical IDs. V2 GEAK search settings
+use the `agent` mapping in the [GEAK guide](../../agents/geak/README.md#runtime-setup).
 
 Agent-specific defaults live in `agents/<agent_name>/agent_config.yaml`.
 Supported fields in the run config's `agent` mapping override those defaults;

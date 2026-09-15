@@ -45,3 +45,7 @@ device. Pristine input IDs are checked before any candidate mutation could
 change the oracle. The full original wrapper, 10 warmups and 100 samples remain;
 actual captured output and a poisoned replay with rotated valid IDs must match
 the reference. Inputs are restored even on replay failure; checks are untimed.
+
+Additional unscored public-branch controls from PR105: INT16 duplicate IDs, topk31/32, expert31/32/33 and row tails.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.

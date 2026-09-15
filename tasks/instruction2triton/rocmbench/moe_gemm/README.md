@@ -39,75 +39,78 @@ the v2 on-disk edit and evaluation contract above governs submission format.
 
 You are an expert in triton programming language. You will be given a instruction/function definition of the required kernel : moe-gemm, you task is to complete the kernel code for the corresponding operator/function definition using triton programming language. Only complete the kernel code in the function definition, DONT remove any python imports in the instruction provided, DONT change/interfere with the provided function definition and parameter list ,only add if required. :
 
-import triton  
-import triton.language as tl  
+import triton
+import triton.language as tl
 
 
-@triton.jit  
-def moe_gemm_kernel(  
-    A,  
-    B,  
-    Out,  
-    A_scale,  
-    B_scale,  
-    stride_am,  
-    stride_ak,  
-    stride_be,  
-    stride_bn,  
-    stride_bk,  
-    stride_cm,  
-    stride_cn,  
-    stride_bse,  
-    stride_bsn,  
-    top_k: tl.constexpr,  
-    topk_weights_ptr,  
-    sorted_token_ids_ptr,  
-    expert_ids_ptr,  
-    EM: tl.constexpr,  
-    N: tl.constexpr,  
-    K: tl.constexpr,  
-    EVEN_K: tl.constexpr,  
-    MUL_ROUTED_WEIGHT: tl.constexpr,  
-    use_fp8_w8a8: tl.constexpr,  
-    use_int8_w8a16: tl.constexpr,  
-    use_int8_w8a8: tl.constexpr,  
-    BLOCK_SIZE_M: tl.constexpr,  
-    BLOCK_SIZE_N: tl.constexpr,  
-    BLOCK_SIZE_K: tl.constexpr,  
-    GROUP_SIZE_M: tl.constexpr,  
-):  
-    """  
-    Implements the fused computation for a Mixture of Experts (MOE) using  
-    token and expert matrices.  
+@triton.jit
+def moe_gemm_kernel(
+    A,
+    B,
+    Out,
+    A_scale,
+    B_scale,
+    stride_am,
+    stride_ak,
+    stride_be,
+    stride_bn,
+    stride_bk,
+    stride_cm,
+    stride_cn,
+    stride_bse,
+    stride_bsn,
+    top_k: tl.constexpr,
+    topk_weights_ptr,
+    sorted_token_ids_ptr,
+    expert_ids_ptr,
+    EM: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    EVEN_K: tl.constexpr,
+    MUL_ROUTED_WEIGHT: tl.constexpr,
+    use_fp8_w8a8: tl.constexpr,
+    use_int8_w8a16: tl.constexpr,
+    use_int8_w8a8: tl.constexpr,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
+):
+    """
+    Implements the fused computation for a Mixture of Experts (MOE) using
+    token and expert matrices.
 
-    Key Parameters:  
-    - A: The input tensor representing tokens with shape (*, K), where '*' can  
-        be any shape representing batches and K is the feature dimension of  
-        each token.  
-    - B: The stacked MOE weight tensor with shape (E, N, K), where E is  
-        the number of experts, K is the input feature dimension, and N is  
-        the output feature dimension.  
-    - C: The output cache tensor with shape (M, topk, N), where M is the  
-        total number of tokens post padding, topk is the number of times  
-        each token is repeated, and N is the output feature dimension.  
-    - sorted_token_ids: A tensor containing the sorted indices of tokens,  
-        repeated topk times and arranged by the expert index they are  
-        assigned to.  
-    - expert_ids: A tensor containing the indices of the expert for each  
-        block. It determines which expert matrix from B should be used for  
-        each block in A.  
-    This kernel performs the multiplication of a token by its corresponding  
-    expert matrix as determined by `expert_ids`. The sorting of  
-    `sorted_token_ids` by expert index and padding ensures divisibility by  
-    BLOCK_SIZE_M, which is necessary to maintain consistency in block matrix  
-    multiplication across different blocks processed by the same expert.  
-    """  
-
-
+    Key Parameters:
+    - A: The input tensor representing tokens with shape (*, K), where '*' can
+        be any shape representing batches and K is the feature dimension of
+        each token.
+    - B: The stacked MOE weight tensor with shape (E, N, K), where E is
+        the number of experts, K is the input feature dimension, and N is
+        the output feature dimension.
+    - C: The output cache tensor with shape (M, topk, N), where M is the
+        total number of tokens post padding, topk is the number of times
+        each token is repeated, and N is the output feature dimension.
+    - sorted_token_ids: A tensor containing the sorted indices of tokens,
+        repeated topk times and arranged by the expert index they are
+        assigned to.
+    - expert_ids: A tensor containing the indices of the expert for each
+        block. It determines which expert matrix from B should be used for
+        each block in A.
+    This kernel performs the multiplication of a token by its corresponding
+    expert matrix as determined by `expert_ids`. The sorting of
+    `sorted_token_ids` by expert index and padding ensures divisibility by
+    BLOCK_SIZE_M, which is necessary to maintain consistency in block matrix
+    multiplication across different blocks processed by the same expert.
+    """
 
 
-The protected MoE launcher calls GPU-scalar `.item()` during each invocation,
-which cannot be captured in a CUDA/HIP graph. Both roles explicitly use canonical
-CUDA-event samples with the original warmup/repetition policy and full operator
-call. The runner records this task-owned reason with the device timing metadata.
-It does not attempt a failing graph capture before measuring later cases.
+
+
+The protected launcher reads the static padded-token count before timing:
+`prepare_moe_gemm` prepares the launch callable.
+Repeated timed calls launch the same GPU kernel with the same arguments and do
+not read a device scalar on the host. Both roles retain the canonical CUDA-event
+method, original warmups and sample counts; metadata records `event_only_moe_gemm`.
+This integration does not switch to graph timing. Reference computations, input
+snapshots and full measured-output checks remain outside the timed callable.
+The new preparation boundary requires paired GPU timing qualification.

@@ -36,3 +36,7 @@ sign and magnitude, poisons both captured outputs, and numerically checks the sa
 replay. Inputs and module hooks are restored even on failure. All five scored cases,
 seeds, original source/harness, full-wrapper timing, 10 warmups and 100 samples stay
 unchanged; diagnostics do not add measurements to the score.
+
+Additional unscored public-branch controls from PR105: Exact FP16 extrema/subnormal/half-step quantization and non-power-of-two epsilon controls.
+Their `control-upstream-*` manifest rows preserve all existing scored cases,
+numerical gates, seeds and timing.

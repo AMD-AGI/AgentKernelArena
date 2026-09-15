@@ -107,3 +107,11 @@ place and poisoning writable outputs. Its complete outputs must match a newly
 computed private oracle. Every read-only input is checked byte-for-byte and
 restored in `finally`, including failure paths. These checks run outside timing
 and identically for the frozen initial candidate and submitted candidate.
+
+PR105 RoPE coverage is retained as two explicit, unscored controls (one and
+three requests). They check rotated queries and the final selected key using
+independent adjacent-pair rotation, the existing attention reference and its
+input-derived BF16 rounding bounds. The public rotated-key output also passes
+the original 0.01 absolute/relative gate. Read-only operands are checked and
+restored by the same protected call guard. Original no-RoPE correctness and
+all timed workloads remain unchanged.

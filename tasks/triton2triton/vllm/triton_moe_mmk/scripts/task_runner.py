@@ -62,7 +62,9 @@ def run_compile():
 
 
 
-CONTROL_CASES = ('rectangular_tail',)
+CONTROL_CASES = ('rectangular_tail', 'm_tail', 'n_tail', 'k_below64', 'k_above64')
+CONTROL_SHAPES = {'m_tail': (33,64,64), 'n_tail': (64,64,47),
+                  'k_below64': (64,63,32), 'k_above64': (32,65,64)}
 
 
 def reference(inputs):
@@ -71,6 +73,11 @@ def reference(inputs):
 
 def control_inputs(name, device):
     import torch
+    if name in CONTROL_SHAPES:
+        M, K, N = CONTROL_SHAPES[name]
+        torch.manual_seed(47 + list(CONTROL_SHAPES).index(name))
+        return {"A": torch.randn(M,K,device=device,dtype=torch.float16)*0.1,
+                "B": torch.randn(K,N,device=device,dtype=torch.float16)*0.1}
     A = ((torch.arange(17*35, device=device).reshape(17,35) % 7)-3).to(torch.float16)
     B = ((torch.arange(35*70, device=device).reshape(35,70) % 5)-2).to(torch.float16)
     return {'A':A, 'B':B}

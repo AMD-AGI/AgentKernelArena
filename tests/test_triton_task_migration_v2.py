@@ -24,10 +24,10 @@ BASE = '5c9f8ef2'
 # timer settings, and reject incorrect measured/replay output through real runners.
 VLLM_CHECKED_RUNNERS = {
     'triton_fused_moe': 'e3c3c28504797346f7af6a02847118bf7a886059f8de176cd799cfedcec7206a',
-    'triton_fused_moe_gptq_awq': '8342f51a982e65dd6b5db1cf7c04b7113ac4dea1a315d22ac63844f28a439cac',
+    'triton_fused_moe_gptq_awq': '461382af0a60d868a93e0d200f7c0ab29c9d0d97c7ec9b668c23b1cd12f09a1b',
 
     'triton_batched_moe': 'd804d6902c7036d97f1ba24b719435d9c9240af0fe38fdcd161a4776e60a7d05',
-    'triton_moe_mmk': '445e4603b0521be7a87256158a7d1d834a1670e277c205b5c922328276325dfa',
+    'triton_moe_mmk': '65814e75e905adbfe48ed597e950750851d8cd71bd812abbd7a85e72026829f6',
 
     'triton_fla_fused_recurrent': 'f028ca83214c262c7f4f0794aea0f62d972b10c4cc04b3e7f4f7850aaf8aae6b',
     'triton_linear_attn_decode': '653524a072b76627937ee522b830873375ee3bc92d80309d39676754e08d1419',
@@ -69,6 +69,12 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
     relative = (task/'scripts/task_runner.py').relative_to(ROOT).as_posix()
     before = subprocess.check_output(['git','show',f'{BASE}:{relative}'], cwd=ROOT, text=True)
     after = (ROOT/relative).read_text()
+    added_dispatch = ("    if case_index is not None and case_index >= 10000:\n"
+                      "        from _upstream_controls import run_control\n"
+                      "        return run_control(case_index - 10000, load_module)\n")
+    if (task / '_upstream_controls.py').is_file():
+        assert after.count(added_dispatch) == 1
+        after = after.replace(added_dispatch, '', 1)
     bt, at = ast.parse(before), ast.parse(after)
     bf = {n.name:n for n in bt.body if isinstance(n,ast.FunctionDef)}
     af = {n.name:n for n in at.body if isinstance(n,ast.FunctionDef)}
@@ -187,7 +193,8 @@ def test_vllm_per_case_failure_and_incomplete_measurement_rejected(monkeypatch):
     monkeypatch.setattr(adapter,'load_harness',lambda:harness)
     correctness = adapter.evaluate('candidate','correctness')
     assert correctness['status']=='FAIL'
-    assert [r['status'] for r in correctness['cases']]==['PASS','PASS','PASS','FAIL','PASS']
+    assert [r['status'] for r in correctness['cases']] == [
+        'FAIL' if row['params']['case_index'] == 3 else 'PASS' for row in manifest['cases']]
     manifest_result = {'protocol':'arena-eval-v1','role':'task','action':'validate-task',
                        'status':'PASS','cases':manifest['cases']}
     CaseManifest.from_result(result_record(manifest_result)).validate(result_record(correctness))
@@ -240,6 +247,8 @@ def test_vllm_called_jit_kernel_cannot_be_replaced_with_plain_python(config, tmp
                 # A nonempty function used to bypass the false manifest flag.
                 node.body = ast.parse('return 1').body
         path.write_text(ast.unparse(ast.fix_missing_locations(tree)))
+    if (config.parent / '_upstream_controls.py').is_file():
+        (tmp_path / '_upstream_controls.py').write_bytes((config.parent / '_upstream_controls.py').read_bytes())
     monkeypatch.setattr(adapter, 'ROOT', tmp_path)
     with pytest.raises(ValueError, match='must remain a Triton JIT kernel'):
         adapter.inspect_candidate(data, require_implemented=True)
@@ -982,6 +991,67 @@ def test_rocm_gemm_scope_retains_original_scored_cases_and_numerical_gate(relati
     with pytest.raises(AssertionError):protected.test_correctness(*args)
 
 
+# Exact reviewed host-boundary changes; device kernels are compared independently.
+PR105_HOST_FUNCTIONS = {
+    'instruction2triton/rocmbench/moe_gemm': {
+        'prepare_moe_gemm': '28a5619bf567fe59f966fe3e2c5282bd52df0ea02c29a36633509d1ee6b67cab',
+        'moe_gemm': '4be5e2c1fb56d38184b237de92da11b67f4ccadec5ebe5cbf0df868a8ba0522d',
+        'test_performance': '4bede1239f10acd62e2ae712137d5647d9d16f2c5d6ecf078e9dd43f093a3180'},
+    'triton2triton/rocmbench/hard/moe_gemm': {
+        'MetaData': '85ab59b205da9d08d19d18fa32954151c74867dbb836716a11959757a9aa1c28',
+        'moe_gemm': '290976bf3bccdbaf51014b17ab68850b6e2902694dd7a5ef2914e3cd9e4aa867',
+        'test_performance': 'f4055f61942f6c497990ed11027923d79fb5d529030a798c1639c73307cb245e'},
+}
+
+
+def before_pr105_additions(source, task):
+    """Prove the additive main merge, then reuse the original migration audit."""
+    relative = task.relative_to(ROOT/'tasks').as_posix()
+    additions = {
+        'triton2triton/rocmbench/easy/test_randn': {'launch_randn', 'philox_rand_reference',
+            'test_rand_seed_differentiation', 'test_rand_seeded_sequence_and_repeatability'},
+        'triton2triton/rocmbench/medium/test_triton_swizzle2d': {'swizzle2d_reference', 'test_swizzle2d_boundary'},
+    }
+    decorators = {
+        'triton2triton/rocmbench/easy/test_block_copy': 'test_block_copy',
+        'triton2triton/rocmbench/hard/test_tma_store_gemm': 'test_tma_load_store',
+        'triton2triton/rocmbench/medium/test_cast_matmul': 'test_cast_matmul',
+    }
+    raw = source.read_bytes()
+    if relative not in additions and relative not in decorators and relative not in PR105_HOST_FUNCTIONS:
+        return raw
+    before = subprocess.check_output(['git', 'show', 'e8ec5d6b:' + source.relative_to(ROOT).as_posix()], cwd=ROOT)
+    old, new = ast.parse(before), ast.parse(raw)
+    olddefs = {n.name:n for n in old.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+    newdefs = {n.name:n for n in new.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+    added = additions.get(relative, set()) | ({'prepare_moe_gemm'} if relative.startswith('instruction2triton') else set())
+    assert newdefs.keys() - olddefs.keys() == added
+    for name, digest in PR105_HOST_FUNCTIONS.get(relative, {}).items():
+        assert hashlib.sha256(ast.get_source_segment(raw.decode(), newdefs[name]).encode()).hexdigest() == digest
+    if relative in decorators:
+        name = decorators[relative]
+        assert ast.dump(ast.Module(body=olddefs[name].body,type_ignores=[])) == ast.dump(ast.Module(body=newdefs[name].body,type_ignores=[]))
+        old_decorators = olddefs[name].decorator_list
+        new_decorators = newdefs[name].decorator_list
+        assert len(old_decorators) == len(new_decorators)
+        for a,b in zip(old_decorators,new_decorators):
+            if ast.dump(a) == ast.dump(b): continue
+            assert ast.dump(a.func) == ast.dump(b.func) and ast.dump(a.args[0]) == ast.dump(b.args[0])
+            old_cases, new_cases = a.args[1], b.args[1]
+            if isinstance(new_cases,ast.BinOp):
+                assert isinstance(new_cases.op,ast.Add) and ast.dump(new_cases.left) == ast.dump(old_cases)
+            else:
+                assert isinstance(old_cases,ast.List) and isinstance(new_cases,ast.List)
+                assert [ast.dump(n) for n in new_cases.elts[:len(old_cases.elts)]] == [ast.dump(n) for n in old_cases.elts]
+        newdefs[name].decorator_list = olddefs[name].decorator_list
+    new.body = [n for n in new.body if not isinstance(n,(ast.FunctionDef,ast.ClassDef)) or n.name not in added]
+    for index,node in enumerate(new.body):
+        if isinstance(node,(ast.FunctionDef,ast.ClassDef)) and node.name in PR105_HOST_FUNCTIONS.get(relative,{}):
+            new.body[index] = olddefs[node.name]
+    assert ast.dump(new,include_attributes=False) == ast.dump(old,include_attributes=False)
+    return before
+
+
 @pytest.mark.parametrize('path', ROCM, ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
 def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path):
     task=path.parent
@@ -990,6 +1060,7 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
     assert all(edit.scope=='symbols' for edit in spec.candidate.editable)
     data=json.loads((task/'workloads.json').read_text())
     source=task/data['source']
+    comparison_source = before_pr105_additions(source, task)
     original=subprocess.check_output(['git','show',f'{BASE}:{source.relative_to(ROOT).as_posix()}'],cwd=ROOT)
     expected_source = original
     if task.name == 'test_kernel_sub':
@@ -1014,7 +1085,7 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
         # Only the separately exercised known-answer diagnostic is additional;
         # all old source bytes, including gates/parameters, remain protected.
         if 'instruction2triton' in task.parts:
-            after = source.read_text()
+            after = comparison_source.decode()
             start = after.index('\n    # Unscored known-answer control at an ordinary E8M0 scale.')
             end = after.index('\n\n# Define these globally', start)
             extra = after[start:end].rstrip('\n') + '\n'
@@ -1026,7 +1097,7 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
         # every other byte, including kernels, parametrization and timing.
         # Dedicated contract tests exercise the real hooks and pin the original
         # kernel/performance/manifest identities independently.
-        before, after = expected_source.decode(), source.read_text()
+        before, after = expected_source.decode(), comparison_source.decode()
         test_name = 'test_softmax' if task.name in {'softmax', 'naive_softmax'} else task.name
         def correctness_body(text):
             return next(node for node in ast.parse(text).body
@@ -1091,7 +1162,7 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
             # tests reverse these edits to
             # compare with the original kernel AST, and exercise their semantics.
             kernel_name, reviewed_hash = repaired_kernels[task.name]
-            current_source = source.read_text()
+            current_source = comparison_source.decode()
             node = next(n for n in ast.parse(current_source).body
                         if isinstance(n, ast.FunctionDef) and n.name == kernel_name)
             assert hashlib.sha256(ast.get_source_segment(current_source, node).encode()).hexdigest() == reviewed_hash
@@ -1124,13 +1195,13 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
                             isinstance(t, ast.Name) and t.id == 'smem_elements_needed'
                             for t in n.targets))]
             return ast.dump(tree, include_attributes=False)
-        assert matmul_original_contract(source.read_bytes()) == matmul_original_contract(expected_source)
+        assert matmul_original_contract(comparison_source) == matmul_original_contract(expected_source)
     elif task.name == 'rmsnorm_bwd':
         # The Triton task accidentally timed forward. Its corrected performance
         # body and counters are the original instruction task's backward path;
         # dedicated tests independently pin that path and all original kernels,
         # autograd gates, parameter rows, dtypes and timer options.
-        current = source.read_text()
+        current = comparison_source.decode()
         current_nodes = {n.name: n for n in ast.parse(current).body
                          if isinstance(n, ast.FunctionDef)}
         reviewed = {
@@ -1170,9 +1241,9 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
                                  or not any(isinstance(c, ast.Call) and ast.unparse(c.func) == 'pytest.skip'
                                             for c in ast.walk(n))]
             return ast.dump(tree, include_attributes=False)
-        assert cast_original_contract(source.read_bytes()) == cast_original_contract(expected_source)
+        assert cast_original_contract(comparison_source) == cast_original_contract(expected_source)
     else:
-        assert source.read_bytes() == expected_source
+        assert comparison_source == expected_source
     assert hashlib.sha256(original).hexdigest()==data['migration']['original_source_sha256']
     rows=data['cases']
     assert len(rows)==len({row['test_case_id'] for row in rows})
@@ -1485,7 +1556,7 @@ def test_moe_launcher_selects_events_before_attempting_unsupported_capture(monke
                     'benchmark_fallback_reason':options['fallback_reason']}
     benchmark = adapter.benchmark_type(Base,plugin,None)(op_callable=lambda:expected.clone())
     benchmark.run_benchmark()
-    assert options['use_cuda_graph'] is False and '.item()' in options['fallback_reason']
+    assert options['use_cuda_graph'] is False and options['fallback_reason'] == 'event_only_moe_gemm'
     assert plugin.current_row['metadata']['device_timing']['benchmark_fallback_reason'] == options['fallback_reason']
     assert plugin.exercised == {'cpu-fixture'}
 
@@ -1584,7 +1655,15 @@ def test_geak_v2_preserves_original_functions_and_freezes_the_complete_manifest(
     data=json.loads((task/'workloads.json').read_text())
     source=(task/data['source']).relative_to(ROOT).as_posix()
     original=subprocess.check_output(['git','show',f'{BASE}:{source}'],cwd=ROOT)
-    assert (ROOT/source).read_bytes()==original
+    if task.name == 'refk_identity':
+        # The candidate now contains only its original JIT implementation;
+        # reference, generator and launch wrapper moved into protected harness.
+        old_kernel = next(n for n in ast.parse(original).body if isinstance(n,ast.FunctionDef) and n.name == '_identity_kernel')
+        new_kernel = next(n for n in ast.parse((ROOT/source).read_text()).body if isinstance(n,ast.FunctionDef) and n.name == '_identity_kernel')
+        assert ast.dump(new_kernel,include_attributes=False) == ast.dump(old_kernel,include_attributes=False)
+        assert {n.name for n in ast.parse((ROOT/source).read_text()).body if isinstance(n,ast.FunctionDef)} == {'_identity_kernel'}
+    else:
+        assert (ROOT/source).read_bytes()==original
     before=subprocess.check_output(['git','show',f'{BASE}:{task.relative_to(ROOT).as_posix()}/test_kernel_harness.py'],cwd=ROOT,text=True)
     after=(task/'test_kernel_harness.py').read_text()
     assert data['migration']['original_harness_sha256']==hashlib.sha256(before.encode()).hexdigest()
@@ -2015,7 +2094,7 @@ def test_vllm_additional_original_correctness_cases_are_manifested():
         # Newly added controls supplement, rather than replace, the original
         # targeted multi-token/allowlist cases dispatched with index -1.
         extra=[r for r in correctness_only if r['params']['case_index']==-1]
-        controls=[r for r in correctness_only if r['params']['case_index']!=-1]
+        controls=[r for r in correctness_only if 0 <= r['params']['case_index'] < 10000]
         assert len(controls)==1 and controls[0]['test_case_id']=='contract_controls'
         assert controls[0]['params']['case_index']==5
         before=subprocess.check_output(['git','show',f'{BASE}:{task.relative_to(ROOT).as_posix()}/scripts/task_runner.py'],cwd=ROOT,text=True)

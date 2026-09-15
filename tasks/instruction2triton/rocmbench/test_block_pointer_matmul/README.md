@@ -45,14 +45,14 @@ This kernel, `matmul_no_scf_with_advance_kernel`,  is designed to use block poin
 
 You must ensure that:
 1.  All arguments received by `matmul_no_scf_with_advance_kernel` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
 ```
 The full definition for `matmul_no_scf_with_advance_kernel` and relevant helper utilities are provided in the context below. You only need to complete the code for `matmul_no_scf_with_advance_kernel` whilst keeping other things intact. DONT remove Imports and HELPER utils.
 
-######################################## Imports ######################################## 
+######################################## Imports ########################################
 import pytest
 import torch
 
@@ -60,7 +60,7 @@ import triton
 import triton.language as tl
 import os
 
-######################################## Imports ######################################## 
+######################################## Imports ########################################
 
 
 @triton.jit
@@ -119,7 +119,3 @@ def matmul_no_scf_with_advance_kernel(
         The depth of the tiles (common dimension K) processed from A and B for the dot product.
     """
     # Your code here
-
-
-
-

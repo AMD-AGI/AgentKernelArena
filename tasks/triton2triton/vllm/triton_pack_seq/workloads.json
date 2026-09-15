@@ -193,10 +193,125 @@
         "case_index": 5,
         "coverage": "The original scored path launches the kernel directly into a preallocated output with pad=0; replay checks that exact path. Public-wrapper correctness also checks its default -inf and explicit padding; allocation remains outside original scored timing."
       }
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "default_pad_odd_d_float32",
+          "lengths": [
+            17,
+            5,
+            9
+          ],
+          "feature_shape": [
+            70
+          ],
+          "dtype": "float32"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "zero_lengths_long_time_bfloat16",
+          "lengths": [
+            0,
+            70,
+            13,
+            0
+          ],
+          "feature_shape": [
+            65
+          ],
+          "dtype": "bfloat16",
+          "pad_value": 2.5
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": {
+          "name": "multidimensional_float16",
+          "lengths": [
+            9,
+            0,
+            4
+          ],
+          "feature_shape": [
+            3,
+            5
+          ],
+          "dtype": "float16",
+          "pad_value": -1.25
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "9ab5b581b5210b61b3c1e256e2069655e8ffb478d2eac6c467f16c48d72f08b3",
     "original_correctness_sha256": "008673918ef772556083b79a863ed585e4c90383ec1597da08f9490ff253af6f"
-  }
+  },
+  "upstream_controls": [
+    {
+      "name": "default_pad_odd_d_float32",
+      "lengths": [
+        17,
+        5,
+        9
+      ],
+      "feature_shape": [
+        70
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "zero_lengths_long_time_bfloat16",
+      "lengths": [
+        0,
+        70,
+        13,
+        0
+      ],
+      "feature_shape": [
+        65
+      ],
+      "dtype": "bfloat16",
+      "pad_value": 2.5
+    },
+    {
+      "name": "multidimensional_float16",
+      "lengths": [
+        9,
+        0,
+        4
+      ],
+      "feature_shape": [
+        3,
+        5
+      ],
+      "dtype": "float16",
+      "pad_value": -1.25
+    }
+  ]
 }

@@ -45,7 +45,7 @@ This kernel, `matmul_tma_load_store`,  performs a single block matrix multiplica
 
 You must ensure that:
 1.  All arguments received by `matmul_tma_load_store` are kept intact and not modified.
-2. Provide you final code in ```python code block. 
+2. Provide you final code in ```python code block.
 Example:
 ```python
 <YOUR-CODE-HERE>
@@ -120,7 +120,3 @@ def matmul_tma_load_store(
                                    in the accumulation data type (typically `tl.float32`).
     """
     # Your code here
-
-
-
-

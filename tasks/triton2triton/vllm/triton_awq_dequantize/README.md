@@ -37,3 +37,7 @@ the packed weights (including the sign/high bits), packed zeros and scales,
 poisons the output, and validates the same graph's replay. Shape, dtype, device
 and finiteness are checked as well. Original timed inputs, seeds, cases and timing
 parameters are unchanged. Unobservable event fallback fails explicitly.
+
+Additional unscored public-branch controls from PR105: FP32/BF16 scale dtypes and signed packed/tail group boundaries.
+These use explicit `control-upstream-*` manifest rows. Original scored inputs,
+numerical gates, seeds, warmups and sample counts remain unchanged.
