@@ -130,3 +130,21 @@ This restores the named CK task's execution path on the new runtime. It is not a
 claim that today's untuned launch configuration reproduces historical production
 dispatch timings. Baseline and candidate use the same protected selection;
 original cases, reference gates, warmups and sampling remain unchanged.
+
+## Numerical acceptance including output magnitude
+
+The original cosine error must remain below `0.03`. The task additionally
+requires squared relative L2 error, `sum((got - reference)^2) /
+sum(reference^2)`, below `0.06`. For equal-norm outputs this is exactly
+`2 * (1 - cosine)`, extending the original distance bound to check amplitude.
+This is a fixed strengthening, not a tolerance fitted to baseline measurements.
+Cosine alone accepts an arbitrarily rescaled answer; a doubled or halved
+independent known answer must now fail the actual task predicate.
+
+The same predicate applies to reduced and full correctness shapes and both
+original and perturbed actual timed outputs. Magnitude diagnostics are emitted
+after execution, outside the measured region. Output shape, BF16 dtype, device,
+finiteness, original cosine gate, cases, seeds, warmups and sampling remain
+unchanged. Job 139797's cosine-only CK MoE report remains a full validation
+failure even though its real baseline actions passed. Fresh full GPU validation
+is required for this strengthened contract.

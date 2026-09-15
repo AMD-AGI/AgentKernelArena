@@ -106,7 +106,4 @@ def run_correctness(harness):
         torch = harness._torch()
         torch.cuda.synchronize()
         expected = harness._moe_reference(inputs)
-        assert got.shape == expected.shape and got.dtype == expected.dtype
-        assert got.device == expected.device and torch.isfinite(got).all()
-        error = 1 - torch.nn.functional.cosine_similarity(got.float().flatten(), expected.float().flatten(), dim=0)
-        assert float(error) < 0.03, (case["id"], float(error))
+        harness._assert_ck_close(inputs, got, expected)

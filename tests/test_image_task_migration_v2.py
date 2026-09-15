@@ -675,6 +675,20 @@ def test_original_cases_numerical_policy_and_benchmark_unchanged(directory):
                       and n.value.func.id == "_assert_output_contract"]
             assert len(checks) == 1
             loop.body.remove(checks[0])
+            if directory.name in ("mi355x_vllm_ck_moe_2stage", "mi355x_vllm_ck_cktile_moe_2stage"):
+                # The additional amplitude bound strengthens (does not replace)
+                # the original cosine gate. Verify its sole call and then compare
+                # every original correctness statement with the original hash.
+                extra = [n for n in ast.walk(loop) if isinstance(n, ast.Expr)
+                         and isinstance(n.value, ast.Call) and isinstance(n.value.func, ast.Name)
+                         and n.value.func.id == "_assert_moe_magnitude"]
+                assert len(extra) == 1
+                assert ast.dump(extra[0]) == ast.dump(ast.parse("_assert_moe_magnitude(got, expected)").body[0])
+                for node in ast.walk(loop):
+                    for field in ("body", "orelse"):
+                        statements = getattr(node, field, None)
+                        if isinstance(statements, list) and extra[0] in statements:
+                            statements.remove(extra[0])
         if name == "run_correctness" and directory.name == "mi355x_vllm_triton_kda_linear_attn_kimi_k3":
             loop = next(n for n in function.body if isinstance(n, ast.For))
             snapshots = [n for n in loop.body if isinstance(n, ast.Assign)
@@ -1740,3 +1754,63 @@ def test_kda_chunk_repeats_use_bf16_output_as_next_value(monkeypatch):
     h._assert_state_result(inp, (inp['v'],final_state),states,original_state)
     with pytest.raises(AssertionError, match='alias v'):
         h._assert_state_result(inp, (inp['v'].clone(),final_state),states,original_state)
+
+
+@pytest.mark.parametrize("name", ["mi355x_vllm_ck_moe_2stage", "mi355x_vllm_ck_cktile_moe_2stage"])
+def test_ck_moe_magnitude_rejects_scaled_original_and_replay(name, monkeypatch):
+    torch = pytest.importorskip("torch")
+    h = load_module(TASKS / name / "scripts/task_runner.py")
+    monkeypatch.setattr(h, "_torch", lambda: torch)
+    hidden = torch.tensor([[1., 2.], [-3., 4.]], dtype=torch.bfloat16)
+    inputs = {"hidden": hidden}
+    reference = lambda inp: (inp["hidden"].float() * 2).to(torch.bfloat16)
+    monkeypatch.setattr(h, "_moe_reference", reference)
+    expected = reference(inputs)
+    h._assert_ck_close(inputs, expected.clone(), expected)
+    # Small ordinary numerical error remains permitted; wholesale rescaling
+    # has perfect cosine yet violates the fixed amplitude contract.
+    h._assert_ck_close(inputs, expected * 1.01, expected)
+    for scale in (0.5, 2., 100.):
+        bad = expected * scale
+        cosine = torch.nn.functional.cosine_similarity(bad.float().flatten(), expected.float().flatten(), dim=0)
+        assert float(1 - cosine) < 0.03
+        with pytest.raises(AssertionError, match="magnitude"):
+            h._assert_ck_close(inputs, bad, expected)
+    # The directional gate is still independently active: this vector is just
+    # inside the new distance ball but outside the original cosine bound.
+    unit = torch.tensor([[1., 0.]])
+    angled = torch.tensor([[0.94031809, 0.2368974]])
+    assert float((angled-unit).square().sum()) < .06
+    monkeypatch.setattr(h, "_assert_output_contract", lambda *args: None)
+    with pytest.raises(AssertionError, match="timed output"):
+        h._assert_ck_close(inputs, angled, unit)
+    for where in ("original", "replay"):
+        check = h._prepare_timed_check(inputs)
+        output = expected.clone()
+        if where == "original": output.mul_(2)
+        def replay():
+            output.copy_(reference(inputs) * (2 if where == "replay" else 1))
+            return output
+        timed = SimpleNamespace(bound=True, outputs=output, rerun=replay)
+        with pytest.raises(AssertionError, match="magnitude"):
+            h._assert_timed_outputs(inputs, timed, check)
+        torch.testing.assert_close(hidden, check["snapshots"]["hidden"], rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("name", ["mi355x_vllm_ck_moe_2stage", "mi355x_vllm_ck_cktile_moe_2stage"])
+def test_ck_full_shape_adapter_uses_magnitude_gate(name, monkeypatch):
+    torch = pytest.importorskip("torch")
+    h = load_module(TASKS / name / "scripts/task_runner.py")
+    adapter = load_module(TASKS / name / "scripts/task_adapter.py")
+    monkeypatch.setattr(h, "_torch", lambda: torch)
+    monkeypatch.setattr(h, "run_correctness", lambda: None)
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+    monkeypatch.setattr(h, "CASES", [{"id":"full", "params":{"token":128}}])
+    inputs = {"hidden":torch.ones(128, 2, dtype=torch.bfloat16)}
+    monkeypatch.setattr(h, "_make", lambda case, correctness: inputs)
+    monkeypatch.setattr(h, "_moe_reference", lambda inp: inp["hidden"].clone())
+    monkeypatch.setattr(h, "_run", lambda inp: inp["hidden"].clone())
+    adapter.run_correctness(h)
+    monkeypatch.setattr(h, "_run", lambda inp: inp["hidden"] * 2)
+    with pytest.raises(AssertionError, match="magnitude"):
+        adapter.run_correctness(h)

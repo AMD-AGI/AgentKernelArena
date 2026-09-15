@@ -52,11 +52,6 @@ def moe_data(activation):
     return inputs,expected.to(torch.bfloat16)
 
 
-def assert_moe_cosine(got,expected):
-    error=1-torch.nn.functional.cosine_similarity(got.float().flatten(),expected.float().flatten(),dim=0)
-    assert torch.isfinite(got).all() and float(error)<0.03
-
-
 def assert_relative_error(h,got,expected,tol):
     assert h._relerr(got,expected)<tol
 
@@ -72,5 +67,9 @@ def check_reference(h):
     a=torch_moe_stage1(inputs["x"],inputs["w1"],inputs["w2"],inputs["topk_weights"],inputs["topk_ids"],**kwargs)
     actual=torch_moe_stage2(a,inputs["w1"],inputs["w2"],inputs["topk_weights"],inputs["topk_ids"],dtype=torch.bfloat16,quant_type=aiter.QuantType.No)
     equal(actual,expected)
-    rejects(lambda bad:assert_moe_cosine(bad,expected),torch.zeros_like(expected))
+    # Exercise the actual task predicate, including amplitude. Cosine alone
+    # would accept every positive scaling of this independent known answer.
+    h._assert_ck_close(inputs, actual, expected)
+    for bad in (torch.zeros_like(expected), expected * 2, expected * 0.5):
+        rejects(lambda bad: h._assert_ck_close(inputs, bad, expected), bad)
     return {"known_answer": "PASS", "negative_control": "PASS", "scored": False}

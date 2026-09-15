@@ -781,6 +781,25 @@ def _assert_readonly_inputs(inputs, expected, originals):
                            before.contiguous().view(torch.uint8)), (key, "Readonly input was modified")
 
 
+def _assert_moe_magnitude(observed, expected):
+    # Keep the original cosine error < .03, and extend its equal-norm
+    # squared-distance bound 2*(1-cosine) to unequal output magnitudes.
+    # This fixed bound is not calibrated from a baseline's measured error.
+    torch = _torch()
+    actual = observed.float().flatten()
+    reference = expected.float().flatten()
+    assert torch.isfinite(reference).all(), "Nonfinite CK MoE reference"
+    signal = float(reference.square().sum())
+    error = float((actual - reference).square().sum())
+    assert math.isfinite(signal) and math.isfinite(error), "Nonfinite CK MoE error"
+    relative_l2_squared = error / signal if signal else (0.0 if error == 0 else float("inf"))
+    metrics = {"cosine_error": float(1 - torch.nn.functional.cosine_similarity(actual, reference, dim=0)),
+               "relative_l2_squared": relative_l2_squared,
+               "norm_ratio": math.sqrt(float(actual.square().sum()) / signal) if signal else None}
+    print("CK_MOE_NUMERICS=" + json.dumps(metrics, sort_keys=True))
+    assert relative_l2_squared < 0.06, ("Incorrect CK MoE output magnitude", metrics)
+
+
 def _assert_ck_close(inputs, observed, expected):
     torch = _torch()
     _assert_output_contract(inputs, observed)
@@ -790,6 +809,7 @@ def _assert_ck_close(inputs, observed, expected):
         error = 1 - torch.nn.functional.cosine_similarity(
             observed.float().flatten(), expected.float().flatten(), dim=0)
         assert float(error) < 0.03, "Incorrect CK MoE timed output"
+        _assert_moe_magnitude(observed, expected)
 
 
 def _assert_timed_outputs(inputs, timed, check):
@@ -869,6 +889,7 @@ def run_correctness() -> None:
                 case["id"],
                 float(cosine_error),
             )
+            _assert_moe_magnitude(got, expected)
         print("correctness PASS", case["id"])
 
 
