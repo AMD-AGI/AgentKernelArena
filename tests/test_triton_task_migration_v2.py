@@ -3557,3 +3557,131 @@ def test_pack_bitmatrix_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_pack_bitmatrix/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_bitmatrix_checks'
+
+
+def _fla_norm_cpu(x, weight, bias=None, eps=1e-5, z=None, norm_before_gate=True, is_rms_norm=False):
+    value = x if z is None or norm_before_gate else x * torch.nn.functional.silu(z)
+    if is_rms_norm:
+        mean = None
+        rstd = (torch.linalg.vector_norm(value, dim=-1).square()/value.shape[-1] + eps).rsqrt()
+        y = value * rstd[:, None] * weight
+        if bias is not None: y = y + bias
+    else:
+        variance, mean = torch.var_mean(value, dim=-1, unbiased=False)
+        rstd = (variance + eps).rsqrt()
+        y = torch.nn.functional.layer_norm(value, (value.shape[-1],), weight, bias, eps)
+    if z is not None and norm_before_gate: y = y * torch.nn.functional.silu(z)
+    return y, mean, rstd
+
+
+@pytest.mark.parametrize('rms', [False, True])
+@pytest.mark.parametrize('before_gate', [False, True])
+def test_fla_norm_independent_full_tuple_known_answer(monkeypatch, rms, before_gate):
+    import math
+    task = ROOT/'tasks/triton2triton/vllm/triton_fla_layernorm'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    x, weight, bias, z = torch.tensor([[1., 3.]]), torch.tensor([2., -1.]), torch.tensor([.5, 2.]), torch.ones(1, 2)
+    q = 1/(1+math.exp(-1))
+    factor = 1 if before_gate else q
+    scale = ((5 if rms else 1)*factor**2 + 1e-3)**-0.5
+    normalized = torch.tensor([[1., 3.] if rms else [-1., 1.]]) * factor * scale
+    y = normalized * weight + bias
+    if before_gate: y *= q
+    wanted = y, None if rms else torch.tensor([2*factor], dtype=torch.float32), torch.tensor([scale])
+    options = dict(eps=1e-3, is_rms_norm=rms, norm_before_gate=before_gate)
+    checks.check_outputs(checks.reference(h, (x, weight, bias, z), options), wanted)
+    checks.check_outputs(_fla_norm_cpu(x, weight, bias, z=z, **options), wanted)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'dtype', 'stat_dtype', 'shape', 'nonfinite',
+                                 'missing_stats', 'wrong_mean', 'wrong_rstd', 'mutate_input',
+                                 'ignore_weight', 'ignore_bias', 'ignore_gate_order'])
+def test_fla_norm_actual_correctness_affine_gate_and_outputs(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_fla_layernorm'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    generator = h.gen_inputs
+    h.gen_inputs = lambda seed, case_idx, device: generator(seed, case_idx, 'cpu')
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    calls = []
+    def candidate(x, w, b=None, **kwargs):
+        calls.append((tuple(x.shape), kwargs['is_rms_norm'], kwargs['norm_before_gate']))
+        if mode == 'mutate_input': x.zero_()
+        if mode == 'ignore_weight': w = torch.ones_like(w)
+        if mode == 'ignore_bias': b = None
+        if mode == 'ignore_gate_order': kwargs['norm_before_gate'] = True
+        outputs = list(_fla_norm_cpu(x, w, b, **kwargs))
+        if mode == 'dtype': outputs[0] = outputs[0].double()
+        if mode == 'stat_dtype': outputs[2] = outputs[2].double()
+        if mode == 'shape': outputs[0] = outputs[0][:1]
+        if mode == 'nonfinite': outputs[2].fill_(float('inf'))
+        if mode == 'missing_stats': outputs = outputs[:1]
+        if mode == 'wrong_mean': outputs[1] = torch.full_like(outputs[2], 17.)
+        if mode == 'wrong_rstd': outputs[2].zero_()
+        return tuple(outputs)
+    mod = SimpleNamespace(layer_norm_fwd=candidate)
+    h.load_module = lambda: mod
+    checks.install(h)
+    ok, reason = h.run_correctness()
+    assert ok is (mode == 'correct'), reason
+    if mode == 'correct':
+        assert [c for c in calls if c[0] != (2, 17)] == [((case[0], case[1]), case[5], case[4]) for case in h.TEST_CASES]
+        assert [c[1:] for c in calls if c[0] == (2, 17)] == [(rms, before) for rms in (False, True) for before in (False, True)]
+    assert mod.layer_norm_fwd is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'omit_mean',
+                                 'omit_rstd', 'wrong_replay', 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_fla_norm_actual_performance_affine_replay_restores_inputs(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_fla_layernorm'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h._TimedRun = SimpleNamespace
+    generator = h.gen_inputs
+    inputs, pristine, options = [], [], []
+    def gen_inputs(seed, case_idx, device):
+        args, kwargs = generator(seed, case_idx, 'cpu')
+        values = (*args, kwargs.get('z'))
+        assert torch.equal(args[1], torch.ones_like(args[1]))
+        assert args[2] is None or torch.equal(args[2], torch.zeros_like(args[2]))
+        inputs.append(values); pristine.append(checks.snapshots(values))
+        return args, kwargs
+    h.gen_inputs = gen_inputs
+    mod = SimpleNamespace(layer_norm_fwd=_fla_norm_cpu)
+    h.load_module = lambda: mod
+    def benchmark(measured, *, timed_run, **kwargs):
+        options.append(kwargs)
+        outputs = measured(); cached = checks.snapshots(outputs)
+        if mode == 'wrong_timed': outputs[2].zero_()
+        if mode == 'mutate_timed': inputs[-1][1].zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay failed')
+            if mode != 'no_write':
+                computed = cached if mode == 'stale' else measured()
+                for i, (value, calculated) in enumerate(zip(outputs, computed)):
+                    if value is not None and not (mode == 'omit_mean' and i == 1 or mode == 'omit_rstd' and i == 2):
+                        value.copy_(calculated)
+            if mode == 'wrong_replay': outputs[2].zero_()
+            if mode == 'mutate_replay': inputs[-1][0].zero_()
+            return outputs
+        timed_run.outputs, timed_run.rerun = outputs, replay
+        return 0.125, {'benchmark_method': 'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == 5
+    assert options == [dict(warmup=10, repetition=100)] * 5
+    for case, row in zip(h.TEST_CASES, rows):
+        success = mode == 'correct' or (mode == 'omit_mean' and case[5])
+        assert row['execution_time_ms'] == (0.125 if success else -1.)
+        if success: assert row['perturbed_input_replay_checked']
+    for values, saved in zip(inputs, pristine): checks.unchanged(values, saved)
+    assert mod.layer_norm_fwd is _fla_norm_cpu
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_fla_norm_adapter_installs_full_contract_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_fla_layernorm/_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_fla_layernorm_checks'

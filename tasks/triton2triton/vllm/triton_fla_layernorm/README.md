@@ -25,3 +25,17 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+
+Protected evaluation checks all three outputs `(out, mean, rstd)`, including
+shape, dtype, device and finite values. RMSNorm has no mean output; statistics
+are FP32. The original five scored FP32 cases, seeds, affine inputs,
+atol=rtol=1e-3, full-wrapper timing, 10 warmups and 100 samples are unchanged.
+
+Additional unscored 2x17 diagnostics use nonuniform, nontrivial weights and bias
+and check both LayerNorm/RMSNorm and both SiLU gate orders. The independent
+reference computes statistics after gating when `norm_before_gate=False`.
+Actual captured outputs are checked; a poisoned replay with changed input,
+weight, bias and optional gate must also satisfy the original numerical gate.
+Read-only inputs are checked against pristine copies and restored after timing,
+even if validation or replay raises. All added checks run outside timing.
