@@ -69,6 +69,9 @@ def evaluate(role, action):
         actual = json.loads(json.dumps(getattr(harness, data['case_table'])))
         if actual != data['input_table']:
             raise ValueError('Harness case table disagrees with protected workload manifest')
+        declared_controls = [r['params']['control'] for r in data['cases'] if 'control' in r['params']]
+        if declared_controls != list(harness.CONTROL_CASES):
+            raise ValueError('Control manifest disagrees with protected harness')
         if action == 'validate-task':
             for dependency in ('torch','triton'):
                 if importlib.util.find_spec(dependency) is None:
@@ -81,10 +84,13 @@ def evaluate(role, action):
         elif action == 'correctness':
             for index, row in enumerate(cases):
                 try:
-                    ok, error = harness.run_correctness(case_index=row['params'].get('case_index', index))
+                    ok, error = harness.run_correctness(case_index=row['params'].get('case_index', index),
+                                                        control=row['params'].get('control'))
                     if not ok:
-                        raise RuntimeError(error or 'Original numerical/output contract rejected candidate')
-                    row['metrics']={'original_case_checks_passed':True}
+                        row.update(status='FAIL', reason=str(error or 'Output contract rejected candidate'),
+                                   failure_kind=getattr(error, 'failure_kind', 'correctness_failure'))
+                    else:
+                        row['metrics']={'original_case_checks_passed':True}
                 except BaseException as exc:
                     row.update(status='FAIL', reason=f'{type(exc).__name__}: {exc}', failure_kind='correctness_failure')
         elif action == 'performance':
@@ -99,7 +105,7 @@ def evaluate(role, action):
                 ms = record.get('execution_time_ms')
                 method = record.get('benchmark_method')
                 if type(ms) not in (int,float) or not math.isfinite(ms) or ms <= 0:
-                    row.update(status='FAIL', reason='Invalid or failed device measurement', failure_kind='measurement_failure')
+                    row.update(status='FAIL', reason=record.get('error', 'Invalid or failed device measurement'), failure_kind=record.get('failure_kind', 'measurement_failure'))
                 elif method not in ('cuda_graph','cuda_event_fallback'):
                     row.update(status='FAIL', reason='Missing/unsupported device timing method', failure_kind='measurement_failure')
                 else:
@@ -109,7 +115,9 @@ def evaluate(role, action):
             raise ValueError(f'Unsupported action {action}')
         failures = [r for r in cases if r['status'] != 'PASS']
         if failures:
-            result.update(status='FAIL', reason=f'{len(failures)} declared cases failed', failure_kind='case_failure')
+            kinds = {r.get('failure_kind') for r in failures}
+            result.update(status='FAIL', reason=f'{len(failures)} declared cases failed',
+                          failure_kind=next(iter(kinds)) if len(kinds) == 1 else 'case_failure')
     except BaseException as exc:
         result.update(status='FAIL', reason=f'{type(exc).__name__}: {exc}', failure_kind='execution_failure')
         for row in cases:

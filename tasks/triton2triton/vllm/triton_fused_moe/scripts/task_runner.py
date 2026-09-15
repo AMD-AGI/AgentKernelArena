@@ -36,6 +36,10 @@ def _benchmark_cuda_graph_or_events(*args, **kwargs):
     )
 # <<< AKA-GENERATED <<<
 
+sys.path.insert(0, TASK_DIR)
+from _contract_checks import checked_call, checked_benchmark, compare_output, perturb_activation
+
+
 def load_module():
     spec = importlib.util.spec_from_file_location("triton_kernel", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
@@ -80,88 +84,95 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness(*, case_index=None):
+
+CONTROL_CASES = ('optional_weights', 'unweighted', 'invalid_experts')
+
+
+def reference(inputs, options):
+    A, B, ids = inputs['A'], inputs['B'], inputs['ids']
+    import torch
+    weights = inputs.get('weights')
+    if weights is None:
+        weights = torch.ones(ids.numel(), dtype=torch.float32, device=A.device)
+    return reference_fused_moe(A, B, ids, weights, options['mul_routed_weight'])
+
+
+def control_inputs(name, device):
+    import torch
+    M, K, E, N = 5, 35, 3, 70
+    A = torch.zeros(M, K, device=device, dtype=torch.float16)
+    A[torch.arange(M,device=device),torch.arange(M,device=device)*7] = torch.tensor([1,-2,3,-1,2], device=device, dtype=torch.float16)
+    B = ((torch.arange(E*N*K,device=device).reshape(E,N,K)%17)-8).to(torch.float16)
+    ids = torch.tensor([[0,1,1],[-1,2,3],[2,0,1],[1,2,0],[0,-1,2]], device=device,dtype=torch.int32)
+    if name=='invalid_experts': ids.fill_(-1)
+    inputs = {'A':A,'B':B,'ids':ids}
+    if name!='optional_weights':
+        inputs['weights']=torch.tensor([-2,3,0.5]*M,device=device,dtype=torch.float32)
+    return inputs, {'mul_routed_weight':name!='unweighted'}
+
+
+def invoke(mod, inputs, options):
+    return mod.fused_moe(inputs['A'], inputs['B'], inputs['ids'], inputs.get('weights'), **options)
+
+
+def check_output(actual, expected):
+    compare_output(actual, expected, atol=5e-2, rtol=5e-2)
+
+
+def run_correctness(*, case_index=None, control=None):
     import torch
     try:
         mod = load_module()
-    except Exception as e:
-        return False, f"Failed to load module: {e}"
-
-    device = "cuda"
-    for i, (M, K, E, N, topk) in enumerate(TEST_SHAPES):
-        if case_index is not None and i != case_index:
-            continue
-        try:
+        device = 'cuda'
+        if control is not None:
+            assert control in CONTROL_CASES, 'Unknown control'
+            inputs, options = control_inputs(control, device)
+            checked_call(lambda: invoke(mod, inputs, options), inputs=inputs,
+                         reference=lambda saved:reference(saved,options), check=check_output)
+            return True, None
+        for i, (M, K, E, N, topk) in enumerate(TEST_SHAPES):
+            if case_index is not None and i != case_index:
+                continue
             torch.manual_seed(42 + i)
             input_tensor = torch.randn(M, K, device=device, dtype=torch.float16) * 0.1
             expert_weights = torch.randn(E, N, K, device=device, dtype=torch.float16) * 0.1
             topk_ids = torch.randint(0, E, (M, topk), device=device, dtype=torch.int32)
             topk_weights_flat = torch.randn(M * topk, device=device, dtype=torch.float32).abs()
-
-            result = mod.fused_moe(input_tensor, expert_weights, topk_ids, topk_weights_flat, mul_routed_weight=True)
-            torch.cuda.synchronize()
-
-            ref = reference_fused_moe(input_tensor, expert_weights, topk_ids, topk_weights_flat, True).to(device)
-            if not torch.allclose(result.float(), ref.float(), atol=5e-2, rtol=5e-2):
-                max_diff = (result.float() - ref.float()).abs().max().item()
-                return False, f"Shape {i+1} (M={M},K={K},E={E},N={N}): max diff = {max_diff:.6f}"
-        except Exception as e:
-            return False, f"Shape {i+1}: exception: {e}"
-    return True, None
+            inputs = {'A':input_tensor,'B':expert_weights,'ids':topk_ids,'weights':topk_weights_flat}
+            options = {'mul_routed_weight':True}
+            checked_call(lambda: invoke(mod, inputs, options), inputs=inputs,
+                         reference=lambda saved:reference(saved,options), check=check_output)
+        return True, None
+    except Exception as exc:
+        return False, exc
 
 
 def run_performance():
     import torch
-    try:
-        mod = load_module()
-    except Exception:
-        return []
-
-    device = "cuda"
+    mod = load_module()
+    device = 'cuda'
     test_cases = []
-
     for test_idx, (M, K, E, N, topk) in enumerate(TEST_SHAPES):
+        row = {'test_case_id': f'perf{test_idx+1}', 'params': {'M':M,'K':K,'E':E,'N':N,'topk':topk}}
         try:
             torch.manual_seed(42 + test_idx)
             input_tensor = torch.randn(M, K, device=device, dtype=torch.float16) * 0.1
             expert_weights = torch.randn(E, N, K, device=device, dtype=torch.float16) * 0.1
             topk_ids = torch.randint(0, E, (M, topk), device=device, dtype=torch.int32)
             topk_weights_flat = torch.randn(M * topk, device=device, dtype=torch.float32).abs()
-
-            def _bench_fn():
-                mod.fused_moe(input_tensor, expert_weights, topk_ids, topk_weights_flat, True)
-            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
-                _bench_fn,
-                warmup=WARMUP_ITERATIONS,
-                repetition=BENCHMARK_ITERATIONS,
-                use_cuda_graph=False,
-                fallback_reason="fused_moe_host_routing_and_dynamic_allocations",
-            )
-
-            test_cases.append({
-                "test_case_id": f"perf{test_idx + 1}",
-                "execution_time_ms": elapsed_ms,
-                **benchmark_metadata,
-                "params": {
-                    "M": M,
-                    "K": K,
-                    "E": E,
-                    "N": N,
-                    "topk": topk
-                }
-            })
-        except Exception:
-            test_cases.append({
-                "test_case_id": f"perf{test_idx + 1}",
-                "execution_time_ms": -1.0,
-                "params": {
-                    "M": M,
-                    "K": K,
-                    "E": E,
-                    "N": N,
-                    "topk": topk
-                }
-            })
+            inputs = {'A':input_tensor,'B':expert_weights,'ids':topk_ids,'weights':topk_weights_flat}
+            options = {'mul_routed_weight':True}
+            elapsed_ms, metadata = checked_benchmark(
+                _benchmark_cuda_graph_or_events, lambda: invoke(mod, inputs, options),
+                inputs=inputs, reference=lambda saved:reference(saved,options), check=check_output,
+                perturb=perturb_activation, warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS, use_cuda_graph=False,
+                fallback_reason='fused_moe_host_routing_and_dynamic_allocations')
+            row.update(execution_time_ms=elapsed_ms, **metadata)
+        except Exception as exc:
+            row.update(execution_time_ms=-1.0, error=f'{type(exc).__name__}: {exc}',
+                       failure_kind=getattr(exc, 'failure_kind', 'measurement_failure'))
+        test_cases.append(row)
     return test_cases
 
 
@@ -174,7 +185,7 @@ def main():
 
     if args.mode == "compile":
         ok, err = run_compile()
-        report = {"status": "ok" if ok else "fail", "error": err}
+        report = {"status": "ok" if ok else "fail", "error": str(err) if err else None}
         with open(os.path.join(build_dir, "compile_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Compilation: {'PASS' if ok else 'FAIL'}")
@@ -182,7 +193,7 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {"status": "ok" if ok else "fail", "error": str(err) if err else None, "num_shapes": len(TEST_SHAPES)}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

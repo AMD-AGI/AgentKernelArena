@@ -146,6 +146,39 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control_optional_weights",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "control": "optional_weights"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_unweighted",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "control": "unweighted"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_invalid_experts",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "control": "invalid_experts"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

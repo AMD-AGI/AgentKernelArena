@@ -1,10 +1,15 @@
 schema_version: 2
-description: Optimize triton_fused_moe_gptq_awq with the original Triton operator contract.
+description: Optimize triton_fused_moe_gptq_awq with the original Triton operator
+  contract.
 candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_fused_moe_gptq_awq.py
+  - path: source/triton_fused_moe_gptq_awq.py
+    scope: symbols
+    symbols:
+    - fused_moe_kernel_gptq_awq
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_fused_moe_gptq_awq.py
     kind: function

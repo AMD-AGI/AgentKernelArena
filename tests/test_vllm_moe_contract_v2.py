@@ -108,7 +108,7 @@ def test_mmk_independent_known_answer():
     with pytest.raises(CONTRACT.NumericalMismatch): CONTRACT.compare_output(torch.zeros_like(expected),expected)
 
 
-@pytest.mark.parametrize('short,wrapper', [('batched_moe','batched_moe_gemm'),('moe_mmk','moe_matmul')])
+@pytest.mark.parametrize('short,wrapper', [('batched_moe','batched_moe_gemm'),('moe_mmk','moe_matmul'),('fused_moe','fused_moe'),('fused_moe_gptq_awq','fused_moe_gptq_awq')])
 def test_wrapper_cannot_bypass_declared_kernel(tmp_path, short, wrapper):
     from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
     task=TASKS/('triton_'+short)
@@ -122,7 +122,7 @@ def test_wrapper_cannot_bypass_declared_kernel(tmp_path, short, wrapper):
     with pytest.raises(RuntimeError): verify_workspace_harness(snapshot)
 
 
-@pytest.mark.parametrize('short', ['batched_moe','moe_mmk'])
+@pytest.mark.parametrize('short', ['batched_moe','moe_mmk','fused_moe','fused_moe_gptq_awq'])
 def test_original_scored_cases_and_timing_intact(short):
     task=TASKS/('triton_'+short)
     manifest=json.loads((task/'workloads.json').read_text())
@@ -156,3 +156,114 @@ def test_batched_weight_load_masks_both_partial_dimensions():
     actual=eval(compile(ast.Expression(mask),str(path),'eval'),{'offs_k':torch.arange(32),'K':35,'k':1,'BLOCK_K':32,'offs_n':torch.arange(64),'cta_n_size':6})
     assert actual.shape==(32,64) and actual.sum()==18
     assert not actual[:,6:].any() and not actual[3:].any()
+
+
+def quant_oracles():
+    path=TASKS/'triton_fused_moe_gptq_awq/scripts/task_runner.py'
+    original=function(path,'reference_fused_moe_int4')
+    return function(path,'reference',reference_fused_moe_int4=original), function(path,'control_inputs')
+
+
+def test_int4_reference_has_independent_exact_known_answer():
+    ref,_=quant_oracles()
+    inputs={'A':torch.tensor([[2.,0.,0.,0.],[0.,0.,0.,-3.]],dtype=torch.float16),
+            'qweight':torch.tensor([[[0xA3,0xB4,0xC5,0xD6],[0xE7,0xF8,0x19,0x2A]]],dtype=torch.uint8),
+            'scales':torch.ones(1,2,4,dtype=torch.float16),
+            'zeros':torch.tensor([[[0x21,0x43],[0x21,0x43]]],dtype=torch.uint8),
+            'ids':torch.zeros(2,1,dtype=torch.int32)}
+    options={'use_int4':True,'group_size':2,'mul_routed_weight':False}
+    expected=torch.tensor([[4.,4.,4.,4.],[-39.,-39.,6.,6.]],dtype=torch.float16)
+    torch.testing.assert_close(ref(inputs,options),expected,atol=0,rtol=0)
+    with pytest.raises(CONTRACT.NumericalMismatch): CONTRACT.compare_output(torch.zeros_like(expected),expected,atol=1.,rtol=.5)
+
+
+@pytest.mark.parametrize('control',['int4_explicit','int4_default','int8_explicit','int8_default'])
+def test_quant_controls_reject_zero_with_unchanged_large_tolerance(control):
+    ref,inputs_for=quant_oracles();inputs,options=inputs_for(control,'cpu')
+    expected=ref(inputs,options)
+    assert expected.shape==(15,70) and expected.dtype==torch.float16
+    with pytest.raises(CONTRACT.NumericalMismatch): CONTRACT.compare_output(torch.zeros_like(expected),expected,atol=1.,rtol=.5)
+    # A scalar, float64 loop independently verifies packing, grouping and routes.
+    actual=[];a=inputs['A'];q=inputs['qweight'];sc=inputs['scales'];ids=inputs['ids'];zp=inputs.get('zeros');w=inputs.get('weights')
+    for m in range(a.shape[0]):
+        for lane in range(ids.shape[1]):
+            expert=int(ids[m,lane]);out=[]
+            for n in range(70):
+                value=0.
+                if 0<=expert<q.shape[0]:
+                    for k in range(a.shape[1]):
+                        group=k//options['group_size']
+                        quant=int(q[expert,k//2 if options['use_int4'] else k,n])
+                        if options['use_int4']: quant=(quant>>(4*(k%2)))&15
+                        if zp is None: zero=8 if options['use_int4'] else 128
+                        else:
+                            zero=int(zp[expert,group,n//2 if options['use_int4'] else n])
+                            if options['use_int4']: zero=(zero>>(4*(n%2)))&15
+                        value+=float(a[m,k])*(quant-zero)*float(sc[expert,group,n])
+                    if options['mul_routed_weight'] and w is not None: value*=float(w[m*ids.shape[1]+lane])
+                out.append(value)
+            actual.append(out)
+    torch.testing.assert_close(expected,torch.tensor(actual,dtype=torch.float16),atol=0,rtol=0)
+
+
+def test_quant_control_rejects_wrong_nibble_zero_point_and_routing():
+    ref,inputs_for=quant_oracles();inputs,options=inputs_for('int4_explicit','cpu');expected=ref(inputs,options)
+    wrong_nibbles={**inputs,'qweight':((inputs['qweight'].to(torch.int32)>>4)|(inputs['qweight'].to(torch.int32)<<4)).to(torch.uint8)}
+    no_zero={k:v for k,v in inputs.items() if k!='zeros'}
+    wrong=[ref(wrong_nibbles,options),ref(no_zero,options),ref(inputs,{**options,'mul_routed_weight':False})]
+    for output in wrong:
+        with pytest.raises(CONTRACT.NumericalMismatch): CONTRACT.compare_output(output,expected,atol=1.,rtol=.5)
+
+
+def test_int8_exact_known_answer_including_default_zero():
+    ref,_=quant_oracles()
+    inputs={'A':torch.tensor([[2.,-1.]],dtype=torch.float16),
+            'qweight':torch.tensor([[[130,124],[131,136]]],dtype=torch.uint8),
+            'scales':torch.ones(1,1,2,dtype=torch.float16), 'ids':torch.zeros(1,1,dtype=torch.int32)}
+    options={'use_int4':False,'group_size':2,'mul_routed_weight':True}
+    torch.testing.assert_close(ref(inputs,options),torch.tensor([[1.,-16.]],dtype=torch.float16),atol=0,rtol=0)
+
+
+def test_fused_oracle_optional_weights_and_invalid_experts():
+    path=TASKS/'triton_fused_moe/scripts/task_runner.py'
+    original=function(path,'reference_fused_moe');ref=function(path,'reference',reference_fused_moe=original)
+    inputs={'A':torch.tensor([[1.,2.]],dtype=torch.float16),
+            'B':torch.tensor([[[3.,4.]],[[5.,6.]]],dtype=torch.float16),
+            'ids':torch.tensor([[0,1,-1,2]],dtype=torch.int32)}
+    expected=torch.tensor([[11.],[17.],[0.],[0.]],dtype=torch.float16)
+    torch.testing.assert_close(ref(inputs,{'mul_routed_weight':True}),expected,atol=0,rtol=0)
+    routed={**inputs,'weights':torch.tensor([-2.,3.,7.,9.])}
+    torch.testing.assert_close(ref(routed,{'mul_routed_weight':False}),expected,atol=0,rtol=0)
+    weighted=ref(routed,{'mul_routed_weight':True})
+    torch.testing.assert_close(weighted,torch.tensor([[-22.],[51.],[0.],[0.]],dtype=torch.float16),atol=0,rtol=0)
+    with pytest.raises(CONTRACT.NumericalMismatch): CONTRACT.compare_output(expected,weighted)
+
+
+def test_quant_weight_load_uses_existing_partial_k_mask():
+    path=TASKS/'triton_fused_moe_gptq_awq/source/triton_fused_moe_gptq_awq.py'
+    loads=[n.value for n in ast.walk(ast.parse(path.read_text())) if isinstance(n,ast.Assign)
+           and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='b'
+           and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Attribute) and n.value.func.attr=='load']
+    assert len(loads)==1
+    mask=next(k.value for k in loads[0].keywords if k.arg=='mask')
+    # Apply the actual source expression to a final 16-valid/16-invalid K tile.
+    selected=eval(compile(ast.Expression(mask),str(path),'eval'),{'k_mask':torch.arange(32)[:,None]<16})
+    assert selected[:16].all() and not selected[16:].any()
+
+
+@pytest.mark.parametrize('error,kind', [(CONTRACT.NumericalMismatch('known numerical defect'),'numerical_mismatch'),
+                                      (AssertionError('wrong output dtype'),'correctness_failure')])
+def test_public_envelope_keeps_numerical_and_contract_failures_distinct(error,kind):
+    from types import SimpleNamespace
+    from src.task_protocol import parse_command_result
+    task=TASKS/'triton_fused_moe_gptq_awq'
+    adapter=load(task/'_arena_eval.py','_quant_moe_adapter_test')
+    manifest=json.loads((task/'workloads.json').read_text())
+    harness=SimpleNamespace(TEST_SHAPES=manifest['input_table'],
+        CONTROL_CASES=tuple(row['params']['control'] for row in manifest['cases'] if 'control' in row['params']),
+        run_correctness=lambda **kwargs:(False,error))
+    with patch.object(adapter,'load_harness',return_value=harness):
+        report=adapter.evaluate('baseline','correctness')
+    parsed=parse_command_result('ARENA_EVAL_RESULT='+json.dumps(report),role='baseline',action='correctness',returncode=1)
+    assert parsed.status=='FAIL' and parsed.failure_kind==kind
+    assert len(parsed.cases)==9 and all(row['failure_kind']==kind for row in parsed.cases)

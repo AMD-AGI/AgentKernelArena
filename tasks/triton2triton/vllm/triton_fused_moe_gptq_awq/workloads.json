@@ -156,6 +156,50 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control_int4_explicit",
+      "dtype": "float16,float32,int32,uint8",
+      "params": {
+        "control": "int4_explicit"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_int4_default",
+      "dtype": "float16,float32,int32,uint8",
+      "params": {
+        "control": "int4_default"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_int8_explicit",
+      "dtype": "float16,float32,int32,uint8",
+      "params": {
+        "control": "int8_explicit"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_int8_default",
+      "dtype": "float16,float32,int32,uint8",
+      "params": {
+        "control": "int8_default"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
