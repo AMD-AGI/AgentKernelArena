@@ -4311,3 +4311,118 @@ def test_gather_tables_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_gather_block_tables/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_gather_table_checks'
+
+
+
+def _recovered_tokens_cpu(cu, ids, draft, target, q, maximum, vocab):
+    sizes = torch.diff(cu, prepend=cu.new_zeros(1)).long()
+    rows = torch.repeat_interleave(torch.arange(cu.numel()), sizes)
+    scores = target.clone() if draft is None else (target-draft).clamp_min(0)
+    if draft is None: scores[torch.arange(ids.numel()), ids.long()] = 0
+    return (scores/q[rows]).argmax(-1).to(ids.dtype)
+
+
+def _recovered_tokens_cpu_harness(monkeypatch):
+    task = ROOT/'tasks/triton2triton/vllm/triton_sample_recovered_tokens'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    for name in ('randint', 'rand', 'empty'):
+        factory = getattr(torch, name)
+        monkeypatch.setattr(torch, name, lambda *a, _factory=factory, **kw: _factory(*a, **{**kw, 'device': 'cpu'}))
+    original = torch.Tensor.to
+    def to_cpu(value, *args, **kwargs):
+        if args and isinstance(args[0], str) and args[0].startswith('cuda'): args = ('cpu', *args[1:])
+        return original(value, *args, **kwargs)
+    monkeypatch.setattr(torch.Tensor, 'to', to_cpu)
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    return h, checks
+
+
+@pytest.mark.parametrize('no_draft', [False, True])
+def test_recovered_tokens_independent_known_answer_both_paths(monkeypatch, no_draft):
+    h, checks = _recovered_tokens_cpu_harness(monkeypatch)
+    cu, ids = torch.tensor([2, 3], dtype=torch.int32), torch.tensor([0, 1, 2], dtype=torch.int32)
+    draft = None if no_draft else torch.tensor([[.8, .1, .1], [.1, .5, .4], [.2, .2, .6]])
+    target = torch.tensor([[.4, .5, .1], [.3, .6, .1], [.1, .2, .7]])
+    q = torch.tensor([[1., 1., .5], [.1, 2., 1.]])
+    expected = torch.tensor([1, 0, 0 if no_draft else 2], dtype=torch.int32)
+    inputs = (cu, ids, draft, target, q)
+    checks.check_output(checks.reference(h, inputs, 3), expected)
+    checks.check_output(_recovered_tokens_cpu(*inputs, 2, 3), expected)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'dtype', 'no_draft_dtype', 'shape', 'wrong', 'wrong_no_draft',
+                                 'mutate_cu', 'mutate_ids', 'mutate_draft', 'mutate_target', 'mutate_q'])
+def test_recovered_tokens_actual_correctness_both_paths_and_readonly_inputs(monkeypatch, mode):
+    h, checks = _recovered_tokens_cpu_harness(monkeypatch)
+    calls = []
+    def candidate(cu, ids, draft, target, q, maximum, vocab):
+        calls.append((cu.tolist(), maximum, vocab, draft is None))
+        outputs = _recovered_tokens_cpu(cu, ids, draft, target, q, maximum, vocab)
+        values = dict(mutate_cu=cu, mutate_ids=ids, mutate_draft=draft, mutate_target=target, mutate_q=q)
+        if mode in values and values[mode] is not None: values[mode].zero_()
+        if mode == 'dtype' or mode == 'no_draft_dtype' and draft is None: outputs = outputs.float()
+        if mode == 'shape': outputs = outputs[:1]
+        if mode == 'wrong' or mode == 'wrong_no_draft' and draft is None: outputs.fill_(-1)
+        return outputs
+    mod = SimpleNamespace(sample_recovered_tokens=candidate)
+    h.load_module = lambda: mod
+    checks.install(h)
+    ok, reason = h.run_correctness()
+    assert ok is (mode == 'correct'), reason
+    if mode == 'correct':
+        expected = []
+        for b, m, v in h.TEST_SHAPES:
+            cu = torch.tensor([m-(j%2) for j in range(b)]).cumsum(0).tolist()
+            expected.extend([(cu, m, v, False), (cu, m, v, True)])
+        assert calls == expected
+    assert mod.sample_recovered_tokens is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'wrong_replay',
+                                 'mutate_timed', 'mutate_replay', 'mutate_routing', 'raise_replay'])
+def test_recovered_tokens_original_full_request_timing_and_exact_replay(monkeypatch, mode):
+    import inspect
+    h, checks = _recovered_tokens_cpu_harness(monkeypatch)
+    h._TimedRun = module_at(ROOT/'src/tools/perf/aka_benchmark.py', monkeypatch).TimedRun
+    mod = SimpleNamespace(sample_recovered_tokens=_recovered_tokens_cpu)
+    h.load_module = lambda: mod
+    buffers, saved, options = [], [], []
+    def benchmark(measured, *, timed_run, **kwargs):
+        fn = inspect.getclosurevars(measured).nonlocals['fn']
+        state = inspect.getclosurevars(fn).nonlocals
+        inputs = tuple(state[k] for k in ('cu', 'draft_ids', 'draft_probs', 'target_probs', 'q'))
+        assert inputs[2] is not None
+        assert torch.equal(inputs[0], torch.arange(1, inputs[0].numel()+1)*state['max_draft'])
+        buffers.append(inputs); saved.append(checks.snapshots(inputs)); options.append(kwargs)
+        out = measured(); cache = out.clone()
+        if mode == 'wrong_timed': out.fill_(-1)
+        if mode == 'mutate_timed': inputs[3].zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('Replay failed')
+            if mode == 'stale': out.copy_(cache)
+            elif mode != 'no_write': out.copy_(measured())
+            if mode == 'wrong_replay': out.fill_(-1)
+            if mode == 'mutate_replay': inputs[4].fill_(1.)
+            if mode == 'mutate_routing': inputs[0].zero_()
+            return out
+        timed_run._bind(replay, out)
+        return .125, {'benchmark_method': 'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == 5
+    assert options == [dict(warmup=10, repetition=100)] * 5
+    for (b, m, v), row in zip(h.TEST_SHAPES, rows):
+        assert row['params'] == dict(batch=b, max_draft=m, vocab=v)
+        assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
+        if mode == 'correct': assert row['perturbed_input_replay_checked']
+    for values, originals in zip(buffers, saved): checks.unchanged(values, originals)
+    assert h._benchmark_cuda_graph_or_events is benchmark
+    assert mod.sample_recovered_tokens is _recovered_tokens_cpu
+
+
+def test_recovered_tokens_adapter_installs_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_sample_recovered_tokens/_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_recovered_tokens_checks'

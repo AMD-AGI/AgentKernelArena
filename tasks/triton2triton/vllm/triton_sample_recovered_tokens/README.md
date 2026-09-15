@@ -22,3 +22,14 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+Protected checks require exact token values, dtype, shape and device from the
+original independent CPU reference. Correctness retains both probability paths
+and jagged per-request lengths for every original case. Scored performance retains
+the original draft-probability path and full per-request lengths; the no-draft
+path is a correctness requirement, not an additional scored measurement.
+All routing, token, probability and exponential-race inputs are read-only.
+The actual timed return value is checked, then a consistent vocabulary permutation
+changes the data, the captured token output is filled with -1, and the same timed
+invocation is replayed and checked. Inputs are restored on success or failure.
+The five scored cases, seeds, full-wrapper timing, 10 warmups and 100 samples are
+unchanged; neither branch substitutes a different output contract.
