@@ -64,3 +64,16 @@ root; the unified-attention task separately copies its `aiter/` Python package.
 Editable task-relative paths and operator semantics remain unchanged. This fixes
 source availability only; dispatch, compilation and numerical compatibility
 still require full GPU validation on the selected immutable runtime.
+
+## Materialized AITER package and build helpers
+
+The declared runtime provides both `aiter/` (Python dispatch and JIT utilities)
+and `aiter_meta/` (C++ sources and bundled compiler dependencies). They are
+siblings inside each role's workspace. Code generation resolves helpers such as
+`aiter/jit/utils/chip_info.py` relative to that layout. Both copies come from
+the same selected image; the candidate remains limited to its declared HIP
+sources, while Python dispatch, test inputs and references stay protected.
+
+The task adapter verifies that `import aiter` resolves to this materialized
+package. An installed image package is not a fallback. Each action still uses a
+fresh build directory and must record compilation of a declared candidate source.

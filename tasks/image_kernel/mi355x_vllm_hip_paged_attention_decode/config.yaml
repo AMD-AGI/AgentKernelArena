@@ -15,6 +15,12 @@ baseline:
 workspace:
   sources:
   - kind: image
+    image_path: /sgl-workspace/aiter/aiter
+    destination: aiter
+    exclude:
+    - jit/build
+    - jit/flydsl_cache
+  - kind: image
     image_path: /sgl-workspace/aiter
     destination: aiter_meta
     exclude:

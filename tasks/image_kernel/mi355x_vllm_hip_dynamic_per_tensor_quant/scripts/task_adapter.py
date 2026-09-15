@@ -10,7 +10,7 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE_BINDINGS = []
+MODULE_BINDINGS = [('aiter', 'aiter')]
 LOCAL_LOADER = None
 LOCAL_MODULE = None
 FROZEN_REFERENCES = []

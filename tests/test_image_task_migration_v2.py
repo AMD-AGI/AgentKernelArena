@@ -1104,9 +1104,8 @@ def test_aiter_image_sources_use_qualified_repository_layout():
         cfg = yaml.safe_load((directory / "config.yaml").read_text())
         by_dest = {source["destination"]: source for source in cfg["workspace"]["sources"]}
         assert by_dest["aiter_meta"]["image_path"] == "/sgl-workspace/aiter"
-        if directory.name.endswith("triton_unified_attention"):
-            assert by_dest["aiter"]["image_path"] == "/sgl-workspace/aiter/aiter"
-        else:
+        assert by_dest["aiter"]["image_path"] == "/sgl-workspace/aiter/aiter"
+        if not directory.name.endswith("triton_unified_attention"):
             assert all(p.startswith("aiter_meta/csrc/") for p in cfg["candidate"]["editable"])
 
 
@@ -1202,3 +1201,26 @@ def test_mxfp8_staging_rejects_unknown_or_changed_source_on_repeat(name, collisi
     with pytest.raises((FileExistsError, ValueError)):
         stage.materialize(tmp_path)
     assert (destination / "__init__.py").read_bytes() == before
+
+
+@pytest.mark.parametrize("name", [
+    "mi355x_vllm_ck_a8w8_blockscale_gemm", "mi355x_vllm_ck_cktile_moe_2stage",
+    "mi355x_vllm_ck_moe_2stage", "mi355x_vllm_hip_dynamic_per_tensor_quant",
+    "mi355x_vllm_hip_paged_attention_decode",
+])
+def test_hip_package_binding_rejects_installed_dispatch(name, tmp_path, monkeypatch):
+    adapter = load_module(TASKS / name / "scripts/task_adapter.py")
+    monkeypatch.setattr(adapter, "os", SimpleNamespace(environ=dict(os.environ)))
+    monkeypatch.setattr(adapter, "ROOT", tmp_path)
+    (tmp_path / "aiter_meta/csrc").mkdir(parents=True)
+    (tmp_path / "aiter").mkdir()
+    shutil.copyfile(TASKS / name / "config.yaml", tmp_path / "config.yaml")
+    imported = SimpleNamespace(__file__=str(tmp_path.parent / "installed_aiter/__init__.py"))
+    monkeypatch.setattr(adapter, "importlib", SimpleNamespace(import_module=lambda name: imported))
+    marker = object()
+    monkeypatch.setitem(sys.modules, "source_build", SimpleNamespace(watch=lambda *a, **k: marker))
+    harness = SimpleNamespace(_configure=lambda: None)
+    with pytest.raises(RuntimeError, match="outside the declared implementation"):
+        adapter.prepare(harness)
+    imported.__file__ = str(tmp_path / "aiter/__init__.py")
+    assert adapter.prepare(harness) is marker
