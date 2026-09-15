@@ -29,5 +29,5 @@ evaluation:
   workloads: cases.json
   timeout_s: 3600
 platform_support:
-  required_arch: gfx942
+  required_arch: [gfx942, gfx950]
   status: active

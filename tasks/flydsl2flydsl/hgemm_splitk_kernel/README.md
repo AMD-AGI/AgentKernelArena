@@ -61,3 +61,7 @@ The public benchmark compares the actual measured output to its independent
 reference, changes input in place, poisons the output and replays the same graph.
 The original numerical rule, cases, warmups, samples and timed launches remain;
 reference work, input preservation and replay checks occur outside timing.
+
+All declared correctness and performance cases passed on MI355X gfx950. The
+original gfx942 support and implementation path are retained; gfx942 was not
+revalidated by this port. Hardware support is scoped to `cases.json`.
