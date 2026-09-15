@@ -12,13 +12,28 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2triton/triton_scaled_mm"
 SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_scaled_mm.py")
 
-# Test configs: (M, K, N, per_token_scale_a, per_channel_scale_b, has_bias)
-TEST_SHAPES = [
+# Performance configs: (M, K, N, per_token_scale_a,
+#                       per_channel_scale_b, has_bias)
+PERFORMANCE_SHAPES = [
     (32, 64, 64, True, True, False),
     (64, 128, 128, True, True, True),
     (128, 256, 256, False, False, False),
     (256, 512, 512, True, True, True),
     (64, 256, 128, True, False, False),
+]
+
+# Correctness configs add input dtype to the performance tuple. Keep performance
+# coverage stable while exercising ragged dimensions, each M heuristic boundary,
+# the large-N path, multi-iteration K reduction, and the scale/bias combinations
+# absent from the performance matrix. The large-N tile is valid for int8 inputs
+# on GPUs whose shared-memory limit cannot accommodate that tile with float16.
+CORRECTNESS_CASES = [
+    (*shape, "float16") for shape in PERFORMANCE_SHAPES
+] + [
+    (31, 577, 8192, False, True, False, "int8"),
+    (33, 513, 67, False, True, True, "float16"),
+    (65, 515, 131, False, False, True, "float16"),
+    (129, 769, 257, True, False, True, "float16"),
 ]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
@@ -89,14 +104,20 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    dtype = torch.float16
+    out_dtype = torch.float16
 
-    for i, (M, K, N, per_tok_a, per_ch_b, has_bias) in enumerate(TEST_SHAPES):
+    for i, case in enumerate(CORRECTNESS_CASES):
+        M, K, N, per_tok_a, per_ch_b, has_bias, input_dtype_name = case
         try:
             torch.manual_seed(42 + i)
 
-            input_t = torch.randn(M, K, device=device, dtype=dtype) * 0.1
-            weight = torch.randn(K, N, device=device, dtype=dtype) * 0.1
+            input_dtype = getattr(torch, input_dtype_name)
+            if input_dtype == torch.int8:
+                input_t = torch.randint(-4, 5, (M, K), device=device, dtype=input_dtype)
+                weight = torch.randint(-4, 5, (K, N), device=device, dtype=input_dtype)
+            else:
+                input_t = torch.randn(M, K, device=device, dtype=input_dtype) * 0.1
+                weight = torch.randn(K, N, device=device, dtype=input_dtype) * 0.1
 
             if per_tok_a:
                 scale_a = torch.rand(M, 1, device=device, dtype=torch.float32) * 2 + 0.5
@@ -108,20 +129,28 @@ def run_correctness():
             else:
                 scale_b = torch.rand(1, 1, device=device, dtype=torch.float32) * 2 + 0.5
 
-            bias = torch.randn(N, device=device, dtype=dtype) * 0.1 if has_bias else None
+            bias = torch.randn(N, device=device, dtype=out_dtype) * 0.1 if has_bias else None
 
-            result = mod.triton_scaled_mm(input_t, weight, scale_a, scale_b, dtype, bias=bias)
+            result = mod.triton_scaled_mm(
+                input_t, weight, scale_a, scale_b, out_dtype, bias=bias
+            )
             torch.cuda.synchronize()
 
-            ref = reference_scaled_mm(input_t, weight, scale_a, scale_b, dtype, bias=bias)
+            ref = reference_scaled_mm(
+                input_t, weight, scale_a, scale_b, out_dtype, bias=bias
+            )
 
             if not torch.allclose(result, ref, atol=1e-2, rtol=1e-2):
                 max_diff = (result - ref).abs().max().item()
                 return False, (
-                    f"Shape {i+1} (M={M}, K={K}, N={N}): max diff = {max_diff:.6f}"
+                    f"Shape {i+1} (M={M}, K={K}, N={N}, dtype={input_dtype_name}): "
+                    f"max diff = {max_diff:.6f}"
                 )
         except Exception as e:
-            return False, f"Shape {i+1} (M={M}, K={K}, N={N}): exception: {e}"
+            return False, (
+                f"Shape {i+1} (M={M}, K={K}, N={N}, dtype={input_dtype_name}): "
+                f"exception: {e}"
+            )
 
     return True, None
 
@@ -137,7 +166,7 @@ def run_performance():
     dtype = torch.float16
     test_cases = []
 
-    for test_idx, (M, K, N, per_tok_a, per_ch_b, has_bias) in enumerate(TEST_SHAPES):
+    for test_idx, (M, K, N, per_tok_a, per_ch_b, has_bias) in enumerate(PERFORMANCE_SHAPES):
         try:
             torch.manual_seed(42 + test_idx)
             input_t = torch.randn(M, K, device=device, dtype=dtype)
@@ -209,7 +238,7 @@ def main():
 
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(CORRECTNESS_CASES)}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

@@ -1,4 +1,6 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
+"""Protected source template used by the compilation harness."""
+
 kernel_loader_template = """
 
 from torch.utils.cpp_extension import load

@@ -108,6 +108,47 @@ def cpu_assign_score_withk_forward_vectorized(scores, point_features, center_fea
     return output
 
 
+def cpu_assign_score_withk_backward_vectorized(
+        scores, point_features, center_features, knn_idx, grad_out):
+    """Independent CPU reference for all gradients of sum aggregation."""
+    B, N1, K, M = scores.shape
+    N0 = point_features.shape[1]
+    O = point_features.shape[3]
+
+    center_idx = knn_idx[:, :, 0:1].expand(-1, -1, K)
+    nb_idx_exp = knn_idx.unsqueeze(-1).unsqueeze(-1).expand(
+        -1, -1, -1, M, O)
+    ct_idx_exp = center_idx.unsqueeze(-1).unsqueeze(-1).expand(
+        -1, -1, -1, M, O)
+
+    points_by_neighbor = torch.gather(
+        point_features.unsqueeze(1).expand(-1, N1, -1, -1, -1),
+        2, nb_idx_exp.long())
+    centers_by_neighbor = torch.gather(
+        center_features.unsqueeze(1).expand(-1, N1, -1, -1, -1),
+        2, ct_idx_exp.long())
+
+    # grad_out is (B, O, N1, K); align it with the reference's
+    # (B, N1, K, M, O) intermediate without using the custom autograd path.
+    grad_out_exp = grad_out.permute(0, 2, 3, 1).unsqueeze(3)
+    grad_scores = (
+        (points_by_neighbor - centers_by_neighbor) * grad_out_exp
+    ).sum(dim=-1)
+
+    feature_contrib = scores.unsqueeze(-1) * grad_out_exp
+    feature_contrib = feature_contrib.reshape(B, N1 * K, M, O)
+    nb_scatter_idx = knn_idx.reshape(B, N1 * K, 1, 1).expand(
+        -1, -1, M, O)
+    ct_scatter_idx = center_idx.reshape(B, N1 * K, 1, 1).expand(
+        -1, -1, M, O)
+
+    grad_points = torch.zeros_like(point_features)
+    grad_centers = torch.zeros_like(center_features)
+    grad_points.scatter_add_(1, nb_scatter_idx.long(), feature_contrib)
+    grad_centers.scatter_add_(1, ct_scatter_idx.long(), -feature_contrib)
+    return grad_scores, grad_points, grad_centers
+
+
 def run_compile():
     try:
         from kernel_loader import assign_score_withk_ext  # noqa: F401
@@ -121,19 +162,49 @@ def run_correctness():
 
     for i, (B, N0, N1, M, K, O) in enumerate(TEST_SHAPES):
         torch.manual_seed(42 + i)
-        scores = torch.randn(B, N1, K, M, device="cuda", dtype=torch.float32)
-        point_features = torch.randn(B, N0, M, O, device="cuda", dtype=torch.float32)
-        center_features = torch.randn(B, N0, M, O, device="cuda", dtype=torch.float32)
+        scores = torch.randn(
+            B, N1, K, M, device="cuda", dtype=torch.float32,
+            requires_grad=True)
+        point_features = torch.randn(
+            B, N0, M, O, device="cuda", dtype=torch.float32,
+            requires_grad=True)
+        center_features = torch.randn(
+            B, N0, M, O, device="cuda", dtype=torch.float32,
+            requires_grad=True)
         knn_idx = torch.randint(0, N0, (B, N1, K), device="cuda", dtype=torch.int64)
 
         gpu_out = assign_score_withk(scores, point_features, center_features, knn_idx, 'sum')
         cpu_out = cpu_assign_score_withk_forward_vectorized(
-            scores.cpu(), point_features.cpu(), center_features.cpu(), knn_idx.cpu())
+            scores.detach().cpu(), point_features.detach().cpu(),
+            center_features.detach().cpu(), knn_idx.cpu())
 
-        if not torch.allclose(gpu_out.cpu(), cpu_out, atol=1e-3, rtol=1e-3):
-            max_diff = (gpu_out.cpu() - cpu_out).abs().max().item()
+        gpu_out_cpu = gpu_out.detach().cpu()
+        if not torch.allclose(gpu_out_cpu, cpu_out, atol=1e-3, rtol=1e-3):
+            max_diff = (gpu_out_cpu - cpu_out).abs().max().item()
             return False, (f"Forward shape {i+1} (B={B},N0={N0},N1={N1},M={M},K={K},O={O}): "
                            f"max_diff={max_diff:.6f}")
+
+        # A nonuniform upstream gradient exercises both declared backward
+        # kernels and prevents cancellation bugs from hiding behind out.sum().
+        grad_out = torch.randn_like(gpu_out)
+        gpu_out.backward(grad_out)
+        cpu_grad_scores, cpu_grad_points, cpu_grad_centers = (
+            cpu_assign_score_withk_backward_vectorized(
+                scores.detach().cpu(), point_features.detach().cpu(),
+                center_features.detach().cpu(), knn_idx.cpu(), grad_out.cpu()))
+
+        gradient_checks = (
+            ("Backward scores", scores.grad.cpu(), cpu_grad_scores),
+            ("Backward points", point_features.grad.cpu(), cpu_grad_points),
+            ("Backward centers", center_features.grad.cpu(), cpu_grad_centers),
+        )
+        for name, gpu_grad, cpu_grad in gradient_checks:
+            if not torch.allclose(gpu_grad, cpu_grad, atol=1e-3, rtol=1e-3):
+                max_diff = (gpu_grad - cpu_grad).abs().max().item()
+                return False, (
+                    f"{name} shape {i+1} "
+                    f"(B={B},N0={N0},N1={N1},M={M},K={K},O={O}): "
+                    f"max_diff={max_diff:.6f}")
 
     return True, None
 

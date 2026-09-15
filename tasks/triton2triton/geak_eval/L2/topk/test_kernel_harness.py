@@ -301,7 +301,7 @@ def run_correctness(shapes, verbose: bool = True) -> dict:
             torch.testing.assert_close(
                 res_val_cpu,
                 ref_val.to(torch.float32),
-                atol=1e-4 * hidden,
+                atol=1e-4,
                 rtol=1.3e-6,
             )
             # Check indices: gather from input using result indices and compare values
@@ -310,7 +310,7 @@ def run_correctness(shapes, verbose: bool = True) -> dict:
             torch.testing.assert_close(
                 gathered_res,
                 gathered_ref.to(torch.float32),
-                atol=1e-4 * hidden,
+                atol=1e-4,
                 rtol=1.3e-6,
             )
 

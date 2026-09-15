@@ -4,7 +4,7 @@
 HIPCC = hipcc
 
 # Source and target
-SRC = mla_decode.hip
+SRC = scripts/native/benchmark_driver.hip mla_decode.hip
 TARGET = applications_mla_decode
 
 # Compiler flags. Targets gfx950 primary; gfx942 also covered.
@@ -15,7 +15,7 @@ CFLAGS = -O3 -ffast-math --offload-arch=gfx950 --offload-arch=gfx942 -munsafe-fp
 all: $(TARGET)
 
 $(TARGET): $(SRC)
-	$(HIPCC) $(CFLAGS) -o $@ $<
+	$(HIPCC) $(CFLAGS) -o $@ $(SRC)
 
 clean:
 	rm -f $(TARGET)

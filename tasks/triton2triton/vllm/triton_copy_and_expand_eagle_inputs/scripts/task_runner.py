@@ -171,6 +171,32 @@ def reference_copy_and_expand(
     )
 
 
+def compare_outputs(result, reference):
+    """Return an error for any violation of the wrapper's six-tensor contract."""
+    import torch
+
+    if not isinstance(result, tuple):
+        return f"expected tuple output, got {type(result).__name__}"
+    if len(result) != len(reference):
+        return f"expected {len(reference)} outputs, got {len(result)}"
+    for output_idx, (got, expected) in enumerate(zip(result, reference)):
+        if not isinstance(got, torch.Tensor):
+            return f"output[{output_idx}] is not a tensor"
+        if not torch.equal(got, expected):
+            return f"output[{output_idx}] mismatch"
+    return None
+
+
+def poison_outputs(outputs):
+    """Invalidate captured buffers so replay validation cannot accept stale data."""
+    import torch
+
+    for output_idx, output in enumerate(outputs):
+        if not isinstance(output, torch.Tensor):
+            raise TypeError(f"output[{output_idx}] is not a tensor")
+        output.fill_(True if output.dtype == torch.bool else 0x5A5A5A5A)
+
+
 def run_compile():
     try:
         import ast
@@ -213,9 +239,9 @@ def run_correctness():
                     num_padding_slots_per_request=nps,
                     shift_input_ids=shift,
                 )
-                for j, (got, exp) in enumerate(zip(result, ref)):
-                    if not torch.equal(got, exp):
-                        return False, f"Shape {i+1}, shift={shift}: output[{j}] mismatch"
+                error = compare_outputs(result, ref)
+                if error is not None:
+                    return False, f"Shape {i+1}, shift={shift}: {error}"
         except Exception as e:
             return False, f"Shape {i+1}: exception: {e}"
     return True, None
@@ -236,14 +262,37 @@ def run_performance():
             tt, tp, nt, qsl, qel = make_inputs(nr, tpr, nps, device)
 
             def _bench_fn():
-                mod.copy_and_expand_eagle_inputs(
+                return mod.copy_and_expand_eagle_inputs(
                     tt, tp, nt, qsl, qel, -1, -2, nps, False, tpr + nps + 5,
                 )
+            timed_run = _TimedRun()
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
                 _bench_fn,
                 warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS,
+                timed_run=timed_run,
             )
+            if not timed_run.bound:
+                raise RuntimeError("benchmark did not expose the timed CUDA-graph run")
+            captured_outputs = timed_run.outputs
+            output_contract_error = compare_outputs(
+                captured_outputs,
+                reference_copy_and_expand(
+                    tt, tp, nt, qsl, qel, -1, -2, nps, False,
+                ),
+            )
+            if output_contract_error is not None:
+                raise AssertionError(
+                    f"captured output contract failure: {output_contract_error}"
+                )
+            poison_outputs(captured_outputs)
+            replay_outputs = timed_run.rerun()
+            reference_outputs = reference_copy_and_expand(
+                tt, tp, nt, qsl, qel, -1, -2, nps, False,
+            )
+            replay_error = compare_outputs(replay_outputs, reference_outputs)
+            if replay_error is not None:
+                raise AssertionError(f"timed replay validation failed: {replay_error}")
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

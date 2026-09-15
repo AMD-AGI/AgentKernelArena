@@ -3,15 +3,15 @@ source_file_path:
 target_kernel_functions:
 - forward
 compile_command:
-- python3 eval_tools/compile.py --hip_file hip/hip_1003_NormalAttention_embedded_gaussian.hip
+- python3 scripts/compile.py --hip_file hip/hip_1003_NormalAttention_embedded_gaussian.hip
 correctness_command:
-- python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_1003_NormalAttention_embedded_gaussian.py
-  --py_func_file pytorch_code_functional/py_1003_NormalAttention_embedded_gaussian_func.py
+- python3 scripts/correctness_check.py --py_modu_file tests/pytorch_code_module/py_1003_NormalAttention_embedded_gaussian.py
+  --py_func_file tests/pytorch_code_functional/py_1003_NormalAttention_embedded_gaussian_func.py
   --hip_file hip/hip_1003_NormalAttention_embedded_gaussian.hip
 performance_command:
-- python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_1003_NormalAttention_embedded_gaussian.py
-  --py_func_file pytorch_code_functional/py_1003_NormalAttention_embedded_gaussian_func.py
-  --hip_file hip/hip_1003_NormalAttention_embedded_gaussian.hip --ref_hip_file hip/hip_1003_NormalAttention_embedded_gaussian_ref.hip
+- python3 scripts/cal_kernel_perf.py --py_modu_file tests/pytorch_code_module/py_1003_NormalAttention_embedded_gaussian.py
+  --py_func_file tests/pytorch_code_functional/py_1003_NormalAttention_embedded_gaussian_func.py
+  --hip_file hip/hip_1003_NormalAttention_embedded_gaussian.hip --ref_hip_file tests/hip/hip_1003_NormalAttention_embedded_gaussian_ref.hip
 prompt:
   source_code: null
   instructions: You are a hip expert and good at gpu kernel implementation. Please

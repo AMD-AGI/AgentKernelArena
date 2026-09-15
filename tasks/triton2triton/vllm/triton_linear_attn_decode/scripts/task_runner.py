@@ -20,6 +20,22 @@ TEST_SHAPES = [
     (8, 4, 64, 32),
     (1, 32, 64, 64),
 ]
+CORRECTNESS_SLOT_CASES = [
+    {
+        "name": "mixed_padding_sparse_int32",
+        "shape": (5, 4, 64, 32),
+        "slots": (6, -1, 2, -1, 4),
+        "num_slots": 8,
+        "slot_dtype": "int32",
+    },
+    {
+        "name": "permuted_sparse_int64",
+        "shape": (4, 8, 64, 64),
+        "slots": (5, 0, 3, 1),
+        "num_slots": 7,
+        "slot_dtype": "int64",
+    },
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -88,6 +104,36 @@ def reference_linear_attn_decode(q, k, v, kv_caches, slope_rate, slot_idx):
     return output
 
 
+def _run_decode(mod, q, k, v, kv_caches, slope_rate, slot_idx):
+    """Run decode with deterministic zero storage for padded output rows."""
+    import torch
+
+    if not torch.any(slot_idx == -1).item():
+        return mod.linear_attn_decode_forward(
+            q, k, v, kv_caches, slope_rate, slot_idx
+        )
+
+    # The original kernel implements padding by returning before its first
+    # store. The protected wrapper allocates output with torch.empty, so supply
+    # zeroed storage here to make that no-write contract deterministic.
+    class _ZeroEmptyTorchProxy:
+        def __getattr__(self, name):
+            return getattr(torch, name)
+
+        @staticmethod
+        def empty(*args, **kwargs):
+            return torch.zeros(*args, **kwargs)
+
+    original_torch = mod.torch
+    mod.torch = _ZeroEmptyTorchProxy()
+    try:
+        return mod.linear_attn_decode_forward(
+            q, k, v, kv_caches, slope_rate, slot_idx
+        )
+    finally:
+        mod.torch = original_torch
+
+
 def run_compile():
     """Check that the source file is valid Python and imports succeed."""
     try:
@@ -114,47 +160,91 @@ def run_correctness():
     device = "cuda"
     dtype = torch.float16
 
-    for i, (B, H, D, E) in enumerate(TEST_SHAPES):
+    correctness_cases = [
+        {
+            "name": f"contiguous_{i + 1}",
+            "shape": shape,
+            "slots": tuple(range(shape[0])),
+            "num_slots": shape[0],
+            "slot_dtype": "int32",
+        }
+        for i, shape in enumerate(TEST_SHAPES)
+    ] + CORRECTNESS_SLOT_CASES
+
+    for i, case in enumerate(correctness_cases):
+        B, H, D, E = case["shape"]
+        case_name = case["name"]
         try:
             torch.manual_seed(42 + i)
             slope_rate = torch.rand(H, device=device, dtype=torch.float32) * 0.1 + 0.01
-            slot_idx = torch.arange(B, device=device, dtype=torch.int32)
+            slot_idx = torch.tensor(
+                case["slots"],
+                device=device,
+                dtype=getattr(torch, case["slot_dtype"]),
+            )
 
             q = torch.randn(B, H, 1, D, device=device, dtype=dtype)
             k = torch.randn(B, H, 1, D, device=device, dtype=dtype)
             v = torch.randn(B, H, 1, E, device=device, dtype=dtype)
 
-            num_slots = B
+            num_slots = case["num_slots"]
             kv_caches_triton = torch.randn(num_slots, H, D, E, device=device, dtype=dtype) * 0.1
+            kv_caches_initial = kv_caches_triton.clone()
             kv_caches_ref = kv_caches_triton.clone().float()
 
             # Reference
             ref_out = reference_linear_attn_decode(q, k, v, kv_caches_ref, slope_rate, slot_idx)
 
             # Triton kernel
-            triton_out = mod.linear_attn_decode_forward(
+            triton_out = _run_decode(
+                mod,
                 q, k, v, kv_caches_triton, slope_rate, slot_idx
             )
             torch.cuda.synchronize()
+
+            padded_batches = slot_idx == -1
+            if torch.any(padded_batches).item():
+                padded_out = triton_out[padded_batches]
+                if not torch.equal(padded_out, torch.zeros_like(padded_out)):
+                    max_abs = padded_out.float().abs().max().item()
+                    return False, (
+                        f"Case {case_name} padded output: "
+                        f"expected exact zeros, max abs = {max_abs:.6f}"
+                    )
 
             # Compare output
             if not torch.allclose(triton_out.float(), ref_out.float(), atol=1e-2, rtol=1e-2):
                 max_diff = (triton_out.float() - ref_out.float()).abs().max().item()
                 return False, (
-                    f"Shape {i+1} output (B={B}, H={H}, D={D}, E={E}): "
+                    f"Case {case_name} output (B={B}, H={H}, D={D}, E={E}): "
                     f"max diff = {max_diff:.6f}"
+                )
+
+            used_slots = {int(sid) for sid in case["slots"] if sid >= 0}
+            untouched_slots = sorted(set(range(num_slots)) - used_slots)
+            if untouched_slots and not torch.equal(
+                kv_caches_triton[untouched_slots],
+                kv_caches_initial[untouched_slots],
+            ):
+                max_diff = (
+                    kv_caches_triton[untouched_slots].float()
+                    - kv_caches_initial[untouched_slots].float()
+                ).abs().max().item()
+                return False, (
+                    f"Case {case_name} untouched kv_cache slots "
+                    f"{untouched_slots}: max diff = {max_diff:.6f}"
                 )
 
             # Compare updated KV cache
             if not torch.allclose(kv_caches_triton.float(), kv_caches_ref.float(), atol=1e-2, rtol=1e-2):
                 max_diff = (kv_caches_triton.float() - kv_caches_ref.float()).abs().max().item()
                 return False, (
-                    f"Shape {i+1} kv_cache (B={B}, H={H}, D={D}, E={E}): "
+                    f"Case {case_name} kv_cache (B={B}, H={H}, D={D}, E={E}): "
                     f"max diff = {max_diff:.6f}"
                 )
         except Exception as e:
             return False, (
-                f"Shape {i+1} (B={B}, H={H}, D={D}, E={E}): exception: {e}"
+                f"Case {case_name} (B={B}, H={H}, D={D}, E={E}): exception: {e}"
             )
 
     return True, None
@@ -244,7 +334,7 @@ def main():
         report = {
             "status": "ok" if ok else "fail",
             "error": err,
-            "num_shapes": len(TEST_SHAPES),
+            "num_shapes": len(TEST_SHAPES) + len(CORRECTNESS_SLOT_CASES),
         }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)

@@ -20,6 +20,35 @@ TEST_SHAPES = [
     (1, 8, 1, 64, 64, 2, 16),    # MQA
     (8, 8, 8, 64, 128, 4, 16),
 ]
+
+# Correctness retains every performance shape and adds two focused cases for
+# ragged requests and valid dtype/dimension/page-size boundaries. Performance
+# intentionally continues to use TEST_SHAPES alone.
+CORRECTNESS_CASES = [
+    {
+        "name": f"performance_shape_{i + 1}",
+        "shape": shape,
+        "sequence_lengths": None,
+        "dtype": "float16",
+        "logit_cap": 0.0,
+    }
+    for i, shape in enumerate(TEST_SHAPES)
+] + [
+    {
+        "name": "ragged_gqa_empty_splits",
+        "shape": (3, 12, 3, 80, 197, 5, 8),
+        "sequence_lengths": (1, 130, 197),
+        "dtype": "float16",
+        "logit_cap": 0.0,
+    },
+    {
+        "name": "ragged_capped_bfloat16_mqa",
+        "shape": (2, 8, 1, 256, 257, 3, 64),
+        "sequence_lengths": (65, 257),
+        "dtype": "bfloat16",
+        "logit_cap": 1.5,
+    },
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -50,7 +79,7 @@ def load_module():
 
 
 def reference_stage1(q, k_buffer, v_buffer, req_to_tokens, b_seqlen,
-                     num_kv_splits, sm_scale, page_size):
+                     num_kv_splits, sm_scale, page_size, logit_cap=0.0):
     """
     CPU/PyTorch reference for decode attention stage1.
 
@@ -90,6 +119,8 @@ def reference_stage1(q, k_buffer, v_buffer, req_to_tokens, b_seqlen,
 
                 # Q @ K^T * sm_scale
                 scores = (k_vals @ q_vec) * sm_scale  # [length]
+                if logit_cap > 0:
+                    scores = logit_cap * torch.tanh(scores / logit_cap)
 
                 # Numerically stable softmax
                 max_score = scores.max()
@@ -106,33 +137,57 @@ def reference_stage1(q, k_buffer, v_buffer, req_to_tokens, b_seqlen,
 
 
 def make_inputs(bs, num_heads, num_kv_heads, head_dim, max_seq, num_kv_splits,
-                page_size, device="cuda", dtype=None):
+                page_size, device="cuda", dtype=None, sequence_lengths=None,
+                shuffled_page_table=True):
     """Create test inputs for the stage1 kernel."""
     import torch
     if dtype is None:
         dtype = torch.float16
 
+    if sequence_lengths is None:
+        sequence_lengths = (max_seq,) * bs
+    if len(sequence_lengths) != bs:
+        raise ValueError("sequence_lengths must contain one entry per batch")
+    if any(seq_len <= 0 or seq_len > max_seq for seq_len in sequence_lengths):
+        raise ValueError("sequence lengths must be in the range [1, max_seq]")
+
     torch.manual_seed(42)
 
     q = torch.randn(bs, num_heads, head_dim, device=device, dtype=dtype)
 
-    # Total tokens in KV buffer: use enough pages
     max_pages_per_seq = (max_seq + page_size - 1) // page_size
-    total_pages = bs * max_pages_per_seq
+    if shuffled_page_table:
+        # Leave an unused physical page between every referenced page. Reversing
+        # and rotating each request's page permutation makes logical neighbors
+        # map to shuffled, non-contiguous physical pages without page sharing.
+        physical_pages_per_seq = 2 * max_pages_per_seq + 1
+        total_pages = bs * physical_pages_per_seq
+    else:
+        # Preserve the original performance fixture exactly.
+        total_pages = bs * max_pages_per_seq
     total_tokens = total_pages * page_size
 
     k_buffer = torch.randn(total_tokens, num_kv_heads, head_dim, device=device, dtype=dtype)
     v_buffer = torch.randn(total_tokens, num_kv_heads, head_dim, device=device, dtype=dtype)
 
-    # Build req_to_tokens: identity mapping for simplicity (page i -> page i)
     max_seq_padded = max_pages_per_seq * page_size
     req_to_tokens = torch.zeros(bs, max_seq_padded, device=device, dtype=torch.int32)
-    for b in range(bs):
-        for pos in range(max_seq):
-            page_idx = b * max_pages_per_seq + pos // page_size
-            req_to_tokens[b, pos] = page_idx
+    if shuffled_page_table:
+        logical_pages = torch.arange(
+            max_pages_per_seq - 1, -1, -1, device=device, dtype=torch.int32
+        )
+        for b in range(bs):
+            page_order = torch.roll(logical_pages, shifts=b)
+            page_base = b * physical_pages_per_seq
+            req_to_tokens[b, :max_pages_per_seq] = page_base + 1 + 2 * page_order
+    else:
+        # Retain the legacy repeated-page mapping used by the scored benchmark.
+        for b in range(bs):
+            for pos in range(max_seq):
+                page_idx = b * max_pages_per_seq + pos // page_size
+                req_to_tokens[b, pos] = page_idx
 
-    b_seqlen = torch.full((bs,), max_seq, device=device, dtype=torch.int32)
+    b_seqlen = torch.tensor(sequence_lengths, device=device, dtype=torch.int32)
 
     # att_out: [batch, num_heads, num_kv_splits, head_dim + 1]
     att_out = torch.zeros(bs, num_heads, num_kv_splits, head_dim + 1,
@@ -167,33 +222,42 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    dtype = torch.float16
-
-    for i, (bs, nh, nkv, hd, max_seq, num_splits, ps) in enumerate(TEST_SHAPES):
+    for i, case in enumerate(CORRECTNESS_CASES):
+        bs, nh, nkv, hd, max_seq, num_splits, ps = case["shape"]
+        dtype = getattr(torch, case["dtype"])
+        logit_cap = case["logit_cap"]
         try:
             q, k_buf, v_buf, att_out, req_to_tokens, b_seqlen, sm_scale = \
-                make_inputs(bs, nh, nkv, hd, max_seq, num_splits, ps, device, dtype)
+                make_inputs(
+                    bs, nh, nkv, hd, max_seq, num_splits, ps, device, dtype,
+                    sequence_lengths=case["sequence_lengths"],
+                    shuffled_page_table=True,
+                )
 
             mod.decode_att_m_fwd(
                 q, k_buf, v_buf, att_out, req_to_tokens, b_seqlen,
-                num_splits, sm_scale, ps, logit_cap=0.0,
+                num_splits, sm_scale, ps, logit_cap=logit_cap,
             )
             torch.cuda.synchronize()
 
             ref = reference_stage1(q, k_buf, v_buf, req_to_tokens, b_seqlen,
-                                   num_splits, sm_scale, ps)
+                                   num_splits, sm_scale, ps, logit_cap)
 
             if not torch.allclose(att_out, ref, atol=1e-2, rtol=1e-2):
                 max_diff = (att_out - ref).abs().max().item()
                 return False, (
-                    f"Shape {i+1} (bs={bs}, nh={nh}, nkv={nkv}, hd={hd}, "
-                    f"seq={max_seq}, splits={num_splits}, ps={ps}): "
+                    f"Case {i+1} {case['name']} (bs={bs}, nh={nh}, "
+                    f"nkv={nkv}, hd={hd}, max_seq={max_seq}, "
+                    f"b_seqlen={tuple(b_seqlen.tolist())}, "
+                    f"splits={num_splits}, ps={ps}, dtype={case['dtype']}, "
+                    f"logit_cap={logit_cap}): "
                     f"max diff = {max_diff:.6f}"
                 )
         except Exception as e:
             return False, (
-                f"Shape {i+1} (bs={bs}, nh={nh}, nkv={nkv}, hd={hd}, "
-                f"seq={max_seq}, splits={num_splits}, ps={ps}): "
+                f"Case {i+1} {case['name']} (bs={bs}, nh={nh}, nkv={nkv}, "
+                f"hd={hd}, max_seq={max_seq}, splits={num_splits}, ps={ps}, "
+                f"dtype={case['dtype']}, logit_cap={logit_cap}): "
                 f"exception: {e}"
             )
 
@@ -215,7 +279,10 @@ def run_performance():
     for test_idx, (bs, nh, nkv, hd, max_seq, num_splits, ps) in enumerate(TEST_SHAPES):
         try:
             q, k_buf, v_buf, att_out, req_to_tokens, b_seqlen, sm_scale = \
-                make_inputs(bs, nh, nkv, hd, max_seq, num_splits, ps, device, dtype)
+                make_inputs(
+                    bs, nh, nkv, hd, max_seq, num_splits, ps, device, dtype,
+                    shuffled_page_table=False,
+                )
 
             def _bench_fn():
                 mod.decode_att_m_fwd(
@@ -285,7 +352,7 @@ def main():
         report = {
             "status": "ok" if ok else "fail",
             "error": err,
-            "num_shapes": len(TEST_SHAPES),
+            "num_shapes": len(CORRECTNESS_CASES),
         }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)

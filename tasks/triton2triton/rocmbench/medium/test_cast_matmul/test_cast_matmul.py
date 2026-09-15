@@ -114,7 +114,12 @@ def set_seed(seed: int = 42) -> None:
                           for (M, K, N) in [(128, 128, 128), (1280, 768, 1024)]  #
                           for w in input_dtypes
                           for x in input_dtypes  #
-                          for o in out_dtypes])
+                          for o in out_dtypes] + [
+                             pytest.param(31, 48, 48, "float16", "float32", "float16",
+                                          id="sub_64_ragged_k_tail"),
+                             pytest.param(65, 48, 80, "float64", "float16", "float32",
+                                          id="cross_64_ragged_k_tail"),
+                         ])
 def test_cast_matmul(M, K, N, w_dtype, x_dtype, out_dtype, request):
     set_seed()
 

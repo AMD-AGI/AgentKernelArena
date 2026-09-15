@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Sequence
 
 from .config import GitHubConfig
+from .filesystem import is_generated_path
 
 
 class CommandError(RuntimeError):
@@ -137,6 +138,7 @@ class GitHubPublisher:
 
     def commit_task(self, worktree: Path, task_id: str) -> str | None:
         relative = f"tasks/{task_id}"
+        self._reject_generated_changes(worktree, self._pending_paths(worktree, relative))
         run_command(["git", "add", "--", relative], cwd=worktree)
         staged = run_command(
             ["git", "diff", "--cached", "--quiet", "--", relative],
@@ -153,6 +155,32 @@ class GitHubPublisher:
             timeout=600,
         )
         return run_command(["git", "rev-parse", "HEAD"], cwd=worktree).stdout.strip()
+
+    @staticmethod
+    def _pending_paths(worktree: Path, relative: str | None = None) -> set[str]:
+        paths: set[str] = set()
+        for args in (
+            ["git", "diff", "--name-only", "-z", "HEAD"],
+            ["git", "diff", "--cached", "--name-only", "-z"],
+            ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+        ):
+            if relative is not None:
+                args.extend(["--", relative])
+            paths.update(p for p in run_command(args, cwd=worktree).stdout.split("\0") if p)
+        return paths
+
+    @staticmethod
+    def _reject_generated_changes(worktree: Path, paths: set[str]) -> None:
+        generated = sorted(
+            path for path in paths
+            if (worktree / path).is_file()
+            and is_generated_path(path, root=worktree)
+        )
+        if generated:
+            raise RuntimeError(
+                "quality_loop refuses to commit generated task artifacts: "
+                + ", ".join(generated)
+            )
 
     def verify_pending_changes(
         self,
@@ -183,14 +211,7 @@ class GitHubPublisher:
         if ancestor.returncode != 0:
             raise RuntimeError("quality_loop worktree no longer descends from its recorded base")
 
-        changed: set[str] = set()
-        for args in (
-            ["git", "diff", "--name-only", "HEAD"],
-            ["git", "diff", "--cached", "--name-only"],
-            ["git", "ls-files", "--others", "--exclude-standard"],
-        ):
-            output = run_command(args, cwd=worktree).stdout
-            changed.update(line for line in output.splitlines() if line)
+        changed = self._pending_paths(worktree)
         if changed != expected_paths:
             unexpected = sorted(changed - expected_paths)
             missing = sorted(expected_paths - changed)
@@ -198,6 +219,9 @@ class GitHubPublisher:
                 "quality_loop worktree diff does not match accepted task changes; "
                 f"unexpected={unexpected}, missing={missing}"
             )
+        # A recorded path is not sufficient: old campaign manifests can contain
+        # runtime outputs copied by an earlier version of quality_loop.
+        self._reject_generated_changes(worktree, changed)
 
     def publish_draft_pr(
         self,

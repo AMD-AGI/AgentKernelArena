@@ -32,6 +32,39 @@ TEST_SHAPES = [
     (32, 1024, 2048),
     (64, 2048, 4096),
 ]
+
+# Correctness-only cases that exercise request-state indirection and irregular
+# lengths without changing the shapes used for performance scoring. ``batch``
+# is the number of state rows; idx_mapping intentionally selects only a subset.
+CORRECTNESS_CASES = [
+    {
+        "name": "non_power_of_two_mixed_lengths",
+        "batch": 7,
+        "seq_len": 37,
+        "vocab": 70,
+        "idx_mapping": (5, 2, 6, 1),
+        "prompt_len": (11, 0, 19, 4, 37, 0, 4),
+        "prefill_len": (23, 37, 19, 31, 37, 0, 23),
+        "token_overrides": ((2, 0, 69), (1, 35, 69), (1, 36, 69)),
+    },
+    {
+        "name": "mixed_lengths_around_1024",
+        "batch": 7,
+        "seq_len": 1031,
+        "vocab": 1003,
+        "idx_mapping": (6, 0, 4, 2, 5, 1),
+        "prompt_len": (0, 1, 1023, 13, 1024, 1024, 1025),
+        "prefill_len": (1023, 1024, 1024, 1031, 1024, 1025, 1031),
+        "token_overrides": (
+            (2, 1022, 1002),
+            (2, 1023, 1002),
+            (5, 1023, 1002),
+            (5, 1024, 1002),
+            (6, 1024, 1002),
+            (6, 1025, 1002),
+        ),
+    },
+]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -58,14 +91,32 @@ def run_correctness():
     try: mod = load_module()
     except Exception as e: return False, f"Failed to load module: {e}"
     device = "cuda"
-    for i, (batch, seq_len, vocab) in enumerate(TEST_SHAPES):
+    cases = [
+        {
+            "name": f"shape_{i + 1}",
+            "batch": batch,
+            "seq_len": seq_len,
+            "vocab": vocab,
+            "idx_mapping": tuple(range(batch)),
+            "prompt_len": (seq_len // 2,) * batch,
+            "prefill_len": (seq_len,) * batch,
+        }
+        for i, (batch, seq_len, vocab) in enumerate(TEST_SHAPES)
+    ] + CORRECTNESS_CASES
+
+    for i, case in enumerate(cases):
         try:
+            name = case["name"]
+            batch = case["batch"]
+            seq_len = case["seq_len"]
+            vocab = case["vocab"]
             torch.manual_seed(42 + i)
-            idx_mapping = torch.arange(batch, dtype=torch.int32, device=device)
-            prompt_len_val = seq_len // 2
+            idx_mapping = torch.tensor(case["idx_mapping"], dtype=torch.int32, device=device)
             all_token_ids = torch.randint(0, vocab, (batch, seq_len), dtype=torch.int32, device=device)
-            prompt_len = torch.full((batch,), prompt_len_val, dtype=torch.int32, device=device)
-            prefill_len = torch.full((batch,), seq_len, dtype=torch.int32, device=device)
+            for state_idx, token_idx, token_id in case.get("token_overrides", ()):
+                all_token_ids[state_idx, token_idx] = token_id
+            prompt_len = torch.tensor(case["prompt_len"], dtype=torch.int32, device=device)
+            prefill_len = torch.tensor(case["prefill_len"], dtype=torch.int32, device=device)
             prompt_mask = torch.zeros(batch, (vocab + 31) // 32, dtype=torch.int32, device=device)
             output_counts = torch.zeros(batch, vocab, dtype=torch.int32, device=device)
             mod.bincount(idx_mapping, all_token_ids, prompt_len, prefill_len, prompt_mask, output_counts, seq_len)
@@ -73,24 +124,24 @@ def run_correctness():
             # Reference for ALL outputs: prompt bitmask and output token counts.
             ref_prompt_mask = torch.zeros_like(prompt_mask)
             ref_output_counts = torch.zeros_like(output_counts)
-            for b in range(batch):
-                plen = prompt_len[b].item()
-                flen = prefill_len[b].item()
+            for req_state_idx in case["idx_mapping"]:
+                plen = prompt_len[req_state_idx].item()
+                flen = prefill_len[req_state_idx].item()
                 for j in range(plen):
-                    tid = all_token_ids[b, j].item()
+                    tid = all_token_ids[req_state_idx, j].item()
                     idx = tid // 32
                     bit = 1 << (tid % 32)
-                    ref_prompt_mask[b, idx] |= bit
+                    ref_prompt_mask[req_state_idx, idx] |= bit
                 for j in range(plen, flen):
-                    tid = all_token_ids[b, j].item()
-                    ref_output_counts[b, tid] += 1
+                    tid = all_token_ids[req_state_idx, j].item()
+                    ref_output_counts[req_state_idx, tid] += 1
 
             if not torch.equal(output_counts, ref_output_counts):
-                return False, f"Shape {i+1}: output_bin_counts mismatch"
+                return False, f"Case {name}: output_bin_counts mismatch"
             if not torch.equal(prompt_mask, ref_prompt_mask):
-                return False, f"Shape {i+1}: prompt_bin_mask mismatch"
+                return False, f"Case {name}: prompt_bin_mask mismatch"
         except Exception as e:
-            return False, f"Shape {i+1}: exception: {e}"
+            return False, f"Case {case['name']}: exception: {e}"
     return True, None
 
 def run_performance():
@@ -179,7 +230,7 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES) + len(CORRECTNESS_CASES)}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f: json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
         if err: print(f"Error: {err}")
