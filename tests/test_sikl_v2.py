@@ -505,16 +505,20 @@ def test_runner_controls_are_mandatory_and_preserve_real_manifest(tmp_path, monk
             assert len(CaseManifest.from_result(result).cases) == 13
 
 
-def test_diagnostic_policy_only_names_task_with_specific_historical_evidence():
+def test_diagnostic_policy_only_names_tasks_with_specific_evidence():
+    evidence = {
+        'gemm_a16w16_nt_n4096_k2048': '329bc9861f7199c4df4d6fc0fc0eb16353cfe995',
+        'gemm_a16w16_nt_n128_k6144': '67803d61ce77601dac7bf509bd111ca5ae3b048cee3dbaafc5d4ab6443025476',
+    }
     diagnostic = []
     for path in TASKS:
         spec = load_task_spec(path, task_id=str(path.parent.relative_to(ROOT / 'tasks')))
         if spec.baseline.correctness_policy == 'diagnostic':
             diagnostic.append(path.parent.name)
-            assert '329bc9861f7199c4df4d6fc0fc0eb16353cfe995' in spec.baseline.diagnostic_reason
+            assert evidence[path.parent.name] in spec.baseline.diagnostic_reason
         else:
             assert spec.baseline.diagnostic_reason is None
-    assert diagnostic == ['gemm_a16w16_nt_n4096_k2048']
+    assert set(diagnostic) == set(evidence)
 
 
 def test_diagnostic_task_still_reports_actual_pass(monkeypatch):

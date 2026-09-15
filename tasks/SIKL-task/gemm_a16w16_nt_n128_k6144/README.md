@@ -175,3 +175,57 @@ proof of every reference operation for every possible input. They do not
 replace complete workload evaluation, an actual accepted candidate, or GPU
 validation. The fixture checks' exact/FP32 rounding bounds do not alter the
 original candidate tolerances or scored workload data.
+## Production baseline numerical evidence
+
+The production AITER dispatch remains the performance baseline. It has an
+explicit `diagnostic` numerical policy; the candidate must still satisfy the
+complete reference comparison, including the actual timed invocation over
+refilled inputs. This changes no tolerance, workload, warmup, sample count,
+input/output contract, or candidate acceptance rule.
+
+On 2026-09-15, job 139315 ran all 13 cases on MI355X/gfx950 with task source
+snapshot `b399ce2c319d3c4e2415540af8bcae72aa4ff07c` and image
+`lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93`.
+The runtime was Python 3.12.3, Torch 2.11.0+rocm10.0.0, FlyDSL 0.3.2 and AITER
+0.1.21.dev48+g4ad998328.d20260913. The installed
+`aiter/tuned_gemm.py` SHA256 was
+`1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51`.
+Task validation and baseline compilation passed all cases. Baseline correctness
+completed all cases; every output passed shape, dtype, device and finite-value
+checks, with these numerical results against the unchanged task reference:
+
+| M | Numerical result | Elements outside tolerance | Maximum absolute error |
+| --- | --- | --- | --- |
+| 1 | PASS | 0 / 128 | 0 |
+| 2 | FAIL | 51 / 256 | 2 |
+| 4 | FAIL | 109 / 512 | 2 |
+| 8 | FAIL | 212 / 1024 | 2 |
+| 16 | FAIL | 465 / 2048 | 2 |
+| 32 | FAIL | 827 / 4096 | 4 |
+| 64 | FAIL | 1890 / 8192 | 4 |
+| 128 | FAIL | 2717 / 16384 | 2 |
+| 256 | FAIL | 5488 / 32768 | 2 |
+| 512 | FAIL | 10461 / 65536 | 2 |
+| 1024 | FAIL | 20717 / 131072 | 2 |
+| 2048 | FAIL | 30081 / 262144 | 2 |
+| 4096 | FAIL | 31774 / 524288 | 2 |
+
+The finalized report SHA256 is
+`67803d61ce77601dac7bf509bd111ca5ae3b048cee3dbaafc5d4ab6443025476`.
+It is a historical FAIL under the former `required` baseline policy, not a
+validator PASS for this policy change. Its captured action evidence and dispatch
+selections must remain available in the experiment artifacts.
+
+The old pinned image contains the same dispatch configurations for these 13
+BF16-output cases. Source/configuration inspection alone does not establish
+identical GPU outputs or an image regression; paired old/new GPU investigation
+is separate evidence. No other runtime is qualified by this observation.
+
+During future runs, correctness still emits the actual per-case PASS/FAIL.
+Baseline timing replays the captured invocation after input refill, checks input
+immutability and output contracts, and records its full numerical comparison.
+Only completed finite numerical mismatches may be diagnostic. Crashes, missing
+cases, compile errors, dependency failures, invalid outputs and stale cached
+answers remain failures. Candidate correctness and replay have no diagnostic
+exception. Fresh full task validation and actual candidate feasibility evidence
+are still required; a runnable production baseline alone establishes neither.
