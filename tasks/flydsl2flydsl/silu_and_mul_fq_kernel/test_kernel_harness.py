@@ -10,13 +10,11 @@ Unlike the old compile-smoke stub (which timed kernel *compilation*), this
 harness compiles each config ONCE and then times kernel *execution* with the
 graph-first benchmark helper over `iters`.
 
-Correctness oracle = SELF-REFERENCE: the PRISTINE original kernel in this task
-dir (kernel.py) is loaded as the oracle, and the candidate kernel from
-the candidate path declared in config.yaml is run on identical inputs.
-The candidate's outputs (out_buf + out_scale_sorted) must match the oracle's
-exactly. Deriving a full torch SiLU+mul+fp4 reference is impractical, so
-self-reference is the accepted way to validate that an optimization preserves
-numerics.
+The correctness oracle computes SiLU times the up projection independently in
+PyTorch, then applies the task's MXFP4 reference codec. The selected baseline or
+candidate produces packed output and block scales. E8M0 scales must match
+exactly; E2M1 grid differences are limited by the original RNE-tie checks and
+one-percent mismatch-fraction bound. The oracle never calls the FlyDSL kernel.
 
 Speedup is a *display-only* relative number: candidate kernel latency vs a
 simple torch SiLU+mul reference (silu(gate) * up) latency, reported as geomean.

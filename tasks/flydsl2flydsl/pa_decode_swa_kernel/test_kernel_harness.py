@@ -11,12 +11,11 @@ Pipeline (per the kernel's intended usage, both stages run):
   stage 1: launch_pa_decode_sw        -> exp_sums / max_logits / tmp_out
   stage 2: launch_pa_decode_sw_reduce -> final output
 
-Oracle: SELF-REFERENCE. We load the PRISTINE kernel from this task dir as the
-oracle and the candidate kernel declared by this workspace config.yaml. The
-two kernels are fed identical inputs and their final outputs must match
-tightly. A full torch sliding-window paged-attention reference is impractical
-for this packed-FP8 layout, so self-reference vs the original FlyDSL kernel is
-the accepted correctness oracle.
+The correctness oracle dequantizes the actual stored FP8 KV cache and computes
+sliding-window grouped-query attention independently in PyTorch FP32. Both
+baseline and candidate are compared against that reference with ATOL=3e-2.
+The task-local runner selects the frozen initial baseline or the candidate;
+neither implementation supplies its own expected output.
 """
 import argparse
 import importlib.util
@@ -436,7 +435,7 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
             }
             status = f"  [FAIL: {str(ex)[:60]}]"
 
-        speedup = 1.0  # no torch SWA paged-attention reference; report latency
+        speedup = 1.0  # The correctness oracle is not timed; report latency.
         if kernel_ms == kernel_ms:  # not nan
             latencies.append(kernel_ms)
             speedups.append(speedup)
@@ -565,7 +564,7 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
             }
             status = f"  [FAIL: {str(ex)[:60]}]"
 
-        speedup = 1.0  # no torch SWA paged-attention reference; report latency
+        speedup = 1.0  # The correctness oracle is not timed; report latency.
         if kernel_ms == kernel_ms:  # not nan
             latencies.append(kernel_ms)
             speedups.append(speedup)
