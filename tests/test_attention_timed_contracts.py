@@ -13,6 +13,7 @@ torch = pytest.importorskip("torch")
 ROOT = Path(__file__).resolve().parents[1]
 MERGE = ROOT / "tasks/triton2triton/vllm/triton_merge_attn_states"
 NONE_DIAG = ROOT / "tasks/triton2triton/vllm/triton_lightning_attn_none_diag"
+KV = ROOT / "tasks/triton2triton/vllm/triton_lightning_attn_kv_parallel"
 
 
 def load(path):
@@ -272,3 +273,112 @@ def test_none_diag_adapter_and_original_work_preserved(monkeypatch):
     }
     for relative, digest in expected.items():
         assert hashlib.sha256((NONE_DIAG / relative).read_bytes()).hexdigest() == digest
+
+
+def kv_cpu(k, v, slope, n, BLOCK=256, CBLOCK=64):
+    values = []
+    for start in range(0, n, BLOCK):
+        end = min(start+BLOCK, n)
+        age = torch.arange(end-start-1, -1, -1, dtype=torch.float64)
+        decay = (-slope.reshape(1, -1, 1, 1).double() * age.reshape(1, 1, -1, 1)).exp()
+        values.append((k[:, :, start:end].double()*decay).transpose(-1, -2) @ v[:, :, start:end].double())
+    return torch.stack(values, dim=2).float()
+
+
+def test_kv_independent_partial_block_known_answer():
+    h = load(KV / "scripts/task_runner.py")
+    checks = load(KV / "_arena_checks.py")
+    k = torch.ones(1, 1, 5, 2, dtype=torch.float16)
+    v = torch.ones_like(k)
+    slope = torch.tensor([math.log(2)]).reshape(1, 1, 1, 1)
+    wanted = torch.tensor([1.875, 1.0]).reshape(1, 1, 2, 1, 1).expand(1, 1, 2, 2, 2)
+    torch.testing.assert_close(checks.reference(h, (k, v, slope), 4, 2), wanted)
+    torch.testing.assert_close(kv_cpu(k, v, slope, 5, 4, 2), wanted)
+
+
+@pytest.mark.parametrize("fault", ["none", "wrong", "dtype", "shape", "nonfinite", "device",
+                                   "mutate_k", "mutate_v", "mutate_s", "first_block_only", "ignore_tail"])
+def test_kv_actual_correctness_second_block_and_partial_subblock(monkeypatch, fault):
+    cpu_inputs(monkeypatch)
+    h = load(KV / "scripts/task_runner.py")
+    checks = load(KV / "_arena_checks.py")
+    calls = []
+    def candidate(k, v, s, n, BLOCK=256, CBLOCK=64):
+        calls.append(tuple(k.shape))
+        if fault == "ignore_tail" and n % CBLOCK:
+            v = v.clone(); v[:, :, -1].zero_()
+        out = kv_cpu(k, v, s, n, BLOCK, CBLOCK)
+        if fault == "wrong": out.zero_()
+        if fault == "dtype": out = out.half()
+        if fault == "shape": out = out[..., :1]
+        if fault == "nonfinite": out.fill_(torch.inf)
+        if fault == "device": out = out.to("meta")
+        if fault == "mutate_k": k.zero_()
+        if fault == "mutate_v": v.zero_()
+        if fault == "mutate_s": s.zero_()
+        if fault == "first_block_only" and n > BLOCK: out[:, :, 1:].zero_()
+        return out
+    module = SimpleNamespace(lightning_attn_kv_parallel_forward=candidate)
+    h.load_module = lambda: module
+    checks.install(h)
+    ok, reason = h.run_correctness()
+    assert ok is (fault == "none"), reason
+    if fault == "none":
+        assert [s for s in calls if s[2] != 273] == [tuple(s[:4]) for s in h.TEST_SHAPES]
+        assert calls.count((1, 2, 273, 32)) == 1
+    assert module.lightning_attn_kv_parallel_forward is candidate
+
+
+@pytest.mark.parametrize("fault", ["none", "wrong_timed", "wrong_replay", "stale", "no_write",
+                                   "mutate_timed", "mutate_replay", "raise_replay"])
+def test_kv_actual_timed_buffer_and_replay(monkeypatch, fault):
+    cpu_inputs(monkeypatch)
+    h = load(KV / "scripts/task_runner.py")
+    checks = load(KV / "_arena_checks.py")
+    h._TimedRun = load(ROOT / "src/tools/perf/aka_benchmark.py").TimedRun
+    module = SimpleNamespace(lightning_attn_kv_parallel_forward=kv_cpu)
+    h.load_module = lambda: module
+    inputs, originals, options = [], [], []
+    def benchmark(measured, *, timed_run, **kwargs):
+        inner = inspect.getclosurevars(measured).nonlocals["fn"]
+        state = inspect.getclosurevars(inner).nonlocals
+        values = tuple(state[k] for k in ("k", "v", "s"))
+        inputs.append(values); originals.append(checks.snapshots(values)); options.append(kwargs)
+        out = measured(); cache = out.clone()
+        if fault == "wrong_timed": out.zero_()
+        if fault == "mutate_timed": values[0].zero_()
+        def replay():
+            if fault == "raise_replay": raise RuntimeError("replay failed")
+            if fault == "stale": out.copy_(cache)
+            elif fault != "no_write": out.copy_(measured())
+            if fault == "wrong_replay": out.zero_()
+            if fault == "mutate_replay": values[1].zero_()
+            return out
+        timed_run._bind(replay, out)
+        return .125, {"benchmark_method": "cuda_graph"}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == 5
+    assert options == [dict(warmup=10, repetition=100)] * 5
+    for index, row in enumerate(rows):
+        assert row["test_case_id"] == f"perf{index + 1}"
+        assert row["execution_time_ms"] == (.125 if fault == "none" else -1.)
+        if fault == "none": assert row["perturbed_input_replay_checked"]
+    for values, pristine in zip(inputs, originals): checks.unchanged(values, pristine)
+    assert module.lightning_attn_kv_parallel_forward is kv_cpu
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_kv_adapter_and_original_work_preserved(monkeypatch):
+    monkeypatch.chdir(ROOT)
+    h = load(KV / "_arena_eval.py").load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == "_lightning_kv_checks"
+    expected = {
+        "scripts/task_runner.py": "6a3b11b98cae8002d509a4c7b7d84711094a4691c569533f362f3d4747be3ec2",
+        "source/triton_lightning_attn_kv_parallel.py": "73c67cf829e439ac3bdc8b2f97126956003c0112aaed5ca597b1ae5a9905d25f",
+        "workloads.json": "a54e4e6ffe7e776150661bb71c733f5a2937d135cb50b07dd051e10c49b18d04",
+        "config.yaml": "365e07c3015c45296f0a5c515b3eb601f99264bab259652516a6d56e02b934fa",
+    }
+    for relative, digest in expected.items():
+        assert hashlib.sha256((KV / relative).read_bytes()).hexdigest() == digest

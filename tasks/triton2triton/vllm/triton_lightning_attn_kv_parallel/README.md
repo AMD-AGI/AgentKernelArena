@@ -33,3 +33,13 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+Protected evaluation validates the complete FP32 output tensor and preserves
+the original atol=rtol=1e-2. An additional unscored 273-token case covers a second
+main block, a partial sub-block and four-dimensional slopes, checking every
+block against the independent CPU formula. All five original scored cases,
+seeds, inputs, wrapper calls, 10 warmups and 100 samples remain unchanged.
+
+The actual timed output is checked. A replay of the same measured invocation
+after changing key/value/slope inputs and poisoning the output must also match
+the reference. Read-only inputs are checked and restored even on failure; these
+checks execute outside timing.
