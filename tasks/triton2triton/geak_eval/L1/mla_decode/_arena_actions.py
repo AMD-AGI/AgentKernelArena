@@ -13,12 +13,19 @@ def validate():
 
 def correctness(require):
     original_indices = h._pick(h.ALL_CONFIGS, 16)
-    require(h.mode_correctness(original_indices), 'none', len(original_indices))
+    outcomes = h.mode_correctness(original_indices, collect=True)
     additional = [i for i in range(len(h.ALL_CONFIGS)) if i not in original_indices]
     if additional:
-        require(h.mode_correctness(additional), 'none', len(additional))
+        outcomes.extend(h.mode_correctness(additional, collect=True))
 
-    require(h.run_contract_controls(), 'none', len(h.CONTROL_CASES))
+    control = {'test_case_id': h.CONTROL_CASES[0]['test_case_id'], 'status': 'PASS'}
+    try:
+        require(h.run_contract_controls(), 'none', len(h.CONTROL_CASES))
+    except Exception as exc:
+        control.update(status='FAIL', reason=f'{type(exc).__name__}: {exc}',
+                       metadata={'failure_kind': 'execution_failure'})
+    outcomes.append(control)
+    return outcomes
 
 
 def performance():

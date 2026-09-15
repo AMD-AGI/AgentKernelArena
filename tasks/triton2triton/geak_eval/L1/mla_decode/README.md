@@ -30,6 +30,10 @@ one role and action. The runner emits one `ARENA_EVAL_RESULT=` envelope using
 benchmark cases then receive the same numerical/output checks. Distinct original
 correctness-only cases remain in the manifest; repeated performance configurations
 keep their separate indices. No skipped/missing case or incomplete action passes.
+Correctness records each executed case separately, including after an earlier
+case fails. Setup/import failures produce a failing action with no invented
+case outcomes; only completed numerical comparisons can report
+`numerical_mismatch`.
 
 Compilation retains the original syntax check. Numerical checks actually execute
 the candidate and compare with the protected references; original numerical tolerances are retained, with the full-output checks below. Full benchmark input order, seeds, allocation/reset behavior,
@@ -41,7 +45,7 @@ initial implementation's measured times for scoring. No GPU qualification is
 implied by the CPU migration checks.
 
 Do not edit the materialized dependencies, `runtime-dependencies.json`,
-`_aiter_dependency.py`, `test_kernel_harness.py`, `_timed_contract.py`, `_arena_*.py`, `workloads.json`, or generated
+`_aiter_dependency.py`, `_rounding_reference.py`, `test_kernel_harness.py`, `_timed_contract.py`, `_arena_*.py`, `workloads.json`, or generated
 `_aka_benchmark.py`. The runtime must materialize the canonical benchmark helper
 next to the original harness even though the public runner is `_arena_eval.py`.
 Unsupported hardware or missing dependencies return a failing envelope; use a
@@ -69,9 +73,23 @@ The scored domain is one BF16 query per sequence, page size one, two KV splits,
 declared materialized AITER **Triton** primitives; there is no HIP assembly stage in this
 local source. The fixed image's actual AITER revision must be qualified.
 
-The original elementwise `atol=rtol=0.01`, at most 5% mismatching-elements policy
-is retained as a legacy diagnostic, and **all elements must additionally pass**
-`atol=rtol=0.01`; the 5% allowance cannot exempt any bad coordinate. Every output must have the expected shape/dtype/device,
+The original elementwise `atol=rtol=0.01`, at most 5% mismatching-elements gate
+against the independent FP32 mathematical reference remains mandatory. In
+addition, **every coordinate must lie within an independently computed BF16
+rounding interval**, with the same 0.01 absolute/relative comparison tolerance.
+The existing intermediate buffer stores two partial vectors and their log sums
+in BF16. Rounding those log sums changes their softmax mixing weights; near
+cancellation, an otherwise valid result can exceed 0.01 from the FP32 ideal.
+A strict new all-element comparison to the FP32 ideal alone would reject the
+unchanged initial implementation on original cases.
+
+`_rounding_reference.py` derives the interval from pristine inputs: BF16 unit
+roundoff bounds the probability/V product and partial-vector stores, and
+monotonic sigmoid bounds the mixing weights after log-sum rounding. The final
+BF16 store is included. It calls no candidate/baseline implementation and reads
+no candidate intermediate values. This bounds every coordinate without giving
+5% of coordinates an arbitrary-error exemption; a more accurate implementation
+matching the FP32 ideal is also valid. Every output must have the expected shape/dtype/device,
 be finite, and lie in its value-coordinate convex range (with the same 0.01
 rounding allowance). The legacy 5% policy is not permission for NaNs/infinities
 or arbitrary unbounded values. A separate, unscored zero-query control checks

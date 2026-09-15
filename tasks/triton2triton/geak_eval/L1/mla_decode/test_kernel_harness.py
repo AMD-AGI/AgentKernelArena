@@ -13,6 +13,7 @@ from pathlib import Path
 import torch
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
 from _timed_contract import checked_call, checked_benchmark, assert_output_contract
+from _rounding_reference import NumericalMismatch, attention_rounding_bounds, check_rounding_bounds
 
 def benchmark_cuda_graph_or_events(*args, **kwargs):
     samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
@@ -185,11 +186,13 @@ def _mla_contract(inputs):
         values = saved['v_input'][saved['kv_indices'].long(), 0].float().view(batch, -1, KV_LORA_RANK)
         bounds['lower'] = values.amin(dim=1).unsqueeze(1)
         bounds['upper'] = values.amax(dim=1).unsqueeze(1)
+        bounds['rounding'] = attention_rounding_bounds(private)
         return run_ref(private)
     def check(actual, expected):
         passed, ratio, cosine = check_correctness_val(expected, actual)
-        assert passed, ('MLA numerical mismatch', ratio, cosine)
-        torch.testing.assert_close(actual, expected, atol=1e-2, rtol=1e-2)
+        if not passed:
+            raise NumericalMismatch(f'MLA numerical mismatch: ratio={ratio}, cosine={cosine}')
+        check_rounding_bounds(actual, expected, *bounds['rounding'])
         # Each output coordinate is a convex combination of V coordinates.
         # The original absolute tolerance accounts for output rounding.
         assert (actual.float() >= bounds['lower'] - 1e-2).all(), 'Attention below value range'
@@ -236,13 +239,15 @@ def config_str(cfg):
     return "ctx={} bs={} nhead={}".format(ctx_len, batch_size, nhead)
 
 
-def mode_correctness(indices):
+def mode_correctness(indices, *, collect=False):
     print("Running correctness check on {} configs...".format(len(indices)))
     all_pass = True
+    outcomes = []
     for idx in indices:
         cfg = ALL_CONFIGS[idx]
         ctx_len, batch_size, nhead = cfg
         label = config_str(cfg)
+        outcome = {'test_case_id': f'case/{idx}', 'status': 'PASS'}
         try:
             inputs = setup_inputs(ctx_len, batch_size, nhead)
             readonly, reference, check = _mla_contract(inputs)
@@ -257,13 +262,21 @@ def mode_correctness(indices):
                 print("  [{}] {}  err_ratio={:.4f} cos_diff={:.2e}  FAIL".format(
                     idx, label, err_ratio, cos_diff))
                 all_pass = False
+                outcome.update(status='FAIL', reason=f'MLA numerical mismatch: ratio={err_ratio}',
+                               metadata={'failure_kind': 'numerical_mismatch'})
         except Exception as e:
             print("  [{}] {}  ERROR: {}".format(idx, label, e))
             all_pass = False
+            outcome.update(status='FAIL', reason=f'{type(e).__name__}: {e}',
+                           metadata={'failure_kind': 'numerical_mismatch' if isinstance(e, NumericalMismatch)
+                                     else 'execution_failure'})
         finally:
+            outcomes.append(outcome)
             torch.cuda.empty_cache()
 
     print("GEAK_SHAPES_USED={}".format(indices))
+    if collect:
+        return outcomes
     if not all_pass:
         print("CORRECTNESS FAILED")
         sys.exit(1)

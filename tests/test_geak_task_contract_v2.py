@@ -317,16 +317,42 @@ class MLACompleteContractTests(unittest.TestCase):
         path = TASKS / 'L1/mla_decode/test_kernel_harness.py'
         reference = function(path, 'run_ref')
         legacy = function(path, 'check_correctness_val', assert_output_contract=CONTRACT.assert_output_contract)
-        build = function(path, '_mla_contract', KV_LORA_RANK=2, run_ref=reference, check_correctness_val=legacy)
+        rounding = load_file('_geak_mla_rounding', TASKS / 'L1/mla_decode/_rounding_reference.py')
+        build = function(path, '_mla_contract', KV_LORA_RANK=2, run_ref=reference, check_correctness_val=legacy,
+                         attention_rounding_bounds=rounding.attention_rounding_bounds,
+                         check_rounding_bounds=rounding.check_rounding_bounds)
         inputs = dict(q=torch.zeros(1, 50, 3), k_input=torch.zeros(3, 1, 3),
                       v_input=torch.ones(3, 1, 2), kv_indices=torch.arange(3),
-                      output=torch.empty(1, 50, 2), sm_scale=.5)
+                      output=torch.empty(1, 50, 2), sm_scale=.5, num_kv_splits=2,
+                      attn_logits=torch.empty(1, 50, 2, 3, dtype=torch.bfloat16))
         readonly, ref, check = build(inputs)
         expected = ref(readonly)
         wrong = expected.clone(); wrong.flatten()[0] -= .1
         self.assertTrue(legacy(expected, wrong)[0])
         with self.assertRaises(AssertionError):
             check(wrong, expected)
+
+    def test_bf16_partition_rounding_is_enclosed_without_excluding_ideal(self):
+        rounding = load_file('_geak_mla_rounding_samples', TASKS / 'L1/mla_decode/_rounding_reference.py')
+        generator = torch.Generator().manual_seed(317)
+        means = torch.randn(100, 2, 7, generator=generator)
+        absolute_means = means.abs() + .25
+        log_sums = torch.randn(100, 2, generator=generator)*3
+        lower, upper = rounding.split_rounding_bounds(means, absolute_means, log_sums)
+        ideal = (means*torch.softmax(log_sums, dim=-1).unsqueeze(-1)).sum(-2)
+        # Sample actual BF16 stores and both extremal probability-dot errors.
+        for sign in (-1, 0, 1):
+            partials = (means + sign*2**-8*absolute_means).bfloat16().float()
+            weights = torch.softmax(log_sums.bfloat16().float(), dim=-1)
+            actual = (partials*weights.unsqueeze(-1)).sum(-2).bfloat16().float()
+            self.assertTrue((actual >= lower).all())
+            self.assertTrue((actual <= upper).all())
+        rounding.check_rounding_bounds(ideal, ideal, lower, upper)
+        for index in (0, ideal.numel()-1):
+            bad = ideal.clone()
+            bad.flatten()[index] = upper.flatten()[index] + .1 + .01*ideal.flatten()[index].abs()
+            with self.assertRaisesRegex(AssertionError, 'rounding bound'):
+                rounding.check_rounding_bounds(bad, ideal, lower, upper)
 
     def test_dependency_identity_repeatability_and_collision(self):
         import hashlib
@@ -360,6 +386,37 @@ class MLACompleteContractTests(unittest.TestCase):
                 module.bind_dependency()
                 self.assertIs(before, sys.modules['aiter.ops.triton'])
                 self.assertEqual(before.__path__, [str(dependency)])
+
+    def test_failure_reports_only_completed_case_outcomes_and_honest_kind(self):
+        import json
+        import tempfile
+        from types import SimpleNamespace
+        from src.task_protocol import parse_command_result
+        runner = load_file('_geak_mla_runner', TASKS / 'L1/mla_decode/_arena_eval.py')
+        cases = [{'test_case_id': f'case/{i}', 'checks': ['correctness'], 'params': {}} for i in range(2)]
+        outcomes = [{'test_case_id': 'case/0', 'status': 'PASS'},
+                    {'test_case_id': 'case/1', 'status': 'FAIL', 'reason': 'outside bound',
+                     'metadata': {'failure_kind': 'numerical_mismatch'}}]
+        actions = SimpleNamespace(inputs=lambda: {}, validate=lambda: None,
+                                  correctness=lambda require: outcomes)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'workloads.json').write_text(json.dumps({'cases': cases, 'input_tables': {}}))
+            with patch.object(runner, 'ROOT', root), patch.object(runner, 'load_actions', return_value=actions), \
+                    patch.object(runner, 'inspect_candidate', return_value='implemented'):
+                result = runner.evaluate('baseline', 'correctness')
+                self.assertEqual([r['status'] for r in result['cases']], ['PASS', 'FAIL'])
+                self.assertEqual(result['failure_kind'], 'numerical_mismatch')
+                parse_command_result('ARENA_EVAL_RESULT='+json.dumps(result), role='baseline',
+                                     action='correctness', returncode=1)
+                def fail_before_results(require):
+                    raise ImportError('missing runtime implementation')
+                actions.correctness = fail_before_results
+                result = runner.evaluate('baseline', 'correctness')
+                self.assertEqual(result['cases'], [])
+                self.assertEqual(result['failure_kind'], 'execution_failure')
+                parse_command_result('ARENA_EVAL_RESULT='+json.dumps(result), role='baseline',
+                                     action='correctness', returncode=1)
 
 
 if __name__ == '__main__':

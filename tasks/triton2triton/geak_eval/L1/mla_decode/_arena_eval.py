@@ -104,6 +104,7 @@ def capture_performance(actions, data):
 def evaluate(role, action):
     result = {'protocol': 'arena-eval-v1', 'role': role, 'action': action, 'status': 'FAIL', 'cases': []}
     log = io.StringIO()
+    outcomes = None
     try:
         data = json.loads((ROOT / 'workloads.json').read_text())
         if action != 'compile':
@@ -122,7 +123,7 @@ def evaluate(role, action):
                     raise ValueError('Harness inputs differ from the independent protected manifest')
                 actions.validate()
                 if action == 'correctness':
-                    actions.correctness(require_success)
+                    outcomes = actions.correctness(require_success)
                 elif action == 'performance':
                     measurements = capture_performance(actions, data)
                     for row, (ms, metadata) in zip(result['cases'], measurements):
@@ -130,6 +131,24 @@ def evaluate(role, action):
                                    metadata={'device_timing': metadata})
                 elif action != 'validate-task':
                     raise ValueError('Unknown task action')
+            if outcomes is not None:
+                by_id = {row['test_case_id']: row for row in outcomes}
+                if len(by_id) != len(outcomes) or set(by_id) != {r['test_case_id'] for r in result['cases']}:
+                    raise ValueError('Incomplete or duplicate correctness outcomes')
+                for row in result['cases']:
+                    outcome = by_id[row['test_case_id']]
+                    if outcome['status'] not in ('PASS', 'FAIL'):
+                        raise ValueError('Unknown correctness outcome')
+                    row.pop('reason', None)
+                    row.update(outcome)
+                failed = [row for row in result['cases'] if row['status'] == 'FAIL']
+                if failed:
+                    numerical = all(row.get('metadata', {}).get('failure_kind') == 'numerical_mismatch'
+                                    for row in failed)
+                    result.update(reason=f'{len(failed)} completed correctness cases failed',
+                                  failure_kind='numerical_mismatch' if numerical else 'execution_failure',
+                                  metadata={'harness_output_tail': log.getvalue()[-4000:]})
+                    return result
             for row in result['cases']:
                 row['status'] = 'PASS'
                 row.pop('reason', None)
@@ -140,8 +159,9 @@ def evaluate(role, action):
         # SystemExit, missing dependencies, incorrect shapes and skipped cases
         # are never mislabeled as a numerical-only baseline diagnostic.
         result.update(status='FAIL', reason=f'{type(exc).__name__}: {exc}', failure_kind='execution_failure')
-        for row in result['cases']:
-            row.update(status='FAIL', reason='The complete task action did not pass')
+        # A setup/import/collection failure proves no per-case completion.
+        # Report an action failure without inventing outcomes for unrun cases.
+        result['cases'] = []
         if log.getvalue():
             result['metadata'] = {'harness_output_tail': log.getvalue()[-4000:]}
     return result
