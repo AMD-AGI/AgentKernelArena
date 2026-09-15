@@ -943,19 +943,25 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
         extra = after[start:end].rstrip('\n') + '\n'
         anchor = b'    torch.testing.assert_close(ref_out, output, atol=atol, rtol=rtol, equal_nan=scale)\n'
         expected_source = expected_source.replace(anchor, anchor + extra.encode())
-    if task.name == 'test_block_copy':
-        # The reviewed correctness body replaces unsupported-argument skips
-        # with real compiler rejection checks. Preserve every other source
-        # byte, including kernel, parametrization, RNG helper and timing.
-        # test_block_copy_contract_v2.py exercises all 90 rows and pins the
-        # original kernel/performance/manifest identities independently.
+    if task.name in {'test_block_copy', 'test_load_reduce'}:
+        # Reviewed correctness bodies add real compiler rejection (block copy)
+        # or an independent pre-call input snapshot (load reduction). Preserve
+        # every other byte, including kernels, parametrization and timing.
+        # Dedicated contract tests exercise the real hooks and pin the original
+        # kernel/performance/manifest identities independently.
         before, after = expected_source.decode(), source.read_text()
         def correctness_body(text):
             return next(node for node in ast.parse(text).body
-                        if isinstance(node, ast.FunctionDef) and node.name == 'test_block_copy')
+                        if isinstance(node, ast.FunctionDef) and node.name == task.name)
         expected_source = before.replace(
             ast.get_source_segment(before, correctness_body(before)),
             ast.get_source_segment(after, correctness_body(after)), 1).encode()
+        if task.name == 'test_load_reduce':
+            # Its reviewed correctness rewrite also adds one separating blank
+            # line before the unchanged performance wrapper.
+            anchor = b'\n\n\n# --- Python wrapper for the kernel for benchmarking ---'
+            assert expected_source.count(anchor) == 1
+            expected_source = expected_source.replace(anchor, b'\n' + anchor, 1)
     if task.name == 'test_randn':
         # Only the protected exact-oracle hook is appended to the original
         # statistical test. Its range/KS gates, decorators, kernels and timing
@@ -1233,9 +1239,9 @@ def test_add_canonical_samples_observe_exact_replay_and_reject_wrong_output(monk
     assert benchmark.op_callable is original and len(calls)==1
 
 
-# The add, block-copy and RNG adapters use actual TimedRun outputs; their
-# dedicated replay tests cover event metadata and rejected fallback paths.
-@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_add_kernel', 'test_block_copy', 'test_randn'}], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
+# These adapters use actual TimedRun outputs; their dedicated contract modules
+# exercise event metadata, changed inputs and rejected fallback paths.
+@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_add_kernel', 'test_block_copy', 'test_randn', 'test_load_reduce'}], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
 def test_rocm_timing_evidence_retains_canonical_fallback_reason(monkeypatch, path):
     adapter = module_at(path.parent/'_arena_eval.py', monkeypatch)
     expected = torch.tensor([2.])

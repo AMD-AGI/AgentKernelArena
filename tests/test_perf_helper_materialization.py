@@ -285,12 +285,12 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     assert config_count == 438
     assert problems == []
     assert sum(counts.values()) == config_count
-    # Both ROCmBench add tasks now call the canonical sample API directly so
-    # their actual measured output buffers can be validated and replayed.
+    # Both copies of add, block-copy, RNG and load-reduce now call the canonical
+    # sample API directly to validate and replay their actual measured outputs.
     assert counts == {
-        "canonical_python": 238,
+        "canonical_python": 244,
         "native_graph_driver": 2,
-        "rocmbench_adapter": 59,
+        "rocmbench_adapter": 53,
         "vllm_adapter": 139,
     }
 

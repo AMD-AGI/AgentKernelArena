@@ -101,4 +101,19 @@ def test_pairing_repair_preserves_original_work_and_sampling(name, function):
                 "gemm_a8w8_kernel", "gemm_a8w8_per_token_scale_kernel",
                 "gemm_a8wfp4_kernel", "gemm_afp4wfp4_kernel", "gemm_afp8wfp8_kernel"}:
         fn = RemoveMeasuredOutputControls().visit(fn)
+    if name == "gemm_a8w8_kernel":
+        # The separately qualified baseline repair fixes AITER's split policy.
+        # Normalize only this exact option; all other original benchmark work
+        # remains protected by the historical AST digest below.
+        calls = [node for node in ast.walk(fn) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Attribute)
+                 and isinstance(node.func.value, ast.Name)
+                 and node.func.value.id == "aiter" and node.func.attr == "gemm_a8w8"]
+        assert len(calls) == 1
+        assert len(calls[0].keywords) == 1
+        option = calls[0].keywords[0]
+        assert option.arg == "splitK"
+        assert isinstance(option.value, ast.Constant)
+        assert type(option.value.value) is int and option.value.value == 0
+        calls[0].keywords = []
     assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == BEFORE[name][function]
