@@ -1,12 +1,6 @@
 # mla_decode
 
-Optimize the MLA decode attention Triton kernel for AMD MI300X GPU. The kernel implements grouped multi-latent attention with fused RoPE for decode-phase inference.
-
-IMPORTANT ARCHITECTURE NOTE:
-- This kernel has two stages: stage1 (HIP ASM) and stage2 (Triton).
-- The stage1 kernel is hand-written HIP assembly. DO NOT attempt to modify it — it is unreachable from Triton and cannot be improved through this optimization.
-- Focus exclusively on optimizing the stage2 Triton kernel functions (_decode_grouped_att_m_fwd_rope, _decode_softmax_reducev_fwd).
-- The ASM stage1 handles initial QK attention; stage2 handles softmax reduction and value accumulation — optimize stage2's memory access patterns, tiling, and reduction strategy.
+Optimize the declared MLA decode launch functions for the configured AMD GPU.
 
 ## Candidate and baseline contract
 
@@ -38,8 +32,7 @@ correctness-only cases remain in the manifest; repeated performance configuratio
 keep their separate indices. No skipped/missing case or incomplete action passes.
 
 Compilation retains the original syntax check. Numerical checks actually execute
-the candidate and compare with the protected references; tolerances and output
-checks are unchanged. Full benchmark input order, seeds, allocation/reset behavior,
+the candidate and compare with the protected references; original numerical tolerances are retained, with the full-output checks below. Full benchmark input order, seeds, allocation/reset behavior,
 warmups, iterations and the canonical helper's median calculation remain unchanged.
 The adapter collects fresh device measurements directly from the benchmark calls;
 old `build/performance_report.json` files and log text cannot supply evidence.
@@ -47,7 +40,7 @@ The original optional reference timings remain diagnostic; Arena uses the frozen
 initial implementation's measured times for scoring. No GPU qualification is
 implied by the CPU migration checks.
 
-Do not edit `test_kernel_harness.py`, `_arena_*.py`, `workloads.json`, or generated
+Do not edit `test_kernel_harness.py`, `_timed_contract.py`, `_arena_*.py`, `workloads.json`, or generated
 `_aka_benchmark.py`. The runtime must materialize the canonical benchmark helper
 next to the original harness even though the public runner is `_arena_eval.py`.
 Unsupported hardware or missing dependencies return a failing envelope; use a
@@ -59,3 +52,29 @@ The original task recorded AITER source revision
 and logger. The runner does not claim that the image package matches this commit
 or silently clone/install another copy. Image qualification must record its
 actual AITER revision and verify compatibility with this source contract.
+
+## Complete output and measured invocation checks
+
+The scored domain is one BF16 query per sequence, page size one, two KV splits,
+`use_rope=False`, and `logit_cap=0`. Both declared Python launch functions call
+installed AITER **Triton** primitives; there is no HIP assembly stage in this
+local source. The fixed image's actual AITER revision must be qualified.
+
+The original elementwise `atol=rtol=0.01`, at most 5% mismatching-elements policy
+is retained. Every output must additionally have the expected shape/dtype/device,
+be finite, and lie in its value-coordinate convex range (with the same 0.01
+rounding allowance). The legacy 5% policy is not permission for NaNs/infinities
+or arbitrary unbounded values. A separate, unscored zero-query control checks
+all coordinates against the known uniform-attention mean. There are 129
+correctness cases and the unchanged 128 scored cases. Optional fused RoPE is not
+part of this task's declared workload; its broader library interface is not an
+unmeasured score claim.
+
+Correctness uses pristine, independent oracle inputs prepared before the candidate.
+Performance retains the original helper, warmups, repetitions, allocation and
+scored case order. After timing, the actual `TimedRun.outputs` must match that
+oracle; the same captured invocation is then replayed after changing inputs in
+place and poisoning writable outputs. Its complete outputs must match a newly
+computed private oracle. Every read-only input is checked byte-for-byte and
+restored in `finally`, including failure paths. These checks run outside timing
+and identically for the frozen initial candidate and submitted candidate.

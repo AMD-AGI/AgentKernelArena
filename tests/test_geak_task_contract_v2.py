@@ -144,3 +144,66 @@ class TopKContractTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class AdditionalOperatorContractTests(unittest.TestCase):
+    def test_mla_nonfinite_tail_cannot_use_five_percent_allowance(self):
+        check = function(TASKS / 'L1/mla_decode/test_kernel_harness.py', 'check_correctness_val',
+                         assert_output_contract=CONTRACT.assert_output_contract)
+        ref = torch.ones(1, 16, 512)
+        bad = ref.clone(); bad.flatten()[0] = float('nan')
+        with self.assertRaisesRegex(AssertionError, 'Nonfinite'):
+            check(ref, bad)
+
+    def test_mla_original_finite_error_ratio_policy_retained(self):
+        check = function(TASKS / 'L1/mla_decode/test_kernel_harness.py', 'check_correctness_val',
+                         assert_output_contract=CONTRACT.assert_output_contract)
+        ref = torch.ones(100)
+        bad = ref.clone(); bad[:4] += .1
+        self.assertTrue(check(ref, bad)[0])
+        bad[4:6] += .1
+        self.assertFalse(check(ref, bad)[0])
+
+    def test_mla_reference_zero_query_known_average(self):
+        ref = function(TASKS / 'L1/mla_decode/test_kernel_harness.py', 'run_ref')
+        inputs = dict(q=torch.zeros(1, 2, 3), k_input=torch.randn(3, 1, 3),
+                      v_input=torch.tensor([[[1., 3.]], [[2., 6.]], [[3., 9.]]]),
+                      kv_indices=torch.arange(3), output=torch.empty(1, 2, 2), sm_scale=.5)
+        torch.testing.assert_close(ref(inputs), torch.tensor([[[2., 6.], [2., 6.]]]))
+
+    def test_rms_correct_gradient_does_not_hide_wrong_forward(self):
+        check = function(TASKS / 'L2/fast_rms_layernorm/test_kernel_harness.py', '_check_rms_outputs',
+                         assert_output_contract=CONTRACT.assert_output_contract)
+        with self.assertRaises(AssertionError):
+            check((torch.zeros(3), torch.ones(3)), (torch.ones(3), torch.ones(3)))
+
+    def test_routing_independent_known_selection_and_leftmost_tie(self):
+        ref = function(TASKS / 'L1/moe_routing_sigmoid_top1/test_kernel_harness.py', '_routing_reference')
+        x = torch.tensor([[1., 0.], [0., 0.]], dtype=torch.bfloat16)
+        w = torch.tensor([[0., 1., 2.], [0., 0., 0.]], dtype=torch.bfloat16)
+        ids, weights = ref({'x': x, 'w': w}, shared=False)
+        self.assertEqual(ids.tolist(), [[2], [0]])
+        torch.testing.assert_close(weights, torch.sigmoid(torch.tensor([[2.], [0.]])))
+
+    def test_mxfp4_packed_sign_perturbation_is_true_negation(self):
+        decode = function(TASKS / 'L3/fused_moe_mxfp4/test_kernel_harness.py', '_mxfp4_to_f32',
+                          _MXFP4_LUT=[0., .5, 1., 1.5, 2., 3., 4., 6., -0., -.5, -1., -1.5, -2., -3., -4., -6.])
+        packed = torch.arange(256, dtype=torch.uint8).reshape(16, 16)
+        torch.testing.assert_close(decode(packed.bitwise_xor(0x88)), -decode(packed), atol=0, rtol=0)
+
+
+class DegenerateInputLayoutTests(unittest.TestCase):
+    def test_singleton_strided_scale_and_scalar_still_checked_bytewise(self):
+        with patch.dict(sys.modules, {'_aka_benchmark': TIMER}):
+            module = load_file('_geak_refk_contract', TASKS / 'L1/refk_fp8_blockwise_mm/_timed_contract.py')
+        storage = torch.arange(8.)
+        scale = storage.as_strided((1, 1), (8, 2))
+        scalar = torch.tensor(3.)
+        guard = module.PristineInputs({'scale': scale, 'scalar': scalar})
+        guard.check()
+        scale.add_(1)
+        with self.assertRaisesRegex(AssertionError, 'Read-only input changed'):
+            guard.check()
+        guard.restore()
+        guard.check()
+        self.assertEqual(scale.stride(), (8, 2))

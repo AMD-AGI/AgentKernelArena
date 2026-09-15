@@ -29,6 +29,74 @@
         4,
         8
       ]
+    ],
+    "controls": [
+      {
+        "test_case_id": "control-rms-17-False",
+        "shape": [
+          3,
+          17
+        ],
+        "params": {
+          "gemma": false,
+          "nonuniform_gradient": true
+        }
+      },
+      {
+        "test_case_id": "control-rms-17-True",
+        "shape": [
+          3,
+          17
+        ],
+        "params": {
+          "gemma": true,
+          "nonuniform_gradient": true
+        }
+      },
+      {
+        "test_case_id": "control-rms-257-False",
+        "shape": [
+          3,
+          257
+        ],
+        "params": {
+          "gemma": false,
+          "nonuniform_gradient": true
+        }
+      },
+      {
+        "test_case_id": "control-rms-257-True",
+        "shape": [
+          3,
+          257
+        ],
+        "params": {
+          "gemma": true,
+          "nonuniform_gradient": true
+        }
+      },
+      {
+        "test_case_id": "control-rms-1024-False",
+        "shape": [
+          3,
+          1024
+        ],
+        "params": {
+          "gemma": false,
+          "nonuniform_gradient": true
+        }
+      },
+      {
+        "test_case_id": "control-rms-1024-True",
+        "shape": [
+          3,
+          1024
+        ],
+        "params": {
+          "gemma": true,
+          "nonuniform_gradient": true
+        }
+      }
     ]
   },
   "cases": [
@@ -47,6 +115,90 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-rms-17-False",
+      "shape": [
+        3,
+        17
+      ],
+      "params": {
+        "gemma": false,
+        "nonuniform_gradient": true
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-rms-17-True",
+      "shape": [
+        3,
+        17
+      ],
+      "params": {
+        "gemma": true,
+        "nonuniform_gradient": true
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-rms-257-False",
+      "shape": [
+        3,
+        257
+      ],
+      "params": {
+        "gemma": false,
+        "nonuniform_gradient": true
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-rms-257-True",
+      "shape": [
+        3,
+        257
+      ],
+      "params": {
+        "gemma": true,
+        "nonuniform_gradient": true
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-rms-1024-False",
+      "shape": [
+        3,
+        1024
+      ],
+      "params": {
+        "gemma": false,
+        "nonuniform_gradient": true
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-rms-1024-True",
+      "shape": [
+        3,
+        1024
+      ],
+      "params": {
+        "gemma": true,
+        "nonuniform_gradient": true
+      },
+      "checks": [
+        "correctness"
+      ]
     }
   ],
   "timing_calls_per_case": [

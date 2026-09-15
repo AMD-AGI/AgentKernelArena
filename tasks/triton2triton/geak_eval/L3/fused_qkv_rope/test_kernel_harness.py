@@ -9,6 +9,7 @@ The kernel and reference helpers are imported from the task-local
 """
 from __future__ import annotations
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+from _timed_contract import checked_call, checked_benchmark, assert_output_contract
 
 
 def benchmark_cuda_graph_or_events(*args, **kwargs):
@@ -177,22 +178,25 @@ def _run_single_correctness(B, QH_PER_KH, KH, D, rotate_style, nope, nope_first,
     )
     ref_freqs = freqs[pos].squeeze(-2)
 
-    q_triton, k_triton, v_triton = fused_qkv_split_qk_rope(
-        qkv, cos, sin, pos,
-        QH_PER_KH * KH, KH, head_dim,
-        is_neox=(rotate_style == RotateStyle.NEOX),
-        offsets=None,
-        reuse_freqs_front_part=reuse_freqs_front_part,
-        nope_first=nope_first,
-    )
-    q_torch, k_torch, v_torch = torch_op(
-        qkv, QH_PER_KH, KH, head_dim,
-        ref_freqs, reuse_freqs_front_part, nope, nope_first, rotate_style,
+    def invoke():
+        return fused_qkv_split_qk_rope(
+            qkv, cos, sin, pos, QH_PER_KH * KH, KH, head_dim,
+            is_neox=(rotate_style == RotateStyle.NEOX), offsets=None,
+            reuse_freqs_front_part=reuse_freqs_front_part, nope_first=nope_first,
+        )
+    checked_call(
+        invoke, inputs={'qkv': qkv, 'cos': cos, 'sin': sin, 'positions': pos,
+                        'ref_freqs': ref_freqs},
+        reference=lambda saved: torch_op(
+            saved['qkv'], QH_PER_KH, KH, head_dim, saved['ref_freqs'],
+            reuse_freqs_front_part, nope, nope_first, rotate_style),
+        check=_check_qkv,
     )
 
-    torch.testing.assert_close(q_torch, q_triton, atol=ATOL, rtol=RTOL)
-    torch.testing.assert_close(k_torch, k_triton, atol=ATOL, rtol=RTOL)
-    torch.testing.assert_close(v_torch, v_triton, atol=ATOL, rtol=RTOL)
+
+def _check_qkv(actual, expected):
+    for output, reference in zip(actual, expected):
+        torch.testing.assert_close(output, reference, atol=ATOL, rtol=RTOL)
 
 
 def run_correctness(configs=None, verbose=True):
@@ -297,8 +301,16 @@ def run_benchmark(configs=None, warmup=50, iters=200, verbose=True):
                 nope_first=nope_first,
             )
 
-        triton_ms, triton_meta = benchmark_cuda_graph_or_events(
-            run_kernel, warmup=warmup, repetition=iters,
+        triton_ms, triton_meta = checked_benchmark(
+            benchmark_cuda_graph_or_events, run_kernel,
+            inputs={'qkv': qkv, 'cos': cos, 'sin': sin, 'positions': pos,
+                    'ref_freqs': ref_freqs},
+            reference=lambda saved: torch_op(
+                saved['qkv'], QH_PER_KH, KH, head_dim, saved['ref_freqs'],
+                reuse, nope, nope_first, rs),
+            check=_check_qkv,
+            perturb=lambda saved: {**saved, 'qkv': -saved['qkv']},
+            warmup=warmup, repetition=iters,
         )
 
         def run_reference():

@@ -6,6 +6,7 @@ import sys
 import types
 from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+from _timed_contract import checked_call, checked_benchmark
 
 
 def benchmark_cuda_graph_or_events(*args, **kwargs):
@@ -171,6 +172,44 @@ def _torch_routing_sigmoid_top1(
     return topk_ids, topk_weights
 
 
+def _routing_reference(saved, shared=True):
+    # tl.dot accumulates in FP32: BF16-rounding the dot before sigmoid changes
+    # the selection on the original noninteger benchmark inputs.
+    scores = torch.sigmoid(saved['x'].float() @ saved['w'].float())
+    weights, ids = scores.max(dim=1, keepdim=True)  # first index wins ties
+    ids = ids.to(torch.int32)
+    if shared:
+        ids = torch.cat((ids, torch.full_like(ids, saved['w'].shape[1])), dim=1)
+        weights = torch.cat((weights, torch.ones_like(weights)), dim=1)
+    return ids, weights
+
+
+def _check_routing(actual, expected, atol=1e-4, rtol=1e-4):
+    torch.testing.assert_close(actual[0], expected[0], atol=atol, rtol=rtol)
+    torch.testing.assert_close(actual[1], expected[1], atol=atol, rtol=rtol)
+
+
+CONTROL_CASES = [
+    {'test_case_id': 'control-routing-no-shared', 'params': {'shared': False, 'ties': False}},
+    {'test_case_id': 'control-routing-leftmost-tie', 'params': {'shared': True, 'ties': True}},
+]
+
+
+def run_contract_controls():
+    for case in CONTROL_CASES:
+        params = case['params']
+        x = torch.zeros((128, 16), device='cuda', dtype=torch.bfloat16)
+        w = torch.zeros((16, 16), device='cuda', dtype=torch.bfloat16)
+        if not params['ties']:
+            x[:, 0] = 1
+            w[0] = torch.arange(16, device='cuda') / 16
+        checked_call(lambda: routing_sigmoid_top1(x, w, 1, fused_shared_experts=params['shared']),
+                     inputs={'x': x, 'w': w},
+                     reference=lambda saved: _routing_reference(saved, params['shared']),
+                     check=_check_routing)
+        print(case['test_case_id'], 'PASS')
+
+
 def _gpu_median_time(fn, warmup, iterations):
     """Time *fn* using graph replay, with CUDA-event fallback."""
     return benchmark_cuda_graph_or_events(
@@ -198,19 +237,18 @@ def run_correctness(shapes, atol, rtol):
         dummy_ids = torch.ones((M, 1), dtype=torch.int32, device=device) * N
         dummy_weights = torch.ones((M, 1), dtype=torch.float32, device=device)
 
-        topk_ids, topk_weights = routing_sigmoid_top1(
-            x, w, TOPK, fused_shared_experts=True
-        )
-
         ref_fn = partial(
             _torch_routing_sigmoid_top1,
-            dummy_ids=dummy_ids, dummy_weights=dummy_weights,
+            dummy_ids=dummy_ids.clone(), dummy_weights=dummy_weights.clone(),
         )
-        ref_ids, ref_weights = ref_fn(x, w, TOPK, fused_shared_experts=True)
-
         try:
-            torch.testing.assert_close(ref_ids, topk_ids, atol=atol, rtol=rtol)
-            torch.testing.assert_close(ref_weights, topk_weights, atol=atol, rtol=rtol)
+            checked_call(
+                lambda: routing_sigmoid_top1(x, w, TOPK, fused_shared_experts=True),
+                inputs={'x': x, 'w': w},
+                # Retain the original integer-input correctness oracle/gates.
+                reference=lambda saved: ref_fn(saved['x'], saved['w'], TOPK, fused_shared_experts=True),
+                check=lambda actual, expected: _check_routing(actual, expected, atol, rtol),
+            )
             print(f"  [{i+1}/{len(shapes)}] M={M}, N={N}, K={K}: PASS")
         except AssertionError as e:
             print(f"  [{i+1}/{len(shapes)}] M={M}, N={N}, K={K}: FAIL")
@@ -294,10 +332,15 @@ def run_benchmark(shapes, warmup, iterations):
                 ref_fn(x, w, TOPK, fused_shared_experts=True)
 
         def _run_kernel(x=x, w=w):
-            routing_sigmoid_top1(x, w, TOPK, fused_shared_experts=True)
+            return routing_sigmoid_top1(x, w, TOPK, fused_shared_experts=True)
 
         ref_time, ref_meta = _gpu_median_time(_run_ref, warmup, iterations)
-        kernel_time, kernel_meta = _gpu_median_time(_run_kernel, warmup, iterations)
+        kernel_time, kernel_meta = checked_benchmark(
+            benchmark_cuda_graph_or_events, _run_kernel, inputs={'x': x, 'w': w},
+            reference=_routing_reference, check=_check_routing,
+            perturb=lambda saved: {**saved, 'x': -saved['x']},
+            warmup=warmup, repetition=iterations,
+        )
 
         methods_match = ref_meta["benchmark_method"] == kernel_meta["benchmark_method"]
         speedup = ref_time / kernel_time if kernel_time > 0 and methods_match else None

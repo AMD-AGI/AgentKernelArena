@@ -735,6 +735,16 @@
         256,
         128
       ]
+    ],
+    "controls": [
+      {
+        "test_case_id": "control-mla-uniform-attention",
+        "params": {
+          "ctx_len": 21,
+          "batch_size": 1,
+          "nhead": 16
+        }
+      }
     ]
   },
   "cases": [
@@ -2785,6 +2795,17 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-mla-uniform-attention",
+      "params": {
+        "ctx_len": 21,
+        "batch_size": 1,
+        "nhead": 16
+      },
+      "checks": [
+        "correctness"
+      ]
     }
   ],
   "timing_calls_per_case": [

@@ -351,6 +351,22 @@
         128,
         5120
       ]
+    ],
+    "controls": [
+      {
+        "test_case_id": "control-routing-no-shared",
+        "params": {
+          "shared": false,
+          "ties": false
+        }
+      },
+      {
+        "test_case_id": "control-routing-leftmost-tie",
+        "params": {
+          "shared": true,
+          "ties": true
+        }
+      }
     ]
   },
   "cases": [
@@ -897,6 +913,26 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-routing-no-shared",
+      "params": {
+        "shared": false,
+        "ties": false
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-routing-leftmost-tie",
+      "params": {
+        "shared": true,
+        "ties": true
+      },
+      "checks": [
+        "correctness"
+      ]
     }
   ],
   "timing_calls_per_case": [

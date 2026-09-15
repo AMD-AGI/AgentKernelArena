@@ -6,6 +6,7 @@ import sys
 import types
 from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+from _timed_contract import checked_call, checked_benchmark, assert_output_contract
 
 
 def benchmark_cuda_graph_or_events(*args, **kwargs):
@@ -152,6 +153,51 @@ def benchmark_fn(fn, warmup=50, iterations=200):
     )
 
 
+def _rms_reference_with_gradient(saved, gemma, upstream=None):
+    x = saved['x'].detach().clone().requires_grad_(True)
+    weight = saved['weight'].detach().clone()
+    ref = gemma_rms_layernorm_reference if gemma else rms_layernorm_reference
+    output = ref(x, weight, eps=1e-5)
+    if upstream is None:
+        output.mean().backward()
+    else:
+        output.backward(upstream.detach().clone())
+    return output.detach(), x.grad.detach().clone()
+
+
+def _check_rms_outputs(actual, expected, atol=1e-2, rtol=1e-2):
+    assert_output_contract(actual, expected)
+    for output, reference in zip(actual, expected):
+        torch.testing.assert_close(output, reference, atol=atol, rtol=rtol)
+
+
+CONTROL_CASES = [
+    {'test_case_id': f'control-rms-{width}-{gemma}', 'shape': [3, width],
+     'params': {'gemma': gemma, 'nonuniform_gradient': True}}
+    for width in (17, 257, 1024) for gemma in (False, True)
+]
+
+
+def run_contract_controls():
+    for case in CONTROL_CASES:
+        shape, gemma = case['shape'], case['params']['gemma']
+        x = torch.linspace(-2, 3, math.prod(shape), device='cuda').reshape(shape).requires_grad_(True)
+        layernorm = SimpleLayerNorm(shape[-1], eps=1e-5).to('cuda')
+        with torch.no_grad():
+            layernorm.weight.copy_(torch.linspace(-1.5, 2, shape[-1], device='cuda'))
+        upstream = torch.sin(torch.arange(x.numel(), device='cuda', dtype=x.dtype)).reshape(shape)
+        def invoke():
+            output = fast_rms_layernorm(layernorm, x, gemma=gemma)
+            # The original backward consumes dY in place. Give it a private,
+            # contiguous gradient; X and weight remain read-only.
+            output.backward(upstream.clone())
+            return output.detach(), x.grad.clone()
+        checked_call(invoke, inputs={'x': x, 'weight': layernorm.weight, 'upstream': upstream},
+                     reference=lambda saved: _rms_reference_with_gradient(saved, gemma, saved['upstream']),
+                     check=_check_rms_outputs)
+        print(case['test_case_id'], 'PASS')
+
+
 def run_correctness(shapes, atol=1e-2, rtol=1e-2):
     """Run correctness tests matching the eval test cases exactly.
 
@@ -168,32 +214,23 @@ def run_correctness(shapes, atol=1e-2, rtol=1e-2):
         x = torch.randn(*shape, dtype=torch.float32, device='cuda', requires_grad=True)
         layernorm = SimpleLayerNorm(hidden_dim, eps=1e-5).to('cuda')
 
-        output = fast_rms_layernorm(layernorm, x, gemma=False)
-        output.mean().backward()
-        grad1 = x.grad.clone()
-        x.grad.zero_()
-
-        x_ref = x.detach().clone().requires_grad_(True)
-        rms_layernorm_reference(x_ref, layernorm.weight, eps=1e-5).mean().backward()
-        try:
-            torch.testing.assert_close(grad1, x_ref.grad, rtol=rtol, atol=atol)
-            print(f"  PASS: {shape} gemma=False backward")
-        except AssertionError as e:
-            print(f"  FAIL: {shape} gemma=False backward: {e}")
-            all_passed = False
-
-        output_g = fast_rms_layernorm(layernorm, x, gemma=True)
-        output_g.mean().backward()
-        grad2 = x.grad.clone()
-
-        x_ref2 = x.detach().clone().requires_grad_(True)
-        gemma_rms_layernorm_reference(x_ref2, layernorm.weight, eps=1e-5).mean().backward()
-        try:
-            torch.testing.assert_close(grad2, x_ref2.grad, rtol=rtol, atol=atol)
-            print(f"  PASS: {shape} gemma=True backward")
-        except AssertionError as e:
-            print(f"  FAIL: {shape} gemma=True backward: {e}")
-            all_passed = False
+        for gemma in (False, True):
+            if x.grad is not None:
+                x.grad.zero_()
+            def invoke():
+                output = fast_rms_layernorm(layernorm, x, gemma=gemma)
+                output.mean().backward()
+                return output.detach(), x.grad.clone()
+            try:
+                checked_call(
+                    invoke, inputs={'x': x, 'weight': layernorm.weight},
+                    reference=lambda saved: _rms_reference_with_gradient(saved, gemma),
+                    check=lambda actual, expected: _check_rms_outputs(actual, expected, atol, rtol),
+                )
+                print(f"  PASS: {shape} gemma={gemma} forward + backward")
+            except AssertionError as e:
+                print(f"  FAIL: {shape} gemma={gemma}: {e}")
+                all_passed = False
 
     if all_passed:
         print("\nAll correctness tests PASSED!")
@@ -246,9 +283,14 @@ def run_benchmark(shapes, warmup=50, iterations=200):
         x = torch.randn(*shape, dtype=torch.float32, device='cpu').to('cuda')
         layernorm = SimpleLayerNorm(hidden_dim, eps=1e-5).to('cuda')
 
-        kernel_ms, kernel_meta = benchmark_fn(
+        kernel_ms, kernel_meta = checked_benchmark(
+            benchmark_cuda_graph_or_events,
             lambda: fast_rms_layernorm(layernorm, x, gemma=False),
-            warmup=warmup, iterations=iterations,
+            inputs={'x': x, 'weight': layernorm.weight},
+            reference=lambda saved: rms_layernorm_reference(saved['x'], saved['weight'], eps=1e-5),
+            check=lambda actual, expected: torch.testing.assert_close(actual, expected, atol=1e-2, rtol=1e-2),
+            perturb=lambda saved: {**saved, 'x': -saved['x']},
+            warmup=warmup, repetition=iterations,
         )
         if baseline_fn is not None:
             ref_ms, ref_meta = benchmark_fn(

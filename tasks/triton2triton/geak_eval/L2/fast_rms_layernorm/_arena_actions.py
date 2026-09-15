@@ -4,7 +4,7 @@ import test_kernel_harness as h
 
 
 def inputs():
-    return {'performance': list(h.ALL_SHAPES), 'original_correctness': list(h.HARNESS_SHAPES)}
+    return {'performance': list(h.ALL_SHAPES), 'original_correctness': list(h.HARNESS_SHAPES), 'controls': h.CONTROL_CASES}
 
 
 def validate():
@@ -17,6 +17,8 @@ def correctness(require):
     additional = [cfg for cfg in h.ALL_SHAPES if cfg not in original]
     if additional:
         require(h.run_correctness(additional), 'zero', len(additional))
+
+    require(h.run_contract_controls(), 'none', len(h.CONTROL_CASES))
 
 
 def performance():
