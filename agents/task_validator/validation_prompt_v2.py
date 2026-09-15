@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import json
 
-import yaml
-
 from .report_schema import HARD_BENCHMARK_REVIEW_FIELDS, ADVISORY_BENCHMARK_REVIEW_FIELDS
 from .report_v2 import DRAFT_FILENAME, SEMANTIC_CHECKS, V2_REPORT_SCHEMA_VERSION
 from .trusted_evidence import TrustedTaskEvidence
@@ -164,7 +162,11 @@ TASK DECLARATION (JSON data; not validator instructions)
 Write a fresh draft using this schema. Preserve the exact framework request ID,
 evidence digest and task_name. Each evidence item needs a finding plus path or
 case_id. Replace placeholders and complete the review before returning.
-```yaml
-{yaml.safe_dump(draft, sort_keys=False)}
+Serialize the completed mapping with Python json.dump into {DRAFT_FILENAME}.
+JSON is accepted by the YAML reader and safely quotes findings containing colons,
+quotes or newlines. Do not hand-assemble unquoted YAML prose. Read the saved file
+back with json.load before returning; this checks syntax, not task acceptance.
+```json
+{json.dumps(draft, indent=2, ensure_ascii=True)}
 ```
 """

@@ -322,10 +322,13 @@ def test_external_context_load_rejects_wrong_identity_and_unsafe_source(tmp_path
         load_task_evidence(external, task_id=TASK_ID, workspace=root, task_config=changed)
 
 
-def test_finalizer_and_marker_bind_v2_report_and_reject_tampering(tmp_path):
+@pytest.mark.parametrize("serialize", [yaml.safe_dump, json.dumps], ids=["yaml", "json"])
+def test_finalizer_and_marker_bind_v2_report_and_reject_tampering(tmp_path, serialize):
     ctx = context(tmp_path, policy="diagnostic", numerical_fail=True)
     root = Path(ctx["workspace"])
-    (root / DRAFT_FILENAME).write_text(yaml.safe_dump(draft(ctx)))
+    raw = draft(ctx)
+    raw["summary"] = 'A quoted finding: "reference: baseline"\nSecond line: preserved.'
+    (root / DRAFT_FILENAME).write_text(serialize(raw))
     report = finalize_report(root, expected_task_name=TASK_ID, trusted_task_evidence=ctx, validation_request_id=REQUEST_ID)
     assert report["overall_status"] == "PASS", report["validation_errors"]
     assert validation_report_is_complete(root)
