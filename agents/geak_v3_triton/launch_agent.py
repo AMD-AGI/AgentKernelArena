@@ -284,6 +284,11 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     the test command to harness mode when it detects the harness has
     ``--correctness``/``--benchmark`` argparse modes.
     """
+    with open(task_config_dir) as stream:
+        if (yaml.safe_load(stream) or {}).get("schema_version") == 2:
+            from agents.geak.launch_agent import launch_agent as launch_v2
+
+            return launch_v2(eval_config, task_config_dir, workspace)
     logger = logging.getLogger(__name__)
 
     AGENT = "geak"

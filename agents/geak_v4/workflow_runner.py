@@ -451,6 +451,7 @@ def invoke_via_sdk(
     timeout_seconds: int,
     done_grace_seconds: float,
     done_poll_seconds: float,
+    quiet: bool = False,
 ) -> str:
     """Invoke Claude Code while surviving synchronous and background Workflows."""
     try:
@@ -513,7 +514,7 @@ def invoke_via_sdk(
                                     chunks.append(retained)
                                     captured_chars += len(retained)
                                 compact = " ".join(text[:2000].split())
-                                if compact:
+                                if compact and not quiet:
                                     print(
                                         f"[GEAK SDK] {compact[:500]}",
                                         file=sys.stderr,

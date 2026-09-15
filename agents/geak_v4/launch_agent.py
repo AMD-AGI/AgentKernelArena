@@ -253,6 +253,10 @@ def launch_agent(
     logger = logging.getLogger(__name__)
     agent_config = _load_yaml(Path(__file__).with_name("agent_config.yaml"))
     task_config = _load_yaml(task_config_dir)
+    if task_config.get("schema_version") == 2:
+        from agents.geak.launch_agent import launch_agent as launch_v2
+
+        return launch_v2(eval_config, task_config_dir, workspace)
     workspace_path = Path(workspace).resolve()
     if not workspace_path.is_dir():
         raise FileNotFoundError(f"Arena workspace does not exist: {workspace_path}")

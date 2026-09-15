@@ -1,5 +1,8 @@
 ## GEAK-V3
 
+For schema v2, this launcher delegates to the task-neutral [GEAK adapter](../geak/README.md),
+using its configuration and the real upstream Workflow engine. The legacy instructions below apply to v1.
+
 Integrates **GEAK v3.2.2** into AgentKernelArena as the optimizing agent for
 **HIP** kernels. It drives the unified `geak` CLI (built on mini-SWE-agent) with
 `-c geak.yaml`, pointing GEAK at the task's compile/correctness/performance

@@ -99,6 +99,11 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     Returns:
         str: Combined agent output (stdout plus stderr summary if present)
     """
+    with open(task_config_dir) as stream:
+        if (yaml.safe_load(stream) or {}).get("schema_version") == 2:
+            from agents.geak.launch_agent import launch_agent as launch_v2
+
+            return launch_v2(eval_config, task_config_dir, workspace)
     # Load agent config (support override via env var)
     config_path_env = os.environ.get("GEAK_AGENT_CONFIG")
     if config_path_env:

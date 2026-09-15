@@ -1,5 +1,8 @@
 # GEAK v4 Agent
 
+For schema v2, this launcher delegates to the task-neutral [GEAK adapter](../geak/README.md),
+using its configuration and the real upstream Workflow engine. The legacy instructions below apply to v1.
+
 The `geak_v4` integration runs GEAK's deterministic
 `kernel_workflow/kernel_workflow.js` through Claude Code's dynamic **Workflow**
 tool. GEAK optimizes the kernel and, when its Director validation passes, applies

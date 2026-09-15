@@ -1,5 +1,8 @@
 ## GEAK-V3-Triton
 
+For schema v2, this launcher delegates to the task-neutral [GEAK adapter](../geak/README.md),
+using its configuration and the real upstream Workflow engine. The legacy instructions below apply to v1.
+
 Triton kernel optimization agent for AgentKernelArena. It wraps the unified
 `geak` CLI (**GEAK v3.2.2**, built on mini-SWE-agent), which auto-detects the
 Triton harness and runs heterogeneous, multi-round optimization with working
