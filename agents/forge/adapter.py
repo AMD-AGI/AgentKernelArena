@@ -81,7 +81,8 @@ def _config(eval_config: dict) -> dict:
 def _initialize_git(root: Path) -> None:
     with (root / ".gitignore").open("a") as stream:
         stream.write("\n__pycache__/\n*.pyc\nbuild/\n.forge_rewrite/\nforge_experiments/\n")
-    for command in (["init", "--quiet"], ["config", "user.email", "arena-forge@local"],
+    for command in (["init", "--quiet", "--initial-branch=codex/arena-forge"],
+                    ["config", "user.email", "arena-forge@local"],
                     ["config", "user.name", "Arena Forge"], ["add", "-A"],
                     ["commit", "--quiet", "--allow-empty", "-m", "Arena task snapshot"]):
         subprocess.run(["git", *command], cwd=root, check=True, capture_output=True, text=True)

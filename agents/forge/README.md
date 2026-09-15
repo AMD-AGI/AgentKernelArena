@@ -195,6 +195,8 @@ The adapter also binds the implementer's working directory to the engine root,
 protects tracked files outside the candidate bundle, and lets the SDK workspace
 guard recognize new files inside declared candidate scopes. These are scoped
 process-local changes to the pinned Forge factory and run-spec constructor.
+New scratch repositories start on `codex/arena-forge`, independently of the
+runtime's Git default branch; upstream refuses to optimize on `main` or `master`.
 The public task assessment and final candidate installation still enforce the
 task boundary, including symbol-scoped colocated Python harnesses.
 

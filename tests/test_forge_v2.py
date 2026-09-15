@@ -364,6 +364,37 @@ def test_broken_changed_candidate_not_reclassified_as_empty(tmp_path, monkeypatc
     assert not commands
 
 
+@pytest.mark.parametrize("default_branch", ["main", "master"])
+def test_scratch_branch_passes_real_upstream_campaign_preflight(tmp_path, monkeypatch, default_branch):
+    python = os.environ.get("AKA_FORGE_PROBE_PYTHON")
+    if not python:
+        pytest.skip("Set AKA_FORGE_PROBE_PYTHON to the pinned Hyperloom[forge] interpreter")
+    # Model the actual Docker runtime without modifying any user's Git config.
+    git_config = tmp_path / "global.gitconfig"
+    git_config.write_text(f"[init]\n\tdefaultBranch = {default_branch}\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(git_config))
+    root = tmp_path / "engine"
+    root.mkdir()
+    (root / "kernel.py").write_text("def add(x):\n    return x\n")
+    (root / "driver.py").write_text("# task bridge fixture, not executed\n")
+    adapter._initialize_git(root)
+    actual = subprocess.check_output(["git", "branch", "--show-current"], cwd=root, text=True).strip()
+    assert actual == "codex/arena-forge"
+    script = r'''
+import sys
+from agents.forge.upstream import probe
+from kernelforge.loop.campaign_config import create_campaign_config
+probe()
+create_campaign_config(workspace_dir=sys.argv[1], kernel='kernel.py', driver='driver.py',
+    source_files=['kernel.py'], program_md_file=None, target_functions=['add'],
+    gpu_target='gfx950', gpu_type='mi355x', kernel_backend='triton', task_type='image_kernel')
+'''
+    env = dict(os.environ, PYTHONPATH=str(ROOT))
+    run = subprocess.run([python, "-c", script, str(root)], cwd=root, env=env,
+                         capture_output=True, text=True, timeout=30)
+    assert run.returncode == 0, run.stdout + run.stderr
+
+
 def test_installed_upstream_probe_and_real_rewrite_orchestration(tmp_path):
     """Exercise installed engine dispatch with fake PORT/OPTIMIZE, never an LLM/GPU run."""
     python = os.environ.get("AKA_FORGE_PROBE_PYTHON")
