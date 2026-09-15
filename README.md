@@ -122,6 +122,9 @@ Each run selects one `agent.template`. Repeated runs can compare different agent
 
 Agent-specific models, effort settings, iteration guidance, timeouts, and provider configuration live under `agents/<agent_name>/agent_config.yaml` or in the selected agent CLI. Specialized agents may require additional setup; inspect their directories and agent-specific README files where present.
 
+See [CLI agent defaults and verification](docs/reference/agent-model-defaults.md)
+for tested CLI/model versions, run-level overrides, and the scope of live checks.
+
 ## Task Environments
 
 | Task type | Objective |

@@ -16,7 +16,9 @@ contract and replaces the previous task-family-specific configuration guidance.
 **Schema v2 is being implemented; task migration is not yet enabled.** The
 shared declaration parser (`src/task_spec.py`), result validation
 (`src/task_protocol.py`), and argv action executor (`src/task_execution.py`)
-have focused CPU coverage. Discovery, orchestration, validator, and task harness
+have focused CPU coverage. `src/task_session.py` also provides independent
+baseline snapshots, initial-state checking, lifecycle gating, and action
+evidence retention. Discovery, orchestration, validator, and task harness
 migration must be completed before live tasks can use them. The existing run path still consumes legacy
 fields such as `task_type`, `source_file_path`, and `compile_command`. The v2
 examples below specify the implementation target; they are not drop-in runnable
@@ -349,6 +351,18 @@ command, exit status, and tool evidence. Commands never author or overwrite
 remain in the centralized evaluator; defining v2 must not silently change the
 existing scoring formula. See the [result reference](../reference/api-reference.md#result-schema-task_resultyaml)
 and [benchmark methodology](../reference/benchmark-methodology.md).
+
+The `validate-task` report must include `metadata.candidate_state` with
+`implemented` or `unimplemented`, determined by checking the actual initial
+implementation files and their interface. The framework rejects missing or
+conflicting state evidence and a mismatch with the configuration declaration.
+This is task-check evidence, not an agent-controlled permission to skip final
+evaluation. The validator also audits the state check itself.
+
+During final evaluation, successful compilation and correctness evidence bind
+to the same candidate source content subsequently measured. A source change
+invalidates earlier checks and requires compilation/correctness again. Command
+logs and failure evidence are retained outside the candidate workspace.
 
 ## Initial task validation and final candidate evaluation
 
