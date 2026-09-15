@@ -132,7 +132,7 @@ def test_declaring_flydsl_without_executing_it_is_rejected():
 
 
 CANDIDATE_AUDIT_TASKS = [ROOT / "tasks/torch2flydsl" / name for name in (
-    "fmoe_fp8_blockscale_g1u1_kernel", "fmoe_g1u1_tkw1_kernel", "silu_and_mul_kernel", "dynamic_mxfp8_quant_kernel", "batched_gemm_a8w8_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel",
+    "fused_add_rmsnorm_kernel", "fmoe_fp8_blockscale_g1u1_kernel", "fmoe_g1u1_tkw1_kernel", "silu_and_mul_kernel", "dynamic_mxfp8_quant_kernel", "batched_gemm_a8w8_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel",
     "moe_topk_softplus_kernel", "gelu_and_mul_kernel", "gelu_fast_kernel",
     "gelu_tanh_and_mul_kernel", "swiglu_and_mul_kernel",
 )]
@@ -471,6 +471,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
                 handler.body.pop(0)
         if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel", "moe_topk_softplus_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
+        if name == "fused_add_rmsnorm_kernel":
+            fn = _RemoveAddRmsnormChecks().visit(fn)
         if name in {"fmoe_fp8_blockscale_g1u1_kernel", "fmoe_g1u1_tkw1_kernel"}:
             fn = _RemoveFmoeTimingChecks().visit(fn)
         if name == "dynamic_mxfp8_quant_kernel":
@@ -2479,3 +2481,98 @@ def test_fmoe_preserves_original_references_shapes_and_sampling_except_fair_inpu
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 restored=_RemoveFmoeTimingChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
+
+
+class _RemoveAddRmsnormChecks(_RemoveAddedReplayChecks):
+    def visit_Expr(self,node):
+        if isinstance(node.value,ast.Call) and getattr(node.value.func,'id',None)=='_checked_add_rmsnorm_pair':
+            return None
+        return super().visit_Expr(node)
+    def visit_Call(self,node):
+        if getattr(node.func,'id',None)=='_checked_add_rmsnorm_pair':return self.visit(node.args[0])
+        return super().visit_Call(node)
+    def visit_FunctionDef(self,node):
+        if node.name=='_mean':
+            node.body=ast.parse('return benchmark_cuda_graph_or_events(fn, warmup=warmup, repetition=iters)').body
+            return node
+        return self.generic_visit(node)
+
+
+@pytest.mark.parametrize('function',['run_benchmark','arena_benchmark'])
+@pytest.mark.parametrize('provided',[False,True])
+@pytest.mark.parametrize('behavior',['correct','measured_wrong','replay_wrong','cached_residual','cached_output','input_mutated','weight_mutated','residual_mutated','shape','dtype','nonfinite','missing'])
+def test_fused_add_rmsnorm_measured_pair_and_replay(function,provided,behavior,monkeypatch,tmp_path):
+    import torch,types,math
+    t=ROOT/'tasks/torch2flydsl/fused_add_rmsnorm_kernel';checks=module(t/'scripts/replay_checks.py')
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    inp=torch.tensor([[1.,2.],[3.,4.]],dtype=torch.bfloat16);weight=torch.tensor([2.,3.],dtype=torch.bfloat16);residual=torch.tensor([[2.,-1.],[.5,2.]],dtype=torch.bfloat16);inputs=(inp,weight,residual);originals=tuple(x.clone() for x in inputs)
+    phase={'value':'setup'}
+    def oracle(*args):
+        x,w,res=args or inputs;ro=x+res;rf=ro.float();return (rf*torch.rsqrt(rf.square().mean(-1,keepdim=True)+1e-5)*w.float()).to(x.dtype),ro
+    cached=oracle()
+    def compute(is_model):
+        out=list(oracle())
+        if is_model==provided:
+            if behavior==phase['value']+'_wrong':out[0].fill_(5)
+            if phase['value']=='replay':
+                if behavior=='cached_output':out[0]=cached[0].clone()
+                if behavior=='cached_residual':out[1]=cached[1].clone()
+                for name,value in zip(('input','weight','residual'),inputs):
+                    if behavior==name+'_mutated':value.add_(1)
+            if phase['value']=='measured':
+                if behavior=='shape':out[1]=out[1][:1]
+                if behavior=='dtype':out[0]=out[0].float()
+                if behavior=='nonfinite':out[1][0,0]=float('nan')
+                if behavior=='missing':out=out[:1]
+        return tuple(out)
+    class Model:
+        def __init__(self,*a):pass
+        def to(self,*a):return self
+        def eval(self):return self
+        def __call__(self,*a):return compute(True)
+    target=lambda *a:compute(False)
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run):
+        calls.append((fn.__name__,warmup,repetition));phase['value']='measured';timed_run.outputs=fn();timed_run.bound=True;phase['value']='setup'
+        def replay():
+            phase['value']='replay'
+            try:return fn()
+            finally:phase['value']='setup'
+        timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':benchmark,'require_tensor_contract':checks.require_tensor_contract,'require_unchanged':checks.require_unchanged,
+        'math':math,'json':json,'Path':Path,'_KERNEL_DIR':str(tmp_path),'MODEL_FILE':'model.py','KERNEL_ENTRY':'flydsl_fused_add_rmsnorm',
+        'REL_TOL':.01,'EPS':1e-5,'SHAPES':[{'name':'controlled','m':2,'n':2}], '_make_inputs':lambda *a:inputs,
+        '_load_module':lambda *a:types.SimpleNamespace(Model=Model),'_load_target':lambda:target,'_is_pure_starter':lambda:provided,
+        '_probe_target':lambda *a:(False,None) if provided else (True,target()),'_retry':lambda fn,**kw:fn(),'_aiter_add_rmsnorm':oracle}
+    _harness_functions(t,{function,'_norm_max_err','_checked_add_rmsnorm_pair','_compare_add_rmsnorm_pair','_verify_add_rmsnorm_timed'},ns)
+    if behavior=='correct':
+        result=ns[function](verbose=False)
+        if function=='run_benchmark':result=json.loads((tmp_path/'build/performance_report.json').read_text())
+        assert result[0]['timed_output_correctness']==result[0]['replay_correctness']=='PASS'
+        assert calls==[('run_ref',10,100),('run_truth',10,100)]+([] if provided else [('run_target',10,100)])
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+    for value,original in zip(inputs,originals):assert torch.equal(value,original)
+
+
+def test_fused_add_rmsnorm_pair_original_gate_and_interface():
+    import torch
+    t=ROOT/'tasks/torch2flydsl/fused_add_rmsnorm_kernel';checks=module(t/'scripts/replay_checks.py');ns={'require_tensor_contract':checks.require_tensor_contract,'REL_TOL':.01}
+    _harness_functions(t,{'_norm_max_err','_checked_add_rmsnorm_pair','_compare_add_rmsnorm_pair'},ns)
+    expected=(torch.tensor([[100.,1.]],dtype=torch.bfloat16),torch.tensor([[40.,2.]],dtype=torch.bfloat16))
+    actual=tuple(x.clone() for x in expected);actual[0][0,1]+=.5;actual[1][0,1]+=.25
+    ns['_compare_add_rmsnorm_pair'](actual,expected)
+    actual[1][0,1]+=1
+    with pytest.raises(AssertionError,match='Numerical mismatch'):ns['_compare_add_rmsnorm_pair'](actual,expected)
+    cfg=yaml.safe_load((t/'config.yaml').read_text());assert [e['symbol'] for e in cfg['candidate']['entrypoints']]==['flydsl_fused_add_rmsnorm']
+
+
+def test_fused_add_rmsnorm_original_numeric_and_timing_work_preserved():
+    hashes={'_make_inputs': 'c3edf63cd1900b43c1cb36892301a24a9e091233ad4417048b4efed591ff0b76', '_aiter_add_rmsnorm': '8a493e418f637db8c313094e185560ec0c021db90c2e2d2122bd3219a89c0a8b', '_norm_max_err': '750a488ebe381cf762ba31a41890c0fe3dd87c2dc703955ad218dd85a2d9862e', 'run_correctness': '70bf0b8f5c08b726579825cc5ed3f859c62e75a05a268f8b32b49362dfc34c84', 'run_benchmark': '46a7dd12bae5d7acf6e00a97ddb5d2ff170b0cd69c65b73cde3dc3fbe2a01099', 'arena_benchmark': '5695d3712ae1a91fa293b9cd61ea29bb50c52d43e8f193e8b67191e846b0d738'}
+    t=ROOT/'tasks/torch2flydsl/fused_add_rmsnorm_kernel';tree=ast.parse((t/'test_kernel_harness.py').read_text())
+    for fn in tree.body:
+        if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
+            restored=_RemoveAddRmsnormChecks().visit(fn)
+            assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name

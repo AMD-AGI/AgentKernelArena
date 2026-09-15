@@ -12,9 +12,6 @@ candidate:
   - file: kernel.py
     kind: function
     symbol: flydsl_fused_add_rmsnorm
-  - file: kernel.py
-    kind: builder
-    symbol: build_fused_add_rmsnorm_module
 baseline:
   kind: provided
   correctness_policy: required

@@ -50,3 +50,15 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+The public candidate entrypoint is `flydsl_fused_add_rmsnorm(input, weight,
+residual, eps) -> (output, residual_out)`. The unused starter builder is not a
+required public interface. Both outputs must be finite BF16 tensors matching the
+input shape/device; all three input tensors are read-only. The original six
+cases, seed, epsilon and normalized max-error tolerance are unchanged. Formal
+baseline timing remains the provided PyTorch model, independently checked against
+AITER. Each role retains ten warmups and one hundred graph-timed samples.
+Measured paired outputs and a poisoned-output replay with perturbed input,
+residual and weight must pass the same original AITER numerical gates. Candidate
+execution is audited separately from reference calls and must perform FlyDSL
+computation; host allocation, layout/casts and launch preparation remain allowed.

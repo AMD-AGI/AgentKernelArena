@@ -6,8 +6,8 @@
 starter/target. Correctness always validates the reference against the independent
 AMD runtime oracle ``aiter.rmsnorm2d_fwd_with_add``. It also invokes
 ``flydsl_fused_add_rmsnorm`` and, once implemented, compares both of its outputs
-to that same oracle. Only the starter's explicit ``NotImplementedError`` is a
-SKIP; missing entry points and all other target errors fail validation.
+to that same oracle. Initial task validation explicitly runs the provided reference baseline; final
+candidate actions require an implemented operator and never fall back.
 
 Both normalized output and residual output use the normalized worst-element gate
 ``max|truth - result| / max|truth| <= REL_TOL``.
@@ -26,7 +26,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -181,6 +182,47 @@ def _norm_max_err(ref, out):
     return max_abs / denom, max_abs, denom
 
 
+def _checked_add_rmsnorm_pair(pair, input):
+    import torch
+    if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+        raise AssertionError("Fused add RMSNorm must return exactly (output, residual_out)")
+    for value in pair:
+        require_tensor_contract(value, input)
+        if not bool(torch.isfinite(value).all()):
+            raise AssertionError("Non-finite fused add RMSNorm output")
+    return pair
+
+
+def _compare_add_rmsnorm_pair(pair, expected):
+    pair = _checked_add_rmsnorm_pair(pair, expected[0])
+    for actual, ref in zip(pair, expected):
+        if _norm_max_err(ref, actual)[0] > REL_TOL:
+            raise AssertionError("Numerical mismatch: fused add RMSNorm normalized error")
+
+
+def _verify_add_rmsnorm_timed(timed, inputs, originals, expected):
+    if not timed.bound:
+        raise RuntimeError("Benchmark did not expose measured fused add RMSNorm outputs")
+    require_unchanged(inputs, originals)
+    _compare_add_rmsnorm_pair(timed.outputs, expected)
+    try:
+        inputs[0].neg_()
+        inputs[1].neg_()
+        inputs[2].mul_(0.5)
+        changed = tuple(x.clone() for x in inputs)
+        replay_expected = _checked_add_rmsnorm_pair(_aiter_add_rmsnorm(*inputs), inputs[0])
+        for output in timed.outputs:
+            output.fill_(float("nan"))
+        replayed = timed.rerun()
+        require_unchanged(inputs, changed)
+        _compare_add_rmsnorm_pair(replayed, replay_expected)
+    finally:
+        for value, original in zip(inputs, originals):
+            value.copy_(original)
+    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+            "replay_inputs_perturbed": True, "replay_output_poisoned": True}
+
+
 def run_correctness(verbose=True):
     import torch
     import aiter  # noqa: F401
@@ -209,6 +251,7 @@ def run_correctness(verbose=True):
         m, n = shape["m"], shape["n"]
         model = mmod.Model(EPS).to("cuda").eval()
         input, weight, residual = _make_inputs(shape)
+        originals = tuple(x.clone() for x in (input, weight, residual))
 
         with torch.no_grad():
             ref_out, ref_res = model(input, weight, residual)
@@ -218,6 +261,9 @@ def run_correctness(verbose=True):
         )
         torch.cuda.synchronize()
 
+        require_unchanged((input, weight, residual), originals)
+        _checked_add_rmsnorm_pair((ref_out, ref_res), input)
+        _checked_add_rmsnorm_pair((truth_out, truth_res), input)
         err_o, ma_o, _ = _norm_max_err(truth_out, ref_out)
         err_r, ma_r, _ = _norm_max_err(truth_res, ref_res)
         err = max(err_o, err_r)
@@ -259,7 +305,8 @@ def run_correctness(verbose=True):
         if target_implemented:
             assert kout is not None, f"{KERNEL_ENTRY} returned None"
             torch.cuda.synchronize()
-            kout_o, kout_r = kout
+            require_unchanged((input, weight, residual), originals)
+            kout_o, kout_r = _checked_add_rmsnorm_pair(kout, input)
             kerr_o, _, _ = _norm_max_err(truth_out, kout_o)
             kerr_r, _, _ = _norm_max_err(truth_res, kout_r)
             kerr = max(kerr_o, kerr_r)
@@ -313,6 +360,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         m, n = shape["m"], shape["n"]
         model = mmod.Model(EPS).to("cuda").eval()
         input, weight, residual = _make_inputs(shape)
+        originals = tuple(x.clone() for x in (input, weight, residual))
 
         def run_ref():
             with torch.no_grad():
@@ -327,10 +375,16 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         _retry(run_truth, what=shape["name"])
         torch.cuda.synchronize()
 
+        expected = _checked_add_rmsnorm_pair(run_truth(), input)
+        require_unchanged((input, weight, residual), originals)
         def _mean(fn):
-            return benchmark_cuda_graph_or_events(
-                fn, warmup=warmup, repetition=iters
+            timed = TimedRun()
+            result_ms, metadata = benchmark_cuda_graph_or_events(
+                fn, warmup=warmup, repetition=iters, timed_run=timed
             )
+            metadata.update(_verify_add_rmsnorm_timed(
+                timed, (input, weight, residual), originals, expected))
+            return result_ms, metadata
 
         ref_ms, ref_bench_meta = _mean(run_ref)
         aiter_ms, _aiter_bench_meta = _mean(run_truth)
@@ -468,6 +522,7 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         m, n = shape["m"], shape["n"]
         model = mmod.Model(EPS).to("cuda").eval()
         input, weight, residual = _make_inputs(shape)
+        originals = tuple(x.clone() for x in (input, weight, residual))
 
         def run_ref():
             with torch.no_grad():
@@ -482,10 +537,16 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         _retry(run_truth, what=shape["name"])
         torch.cuda.synchronize()
 
+        expected = _checked_add_rmsnorm_pair(run_truth(), input)
+        require_unchanged((input, weight, residual), originals)
         def _mean(fn):
-            return benchmark_cuda_graph_or_events(
-                fn, warmup=warmup, repetition=iters
+            timed = TimedRun()
+            result_ms, metadata = benchmark_cuda_graph_or_events(
+                fn, warmup=warmup, repetition=iters, timed_run=timed
             )
+            metadata.update(_verify_add_rmsnorm_timed(
+                timed, (input, weight, residual), originals, expected))
+            return result_ms, metadata
 
         ref_ms, ref_bench_meta = _mean(run_ref)
         aiter_ms, _aiter_bench_meta = _mean(run_truth)
