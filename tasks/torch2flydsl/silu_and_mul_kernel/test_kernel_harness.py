@@ -28,7 +28,7 @@ import time
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
 from scripts.replay_checks import (allclose_output, normalized_output,
-                                  require_tensor_contract, verify_timed_run)
+                                  require_tensor_contract, require_unchanged, verify_timed_run)
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -138,12 +138,14 @@ def run_correctness(verbose=True):
     failures = []
     for shape in SHAPES:
         inp = _make_inputs(shape)
+        originals = (inp.clone(),)
         model = mmod.Model(*mmod.get_init_inputs())
         with torch.no_grad():
             ref = _checked_silu_result(model(inp), inp).float()
             truth = _checked_silu_result(_retry(lambda: _aiter_op(inp), what="aiter.silu_and_mul"), inp).float()
         torch.cuda.synchronize()
 
+        require_unchanged((inp,), originals)
         max_abs = (ref - truth).abs().max().item()
         scale = truth.abs().max().item() + 1e-9
         rel_err = max_abs / scale
@@ -161,9 +163,9 @@ def run_correctness(verbose=True):
 
         if has_kernel:
             try:
-                kout = _retry(
+                kout = _checked_silu_result(_retry(
                     lambda: kmod.flydsl_silu_and_mul(inp, LIMIT), what=KERNEL_ENTRY
-                ).float()
+                ), inp).float()
             except NotImplementedError:
                 raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
                 has_kernel = False
@@ -175,6 +177,7 @@ def run_correctness(verbose=True):
                 kout = None
             if kout is not None:
                 torch.cuda.synchronize()
+                require_unchanged((inp,), originals)
                 k_abs = (ref - kout).abs().max().item()
                 k_rel = k_abs / (ref.abs().max().item() + 1e-9)
                 k_ok = k_rel <= REL_TOL

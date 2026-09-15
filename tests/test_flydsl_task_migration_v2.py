@@ -132,7 +132,7 @@ def test_declaring_flydsl_without_executing_it_is_rejected():
 
 
 CANDIDATE_AUDIT_TASKS = [ROOT / "tasks/torch2flydsl" / name for name in (
-    "dynamic_mxfp8_quant_kernel", "batched_gemm_a8w8_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel",
+    "silu_and_mul_kernel", "dynamic_mxfp8_quant_kernel", "batched_gemm_a8w8_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel",
     "moe_topk_softplus_kernel", "gelu_and_mul_kernel", "gelu_fast_kernel",
     "gelu_tanh_and_mul_kernel", "swiglu_and_mul_kernel",
 )]
@@ -2297,3 +2297,52 @@ def test_mxfp8_original_compute_cases_gates_and_timed_work_unchanged():
         if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
             normalized=_RemoveMxfp8Checks().visit(fn)
             assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
+
+
+@pytest.mark.parametrize('behavior',['correct','ignore_limit','wrong_up_clamp','input_modified'])
+def test_silu_positive_limit_controls_and_restore(behavior):
+    import math
+    import types
+    import torch
+    task=ROOT/'tasks/torch2flydsl/silu_and_mul_kernel'
+    control=module(task/'scripts/limit_controls.py');checks=module(task/'scripts/replay_checks.py');mmod=module(task/'model.py')
+    original=torch.zeros((2,16),dtype=torch.bfloat16)
+    h=types.SimpleNamespace(ARENA_PROVIDED_BASELINE=False,LIMIT=0.,REL_TOL=.01,
+        _KERNEL_DIR='.',MODEL_FILE='model.py',KERNEL_FILE='kernel.py',KERNEL_ENTRY='flydsl_silu_and_mul',
+        SHAPES=[{'name':'controlled','m':2,'n':16}],_make_inputs=lambda shape:original.clone(),
+        require_unchanged=checks.require_unchanged,normalized_output=checks.normalized_output)
+    def scalar_reference(inp):
+        values=[]
+        for row in inp.tolist():
+            values.append([])
+            for gate,up in zip(row[:8],row[8:]):
+                g=float(torch.tensor(min(gate,h.LIMIT),dtype=torch.bfloat16))
+                u=max(-h.LIMIT,min(up,h.LIMIT))
+                values[-1].append(g/(1+math.exp(-g))*u)
+        return torch.tensor(values,dtype=inp.dtype)
+    def candidate(inp,limit):
+        out=mmod.Model(0 if behavior=='ignore_limit' else limit)(inp)
+        if behavior=='wrong_up_clamp':
+            gate,up=inp.float().chunk(2,-1);gate=gate.clamp(max=limit).to(inp.dtype).float()
+            out=(gate.sigmoid()*gate*up).to(inp.dtype)
+        if behavior=='input_modified':inp.add_(1)
+        return out
+    h._aiter_op=scalar_reference
+    h._load_module=lambda directory,filename,alias:mmod if filename=='model.py' else types.SimpleNamespace(flydsl_silu_and_mul=candidate)
+    def checked(result,inp):
+        checks.require_tensor_contract(result,inp[:,:inp.shape[1]//2]);return result
+    h._checked_silu_result=checked
+    if behavior=='correct':control.check_positive_limits(h)
+    else:
+        with pytest.raises(AssertionError):control.check_positive_limits(h)
+    assert h.LIMIT==0.
+
+
+def test_silu_only_requires_the_executed_public_operator(tmp_path):
+    task=tmp_path/'silu';shutil.copytree(ROOT/'tasks/torch2flydsl/silu_and_mul_kernel',task)
+    runtime=module(task/'task_runtime.py');cfg=runtime.config()
+    (task/'kernel.py').write_text('def flydsl_silu_and_mul(inp, limit):\n return inp\ndef build_silu_and_mul_module(*args):\n raise NotImplementedError\n')
+    # State/contract evidence only; identity output is not GPU correctness.
+    assert runtime.source_state(cfg)==('implemented',[True])
+    spec=load_task_spec(task/'config.yaml', task_id='torch2flydsl/silu_and_mul_kernel')
+    assert [e['symbol'] for e in spec.to_mapping()['candidate']['entrypoints']]==['flydsl_silu_and_mul']

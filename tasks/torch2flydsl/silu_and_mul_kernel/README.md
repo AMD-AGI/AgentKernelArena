@@ -59,3 +59,18 @@ perturbs inputs in place, poisons the output, replays the measured unit, and
 compares against the original numerical policy again. Read-only inputs must
 remain unchanged by either execution. Output shape, dtype and device are part
 of the contract. Unsupported replay collection fails; it is never a PASS/SKIP.
+
+The public candidate API is `flydsl_silu_and_mul(input, limit)`. Only that
+operator is declared in config: the unused starter `build_silu_and_mul_module`
+name has no task-defined arguments/launch ABI and is not an additional public
+contract. Candidates may organize their internal compilation helpers freely.
+The starter file itself is unchanged.
+
+All four original LIMIT=0 random cases and formal benchmark work remain intact.
+Additional correctness probes on every original shape exercise positive limits
+2.0, 2.03 and 7.0, gate upper clamping, two-sided up clamping and the documented
+BF16 gate recast. Independent Python scalar known answers supplement the actual
+AITER/model/candidate checks. The limit setting is restored before timing.
+The original normalized error tolerance remains1e-2. Candidate execution auditing
+rejects AITER/PyTorch computation shortcuts and requires each operator invocation
+to launch FlyDSL, while permitting allocation/views/copies outside kernel compute.
