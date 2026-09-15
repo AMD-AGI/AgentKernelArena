@@ -7234,3 +7234,17 @@ def test_qk_dtype_exception_exposes_only_scalar_fp8_attribute(use,allowed,tmp_pa
     if allowed:runtime.check_dependencies([source],True)
     else:
         with pytest.raises(ValueError):runtime.check_dependencies([source],True)
+
+
+def test_jagged_real_inplace_initialized_offsets_keep_view_provenance():
+    import torch
+    task=ROOT/'tasks/torch2flydsl/jagged_dense_bmm_kernel'
+    ns={'SEED':20260601,'N':128,'K':128}
+    _harness_functions(task,{'_make_inputs'},ns)
+    audit=module(task/'scripts/candidate_checks.py')
+    for groups in ([100,128,64,200],[128,256,128],[0,130,0,300,50],[10,33,128,200,1,64,129,255],[64,96]):
+        _,_,_,offsets=ns['_make_inputs'](groups,device='cpu')
+        assert offsets._version>0
+        with audit.candidate_preparation_only((offsets,)):
+            lengths=offsets[1:].to(torch.int64)-offsets[:-1].to(torch.int64)
+            assert int(lengths.max().item())==max(groups)

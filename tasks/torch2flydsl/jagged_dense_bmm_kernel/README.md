@@ -89,3 +89,8 @@ values, and float casts cannot use this arithmetic exception; overwriting tracke
 metadata is rejected. Both candidate paths still require a FlyDSL launch and
 retain their ordinary output/input checks. The original group sizes, mathematical
 reference, numerical gate and prepared timing scope are unchanged.
+
+Metadata views inherit their source storage's current version counter. The
+original input generator fills offsets in-place before candidate invocation;
+that valid nonzero initial version is preserved. Later modifications still
+invalidate the tracked metadata, including writes through a float storage view.

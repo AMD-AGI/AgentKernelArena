@@ -50,9 +50,17 @@ def candidate_preparation_only(metadata_inputs=()):
     # Strong references prevent object-ID reuse; versions invalidate aliases
     # whose contents were overwritten after deriving them from the offsets.
     tracked = {}
-    def remember(value):
+    def remember(value, sources=()):
         if isinstance(value, torch.Tensor) and value.dtype in integer_types:
-            tracked[id(value)] = (value, value._version)
+            version = value._version
+            # Dispatch returns before PyTorch attaches view metadata. A new
+            # view initially appears at version zero, then inherits its base's
+            # counter; original offsets have already been filled in-place.
+            for source in sources:
+                if value.untyped_storage()._cdata == source.untyped_storage()._cdata:
+                    version = source._version
+                    break
+            tracked[id(value)] = (value, version)
     for value in metadata_inputs:
         remember(value)
 
@@ -78,7 +86,7 @@ def candidate_preparation_only(metadata_inputs=()):
             result = func(*args, **kwargs)
             if metadata_only and (name in METADATA_VIEWS or metadata_arithmetic):
                 for value in tree_leaves(result):
-                    remember(value)
+                    remember(value, tensors)
             return result
 
     with PreparationOnly():
