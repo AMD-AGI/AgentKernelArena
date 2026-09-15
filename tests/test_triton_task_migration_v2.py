@@ -6633,3 +6633,111 @@ def test_expert_gemm_actual_timing_original_seed_scale_and_exact_replay(monkeypa
 def test_expert_gemm_adapter_installs_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_expert_kernel/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_expert_gemm_checks'
+
+
+def _ep_gather_cpu(input_tensor,recv_topk_ids,recv_topk_weight,input_index,output_tensor):
+    # Independent batched masked reduction; inactive routes never index the
+    # supplied invalid address. No reuse of the reference's nested token loop.
+    active=recv_topk_ids>=0
+    indices=torch.where(active,input_index,torch.zeros_like(input_index)).long()
+    selected=input_tensor[indices].double()*recv_topk_weight.double().unsqueeze(-1)
+    selected=torch.where(active.unsqueeze(-1),selected,torch.zeros_like(selected))
+    output_tensor.copy_(selected.sum(1).to(output_tensor.dtype))
+
+
+def _ep_gather_cpu_harness(monkeypatch):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'ep_gather')
+    for name in ('randint','zeros'):
+        factory=getattr(torch,name)
+        monkeypatch.setattr(torch,name,lambda *a,_factory=factory,**kw:_factory(*a,**{**kw,'device':'cpu'}))
+    return h,checks
+
+
+def test_ep_gather_independent_known_weighted_sum_disabled_routes_and_gate(monkeypatch):
+    h,checks=_ep_gather_cpu_harness(monkeypatch)
+    data=torch.tensor([[1.,2.],[3.,4.],[5.,6.]],dtype=torch.float16)
+    ids=torch.tensor([[0,-1,3],[-1,-1,-1],[0,1,2]],dtype=torch.int32)
+    weights=torch.tensor([[.5,8.,-1.],[1.,2.,3.],[1.,-1.,2.]])
+    indices=torch.tensor([[0,-999,2],[-999,-999,-999],[2,1,0]],dtype=torch.int32)
+    output=torch.full((3,2),float('nan'),dtype=data.dtype)
+    expected=torch.tensor([[-4.5,-5.],[0.,0.],[4.,6.]],dtype=data.dtype)
+    checks.check_output(checks.reference(h,(data,ids,weights,indices),output),expected)
+    _ep_gather_cpu(data,ids,weights,indices,output);checks.check_output(output,expected)
+    checks.check_output(torch.tensor([.049],dtype=data.dtype),torch.zeros(1,dtype=data.dtype))
+    with pytest.raises(AssertionError):checks.check_output(torch.tensor([.051],dtype=data.dtype),torch.zeros(1,dtype=data.dtype))
+
+
+@pytest.mark.parametrize('mode',['correct','wrong','no_write','return_only','nonfinite','dtype','shape',
+    'skip_token_loop','skip_hidden_block','skip_disabled_row','ignore_negative_weights','ignore_output_stride',
+    'mutate_0','mutate_1','mutate_2','mutate_3'])
+def test_ep_gather_original_fivecase_correctness_and_disabled_multiblock_routes(monkeypatch,mode):
+    h,checks=_ep_gather_cpu_harness(monkeypatch);calls=[];saved_inputs=[]
+    def public(data,ids,weights,indices,output):
+        inputs=(data,ids,weights,indices);calls.append((data.shape,ids.shape,output.shape,output.stride()))
+        saved_inputs.append((inputs,checks.snapshots(inputs)))
+        if mode.startswith('mutate_'):inputs[int(mode[-1])].zero_()
+        if mode=='no_write':return
+        if mode=='return_only':
+            other=torch.empty_like(output);_ep_gather_cpu(*inputs,other);return other
+        _ep_gather_cpu(data,ids,weights.abs() if mode=='ignore_negative_weights' else weights,indices,output)
+        if mode=='skip_token_loop' and output.shape[0]==1025:output[-1].fill_(float('nan'))
+        if mode=='skip_hidden_block' and output.shape[1]==2048:output[:,1024:].fill_(float('nan'))
+        if mode=='skip_disabled_row':output[(ids<0).all(1)]=float('nan')
+        if mode=='ignore_output_stride' and not output.is_contiguous():output.fill_(float('nan'))
+        if mode=='wrong':output.add_(10)
+        if mode=='nonfinite':output.fill_(float('nan'))
+        if mode=='dtype':output.data=output.float()
+        if mode=='shape':output.resize_(output.numel())
+    mod=SimpleNamespace(ep_gather=public);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
+    if mode=='correct':
+        assert [(tuple(data),tuple(ids),tuple(output)) for data,ids,output,_ in calls if output[0]!=1025]==[((slots,hidden),(n,k),(n,hidden)) for n,hidden,slots,k in h.TEST_SHAPES]
+        assert calls[1]==(torch.Size((13,2048)),torch.Size((1025,3)),torch.Size((1025,2048)),(4096,1))
+    for inputs,saved in saved_inputs:checks.unchanged(inputs,saved)
+    assert mod.ep_gather is public
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay',
+    'mutate_timed_0','mutate_timed_1','mutate_timed_2','mutate_timed_3',
+    'mutate_replay_0','mutate_replay_1','mutate_replay_2','mutate_replay_3','zero_inputs_and_output','raise_replay'])
+def test_ep_gather_actual_timing_poisoned_inplace_replay_and_full_input_restore(monkeypatch,mode):
+    import inspect
+    h,checks=_ep_gather_cpu_harness(monkeypatch)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(ep_gather=_ep_gather_cpu);h.load_module=lambda:mod
+    all_buffers,all_saved,options,replays=[],[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        inputs=tuple(state[name] for name in ('input_tensor','topk_ids','topk_weight','input_index'));output=state['output_tensor']
+        saved=checks.snapshots((*inputs,output));all_buffers.append((*inputs,output));all_saved.append(saved);options.append(kwargs)
+        assert torch.equal(output,torch.zeros_like(output))
+        assert measured() is output;cache=output.clone()
+        if mode=='wrong_timed':output.add_(10)
+        if mode.startswith('mutate_timed_'):inputs[int(mode[-1])].zero_()
+        if mode=='zero_inputs_and_output':
+            for value in (*inputs,output):value.zero_()
+        def replay():
+            replays.append(True)
+            expected_ids=(saved[1]+1)%8;expected_ids[::2,0]=-1
+            checks.unchanged(inputs,(saved[0]*-.5+.25,expected_ids,saved[2]*1.25+.5,(saved[3]+7)%inputs[0].shape[0]))
+            assert torch.isnan(output).all()
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode=='stale':output.copy_(cache)
+            elif mode!='no_write':measured()
+            if mode=='wrong_replay':output.add_(10)
+            if mode.startswith('mutate_replay_'):inputs[int(mode[-1])].zero_()
+            return output
+        timed_run._bind(replay,output)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h);rows=h.run_performance()
+    assert options==[dict(warmup=10,repetition=100)]*5
+    for cfg,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('num_tokens','hidden_size','total_slots','topk'),cfg))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for values,saved in zip(all_buffers,all_saved):checks.unchanged(values,saved)
+    assert len(replays)==(0 if mode=='wrong_timed' or mode.startswith('mutate_timed_') or mode=='zero_inputs_and_output' else 5)
+
+
+def test_ep_gather_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_ep_gather/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_ep_gather_checks'

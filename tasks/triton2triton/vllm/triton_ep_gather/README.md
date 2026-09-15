@@ -29,3 +29,16 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+Protected checks compare the complete in-place FP16 output against the original
+weighted-sum reference at atol=rtol=5e-2, including shape, dtype, device, and
+finiteness. The expert buffer, IDs, weights, and routing indices are read-only;
+the oracle uses pristine copies. Unscored controls cover three routes, disabled
+negative expert IDs (their indices must not be accessed), zero-active-route
+rows, signed weights, 1025 tokens, 2048 hidden columns, and output row strides.
+
+The original five cases, correctness seeds 42+i, performance seed 0, initial
+output allocation, ten warmups and 100 samples are unchanged. Both actual
+`TimedRun` output and its poisoned exact replay are checked after changing all
+four inputs. Checks and perturbations are outside timing. All input buffers and
+the caller's original output state are restored after timing, even on failure.
