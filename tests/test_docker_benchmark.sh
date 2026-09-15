@@ -240,9 +240,11 @@ chmod +x "$FAKE_BIN/python"
 forwarded_agents="$(PATH="$FAKE_BIN:$PATH" bash "$RUNNER" _container_check_agents cursor)"
 [[ "$forwarded_agents" == "cursor" ]] || fail "container check received '$forwarded_agents', expected cursor"
 
-# The gfx950 default resolves to the pinned image and enables writable caches.
+# The gfx950 default uses the immutable manifest, not the movable dated tag,
+# and retains the verified image's writable caches.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950)
-assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
+assert_has "$PINNED_GFX950_IMMUTABLE_IMAGE" "${args[@]}"
+assert_not_has "$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
 assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
 
@@ -252,6 +254,7 @@ assert_cache_args_present "-worker_3" "${args[@]}"
 
 # Explicitly selecting the same verified tag has the same behavior.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$PINNED_GFX950_IMAGE")
+assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
 
 # Old and custom gfx950 images retain their existing Docker arguments.
