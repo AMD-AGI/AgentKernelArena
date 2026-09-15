@@ -6201,3 +6201,145 @@ def test_diag_attention_original_timing_exact_poisoned_replay_restores_all_input
 def test_diag_attention_adapter_installs_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_lightning_attn_diag/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_diag_attention_checks'
+
+
+_RECOMPUTE_FAMILIES=['kda','wy_fast']
+
+
+def _recompute_cpu(k,v,beta,A,gate):
+    # Full batch matrix expressed as one block-masked weight table, independent
+    # of the oracle's nested CPU block loops and intermediate FP32 matmuls.
+    length=k.shape[1];block=A.shape[-1];index=torch.arange(length)
+    mask=index[:,None]//block==index[None,:]//block
+    weight=A.double().permute(0,2,1,3)[:,:,:,index%block]*mask
+    gate=gate.double() if gate.ndim==4 else gate.double().unsqueeze(-1)
+    kb=(k.double()*beta.double().unsqueeze(-1)*gate.exp()).permute(0,2,1,3)
+    vb=(v.double()*beta.double().unsqueeze(-1)).permute(0,2,1,3)
+    return ((weight@kb).permute(0,2,1,3).to(k.dtype),
+            (weight@vb).permute(0,2,1,3).to(v.dtype))
+
+
+def _recompute_public(family):
+    if family=='kda':
+        def kda_recompute_wu(k,v,beta,A,gk):return _recompute_cpu(k,v,beta,A,gk)
+        return kda_recompute_wu
+    def wy_fast_recompute_wu(k,v,beta,g_cumsum,A):return _recompute_cpu(k,v,beta,A,g_cumsum)
+    return wy_fast_recompute_wu
+
+
+def _recompute_cpu_harness(monkeypatch,family):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,family+'_recompute_wu')
+    factory=torch.rand
+    monkeypatch.setattr(torch,'rand',lambda *a,**kw:factory(*a,**{**kw,'device':'cpu'}))
+    return h,checks
+
+
+@pytest.mark.parametrize('family',_RECOMPUTE_FAMILIES)
+def test_recompute_independent_two_output_known_answer_scalar_vector_gate_and_partial(monkeypatch,family):
+    import math
+    h,checks=_recompute_cpu_harness(monkeypatch,family)
+    k=torch.tensor([[1.,2.],[3.,4.],[5.,6.]]).reshape(1,3,1,2)
+    v=torch.tensor([2.,3.,4.]).reshape(1,3,1,1);beta=torch.tensor([.5,1.,.25]).reshape(1,3,1)
+    A=torch.tensor([[1.,2.],[3.,4.],[5.,9.]]).reshape(1,3,1,2)
+    gate=torch.full_like(k,math.log(2)) if family=='kda' else torch.full_like(beta,math.log(2))
+    if family=='kda':gate[...,1]=math.log(3)
+    inputs=(k,v,beta,A,gate) if family=='kda' else (k,v,beta,gate,A)
+    w=torch.tensor([[6.5,9.],[13.5,19.],[6.25,7.5]]).reshape_as(k)
+    w=w*torch.tensor([2.,3. if family=='kda' else 2.]);u=torch.tensor([7.,15.,5.]).reshape_as(v)
+    expected=(w,u)
+    for actual,wanted in zip(checks.reference(h,inputs),expected):
+        torch.testing.assert_close(actual,wanted,atol=1e-5,rtol=0)
+    checks.check_outputs(_recompute_public(family)(*inputs),expected,inputs)
+    allowed=(w+.05,u+.05);checks.check_outputs(allowed,expected,inputs)
+    with pytest.raises(AssertionError):checks.check_outputs((w+10,u),expected,inputs)
+    with pytest.raises(AssertionError):checks.check_outputs((w,u+10),expected,inputs)
+
+
+@pytest.mark.parametrize('family',_RECOMPUTE_FAMILIES)
+@pytest.mark.parametrize('mode',['correct','empty','singleton','extra','list','dtype_w','dtype_u',
+    'shape_w','device_u','nan_w','nan_u','zero','wrong_w','wrong_u','omit_partial_block','omit_k_tail','omit_v_tail',
+    'mutate_0','mutate_1','mutate_2','mutate_3','mutate_4'])
+def test_recompute_original_fivecase_correctness_full_tuple_and_pristine_oracle(monkeypatch,family,mode):
+    import functools
+    h,checks=_recompute_cpu_harness(monkeypatch,family);public=_recompute_public(family)
+    calls=[];saved_inputs=[]
+    @functools.wraps(public)
+    def candidate(*inputs):
+        calls.append(tuple(inputs[0].shape));saved_inputs.append((inputs,checks.snapshots(inputs)))
+        if mode.startswith('mutate_'):inputs[int(mode[-1])].zero_()
+        w,u=public(*inputs)
+        if mode=='empty':return ()
+        if mode=='singleton':return (w,)
+        if mode=='extra':return w,u,w
+        if mode=='list':return [w,u]
+        if mode=='dtype_w':w=w.half()
+        if mode=='dtype_u':u=u.half()
+        if mode=='shape_w':w=w.flatten()
+        if mode=='device_u':u=u.to('meta')
+        if mode=='nan_w':w.fill_(float('nan'))
+        if mode=='nan_u':u.fill_(float('nan'))
+        if mode=='zero':w.zero_();u.zero_()
+        if mode=='wrong_w':w.add_(1)
+        if mode=='wrong_u':u.add_(1)
+        if mode=='omit_partial_block' and inputs[0].shape[1]==35:w[:,32:].zero_();u[:,32:].zero_()
+        if mode=='omit_k_tail' and w.shape[-1]==65:w[...,64:].zero_()
+        if mode=='omit_v_tail' and u.shape[-1]==70:u[...,64:].zero_()
+        return w,u
+    mod=SimpleNamespace(**{checks.SYMBOL:candidate});h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
+    if mode=='correct':assert calls==[(1,64,2,32),(2,35,3,65),*[(1,64,2,32)]*4]
+    for inputs,saved in saved_inputs:checks.unchanged(inputs,saved)
+    assert getattr(mod,checks.SYMBOL) is candidate
+
+
+@pytest.mark.parametrize('family',_RECOMPUTE_FAMILIES)
+@pytest.mark.parametrize('mode',['correct','wrong_timed_w','wrong_timed_u','stale','no_write',
+    'skip_w','skip_u','wrong_replay_w','wrong_replay_u','zero_replay','zero_inputs_and_outputs',
+    'mutate_timed_0','mutate_timed_1','mutate_timed_2','mutate_timed_3','mutate_timed_4',
+    'mutate_replay_0','mutate_replay_1','mutate_replay_2','mutate_replay_3','mutate_replay_4','raise_replay'])
+def test_recompute_actual_original_timing_checks_both_outputs_and_restores_all_five_inputs(monkeypatch,family,mode):
+    import inspect
+    h,checks=_recompute_cpu_harness(monkeypatch,family);public=_recompute_public(family)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(**{checks.SYMBOL:public});h.load_module=lambda:mod
+    all_inputs,all_saved,options,replays=[],[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        inputs=state['args'];saved=checks.snapshots(inputs)
+        all_inputs.append(inputs);all_saved.append(saved);options.append(kwargs)
+        outputs=measured();cached=checks.snapshots(outputs)
+        if mode.startswith('wrong_timed_'):outputs[0 if mode.endswith('w') else 1].add_(1)
+        if mode.startswith('mutate_timed_'):inputs[int(mode[-1])].zero_()
+        if mode=='zero_inputs_and_outputs':
+            for v in (*inputs,*outputs):v.zero_()
+        def replay():
+            replays.append(True)
+            for name,value,original in zip(checks.ARGUMENTS,inputs,saved):
+                assert not torch.equal(value,original),name
+            assert all(torch.isnan(v).all() for v in outputs)
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='no_write':
+                fresh=cached if mode=='stale' else measured()
+                for i,(value,new) in enumerate(zip(outputs,fresh)):
+                    if mode!=('skip_w' if i==0 else 'skip_u'):value.copy_(new)
+            if mode.startswith('wrong_replay_'):outputs[0 if mode.endswith('w') else 1].add_(10)
+            if mode=='zero_replay':
+                for v in outputs:v.zero_()
+            if mode.startswith('mutate_replay_'):inputs[int(mode[-1])].zero_()
+            return outputs
+        timed_run._bind(replay,outputs)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h);rows=h.run_performance()
+    assert options==[dict(warmup=10,repetition=100)]*5
+    for seed,row in zip(h.SEEDS,rows):
+        assert row['params']=={'seed':seed}
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for inputs,saved in zip(all_inputs,all_saved):checks.unchanged(inputs,saved)
+    assert len(replays)==(0 if mode.startswith(('wrong_timed_','mutate_timed_')) or mode=='zero_inputs_and_outputs' else 5)
+    assert getattr(mod,checks.SYMBOL) is public
+
+
+@pytest.mark.parametrize('family',_RECOMPUTE_FAMILIES)
+def test_recompute_adapter_installs_checks(monkeypatch,family):
+    h=module_at(ROOT/f'tasks/triton2triton/vllm/triton_{family}_recompute_wu/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_recompute_checks'

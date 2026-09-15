@@ -30,3 +30,16 @@ The protected manifest requires the declared kernel symbols to remain Triton JIT
 functions, including kernels originally decorated with `@triton.jit()`. Removing
 the decorator is rejected before compilation. This structural check supplements
 the numerical and timed-path checks; it does not by itself attest every dispatch.
+
+Protected checks require exactly two tensors `(w, u)`, with the declared shapes,
+dtypes, devices, finite values, and the original FP32 reference comparison at
+atol=rtol=5e-2. All five input tensors are read-only and the oracle uses pristine
+copies. An unscored `(B,T,H,K,V,BT)=(2,35,3,65,70,32)` control covers the second
+partial block, both partial feature tiles, unequal output widths, and nonzero
+outputs large enough to reject zero fills with the existing tolerance.
+
+The original five seeds, input distributions, full wrapper allocations, 10
+warmups, and 100 timing samples are unchanged. Both actual `TimedRun` outputs
+are checked, poisoned, and checked again after changing all five inputs and
+replaying that exact invocation. Verification and perturbation occur outside
+timing; all input buffers are restored even on a failed replay.
