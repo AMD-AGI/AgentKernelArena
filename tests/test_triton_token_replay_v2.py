@@ -540,3 +540,68 @@ def test_added_top_p_and_combined_direct_launch_composition(monkeypatch):
     rows=harness.run_performance()
     assert [r['test_case_id'] for r in rows]==list(contract.SCORED_CASE_IDS)
     assert all(r['execution_time_ms']>0 and r['replay_input_control_checked'] for r in rows)
+
+
+def test_zero_controls_satisfy_the_actual_public_dimension_precondition():
+    _,contract,harness=modules('write_zeros_to_output')
+    path=TASKS/'triton_write_zeros_to_output/source/triton_write_zeros_to_output.py'
+    fn=next(n for n in ast.parse(path.read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='write_zeros')
+    preconditions=[n for n in fn.body if isinstance(n,ast.Assert)]
+    assert preconditions
+    code=compile(ast.Module(body=preconditions,type_ignores=[]),str(path),'exec')
+    for (output,) in contract.control_inputs(harness):
+        exec(code,{'output':output})
+    with pytest.raises(AssertionError,match='2D'):
+        exec(code,{'output':torch.zeros(7)})
+
+
+@pytest.mark.parametrize('name',['bad_words','logit_bias','penalties','topk_topp'])
+def test_scored_manifest_describes_exact_constructed_inputs(name):
+    _,contract,harness=modules(name)
+    rows={r['test_case_id']:r for r in json.loads((TASKS/('triton_'+name)/'workloads.json').read_text())['cases']}
+    for case_id,args in contract.scored_inputs(harness):
+        row=rows[case_id]; params=row['params']; recipe=params['logits']
+        assert list(args[0].shape)==row['shape']
+        assert str(args[0].dtype).removeprefix('torch.')==row['dtype']
+        if recipe['generator']=='linspace':
+            expected=torch.linspace(recipe['start'],recipe['stop'],recipe['numel']).reshape(recipe['reshape'])
+        else:
+            assert recipe['generator']=='linspace_row_repeat'
+            expected=torch.linspace(recipe['start'],recipe['stop'],recipe['row_numel']).repeat(recipe['repeat_rows'],1)
+        torch.testing.assert_close(args[0],expected,atol=0,rtol=0)
+        if name!='topk_topp':
+            assert args[1].tolist()==params['request_mapping_pattern']*params['pattern_repeats']
+        if name=='bad_words':
+            decoded=[]
+            for req,count in enumerate(args[4].tolist()):
+                decoded.append([args[2][req,int(args[3][req,j]):int(args[3][req,j+1])].tolist() for j in range(count)])
+            assert decoded==params['bad_words_by_request']
+            assert args[5].tolist()==params['token_history_by_request']
+            assert args[6].tolist()==params['prompt_lengths'] and args[7].tolist()==params['total_lengths']
+            assert args[8].tolist()==params['speculative_input_ids_pattern']*params['pattern_repeats']
+            assert args[9].tolist()==params['local_positions_pattern']*params['pattern_repeats']
+            assert args[10]==params['max_num_bad_words']
+        elif name=='logit_bias':
+            assert args[2].tolist()==params['positions_pattern']*params['pattern_repeats']
+            assert [args[4][req,:count].tolist() for req,count in enumerate(args[3].tolist())]==params['allowed_tokens_by_request']
+            for req,count in enumerate(args[5].tolist()):
+                assert args[6][req,:count].tolist()==params['biases_by_request'][req]['token_ids']
+                torch.testing.assert_close(args[7][req,:count],torch.tensor(params['biases_by_request'][req]['values']),atol=0,rtol=0)
+            assert args[8].tolist()==params['minimum_lengths']
+            assert [args[10][req,:count].tolist() for req,count in enumerate(args[9].tolist())]==params['stop_tokens_by_request']
+        elif name=='penalties':
+            assert args[2].tolist()==params['token_ids_pattern']*params['pattern_repeats']
+            assert args[3].tolist()==params['local_positions_pattern']*params['pattern_repeats']
+            for index,key in [(4,'repetition_penalties'),(5,'frequency_penalties'),(6,'presence_penalties')]:
+                torch.testing.assert_close(args[index],torch.tensor(params[key]),atol=0,rtol=0)
+            prompt=[[token for token in range(row['shape'][1]) if (int(mask[token//32])>>(token%32))&1] for mask in args[7]]
+            counts=[{str(token):int(count[token]) for token in count.nonzero().flatten().tolist()} for count in args[8]]
+            assert prompt==params['prompt_tokens_by_request'] and counts==params['output_token_counts_by_request']
+            assert list(args[7].shape)==params['prompt_mask_shape'] and list(args[8].shape)==params['output_counts_shape']
+            assert args[9]==params['num_speculative_tokens']
+        else:
+            assert (None if args[1] is None else args[1].tolist())==params['top_k']
+            torch.testing.assert_close(args[2],torch.tensor(params['top_p']),atol=0,rtol=0)
+            assert args[3]==float(params['mask_value'])
+            assert params['timed_entrypoint']=='_topk_topp_kernel'
+            assert params['scratch_allocation']=='outside_timing'

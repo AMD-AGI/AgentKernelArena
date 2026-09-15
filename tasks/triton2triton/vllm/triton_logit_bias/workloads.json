@@ -171,8 +171,101 @@
       ],
       "params": {
         "case_index": 6,
-        "coverage": "additional representative operator branch workload"
-      }
+        "variant": "allowlist_bias_and_minimum_length_stop_mask",
+        "logits": {
+          "generator": "linspace",
+          "start": -2.0,
+          "stop": 2.0,
+          "numel": 32768,
+          "reshape": [
+            32,
+            1024
+          ]
+        },
+        "request_mapping_pattern": [
+          2,
+          0,
+          3,
+          1
+        ],
+        "pattern_repeats": 8,
+        "positions_pattern": [
+          0,
+          4,
+          2,
+          9
+        ],
+        "allowed_tokens_by_request": [
+          [],
+          [
+            1,
+            3
+          ],
+          [
+            0,
+            2,
+            4
+          ],
+          []
+        ],
+        "biases_by_request": [
+          {
+            "token_ids": [
+              1
+            ],
+            "values": [
+              0.5
+            ]
+          },
+          {
+            "token_ids": [
+              3
+            ],
+            "values": [
+              -1.0
+            ]
+          },
+          {
+            "token_ids": [
+              2,
+              4
+            ],
+            "values": [
+              2.0,
+              -2.0
+            ]
+          },
+          {
+            "token_ids": [],
+            "values": []
+          }
+        ],
+        "minimum_lengths": [
+          2,
+          3,
+          1,
+          4
+        ],
+        "stop_tokens_by_request": [
+          [
+            1
+          ],
+          [
+            3
+          ],
+          [
+            4
+          ],
+          [
+            2
+          ]
+        ]
+      },
+      "shape": [
+        32,
+        1024
+      ],
+      "dtype": "float32"
     }
   ],
   "migration": {

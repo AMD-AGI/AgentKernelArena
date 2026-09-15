@@ -222,8 +222,93 @@
       ],
       "params": {
         "case_index": 6,
-        "coverage": "additional representative operator branch workload"
-      }
+        "variant": "multi_token_prefix_history_and_speculation",
+        "logits": {
+          "generator": "linspace",
+          "start": -2.0,
+          "stop": 2.0,
+          "numel": 32768,
+          "reshape": [
+            32,
+            1024
+          ]
+        },
+        "request_mapping_pattern": [
+          1,
+          1,
+          0,
+          0
+        ],
+        "pattern_repeats": 8,
+        "local_positions_pattern": [
+          0,
+          1,
+          0,
+          1
+        ],
+        "speculative_input_ids_pattern": [
+          6,
+          0,
+          2,
+          0
+        ],
+        "bad_words_by_request": [
+          [
+            [
+              3,
+              4,
+              9
+            ],
+            [
+              2,
+              8
+            ]
+          ],
+          [
+            [
+              5,
+              6,
+              10
+            ],
+            [
+              7,
+              11
+            ]
+          ]
+        ],
+        "prompt_lengths": [
+          2,
+          2
+        ],
+        "total_lengths": [
+          4,
+          3
+        ],
+        "token_history_by_request": [
+          [
+            0,
+            0,
+            3,
+            4,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            5,
+            0,
+            0,
+            0
+          ]
+        ],
+        "max_num_bad_words": 2
+      },
+      "shape": [
+        32,
+        1024
+      ],
+      "dtype": "float32"
     }
   ],
   "migration": {

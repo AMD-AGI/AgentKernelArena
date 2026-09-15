@@ -30,7 +30,7 @@ def fresh(args):
 
 def control_inputs(harness):
     yield (f([[1,-2,3],[4,5,-6]]),)
-    yield (torch.full((7,), torch.finfo(torch.float32).tiny),)
+    yield (torch.full((1,7), torch.finfo(torch.float32).tiny),)
 
 def observe(result, args):
     return args[MUTABLE[0]]
