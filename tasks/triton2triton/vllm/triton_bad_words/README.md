@@ -4,7 +4,18 @@ The starting candidate is implemented Triton. Improve the declared source files 
 the framework freezes the initial implementation as the baseline. Baseline and candidate
 actions execute only this workspace, with no fallback to another implementation.
 
-Optimize the Triton bad words kernel that masks logits for tokens completing bad word sequences by matching prefix patterns against generated output.
+Optimize the original single-token bad-word filtering workload while preserving the
+full `apply_bad_words` operator, including multi-token prefix matching. The five
+scored cases use one-token bad-word lists, identity request mapping and local_pos=0;
+they measure masking throughput as batch, vocabulary and list sizes grow. Their
+speedup is specifically a single-token filtering result, not a claim about general
+prefix-search or speculative-decoding throughput.
+
+Multi-token words, generated-output history, request remapping and speculative
+positions remain required correctness behavior. The three original targeted cases
+and the additional `contract_controls` group check those paths independently; they
+have never contributed performance samples to this task. A candidate cannot remove
+those paths merely because the score uses the single-token workload.
 
 Constraints:
 - Must maintain the same function signature for `apply_bad_words`
