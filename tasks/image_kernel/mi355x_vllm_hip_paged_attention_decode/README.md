@@ -164,3 +164,11 @@ translation unit or template header. It records the covered files and rejects
 unrelated/precompiled dispatch. This is build-source evidence, not exhaustive
 proof that every launched GPU instruction belongs to every editable file.
 No compiler-triggered repository cloning or checkout resets are permitted.
+
+The qualified SGLang runtime stores AITER as a complete source repository at
+`/sgl-workspace/aiter`, not as an installed `aiter_meta` wheel directory.
+`workspace.sources` explicitly copies that repository to the task's metadata
+root; the unified-attention task separately copies its `aiter/` Python package.
+Editable task-relative paths and operator semantics remain unchanged. This fixes
+source availability only; dispatch, compilation and numerical compatibility
+still require full GPU validation on the selected immutable runtime.

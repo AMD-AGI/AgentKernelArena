@@ -32,14 +32,17 @@ baseline:
 workspace:
   sources:
   - kind: image
-    image_path: /usr/local/lib/python3.12/dist-packages/aiter
+    image_path: /sgl-workspace/aiter/aiter
     destination: aiter
     exclude:
     - jit/build
     - jit/flydsl_cache
   - kind: image
-    image_path: /usr/local/lib/python3.12/dist-packages/aiter_meta
+    image_path: /sgl-workspace/aiter
     destination: aiter_meta
+    exclude:
+    - aiter/jit/build
+    - aiter/jit/flydsl_cache
   setup:
   - - python3
     - scripts/setup_task.py

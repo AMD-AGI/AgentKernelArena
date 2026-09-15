@@ -45,3 +45,11 @@ profiling drivers do not supply final evaluation evidence.
 This migration has CPU regression coverage; formal GPU task validation and the
 optimization campaign are coordinated separately. Runtime source availability
 must be checked against the selected immutable image, not inferred from a tag.
+
+The qualified SGLang runtime stores AITER as a complete source repository at
+`/sgl-workspace/aiter`, not as an installed `aiter_meta` wheel directory.
+`workspace.sources` explicitly copies that repository to the task's metadata
+root; the unified-attention task separately copies its `aiter/` Python package.
+Editable task-relative paths and operator semantics remain unchanged. This fixes
+source availability only; dispatch, compilation and numerical compatibility
+still require full GPU validation on the selected immutable runtime.

@@ -81,8 +81,11 @@ The remaining Torch references and all input generation remain protected.
 
 `tests/test_image_task_migration_v2.py` pins evidence from commit `5c9f8ef2`:
 original CASES/PERF_CASES, original session JSON bytes, numerical constants, and
-ASTs of all original compile/correctness/performance methods. The only change to
-the original performance methods is returning their freshly produced rows.
+ASTs of all original compile/correctness/performance methods. The initial
+migration only added returns for freshly produced rows. A subsequent qualification
+fix adds captured-output checks after timing to the five older AITER tasks. The
+regression removes only those reviewed additions when comparing the original
+measurement body; original timing arguments and comparison gates stay pinned.
 Generated `AKA-GENERATED` performance regions are byte-for-byte unchanged.
 Thus seeds, workload cases, tolerance constants, warmup/repetition settings,
 graph/event method, synchronization, state reset and timed replay logic remain.
@@ -201,3 +204,33 @@ Docker image inspections, old/new JSON inventories, copied inspected source file
 original harness evidence, and CPU test outputs. Job-specific files are under
 `logs/image-migration-v2/138977/`. Source SHA256 hashes in action envelopes identify
 the actual materialized implementation, since image tags alone are insufficient.
+
+## Qualification follow-up from parent base `5fb2b9d6`
+
+The five older AITER harnesses now observe the actual captured output, negate one
+input in its original storage, poison the output, replay, and compare against a
+fresh reference with the original tolerance. This runs after measurement, with no
+change to the measured kernel, warmups or repetitions. It addresses their missing
+exact-replay evidence; a separate ordinary correctness invocation is insufficient.
+An event fallback whose outputs cannot be observed is explicitly rejected by the
+existing shared timed-run collector. The new controls have CPU negative coverage;
+full GPU validation of this follow-up is still outstanding.
+
+Six AITER-based `mi355x_vllm_*` configs now explicitly select the real SGLang
+repository layout observed in job 138977. The three CK tasks and two HIP tasks
+seed `/sgl-workspace/aiter` into `aiter_meta`. Unified attention additionally seeds
+`/sgl-workspace/aiter/aiter` into `aiter`. Their task-relative candidate paths,
+reference rules and source-build checks remain unchanged. The historical table
+above describes the original source declarations at `5fb2b9d6`; these six source
+availability errors are corrected in the follow-up, without claiming GPU PASS.
+The two removed SGLang MXFP8 modules and seven actual vLLM-source tasks still need
+compatible explicitly pinned source/runtime assets; an identically named AITER
+file is not a valid substitute for a vLLM implementation.
+
+Qualification job 139081 allocated GPUs 2 and 3 on node100, then failed in Docker
+before process startup because the read-only snapshot lacked its `logs/` mount
+point. Scheduler elapsed: 13 seconds, exit `125:0`; GPUs were released. It produced
+**zero** validator results and no GPU computation evidence. The launch preparation
+now creates that mount point before the read-only mount. This is a launcher fix,
+not a change to framework evaluation or task acceptance. Its artifacts are under
+`logs/image-v2-gpu-validation/139081/`.

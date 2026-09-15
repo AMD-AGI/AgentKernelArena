@@ -92,7 +92,12 @@
         4096,
         4096
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "x": "negate_in_place"
+        }
+      }
     },
     {
       "test_case_id": "gemm_m8192_n8192_k1024",
@@ -112,7 +117,12 @@
         8192,
         1024
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "x": "negate_in_place"
+        }
+      }
     }
   ]
 }

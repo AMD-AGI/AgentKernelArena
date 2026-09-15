@@ -130,7 +130,12 @@
         128,
         1024
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "query": "negate_in_place"
+        }
+      }
     },
     {
       "test_case_id": "pa_decode_ctx8192_s128",
@@ -156,7 +161,12 @@
         128,
         8192
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "query": "negate_in_place"
+        }
+      }
     }
   ]
 }

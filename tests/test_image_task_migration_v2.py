@@ -574,7 +574,25 @@ def test_original_cases_numerical_policy_and_benchmark_unchanged(directory):
         function = deepcopy(functions[name])
         if name == "run_performance":
             assert isinstance(function.body[-1], ast.Return)
-            function.body.pop()  # Only addition: return the fresh rows to v2.
+            function.body.pop()  # Return the fresh rows to v2.
+            if directory.name.startswith("mi300x_"):
+                # Post-migration fix: captured-output correctness after timing.
+                # Remove only the three reviewed additions before comparing the
+                # original measurement body, preserving all timing constants.
+                loop = next(n for n in function.body if isinstance(n, ast.For))
+                collector = [n for n in loop.body if isinstance(n, ast.Assign)
+                             and isinstance(n.value, ast.Call)
+                             and isinstance(n.value.func, ast.Name) and n.value.func.id == "_TimedRun"]
+                check = [n for n in loop.body if isinstance(n, ast.Expr)
+                         and isinstance(n.value, ast.Call)
+                         and isinstance(n.value.func, ast.Name) and n.value.func.id == "_assert_timed_outputs"]
+                assert len(collector) == len(check) == 1
+                loop.body = [n for n in loop.body if n not in collector + check]
+                calls = [n for n in ast.walk(loop) if isinstance(n, ast.Call)
+                         and isinstance(n.func, ast.Name) and n.func.id == "_benchmark_cuda_graph_or_events"]
+                assert len(calls) == 1
+                assert [k.arg for k in calls[0].keywords] == ["timed_run"]
+                calls[0].keywords = []
         assert digest(ast.dump(function, include_attributes=False)) == expected
     for name, expected in evidence["numbers"].items():
         actual = [n.value for n in ast.walk(functions[name])
@@ -847,3 +865,48 @@ def test_action_errors_still_emit_failure_envelope(tmp_path, monkeypatch, failur
     assert not parsed.passed and code != 0
     assert parsed.failure_kind == "evaluation_error"
     assert parsed.cases[0]["status"] == "FAIL"
+
+
+@pytest.mark.parametrize("directory", [d for d in DIRECTORIES if d.name.startswith("mi300x_")], ids=lambda d:d.name)
+def test_old_image_harness_checks_actual_replay_output(directory, monkeypatch):
+    torch = pytest.importorskip("torch")
+    h = load_module(directory / "scripts/task_runner.py")
+    key = "x" if "triton" in directory.name else "query"
+    data = torch.tensor([[1., -2.]], dtype=torch.bfloat16)
+    case = {key: data, "params": {"dtype": "bfloat16"}}
+    monkeypatch.setattr(h, "_run_torch", lambda c: (c[key].float() * 3 + 2).to(torch.bfloat16))
+    stale = h._run_torch(case).clone()
+    output = stale.clone()
+    timed = SimpleNamespace(bound=True, outputs=output)
+
+    def correct_replay():
+        assert torch.isnan(output).all()
+        output.copy_(h._run_torch(case))
+        return output
+
+    timed.rerun = correct_replay
+    h._assert_timed_outputs(case, timed)
+    torch.testing.assert_close(data, torch.tensor([[-1., 2.]], dtype=torch.bfloat16))
+    # It rejects returning a prior answer, even though that tensor is finite.
+    data.neg_()
+    timed.rerun = lambda: stale
+    with pytest.raises(AssertionError):
+        h._assert_timed_outputs(case, timed)
+    timed.rerun = lambda: output  # Fails if the invocation did not overwrite NaNs.
+    with pytest.raises(AssertionError):
+        h._assert_timed_outputs(case, timed)
+
+
+def test_aiter_image_sources_use_qualified_repository_layout():
+    selected = [d for d in DIRECTORIES if d.name.startswith("mi355x_vllm_ck_")
+                or d.name in {"mi355x_vllm_hip_dynamic_per_tensor_quant",
+                              "mi355x_vllm_hip_paged_attention_decode", "mi355x_vllm_triton_unified_attention"}]
+    assert len(selected) == 6
+    for directory in selected:
+        cfg = yaml.safe_load((directory / "config.yaml").read_text())
+        by_dest = {source["destination"]: source for source in cfg["workspace"]["sources"]}
+        assert by_dest["aiter_meta"]["image_path"] == "/sgl-workspace/aiter"
+        if directory.name.endswith("triton_unified_attention"):
+            assert by_dest["aiter"]["image_path"] == "/sgl-workspace/aiter/aiter"
+        else:
+            assert all(p.startswith("aiter_meta/csrc/") for p in cfg["candidate"]["editable"])

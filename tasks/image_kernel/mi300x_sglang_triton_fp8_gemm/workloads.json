@@ -92,7 +92,12 @@
         4096,
         4096
       ],
-      "dtype": "fp8e4m3"
+      "dtype": "fp8e4m3",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "x": "negate_in_place"
+        }
+      }
     },
     {
       "test_case_id": "fp8_gemm_m8192_n8192_k8192",
@@ -112,7 +117,12 @@
         8192,
         8192
       ],
-      "dtype": "fp8e4m3"
+      "dtype": "fp8e4m3",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "x": "negate_in_place"
+        }
+      }
     }
   ]
 }

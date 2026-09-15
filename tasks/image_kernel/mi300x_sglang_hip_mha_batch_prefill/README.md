@@ -64,3 +64,10 @@ translation unit or template header. It records the covered files and rejects
 unrelated/precompiled dispatch. This is build-source evidence, not exhaustive
 proof that every launched GPU instruction belongs to every editable file.
 No compiler-triggered repository cloning or checkout resets are permitted.
+
+Formal validation requires checking the exact captured timing invocation. After
+measurement the harness negates one data input in place, poisons the captured
+output with NaNs, replays that invocation, and compares with a freshly computed
+reference using the unchanged ordinary-correctness tolerance. This adds no work
+to the measured region and preserves the original warmups and sample counts.
+An unobservable event fallback cannot provide this evidence and fails explicitly.

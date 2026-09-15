@@ -133,7 +133,12 @@
         512,
         512
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "query": "negate_in_place"
+        }
+      }
     },
     {
       "test_case_id": "batch_prefill_b2_q2048_kv2048",
@@ -160,7 +165,12 @@
         2048,
         2048
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "query": "negate_in_place"
+        }
+      }
     }
   ]
 }

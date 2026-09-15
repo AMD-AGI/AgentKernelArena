@@ -130,7 +130,12 @@
         128,
         128
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "query": "negate_in_place"
+        }
+      }
     },
     {
       "test_case_id": "pa_ragged_ctx4097_s128",
@@ -156,7 +161,12 @@
         128,
         4097
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "query": "negate_in_place"
+        }
+      }
     }
   ]
 }

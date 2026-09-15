@@ -53,3 +53,10 @@ profiling drivers do not supply final evaluation evidence.
 This migration has CPU regression coverage; formal GPU task validation and the
 optimization campaign are coordinated separately. Runtime source availability
 must be checked against the selected immutable image, not inferred from a tag.
+
+Formal validation requires checking the exact captured timing invocation. After
+measurement the harness negates one data input in place, poisons the captured
+output with NaNs, replays that invocation, and compares with a freshly computed
+reference using the unchanged ordinary-correctness tolerance. This adds no work
+to the measured region and preserves the original warmups and sample counts.
+An unobservable event fallback cannot provide this evidence and fails explicitly.
