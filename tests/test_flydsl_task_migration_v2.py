@@ -527,6 +527,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
             fn = _RemoveStandardQuantChecks().visit(fn)
         if name in {"rmsnorm2d_dynamicquant_kernel", "rmsnorm2d_smoothquant_kernel"}:
             fn = _RemoveRmsDynamicQuantChecks().visit(fn)
+        if name == "moe_sorting_kernel":
+            fn = _RemoveSortingChecks().visit(fn)
         if name == "qk_norm_rope_quant_kernel":
             fn = _RemoveQkChecks().visit(fn)
         if name == "gemm_a8w8_bpreshuffle_kernel":
@@ -6915,3 +6917,76 @@ def test_qk_original_model_strided_inputs_rotary_scope_and_timing_preserved():
             assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
     peer=ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'
     for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py','task_runtime.py']:assert (task/rel).read_bytes()==(peer/rel).read_bytes()
+
+
+class _RemoveSortingChecks(_RemoveSglangElementwiseChecks):
+    def visit_Expr(self,node):
+        if isinstance(node.value,ast.Call) and getattr(node.value.func,'id',None)=='_checked_sort_outputs':return None
+        return super().visit_Expr(node)
+
+
+@pytest.mark.parametrize('function,behavior',[(fn,bad) for fn in ['run_correctness','run_benchmark','arena_benchmark'] for bad in ['correct','ids','weights','experts','counts','shape','dtype','nonfinite','ids_modified','weights_modified','measured_wrong','replay_wrong','cached_ids','cached_weights','cached_experts','cached_counts','undefined_tail'] if fn!='run_correctness' or bad not in {'measured_wrong','replay_wrong','cached_ids','cached_weights','cached_experts','cached_counts'}])
+def test_sorting_real_original_exact_prefix_checks_and_changed_routing_replay(function,behavior,monkeypatch,tmp_path):
+    import torch,types,math
+    task=ROOT/'tasks/torch2flydsl/moe_sorting_kernel';real=module(task/'model.py');checks=module(task/'scripts/replay_checks.py')
+    # Rotation changes expert block order and uneven run counts, retaining
+    # unique experts per token and a deliberately unused output tail.
+    ids=torch.tensor([[0,1],[0,2],[0,1],[4,0],[2,0]],dtype=torch.int32);weights=torch.linspace(.2,1.,10).reshape(5,2);original=(ids.clone(),weights.clone());shape=dict(name='controlled',M=5,E=5,topk=2);model=real.Model(5,2,4);cached=model(ids,weights);phase={'name':'setup'}
+    def compute(*a,**kw):
+        outputs=list(model(ids,weights));valid=int(outputs[3][0]);blocks=valid//4
+        if function=='run_correctness' or phase['name']=='measured':
+            if behavior=='ids':outputs[0][0]=-10
+            if behavior=='weights':outputs[1][0]=10
+            if behavior=='experts':outputs[2][0]=-2
+            if behavior=='counts':outputs[3][0]=0
+            if behavior=='shape':outputs[0]=outputs[0].reshape(-1,1)
+            if behavior=='dtype':outputs[0]=outputs[0].long()
+            if behavior=='nonfinite':outputs[1][0]=float('nan')
+            if behavior=='ids_modified':ids.fill_(1)
+            if behavior=='weights_modified':weights.add_(1)
+        if behavior==phase['name']+'_wrong':outputs[0][0]=-10
+        if phase['name']=='replay' and behavior.startswith('cached_'):
+            index={'cached_ids':0,'cached_weights':1,'cached_experts':2,'cached_counts':3}[behavior];outputs[index]=cached[index].clone()
+        if behavior=='undefined_tail':outputs[1][valid:]=float('nan');outputs[0][valid:]=-1;outputs[2][blocks:]=-10
+        return tuple(outputs)
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run=None):
+        calls.append((warmup,repetition));phase['name']='measured'
+        if timed_run is None:fn()
+        else:
+            timed_run.outputs=fn();timed_run.bound=True
+            def replay():
+                phase['name']='replay'
+                try:return fn()
+                finally:phase['name']='setup'
+            timed_run.rerun=replay
+        phase['name']='setup'
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':benchmark,'require_tensor_contract':checks.require_tensor_contract,'require_unchanged':checks.require_unchanged,'verify_timed_pair':checks.verify_timed_pair,'math':math,'json':json,'Path':Path,'BLOCK_SIZE':4,'SEED':0,
+        '_KERNEL_DIR':str(tmp_path),'KERNEL_FILE':'kernel.py','MODEL_FILE':'model.py','_load_module':lambda directory,filename,alias:real if filename=='model.py' else types.SimpleNamespace(flydsl_moe_sorting=compute),'_make_inputs':lambda *a:(ids,weights),'_cross_check_aiter':lambda *a,**kw:True,'SHAPES':[shape]}
+    _harness_functions(task,{function,'_ref_outputs','_make_prepared_reference','_exact_check','_checked_sort_outputs','_sorting_replay_validator'},ns)
+    if behavior in {'correct','undefined_tail','cached_counts'}:
+        # ID rotation preserves padded total for this complete bijection;
+        # unchanged counts are legitimate, but all IDs/weights/experts change.
+        result=ns[function](verbose=False)
+        if function!='run_correctness':
+            report=json.loads((tmp_path/'build/performance_report.json').read_text()) if function=='run_benchmark' else result
+            assert report[0]['timed_output_correctness']==report[0]['replay_correctness']=='PASS'
+            assert calls==[(0,100),(0,100)]
+        checks.require_unchanged((ids,weights),original)
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+
+
+def test_sorting_original_known_answers_sources_and_timing_fingerprints():
+    hashes={'_resolve_kernel_dir': 'ebfabcdd05c1a3f254b035e42b1783890c241f92613bda21ccb77fa064039f1a', '_load_module': 'caae8222257891caee15a695bfc7cff029ec363f792c4331f20ff92c86efb520', '_make_inputs': '494139869a59c74722a47ebd41e884c1abb052aa3d9252c8f6f32349f421d626', '_ref_outputs': '6b756960a1a06854a5b5a24e4d806a383441ed8e4977a2b2a6fbab9ca118517c', '_make_prepared_reference': 'fb0bd0d75efcd49cb85111ea888fdbccb5f96cafba787ef49d4c21f5b35d74de', '_exact_check': 'e8d07f3f2ab0ab0416755a26cd710163311518aa3744edd295668b70f37ab2ef', '_cross_check_aiter': '84b2089b14f96bf14fe67d973e939b7c63918c7ea3fee927a36bf91670544c09', 'run_correctness': '9291ca50ecb38e07d95db1555ff8b4047854ed947ab0b26644a4871b88dfff71', 'run_benchmark': 'd693e162044f3c1b860fc5f5d855c6f4e71ce4a054b139db53dff1658514cc61', '_require_candidate_outputs': 'e5f69466d2ec4497fe192bf53ce8d7b034bb14cd59272fc7b1dea160a574e09e', 'arena_benchmark': 'c650dc55d0d7e7dfa3fbbc4db82f0d291bf6d5f5a14ab4ae4e8096e0aa866e33'}
+    task=ROOT/'tasks/torch2flydsl/moe_sorting_kernel'
+    for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
+        if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
+            normalized=_RemoveSortingChecks().visit(fn)
+            assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
+    result=invoke(task,'validate-task');assert result.passed,result.reason
+    for rel in ['scripts/candidate_checks.py','task_runtime.py']:assert (task/rel).read_bytes()==(ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'/rel).read_bytes()
+    assert (task/'scripts/replay_checks.py').read_bytes()==(ROOT/'tasks/triton2flydsl/sglang/merge_state/scripts/replay_checks.py').read_bytes()

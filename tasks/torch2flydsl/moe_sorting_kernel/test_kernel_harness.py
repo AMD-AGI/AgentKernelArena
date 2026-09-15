@@ -33,7 +33,8 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_pair
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -148,6 +149,7 @@ def _exact_check(shape, ref, out, verbose=True):
     """Return (ok, detail). Asserts exact integer match; bitwise weights."""
     import torch
 
+    _checked_sort_outputs(out, ref)
     ref_ids, ref_w, ref_eids, ref_nv = ref
     out_ids, out_w, out_eids, out_nv = out
 
@@ -250,6 +252,41 @@ def _cross_check_aiter(mmod, shape, topk_ids, topk_weights, ref, verbose=True):
     return ok
 
 
+def _checked_sort_outputs(actual, expected):
+    import torch
+    if not isinstance(actual, (tuple, list)) or len(actual) != 4:
+        raise AssertionError("MoE sort must return IDs, weights, expert IDs and valid counts")
+    for value, ref in zip(actual, expected):
+        require_tensor_contract(value, ref)
+    valid = int(expected[3][0].item())
+    # Tail capacity beyond valid is explicitly uninitialized by the original
+    # kernel/AITER contract; only valid weights, including run padding, matter.
+    if not bool(torch.isfinite(actual[1][:valid]).all()):
+        raise AssertionError("Non-finite valid sorted weights")
+
+
+def _sorting_replay_validator(mmod, shape, topk_ids, topk_weights):
+    inputs = (topk_ids, topk_weights)
+    originals = tuple(value.clone() for value in inputs)
+    def oracle():
+        return _ref_outputs(mmod, shape, topk_ids, topk_weights)
+    expected = oracle()
+    def compare(actual, ref):
+        ok, detail = _exact_check(shape, ref, actual, verbose=False)
+        if not ok:
+            raise AssertionError("Numerical mismatch: exact routing layout: " + str(detail))
+    def perturb():
+        # Bijection on expert IDs preserves each token's unique top-k experts.
+        # Recompute the independent sort plan after changing IDs, outside timing.
+        topk_ids.copy_((topk_ids + 1) % shape["E"])
+        topk_weights.mul_(0.5)
+    def validate(timed):
+        return verify_timed_pair(timed, inputs=inputs, originals=originals,
+                                 expected=expected, perturb=perturb,
+                                 reference=oracle, compare=compare)
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -263,11 +300,13 @@ def run_correctness(verbose=True):
         torch.manual_seed(SEED)
         torch.cuda.manual_seed_all(SEED)
         topk_ids, topk_weights = _make_inputs(mmod, shape)
+        originals = (topk_ids.clone(), topk_weights.clone())
         with torch.no_grad():
             ref = _ref_outputs(mmod, shape, topk_ids, topk_weights)
             out = kmod.flydsl_moe_sorting(topk_ids, topk_weights, shape["E"], unit_size=BLOCK_SIZE)
         torch.cuda.synchronize()
 
+        require_unchanged((topk_ids, topk_weights), originals)
         ok, detail = _exact_check(shape, ref, out, verbose=verbose)
         if not ok:
             failures.append(shape["name"])
@@ -275,6 +314,7 @@ def run_correctness(verbose=True):
                 print(detail)
 
         ac = _cross_check_aiter(mmod, shape, topk_ids, topk_weights, ref, verbose=verbose)
+        require_unchanged((topk_ids, topk_weights), originals)
         if ac is not None:
             aiter_results.append(ac)
             if ac is False:
@@ -305,6 +345,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
     for idx, shape in enumerate(SHAPES):
         torch.manual_seed(SEED)
         topk_ids, topk_weights = _make_inputs(mmod, shape)
+        replay_validate = _sorting_replay_validator(mmod, shape, topk_ids, topk_weights)
         model = mmod.Model(num_experts=shape["E"], topk=shape["topk"], block_size=BLOCK_SIZE)
         run_ref = _make_prepared_reference(shape, topk_ids, topk_weights)
 
@@ -319,9 +360,12 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             for _ in range(warmup):
                 run_kernel()
             torch.cuda.synchronize()
+            timed = TimedRun()
             kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-                run_kernel, warmup=0, repetition=iters
+                run_kernel, warmup=0, repetition=iters, timed_run=timed
             )
+
+            kernel_bench_meta.update(replay_validate(timed))
 
             ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
                 run_ref, warmup=0, repetition=iters
@@ -426,6 +470,7 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
     for idx, shape in enumerate(SHAPES):
         torch.manual_seed(SEED)
         topk_ids, topk_weights = _make_inputs(mmod, shape)
+        replay_validate = _sorting_replay_validator(mmod, shape, topk_ids, topk_weights)
         model = mmod.Model(num_experts=shape["E"], topk=shape["topk"], block_size=BLOCK_SIZE)
         run_ref = _make_prepared_reference(shape, topk_ids, topk_weights)
 
@@ -440,9 +485,12 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
             for _ in range(warmup):
                 run_kernel()
             torch.cuda.synchronize()
+            timed = TimedRun()
             kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-                run_kernel, warmup=0, repetition=iters
+                run_kernel, warmup=0, repetition=iters, timed_run=timed
             )
+
+            kernel_bench_meta.update(replay_validate(timed))
 
             ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
                 run_ref, warmup=0, repetition=iters
