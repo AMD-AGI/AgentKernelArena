@@ -17,7 +17,8 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -76,6 +77,28 @@ def _make_inputs(m, n, k, device="cuda"):
     return a, b
 
 
+def _checked_gemm_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite operator/reference output")
+    return actual
+
+
+def _gemm_reference(a, b):
+    import torch
+    return torch.matmul(a.float(), b.float().transpose(-1, -2)).to(a.dtype)
+
+
+def _compare_gemm_output(actual, expected):
+    import torch
+    _checked_gemm_output(actual, expected)
+    close = torch.isclose(expected.float(), actual.float(), atol=ATOL, rtol=RTOL)
+    pct = close.float().mean().item() * 100.0
+    if pct < PASS_PCT:
+        raise AssertionError(f"Numerical mismatch: {pct}% close, required={PASS_PCT}%")
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -93,11 +116,14 @@ def run_correctness(verbose=True):
         tiling = {k: shape[k] for k in TILING_KEYS if k in shape}
         try:
             a, b = _make_inputs(shape["m"], shape["n"], shape["k"])
+            originals = (a.clone(), b.clone())
             with torch.no_grad():
                 ref = model(a, b)
             out = kmod.flydsl_hgemm(a, b, **tiling)
             torch.cuda.synchronize()
 
+            require_unchanged((a, b), originals)
+            _checked_gemm_output(out, ref)
             ref_f, out_f = ref.float(), out.float()
             close = torch.isclose(ref_f, out_f, atol=ATOL, rtol=RTOL)
             pct = close.float().mean().item() * 100.0
@@ -139,6 +165,8 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         tiling = {kk: shape[kk] for kk in TILING_KEYS if kk in shape}
         a, b = _make_inputs(m, n, k)
 
+        originals = (a.clone(), b.clone())
+        expected = _gemm_reference(a, b)
         kmod.flydsl_hgemm(a, b, **tiling)
         torch.cuda.synchronize()
         for _ in range(warmup):
@@ -146,11 +174,18 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         torch.cuda.synchronize()
 
         event_reason = "capture_unsafe_hipblaslt_reference"
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             lambda: kmod.flydsl_hgemm(a, b, **tiling),
             warmup=0, repetition=iters, use_cuda_graph=False,
             fallback_reason=event_reason,
+            timed_run=timed,
         )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(a, b), originals=originals, expected=expected,
+            perturb=lambda: (a.mul_(0.5), b.mul_(0.5)),
+            reference=lambda: _gemm_reference(a, b), compare=_compare_gemm_output,
+        ))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.mm(a, b.transpose(-1, -2)),
@@ -263,6 +298,8 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         tiling = {kk: shape[kk] for kk in TILING_KEYS if kk in shape}
         a, b = _make_inputs(m, n, k)
 
+        originals = (a.clone(), b.clone())
+        expected = _gemm_reference(a, b)
         kmod.flydsl_hgemm(a, b, **tiling)
         torch.cuda.synchronize()
         for _ in range(warmup):
@@ -270,11 +307,18 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         torch.cuda.synchronize()
 
         event_reason = "capture_unsafe_hipblaslt_reference"
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             lambda: kmod.flydsl_hgemm(a, b, **tiling),
             warmup=0, repetition=iters, use_cuda_graph=False,
             fallback_reason=event_reason,
+            timed_run=timed,
         )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(a, b), originals=originals, expected=expected,
+            perturb=lambda: (a.mul_(0.5), b.mul_(0.5)),
+            reference=lambda: _gemm_reference(a, b), compare=_compare_gemm_output,
+        ))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.mm(a, b.transpose(-1, -2)),

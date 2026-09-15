@@ -24,7 +24,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -109,6 +110,26 @@ def _norm_worst(ref, out):
     return worst, worst / denom
 
 
+def _checked_gemm_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite operator/reference output")
+    return actual
+
+
+def _gemm_reference(x, w):
+    import torch
+    return torch.bmm(x.float(), w.float().transpose(1, 2)).to(x.dtype)
+
+
+def _compare_gemm_output(actual, expected):
+    _checked_gemm_output(actual, expected)
+    _, norm = _norm_worst(expected, actual)
+    if norm > TOL:
+        raise AssertionError(f"Numerical mismatch: normalized_max_error={norm}, tolerance={TOL}")
+
+
 def run_correctness(verbose=True):
     import torch
     import aiter
@@ -127,6 +148,7 @@ def run_correctness(verbose=True):
         b, m, n, k = shape["b"], shape["m"], shape["n"], shape["k"]
         try:
             x, w = _make_inputs(b, m, n, k)
+            originals = (x.clone(), w.clone())
             with torch.no_grad():
                 ref = model(x, w)
 
@@ -136,6 +158,8 @@ def run_correctness(verbose=True):
             )
             torch.cuda.synchronize()
 
+            require_unchanged((x, w), originals)
+            _checked_gemm_output(gt, ref)
             worst, norm = _norm_worst(ref, gt)
             ok = norm <= TOL
             note = ""
@@ -154,6 +178,8 @@ def run_correctness(verbose=True):
                     )
                 else:
                     torch.cuda.synchronize()
+                    require_unchanged((x, w), originals)
+                    _checked_gemm_output(out, ref)
                     _, knorm = _norm_worst(ref, out)
                     kok = knorm <= TOL
                     ok = ok and kok
@@ -217,6 +243,8 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         b, m, n, k = shape["b"], shape["m"], shape["n"], shape["k"]
         x, w = _make_inputs(b, m, n, k)
 
+        originals = (x.clone(), w.clone())
+        expected = _gemm_reference(x, w)
         _retry(lambda: device_op(x, w), what="benchmark warmup")
         torch.cuda.synchronize()
         for _ in range(warmup):
@@ -230,13 +258,20 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         # the normal Graph-first policy.
         use_graph = has_kernel
         event_reason = None if use_graph else "capture_unsafe_aiter_hipblaslt"
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             lambda: device_op(x, w),
             warmup=0,
             repetition=iters,
             use_cuda_graph=use_graph,
             fallback_reason=event_reason,
+            timed_run=timed,
         )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(x, w), originals=originals, expected=expected,
+            perturb=lambda: (x.neg_(), w.mul_(0.5)),
+            reference=lambda: _gemm_reference(x, w), compare=_compare_gemm_output,
+        ))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.bmm(x.float(), w.float().transpose(1, 2)),
@@ -374,6 +409,8 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         b, m, n, k = shape["b"], shape["m"], shape["n"], shape["k"]
         x, w = _make_inputs(b, m, n, k)
 
+        originals = (x.clone(), w.clone())
+        expected = _gemm_reference(x, w)
         _retry(lambda: device_op(x, w), what="benchmark warmup")
         torch.cuda.synchronize()
         for _ in range(warmup):
@@ -387,13 +424,20 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         # the normal Graph-first policy.
         use_graph = has_kernel
         event_reason = None if use_graph else "capture_unsafe_aiter_hipblaslt"
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             lambda: device_op(x, w),
             warmup=0,
             repetition=iters,
             use_cuda_graph=use_graph,
             fallback_reason=event_reason,
+            timed_run=timed,
         )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(x, w), originals=originals, expected=expected,
+            perturb=lambda: (x.neg_(), w.mul_(0.5)),
+            reference=lambda: _gemm_reference(x, w), compare=_compare_gemm_output,
+        ))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.bmm(x.float(), w.float().transpose(1, 2)),

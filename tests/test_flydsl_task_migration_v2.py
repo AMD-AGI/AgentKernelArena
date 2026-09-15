@@ -352,7 +352,7 @@ def test_torch_numerical_gates_cases_and_models_preserved():
                 assert isinstance(handler.body[0],ast.Raise)
                 assert "no baseline fallback" in ast.unparse(handler.body[0])
                 handler.body.pop(0)
-        if name == "silu_and_mul_kernel":
+        if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
         assert hashlib.sha256(ast.dump(fn,include_attributes=False).encode()).hexdigest()==expected,name
         assert hashlib.sha256((task/"model.py").read_bytes()).hexdigest()==model_hash,name
@@ -676,7 +676,7 @@ class _RemoveAddedReplayChecks(ast.NodeTransformer):
     def visit_Expr(self, node):
         value = node.value
         if isinstance(value, ast.Call):
-            if isinstance(value.func, ast.Name) and value.func.id in {"require_tensor_contract", "require_unchanged", "_validate_pa_contract"}:
+            if isinstance(value.func, ast.Name) and value.func.id in {"require_tensor_contract", "require_unchanged", "_validate_pa_contract", "_checked_gemm_output"}:
                 return None
             if (isinstance(value.func, ast.Attribute) and value.func.attr == "update"
                     and len(value.args) == 1 and isinstance(value.args[0], ast.Call)
@@ -1173,3 +1173,145 @@ def test_normalization_correctness_enforces_input_and_output_contract(name, beha
           "require_tensor_contract": checks.require_tensor_contract, "require_unchanged": checks.require_unchanged}
     _harness_functions(task, {"run_correctness", "_reference_softmax", "_reference_layernorm"}, ns)
     assert ns["run_correctness"](verbose=False) is (behavior == "correct")
+
+
+@pytest.mark.parametrize("name,provided", [("batched_gemm_bf16_kernel", False), ("batched_gemm_bf16_kernel", True), ("hgemm_kernel", False)])
+@pytest.mark.parametrize("function", ["run_benchmark", "arena_benchmark"])
+@pytest.mark.parametrize("behavior", ["correct", "measured_wrong", "replay_wrong", "cached", "input_modified", "shape", "dtype", "nonfinite"])
+def test_torch_gemm_measured_output_and_eager_reinvocation(name, provided, function, behavior, monkeypatch, tmp_path):
+    import math
+    import types
+    import torch
+    task = ROOT / "tasks/torch2flydsl" / name
+    checks = module(task / "scripts/replay_checks.py")
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
+    monkeypatch.setitem(sys.modules, "aiter", types.SimpleNamespace())
+    a = torch.tensor([[1., 2.], [3., 4.]], dtype=torch.bfloat16)
+    b = torch.tensor([[2., 4.], [6., 8.]], dtype=torch.bfloat16)
+    batched = name.startswith("batched")
+    if batched:a, b = a.unsqueeze(0), b.unsqueeze(0)
+    original = (a.clone(), b.clone())
+    phase = {"value": "setup"}
+    cached = (a.float() @ b.float().transpose(-1, -2)).to(a.dtype)
+    def compute(*args, **kwargs):
+        if behavior == "input_modified" and phase["value"] == "replay":a.add_(1)
+        out = (a.float() @ b.float().transpose(-1, -2)).to(a.dtype)
+        if behavior == phase["value"] + "_wrong":out.fill_(a.flatten()[0].item())
+        if behavior == "cached" and phase["value"] == "replay":out = cached.clone()
+        if phase["value"] == "measured":
+            if behavior == "shape":out = out[..., :1]
+            if behavior == "dtype":out = out.float()
+            if behavior == "nonfinite":out.flatten()[0] = float("nan")
+        return out
+    calls = []
+    class Collector:
+        bound = False
+        outputs = None
+    def benchmark(fn, *, warmup, repetition, use_cuda_graph, fallback_reason, timed_run=None):
+        calls.append((warmup, repetition, use_cuda_graph, timed_run is not None))
+        phase["value"] = "measured"
+        out = fn()
+        if timed_run is not None:
+            timed_run.outputs = out
+            timed_run.bound = True
+            def rerun():
+                phase["value"] = "replay"
+                result = fn()  # eager Event path returns a fresh allocation
+                assert result is not out
+                return result
+            timed_run.rerun = rerun
+        phase["value"] = "setup"
+        return .1, {"benchmark_method": "cuda_graph" if use_cuda_graph else "cuda_event_fallback"}
+    kmod = types.SimpleNamespace(flydsl_batched_gemm_bf16=compute, flydsl_hgemm=compute)
+    monkeypatch.setitem(sys.modules, "aiter", types.SimpleNamespace(batched_gemm_bf16_CK=compute))
+    ns = {"TimedRun": Collector, "benchmark_cuda_graph_or_events": benchmark,
+          "verify_timed_run": checks.verify_timed_run, "require_tensor_contract": checks.require_tensor_contract,
+          "math": math, "json": json, "Path": Path, "_KERNEL_DIR": str(tmp_path),
+          "KERNEL_FILE": "kernel.py", "MODEL_FILE": "model.py", "KERNEL_ENTRY": "flydsl_batched_gemm_bf16",
+          "SHAPES": [{"name": "controlled", "b": 1, "m": 2, "n": 2, "k": 2}],
+          "TOL": .01, "ATOL": .01, "RTOL": .01, "PASS_PCT": 99.9, "TILING_KEYS": (),
+          "_make_inputs": lambda *args: (a,b), "_load_module": lambda directory,filename,alias: None if provided and filename == "kernel.py" else kmod,
+          "_retry": lambda fn, **kwargs: fn()}
+    _harness_functions(task, {function, "_norm_worst", "_checked_gemm_output", "_gemm_reference", "_compare_gemm_output"}, ns)
+    if behavior == "correct":
+        result = ns[function](verbose=False)
+        if function == "run_benchmark":result = json.loads((tmp_path/"build/performance_report.json").read_text())
+        assert result[0]["timed_output_correctness"] == result[0]["replay_correctness"] == "PASS"
+        assert calls == [(0,100,batched and not provided,True),(0,100,batched and not provided,False)]
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+    assert torch.equal(a, original[0]) and torch.equal(b, original[1])
+
+
+@pytest.mark.parametrize("name", ["batched_gemm_bf16_kernel", "hgemm_kernel"])
+@pytest.mark.parametrize("behavior", ["correct", "shape", "dtype", "device", "nonfinite", "input_modified"])
+def test_torch_gemm_correctness_rejects_invalid_contracts(name, behavior, monkeypatch):
+    import types
+    import torch
+    task = ROOT / "tasks/torch2flydsl" / name
+    checks = module(task / "scripts/replay_checks.py")
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
+    a = torch.tensor([[1.,2.],[3.,4.]],dtype=torch.bfloat16)
+    b = a.clone()
+    if name.startswith("batched"):a,b=a.unsqueeze(0),b.unsqueeze(0)
+    reference = lambda *args: (a.float() @ b.float().transpose(-1,-2)).to(a.dtype)
+    class Model:
+        def to(self,*args):return self
+        def eval(self):return self
+        def __call__(self,*args):return reference()
+    def compute(*args,**kwargs):
+        out = reference()
+        if behavior == "shape":out=out[..., :1]
+        if behavior == "dtype":out=out.float()
+        if behavior == "device":out=out.to("meta")
+        if behavior == "nonfinite":out.flatten()[0]=float("nan")
+        if behavior == "input_modified":a.add_(1)
+        return out
+    monkeypatch.setitem(sys.modules,"aiter",types.SimpleNamespace(batched_gemm_bf16_CK=reference))
+    mmod=types.SimpleNamespace(Model=Model,get_init_inputs=lambda:[])
+    kmod=types.SimpleNamespace(flydsl_batched_gemm_bf16=compute,flydsl_hgemm=compute)
+    ns={"require_tensor_contract":checks.require_tensor_contract,"require_unchanged":checks.require_unchanged,
+        "_KERNEL_DIR":".","KERNEL_FILE":"kernel.py","MODEL_FILE":"model.py","KERNEL_ENTRY":"flydsl_batched_gemm_bf16",
+        "SHAPES":[{"name":"controlled","b":1,"m":2,"n":2,"k":2}],
+        "TOL":.01,"ATOL":.01,"RTOL":.01,"PASS_PCT":99.9,"TILING_KEYS":(),
+        "_make_inputs":lambda *args:(a,b),"_retry":lambda fn,**kwargs:fn(),
+        "_load_module":lambda directory,filename,alias:mmod if filename=="model.py" else kmod}
+    _harness_functions(task,{"run_correctness","_norm_worst","_checked_gemm_output"},ns)
+    if behavior=="correct":assert ns["run_correctness"](verbose=False) is True
+    else:
+        with pytest.raises(AssertionError,match="correctness FAILED"):ns["run_correctness"](verbose=False)
+
+
+def test_torch_gemm_replay_numerical_rules_keep_zero_scale_and_percent_boundaries():
+    import torch
+    for name in ("batched_gemm_bf16_kernel","hgemm_kernel"):
+        task=ROOT/"tasks/torch2flydsl"/name
+        checks=module(task/"scripts/replay_checks.py")
+        ns={"require_tensor_contract":checks.require_tensor_contract,"TOL":.01,"ATOL":.01,"RTOL":.01,"PASS_PCT":99.9}
+        _harness_functions(task,{"_norm_worst","_checked_gemm_output","_compare_gemm_output"},ns)
+        compare=ns["_compare_gemm_output"]
+        if name.startswith("batched"):
+            expected=torch.zeros((2,2),dtype=torch.bfloat16)
+            compare(torch.full_like(expected,.009),expected)
+            with pytest.raises(AssertionError,match="Numerical mismatch"):compare(torch.full_like(expected,.011),expected)
+        else:
+            expected=torch.ones(10000,dtype=torch.bfloat16)
+            actual=expected.clone();actual[:9]=100
+            compare(actual,expected)
+            actual[:11]=100
+            with pytest.raises(AssertionError,match="Numerical mismatch"):compare(actual,expected)
+            actual=expected.clone();actual[0]=float("nan")
+            with pytest.raises(AssertionError,match="Non-finite"):compare(actual,expected)
+
+
+_TORCH_GEMM_ORIGINAL_BENCHMARKS = {('batched_gemm_bf16_kernel', 'run_benchmark'): 'c90d460059918323dbece546e3f557219b2e9384260a6661383d6aaec3b26b82', ('batched_gemm_bf16_kernel', 'arena_benchmark'): '06e9e400f31817921ef212bd186f685bbf94420a7e0c2f946af5b30f2307f254', ('hgemm_kernel', 'run_benchmark'): '472f2bde0f1462d720bf12509600c1b4fc10fae4580c5c5828695ca4a8afbf4a', ('hgemm_kernel', 'arena_benchmark'): '9094d767825dd1f9d77aa7a9d54cb4175626165b185a666fc7a49fb297afaa4a'}
+
+
+def test_torch_gemm_original_benchmark_work_and_sampling_preserved():
+    for (name, function), expected_hash in _TORCH_GEMM_ORIGINAL_BENCHMARKS.items():
+        tree = ast.parse((ROOT / "tasks/torch2flydsl" / name / "test_kernel_harness.py").read_text())
+        fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function)
+        fn = _RemoveAddedReplayChecks().visit(fn)
+        assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == expected_hash

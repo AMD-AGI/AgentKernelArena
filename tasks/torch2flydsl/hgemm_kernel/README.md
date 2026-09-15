@@ -50,3 +50,13 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+Measured outputs and subsequent invocations are checked against the protected
+FP32-accumulating, BF16-output reference using the original numerical gate.
+The harness also rejects wrong shape/dtype/device, non-finite outputs and
+read-only input mutation. Input perturbation, reference calculation and output
+poisoning occur outside timing, identically for baseline and candidate.
+Explicit Event timing observes the last actual measured sample; its validation
+re-invokes the same eager callable and is not captured graph replay. Graph timing
+validates the actual captured replay. Original shapes, seeds, tolerance, warmup,
+sample counts and Graph/Event selection remain unchanged.
