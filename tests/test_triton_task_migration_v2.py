@@ -5101,3 +5101,163 @@ def test_unpack_seq_direct_jit_timing_grid_replay_and_full_buffer_restore(monkey
 def test_unpack_seq_adapter_installs_task_local_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_unpack_seq/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_unpack_checks'
+
+
+_CACHE_SCATTER_TASKS = ['reshape_and_cache_flash','reshape_and_cache_flash_diffkv']
+
+
+def _cache_scatter_cpu(key,value,*args,kv_cache_dtype='auto',k_scale=None,v_scale=None,**options):
+    different=len(args)==2
+    caches=list(args[:-1]);slots=args[-1]
+    head_major=not different and caches[0].ndim==5
+    block_size=caches[0].shape[3] if head_major else caches[0].shape[1]
+    selected=torch.nonzero(slots>=0).flatten();dest=slots[selected].long()
+    k,v=key.float(),value.float()
+    if kv_cache_dtype.startswith('fp8'):
+        if not str(key.dtype).startswith('torch.float8_'):k=k/(1. if k_scale is None else k_scale)
+        if not str(value.dtype).startswith('torch.float8_'):v=v/(1. if v_scale is None else v_scale)
+    if different:
+        data=[torch.cat([k,v],dim=-1)];canonical=[caches[0]]
+    elif head_major:
+        data=[k,v]
+        canonical=[caches[0].permute(0,3,1,2,4).contiguous().reshape(caches[0].shape[0],block_size,key.shape[1],key.shape[2]),
+                   caches[1].permute(0,3,1,2).contiguous()]
+    else:data=[k,v];canonical=caches
+    for target,source in zip(canonical,data):
+        rows=target.reshape(-1,*target.shape[2:])
+        converted=source[selected].to(target.dtype).contiguous()
+        rows.view(torch.uint8).reshape(rows.shape[0],-1).index_copy_(0,dest,converted.view(torch.uint8).reshape(len(selected),-1))
+    if head_major:
+        caches[0].copy_(canonical[0].reshape(caches[0].shape[0],block_size,key.shape[1],key.shape[2]//caches[0].shape[-1],caches[0].shape[-1]).permute(0,2,3,1,4))
+        caches[1].copy_(canonical[1].permute(0,2,3,1))
+
+
+def _cache_scatter_cpu_harness(monkeypatch,symbol):
+    p=ROOT/'tasks/triton2triton/vllm'/('triton_'+symbol)
+    h=module_at(p/'scripts/task_runner.py',monkeypatch);checks=module_at(p/'_arena_checks.py',monkeypatch)
+    for name in ('randn','arange','zeros','randperm','tensor'):
+        factory=getattr(torch,name)
+        monkeypatch.setattr(torch,name,lambda *a,_factory=factory,**kw:_factory(*a,**{**kw,'device':'cpu'}))
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None)
+    return h,checks
+
+
+@pytest.mark.parametrize('symbol',_CACHE_SCATTER_TASKS)
+def test_cache_scatter_independent_known_answer_preserves_untouched_slots(monkeypatch,symbol):
+    h,checks=_cache_scatter_cpu_harness(monkeypatch,symbol)
+    key=torch.tensor([[[1.,2.]],[[7.,8.]],[[3.,4.]]],dtype=torch.float16)
+    value=-key;slots=torch.tensor([2,-1,0],dtype=torch.int64)
+    caches=[torch.full((2,2,1,4),.25,dtype=torch.float16)] if checks.DIFFERENT_DIMS else [torch.full((2,2,1,2),.25,dtype=torch.float16),torch.full((2,2,1,2),-.25,dtype=torch.float16)]
+    expected=checks.reference(h,key,value,caches,slots)
+    _cache_scatter_cpu(key,value,*caches,slots)
+    checks.check_caches(caches,expected)
+    if checks.DIFFERENT_DIMS:
+        assert caches[0][0,0,0].tolist()==[3.,4.,-3.,-4.]
+        assert caches[0][1,0,0].tolist()==[1.,2.,-1.,-2.]
+    else:
+        assert caches[0][0,0,0].tolist()==[3.,4.]
+        assert caches[1][1,0,0].tolist()==[-1.,-2.]
+    assert (caches[0][0,1]==.25).all()
+    # Scalar inputs and already-FP8 inputs participate in read-only checks.
+    scalar=torch.tensor(.5);fp8=key.to(torch.float8_e4m3fnuz)
+    checks.unchanged([scalar,fp8],[scalar.clone(),fp8.clone()])
+
+
+@pytest.mark.parametrize('symbol,mode',[(s,m) for s in _CACHE_SCATTER_TASKS for m in
+    ['correct','no_write','wrong_values','mutate_key','mutate_value','mutate_mapping','mutate_scale',
+     'ignore_negative','wipe_untouched','ignore_fp8_scale','rescale_fp8_input','ignore_head_major']
+    if m!='ignore_head_major' or not s.endswith('diffkv')])
+def test_cache_scatter_original_correctness_and_public_layout_scale_paths(monkeypatch,symbol,mode):
+    h,checks=_cache_scatter_cpu_harness(monkeypatch,symbol);calls=[]
+    def public(key,value,*args,**options):
+        caches=list(args[:-1]);slots=args[-1];calls.append((tuple(key.shape),[tuple(c.shape) for c in caches],key.dtype,dict(options)))
+        if mode=='no_write':return
+        if mode=='mutate_key':key.zero_()
+        if mode=='mutate_value':value.zero_()
+        if mode=='mutate_mapping':slots.zero_()
+        if mode=='mutate_scale' and options.get('k_scale') is not None:options['k_scale'].mul_(2)
+        if mode=='ignore_negative':slots=torch.where(slots<0,15,slots)
+        if mode=='ignore_fp8_scale':options['kv_cache_dtype']='auto'
+        if mode=='rescale_fp8_input' and str(key.dtype).startswith('torch.float8_'):key,value=key.float(),value.float()
+        if mode=='ignore_head_major' and caches[0].ndim==5:return
+        _cache_scatter_cpu(key,value,*caches,slots,**options)
+        if mode=='wrong_values':
+            for c in caches:c.zero_()
+        if mode=='wipe_untouched' and key.shape[0]==7:
+            for c in caches:
+                floats=c.float();floats[floats==.25]=0;floats[floats==-.25]=0;c.copy_(floats)
+    mod=SimpleNamespace(**{symbol:public});h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
+    if mode=='correct':
+        scored=[c for c in calls if c[0][0]!=7]
+        assert [c[0] for c in scored]==[tuple(v[:3]) for v in h.TEST_SHAPES]
+        diag=[c for c in calls if c[0][0]==7]
+        assert len(diag)==(3 if checks.DIFFERENT_DIMS else 4)
+        assert str(diag[-1][2]).startswith('torch.float8_')
+        assert diag[-1][3]['kv_cache_dtype']=='fp8'
+    assert getattr(mod,symbol) is public
+
+
+@pytest.mark.parametrize('symbol',_CACHE_SCATTER_TASKS)
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','omit_key','omit_value','mutate_timed','mutate_replay','raise_replay'])
+def test_cache_scatter_preserves_scored_zero_reset_and_poisons_only_actual_rerun(monkeypatch,symbol,mode):
+    import inspect
+    h,checks=_cache_scatter_cpu_harness(monkeypatch,symbol)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    replaying=False;current_caches=None;cached=None
+    def public(key,value,*args,**options):
+        caches=list(args[:-1]);slots=args[-1]
+        if replaying and mode=='no_write':return
+        if replaying and mode=='stale':
+            for c,old in zip(caches,cached):c.copy_(old)
+            return
+        saved_outputs=checks.clone(caches)
+        _cache_scatter_cpu(key,value,*caches,slots,**options)
+        if replaying and mode in ('omit_key','omit_value'):
+            if checks.DIFFERENT_DIMS:
+                cut=key.shape[-1];sl=slice(None,cut) if mode=='omit_key' else slice(cut,None)
+                caches[0][...,sl].copy_(saved_outputs[0][...,sl])
+            else:
+                index=0 if mode=='omit_key' else 1;caches[index].copy_(saved_outputs[index])
+    mod=SimpleNamespace(**{symbol:public});h.load_module=lambda:mod
+    records=[];options_seen=[]
+    def benchmark(measured,*,timed_run,prepare_fn,**kwargs):
+        nonlocal replaying,cached
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        caches=[state['kv_cache']] if checks.DIFFERENT_DIMS else [state['key_cache'],state['value_cache']]
+        readonly=[state[k] for k in ('key','value','slot_mapping','k_scale','v_scale')]
+        records.append((readonly,checks.clone(readonly),caches,checks.clone(caches)));options_seen.append(kwargs)
+        replaying=False
+        prepare_fn();assert all((c==0).all() for c in caches) # No poisoning in the scored preparation.
+        outputs=measured();cached=checks.clone(caches)
+        if mode=='wrong_timed':
+            for c in caches:c.zero_()
+        if mode=='mutate_timed':readonly[0].zero_()
+        def replay():
+            nonlocal replaying
+            replaying=True;prepare_fn()
+            mapping=readonly[2];selected=mapping[mapping>=0]
+            for c in caches:
+                flat=c.view(-1,c.shape[-2]*c.shape[-1]);mask=torch.ones(flat.shape[0],dtype=torch.bool);mask[selected]=False
+                assert torch.isnan(flat[selected]).all() and (flat[mask]==0).all()
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            result=measured()
+            if mode=='mutate_replay':readonly[1].zero_();readonly[3].zero_()
+            return result
+        timed_run._bind(replay,outputs)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h);rows=h.run_performance()
+    assert len(rows)==5 and options_seen==[dict(warmup=10,repetition=100)]*5
+    keys=('num_tokens','num_heads','head_size_k','head_size_v','num_blocks','block_size') if checks.DIFFERENT_DIMS else ('num_tokens','num_heads','head_size','num_blocks','block_size')
+    for case,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(keys,case))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+        if mode=='correct':assert row['scored_reset_unchanged'] and row['replay_poison_after_original_prepare']
+    for values,old,caches,saved in records:checks.unchanged(values,old);checks.unchanged(caches,saved)
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+@pytest.mark.parametrize('symbol',_CACHE_SCATTER_TASKS)
+def test_cache_scatter_adapter_installs_task_local_checks(monkeypatch,symbol):
+    h=module_at(ROOT/'tasks/triton2triton/vllm'/('triton_'+symbol)/'_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_cache_scatter_checks'

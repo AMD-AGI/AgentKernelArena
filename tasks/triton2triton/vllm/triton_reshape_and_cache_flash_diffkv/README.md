@@ -32,3 +32,14 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+Protected checks preserve the original atol=rtol=1e-3 comparisons and inspect
+the entire cache, including untouched slots, with pristine key/value/mapping
+references and read-only scale checks. Unscored diagnostics cover negative slots,
+partial tiles, nonzero cache sentinels, differing K/V widths, and FP8 scaling/already-FP8 input.
+The FP8 diagnostic uses float8_e4m3fnuz; this does not certify every FP8 format.
+All five original scored cases, seeds, 10 warmups, 100 samples and full-wrapper
+timing remain unchanged. The original zero-reset runs unchanged for every warmup
+and measured sample. Only the unscored exact replay poisons written cache slots
+after that reset, using changed K/V inputs and reversed slot routing; the full
+result is checked numerically. All caller-owned inputs/caches are restored on exit.
