@@ -10,7 +10,8 @@ Multi-head Latent Attention (MLA) decode / "absorb" path. Public entry:
 `mla_decode_fwd(...)`; @triton.jit kernels: `_mla_decode_fwd_kernel`,
 `_mla_decode_fwd_reduce_kernel`, `_mla_prefill_fwd_kernel`.
 
-The flydsl-vs-triton comparison will be added when the FlyDSL target lands.
+The independent paged-attention oracle and original normalized-error rule apply
+to both the immutable baseline and final FlyDSL candidate.
 """
 import sys
 import os
@@ -18,7 +19,8 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -26,6 +28,7 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2flydsl/aiter/mla"
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
+ENTRY = 'mla_decode_fwd'
 
 # Test configurations (decode / absorb path):
 # (num_seqs, num_tokens_per_seq, num_query_heads, num_kv_heads, kv_lora_rank,
@@ -252,6 +255,46 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_mla_output(result, out, q, lora):
+    expected_layout = q[..., :lora]
+    require_tensor_contract(out, expected_layout)
+    require_tensor_contract(result, expected_layout)
+    if result.data_ptr() != out.data_ptr() or result.stride() != out.stride():
+        raise AssertionError("MLA must return and write the supplied output buffer")
+
+
+def _compare_mla_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected, dtype=torch.bfloat16)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite MLA/reference output")
+    norm_err, max_abs, _ = _compare(expected, actual)
+    if norm_err > NORM_ERR_TOL:
+        raise AssertionError(f"Numerical mismatch: normalized_max_error={norm_err}, max_abs={max_abs}")
+
+
+def _mla_replay_validator(q, kv_buffer, out, cu_seqlens_q, seqused_k, block_table, scale, lora):
+    inputs = (q, kv_buffer, block_table, cu_seqlens_q, seqused_k)
+    originals = tuple(x.clone() for x in inputs)
+    def reference():
+        return torch_mla_extend(q, kv_buffer, cu_seqlens_q, seqused_k,
+                                block_table, lora, scale, o_dtype=q.dtype)
+    expected = reference()
+    def perturb():
+        # Negating Q and K preserves QK logits. V is the latent K slice, so the
+        # correct output negates while page addresses and sequence lengths stay fixed.
+        q.neg_()
+        kv_buffer.neg_()
+    def compare(actual, expected):
+        _checked_mla_output(actual, out, q, lora)
+        _compare_mla_output(actual, expected)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=reference, compare=compare)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -268,12 +311,17 @@ def run_correctness():
             torch.manual_seed(42 + i)
             q, kv_buffer, out, block_table, cu_seqlens_q, seqused_k, scale = \
                 make_test_data(ns, nt, nqh, nkvh, lora, rope, bs, slk, device, dtype)
+            out.fill_(float("nan"))
+            protected_inputs = (q, kv_buffer, block_table, cu_seqlens_q, seqused_k)
+            originals = tuple(v.clone() for v in protected_inputs)
 
             result = _retry_gpu(lambda: _call_kernel(
                 mod, q, kv_buffer, out, cu_seqlens_q, seqused_k, slk,
                 block_table, scale, lora, rope,
             ))
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_mla_output(result, out, q, lora)
 
             finite = bool(torch.isfinite(result.float()).all().item())
 
@@ -335,6 +383,8 @@ def run_performance():
             torch.manual_seed(42 + test_idx)
             q, kv_buffer, out, block_table, cu_seqlens_q, seqused_k, scale = \
                 make_test_data(ns, nt, nqh, nkvh, lora, rope, bs, slk, device, dtype)
+            out.fill_(float("nan"))
+            replay_validate = _mla_replay_validator(q, kv_buffer, out, cu_seqlens_q, seqused_k, block_table, scale, lora)
 
             for _ in range(WARMUP_ITERATIONS):
                 _retry_gpu(lambda: _call_kernel(
@@ -343,24 +393,26 @@ def run_performance():
                 ))
             torch.cuda.synchronize()
 
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
                 lambda: _call_kernel(mod, q, kv_buffer, out, cu_seqlens_q, seqused_k, slk, block_table, scale, lora, rope),
                 warmup=0,
-                repetition=BENCHMARK_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS, timed_run=timed,
             )
 
+            bench_meta.update(replay_validate(timed))
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": elapsed_ms,
                 **bench_meta,
                 "params": params,
             })
-        except Exception:
+        except Exception as error:
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
                 "benchmark_method": "benchmark_failed",
-                "benchmark_fallback_reason": "performance case failed before timing completed",
+                "benchmark_fallback_reason": "performance case failed: " + str(error),
                 "params": params,
             })
     return test_cases

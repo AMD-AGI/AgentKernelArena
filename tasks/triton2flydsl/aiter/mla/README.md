@@ -52,3 +52,24 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All six original BF16 paged-latent attention cases remain, including128query
+heads/lora512 and the four-query non-ALL_DECODE path. The result must write and
+alias the supplied [total_queries,query_heads,lora_rank] BF16 output buffer.
+Q, KV pages, block tables, cumulative query offsets and sequence lengths are
+read-only. The original normalized maximum error<=0.01 remains the sole numerical
+gate; allclose at0.01 remains diagnostic. No reference or baseline algorithm changed.
+
+The actual measured output and the same captured graph replay must both pass.
+Untimed replay negates Q and KV together: QK logits stay the same, latent values
+and the attention output negate. Page addresses and lengths stay unchanged.
+Output poisoning, independent reference work and restoration are outside timing.
+All original seeds42+i, ten external warmups and100graph samples remain.
+
+Runtime qualification must bind the exact image. The unchanged source's
+multi-stage pipeline has shown non-finite output for the128-head/lora512case in
+a newer Triton runtime; the original pinned runtime passed all six diagnostic
+cases. Diagnostics alone do not qualify the task. Use a full validator report
+for the selected runtime; do not waive that case, alter its tolerance, or select
+a different baseline implementation after a session has frozen it.
