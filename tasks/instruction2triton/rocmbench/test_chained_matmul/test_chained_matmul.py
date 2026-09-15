@@ -110,18 +110,46 @@ def test_chained_matmul(request, device='cuda'):
     c = torch.randint_like(b, low=0, high=2)
     triton_result = torch.zeros_like(a)
 
-    torch_result = chained_matmul_reference(a, b, c)
-    chained_matmul_kernel[grid](
-        a, b, c, triton_result, m, n, k,  #
-        block_m=block_m, block_n=block_n, block_k=block_k)
+    from _arena_reference import ChainCheck
+    check = ChainCheck(a, b, c, triton_result, exact=True)
+    try:
+        torch_result = chained_matmul_reference(*check.original)
+        chained_matmul_kernel[grid](
+            a, b, c, triton_result, m, n, k,  #
+            block_m=block_m, block_n=block_n, block_k=block_k)
 
-    result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
-    ################### save tri_out in result_gold ###################
-    test_case_name = request.node.name
-    sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
-    result_gold[sanitized_key_name] = triton_result.clone().detach().cpu()
-    ################################################################### 
-    assert (torch_result == triton_result).all()
+        result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
+        ################### save tri_out in result_gold ###################
+        test_case_name = request.node.name
+        sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
+        result_gold[sanitized_key_name] = triton_result.clone().detach().cpu()
+        ###################################################################
+        assert (torch_result == triton_result).all()
+
+        check(triton_result)
+        request.node.user_properties.append(("chain_contract", {"readonly_input_checked": True, "full_output_checked": True, "original_binary_exact_checked": True}))
+    finally:
+        check.restore()
+
+
+@pytest.mark.parametrize("M,N,K,BM,BN", [(17, 48, 32, 16, 16)])
+def test_signed_partial_m_control(M, N, K, BM, BN, request):
+    from _arena_reference import ChainCheck
+    # Deterministic signed fractions; no new random seed or scored samples.
+    a = ((torch.arange(M * K, device="cuda") % 9 - 4).reshape(M, K) * .125).half()
+    b = ((torch.arange(N * K, device="cuda") % 7 - 3).reshape(N, K) * .25).half()
+    c = ((torch.arange(N * K, device="cuda") % 5 - 2).reshape(N, K) * .125).half()
+    output = torch.full_like(a, float("nan"))
+    check = ChainCheck(a, b, c, output)
+    try:
+        chained_matmul_triton_wrapper(a, b, c, output, BM, BN)
+        check(output)
+        check.fresh(output)
+        chained_matmul_triton_wrapper(a, b, c, output, BM, BN)
+        check(output)
+        request.node.user_properties.append(("chain_contract", {"readonly_input_checked": True, "full_output_checked": True, "fresh_input_replay_checked": True}))
+    finally:
+        check.restore()
 
 # --- Python wrapper for the kernel ---
 def chained_matmul_triton_wrapper(A_in, B_in, C_in, out_buffer, block_m, block_n):

@@ -13,9 +13,9 @@ Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|
 with one role and one action. Submitted checks use `ARENA_EVAL_PHASE=candidate_evaluation`.
 The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
 `workloads.json` retains 151 original collected cases, including 150 performance cases.
-Collection is checked against this independent manifest. Original correctness
-functions run unchanged. Performance inputs additionally run the task-local
-oracle in `_arena_reference.py`, before timing and against observed timed output.
+Collection is checked against this independent manifest. Original binary-input correctness
+case and exact equality gate are retained, with private inputs and full-output checks. Performance inputs additionally run the task-local
+oracle in `_arena_reference.py`, before timing, against actual TimedRun output, and after fresh inputs/NaN output poisoning.
 Seeds, case parameters, original assertions/tolerances, launch parameters,
 prepare/reset callbacks, warmups and sample counts are unchanged.
 
@@ -104,3 +104,27 @@ def chained_matmul_kernel(A,  # Pointer to the first input tensor `A`. Expected 
 
 
 
+
+
+## Numerical and replay contract
+
+The original binary-input case still requires exact equality. The original 150
+random FP16 performance cases had no numerical check before Arena migration;
+copying the binary exact rule onto arbitrary random inputs incorrectly requires
+identical floating-point reduction orders. Their new numerical contract is the
+same two GEMMs with the kernel's **mandatory FP16 intermediate** and FP16 output.
+An independent FP64 oracle bounds both FP32 dot accumulations using
+`gamma(n)=n*2^-24/(1-n*2^-24)`, with `n=2*K` and `2*N`, propagates the intermediate
+FP16 rounding interval through the second product, then rounds both endpoints to
+FP16. Every output must lie inside that interval and be finite. Bounds depend on
+input values and dimensions, never on a baseline's measured error. The original
+binary equality assertion remains in addition to these checks.
+
+All 151 original identities, 150 scored workloads, kernel code, source wrappers,
+seed, tiles, stages, warmup 10, repetition 100, canonical timer and mean reduction
+are unchanged. One unscored signed fractional case adds a masked final M tile,
+for 152 correctness cases. It does not create a new timing workload. Read-only
+inputs are snapshotted before evaluation; the actual timed result and a new
+reference after changed inputs/poisoned output are checked in full. Inputs and
+output are restored in `finally`, including failed replay paths. Oracle, poison,
+and restoration work runs outside the measured callable for both roles.

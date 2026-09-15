@@ -3165,6 +3165,28 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "test_signed_partial_m_control/b2e2d7d8c18826183de8",
+      "params": {
+        "function": "test_signed_partial_m_control",
+        "arguments": {
+          "M": 17,
+          "N": 48,
+          "K": 32,
+          "BM": 16,
+          "BN": 16
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS",
+      "coverage": {
+        "dtype": "float16",
+        "semantic": "signed fractional matrices and masked final M tile; exact intermediate FP16 contract",
+        "scored": false
+      }
     }
   ],
   "migration": {
