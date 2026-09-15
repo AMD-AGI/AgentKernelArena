@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_kda_gate.py
+  - path: source/triton_kda_gate.py
+    scope: symbols
+    symbols:
+    - kda_gate_fwd_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_kda_gate.py
     kind: function

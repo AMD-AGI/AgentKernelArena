@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_ssd_bmm.py
+  - path: source/triton_ssd_bmm.py
+    scope: symbols
+    symbols:
+    - _bmm_chunk_fwd_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_ssd_bmm.py
     kind: function

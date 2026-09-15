@@ -1,6 +1,6 @@
 # triton_fla_scaled_dot_kkt
 
-The starting candidate is implemented Triton. Improve the declared source files in place;
+The starting candidate is implemented Triton. Improve only the declared Triton kernel symbols and permitted new implementation helpers;
 the framework freezes the initial implementation as the baseline. Baseline and candidate
 actions execute only this workspace, with no fallback to another implementation.
 
@@ -30,3 +30,21 @@ The protected manifest requires the declared kernel symbols to remain Triton JIT
 functions, including kernels originally decorated with `@triton.jit()`. Removing
 the decorator is rejected before compilation. This structural check supplements
 the numerical and timed-path checks; it does not by itself attest every dispatch.
+
+The public Python wrapper, imports, allocations and dispatch are protected. Implement
+computation in the declared Triton kernels; do not call the task reference, harness,
+or another operator implementation from candidate code. The original source is frozen
+independently for baseline execution.
+
+`validate-task` checks independent small known answers and a deliberately incorrect
+output against the unchanged task comparator. Correctness additionally exercises
+unscored public-interface controls from `scripts/semantic_controls.py`. These controls
+do not replace or add scored cases. Full output shape, dtype, device, finiteness and
+read-only inputs are checked.
+
+The timed invocation keeps the original allocation/dispatch boundary, 10 warmups and
+100 samples. `TimedRun` retains outputs of the actual captured graph. After measurement,
+the harness checks those outputs, changes an operand, poisons outputs, and replays that
+same graph against the original numerical reference. All comparisons, snapshots,
+perturbations and restoration are outside the timed window. An unobservable graph
+fallback fails instead of validating a different untimed invocation.

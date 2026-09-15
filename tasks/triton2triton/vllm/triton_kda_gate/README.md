@@ -1,6 +1,6 @@
 # triton_kda_gate
 
-The starting candidate is implemented Triton. Improve the declared source files in place;
+The starting candidate is implemented Triton. Improve only the declared Triton kernel symbols and permitted new implementation helpers;
 the framework freezes the initial implementation as the baseline. Baseline and candidate
 actions execute only this workspace, with no fallback to another implementation.
 
@@ -25,3 +25,21 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+The public Python wrapper, imports, allocations and dispatch are protected. Implement
+computation in the declared Triton kernels; do not call the task reference, harness,
+or another operator implementation from candidate code. The original source is frozen
+independently for baseline execution.
+
+`validate-task` checks independent small known answers and a deliberately incorrect
+output against the unchanged task comparator. Correctness additionally exercises
+unscored public-interface controls from `scripts/semantic_controls.py`. These controls
+do not replace or add scored cases. Full output shape, dtype, device, finiteness and
+read-only inputs are checked.
+
+The timed invocation keeps the original allocation/dispatch boundary, 10 warmups and
+100 samples. `TimedRun` retains outputs of the actual captured graph. After measurement,
+the harness checks those outputs, changes an operand, poisons outputs, and replays that
+same graph against the original numerical reference. All comparisons, snapshots,
+perturbations and restoration are outside the timed window. An unobservable graph
+fallback fails instead of validating a different untimed invocation.

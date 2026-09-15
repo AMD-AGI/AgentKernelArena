@@ -1,10 +1,15 @@
 schema_version: 2
-description: Optimize triton_fla_scaled_dot_kkt with the original Triton operator contract.
+description: Optimize triton_fla_scaled_dot_kkt with the original Triton operator
+  contract.
 candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_fla_scaled_dot_kkt.py
+  - path: source/triton_fla_scaled_dot_kkt.py
+    scope: symbols
+    symbols:
+    - chunk_scaled_dot_kkt_fwd_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_fla_scaled_dot_kkt.py
     kind: function
