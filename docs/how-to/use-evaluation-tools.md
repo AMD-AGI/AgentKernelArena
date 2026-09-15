@@ -435,7 +435,7 @@ Waitcheck's `waitcheck_binary` and `waitcheck_capi_wrapper`; ConSan's
 host/runtime probe is the only authority for those values.
 
 Commands must be argv lists, never shell strings. A dedicated tool command is
-required because reusing `correctness_command` could instrument the reference,
+required because blindly reusing an ordinary correctness action could instrument the reference,
 load a precompiled library kernel, or sanitize the wrong candidate.
 
 For example, a HIP task can declare the shape of its adapters as follows:
@@ -519,11 +519,13 @@ directory. Native HIP rocJITsu applies the same containment rule to
 `race_report` and requires the report filename to remain `race.log`. AOT replay
 does not accept a task-configured race-report path.
 
-For image-kernel tasks, declare every candidate file whose change
-must invalidate evidence with `evaluation_profile.submission_paths`. Paths must
-be workspace-relative and cannot contain `..`. If this field is absent, capture
-falls back to `source_file_path` and `target_file_path`; silently hashing an
-entire multi-gigabyte repository is intentionally avoided.
+For v2 tasks, evidence includes every declared candidate path, protected task
+input, and directly referenced local command input. Use
+`evaluation_profile.submission_paths` for additional evidence files, not to
+replace that set or declare edit permission. Paths must be workspace-relative
+and cannot contain `..`. Legacy configurations retain the explicit-profile or
+`source_file_path`/`target_file_path` fallback. Undeclared dependency trees are
+not automatically treated as editable candidate code.
 
 Put evaluator-owned adapter code under a harness-protected path such as
 `scripts/`, not an arbitrary agent-editable `eval_tools/` directory. Also list

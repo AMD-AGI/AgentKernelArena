@@ -192,16 +192,15 @@ field tables on this page and covers:
 - Optional sanitizer commands, common exports, and how to add or modify a task.
 - Legacy field mappings and runtime migration requirements.
 
-**Implementation status:** v2 is documented, not yet implemented in this branch.
-The current loader/evaluator/validator still use legacy task fields. The profile,
-tool-adapter, and platform sections below describe that current implementation;
-consult the task guide before migrating configs. Run and final-result schemas
-remain documented on this page.
+**Implementation status:** all retained task configurations and runners use v2
+through the shared loader, evaluator, and validator. GPU qualification remains
+separate from schema migration. Run and final-result schemas remain documented
+on this page; the task guide describes executable task contracts.
 
 ### Evaluation profile
 
-The evaluator infers a profile from `task_type`, `repository_language`, source
-suffixes, and repository paths. Add `evaluation_profile` only when that
+The evaluator infers a profile from `candidate.language`, declared candidate
+paths, and source ownership. Add `evaluation_profile` only when that
 inference is insufficient. Recognized profile overrides, including
 `submission_paths`, are recorded in
 `resolved_task_profile.explicit_overrides`. Unknown profile fields are currently
@@ -215,13 +214,14 @@ ignored, so use only the documented keys.
 | `evaluation_profile.instrumentation_control` | string | `compiler_controlled`, `recompile`, `none`, or `unknown`. This describes whether the selected candidate can be rebuilt/instrumented. |
 | `evaluation_profile.adapter` | string or `null` | Explicit adapter identity, for example `triton_aot`, `flydsl_aot`, or `hip_fpsan_manual`. It is a claim that must still be supported by adapter options/evidence. |
 | `evaluation_profile.source_available` | boolean | Whether source for the selected candidate is available to the evaluator. |
-| `evaluation_profile.submission_paths` | string or list of strings | Workspace-relative candidate files captured before agent edits and fingerprinted after optimization. Required when image tasks change files beyond the normal source fields. Absolute paths and `..` are rejected. |
+| `evaluation_profile.submission_paths` | string or list of strings | Additional workspace-relative evidence files. V2 always includes candidate declarations and protected task inputs; this field extends that set and cannot hide candidate edits. Absolute paths and `..` are rejected. |
 | `evaluation_profile.fpsan_ported` | boolean | Explicit evidence that the HIP reference and candidate were manually ported to HIP-FpSan value semantics. |
 | `evaluation_profile.rebuilt_from_source` | boolean | Explicit evidence used when a framework/library path is rebuilt from controlled source. It does not replace artifact attestation. |
 
 ### Task-level tool adapters
 
-A task can add adapter options only for tools enabled by the run. The only
+A task can register adapters for known tools, including tools the current run
+does not enable. Disabled adapters are validated and remain dormant. The only
 allowed task-level structure is:
 
 ```yaml
@@ -233,7 +233,7 @@ evaluation_tools:
         command: [python3, scripts/eval_tools/run_gpu_asan.py]
 ```
 
-`timeout_s` must be between 1 and the run-level value. Task configuration cannot
+For an enabled tool, `timeout_s` must be between 1 and the run-level value. Task configuration cannot
 enable another tool, change the top-level `policy` or `positive_control`, select
 another runtime image, increase a timeout, or set any reserved framework option
 listed above. Other options are merged over the run-level options.

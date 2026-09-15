@@ -141,13 +141,13 @@ The materialized workspace is self-contained. The Python timing helper depends
 only on the standard library and PyTorch; the native helper depends only on the
 HIP runtime already required by its task.
 
-Generated helpers, marked adapters, native benchmark drivers, and the source
-files directly named by `performance_command` are covered by the harness
-integrity guard. If a ROCmBench task intentionally colocates its editable kernel
-and benchmark in one Python file, the guard omits imports, complete declared
-target AST nodes, and complete top-level `@triton.jit`/`@jit` helper nodes.
-Benchmark/test functions, ordinary Python helpers, module constants, and
-executable harness statements remain protected.
+Generated helpers, marked adapters, native benchmark drivers, and protected
+evaluation inputs are covered by the harness integrity guard. V2 tasks declare
+file, symbol, or tree boundaries in `candidate.editable`. A colocated
+kernel/benchmark file must use symbol scopes for implementation functions and
+explicitly permitted helpers; benchmark/test functions, reference logic,
+constants, and executable harness statements remain protected. See the task
+guide for the exact declaration rules.
 
 Normal optimization runs and `quality_loop` also snapshot the original task
 package's non-editable inputs before launching the optimizer. This includes
@@ -155,9 +155,8 @@ case data such as `session_cases.json`, reference implementations, and helper
 files outside test directories. The snapshot is kept in framework memory and
 checked before evaluation and again before writing the final result. Editing,
 deleting, or renaming an original input rejects the run for every agent.
-`source_file_path`, `target_file_path`, and `editable_sources` identify editable
-files; the existing function-level harness protection still applies to
-colocated kernel/benchmark files. Runtime outputs under `build/`, `logs/`, and
+`candidate.editable` identifies the implementation boundary; symbol-level
+protection applies to colocated kernel/benchmark files. Runtime outputs under `build/`, `logs/`, and
 `perf/`, environment caches, and generated result reports are not task inputs.
 New preparation files are allowed unless they match protected harness patterns,
 in which case the existing scratch-file removal policy applies. Cloned or

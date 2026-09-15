@@ -1,17 +1,10 @@
-# SIKL operator2flydsl task: an MXFP4 routed-expert MoE from the workload
-# schema.
-#
-# The forge_operator2flydsl agent reimplements the operator in FlyDSL with
-# KernelForge's forge-rewrite-by-flydsl pipeline; Arena scores the port against the operator's
-# own production implementation (aiter.fused_moe.fused_moe) over all 13 of the
-# schema's workload cases. Post-processing fills the task's SIKL solution slot
-# from the scored result.
-#
-# Requires KernelForge installed so `kernel-agents` is on PATH, and the LLM
-# gateway environment (ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN /
-# ANTHROPIC_CUSTOM_HEADERS).
+# Reimplement an MXFP4 routed-expert MoE operator in FlyDSL. The unified Forge
+# adapter uses the same task contract as other agents. Arena evaluates the
+# task's declared cases against its reference and production AITER baseline;
+# the common exporter produces the SIKL solution from accepted results.
+# See agents/forge/README.md for the pinned engine and authentication setup.
 agent:
-  template: forge_operator2flydsl
+  template: forge
 
 # The schema carries four MoE definitions; the others are mxfp4_moe_e257_i256,
 # mxfp4_moe_e33_i1024 and mxfp4_moe_e65_i1024. Select the whole suite with

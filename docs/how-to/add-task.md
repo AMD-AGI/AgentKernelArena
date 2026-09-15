@@ -13,16 +13,17 @@ contract and replaces the previous task-family-specific configuration guidance.
 
 ## Status and scope
 
-**Schema v2 execution is wired; task migration and GPU qualification are in
-progress.** The shared declaration parser, action/result protocol, materialization,
+**All 438 retained tasks use schema v2; GPU qualification is in progress.**
+The shared declaration parser, action/result protocol, materialization,
 baseline session, evaluator and validator are connected through
 `src/task_run.py`. Normal runs and quality_loop use the same final evaluation
 and initial validation entrypoints. CPU process fixtures cover their integration;
 this does not certify GPU task quality or an agent's optimization capability.
-SIKL, HIP, Triton, and FlyDSL task migrations are being integrated in batches;
-unconverted tasks still use the legacy path until their runners are converted.
-The task's own config identifies its version. Do not replace a config without
-implementing its task-owned actions. See [Migration](#migration) before changing
+The migrated task families include SIKL, HIP, Triton, FlyDSL, generation, and
+image-backed tasks. Legacy execution/report compatibility remains for old
+workspaces and external configs; new or changed repository tasks must use v2.
+Do not replace a config without implementing its task-owned actions.
+See [Migration](#migration) before changing
 an executable task. Task config version 2, runner protocol 1 and validator report
 version 4 are separate contracts.
 
@@ -613,9 +614,9 @@ exports:
 
 ## How to add or modify a task
 
-1. **Check implementation status.** Read the status and migration sections. Do
-   not change a live task to v2 until its loader, evaluator, validator, and agent
-   paths understand it. A documentation-only design change is not that migration.
+1. **Read the contract.** Read the status and migration sections. Use the shared
+   v2 loader, evaluator, and validator, with a task-owned runner implementing
+   every required action. A config declaration alone is not an implementation.
 2. **Define the problem.** Describe semantics, input/output interface, allowed
    dependencies, target language, editable boundary, and whether a candidate
    already exists. Inspect a nearby task's implementation, not just its config.
@@ -673,17 +674,19 @@ as documentation; they do not qualify any task on GPU.
 
 Orchestration selects the v2 path by `schema_version: 2`. That path uses
 `TaskSpec`, bounded materialization, `TaskSession`, `ARENA_EVAL_RESULT`, the
-shared evaluator and captured-evidence validator. Remaining legacy configs still
-use `compile_command`/`correctness_command` and their existing timing formats.
+shared evaluator and captured-evidence validator. All retained repository tasks
+have migrated. Compatibility paths for old workspaces and external legacy
+configs still understand `compile_command`/`correctness_command` and their
+existing timing formats; they are not a second schema for new tasks.
 Integration tests do not qualify Forge/GEAK workflows, SIKL GPU numerical
 behavior, or optional GPU tools; those require their own runtime evidence.
 
-For executable work before migration, retain the task's working legacy fields
-and use nearby tasks plus the implementation as reference. Legacy command
-fields are lists of shell command **strings**, unlike v2 lists of argv lists.
-Do not mechanically split a shell string on whitespace; wrap existing shell
-behavior or translate it deliberately. The current validator has a verified
-`torch2hip` generation-placeholder exception, not the general v2 lifecycle.
+When converting an external legacy task, inspect its working commands and
+implementation. Legacy command fields are lists of shell command **strings**,
+unlike v2 lists of argv lists. Do not mechanically split a shell string on
+whitespace; wrap existing shell behavior or translate it deliberately. The old
+validator's `torch2hip` placeholder exception belongs only to legacy reports.
+V2 uses the same initial-state lifecycle for every task family.
 
 ### Mapping existing tasks into v2
 
@@ -724,7 +727,6 @@ Before declaring the migration complete, verify the following together:
   and both SIKL operator families. Compare before/after cases, rules, timing,
   and scores on compatible hardware; test with more than one agent integration.
 
-During a staged rollout, legacy configs may be translated at the loader
-boundary. The end state is one authored schema for all tasks, not a permanent
-SIKL-specific schema. Do not silently change task semantics or benchmark
-thresholds as part of field migration.
+Keep one authored schema for all tasks. Compatibility with historical reports
+does not justify new legacy configs or an SIKL-specific schema. Do not silently
+change task semantics or benchmark thresholds as part of field migration.

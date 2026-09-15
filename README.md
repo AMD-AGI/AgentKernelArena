@@ -96,10 +96,12 @@ AgentKernelArena/
 1. Load the run configuration and selected agent.
 2. Discover task `config.yaml` files matching the configured selectors.
 3. Create an isolated task workspace and materialize its declared sources.
-4. Compile and measure the original implementation to establish a baseline.
+4. Validate the task, establish its independent baseline, and check an existing
+   initial candidate when present. Generation targets may start unimplemented.
 5. Build the task prompt and run the selected agent inside the workspace.
 6. Independently compile, check, and time the agent's modified implementation.
-7. Write a structured `task_result.yaml` containing reward signals and a score.
+7. Write a structured `task_result.yaml` containing reward signals and a score,
+   then run any task-declared exports for an accepted candidate.
 8. Aggregate all task results into run-level CSV, JSON, and text reports.
 
 `task_validator` follows a validation-specific path and writes `validation_report.yaml` instead of optimizing and scoring a kernel.
@@ -115,6 +117,7 @@ Each run selects one `agent.template`. Repeated runs can compare different agent
 | `cursor` | Cursor Agent CLI integration |
 | `claude_code` | Claude Code CLI integration |
 | `codex` | Codex CLI integration |
+| `forge` | KernelForge search through the shared task interface; initialize, translate, or optimize as required |
 | `geak_v3` | GEAK optimization for HIP tasks |
 | `geak_v3_triton` | GEAK optimization for Triton tasks |
 | `mini_swe_triton` | mini-swe-agent-based Triton optimization |
@@ -137,9 +140,10 @@ for tested CLI/model versions, run-level overrides, and the scope of live checks
 | `triton2flydsl` | Translate a Triton implementation to FlyDSL |
 | `flydsl2flydsl` | Optimize an existing FlyDSL implementation |
 | `image_kernel` | Optimize a kernel from a declared source tree in the runtime image |
+| `SIKL-task` | Reimplement production BF16 GEMM and MXFP4 MoE operators in FlyDSL |
 
-These names describe existing suites and legacy dispatch. The unified task
-contract and migration path are documented in
+These names organize task selection; the candidate and evaluation declarations
+determine behavior. Every retained suite uses the unified task contract in
 [Task definition, schema, and authoring](docs/how-to/add-task.md).
 The prompt system also recognizes `cuda2hip`; the current bundled task tree does not include a `cuda2hip/` suite.
 
@@ -341,10 +345,10 @@ files. Read [Task definition, schema, and authoring](docs/how-to/add-task.md)
 for the canonical schema, examples, command/result contracts, baseline and
 candidate lifecycle, optional sanitizers, and migration instructions.
 
-The guide specifies the selected unified v2 design. This branch's runtime still
-uses legacy task fields; follow the guide's implementation-status section
-before changing an executable config. Task-family directory names remain useful
-selectors, but the v2 contract does not give any task family a separate schema.
+All 438 retained tasks declare schema v2 and task-owned evaluation actions.
+GPU qualification and agent campaign results are tracked separately from that
+migration. Task-family directory names remain useful selectors; no family has
+a separate configuration schema.
 
 ## Development
 

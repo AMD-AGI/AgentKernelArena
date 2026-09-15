@@ -79,8 +79,9 @@ Before adding or modifying any task, you MUST read
 implementation-status and migration sections. This applies to task configs,
 sources, references, input generators, harnesses, and benchmark scripts.
 It is the canonical task guide; inspect nearby task implementations as well.
-Do not assume the documented v2 design is already supported by the runtime or
-migrate a live config before the shared loader/evaluator/validator support it.
+All retained tasks use schema v2 and the shared loader/evaluator/validator.
+New tasks must use that contract and implement its task-owned actions; adding a
+field to YAML alone does not implement the associated behavior.
 
 - Paths in an isolated task must resolve within the task directory. Do not use
   absolute paths, undeclared downloads, or external repositories.

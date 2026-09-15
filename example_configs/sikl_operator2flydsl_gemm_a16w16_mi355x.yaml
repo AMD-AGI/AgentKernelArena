@@ -1,18 +1,12 @@
-# SIKL operator2flydsl task: an a16w16 GEMM from the GLM-5.2 workload schema.
-#
-# The forge_operator2flydsl agent reimplements the operator in FlyDSL with
-# KernelForge's forge-rewrite-by-flydsl pipeline; Arena scores the port against the operator's
-# own production implementation (aiter.tuned_gemm.gemm_a16w16) over all 13 of
-# the schema's workload cases. Post-processing fills the task's SIKL solution
-# slot from the scored result.
-#
-# Requires KernelForge installed so `kernel-agents` is on PATH, and the LLM
-# gateway environment (ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN /
-# ANTHROPIC_CUSTOM_HEADERS).
+# Reimplement a production BF16 GEMM in FlyDSL. The unified Forge adapter
+# chooses initialization from the task's candidate declaration, then optimizes.
+# Arena evaluates every declared case against the task-owned reference and
+# production AITER baseline. The common exporter produces the SIKL solution.
+# See agents/forge/README.md for the pinned engine and authentication setup.
 agent:
-  template: forge_operator2flydsl
+  template: forge
 
-# Select the whole suite with `- SIKL-task` once more operators are generated.
+# Select all GEMM and MoE tasks with `- SIKL-task`.
 tasks:
   - SIKL-task/gemm_a16w16_nt_n6144_k6144
 
