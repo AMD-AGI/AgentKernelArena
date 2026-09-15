@@ -463,9 +463,11 @@ evaluation. It must not require tasks to ship `scripts/forge_driver.py` or
 infer builder names from operator identity. A unified Forge integration can
 choose a workflow from actual candidate state and language/backend capabilities:
 an empty candidate needs generation even when its target language matches the
-baseline's; an existing candidate may be optimized or translated. The schema
-does not itself merge the two current Forge implementations or promise every
-language conversion is supported.
+baseline's; an existing candidate may be optimized or translated. The current
+[Forge integration](../../agents/forge/README.md) exposes one agent identity and
+adapts its internal workflows to this contract. Its supported conversions and
+initialization paths require their own runtime qualification; schema support
+alone does not establish an engine capability.
 
 ## Optional sanitizers and evaluation tools
 

@@ -774,7 +774,12 @@ def test_declared_gpu_constraints_are_retained_without_unverified_widening():
         cfg=yaml.safe_load((task/"config.yaml").read_text())
         arch=cfg.get("platform_support",{}).get("required_arch")
         if arch:observed[str(task.relative_to(ROOT/"tasks"))]=arch
-    assert observed==ORIGINAL_REQUIRED_ARCH
+    expected = dict(ORIGINAL_REQUIRED_ARCH)
+    # Explicit ports retain gfx942 and add gfx950 after real action and full
+    # validator qualification; this CPU assertion is not GPU evidence itself.
+    for name in ("rmsnorm_kernel", "softmax_kernel", "layernorm_kernel", "topk_gating_softmax_kernel"):
+        expected["flydsl2flydsl/" + name] = ["gfx942", "gfx950"]
+    assert observed == expected
 
 ORIGINAL_REQUIRED_ARCH = {'flydsl2flydsl/flash_attn_func_kernel': 'gfx942',
  'flydsl2flydsl/fp8_gemm_4wave_kernel': 'gfx950',
