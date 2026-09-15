@@ -401,9 +401,9 @@ ORIGINAL_SOURCE_DIGESTS = {'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (10
 
 # Repairs justified by finalized real-GPU validator job 139005: GELU must be
 # out-of-place and validate timed replay; matrix must validate every output.
-# Job 139100 additionally found missing replay checks in FusedLeakyReLU and GRU.
-# The original digest remains the gate for all other 84 tasks.
-GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '0b72fe68a7c9bb4ef696ce876f80f0de9ed3a0dd434acd8f499f679e0188975c'), 'torch2hip/gpumode/14539_GELU': (10, '6988f6cace9f3c9a1f8da275789518c8667ba249b5c9431c6b05a57dd67d9e36'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (11, '2e76a63ae4a0f16eadc664b81c60d5d9779104ce66304d9bac85f5d5c90e70e7'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, '434697dcc5596fee2141040bbcb1b404b5614f555a58bc8d729b190da194adfd')}
+# Job 139100 additionally found missing replay checks in FusedLeakyReLU, GRU and item attention.
+# The original digest remains the gate for all other 83 tasks.
+GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '0b72fe68a7c9bb4ef696ce876f80f0de9ed3a0dd434acd8f499f679e0188975c'), 'torch2hip/gpumode/14539_GELU': (10, '6988f6cace9f3c9a1f8da275789518c8667ba249b5c9431c6b05a57dd67d9e36'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (11, '2e76a63ae4a0f16eadc664b81c60d5d9779104ce66304d9bac85f5d5c90e70e7'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, '434697dcc5596fee2141040bbcb1b404b5614f555a58bc8d729b190da194adfd'), 'hip2hip/gpumode/ItemQueryAttention': (11, '5625fb2aa11b57597f56893f70bb70d5e5cf8ccafa43977f2bc2a95ac563f8a0')}
 
 
 @pytest.mark.parametrize('path', CONFIGS, ids=lambda p: p.parent.name)
@@ -697,7 +697,8 @@ def test_matrix_additional_checks_cover_all_original_shapes(monkeypatch):
 
 
 @pytest.mark.parametrize('relative', ['hip2hip/gpumode/GELU', 'torch2hip/gpumode/14539_GELU',
-                                         'hip2hip/gpumode/FusedLeakyReLU', 'hip2hip/gpumode/GateGRUSelectionLayer'])
+                                         'hip2hip/gpumode/FusedLeakyReLU', 'hip2hip/gpumode/GateGRUSelectionLayer',
+                                         'hip2hip/gpumode/ItemQueryAttention'])
 @pytest.mark.parametrize('behavior', ['correct', 'wrong_replay', 'input_mutation', 'input_alias'])
 def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypatch):
     root = ROOT / 'tasks' / relative
@@ -764,3 +765,23 @@ def test_added_replay_tasks_reference_known_answer_and_readonly_inputs(name):
             assert actual.untyped_storage().data_ptr() != after.untyped_storage().data_ptr()
         for key, value in model.state_dict().items():
             torch.testing.assert_close(before_state[key], value, rtol=0, atol=0)
+
+
+def test_item_attention_zero_projection_known_answer_and_readonly_inputs():
+    root = ROOT / 'tasks/hip2hip/gpumode/ItemQueryAttention'
+    args = options(yaml.safe_load((root / 'config.yaml').read_text()))
+    queries = torch.arange(12, dtype=torch.float32).reshape(2,3,2)
+    support = torch.arange(18, dtype=torch.float32).reshape(3,3,2)
+    expected = support.mean(dim=1)[None, :, None, :].expand(2,3,3,2)
+    for filename in (args.module, args.functional):
+        model = import_path(root / filename).ItemQueryAttention(2,2).eval()
+        with torch.no_grad():
+            for parameter in model.parameters(): parameter.zero_()
+        before = [queries.clone(), support.clone()]
+        actual = model(queries, support)
+        # Zero projections produce uniform attention over each support sequence.
+        torch.testing.assert_close(actual, expected)
+        assert not torch.allclose(actual, torch.zeros_like(actual))
+        for old, value in zip(before, [queries, support]):
+            torch.testing.assert_close(old,value,rtol=0,atol=0)
+            assert actual.untyped_storage().data_ptr() != value.untyped_storage().data_ptr()
