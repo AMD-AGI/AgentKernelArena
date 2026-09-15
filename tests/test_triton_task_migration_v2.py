@@ -354,6 +354,67 @@ def test_geak_gemm_exact_timed_output_and_changed_input_replay(monkeypatch, mode
     assert seen == [{'warmup': 50, 'repetition': 200}]
 
 
+def feed_forward_reference():
+    path=ROOT/'tasks/triton2triton/geak_eval/L1/llama_ff_triton/test_kernel_harness.py'
+    tree=ast.parse(path.read_text());definition=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='reference_ff')
+    namespace={'torch':torch}
+    exec(compile(ast.Module(body=[definition],type_ignores=[]),str(path),'exec'),namespace)
+    return namespace['reference_ff']
+
+
+def test_feed_forward_reference_independent_known_answer():
+    import math
+    reference=feed_forward_reference()
+    x=torch.tensor([[[3.,4.]]]);rms_w=torch.tensor([2.,0.5]);w=torch.diag(torch.tensor([1.,-4.]))
+    a=6./math.sqrt(12.5+1e-6);b=-8./math.sqrt(12.5+1e-6)
+    expected=torch.tensor([[[a*a/(1+math.exp(-a)),b*b/(1+math.exp(-b))]]])
+    torch.testing.assert_close(reference(x,w,w,rms_w),expected)
+
+
+@pytest.mark.parametrize('mode',['correct','incorrect_timed','stale','no_write','changing_wrong'])
+def test_feed_forward_timed_replay_restores_diagnostic_peer_inputs(monkeypatch,mode):
+    checks=module_at(ROOT/'tasks/triton2triton/geak_eval/L1/llama_ff_triton/_arena_checks.py',monkeypatch)
+    monkeypatch.setitem(__import__('sys').modules,'_aka_benchmark',SimpleNamespace(TimedRun=SimpleNamespace))
+    h=SimpleNamespace(reference_ff=feed_forward_reference())
+    x=torch.tensor([[[3.,4.]]]);rms_w=torch.tensor([2.,0.5])
+    w1=torch.diag(torch.tensor([1.,-4.]));w3=w1.clone()
+    original_x,original_rms=x.clone(),rms_w.clone()
+    def fn(): return h.reference_ff(x,w1,w3,rms_w)
+    seen=[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        seen.append(kwargs);output=measured();cached=output.clone()
+        if mode=='incorrect_timed':output.zero_()
+        def replay():
+            if mode=='correct':output.copy_(h.reference_ff(x,w1,w3,rms_w))
+            elif mode=='stale':output.copy_(cached)
+            elif mode=='changing_wrong':output.fill_(x.flatten()[0])
+            return output
+        timed_run.outputs=output;timed_run.rerun=replay
+        return 0.25, {'benchmark_method':'cuda_graph'}
+    if mode=='correct':
+        ms,metadata=checks.checked_benchmark(h,benchmark,fn,warmup=50,repetition=200)
+        assert ms==0.25 and metadata['perturbed_input_replay_checked']
+    else:
+        with pytest.raises(AssertionError): checks.checked_benchmark(h,benchmark,fn,warmup=50,repetition=200)
+    torch.testing.assert_close(x,original_x,atol=0,rtol=0)
+    torch.testing.assert_close(rms_w,original_rms,atol=0,rtol=0)
+    assert seen==[dict(warmup=50,repetition=200)]
+
+
+def test_feed_forward_diagnostic_reference_remains_original_call(monkeypatch):
+    checks=module_at(ROOT/'tasks/triton2triton/geak_eval/L1/llama_ff_triton/_arena_checks.py',monkeypatch)
+    monkeypatch.setitem(__import__('sys').modules,'_aka_benchmark',SimpleNamespace(TimedRun=SimpleNamespace))
+    ref_fn=lambda: 'diagnostic output'
+    fn=lambda:ref_fn()
+    seen=[]
+    def benchmark(actual,**kwargs):
+        assert actual is fn
+        seen.append(kwargs)
+        return 0.5,dict(benchmark_method='cuda_graph')
+    assert checks.checked_benchmark(None,benchmark,fn,warmup=50,repetition=200)[0]==0.5
+    assert seen==[dict(warmup=50,repetition=200)]
+
+
 @pytest.mark.parametrize('value', [1., float('inf'), float('nan')])
 def test_geak_gemm_correctness_rejects_nonfinite_output(monkeypatch, value):
     checks = module_at(ROOT/'tasks/triton2triton/geak_eval/L3/gemm/_arena_checks.py', monkeypatch)

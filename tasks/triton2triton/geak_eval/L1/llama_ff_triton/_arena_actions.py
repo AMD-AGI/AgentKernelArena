@@ -20,4 +20,11 @@ def correctness(require):
 
 
 def performance():
-    return h.run_benchmark(h.ALL_SHAPES, warmup=50, iterations=int(os.environ.get('GEAK_BENCHMARK_ITERATIONS', '200')))
+    from _arena_checks import checked_benchmark
+
+    benchmark = h.benchmark_cuda_graph_or_events
+    h.benchmark_cuda_graph_or_events = lambda fn, **kwargs: checked_benchmark(h, benchmark, fn, **kwargs)
+    try:
+        return h.run_benchmark(h.ALL_SHAPES, warmup=50, iterations=int(os.environ.get('GEAK_BENCHMARK_ITERATIONS', '200')))
+    finally:
+        h.benchmark_cuda_graph_or_events = benchmark

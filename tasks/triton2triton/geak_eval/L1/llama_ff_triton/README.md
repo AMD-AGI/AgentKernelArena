@@ -46,3 +46,10 @@ Do not edit `test_kernel_harness.py`, `_arena_*.py`, `workloads.json`, or genera
 next to the original harness even though the public runner is `_arena_eval.py`.
 Unsupported hardware or missing dependencies return a failing envelope; use a
 compatible image/GPU before scheduling this task.
+
+The performance action validates the actual timed output using the original
+feed-forward reference and its atol=0.25, rtol=0.15 gate. It then changes the
+captured activations and RMS weights, poisons the output and checks the exact
+graph replay. Controls run outside timing and restore the original inputs before
+the diagnostic peer benchmark. The existing combined-weight preparation cache,
+three cases, seeds, allocations, warmups and sample counts remain unchanged.
